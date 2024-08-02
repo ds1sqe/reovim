@@ -1,0 +1,15 @@
+[package]
+name = "reovim"
+version = "0.1.0"
+edition = "2021"
+authors = ["Kim Dae Up <ds1sqe@mensakorea.org>"]
+description = "Rustpowered neovim"
+repository = "https://github.com/ds1sqe/reovim"
+license = "MIT OR Apache-2.0"
+keywords = ["vim","vi","neovim"]
+categories = ["Text editors"]
+
+[dependencies]
+
+[package.metadata.docs.rs]
+rustdoc-args = ["--document-private-items"]
