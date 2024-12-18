@@ -1,15 +1,18 @@
-[package]
-name = "reovim"
+[workspace]
+members=[ "lib/*","main/"]
+resolver = "2"
+
+[workspace.package]
+rust-version = "1.80"
 version = "0.1.0"
 edition = "2021"
-authors = ["Kim Dae Up <ds1sqe@mensakorea.org>"]
-description = "Rustpowered neovim"
-repository = "https://github.com/ds1sqe/reovim"
-license = "MIT OR Apache-2.0"
-keywords = ["vim","vi","neovim"]
-categories = ["text-editors"]
+authors = ["ds1sqe(dukim)-dukim@suresofttech.com-ds1sqe@mensakorea.org"]
+license = "PRIVATE"
 
-[dependencies]
-
-[package.metadata.docs.rs]
+[workspace.package.metadata.docs.rs]
 rustdoc-args = ["--document-private-items"]
+
+[workspace.dependencies]
+bitflags = "2.6.0"
+parking_lot = "0.12.3"
+rustix = {version="0.38.42",features = ["std", "stdio", "termios"]}

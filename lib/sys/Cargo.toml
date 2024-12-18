@@ -1,0 +1,8 @@
+[package]
+name = "reovim-sys"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+parking_lot.workspace=true
+rustix.workspace=true
