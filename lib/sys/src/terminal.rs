@@ -1,7 +1,10 @@
-use crate::file::{tty_fd, FileDesc};
-use parking_lot::{const_mutex, Mutex};
-use rustix::{fd::AsFd, termios::Termios};
-use std::{fs::File, io};
+use {
+    crate::file::{FileDesc, tty_fd},
+    parking_lot::{Mutex, const_mutex},
+    rustix::{fd::AsFd, termios::Termios},
+    std::{fs::File, io},
+};
+pub mod event;
 mod window;
 pub use window::WindowSize;
 
@@ -13,7 +16,11 @@ fn get_terminal_attr(fd: impl AsFd) -> io::Result<Termios> {
 }
 
 fn set_terminal_attr(fd: impl AsFd, termios: &Termios) -> io::Result<()> {
-    rustix::termios::tcsetattr(fd, rustix::termios::OptionalActions::Now, termios)?;
+    rustix::termios::tcsetattr(
+        fd,
+        rustix::termios::OptionalActions::Now,
+        termios,
+    )?;
     Ok(())
 }
 
@@ -45,7 +52,8 @@ pub(crate) fn disable_raw_mode() -> io::Result<()> {
 }
 
 pub(crate) fn window_size() -> io::Result<WindowSize> {
-    let file = File::open("/dev/tty").map(|file| (FileDesc::Owned(file.into())));
+    let file =
+        File::open("/dev/tty").map(|file| (FileDesc::Owned(file.into())));
     let fd = if let Ok(file) = &file {
         file.as_fd()
     } else {

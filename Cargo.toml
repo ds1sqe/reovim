@@ -16,3 +16,6 @@ rustdoc-args = ["--document-private-items"]
 bitflags = "2.6.0"
 parking_lot = "0.12.3"
 rustix = {version="0.38.42",features = ["std", "stdio", "termios"]}
+# local libs
+reovim-core = { path = "./lib/core"}
+reovim-sys = { path = "./lib/sys"}

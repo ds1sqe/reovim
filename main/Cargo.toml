@@ -13,6 +13,8 @@ categories = ["text-editors"]
 bitflags = "2.6.0"
 parking_lot = "0.12.3"
 rustix = "0.38.42"
+reovim-core.workspace=true
+reovim-sys.workspace=true
 
 [package.metadata.docs.rs]
 rustdoc-args = ["--document-private-items"]
