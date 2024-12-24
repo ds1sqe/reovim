@@ -10,11 +10,10 @@ keywords = ["vim","vi","neovim"]
 categories = ["text-editors"]
 
 [dependencies]
-bitflags = "2.6.0"
-parking_lot = "0.12.3"
-rustix = "0.38.42"
+futures.workspace = true
+futures-timer.workspace = true
+tokio.workspace = true
 reovim-core.workspace=true
-reovim-sys.workspace=true
 
 [package.metadata.docs.rs]
 rustdoc-args = ["--document-private-items"]
