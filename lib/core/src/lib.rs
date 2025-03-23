@@ -1,8 +1,9 @@
 pub mod api;
-pub mod bind;
-pub mod command;
-pub mod event;
-pub mod key;
-pub mod macros;
-pub mod modd;
-pub mod state;
+mod bind;
+pub mod buffer;
+mod command;
+mod event;
+mod key;
+mod macros;
+mod modd;
+mod state;

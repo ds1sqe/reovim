@@ -5,3 +5,6 @@ edition.workspace = true
 
 [dependencies]
 reovim-sys.workspace = true
+futures.workspace = true
+futures-timer.workspace = true
+tokio.workspace = true

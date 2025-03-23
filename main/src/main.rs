@@ -1,64 +1,31 @@
 use {
-    futures::{StreamExt, future::FutureExt, select},
-    futures_timer::Delay,
     reovim_core::{
-        api::{cursor, disable_raw_mode, enable_raw_mode},
-        command::terminal::{Clear, ClearType},
-        event::{
-            DisableMouseCapture, EnableMouseCapture, Event, EventStream,
-            KeyCode,
+        api::{
+            self,
+            event::{handler::PrintEvent, SubscribeConfig},
+            screen::Screen,
         },
-        macros::execute,
+        buffer::Buffer,
     },
-    std::{io, io::Write, time::Duration},
+    std::{
+        io::{self},
+        time::Duration,
+    },
 };
-
-async fn print_events() {
-    let mut reader = EventStream::new();
-
-    loop {
-        let mut delay = Delay::new(Duration::from_millis(1_000)).fuse();
-        let mut event = reader.next().fuse();
-
-        select! {
-            _ = delay => {},
-            maybe_event = event => {
-                match maybe_event {
-                    Some(Ok(event)) => {
-                        let mut stdout = io::stdout();
-
-                        if event == Event::Key(KeyCode::Char('c').into()) {
-                            print!("\rCursor position: {:?}", cursor::position());
-                        } else {
-                            print!("\rEvent::{:?}", event);
-                        }
-                        execute!(stdout, Clear(ClearType::FromCursorDown)).unwrap();
-                        stdout.flush().unwrap();
-
-                        if event == Event::Key(KeyCode::Esc.into()) {
-                            break;
-                        }
-                    }
-                    Some(Err(e)) => print!("Error: {:?}", e),
-                    None => break,
-                }
-            }
-        };
-    }
-}
 
 #[tokio::main]
 async fn main() -> Result<(), io::Error> {
-    enable_raw_mode()?;
+    api::enable_raw_mode()?;
+    let config = SubscribeConfig {
+        delay: Duration::from_millis(50),
+    };
+    let mut screen = Screen::default();
+    screen.initialize()?;
+    let mut event_print_buffer = Buffer::empty(0);
+    screen
+        .attach_handler(config, PrintEvent, &mut event_print_buffer)
+        .await;
+    api::run(&mut screen, &event_print_buffer).await?;
 
-    let mut stdout = io::stdout();
-    execute!(stdout, EnableMouseCapture)?;
-    execute!(stdout, Clear(ClearType::All))?;
-
-    print_events().await;
-
-    let mut stdout = io::stdout();
-    execute!(stdout, DisableMouseCapture)?;
-
-    disable_raw_mode()
+    api::disable_raw_mode()
 }

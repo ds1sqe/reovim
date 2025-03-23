@@ -19,7 +19,7 @@ pub struct KeyBindSet {
 }
 
 pub struct KeyMapInner {
-    next: Option<HashMap<Keypress, KeyMapInner>>,
+    // next: Option<HashMap<Keypress, KeyMapInner>>,
     // ... action.
 }
 
