@@ -1,31 +1,15 @@
 use {
-    reovim_core::{
-        api::{
-            self,
-            event::{handler::PrintEvent, SubscribeConfig},
-            screen::Screen,
-        },
-        buffer::Buffer,
-    },
-    std::{
-        io::{self},
-        time::Duration,
-    },
+    reovim_core::{self, runtime::Runtime, screen::Screen},
+    std::io::{self},
 };
 
 #[tokio::main]
 async fn main() -> Result<(), io::Error> {
-    api::enable_raw_mode()?;
-    let config = SubscribeConfig {
-        delay: Duration::from_millis(50),
-    };
+    reovim_core::command::terminal::enable_raw_mode()?;
     let mut screen = Screen::default();
     screen.initialize()?;
-    let mut event_print_buffer = Buffer::empty(0);
-    screen
-        .attach_handler(config, PrintEvent, &mut event_print_buffer)
-        .await;
-    api::run(&mut screen, &event_print_buffer).await?;
+    let runtime = Runtime::new(screen);
+    runtime.init().await;
 
-    api::disable_raw_mode()
+    reovim_core::command::terminal::disable_raw_mode()
 }

@@ -1,13 +1,10 @@
 use {
-    crate::{
-        key::Keypress,
-        modd::{ExtraMod, Mod},
-    },
+    crate::modd::{ExtraMod, Mod},
     std::collections::{HashMap, HashSet},
 };
 
 pub struct KeyBind {
-    pub keys: Vec<Keypress>,
+    // pub keys: Vec<Keypress>,
     pub on: HashSet<Mod>,
     pub on_extra: HashSet<Box<dyn ExtraMod>>,
 }

@@ -1,24 +1,27 @@
 use {
-    super::event::{handler::EventHandler, subscribe},
     crate::{
-        buffer::{Anchor, Buffer, Window},
+        buffer::Buffer,
         command::terminal::{Clear, ClearType},
     },
     reovim_sys::{
         cursor::MoveTo,
         event::{DisableMouseCapture, EnableMouseCapture},
-        execute, queue,
+        queue,
         style::Print,
         terminal::size,
     },
     std::io::{self, Write},
+    window::{Anchor, LineNumber, Window},
 };
+
 pub mod cusor;
+pub mod window;
 
 pub struct ScreenSize {
     pub height: u16,
     pub width: u16,
 }
+#[derive(Clone, Debug)]
 pub struct Position {
     pub x: u16,
     pub y: u16,
@@ -37,13 +40,16 @@ impl Default for Screen {
             size().expect("failed to get screen size on screen creation");
         let mut windows = Vec::new();
         let anchor = Anchor { x: 0, y: 0 };
+
         windows.push(Window {
             anchor,
             width: rows,
             height: columns,
-            buffer: Buffer::empty(0),
             buffer_anchor: anchor,
+            buffer_id: 0,
+            line_number: LineNumber::default(),
         });
+
         Self {
             size: ScreenSize {
                 width: columns,
@@ -88,25 +94,28 @@ impl Screen {
         self.clear(ClearType::All)
     }
 
+    /// update screen?
+    ///
     pub fn render(
         &mut self,
-        buf: &Buffer,
+        buffers: &[Buffer],
     ) -> std::result::Result<(), std::io::Error> {
         self.clear(ClearType::All)?;
-        for win in &self.windows {
-            queue!(self.out_stream, MoveTo(win.anchor.x, win.anchor.y))?;
-            let content = buf.render(win);
-            queue!(self.out_stream, Print(content))?;
+        for (wid, win) in self.windows.iter().enumerate() {
+            match buffers.get(win.buffer_id) {
+                Some(buf) => {
+                    queue!(
+                        self.out_stream,
+                        MoveTo(win.anchor.x, win.anchor.y)
+                    )?;
+                    let content = win.render(buf);
+                    queue!(self.out_stream, Print(content))?;
+                }
+                None => {
+                    // TODO: handle buffer not found
+                }
+            }
         }
         Ok(())
-    }
-
-    pub async fn attach_handler(
-        &mut self,
-        config: super::event::SubscribeConfig,
-        handler: impl EventHandler,
-        buffer: &mut Buffer,
-    ) {
-        tokio::spawn(async { subscribe(self, config, handler, buffer).await });
     }
 }
