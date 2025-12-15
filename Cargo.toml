@@ -17,6 +17,9 @@ categories = ["text-editors", "command-line-utilities"]
 
 [workspace.metadata.workspaces]
 allow_branch = "develop"
+no_git_commit = true
+no_git_tag = true
+no_git_push = true
 
 [workspace.metadata.docs.rs]
 rustdoc-args = ["--document-private-items"]
