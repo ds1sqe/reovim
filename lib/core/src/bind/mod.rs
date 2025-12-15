@@ -110,8 +110,6 @@ impl KeyMap {
             KeyMapInner::with_command(Command::DeleteCharForward),
         );
         km.nmap
-            .insert("q".to_string(), KeyMapInner::with_command(Command::Quit));
-        km.nmap
             .insert("p".to_string(), KeyMapInner::with_command(Command::Paste));
         km.nmap
             .insert("P".to_string(), KeyMapInner::with_command(Command::PasteBefore));

@@ -90,8 +90,8 @@ impl Runtime {
                                 if let Some(buffer) = self.buffers.get_mut(&0) {
                                     buffer.clear_selection();
                                 }
-                                // Clear command line
-                                self.command_line.clear();
+                                // Note: command line is cleared in handle_command_line_command
+                                // after the command is executed, not here (to avoid race condition)
                             }
                             Mod::Command => {
                                 // Activate command line when entering command mode
@@ -146,6 +146,7 @@ impl Runtime {
                 if let Some(ex_cmd) = self.command_line.execute() {
                     match ex_cmd {
                         ExCommand::Quit => {
+                            self.command_line.clear();
                             return true;
                         }
                         ExCommand::Write { filename: _ } => {
@@ -154,6 +155,7 @@ impl Runtime {
                         }
                         ExCommand::WriteQuit => {
                             // TODO: implement file writing then quit
+                            self.command_line.clear();
                             return true;
                         }
                         ExCommand::Unknown(_) => {
@@ -161,7 +163,8 @@ impl Runtime {
                         }
                     }
                 }
-                // Mode change back to Normal is handled by CommandHandler
+                // Clear command line after execution
+                self.command_line.clear();
             }
             Command::CommandLineCancel => {
                 // Just clear the command line, mode change handled by CommandHandler
