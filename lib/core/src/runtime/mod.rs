@@ -20,6 +20,8 @@ pub struct Runtime {
     pub current_mode: Mod,
     pub clipboard: String,
     pub command_line: CommandLine,
+    pub pending_keys: String,
+    pub last_command: String,
     pub tx: mpsc::Sender<InnerEvent>,
     pub rx: mpsc::Receiver<InnerEvent>,
     pub initial_file: Option<String>,
@@ -41,6 +43,8 @@ impl Runtime {
             current_mode: Mod::Normal,
             clipboard: String::new(),
             command_line: CommandLine::default(),
+            pending_keys: String::new(),
+            last_command: String::new(),
             tx,
             rx,
             initial_file: None,
@@ -142,6 +146,14 @@ impl Runtime {
                         self.current_mode = new_mode;
                         self.render();
                     }
+                    InnerEvent::PendingKeysEvent(keys) => {
+                        // If pending_keys is being cleared and had content, save as last_command
+                        if keys.is_empty() && !self.pending_keys.is_empty() {
+                            self.last_command = self.pending_keys.clone();
+                        }
+                        self.pending_keys = keys;
+                        self.render();
+                    }
                     InnerEvent::WindowEvent => todo!(),
                     InnerEvent::RenderSignal => {
                         self.render();
@@ -166,7 +178,13 @@ impl Runtime {
     fn render(&mut self) {
         let buffers: Vec<Buffer> = self.buffers.values().cloned().collect();
         self.screen
-            .render(&buffers, &self.current_mode, &self.command_line)
+            .render(
+                &buffers,
+                &self.current_mode,
+                &self.command_line,
+                &self.pending_keys,
+                &self.last_command,
+            )
             .expect("failed to render");
         self.screen.flush().expect("failed to flush");
     }

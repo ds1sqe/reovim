@@ -6,6 +6,7 @@ pub mod event;
 pub mod landing;
 mod macros;
 mod modd;
+pub mod motion;
 pub mod runtime;
 pub mod screen;
 mod state;

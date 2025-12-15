@@ -6,6 +6,7 @@ pub enum InnerEvent {
     WindowEvent,
     CommandEvent(CommandEvent),
     ModeChangeEvent(Mod),
+    PendingKeysEvent(String),
     RenderSignal,
     KillSignal,
 }

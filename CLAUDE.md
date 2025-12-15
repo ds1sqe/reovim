@@ -51,7 +51,7 @@ Reovim is a Rust-based neovim-like text editor built with async tokio runtime an
 - `InputEventBroker` - Reads terminal events via crossterm EventStream, dispatches to brokers
 - `KeyEventBroker` - Broadcasts key events to subscribed handlers via tokio broadcast channels
 - Handlers implement `Subscribe<T>` trait to receive events
-- `InnerEvent` enum for internal communication (BufferEvent, CommandEvent, ModeChangeEvent, WindowEvent, RenderSignal, KillSignal)
+- `InnerEvent` enum for internal communication (BufferEvent, CommandEvent, ModeChangeEvent, PendingKeysEvent, WindowEvent, RenderSignal, KillSignal)
 
 **Buffer** (`lib/core/src/buffer/`) - Text storage with lines and cursor position
 
@@ -65,6 +65,10 @@ Reovim is a Rust-based neovim-like text editor built with async tokio runtime an
 - `ExCommand` - Parsed ex-commands (Quit, Write, WriteQuit, Set)
 
 **Landing** (`lib/core/src/landing.rs`) - Splash screen when no file is opened
+
+**Motion** (`lib/core/src/motion/`) - Cursor movement logic:
+- `Motion` enum - All movement types (character, word, line, document)
+- `apply()` method - Applies motion to buffer, returns new position
 
 **Screen/Window** (`lib/core/src/screen/`):
 - `Screen` - Terminal output management with window collection

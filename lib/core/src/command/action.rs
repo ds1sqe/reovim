@@ -10,6 +10,8 @@ pub enum Command {
     CursorLineEnd,
     CursorWordForward,
     CursorWordBackward,
+    GotoFirstLine,  // gg
+    GotoLastLine,   // G
 
     // === Mode Switching ===
     EnterNormalMode,

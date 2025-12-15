@@ -10,6 +10,7 @@ A Rust-powered neovim-like text editor.
 - Command-line mode (`:q`, `:w`, `:wq`, `:set`)
 - Line numbers (absolute, relative, hybrid)
 - Landing page with logo when started without a file
+- Status line showing mode, pending keys, last command, and buffer name
 - Async architecture with tokio runtime
 - Cross-platform terminal support via crossterm
 
@@ -35,12 +36,16 @@ reovim [file]
 
 ### Key Bindings
 
+Most movement commands support a numeric prefix (e.g., `5j` moves down 5 lines).
+
 **Normal Mode**
 | Key | Action |
 |-----|--------|
 | `h/j/k/l` | Move cursor left/down/up/right |
 | `w/b` | Move word forward/backward |
 | `0/$` | Move to line start/end |
+| `gg` | Go to first line (or `{n}gg` to go to line n) |
+| `G` | Go to last line (or `{n}G` to go to line n) |
 | `i` | Enter insert mode |
 | `a` | Enter insert mode after cursor |
 | `A` | Enter insert mode at end of line |

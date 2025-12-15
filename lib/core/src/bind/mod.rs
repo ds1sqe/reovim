@@ -126,6 +126,17 @@ impl KeyMap {
         km.nmap
             .insert("P".to_string(), KeyMapInner::with_command(Command::PasteBefore));
 
+        // g-prefix bindings
+        km.nmap.insert("g".to_string(), KeyMapInner::new()); // prefix, no command
+        km.nmap.insert(
+            "gg".to_string(),
+            KeyMapInner::with_command(Command::GotoFirstLine),
+        );
+        km.nmap.insert(
+            "G".to_string(),
+            KeyMapInner::with_command(Command::GotoLastLine),
+        );
+
         // Insert mode bindings
         km.imap.insert(
             "Escape".to_string(),

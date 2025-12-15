@@ -72,6 +72,33 @@ impl BufferCommandExecutor {
                 buffer.word_backward();
                 CommandResult::NeedsRender
             }
+            Command::GotoFirstLine => {
+                // With count: go to line n (1-indexed)
+                // Without count: go to first line
+                if let Some(line_num) = ctx.count {
+                    let target_line = line_num.saturating_sub(1); // Convert to 0-indexed
+                    let max_y = buffer.contents.len().saturating_sub(1);
+                    buffer.cur.y = target_line.min(max_y) as u16;
+                } else {
+                    buffer.cur.y = 0;
+                }
+                buffer.cur.x = 0;
+                CommandResult::NeedsRender
+            }
+            Command::GotoLastLine => {
+                // With count: go to line n (1-indexed)
+                // Without count: go to last line
+                if let Some(line_num) = ctx.count {
+                    let target_line = line_num.saturating_sub(1); // Convert to 0-indexed
+                    let max_y = buffer.contents.len().saturating_sub(1);
+                    buffer.cur.y = target_line.min(max_y) as u16;
+                } else {
+                    let max_y = buffer.contents.len().saturating_sub(1) as u16;
+                    buffer.cur.y = max_y;
+                }
+                buffer.cur.x = 0;
+                CommandResult::NeedsRender
+            }
 
             // === Mode Switching ===
             Command::EnterNormalMode => {

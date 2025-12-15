@@ -104,10 +104,13 @@ impl Screen {
         self.size.height
     }
 
-    /// Render the status line showing current mode
+    /// Render the status line showing current mode, pending keys, last command, and buffer name
     pub fn render_status_line(
         &mut self,
         mode: &Mod,
+        buffer: Option<&Buffer>,
+        pending_keys: &str,
+        last_command: &str,
     ) -> std::result::Result<(), std::io::Error> {
         let mode_str = match mode {
             Mod::Normal => "-- NORMAL --",
@@ -115,9 +118,46 @@ impl Screen {
             Mod::Visual(_) => "-- VISUAL --",
             Mod::Command => "", // Command mode shows command line instead
         };
+
+        // Get buffer name (file path or [No Name])
+        let buffer_name = buffer
+            .and_then(|b| b.file_path.as_ref())
+            .map(|p| p.as_str())
+            .unwrap_or("[No Name]");
+
+        // Format pending keys or last command section
+        let cmd_section = if !pending_keys.is_empty() {
+            format!(" {}", pending_keys)
+        } else if !last_command.is_empty() {
+            format!(" [{}]", last_command)
+        } else {
+            String::new()
+        };
+
+        // Calculate spacing to right-align buffer name
         let status_row = self.size.height.saturating_sub(1);
+        let left_len = mode_str.len() + cmd_section.len();
+        let name_len = buffer_name.len();
+        let width = self.size.width as usize;
+
+        // Build status line: mode + cmd on left, buffer name on right
+        let spacing = if left_len + name_len < width {
+            width - left_len - name_len
+        } else {
+            1
+        };
+
+        let status_line = format!(
+            "{}{}{:spacing$}{}",
+            mode_str,
+            cmd_section,
+            "",
+            buffer_name,
+            spacing = spacing
+        );
+
         queue!(self.out_stream, MoveTo(0, status_row))?;
-        queue!(self.out_stream, Print(mode_str))
+        queue!(self.out_stream, Print(status_line))
     }
 
     /// Render the command line input (shown in Command mode)
@@ -140,6 +180,8 @@ impl Screen {
         buffers: &[Buffer],
         mode: &Mod,
         cmd_line: &CommandLine,
+        pending_keys: &str,
+        last_command: &str,
     ) -> std::result::Result<(), std::io::Error> {
         // Reset all styling before clearing
         queue!(self.out_stream, Print("\x1b[0m"))?;
@@ -147,10 +189,13 @@ impl Screen {
 
         // Track cursor position from main buffer
         let mut cursor_pos: Option<(u16, u16)> = None;
+        let mut current_buffer: Option<&Buffer> = None;
 
         for (_wid, win) in self.windows.iter().enumerate() {
             match buffers.get(win.buffer_id) {
                 Some(buf) => {
+                    current_buffer = Some(buf);
+
                     // Render each line with explicit cursor positioning
                     let lines = win.render(buf);
                     for (row_offset, line) in lines.iter().enumerate() {
@@ -178,7 +223,7 @@ impl Screen {
         if matches!(mode, Mod::Command) {
             self.render_command_line(cmd_line)?;
         } else {
-            self.render_status_line(mode)?;
+            self.render_status_line(mode, current_buffer, pending_keys, last_command)?;
             // Position cursor at buffer cursor (not in command mode)
             if let Some((x, y)) = cursor_pos {
                 queue!(self.out_stream, MoveTo(x, y))?;
