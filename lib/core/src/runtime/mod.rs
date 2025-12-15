@@ -22,6 +22,7 @@ pub struct Runtime {
     pub command_line: CommandLine,
     pub tx: mpsc::Sender<InnerEvent>,
     pub rx: mpsc::Receiver<InnerEvent>,
+    pub initial_file: Option<String>,
 }
 
 impl Default for Runtime {
@@ -41,11 +42,27 @@ impl Runtime {
             command_line: CommandLine::default(),
             tx,
             rx,
+            initial_file: None,
         }
     }
 
+    pub fn with_file(mut self, file_path: Option<String>) -> Self {
+        self.initial_file = file_path;
+        self
+    }
+
     pub async fn init(mut self) {
-        self.buffers.insert(0, Buffer::empty(0));
+        let mut buffer = Buffer::empty(0);
+
+        // Load file if provided
+        if let Some(ref path) = self.initial_file {
+            if let Ok(content) = std::fs::read_to_string(path) {
+                buffer.set_content(&content);
+            }
+            buffer.file_path = Some(path.clone());
+        }
+
+        self.buffers.insert(0, buffer);
         let input_broker = InputEventBroker::default();
 
         // Command handler for key-to-command translation
@@ -149,12 +166,30 @@ impl Runtime {
                             self.command_line.clear();
                             return true;
                         }
-                        ExCommand::Write { filename: _ } => {
-                            // TODO: implement file writing
-                            // For now, just show that we received the command
+                        ExCommand::Write { filename } => {
+                            // Determine file path: use provided filename or buffer's file_path
+                            let path = filename.or_else(|| {
+                                self.buffers.get(&0).and_then(|b| b.file_path.clone())
+                            });
+
+                            if let Some(path) = path {
+                                if let Some(buffer) = self.buffers.get_mut(&0) {
+                                    let content = buffer.to_string();
+                                    if std::fs::write(&path, &content).is_ok() {
+                                        buffer.file_path = Some(path);
+                                    }
+                                }
+                            }
                         }
                         ExCommand::WriteQuit => {
-                            // TODO: implement file writing then quit
+                            // Write file then quit
+                            let path = self.buffers.get(&0).and_then(|b| b.file_path.clone());
+                            if let Some(path) = path {
+                                if let Some(buffer) = self.buffers.get(&0) {
+                                    let content = buffer.to_string();
+                                    let _ = std::fs::write(&path, &content);
+                                }
+                            }
                             self.command_line.clear();
                             return true;
                         }

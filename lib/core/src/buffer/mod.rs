@@ -28,6 +28,7 @@ pub struct Buffer {
     pub cur: Position,
     pub contents: Vec<Line>,
     pub selection: Selection,
+    pub file_path: Option<String>,
 }
 
 impl Buffer {
@@ -37,6 +38,7 @@ impl Buffer {
             cur: Position { x: 0, y: 0 },
             contents: Vec::new(),
             selection: Selection::default(),
+            file_path: None,
         }
     }
 
@@ -160,6 +162,14 @@ impl Buffer {
             let new_line = Line::from(line);
             self.contents.push(new_line);
         }
+    }
+
+    pub fn to_string(&self) -> String {
+        self.contents
+            .iter()
+            .map(|line| line.inner.as_str())
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     pub fn insert_char(&mut self, c: char) {
