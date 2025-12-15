@@ -7,8 +7,8 @@ mod inner;
 mod input;
 
 pub use {
-    handler::{PrintEventHandler, TerminateHandler},
-    inner::{BufferEvent, InnerEvent},
+    handler::{CommandHandler, PrintEventHandler, TerminateHandler},
+    inner::{BufferEvent, CommandEvent, InnerEvent},
     input::*,
 };
 

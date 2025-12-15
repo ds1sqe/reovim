@@ -5,6 +5,10 @@ use {
     tokio::sync::{broadcast::Receiver, mpsc::Sender},
 };
 
+mod command;
+
+pub use command::CommandHandler;
+
 pub struct PrintEventHandler {
     pub buffer_id: usize,
     key_event_rx: Option<Receiver<KeyEvent>>,

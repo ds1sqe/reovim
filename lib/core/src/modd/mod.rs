@@ -1,3 +1,4 @@
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Mod {
     Normal,
     Insert(ModExtension),
@@ -5,6 +6,7 @@ pub enum Mod {
     Command,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModExtension {
     Normal,
     Block,

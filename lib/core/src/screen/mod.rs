@@ -2,6 +2,8 @@ use {
     crate::{
         buffer::Buffer,
         command::terminal::{Clear, ClearType},
+        command_line::CommandLine,
+        modd::Mod,
     },
     reovim_sys::{
         cursor::MoveTo,
@@ -21,7 +23,7 @@ pub struct ScreenSize {
     pub height: u16,
     pub width: u16,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Position {
     pub x: u16,
     pub y: u16,
@@ -43,8 +45,8 @@ impl Default for Screen {
 
         windows.push(Window {
             anchor,
-            width: rows,
-            height: columns,
+            width: columns,
+            height: rows.saturating_sub(1), // Reserve last row for status line
             buffer_anchor: anchor,
             buffer_id: 0,
             line_number: LineNumber::default(),
@@ -94,14 +96,51 @@ impl Screen {
         self.clear(ClearType::All)
     }
 
-    /// update screen?
-    ///
+    /// Render the status line showing current mode
+    pub fn render_status_line(
+        &mut self,
+        mode: &Mod,
+    ) -> std::result::Result<(), std::io::Error> {
+        let mode_str = match mode {
+            Mod::Normal => "-- NORMAL --",
+            Mod::Insert(_) => "-- INSERT --",
+            Mod::Visual(_) => "-- VISUAL --",
+            Mod::Command => "", // Command mode shows command line instead
+        };
+        let status_row = self.size.height.saturating_sub(1);
+        queue!(self.out_stream, MoveTo(0, status_row))?;
+        queue!(self.out_stream, Print(mode_str))
+    }
+
+    /// Render the command line input (shown in Command mode)
+    pub fn render_command_line(
+        &mut self,
+        cmd_line: &CommandLine,
+    ) -> std::result::Result<(), std::io::Error> {
+        let status_row = self.size.height.saturating_sub(1);
+        queue!(self.out_stream, MoveTo(0, status_row))?;
+        let display = format!(":{}", cmd_line.input);
+        queue!(self.out_stream, Print(display))?;
+        // Position cursor after the input
+        let cursor_col = 1 + cmd_line.cursor as u16;
+        queue!(self.out_stream, MoveTo(cursor_col, status_row))
+    }
+
+    /// update screen
     pub fn render(
         &mut self,
         buffers: &[Buffer],
+        mode: &Mod,
+        cmd_line: &CommandLine,
     ) -> std::result::Result<(), std::io::Error> {
+        // Reset all styling before clearing
+        queue!(self.out_stream, Print("\x1b[0m"))?;
         self.clear(ClearType::All)?;
-        for (wid, win) in self.windows.iter().enumerate() {
+
+        // Track cursor position from main buffer
+        let mut cursor_pos: Option<(u16, u16)> = None;
+
+        for (_wid, win) in self.windows.iter().enumerate() {
             match buffers.get(win.buffer_id) {
                 Some(buf) => {
                     queue!(
@@ -110,10 +149,26 @@ impl Screen {
                     )?;
                     let content = win.render(buf);
                     queue!(self.out_stream, Print(content))?;
+
+                    // Calculate cursor position relative to window
+                    let cursor_x = win.anchor.x + buf.cur.x;
+                    let cursor_y = win.anchor.y + buf.cur.y;
+                    cursor_pos = Some((cursor_x, cursor_y));
                 }
                 None => {
                     // TODO: handle buffer not found
                 }
+            }
+        }
+
+        // Show command line in Command mode, status line otherwise
+        if matches!(mode, Mod::Command) {
+            self.render_command_line(cmd_line)?;
+        } else {
+            self.render_status_line(mode)?;
+            // Position cursor at buffer cursor (not in command mode)
+            if let Some((x, y)) = cursor_pos {
+                queue!(self.out_stream, MoveTo(x, y))?;
             }
         }
         Ok(())

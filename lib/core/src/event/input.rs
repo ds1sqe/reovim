@@ -1,7 +1,7 @@
 use {
     futures::{future::FutureExt, StreamExt},
     futures_timer::Delay,
-    reovim_sys::event::{Event, EventStream},
+    reovim_sys::event::{Event, EventStream, KeyEventKind},
     std::{
         error::Error,
         io::{self, Write},
@@ -51,6 +51,10 @@ impl InputEventBroker {
                         Some(Ok(ev)) => {
                             match ev {
                                 Event::Key(key_event) => {
+                                    // Only handle Press events, ignore Release/Repeat
+                                    if key_event.kind != KeyEventKind::Press {
+                                        continue;
+                                    }
                                     match self.key_broker.handle(key_event) {
                                         Err(e) => {
                                             self.handle_error(e);

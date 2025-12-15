@@ -2,6 +2,12 @@
 name = "reovim-sys"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "System abstraction layer for reovim (crossterm re-exports)"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 crossterm.workspace = true

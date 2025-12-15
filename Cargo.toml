@@ -4,12 +4,21 @@ resolver = "2"
 
 [workspace.package]
 rust-version = "1.80"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
-authors = ["ds1sqe(dukim)-dukim@suresofttech.com-ds1sqe@mensakorea.org"]
-license = "PRIVATE"
+authors = ["ds1sqe(dukim) <ds1sqe@mensakorea.org>"]
+license = "MIT"
+description = "A Rust-powered neovim-like text editor"
+repository = "https://github.com/ds1sqe/reovim"
+homepage = "https://github.com/ds1sqe/reovim"
+readme = "README.md"
+keywords = ["vim", "vi", "neovim", "editor", "terminal"]
+categories = ["text-editors", "command-line-utilities"]
 
-[workspace.package.metadata.docs.rs]
+[workspace.metadata.workspaces]
+allow_branch = "develop"
+
+[workspace.metadata.docs.rs]
 rustdoc-args = ["--document-private-items"]
 
 [workspace.dependencies]
@@ -22,5 +31,5 @@ tokio = { version = "1.25", features = ["full"] }
 rustix = { version="0.38.42", features = ["std", "stdio", "termios"]}
 crossterm = {version="0.27", features = ["event-stream","filedescriptor"]}
 # local libs
-reovim-core = { path = "./lib/core"}
-reovim-sys = { path = "./lib/sys"}
+reovim-core = { path = "./lib/core", version = "0.1.1" }
+reovim-sys = { path = "./lib/sys", version = "0.1.1" }

@@ -1,13 +1,14 @@
 [package]
 name = "reovim"
-version = "0.1.0"
-edition = "2021"
-authors = ["Kim Dae Up <ds1sqe@mensakorea.org>"]
-description = "Rustpowered neovim"
-repository = "https://github.com/ds1sqe/reovim"
-license = "MIT OR Apache-2.0"
-keywords = ["vim","vi","neovim"]
-categories = ["text-editors"]
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme.workspace = true
 
 [dependencies]
 futures.workspace = true
