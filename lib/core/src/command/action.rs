@@ -14,7 +14,10 @@ pub enum Command {
     // === Mode Switching ===
     EnterNormalMode,
     EnterInsertMode,
-    EnterInsertModeAfter,
+    EnterInsertModeAfter,      // 'a' - insert after cursor
+    EnterInsertModeEndOfLine,  // 'A' - insert at end of line
+    OpenLineBelow,             // 'o' - open line below
+    OpenLineAbove,             // 'O' - open line above
     EnterVisualMode,
     EnterCommandMode,
 

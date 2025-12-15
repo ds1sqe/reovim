@@ -7,7 +7,9 @@ A Rust-powered neovim-like text editor.
 - Modal editing (Normal, Insert, Visual, Command modes)
 - Vim-style keybindings (h/j/k/l navigation, w/b word motions)
 - Visual selection with yank/delete
-- Command-line mode (`:q`, `:w`, `:wq`)
+- Command-line mode (`:q`, `:w`, `:wq`, `:set`)
+- Line numbers (absolute, relative, hybrid)
+- Landing page with logo when started without a file
 - Async architecture with tokio runtime
 - Cross-platform terminal support via crossterm
 
@@ -41,10 +43,19 @@ reovim [file]
 | `0/$` | Move to line start/end |
 | `i` | Enter insert mode |
 | `a` | Enter insert mode after cursor |
+| `A` | Enter insert mode at end of line |
+| `o` | Open new line below and enter insert mode |
+| `O` | Open new line above and enter insert mode |
 | `v` | Enter visual mode |
 | `:` | Enter command mode |
 | `x` | Delete character |
 | `p/P` | Paste after/before cursor |
+
+**Insert Mode**
+| Key | Action |
+|-----|--------|
+| `Escape` | Return to normal mode |
+| `Backspace` | Delete character before cursor |
 
 **Visual Mode**
 | Key | Action |
@@ -60,6 +71,10 @@ reovim [file]
 | `:q` | Quit |
 | `:w [file]` | Write (save) |
 | `:wq` | Write and quit |
+| `:set nu` / `:set number` | Show line numbers |
+| `:set nonu` / `:set nonumber` | Hide line numbers |
+| `:set rnu` / `:set relativenumber` | Show relative line numbers |
+| `:set nornu` / `:set norelativenumber` | Hide relative line numbers |
 
 ## Architecture
 

@@ -98,6 +98,18 @@ impl KeyMap {
             KeyMapInner::with_command(Command::EnterInsertModeAfter),
         );
         km.nmap.insert(
+            "A".to_string(),
+            KeyMapInner::with_command(Command::EnterInsertModeEndOfLine),
+        );
+        km.nmap.insert(
+            "o".to_string(),
+            KeyMapInner::with_command(Command::OpenLineBelow),
+        );
+        km.nmap.insert(
+            "O".to_string(),
+            KeyMapInner::with_command(Command::OpenLineAbove),
+        );
+        km.nmap.insert(
             "v".to_string(),
             KeyMapInner::with_command(Command::EnterVisualMode),
         );

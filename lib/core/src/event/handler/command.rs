@@ -139,10 +139,15 @@ impl CommandHandler {
                                 Command::EnterNormalMode => {
                                     self.update_mode(Mod::Normal).await;
                                 }
-                                Command::EnterInsertMode | Command::EnterInsertModeAfter => {
+                                Command::EnterInsertMode
+                                | Command::EnterInsertModeAfter
+                                | Command::EnterInsertModeEndOfLine
+                                | Command::OpenLineBelow
+                                | Command::OpenLineAbove => {
                                     self.update_mode(Mod::Insert(
                                         crate::modd::ModExtension::Normal,
-                                    )).await;
+                                    ))
+                                    .await;
                                 }
                                 Command::EnterVisualMode => {
                                     self.update_mode(Mod::Visual(

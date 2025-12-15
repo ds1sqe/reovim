@@ -3,6 +3,7 @@ pub mod buffer;
 pub mod command;
 pub mod command_line;
 pub mod event;
+pub mod landing;
 mod macros;
 mod modd;
 pub mod runtime;

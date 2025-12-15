@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::command::{BufferCommandExecutor, Command, CommandContext, CommandResult};
-use crate::command_line::ExCommand;
+use crate::command_line::{ExCommand, SetOption};
 use crate::command_line::CommandLine;
 use crate::event::{
     BufferEvent, CommandEvent, CommandHandler, InputEventBroker, TerminateHandler,
@@ -23,6 +23,7 @@ pub struct Runtime {
     pub tx: mpsc::Sender<InnerEvent>,
     pub rx: mpsc::Receiver<InnerEvent>,
     pub initial_file: Option<String>,
+    showing_landing_page: bool,
 }
 
 impl Default for Runtime {
@@ -43,6 +44,7 @@ impl Runtime {
             tx,
             rx,
             initial_file: None,
+            showing_landing_page: false,
         }
     }
 
@@ -54,12 +56,20 @@ impl Runtime {
     pub async fn init(mut self) {
         let mut buffer = Buffer::empty(0);
 
-        // Load file if provided
+        // Load file if provided, otherwise show landing page
         if let Some(ref path) = self.initial_file {
             if let Ok(content) = std::fs::read_to_string(path) {
                 buffer.set_content(&content);
             }
             buffer.file_path = Some(path.clone());
+        } else {
+            // Show landing page when no file is opened
+            let landing_content = crate::landing::generate(
+                self.screen.width(),
+                self.screen.height().saturating_sub(1), // Reserve status line
+            );
+            buffer.set_content(&landing_content);
+            self.showing_landing_page = true;
         }
 
         self.buffers.insert(0, buffer);
@@ -75,6 +85,9 @@ impl Runtime {
         tokio::spawn(async move { command_hdr.run().await });
         tokio::spawn(async move { terminate_hdr.run().await });
         tokio::spawn(async move { input_broker.subscribe().await });
+
+        // Initial render to show content immediately
+        self.render();
 
         loop {
             let next = self.rx.recv().await;
@@ -96,6 +109,17 @@ impl Runtime {
                     InnerEvent::ModeChangeEvent(new_mode) => {
                         // Handle state changes on mode change
                         match &new_mode {
+                            Mod::Insert(_) => {
+                                // Clear landing page content when entering insert mode (only once)
+                                if self.showing_landing_page {
+                                    if let Some(buffer) = self.buffers.get_mut(&0) {
+                                        buffer.contents.clear();
+                                        buffer.cur.x = 0;
+                                        buffer.cur.y = 0;
+                                    }
+                                    self.showing_landing_page = false;
+                                }
+                            }
                             Mod::Visual(_) => {
                                 // Start selection when entering visual mode
                                 if let Some(buffer) = self.buffers.get_mut(&0) {
@@ -114,7 +138,6 @@ impl Runtime {
                                 // Activate command line when entering command mode
                                 self.command_line.activate();
                             }
-                            _ => {}
                         }
                         self.current_mode = new_mode;
                         self.render();
@@ -153,11 +176,9 @@ impl Runtime {
         match cmd {
             Command::CommandLineChar(c) => {
                 self.command_line.insert_char(*c);
-                self.render();
             }
             Command::CommandLineBackspace => {
                 self.command_line.delete_char();
-                self.render();
             }
             Command::CommandLineExecute => {
                 if let Some(ex_cmd) = self.command_line.execute() {
@@ -193,12 +214,22 @@ impl Runtime {
                             self.command_line.clear();
                             return true;
                         }
+                        ExCommand::Set { option } => {
+                            match option {
+                                SetOption::Number(enabled) => {
+                                    self.screen.set_number(enabled);
+                                }
+                                SetOption::RelativeNumber(enabled) => {
+                                    self.screen.set_relative_number(enabled);
+                                }
+                            }
+                        }
                         ExCommand::Unknown(_) => {
                             // TODO: show "unknown command" error
                         }
                     }
                 }
-                // Clear command line after execution
+                // Clear command line after execution (render handled by handle_command)
                 self.command_line.clear();
             }
             Command::CommandLineCancel => {
@@ -222,8 +253,10 @@ impl Runtime {
                 CommandResult::NeedsRender => {
                     self.render();
                 }
-                CommandResult::ModeChange(_new_mode) => {
-                    // Mode is tracked via ModeChangeEvent
+                CommandResult::ModeChange(new_mode) => {
+                    // Actually change the mode for commands like o, O
+                    self.current_mode = new_mode;
+                    self.render();
                 }
                 CommandResult::Quit => {
                     return true;
@@ -249,7 +282,9 @@ impl Runtime {
                 }
                 CommandResult::CommandLineCommand => {
                     // Handle command line commands directly in Runtime
-                    return self.handle_command_line_command(&command, &context);
+                    let should_quit = self.handle_command_line_command(&command, &context);
+                    self.render();
+                    return should_quit;
                 }
                 CommandResult::Error(_msg) => {
                     // TODO: display error message

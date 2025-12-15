@@ -35,14 +35,40 @@ pub enum LineNumberMode {
 
 pub struct LineNumber {
     show: bool,
-    mode: LineNumberMode,
+    number: bool,          // :set number flag
+    relative_number: bool, // :set relativenumber flag
+}
+
+impl LineNumber {
+    pub fn set_number(&mut self, enabled: bool) {
+        self.number = enabled;
+        self.update_state();
+    }
+
+    pub fn set_relative_number(&mut self, enabled: bool) {
+        self.relative_number = enabled;
+        self.update_state();
+    }
+
+    fn update_state(&mut self) {
+        self.show = self.number || self.relative_number;
+    }
+
+    pub fn mode(&self) -> LineNumberMode {
+        match (self.number, self.relative_number) {
+            (true, true) => LineNumberMode::Hybrid,
+            (false, true) => LineNumberMode::Relative,
+            _ => LineNumberMode::Absolute,
+        }
+    }
 }
 
 impl Default for LineNumber {
     fn default() -> Self {
         LineNumber {
             show: false,
-            mode: LineNumberMode::Absolute,
+            number: false,
+            relative_number: false,
         }
     }
 }
@@ -68,8 +94,8 @@ impl Window {
         }
     }
 
-    pub fn render(&self, buf: &Buffer) -> String {
-        let mut out = String::new();
+    pub fn render(&self, buf: &Buffer) -> Vec<String> {
+        let mut lines: Vec<String> = Vec::new();
 
         // Get selection bounds if active
         let selection_active = buf.selection.active;
@@ -79,25 +105,36 @@ impl Window {
             (Position::default(), Position::default())
         };
 
+        // Calculate line number width for alignment
+        let total_lines = buf.contents.len();
+        let num_width = if self.line_number.show && total_lines > 0 {
+            (total_lines as f64).log10().floor() as usize + 1
+        } else {
+            1
+        };
+
         for row in self.buffer_anchor.y..(self.height + self.buffer_anchor.y) {
             let line_content = buf.contents.get(row as usize);
             let line_out = match line_content {
                 Some(content) => {
                     let head = if self.line_number.show {
-                        match self.line_number.mode {
-                            // TODO:  align line number
-                            LineNumberMode::Absolute => format!("{row}"),
+                        let num_str = match self.line_number.mode() {
+                            LineNumberMode::Absolute => format!("{}", row + 1), // 1-indexed
                             LineNumberMode::Relative => {
-                                format!("{}", (row - buf.cur.y))
+                                let rel = (row as i32 - buf.cur.y as i32).abs();
+                                format!("{rel}")
                             }
                             LineNumberMode::Hybrid => {
                                 if row != buf.cur.y {
-                                    format!("{row}")
+                                    let rel = (row as i32 - buf.cur.y as i32).abs();
+                                    format!("{rel}")
                                 } else {
-                                    format!("{}", (row - buf.cur.y))
+                                    format!("{}", row + 1) // Show absolute on cursor line
                                 }
                             }
-                        }
+                        };
+                        // Right-align the number and add space separator
+                        format!("{:>width$} ", num_str, width = num_width)
                     } else {
                         "".to_string()
                     };
@@ -118,10 +155,9 @@ impl Window {
                 }
                 None => "".to_string(),
             };
-            out.push_str(&line_out);
-            out.push('\n');
+            lines.push(line_out);
         }
-        out
+        lines
     }
 
     /// Render a line with selection highlighting
@@ -148,6 +184,29 @@ impl Window {
         }
 
         result
+    }
+
+    pub fn set_number(&mut self, enabled: bool) {
+        self.line_number.set_number(enabled);
+    }
+
+    pub fn set_relative_number(&mut self, enabled: bool) {
+        self.line_number.set_relative_number(enabled);
+    }
+
+    /// Get the width of the line number gutter (including separator)
+    pub fn line_number_width(&self, total_lines: usize) -> u16 {
+        if self.line_number.show {
+            // Width of largest line number + 1 for space separator
+            let digits = if total_lines == 0 {
+                1
+            } else {
+                (total_lines as f64).log10().floor() as u16 + 1
+            };
+            digits + 1 // +1 for space separator
+        } else {
+            0
+        }
     }
 
     // TODO: split

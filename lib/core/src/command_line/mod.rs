@@ -1,6 +1,6 @@
 mod ex_command;
 
-pub use ex_command::ExCommand;
+pub use ex_command::{ExCommand, SetOption};
 
 /// State for command-line mode input
 #[derive(Clone, Debug, Default)]

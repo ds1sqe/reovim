@@ -96,6 +96,14 @@ impl Screen {
         self.clear(ClearType::All)
     }
 
+    pub fn width(&self) -> u16 {
+        self.size.width
+    }
+
+    pub fn height(&self) -> u16 {
+        self.size.height
+    }
+
     /// Render the status line showing current mode
     pub fn render_status_line(
         &mut self,
@@ -143,15 +151,20 @@ impl Screen {
         for (_wid, win) in self.windows.iter().enumerate() {
             match buffers.get(win.buffer_id) {
                 Some(buf) => {
-                    queue!(
-                        self.out_stream,
-                        MoveTo(win.anchor.x, win.anchor.y)
-                    )?;
-                    let content = win.render(buf);
-                    queue!(self.out_stream, Print(content))?;
+                    // Render each line with explicit cursor positioning
+                    let lines = win.render(buf);
+                    for (row_offset, line) in lines.iter().enumerate() {
+                        queue!(
+                            self.out_stream,
+                            MoveTo(win.anchor.x, win.anchor.y + row_offset as u16)
+                        )?;
+                        queue!(self.out_stream, Print(line))?;
+                    }
 
                     // Calculate cursor position relative to window
-                    let cursor_x = win.anchor.x + buf.cur.x;
+                    // Account for line number gutter width
+                    let gutter_width = win.line_number_width(buf.contents.len());
+                    let cursor_x = win.anchor.x + gutter_width + buf.cur.x;
                     let cursor_y = win.anchor.y + buf.cur.y;
                     cursor_pos = Some((cursor_x, cursor_y));
                 }
@@ -172,5 +185,17 @@ impl Screen {
             }
         }
         Ok(())
+    }
+
+    pub fn set_number(&mut self, enabled: bool) {
+        for window in &mut self.windows {
+            window.set_number(enabled);
+        }
+    }
+
+    pub fn set_relative_number(&mut self, enabled: bool) {
+        for window in &mut self.windows {
+            window.set_relative_number(enabled);
+        }
     }
 }

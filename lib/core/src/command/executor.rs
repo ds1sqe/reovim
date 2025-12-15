@@ -93,6 +93,36 @@ impl BufferCommandExecutor {
                 }
                 CommandResult::ModeChange(Mod::Insert(ModExtension::Normal))
             }
+            Command::EnterInsertModeEndOfLine => {
+                // Move cursor to end of line, then enter insert mode
+                if let Some(line) = buffer.contents.get(buffer.cur.y as usize) {
+                    buffer.cur.x = line.inner.len() as u16;
+                }
+                CommandResult::ModeChange(Mod::Insert(ModExtension::Normal))
+            }
+            Command::OpenLineBelow => {
+                // Insert new line below current line and enter insert mode
+                if buffer.contents.is_empty() {
+                    buffer.contents.push(crate::buffer::Line::from(""));
+                } else {
+                    let insert_at = (buffer.cur.y as usize + 1).min(buffer.contents.len());
+                    buffer.contents.insert(insert_at, crate::buffer::Line::from(""));
+                    buffer.cur.y += 1;
+                }
+                buffer.cur.x = 0;
+                CommandResult::ModeChange(Mod::Insert(ModExtension::Normal))
+            }
+            Command::OpenLineAbove => {
+                // Insert new line above current line and enter insert mode
+                if buffer.contents.is_empty() {
+                    buffer.contents.push(crate::buffer::Line::from(""));
+                } else {
+                    let insert_at = buffer.cur.y as usize;
+                    buffer.contents.insert(insert_at, crate::buffer::Line::from(""));
+                }
+                buffer.cur.x = 0;
+                CommandResult::ModeChange(Mod::Insert(ModExtension::Normal))
+            }
             Command::EnterVisualMode => {
                 CommandResult::ModeChange(Mod::Visual(ModExtension::Normal))
             }
