@@ -11,7 +11,7 @@ use crate::event::InnerEvent;
 use crate::highlight::{ColorMode, HighlightStore, Theme};
 use crate::jumplist::JumpList;
 use crate::modd::Mod;
-use crate::screen::Screen;
+use crate::screen::{Screen, WhichKeyPanel};
 
 use tokio::sync::{mpsc, watch};
 
@@ -39,6 +39,8 @@ pub struct Runtime {
     pub command_registry: Arc<CommandRegistry>,
     /// Jump list for Ctrl-O/Ctrl-I navigation
     pub jump_list: JumpList,
+    /// Which-key popup panel state
+    pub which_key_panel: WhichKeyPanel,
 }
 
 impl Default for Runtime {
@@ -72,6 +74,7 @@ impl Runtime {
             mode_rx,
             command_registry: Arc::new(CommandRegistry::with_defaults()),
             jump_list: JumpList::new(),
+            which_key_panel: WhichKeyPanel::new(),
         }
     }
 
@@ -107,6 +110,7 @@ impl Runtime {
                 &self.last_command,
                 self.color_mode,
                 &self.theme,
+                &self.which_key_panel,
             )
             .expect("failed to render");
         self.screen.flush().expect("failed to flush");

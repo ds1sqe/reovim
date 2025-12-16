@@ -1,6 +1,8 @@
 //! Key binding system for mapping key sequences to commands
 
-use crate::command::{id::builtin, CommandId, CommandTrait};
+use crate::command::{id::builtin, registry::CommandRegistry, CommandId, CommandTrait};
+use crate::event::WhichKeyBinding;
+use crate::modd::Mod;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -56,6 +58,26 @@ impl KeyMapInner {
             command: Some(CommandRef::Inline(cmd)),
             next: HashMap::new(),
         }
+    }
+
+    /// Get the description for this binding
+    ///
+    /// Returns the command's description if available, or a prefix indicator.
+    #[must_use]
+    pub fn get_description(&self, registry: &CommandRegistry) -> String {
+        match &self.command {
+            Some(CommandRef::Registered(id)) => registry
+                .get(id)
+                .map_or_else(|| id.as_str().to_string(), |cmd| cmd.description().to_string()),
+            Some(CommandRef::Inline(cmd)) => cmd.description().to_string(),
+            None => "+prefix".to_string(),
+        }
+    }
+
+    /// Check if this is a prefix node (has no command, only children)
+    #[must_use]
+    pub const fn is_prefix(&self) -> bool {
+        self.command.is_none()
     }
 }
 
@@ -128,6 +150,69 @@ impl KeyMap {
             _ => return,
         };
         map.remove(keys);
+    }
+
+    /// Get all available bindings for a given prefix in a mode
+    ///
+    /// This is used by the which-key feature to display available keybindings.
+    #[must_use]
+    pub fn get_bindings_for_prefix(
+        &self,
+        mode: &Mod,
+        prefix: &str,
+        registry: &CommandRegistry,
+    ) -> Vec<WhichKeyBinding> {
+        let keymap = match mode {
+            Mod::Normal => &self.normal,
+            Mod::Insert(_) => &self.insert,
+            Mod::Visual(_) => &self.visual,
+            Mod::Command => &self.command,
+        };
+
+        let mut bindings = Vec::new();
+        let mut seen_keys = std::collections::HashSet::new();
+
+        for (key, inner) in keymap {
+            // Check if key starts with the prefix and is longer
+            if key.starts_with(prefix) && key.len() > prefix.len() {
+                // Get the next key segment after the prefix
+                let suffix = &key[prefix.len()..];
+                let next_key = Self::first_key_segment(suffix);
+
+                // Avoid duplicates (e.g., "gg" and "gG" both show "g" after "g" prefix)
+                if seen_keys.contains(next_key) {
+                    continue;
+                }
+                seen_keys.insert(next_key.to_string());
+
+                let description = inner.get_description(registry);
+                let is_prefix = inner.is_prefix();
+
+                bindings.push(WhichKeyBinding {
+                    key: next_key.to_string(),
+                    description,
+                    is_prefix,
+                });
+            }
+        }
+
+        // Sort by key for consistent display
+        bindings.sort_by(|a, b| a.key.cmp(&b.key));
+        bindings
+    }
+
+    /// Extract the first key segment from a key sequence
+    ///
+    /// Handles special keys like `<C-x>`, `<Escape>`, etc.
+    fn first_key_segment(s: &str) -> &str {
+        // Handle special keys like <C-x>, <Escape>, etc.
+        if s.starts_with('<')
+            && let Some(end) = s.find('>')
+        {
+            return &s[..=end];
+        }
+        // Single character key
+        s.chars().next().map_or(s, |c| &s[..c.len_utf8()])
     }
 
     fn setup_normal_mode(keymap: &mut HashMap<String, KeyMapInner>) {
