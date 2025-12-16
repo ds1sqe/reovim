@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use crate::bind::CommandRef;
 use crate::command::CommandContext;
+use crate::completion::CompletionItem;
 use crate::highlight::{Highlight, HighlightGroup};
 use crate::modd::Mod;
 
@@ -12,6 +13,7 @@ pub enum InnerEvent {
     ModeChangeEvent(Mod),
     PendingKeysEvent(String),
     HighlightEvent(HighlightEvent),
+    CompletionEvent(CompletionEvent),
     ExplorerEvent(ExplorerEvent),
     RenderSignal,
     KillSignal,
@@ -91,4 +93,27 @@ pub enum HighlightEvent {
 pub struct CommandEvent {
     pub command: CommandRef,
     pub context: CommandContext,
+}
+
+/// Completion-related events
+pub enum CompletionEvent {
+    /// Request completion at current position
+    Trigger { buffer_id: usize },
+    /// Update completion items (from async completion fetch)
+    Update {
+        items: Vec<CompletionItem>,
+        prefix: String,
+        start_col: u16,
+        start_row: u16,
+    },
+    /// Select next completion item
+    SelectNext,
+    /// Select previous completion item
+    SelectPrev,
+    /// Confirm the selected completion
+    Confirm,
+    /// Dismiss the completion popup
+    Dismiss,
+    /// Update filter as user continues typing
+    UpdateFilter { new_prefix: String },
 }

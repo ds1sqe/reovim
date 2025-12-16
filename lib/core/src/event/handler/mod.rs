@@ -6,8 +6,10 @@ use {
 };
 
 mod command;
+mod completion;
 
 pub use command::CommandHandler;
+pub use completion::CompletionHandler;
 
 pub struct PrintEventHandler {
     pub buffer_id: usize,

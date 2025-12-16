@@ -5,7 +5,10 @@ use std::sync::Arc;
 use crate::bind::CommandRef;
 use crate::buffer::TextOps;
 use crate::command::{
-    traits::{CommandLineAction, CommandResult, DeferredAction, ExecutionContext, ExplorerAction},
+    traits::{
+        CommandLineAction, CommandResult, CompletionAction, DeferredAction, ExecutionContext,
+        ExplorerAction,
+    },
     CommandTrait,
 };
 use crate::explorer::ExplorerState;
@@ -178,6 +181,9 @@ impl Runtime {
                             self.render();
                             return should_quit;
                         }
+                        DeferredAction::Completion(comp_action) => {
+                            self.handle_completion_action(&comp_action, context.buffer_id);
+                        }
                         DeferredAction::Explorer(explorer_action) => {
                             self.handle_explorer_action(&explorer_action);
                             self.render();
@@ -278,28 +284,6 @@ impl Runtime {
                 }
             }
             ExplorerAction::OpenNode => {
-                // Debug logging to identify root cause
-                let state_exists = self.explorer_state.is_some();
-                tracing::debug!(state_exists, "OpenNode: explorer_state check");
-
-                if let Some(ref state) = self.explorer_state {
-                    let cursor_index = state.cursor_index;
-                    let visible_count = state.visible_nodes().len();
-                    tracing::debug!(cursor_index, visible_count, "OpenNode: state info");
-
-                    if let Some(node) = state.current_node() {
-                        tracing::debug!(
-                            name = %node.name,
-                            is_dir = node.is_dir(),
-                            is_file = node.is_file(),
-                            is_symlink = node.is_symlink(),
-                            "OpenNode: current node info"
-                        );
-                    } else {
-                        tracing::debug!("OpenNode: current_node() returned None!");
-                    }
-                }
-
                 // Open file or toggle directory
                 // First extract info from current node without holding mutable borrow
                 let node_info = self
@@ -406,6 +390,34 @@ impl Runtime {
                 if let Some(ref mut state) = self.explorer_state {
                     state.input_backspace();
                 }
+            }
+        }
+    }
+
+    /// Handle completion actions from keybindings
+    pub(crate) fn handle_completion_action(&mut self, action: &CompletionAction, buffer_id: usize) {
+        match action {
+            CompletionAction::Trigger => {
+                self.trigger_completion(buffer_id);
+            }
+            CompletionAction::SelectNext => {
+                self.completion_state.select_next();
+                self.render();
+            }
+            CompletionAction::SelectPrev => {
+                self.completion_state.select_prev();
+                self.render();
+            }
+            CompletionAction::Confirm => {
+                if let Some(item) = self.completion_state.selected_item().cloned() {
+                    self.insert_completion(&item);
+                }
+                self.completion_state.dismiss();
+                self.render();
+            }
+            CompletionAction::Dismiss => {
+                self.completion_state.dismiss();
+                self.render();
             }
         }
     }

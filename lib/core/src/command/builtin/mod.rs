@@ -2,6 +2,7 @@
 
 mod clipboard;
 mod command_line;
+mod completion;
 mod cursor;
 mod explorer;
 mod jump;
@@ -12,6 +13,7 @@ mod visual;
 
 pub use clipboard::*;
 pub use command_line::*;
+pub use completion::*;
 pub use cursor::*;
 pub use explorer::*;
 pub use jump::*;

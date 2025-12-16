@@ -91,6 +91,13 @@ pub mod builtin {
     pub const QUIT: CommandId = CommandId::new("quit");
     pub const NOOP: CommandId = CommandId::new("noop");
 
+    // === Completion ===
+    pub const COMPLETION_TRIGGER: CommandId = CommandId::new("completion_trigger");
+    pub const COMPLETION_NEXT: CommandId = CommandId::new("completion_next");
+    pub const COMPLETION_PREV: CommandId = CommandId::new("completion_prev");
+    pub const COMPLETION_CONFIRM: CommandId = CommandId::new("completion_confirm");
+    pub const COMPLETION_DISMISS: CommandId = CommandId::new("completion_dismiss");
+
     // === Explorer Navigation ===
     pub const EXPLORER_CURSOR_UP: CommandId = CommandId::new("explorer_cursor_up");
     pub const EXPLORER_CURSOR_DOWN: CommandId = CommandId::new("explorer_cursor_down");

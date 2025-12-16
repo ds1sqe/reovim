@@ -112,6 +112,9 @@ impl CommandRegistry {
             PasteBeforeCommand, PasteCommand,
             // Command line
             CommandLineBackspaceCommand, CommandLineCancelCommand, CommandLineExecuteCommand,
+            // Completion
+            CompletionConfirmCommand, CompletionDismissCommand, CompletionNextCommand,
+            CompletionPrevCommand, CompletionTriggerCommand,
             // Cursor
             CursorDownCommand, CursorLeftCommand, CursorLineEndCommand, CursorLineStartCommand,
             CursorRightCommand, CursorUpCommand, CursorWordBackwardCommand,
@@ -194,6 +197,13 @@ impl CommandRegistry {
         // System commands
         let _ = self.register(QuitCommand);
         let _ = self.register(NoopCommand);
+
+        // Completion commands
+        let _ = self.register(CompletionTriggerCommand);
+        let _ = self.register(CompletionNextCommand);
+        let _ = self.register(CompletionPrevCommand);
+        let _ = self.register(CompletionConfirmCommand);
+        let _ = self.register(CompletionDismissCommand);
 
         // Explorer commands
         let _ = self.register(ExplorerCursorUpCommand);

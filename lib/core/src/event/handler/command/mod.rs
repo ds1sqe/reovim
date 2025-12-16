@@ -26,12 +26,17 @@ use {
 /// Default timeout for which-key popup (500ms)
 const WHICH_KEY_TIMEOUT_MS: u64 = 500;
 
+/// Keys that are handled differently when completion popup is visible
+const COMPLETION_KEYS: &[&str] = &["Tab", "C-n", "C-p", "C-e"];
+
 /// Handler that translates key events to commands based on current mode
 pub struct CommandHandler {
     key_event_rx: Option<Receiver<KeyEvent>>,
     keymap: KeyMap,
     /// Watch receiver for mode changes from Runtime (single source of truth)
     mode_rx: watch::Receiver<Mod>,
+    /// Watch receiver for completion active state
+    completion_active_rx: watch::Receiver<bool>,
     pending_keys: String,
     count_parser: CountParser,
     dispatcher: Dispatcher,
@@ -54,12 +59,14 @@ impl CommandHandler {
     pub fn new(
         tx: Sender<InnerEvent>,
         mode_rx: watch::Receiver<Mod>,
+        completion_active_rx: watch::Receiver<bool>,
         registry: Arc<CommandRegistry>,
     ) -> Self {
         Self {
             key_event_rx: None,
             keymap: KeyMap::with_defaults(),
             mode_rx,
+            completion_active_rx,
             pending_keys: String::new(),
             count_parser: CountParser::new(),
             dispatcher: Dispatcher::new(tx, 0, 0),
@@ -72,6 +79,16 @@ impl CommandHandler {
     /// Get the current mode from the watch channel
     fn current_mode(&self) -> Mod {
         self.mode_rx.borrow().clone()
+    }
+
+    /// Check if completion popup is currently active
+    fn is_completion_active(&self) -> bool {
+        *self.completion_active_rx.borrow()
+    }
+
+    /// Check if a key should use completion behavior when popup is visible
+    fn is_completion_key(key: &str) -> bool {
+        COMPLETION_KEYS.contains(&key)
     }
 
     fn get_keymap_for_mode(&self) -> &HashMap<String, KeyMapInner> {
@@ -89,6 +106,25 @@ impl CommandHandler {
     fn lookup_command_no_push(&mut self, key: &str) -> (Option<CommandRef>, bool) {
         let mode = self.current_mode();
         tracing::debug!(?mode, key, pending = %self.pending_keys, "lookup_command_no_push");
+
+        let is_insert = matches!(mode, Mod::Insert(_));
+        let completion_active = self.is_completion_active();
+
+        // In insert mode, completion keys should only trigger completion commands
+        // when the popup is visible. Otherwise, fall through to default behavior.
+        if is_insert && Self::is_completion_key(key) && !completion_active {
+            self.pending_keys.clear();
+
+            // Tab inserts a tab character when completion is not active
+            if key == "Tab" {
+                let cmd: Arc<dyn CommandTrait> = Arc::new(InsertCharCommand::new('\t'));
+                return (Some(CommandRef::Inline(cmd)), true);
+            }
+
+            // C-n, C-p, C-e do nothing when completion is not active
+            return (None, true);
+        }
+
         let keymap = self.get_keymap_for_mode();
 
         // Check for exact match
@@ -115,7 +151,7 @@ impl CommandHandler {
         // No match and not a valid prefix
         // In insert/command/explorer-input modes, handle single chars specially
         // In these modes, clear pending and process the char immediately
-        if matches!(self.current_mode(), Mod::Insert(_))
+        if is_insert
             && key.len() == 1
             && let Some(c) = key.chars().next()
         {
@@ -124,7 +160,7 @@ impl CommandHandler {
             return (Some(CommandRef::Inline(cmd)), true);
         }
 
-        if matches!(self.current_mode(), Mod::Command)
+        if matches!(mode, Mod::Command)
             && key.len() == 1
             && let Some(c) = key.chars().next()
         {
@@ -133,7 +169,7 @@ impl CommandHandler {
             return (Some(CommandRef::Inline(cmd)), true);
         }
 
-        if matches!(self.current_mode(), Mod::ExplorerInput)
+        if matches!(mode, Mod::ExplorerInput)
             && key.len() == 1
             && let Some(c) = key.chars().next()
         {
