@@ -1,11 +1,22 @@
 //! Key event to string conversion
 
 use crate::event::KeyEvent;
-use reovim_sys::event::KeyCode;
+use reovim_sys::event::{KeyCode, KeyModifiers};
 
 /// Convert a key event to its string representation for keymap lookup
 #[must_use]
 pub fn key_to_string(event: &KeyEvent) -> String {
+    let has_ctrl = event.modifiers.contains(KeyModifiers::CONTROL);
+
+    // Handle Ctrl combinations first
+    if has_ctrl {
+        match event.code {
+            KeyCode::Char(c) => return format!("<C-{c}>"),
+            KeyCode::Tab => return String::from("<C-Tab>"),
+            _ => {}
+        }
+    }
+
     match event.code {
         KeyCode::Char(c) => c.to_string(),
         KeyCode::Esc => String::from("Escape"),

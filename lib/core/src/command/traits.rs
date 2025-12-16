@@ -43,6 +43,10 @@ pub enum DeferredAction {
     Paste { before: bool },
     /// Command line operations
     CommandLine(CommandLineAction),
+    /// Jump to older position (Ctrl-O)
+    JumpOlder,
+    /// Jump to newer position (Ctrl-I)
+    JumpNewer,
 }
 
 /// Command line mode actions
@@ -95,6 +99,14 @@ pub trait CommandTrait: Debug + Send + Sync {
     /// Optional: does this command support repeat count?
     fn supports_count(&self) -> bool {
         true
+    }
+
+    /// Whether this command is a "jump" that should be recorded in the jump list
+    ///
+    /// Commands like gg, G, search, etc. return true here so the cursor
+    /// position before execution is recorded in the jump list.
+    fn is_jump(&self) -> bool {
+        false
     }
 }
 

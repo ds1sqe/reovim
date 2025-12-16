@@ -9,6 +9,7 @@ use crate::command_line::CommandLine;
 use crate::constants::EVENT_CHANNEL_CAPACITY;
 use crate::event::InnerEvent;
 use crate::highlight::{ColorMode, HighlightStore, Theme};
+use crate::jumplist::JumpList;
 use crate::modd::Mod;
 use crate::screen::Screen;
 
@@ -36,6 +37,8 @@ pub struct Runtime {
     mode_rx: watch::Receiver<Mod>,
     /// Command registry for trait-based command system
     pub command_registry: Arc<CommandRegistry>,
+    /// Jump list for Ctrl-O/Ctrl-I navigation
+    pub jump_list: JumpList,
 }
 
 impl Default for Runtime {
@@ -68,6 +71,7 @@ impl Runtime {
             mode_tx,
             mode_rx,
             command_registry: Arc::new(CommandRegistry::with_defaults()),
+            jump_list: JumpList::new(),
         }
     }
 

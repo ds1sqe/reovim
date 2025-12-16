@@ -148,6 +148,7 @@ impl KeyMap {
         keymap.insert("o".to_string(), KeyMapInner::with_command_id(builtin::OPEN_LINE_BELOW));
         keymap.insert("O".to_string(), KeyMapInner::with_command_id(builtin::OPEN_LINE_ABOVE));
         keymap.insert("v".to_string(), KeyMapInner::with_command_id(builtin::ENTER_VISUAL_MODE));
+        keymap.insert("<C-v>".to_string(), KeyMapInner::with_command_id(builtin::ENTER_VISUAL_BLOCK_MODE));
         keymap.insert(":".to_string(), KeyMapInner::with_command_id(builtin::ENTER_COMMAND_MODE));
 
         // Editing
@@ -159,6 +160,10 @@ impl KeyMap {
         keymap.insert("g".to_string(), KeyMapInner::new()); // prefix, no command
         keymap.insert("gg".to_string(), KeyMapInner::with_command_id(builtin::GOTO_FIRST_LINE));
         keymap.insert("G".to_string(), KeyMapInner::with_command_id(builtin::GOTO_LAST_LINE));
+
+        // Jump list navigation
+        keymap.insert("<C-o>".to_string(), KeyMapInner::with_command_id(builtin::JUMP_OLDER));
+        keymap.insert("<C-i>".to_string(), KeyMapInner::with_command_id(builtin::JUMP_NEWER));
     }
 
     fn setup_insert_mode(keymap: &mut HashMap<String, KeyMapInner>) {

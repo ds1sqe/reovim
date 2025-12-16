@@ -4,7 +4,7 @@ use crate::buffer::{Buffer, SelectionOps, TextOps};
 use crate::event::{
     BufferEvent, CommandHandler, HighlightEvent, InnerEvent, InputEventBroker, TerminateHandler,
 };
-use crate::modd::Mod;
+use crate::modd::{Mod, ModExtension};
 
 use super::Runtime;
 
@@ -152,10 +152,13 @@ impl Runtime {
                     self.showing_landing_page = false;
                 }
             }
-            Mod::Visual(_) => {
+            Mod::Visual(ext) => {
                 // Start selection when entering visual mode
                 if let Some(buffer) = self.buffers.get_mut(&0) {
-                    buffer.start_selection();
+                    match ext {
+                        ModExtension::Block => buffer.start_block_selection(),
+                        _ => buffer.start_selection(),
+                    }
                 }
             }
             Mod::Normal => {

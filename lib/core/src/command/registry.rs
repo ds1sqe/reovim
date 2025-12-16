@@ -116,10 +116,12 @@ impl CommandRegistry {
             CursorDownCommand, CursorLeftCommand, CursorLineEndCommand, CursorLineStartCommand,
             CursorRightCommand, CursorUpCommand, CursorWordBackwardCommand,
             CursorWordForwardCommand, GotoFirstLineCommand, GotoLastLineCommand,
+            // Jump
+            JumpNewerCommand, JumpOlderCommand,
             // Mode
             EnterCommandModeCommand, EnterInsertModeAfterCommand, EnterInsertModeCommand,
-            EnterInsertModeEolCommand, EnterNormalModeCommand, EnterVisualModeCommand,
-            OpenLineAboveCommand, OpenLineBelowCommand,
+            EnterInsertModeEolCommand, EnterNormalModeCommand, EnterVisualBlockModeCommand,
+            EnterVisualModeCommand, OpenLineAboveCommand, OpenLineBelowCommand,
             // System
             NoopCommand, QuitCommand,
             // Text
@@ -141,6 +143,10 @@ impl CommandRegistry {
         let _ = self.register(GotoFirstLineCommand);
         let _ = self.register(GotoLastLineCommand);
 
+        // Jump list commands
+        let _ = self.register(JumpOlderCommand);
+        let _ = self.register(JumpNewerCommand);
+
         // Mode switching commands
         let _ = self.register(EnterNormalModeCommand);
         let _ = self.register(EnterInsertModeCommand);
@@ -149,6 +155,7 @@ impl CommandRegistry {
         let _ = self.register(OpenLineBelowCommand);
         let _ = self.register(OpenLineAboveCommand);
         let _ = self.register(EnterVisualModeCommand);
+        let _ = self.register(EnterVisualBlockModeCommand);
         let _ = self.register(EnterCommandModeCommand);
 
         // Text editing commands

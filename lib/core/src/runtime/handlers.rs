@@ -106,6 +106,11 @@ impl Runtime {
 
         // Get the buffer and execute the command
         if let Some(buffer) = self.buffers.get_mut(&context.buffer_id) {
+            // Record position BEFORE executing jump commands
+            if cmd.is_jump() {
+                self.jump_list.push(context.buffer_id, buffer.cur);
+            }
+
             let mut exec_ctx = ExecutionContext {
                 buffer,
                 count: context.count,
@@ -149,6 +154,26 @@ impl Runtime {
                             let should_quit = self.handle_command_line_action(&cl_action);
                             self.render();
                             return should_quit;
+                        }
+                        DeferredAction::JumpOlder => {
+                            if let Some(entry) = self.jump_list.jump_older() {
+                                let target_pos = entry.position;
+                                let target_buf_id = entry.buffer_id;
+                                if let Some(buf) = self.buffers.get_mut(&target_buf_id) {
+                                    buf.cur = target_pos;
+                                }
+                            }
+                            self.render();
+                        }
+                        DeferredAction::JumpNewer => {
+                            if let Some(entry) = self.jump_list.jump_newer() {
+                                let target_pos = entry.position;
+                                let target_buf_id = entry.buffer_id;
+                                if let Some(buf) = self.buffers.get_mut(&target_buf_id) {
+                                    buf.cur = target_pos;
+                                }
+                            }
+                            self.render();
                         }
                     }
                 }

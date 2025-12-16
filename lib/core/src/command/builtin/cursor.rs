@@ -1,7 +1,8 @@
 //! Cursor movement commands
 
-use crate::buffer::CursorOps;
+use crate::buffer::{calculate_motion_with_desired_col, CursorOps};
 use crate::command::traits::{CommandResult, CommandTrait, ExecutionContext};
+use crate::motion::Motion;
 use std::any::Any;
 
 /// Move cursor up
@@ -17,10 +18,17 @@ impl CommandTrait for CursorUpCommand {
         "Move cursor up"
     }
 
-    #[allow(clippy::cast_possible_truncation)]
     fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
         let count = ctx.count.unwrap_or(1);
-        ctx.buffer.cur.y = ctx.buffer.cur.y.saturating_sub(count as u16);
+        let (new_pos, new_desired_col) = calculate_motion_with_desired_col(
+            &ctx.buffer.contents,
+            ctx.buffer.cur,
+            ctx.buffer.desired_col,
+            Motion::Up,
+            count,
+        );
+        ctx.buffer.cur = new_pos;
+        ctx.buffer.desired_col = new_desired_col;
         CommandResult::NeedsRender
     }
 
@@ -46,11 +54,17 @@ impl CommandTrait for CursorDownCommand {
         "Move cursor down"
     }
 
-    #[allow(clippy::cast_possible_truncation)]
     fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
         let count = ctx.count.unwrap_or(1);
-        let max_y = ctx.buffer.contents.len().saturating_sub(1) as u16;
-        ctx.buffer.cur.y = (ctx.buffer.cur.y + count as u16).min(max_y);
+        let (new_pos, new_desired_col) = calculate_motion_with_desired_col(
+            &ctx.buffer.contents,
+            ctx.buffer.cur,
+            ctx.buffer.desired_col,
+            Motion::Down,
+            count,
+        );
+        ctx.buffer.cur = new_pos;
+        ctx.buffer.desired_col = new_desired_col;
         CommandResult::NeedsRender
     }
 
@@ -80,6 +94,7 @@ impl CommandTrait for CursorLeftCommand {
     fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
         let count = ctx.count.unwrap_or(1);
         ctx.buffer.cur.x = ctx.buffer.cur.x.saturating_sub(count as u16);
+        ctx.buffer.clear_desired_col(); // Clear on horizontal movement
         CommandResult::NeedsRender
     }
 
@@ -112,6 +127,7 @@ impl CommandTrait for CursorRightCommand {
             let max_x = line.inner.len().saturating_sub(1) as u16;
             ctx.buffer.cur.x = (ctx.buffer.cur.x + count as u16).min(max_x);
         }
+        ctx.buffer.clear_desired_col(); // Clear on horizontal movement
         CommandResult::NeedsRender
     }
 
@@ -139,6 +155,7 @@ impl CommandTrait for CursorLineStartCommand {
 
     fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
         ctx.buffer.cur.x = 0;
+        ctx.buffer.clear_desired_col(); // Clear on horizontal movement
         CommandResult::NeedsRender
     }
 
@@ -169,6 +186,7 @@ impl CommandTrait for CursorLineEndCommand {
         if let Some(line) = ctx.buffer.contents.get(ctx.buffer.cur.y as usize) {
             ctx.buffer.cur.x = line.inner.len().saturating_sub(1) as u16;
         }
+        ctx.buffer.clear_desired_col(); // Clear on horizontal movement
         CommandResult::NeedsRender
     }
 
@@ -196,6 +214,7 @@ impl CommandTrait for CursorWordForwardCommand {
 
     fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
         ctx.buffer.word_forward();
+        ctx.buffer.clear_desired_col(); // Clear on horizontal movement
         CommandResult::NeedsRender
     }
 
@@ -223,6 +242,7 @@ impl CommandTrait for CursorWordBackwardCommand {
 
     fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
         ctx.buffer.word_backward();
+        ctx.buffer.clear_desired_col(); // Clear on horizontal movement
         CommandResult::NeedsRender
     }
 
@@ -258,6 +278,7 @@ impl CommandTrait for GotoFirstLineCommand {
             ctx.buffer.cur.y = 0;
         }
         ctx.buffer.cur.x = 0;
+        ctx.buffer.clear_desired_col();
         CommandResult::NeedsRender
     }
 
@@ -267,6 +288,10 @@ impl CommandTrait for GotoFirstLineCommand {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn is_jump(&self) -> bool {
+        true
     }
 }
 
@@ -294,6 +319,7 @@ impl CommandTrait for GotoLastLineCommand {
             ctx.buffer.cur.y = max_y;
         }
         ctx.buffer.cur.x = 0;
+        ctx.buffer.clear_desired_col();
         CommandResult::NeedsRender
     }
 
@@ -303,5 +329,9 @@ impl CommandTrait for GotoLastLineCommand {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn is_jump(&self) -> bool {
+        true
     }
 }
