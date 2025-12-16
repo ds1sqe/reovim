@@ -10,7 +10,7 @@ use crate::constants::EVENT_CHANNEL_CAPACITY;
 use crate::event::InnerEvent;
 use crate::highlight::{ColorMode, HighlightStore, Theme};
 use crate::modd::Mod;
-use crate::screen::Screen;
+use crate::screen::{Screen, WhichKeyPanel};
 
 use tokio::sync::{mpsc, watch};
 
@@ -36,6 +36,8 @@ pub struct Runtime {
     mode_rx: watch::Receiver<Mod>,
     /// Command registry for trait-based command system
     pub command_registry: Arc<CommandRegistry>,
+    /// Which-key popup panel state
+    pub which_key_panel: WhichKeyPanel,
 }
 
 impl Default for Runtime {
@@ -68,6 +70,7 @@ impl Runtime {
             mode_tx,
             mode_rx,
             command_registry: Arc::new(CommandRegistry::with_defaults()),
+            which_key_panel: WhichKeyPanel::new(),
         }
     }
 
@@ -103,6 +106,7 @@ impl Runtime {
                 &self.last_command,
                 self.color_mode,
                 &self.theme,
+                &self.which_key_panel,
             )
             .expect("failed to render");
         self.screen.flush().expect("failed to flush");

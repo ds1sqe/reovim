@@ -12,6 +12,24 @@ pub enum InnerEvent {
     HighlightEvent(HighlightEvent),
     RenderSignal,
     KillSignal,
+    /// Show the which-key popup with available bindings
+    WhichKeyShow {
+        prefix: String,
+        bindings: Vec<WhichKeyBinding>,
+    },
+    /// Hide the which-key popup
+    WhichKeyHide,
+}
+
+/// A single binding entry for the which-key popup
+#[derive(Debug, Clone)]
+pub struct WhichKeyBinding {
+    /// The key sequence (e.g., "g" or "gg")
+    pub key: String,
+    /// Description of what this key does
+    pub description: String,
+    /// Whether this is a prefix (has more bindings) or a terminal command
+    pub is_prefix: bool,
 }
 
 pub enum BufferEvent {

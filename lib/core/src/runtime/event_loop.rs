@@ -41,7 +41,8 @@ impl Runtime {
         // Command handler for key-to-command translation
         // Pass mode receiver so CommandHandler can read mode from Runtime (single source of truth)
         let mode_rx = self.subscribe_mode();
-        let mut command_hdr = CommandHandler::new(self.tx.clone(), mode_rx);
+        let mut command_hdr =
+            CommandHandler::new(self.tx.clone(), mode_rx, self.command_registry.clone());
         let mut terminate_hdr = TerminateHandler::new(self.tx.clone());
 
         input_broker.key_broker.enlist(&mut command_hdr);
@@ -133,6 +134,14 @@ impl Runtime {
             InnerEvent::KillSignal => {
                 return true;
             }
+            InnerEvent::WhichKeyShow { prefix, bindings } => {
+                self.which_key_panel.show(prefix, bindings);
+                self.render();
+            }
+            InnerEvent::WhichKeyHide => {
+                self.which_key_panel.hide();
+                self.render();
+            }
         }
         false
     }
@@ -140,6 +149,9 @@ impl Runtime {
     /// Handle mode change events
     #[allow(clippy::collapsible_if)]
     fn handle_mode_change(&mut self, new_mode: Mod) {
+        // Hide which-key panel on mode change
+        self.which_key_panel.hide();
+
         match &new_mode {
             Mod::Insert(_) => {
                 // Clear landing page content when entering insert mode (only once)
