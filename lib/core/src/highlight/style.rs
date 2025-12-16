@@ -1,6 +1,7 @@
 //! Text styling for syntax highlighting
 
 use crate::constants::RESET_STYLE;
+use crate::highlight::color::{downgrade_color, ColorMode};
 use reovim_sys::style::Color;
 
 /// Bitflags for text attributes
@@ -92,19 +93,22 @@ impl Style {
     }
 
     /// Convert to ANSI escape sequence for starting this style
+    /// Color mode determines how colors are converted for terminal compatibility
     #[must_use]
-    pub fn to_ansi_start(&self) -> String {
+    pub fn to_ansi_start(&self, color_mode: ColorMode) -> String {
         let mut codes: Vec<&str> = Vec::new();
         let mut owned_codes: Vec<String> = Vec::new();
 
-        // Foreground color
+        // Foreground color (with downgrade based on color mode)
         if let Some(fg) = &self.fg {
-            owned_codes.push(color_to_fg_ansi(fg));
+            let converted = downgrade_color(*fg, color_mode);
+            owned_codes.push(color_to_fg_ansi(&converted));
         }
 
-        // Background color
+        // Background color (with downgrade based on color mode)
         if let Some(bg) = &self.bg {
-            owned_codes.push(color_to_bg_ansi(bg));
+            let converted = downgrade_color(*bg, color_mode);
+            owned_codes.push(color_to_bg_ansi(&converted));
         }
 
         // Attributes

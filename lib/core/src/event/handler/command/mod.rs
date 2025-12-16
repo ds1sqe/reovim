@@ -10,12 +10,15 @@ pub use key_parser::key_to_string;
 
 use {
     crate::{
-        bind::{KeyMap, KeyMapInner},
-        command::Command,
+        bind::{CommandRef, KeyMap, KeyMapInner},
+        command::{
+            builtin::{CommandLineCharCommand, InsertCharCommand},
+            CommandTrait,
+        },
         event::{InnerEvent, KeyEvent, Subscribe},
         modd::Mod,
     },
-    std::collections::HashMap,
+    std::{collections::HashMap, sync::Arc},
     tokio::sync::{broadcast::Receiver, mpsc::Sender, watch},
 };
 
@@ -64,7 +67,7 @@ impl CommandHandler {
     }
 
     /// Lookup command - assumes key is already pushed to `pending_keys`
-    fn lookup_command_no_push(&mut self, key: &str) -> (Option<Command>, bool) {
+    fn lookup_command_no_push(&mut self, key: &str) -> (Option<CommandRef>, bool) {
         let keymap = self.get_keymap_for_mode();
 
         if let Some(inner) = keymap.get(&self.pending_keys) {
@@ -80,20 +83,22 @@ impl CommandHandler {
         // No match, clear pending
         self.pending_keys.clear();
 
-        // In insert mode, non-mapped single chars become InsertChar
+        // In insert mode, non-mapped single chars become InsertChar (inline command)
         if matches!(self.current_mode(), Mod::Insert(_))
             && key.len() == 1
             && let Some(c) = key.chars().next()
         {
-            return (Some(Command::InsertChar(c)), true);
+            let cmd: Arc<dyn CommandTrait> = Arc::new(InsertCharCommand::new(c));
+            return (Some(CommandRef::Inline(cmd)), true);
         }
 
-        // In command mode, non-mapped single chars become CommandLineChar
+        // In command mode, non-mapped single chars become CommandLineChar (inline command)
         if matches!(self.current_mode(), Mod::Command)
             && key.len() == 1
             && let Some(c) = key.chars().next()
         {
-            return (Some(Command::CommandLineChar(c)), true);
+            let cmd: Arc<dyn CommandTrait> = Arc::new(CommandLineCharCommand::new(c));
+            return (Some(CommandRef::Inline(cmd)), true);
         }
 
         (None, true)

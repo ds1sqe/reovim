@@ -1,4 +1,4 @@
-mod bind;
+pub mod bind;
 pub mod buffer;
 pub mod command;
 pub mod command_line;

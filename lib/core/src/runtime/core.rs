@@ -1,12 +1,14 @@
 //! Core Runtime struct and initialization
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use crate::buffer::Buffer;
+use crate::command::CommandRegistry;
 use crate::command_line::CommandLine;
 use crate::constants::EVENT_CHANNEL_CAPACITY;
 use crate::event::InnerEvent;
-use crate::highlight::HighlightStore;
+use crate::highlight::{ColorMode, HighlightStore, Theme};
 use crate::modd::Mod;
 use crate::screen::Screen;
 
@@ -18,6 +20,8 @@ pub struct Runtime {
     pub screen: Screen,
     pub highlight_store: HighlightStore,
     pub current_mode: Mod,
+    pub color_mode: ColorMode,
+    pub theme: Theme,
     pub clipboard: String,
     pub command_line: CommandLine,
     pub pending_keys: String,
@@ -30,6 +34,8 @@ pub struct Runtime {
     pub(crate) mode_tx: watch::Sender<Mod>,
     /// Watch channel receiver (kept to allow subscribing)
     mode_rx: watch::Receiver<Mod>,
+    /// Command registry for trait-based command system
+    pub command_registry: Arc<CommandRegistry>,
 }
 
 impl Default for Runtime {
@@ -49,6 +55,8 @@ impl Runtime {
             screen,
             highlight_store: HighlightStore::new(),
             current_mode: Mod::Normal,
+            color_mode: ColorMode::detect(),
+            theme: Theme::default(),
             clipboard: String::new(),
             command_line: CommandLine::default(),
             pending_keys: String::new(),
@@ -59,6 +67,7 @@ impl Runtime {
             showing_landing_page: false,
             mode_tx,
             mode_rx,
+            command_registry: Arc::new(CommandRegistry::with_defaults()),
         }
     }
 
@@ -92,8 +101,16 @@ impl Runtime {
                 &self.command_line,
                 &self.pending_keys,
                 &self.last_command,
+                self.color_mode,
+                &self.theme,
             )
             .expect("failed to render");
         self.screen.flush().expect("failed to flush");
+    }
+
+    /// Set color mode (for :set colormode command)
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn set_color_mode(&mut self, mode: ColorMode) {
+        self.color_mode = mode;
     }
 }

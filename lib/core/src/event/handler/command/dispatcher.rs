@@ -1,6 +1,7 @@
 //! Command dispatch and mode change handling
 
-use crate::command::{Command, CommandContext};
+use crate::bind::CommandRef;
+use crate::command::CommandContext;
 use crate::event::{inner::CommandEvent, InnerEvent};
 use crate::modd::{Mod, ModExtension};
 use tokio::sync::mpsc::Sender;
@@ -42,7 +43,7 @@ impl Dispatcher {
     }
 
     /// Dispatch a command with the given count
-    pub async fn dispatch(&self, cmd: Command, count: Option<usize>) {
+    pub async fn dispatch(&self, cmd: CommandRef, count: Option<usize>) {
         let ctx = CommandContext {
             buffer_id: self.current_buffer_id,
             window_id: self.current_window_id,
@@ -67,24 +68,25 @@ impl Dispatcher {
     }
 
     /// Determine the new mode after a command, if any
+    ///
+    /// Uses command names to detect mode-changing commands.
     #[must_use]
-    #[allow(clippy::missing_const_for_fn)]
-    #[allow(clippy::match_same_arms)]
-    pub fn mode_for_command(cmd: &Command) -> Option<Mod> {
-        match cmd {
-            Command::EnterNormalMode => Some(Mod::Normal),
-            Command::EnterInsertMode
-            | Command::EnterInsertModeAfter
-            | Command::EnterInsertModeEndOfLine
-            | Command::OpenLineBelow
-            | Command::OpenLineAbove => Some(Mod::Insert(ModExtension::Normal)),
-            Command::EnterVisualMode => Some(Mod::Visual(ModExtension::Normal)),
-            Command::EnterCommandMode => Some(Mod::Command),
+    pub fn mode_for_command(cmd: &CommandRef) -> Option<Mod> {
+        let name = match cmd {
+            CommandRef::Registered(id) => id.as_str(),
+            CommandRef::Inline(cmd) => cmd.name(),
+        };
+
+        match name {
+            "enter_normal_mode" => Some(Mod::Normal),
+            "enter_insert_mode" | "enter_insert_mode_after" | "enter_insert_mode_eol"
+            | "open_line_below" | "open_line_above" => Some(Mod::Insert(ModExtension::Normal)),
+            "enter_visual_mode" => Some(Mod::Visual(ModExtension::Normal)),
+            "enter_command_mode" => Some(Mod::Command),
             // Commands that return to Normal mode
-            Command::CommandLineExecute
-            | Command::CommandLineCancel
-            | Command::VisualDelete
-            | Command::VisualYank => Some(Mod::Normal),
+            "command_line_execute" | "command_line_cancel" | "visual_delete" | "visual_yank" => {
+                Some(Mod::Normal)
+            }
             _ => None,
         }
     }

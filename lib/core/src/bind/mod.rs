@@ -1,9 +1,22 @@
-use {crate::command::Command, std::collections::HashMap};
+//! Key binding system for mapping key sequences to commands
+
+use crate::command::{id::builtin, CommandId, CommandTrait};
+use std::collections::HashMap;
+use std::sync::Arc;
+
+/// Reference to a command - either by ID (for registered commands) or inline
+#[derive(Debug, Clone)]
+pub enum CommandRef {
+    /// Reference to a registered command by ID
+    Registered(CommandId),
+    /// Inline command with parameters (for parameterized commands like `InsertChar`)
+    Inline(Arc<dyn CommandTrait>),
+}
 
 /// Node in the keymap trie
 pub struct KeyMapInner {
     /// If this is a terminal node, the command to execute
-    pub command: Option<Command>,
+    pub command: Option<CommandRef>,
     /// Children for multi-key sequences (e.g., "dd", "gg")
     #[allow(dead_code)] // Infrastructure for proper trie-based lookup
     pub next: HashMap<String, Self>,
@@ -18,10 +31,29 @@ impl KeyMapInner {
         }
     }
 
+    /// Create a node with a `CommandRef`
     #[must_use]
-    pub fn with_command(cmd: Command) -> Self {
+    pub fn with_command_ref(cmd: CommandRef) -> Self {
         Self {
             command: Some(cmd),
+            next: HashMap::new(),
+        }
+    }
+
+    /// Create a node with a registered command ID
+    #[must_use]
+    pub fn with_command_id(id: CommandId) -> Self {
+        Self {
+            command: Some(CommandRef::Registered(id)),
+            next: HashMap::new(),
+        }
+    }
+
+    /// Create a node with an inline command
+    #[must_use]
+    pub fn with_inline_command(cmd: Arc<dyn CommandTrait>) -> Self {
+        Self {
+            command: Some(CommandRef::Inline(cmd)),
             next: HashMap::new(),
         }
     }
@@ -30,6 +62,15 @@ impl KeyMapInner {
 impl Default for KeyMapInner {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl std::fmt::Debug for KeyMapInner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KeyMapInner")
+            .field("command", &self.command)
+            .field("next_keys", &self.next.keys().collect::<Vec<_>>())
+            .finish()
     }
 }
 
@@ -55,55 +96,89 @@ impl KeyMap {
         km
     }
 
+    /// Bind a key sequence to a command reference at runtime
+    ///
+    /// # Arguments
+    /// * `mode` - Mode identifier: "n"/"normal", "i"/"insert", "v"/"visual", "c"/"command"
+    /// * `keys` - Key sequence (e.g., "jj", "<leader>x")
+    /// * `cmd` - Command reference to bind
+    pub fn bind(&mut self, mode: &str, keys: &str, cmd: CommandRef) {
+        let map = match mode {
+            "n" | "normal" => &mut self.normal,
+            "i" | "insert" => &mut self.insert,
+            "v" | "visual" => &mut self.visual,
+            "c" | "command" => &mut self.command,
+            _ => return,
+        };
+        map.insert(keys.to_string(), KeyMapInner::with_command_ref(cmd));
+    }
+
+    /// Bind a key sequence to a registered command ID at runtime
+    pub fn bind_id(&mut self, mode: &str, keys: &str, id: CommandId) {
+        self.bind(mode, keys, CommandRef::Registered(id));
+    }
+
+    /// Unbind a key sequence
+    pub fn unbind(&mut self, mode: &str, keys: &str) {
+        let map = match mode {
+            "n" | "normal" => &mut self.normal,
+            "i" | "insert" => &mut self.insert,
+            "v" | "visual" => &mut self.visual,
+            "c" | "command" => &mut self.command,
+            _ => return,
+        };
+        map.remove(keys);
+    }
+
     fn setup_normal_mode(keymap: &mut HashMap<String, KeyMapInner>) {
         // Movement
-        keymap.insert("h".to_string(), KeyMapInner::with_command(Command::CursorLeft));
-        keymap.insert("j".to_string(), KeyMapInner::with_command(Command::CursorDown));
-        keymap.insert("k".to_string(), KeyMapInner::with_command(Command::CursorUp));
-        keymap.insert("l".to_string(), KeyMapInner::with_command(Command::CursorRight));
-        keymap.insert("0".to_string(), KeyMapInner::with_command(Command::CursorLineStart));
-        keymap.insert("$".to_string(), KeyMapInner::with_command(Command::CursorLineEnd));
-        keymap.insert("w".to_string(), KeyMapInner::with_command(Command::CursorWordForward));
-        keymap.insert("b".to_string(), KeyMapInner::with_command(Command::CursorWordBackward));
+        keymap.insert("h".to_string(), KeyMapInner::with_command_id(builtin::CURSOR_LEFT));
+        keymap.insert("j".to_string(), KeyMapInner::with_command_id(builtin::CURSOR_DOWN));
+        keymap.insert("k".to_string(), KeyMapInner::with_command_id(builtin::CURSOR_UP));
+        keymap.insert("l".to_string(), KeyMapInner::with_command_id(builtin::CURSOR_RIGHT));
+        keymap.insert("0".to_string(), KeyMapInner::with_command_id(builtin::CURSOR_LINE_START));
+        keymap.insert("$".to_string(), KeyMapInner::with_command_id(builtin::CURSOR_LINE_END));
+        keymap.insert("w".to_string(), KeyMapInner::with_command_id(builtin::CURSOR_WORD_FORWARD));
+        keymap.insert("b".to_string(), KeyMapInner::with_command_id(builtin::CURSOR_WORD_BACKWARD));
 
         // Mode switching
-        keymap.insert("i".to_string(), KeyMapInner::with_command(Command::EnterInsertMode));
-        keymap.insert("a".to_string(), KeyMapInner::with_command(Command::EnterInsertModeAfter));
-        keymap.insert("A".to_string(), KeyMapInner::with_command(Command::EnterInsertModeEndOfLine));
-        keymap.insert("o".to_string(), KeyMapInner::with_command(Command::OpenLineBelow));
-        keymap.insert("O".to_string(), KeyMapInner::with_command(Command::OpenLineAbove));
-        keymap.insert("v".to_string(), KeyMapInner::with_command(Command::EnterVisualMode));
-        keymap.insert(":".to_string(), KeyMapInner::with_command(Command::EnterCommandMode));
+        keymap.insert("i".to_string(), KeyMapInner::with_command_id(builtin::ENTER_INSERT_MODE));
+        keymap.insert("a".to_string(), KeyMapInner::with_command_id(builtin::ENTER_INSERT_MODE_AFTER));
+        keymap.insert("A".to_string(), KeyMapInner::with_command_id(builtin::ENTER_INSERT_MODE_EOL));
+        keymap.insert("o".to_string(), KeyMapInner::with_command_id(builtin::OPEN_LINE_BELOW));
+        keymap.insert("O".to_string(), KeyMapInner::with_command_id(builtin::OPEN_LINE_ABOVE));
+        keymap.insert("v".to_string(), KeyMapInner::with_command_id(builtin::ENTER_VISUAL_MODE));
+        keymap.insert(":".to_string(), KeyMapInner::with_command_id(builtin::ENTER_COMMAND_MODE));
 
         // Editing
-        keymap.insert("x".to_string(), KeyMapInner::with_command(Command::DeleteCharForward));
-        keymap.insert("p".to_string(), KeyMapInner::with_command(Command::Paste));
-        keymap.insert("P".to_string(), KeyMapInner::with_command(Command::PasteBefore));
+        keymap.insert("x".to_string(), KeyMapInner::with_command_id(builtin::DELETE_CHAR_FORWARD));
+        keymap.insert("p".to_string(), KeyMapInner::with_command_id(builtin::PASTE));
+        keymap.insert("P".to_string(), KeyMapInner::with_command_id(builtin::PASTE_BEFORE));
 
         // g-prefix bindings
         keymap.insert("g".to_string(), KeyMapInner::new()); // prefix, no command
-        keymap.insert("gg".to_string(), KeyMapInner::with_command(Command::GotoFirstLine));
-        keymap.insert("G".to_string(), KeyMapInner::with_command(Command::GotoLastLine));
+        keymap.insert("gg".to_string(), KeyMapInner::with_command_id(builtin::GOTO_FIRST_LINE));
+        keymap.insert("G".to_string(), KeyMapInner::with_command_id(builtin::GOTO_LAST_LINE));
     }
 
     fn setup_insert_mode(keymap: &mut HashMap<String, KeyMapInner>) {
-        keymap.insert("Escape".to_string(), KeyMapInner::with_command(Command::EnterNormalMode));
-        keymap.insert("Backspace".to_string(), KeyMapInner::with_command(Command::DeleteCharBackward));
+        keymap.insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::ENTER_NORMAL_MODE));
+        keymap.insert("Backspace".to_string(), KeyMapInner::with_command_id(builtin::DELETE_CHAR_BACKWARD));
     }
 
     fn setup_visual_mode(keymap: &mut HashMap<String, KeyMapInner>) {
-        keymap.insert("Escape".to_string(), KeyMapInner::with_command(Command::EnterNormalMode));
-        keymap.insert("h".to_string(), KeyMapInner::with_command(Command::VisualExtendLeft));
-        keymap.insert("j".to_string(), KeyMapInner::with_command(Command::VisualExtendDown));
-        keymap.insert("k".to_string(), KeyMapInner::with_command(Command::VisualExtendUp));
-        keymap.insert("l".to_string(), KeyMapInner::with_command(Command::VisualExtendRight));
-        keymap.insert("d".to_string(), KeyMapInner::with_command(Command::VisualDelete));
-        keymap.insert("y".to_string(), KeyMapInner::with_command(Command::VisualYank));
+        keymap.insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::ENTER_NORMAL_MODE));
+        keymap.insert("h".to_string(), KeyMapInner::with_command_id(builtin::VISUAL_EXTEND_LEFT));
+        keymap.insert("j".to_string(), KeyMapInner::with_command_id(builtin::VISUAL_EXTEND_DOWN));
+        keymap.insert("k".to_string(), KeyMapInner::with_command_id(builtin::VISUAL_EXTEND_UP));
+        keymap.insert("l".to_string(), KeyMapInner::with_command_id(builtin::VISUAL_EXTEND_RIGHT));
+        keymap.insert("d".to_string(), KeyMapInner::with_command_id(builtin::VISUAL_DELETE));
+        keymap.insert("y".to_string(), KeyMapInner::with_command_id(builtin::VISUAL_YANK));
     }
 
     fn setup_command_mode(keymap: &mut HashMap<String, KeyMapInner>) {
-        keymap.insert("Escape".to_string(), KeyMapInner::with_command(Command::CommandLineCancel));
-        keymap.insert("Enter".to_string(), KeyMapInner::with_command(Command::CommandLineExecute));
-        keymap.insert("Backspace".to_string(), KeyMapInner::with_command(Command::CommandLineBackspace));
+        keymap.insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::COMMAND_LINE_CANCEL));
+        keymap.insert("Enter".to_string(), KeyMapInner::with_command_id(builtin::COMMAND_LINE_EXECUTE));
+        keymap.insert("Backspace".to_string(), KeyMapInner::with_command_id(builtin::COMMAND_LINE_BACKSPACE));
     }
 }

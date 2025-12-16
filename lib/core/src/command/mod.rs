@@ -4,10 +4,18 @@ pub mod terminal {
     };
 }
 
-mod action;
 mod context;
-mod executor;
 
-pub use action::Command;
 pub use context::CommandContext;
-pub use executor::{BufferCommandExecutor, CommandResult};
+
+// Trait-based command system
+pub mod builtin;
+pub mod id;
+pub mod registry;
+pub mod traits;
+
+pub use id::CommandId;
+pub use registry::{CommandRegistry, RegistryError};
+pub use traits::{
+    CommandLineAction, CommandResult, CommandTrait, DeferredAction, ExecutionContext,
+};

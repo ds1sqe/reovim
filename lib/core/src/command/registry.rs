@@ -1,0 +1,218 @@
+//! Command registry for runtime command management
+
+use super::id::CommandId;
+use super::traits::CommandTrait;
+use std::collections::HashMap;
+use std::fmt;
+use std::sync::{Arc, RwLock};
+
+/// Thread-safe command registry
+///
+/// The registry stores all registered commands and provides
+/// lookup by command ID. It supports runtime registration
+/// of new commands for plugin/extension support.
+pub struct CommandRegistry {
+    commands: RwLock<HashMap<CommandId, Arc<dyn CommandTrait>>>,
+}
+
+impl CommandRegistry {
+    /// Create a new empty command registry
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            commands: RwLock::new(HashMap::new()),
+        }
+    }
+
+    /// Create a registry with all built-in commands registered
+    #[must_use]
+    pub fn with_defaults() -> Self {
+        let registry = Self::new();
+        registry.register_builtins();
+        registry
+    }
+
+    /// Register a command
+    ///
+    /// # Errors
+    /// Returns an error if a command with the same ID is already registered.
+    pub fn register<C: CommandTrait + 'static>(&self, cmd: C) -> Result<(), RegistryError> {
+        let id = CommandId::new(cmd.name());
+        let mut commands = self
+            .commands
+            .write()
+            .map_err(|_| RegistryError::LockPoisoned)?;
+
+        if commands.contains_key(&id) {
+            return Err(RegistryError::AlreadyRegistered(id));
+        }
+
+        commands.insert(id, Arc::new(cmd));
+        drop(commands);
+        Ok(())
+    }
+
+    /// Register a command, replacing any existing command with the same ID
+    pub fn register_or_replace<C: CommandTrait + 'static>(&self, cmd: C) {
+        let id = CommandId::new(cmd.name());
+        if let Ok(mut commands) = self.commands.write() {
+            commands.insert(id, Arc::new(cmd));
+        }
+    }
+
+    /// Unregister a command by ID
+    ///
+    /// Returns the removed command if it existed.
+    pub fn unregister(&self, id: &CommandId) -> Option<Arc<dyn CommandTrait>> {
+        self.commands.write().ok()?.remove(id)
+    }
+
+    /// Get a command by ID
+    #[must_use]
+    pub fn get(&self, id: &CommandId) -> Option<Arc<dyn CommandTrait>> {
+        self.commands.read().ok()?.get(id).cloned()
+    }
+
+    /// Check if a command is registered
+    #[must_use]
+    pub fn contains(&self, id: &CommandId) -> bool {
+        self.commands
+            .read()
+            .map(|c| c.contains_key(id))
+            .unwrap_or(false)
+    }
+
+    /// List all registered command IDs
+    #[must_use]
+    pub fn list(&self) -> Vec<CommandId> {
+        self.commands
+            .read()
+            .map(|c| c.keys().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    /// Get the number of registered commands
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.commands.read().map(|c| c.len()).unwrap_or(0)
+    }
+
+    /// Check if the registry is empty
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Register all built-in commands
+    ///
+    /// This is called automatically when using `with_defaults()`.
+    fn register_builtins(&self) {
+        use super::builtin::{
+            // Clipboard
+            PasteBeforeCommand, PasteCommand,
+            // Command line
+            CommandLineBackspaceCommand, CommandLineCancelCommand, CommandLineExecuteCommand,
+            // Cursor
+            CursorDownCommand, CursorLeftCommand, CursorLineEndCommand, CursorLineStartCommand,
+            CursorRightCommand, CursorUpCommand, CursorWordBackwardCommand,
+            CursorWordForwardCommand, GotoFirstLineCommand, GotoLastLineCommand,
+            // Mode
+            EnterCommandModeCommand, EnterInsertModeAfterCommand, EnterInsertModeCommand,
+            EnterInsertModeEolCommand, EnterNormalModeCommand, EnterVisualModeCommand,
+            OpenLineAboveCommand, OpenLineBelowCommand,
+            // System
+            NoopCommand, QuitCommand,
+            // Text
+            DeleteCharBackwardCommand, DeleteCharForwardCommand, DeleteLineCommand,
+            // Visual
+            VisualDeleteCommand, VisualExtendDownCommand, VisualExtendLeftCommand,
+            VisualExtendRightCommand, VisualExtendUpCommand, VisualYankCommand,
+        };
+
+        // Cursor movement commands
+        let _ = self.register(CursorUpCommand);
+        let _ = self.register(CursorDownCommand);
+        let _ = self.register(CursorLeftCommand);
+        let _ = self.register(CursorRightCommand);
+        let _ = self.register(CursorLineStartCommand);
+        let _ = self.register(CursorLineEndCommand);
+        let _ = self.register(CursorWordForwardCommand);
+        let _ = self.register(CursorWordBackwardCommand);
+        let _ = self.register(GotoFirstLineCommand);
+        let _ = self.register(GotoLastLineCommand);
+
+        // Mode switching commands
+        let _ = self.register(EnterNormalModeCommand);
+        let _ = self.register(EnterInsertModeCommand);
+        let _ = self.register(EnterInsertModeAfterCommand);
+        let _ = self.register(EnterInsertModeEolCommand);
+        let _ = self.register(OpenLineBelowCommand);
+        let _ = self.register(OpenLineAboveCommand);
+        let _ = self.register(EnterVisualModeCommand);
+        let _ = self.register(EnterCommandModeCommand);
+
+        // Text editing commands
+        let _ = self.register(DeleteCharBackwardCommand);
+        let _ = self.register(DeleteCharForwardCommand);
+        let _ = self.register(DeleteLineCommand);
+
+        // Visual mode commands
+        let _ = self.register(VisualExtendUpCommand);
+        let _ = self.register(VisualExtendDownCommand);
+        let _ = self.register(VisualExtendLeftCommand);
+        let _ = self.register(VisualExtendRightCommand);
+        let _ = self.register(VisualDeleteCommand);
+        let _ = self.register(VisualYankCommand);
+
+        // Command line commands
+        let _ = self.register(CommandLineBackspaceCommand);
+        let _ = self.register(CommandLineExecuteCommand);
+        let _ = self.register(CommandLineCancelCommand);
+
+        // Clipboard commands
+        let _ = self.register(PasteCommand);
+        let _ = self.register(PasteBeforeCommand);
+
+        // System commands
+        let _ = self.register(QuitCommand);
+        let _ = self.register(NoopCommand);
+    }
+}
+
+impl Default for CommandRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl fmt::Debug for CommandRegistry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let count = self.len();
+        f.debug_struct("CommandRegistry")
+            .field("command_count", &count)
+            .finish()
+    }
+}
+
+/// Errors that can occur during registry operations
+#[derive(Debug)]
+pub enum RegistryError {
+    /// A command with this ID is already registered
+    AlreadyRegistered(CommandId),
+    /// The requested command was not found
+    NotFound(CommandId),
+    /// The internal lock was poisoned
+    LockPoisoned,
+}
+
+impl fmt::Display for RegistryError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::AlreadyRegistered(id) => write!(f, "Command already registered: {id}"),
+            Self::NotFound(id) => write!(f, "Command not found: {id}"),
+            Self::LockPoisoned => write!(f, "Registry lock poisoned"),
+        }
+    }
+}
+
+impl std::error::Error for RegistryError {}

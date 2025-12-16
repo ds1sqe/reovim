@@ -8,7 +8,7 @@ use {
         command::terminal::{Clear, ClearType},
         command_line::CommandLine,
         constants::RESET_STYLE,
-        highlight::HighlightStore,
+        highlight::{ColorMode, HighlightStore, Theme},
         modd::Mod,
     },
     reovim_sys::{
@@ -118,6 +118,7 @@ impl Screen {
 
     /// update screen
     #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::too_many_arguments)]
     pub fn render(
         &mut self,
         buffers: &[Buffer],
@@ -126,6 +127,8 @@ impl Screen {
         cmd_line: &CommandLine,
         pending_keys: &str,
         last_command: &str,
+        color_mode: ColorMode,
+        theme: &Theme,
     ) -> std::result::Result<(), std::io::Error> {
         // Reset all styling before clearing
         queue!(self.out_stream, Print(RESET_STYLE))?;
@@ -140,7 +143,7 @@ impl Screen {
                 current_buffer = Some(buf);
 
                 // Render each line with explicit cursor positioning
-                let lines = win.render(buf, highlight_store);
+                let lines = win.render(buf, highlight_store, color_mode, theme);
                 for (row_offset, line) in lines.iter().enumerate() {
                     queue!(
                         self.out_stream,

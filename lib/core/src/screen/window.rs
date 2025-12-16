@@ -1,9 +1,7 @@
 //! Window rendering module
 
 use crate::buffer::{Buffer, SelectionOps};
-use crate::constants::VISUAL_SELECTION_BG;
-use crate::highlight::{Highlight, HighlightGroup, HighlightStore, Span, Style};
-use reovim_sys::style::Color;
+use crate::highlight::{ColorMode, Highlight, HighlightGroup, HighlightStore, Span, Style, Theme};
 
 /// Represents top left corner position
 #[derive(Clone, Copy, Debug, Default)]
@@ -75,7 +73,13 @@ impl Window {
     #[allow(clippy::collapsible_else_if)]
     #[allow(clippy::option_if_let_else)]
     #[allow(clippy::if_not_else)]
-    pub fn render(&self, buf: &Buffer, highlight_store: &HighlightStore) -> Vec<String> {
+    pub fn render(
+        &self,
+        buf: &Buffer,
+        highlight_store: &HighlightStore,
+        color_mode: ColorMode,
+        theme: &Theme,
+    ) -> Vec<String> {
         let mut lines: Vec<String> = Vec::new();
 
         // Calculate line number width for alignment
@@ -96,7 +100,7 @@ impl Window {
                     u32::from(sel_end.y),
                     u32::from(sel_end.x) + 1, // +1 because end_col is exclusive
                 ),
-                Style::new().bg(Color::AnsiValue(VISUAL_SELECTION_BG)),
+                theme.visual_selection.clone(),
                 HighlightGroup::Visual,
             ))
         } else {
@@ -108,6 +112,14 @@ impl Window {
             let line_out = match line_content {
                 Some(content) => {
                     let head = if self.line_number.show {
+                        // Determine if this is the current line
+                        let is_current_line = row == buf.cur.y;
+                        let line_num_style = if is_current_line {
+                            &theme.current_line_number
+                        } else {
+                            &theme.line_number
+                        };
+
                         let num_str = match self.line_number.mode() {
                             LineNumberMode::Absolute => format!("{}", row + 1), // 1-indexed
                             LineNumberMode::Relative => {
@@ -115,7 +127,7 @@ impl Window {
                                 format!("{rel}")
                             }
                             LineNumberMode::Hybrid => {
-                                if row != buf.cur.y {
+                                if !is_current_line {
                                     let rel = (i32::from(row) - i32::from(buf.cur.y)).abs();
                                     format!("{rel}")
                                 } else {
@@ -123,8 +135,12 @@ impl Window {
                                 }
                             }
                         };
-                        // Right-align the number and add space separator
-                        format!("{num_str:>num_width$} ")
+                        // Right-align the number with theme styling and add space separator
+                        format!(
+                            "{}{num_str:>num_width$}{} ",
+                            line_num_style.to_ansi_start(color_mode),
+                            Style::ansi_reset()
+                        )
                     } else {
                         String::new()
                     };
@@ -152,7 +168,7 @@ impl Window {
                     }
 
                     let styled_content =
-                        self.render_styled_line(&content.inner, &line_highlights);
+                        self.render_styled_line(&content.inner, &line_highlights, color_mode);
 
                     head + &styled_content
                 }
@@ -260,6 +276,7 @@ impl Window {
         &self,
         line: &str,
         highlights: &[crate::highlight::store::LineHighlight],
+        color_mode: ColorMode,
     ) -> String {
         if highlights.is_empty() {
             return line.to_string();
@@ -279,7 +296,7 @@ impl Window {
             if hl_idx < highlights.len() && highlights[hl_idx].start_col <= current_col {
                 // We're inside a highlight
                 let hl = &highlights[hl_idx];
-                result.push_str(&hl.style.to_ansi_start());
+                result.push_str(&hl.style.to_ansi_start(color_mode));
 
                 while current_col < hl.end_col && (current_col as usize) < chars.len() {
                     result.push(chars[current_col as usize]);

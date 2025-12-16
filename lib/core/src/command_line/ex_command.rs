@@ -1,8 +1,11 @@
+use crate::highlight::ColorMode;
+
 /// Set command options
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SetOption {
     Number(bool),         // :set nu / :set nonu
     RelativeNumber(bool), // :set rnu / :set nornu
+    ColorMode(ColorMode), // :set colormode=ansi|256|truecolor
 }
 
 /// Parsed ex-commands (colon commands)
@@ -43,6 +46,13 @@ impl ExCommand {
             "set nornu" | "set norelativenumber" => Some(Self::Set {
                 option: SetOption::RelativeNumber(false),
             }),
+            // :set colormode=ansi|256|truecolor
+            s if s.starts_with("set colormode=") => {
+                let mode_str = &s[14..];
+                ColorMode::parse(mode_str).map(|mode| Self::Set {
+                    option: SetOption::ColorMode(mode),
+                })
+            }
             _ => Some(Self::Unknown(trimmed.to_string())),
         }
     }

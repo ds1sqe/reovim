@@ -1,4 +1,5 @@
-use crate::command::{Command, CommandContext};
+use crate::bind::CommandRef;
+use crate::command::CommandContext;
 use crate::highlight::{Highlight, HighlightGroup};
 use crate::modd::Mod;
 
@@ -35,6 +36,6 @@ pub enum HighlightEvent {
 
 /// Command event to be processed by runtime
 pub struct CommandEvent {
-    pub command: Command,
+    pub command: CommandRef,
     pub context: CommandContext,
 }
