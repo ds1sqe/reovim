@@ -1,6 +1,6 @@
 //! Core Runtime struct and initialization
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use crate::buffer::{Buffer, TextOps};
@@ -14,6 +14,10 @@ use crate::highlight::{ColorMode, HighlightStore, Theme};
 use crate::jumplist::JumpList;
 use crate::modd::Mod;
 use crate::screen::{Screen, WhichKeyPanel};
+use crate::telescope::picker::{
+    BuffersPicker, CommandsPicker, FilesPicker, GrepPicker, HelpPicker, KeymapsPicker, Picker,
+    RecentPicker,
+};
 use crate::telescope::{TelescopeMatcher, TelescopeState};
 use tracing::debug;
 
@@ -65,6 +69,8 @@ pub struct Runtime {
     pub telescope_state: TelescopeState,
     /// Telescope fuzzy matcher
     pub telescope_matcher: TelescopeMatcher,
+    /// Telescope pickers registry
+    pub telescope_pickers: HashMap<String, Arc<dyn Picker>>,
 }
 
 impl Default for Runtime {
@@ -110,7 +116,21 @@ impl Runtime {
             completion_active_rx,
             telescope_state: TelescopeState::new(),
             telescope_matcher: TelescopeMatcher::new(),
+            telescope_pickers: Self::create_telescope_pickers(),
         }
+    }
+
+    /// Create the telescope picker registry
+    fn create_telescope_pickers() -> HashMap<String, Arc<dyn Picker>> {
+        let mut pickers: HashMap<String, Arc<dyn Picker>> = HashMap::new();
+        pickers.insert("files".to_string(), Arc::new(FilesPicker::new()));
+        pickers.insert("buffers".to_string(), Arc::new(BuffersPicker::new()));
+        pickers.insert("commands".to_string(), Arc::new(CommandsPicker::new()));
+        pickers.insert("keymaps".to_string(), Arc::new(KeymapsPicker::new()));
+        pickers.insert("grep".to_string(), Arc::new(GrepPicker::new()));
+        pickers.insert("recent".to_string(), Arc::new(RecentPicker::new()));
+        pickers.insert("help".to_string(), Arc::new(HelpPicker::new()));
+        pickers
     }
 
     /// Subscribe to mode changes

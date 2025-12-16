@@ -65,6 +65,8 @@ pub struct TelescopeState {
     pub query: String,
     /// Cursor position in the query
     pub cursor_pos: usize,
+    /// All items from the picker (unfiltered)
+    pub all_items: Vec<TelescopeItem>,
     /// Current list of items (filtered/sorted)
     pub items: Vec<TelescopeItem>,
     /// Currently selected item index
@@ -93,6 +95,7 @@ impl TelescopeState {
             active: false,
             query: String::new(),
             cursor_pos: 0,
+            all_items: Vec::new(),
             items: Vec::new(),
             selected_index: 0,
             scroll_offset: 0,
@@ -110,6 +113,7 @@ impl TelescopeState {
         self.active = true;
         self.query.clear();
         self.cursor_pos = 0;
+        self.all_items.clear();
         self.items.clear();
         self.selected_index = 0;
         self.scroll_offset = 0;
@@ -124,6 +128,7 @@ impl TelescopeState {
         self.active = false;
         self.query.clear();
         self.cursor_pos = 0;
+        self.all_items.clear();
         self.items.clear();
         self.selected_index = 0;
         self.scroll_offset = 0;
@@ -131,14 +136,20 @@ impl TelescopeState {
         self.preview = None;
     }
 
-    /// Update items from search results
+    /// Update items from search results (initial load - stores in both `all_items` and items)
     pub fn update_items(&mut self, items: Vec<TelescopeItem>) {
+        self.all_items = items.clone();
         self.items = items;
-        // Keep selection in bounds
-        if self.selected_index >= self.items.len() {
-            self.selected_index = self.items.len().saturating_sub(1);
-        }
-        // Reset scroll if needed
+        self.selected_index = 0;
+        self.scroll_offset = 0;
+        self.ensure_selected_visible();
+    }
+
+    /// Update filtered items only (for filtering - keeps `all_items` unchanged)
+    pub fn update_filtered_items(&mut self, items: Vec<TelescopeItem>) {
+        self.items = items;
+        self.selected_index = 0;
+        self.scroll_offset = 0;
         self.ensure_selected_visible();
     }
 

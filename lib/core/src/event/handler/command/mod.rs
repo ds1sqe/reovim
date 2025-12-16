@@ -12,7 +12,10 @@ use {
     crate::{
         bind::{CommandRef, KeyMap, KeyMapInner},
         command::{
-            builtin::{CommandLineCharCommand, ExplorerInputCharCommand, InsertCharCommand},
+            builtin::{
+                CommandLineCharCommand, ExplorerInputCharCommand, InsertCharCommand,
+                TelescopeInsertCharCommand,
+            },
             registry::CommandRegistry,
             CommandTrait,
         },
@@ -176,6 +179,15 @@ impl CommandHandler {
         {
             self.pending_keys.clear();
             let cmd: Arc<dyn CommandTrait> = Arc::new(ExplorerInputCharCommand::new(c));
+            return (Some(CommandRef::Inline(cmd)), true);
+        }
+
+        if matches!(mode, Mod::Telescope)
+            && key.len() == 1
+            && let Some(c) = key.chars().next()
+        {
+            self.pending_keys.clear();
+            let cmd: Arc<dyn CommandTrait> = Arc::new(TelescopeInsertCharCommand::new(c));
             return (Some(CommandRef::Inline(cmd)), true);
         }
 

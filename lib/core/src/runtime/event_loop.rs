@@ -236,6 +236,7 @@ impl Runtime {
     fn handle_telescope_event(&mut self, event: crate::event::TelescopeEvent) {
         use crate::event::TelescopeEvent;
         use crate::telescope::TelescopeData;
+        use crate::telescope::picker::PickerContext;
         use crate::command::traits::ExecutionContext;
 
         match event {
@@ -246,38 +247,52 @@ impl Runtime {
                     self.screen.width(),
                     self.screen.height(),
                 );
-                // Open telescope with the picker name
-                // TODO: Get title and prompt from actual picker registry
-                let title = match picker.as_str() {
-                    "files" => "Find Files",
-                    "buffers" => "Buffers",
-                    "grep" => "Live Grep",
-                    "recent" => "Recent Files",
-                    "commands" => "Command Palette",
-                    "help" => "Help Tags",
-                    "keymaps" => "Keymaps",
-                    _ => "Telescope",
-                };
-                let prompt = match picker.as_str() {
-                    "files" => "Files> ",
-                    "buffers" => "Buffers> ",
-                    "grep" => "Grep> ",
-                    "recent" => "Recent> ",
-                    "commands" => "Commands> ",
-                    "help" => "Help> ",
-                    "keymaps" => "Keymaps> ",
-                    _ => "> ",
-                };
+
+                // Get title and prompt from picker registry
+                let (title, prompt) = self
+                    .telescope_pickers
+                    .get(&picker)
+                    .map_or(("Telescope", "> "), |p| (p.title(), p.prompt()));
+
                 self.telescope_state.open(&picker, title, prompt);
                 self.set_mode(Mod::Telescope);
                 self.render();
+
+                // Fetch items from picker asynchronously
+                if let Some(picker_impl) = self.telescope_pickers.get(&picker).cloned() {
+                    let tx = self.tx.clone();
+                    let cwd = std::env::current_dir().unwrap_or_default();
+
+                    tokio::spawn(async move {
+                        let ctx = PickerContext {
+                            query: String::new(),
+                            cwd,
+                            max_items: 1000,
+                        };
+                        let items = picker_impl.fetch(&ctx).await;
+                        tracing::debug!(count = items.len(), "Fetched telescope items");
+                        let _ = tx.send(InnerEvent::TelescopeEvent(
+                            TelescopeEvent::UpdateItems { items }
+                        )).await;
+                    });
+                }
             }
             TelescopeEvent::UpdateQuery { query } => {
                 tracing::debug!(?query, "Telescope query updated");
-                self.telescope_state.query = query;
+                self.telescope_state.query.clone_from(&query);
                 self.telescope_state.cursor_pos = self.telescope_state.query.len();
-                // Filter items using matcher
-                // TODO: Implement async filtering with nucleo
+
+                // Filter items using nucleo matcher
+                if query.is_empty() {
+                    // Empty query - show all items
+                    self.telescope_state.items = self.telescope_state.all_items.clone();
+                } else if !self.telescope_state.all_items.is_empty() {
+                    self.telescope_matcher.set_pattern(&query);
+                    let filtered = self.telescope_matcher.match_items(
+                        self.telescope_state.all_items.clone(),
+                    );
+                    self.telescope_state.update_filtered_items(filtered);
+                }
                 self.render();
             }
             TelescopeEvent::UpdateItems { items } => {

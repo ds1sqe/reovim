@@ -444,13 +444,25 @@ impl Runtime {
             }
             TelescopeAction::InsertChar(c) => {
                 self.telescope_state.insert_char(*c);
-                // TODO: Trigger async filtering
-                self.render();
+                // Trigger filtering via UpdateQuery event
+                let tx = self.tx.clone();
+                let query = self.telescope_state.query.clone();
+                tokio::spawn(async move {
+                    let _ = tx
+                        .send(InnerEvent::TelescopeEvent(TelescopeEvent::UpdateQuery { query }))
+                        .await;
+                });
             }
             TelescopeAction::Backspace => {
                 self.telescope_state.delete_char();
-                // TODO: Trigger async filtering
-                self.render();
+                // Trigger filtering via UpdateQuery event
+                let tx = self.tx.clone();
+                let query = self.telescope_state.query.clone();
+                tokio::spawn(async move {
+                    let _ = tx
+                        .send(InnerEvent::TelescopeEvent(TelescopeEvent::UpdateQuery { query }))
+                        .await;
+                });
             }
             TelescopeAction::CursorLeft => {
                 self.telescope_state.cursor_left();
