@@ -5,6 +5,7 @@ use crate::command::CommandContext;
 use crate::completion::CompletionItem;
 use crate::highlight::{Highlight, HighlightGroup};
 use crate::modd::Mod;
+use crate::telescope::{PreviewContent, TelescopeItem};
 
 pub enum InnerEvent {
     BufferEvent(BufferEvent),
@@ -15,6 +16,7 @@ pub enum InnerEvent {
     HighlightEvent(HighlightEvent),
     CompletionEvent(CompletionEvent),
     ExplorerEvent(ExplorerEvent),
+    TelescopeEvent(TelescopeEvent),
     RenderSignal,
     KillSignal,
     /// Show the which-key popup with available bindings
@@ -116,4 +118,28 @@ pub enum CompletionEvent {
     Dismiss,
     /// Update filter as user continues typing
     UpdateFilter { new_prefix: String },
+}
+
+/// Telescope-related events
+pub enum TelescopeEvent {
+    /// Open telescope with a specific picker
+    Open { picker: String },
+    /// Update the search query
+    UpdateQuery { query: String },
+    /// Update items from async fetch
+    UpdateItems { items: Vec<TelescopeItem> },
+    /// Select next item
+    SelectNext,
+    /// Select previous item
+    SelectPrev,
+    /// Page down
+    PageDown,
+    /// Page up
+    PageUp,
+    /// Confirm selection
+    Confirm,
+    /// Close telescope
+    Close,
+    /// Update preview content
+    UpdatePreview { content: PreviewContent },
 }

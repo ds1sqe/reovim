@@ -13,6 +13,7 @@ use {
         explorer::{render_explorer, ExplorerState},
         highlight::{ColorMode, HighlightStore, Theme},
         modd::Mod,
+        telescope::TelescopeState,
     },
     reovim_sys::{
         cursor::MoveTo,
@@ -146,6 +147,7 @@ impl Screen {
         explorer_state: Option<&ExplorerState>,
         which_key_panel: &WhichKeyPanel,
         completion_state: &CompletionState,
+        telescope_state: &TelescopeState,
     ) -> std::result::Result<(), std::io::Error> {
         // Reset all styling before clearing
         queue!(self.out_stream, Print(RESET_STYLE))?;
@@ -243,6 +245,17 @@ impl Screen {
             }
         }
 
+        // Render telescope overlay (takes over entire screen when active)
+        if telescope_state.is_visible() {
+            self.render_telescope(telescope_state, color_mode, theme)?;
+            // Set cursor in telescope input
+            let prompt_len = telescope_state.prompt.len() as u16;
+            let cursor_x = telescope_state.layout.x + 1 + prompt_len + telescope_state.cursor_pos as u16;
+            let cursor_y = telescope_state.layout.y + telescope_state.layout.height - 2;
+            queue!(self.out_stream, MoveTo(cursor_x, cursor_y))?;
+            return Ok(());
+        }
+
         // Position cursor at buffer cursor (not in command mode)
         if !matches!(mode, Mod::Command)
             && let Some((x, y)) = cursor_pos
@@ -330,6 +343,190 @@ impl Screen {
             queue!(self.out_stream, Print(&label))?;
             queue!(self.out_stream, Print(RESET_STYLE))?;
         }
+
+        Ok(())
+    }
+
+    /// Render the telescope fuzzy finder overlay
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::too_many_lines)]
+    fn render_telescope(
+        &mut self,
+        state: &TelescopeState,
+        color_mode: ColorMode,
+        theme: &Theme,
+    ) -> std::result::Result<(), std::io::Error> {
+        let layout = &state.layout;
+        let x = layout.x;
+        let y = layout.y;
+        let width = layout.width;
+        let height = layout.height;
+        let preview_width = layout.preview_width;
+
+        // Calculate total width including preview
+        let total_width = preview_width.map_or(width, |pw| width + 1 + pw);
+
+        // Draw border characters
+        let border_style = theme.telescope_border.to_ansi_start(color_mode);
+
+        // Top border with title
+        queue!(self.out_stream, MoveTo(x, y))?;
+        queue!(self.out_stream, Print(&border_style))?;
+        let title = if state.title.is_empty() {
+            format!(" {} ", state.picker_name)
+        } else {
+            format!(" {} ", state.title)
+        };
+        let title_len = title.len();
+        let top_border = format!(
+            "╭{}{}{}╮",
+            &title,
+            "─".repeat((total_width as usize).saturating_sub(title_len + 2)),
+            ""
+        );
+        queue!(self.out_stream, Print(&top_border))?;
+        queue!(self.out_stream, Print(RESET_STYLE))?;
+
+        // Results area (items)
+        let items_height = height.saturating_sub(4); // -4 for top border, bottom border, prompt line, separator
+        let visible_items = state.visible_items();
+
+        for row in 0..items_height {
+            let screen_y = y + 1 + row;
+            queue!(self.out_stream, MoveTo(x, screen_y))?;
+            queue!(self.out_stream, Print(&border_style))?;
+            queue!(self.out_stream, Print("│"))?;
+            queue!(self.out_stream, Print(RESET_STYLE))?;
+
+            let idx = row as usize;
+            if idx < visible_items.len() {
+                let item = &visible_items[idx];
+                let absolute_idx = state.scroll_offset + idx;
+                let is_selected = absolute_idx == state.selected_index;
+
+                let style = if is_selected {
+                    &theme.telescope_selected
+                } else {
+                    &theme.telescope_normal
+                };
+
+                let style_start = style.to_ansi_start(color_mode);
+                let display = &item.display;
+
+                // Truncate display if too long
+                let max_display_len = (width as usize).saturating_sub(2);
+                let display_str = if display.len() > max_display_len {
+                    format!("{}..", &display[..max_display_len.saturating_sub(2)])
+                } else {
+                    format!("{display:max_display_len$}")
+                };
+
+                queue!(self.out_stream, Print(&style_start))?;
+                queue!(self.out_stream, Print(&display_str))?;
+                queue!(self.out_stream, Print(RESET_STYLE))?;
+            } else {
+                // Empty row
+                let spaces = " ".repeat((width as usize).saturating_sub(2));
+                queue!(self.out_stream, Print(&spaces))?;
+            }
+
+            // Right border of results
+            queue!(self.out_stream, Print(&border_style))?;
+            queue!(self.out_stream, Print("│"))?;
+            queue!(self.out_stream, Print(RESET_STYLE))?;
+
+            // Preview panel (if enabled)
+            if let Some(pw) = preview_width {
+                let preview_content = state.preview.as_ref();
+                let line_idx = row as usize;
+
+                if let Some(preview) = preview_content
+                    && line_idx < preview.lines.len()
+                {
+                    let preview_line = &preview.lines[line_idx];
+                    let is_highlight_line = preview.highlight_line == Some(line_idx);
+
+                    let style = if is_highlight_line {
+                        &theme.telescope_preview_highlight
+                    } else {
+                        &theme.telescope_preview
+                    };
+
+                    let style_start = style.to_ansi_start(color_mode);
+                    let max_preview_len = (pw as usize).saturating_sub(1);
+                    let preview_str = if preview_line.len() > max_preview_len {
+                        format!("{}..", &preview_line[..max_preview_len.saturating_sub(2)])
+                    } else {
+                        format!("{preview_line:max_preview_len$}")
+                    };
+
+                    queue!(self.out_stream, Print(&style_start))?;
+                    queue!(self.out_stream, Print(&preview_str))?;
+                    queue!(self.out_stream, Print(RESET_STYLE))?;
+                } else {
+                    let spaces = " ".repeat((pw as usize).saturating_sub(1));
+                    queue!(self.out_stream, Print(&spaces))?;
+                }
+
+                queue!(self.out_stream, Print(&border_style))?;
+                queue!(self.out_stream, Print("│"))?;
+                queue!(self.out_stream, Print(RESET_STYLE))?;
+            }
+        }
+
+        // Separator line above prompt
+        let sep_y = y + height - 3;
+        queue!(self.out_stream, MoveTo(x, sep_y))?;
+        queue!(self.out_stream, Print(&border_style))?;
+        let separator = format!(
+            "├{}┤",
+            "─".repeat((total_width as usize).saturating_sub(2))
+        );
+        queue!(self.out_stream, Print(&separator))?;
+        queue!(self.out_stream, Print(RESET_STYLE))?;
+
+        // Prompt line
+        let prompt_y = y + height - 2;
+        queue!(self.out_stream, MoveTo(x, prompt_y))?;
+        queue!(self.out_stream, Print(&border_style))?;
+        queue!(self.out_stream, Print("│"))?;
+        queue!(self.out_stream, Print(RESET_STYLE))?;
+
+        // Prompt and query
+        let prompt_style = theme.telescope_prompt.to_ansi_start(color_mode);
+        queue!(self.out_stream, Print(&prompt_style))?;
+        queue!(self.out_stream, Print(&state.prompt))?;
+        queue!(self.out_stream, Print(RESET_STYLE))?;
+
+        let query_style = theme.telescope_input.to_ansi_start(color_mode);
+        let query_max_len = (total_width as usize).saturating_sub(state.prompt.len() + 3);
+        let query_display = if state.query.len() > query_max_len {
+            &state.query[state.query.len() - query_max_len..]
+        } else {
+            &state.query
+        };
+        let query_padded = format!("{query_display:query_max_len$}");
+        queue!(self.out_stream, Print(&query_style))?;
+        queue!(self.out_stream, Print(&query_padded))?;
+        queue!(self.out_stream, Print(RESET_STYLE))?;
+
+        queue!(self.out_stream, Print(&border_style))?;
+        queue!(self.out_stream, Print("│"))?;
+        queue!(self.out_stream, Print(RESET_STYLE))?;
+
+        // Bottom border with item count
+        let bottom_y = y + height - 1;
+        queue!(self.out_stream, MoveTo(x, bottom_y))?;
+        queue!(self.out_stream, Print(&border_style))?;
+        let item_count = format!(" {}/{} ", state.selected_index + 1, state.items.len());
+        let count_len = item_count.len();
+        let bottom_border = format!(
+            "╰{}{}╯",
+            "─".repeat((total_width as usize).saturating_sub(count_len + 2)),
+            &item_count
+        );
+        queue!(self.out_stream, Print(&bottom_border))?;
+        queue!(self.out_stream, Print(RESET_STYLE))?;
 
         Ok(())
     }

@@ -7,6 +7,8 @@ pub enum Mod {
     Explorer,
     /// Explorer input mode (for create/rename/delete/filter)
     ExplorerInput,
+    /// Telescope fuzzy finder mode
+    Telescope,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -26,6 +26,20 @@ pub struct Theme {
     pub popup_normal: Style,
     /// Completion popup - selected item
     pub popup_selected: Style,
+    /// Telescope - border style
+    pub telescope_border: Style,
+    /// Telescope - normal item
+    pub telescope_normal: Style,
+    /// Telescope - selected item
+    pub telescope_selected: Style,
+    /// Telescope - preview pane
+    pub telescope_preview: Style,
+    /// Telescope - preview highlighted line
+    pub telescope_preview_highlight: Style,
+    /// Telescope - prompt text (e.g., "> ")
+    pub telescope_prompt: Style,
+    /// Telescope - input text
+    pub telescope_input: Style,
 }
 
 /// Mode-specific styles for the status line
@@ -105,6 +119,27 @@ impl Theme {
             popup_selected: Style::new()
                 .fg(Color::Black)
                 .bg(Color::Cyan),
+
+            // Telescope: floating panel style
+            telescope_border: Style::new()
+                .fg(Color::Blue),
+            telescope_normal: Style::new()
+                .fg(Color::White)
+                .bg(Color::AnsiValue(236)),
+            telescope_selected: Style::new()
+                .fg(Color::Black)
+                .bg(Color::Cyan),
+            telescope_preview: Style::new()
+                .fg(Color::Grey)
+                .bg(Color::AnsiValue(234)),
+            telescope_preview_highlight: Style::new()
+                .fg(Color::Yellow)
+                .bg(Color::AnsiValue(238)),
+            telescope_prompt: Style::new()
+                .fg(Color::Cyan)
+                .bold(),
+            telescope_input: Style::new()
+                .fg(Color::White),
         }
     }
 
@@ -160,6 +195,27 @@ impl Theme {
             popup_selected: Style::new()
                 .fg(Color::White)
                 .bg(Color::DarkBlue),
+
+            // Telescope: floating panel style (light)
+            telescope_border: Style::new()
+                .fg(Color::DarkBlue),
+            telescope_normal: Style::new()
+                .fg(Color::Black)
+                .bg(Color::AnsiValue(254)),
+            telescope_selected: Style::new()
+                .fg(Color::White)
+                .bg(Color::DarkBlue),
+            telescope_preview: Style::new()
+                .fg(Color::DarkGrey)
+                .bg(Color::AnsiValue(255)),
+            telescope_preview_highlight: Style::new()
+                .fg(Color::DarkBlue)
+                .bg(Color::AnsiValue(250)),
+            telescope_prompt: Style::new()
+                .fg(Color::DarkBlue)
+                .bold(),
+            telescope_input: Style::new()
+                .fg(Color::Black),
         }
     }
 }

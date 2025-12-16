@@ -223,8 +223,153 @@ impl Runtime {
                 self.which_key_panel.hide();
                 self.render();
             }
+            InnerEvent::TelescopeEvent(telescope_event) => {
+                self.handle_telescope_event(telescope_event);
+            }
         }
         false
+    }
+
+    /// Handle telescope-related events
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::cast_possible_truncation)]
+    fn handle_telescope_event(&mut self, event: crate::event::TelescopeEvent) {
+        use crate::event::TelescopeEvent;
+        use crate::telescope::TelescopeData;
+        use crate::command::traits::ExecutionContext;
+
+        match event {
+            TelescopeEvent::Open { picker } => {
+                tracing::debug!(?picker, "Telescope open requested");
+                // Calculate layout based on screen size
+                self.telescope_state.calculate_layout(
+                    self.screen.width(),
+                    self.screen.height(),
+                );
+                // Open telescope with the picker name
+                // TODO: Get title and prompt from actual picker registry
+                let title = match picker.as_str() {
+                    "files" => "Find Files",
+                    "buffers" => "Buffers",
+                    "grep" => "Live Grep",
+                    "recent" => "Recent Files",
+                    "commands" => "Command Palette",
+                    "help" => "Help Tags",
+                    "keymaps" => "Keymaps",
+                    _ => "Telescope",
+                };
+                let prompt = match picker.as_str() {
+                    "files" => "Files> ",
+                    "buffers" => "Buffers> ",
+                    "grep" => "Grep> ",
+                    "recent" => "Recent> ",
+                    "commands" => "Commands> ",
+                    "help" => "Help> ",
+                    "keymaps" => "Keymaps> ",
+                    _ => "> ",
+                };
+                self.telescope_state.open(&picker, title, prompt);
+                self.set_mode(Mod::Telescope);
+                self.render();
+            }
+            TelescopeEvent::UpdateQuery { query } => {
+                tracing::debug!(?query, "Telescope query updated");
+                self.telescope_state.query = query;
+                self.telescope_state.cursor_pos = self.telescope_state.query.len();
+                // Filter items using matcher
+                // TODO: Implement async filtering with nucleo
+                self.render();
+            }
+            TelescopeEvent::UpdateItems { items } => {
+                tracing::debug!(count = items.len(), "Telescope items updated");
+                self.telescope_state.update_items(items);
+                self.render();
+            }
+            TelescopeEvent::SelectNext => {
+                self.telescope_state.select_next();
+                self.render();
+            }
+            TelescopeEvent::SelectPrev => {
+                self.telescope_state.select_prev();
+                self.render();
+            }
+            TelescopeEvent::PageDown => {
+                self.telescope_state.page_down();
+                self.render();
+            }
+            TelescopeEvent::PageUp => {
+                self.telescope_state.page_up();
+                self.render();
+            }
+            TelescopeEvent::Confirm => {
+                // Get selected item before closing
+                if let Some(item) = self.telescope_state.selected_item().cloned() {
+                    tracing::debug!(?item.display, "Telescope selection confirmed");
+                    // Handle action based on item data
+                    match &item.data {
+                        TelescopeData::FilePath(path) => {
+                            let path_str = path.to_string_lossy().to_string();
+                            self.telescope_state.close();
+                            self.set_mode(Mod::Normal);
+                            self.open_file(&path_str);
+                        }
+                        TelescopeData::BufferId(buf_id) => {
+                            let buf_id = *buf_id;
+                            self.telescope_state.close();
+                            self.set_mode(Mod::Normal);
+                            self.switch_buffer(buf_id);
+                        }
+                        TelescopeData::GrepMatch { path, line, col: _ } => {
+                            let path_str = path.to_string_lossy().to_string();
+                            let target_line = *line;
+                            self.telescope_state.close();
+                            self.set_mode(Mod::Normal);
+                            self.open_file(&path_str);
+                            // Move cursor to line
+                            if let Some(buffer) = self.buffers.get_mut(&self.active_buffer_id) {
+                                buffer.cur.y = target_line.saturating_sub(1) as u16;
+                                buffer.cur.x = 0;
+                            }
+                        }
+                        TelescopeData::Command(cmd_id) => {
+                            let cmd_id = cmd_id.clone();
+                            self.telescope_state.close();
+                            self.set_mode(Mod::Normal);
+                            // Execute the command
+                            if let Some(cmd) = self.command_registry.get(&cmd_id)
+                                && let Some(buffer) = self.buffers.get_mut(&self.active_buffer_id)
+                            {
+                                let mut ctx = ExecutionContext {
+                                    buffer,
+                                    count: Some(1),
+                                    buffer_id: self.active_buffer_id,
+                                    window_id: 0,
+                                };
+                                let _ = cmd.execute(&mut ctx);
+                            }
+                        }
+                        TelescopeData::Keymap { .. } | TelescopeData::HelpTag { .. } => {
+                            // Informational, just close
+                            self.telescope_state.close();
+                            self.set_mode(Mod::Normal);
+                        }
+                    }
+                } else {
+                    self.telescope_state.close();
+                    self.set_mode(Mod::Normal);
+                }
+                self.render();
+            }
+            TelescopeEvent::Close => {
+                self.telescope_state.close();
+                self.set_mode(Mod::Normal);
+                self.render();
+            }
+            TelescopeEvent::UpdatePreview { content } => {
+                self.telescope_state.set_preview(Some(content));
+                self.render();
+            }
+        }
     }
 
     /// Handle completion-related events
@@ -314,10 +459,11 @@ impl Runtime {
                 // Activate command line when entering command mode
                 self.command_line.activate();
             }
-            Mod::Explorer | Mod::ExplorerInput => {
+            Mod::Explorer | Mod::ExplorerInput | Mod::Telescope => {
                 // Explorer mode is handled via window focus
                 // The explorer state will be set up when opening explorer
                 // ExplorerInput mode is for file operations and filter
+                // Telescope mode is handled separately when opening a picker
             }
         }
         // Use set_mode to broadcast via watch channel

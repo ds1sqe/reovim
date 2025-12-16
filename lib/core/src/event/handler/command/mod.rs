@@ -99,6 +99,7 @@ impl CommandHandler {
             Mod::Command => &self.keymap.command,
             Mod::Explorer => &self.keymap.explorer,
             Mod::ExplorerInput => &self.keymap.explorer_input,
+            Mod::Telescope => &self.keymap.telescope,
         }
     }
 

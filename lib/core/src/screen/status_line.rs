@@ -39,7 +39,7 @@ pub fn render_status_line_to<W: Write>(
         Mod::Normal => "-- NORMAL --",
         Mod::Insert(_) => "-- INSERT --",
         Mod::Visual(_) => "-- VISUAL --",
-        Mod::Command => "", // Command mode shows command line instead
+        Mod::Command | Mod::Telescope => "", // These modes show their own UI
         Mod::Explorer => "-- EXPLORER --",
         Mod::ExplorerInput => "-- EXPLORER INPUT --",
     };

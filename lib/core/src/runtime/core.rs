@@ -14,6 +14,7 @@ use crate::highlight::{ColorMode, HighlightStore, Theme};
 use crate::jumplist::JumpList;
 use crate::modd::Mod;
 use crate::screen::{Screen, WhichKeyPanel};
+use crate::telescope::{TelescopeMatcher, TelescopeState};
 use tracing::debug;
 
 use tokio::sync::{mpsc, watch};
@@ -60,6 +61,10 @@ pub struct Runtime {
     pub(crate) completion_active_tx: watch::Sender<bool>,
     /// Watch channel receiver for completion active state
     completion_active_rx: watch::Receiver<bool>,
+    /// Telescope fuzzy finder state
+    pub telescope_state: TelescopeState,
+    /// Telescope fuzzy matcher
+    pub telescope_matcher: TelescopeMatcher,
 }
 
 impl Default for Runtime {
@@ -103,6 +108,8 @@ impl Runtime {
             completion_items_cache: Vec::new(),
             completion_active_tx,
             completion_active_rx,
+            telescope_state: TelescopeState::new(),
+            telescope_matcher: TelescopeMatcher::new(),
         }
     }
 
@@ -152,6 +159,7 @@ impl Runtime {
                 self.explorer_state.as_ref(),
                 &self.which_key_panel,
                 &self.completion_state,
+                &self.telescope_state,
             )
             .expect("failed to render");
         self.screen.flush().expect("failed to flush");
