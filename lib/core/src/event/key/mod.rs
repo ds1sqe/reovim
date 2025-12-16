@@ -1,5 +1,6 @@
-pub use reovim_sys::event::{KeyCode, KeyEvent, KeyModifiers, ModifierKeyCode};
+pub use reovim_sys::event::{KeyCode, KeyEvent};
 
+use crate::constants::KEY_EVENT_CHANNEL_CAPACITY;
 use tokio::sync::broadcast::{channel, error::SendError, Sender};
 
 use super::Subscribe;
@@ -8,11 +9,9 @@ pub struct KeyEventBroker {
     tx: Sender<KeyEvent>,
 }
 
-const BUFFER_SIZE: usize = 255;
-
 impl Default for KeyEventBroker {
     fn default() -> Self {
-        let (tx, _) = channel(BUFFER_SIZE);
+        let (tx, _) = channel(KEY_EVENT_CHANNEL_CAPACITY);
         Self { tx }
     }
 }

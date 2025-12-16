@@ -1,4 +1,6 @@
-use crate::buffer::Buffer;
+//! Command execution on buffers
+
+use crate::buffer::{Buffer, CursorOps, SelectionOps, TextOps};
 use crate::modd::{Mod, ModExtension};
 
 use super::{Command, CommandContext};
@@ -25,6 +27,10 @@ pub enum CommandResult {
 pub struct BufferCommandExecutor;
 
 impl BufferCommandExecutor {
+    #[must_use]
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::collapsible_if)]
     pub fn execute_on_buffer(
         buffer: &mut Buffer,
         cmd: &Command,
@@ -33,23 +39,23 @@ impl BufferCommandExecutor {
         let count = ctx.count.unwrap_or(1);
 
         match cmd {
-            // === Cursor Movement ===
-            Command::CursorUp => {
+            // === Cursor Movement (and Visual Extend) ===
+            Command::CursorUp | Command::VisualExtendUp => {
                 buffer.cur.y = buffer.cur.y.saturating_sub(count as u16);
                 CommandResult::NeedsRender
             }
-            Command::CursorDown => {
+            Command::CursorDown | Command::VisualExtendDown => {
                 let max_y = buffer.contents.len().saturating_sub(1) as u16;
                 buffer.cur.y = (buffer.cur.y + count as u16).min(max_y);
                 CommandResult::NeedsRender
             }
-            Command::CursorLeft => {
+            Command::CursorLeft | Command::VisualExtendLeft => {
                 buffer.cur.x = buffer.cur.x.saturating_sub(count as u16);
                 CommandResult::NeedsRender
             }
-            Command::CursorRight => {
+            Command::CursorRight | Command::VisualExtendRight => {
                 if let Some(line) = buffer.contents.get(buffer.cur.y as usize) {
-                    let max_x = line.inner.len().saturating_sub(1).max(0) as u16;
+                    let max_x = line.inner.len().saturating_sub(1) as u16;
                     buffer.cur.x = (buffer.cur.x + count as u16).min(max_x);
                 }
                 CommandResult::NeedsRender
@@ -60,7 +66,7 @@ impl BufferCommandExecutor {
             }
             Command::CursorLineEnd => {
                 if let Some(line) = buffer.contents.get(buffer.cur.y as usize) {
-                    buffer.cur.x = line.inner.len().saturating_sub(1).max(0) as u16;
+                    buffer.cur.x = line.inner.len().saturating_sub(1) as u16;
                 }
                 CommandResult::NeedsRender
             }
@@ -153,9 +159,7 @@ impl BufferCommandExecutor {
             Command::EnterVisualMode => {
                 CommandResult::ModeChange(Mod::Visual(ModExtension::Normal))
             }
-            Command::EnterCommandMode => {
-                CommandResult::ModeChange(Mod::Command)
-            }
+            Command::EnterCommandMode => CommandResult::ModeChange(Mod::Command),
 
             // === Text Operations ===
             Command::InsertChar(c) => {
@@ -176,26 +180,6 @@ impl BufferCommandExecutor {
             }
 
             // === Visual Mode ===
-            Command::VisualExtendUp => {
-                buffer.cur.y = buffer.cur.y.saturating_sub(count as u16);
-                CommandResult::NeedsRender
-            }
-            Command::VisualExtendDown => {
-                let max_y = buffer.contents.len().saturating_sub(1) as u16;
-                buffer.cur.y = (buffer.cur.y + count as u16).min(max_y);
-                CommandResult::NeedsRender
-            }
-            Command::VisualExtendLeft => {
-                buffer.cur.x = buffer.cur.x.saturating_sub(count as u16);
-                CommandResult::NeedsRender
-            }
-            Command::VisualExtendRight => {
-                if let Some(line) = buffer.contents.get(buffer.cur.y as usize) {
-                    let max_x = line.inner.len().saturating_sub(1).max(0) as u16;
-                    buffer.cur.x = (buffer.cur.x + count as u16).min(max_x);
-                }
-                CommandResult::NeedsRender
-            }
             Command::VisualDelete => {
                 let text = buffer.delete_selection();
                 CommandResult::VisualDeleteResult(text)

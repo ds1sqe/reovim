@@ -1,4 +1,4 @@
-/// Landing page content shown when starting without a file
+//! Landing page content shown when starting without a file
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -11,11 +11,12 @@ const LOGO: [&str; 5] = [
 ];
 
 /// Generate landing page content centered for the given screen dimensions
+#[must_use]
 pub fn generate(width: u16, height: u16) -> String {
     let mut lines: Vec<String> = Vec::new();
 
     // Help hints
-    let version_line = format!("version {}", VERSION);
+    let version_line = format!("version {VERSION}");
     let hints: [&str; 7] = [
         "",
         &version_line,

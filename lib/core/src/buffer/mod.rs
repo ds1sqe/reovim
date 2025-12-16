@@ -1,3 +1,18 @@
+//! Buffer module for text storage and manipulation
+
+mod cursor;
+mod selection;
+mod text;
+
+#[cfg(test)]
+mod tests;
+
+pub use cursor::{calculate_motion, CursorOps};
+pub use selection::{Selection, SelectionOps};
+pub use text::TextOps;
+
+use crate::motion::Motion;
+
 use crate::screen::Position;
 
 #[derive(Clone, Debug)]
@@ -7,19 +22,10 @@ pub struct Line {
 
 impl From<&str> for Line {
     fn from(value: &str) -> Self {
-        Line {
+        Self {
             inner: value.to_string(),
         }
     }
-}
-
-/// Represents a text selection with anchor and cursor positions
-#[derive(Clone, Debug, Default)]
-pub struct Selection {
-    /// The fixed anchor point where selection started
-    pub anchor: Position,
-    /// Whether selection is active
-    pub active: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -32,6 +38,7 @@ pub struct Buffer {
 }
 
 impl Buffer {
+    #[must_use]
     pub fn empty(id: usize) -> Self {
         Self {
             id,
@@ -42,40 +49,9 @@ impl Buffer {
         }
     }
 
-    /// Start visual selection at current cursor position
-    pub fn start_selection(&mut self) {
-        self.selection.anchor = self.cur.clone();
-        self.selection.active = true;
-    }
-
-    /// Clear selection
-    pub fn clear_selection(&mut self) {
-        self.selection.active = false;
-    }
-
-    /// Get normalized selection bounds (start always before end)
-    pub fn selection_bounds(&self) -> (Position, Position) {
-        let anchor = &self.selection.anchor;
-        let cursor = &self.cur;
-
-        if anchor.y < cursor.y || (anchor.y == cursor.y && anchor.x <= cursor.x) {
-            (anchor.clone(), cursor.clone())
-        } else {
-            (cursor.clone(), anchor.clone())
-        }
-    }
-
-    /// Get selected text
-    pub fn get_selected_text(&self) -> String {
-        if !self.selection.active {
-            return String::new();
-        }
-        let (start, end) = self.selection_bounds();
-        self.extract_text(&start, &end)
-    }
-
-    /// Extract text between two positions
-    fn extract_text(&self, start: &Position, end: &Position) -> String {
+    /// Extract text between two positions (internal helper)
+    #[allow(clippy::cast_possible_truncation)]
+    fn extract_text(&self, start: Position, end: Position) -> String {
         let mut result = String::new();
 
         if start.y == end.y {
@@ -109,9 +85,43 @@ impl Buffer {
         }
         result
     }
+}
 
-    /// Delete selected text and return it
-    pub fn delete_selection(&mut self) -> String {
+// === Selection Operations ===
+impl SelectionOps for Buffer {
+    #[allow(clippy::missing_const_for_fn)]
+    fn start_selection(&mut self) {
+        self.selection.anchor = self.cur;
+        self.selection.active = true;
+    }
+
+    #[allow(clippy::missing_const_for_fn)]
+    fn clear_selection(&mut self) {
+        self.selection.active = false;
+    }
+
+    #[allow(clippy::missing_const_for_fn)]
+    fn selection_bounds(&self) -> (Position, Position) {
+        let anchor = self.selection.anchor;
+        let cursor = self.cur;
+
+        if anchor.y < cursor.y || (anchor.y == cursor.y && anchor.x <= cursor.x) {
+            (anchor, cursor)
+        } else {
+            (cursor, anchor)
+        }
+    }
+
+    fn get_selected_text(&self) -> String {
+        if !self.selection.active {
+            return String::new();
+        }
+        let (start, end) = self.selection_bounds();
+        self.extract_text(start, end)
+    }
+
+    #[allow(clippy::cast_possible_truncation)]
+    fn delete_selection(&mut self) -> String {
         if !self.selection.active {
             return String::new();
         }
@@ -155,16 +165,19 @@ impl Buffer {
         self.clear_selection();
         text
     }
+}
 
-    pub fn set_content(&mut self, content: &str) {
+// === Text Operations ===
+impl TextOps for Buffer {
+    fn set_content(&mut self, content: &str) {
         self.contents.clear();
-        for line in content.to_string().lines() {
+        for line in content.lines() {
             let new_line = Line::from(line);
             self.contents.push(new_line);
         }
     }
 
-    pub fn to_string(&self) -> String {
+    fn content_to_string(&self) -> String {
         self.contents
             .iter()
             .map(|line| line.inner.as_str())
@@ -172,7 +185,8 @@ impl Buffer {
             .join("\n")
     }
 
-    pub fn insert_char(&mut self, c: char) {
+    #[allow(clippy::cast_possible_truncation)]
+    fn insert_char(&mut self, c: char) {
         if self.contents.is_empty() {
             self.contents.push(Line::from(""));
         }
@@ -185,19 +199,21 @@ impl Buffer {
         }
     }
 
-    pub fn delete_char_backward(&mut self) {
-        if self.cur.x > 0 {
-            if let Some(line) = self.contents.get_mut(self.cur.y as usize) {
-                let x = (self.cur.x - 1) as usize;
-                if x < line.inner.len() {
-                    line.inner.remove(x);
-                    self.cur.x -= 1;
-                }
+    #[allow(clippy::cast_possible_truncation)]
+    fn delete_char_backward(&mut self) {
+        if self.cur.x > 0
+            && let Some(line) = self.contents.get_mut(self.cur.y as usize)
+        {
+            let x = (self.cur.x - 1) as usize;
+            if x < line.inner.len() {
+                line.inner.remove(x);
+                self.cur.x -= 1;
             }
         }
     }
 
-    pub fn delete_char_forward(&mut self) {
+    #[allow(clippy::cast_possible_truncation)]
+    fn delete_char_forward(&mut self) {
         if let Some(line) = self.contents.get_mut(self.cur.y as usize) {
             let x = self.cur.x as usize;
             if x < line.inner.len() {
@@ -206,7 +222,8 @@ impl Buffer {
         }
     }
 
-    pub fn delete_line(&mut self) {
+    #[allow(clippy::cast_possible_truncation)]
+    fn delete_line(&mut self) {
         let y = self.cur.y as usize;
         if y < self.contents.len() {
             self.contents.remove(y);
@@ -215,44 +232,19 @@ impl Buffer {
             }
         }
     }
+}
 
-    pub fn word_forward(&mut self) {
-        if let Some(line) = self.contents.get(self.cur.y as usize) {
-            let chars: Vec<char> = line.inner.chars().collect();
-            let mut x = self.cur.x as usize;
-
-            // Skip non-whitespace
-            while x < chars.len() && !chars[x].is_whitespace() {
-                x += 1;
-            }
-            // Skip whitespace
-            while x < chars.len() && chars[x].is_whitespace() {
-                x += 1;
-            }
-
-            self.cur.x = x as u16;
-        }
+// === Cursor Operations ===
+impl CursorOps for Buffer {
+    fn word_forward(&mut self) {
+        self.cur = calculate_motion(&self.contents, self.cur, Motion::WordForward, 1);
     }
 
-    pub fn word_backward(&mut self) {
-        if let Some(line) = self.contents.get(self.cur.y as usize) {
-            let chars: Vec<char> = line.inner.chars().collect();
-            let mut x = self.cur.x as usize;
+    fn word_backward(&mut self) {
+        self.cur = calculate_motion(&self.contents, self.cur, Motion::WordBackward, 1);
+    }
 
-            if x > 0 {
-                x -= 1;
-            }
-
-            // Skip whitespace
-            while x > 0 && chars[x].is_whitespace() {
-                x -= 1;
-            }
-            // Skip non-whitespace
-            while x > 0 && !chars[x - 1].is_whitespace() {
-                x -= 1;
-            }
-
-            self.cur.x = x as u16;
-        }
+    fn apply_motion(&mut self, motion: Motion, count: usize) {
+        self.cur = calculate_motion(&self.contents, self.cur, motion, count);
     }
 }

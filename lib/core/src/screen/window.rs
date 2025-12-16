@@ -1,38 +1,38 @@
-use crate::buffer::Buffer;
-use crate::screen::Position;
+//! Window rendering module
 
-/// ANSI escape codes for selection highlighting
-/// Using explicit background color instead of reverse video to avoid
-/// conflicts with terminal cursor (which often uses reverse video)
-const SELECTION_ON: &str = "\x1b[48;5;240m";  // Gray background (256-color)
-const SELECTION_OFF: &str = "\x1b[49m";        // Default background
+use crate::buffer::{Buffer, SelectionOps};
+use crate::constants::VISUAL_SELECTION_BG;
+use crate::highlight::{Highlight, HighlightGroup, HighlightStore, Span, Style};
+use reovim_sys::style::Color;
 
-/// represent top left corner
-#[derive(Clone, Copy)]
+/// Represents top left corner position
+#[derive(Clone, Copy, Debug, Default)]
 pub struct Anchor {
     pub x: u16,
     pub y: u16,
 }
 
-/// window is a intermediate object between buffer and screen
+/// Window is an intermediate object between buffer and screen
 pub struct Window {
-    // where this window's of top left positioned on the screen is
+    /// Where this window's top left is positioned on the screen
     pub anchor: Anchor,
     pub width: u16,
     pub height: u16,
 
     pub buffer_id: usize,
-    // where this buffer's top left positioned is
+    /// Where this buffer's top left is positioned
     pub buffer_anchor: Anchor,
     pub line_number: LineNumber,
 }
 
+#[derive(Clone, Copy, Debug)]
 pub enum LineNumberMode {
     Absolute,
     Relative,
     Hybrid,
 }
 
+#[derive(Debug, Default)]
 pub struct LineNumber {
     show: bool,
     number: bool,          // :set number flag
@@ -50,11 +50,13 @@ impl LineNumber {
         self.update_state();
     }
 
+    #[allow(clippy::missing_const_for_fn)]
     fn update_state(&mut self) {
         self.show = self.number || self.relative_number;
     }
 
-    pub fn mode(&self) -> LineNumberMode {
+    #[must_use]
+    pub const fn mode(&self) -> LineNumberMode {
         match (self.number, self.relative_number) {
             (true, true) => LineNumberMode::Hybrid,
             (false, true) => LineNumberMode::Relative,
@@ -63,47 +65,18 @@ impl LineNumber {
     }
 }
 
-impl Default for LineNumber {
-    fn default() -> Self {
-        LineNumber {
-            show: false,
-            number: false,
-            relative_number: false,
-        }
-    }
-}
-
 impl Window {
-    /// Check if a position is within selection bounds
-    fn is_selected(&self, row: u16, col: u16, sel_start: &Position, sel_end: &Position) -> bool {
-        if row < sel_start.y || row > sel_end.y {
-            return false;
-        }
-        if row == sel_start.y && row == sel_end.y {
-            // Single line selection
-            col >= sel_start.x && col <= sel_end.x
-        } else if row == sel_start.y {
-            // First line of multi-line selection
-            col >= sel_start.x
-        } else if row == sel_end.y {
-            // Last line of multi-line selection
-            col <= sel_end.x
-        } else {
-            // Middle lines are fully selected
-            true
-        }
-    }
-
-    pub fn render(&self, buf: &Buffer) -> Vec<String> {
+    #[must_use]
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_sign_loss)]
+    #[allow(clippy::cast_precision_loss)]
+    #[allow(clippy::single_match_else)]
+    #[allow(clippy::collapsible_if)]
+    #[allow(clippy::collapsible_else_if)]
+    #[allow(clippy::option_if_let_else)]
+    #[allow(clippy::if_not_else)]
+    pub fn render(&self, buf: &Buffer, highlight_store: &HighlightStore) -> Vec<String> {
         let mut lines: Vec<String> = Vec::new();
-
-        // Get selection bounds if active
-        let selection_active = buf.selection.active;
-        let (sel_start, sel_end) = if selection_active {
-            buf.selection_bounds()
-        } else {
-            (Position::default(), Position::default())
-        };
 
         // Calculate line number width for alignment
         let total_lines = buf.contents.len();
@@ -111,6 +84,23 @@ impl Window {
             (total_lines as f64).log10().floor() as usize + 1
         } else {
             1
+        };
+
+        // Build visual selection highlight dynamically if active
+        let visual_highlight = if buf.selection.active {
+            let (sel_start, sel_end) = buf.selection_bounds();
+            Some(Highlight::new(
+                Span::new(
+                    u32::from(sel_start.y),
+                    u32::from(sel_start.x),
+                    u32::from(sel_end.y),
+                    u32::from(sel_end.x) + 1, // +1 because end_col is exclusive
+                ),
+                Style::new().bg(Color::AnsiValue(VISUAL_SELECTION_BG)),
+                HighlightGroup::Visual,
+            ))
+        } else {
+            None
         };
 
         for row in self.buffer_anchor.y..(self.height + self.buffer_anchor.y) {
@@ -121,12 +111,12 @@ impl Window {
                         let num_str = match self.line_number.mode() {
                             LineNumberMode::Absolute => format!("{}", row + 1), // 1-indexed
                             LineNumberMode::Relative => {
-                                let rel = (row as i32 - buf.cur.y as i32).abs();
+                                let rel = (i32::from(row) - i32::from(buf.cur.y)).abs();
                                 format!("{rel}")
                             }
                             LineNumberMode::Hybrid => {
                                 if row != buf.cur.y {
-                                    let rel = (row as i32 - buf.cur.y as i32).abs();
+                                    let rel = (i32::from(row) - i32::from(buf.cur.y)).abs();
                                     format!("{rel}")
                                 } else {
                                     format!("{}", row + 1) // Show absolute on cursor line
@@ -134,52 +124,181 @@ impl Window {
                             }
                         };
                         // Right-align the number and add space separator
-                        format!("{:>width$} ", num_str, width = num_width)
+                        format!("{num_str:>num_width$} ")
                     } else {
-                        "".to_string()
+                        String::new()
                     };
 
-                    // Render content with selection highlighting
-                    let styled_content = if selection_active {
-                        self.render_line_with_selection(
-                            &content.inner,
-                            row,
-                            &sel_start,
-                            &sel_end,
-                        )
-                    } else {
-                        content.inner.clone()
-                    };
+                    // Get highlights for this line
+                    let line_len = content.inner.chars().count() as u32;
+                    let mut line_highlights =
+                        highlight_store.get_line_highlights(buf.id, u32::from(row), line_len);
+
+                    // Add visual selection highlight if applicable
+                    if let Some(ref visual_hl) = visual_highlight {
+                        if let Some((start, end)) =
+                            visual_hl.span.cols_for_line(u32::from(row), line_len)
+                        {
+                            if start < end {
+                                // Merge visual highlight with stored highlights
+                                line_highlights = self.merge_visual_highlight(
+                                    line_highlights,
+                                    start,
+                                    end,
+                                    &visual_hl.style,
+                                );
+                            }
+                        }
+                    }
+
+                    let styled_content =
+                        self.render_styled_line(&content.inner, &line_highlights);
 
                     head + &styled_content
                 }
-                None => "".to_string(),
+                None => String::new(),
             };
             lines.push(line_out);
         }
         lines
     }
 
-    /// Render a line with selection highlighting
-    fn render_line_with_selection(
+    /// Merge visual selection highlight with existing highlights
+    #[allow(clippy::unused_self)]
+    #[allow(clippy::needless_pass_by_value)]
+    fn merge_visual_highlight(
+        &self,
+        highlights: Vec<crate::highlight::store::LineHighlight>,
+        start: u32,
+        end: u32,
+        visual_style: &Style,
+    ) -> Vec<crate::highlight::store::LineHighlight> {
+        use crate::highlight::store::LineHighlight;
+
+        if highlights.is_empty() {
+            // No existing highlights, just add visual selection
+            return vec![LineHighlight {
+                start_col: start,
+                end_col: end,
+                style: visual_style.clone(),
+            }];
+        }
+
+        // Simple approach: merge visual style into overlapping regions
+        let mut result: Vec<LineHighlight> = Vec::new();
+        let mut current_pos = 0u32;
+
+        for hl in &highlights {
+            // Before this highlight
+            if current_pos < hl.start_col {
+                // Check if visual selection covers this gap
+                let gap_start = current_pos.max(start);
+                let gap_end = hl.start_col.min(end);
+                if gap_start < gap_end {
+                    // Visual selection in the gap before existing highlight
+                    result.push(LineHighlight {
+                        start_col: gap_start,
+                        end_col: gap_end,
+                        style: visual_style.clone(),
+                    });
+                }
+            }
+
+            // The highlight region itself
+            let hl_in_visual = hl.start_col < end && hl.end_col > start;
+            if hl_in_visual {
+                // Split into: before visual, in visual, after visual
+                if hl.start_col < start {
+                    result.push(LineHighlight {
+                        start_col: hl.start_col,
+                        end_col: start,
+                        style: hl.style.clone(),
+                    });
+                }
+                let overlap_start = hl.start_col.max(start);
+                let overlap_end = hl.end_col.min(end);
+                if overlap_start < overlap_end {
+                    result.push(LineHighlight {
+                        start_col: overlap_start,
+                        end_col: overlap_end,
+                        style: hl.style.merge(visual_style),
+                    });
+                }
+                if hl.end_col > end {
+                    result.push(LineHighlight {
+                        start_col: end,
+                        end_col: hl.end_col,
+                        style: hl.style.clone(),
+                    });
+                }
+            } else {
+                result.push(hl.clone());
+            }
+
+            current_pos = hl.end_col;
+        }
+
+        // After all highlights, check if visual selection extends further
+        if current_pos < end && start < end {
+            let final_start = current_pos.max(start);
+            if final_start < end {
+                result.push(LineHighlight {
+                    start_col: final_start,
+                    end_col: end,
+                    style: visual_style.clone(),
+                });
+            }
+        }
+
+        result
+    }
+
+    /// Render a line with highlight ranges
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::unused_self)]
+    fn render_styled_line(
         &self,
         line: &str,
-        row: u16,
-        sel_start: &Position,
-        sel_end: &Position,
+        highlights: &[crate::highlight::store::LineHighlight],
     ) -> String {
+        if highlights.is_empty() {
+            return line.to_string();
+        }
+
         let mut result = String::new();
+        let chars: Vec<char> = line.chars().collect();
+        let mut current_col: u32 = 0;
+        let mut hl_idx = 0;
 
-        for (col, ch) in line.chars().enumerate() {
-            let selected = self.is_selected(row, col as u16, sel_start, sel_end);
+        while (current_col as usize) < chars.len() {
+            // Find if current position is in a highlight
+            while hl_idx < highlights.len() && highlights[hl_idx].end_col <= current_col {
+                hl_idx += 1;
+            }
 
-            if selected {
-                // Apply selection highlighting with background color
-                result.push_str(SELECTION_ON);
-                result.push(ch);
-                result.push_str(SELECTION_OFF);
+            if hl_idx < highlights.len() && highlights[hl_idx].start_col <= current_col {
+                // We're inside a highlight
+                let hl = &highlights[hl_idx];
+                result.push_str(&hl.style.to_ansi_start());
+
+                while current_col < hl.end_col && (current_col as usize) < chars.len() {
+                    result.push(chars[current_col as usize]);
+                    current_col += 1;
+                }
+
+                result.push_str(Style::ansi_reset());
             } else {
-                result.push(ch);
+                // Not in a highlight, output until next highlight or end
+                let next_start = if hl_idx < highlights.len() {
+                    highlights[hl_idx].start_col
+                } else {
+                    chars.len() as u32
+                };
+
+                while current_col < next_start && (current_col as usize) < chars.len() {
+                    result.push(chars[current_col as usize]);
+                    current_col += 1;
+                }
             }
         }
 
@@ -195,6 +314,10 @@ impl Window {
     }
 
     /// Get the width of the line number gutter (including separator)
+    #[must_use]
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_sign_loss)]
+    #[allow(clippy::cast_precision_loss)]
     pub fn line_number_width(&self, total_lines: usize) -> u16 {
         if self.line_number.show {
             // Width of largest line number + 1 for space separator
@@ -208,6 +331,4 @@ impl Window {
             0
         }
     }
-
-    // TODO: split
 }

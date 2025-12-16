@@ -2,6 +2,21 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Project Goals
+
+- **Fastest-reaction editor**: Prioritize minimal latency and instant response to user input
+- **Scalability**: Architecture designed to scale with large files and complex operations
+
+## Code Standards
+
+### Zero-Warning Policy
+
+This project enforces a **zero-warning policy**. All code must compile without any warnings from:
+- `cargo build`
+- `cargo clippy`
+
+No warnings are acceptable. Fix all warnings before committing.
+
 ## Build Commands
 
 ```bash
@@ -89,4 +104,13 @@ Reovim is a Rust-based neovim-like text editor built with async tokio runtime an
 
 ### Minimum Rust Version
 
-1.80
+1.92 (Rust 2024 edition)
+
+## Detailed Documentation
+
+For in-depth information, see:
+- [docs/architecture.md](./docs/architecture.md) - Full architecture overview
+- [docs/event-system.md](./docs/event-system.md) - Event flow details
+- [docs/commands.md](./docs/commands.md) - Command system
+- [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md) - Development guide
+- [docs/TESTING.md](./docs/TESTING.md) - Testing guide

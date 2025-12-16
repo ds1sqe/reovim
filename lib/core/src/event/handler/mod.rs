@@ -17,11 +17,13 @@ pub struct PrintEventHandler {
 
 impl Subscribe<KeyEvent> for PrintEventHandler {
     fn subscribe(&mut self, rx: Receiver<KeyEvent>) {
-        self.key_event_rx = Some(rx)
+        self.key_event_rx = Some(rx);
     }
 }
 
 impl PrintEventHandler {
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)]
     pub fn new(buffer_id: usize, tx: Sender<InnerEvent>) -> Self {
         Self {
             buffer_id,
@@ -42,32 +44,19 @@ impl PrintEventHandler {
 
     pub async fn run(mut self) {
         if let Some(rx) = self.key_event_rx.take() {
-            async {
-                let mut rx = rx;
-                loop {
-                    match rx.recv().await {
-                        Ok(event) => {
-                            if event == KeyCode::Char('c').into() {
-                                self.send_event(format!(
-                                    "\rCursor position: {:?}",
-                                    cursor::position()
-                                ))
-                                .await;
-                            } else {
-                                self.send_event(format!(
-                                    "\rEvent::{:?}",
-                                    event
-                                ))
-                                .await;
-                            }
-                        }
-                        Err(_) => {
-                            break;
-                        }
-                    }
+            let mut rx = rx;
+            while let Ok(event) = rx.recv().await {
+                if event == KeyCode::Char('c').into() {
+                    self.send_event(format!(
+                        "\rCursor position: {:?}",
+                        cursor::position()
+                    ))
+                    .await;
+                } else {
+                    self.send_event(format!("\rEvent::{event:?}"))
+                        .await;
                 }
             }
-            .await;
         }
     }
 }
@@ -79,11 +68,13 @@ pub struct TerminateHandler {
 
 impl Subscribe<KeyEvent> for TerminateHandler {
     fn subscribe(&mut self, rx: Receiver<KeyEvent>) {
-        self.key_event_rx = Some(rx)
+        self.key_event_rx = Some(rx);
     }
 }
 
 impl TerminateHandler {
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)]
     pub fn new(tx: Sender<InnerEvent>) -> Self {
         Self {
             key_event_rx: None,
@@ -100,25 +91,15 @@ impl TerminateHandler {
 
     pub async fn run(mut self) {
         if let Some(rx) = self.key_event_rx.take() {
-            async {
-                let mut rx = rx;
-                loop {
-                    match rx.recv().await {
-                        Ok(event) => {
-                            if event.code == KeyCode::Char('d')
-                                && event.modifiers == (KeyModifiers::CONTROL)
-                            {
-                                self.send_event().await;
-                                break;
-                            }
-                        }
-                        Err(_) => {
-                            break;
-                        }
-                    }
+            let mut rx = rx;
+            while let Ok(event) = rx.recv().await {
+                if event.code == KeyCode::Char('d')
+                    && event.modifiers == (KeyModifiers::CONTROL)
+                {
+                    self.send_event().await;
+                    break;
                 }
             }
-            .await;
         }
     }
 }

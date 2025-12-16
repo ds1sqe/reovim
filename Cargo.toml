@@ -3,9 +3,9 @@ members=[ "lib/*","main/"]
 resolver = "2"
 
 [workspace.package]
-rust-version = "1.80"
+rust-version = "1.92"
 version = "0.1.8"
-edition = "2021"
+edition = "2024"
 authors = ["ds1sqe(dukim) <ds1sqe@mensakorea.org>"]
 license = "MIT"
 description = "A Rust-powered neovim-like text editor"
@@ -20,6 +20,15 @@ allow_branch = "develop"
 
 [workspace.metadata.docs.rs]
 rustdoc-args = ["--document-private-items"]
+
+[workspace.lints.rust]
+warnings = "deny"
+unsafe_code = "warn"
+
+[workspace.lints.clippy]
+all = "deny"
+pedantic = "warn"
+nursery = "warn"
 
 [workspace.dependencies]
 bitflags = "2.6.0"

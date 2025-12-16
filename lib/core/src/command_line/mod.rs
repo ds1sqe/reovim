@@ -14,6 +14,7 @@ pub struct CommandLine {
 }
 
 impl CommandLine {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -42,6 +43,7 @@ impl CommandLine {
         self.active = false;
     }
 
+    #[must_use]
     pub fn execute(&self) -> Option<ExCommand> {
         ExCommand::parse(&self.input)
     }

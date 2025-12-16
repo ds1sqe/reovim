@@ -2,6 +2,12 @@
 
 A Rust-powered neovim-like text editor.
 
+## Project Goals
+
+- **Fastest-reaction editor**: Minimal latency, instant response
+- **Scalability**: Handles large files and complex operations
+- **Zero-warning policy**: All code must compile warning-free
+
 ## Features
 
 - Modal editing (Normal, Insert, Visual, Command modes)
@@ -83,9 +89,21 @@ Most movement commands support a numeric prefix (e.g., `5j` moves down 5 lines).
 
 ## Architecture
 
-- `reovim` - Main binary
-- `reovim-core` - Core editor logic (runtime, buffers, events, screen)
-- `reovim-sys` - System abstraction layer (crossterm re-exports)
+```
+MAIN ──▶ CORE ──▶ SYS
+```
+
+- `reovim` (MAIN) - Main binary
+- `reovim-core` (CORE) - Core editor logic (runtime, buffers, events, screen)
+- `reovim-sys` (SYS) - System abstraction layer (crossterm re-exports)
+
+## Documentation
+
+- [Architecture](./docs/architecture.md) - System design and component overview
+- [Event System](./docs/event-system.md) - Input handling and event flow
+- [Commands](./docs/commands.md) - Command system and keybindings
+- [Development](./docs/DEVELOPMENT.md) - Setup and contributing
+- [Testing](./docs/TESTING.md) - Running and writing tests
 
 ## License
 

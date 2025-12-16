@@ -24,19 +24,22 @@ impl Default for InputEventBroker {
     fn default() -> Self {
         Self {
             delay: Duration::from_millis(DEFAULT_DELAY),
-            key_broker: Default::default(),
+            key_broker: key::KeyEventBroker::default(),
             error_out: Box::new(io::stdout()),
         }
     }
 }
 
 impl InputEventBroker {
+    #[allow(clippy::missing_panics_doc)]
     pub fn handle_error(&mut self, err: impl Error) {
         self.error_out
             .write_all(&err.to_string().into_bytes())
             .expect("Failed to send error event");
     }
 
+    #[allow(clippy::ignored_unit_patterns)]
+    #[allow(clippy::match_same_arms)]
     pub async fn subscribe(mut self) {
         let mut reader = EventStream::new();
 
@@ -45,7 +48,7 @@ impl InputEventBroker {
             let event = reader.next().fuse();
 
             select! {
-                _ = delay => {},
+                () = delay => {},
                 maybe_event = event => {
                     match maybe_event {
                         Some(Ok(ev)) => {
@@ -55,12 +58,9 @@ impl InputEventBroker {
                                     if key_event.kind != KeyEventKind::Press {
                                         continue;
                                     }
-                                    match self.key_broker.handle(key_event) {
-                                        Err(e) => {
-                                            self.handle_error(e);
-                                            break;
-                                        }
-                                        Ok(_) => ()
+                                    if let Err(e) = self.key_broker.handle(key_event) {
+                                        self.handle_error(e);
+                                        break;
                                     }
                                 }
                                 Event::Mouse(_) |

@@ -6,7 +6,7 @@ use {
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn print_help() {
-    println!("reovim {}", VERSION);
+    println!("reovim {VERSION}");
     println!("A Rust-powered neovim-like text editor");
     println!();
     println!("USAGE:");
@@ -21,7 +21,7 @@ fn print_help() {
 }
 
 fn print_version() {
-    println!("reovim {}", VERSION);
+    println!("reovim {VERSION}");
 }
 
 #[tokio::main]
@@ -41,7 +41,7 @@ async fn main() -> Result<(), io::Error> {
                 return Ok(());
             }
             _ if arg.starts_with('-') => {
-                eprintln!("Unknown option: {}", arg);
+                eprintln!("Unknown option: {arg}");
                 eprintln!("Use --help for usage information");
                 std::process::exit(1);
             }

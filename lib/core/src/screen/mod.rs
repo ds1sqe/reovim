@@ -1,8 +1,14 @@
+#![allow(clippy::missing_errors_doc)]
+
+mod status_line;
+
 use {
     crate::{
         buffer::Buffer,
         command::terminal::{Clear, ClearType},
         command_line::CommandLine,
+        constants::RESET_STYLE,
+        highlight::HighlightStore,
         modd::Mod,
     },
     reovim_sys::{
@@ -16,6 +22,8 @@ use {
     window::{Anchor, LineNumber, Window},
 };
 
+pub use status_line::{render_command_line_to, render_status_line_to, StatusLineRenderer};
+
 pub mod cusor;
 pub mod window;
 
@@ -23,7 +31,8 @@ pub struct ScreenSize {
     pub height: u16,
     pub width: u16,
 }
-#[derive(Clone, Debug, Default)]
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Position {
     pub x: u16,
     pub y: u16,
@@ -70,6 +79,7 @@ impl Screen {
     ) -> std::result::Result<(), std::io::Error> {
         queue!(self.out_stream, Clear(ctype))
     }
+
     pub fn flush(&mut self) -> std::result::Result<(), std::io::Error> {
         self.out_stream.flush()
     }
@@ -96,134 +106,71 @@ impl Screen {
         self.clear(ClearType::All)
     }
 
-    pub fn width(&self) -> u16 {
+    #[must_use]
+    pub const fn width(&self) -> u16 {
         self.size.width
     }
 
-    pub fn height(&self) -> u16 {
+    #[must_use]
+    pub const fn height(&self) -> u16 {
         self.size.height
     }
 
-    /// Render the status line showing current mode, pending keys, last command, and buffer name
-    pub fn render_status_line(
-        &mut self,
-        mode: &Mod,
-        buffer: Option<&Buffer>,
-        pending_keys: &str,
-        last_command: &str,
-    ) -> std::result::Result<(), std::io::Error> {
-        let mode_str = match mode {
-            Mod::Normal => "-- NORMAL --",
-            Mod::Insert(_) => "-- INSERT --",
-            Mod::Visual(_) => "-- VISUAL --",
-            Mod::Command => "", // Command mode shows command line instead
-        };
-
-        // Get buffer name (file path or [No Name])
-        let buffer_name = buffer
-            .and_then(|b| b.file_path.as_ref())
-            .map(|p| p.as_str())
-            .unwrap_or("[No Name]");
-
-        // Format pending keys or last command section
-        let cmd_section = if !pending_keys.is_empty() {
-            format!(" {}", pending_keys)
-        } else if !last_command.is_empty() {
-            format!(" [{}]", last_command)
-        } else {
-            String::new()
-        };
-
-        // Calculate spacing to right-align buffer name
-        let status_row = self.size.height.saturating_sub(1);
-        let left_len = mode_str.len() + cmd_section.len();
-        let name_len = buffer_name.len();
-        let width = self.size.width as usize;
-
-        // Build status line: mode + cmd on left, buffer name on right
-        let spacing = if left_len + name_len < width {
-            width - left_len - name_len
-        } else {
-            1
-        };
-
-        let status_line = format!(
-            "{}{}{:spacing$}{}",
-            mode_str,
-            cmd_section,
-            "",
-            buffer_name,
-            spacing = spacing
-        );
-
-        queue!(self.out_stream, MoveTo(0, status_row))?;
-        queue!(self.out_stream, Print(status_line))
-    }
-
-    /// Render the command line input (shown in Command mode)
-    pub fn render_command_line(
-        &mut self,
-        cmd_line: &CommandLine,
-    ) -> std::result::Result<(), std::io::Error> {
-        let status_row = self.size.height.saturating_sub(1);
-        queue!(self.out_stream, MoveTo(0, status_row))?;
-        let display = format!(":{}", cmd_line.input);
-        queue!(self.out_stream, Print(display))?;
-        // Position cursor after the input
-        let cursor_col = 1 + cmd_line.cursor as u16;
-        queue!(self.out_stream, MoveTo(cursor_col, status_row))
-    }
-
     /// update screen
+    #[allow(clippy::cast_possible_truncation)]
     pub fn render(
         &mut self,
         buffers: &[Buffer],
+        highlight_store: &HighlightStore,
         mode: &Mod,
         cmd_line: &CommandLine,
         pending_keys: &str,
         last_command: &str,
     ) -> std::result::Result<(), std::io::Error> {
         // Reset all styling before clearing
-        queue!(self.out_stream, Print("\x1b[0m"))?;
+        queue!(self.out_stream, Print(RESET_STYLE))?;
         self.clear(ClearType::All)?;
 
         // Track cursor position from main buffer
         let mut cursor_pos: Option<(u16, u16)> = None;
         let mut current_buffer: Option<&Buffer> = None;
 
-        for (_wid, win) in self.windows.iter().enumerate() {
-            match buffers.get(win.buffer_id) {
-                Some(buf) => {
-                    current_buffer = Some(buf);
+        for win in &self.windows {
+            if let Some(buf) = buffers.get(win.buffer_id) {
+                current_buffer = Some(buf);
 
-                    // Render each line with explicit cursor positioning
-                    let lines = win.render(buf);
-                    for (row_offset, line) in lines.iter().enumerate() {
-                        queue!(
-                            self.out_stream,
-                            MoveTo(win.anchor.x, win.anchor.y + row_offset as u16)
-                        )?;
-                        queue!(self.out_stream, Print(line))?;
-                    }
+                // Render each line with explicit cursor positioning
+                let lines = win.render(buf, highlight_store);
+                for (row_offset, line) in lines.iter().enumerate() {
+                    queue!(
+                        self.out_stream,
+                        MoveTo(win.anchor.x, win.anchor.y + row_offset as u16)
+                    )?;
+                    queue!(self.out_stream, Print(line))?;
+                }
 
-                    // Calculate cursor position relative to window
-                    // Account for line number gutter width
-                    let gutter_width = win.line_number_width(buf.contents.len());
-                    let cursor_x = win.anchor.x + gutter_width + buf.cur.x;
-                    let cursor_y = win.anchor.y + buf.cur.y;
-                    cursor_pos = Some((cursor_x, cursor_y));
-                }
-                None => {
-                    // TODO: handle buffer not found
-                }
+                // Calculate cursor position relative to window
+                // Account for line number gutter width
+                let gutter_width = win.line_number_width(buf.contents.len());
+                let cursor_x = win.anchor.x + gutter_width + buf.cur.x;
+                let cursor_y = win.anchor.y + buf.cur.y;
+                cursor_pos = Some((cursor_x, cursor_y));
             }
         }
 
         // Show command line in Command mode, status line otherwise
         if matches!(mode, Mod::Command) {
-            self.render_command_line(cmd_line)?;
+            render_command_line_to(&mut self.out_stream, self.size.height, cmd_line)?;
         } else {
-            self.render_status_line(mode, current_buffer, pending_keys, last_command)?;
+            render_status_line_to(
+                &mut self.out_stream,
+                self.size.width,
+                self.size.height,
+                mode,
+                current_buffer,
+                pending_keys,
+                last_command,
+            )?;
             // Position cursor at buffer cursor (not in command mode)
             if let Some((x, y)) = cursor_pos {
                 queue!(self.out_stream, MoveTo(x, y))?;
@@ -242,5 +189,33 @@ impl Screen {
         for window in &mut self.windows {
             window.set_relative_number(enabled);
         }
+    }
+}
+
+// Implement StatusLineRenderer trait for Screen
+impl StatusLineRenderer for Screen {
+    fn render_status_line(
+        &mut self,
+        mode: &Mod,
+        buffer: Option<&Buffer>,
+        pending_keys: &str,
+        last_command: &str,
+    ) -> std::result::Result<(), std::io::Error> {
+        render_status_line_to(
+            &mut self.out_stream,
+            self.size.width,
+            self.size.height,
+            mode,
+            buffer,
+            pending_keys,
+            last_command,
+        )
+    }
+
+    fn render_command_line(
+        &mut self,
+        cmd_line: &CommandLine,
+    ) -> std::result::Result<(), std::io::Error> {
+        render_command_line_to(&mut self.out_stream, self.size.height, cmd_line)
     }
 }
