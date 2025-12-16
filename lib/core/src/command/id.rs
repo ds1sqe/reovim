@@ -59,6 +59,7 @@ pub mod builtin {
     pub const OPEN_LINE_BELOW: CommandId = CommandId::new("open_line_below");
     pub const OPEN_LINE_ABOVE: CommandId = CommandId::new("open_line_above");
     pub const ENTER_VISUAL_MODE: CommandId = CommandId::new("enter_visual_mode");
+    pub const ENTER_VISUAL_BLOCK_MODE: CommandId = CommandId::new("enter_visual_block_mode");
     pub const ENTER_COMMAND_MODE: CommandId = CommandId::new("enter_command_mode");
 
     // === Text Operations ===
@@ -127,4 +128,8 @@ pub mod builtin {
     pub const EXPLORER_CONFIRM_INPUT: CommandId = CommandId::new("explorer_confirm_input");
     pub const EXPLORER_CANCEL_INPUT: CommandId = CommandId::new("explorer_cancel_input");
     pub const EXPLORER_INPUT_BACKSPACE: CommandId = CommandId::new("explorer_input_backspace");
+
+    // === Jump List ===
+    pub const JUMP_OLDER: CommandId = CommandId::new("jump_older");
+    pub const JUMP_NEWER: CommandId = CommandId::new("jump_newer");
 }

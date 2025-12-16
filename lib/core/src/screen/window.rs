@@ -1,6 +1,6 @@
 //! Window rendering module
 
-use crate::buffer::{Buffer, SelectionOps};
+use crate::buffer::{Buffer, SelectionMode, SelectionOps};
 use crate::highlight::{ColorMode, Highlight, HighlightGroup, HighlightStore, Span, Style, Theme};
 
 use super::layout::WindowType;
@@ -79,6 +79,7 @@ impl Window {
     #[allow(clippy::collapsible_else_if)]
     #[allow(clippy::option_if_let_else)]
     #[allow(clippy::if_not_else)]
+    #[allow(clippy::too_many_lines)]
     pub fn render(
         &self,
         buf: &Buffer,
@@ -97,21 +98,40 @@ impl Window {
         };
 
         // Build visual selection highlight dynamically if active
+        // Block mode needs special handling (same columns for all lines)
         let visual_highlight = if buf.selection.active {
-            let (sel_start, sel_end) = buf.selection_bounds();
-            Some(Highlight::new(
-                Span::new(
-                    u32::from(sel_start.y),
-                    u32::from(sel_start.x),
-                    u32::from(sel_end.y),
-                    u32::from(sel_end.x) + 1, // +1 because end_col is exclusive
-                ),
-                theme.visual_selection.clone(),
-                HighlightGroup::Visual,
-            ))
+            match buf.selection_mode() {
+                SelectionMode::Block => {
+                    let (top_left, bottom_right) = buf.block_bounds();
+                    Some(Highlight::new(
+                        Span::new(
+                            u32::from(top_left.y),
+                            u32::from(top_left.x),
+                            u32::from(bottom_right.y),
+                            u32::from(bottom_right.x) + 1, // +1 because end_col is exclusive
+                        ),
+                        theme.visual_selection.clone(),
+                        HighlightGroup::Visual,
+                    ))
+                }
+                SelectionMode::Character | SelectionMode::Line => {
+                    let (sel_start, sel_end) = buf.selection_bounds();
+                    Some(Highlight::new(
+                        Span::new(
+                            u32::from(sel_start.y),
+                            u32::from(sel_start.x),
+                            u32::from(sel_end.y),
+                            u32::from(sel_end.x) + 1, // +1 because end_col is exclusive
+                        ),
+                        theme.visual_selection.clone(),
+                        HighlightGroup::Visual,
+                    ))
+                }
+            }
         } else {
             None
         };
+        let is_block_mode = buf.selection.active && buf.selection_mode() == SelectionMode::Block;
 
         for row in self.buffer_anchor.y..(self.height + self.buffer_anchor.y) {
             let line_content = buf.contents.get(row as usize);
@@ -158,9 +178,13 @@ impl Window {
 
                     // Add visual selection highlight if applicable
                     if let Some(ref visual_hl) = visual_highlight {
-                        if let Some((start, end)) =
+                        // Use different column calculation for block mode vs character mode
+                        let cols = if is_block_mode {
+                            visual_hl.span.cols_for_line_block(u32::from(row), line_len)
+                        } else {
                             visual_hl.span.cols_for_line(u32::from(row), line_len)
-                        {
+                        };
+                        if let Some((start, end)) = cols {
                             if start < end {
                                 // Merge visual highlight with stored highlights
                                 line_highlights = self.merge_visual_highlight(

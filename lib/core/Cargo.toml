@@ -17,6 +17,7 @@ reovim-sys.workspace = true
 futures.workspace = true
 futures-timer.workspace = true
 tokio.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
 tempfile = "3"

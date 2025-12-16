@@ -39,6 +39,12 @@ futures-timer = "3.0"
 tokio = { version = "1.25", features = ["full"] }
 rustix = { version="0.38.42", features = ["std", "stdio", "termios"]}
 crossterm = {version="0.27", features = ["event-stream","filedescriptor"]}
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "time"] }
+tracing-appender = "0.2"
+chrono = "0.4"
 # local libs
 reovim-core = { path = "./lib/core", version = "0.1.2" }
 reovim-sys = { path = "./lib/sys", version = "0.1.2" }

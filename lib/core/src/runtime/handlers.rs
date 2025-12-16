@@ -43,8 +43,14 @@ impl Runtime {
                                 && let Some(buffer) = self.buffers.get_mut(&0)
                             {
                                 let content = buffer.content_to_string();
-                                if std::fs::write(&path, &content).is_ok() {
-                                    buffer.file_path = Some(path);
+                                match std::fs::write(&path, &content) {
+                                    Ok(()) => {
+                                        tracing::info!(path = %path, bytes = content.len(), "File saved");
+                                        buffer.file_path = Some(path);
+                                    }
+                                    Err(e) => {
+                                        tracing::error!(path = %path, error = %e, "Failed to write file");
+                                    }
                                 }
                             }
                         }
@@ -55,7 +61,14 @@ impl Runtime {
                                 && let Some(buffer) = self.buffers.get(&0)
                             {
                                 let content = buffer.content_to_string();
-                                let _ = std::fs::write(&path, &content);
+                                match std::fs::write(&path, &content) {
+                                    Ok(()) => {
+                                        tracing::info!(path = %path, bytes = content.len(), "File saved before quit");
+                                    }
+                                    Err(e) => {
+                                        tracing::error!(path = %path, error = %e, "Failed to write file before quit");
+                                    }
+                                }
                             }
                             self.command_line.clear();
                             return true;
@@ -74,8 +87,8 @@ impl Runtime {
                         ExCommand::Edit { filename } => {
                             self.open_file(&filename);
                         }
-                        ExCommand::Unknown(_) => {
-                            // TODO: show "unknown command" error
+                        ExCommand::Unknown(cmd) => {
+                            tracing::warn!(command = %cmd, "Unknown ex-command");
                         }
                     }
                 }
@@ -109,12 +122,22 @@ impl Runtime {
             return false;
         };
 
+        // Use active_buffer_id instead of context.buffer_id since the dispatcher
+        // doesn't track buffer changes. In a single-window editor, active_buffer_id
+        // is the correct buffer to operate on.
+        let buffer_id = self.active_buffer_id;
+
         // Get the buffer and execute the command
-        if let Some(buffer) = self.buffers.get_mut(&context.buffer_id) {
+        if let Some(buffer) = self.buffers.get_mut(&buffer_id) {
+            // Record position BEFORE executing jump commands
+            if cmd.is_jump() {
+                self.jump_list.push(buffer_id, buffer.cur);
+            }
+
             let mut exec_ctx = ExecutionContext {
                 buffer,
                 count: context.count,
-                buffer_id: context.buffer_id,
+                buffer_id,
                 window_id: context.window_id,
             };
 
@@ -159,10 +182,30 @@ impl Runtime {
                             self.handle_explorer_action(&explorer_action);
                             self.render();
                         }
+                        DeferredAction::JumpOlder => {
+                            if let Some(entry) = self.jump_list.jump_older() {
+                                let target_pos = entry.position;
+                                let target_buf_id = entry.buffer_id;
+                                if let Some(buf) = self.buffers.get_mut(&target_buf_id) {
+                                    buf.cur = target_pos;
+                                }
+                            }
+                            self.render();
+                        }
+                        DeferredAction::JumpNewer => {
+                            if let Some(entry) = self.jump_list.jump_newer() {
+                                let target_pos = entry.position;
+                                let target_buf_id = entry.buffer_id;
+                                if let Some(buf) = self.buffers.get_mut(&target_buf_id) {
+                                    buf.cur = target_pos;
+                                }
+                            }
+                            self.render();
+                        }
                     }
                 }
-                CommandResult::Error(_msg) => {
-                    // TODO: display error message
+                CommandResult::Error(msg) => {
+                    tracing::warn!(error = %msg, "Command execution failed");
                 }
                 CommandResult::Success => {}
             }
@@ -235,22 +278,46 @@ impl Runtime {
                 }
             }
             ExplorerAction::OpenNode => {
+                // Debug logging to identify root cause
+                let state_exists = self.explorer_state.is_some();
+                tracing::debug!(state_exists, "OpenNode: explorer_state check");
+
+                if let Some(ref state) = self.explorer_state {
+                    let cursor_index = state.cursor_index;
+                    let visible_count = state.visible_nodes().len();
+                    tracing::debug!(cursor_index, visible_count, "OpenNode: state info");
+
+                    if let Some(node) = state.current_node() {
+                        tracing::debug!(
+                            name = %node.name,
+                            is_dir = node.is_dir(),
+                            is_file = node.is_file(),
+                            is_symlink = node.is_symlink(),
+                            "OpenNode: current node info"
+                        );
+                    } else {
+                        tracing::debug!("OpenNode: current_node() returned None!");
+                    }
+                }
+
                 // Open file or toggle directory
                 // First extract info from current node without holding mutable borrow
                 let node_info = self
                     .explorer_state
                     .as_ref()
                     .and_then(|state| state.current_node())
-                    .map(|node| (node.is_dir(), node.is_file(), node.path.clone()));
+                    .map(|node| (node.is_dir(), node.is_file(), node.is_symlink(), node.path.clone()));
 
-                if let Some((is_dir, is_file, path)) = node_info {
+                if let Some((is_dir, is_file, is_symlink, path)) = node_info {
                     if is_dir {
                         if let Some(ref mut state) = self.explorer_state {
                             let _ = state.toggle_current();
                         }
-                    } else if is_file {
-                        // Open file in a new buffer
+                    } else if is_file || is_symlink {
+                        // Open file in a new buffer (symlinks are opened as target file)
                         self.open_file(&path.to_string_lossy());
+                        // Update the editor window to show the new buffer
+                        self.screen.set_editor_buffer(self.active_buffer_id);
                         // Switch focus to editor
                         self.screen.focus_editor();
                         self.set_mode(Mod::Normal);

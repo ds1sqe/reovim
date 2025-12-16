@@ -1,6 +1,7 @@
 #![allow(clippy::missing_errors_doc)]
 
 mod status_line;
+mod which_key;
 
 use {
     crate::{
@@ -24,6 +25,7 @@ use {
 };
 
 pub use status_line::{render_command_line_to, render_status_line_to, StatusLineRenderer};
+pub use which_key::{WhichKeyConfig, WhichKeyPanel};
 
 pub mod cusor;
 pub mod layout;
@@ -141,6 +143,7 @@ impl Screen {
         color_mode: ColorMode,
         theme: &Theme,
         explorer_state: Option<&ExplorerState>,
+        which_key_panel: &WhichKeyPanel,
     ) -> std::result::Result<(), std::io::Error> {
         // Reset all styling before clearing
         queue!(self.out_stream, Print(RESET_STYLE))?;
@@ -210,11 +213,28 @@ impl Screen {
                 pending_keys,
                 last_command,
             )?;
-            // Position cursor at buffer cursor (not in command mode)
-            if let Some((x, y)) = cursor_pos {
+        }
+
+        // Render which-key panel overlay (after windows and status line)
+        if which_key_panel.visible {
+            let panel_lines = which_key_panel.render(
+                self.size.width,
+                self.size.height,
+                color_mode,
+            );
+            for (line, x, y) in panel_lines {
                 queue!(self.out_stream, MoveTo(x, y))?;
+                queue!(self.out_stream, Print(line))?;
             }
         }
+
+        // Position cursor at buffer cursor (not in command mode)
+        if !matches!(mode, Mod::Command)
+            && let Some((x, y)) = cursor_pos
+        {
+            queue!(self.out_stream, MoveTo(x, y))?;
+        }
+
         Ok(())
     }
 
@@ -267,6 +287,16 @@ impl Screen {
     /// Focus the editor window
     pub const fn focus_editor(&mut self) {
         self.layout.focus_editor();
+    }
+
+    /// Set the buffer ID for the editor window
+    pub fn set_editor_buffer(&mut self, buffer_id: usize) {
+        for win in &mut self.windows {
+            if win.window_type == WindowType::Editor {
+                win.buffer_id = buffer_id;
+                break;
+            }
+        }
     }
 
     /// Update window layouts based on current layout manager state

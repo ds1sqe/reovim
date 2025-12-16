@@ -45,6 +45,10 @@ pub enum DeferredAction {
     CommandLine(CommandLineAction),
     /// Explorer operations
     Explorer(ExplorerAction),
+    /// Jump to older position (Ctrl-O)
+    JumpOlder,
+    /// Jump to newer position (Ctrl-I)
+    JumpNewer,
 }
 
 /// Explorer mode actions that require runtime access
@@ -152,6 +156,14 @@ pub trait CommandTrait: Debug + Send + Sync {
     /// Optional: does this command support repeat count?
     fn supports_count(&self) -> bool {
         true
+    }
+
+    /// Whether this command is a "jump" that should be recorded in the jump list
+    ///
+    /// Commands like gg, G, search, etc. return true here so the cursor
+    /// position before execution is recorded in the jump list.
+    fn is_jump(&self) -> bool {
+        false
     }
 }
 

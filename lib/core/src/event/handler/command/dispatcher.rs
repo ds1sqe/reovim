@@ -2,7 +2,8 @@
 
 use crate::bind::CommandRef;
 use crate::command::CommandContext;
-use crate::event::{inner::CommandEvent, InnerEvent};
+use crate::event::inner::{CommandEvent, WhichKeyBinding};
+use crate::event::InnerEvent;
 use crate::modd::{Mod, ModExtension};
 use tokio::sync::mpsc::Sender;
 
@@ -91,5 +92,18 @@ impl Dispatcher {
             // toggle_explorer, explorer_close, explorer_focus_editor etc.
             _ => None,
         }
+    }
+
+    /// Send event to show which-key popup
+    pub async fn send_which_key_show(&self, prefix: String, bindings: Vec<WhichKeyBinding>) {
+        let _ = self
+            .inner_tx
+            .send(InnerEvent::WhichKeyShow { prefix, bindings })
+            .await;
+    }
+
+    /// Send event to hide which-key popup
+    pub async fn send_which_key_hide(&self) {
+        let _ = self.inner_tx.send(InnerEvent::WhichKeyHide).await;
     }
 }

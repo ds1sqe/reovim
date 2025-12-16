@@ -7,8 +7,8 @@ mod text;
 #[cfg(test)]
 mod tests;
 
-pub use cursor::{calculate_motion, CursorOps};
-pub use selection::{Selection, SelectionOps};
+pub use cursor::{calculate_motion, calculate_motion_with_desired_col, CursorOps};
+pub use selection::{Selection, SelectionMode, SelectionOps};
 pub use text::TextOps;
 
 use crate::motion::Motion;
@@ -32,6 +32,9 @@ impl From<&str> for Line {
 pub struct Buffer {
     pub id: usize,
     pub cur: Position,
+    /// Track preferred column for vertical movement (j/k)
+    /// Used to preserve horizontal position when moving through lines of different lengths
+    pub desired_col: Option<u16>,
     pub contents: Vec<Line>,
     pub selection: Selection,
     pub file_path: Option<String>,
@@ -43,9 +46,24 @@ impl Buffer {
         Self {
             id,
             cur: Position { x: 0, y: 0 },
+            desired_col: None,
             contents: Vec::new(),
             selection: Selection::default(),
             file_path: None,
+        }
+    }
+
+    /// Clear desired column (call on horizontal movements)
+    #[allow(clippy::missing_const_for_fn)] // Modifies self
+    pub fn clear_desired_col(&mut self) {
+        self.desired_col = None;
+    }
+
+    /// Set desired column if not already set
+    #[allow(clippy::missing_const_for_fn)] // Modifies self
+    pub fn ensure_desired_col(&mut self) {
+        if self.desired_col.is_none() {
+            self.desired_col = Some(self.cur.x);
         }
     }
 
@@ -85,6 +103,48 @@ impl Buffer {
         }
         result
     }
+
+    /// Extract text from a block (rectangular) selection
+    #[allow(clippy::cast_possible_truncation)]
+    fn extract_block_text(&self, top_left: Position, bottom_right: Position) -> String {
+        let mut lines_text = Vec::new();
+
+        for y in top_left.y..=bottom_right.y {
+            if let Some(line) = self.contents.get(y as usize) {
+                let start_x = top_left.x as usize;
+                let end_x = (bottom_right.x as usize + 1).min(line.inner.len());
+
+                if start_x < line.inner.len() {
+                    lines_text.push(line.inner[start_x..end_x].to_string());
+                } else {
+                    lines_text.push(String::new());
+                }
+            }
+        }
+
+        lines_text.join("\n")
+    }
+
+    /// Delete a block (rectangular) selection
+    #[allow(clippy::cast_possible_truncation)]
+    fn delete_block(&mut self, top_left: Position, bottom_right: Position) -> String {
+        let text = self.extract_block_text(top_left, bottom_right);
+
+        for y in top_left.y..=bottom_right.y {
+            if let Some(line) = self.contents.get_mut(y as usize) {
+                let start_x = top_left.x as usize;
+                let end_x = (bottom_right.x as usize + 1).min(line.inner.len());
+
+                if start_x < line.inner.len() {
+                    line.inner.drain(start_x..end_x);
+                }
+            }
+        }
+
+        self.cur = top_left;
+        self.clear_selection();
+        text
+    }
 }
 
 // === Selection Operations ===
@@ -93,6 +153,14 @@ impl SelectionOps for Buffer {
     fn start_selection(&mut self) {
         self.selection.anchor = self.cur;
         self.selection.active = true;
+        self.selection.mode = SelectionMode::Character;
+    }
+
+    #[allow(clippy::missing_const_for_fn)]
+    fn start_block_selection(&mut self) {
+        self.selection.anchor = self.cur;
+        self.selection.active = true;
+        self.selection.mode = SelectionMode::Block;
     }
 
     #[allow(clippy::missing_const_for_fn)]
@@ -112,12 +180,40 @@ impl SelectionOps for Buffer {
         }
     }
 
+    #[allow(clippy::missing_const_for_fn)]
+    fn block_bounds(&self) -> (Position, Position) {
+        let anchor = self.selection.anchor;
+        let cursor = self.cur;
+        let top_left = Position {
+            x: anchor.x.min(cursor.x),
+            y: anchor.y.min(cursor.y),
+        };
+        let bottom_right = Position {
+            x: anchor.x.max(cursor.x),
+            y: anchor.y.max(cursor.y),
+        };
+        (top_left, bottom_right)
+    }
+
+    fn selection_mode(&self) -> SelectionMode {
+        self.selection.mode
+    }
+
     fn get_selected_text(&self) -> String {
         if !self.selection.active {
             return String::new();
         }
-        let (start, end) = self.selection_bounds();
-        self.extract_text(start, end)
+
+        match self.selection.mode {
+            SelectionMode::Block => {
+                let (top_left, bottom_right) = self.block_bounds();
+                self.extract_block_text(top_left, bottom_right)
+            }
+            SelectionMode::Character | SelectionMode::Line => {
+                let (start, end) = self.selection_bounds();
+                self.extract_text(start, end)
+            }
+        }
     }
 
     #[allow(clippy::cast_possible_truncation)]
@@ -126,6 +222,13 @@ impl SelectionOps for Buffer {
             return String::new();
         }
 
+        // Handle block mode deletion separately
+        if self.selection.mode == SelectionMode::Block {
+            let (top_left, bottom_right) = self.block_bounds();
+            return self.delete_block(top_left, bottom_right);
+        }
+
+        // Character mode deletion
         let text = self.get_selected_text();
         let (start, end) = self.selection_bounds();
 

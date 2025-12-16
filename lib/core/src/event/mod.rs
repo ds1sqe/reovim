@@ -8,7 +8,10 @@ mod input;
 
 pub use {
     handler::{CommandHandler, PrintEventHandler, TerminateHandler},
-    inner::{BufferEvent, CommandEvent, ExplorerEvent, HighlightEvent, InnerEvent, WindowEvent},
+    inner::{
+        BufferEvent, CommandEvent, ExplorerEvent, HighlightEvent, InnerEvent, WhichKeyBinding,
+        WindowEvent,
+    },
     input::*,
 };
 

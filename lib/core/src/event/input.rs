@@ -33,6 +33,7 @@ impl Default for InputEventBroker {
 impl InputEventBroker {
     #[allow(clippy::missing_panics_doc)]
     pub fn handle_error(&mut self, err: impl Error) {
+        tracing::error!(error = %err, "Input event error");
         self.error_out
             .write_all(&err.to_string().into_bytes())
             .expect("Failed to send error event");

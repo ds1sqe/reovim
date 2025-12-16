@@ -10,8 +10,10 @@ use crate::constants::EVENT_CHANNEL_CAPACITY;
 use crate::event::InnerEvent;
 use crate::explorer::ExplorerState;
 use crate::highlight::{ColorMode, HighlightStore, Theme};
+use crate::jumplist::JumpList;
 use crate::modd::Mod;
-use crate::screen::Screen;
+use crate::screen::{Screen, WhichKeyPanel};
+use tracing::debug;
 
 use tokio::sync::{mpsc, watch};
 
@@ -43,6 +45,10 @@ pub struct Runtime {
     next_buffer_id: usize,
     /// File explorer state
     pub explorer_state: Option<ExplorerState>,
+    /// Jump list for Ctrl-O/Ctrl-I navigation
+    pub jump_list: JumpList,
+    /// Which-key popup panel state
+    pub which_key_panel: WhichKeyPanel,
 }
 
 impl Default for Runtime {
@@ -78,6 +84,8 @@ impl Runtime {
             active_buffer_id: 0,
             next_buffer_id: 1, // Start at 1 since 0 is reserved for initial buffer
             explorer_state: None,
+            jump_list: JumpList::new(),
+            which_key_panel: WhichKeyPanel::new(),
         }
     }
 
@@ -114,6 +122,7 @@ impl Runtime {
                 self.color_mode,
                 &self.theme,
                 self.explorer_state.as_ref(),
+                &self.which_key_panel,
             )
             .expect("failed to render");
         self.screen.flush().expect("failed to flush");
@@ -137,14 +146,23 @@ impl Runtime {
     /// Create a new buffer from a file and return its ID
     /// Returns None if the file cannot be read
     pub fn create_buffer_from_file(&mut self, path: &str) -> Option<usize> {
-        let content = std::fs::read_to_string(path).ok()?;
-        let id = self.next_buffer_id;
-        self.next_buffer_id += 1;
-        let mut buffer = Buffer::empty(id);
-        buffer.set_content(&content);
-        buffer.file_path = Some(path.to_string());
-        self.buffers.insert(id, buffer);
-        Some(id)
+        debug!(path, "create_buffer_from_file: attempting to read");
+        match std::fs::read_to_string(path) {
+            Ok(content) => {
+                let id = self.next_buffer_id;
+                self.next_buffer_id += 1;
+                let mut buffer = Buffer::empty(id);
+                buffer.set_content(&content);
+                buffer.file_path = Some(path.to_string());
+                self.buffers.insert(id, buffer);
+                debug!(id, path, "create_buffer_from_file: success");
+                Some(id)
+            }
+            Err(e) => {
+                debug!(path, error = %e, "create_buffer_from_file: failed to read file");
+                None
+            }
+        }
     }
 
     /// Switch to a different buffer by ID
@@ -188,9 +206,12 @@ impl Runtime {
 
     /// Open a file, creating a new buffer or switching to existing one
     pub fn open_file(&mut self, path: &str) {
+        debug!(path, "open_file: called");
+
         // Check if this file is already open in a buffer
         for (id, buf) in &self.buffers {
             if buf.file_path.as_deref() == Some(path) {
+                debug!(id, path, "open_file: file already open, switching buffer");
                 self.active_buffer_id = *id;
                 return;
             }
@@ -198,8 +219,11 @@ impl Runtime {
 
         // Create new buffer from file
         if let Some(id) = self.create_buffer_from_file(path) {
+            debug!(id, path, "open_file: created new buffer");
             self.active_buffer_id = id;
             self.showing_landing_page = false;
+        } else {
+            debug!(path, "open_file: failed to create buffer");
         }
     }
 }

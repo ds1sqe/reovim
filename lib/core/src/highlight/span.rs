@@ -70,6 +70,28 @@ impl Span {
         Some((start, end))
     }
 
+    /// Get the column range for a specific line in block mode.
+    /// In block mode, the same column range applies to all lines.
+    /// Returns `(start_col, end_col)` where `end_col` is exclusive.
+    /// Returns None if line is not within this span's line range.
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn cols_for_line_block(&self, line: u32, line_len: u32) -> Option<(u32, u32)> {
+        if line < self.start_line || line > self.end_line {
+            return None;
+        }
+
+        // In block mode, use the same column range for all lines
+        let start = self.start_col;
+        let end = self.end_col.min(line_len);
+
+        if start >= end {
+            return None;
+        }
+
+        Some((start, end))
+    }
+
     /// Check if this span intersects with another span
     #[must_use]
     pub const fn intersects(&self, other: &Self) -> bool {

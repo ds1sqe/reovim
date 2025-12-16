@@ -219,6 +219,32 @@ impl CommandTrait for EnterVisualModeCommand {
     }
 }
 
+/// Enter visual block mode (Ctrl-V)
+#[derive(Debug, Clone)]
+pub struct EnterVisualBlockModeCommand;
+
+impl CommandTrait for EnterVisualBlockModeCommand {
+    fn name(&self) -> &'static str {
+        "enter_visual_block_mode"
+    }
+
+    fn description(&self) -> &'static str {
+        "Enter visual block mode"
+    }
+
+    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
+        CommandResult::ModeChange(Mod::Visual(ModExtension::Block))
+    }
+
+    fn clone_box(&self) -> Box<dyn CommandTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
 /// Enter command mode
 #[derive(Debug, Clone)]
 pub struct EnterCommandModeCommand;

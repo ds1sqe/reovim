@@ -3,6 +3,8 @@ use {
     std::io::{self},
 };
 
+mod logging;
+
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn print_help() {
@@ -26,6 +28,11 @@ fn print_version() {
 
 #[tokio::main]
 async fn main() -> Result<(), io::Error> {
+    // Initialize logging FIRST, before any terminal manipulation
+    let _log_guard = logging::init();
+
+    tracing::info!("reovim {} starting", VERSION);
+
     let args: Vec<String> = std::env::args().collect();
 
     let mut file_path: Option<String> = None;
@@ -47,15 +54,21 @@ async fn main() -> Result<(), io::Error> {
             }
             _ => {
                 file_path = Some(arg.clone());
+                tracing::debug!(file = %arg, "Opening file from command line");
             }
         }
     }
 
     reovim_core::command::terminal::enable_raw_mode()?;
+    tracing::debug!("Raw mode enabled");
+
     let mut screen = Screen::default();
     screen.initialize()?;
+    tracing::debug!(width = screen.width(), height = screen.height(), "Screen initialized");
+
     let runtime = Runtime::new(screen).with_file(file_path);
     runtime.init().await;
 
+    tracing::info!("reovim shutting down");
     reovim_core::command::terminal::disable_raw_mode()
 }

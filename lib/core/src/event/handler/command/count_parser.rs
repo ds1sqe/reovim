@@ -64,6 +64,11 @@ impl CountParser {
     pub const fn has_count(&self) -> bool {
         self.pending_count.is_some()
     }
+
+    /// Clear the pending count without returning it
+    pub const fn clear(&mut self) {
+        self.pending_count = None;
+    }
 }
 
 #[cfg(test)]

@@ -5,7 +5,7 @@ use crate::event::{
     BufferEvent, CommandHandler, ExplorerEvent, HighlightEvent, InnerEvent, InputEventBroker,
     TerminateHandler, WindowEvent,
 };
-use crate::modd::Mod;
+use crate::modd::{Mod, ModExtension};
 
 use super::Runtime;
 
@@ -18,12 +18,21 @@ impl Runtime {
     #[allow(clippy::collapsible_if)]
     #[allow(clippy::match_same_arms)]
     pub async fn init(mut self) {
+        tracing::info!("Runtime initializing");
+
         let mut buffer = Buffer::empty(0);
 
         // Load file if provided, otherwise show landing page
         if let Some(ref path) = self.initial_file {
-            if let Ok(content) = std::fs::read_to_string(path) {
-                buffer.set_content(&content);
+            match std::fs::read_to_string(path) {
+                Ok(content) => {
+                    let line_count = content.lines().count();
+                    buffer.set_content(&content);
+                    tracing::info!(path = %path, lines = line_count, "File loaded");
+                }
+                Err(e) => {
+                    tracing::warn!(path = %path, error = %e, "Failed to load file");
+                }
             }
             buffer.file_path = Some(path.clone());
         } else {
@@ -42,7 +51,8 @@ impl Runtime {
         // Command handler for key-to-command translation
         // Pass mode receiver so CommandHandler can read mode from Runtime (single source of truth)
         let mode_rx = self.subscribe_mode();
-        let mut command_hdr = CommandHandler::new(self.tx.clone(), mode_rx);
+        let mut command_hdr =
+            CommandHandler::new(self.tx.clone(), mode_rx, self.command_registry.clone());
         let mut terminate_hdr = TerminateHandler::new(self.tx.clone());
 
         input_broker.key_broker.enlist(&mut command_hdr);
@@ -55,8 +65,10 @@ impl Runtime {
         // Initial render to show content immediately
         self.render();
 
+        tracing::debug!("Entering event loop");
         self.run_event_loop().await;
 
+        tracing::debug!("Event loop ended, finalizing screen");
         let _ = self.screen.finalize();
     }
 
@@ -188,6 +200,14 @@ impl Runtime {
             InnerEvent::KillSignal => {
                 return true;
             }
+            InnerEvent::WhichKeyShow { prefix, bindings } => {
+                self.which_key_panel.show(prefix, bindings);
+                self.render();
+            }
+            InnerEvent::WhichKeyHide => {
+                self.which_key_panel.hide();
+                self.render();
+            }
         }
         false
     }
@@ -195,6 +215,11 @@ impl Runtime {
     /// Handle mode change events
     #[allow(clippy::collapsible_if)]
     fn handle_mode_change(&mut self, new_mode: Mod) {
+        tracing::debug!(?new_mode, "Mode changed");
+
+        // Hide which-key panel on mode change
+        self.which_key_panel.hide();
+
         match &new_mode {
             Mod::Insert(_) => {
                 // Clear landing page content when entering insert mode (only once)
@@ -207,10 +232,13 @@ impl Runtime {
                     self.showing_landing_page = false;
                 }
             }
-            Mod::Visual(_) => {
+            Mod::Visual(ext) => {
                 // Start selection when entering visual mode
                 if let Some(buffer) = self.buffers.get_mut(&0) {
-                    buffer.start_selection();
+                    match ext {
+                        ModExtension::Block => buffer.start_block_selection(),
+                        _ => buffer.start_selection(),
+                    }
                 }
             }
             Mod::Normal => {
