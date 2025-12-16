@@ -227,6 +227,8 @@ impl Screen {
                 current_buffer,
                 pending_keys,
                 last_command,
+                theme,
+                color_mode,
             )?;
         }
 
@@ -236,6 +238,7 @@ impl Screen {
                 self.size.width,
                 self.size.height,
                 color_mode,
+                theme,
             );
             for (line, x, y) in panel_lines {
                 queue!(self.out_stream, MoveTo(x, y))?;
@@ -418,6 +421,8 @@ impl StatusLineRenderer for Screen {
         buffer: Option<&Buffer>,
         pending_keys: &str,
         last_command: &str,
+        theme: &Theme,
+        color_mode: ColorMode,
     ) -> std::result::Result<(), std::io::Error> {
         render_status_line_to(
             &mut self.out_stream,
@@ -427,6 +432,8 @@ impl StatusLineRenderer for Screen {
             buffer,
             pending_keys,
             last_command,
+            theme,
+            color_mode,
         )
     }
 
