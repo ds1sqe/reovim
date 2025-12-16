@@ -40,6 +40,8 @@ pub fn render_status_line_to<W: Write>(
         Mod::Insert(_) => "-- INSERT --",
         Mod::Visual(_) => "-- VISUAL --",
         Mod::Command => "", // Command mode shows command line instead
+        Mod::Explorer => "-- EXPLORER --",
+        Mod::ExplorerInput => "-- EXPLORER INPUT --",
     };
 
     // Get buffer name (file path or [No Name])

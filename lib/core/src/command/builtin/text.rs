@@ -40,6 +40,33 @@ impl CommandTrait for InsertCharCommand {
     }
 }
 
+/// Insert a newline at cursor position (Enter key)
+#[derive(Debug, Clone)]
+pub struct InsertNewlineCommand;
+
+impl CommandTrait for InsertNewlineCommand {
+    fn name(&self) -> &'static str {
+        "insert_newline"
+    }
+
+    fn description(&self) -> &'static str {
+        "Insert a newline at cursor position"
+    }
+
+    fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
+        ctx.buffer.insert_newline();
+        CommandResult::NeedsRender
+    }
+
+    fn clone_box(&self) -> Box<dyn CommandTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
 /// Delete character backward (backspace)
 #[derive(Debug, Clone)]
 pub struct DeleteCharBackwardCommand;

@@ -3,11 +3,12 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use crate::buffer::Buffer;
+use crate::buffer::{Buffer, TextOps};
 use crate::command::CommandRegistry;
 use crate::command_line::CommandLine;
 use crate::constants::EVENT_CHANNEL_CAPACITY;
 use crate::event::InnerEvent;
+use crate::explorer::ExplorerState;
 use crate::highlight::{ColorMode, HighlightStore, Theme};
 use crate::modd::Mod;
 use crate::screen::Screen;
@@ -36,6 +37,12 @@ pub struct Runtime {
     mode_rx: watch::Receiver<Mod>,
     /// Command registry for trait-based command system
     pub command_registry: Arc<CommandRegistry>,
+    /// Currently active buffer ID
+    pub active_buffer_id: usize,
+    /// Next buffer ID to assign
+    next_buffer_id: usize,
+    /// File explorer state
+    pub explorer_state: Option<ExplorerState>,
 }
 
 impl Default for Runtime {
@@ -68,6 +75,9 @@ impl Runtime {
             mode_tx,
             mode_rx,
             command_registry: Arc::new(CommandRegistry::with_defaults()),
+            active_buffer_id: 0,
+            next_buffer_id: 1, // Start at 1 since 0 is reserved for initial buffer
+            explorer_state: None,
         }
     }
 
@@ -103,6 +113,7 @@ impl Runtime {
                 &self.last_command,
                 self.color_mode,
                 &self.theme,
+                self.explorer_state.as_ref(),
             )
             .expect("failed to render");
         self.screen.flush().expect("failed to flush");
@@ -112,5 +123,83 @@ impl Runtime {
     #[allow(clippy::missing_const_for_fn)]
     pub fn set_color_mode(&mut self, mode: ColorMode) {
         self.color_mode = mode;
+    }
+
+    /// Create a new empty buffer and return its ID
+    pub fn create_buffer(&mut self) -> usize {
+        let id = self.next_buffer_id;
+        self.next_buffer_id += 1;
+        let buffer = Buffer::empty(id);
+        self.buffers.insert(id, buffer);
+        id
+    }
+
+    /// Create a new buffer from a file and return its ID
+    /// Returns None if the file cannot be read
+    pub fn create_buffer_from_file(&mut self, path: &str) -> Option<usize> {
+        let content = std::fs::read_to_string(path).ok()?;
+        let id = self.next_buffer_id;
+        self.next_buffer_id += 1;
+        let mut buffer = Buffer::empty(id);
+        buffer.set_content(&content);
+        buffer.file_path = Some(path.to_string());
+        self.buffers.insert(id, buffer);
+        Some(id)
+    }
+
+    /// Switch to a different buffer by ID
+    pub fn switch_buffer(&mut self, buffer_id: usize) {
+        if self.buffers.contains_key(&buffer_id) {
+            self.active_buffer_id = buffer_id;
+        }
+    }
+
+    /// Close a buffer by ID
+    /// Returns true if buffer was closed, false if it was the last buffer
+    pub fn close_buffer(&mut self, buffer_id: usize) -> bool {
+        // Don't close the last buffer
+        if self.buffers.len() <= 1 {
+            return false;
+        }
+
+        if self.buffers.remove(&buffer_id).is_some() {
+            // If we closed the active buffer, switch to another one
+            if self.active_buffer_id == buffer_id
+                && let Some(&new_id) = self.buffers.keys().next()
+            {
+                self.active_buffer_id = new_id;
+            }
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Get the currently active buffer
+    #[must_use]
+    pub fn active_buffer(&self) -> Option<&Buffer> {
+        self.buffers.get(&self.active_buffer_id)
+    }
+
+    /// Get the currently active buffer mutably
+    pub fn active_buffer_mut(&mut self) -> Option<&mut Buffer> {
+        self.buffers.get_mut(&self.active_buffer_id)
+    }
+
+    /// Open a file, creating a new buffer or switching to existing one
+    pub fn open_file(&mut self, path: &str) {
+        // Check if this file is already open in a buffer
+        for (id, buf) in &self.buffers {
+            if buf.file_path.as_deref() == Some(path) {
+                self.active_buffer_id = *id;
+                return;
+            }
+        }
+
+        // Create new buffer from file
+        if let Some(id) = self.create_buffer_from_file(path) {
+            self.active_buffer_id = id;
+            self.showing_landing_page = false;
+        }
     }
 }

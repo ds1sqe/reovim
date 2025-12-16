@@ -116,6 +116,15 @@ impl CommandRegistry {
             CursorDownCommand, CursorLeftCommand, CursorLineEndCommand, CursorLineStartCommand,
             CursorRightCommand, CursorUpCommand, CursorWordBackwardCommand,
             CursorWordForwardCommand, GotoFirstLineCommand, GotoLastLineCommand,
+            // Explorer
+            ExplorerCancelInputCommand, ExplorerClearFilterCommand, ExplorerCloseCommand,
+            ExplorerCloseParentCommand, ExplorerConfirmInputCommand, ExplorerCreateDirCommand,
+            ExplorerCreateFileCommand, ExplorerCursorDownCommand, ExplorerCursorUpCommand,
+            ExplorerDeleteCommand, ExplorerFilterCommand, ExplorerFocusEditorCommand,
+            ExplorerGoToParentCommand, ExplorerGotoFirstCommand, ExplorerGotoLastCommand,
+            ExplorerInputBackspaceCommand, ExplorerOpenNodeCommand, ExplorerPageDownCommand,
+            ExplorerPageUpCommand, ExplorerRefreshCommand, ExplorerRenameCommand,
+            ExplorerToggleHiddenCommand, ExplorerToggleNodeCommand,
             // Mode
             EnterCommandModeCommand, EnterInsertModeAfterCommand, EnterInsertModeCommand,
             EnterInsertModeEolCommand, EnterNormalModeCommand, EnterVisualModeCommand,
@@ -124,6 +133,7 @@ impl CommandRegistry {
             NoopCommand, QuitCommand,
             // Text
             DeleteCharBackwardCommand, DeleteCharForwardCommand, DeleteLineCommand,
+            InsertNewlineCommand,
             // Visual
             VisualDeleteCommand, VisualExtendDownCommand, VisualExtendLeftCommand,
             VisualExtendRightCommand, VisualExtendUpCommand, VisualYankCommand,
@@ -155,6 +165,7 @@ impl CommandRegistry {
         let _ = self.register(DeleteCharBackwardCommand);
         let _ = self.register(DeleteCharForwardCommand);
         let _ = self.register(DeleteLineCommand);
+        let _ = self.register(InsertNewlineCommand);
 
         // Visual mode commands
         let _ = self.register(VisualExtendUpCommand);
@@ -176,6 +187,31 @@ impl CommandRegistry {
         // System commands
         let _ = self.register(QuitCommand);
         let _ = self.register(NoopCommand);
+
+        // Explorer commands
+        let _ = self.register(ExplorerCursorUpCommand);
+        let _ = self.register(ExplorerCursorDownCommand);
+        let _ = self.register(ExplorerPageUpCommand);
+        let _ = self.register(ExplorerPageDownCommand);
+        let _ = self.register(ExplorerGotoFirstCommand);
+        let _ = self.register(ExplorerGotoLastCommand);
+        let _ = self.register(ExplorerToggleNodeCommand);
+        let _ = self.register(ExplorerOpenNodeCommand);
+        let _ = self.register(ExplorerCloseParentCommand);
+        let _ = self.register(ExplorerGoToParentCommand);
+        let _ = self.register(ExplorerRefreshCommand);
+        let _ = self.register(ExplorerToggleHiddenCommand);
+        let _ = self.register(ExplorerCloseCommand);
+        let _ = self.register(ExplorerFocusEditorCommand);
+        let _ = self.register(ExplorerCreateFileCommand);
+        let _ = self.register(ExplorerCreateDirCommand);
+        let _ = self.register(ExplorerRenameCommand);
+        let _ = self.register(ExplorerDeleteCommand);
+        let _ = self.register(ExplorerFilterCommand);
+        let _ = self.register(ExplorerClearFilterCommand);
+        let _ = self.register(ExplorerConfirmInputCommand);
+        let _ = self.register(ExplorerCancelInputCommand);
+        let _ = self.register(ExplorerInputBackspaceCommand);
     }
 }
 

@@ -3,6 +3,8 @@
 use crate::buffer::{Buffer, SelectionOps};
 use crate::highlight::{ColorMode, Highlight, HighlightGroup, HighlightStore, Span, Style, Theme};
 
+use super::layout::WindowType;
+
 /// Represents top left corner position
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Anchor {
@@ -12,6 +14,10 @@ pub struct Anchor {
 
 /// Window is an intermediate object between buffer and screen
 pub struct Window {
+    /// Unique identifier for this window
+    pub id: usize,
+    /// Type of window (Editor, Explorer, etc.)
+    pub window_type: WindowType,
     /// Where this window's top left is positioned on the screen
     pub anchor: Anchor,
     pub width: u16,

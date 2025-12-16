@@ -200,6 +200,29 @@ impl TextOps for Buffer {
     }
 
     #[allow(clippy::cast_possible_truncation)]
+    fn insert_newline(&mut self) {
+        if self.contents.is_empty() {
+            self.contents.push(Line::from(""));
+        }
+        let y = self.cur.y as usize;
+        let x = self.cur.x as usize;
+
+        if let Some(line) = self.contents.get_mut(y) {
+            // Split the current line at cursor position
+            let rest = if x < line.inner.len() {
+                line.inner.split_off(x)
+            } else {
+                String::new()
+            };
+            // Insert the rest as a new line below
+            self.contents.insert(y + 1, Line { inner: rest });
+        }
+        // Move cursor to start of the new line
+        self.cur.y += 1;
+        self.cur.x = 0;
+    }
+
+    #[allow(clippy::cast_possible_truncation)]
     fn delete_char_backward(&mut self) {
         if self.cur.x > 0
             && let Some(line) = self.contents.get_mut(self.cur.y as usize)

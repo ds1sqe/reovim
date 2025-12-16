@@ -12,7 +12,7 @@ use {
     crate::{
         bind::{CommandRef, KeyMap, KeyMapInner},
         command::{
-            builtin::{CommandLineCharCommand, InsertCharCommand},
+            builtin::{CommandLineCharCommand, ExplorerInputCharCommand, InsertCharCommand},
             CommandTrait,
         },
         event::{InnerEvent, KeyEvent, Subscribe},
@@ -63,6 +63,8 @@ impl CommandHandler {
             Mod::Insert(_) => &self.keymap.insert,
             Mod::Visual(_) => &self.keymap.visual,
             Mod::Command => &self.keymap.command,
+            Mod::Explorer => &self.keymap.explorer,
+            Mod::ExplorerInput => &self.keymap.explorer_input,
         }
     }
 
@@ -98,6 +100,15 @@ impl CommandHandler {
             && let Some(c) = key.chars().next()
         {
             let cmd: Arc<dyn CommandTrait> = Arc::new(CommandLineCharCommand::new(c));
+            return (Some(CommandRef::Inline(cmd)), true);
+        }
+
+        // In explorer input mode, non-mapped single chars become ExplorerInputChar (inline command)
+        if matches!(self.current_mode(), Mod::ExplorerInput)
+            && key.len() == 1
+            && let Some(c) = key.chars().next()
+        {
+            let cmd: Arc<dyn CommandTrait> = Arc::new(ExplorerInputCharCommand::new(c));
             return (Some(CommandRef::Inline(cmd)), true);
         }
 

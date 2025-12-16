@@ -4,6 +4,9 @@ pub enum Mod {
     Insert(ModExtension),
     Visual(ModExtension),
     Command,
+    Explorer,
+    /// Explorer input mode (for create/rename/delete/filter)
+    ExplorerInput,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -4,6 +4,7 @@ pub mod command;
 pub mod command_line;
 pub mod constants;
 pub mod event;
+pub mod explorer;
 pub mod highlight;
 pub mod landing;
 mod modd;

@@ -8,6 +8,8 @@ pub trait TextOps {
     fn content_to_string(&self) -> String;
     /// Insert a character at cursor position
     fn insert_char(&mut self, c: char);
+    /// Insert a newline at cursor position (Enter key)
+    fn insert_newline(&mut self);
     /// Delete character before cursor (backspace)
     fn delete_char_backward(&mut self);
     /// Delete character at cursor position (delete)

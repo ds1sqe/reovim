@@ -2,7 +2,8 @@
 
 use crate::buffer::{Buffer, SelectionOps, TextOps};
 use crate::event::{
-    BufferEvent, CommandHandler, HighlightEvent, InnerEvent, InputEventBroker, TerminateHandler,
+    BufferEvent, CommandHandler, ExplorerEvent, HighlightEvent, InnerEvent, InputEventBroker,
+    TerminateHandler, WindowEvent,
 };
 use crate::modd::Mod;
 
@@ -83,6 +84,7 @@ impl Runtime {
     /// Handle a single event. Returns true if the editor should quit.
     #[allow(clippy::collapsible_if)]
     #[allow(clippy::match_same_arms)]
+    #[allow(clippy::too_many_lines)]
     fn handle_event(&mut self, ev: InnerEvent) -> bool {
         match ev {
             InnerEvent::BufferEvent(buffer_event) => match buffer_event {
@@ -91,6 +93,27 @@ impl Runtime {
                         b.set_content(&content);
                         self.render();
                     }
+                }
+                BufferEvent::LoadFile { buffer_id, path } => {
+                    if let Ok(content) = std::fs::read_to_string(&path) {
+                        if let Some(b) = self.buffers.get_mut(&buffer_id) {
+                            b.set_content(&content);
+                            b.file_path = Some(path.to_string_lossy().to_string());
+                            self.render();
+                        }
+                    }
+                }
+                BufferEvent::Create { buffer_id } => {
+                    let buffer = Buffer::empty(buffer_id);
+                    self.buffers.insert(buffer_id, buffer);
+                }
+                BufferEvent::Close { buffer_id } => {
+                    self.close_buffer(buffer_id);
+                    self.render();
+                }
+                BufferEvent::Switch { buffer_id } => {
+                    self.switch_buffer(buffer_id);
+                    self.render();
                 }
             },
             InnerEvent::CommandEvent(cmd_event) => {
@@ -109,7 +132,39 @@ impl Runtime {
                 self.pending_keys = keys;
                 self.render();
             }
-            InnerEvent::WindowEvent => todo!(),
+            InnerEvent::WindowEvent(window_event) => match window_event {
+                WindowEvent::ToggleExplorer => {
+                    self.screen.toggle_explorer();
+                    self.render();
+                }
+                WindowEvent::FocusExplorer => {
+                    self.screen.focus_explorer();
+                    self.render();
+                }
+                WindowEvent::FocusEditor => {
+                    self.screen.focus_editor();
+                    self.render();
+                }
+            },
+            InnerEvent::ExplorerEvent(explorer_event) => match explorer_event {
+                ExplorerEvent::Toggle => {
+                    self.screen.toggle_explorer();
+                    self.render();
+                }
+                ExplorerEvent::OpenFile { path } => {
+                    self.open_file(&path.to_string_lossy());
+                    self.screen.focus_editor();
+                    self.render();
+                }
+                ExplorerEvent::Refresh => {
+                    // TODO: Refresh explorer tree when explorer module is implemented
+                    self.render();
+                }
+                ExplorerEvent::SetRoot { path: _ } => {
+                    // TODO: Set explorer root when explorer module is implemented
+                    self.render();
+                }
+            },
             InnerEvent::HighlightEvent(hl_event) => match hl_event {
                 HighlightEvent::Add {
                     buffer_id,
@@ -169,6 +224,11 @@ impl Runtime {
             Mod::Command => {
                 // Activate command line when entering command mode
                 self.command_line.activate();
+            }
+            Mod::Explorer | Mod::ExplorerInput => {
+                // Explorer mode is handled via window focus
+                // The explorer state will be set up when opening explorer
+                // ExplorerInput mode is for file operations and filter
             }
         }
         // Use set_mode to broadcast via watch channel

@@ -87,6 +87,8 @@ impl Dispatcher {
             "command_line_execute" | "command_line_cancel" | "visual_delete" | "visual_yank" => {
                 Some(Mod::Normal)
             }
+            // Explorer mode transitions are handled in runtime via DeferredAction
+            // toggle_explorer, explorer_close, explorer_focus_editor etc.
             _ => None,
         }
     }

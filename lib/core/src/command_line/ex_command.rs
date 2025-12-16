@@ -14,6 +14,8 @@ pub enum ExCommand {
     Quit,
     Write { filename: Option<String> },
     WriteQuit,
+    /// Open/edit a file (:e filename)
+    Edit { filename: String },
     Set { option: SetOption },
     Unknown(String),
 }
@@ -32,6 +34,13 @@ impl ExCommand {
             "wq" => Some(Self::WriteQuit),
             s if s.starts_with("w ") => Some(Self::Write {
                 filename: Some(s[2..].trim().to_string()),
+            }),
+            // :e or :edit commands for opening files
+            s if s.starts_with("e ") => Some(Self::Edit {
+                filename: s[2..].trim().to_string(),
+            }),
+            s if s.starts_with("edit ") => Some(Self::Edit {
+                filename: s[5..].trim().to_string(),
             }),
             // :set commands for line numbers
             "set nu" | "set number" => Some(Self::Set {

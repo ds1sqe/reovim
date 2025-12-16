@@ -63,6 +63,7 @@ pub mod builtin {
 
     // === Text Operations ===
     pub const INSERT_CHAR: CommandId = CommandId::new("insert_char");
+    pub const INSERT_NEWLINE: CommandId = CommandId::new("insert_newline");
     pub const DELETE_CHAR_BACKWARD: CommandId = CommandId::new("delete_char_backward");
     pub const DELETE_CHAR_FORWARD: CommandId = CommandId::new("delete_char_forward");
     pub const DELETE_LINE: CommandId = CommandId::new("delete_line");
@@ -88,4 +89,42 @@ pub mod builtin {
     // === System ===
     pub const QUIT: CommandId = CommandId::new("quit");
     pub const NOOP: CommandId = CommandId::new("noop");
+
+    // === Explorer Navigation ===
+    pub const EXPLORER_CURSOR_UP: CommandId = CommandId::new("explorer_cursor_up");
+    pub const EXPLORER_CURSOR_DOWN: CommandId = CommandId::new("explorer_cursor_down");
+    pub const EXPLORER_PAGE_UP: CommandId = CommandId::new("explorer_page_up");
+    pub const EXPLORER_PAGE_DOWN: CommandId = CommandId::new("explorer_page_down");
+    pub const EXPLORER_GOTO_FIRST: CommandId = CommandId::new("explorer_goto_first");
+    pub const EXPLORER_GOTO_LAST: CommandId = CommandId::new("explorer_goto_last");
+
+    // === Explorer Tree Operations ===
+    pub const EXPLORER_TOGGLE_NODE: CommandId = CommandId::new("explorer_toggle_node");
+    pub const EXPLORER_OPEN_NODE: CommandId = CommandId::new("explorer_open_node");
+    pub const EXPLORER_CLOSE_PARENT: CommandId = CommandId::new("explorer_close_parent");
+    pub const EXPLORER_GO_TO_PARENT: CommandId = CommandId::new("explorer_go_to_parent");
+    pub const EXPLORER_REFRESH: CommandId = CommandId::new("explorer_refresh");
+
+    // === Explorer Display ===
+    pub const EXPLORER_TOGGLE_HIDDEN: CommandId = CommandId::new("explorer_toggle_hidden");
+
+    // === Explorer Window ===
+    pub const EXPLORER_CLOSE: CommandId = CommandId::new("explorer_close");
+    pub const EXPLORER_FOCUS_EDITOR: CommandId = CommandId::new("explorer_focus_editor");
+    pub const TOGGLE_EXPLORER: CommandId = CommandId::new("toggle_explorer");
+
+    // === Explorer File Operations ===
+    pub const EXPLORER_CREATE_FILE: CommandId = CommandId::new("explorer_create_file");
+    pub const EXPLORER_CREATE_DIR: CommandId = CommandId::new("explorer_create_dir");
+    pub const EXPLORER_RENAME: CommandId = CommandId::new("explorer_rename");
+    pub const EXPLORER_DELETE: CommandId = CommandId::new("explorer_delete");
+
+    // === Explorer Filter ===
+    pub const EXPLORER_FILTER: CommandId = CommandId::new("explorer_filter");
+    pub const EXPLORER_CLEAR_FILTER: CommandId = CommandId::new("explorer_clear_filter");
+
+    // === Explorer Input Mode ===
+    pub const EXPLORER_CONFIRM_INPUT: CommandId = CommandId::new("explorer_confirm_input");
+    pub const EXPLORER_CANCEL_INPUT: CommandId = CommandId::new("explorer_cancel_input");
+    pub const EXPLORER_INPUT_BACKSPACE: CommandId = CommandId::new("explorer_input_backspace");
 }

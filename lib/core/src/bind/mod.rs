@@ -1,6 +1,7 @@
 //! Key binding system for mapping key sequences to commands
 
 use crate::command::{id::builtin, CommandId, CommandTrait};
+use crate::command::builtin::ToggleExplorerCommand;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -81,6 +82,8 @@ pub struct KeyMap {
     pub normal: HashMap<String, KeyMapInner>,
     pub command: HashMap<String, KeyMapInner>,
     pub visual: HashMap<String, KeyMapInner>,
+    pub explorer: HashMap<String, KeyMapInner>,
+    pub explorer_input: HashMap<String, KeyMapInner>,
     #[allow(dead_code)] // Infrastructure for extra modes (Telescope, etc.)
     pub extra: HashMap<String, KeyMapInner>,
 }
@@ -93,6 +96,8 @@ impl KeyMap {
         Self::setup_insert_mode(&mut km.insert);
         Self::setup_visual_mode(&mut km.visual);
         Self::setup_command_mode(&mut km.command);
+        Self::setup_explorer_mode(&mut km.explorer);
+        Self::setup_explorer_input_mode(&mut km.explorer_input);
         km
     }
 
@@ -108,6 +113,8 @@ impl KeyMap {
             "i" | "insert" => &mut self.insert,
             "v" | "visual" => &mut self.visual,
             "c" | "command" => &mut self.command,
+            "e" | "explorer" => &mut self.explorer,
+            "E" | "explorer_input" => &mut self.explorer_input,
             _ => return,
         };
         map.insert(keys.to_string(), KeyMapInner::with_command_ref(cmd));
@@ -125,6 +132,8 @@ impl KeyMap {
             "i" | "insert" => &mut self.insert,
             "v" | "visual" => &mut self.visual,
             "c" | "command" => &mut self.command,
+            "e" | "explorer" => &mut self.explorer,
+            "E" | "explorer_input" => &mut self.explorer_input,
             _ => return,
         };
         map.remove(keys);
@@ -159,11 +168,19 @@ impl KeyMap {
         keymap.insert("g".to_string(), KeyMapInner::new()); // prefix, no command
         keymap.insert("gg".to_string(), KeyMapInner::with_command_id(builtin::GOTO_FIRST_LINE));
         keymap.insert("G".to_string(), KeyMapInner::with_command_id(builtin::GOTO_LAST_LINE));
+
+        // Space (leader) bindings
+        keymap.insert(" ".to_string(), KeyMapInner::new()); // prefix, no command
+        keymap.insert(
+            " e".to_string(),
+            KeyMapInner::with_inline_command(Arc::new(ToggleExplorerCommand)),
+        );
     }
 
     fn setup_insert_mode(keymap: &mut HashMap<String, KeyMapInner>) {
         keymap.insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::ENTER_NORMAL_MODE));
         keymap.insert("Backspace".to_string(), KeyMapInner::with_command_id(builtin::DELETE_CHAR_BACKWARD));
+        keymap.insert("Enter".to_string(), KeyMapInner::with_command_id(builtin::INSERT_NEWLINE));
     }
 
     fn setup_visual_mode(keymap: &mut HashMap<String, KeyMapInner>) {
@@ -180,5 +197,49 @@ impl KeyMap {
         keymap.insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::COMMAND_LINE_CANCEL));
         keymap.insert("Enter".to_string(), KeyMapInner::with_command_id(builtin::COMMAND_LINE_EXECUTE));
         keymap.insert("Backspace".to_string(), KeyMapInner::with_command_id(builtin::COMMAND_LINE_BACKSPACE));
+    }
+
+    fn setup_explorer_mode(keymap: &mut HashMap<String, KeyMapInner>) {
+        // Navigation
+        keymap.insert("j".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CURSOR_DOWN));
+        keymap.insert("k".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CURSOR_UP));
+        keymap.insert("Ctrl+d".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_PAGE_DOWN));
+        keymap.insert("Ctrl+u".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_PAGE_UP));
+        keymap.insert("g".to_string(), KeyMapInner::new()); // prefix
+        keymap.insert("gg".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_GOTO_FIRST));
+        keymap.insert("G".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_GOTO_LAST));
+
+        // Tree operations
+        keymap.insert("Enter".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_OPEN_NODE));
+        keymap.insert("o".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_TOGGLE_NODE));
+        keymap.insert("x".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CLOSE_PARENT));
+        keymap.insert("u".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_GO_TO_PARENT));
+        keymap.insert("R".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_REFRESH));
+
+        // Display
+        keymap.insert("I".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_TOGGLE_HIDDEN));
+
+        // File operations
+        keymap.insert("a".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CREATE_FILE));
+        keymap.insert("A".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CREATE_DIR));
+        keymap.insert("r".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_RENAME));
+        keymap.insert("d".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_DELETE));
+
+        // Filter
+        keymap.insert("/".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_FILTER));
+        keymap.insert("C".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CLEAR_FILTER));
+
+        // Window control
+        keymap.insert("q".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CLOSE));
+        keymap.insert("Tab".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_FOCUS_EDITOR));
+        keymap.insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_FOCUS_EDITOR));
+    }
+
+    fn setup_explorer_input_mode(keymap: &mut HashMap<String, KeyMapInner>) {
+        // In explorer input mode, we only handle special keys
+        // Characters are handled via inline commands in the command handler
+        keymap.insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CANCEL_INPUT));
+        keymap.insert("Enter".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CONFIRM_INPUT));
+        keymap.insert("Backspace".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_INPUT_BACKSPACE));
     }
 }

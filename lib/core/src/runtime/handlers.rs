@@ -5,9 +5,11 @@ use std::sync::Arc;
 use crate::bind::CommandRef;
 use crate::buffer::TextOps;
 use crate::command::{
-    traits::{CommandLineAction, CommandResult, DeferredAction, ExecutionContext},
+    traits::{CommandLineAction, CommandResult, DeferredAction, ExecutionContext, ExplorerAction},
     CommandTrait,
 };
+use crate::explorer::ExplorerState;
+use crate::modd::Mod;
 use crate::command_line::{ExCommand, SetOption};
 use crate::event::CommandEvent;
 
@@ -69,6 +71,9 @@ impl Runtime {
                                 self.set_color_mode(mode);
                             }
                         },
+                        ExCommand::Edit { filename } => {
+                            self.open_file(&filename);
+                        }
                         ExCommand::Unknown(_) => {
                             // TODO: show "unknown command" error
                         }
@@ -150,6 +155,10 @@ impl Runtime {
                             self.render();
                             return should_quit;
                         }
+                        DeferredAction::Explorer(explorer_action) => {
+                            self.handle_explorer_action(&explorer_action);
+                            self.render();
+                        }
                     }
                 }
                 CommandResult::Error(_msg) => {
@@ -159,5 +168,178 @@ impl Runtime {
             }
         }
         false
+    }
+
+    /// Handle explorer actions
+    #[allow(clippy::cast_possible_wrap)]
+    #[allow(clippy::too_many_lines)]
+    pub(crate) fn handle_explorer_action(&mut self, action: &ExplorerAction) {
+        // Explorer actions require explorer_state which will be integrated in Phase 5
+        // For now, we handle the basic mode transitions
+        match action {
+            ExplorerAction::Toggle => {
+                // Toggle explorer visibility and mode
+                self.screen.toggle_explorer();
+                if self.screen.layout().is_explorer_visible() {
+                    self.set_mode(Mod::Explorer);
+                    // Initialize explorer state if needed
+                    if self.explorer_state.is_none()
+                        && let Ok(cwd) = std::env::current_dir()
+                    {
+                        self.explorer_state = ExplorerState::new(cwd).ok();
+                    }
+                } else {
+                    self.set_mode(Mod::Normal);
+                }
+            }
+            ExplorerAction::Close | ExplorerAction::FocusEditor => {
+                // Switch focus back to editor
+                self.screen.focus_editor();
+                self.set_mode(Mod::Normal);
+            }
+            ExplorerAction::CursorUp { count } => {
+                if let Some(ref mut state) = self.explorer_state {
+                    state.move_cursor(-(*count as isize));
+                }
+            }
+            ExplorerAction::CursorDown { count } => {
+                if let Some(ref mut state) = self.explorer_state {
+                    state.move_cursor(*count as isize);
+                }
+            }
+            ExplorerAction::PageUp => {
+                if let Some(ref mut state) = self.explorer_state {
+                    let height = self.screen.layout().explorer_height();
+                    state.move_page(height, false);
+                }
+            }
+            ExplorerAction::PageDown => {
+                if let Some(ref mut state) = self.explorer_state {
+                    let height = self.screen.layout().explorer_height();
+                    state.move_page(height, true);
+                }
+            }
+            ExplorerAction::GotoFirst => {
+                if let Some(ref mut state) = self.explorer_state {
+                    state.move_to_first();
+                }
+            }
+            ExplorerAction::GotoLast => {
+                if let Some(ref mut state) = self.explorer_state {
+                    state.move_to_last();
+                }
+            }
+            ExplorerAction::ToggleNode => {
+                if let Some(ref mut state) = self.explorer_state {
+                    let _ = state.toggle_current();
+                }
+            }
+            ExplorerAction::OpenNode => {
+                // Open file or toggle directory
+                // First extract info from current node without holding mutable borrow
+                let node_info = self
+                    .explorer_state
+                    .as_ref()
+                    .and_then(|state| state.current_node())
+                    .map(|node| (node.is_dir(), node.is_file(), node.path.clone()));
+
+                if let Some((is_dir, is_file, path)) = node_info {
+                    if is_dir {
+                        if let Some(ref mut state) = self.explorer_state {
+                            let _ = state.toggle_current();
+                        }
+                    } else if is_file {
+                        // Open file in a new buffer
+                        self.open_file(&path.to_string_lossy());
+                        // Switch focus to editor
+                        self.screen.focus_editor();
+                        self.set_mode(Mod::Normal);
+                    }
+                }
+            }
+            ExplorerAction::CloseParent => {
+                if let Some(ref mut state) = self.explorer_state {
+                    state.collapse_current();
+                }
+            }
+            ExplorerAction::GoToParent => {
+                if let Some(ref mut state) = self.explorer_state {
+                    state.go_to_parent();
+                }
+            }
+            ExplorerAction::Refresh => {
+                if let Some(ref mut state) = self.explorer_state {
+                    let _ = state.refresh();
+                }
+            }
+            ExplorerAction::ToggleHidden => {
+                if let Some(ref mut state) = self.explorer_state {
+                    state.toggle_hidden();
+                }
+            }
+            ExplorerAction::CreateFile => {
+                if let Some(ref mut state) = self.explorer_state {
+                    state.start_create_file();
+                    self.set_mode(Mod::ExplorerInput);
+                }
+            }
+            ExplorerAction::CreateDir => {
+                if let Some(ref mut state) = self.explorer_state {
+                    state.start_create_dir();
+                    self.set_mode(Mod::ExplorerInput);
+                }
+            }
+            ExplorerAction::Rename => {
+                if let Some(ref mut state) = self.explorer_state {
+                    state.start_rename();
+                    // Only switch mode if rename actually started (node exists)
+                    if state.is_input_mode() {
+                        self.set_mode(Mod::ExplorerInput);
+                    }
+                }
+            }
+            ExplorerAction::Delete => {
+                if let Some(ref mut state) = self.explorer_state {
+                    state.start_delete();
+                    // Only switch mode if delete actually started (node exists)
+                    if state.is_input_mode() {
+                        self.set_mode(Mod::ExplorerInput);
+                    }
+                }
+            }
+            ExplorerAction::StartFilter => {
+                if let Some(ref mut state) = self.explorer_state {
+                    state.start_filter();
+                    self.set_mode(Mod::ExplorerInput);
+                }
+            }
+            ExplorerAction::ClearFilter => {
+                if let Some(ref mut state) = self.explorer_state {
+                    state.clear_filter();
+                }
+            }
+            ExplorerAction::ConfirmInput { input: _ } => {
+                if let Some(ref mut state) = self.explorer_state {
+                    let _ = state.confirm_input();
+                    self.set_mode(Mod::Explorer);
+                }
+            }
+            ExplorerAction::CancelInput => {
+                if let Some(ref mut state) = self.explorer_state {
+                    state.cancel_input();
+                    self.set_mode(Mod::Explorer);
+                }
+            }
+            ExplorerAction::InputChar { c } => {
+                if let Some(ref mut state) = self.explorer_state {
+                    state.input_char(*c);
+                }
+            }
+            ExplorerAction::InputBackspace => {
+                if let Some(ref mut state) = self.explorer_state {
+                    state.input_backspace();
+                }
+            }
+        }
     }
 }

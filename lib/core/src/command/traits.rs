@@ -43,6 +43,63 @@ pub enum DeferredAction {
     Paste { before: bool },
     /// Command line operations
     CommandLine(CommandLineAction),
+    /// Explorer operations
+    Explorer(ExplorerAction),
+}
+
+/// Explorer mode actions that require runtime access
+#[derive(Debug)]
+pub enum ExplorerAction {
+    /// Move cursor up
+    CursorUp { count: usize },
+    /// Move cursor down
+    CursorDown { count: usize },
+    /// Page up
+    PageUp,
+    /// Page down
+    PageDown,
+    /// Go to first item
+    GotoFirst,
+    /// Go to last item
+    GotoLast,
+    /// Toggle expand/collapse on current node
+    ToggleNode,
+    /// Open file or toggle directory
+    OpenNode,
+    /// Close parent directory
+    CloseParent,
+    /// Go to parent directory
+    GoToParent,
+    /// Refresh tree from filesystem
+    Refresh,
+    /// Toggle showing hidden files
+    ToggleHidden,
+    /// Close explorer (switch to editor)
+    Close,
+    /// Focus editor window
+    FocusEditor,
+    /// Toggle explorer visibility
+    Toggle,
+    /// Start creating a new file (enters input mode)
+    CreateFile,
+    /// Start creating a new directory (enters input mode)
+    CreateDir,
+    /// Start renaming current item (enters input mode)
+    Rename,
+    /// Delete current item (with confirmation)
+    Delete,
+    /// Start filtering (enters filter input mode)
+    StartFilter,
+    /// Clear the current filter
+    ClearFilter,
+    /// Confirm pending operation (create/rename/delete)
+    ConfirmInput { input: String },
+    /// Cancel pending operation
+    CancelInput,
+    /// Handle character input during input mode
+    InputChar { c: char },
+    /// Handle backspace during input mode
+    InputBackspace,
 }
 
 /// Command line mode actions
