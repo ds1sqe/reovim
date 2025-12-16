@@ -223,6 +223,9 @@ impl Runtime {
                 self.which_key_panel.hide();
                 self.render();
             }
+            InnerEvent::OperatorMotionEvent(ref action) => {
+                self.handle_operator_motion(action);
+            }
         }
         false
     }
@@ -314,10 +317,11 @@ impl Runtime {
                 // Activate command line when entering command mode
                 self.command_line.activate();
             }
-            Mod::Explorer | Mod::ExplorerInput => {
+            Mod::Explorer | Mod::ExplorerInput | Mod::OperatorPending { .. } => {
                 // Explorer mode is handled via window focus
                 // The explorer state will be set up when opening explorer
                 // ExplorerInput mode is for file operations and filter
+                // OperatorPending mode just waits for a motion key (handled by CommandHandler)
             }
         }
         // Use set_mode to broadcast via watch channel

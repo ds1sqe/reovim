@@ -139,7 +139,7 @@ impl CommandTrait for VisualDeleteCommand {
 
     fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
         let text = ctx.buffer.delete_selection();
-        CommandResult::ClipboardWrite(text)
+        CommandResult::ClipboardWrite { text, register: None }
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
@@ -167,7 +167,7 @@ impl CommandTrait for VisualYankCommand {
     fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
         let text = ctx.buffer.get_selected_text();
         ctx.buffer.clear_selection();
-        CommandResult::ClipboardWrite(text)
+        CommandResult::ClipboardWrite { text, register: None }
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {

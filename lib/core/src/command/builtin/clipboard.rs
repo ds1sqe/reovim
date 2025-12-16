@@ -17,7 +17,7 @@ impl CommandTrait for PasteCommand {
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::DeferToRuntime(DeferredAction::Paste { before: false })
+        CommandResult::DeferToRuntime(DeferredAction::Paste { before: false, register: None })
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
@@ -43,7 +43,7 @@ impl CommandTrait for PasteBeforeCommand {
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::DeferToRuntime(DeferredAction::Paste { before: true })
+        CommandResult::DeferToRuntime(DeferredAction::Paste { before: true, register: None })
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {

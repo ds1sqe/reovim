@@ -29,7 +29,8 @@ pub enum CommandResult {
     /// Editor should quit
     Quit,
     /// Command produced text for clipboard (e.g., yank, delete)
-    ClipboardWrite(String),
+    /// `register` is the target register: None for unnamed, Some('a'-'z') for named, '+' for system
+    ClipboardWrite { text: String, register: Option<char> },
     /// Command needs Runtime access (deferred execution)
     DeferToRuntime(DeferredAction),
     /// Command failed with error message
@@ -39,8 +40,9 @@ pub enum CommandResult {
 /// Actions that require Runtime-level access
 #[derive(Debug)]
 pub enum DeferredAction {
-    /// Paste from clipboard
-    Paste { before: bool },
+    /// Paste from register
+    /// `register` is the source register: None for unnamed, Some('a'-'z') for named, '+' for system
+    Paste { before: bool, register: Option<char> },
     /// Command line operations
     CommandLine(CommandLineAction),
     /// Completion operations
@@ -51,6 +53,8 @@ pub enum DeferredAction {
     JumpOlder,
     /// Jump to newer position (Ctrl-I)
     JumpNewer,
+    /// Execute operator with motion (e.g., dw, yj, c$)
+    OperatorMotion(OperatorMotionAction),
 }
 
 /// Completion actions
@@ -121,6 +125,38 @@ pub enum ExplorerAction {
     InputChar { c: char },
     /// Handle backspace during input mode
     InputBackspace,
+}
+
+/// Operator + motion action (e.g., dw, yj, c$)
+#[derive(Debug)]
+pub enum OperatorMotionAction {
+    /// Delete with motion (d + motion)
+    Delete {
+        motion: crate::motion::Motion,
+        count: usize,
+    },
+    /// Yank with motion (y + motion)
+    Yank {
+        motion: crate::motion::Motion,
+        count: usize,
+    },
+    /// Change with motion (c + motion)
+    Change {
+        motion: crate::motion::Motion,
+        count: usize,
+    },
+    /// Delete text object (di(, da{, etc.)
+    DeleteTextObject {
+        text_object: crate::textobject::TextObject,
+    },
+    /// Yank text object (yi(, ya{, etc.)
+    YankTextObject {
+        text_object: crate::textobject::TextObject,
+    },
+    /// Change text object (ci(, ca{, etc.)
+    ChangeTextObject {
+        text_object: crate::textobject::TextObject,
+    },
 }
 
 /// Command line mode actions

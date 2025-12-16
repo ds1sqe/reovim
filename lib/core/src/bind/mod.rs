@@ -106,6 +106,7 @@ pub struct KeyMap {
     pub visual: HashMap<String, KeyMapInner>,
     pub explorer: HashMap<String, KeyMapInner>,
     pub explorer_input: HashMap<String, KeyMapInner>,
+    pub operator_pending: HashMap<String, KeyMapInner>,
     #[allow(dead_code)] // Infrastructure for extra modes (Telescope, etc.)
     pub extra: HashMap<String, KeyMapInner>,
 }
@@ -120,6 +121,7 @@ impl KeyMap {
         Self::setup_command_mode(&mut km.command);
         Self::setup_explorer_mode(&mut km.explorer);
         Self::setup_explorer_input_mode(&mut km.explorer_input);
+        Self::setup_operator_pending_mode(&mut km.operator_pending);
         km
     }
 
@@ -137,6 +139,7 @@ impl KeyMap {
             "c" | "command" => &mut self.command,
             "e" | "explorer" => &mut self.explorer,
             "E" | "explorer_input" => &mut self.explorer_input,
+            "o" | "operator_pending" => &mut self.operator_pending,
             _ => return,
         };
         map.insert(keys.to_string(), KeyMapInner::with_command_ref(cmd));
@@ -156,6 +159,7 @@ impl KeyMap {
             "c" | "command" => &mut self.command,
             "e" | "explorer" => &mut self.explorer,
             "E" | "explorer_input" => &mut self.explorer_input,
+            "o" | "operator_pending" => &mut self.operator_pending,
             _ => return,
         };
         map.remove(keys);
@@ -178,6 +182,7 @@ impl KeyMap {
             Mod::Command => &self.command,
             Mod::Explorer => &self.explorer,
             Mod::ExplorerInput => &self.explorer_input,
+            Mod::OperatorPending { .. } => &self.operator_pending,
         };
 
         let mut bindings = Vec::new();
@@ -261,6 +266,18 @@ impl KeyMap {
         keymap.insert("<C-o>".to_string(), KeyMapInner::with_command_id(builtin::JUMP_OLDER));
         keymap.insert("<C-i>".to_string(), KeyMapInner::with_command_id(builtin::JUMP_NEWER));
 
+        // Undo/Redo
+        keymap.insert("u".to_string(), KeyMapInner::with_command_id(builtin::UNDO));
+        keymap.insert("<C-r>".to_string(), KeyMapInner::with_command_id(builtin::REDO));
+
+        // Operators (d, y, c enter operator-pending mode)
+        keymap.insert("d".to_string(), KeyMapInner::with_command_id(builtin::ENTER_DELETE_OPERATOR));
+        keymap.insert("dd".to_string(), KeyMapInner::with_command_id(builtin::DELETE_LINE));
+        keymap.insert("y".to_string(), KeyMapInner::with_command_id(builtin::ENTER_YANK_OPERATOR));
+        keymap.insert("yy".to_string(), KeyMapInner::with_command_id(builtin::YANK_LINE));
+        keymap.insert("Y".to_string(), KeyMapInner::with_command_id(builtin::YANK_TO_END));
+        keymap.insert("c".to_string(), KeyMapInner::with_command_id(builtin::ENTER_CHANGE_OPERATOR));
+
         // Space (leader) bindings
         keymap.insert(" ".to_string(), KeyMapInner::new()); // prefix, no command
         keymap.insert(
@@ -340,5 +357,11 @@ impl KeyMap {
         keymap.insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CANCEL_INPUT));
         keymap.insert("Enter".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CONFIRM_INPUT));
         keymap.insert("Backspace".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_INPUT_BACKSPACE));
+    }
+
+    fn setup_operator_pending_mode(keymap: &mut HashMap<String, KeyMapInner>) {
+        // Escape cancels operator-pending mode
+        keymap.insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::ENTER_NORMAL_MODE));
+        // Motion keys and 'd' for dd are handled dynamically in CommandHandler
     }
 }

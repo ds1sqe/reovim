@@ -14,10 +14,13 @@ use {
         command::{
             builtin::{CommandLineCharCommand, ExplorerInputCharCommand, InsertCharCommand},
             registry::CommandRegistry,
+            traits::OperatorMotionAction,
             CommandTrait,
         },
         event::{InnerEvent, KeyEvent, Subscribe},
-        modd::Mod,
+        modd::{Mod, OperatorType},
+        motion::Motion,
+        textobject::{Delimiter, TextObject, TextObjectScope},
     },
     std::{collections::HashMap, sync::Arc, time::Duration},
     tokio::sync::{broadcast::Receiver, mpsc::Sender, watch},
@@ -99,7 +102,79 @@ impl CommandHandler {
             Mod::Command => &self.keymap.command,
             Mod::Explorer => &self.keymap.explorer,
             Mod::ExplorerInput => &self.keymap.explorer_input,
+            Mod::OperatorPending { .. } => &self.keymap.operator_pending,
         }
+    }
+
+    /// Handle operator-pending mode specially
+    /// Returns Some(action) if the key triggers an operator, None otherwise
+    /// Returns None with `should_wait=true` if waiting for more keys (text object)
+    fn handle_operator_pending(
+        &self,
+        key: &str,
+        count: Option<usize>,
+        pending: &str,
+    ) -> (Option<OperatorMotionAction>, bool) {
+        let mode = self.current_mode();
+        if let Mod::OperatorPending { operator, count: op_count } = mode {
+            // Calculate total count (operator_count * motion_count)
+            let _total_count = op_count.unwrap_or(1) * count.unwrap_or(1);
+
+            // Check for text object completion: pending ends with "i" or "a", key is delimiter
+            if (pending.ends_with('i') || pending.ends_with('a'))
+                && key.len() == 1
+                && let Some(delim_char) = key.chars().next()
+                && let Some(delimiter) = Delimiter::from_char(delim_char)
+            {
+                let scope = if pending.ends_with('i') {
+                    TextObjectScope::Inner
+                } else {
+                    TextObjectScope::Around
+                };
+                let text_object = TextObject::new(scope, delimiter);
+                let action = match operator {
+                    OperatorType::Delete => OperatorMotionAction::DeleteTextObject { text_object },
+                    OperatorType::Yank => OperatorMotionAction::YankTextObject { text_object },
+                    OperatorType::Change => OperatorMotionAction::ChangeTextObject { text_object },
+                };
+                return (Some(action), false);
+            }
+
+            // If key is "i" or "a", wait for delimiter
+            if key == "i" || key == "a" {
+                return (None, true); // Wait for delimiter
+            }
+
+            // Check if key is a motion
+            if let Some(motion) = Motion::from_key(key) {
+                let total_count = op_count.unwrap_or(1) * count.unwrap_or(1);
+                let action = match operator {
+                    OperatorType::Delete => OperatorMotionAction::Delete { motion, count: total_count },
+                    OperatorType::Yank => OperatorMotionAction::Yank { motion, count: total_count },
+                    OperatorType::Change => OperatorMotionAction::Change { motion, count: total_count },
+                };
+                return (Some(action), false);
+            }
+
+            // Handle 'd' for dd (delete line), 'y' for yy, 'c' for cc
+            match (key, &operator) {
+                ("d", OperatorType::Delete) | ("y", OperatorType::Yank) | ("c", OperatorType::Change) => {
+                    // dd/yy/cc: delete/yank/change current line(s)
+                    // Use Down motion with count-1 to affect count lines
+                    let total_count = op_count.unwrap_or(1) * count.unwrap_or(1);
+                    let motion = Motion::Down;
+                    let line_count = if total_count == 1 { 0 } else { total_count - 1 };
+                    let action = match operator {
+                        OperatorType::Delete => OperatorMotionAction::Delete { motion, count: line_count },
+                        OperatorType::Yank => OperatorMotionAction::Yank { motion, count: line_count },
+                        OperatorType::Change => OperatorMotionAction::Change { motion, count: line_count },
+                    };
+                    return (Some(action), false);
+                }
+                _ => {}
+            }
+        }
+        (None, false)
     }
 
     /// Lookup command - assumes key is already pushed to `pending_keys`
@@ -241,6 +316,7 @@ impl CommandHandler {
 
     #[allow(clippy::while_let_loop)]
     #[allow(clippy::match_same_arms)]
+    #[allow(clippy::too_many_lines)]
     pub async fn run(mut self) {
         if let Some(rx) = self.key_event_rx.take() {
             let mut rx = rx;
@@ -313,6 +389,35 @@ impl CommandHandler {
                                                 .await;
                                         }
                                         // In Normal/Visual/Explorer, ignore backspace (don't add to pending)
+                                        continue;
+                                    }
+                                }
+
+                                // Handle operator-pending mode (d, y, c + motion or text object)
+                                let mode = self.current_mode();
+                                if matches!(mode, Mod::OperatorPending { .. }) {
+                                    let count = self.count_parser.peek();
+                                    let (action, should_wait) = self.handle_operator_pending(
+                                        &key_str,
+                                        count,
+                                        &self.pending_keys,
+                                    );
+                                    if let Some(action) = action {
+                                        tracing::debug!(?action, "Operator-pending action detected");
+                                        self.pending_keys.clear();
+                                        self.count_parser.take(); // Consume count
+                                        self.dispatcher.send_operator_motion(action).await;
+                                        self.dispatcher
+                                            .send_pending_keys(self.pending_display())
+                                            .await;
+                                        continue;
+                                    }
+                                    if should_wait {
+                                        // Waiting for text object delimiter (i/a pressed)
+                                        self.pending_keys.push_str(&key_str);
+                                        self.dispatcher
+                                            .send_pending_keys(self.pending_display())
+                                            .await;
                                         continue;
                                     }
                                 }

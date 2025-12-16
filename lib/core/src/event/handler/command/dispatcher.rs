@@ -1,10 +1,11 @@
 //! Command dispatch and mode change handling
 
 use crate::bind::CommandRef;
+use crate::command::traits::OperatorMotionAction;
 use crate::command::CommandContext;
 use crate::event::inner::{CommandEvent, WhichKeyBinding};
 use crate::event::InnerEvent;
-use crate::modd::{Mod, ModExtension};
+use crate::modd::{Mod, ModExtension, OperatorType};
 use tokio::sync::mpsc::Sender;
 
 /// Handles command dispatch and mode transitions
@@ -84,6 +85,19 @@ impl Dispatcher {
             | "open_line_below" | "open_line_above" => Some(Mod::Insert(ModExtension::Normal)),
             "enter_visual_mode" => Some(Mod::Visual(ModExtension::Normal)),
             "enter_command_mode" => Some(Mod::Command),
+            // Operator-pending mode
+            "enter_delete_operator" => Some(Mod::OperatorPending {
+                operator: OperatorType::Delete,
+                count: None,
+            }),
+            "enter_yank_operator" => Some(Mod::OperatorPending {
+                operator: OperatorType::Yank,
+                count: None,
+            }),
+            "enter_change_operator" => Some(Mod::OperatorPending {
+                operator: OperatorType::Change,
+                count: None,
+            }),
             // Commands that return to Normal mode
             "command_line_execute" | "command_line_cancel" | "visual_delete" | "visual_yank" => {
                 Some(Mod::Normal)
@@ -92,6 +106,19 @@ impl Dispatcher {
             // toggle_explorer, explorer_close, explorer_focus_editor etc.
             _ => None,
         }
+    }
+
+    /// Send operator + motion action to runtime
+    pub async fn send_operator_motion(&self, action: OperatorMotionAction) {
+        // Also send mode change back to normal
+        let _ = self
+            .inner_tx
+            .send(InnerEvent::ModeChangeEvent(Mod::Normal))
+            .await;
+        let _ = self
+            .inner_tx
+            .send(InnerEvent::OperatorMotionEvent(action))
+            .await;
     }
 
     /// Send event to show which-key popup

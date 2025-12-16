@@ -147,3 +147,84 @@ impl CommandTrait for DeleteLineCommand {
         self
     }
 }
+
+/// Yank (copy) current line
+#[derive(Debug, Clone)]
+pub struct YankLineCommand;
+
+impl CommandTrait for YankLineCommand {
+    fn name(&self) -> &'static str {
+        "yank_line"
+    }
+
+    fn description(&self) -> &'static str {
+        "Yank (copy) current line"
+    }
+
+    #[allow(clippy::cast_possible_truncation)]
+    fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
+        let y = ctx.buffer.cur.y as usize;
+        let text = ctx
+            .buffer
+            .contents
+            .get(y)
+            .map(|line| line.inner.clone() + "\n")
+            .unwrap_or_default();
+        CommandResult::ClipboardWrite {
+            text,
+            register: None,
+        }
+    }
+
+    fn clone_box(&self) -> Box<dyn CommandTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+/// Yank (copy) from cursor to end of line
+#[derive(Debug, Clone)]
+pub struct YankToEndCommand;
+
+impl CommandTrait for YankToEndCommand {
+    fn name(&self) -> &'static str {
+        "yank_to_end"
+    }
+
+    fn description(&self) -> &'static str {
+        "Yank from cursor to end of line"
+    }
+
+    #[allow(clippy::cast_possible_truncation)]
+    fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
+        let y = ctx.buffer.cur.y as usize;
+        let x = ctx.buffer.cur.x as usize;
+        let text = ctx
+            .buffer
+            .contents
+            .get(y)
+            .map(|line| {
+                if x < line.inner.len() {
+                    line.inner[x..].to_string()
+                } else {
+                    String::new()
+                }
+            })
+            .unwrap_or_default();
+        CommandResult::ClipboardWrite {
+            text,
+            register: None,
+        }
+    }
+
+    fn clone_box(&self) -> Box<dyn CommandTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}

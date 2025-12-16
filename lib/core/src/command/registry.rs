@@ -106,6 +106,7 @@ impl CommandRegistry {
     /// Register all built-in commands
     ///
     /// This is called automatically when using `with_defaults()`.
+    #[allow(clippy::too_many_lines)]
     fn register_builtins(&self) {
         use super::builtin::{
             // Clipboard
@@ -128,17 +129,21 @@ impl CommandRegistry {
             ExplorerInputBackspaceCommand, ExplorerOpenNodeCommand, ExplorerPageDownCommand,
             ExplorerPageUpCommand, ExplorerRefreshCommand, ExplorerRenameCommand,
             ExplorerToggleHiddenCommand, ExplorerToggleNodeCommand,
+            // History (Undo/Redo)
+            RedoCommand, UndoCommand,
             // Jump
             JumpNewerCommand, JumpOlderCommand,
             // Mode
             EnterCommandModeCommand, EnterInsertModeAfterCommand, EnterInsertModeCommand,
             EnterInsertModeEolCommand, EnterNormalModeCommand, EnterVisualBlockModeCommand,
             EnterVisualModeCommand, OpenLineAboveCommand, OpenLineBelowCommand,
+            // Operators
+            EnterChangeOperatorCommand, EnterDeleteOperatorCommand, EnterYankOperatorCommand,
             // System
             NoopCommand, QuitCommand,
             // Text
             DeleteCharBackwardCommand, DeleteCharForwardCommand, DeleteLineCommand,
-            InsertNewlineCommand,
+            InsertNewlineCommand, YankLineCommand, YankToEndCommand,
             // Visual
             VisualDeleteCommand, VisualExtendDownCommand, VisualExtendLeftCommand,
             VisualExtendRightCommand, VisualExtendUpCommand, VisualYankCommand,
@@ -160,6 +165,10 @@ impl CommandRegistry {
         let _ = self.register(JumpOlderCommand);
         let _ = self.register(JumpNewerCommand);
 
+        // History (Undo/Redo) commands
+        let _ = self.register(UndoCommand);
+        let _ = self.register(RedoCommand);
+
         // Mode switching commands
         let _ = self.register(EnterNormalModeCommand);
         let _ = self.register(EnterInsertModeCommand);
@@ -171,11 +180,18 @@ impl CommandRegistry {
         let _ = self.register(EnterVisualBlockModeCommand);
         let _ = self.register(EnterCommandModeCommand);
 
+        // Operator commands
+        let _ = self.register(EnterDeleteOperatorCommand);
+        let _ = self.register(EnterYankOperatorCommand);
+        let _ = self.register(EnterChangeOperatorCommand);
+
         // Text editing commands
         let _ = self.register(DeleteCharBackwardCommand);
         let _ = self.register(DeleteCharForwardCommand);
         let _ = self.register(DeleteLineCommand);
         let _ = self.register(InsertNewlineCommand);
+        let _ = self.register(YankLineCommand);
+        let _ = self.register(YankToEndCommand);
 
         // Visual mode commands
         let _ = self.register(VisualExtendUpCommand);

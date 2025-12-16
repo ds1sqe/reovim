@@ -42,6 +42,7 @@ pub fn render_status_line_to<W: Write>(
         Mod::Command => "", // Command mode shows command line instead
         Mod::Explorer => "-- EXPLORER --",
         Mod::ExplorerInput => "-- EXPLORER INPUT --",
+        Mod::OperatorPending { .. } => "-- OPERATOR --",
     };
 
     // Get buffer name (file path or [No Name])

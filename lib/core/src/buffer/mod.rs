@@ -1,6 +1,7 @@
 //! Buffer module for text storage and manipulation
 
 mod cursor;
+mod history;
 mod selection;
 mod text;
 
@@ -8,10 +9,12 @@ mod text;
 mod tests;
 
 pub use cursor::{calculate_motion, calculate_motion_with_desired_col, CursorOps};
+pub use history::{Change, UndoHistory};
 pub use selection::{Selection, SelectionMode, SelectionOps};
 pub use text::TextOps;
 
 use crate::motion::Motion;
+use crate::textobject::{TextObject, TextObjectScope};
 
 use crate::screen::Position;
 
@@ -38,6 +41,8 @@ pub struct Buffer {
     pub contents: Vec<Line>,
     pub selection: Selection,
     pub file_path: Option<String>,
+    /// Undo/redo history
+    history: UndoHistory,
 }
 
 impl Buffer {
@@ -50,6 +55,7 @@ impl Buffer {
             contents: Vec::new(),
             selection: Selection::default(),
             file_path: None,
+            history: UndoHistory::new(),
         }
     }
 
@@ -65,6 +71,154 @@ impl Buffer {
         if self.desired_col.is_none() {
             self.desired_col = Some(self.cur.x);
         }
+    }
+
+    /// Record a change for undo
+    pub fn record_change(&mut self, change: Change) {
+        self.history.push(change);
+    }
+
+    /// Apply undo - returns true if successful
+    #[allow(clippy::cast_possible_truncation)]
+    pub fn apply_undo(&mut self) -> bool {
+        let Some(change) = self.history.undo() else {
+            return false;
+        };
+        self.apply_change(&change);
+        true
+    }
+
+    /// Apply redo - returns true if successful
+    #[allow(clippy::cast_possible_truncation)]
+    pub fn apply_redo(&mut self) -> bool {
+        let Some(change) = self.history.redo() else {
+            return false;
+        };
+        self.apply_change(&change);
+        true
+    }
+
+    /// Apply a change to the buffer (used by undo/redo)
+    #[allow(clippy::cast_possible_truncation)]
+    fn apply_change(&mut self, change: &Change) {
+        match change {
+            Change::Insert { pos, text } => {
+                self.cur = *pos;
+                self.insert_text_at_cursor(text);
+            }
+            Change::Delete { pos, text } => {
+                self.delete_text_at(*pos, text.len());
+            }
+            Change::Batch(changes) => {
+                for c in changes {
+                    self.apply_change(c);
+                }
+            }
+        }
+    }
+
+    /// Insert text at current cursor position (public method with history)
+    ///
+    /// Handles single-line and multi-line text insertion properly.
+    /// Records the change for undo support.
+    #[allow(clippy::cast_possible_truncation)]
+    pub fn insert_text(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        let pos = self.cur;
+        self.insert_text_at_cursor(text);
+        // Record as a single change for undo
+        self.record_change(Change::Insert {
+            pos,
+            text: text.to_string(),
+        });
+    }
+
+    /// Insert text at current cursor position (for undo/redo, no history)
+    #[allow(clippy::cast_possible_truncation)]
+    fn insert_text_at_cursor(&mut self, text: &str) {
+        for c in text.chars() {
+            if c == '\n' {
+                self.insert_newline_internal();
+            } else {
+                self.insert_char_internal(c);
+            }
+        }
+    }
+
+    /// Insert a single character without recording history
+    #[allow(clippy::cast_possible_truncation)]
+    fn insert_char_internal(&mut self, c: char) {
+        if self.contents.is_empty() {
+            self.contents.push(Line::from(""));
+        }
+        if let Some(line) = self.contents.get_mut(self.cur.y as usize) {
+            let x = self.cur.x as usize;
+            if x <= line.inner.len() {
+                line.inner.insert(x, c);
+                self.cur.x += 1;
+            }
+        }
+    }
+
+    /// Insert newline without recording history
+    #[allow(clippy::cast_possible_truncation)]
+    fn insert_newline_internal(&mut self) {
+        if self.contents.is_empty() {
+            self.contents.push(Line::from(""));
+        }
+        let y = self.cur.y as usize;
+        let x = self.cur.x as usize;
+
+        if let Some(line) = self.contents.get_mut(y) {
+            let rest = if x < line.inner.len() {
+                line.inner.split_off(x)
+            } else {
+                String::new()
+            };
+            self.contents.insert(y + 1, Line { inner: rest });
+        }
+        self.cur.y += 1;
+        self.cur.x = 0;
+    }
+
+    /// Delete text starting at position (for undo - handles multi-char/multi-line)
+    #[allow(clippy::cast_possible_truncation)]
+    fn delete_text_at(&mut self, pos: Position, len: usize) {
+        self.cur = pos;
+        for _ in 0..len {
+            self.delete_char_at_cursor();
+        }
+    }
+
+    /// Delete character at cursor without recording history
+    #[allow(clippy::cast_possible_truncation)]
+    fn delete_char_at_cursor(&mut self) {
+        if let Some(line) = self.contents.get_mut(self.cur.y as usize) {
+            let x = self.cur.x as usize;
+            if x < line.inner.len() {
+                line.inner.remove(x);
+            } else if self.cur.y as usize + 1 < self.contents.len() {
+                // At end of line, merge with next line
+                let next_line = self.contents.remove(self.cur.y as usize + 1);
+                if let Some(current) = self.contents.get_mut(self.cur.y as usize) {
+                    current.inner.push_str(&next_line.inner);
+                }
+            }
+        }
+    }
+
+    /// Check if undo is available
+    #[must_use]
+    pub const fn can_undo(&self) -> bool {
+        self.history.can_undo()
+    }
+
+    /// Check if redo is available
+    #[must_use]
+    pub const fn can_redo(&self) -> bool {
+        self.history.can_redo()
     }
 
     /// Extract text between two positions (internal helper)
@@ -290,6 +444,7 @@ impl TextOps for Buffer {
 
     #[allow(clippy::cast_possible_truncation)]
     fn insert_char(&mut self, c: char) {
+        let pos = self.cur;
         if self.contents.is_empty() {
             self.contents.push(Line::from(""));
         }
@@ -298,12 +453,18 @@ impl TextOps for Buffer {
             if x <= line.inner.len() {
                 line.inner.insert(x, c);
                 self.cur.x += 1;
+                // Record change for undo
+                self.record_change(Change::Insert {
+                    pos,
+                    text: c.to_string(),
+                });
             }
         }
     }
 
     #[allow(clippy::cast_possible_truncation)]
     fn insert_newline(&mut self) {
+        let pos = self.cur;
         if self.contents.is_empty() {
             self.contents.push(Line::from(""));
         }
@@ -323,6 +484,11 @@ impl TextOps for Buffer {
         // Move cursor to start of the new line
         self.cur.y += 1;
         self.cur.x = 0;
+        // Record change for undo
+        self.record_change(Change::Insert {
+            pos,
+            text: "\n".to_string(),
+        });
     }
 
     #[allow(clippy::cast_possible_truncation)]
@@ -332,18 +498,29 @@ impl TextOps for Buffer {
         {
             let x = (self.cur.x - 1) as usize;
             if x < line.inner.len() {
-                line.inner.remove(x);
+                let deleted_char = line.inner.remove(x);
                 self.cur.x -= 1;
+                // Record change for undo
+                self.record_change(Change::Delete {
+                    pos: self.cur,
+                    text: deleted_char.to_string(),
+                });
             }
         }
     }
 
     #[allow(clippy::cast_possible_truncation)]
     fn delete_char_forward(&mut self) {
+        let pos = self.cur;
         if let Some(line) = self.contents.get_mut(self.cur.y as usize) {
             let x = self.cur.x as usize;
             if x < line.inner.len() {
-                line.inner.remove(x);
+                let deleted_char = line.inner.remove(x);
+                // Record change for undo
+                self.record_change(Change::Delete {
+                    pos,
+                    text: deleted_char.to_string(),
+                });
             }
         }
     }
@@ -352,7 +529,16 @@ impl TextOps for Buffer {
     fn delete_line(&mut self) {
         let y = self.cur.y as usize;
         if y < self.contents.len() {
-            self.contents.remove(y);
+            let deleted_line = self.contents.remove(y);
+            // Record change for undo (include newline if not last line)
+            let pos = Position { x: 0, y: self.cur.y };
+            let text = if y < self.contents.len() {
+                deleted_line.inner + "\n"
+            } else {
+                deleted_line.inner
+            };
+            self.record_change(Change::Delete { pos, text });
+
             if self.cur.y as usize >= self.contents.len() && !self.contents.is_empty() {
                 self.cur.y = (self.contents.len() - 1) as u16;
             }
@@ -372,5 +558,396 @@ impl CursorOps for Buffer {
 
     fn apply_motion(&mut self, motion: Motion, count: usize) {
         self.cur = calculate_motion(&self.contents, self.cur, motion, count);
+    }
+}
+
+// === Operator + Motion Operations ===
+impl Buffer {
+    /// Delete from cursor to motion target, returns deleted text
+    ///
+    /// For linewise motions (j, k, G, gg), deletes entire lines.
+    /// For characterwise motions (w, b, $, 0), deletes character range.
+    #[allow(clippy::cast_possible_truncation)]
+    pub fn delete_to_motion(&mut self, motion: Motion, count: usize) -> String {
+        let start = self.cur;
+        let target = calculate_motion(&self.contents, self.cur, motion, count);
+
+        if motion.is_linewise() {
+            // Linewise delete (dj, dk, dG, dgg)
+            let (from_y, to_y) = if start.y <= target.y {
+                (start.y as usize, target.y as usize)
+            } else {
+                (target.y as usize, start.y as usize)
+            };
+            self.delete_lines(from_y, to_y)
+        } else {
+            // Characterwise delete (dw, db, d$, d0)
+            let (from, to) = if start.y < target.y || (start.y == target.y && start.x <= target.x)
+            {
+                (start, target)
+            } else {
+                (target, start)
+            };
+            self.delete_range(from, to)
+        }
+    }
+
+    /// Yank from cursor to motion target, returns yanked text
+    ///
+    /// Similar to `delete_to_motion` but doesn't modify the buffer.
+    #[allow(clippy::cast_possible_truncation)]
+    pub fn yank_to_motion(&mut self, motion: Motion, count: usize) -> String {
+        let start = self.cur;
+        let target = calculate_motion(&self.contents, self.cur, motion, count);
+
+        if motion.is_linewise() {
+            // Linewise yank
+            let (from_y, to_y) = if start.y <= target.y {
+                (start.y as usize, target.y as usize)
+            } else {
+                (target.y as usize, start.y as usize)
+            };
+            self.yank_lines(from_y, to_y)
+        } else {
+            // Characterwise yank
+            let (from, to) = if start.y < target.y || (start.y == target.y && start.x <= target.x)
+            {
+                (start, target)
+            } else {
+                (target, start)
+            };
+            self.yank_range(from, to)
+        }
+    }
+
+    /// Delete a range of characters between two positions
+    #[allow(clippy::cast_possible_truncation)]
+    fn delete_range(&mut self, start: Position, end: Position) -> String {
+        let text = self.extract_text(start, end);
+        if text.is_empty() {
+            return text;
+        }
+
+        // Use selection-style deletion logic
+        if start.y == end.y {
+            // Single line deletion
+            if let Some(line) = self.contents.get_mut(start.y as usize) {
+                let start_x = start.x as usize;
+                let end_x = (end.x as usize + 1).min(line.inner.len());
+                if start_x < line.inner.len() {
+                    line.inner.drain(start_x..end_x);
+                }
+            }
+        } else {
+            // Multi-line deletion
+            if let Some(first_line) = self.contents.get(start.y as usize) {
+                let prefix = first_line.inner[..start.x as usize].to_string();
+                if let Some(last_line) = self.contents.get(end.y as usize) {
+                    let end_x = (end.x as usize + 1).min(last_line.inner.len());
+                    let suffix = last_line.inner[end_x..].to_string();
+
+                    // Remove lines from end to start+1
+                    for _ in (start.y + 1..=end.y).rev() {
+                        if (start.y as usize + 1) < self.contents.len() {
+                            self.contents.remove(start.y as usize + 1);
+                        }
+                    }
+
+                    // Merge prefix and suffix into start line
+                    if let Some(line) = self.contents.get_mut(start.y as usize) {
+                        line.inner = prefix + &suffix;
+                    }
+                }
+            }
+        }
+
+        // Record change for undo
+        self.record_change(Change::Delete {
+            pos: start,
+            text: text.clone(),
+        });
+
+        self.cur = start;
+        text
+    }
+
+    /// Delete entire lines from `start_y` to `end_y` (inclusive)
+    #[allow(clippy::cast_possible_truncation)]
+    fn delete_lines(&mut self, start_y: usize, end_y: usize) -> String {
+        let mut deleted_text = String::new();
+
+        // Collect text from all lines to be deleted
+        for y in start_y..=end_y {
+            if let Some(line) = self.contents.get(y) {
+                if !deleted_text.is_empty() {
+                    deleted_text.push('\n');
+                }
+                deleted_text.push_str(&line.inner);
+            }
+        }
+        deleted_text.push('\n'); // Linewise deletes include trailing newline
+
+        // Remove lines from end to start
+        for _ in (start_y..=end_y).rev() {
+            if start_y < self.contents.len() {
+                self.contents.remove(start_y);
+            }
+        }
+
+        // Record change for undo
+        self.record_change(Change::Delete {
+            pos: Position {
+                x: 0,
+                y: start_y as u16,
+            },
+            text: deleted_text.clone(),
+        });
+
+        // Move cursor to start of deleted region
+        self.cur.y = start_y.min(self.contents.len().saturating_sub(1)) as u16;
+        self.cur.x = 0;
+
+        // Clamp cursor if buffer is now empty
+        if self.contents.is_empty() {
+            self.contents.push(Line::from(""));
+            self.cur = Position { x: 0, y: 0 };
+        }
+
+        deleted_text
+    }
+
+    /// Yank a range of characters (doesn't modify buffer)
+    fn yank_range(&self, start: Position, end: Position) -> String {
+        self.extract_text(start, end)
+    }
+
+    /// Yank entire lines (doesn't modify buffer)
+    fn yank_lines(&self, start_y: usize, end_y: usize) -> String {
+        let mut yanked_text = String::new();
+
+        for y in start_y..=end_y {
+            if let Some(line) = self.contents.get(y) {
+                if !yanked_text.is_empty() {
+                    yanked_text.push('\n');
+                }
+                yanked_text.push_str(&line.inner);
+            }
+        }
+        yanked_text.push('\n'); // Linewise yanks include trailing newline
+
+        yanked_text
+    }
+
+    /// Delete text object (di(, da{, etc.)
+    pub fn delete_text_object(&mut self, text_object: TextObject) -> String {
+        if let Some((start, end)) = self.find_text_object_bounds(text_object) {
+            self.delete_range(start, end)
+        } else {
+            String::new()
+        }
+    }
+
+    /// Yank text object (yi(, ya{, etc.)
+    pub fn yank_text_object(&mut self, text_object: TextObject) -> String {
+        if let Some((start, end)) = self.find_text_object_bounds(text_object) {
+            self.yank_range(start, end)
+        } else {
+            String::new()
+        }
+    }
+
+    /// Find the bounds of a text object at cursor position
+    #[allow(clippy::cast_possible_truncation)]
+    fn find_text_object_bounds(&self, text_object: TextObject) -> Option<(Position, Position)> {
+        let (open_char, close_char) = text_object.delimiter.chars();
+
+        // Find the matching delimiter pair containing cursor
+        let (open_pos, close_pos) = self.find_delimiter_pair(open_char, close_char)?;
+
+        match text_object.scope {
+            TextObjectScope::Inner => {
+                // Inner: between delimiters (exclusive)
+                // Start after opening delimiter
+                let start = if open_pos.x as usize + 1 < self.contents.get(open_pos.y as usize)?.inner.len() {
+                    Position {
+                        x: open_pos.x + 1,
+                        y: open_pos.y,
+                    }
+                } else if open_pos.y < close_pos.y {
+                    // Opening delimiter at end of line, start at beginning of next line
+                    Position {
+                        x: 0,
+                        y: open_pos.y + 1,
+                    }
+                } else {
+                    // Empty content
+                    return None;
+                };
+
+                // End before closing delimiter
+                let end = if close_pos.x > 0 {
+                    Position {
+                        x: close_pos.x - 1,
+                        y: close_pos.y,
+                    }
+                } else if close_pos.y > open_pos.y {
+                    // Closing delimiter at start of line, end at end of previous line
+                    let prev_line = self.contents.get(close_pos.y as usize - 1)?;
+                    Position {
+                        x: prev_line.inner.len().saturating_sub(1) as u16,
+                        y: close_pos.y - 1,
+                    }
+                } else {
+                    // Empty content
+                    return None;
+                };
+
+                // Check if start is before or equal to end
+                if start.y < end.y || (start.y == end.y && start.x <= end.x) {
+                    Some((start, end))
+                } else {
+                    None // Empty content between delimiters
+                }
+            }
+            TextObjectScope::Around => {
+                // Around: including delimiters
+                Some((open_pos, close_pos))
+            }
+        }
+    }
+
+    /// Find matching delimiter pair containing cursor.
+    /// Returns `(open_position, close_position)`.
+    #[allow(clippy::cast_possible_truncation)]
+    fn find_delimiter_pair(&self, open: char, close: char) -> Option<(Position, Position)> {
+        let is_symmetric = open == close;
+
+        if is_symmetric {
+            self.find_symmetric_delimiter_pair(open)
+        } else {
+            self.find_asymmetric_delimiter_pair(open, close)
+        }
+    }
+
+    /// Find matching symmetric delimiter pair (quotes)
+    #[allow(clippy::cast_possible_truncation)]
+    fn find_symmetric_delimiter_pair(&self, quote: char) -> Option<(Position, Position)> {
+        let cur_y = self.cur.y as usize;
+        let cur_x = self.cur.x as usize;
+
+        let line = self.contents.get(cur_y)?;
+        let chars: Vec<char> = line.inner.chars().collect();
+
+        // Find all quote positions on the current line
+        let quote_positions: Vec<usize> = chars
+            .iter()
+            .enumerate()
+            .filter(|&(_, c)| *c == quote)
+            .map(|(i, _)| i)
+            .collect();
+
+        // Find pair containing cursor
+        for i in 0..quote_positions.len() / 2 {
+            let open_idx = quote_positions[i * 2];
+            let close_idx = quote_positions[i * 2 + 1];
+            if cur_x >= open_idx && cur_x <= close_idx {
+                return Some((
+                    Position {
+                        x: open_idx as u16,
+                        y: cur_y as u16,
+                    },
+                    Position {
+                        x: close_idx as u16,
+                        y: cur_y as u16,
+                    },
+                ));
+            }
+        }
+        None
+    }
+
+    /// Find matching asymmetric delimiter pair (brackets)
+    #[allow(clippy::cast_possible_truncation)]
+    fn find_asymmetric_delimiter_pair(&self, open: char, close: char) -> Option<(Position, Position)> {
+        // Search backward for opening delimiter
+        let open_pos = self.find_backward(open, close)?;
+        // Search forward for closing delimiter
+        let close_pos = self.find_forward(open, close)?;
+        Some((open_pos, close_pos))
+    }
+
+    /// Search backward for unmatched opening delimiter
+    #[allow(clippy::cast_possible_truncation)]
+    fn find_backward(&self, open: char, close: char) -> Option<Position> {
+        let mut y = self.cur.y as usize;
+        let mut x = self.cur.x as usize;
+        let mut depth = 0;
+
+        loop {
+            if let Some(line) = self.contents.get(y) {
+                let chars: Vec<char> = line.inner.chars().collect();
+                // Search from current position backward
+                for i in (0..=x.min(chars.len().saturating_sub(1))).rev() {
+                    let c = chars[i];
+                    if c == close {
+                        depth += 1;
+                    } else if c == open {
+                        if depth == 0 {
+                            return Some(Position {
+                                x: i as u16,
+                                y: y as u16,
+                            });
+                        }
+                        depth -= 1;
+                    }
+                }
+            }
+
+            if y == 0 {
+                break;
+            }
+            y -= 1;
+            x = self
+                .contents
+                .get(y)
+                .map_or(0, |line| line.inner.len().saturating_sub(1));
+        }
+        None
+    }
+
+    /// Search forward for unmatched closing delimiter
+    #[allow(clippy::cast_possible_truncation)]
+    fn find_forward(&self, open: char, close: char) -> Option<Position> {
+        let mut y = self.cur.y as usize;
+        let mut x = self.cur.x as usize;
+        let mut depth = 0;
+
+        loop {
+            if let Some(line) = self.contents.get(y) {
+                let chars: Vec<char> = line.inner.chars().collect();
+                // Search from current position forward
+                let start = if y == self.cur.y as usize { x } else { 0 };
+                for (i, &c) in chars.iter().enumerate().skip(start) {
+                    if c == open {
+                        depth += 1;
+                    } else if c == close {
+                        if depth == 0 {
+                            return Some(Position {
+                                x: i as u16,
+                                y: y as u16,
+                            });
+                        }
+                        depth -= 1;
+                    }
+                }
+            }
+
+            y += 1;
+            if y >= self.contents.len() {
+                break;
+            }
+            x = 0;
+        }
+        None
     }
 }

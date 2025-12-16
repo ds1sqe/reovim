@@ -139,4 +139,17 @@ pub mod builtin {
     // === Jump List ===
     pub const JUMP_OLDER: CommandId = CommandId::new("jump_older");
     pub const JUMP_NEWER: CommandId = CommandId::new("jump_newer");
+
+    // === Undo/Redo ===
+    pub const UNDO: CommandId = CommandId::new("undo");
+    pub const REDO: CommandId = CommandId::new("redo");
+
+    // === Yank ===
+    pub const YANK_LINE: CommandId = CommandId::new("yank_line");
+    pub const YANK_TO_END: CommandId = CommandId::new("yank_to_end");
+
+    // === Operators ===
+    pub const ENTER_DELETE_OPERATOR: CommandId = CommandId::new("enter_delete_operator");
+    pub const ENTER_YANK_OPERATOR: CommandId = CommandId::new("enter_yank_operator");
+    pub const ENTER_CHANGE_OPERATOR: CommandId = CommandId::new("enter_change_operator");
 }
