@@ -47,4 +47,4 @@ tracing-appender = "0.2"
 chrono = "0.4"
 # local libs
 reovim-core = { path = "./lib/core", version = "0.2.0" }
-reovim-sys = { path = "./lib/sys", version = "0.1.2" }
+reovim-sys = { path = "./lib/sys", version = "0.2.0" }
