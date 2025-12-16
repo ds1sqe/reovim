@@ -152,4 +152,20 @@ pub mod builtin {
     pub const ENTER_DELETE_OPERATOR: CommandId = CommandId::new("enter_delete_operator");
     pub const ENTER_YANK_OPERATOR: CommandId = CommandId::new("enter_yank_operator");
     pub const ENTER_CHANGE_OPERATOR: CommandId = CommandId::new("enter_change_operator");
+
+    // === Telescope ===
+    pub const TELESCOPE_FIND_FILES: CommandId = CommandId::new("telescope_find_files");
+    pub const TELESCOPE_FIND_BUFFERS: CommandId = CommandId::new("telescope_find_buffers");
+    pub const TELESCOPE_LIVE_GREP: CommandId = CommandId::new("telescope_live_grep");
+    pub const TELESCOPE_RECENT: CommandId = CommandId::new("telescope_recent_files");
+    pub const TELESCOPE_COMMANDS: CommandId = CommandId::new("telescope_commands");
+    pub const TELESCOPE_HELP: CommandId = CommandId::new("telescope_help_tags");
+    pub const TELESCOPE_KEYMAPS: CommandId = CommandId::new("telescope_keymaps");
+    pub const TELESCOPE_CLOSE: CommandId = CommandId::new("telescope_close");
+    pub const TELESCOPE_CONFIRM: CommandId = CommandId::new("telescope_confirm");
+    pub const TELESCOPE_NEXT: CommandId = CommandId::new("telescope_select_next");
+    pub const TELESCOPE_PREV: CommandId = CommandId::new("telescope_select_prev");
+    pub const TELESCOPE_PAGE_UP: CommandId = CommandId::new("telescope_page_up");
+    pub const TELESCOPE_PAGE_DOWN: CommandId = CommandId::new("telescope_page_down");
+    pub const TELESCOPE_DELETE_CHAR: CommandId = CommandId::new("telescope_backspace");
 }

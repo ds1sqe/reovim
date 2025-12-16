@@ -1,8 +1,7 @@
 //! Which-key popup panel for displaying available keybindings
 
 use crate::event::WhichKeyBinding;
-use crate::highlight::{ColorMode, Style};
-use reovim_sys::style::Color;
+use crate::highlight::{ColorMode, Style, Theme};
 
 /// Default panel width in characters
 const DEFAULT_PANEL_WIDTH: u16 = 40;
@@ -68,6 +67,7 @@ impl WhichKeyPanel {
         screen_width: u16,
         screen_height: u16,
         color_mode: ColorMode,
+        theme: &Theme,
     ) -> Vec<(String, u16, u16)> {
         if !self.visible || self.bindings.is_empty() {
             return Vec::new();
@@ -82,14 +82,11 @@ impl WhichKeyPanel {
         let content_height = (self.bindings.len() as u16 + 2).min(max_height);
         let panel_y = screen_height.saturating_sub(content_height).saturating_sub(1);
 
-        // Styles for the panel
-        let bg_style = Style::new().bg(Color::AnsiValue(236)); // Dark gray background
-        let key_style = Style::new().fg(Color::Yellow).bg(Color::AnsiValue(236)).bold();
-        let desc_style = Style::new().fg(Color::White).bg(Color::AnsiValue(236));
-        let prefix_style = Style::new().fg(Color::Cyan).bg(Color::AnsiValue(236)).bold();
+        // Use theme styles
+        let styles = &theme.which_key;
 
         // Header line
-        let header = self.format_header(panel_width as usize, &bg_style, color_mode);
+        let header = self.format_header(panel_width as usize, &styles.border, color_mode);
         lines.push((header, panel_x, panel_y));
 
         // Binding lines
@@ -101,17 +98,17 @@ impl WhichKeyPanel {
             let line = self.format_binding(
                 binding,
                 panel_width as usize,
-                &key_style,
-                &desc_style,
-                &prefix_style,
-                &bg_style,
+                &styles.key,
+                &styles.description,
+                &styles.prefix,
+                &styles.background,
                 color_mode,
             );
             lines.push((line, panel_x, panel_y + 1 + i as u16));
         }
 
         // Footer line
-        let footer = Self::format_footer(panel_width as usize, &bg_style, color_mode);
+        let footer = Self::format_footer(panel_width as usize, &styles.border, color_mode);
         lines.push((footer, panel_x, panel_y + content_height - 1));
 
         lines

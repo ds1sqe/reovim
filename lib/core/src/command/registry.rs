@@ -141,6 +141,12 @@ impl CommandRegistry {
             EnterChangeOperatorCommand, EnterDeleteOperatorCommand, EnterYankOperatorCommand,
             // System
             NoopCommand, QuitCommand,
+            // Telescope
+            TelescopeBackspaceCommand, TelescopeCloseCommand, TelescopeCommandsCommand,
+            TelescopeConfirmCommand, TelescopeFindBuffersCommand, TelescopeFindFilesCommand,
+            TelescopeHelpTagsCommand, TelescopeKeymapsCommand, TelescopeLiveGrepCommand,
+            TelescopePageDownCommand, TelescopePageUpCommand, TelescopeRecentFilesCommand,
+            TelescopeSelectNextCommand, TelescopeSelectPrevCommand,
             // Text
             DeleteCharBackwardCommand, DeleteCharForwardCommand, DeleteLineCommand,
             InsertNewlineCommand, YankLineCommand, YankToEndCommand,
@@ -245,6 +251,22 @@ impl CommandRegistry {
         let _ = self.register(ExplorerConfirmInputCommand);
         let _ = self.register(ExplorerCancelInputCommand);
         let _ = self.register(ExplorerInputBackspaceCommand);
+
+        // Telescope commands
+        let _ = self.register(TelescopeFindFilesCommand);
+        let _ = self.register(TelescopeFindBuffersCommand);
+        let _ = self.register(TelescopeLiveGrepCommand);
+        let _ = self.register(TelescopeRecentFilesCommand);
+        let _ = self.register(TelescopeCommandsCommand);
+        let _ = self.register(TelescopeHelpTagsCommand);
+        let _ = self.register(TelescopeKeymapsCommand);
+        let _ = self.register(TelescopeSelectNextCommand);
+        let _ = self.register(TelescopeSelectPrevCommand);
+        let _ = self.register(TelescopePageDownCommand);
+        let _ = self.register(TelescopePageUpCommand);
+        let _ = self.register(TelescopeConfirmCommand);
+        let _ = self.register(TelescopeCloseCommand);
+        let _ = self.register(TelescopeBackspaceCommand);
     }
 }
 

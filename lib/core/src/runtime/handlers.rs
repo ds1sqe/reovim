@@ -7,7 +7,7 @@ use crate::buffer::TextOps;
 use crate::command::{
     traits::{
         CommandLineAction, CommandResult, CompletionAction, DeferredAction, ExecutionContext,
-        ExplorerAction, OperatorMotionAction,
+        ExplorerAction, OperatorMotionAction, TelescopeAction,
     },
     CommandTrait,
 };
@@ -185,6 +185,9 @@ impl Runtime {
                         DeferredAction::Explorer(explorer_action) => {
                             self.handle_explorer_action(&explorer_action);
                             self.render();
+                        }
+                        DeferredAction::Telescope(telescope_action) => {
+                            self.handle_telescope_action(&telescope_action);
                         }
                         DeferredAction::JumpOlder => {
                             if let Some(entry) = self.jump_list.jump_older() {
@@ -475,5 +478,77 @@ impl Runtime {
             }
         }
         self.render();
+    }
+
+    /// Handle telescope actions from keybindings
+    pub(crate) fn handle_telescope_action(&mut self, action: &TelescopeAction) {
+        use crate::event::{InnerEvent, TelescopeEvent};
+
+        match action {
+            TelescopeAction::Open { picker } => {
+                // Send TelescopeEvent::Open to the event loop
+                let tx = self.tx.clone();
+                let picker_name = picker.clone();
+                tokio::spawn(async move {
+                    let _ = tx
+                        .send(InnerEvent::TelescopeEvent(TelescopeEvent::Open {
+                            picker: picker_name,
+                        }))
+                        .await;
+                });
+            }
+            TelescopeAction::InsertChar(c) => {
+                self.telescope_state.insert_char(*c);
+                // TODO: Trigger async filtering
+                self.render();
+            }
+            TelescopeAction::Backspace => {
+                self.telescope_state.delete_char();
+                // TODO: Trigger async filtering
+                self.render();
+            }
+            TelescopeAction::CursorLeft => {
+                self.telescope_state.cursor_left();
+                self.render();
+            }
+            TelescopeAction::CursorRight => {
+                self.telescope_state.cursor_right();
+                self.render();
+            }
+            TelescopeAction::SelectNext => {
+                self.telescope_state.select_next();
+                self.render();
+            }
+            TelescopeAction::SelectPrev => {
+                self.telescope_state.select_prev();
+                self.render();
+            }
+            TelescopeAction::PageDown => {
+                self.telescope_state.page_down();
+                self.render();
+            }
+            TelescopeAction::PageUp => {
+                self.telescope_state.page_up();
+                self.render();
+            }
+            TelescopeAction::Confirm => {
+                // Send TelescopeEvent::Confirm to the event loop
+                let tx = self.tx.clone();
+                tokio::spawn(async move {
+                    let _ = tx
+                        .send(InnerEvent::TelescopeEvent(TelescopeEvent::Confirm))
+                        .await;
+                });
+            }
+            TelescopeAction::Close => {
+                // Send TelescopeEvent::Close to the event loop
+                let tx = self.tx.clone();
+                tokio::spawn(async move {
+                    let _ = tx
+                        .send(InnerEvent::TelescopeEvent(TelescopeEvent::Close))
+                        .await;
+                });
+            }
+        }
     }
 }

@@ -107,8 +107,7 @@ pub struct KeyMap {
     pub explorer: HashMap<String, KeyMapInner>,
     pub explorer_input: HashMap<String, KeyMapInner>,
     pub operator_pending: HashMap<String, KeyMapInner>,
-    #[allow(dead_code)] // Infrastructure for extra modes (Telescope, etc.)
-    pub extra: HashMap<String, KeyMapInner>,
+    pub telescope: HashMap<String, KeyMapInner>,
 }
 
 impl KeyMap {
@@ -122,6 +121,7 @@ impl KeyMap {
         Self::setup_explorer_mode(&mut km.explorer);
         Self::setup_explorer_input_mode(&mut km.explorer_input);
         Self::setup_operator_pending_mode(&mut km.operator_pending);
+        Self::setup_telescope_mode(&mut km.telescope);
         km
     }
 
@@ -140,6 +140,7 @@ impl KeyMap {
             "e" | "explorer" => &mut self.explorer,
             "E" | "explorer_input" => &mut self.explorer_input,
             "o" | "operator_pending" => &mut self.operator_pending,
+            "t" | "telescope" => &mut self.telescope,
             _ => return,
         };
         map.insert(keys.to_string(), KeyMapInner::with_command_ref(cmd));
@@ -160,6 +161,7 @@ impl KeyMap {
             "e" | "explorer" => &mut self.explorer,
             "E" | "explorer_input" => &mut self.explorer_input,
             "o" | "operator_pending" => &mut self.operator_pending,
+            "t" | "telescope" => &mut self.telescope,
             _ => return,
         };
         map.remove(keys);
@@ -183,6 +185,7 @@ impl KeyMap {
             Mod::Explorer => &self.explorer,
             Mod::ExplorerInput => &self.explorer_input,
             Mod::OperatorPending { .. } => &self.operator_pending,
+            Mod::Telescope => &self.telescope,
         };
 
         let mut bindings = Vec::new();
@@ -284,6 +287,16 @@ impl KeyMap {
             " e".to_string(),
             KeyMapInner::with_inline_command(Arc::new(ToggleExplorerCommand)),
         );
+
+        // Telescope bindings (Space + f prefix)
+        keymap.insert(" f".to_string(), KeyMapInner::new()); // prefix, no command
+        keymap.insert(" ff".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_FIND_FILES));
+        keymap.insert(" fb".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_FIND_BUFFERS));
+        keymap.insert(" fg".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_LIVE_GREP));
+        keymap.insert(" fr".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_RECENT));
+        keymap.insert(" fc".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_COMMANDS));
+        keymap.insert(" fh".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_HELP));
+        keymap.insert(" fk".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_KEYMAPS));
     }
 
     fn setup_insert_mode(keymap: &mut HashMap<String, KeyMapInner>) {
@@ -363,5 +376,20 @@ impl KeyMap {
         // Escape cancels operator-pending mode
         keymap.insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::ENTER_NORMAL_MODE));
         // Motion keys and 'd' for dd are handled dynamically in CommandHandler
+    }
+
+    fn setup_telescope_mode(keymap: &mut HashMap<String, KeyMapInner>) {
+        // Navigation
+        keymap.insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_CLOSE));
+        keymap.insert("Enter".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_CONFIRM));
+        keymap.insert("C-n".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_NEXT));
+        keymap.insert("C-p".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_PREV));
+        keymap.insert("Down".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_NEXT));
+        keymap.insert("Up".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_PREV));
+        keymap.insert("Tab".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_NEXT));
+        keymap.insert("S-Tab".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_PREV));
+        keymap.insert("C-u".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_PAGE_UP));
+        keymap.insert("C-d".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_PAGE_DOWN));
+        keymap.insert("Backspace".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_DELETE_CHAR));
     }
 }

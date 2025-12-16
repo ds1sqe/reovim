@@ -10,6 +10,7 @@ mod jump;
 mod mode;
 mod operator;
 mod system;
+mod telescope;
 mod text;
 mod visual;
 
@@ -23,5 +24,6 @@ pub use jump::*;
 pub use mode::*;
 pub use operator::*;
 pub use system::*;
+pub use telescope::*;
 pub use text::*;
 pub use visual::*;

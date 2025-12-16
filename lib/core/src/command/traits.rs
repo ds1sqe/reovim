@@ -49,12 +49,41 @@ pub enum DeferredAction {
     Completion(CompletionAction),
     /// Explorer operations
     Explorer(ExplorerAction),
+    /// Telescope operations
+    Telescope(TelescopeAction),
     /// Jump to older position (Ctrl-O)
     JumpOlder,
     /// Jump to newer position (Ctrl-I)
     JumpNewer,
     /// Execute operator with motion (e.g., dw, yj, c$)
     OperatorMotion(OperatorMotionAction),
+}
+
+/// Telescope fuzzy finder actions
+#[derive(Debug)]
+pub enum TelescopeAction {
+    /// Open telescope with a specific picker
+    Open { picker: String },
+    /// Insert a character into the query
+    InsertChar(char),
+    /// Delete character from query (backspace)
+    Backspace,
+    /// Move cursor left in query
+    CursorLeft,
+    /// Move cursor right in query
+    CursorRight,
+    /// Select next item
+    SelectNext,
+    /// Select previous item
+    SelectPrev,
+    /// Page down
+    PageDown,
+    /// Page up
+    PageUp,
+    /// Confirm selection
+    Confirm,
+    /// Close telescope
+    Close,
 }
 
 /// Completion actions

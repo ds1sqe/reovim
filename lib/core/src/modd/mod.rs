@@ -21,6 +21,8 @@ pub enum Mod {
         operator: OperatorType,
         count: Option<usize>,
     },
+    /// Telescope fuzzy finder mode
+    Telescope,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

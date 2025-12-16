@@ -103,6 +103,7 @@ impl CommandHandler {
             Mod::Explorer => &self.keymap.explorer,
             Mod::ExplorerInput => &self.keymap.explorer_input,
             Mod::OperatorPending { .. } => &self.keymap.operator_pending,
+            Mod::Telescope => &self.keymap.telescope,
         }
     }
 

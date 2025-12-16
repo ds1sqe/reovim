@@ -16,4 +16,5 @@ pub mod textobject;
 pub mod runtime;
 pub mod screen;
 pub mod settings;
+pub mod telescope;
 pub mod types;
