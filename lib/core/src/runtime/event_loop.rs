@@ -2,8 +2,8 @@
 
 use crate::buffer::{Buffer, SelectionOps, TextOps};
 use crate::event::{
-    BufferEvent, CommandHandler, ExplorerEvent, HighlightEvent, InnerEvent, InputEventBroker,
-    TerminateHandler, WindowEvent,
+    BufferEvent, CommandHandler, CompletionEvent, CompletionHandler, ExplorerEvent,
+    HighlightEvent, InnerEvent, InputEventBroker, TerminateHandler, WindowEvent,
 };
 use crate::modd::Mod;
 
@@ -42,14 +42,23 @@ impl Runtime {
         // Command handler for key-to-command translation
         // Pass mode receiver so CommandHandler can read mode from Runtime (single source of truth)
         let mode_rx = self.subscribe_mode();
-        let mut command_hdr = CommandHandler::new(self.tx.clone(), mode_rx);
+        let completion_active_rx = self.subscribe_completion_active();
+        let mut command_hdr =
+            CommandHandler::new(self.tx.clone(), mode_rx, completion_active_rx);
         let mut terminate_hdr = TerminateHandler::new(self.tx.clone());
+
+        // Completion handler for auto-triggering completion on typing
+        let completion_mode_rx = self.subscribe_mode();
+        let mut completion_hdr =
+            CompletionHandler::with_defaults(self.tx.clone(), completion_mode_rx);
 
         input_broker.key_broker.enlist(&mut command_hdr);
         input_broker.key_broker.enlist(&mut terminate_hdr);
+        input_broker.key_broker.enlist(&mut completion_hdr);
 
         tokio::spawn(async move { command_hdr.run().await });
         tokio::spawn(async move { terminate_hdr.run().await });
+        tokio::spawn(async move { completion_hdr.run().await });
         tokio::spawn(async move { input_broker.subscribe().await });
 
         // Initial render to show content immediately
@@ -185,11 +194,60 @@ impl Runtime {
             InnerEvent::RenderSignal => {
                 self.render();
             }
+            InnerEvent::CompletionEvent(comp_event) => {
+                self.handle_completion_event(comp_event);
+            }
             InnerEvent::KillSignal => {
                 return true;
             }
         }
         false
+    }
+
+    /// Handle completion-related events
+    fn handle_completion_event(&mut self, event: CompletionEvent) {
+        match event {
+            CompletionEvent::Trigger { buffer_id } => {
+                self.trigger_completion(buffer_id);
+            }
+            CompletionEvent::Update {
+                items,
+                prefix,
+                start_col,
+                start_row,
+            } => {
+                self.completion_items_cache.clone_from(&items);
+                self.completion_state.activate(items, prefix, start_col, start_row);
+                self.set_completion_active(true);
+                self.render();
+            }
+            CompletionEvent::SelectNext => {
+                self.completion_state.select_next();
+                self.render();
+            }
+            CompletionEvent::SelectPrev => {
+                self.completion_state.select_prev();
+                self.render();
+            }
+            CompletionEvent::Confirm => {
+                if let Some(item) = self.completion_state.selected_item().cloned() {
+                    self.insert_completion(&item);
+                }
+                self.completion_state.dismiss();
+                self.set_completion_active(false);
+                self.render();
+            }
+            CompletionEvent::Dismiss => {
+                self.completion_state.dismiss();
+                self.set_completion_active(false);
+                self.render();
+            }
+            CompletionEvent::UpdateFilter { new_prefix } => {
+                self.completion_state
+                    .update_prefix(&new_prefix, &self.completion_items_cache);
+                self.render();
+            }
+        }
     }
 
     /// Handle mode change events

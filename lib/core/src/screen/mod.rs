@@ -7,6 +7,7 @@ use {
         buffer::Buffer,
         command::terminal::{Clear, ClearType},
         command_line::CommandLine,
+        completion::CompletionState,
         constants::RESET_STYLE,
         explorer::{render_explorer, ExplorerState},
         highlight::{ColorMode, HighlightStore, Theme},
@@ -141,6 +142,7 @@ impl Screen {
         color_mode: ColorMode,
         theme: &Theme,
         explorer_state: Option<&ExplorerState>,
+        completion_state: &CompletionState,
     ) -> std::result::Result<(), std::io::Error> {
         // Reset all styling before clearing
         queue!(self.out_stream, Print(RESET_STYLE))?;
@@ -197,6 +199,19 @@ impl Screen {
             }
         }
 
+        // Render completion popup if visible
+        if completion_state.is_visible()
+            && let Some((cursor_x, cursor_y)) = cursor_pos
+        {
+            self.render_completion_popup(
+                completion_state,
+                cursor_x,
+                cursor_y,
+                color_mode,
+                theme,
+            )?;
+        }
+
         // Show command line in Command mode, status line otherwise
         if matches!(mode, Mod::Command) {
             render_command_line_to(&mut self.out_stream, self.size.height, cmd_line)?;
@@ -215,6 +230,87 @@ impl Screen {
                 queue!(self.out_stream, MoveTo(x, y))?;
             }
         }
+        Ok(())
+    }
+
+    /// Render the completion popup
+    #[allow(clippy::cast_possible_truncation)]
+    fn render_completion_popup(
+        &mut self,
+        state: &CompletionState,
+        cursor_x: u16,
+        cursor_y: u16,
+        color_mode: ColorMode,
+        theme: &Theme,
+    ) -> std::result::Result<(), std::io::Error> {
+        let items = &state.items;
+        if items.is_empty() {
+            return Ok(());
+        }
+
+        // Calculate popup dimensions
+        let max_items = 10.min(items.len());
+        let max_label_width = items
+            .iter()
+            .take(max_items)
+            .map(|i| i.label.len())
+            .max()
+            .unwrap_or(10);
+        let popup_width = (max_label_width + 2).min(40) as u16; // +2 for padding
+
+        // Calculate popup position (below cursor by default)
+        // Use cursor_x minus prefix length to start at word beginning
+        let prefix_len = state.prefix.len() as u16;
+        let popup_x = cursor_x.saturating_sub(prefix_len);
+        let space_below = self.size.height.saturating_sub(cursor_y + 2); // -1 for cursor line, -1 for status
+        let space_above = cursor_y;
+
+        let (popup_y, render_above) = if space_below >= max_items as u16 {
+            (cursor_y + 1, false)
+        } else if space_above >= max_items as u16 {
+            (cursor_y.saturating_sub(max_items as u16), true)
+        } else {
+            // Not enough space either way, show below with truncation
+            (cursor_y + 1, false)
+        };
+
+        // Clamp popup_x to screen bounds
+        let popup_x = popup_x.min(self.size.width.saturating_sub(popup_width));
+
+        // Render each item (render_above is reserved for future use)
+        let _ = render_above;
+        let visible_items: Vec<_> = items.iter().take(max_items).collect();
+
+        for (idx, item) in visible_items.iter().enumerate() {
+            let is_selected = idx == state.selected_index;
+            let style = if is_selected {
+                &theme.popup_selected
+            } else {
+                &theme.popup_normal
+            };
+
+            let row = popup_y + idx as u16;
+
+            // Skip if row is off screen or in status line
+            if row >= self.size.height.saturating_sub(1) {
+                break;
+            }
+
+            queue!(self.out_stream, MoveTo(popup_x, row))?;
+
+            // Render styled item
+            let ansi_start = style.to_ansi_start(color_mode);
+            let label = if item.label.len() > popup_width as usize - 2 {
+                format!(" {}.. ", &item.label[..popup_width as usize - 4])
+            } else {
+                format!(" {:width$} ", item.label, width = popup_width as usize - 2)
+            };
+
+            queue!(self.out_stream, Print(&ansi_start))?;
+            queue!(self.out_stream, Print(&label))?;
+            queue!(self.out_stream, Print(RESET_STYLE))?;
+        }
+
         Ok(())
     }
 

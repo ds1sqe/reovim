@@ -181,6 +181,13 @@ impl KeyMap {
         keymap.insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::ENTER_NORMAL_MODE));
         keymap.insert("Backspace".to_string(), KeyMapInner::with_command_id(builtin::DELETE_CHAR_BACKWARD));
         keymap.insert("Enter".to_string(), KeyMapInner::with_command_id(builtin::INSERT_NEWLINE));
+
+        // Completion keybindings
+        keymap.insert("C-Space".to_string(), KeyMapInner::with_command_id(builtin::COMPLETION_TRIGGER));
+        keymap.insert("C-n".to_string(), KeyMapInner::with_command_id(builtin::COMPLETION_NEXT));
+        keymap.insert("C-p".to_string(), KeyMapInner::with_command_id(builtin::COMPLETION_PREV));
+        keymap.insert("Tab".to_string(), KeyMapInner::with_command_id(builtin::COMPLETION_CONFIRM));
+        keymap.insert("C-e".to_string(), KeyMapInner::with_command_id(builtin::COMPLETION_DISMISS));
     }
 
     fn setup_visual_mode(keymap: &mut HashMap<String, KeyMapInner>) {

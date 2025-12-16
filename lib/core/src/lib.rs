@@ -2,6 +2,7 @@ pub mod bind;
 pub mod buffer;
 pub mod command;
 pub mod command_line;
+pub mod completion;
 pub mod constants;
 pub mod event;
 pub mod explorer;

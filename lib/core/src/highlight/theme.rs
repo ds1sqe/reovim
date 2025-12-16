@@ -22,6 +22,10 @@ pub struct Theme {
     pub command_line: Style,
     /// Cursor line background highlight
     pub cursor_line: Style,
+    /// Completion popup - normal item
+    pub popup_normal: Style,
+    /// Completion popup - selected item
+    pub popup_selected: Style,
 }
 
 /// Mode-specific styles for the status line
@@ -93,6 +97,14 @@ impl Theme {
 
             // Cursor line: subtle highlight
             cursor_line: Style::new().bg(Color::AnsiValue(235)),
+
+            // Completion popup: dark background
+            popup_normal: Style::new()
+                .fg(Color::White)
+                .bg(Color::AnsiValue(238)),
+            popup_selected: Style::new()
+                .fg(Color::Black)
+                .bg(Color::Cyan),
         }
     }
 
@@ -140,6 +152,14 @@ impl Theme {
                 .bg(Color::White),
 
             cursor_line: Style::new().bg(Color::AnsiValue(254)),
+
+            // Completion popup: light background
+            popup_normal: Style::new()
+                .fg(Color::Black)
+                .bg(Color::AnsiValue(252)),
+            popup_selected: Style::new()
+                .fg(Color::White)
+                .bg(Color::DarkBlue),
         }
     }
 }

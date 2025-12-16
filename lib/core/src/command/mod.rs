@@ -17,5 +17,6 @@ pub mod traits;
 pub use id::CommandId;
 pub use registry::{CommandRegistry, RegistryError};
 pub use traits::{
-    CommandLineAction, CommandResult, CommandTrait, DeferredAction, ExecutionContext,
+    CommandLineAction, CommandResult, CommandTrait, CompletionAction, DeferredAction,
+    ExecutionContext,
 };

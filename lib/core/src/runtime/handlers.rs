@@ -5,7 +5,10 @@ use std::sync::Arc;
 use crate::bind::CommandRef;
 use crate::buffer::TextOps;
 use crate::command::{
-    traits::{CommandLineAction, CommandResult, DeferredAction, ExecutionContext, ExplorerAction},
+    traits::{
+        CommandLineAction, CommandResult, CompletionAction, DeferredAction, ExecutionContext,
+        ExplorerAction,
+    },
     CommandTrait,
 };
 use crate::explorer::ExplorerState;
@@ -154,6 +157,9 @@ impl Runtime {
                             let should_quit = self.handle_command_line_action(&cl_action);
                             self.render();
                             return should_quit;
+                        }
+                        DeferredAction::Completion(comp_action) => {
+                            self.handle_completion_action(&comp_action, context.buffer_id);
                         }
                         DeferredAction::Explorer(explorer_action) => {
                             self.handle_explorer_action(&explorer_action);
@@ -339,6 +345,34 @@ impl Runtime {
                 if let Some(ref mut state) = self.explorer_state {
                     state.input_backspace();
                 }
+            }
+        }
+    }
+
+    /// Handle completion actions from keybindings
+    pub(crate) fn handle_completion_action(&mut self, action: &CompletionAction, buffer_id: usize) {
+        match action {
+            CompletionAction::Trigger => {
+                self.trigger_completion(buffer_id);
+            }
+            CompletionAction::SelectNext => {
+                self.completion_state.select_next();
+                self.render();
+            }
+            CompletionAction::SelectPrev => {
+                self.completion_state.select_prev();
+                self.render();
+            }
+            CompletionAction::Confirm => {
+                if let Some(item) = self.completion_state.selected_item().cloned() {
+                    self.insert_completion(&item);
+                }
+                self.completion_state.dismiss();
+                self.render();
+            }
+            CompletionAction::Dismiss => {
+                self.completion_state.dismiss();
+                self.render();
             }
         }
     }

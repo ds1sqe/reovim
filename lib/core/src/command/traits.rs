@@ -43,8 +43,25 @@ pub enum DeferredAction {
     Paste { before: bool },
     /// Command line operations
     CommandLine(CommandLineAction),
+    /// Completion operations
+    Completion(CompletionAction),
     /// Explorer operations
     Explorer(ExplorerAction),
+}
+
+/// Completion actions
+#[derive(Debug)]
+pub enum CompletionAction {
+    /// Trigger completion at cursor
+    Trigger,
+    /// Select next completion item
+    SelectNext,
+    /// Select previous completion item
+    SelectPrev,
+    /// Confirm selected completion
+    Confirm,
+    /// Dismiss completion popup
+    Dismiss,
 }
 
 /// Explorer mode actions that require runtime access

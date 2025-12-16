@@ -6,8 +6,9 @@ use std::sync::Arc;
 use crate::buffer::{Buffer, TextOps};
 use crate::command::CommandRegistry;
 use crate::command_line::CommandLine;
+use crate::completion::{CompletionContext, CompletionEngine, CompletionItem, CompletionState};
 use crate::constants::EVENT_CHANNEL_CAPACITY;
-use crate::event::InnerEvent;
+use crate::event::{CompletionEvent, InnerEvent};
 use crate::explorer::ExplorerState;
 use crate::highlight::{ColorMode, HighlightStore, Theme};
 use crate::modd::Mod;
@@ -43,6 +44,16 @@ pub struct Runtime {
     next_buffer_id: usize,
     /// File explorer state
     pub explorer_state: Option<ExplorerState>,
+    /// Completion engine
+    pub completion_engine: Arc<CompletionEngine>,
+    /// Current completion state
+    pub completion_state: CompletionState,
+    /// Cache of unfiltered completion items for re-filtering
+    pub(crate) completion_items_cache: Vec<CompletionItem>,
+    /// Watch channel sender for broadcasting completion active state
+    pub(crate) completion_active_tx: watch::Sender<bool>,
+    /// Watch channel receiver for completion active state
+    completion_active_rx: watch::Receiver<bool>,
 }
 
 impl Default for Runtime {
@@ -57,6 +68,7 @@ impl Runtime {
     pub fn new(screen: Screen) -> Self {
         let (tx, rx) = mpsc::channel(EVENT_CHANNEL_CAPACITY);
         let (mode_tx, mode_rx) = watch::channel(Mod::Normal);
+        let (completion_active_tx, completion_active_rx) = watch::channel(false);
         Self {
             buffers: BTreeMap::new(),
             screen,
@@ -78,6 +90,11 @@ impl Runtime {
             active_buffer_id: 0,
             next_buffer_id: 1, // Start at 1 since 0 is reserved for initial buffer
             explorer_state: None,
+            completion_engine: Arc::new(CompletionEngine::default()),
+            completion_state: CompletionState::new(),
+            completion_items_cache: Vec::new(),
+            completion_active_tx,
+            completion_active_rx,
         }
     }
 
@@ -85,6 +102,17 @@ impl Runtime {
     #[must_use]
     pub fn subscribe_mode(&self) -> watch::Receiver<Mod> {
         self.mode_rx.clone()
+    }
+
+    /// Subscribe to completion active state changes
+    #[must_use]
+    pub fn subscribe_completion_active(&self) -> watch::Receiver<bool> {
+        self.completion_active_rx.clone()
+    }
+
+    /// Broadcast completion active state change
+    pub(crate) fn set_completion_active(&self, active: bool) {
+        let _ = self.completion_active_tx.send(active);
     }
 
     /// Broadcast a mode change
@@ -114,6 +142,7 @@ impl Runtime {
                 self.color_mode,
                 &self.theme,
                 self.explorer_state.as_ref(),
+                &self.completion_state,
             )
             .expect("failed to render");
         self.screen.flush().expect("failed to flush");
@@ -200,6 +229,94 @@ impl Runtime {
         if let Some(id) = self.create_buffer_from_file(path) {
             self.active_buffer_id = id;
             self.showing_landing_page = false;
+        }
+    }
+
+    /// Trigger completion at current cursor position
+    pub(crate) fn trigger_completion(&self, buffer_id: usize) {
+        let Some(buffer) = self.buffers.get(&buffer_id) else {
+            return;
+        };
+
+        // Build completion context
+        let ctx = Self::build_completion_context(buffer);
+
+        // Don't trigger if prefix is empty
+        if ctx.prefix.is_empty() {
+            return;
+        }
+
+        let content = buffer.contents.clone();
+        let engine = self.completion_engine.clone();
+        let tx = self.tx.clone();
+
+        // Spawn async completion fetch
+        tokio::spawn(async move {
+            let items = engine.complete(&ctx, &content).await;
+            if !items.is_empty() {
+                let _ = tx
+                    .send(InnerEvent::CompletionEvent(CompletionEvent::Update {
+                        items,
+                        prefix: ctx.prefix,
+                        start_col: ctx.word_start_col,
+                        start_row: ctx.position.y,
+                    }))
+                    .await;
+            }
+        });
+    }
+
+    /// Build completion context from buffer state
+    #[allow(clippy::cast_possible_truncation)]
+    fn build_completion_context(buffer: &Buffer) -> CompletionContext {
+        let position = buffer.cur;
+        let line = buffer
+            .contents
+            .get(position.y as usize)
+            .map(|l| l.inner.clone())
+            .unwrap_or_default();
+
+        // Find word start by walking backward
+        let chars: Vec<char> = line.chars().collect();
+        let mut word_start = position.x as usize;
+        while word_start > 0 {
+            let ch = chars.get(word_start - 1).copied().unwrap_or(' ');
+            if !ch.is_alphanumeric() && ch != '_' {
+                break;
+            }
+            word_start -= 1;
+        }
+
+        let prefix = if word_start < position.x as usize {
+            chars[word_start..position.x as usize].iter().collect()
+        } else {
+            String::new()
+        };
+
+        CompletionContext::new(
+            buffer.id,
+            position,
+            line,
+            word_start as u16,
+            prefix,
+        )
+    }
+
+    /// Insert a completion item at current cursor position
+    pub(crate) fn insert_completion(&mut self, item: &CompletionItem) {
+        let Some(buffer) = self.buffers.get_mut(&0) else {
+            return;
+        };
+
+        // Delete the prefix (characters from start_col to cursor)
+        let prefix_len = self.completion_state.prefix.len();
+        for _ in 0..prefix_len {
+            buffer.delete_char_backward();
+        }
+
+        // Insert the completion text
+        for ch in item.insert_text.chars() {
+            buffer.insert_char(ch);
         }
     }
 }
