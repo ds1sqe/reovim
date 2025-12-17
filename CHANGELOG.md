@@ -2,6 +2,70 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.4.2] - 2025-12-17
+
+### New Features
+
+#### Performance Benchmarking Infrastructure
+- **Criterion benchmark suite** - Comprehensive performance testing
+  - Window render benchmarks (various buffer sizes)
+  - Screen I/O benchmarks (buffered vs unbuffered)
+  - Input simulation benchmarks (typing, scrolling, mode switching)
+  - RTT (Round-Trip Time) benchmarks for latency measurement
+  - Stress tests for worst-case scenarios
+  - Location: `lib/core/benches/`
+
+- **perf-report CLI tool** - Performance data management
+  - `update --version X.Y.Z` - Generate versioned performance reports
+  - `list` - Show current benchmark results
+  - `check` - CI regression detection
+  - `compare` - Diff between versions
+  - Location: `tools/perf-report/`
+
+- **Versioned performance reports** - Git-tracked benchmark data
+  - Markdown + TOML format for human and machine readability
+  - Full statistics: mean, median, std_dev, confidence intervals
+  - Metadata: commit, date, Rust version, OS
+  - Location: `perf/PERF-{version}.md`
+
+### Benchmark Categories
+
+| Category | Description |
+|----------|-------------|
+| window_render | Window::render() performance |
+| screen_io | Full screen I/O with real files |
+| input_* | Typing, scrolling, mode switching |
+| rtt_* | Input lag, movement lag, explorer toggle |
+| stress_* | Combined editing, rapid scroll, worst case |
+| buffer_clone | Buffer clone overhead (bottleneck identified) |
+
+### Performance Results (v0.3.0 → v0.4.2)
+
+| Benchmark | v0.3.0 | v0.4.2 | Improvement |
+|-----------|--------|--------|-------------|
+| window_render/10 | 1.67 µs | 639 ns | **62% faster** |
+| window_render/10000 | 6.60 µs | 2.48 µs | **62% faster** |
+| viewport_size/24 | 3.76 µs | 1.20 µs | **68% faster** |
+| viewport_size/200 | 33.41 µs | 9.73 µs | **71% faster** |
+| screen_io/full_render | 27.68 µs | 5.91 µs | **79% faster** |
+| file_io/buffered | 61.56 µs | 12.68 µs | **79% faster** |
+| rtt/move_down | 1.35 ms | 397 µs | **71% faster** |
+| rtt/half_page_down | 4.32 ms | 410 µs | **91% faster** |
+| rtt/goto_top | 3.61 ms | 397 µs | **89% faster** |
+| stress_editing/50k | 111.77 ms | 38.99 ms | **65% faster** |
+| buffer_clone/50k | 3.90 ms | 1.96 ms | **50% faster** |
+| throughput | 8.61 µs | 2.49 µs | **71% faster** |
+
+### Key Findings
+
+- **Average 50-80% improvement** across all benchmarks
+- **Movement RTT improved 60-90%** - dramatically better responsiveness
+- Window render: ~639ns-3µs (viewport-limited)
+- Buffer clone: Reduced from 3.9ms to 1.96ms for 50K lines
+- Buffered I/O: 10x faster than unbuffered
+
+---
+
 ## [0.4.1] - 2025-12-17
 
 ### New Features

@@ -10,13 +10,32 @@ A Rust-powered neovim-like text editor.
 
 ## Features
 
+### Core Editing
 - Modal editing (Normal, Insert, Visual, Command modes)
 - Vim-style keybindings (h/j/k/l navigation, w/b word motions)
+- Operators with motions (`d`, `y`, `c` + motion)
 - Visual selection with yank/delete
+- Undo/Redo (`u`, `Ctrl-r`)
+- Registers for copy/paste
+
+### Navigation
+- **Leap motion** - Two-character jump (`s`/`S` + 2 chars)
+- **Telescope fuzzy finder** - Files, buffers, grep (`Space f`)
+- **Explorer file browser** - Tree view (`Space e`)
+- Jump list navigation (`Ctrl-O`, `Ctrl-I`)
+
+### UI
 - Command-line mode (`:q`, `:w`, `:wq`, `:set`)
 - Line numbers (absolute, relative, hybrid)
-- Landing page with logo when started without a file
-- Status line showing mode, pending keys, last command, and buffer name
+- Which-key popup for keybindings
+- Completion engine (`Ctrl-Space`)
+- Status line with mode, pending keys, last command
+- Landing page when started without a file
+
+### Performance
+- **50-80% faster** than v0.3.0 baseline
+- Sub-microsecond window render (~639ns)
+- 91% faster page navigation
 - Async architecture with tokio runtime
 - Cross-platform terminal support via crossterm
 
@@ -61,6 +80,13 @@ Most movement commands support a numeric prefix (e.g., `5j` moves down 5 lines).
 | `:` | Enter command mode |
 | `x` | Delete character |
 | `p/P` | Paste after/before cursor |
+| `s` | Leap forward (type 2 chars to jump) |
+| `S` | Leap backward |
+| `Space e` | Toggle explorer |
+| `Space f f` | Telescope find files |
+| `Space f g` | Telescope live grep |
+| `Space f b` | Telescope buffers |
+| `Ctrl-Space` | Trigger completion |
 
 **Insert Mode**
 | Key | Action |
@@ -96,6 +122,20 @@ MAIN ──▶ CORE ──▶ SYS
 - `reovim` (MAIN) - Main binary
 - `reovim-core` (CORE) - Core editor logic (runtime, buffers, events, screen)
 - `reovim-sys` (SYS) - System abstraction layer (crossterm re-exports)
+
+## Performance
+
+Run benchmarks:
+```bash
+cargo bench -p reovim-core
+```
+
+Generate performance report:
+```bash
+cargo run -p perf-report -- update --version X.Y.Z
+```
+
+See [perf/](./perf/) for versioned benchmark results.
 
 ## Documentation
 

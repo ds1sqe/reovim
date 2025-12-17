@@ -43,6 +43,12 @@ cargo fmt
 
 # Run clippy
 cargo clippy
+
+# Run benchmarks
+cargo bench -p reovim-core
+
+# Generate performance report
+cargo run -p perf-report -- update --version X.Y.Z
 ```
 
 ## Architecture
@@ -54,6 +60,8 @@ Reovim is a Rust-based neovim-like text editor built with async tokio runtime an
 - `main/` - Main binary crate that bootstraps the editor
 - `lib/core/` (reovim-core) - Core editor logic: runtime, buffers, events, screen rendering
 - `lib/sys/` (reovim-sys) - Re-exports crossterm for terminal abstraction
+- `tools/perf-report/` - Performance report generator CLI
+- `perf/` - Versioned performance reports (PERF-{version}.md)
 
 ### Core Architecture
 
@@ -89,6 +97,13 @@ Reovim is a Rust-based neovim-like text editor built with async tokio runtime an
 - `Screen` - Terminal output management with window collection
 - `Window` - View into a buffer with anchor positioning and line number modes (Absolute/Relative/Hybrid)
 
+**Feature Modules**:
+- `lib/core/src/leap/` - Two-character jump navigation (s/S)
+- `lib/core/src/telescope/` - Fuzzy finder (Space f)
+- `lib/core/src/explorer/` - File browser (Space e)
+- `lib/core/src/completion/` - Async completion (Ctrl-Space)
+- `lib/core/src/modd/` - Multi-dimensional mode state (Focus, EditMode, SubMode)
+
 ### Event Flow
 
 1. `InputEventBroker` reads terminal events
@@ -101,10 +116,19 @@ Reovim is a Rust-based neovim-like text editor built with async tokio runtime an
 - `tokio` - Async runtime
 - `crossterm` (via reovim-sys) - Terminal I/O
 - `futures`/`futures-timer` - Async utilities
+- `criterion` - Benchmarking framework
+- `nucleo` - Fuzzy matching for telescope
 
 ### Minimum Rust Version
 
 1.92 (Rust 2024 edition)
+
+### Performance (v0.4.2)
+
+- Window render: 639ns - 2.48µs
+- Full screen render: ~6µs
+- Movement RTT: 400µs
+- Throughput: ~400k renders/sec
 
 ## Detailed Documentation
 

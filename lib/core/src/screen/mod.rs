@@ -89,6 +89,33 @@ impl Default for Screen {
 }
 
 impl Screen {
+    /// Create a new Screen with a custom writer (useful for testing/benchmarking)
+    #[must_use]
+    pub fn with_writer<W: Write + 'static>(writer: W, width: u16, height: u16) -> Self {
+        let anchor = Anchor { x: 0, y: 0 };
+        let editor_height = height.saturating_sub(1);
+
+        let windows = vec![Window {
+            id: 0,
+            window_type: WindowType::Editor,
+            anchor,
+            width,
+            height: editor_height,
+            buffer_anchor: anchor,
+            buffer_id: 0,
+            line_number: LineNumber::default(),
+        }];
+
+        let layout = LayoutManager::new(width, editor_height);
+
+        Self {
+            size: ScreenSize { height, width },
+            out_stream: Box::new(writer),
+            windows,
+            layout,
+        }
+    }
+
     pub fn clear(
         &mut self,
         ctype: ClearType,

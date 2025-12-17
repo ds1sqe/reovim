@@ -40,13 +40,20 @@ lib/core/src/
 
 ## Current Test Coverage
 
-| Module | Coverage Area |
-|--------|--------------|
-| `buffer` | Text operations, cursor movement, selection |
-| `count_parser` | Numeric prefix parsing (5j, 10w, etc.) |
-| `key_parser` | Key sequence parsing |
-| `highlight` | Highlight spans and store operations |
-| `types` | Core data types |
+| Module | Coverage Area | Tests |
+|--------|--------------|-------|
+| `buffer` | Text operations, cursor movement, selection | 25 |
+| `completion` | Filter, item, source, state, trigger | 20 |
+| `count_parser` | Numeric prefix parsing (5j, 10w, etc.) | 6 |
+| `explorer` | Node, render, state, tree | 15 |
+| `highlight` | Color, span, store, theme | 18 |
+| `jumplist` | Jump navigation | 4 |
+| `leap` | Two-character jump labels | 3 |
+| `screen/layout` | Layout calculations | 4 |
+| `telescope` | Item, matcher, state | 11 |
+| `types` | Core data types | 4 |
+
+**Total: 118 tests**
 
 ## Writing Tests
 
@@ -108,6 +115,98 @@ fn test_count_parser() {
 2. **Test edge cases**: Empty buffers, single characters, large files
 3. **Use descriptive assertions**: `assert_eq!` over `assert!`
 4. **Keep tests fast**: Avoid I/O in unit tests
+
+## Performance Benchmarks
+
+Reovim uses Criterion for performance benchmarking.
+
+### Running Benchmarks
+
+```bash
+# Run all benchmarks
+cargo bench -p reovim-core
+
+# Run specific benchmark group
+cargo bench -p reovim-core -- window_render
+cargo bench -p reovim-core -- stress
+cargo bench -p reovim-core -- buffer_clone
+
+# List available benchmarks
+cargo run -p perf-report -- list
+```
+
+### Benchmark Categories
+
+| Category | Benchmarks | Description |
+|----------|------------|-------------|
+| `window_render` | 4 | Window::render() with various buffer sizes |
+| `viewport_size` | 4 | Different viewport heights |
+| `screen_io` | 3 | Full screen I/O with mock writer |
+| `screen_viewport_io` | 3 | Viewport with I/O |
+| `file_io` | 2 | Real file I/O (buffered vs unbuffered) |
+| `file_io_viewport` | 3 | File I/O at different viewports |
+| `input_typing` | 2 | Single char and burst typing |
+| `input_scrolling` | 3 | Line, 10-line, half-page scroll |
+| `input_mode_switch` | 1 | Normal/Insert/Normal cycle |
+| `input_completion` | 2 | With/without completion popup |
+| `input_sustained` | 1 | 100 keystrokes with render |
+| `rtt_explorer` | 3 | Open, close, toggle explorer |
+| `rtt_input_lag` | 2 | Char insert, backspace RTT |
+| `rtt_movement_lag` | 5 | Movement operations RTT |
+| `stress_editing` | 3 | Edit/navigate cycles (1k, 10k, 50k) |
+| `stress_scroll` | 3 | Rapid scrolling tests |
+| `stress_mode_ops` | 1 | Insert/escape/move cycles |
+| `stress_completion` | 1 | Completion scroll 100 items |
+| `stress_worst_case` | 1 | All features, 50k file |
+| `buffer_clone` | 4 | Clone overhead by size |
+| `buffer_vec` | 4 | Vec<Buffer> creation |
+
+**Total: 39 benchmarks**
+
+### Generating Performance Reports
+
+```bash
+# Generate report for current version
+cargo run -p perf-report -- update --version X.Y.Z
+
+# Check for regressions
+cargo run -p perf-report -- check
+
+# Compare versions
+cargo run -p perf-report -- compare OLD_VER NEW_VER
+```
+
+Reports are stored in `perf/PERF-{version}.md`.
+
+### Recent Performance Results (v0.4.2)
+
+Key improvements over v0.3.0 baseline:
+
+| Benchmark | Improvement |
+|-----------|-------------|
+| window_render | 50-62% faster |
+| viewport_size | 68-71% faster |
+| screen_io | 66-79% faster |
+| file_io | 79% faster |
+| rtt_movement_lag | 64-91% faster |
+| stress_editing | 54-65% faster |
+| throughput | 71% faster |
+
+See `perf/PERF-0.4.2.md` for detailed results.
+
+### Benchmark Location
+
+```
+lib/core/benches/
+├── render.rs              # Main entry point
+└── bench_modules/
+    ├── common.rs          # Shared utilities
+    ├── window.rs          # Window render benchmarks
+    ├── screen.rs          # Screen I/O benchmarks
+    ├── input.rs           # Input simulation
+    ├── rtt.rs             # Round-trip time
+    └── stress.rs          # Stress tests
+```
 
 ## Continuous Integration
 
