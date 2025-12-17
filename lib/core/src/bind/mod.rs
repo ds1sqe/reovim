@@ -120,6 +120,7 @@ pub struct KeyMap {
     pub operator_pending: HashMap<String, KeyMapInner>,
     pub telescope_normal: HashMap<String, KeyMapInner>,
     pub telescope_insert: HashMap<String, KeyMapInner>,
+    pub leap: HashMap<String, KeyMapInner>,
 }
 
 impl KeyMap {
@@ -135,6 +136,7 @@ impl KeyMap {
         Self::setup_operator_pending_mode(&mut km.operator_pending);
         Self::setup_telescope_normal_mode(&mut km.telescope_normal);
         Self::setup_telescope_insert_mode(&mut km.telescope_insert);
+        Self::setup_leap_mode(&mut km.leap);
         km
     }
 
@@ -156,6 +158,7 @@ impl KeyMap {
             "o" | "operator_pending" => &mut self.operator_pending,
             "tn" | "telescope_normal" => &mut self.telescope_normal,
             "ti" | "telescope_insert" => &mut self.telescope_insert,
+            "l" | "leap" => &mut self.leap,
             _ => return,
         };
         map.insert(keys.to_string(), KeyMapInner::with_command_ref(cmd));
@@ -178,6 +181,7 @@ impl KeyMap {
             "o" | "operator_pending" => &mut self.operator_pending,
             "tn" | "telescope_normal" => &mut self.telescope_normal,
             "ti" | "telescope_insert" => &mut self.telescope_insert,
+            "l" | "leap" => &mut self.leap,
             _ => return,
         };
         map.remove(keys);
@@ -194,6 +198,7 @@ impl KeyMap {
         match &mode.sub_mode {
             SubMode::Command => return &self.command,
             SubMode::OperatorPending { .. } => return &self.operator_pending,
+            SubMode::Leap { .. } => return &self.leap,
             SubMode::None => {}
         }
 
@@ -333,6 +338,10 @@ impl KeyMap {
         keymap.insert(" fc".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_COMMANDS));
         keymap.insert(" fh".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_HELP));
         keymap.insert(" fk".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_KEYMAPS));
+
+        // Leap motion bindings
+        keymap.insert("s".to_string(), KeyMapInner::with_command_id(builtin::LEAP_FORWARD));
+        keymap.insert("S".to_string(), KeyMapInner::with_command_id(builtin::LEAP_BACKWARD));
     }
 
     fn setup_insert_mode(keymap: &mut HashMap<String, KeyMapInner>) {
@@ -453,5 +462,12 @@ impl KeyMap {
 
         // Actions
         keymap.insert("Enter".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_CONFIRM));
+    }
+
+    fn setup_leap_mode(keymap: &mut HashMap<String, KeyMapInner>) {
+        // Escape cancels leap mode
+        keymap.insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::LEAP_CANCEL));
+        // All other keys (characters for search pattern or label selection) are handled
+        // directly in CommandHandler without going through keymap
     }
 }

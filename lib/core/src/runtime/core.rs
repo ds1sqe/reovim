@@ -12,6 +12,7 @@ use crate::event::{CompletionEvent, InnerEvent};
 use crate::explorer::ExplorerState;
 use crate::highlight::{ColorMode, HighlightStore, Theme};
 use crate::jumplist::JumpList;
+use crate::leap::LeapState;
 use crate::modd::ModeState;
 use crate::register::Registers;
 use crate::screen::{Screen, WhichKeyPanel};
@@ -72,6 +73,8 @@ pub struct Runtime {
     pub telescope_matcher: TelescopeMatcher,
     /// Telescope pickers registry
     pub telescope_pickers: HashMap<String, Arc<dyn Picker>>,
+    /// Leap motion state
+    pub leap_state: LeapState,
 }
 
 impl Default for Runtime {
@@ -118,6 +121,7 @@ impl Runtime {
             telescope_state: TelescopeState::new(),
             telescope_matcher: TelescopeMatcher::new(),
             telescope_pickers: Self::create_telescope_pickers(),
+            leap_state: LeapState::new(),
         }
     }
 
@@ -187,6 +191,7 @@ impl Runtime {
                 &self.which_key_panel,
                 &self.completion_state,
                 &self.telescope_state,
+                &self.leap_state,
             )
             .expect("failed to render");
         self.screen.flush().expect("failed to flush");

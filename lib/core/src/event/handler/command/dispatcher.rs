@@ -125,4 +125,42 @@ impl Dispatcher {
     pub async fn send_which_key_hide(&self) {
         let _ = self.inner_tx.send(InnerEvent::WhichKeyHide).await;
     }
+
+    /// Send leap first character event
+    pub async fn send_leap_first_char(&self, c: char) {
+        let _ = self
+            .inner_tx
+            .send(InnerEvent::LeapEvent(crate::event::LeapEvent::FirstChar {
+                char: c,
+            }))
+            .await;
+    }
+
+    /// Send leap second character event
+    pub async fn send_leap_second_char(&self, c: char) {
+        let _ = self
+            .inner_tx
+            .send(InnerEvent::LeapEvent(crate::event::LeapEvent::SecondChar {
+                char: c,
+            }))
+            .await;
+    }
+
+    /// Send leap label selection event
+    pub async fn send_leap_select_label(&self, label: String) {
+        let _ = self
+            .inner_tx
+            .send(InnerEvent::LeapEvent(crate::event::LeapEvent::SelectLabel {
+                label,
+            }))
+            .await;
+    }
+
+    /// Send leap cancel event
+    pub async fn send_leap_cancel(&self) {
+        let _ = self
+            .inner_tx
+            .send(InnerEvent::LeapEvent(crate::event::LeapEvent::Cancel))
+            .await;
+    }
 }

@@ -133,6 +133,8 @@ impl CommandRegistry {
             RedoCommand, UndoCommand,
             // Jump
             JumpNewerCommand, JumpOlderCommand,
+            // Leap
+            LeapBackwardCommand, LeapCancelCommand, LeapForwardCommand,
             // Mode
             EnterCommandModeCommand, EnterInsertModeAfterCommand, EnterInsertModeCommand,
             EnterInsertModeEolCommand, EnterNormalModeCommand, EnterVisualBlockModeCommand,
@@ -171,6 +173,11 @@ impl CommandRegistry {
         // Jump list commands
         let _ = self.register(JumpOlderCommand);
         let _ = self.register(JumpNewerCommand);
+
+        // Leap motion commands
+        let _ = self.register(LeapForwardCommand);
+        let _ = self.register(LeapBackwardCommand);
+        let _ = self.register(LeapCancelCommand);
 
         // History (Undo/Redo) commands
         let _ = self.register(UndoCommand);

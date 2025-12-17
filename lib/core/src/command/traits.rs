@@ -1,7 +1,8 @@
 //! Core command trait definitions for extensible command system
 
 use crate::buffer::Buffer;
-use crate::modd::ModeState;
+use crate::leap::LeapDirection;
+use crate::modd::{ModeState, OperatorType};
 use std::any::Any;
 use std::fmt::Debug;
 
@@ -57,6 +58,19 @@ pub enum DeferredAction {
     JumpNewer,
     /// Execute operator with motion (e.g., dw, yj, c$)
     OperatorMotion(OperatorMotionAction),
+    /// Leap motion actions
+    Leap(LeapAction),
+}
+
+/// Leap motion actions
+#[derive(Debug)]
+pub enum LeapAction {
+    /// Start leap mode (waiting for two characters)
+    Start {
+        direction: LeapDirection,
+        operator: Option<OperatorType>,
+        count: Option<usize>,
+    },
 }
 
 /// Telescope fuzzy finder actions

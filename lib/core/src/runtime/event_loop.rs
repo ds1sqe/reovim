@@ -229,6 +229,9 @@ impl Runtime {
             InnerEvent::TelescopeEvent(telescope_event) => {
                 self.handle_telescope_event(telescope_event);
             }
+            InnerEvent::LeapEvent(leap_event) => {
+                self.handle_leap_event(leap_event);
+            }
         }
         false
     }
@@ -493,5 +496,98 @@ impl Runtime {
         // Use set_mode to broadcast via watch channel
         self.set_mode(new_mode);
         self.render();
+    }
+
+    /// Handle leap-related events
+    #[allow(clippy::cast_possible_truncation)]
+    fn handle_leap_event(&mut self, event: crate::event::LeapEvent) {
+        use crate::event::LeapEvent;
+        use crate::leap::{find_matches, generate_labels};
+
+        match event {
+            LeapEvent::Start {
+                direction,
+                operator,
+                count,
+            } => {
+                tracing::debug!(?direction, ?operator, ?count, "Leap mode started");
+                self.leap_state.start(direction, operator, count);
+                self.set_mode(ModeState::leap(direction, operator, count));
+                self.render();
+            }
+            LeapEvent::FirstChar { char } => {
+                tracing::debug!(?char, "Leap first char");
+                self.leap_state.set_first_char(char);
+                self.render();
+            }
+            LeapEvent::SecondChar { char } => {
+                tracing::debug!(?char, "Leap second char");
+                self.leap_state.set_second_char(char);
+
+                // Find all matches in the visible buffer area
+                if let Some(buffer) = self.buffers.get(&self.active_buffer_id) {
+                    let pattern = self.leap_state.search_chars.clone();
+                    let cursor_line = buffer.cur.y;
+                    let cursor_col = buffer.cur.x;
+
+                    // Use full buffer for now (TODO: limit to visible area)
+                    let start_line = 0;
+                    let end_line = buffer.contents.len() as u16;
+
+                    // Build lines for pattern matching
+                    let lines: Vec<&str> = buffer
+                        .contents
+                        .iter()
+                        .map(|line| line.inner.as_str())
+                        .collect();
+
+                    let matches = find_matches(
+                        &lines,
+                        &pattern,
+                        self.leap_state.direction,
+                        cursor_line,
+                        cursor_col,
+                        start_line,
+                        end_line,
+                    );
+
+                    if matches.is_empty() {
+                        // No matches, cancel leap mode
+                        self.leap_state.reset();
+                        self.set_mode(ModeState::normal());
+                    } else {
+                        // Generate labels and assign to matches
+                        let labels = generate_labels(matches.len());
+                        self.leap_state.set_matches_with_labels(matches, labels);
+                    }
+                }
+                self.render();
+            }
+            LeapEvent::SelectLabel { label } => {
+                tracing::debug!(?label, "Leap label selected");
+
+                if let Some(target) = self.leap_state.find_match_by_label(&label) {
+                    let target_line = target.line;
+                    let target_col = target.col;
+
+                    // For now, just jump to the target (operator support TBD)
+                    // TODO: Add operator support via OperatorMotionEvent
+                    if let Some(buffer) = self.buffers.get_mut(&self.active_buffer_id) {
+                        buffer.cur.y = target_line;
+                        buffer.cur.x = target_col;
+                    }
+                }
+
+                self.leap_state.reset();
+                self.set_mode(ModeState::normal());
+                self.render();
+            }
+            LeapEvent::Cancel => {
+                tracing::debug!("Leap cancelled");
+                self.leap_state.reset();
+                self.set_mode(ModeState::normal());
+                self.render();
+            }
+        }
     }
 }

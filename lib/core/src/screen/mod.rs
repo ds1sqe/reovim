@@ -12,6 +12,7 @@ use {
         constants::RESET_STYLE,
         explorer::{render_explorer, ExplorerState},
         highlight::{ColorMode, HighlightStore, Theme},
+        leap::LeapState,
         modd::ModeState,
         telescope::TelescopeState,
     },
@@ -134,6 +135,7 @@ impl Screen {
     /// update screen
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_lines)]
     pub fn render(
         &mut self,
         buffers: &[Buffer],
@@ -148,6 +150,7 @@ impl Screen {
         which_key_panel: &WhichKeyPanel,
         completion_state: &CompletionState,
         telescope_state: &TelescopeState,
+        leap_state: &LeapState,
     ) -> std::result::Result<(), std::io::Error> {
         // Reset all styling before clearing
         queue!(self.out_stream, Print(RESET_STYLE))?;
@@ -178,6 +181,9 @@ impl Screen {
             }
         }
 
+        // Collect leap rendering info before iterating windows
+        let mut leap_render_info: Option<(u16, u16, u16)> = None;
+
         // Render editor windows
         for win in &self.windows {
             if let Some(buf) = buffers.get(win.buffer_id) {
@@ -200,8 +206,25 @@ impl Screen {
                     let cursor_x = win.anchor.x + gutter_width + buf.cur.x;
                     let cursor_y = win.anchor.y + buf.cur.y;
                     cursor_pos = Some((cursor_x, cursor_y));
+
+                    // Collect leap rendering info if needed
+                    if leap_state.is_showing_labels() {
+                        leap_render_info = Some((win.anchor.x + gutter_width, win.anchor.y, win.buffer_anchor.y));
+                    }
                 }
             }
+        }
+
+        // Render leap labels after windows (avoids borrow conflict)
+        if let Some((window_x, window_y, scroll_offset)) = leap_render_info {
+            self.render_leap_labels(
+                leap_state,
+                window_x,
+                window_y,
+                scroll_offset,
+                color_mode,
+                theme,
+            )?;
         }
 
         // Render completion popup if visible
@@ -607,6 +630,47 @@ impl Screen {
                 win.height = editor_layout.height;
             }
         }
+    }
+
+    /// Render leap motion labels as overlays on match positions
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::similar_names)]
+    fn render_leap_labels(
+        &mut self,
+        leap_state: &LeapState,
+        window_x: u16,
+        window_y: u16,
+        scroll_offset: u16,
+        _color_mode: ColorMode,
+        theme: &Theme,
+    ) -> std::result::Result<(), std::io::Error> {
+        use reovim_sys::style::{Attribute, Color, SetAttribute, SetBackgroundColor, SetForegroundColor};
+
+        // Use leap theme style or fallback to search highlight
+        let label_fg = theme.leap_label.fg.unwrap_or(Color::Black);
+        let label_bg = theme.leap_label.bg.unwrap_or(Color::Yellow);
+
+        for m in &leap_state.matches {
+            // Calculate screen position
+            let screen_line = m.line.saturating_sub(scroll_offset);
+            let screen_x = window_x + m.col;
+            let screen_y = window_y + screen_line;
+
+            // Skip if off screen
+            if screen_y >= self.size.height.saturating_sub(1) {
+                continue;
+            }
+
+            // Move to position and render label with highlight
+            queue!(self.out_stream, MoveTo(screen_x, screen_y))?;
+            queue!(self.out_stream, SetForegroundColor(label_fg))?;
+            queue!(self.out_stream, SetBackgroundColor(label_bg))?;
+            queue!(self.out_stream, SetAttribute(Attribute::Bold))?;
+            queue!(self.out_stream, Print(&m.label))?;
+            queue!(self.out_stream, Print(RESET_STYLE))?;
+        }
+
+        Ok(())
     }
 }
 

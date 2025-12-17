@@ -50,8 +50,8 @@ pub fn render_status_line_to<W: Write>(
         (SubMode::Command, _, _) | (SubMode::None, Focus::Telescope, _) => {
             &theme.status_line_mode.command
         }
-        // Operator-pending and normal mode in Editor
-        (SubMode::OperatorPending { .. }, _, _)
+        // Operator-pending, Leap, and normal mode in Editor
+        (SubMode::OperatorPending { .. } | SubMode::Leap { .. }, _, _)
         | (SubMode::None, Focus::Editor, EditMode::Normal) => &theme.status_line_mode.normal,
         // Editor insert mode
         (SubMode::None, Focus::Editor, EditMode::Insert(_)) => &theme.status_line_mode.insert,

@@ -1,3 +1,5 @@
+use crate::leap::LeapDirection;
+
 /// Operator type for operator-pending mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum OperatorType {
@@ -33,6 +35,12 @@ pub enum SubMode {
     Command,
     OperatorPending {
         operator: OperatorType,
+        count: Option<usize>,
+    },
+    /// Leap motion mode (s/S to jump to two-character sequence)
+    Leap {
+        direction: LeapDirection,
+        operator: Option<OperatorType>,
         count: Option<usize>,
     },
 }
@@ -209,6 +217,16 @@ impl ModeState {
         }
     }
 
+    /// Leap motion mode
+    #[must_use]
+    pub const fn leap(direction: LeapDirection, operator: Option<OperatorType>, count: Option<usize>) -> Self {
+        Self {
+            focus: Focus::Editor,
+            edit_mode: EditMode::Normal,
+            sub_mode: SubMode::Leap { direction, operator, count },
+        }
+    }
+
     // === State checks ===
 
     /// Check if in command sub-mode
@@ -221,6 +239,12 @@ impl ModeState {
     #[must_use]
     pub const fn is_operator_pending(&self) -> bool {
         matches!(self.sub_mode, SubMode::OperatorPending { .. })
+    }
+
+    /// Check if in leap sub-mode
+    #[must_use]
+    pub const fn is_leap(&self) -> bool {
+        matches!(self.sub_mode, SubMode::Leap { .. })
     }
 
     /// Check if in normal edit mode (any focus)
@@ -266,6 +290,7 @@ impl ModeState {
         match &self.sub_mode {
             SubMode::Command => return "",
             SubMode::OperatorPending { .. } => return " OPERATOR ",
+            SubMode::Leap { .. } => return " LEAP ",
             SubMode::None => {}
         }
 

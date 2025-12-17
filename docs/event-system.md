@@ -12,7 +12,11 @@ lib/core/src/event/
 │   └── mod.rs      # KeyEventBroker
 ├── handler/
 │   ├── mod.rs      # TerminateHandler
-│   └── command.rs  # CommandHandler
+│   ├── command/    # CommandHandler
+│   │   ├── mod.rs
+│   │   ├── dispatcher.rs
+│   │   └── count_parser.rs
+│   └── completion.rs # CompletionHandler
 └── inner/
     └── mod.rs      # InnerEvent enum
 ```
@@ -25,14 +29,137 @@ Internal events passed to the runtime via mpsc channel:
 
 ```rust
 pub enum InnerEvent {
-    BufferEvent(BufferEvent),       // Buffer content updates
-    CommandEvent(CommandEvent),     // Command to execute
-    ModeChangeEvent(Mod),           // Mode transition
-    PendingKeysEvent(String),       // Multi-key sequence display
-    HighlightEvent(HighlightEvent), // Syntax highlighting
-    WindowEvent,                    // Window operations
-    RenderSignal,                   // Trigger render
-    KillSignal,                     // Exit editor
+    // Core events
+    BufferEvent(BufferEvent),
+    CommandEvent(CommandEvent),
+    ModeChangeEvent(ModeState),
+    PendingKeysEvent(String),
+    WindowEvent(WindowEvent),
+    HighlightEvent(HighlightEvent),
+
+    // Feature events
+    CompletionEvent(CompletionEvent),
+    ExplorerEvent(ExplorerEvent),
+    TelescopeEvent(TelescopeEvent),
+    LeapEvent(LeapEvent),
+    OperatorMotionEvent(OperatorMotionAction),
+
+    // UI events
+    WhichKeyShow { prefix: String, bindings: Vec<WhichKeyBinding> },
+    WhichKeyHide,
+
+    // System
+    RenderSignal,
+    KillSignal,
+}
+```
+
+### BufferEvent
+
+Buffer management operations:
+
+```rust
+pub enum BufferEvent {
+    SetContent { buffer_id: usize, content: String },
+    LoadFile { path: String },
+    Create,
+    Close { buffer_id: usize },
+    Switch { buffer_id: usize },
+}
+```
+
+### CommandEvent
+
+Command execution request:
+
+```rust
+pub struct CommandEvent {
+    pub command: CommandRef,
+    pub context: CommandContext,
+}
+
+pub struct CommandContext {
+    pub buffer_id: usize,
+    pub window_id: usize,
+    pub count: Option<usize>,
+}
+```
+
+### CompletionEvent
+
+Text completion operations:
+
+```rust
+pub enum CompletionEvent {
+    Trigger { buffer_id: usize },
+    Update { items: Vec<CompletionItem>, prefix: String, start_col: usize, start_row: usize },
+    SelectNext,
+    SelectPrev,
+    Confirm,
+    Dismiss,
+    UpdateFilter { new_prefix: String },
+}
+```
+
+### TelescopeEvent
+
+Fuzzy finder operations:
+
+```rust
+pub enum TelescopeEvent {
+    Open { picker: String },
+    UpdateQuery { query: String },
+    UpdateItems { items: Vec<TelescopeItem> },
+    SelectNext,
+    SelectPrev,
+    PageDown,
+    PageUp,
+    Confirm,
+    Close,
+    UpdatePreview { content: String },
+}
+```
+
+### LeapEvent
+
+Leap motion operations:
+
+```rust
+pub enum LeapEvent {
+    Start { direction: LeapDirection, operator: Option<OperatorType>, count: Option<usize> },
+    FirstChar { char: char },
+    SecondChar { char: char },
+    SelectLabel { label: char },
+    Cancel,
+}
+```
+
+### ExplorerEvent
+
+File explorer operations:
+
+```rust
+pub enum ExplorerEvent {
+    Toggle,
+    Focus,
+    Unfocus,
+    CursorUp,
+    CursorDown,
+    ToggleNode,
+    OpenNode,
+    // ... more variants
+}
+```
+
+### WindowEvent
+
+Window management:
+
+```rust
+pub enum WindowEvent {
+    ToggleExplorer,
+    FocusExplorer,
+    FocusEditor,
 }
 ```
 
@@ -115,7 +242,9 @@ pub struct CommandHandler {
     tx: mpsc::Sender<InnerEvent>,
     pending_keys: String,
     pending_count: Option<usize>,
-    current_mode: Mod,
+    local_mode: ModeState,
+    mode_rx: watch::Receiver<ModeState>,
+    command_registry: Arc<CommandRegistry>,
 }
 ```
 
@@ -127,21 +256,39 @@ pub struct CommandHandler {
    - Create CommandContext with count
    - Send CommandEvent to runtime
    - Clear pending state
-5. If partial match: wait for more keys
+5. If partial match: wait for more keys, show which-key
 6. If no match: handle based on mode
    - Insert: send InsertChar
    - Command: send CommandLineChar
+   - Telescope Insert: send TelescopeInsertChar
    - Normal/Visual: ignore
+
+### CompletionHandler
+
+Handles async completion item fetching:
+
+```rust
+pub struct CompletionHandler {
+    rx: mpsc::Receiver<CompletionRequest>,
+    tx: mpsc::Sender<InnerEvent>,
+    engine: Arc<CompletionEngine>,
+}
+```
+
+**Process:**
+1. Receive trigger request
+2. Fetch completion items asynchronously
+3. Send CompletionEvent::Update with results
 
 ### TerminateHandler
 
-Handles Ctrl+D for exit:
+Handles Ctrl+C for graceful exit:
 
 ```rust
 impl TerminateHandler {
     pub async fn subscribe(mut self) {
         while let Ok(event) = self.rx.recv().await {
-            if event.code == KeyCode::Char('d')
+            if event.code == KeyCode::Char('c')
                && event.modifiers == KeyModifiers::CONTROL {
                 let _ = self.tx.send(InnerEvent::KillSignal).await;
             }
@@ -168,27 +315,35 @@ impl TerminateHandler {
 3. KEY BROADCAST
    KeyEventBroker (tokio broadcast, buffer: 255)
         │
-        ├────────────────────┐
-        ▼                    ▼
+        ├────────────────────┬────────────────────┐
+        ▼                    ▼                    ▼
 4. HANDLERS
-   CommandHandler        TerminateHandler
-   - Keys → Commands     - Ctrl+D → KillSignal
+   CommandHandler        TerminateHandler    CompletionHandler
+   - Keys → Commands     - Ctrl+C → Kill    - Async fetching
    - Track pending_keys
-   - Build CommandContext
-        │                    │
-        ▼                    ▼
-   CommandEvent          KillSignal
-        │                    │
-        └─────────┬──────────┘
+   - Watch mode changes
+        │                    │                    │
+        ▼                    ▼                    ▼
+   CommandEvent          KillSignal        CompletionEvent
+   TelescopeEvent
+   LeapEvent
+   ModeChangeEvent
+        │                    │                    │
+        └─────────┬──────────┴────────────────────┘
                   ▼
 5. RUNTIME EVENT LOOP
    Runtime::rx.recv().await
 
    match event {
        CommandEvent => execute command
-       ModeChangeEvent => update mode
-       HighlightEvent => update highlights
-       PendingKeysEvent => update display
+       ModeChangeEvent => update mode, broadcast
+       CompletionEvent => update completion state
+       TelescopeEvent => update telescope state
+       LeapEvent => handle leap motion
+       ExplorerEvent => handle explorer
+       OperatorMotionEvent => execute operator+motion
+       WhichKeyShow/Hide => update which-key panel
+       RenderSignal => render()
        KillSignal => exit
    }
         │
@@ -218,12 +373,12 @@ Step 2: User presses "j"
 │     ▼                                       │
 │ CommandHandler                              │
 │     pending_keys = "5j"                     │
-│     lookup("j") → Command::CursorDown       │
+│     lookup("j") → CommandRef for cursor_down│
 │     clear pending_keys                      │
 │     │                                       │
 │     ▼                                       │
 │ Send CommandEvent {                         │
-│     command: CursorDown,                    │
+│     command: ById(CURSOR_DOWN),             │
 │     context: { count: 5, ... }              │
 │ }                                           │
 └─────────────────────────────────────────────┘
@@ -233,7 +388,9 @@ Step 3: Runtime processes
 │ Runtime receives CommandEvent               │
 │     │                                       │
 │     ▼                                       │
-│ BufferCommandExecutor::execute_on_buffer()  │
+│ Resolve CommandRef → Arc<CursorDownCommand> │
+│ Create ExecutionContext                     │
+│ cmd.execute(&mut ctx)                       │
 │     Move cursor down by 5 lines             │
 │     │                                       │
 │     ▼                                       │
@@ -244,23 +401,84 @@ Step 3: Runtime processes
 └─────────────────────────────────────────────┘
 ```
 
+### Example: Leap Motion "sab"
+
+```
+Step 1: User presses "s"
+┌─────────────────────────────────────────────┐
+│ CommandHandler                              │
+│     lookup("s") → LeapForwardCommand        │
+│     │                                       │
+│     ▼                                       │
+│ Execute → DeferToRuntime(Leap(Start))       │
+│     │                                       │
+│     ▼                                       │
+│ Runtime: set_mode(leap(Forward))            │
+│ LeapState: WaitingFirstChar                 │
+└─────────────────────────────────────────────┘
+
+Step 2: User presses "a" (first char)
+┌─────────────────────────────────────────────┐
+│ CommandHandler (in Leap mode)               │
+│     Send LeapEvent::FirstChar { char: 'a' } │
+│     │                                       │
+│     ▼                                       │
+│ Runtime: Find all "a?" matches              │
+│ LeapState: WaitingSecondChar                │
+│ Render targets with labels                  │
+└─────────────────────────────────────────────┘
+
+Step 3: User presses "b" (second char)
+┌─────────────────────────────────────────────┐
+│ LeapEvent::SecondChar { char: 'b' }         │
+│     │                                       │
+│     ▼                                       │
+│ Runtime: Find "ab" matches                  │
+│ If single match: jump directly              │
+│ If multiple: show labels for selection      │
+│ set_mode(normal())                          │
+│ Render                                      │
+└─────────────────────────────────────────────┘
+```
+
 ## Key Bindings
 
 The keymap uses a trie structure for multi-key sequences:
 
 ```rust
 pub struct KeyMapInner {
-    pub command: Option<Command>,
+    pub command: Option<CommandRef>,
     pub next: HashMap<String, Self>,
 }
 
 pub struct KeyMap {
-    pub nmap: HashMap<String, KeyMapInner>,  // Normal
-    pub imap: HashMap<String, KeyMapInner>,  // Insert
-    pub vmap: HashMap<String, KeyMapInner>,  // Visual
-    pub cmap: HashMap<String, KeyMapInner>,  // Command
+    pub normal: HashMap<String, KeyMapInner>,
+    pub insert: HashMap<String, KeyMapInner>,
+    pub visual: HashMap<String, KeyMapInner>,
+    pub command: HashMap<String, KeyMapInner>,
+    pub explorer: HashMap<String, KeyMapInner>,
+    pub explorer_input: HashMap<String, KeyMapInner>,
+    pub operator_pending: HashMap<String, KeyMapInner>,
+    pub telescope_normal: HashMap<String, KeyMapInner>,
+    pub telescope_insert: HashMap<String, KeyMapInner>,
+    pub leap: HashMap<String, KeyMapInner>,
 }
 ```
+
+### Mode-Specific Keymaps
+
+| Mode | Keymap | Purpose |
+|------|--------|---------|
+| Normal | `normal` | Standard editing commands |
+| Insert | `insert` | Text input, Escape, completion |
+| Visual | `visual` | Selection extension, operations |
+| Command | `command` | Ex-command input |
+| Explorer | `explorer` | File browser navigation |
+| Explorer Input | `explorer_input` | File creation/rename input |
+| Operator Pending | `operator_pending` | Motion after d/y/c |
+| Telescope Normal | `telescope_normal` | Navigation with j/k |
+| Telescope Insert | `telescope_insert` | Query typing |
+| Leap | `leap` | Leap motion key handling |
 
 ### Default Bindings
 
@@ -273,16 +491,27 @@ pub struct KeyMap {
 | gg/G | Document start/end |
 | i/a/A | Insert modes |
 | o/O | Open line |
-| v | Visual mode |
+| v/Ctrl-v | Visual modes |
 | : | Command mode |
 | x | Delete char |
 | p/P | Paste after/before |
+| u/Ctrl-r | Undo/redo |
+| d/y/c | Operators |
+| s/S | Leap forward/backward |
+| Ctrl-o/Ctrl-i | Jump list |
+| Space e | Toggle explorer |
+| Space ff/fb/fg/fr | Telescope pickers |
 
 **Insert Mode:**
 | Key | Command |
 |-----|---------|
 | Escape | Normal mode |
 | Backspace | Delete backward |
+| Enter | Newline |
+| Ctrl-Space | Trigger completion |
+| Ctrl-n/Ctrl-p | Next/prev completion |
+| Tab | Confirm completion |
+| Ctrl-e | Dismiss completion |
 | (any char) | Insert character |
 
 **Visual Mode:**
@@ -306,15 +535,37 @@ pub struct KeyMap {
 The CommandHandler adjusts behavior based on current mode:
 
 ```rust
-match mode {
-    Mod::Insert(_) => {
-        // Unmapped keys become InsertChar(c)
-    }
-    Mod::Command => {
-        // Unmapped keys become CommandLineChar(c)
-    }
-    Mod::Normal | Mod::Visual(_) => {
-        // Unmapped keys are ignored
+if mode.is_insert() {
+    // Unmapped keys become InsertChar(c)
+} else if mode.is_command() {
+    // Unmapped keys become CommandLineChar(c)
+} else if mode.is_telescope_focus() && mode.is_insert() {
+    // Unmapped keys become TelescopeInsertChar(c)
+} else if mode.is_leap() {
+    // Keys go to LeapEvent handling
+} else if mode.is_normal() || mode.is_visual() {
+    // Unmapped keys are ignored
+}
+```
+
+## Mode Change Broadcasting
+
+Mode changes are broadcast via `watch` channel:
+
+```rust
+// In Runtime
+pub fn set_mode(&mut self, mode: ModeState) {
+    self.mode_state = mode.clone();
+    let _ = self.mode_tx.send(mode);
+}
+
+// In CommandHandler
+loop {
+    tokio::select! {
+        Ok(key) = self.rx.recv() => { /* handle key */ }
+        Ok(()) = self.mode_rx.changed() => {
+            self.local_mode = self.mode_rx.borrow().clone();
+        }
     }
 }
 ```

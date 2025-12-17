@@ -5,7 +5,8 @@ use crate::command::traits::OperatorMotionAction;
 use crate::command::CommandContext;
 use crate::completion::CompletionItem;
 use crate::highlight::{Highlight, HighlightGroup};
-use crate::modd::ModeState;
+use crate::leap::LeapDirection;
+use crate::modd::{ModeState, OperatorType};
 use crate::telescope::{PreviewContent, TelescopeItem};
 
 pub enum InnerEvent {
@@ -20,6 +21,7 @@ pub enum InnerEvent {
     /// Operator + motion action (d+motion, y+motion, c+motion)
     OperatorMotionEvent(OperatorMotionAction),
     TelescopeEvent(TelescopeEvent),
+    LeapEvent(LeapEvent),
     RenderSignal,
     KillSignal,
     /// Show the which-key popup with available bindings
@@ -145,4 +147,22 @@ pub enum TelescopeEvent {
     Close,
     /// Update preview content
     UpdatePreview { content: PreviewContent },
+}
+
+/// Leap motion events
+pub enum LeapEvent {
+    /// Start leap mode (from `s` or `S` in normal mode)
+    Start {
+        direction: LeapDirection,
+        operator: Option<OperatorType>,
+        count: Option<usize>,
+    },
+    /// First character entered
+    FirstChar { char: char },
+    /// Second character entered, find matches
+    SecondChar { char: char },
+    /// User pressed a label key to jump
+    SelectLabel { label: String },
+    /// Cancel leap mode (Escape)
+    Cancel,
 }

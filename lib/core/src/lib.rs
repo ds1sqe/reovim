@@ -9,6 +9,7 @@ pub mod explorer;
 pub mod highlight;
 pub mod jumplist;
 pub mod landing;
+pub mod leap;
 pub mod modd;
 pub mod motion;
 pub mod register;

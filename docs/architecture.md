@@ -36,7 +36,7 @@ reovim/
 | Crate | Purpose |
 |-------|---------|
 | `main` | Bootstrap editor, parse CLI args, invoke runtime |
-| `reovim-core` | Runtime, buffers, events, screen, commands |
+| `reovim-core` | Runtime, buffers, events, screen, commands, features |
 | `reovim-sys` | Re-exports crossterm for terminal I/O |
 
 ## Core Architecture Overview
@@ -51,13 +51,16 @@ Runtime::init() ─────────────────────�
   │                                               │
   ├── Screen (terminal output)                    │
   ├── Buffers (text storage)                      │
+  ├── CommandRegistry (trait-based commands)      │
   ├── mpsc channel (InnerEvent)                   │
+  ├── watch channel (ModeState broadcast)         │
   │                                               │
   └── spawned async tasks:                        │
       ├── InputEventBroker (reads terminal)       │
       ├── KeyEventBroker (broadcasts keys)        │
       ├── CommandHandler (keys → commands)        │
-      └── TerminateHandler (Ctrl+D)               │
+      ├── CompletionHandler (async completion)    │
+      └── TerminateHandler (Ctrl+C)               │
                                                   │
       ◄─────────── event loop ────────────────────┘
 ```
@@ -67,14 +70,22 @@ Runtime::init() ─────────────────────�
 ```
 lib/core/src/
 ├── runtime/        # Central event loop
+│   ├── core.rs     # Runtime struct
+│   ├── event_loop.rs
+│   └── handlers.rs
 ├── buffer/         # Text storage and cursor
 ├── screen/         # Terminal rendering
-│   └── window.rs   # Buffer viewport
-├── command/        # Command definitions
-│   ├── action.rs   # Command enum
-│   ├── context.rs  # Execution context
-│   └── executor.rs # Command execution
-├── command_line/   # Ex-command parsing (:w, :q)
+│   ├── mod.rs
+│   ├── window.rs
+│   ├── status_line.rs
+│   └── which_key.rs
+├── command/        # Command system
+│   ├── traits.rs   # CommandTrait, ExecutionContext
+│   ├── registry.rs # CommandRegistry
+│   ├── id.rs       # CommandId constants
+│   ├── deferred.rs # DeferredAction
+│   └── builtin/    # Command implementations
+├── command_line/   # Ex-command parsing (:w, :q, :e)
 ├── event/          # Event system
 │   ├── input.rs    # Terminal event reader
 │   ├── key/        # Key broadcast channel
@@ -82,8 +93,15 @@ lib/core/src/
 │   └── inner/      # InnerEvent types
 ├── motion/         # Cursor movement logic
 ├── highlight/      # Syntax highlighting
-├── modd/           # Editor modes
-├── bind/           # Key bindings (private)
+├── modd/           # Editor modes (ModeState)
+├── bind/           # Key bindings
+├── completion/     # Text completion engine
+├── telescope/      # Fuzzy finder
+├── explorer/       # File browser
+├── leap/           # Two-character motion
+├── jump_list/      # Navigation history
+├── registers/      # Copy/paste storage
+├── theme/          # Color themes
 └── landing.rs      # Splash screen
 ```
 
@@ -95,23 +113,52 @@ The central event loop that owns all editor state:
 
 ```rust
 pub struct Runtime {
+    // Buffer management
     pub buffers: BTreeMap<usize, Buffer>,
+    pub active_buffer_id: usize,
+    pub next_buffer_id: usize,
+
+    // Display
     pub screen: Screen,
     pub highlight_store: HighlightStore,
-    pub current_mode: Mod,
-    pub clipboard: String,
+    pub color_mode: ColorMode,
+    pub theme: Theme,
+
+    // Mode and state
+    pub mode_state: ModeState,
     pub command_line: CommandLine,
     pub pending_keys: String,
+    pub last_command: String,
+
+    // Event channels
     pub tx: mpsc::Sender<InnerEvent>,
     pub rx: mpsc::Receiver<InnerEvent>,
+    pub mode_tx: watch::Sender<ModeState>,
+    pub mode_rx: watch::Receiver<ModeState>,
+
+    // Command system
+    pub command_registry: Arc<CommandRegistry>,
+    pub registers: Registers,
+
+    // Features
+    pub explorer_state: Option<ExplorerState>,
+    pub jump_list: JumpList,
+    pub which_key_panel: WhichKeyPanel,
+    pub completion_engine: Arc<CompletionEngine>,
+    pub completion_state: CompletionState,
+    pub telescope_state: TelescopeState,
+    pub telescope_matcher: TelescopeMatcher,
+    pub telescope_pickers: HashMap<String, Arc<dyn Picker>>,
+    pub leap_state: LeapState,
 }
 ```
 
 **Responsibilities:**
 - Process events sequentially through single-threaded loop
 - Own all buffers and screen state
-- Handle mode transitions
+- Handle mode transitions via `set_mode()`
 - Coordinate rendering
+- Dispatch deferred actions to feature handlers
 
 ### Buffer
 
@@ -124,6 +171,7 @@ pub struct Buffer {
     pub contents: Vec<Line>,
     pub selection: Selection,
     pub file_path: Option<String>,
+    pub history: UndoHistory,
 }
 ```
 
@@ -151,18 +199,97 @@ pub struct Window {
 }
 ```
 
-### Modes
+### Mode State System
 
-Editor state machine:
+Editor mode is represented by a multi-dimensional `ModeState`:
 
 ```rust
-pub enum Mod {
-    Normal,
-    Insert(ModExtension),
-    Visual(ModExtension),
-    Command,
+pub struct ModeState {
+    pub focus: Focus,        // Editor, Explorer, Telescope
+    pub edit_mode: EditMode, // Normal, Insert, Visual
+    pub sub_mode: SubMode,   // None, Command, OperatorPending, Leap
 }
 ```
+
+**Convenience constructors:**
+- `ModeState::normal()` - Editor + Normal mode
+- `ModeState::insert()` - Editor + Insert mode
+- `ModeState::visual()` - Editor + Visual mode
+- `ModeState::command()` - Editor + Command sub-mode
+- `ModeState::explorer()` - Explorer focus
+- `ModeState::telescope()` - Telescope focus
+- `ModeState::operator_pending(op, count)` - Operator-pending mode
+- `ModeState::leap(direction, op, count)` - Leap motion mode
+
+**State checks:**
+- `is_normal()`, `is_insert()`, `is_visual()` - Edit mode checks
+- `is_command()`, `is_operator_pending()`, `is_leap()` - Sub-mode checks
+- `is_editor_focus()`, `is_explorer_focus()`, `is_telescope_focus()` - Focus checks
+
+## Feature Modules
+
+### Telescope (`lib/core/src/telescope/`)
+
+Fuzzy finder for files, buffers, grep, and commands. Uses nucleo for high-performance fuzzy matching.
+
+**Components:**
+- `TelescopeState` - Current UI state (query, selected index)
+- `TelescopeMatcher` - nucleo-based fuzzy matching
+- `Picker` trait - Extensible picker system
+- 7 built-in pickers: files, buffers, live_grep, recent, commands, help, keymaps
+
+**Keybindings:** `Space f` prefix
+
+### Explorer (`lib/core/src/explorer/`)
+
+Tree-view file browser with file operations.
+
+**Components:**
+- `ExplorerState` - Tree structure and cursor position
+- `ExplorerNode` - File/directory representation
+- 25 commands for navigation, tree ops, file ops
+
+**Keybinding:** `Space e` to toggle
+
+### Completion (`lib/core/src/completion/`)
+
+Async word completion with popup menu.
+
+**Components:**
+- `CompletionEngine` - Async item fetcher
+- `CompletionState` - Active completion session
+- Word-based completion from buffer content
+
+**Keybindings:** `Ctrl-Space` to trigger, `Ctrl-n/p` to navigate, `Tab` to confirm
+
+### Leap (`lib/core/src/leap/`)
+
+Two-character motion for quick cursor jumps (inspired by leap.nvim).
+
+**Components:**
+- `LeapState` - Current leap session
+- `LeapTarget` - Jump target with label
+- Bi-directional search with `s`/`S`
+
+**Integration:** Works with operators (`ds{char}{char}` to delete to target)
+
+### Which-Key (`lib/core/src/screen/which_key.rs`)
+
+Popup panel showing available keybindings after prefix keys.
+
+**Behavior:** Appears after timeout when prefix key is pressed (e.g., `g`, `Space`)
+
+### Jump List (`lib/core/src/jump_list/`)
+
+Navigation history for Ctrl-O/Ctrl-I.
+
+**Behavior:** Records cursor position before jump commands, allows backtracking
+
+### Registers (`lib/core/src/registers/`)
+
+Multi-register copy/paste storage.
+
+**Features:** Default register `"`, named registers `a-z`
 
 ## Architecture Patterns
 
@@ -171,10 +298,11 @@ pub enum Mod {
 - No locks needed - prevents race conditions
 - Responsive via async I/O
 
-### Command Pattern
-- KeyEvents translate to `Command` enum
-- `CommandContext` carries metadata (buffer_id, count)
-- `CommandResult` indicates side effects
+### Trait-Based Command System
+- All commands implement `CommandTrait`
+- Commands registered in `CommandRegistry`
+- Commands return `CommandResult` indicating side effects
+- Complex actions deferred via `DeferredAction`
 
 ### Trait-Based Subscriptions
 ```rust
@@ -182,6 +310,10 @@ pub trait Subscribe<T> {
     fn subscribe(&mut self, rx: broadcast::Receiver<T>);
 }
 ```
+
+### Mode Broadcasting
+- `watch` channel broadcasts `ModeState` changes
+- Handlers subscribe to mode changes for behavior adaptation
 
 ### Layered Rendering
 - Buffer stores text
@@ -214,6 +346,14 @@ CommandEvent         KillSignal
               ▼
          Process Event
               │
+              ├── CommandEvent → execute command
+              ├── ModeChangeEvent → update mode
+              ├── CompletionEvent → update completion
+              ├── TelescopeEvent → update telescope
+              ├── LeapEvent → handle leap
+              ├── ExplorerEvent → handle explorer
+              └── ...
+              │
               ▼
            Render
 ```
@@ -225,6 +365,8 @@ CommandEvent         KillSignal
 | `tokio` | Async runtime |
 | `crossterm` | Terminal I/O |
 | `futures` | Async utilities |
+| `nucleo` | Fuzzy matching (for telescope) |
+| `parking_lot` | Synchronization primitives |
 
 ## Related Documentation
 

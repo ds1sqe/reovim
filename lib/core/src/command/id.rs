@@ -172,4 +172,9 @@ pub mod builtin {
     pub const TELESCOPE_GOTO_LAST: CommandId = CommandId::new("telescope_goto_last");
     pub const TELESCOPE_ENTER_INSERT: CommandId = CommandId::new("telescope_enter_insert");
     pub const TELESCOPE_ENTER_NORMAL: CommandId = CommandId::new("telescope_enter_normal");
+
+    // === Leap Motion ===
+    pub const LEAP_FORWARD: CommandId = CommandId::new("leap_forward");
+    pub const LEAP_BACKWARD: CommandId = CommandId::new("leap_backward");
+    pub const LEAP_CANCEL: CommandId = CommandId::new("leap_cancel");
 }

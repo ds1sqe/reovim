@@ -42,6 +42,8 @@ pub struct Theme {
     pub telescope_input: Style,
     /// Which-key popup panel styles
     pub which_key: WhichKeyStyles,
+    /// Leap motion labels (overlay on matches)
+    pub leap_label: Style,
 }
 
 /// Mode-specific styles for the status line
@@ -166,6 +168,9 @@ impl Theme {
 
             // Which-key panel
             which_key: WhichKeyStyles::default(),
+
+            // Leap labels: bright contrast for visibility
+            leap_label: Style::new().fg(bg_dark).bg(yellow).bold(),
         }
     }
 
@@ -235,6 +240,9 @@ impl Theme {
                 prefix: Style::new().fg(Color::DarkCyan).bg(bg_medium).bold(),
                 border: Style::new().fg(Color::Grey).bg(bg_medium),
             },
+
+            // Leap labels: bright contrast for visibility
+            leap_label: Style::new().fg(Color::White).bg(Color::DarkYellow).bold(),
         }
     }
 }

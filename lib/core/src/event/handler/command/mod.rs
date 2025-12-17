@@ -35,6 +35,16 @@ const WHICH_KEY_TIMEOUT_MS: u64 = 500;
 /// Keys that are handled differently when completion popup is visible
 const COMPLETION_KEYS: &[&str] = &["Tab", "C-n", "C-p", "C-e"];
 
+/// Leap mode phase tracking (local to `CommandHandler`)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum LeapPhase {
+    #[default]
+    Inactive,
+    WaitingFirstChar,
+    WaitingSecondChar,
+    ShowingLabels,
+}
+
 /// Handler that translates key events to commands based on current mode
 pub struct CommandHandler {
     key_event_rx: Option<Receiver<KeyEvent>>,
@@ -54,6 +64,10 @@ pub struct CommandHandler {
     which_key_timeout: Duration,
     /// Whether the which-key popup is currently shown
     which_key_shown: bool,
+    /// Current leap mode phase
+    leap_phase: LeapPhase,
+    /// Accumulated leap label (for multi-char labels)
+    leap_label: String,
 }
 
 impl Subscribe<KeyEvent> for CommandHandler {
@@ -83,6 +97,8 @@ impl CommandHandler {
             registry,
             which_key_timeout: Duration::from_millis(WHICH_KEY_TIMEOUT_MS),
             which_key_shown: false,
+            leap_phase: LeapPhase::Inactive,
+            leap_label: String::new(),
         }
     }
 
@@ -431,6 +447,73 @@ impl CommandHandler {
                                         // In Normal/Visual/Explorer, ignore backspace (don't add to pending)
                                         continue;
                                     }
+                                }
+
+                                // Handle leap mode specially
+                                let mode = self.current_mode();
+                                if mode.is_leap() {
+                                    // Check for Escape to cancel
+                                    if key_str == "Escape" {
+                                        self.leap_phase = LeapPhase::Inactive;
+                                        self.leap_label.clear();
+                                        self.dispatcher.send_leap_cancel().await;
+                                        continue;
+                                    }
+
+                                    // Handle based on current leap phase
+                                    match self.leap_phase {
+                                        LeapPhase::Inactive => {
+                                            // Just entered leap mode, set phase
+                                            self.leap_phase = LeapPhase::WaitingFirstChar;
+                                            // The first char will be processed on next iteration
+                                            // Actually, let's send this char as first char
+                                            if key_str.len() == 1
+                                                && let Some(c) = key_str.chars().next()
+                                            {
+                                                self.leap_phase = LeapPhase::WaitingSecondChar;
+                                                self.dispatcher.send_leap_first_char(c).await;
+                                            }
+                                            continue;
+                                        }
+                                        LeapPhase::WaitingFirstChar => {
+                                            // Process first character
+                                            if key_str.len() == 1
+                                                && let Some(c) = key_str.chars().next()
+                                            {
+                                                self.leap_phase = LeapPhase::WaitingSecondChar;
+                                                self.dispatcher.send_leap_first_char(c).await;
+                                            }
+                                            continue;
+                                        }
+                                        LeapPhase::WaitingSecondChar => {
+                                            // Process second character
+                                            if key_str.len() == 1
+                                                && let Some(c) = key_str.chars().next()
+                                            {
+                                                self.leap_phase = LeapPhase::ShowingLabels;
+                                                self.dispatcher.send_leap_second_char(c).await;
+                                            }
+                                            continue;
+                                        }
+                                        LeapPhase::ShowingLabels => {
+                                            // Process label selection
+                                            // Accumulate label characters for multi-char labels
+                                            if key_str.len() == 1 {
+                                                self.leap_label.push_str(&key_str);
+                                                // Send the label (runtime will handle matching)
+                                                self.dispatcher
+                                                    .send_leap_select_label(self.leap_label.clone())
+                                                    .await;
+                                                self.leap_phase = LeapPhase::Inactive;
+                                                self.leap_label.clear();
+                                            }
+                                            continue;
+                                        }
+                                    }
+                                } else if self.leap_phase != LeapPhase::Inactive {
+                                    // Mode changed, reset leap state
+                                    self.leap_phase = LeapPhase::Inactive;
+                                    self.leap_label.clear();
                                 }
 
                                 // Handle operator-pending mode (d, y, c + motion or text object)

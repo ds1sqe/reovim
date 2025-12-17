@@ -7,7 +7,7 @@ use crate::buffer::TextOps;
 use crate::command::{
     traits::{
         CommandLineAction, CommandResult, CompletionAction, DeferredAction, ExecutionContext,
-        ExplorerAction, OperatorMotionAction, TelescopeAction,
+        ExplorerAction, LeapAction, OperatorMotionAction, TelescopeAction,
     },
     CommandTrait,
 };
@@ -211,6 +211,9 @@ impl Runtime {
                         }
                         DeferredAction::OperatorMotion(ref op_action) => {
                             self.handle_operator_motion(op_action);
+                        }
+                        DeferredAction::Leap(ref leap_action) => {
+                            self.handle_leap_action(leap_action);
                         }
                     }
                 }
@@ -586,6 +589,24 @@ impl Runtime {
                 let mode = ModeState::with_focus_and_mode(Focus::Telescope, EditMode::Normal);
                 self.mode_state = mode.clone();
                 let _ = self.mode_tx.send(mode);
+                self.render();
+            }
+        }
+    }
+
+    /// Handle leap motion actions
+    pub(crate) fn handle_leap_action(&mut self, action: &LeapAction) {
+        match action {
+            LeapAction::Start { direction, operator, count } => {
+                // Activate leap state
+                if let Some(op) = operator {
+                    self.leap_state.activate_with_operator(*direction, *op, *count);
+                } else {
+                    self.leap_state.activate(*direction);
+                }
+
+                // Change to leap mode
+                self.set_mode(ModeState::leap(*direction, *operator, *count));
                 self.render();
             }
         }
