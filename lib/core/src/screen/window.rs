@@ -432,6 +432,21 @@ impl Window {
         self.line_number.set_relative_number(enabled);
     }
 
+    /// Update `buffer_anchor` to keep cursor visible within the viewport
+    pub const fn update_scroll(&mut self, cursor_y: u16) {
+        let visible_height = self.height;
+        let scroll_offset = self.buffer_anchor.y;
+
+        // Scroll up if cursor is above visible area
+        if cursor_y < scroll_offset {
+            self.buffer_anchor.y = cursor_y;
+        }
+        // Scroll down if cursor is below visible area
+        else if cursor_y >= scroll_offset + visible_height {
+            self.buffer_anchor.y = cursor_y.saturating_sub(visible_height) + 1;
+        }
+    }
+
     /// Get the width of the line number gutter (including separator)
     #[must_use]
     #[allow(clippy::cast_possible_truncation)]
@@ -449,5 +464,56 @@ impl Window {
         } else {
             0
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::screen::layout::WindowType;
+
+    fn create_test_window(height: u16) -> Window {
+        Window {
+            id: 0,
+            window_type: WindowType::Editor,
+            anchor: Anchor { x: 0, y: 0 },
+            width: 80,
+            height,
+            buffer_id: 0,
+            buffer_anchor: Anchor { x: 0, y: 0 },
+            line_number: LineNumber::default(),
+        }
+    }
+
+    #[test]
+    fn test_update_scroll_cursor_in_view() {
+        let mut win = create_test_window(10);
+        win.update_scroll(5); // cursor at line 5, viewport 0-9
+        assert_eq!(win.buffer_anchor.y, 0); // no scroll needed
+    }
+
+    #[test]
+    fn test_update_scroll_cursor_below_viewport() {
+        let mut win = create_test_window(10);
+        win.update_scroll(15); // cursor at line 15, viewport 0-9
+        assert_eq!(win.buffer_anchor.y, 6); // scroll to show cursor at bottom
+    }
+
+    #[test]
+    fn test_update_scroll_cursor_above_viewport() {
+        let mut win = create_test_window(10);
+        win.buffer_anchor.y = 20; // viewport starts at line 20
+        win.update_scroll(5); // cursor at line 5
+        assert_eq!(win.buffer_anchor.y, 5); // scroll up to cursor
+    }
+
+    #[test]
+    fn test_update_scroll_cursor_at_viewport_edge() {
+        let mut win = create_test_window(10);
+        win.update_scroll(9); // cursor at last visible line
+        assert_eq!(win.buffer_anchor.y, 0); // still in view
+
+        win.update_scroll(10); // cursor just below viewport
+        assert_eq!(win.buffer_anchor.y, 1); // scroll by 1
     }
 }

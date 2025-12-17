@@ -215,9 +215,12 @@ impl Screen {
         let mut leap_render_info: Option<(u16, u16, u16)> = None;
 
         // Render editor windows
-        for win in &self.windows {
+        for win in &mut self.windows {
             if let Some(buf) = buffers.get(&win.buffer_id) {
                 current_buffer = Some(buf);
+
+                // Update scroll to keep cursor visible
+                win.update_scroll(buf.cur.y);
 
                 // Get fold state for this buffer
                 let fold_state = fold_manager.get(buf.id);
@@ -237,7 +240,8 @@ impl Screen {
                     // Account for line number gutter width
                     let gutter_width = win.line_number_width(buf.contents.len());
                     let cursor_x = win.anchor.x + gutter_width + buf.cur.x;
-                    let cursor_y = win.anchor.y + buf.cur.y;
+                    // Account for scroll offset (buffer_anchor.y)
+                    let cursor_y = win.anchor.y + buf.cur.y.saturating_sub(win.buffer_anchor.y);
                     cursor_pos = Some((cursor_x, cursor_y));
 
                     // Collect leap rendering info if needed

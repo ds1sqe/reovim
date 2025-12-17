@@ -2,6 +2,42 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.4.5] - 2025-12-18
+
+### Bug Fixes
+
+#### Viewport Scrolling
+- **Fixed cursor going off-screen when moving beyond viewport**
+  - Root cause: `buffer_anchor` (scroll offset) was never updated when cursor moved
+  - Added `Window::update_scroll()` method to keep cursor visible within viewport
+  - Fixed cursor position calculation to account for scroll offset
+
+### Technical Details
+
+**Files modified:**
+- `lib/core/src/screen/window.rs` - Added `update_scroll()` method
+- `lib/core/src/screen/mod.rs` - Call `update_scroll()` before render, fix cursor_y calculation
+
+**Implementation:**
+```rust
+// New method in Window
+pub const fn update_scroll(&mut self, cursor_y: u16) {
+    // Scroll up if cursor is above visible area
+    if cursor_y < self.buffer_anchor.y {
+        self.buffer_anchor.y = cursor_y;
+    }
+    // Scroll down if cursor is below visible area
+    else if cursor_y >= self.buffer_anchor.y + self.height {
+        self.buffer_anchor.y = cursor_y.saturating_sub(self.height) + 1;
+    }
+}
+
+// Fixed cursor position calculation
+let cursor_y = win.anchor.y + buf.cur.y.saturating_sub(win.buffer_anchor.y);
+```
+
+---
+
 ## [0.4.4] - 2025-12-17
 
 ### Performance Optimization

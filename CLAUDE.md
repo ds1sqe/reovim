@@ -123,7 +123,7 @@ Reovim is a Rust-based neovim-like text editor built with async tokio runtime an
 
 1.92 (Rust 2024 edition)
 
-### Performance (v0.4.4)
+### Performance (v0.4.5)
 
 - Window render: 473ns - 2.79µs
 - Full screen render: ~6µs
@@ -131,6 +131,75 @@ Reovim is a Rust-based neovim-like text editor built with async tokio runtime an
 - Movement RTT: 383µs (down), 45µs (right)
 - Throughput: ~400k renders/sec
 - Mode switch: 18µs
+
+## Release Process
+
+### Version Bump
+
+Use the bump-version script to update version across the workspace:
+
+```bash
+./scripts/bump-version.sh 0.X.Y
+```
+
+This script:
+- Updates `version` in workspace `Cargo.toml`
+- Updates `reovim-core` and `reovim-sys` dependency versions
+- Runs `cargo check` to verify
+
+### Release Checklist
+
+1. Bump version using `./scripts/bump-version.sh X.Y.Z`
+2. Update `CHANGELOG.md` with new version entry
+3. Run `cargo build` and `cargo clippy` (zero warnings required)
+4. Run `cargo test`
+
+### Git Commits
+
+**IMPORTANT**: Claude should NOT handle git commits. The user will manage all git operations.
+
+For releases, Claude should create a proposal file at `tmp/<version>-commit.md` with:
+- Proposed commit message
+- List of files changed
+- Verification checklist
+- Git commands for user to run
+
+### Ready-to-Take-Off & Request-for-Landing
+
+**Ready-to-Take-Off (Start of Work):**
+1. Read `tmp/*` for context from previous sessions
+2. Check `git worktree list` for active branches
+3. Check `git status` for uncommitted work
+4. Understand the task and plan implementation
+5. **Suggest a runway (branch)** for the work:
+   - `develop` - Upstream, main development branch
+   - `feat/*` - Feature branches
+   - `fix/*` - Bug fix branches
+
+**Request-for-Landing (End of Work):**
+1. **Sync with upstream (CRUCIAL)**: `git fetch origin develop && git rebase origin/develop`
+   - Resolve any conflicts before landing - contributors own their conflicts
+2. Run `cargo build` and `cargo clippy` (zero warnings)
+3. Run `cargo test`
+4. Generate perf report: `cargo run -p perf-report -- update --version X.Y.Z`
+5. Update `CHANGELOG.md`
+6. Create proposal at `tmp/<version>-commit.md` with:
+   - Commit message
+   - Files to stage
+   - Verification checklist
+   - Git commands for user
+
+### Cross-Session Communication
+
+The `tmp/` directory is used for communication between Claude sessions:
+- **Read `tmp/*` at start** to see proposals/notes from previous Claude sessions
+- **Write to `tmp/*.md`** to leave proposals or context for user/future sessions
+
+### Git Worktrees
+
+Check `git worktree list` to see active worktrees. Common setup:
+- `/home/ds1sqe/proj/reovim` - Main development (`develop` branch)
+- `/home/ds1sqe/proj/reovim_perf` - Performance work (`feat/perf` branch)
 
 ## Detailed Documentation
 
