@@ -48,11 +48,12 @@ pub fn render_status_line_to<W: Write>(
         Mod::Visual(_) => " VISUAL ",
         Mod::Command | Mod::Telescope => "", // These modes show their own UI
         Mod::Explorer | Mod::ExplorerInput => " EXPLORER ",
+        Mod::OperatorPending { .. } => " OPERATOR ",
     };
 
     // Get mode-specific style
     let mode_style = match mode {
-        Mod::Normal => &theme.status_line_mode.normal,
+        Mod::Normal | Mod::OperatorPending { .. } => &theme.status_line_mode.normal,
         Mod::Insert(_) => &theme.status_line_mode.insert,
         Mod::Visual(_) => &theme.status_line_mode.visual,
         Mod::Command | Mod::Telescope => &theme.status_line_mode.command,

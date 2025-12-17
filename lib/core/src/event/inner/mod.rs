@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use crate::bind::CommandRef;
+use crate::command::traits::OperatorMotionAction;
 use crate::command::CommandContext;
 use crate::completion::CompletionItem;
 use crate::highlight::{Highlight, HighlightGroup};
@@ -16,6 +17,8 @@ pub enum InnerEvent {
     HighlightEvent(HighlightEvent),
     CompletionEvent(CompletionEvent),
     ExplorerEvent(ExplorerEvent),
+    /// Operator + motion action (d+motion, y+motion, c+motion)
+    OperatorMotionEvent(OperatorMotionAction),
     TelescopeEvent(TelescopeEvent),
     RenderSignal,
     KillSignal,

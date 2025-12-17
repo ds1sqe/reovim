@@ -7,7 +7,7 @@ use crate::buffer::TextOps;
 use crate::command::{
     traits::{
         CommandLineAction, CommandResult, CompletionAction, DeferredAction, ExecutionContext,
-        ExplorerAction, TelescopeAction,
+        ExplorerAction, OperatorMotionAction, TelescopeAction,
     },
     CommandTrait,
 };
@@ -158,21 +158,19 @@ impl Runtime {
                 CommandResult::Quit => {
                     return true;
                 }
-                CommandResult::ClipboardWrite(text) => {
-                    self.clipboard = text;
+                CommandResult::ClipboardWrite { text, register } => {
+                    self.registers.set_by_name(register, text);
                     self.render();
                 }
                 CommandResult::DeferToRuntime(action) => {
                     match action {
-                        DeferredAction::Paste { before: _before } => {
-                            // Handle paste
+                        DeferredAction::Paste { before: _before, register } => {
+                            // Handle paste from specified register
                             // TODO: implement proper PasteBefore (paste at cursor vs before cursor)
-                            if let Some(buf) = self.buffers.get_mut(&context.buffer_id)
-                                && !self.clipboard.is_empty()
+                            if let Some(text) = self.registers.get_by_name(register)
+                                && let Some(buf) = self.buffers.get_mut(&context.buffer_id)
                             {
-                                for c in self.clipboard.chars() {
-                                    buf.insert_char(c);
-                                }
+                                buf.insert_text(&text);
                             }
                             self.render();
                         }
@@ -210,6 +208,9 @@ impl Runtime {
                                 }
                             }
                             self.render();
+                        }
+                        DeferredAction::OperatorMotion(ref op_action) => {
+                            self.handle_operator_motion(op_action);
                         }
                     }
                 }
@@ -423,6 +424,60 @@ impl Runtime {
                 self.render();
             }
         }
+    }
+
+    /// Handle operator + motion action (d/y/c + motion)
+    pub(crate) fn handle_operator_motion(&mut self, action: &OperatorMotionAction) {
+        // Get the primary buffer (buffer 0 for now)
+        let buffer_id = 0;
+        if let Some(buffer) = self.buffers.get_mut(&buffer_id) {
+            match *action {
+                OperatorMotionAction::Delete { motion, count } => {
+                    let deleted = buffer.delete_to_motion(motion, count);
+                    if !deleted.is_empty() {
+                        // Store in unnamed register
+                        self.registers.set(deleted);
+                    }
+                }
+                OperatorMotionAction::Yank { motion, count } => {
+                    let yanked = buffer.yank_to_motion(motion, count);
+                    if !yanked.is_empty() {
+                        // Store in unnamed register
+                        self.registers.set(yanked);
+                    }
+                }
+                OperatorMotionAction::Change { motion, count } => {
+                    let deleted = buffer.delete_to_motion(motion, count);
+                    if !deleted.is_empty() {
+                        // Store in unnamed register
+                        self.registers.set(deleted);
+                    }
+                    // Enter insert mode after change
+                    self.set_mode(Mod::Insert(crate::modd::ModExtension::Normal));
+                }
+                OperatorMotionAction::DeleteTextObject { text_object } => {
+                    let deleted = buffer.delete_text_object(text_object);
+                    if !deleted.is_empty() {
+                        self.registers.set(deleted);
+                    }
+                }
+                OperatorMotionAction::YankTextObject { text_object } => {
+                    let yanked = buffer.yank_text_object(text_object);
+                    if !yanked.is_empty() {
+                        self.registers.set(yanked);
+                    }
+                }
+                OperatorMotionAction::ChangeTextObject { text_object } => {
+                    let deleted = buffer.delete_text_object(text_object);
+                    if !deleted.is_empty() {
+                        self.registers.set(deleted);
+                    }
+                    // Enter insert mode after change
+                    self.set_mode(Mod::Insert(crate::modd::ModExtension::Normal));
+                }
+            }
+        }
+        self.render();
     }
 
     /// Handle telescope actions from keybindings

@@ -223,6 +223,9 @@ impl Runtime {
                 self.which_key_panel.hide();
                 self.render();
             }
+            InnerEvent::OperatorMotionEvent(ref action) => {
+                self.handle_operator_motion(action);
+            }
             InnerEvent::TelescopeEvent(telescope_event) => {
                 self.handle_telescope_event(telescope_event);
             }
@@ -474,10 +477,11 @@ impl Runtime {
                 // Activate command line when entering command mode
                 self.command_line.activate();
             }
-            Mod::Explorer | Mod::ExplorerInput | Mod::Telescope => {
+            Mod::Explorer | Mod::ExplorerInput | Mod::OperatorPending { .. } | Mod::Telescope => {
                 // Explorer mode is handled via window focus
                 // The explorer state will be set up when opening explorer
                 // ExplorerInput mode is for file operations and filter
+                // OperatorPending mode just waits for a motion key (handled by CommandHandler)
                 // Telescope mode is handled separately when opening a picker
             }
         }

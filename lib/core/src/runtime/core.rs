@@ -13,6 +13,7 @@ use crate::explorer::ExplorerState;
 use crate::highlight::{ColorMode, HighlightStore, Theme};
 use crate::jumplist::JumpList;
 use crate::modd::Mod;
+use crate::register::Registers;
 use crate::screen::{Screen, WhichKeyPanel};
 use crate::telescope::picker::{
     BuffersPicker, CommandsPicker, FilesPicker, GrepPicker, HelpPicker, KeymapsPicker, Picker,
@@ -31,7 +32,7 @@ pub struct Runtime {
     pub current_mode: Mod,
     pub color_mode: ColorMode,
     pub theme: Theme,
-    pub clipboard: String,
+    pub registers: Registers,
     pub command_line: CommandLine,
     pub pending_keys: String,
     pub last_command: String,
@@ -93,7 +94,7 @@ impl Runtime {
             current_mode: Mod::Normal,
             color_mode: ColorMode::detect(),
             theme: Theme::default(),
-            clipboard: String::new(),
+            registers: Registers::new(),
             command_line: CommandLine::default(),
             pending_keys: String::new(),
             last_command: String::new(),

@@ -11,6 +11,8 @@ pub mod jumplist;
 pub mod landing;
 pub mod modd;
 pub mod motion;
+pub mod register;
+pub mod textobject;
 pub mod runtime;
 pub mod screen;
 pub mod settings;

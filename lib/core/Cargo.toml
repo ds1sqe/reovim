@@ -18,6 +18,7 @@ futures.workspace = true
 futures-timer.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+arboard = "3"
 
 # Telescope (fuzzy finder)
 nucleo = "0.5"
