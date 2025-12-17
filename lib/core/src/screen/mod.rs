@@ -13,6 +13,7 @@ use {
         explorer::{render_explorer, ExplorerState},
         folding::FoldManager,
         highlight::{ColorMode, HighlightStore, Theme},
+        indent::IndentAnalyzer,
         leap::LeapState,
         modd::ModeState,
         telescope::TelescopeState,
@@ -87,6 +88,7 @@ impl Default for Screen {
             buffer_anchor: anchor,
             buffer_id: 0,
             line_number: LineNumber::default(),
+            scrollbar_enabled: false,
         });
 
         let layout = LayoutManager::new(columns, editor_height);
@@ -132,6 +134,7 @@ impl Screen {
             buffer_anchor: anchor,
             buffer_id: 0,
             line_number: LineNumber::default(),
+            scrollbar_enabled: false,
         }];
 
         let layout = LayoutManager::new(width, editor_height);
@@ -218,6 +221,7 @@ impl Screen {
         telescope_state: &TelescopeState,
         leap_state: &LeapState,
         fold_manager: &FoldManager,
+        indent_analyzer: &IndentAnalyzer,
     ) -> std::result::Result<(), std::io::Error> {
         // Reset all styling before clearing
         queue!(self.out_stream, Print(RESET_STYLE))?;
@@ -266,7 +270,7 @@ impl Screen {
                 let fold_state = fold_manager.get(buf.id);
 
                 // Render each line with explicit cursor positioning
-                let lines = win.render(buf, highlight_store, color_mode, theme, fold_state);
+                let lines = win.render(buf, highlight_store, color_mode, theme, fold_state, indent_analyzer);
                 for (row_offset, line) in lines.iter().enumerate() {
                     queue!(
                         self.out_stream,
@@ -423,9 +427,9 @@ impl Screen {
         for (idx, item) in visible_items.iter().enumerate() {
             let is_selected = idx == state.selected_index;
             let style = if is_selected {
-                &theme.popup_selected
+                &theme.popup.selected
             } else {
-                &theme.popup_normal
+                &theme.popup.normal
             };
 
             let row = popup_y + idx as u16;
@@ -473,7 +477,7 @@ impl Screen {
         let total_width = preview_width.map_or(width, |pw| width + 1 + pw);
 
         // Draw border characters
-        let border_style = theme.telescope_border.to_ansi_start(color_mode);
+        let border_style = theme.telescope.border.to_ansi_start(color_mode);
 
         // Top border with title
         queue!(self.out_stream, MoveTo(x, y))?;
@@ -511,9 +515,9 @@ impl Screen {
                 let is_selected = absolute_idx == state.selected_index;
 
                 let style = if is_selected {
-                    &theme.telescope_selected
+                    &theme.telescope.selected
                 } else {
-                    &theme.telescope_normal
+                    &theme.telescope.normal
                 };
 
                 let style_start = style.to_ansi_start(color_mode);
@@ -553,9 +557,9 @@ impl Screen {
                     let is_highlight_line = preview.highlight_line == Some(line_idx);
 
                     let style = if is_highlight_line {
-                        &theme.telescope_preview_highlight
+                        &theme.telescope.preview_highlight
                     } else {
-                        &theme.telescope_preview
+                        &theme.telescope.preview
                     };
 
                     let style_start = style.to_ansi_start(color_mode);
@@ -599,12 +603,12 @@ impl Screen {
         queue!(self.out_stream, Print(RESET_STYLE))?;
 
         // Prompt and query
-        let prompt_style = theme.telescope_prompt.to_ansi_start(color_mode);
+        let prompt_style = theme.telescope.prompt.to_ansi_start(color_mode);
         queue!(self.out_stream, Print(&prompt_style))?;
         queue!(self.out_stream, Print(&state.prompt))?;
         queue!(self.out_stream, Print(RESET_STYLE))?;
 
-        let query_style = theme.telescope_input.to_ansi_start(color_mode);
+        let query_style = theme.telescope.input.to_ansi_start(color_mode);
         let query_max_len = (total_width as usize).saturating_sub(state.prompt.len() + 3);
         let query_display = if state.query.len() > query_max_len {
             &state.query[state.query.len() - query_max_len..]
@@ -646,6 +650,12 @@ impl Screen {
     pub fn set_relative_number(&mut self, enabled: bool) {
         for window in &mut self.windows {
             window.set_relative_number(enabled);
+        }
+    }
+
+    pub fn set_scrollbar(&mut self, enabled: bool) {
+        for window in &mut self.windows {
+            window.set_scrollbar(enabled);
         }
     }
 
@@ -763,6 +773,7 @@ impl Screen {
                     buffer_anchor: Anchor { x: 0, y: 0 },
                     buffer_id,
                     line_number: LineNumber::default(),
+                    scrollbar_enabled: false,
                 });
             }
         }
@@ -951,9 +962,9 @@ impl Screen {
         let mut x = 0u16;
         for tab in &tabs {
             let style = if tab.is_active {
-                &theme.tab_active
+                &theme.tab.active
             } else {
-                &theme.tab_inactive
+                &theme.tab.inactive
             };
 
             let style_start = style.to_ansi_start(color_mode);
@@ -977,7 +988,7 @@ impl Screen {
 
         // Fill the rest of the line with tab line background
         if x < self.size.width {
-            let fill_style = theme.tab_fill.to_ansi_start(color_mode);
+            let fill_style = theme.tab.fill.to_ansi_start(color_mode);
             let spaces = " ".repeat((self.size.width - x) as usize);
             queue!(self.out_stream, Print(&fill_style))?;
             queue!(self.out_stream, Print(&spaces))?;
@@ -1004,7 +1015,7 @@ impl Screen {
             return Ok(());
         }
 
-        let sep_style = theme.window_separator.to_ansi_start(color_mode);
+        let sep_style = theme.window.separator.to_ansi_start(color_mode);
 
         // Find vertical separators (where windows meet side-by-side)
         for i in 0..self.windows.len() {
@@ -1061,8 +1072,8 @@ impl Screen {
         use reovim_sys::style::{Attribute, Color, SetAttribute, SetBackgroundColor, SetForegroundColor};
 
         // Use leap theme style or fallback to search highlight
-        let label_fg = theme.leap_label.fg.unwrap_or(Color::Black);
-        let label_bg = theme.leap_label.bg.unwrap_or(Color::Yellow);
+        let label_fg = theme.leap.label.fg.unwrap_or(Color::Black);
+        let label_bg = theme.leap.label.bg.unwrap_or(Color::Yellow);
 
         for m in &leap_state.matches {
             // Calculate screen position

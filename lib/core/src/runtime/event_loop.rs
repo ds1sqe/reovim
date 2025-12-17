@@ -298,6 +298,9 @@ impl Runtime {
             InnerEvent::TreesitterEvent(ts_event) => {
                 self.handle_treesitter_event(ts_event);
             }
+            InnerEvent::VisualTextObjectEvent(ref action) => {
+                self.handle_visual_text_object(action);
+            }
         }
         false
     }

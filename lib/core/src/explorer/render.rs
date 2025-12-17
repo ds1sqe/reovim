@@ -74,7 +74,7 @@ fn render_input_prompt(
     };
 
     // Style the prompt (use status line style for visibility)
-    result.push_str(&theme.status_line.to_ansi_start(color_mode));
+    result.push_str(&theme.statusline.background.to_ansi_start(color_mode));
     let _ = write!(result, "{display:<width$}", width = width as usize);
     result.push_str(Style::ansi_reset());
 
@@ -93,7 +93,7 @@ fn render_node(
 
     // Apply selection style if selected
     let base_style = if is_selected {
-        &theme.visual_selection
+        &theme.selection.visual
     } else {
         &Style::default()
     };
@@ -155,7 +155,7 @@ pub fn render_header(state: &ExplorerState, width: u16, theme: &Theme, color_mod
     // Style the header
     let styled = format!(
         "{} {} {}",
-        theme.status_line.to_ansi_start(color_mode),
+        theme.statusline.background.to_ansi_start(color_mode),
         display,
         Style::ansi_reset()
     );

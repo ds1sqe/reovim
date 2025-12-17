@@ -3,8 +3,20 @@
 use crate::buffer::{Buffer, SelectionMode, SelectionOps};
 use crate::folding::FoldState;
 use crate::highlight::{ColorMode, Highlight, HighlightGroup, HighlightStore, Span, Style, Theme};
+use crate::indent::IndentAnalyzer;
 
 use super::layout::WindowType;
+
+/// Scrollbar rendering state
+#[derive(Debug, Clone, Copy)]
+pub struct ScrollbarState {
+    /// Whether scrollbar should be displayed
+    pub enabled: bool,
+    /// Start row of the thumb (0-indexed, relative to viewport)
+    pub thumb_start: u16,
+    /// End row of the thumb (exclusive)
+    pub thumb_end: u16,
+}
 
 /// Represents top left corner position
 #[derive(Clone, Copy, Debug, Default)]
@@ -28,6 +40,8 @@ pub struct Window {
     /// Where this buffer's top left is positioned
     pub buffer_anchor: Anchor,
     pub line_number: LineNumber,
+    /// Whether to show scrollbar
+    pub scrollbar_enabled: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -88,6 +102,7 @@ impl Window {
         color_mode: ColorMode,
         theme: &Theme,
         fold_state: Option<&FoldState>,
+        indent_analyzer: &IndentAnalyzer,
     ) -> Vec<String> {
         let mut lines: Vec<String> = Vec::new();
 
@@ -98,6 +113,9 @@ impl Window {
         } else {
             1
         };
+
+        // Compute scrollbar state
+        let scrollbar = self.compute_scrollbar_state(total_lines);
 
         // Build visual selection highlight dynamically if active
         // Block mode needs special handling (same columns for all lines)
@@ -112,7 +130,7 @@ impl Window {
                             u32::from(bottom_right.y),
                             u32::from(bottom_right.x) + 1, // +1 because end_col is exclusive
                         ),
-                        theme.visual_selection.clone(),
+                        theme.selection.visual.clone(),
                         HighlightGroup::Visual,
                     ))
                 }
@@ -125,7 +143,7 @@ impl Window {
                             u32::from(sel_end.y),
                             u32::from(sel_end.x) + 1, // +1 because end_col is exclusive
                         ),
-                        theme.visual_selection.clone(),
+                        theme.selection.visual.clone(),
                         HighlightGroup::Visual,
                     ))
                 }
@@ -158,9 +176,9 @@ impl Window {
                 let head = if self.line_number.show {
                     let is_current_line = row == buf.cur.y;
                     let line_num_style = if is_current_line {
-                        &theme.current_line_number
+                        &theme.gutter.current_line_number
                     } else {
-                        &theme.line_number
+                        &theme.gutter.line_number
                     };
 
                     let num_str = match self.line_number.mode() {
@@ -189,7 +207,7 @@ impl Window {
 
                 // Format fold marker: "+-- N lines: preview ---"
                 let fold_text = format!("+-- {hidden_count} lines: {preview} ---");
-                let fold_style = &theme.fold_marker;
+                let fold_style = &theme.fold.marker;
                 let styled_fold = format!(
                     "{}{}{}",
                     fold_style.to_ansi_start(color_mode),
@@ -205,9 +223,9 @@ impl Window {
                         let head = if self.line_number.show {
                             let is_current_line = row == buf.cur.y;
                             let line_num_style = if is_current_line {
-                                &theme.current_line_number
+                                &theme.gutter.current_line_number
                             } else {
-                                &theme.line_number
+                                &theme.gutter.line_number
                             };
 
                             let num_str = match self.line_number.mode() {
@@ -258,8 +276,76 @@ impl Window {
                             }
                         }
 
+                        // Apply indent guides if enabled
+                        let line_with_guides = if indent_analyzer.is_enabled() {
+                            // Get cursor's indent level for active guide highlight
+                            let cursor_indent = if row == buf.cur.y {
+                                Some(indent_analyzer.indent_level(&content.inner))
+                            } else {
+                                // Use cursor line's indent level for all lines
+                                let cursor_line = buf.contents.get(buf.cur.y as usize);
+                                cursor_line.map(|l| indent_analyzer.indent_level(&l.inner))
+                            };
+
+                            let guides = indent_analyzer.guides_for_line(&content.inner, cursor_indent);
+                            if guides.is_empty() {
+                                content.inner.clone()
+                            } else {
+                                // Build style strings for guides
+                                // Use active style for active guide, normal style otherwise
+                                let mut result = String::new();
+                                let chars: Vec<char> = content.inner.chars().collect();
+                                let mut col = 0u32;
+                                let mut guide_idx = 0;
+                                let tab_size = indent_analyzer.tab_size;
+
+                                // Process leading whitespace with guide injection
+                                for &ch in &chars {
+                                    if ch != ' ' && ch != '\t' {
+                                        break;
+                                    }
+
+                                    // Check if we should insert a guide at this position
+                                    if guide_idx < guides.len() && guides[guide_idx].column == col {
+                                        let style = if guides[guide_idx].active {
+                                            &theme.indent.active
+                                        } else {
+                                            &theme.indent.guide
+                                        };
+                                        result.push_str(&style.to_ansi_start(color_mode));
+                                        result.push(indent_analyzer.guide_char);
+                                        result.push_str(Style::ansi_reset());
+                                        guide_idx += 1;
+                                    } else {
+                                        result.push(ch);
+                                    }
+
+                                    // Advance column position
+                                    if ch == '\t' {
+                                        col += tab_size;
+                                    } else {
+                                        col += 1;
+                                    }
+                                }
+
+                                // Append the rest of the line (non-whitespace)
+                                let whitespace_chars = content.inner
+                                    .chars()
+                                    .take_while(|&c| c == ' ' || c == '\t')
+                                    .count();
+                                if whitespace_chars < chars.len() {
+                                    let start_idx = content.inner.char_indices().nth(whitespace_chars).map_or(0, |(i, _)| i);
+                                    result.push_str(&content.inner[start_idx..]);
+                                }
+
+                                result
+                            }
+                        } else {
+                            content.inner.clone()
+                        };
+
                         let styled_content =
-                            self.render_styled_line(&content.inner, &line_highlights, color_mode);
+                            self.render_styled_line(&line_with_guides, &line_highlights, color_mode);
 
                         head + &styled_content
                     }
@@ -267,14 +353,17 @@ impl Window {
                 }
             };
 
-            lines.push(line_out);
+            // Append scrollbar character
+            let scrollbar_char = Self::render_scrollbar_char(display_rows_rendered, scrollbar, theme, color_mode);
+            lines.push(line_out + &scrollbar_char);
             buffer_row += 1;
             display_rows_rendered += 1;
         }
 
-        // Fill remaining display rows with empty lines
+        // Fill remaining display rows with empty lines (with scrollbar)
         while display_rows_rendered < self.height {
-            lines.push(String::new());
+            let scrollbar_char = Self::render_scrollbar_char(display_rows_rendered, scrollbar, theme, color_mode);
+            lines.push(scrollbar_char);
             display_rows_rendered += 1;
         }
 
@@ -465,6 +554,79 @@ impl Window {
             0
         }
     }
+
+    /// Enable or disable scrollbar
+    pub const fn set_scrollbar(&mut self, enabled: bool) {
+        self.scrollbar_enabled = enabled;
+    }
+
+    /// Compute scrollbar state based on buffer content and viewport
+    #[must_use]
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_precision_loss)]
+    #[allow(clippy::cast_sign_loss)]
+    pub fn compute_scrollbar_state(&self, total_lines: usize) -> ScrollbarState {
+        if !self.scrollbar_enabled || total_lines == 0 || self.height == 0 {
+            return ScrollbarState {
+                enabled: false,
+                thumb_start: 0,
+                thumb_end: 0,
+            };
+        }
+
+        let viewport_height = f64::from(self.height);
+        let total = total_lines as f64;
+        let scroll_offset = f64::from(self.buffer_anchor.y);
+
+        // Thumb size proportional to visible portion (minimum 1 row)
+        let thumb_size = ((viewport_height / total) * viewport_height).max(1.0);
+
+        // Thumb position based on scroll position
+        // When scroll_offset = 0, thumb_start = 0
+        // When scroll_offset = total_lines - viewport_height, thumb_start = viewport_height - thumb_size
+        let scroll_range = (total - viewport_height).max(0.0);
+        let thumb_pos = if scroll_range > 0.0 {
+            (scroll_offset / scroll_range) * (viewport_height - thumb_size)
+        } else {
+            0.0
+        };
+
+        ScrollbarState {
+            enabled: true,
+            thumb_start: thumb_pos.floor() as u16,
+            thumb_end: (thumb_pos + thumb_size).ceil() as u16,
+        }
+    }
+
+    /// Render a scrollbar character for a given row
+    #[must_use]
+    fn render_scrollbar_char(
+        row: u16,
+        scrollbar: ScrollbarState,
+        theme: &Theme,
+        color_mode: ColorMode,
+    ) -> String {
+        if !scrollbar.enabled {
+            return String::new();
+        }
+
+        let is_thumb = row >= scrollbar.thumb_start && row < scrollbar.thumb_end;
+        let style = if is_thumb {
+            &theme.scrollbar.thumb
+        } else {
+            &theme.scrollbar.track
+        };
+
+        // Use block characters for the scrollbar
+        let ch = if is_thumb { '█' } else { '▕' };
+
+        format!(
+            "{}{}{}",
+            style.to_ansi_start(color_mode),
+            ch,
+            Style::ansi_reset()
+        )
+    }
 }
 
 #[cfg(test)]
@@ -482,6 +644,7 @@ mod tests {
             buffer_id: 0,
             buffer_anchor: Anchor { x: 0, y: 0 },
             line_number: LineNumber::default(),
+            scrollbar_enabled: false,
         }
     }
 

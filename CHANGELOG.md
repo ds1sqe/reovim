@@ -2,6 +2,125 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.4.8] - 2025-12-18
+
+### New Features
+
+#### Unified Theme System with Sub-Structs
+- **Restructured Theme with logical sub-structs** for better maintainability:
+  - `base`: Default and cursor line styles
+  - `gutter`: Line numbers, sign column
+  - `selection`: Visual selection styles
+  - `statusline`: Status line with mode-specific styles
+  - `popup`: Completion popup styles
+  - `telescope`: Fuzzy finder styles
+  - `whichkey`: Which-key panel styles
+  - `leap`: Jump navigation styles
+  - `fold`: Code folding styles
+  - `indent`: Indentation guide styles
+  - `scrollbar`: Scrollbar with diagnostic marks
+  - `search`: Search highlight styles
+  - `tab`: Tab line styles
+  - `window`: Window separator styles
+
+- **ThemeName enum** with three built-in themes:
+  - `Dark` - OneDark-inspired dark theme (default)
+  - `Light` - Light theme for bright environments
+  - `TokyoNightOrange` - Tokyo Night with orange accents
+
+- **`:colorscheme` command** for runtime theme switching:
+  - `:colorscheme dark` / `:colo dark`
+  - `:colorscheme light` / `:colo light`
+  - `:colorscheme tokyonight` / `:colo tokyonight`
+
+- **TreesitterTheme::tokyo_night_orange()** - Coordinated syntax highlighting:
+  - Comments: Light gray, italic
+  - Keywords: Purple, bold, italic
+  - Functions: Blue
+  - Strings: Green
+  - Types: Cyan
+
+#### UI Enhancements
+- **Enhanced statusline** with more information:
+  - Mode icons: `` (normal), `` (insert), `` (visual), `` (command)
+  - Position display: `line:col`
+  - Filetype indicator with icon
+  - Modified indicator `[+]`
+
+- **Indent guides integration** - Visual vertical lines at indent levels:
+  - `:set indentguide` / `:set ig` - Enable
+  - `:set noindentguide` / `:set noig` - Disable
+  - Uses `theme.indent.guide` and `theme.indent.active` styles
+
+- **Scrollbar rendering** - Visual scroll position indicator:
+  - `:set scrollbar` / `:set sb` - Enable
+  - `:set noscrollbar` / `:set nosb` - Disable
+  - Track character: `▕`, Thumb character: `█`
+  - Uses `theme.scrollbar.track` and `theme.scrollbar.thumb` styles
+
+#### Textobject Improvements
+- **Word textobjects** for operators (delete, yank, change):
+  - `iw` - Inner word (alphanumeric + underscore)
+  - `aw` - Around word (includes trailing/leading whitespace)
+  - `iW` - Inner WORD (non-whitespace)
+  - `aW` - Around WORD (includes trailing/leading whitespace)
+  - Examples: `diw`, `yaw`, `ciW`, `daW`
+
+- **Visual mode textobject selection**:
+  - `viw`, `vaw`, `viW`, `vaW` - Select word textobjects
+  - `vi(`, `va{`, `vi"` - Select delimiter textobjects
+  - `vif`, `vac` - Select semantic textobjects (treesitter)
+
+- **VisualTextObjectAction event** for visual mode integration
+
+### New Commands
+
+| Command | Description |
+|---------|-------------|
+| `:colorscheme <name>` | Switch theme (dark, light, tokyonight) |
+| `:colo <name>` | Short form of colorscheme |
+| `:set indentguide` | Enable indent guides |
+| `:set noindentguide` | Disable indent guides |
+| `:set scrollbar` | Enable scrollbar |
+| `:set noscrollbar` | Disable scrollbar |
+
+### New Textobjects
+
+| Textobject | Description |
+|------------|-------------|
+| `iw` / `aw` | Inner/around word |
+| `iW` / `aW` | Inner/around WORD |
+
+### Architecture
+
+- `ThemeName` enum for theme identification
+- `Theme::from_name()` for runtime theme creation
+- Sub-struct organization: `BaseStyles`, `GutterStyles`, `SelectionStyles`, `StatusLineStyles`, `PopupStyles`, `TelescopeStyles`, `WhichKeyStyles`, `LeapStyles`, `FoldStyles`, `IndentStyles`, `ScrollbarStyles`, `SearchStyles`, `TabStyles`, `WindowStyles`
+- `ScrollbarState` for scrollbar position calculation
+- `VisualTextObjectAction` event type
+- `WordTextObject` enum (Word, BigWord)
+
+### Files Modified
+
+- `lib/core/src/highlight/theme.rs` - Complete restructure with sub-structs
+- `lib/core/src/highlight/mod.rs` - Export ThemeName
+- `lib/core/src/treesitter/theme.rs` - Tokyo Night Orange syntax theme
+- `lib/core/src/command_line/ex_command.rs` - New SetOption variants
+- `lib/core/src/screen/window.rs` - Indent guides, scrollbar rendering
+- `lib/core/src/screen/mod.rs` - Theme sub-struct access
+- `lib/core/src/screen/status_line.rs` - Enhanced statusline
+- `lib/core/src/textobject.rs` - Word textobject types
+- `lib/core/src/buffer/mod.rs` - Word textobject methods
+- `lib/core/src/event/inner/mod.rs` - VisualTextObjectAction
+- `lib/core/src/runtime/handlers.rs` - New command handlers
+
+### Testing
+
+- **155 tests passing**
+- Zero warnings
+
+---
+
 ## [0.4.7] - 2025-12-18
 
 ### New Features

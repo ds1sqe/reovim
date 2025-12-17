@@ -12,9 +12,11 @@ use crate::command::{
     },
     CommandTrait,
 };
+use crate::event::VisualTextObjectAction;
 use crate::explorer::ExplorerState;
 use crate::modd::ModeState;
 use crate::command_line::{ExCommand, SetOption};
+use crate::highlight::Theme;
 use crate::event::CommandEvent;
 use crate::screen::{NavigateDirection, Position, SplitDirection};
 use crate::textobject::SemanticTextObjectSpec;
@@ -116,6 +118,48 @@ impl Runtime {
         let buffer = self.buffers.get(&buffer_id)?;
         Some(buffer.yank_range(start, end))
     }
+
+    /// Find the bounds of a semantic text object using treesitter
+    ///
+    /// Returns (start, end) positions if bounds found, None otherwise.
+    #[allow(clippy::cast_possible_truncation)]
+    pub(crate) fn find_semantic_text_object_bounds(
+        &mut self,
+        buffer_id: usize,
+        spec: SemanticTextObjectSpec,
+    ) -> Option<(Position, Position)> {
+        // Get buffer content and cursor position
+        let (content, cursor_row, cursor_col) = {
+            let buffer = self.buffers.get(&buffer_id)?;
+            (
+                buffer.content_to_string(),
+                u32::from(buffer.cur.y),
+                u32::from(buffer.cur.x),
+            )
+        };
+
+        // Find text object bounds using treesitter
+        let bounds = self.treesitter.find_text_object_bounds(
+            buffer_id,
+            &content,
+            cursor_row,
+            cursor_col,
+            spec.kind,
+            spec.scope,
+        )?;
+
+        // Convert treesitter Position to screen Position
+        let start = Position {
+            x: bounds.start.col as u16,
+            y: bounds.start.row as u16,
+        };
+        let end = Position {
+            x: bounds.end.col as u16,
+            y: bounds.end.row as u16,
+        };
+
+        Some((start, end))
+    }
 }
 
 impl Runtime {
@@ -150,6 +194,7 @@ impl Runtime {
                                     Ok(()) => {
                                         tracing::info!(path = %path, bytes = content.len(), "File saved");
                                         buffer.file_path = Some(path);
+                                        buffer.modified = false;
                                     }
                                     Err(e) => {
                                         tracing::error!(path = %path, error = %e, "Failed to write file");
@@ -161,12 +206,13 @@ impl Runtime {
                             // Write file then quit
                             let path = self.buffers.get(&0).and_then(|b| b.file_path.clone());
                             if let Some(path) = path
-                                && let Some(buffer) = self.buffers.get(&0)
+                                && let Some(buffer) = self.buffers.get_mut(&0)
                             {
                                 let content = buffer.content_to_string();
                                 match std::fs::write(&path, &content) {
                                     Ok(()) => {
                                         tracing::info!(path = %path, bytes = content.len(), "File saved before quit");
+                                        buffer.modified = false;
                                     }
                                     Err(e) => {
                                         tracing::error!(path = %path, error = %e, "Failed to write file before quit");
@@ -186,7 +232,23 @@ impl Runtime {
                             SetOption::ColorMode(mode) => {
                                 self.set_color_mode(mode);
                             }
+                            SetOption::ColorScheme(name) => {
+                                self.theme = Theme::from_name(name);
+                                tracing::info!(theme = ?name, "Colorscheme changed");
+                            }
+                            SetOption::IndentGuide(enabled) => {
+                                self.indent_analyzer.set_enabled(enabled);
+                                tracing::info!(enabled, "Indent guides toggled");
+                            }
+                            SetOption::Scrollbar(enabled) => {
+                                self.screen.set_scrollbar(enabled);
+                                tracing::info!(enabled, "Scrollbar toggled");
+                            }
                         },
+                        ExCommand::Colorscheme { name } => {
+                            self.theme = Theme::from_name(name);
+                            tracing::info!(theme = ?name, "Colorscheme changed");
+                        }
                         ExCommand::Edit { filename } => {
                             self.open_file(&filename);
                         }
@@ -669,12 +731,74 @@ impl Runtime {
                     // Enter insert mode after change
                     self.set_mode(ModeState::insert());
                 }
+                OperatorMotionAction::DeleteWordTextObject { text_object } => {
+                    let deleted = buffer.delete_word_text_object(text_object);
+                    if !deleted.is_empty() {
+                        self.registers.set(deleted);
+                        text_modified = true;
+                    }
+                }
+                OperatorMotionAction::YankWordTextObject { text_object } => {
+                    let yanked = buffer.yank_word_text_object(text_object);
+                    if !yanked.is_empty() {
+                        self.registers.set(yanked);
+                    }
+                    // Yank doesn't modify text
+                }
+                OperatorMotionAction::ChangeWordTextObject { text_object } => {
+                    let deleted = buffer.delete_word_text_object(text_object);
+                    if !deleted.is_empty() {
+                        self.registers.set(deleted);
+                        text_modified = true;
+                    }
+                    // Enter insert mode after change
+                    self.set_mode(ModeState::insert());
+                }
             }
         }
 
         // Schedule treesitter reparse if text was modified
         if text_modified {
             self.schedule_treesitter_reparse(buffer_id);
+        }
+        self.render();
+    }
+
+    /// Handle visual mode text object selection (viw, vi(, vif, etc.)
+    pub(crate) fn handle_visual_text_object(&mut self, action: &VisualTextObjectAction) {
+        // Get the primary buffer (buffer 0 for now)
+        let buffer_id = 0;
+
+        if let Some(buffer) = self.buffers.get_mut(&buffer_id) {
+            match *action {
+                VisualTextObjectAction::SelectDelimiter { text_object } => {
+                    // Find text object bounds using existing buffer method
+                    if let Some((start, end)) = buffer.find_text_object_bounds(text_object) {
+                        // Set selection: anchor at start, cursor at end
+                        buffer.selection.anchor = start;
+                        buffer.selection.active = true;
+                        buffer.cur = end;
+                    }
+                }
+                VisualTextObjectAction::SelectWord { text_object } => {
+                    // Find word text object bounds
+                    if let Some((start, end)) = buffer.find_word_text_object_bounds(text_object) {
+                        buffer.selection.anchor = start;
+                        buffer.selection.active = true;
+                        buffer.cur = end;
+                    }
+                }
+                VisualTextObjectAction::SelectSemantic { text_object } => {
+                    // Find semantic text object bounds using treesitter
+                    if let Some((start, end)) = self.find_semantic_text_object_bounds(buffer_id, text_object)
+                        && let Some(buf) = self.buffers.get_mut(&buffer_id)
+                    {
+                        buf.selection.anchor = start;
+                        buf.selection.active = true;
+                        buf.cur = end;
+                    }
+                }
+            }
         }
         self.render();
     }

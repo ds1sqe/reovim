@@ -83,7 +83,7 @@ impl WhichKeyPanel {
         let panel_y = screen_height.saturating_sub(content_height).saturating_sub(1);
 
         // Use theme styles
-        let styles = &theme.which_key;
+        let styles = &theme.whichkey;
 
         // Header line
         let header = self.format_header(panel_width as usize, &styles.border, color_mode);

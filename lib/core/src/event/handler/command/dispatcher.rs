@@ -3,7 +3,7 @@
 use crate::bind::CommandRef;
 use crate::command::traits::OperatorMotionAction;
 use crate::command::CommandContext;
-use crate::event::inner::{CommandEvent, WhichKeyBinding};
+use crate::event::inner::{CommandEvent, VisualTextObjectAction, WhichKeyBinding};
 use crate::event::InnerEvent;
 use crate::modd::{ModeState, OperatorType};
 use tokio::sync::mpsc::Sender;
@@ -161,6 +161,14 @@ impl Dispatcher {
         let _ = self
             .inner_tx
             .send(InnerEvent::LeapEvent(crate::event::LeapEvent::Cancel))
+            .await;
+    }
+
+    /// Send visual text object selection event
+    pub async fn send_visual_text_object(&self, action: VisualTextObjectAction) {
+        let _ = self
+            .inner_tx
+            .send(InnerEvent::VisualTextObjectEvent(action))
             .await;
     }
 }

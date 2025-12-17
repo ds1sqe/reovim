@@ -9,6 +9,7 @@ use crate::leap::LeapDirection;
 use crate::modd::{ModeState, OperatorType};
 use crate::screen::{NavigateDirection, SplitDirection};
 use crate::telescope::{PreviewContent, TelescopeItem};
+use crate::textobject::{SemanticTextObjectSpec, TextObject, WordTextObject};
 use crate::treesitter::BufferEdit;
 
 pub enum InnerEvent {
@@ -22,6 +23,8 @@ pub enum InnerEvent {
     ExplorerEvent(ExplorerEvent),
     /// Operator + motion action (d+motion, y+motion, c+motion)
     OperatorMotionEvent(OperatorMotionAction),
+    /// Visual mode text object selection (viw, vi(, vif, etc.)
+    VisualTextObjectEvent(VisualTextObjectAction),
     TelescopeEvent(TelescopeEvent),
     LeapEvent(LeapEvent),
     /// Treesitter-related events for incremental parsing
@@ -201,4 +204,15 @@ pub enum TreesitterEvent {
     },
     /// Force a full reparse of a buffer
     FullReparse { buffer_id: usize },
+}
+
+/// Visual mode text object selection actions (viw, vi(, vif, etc.)
+#[derive(Debug)]
+pub enum VisualTextObjectAction {
+    /// Select delimiter-based text object (vi(, va{, etc.)
+    SelectDelimiter { text_object: TextObject },
+    /// Select word text object (viw, vaw, viW, vaW)
+    SelectWord { text_object: WordTextObject },
+    /// Select semantic text object (vif, vac, etc.) - uses treesitter
+    SelectSemantic { text_object: SemanticTextObjectSpec },
 }

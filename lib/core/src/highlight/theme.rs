@@ -1,66 +1,85 @@
 //! Theme system for semantic color definitions
+//!
+//! The theme system is organized into logical sub-structs for better maintainability:
+//! - `base`: Default and cursor line styles
+//! - `gutter`: Line numbers, sign column
+//! - `selection`: Visual selection styles
+//! - `statusline`: Status line with mode-specific styles
+//! - `popup`: Completion popup styles
+//! - `telescope`: Fuzzy finder styles
+//! - `whichkey`: Which-key panel styles
+//! - `leap`: Jump navigation styles
+//! - `fold`: Code folding styles
+//! - `indent`: Indentation guide styles
+//! - `scrollbar`: Scrollbar with diagnostic marks
+//! - `search`: Search highlight styles
+//! - `tab`: Tab line styles
+//! - `window`: Window separator styles
 
 use crate::highlight::Style;
 use reovim_sys::style::Color;
 
-/// Semantic style elements for the editor UI
-#[derive(Debug, Clone)]
-pub struct Theme {
-    /// Default text foreground and background
-    pub default: Style,
-    /// Line numbers in the gutter
-    pub line_number: Style,
-    /// Current line number (cursor line)
-    pub current_line_number: Style,
-    /// Visual mode selection
-    pub visual_selection: Style,
-    /// Status line background
-    pub status_line: Style,
-    /// Mode indicator in status line (NORMAL, INSERT, etc.)
-    pub status_line_mode: StatusLineModeStyles,
-    /// Command line (: commands)
-    pub command_line: Style,
-    /// Cursor line background highlight
-    pub cursor_line: Style,
-    /// Completion popup - normal item
-    pub popup_normal: Style,
-    /// Completion popup - selected item
-    pub popup_selected: Style,
-    /// Telescope - border style
-    pub telescope_border: Style,
-    /// Telescope - normal item
-    pub telescope_normal: Style,
-    /// Telescope - selected item
-    pub telescope_selected: Style,
-    /// Telescope - preview pane
-    pub telescope_preview: Style,
-    /// Telescope - preview highlighted line
-    pub telescope_preview_highlight: Style,
-    /// Telescope - prompt text (e.g., "> ")
-    pub telescope_prompt: Style,
-    /// Telescope - input text
-    pub telescope_input: Style,
-    /// Which-key popup panel styles
-    pub which_key: WhichKeyStyles,
-    /// Leap motion labels (overlay on matches)
-    pub leap_label: Style,
-    /// Fold marker (collapsed fold indicator)
-    pub fold_marker: Style,
-    /// Indent guide (vertical line at indent levels)
-    pub indent_guide: Style,
-    /// Active indent guide (at cursor's indent level)
-    pub indent_guide_active: Style,
-    /// Active tab in tab line
-    pub tab_active: Style,
-    /// Inactive tab in tab line
-    pub tab_inactive: Style,
-    /// Tab line fill (empty space)
-    pub tab_fill: Style,
-    /// Window separator (between split windows)
-    pub window_separator: Style,
+// ============================================================================
+// Theme Name Enum
+// ============================================================================
+
+/// Available theme names
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ThemeName {
+    #[default]
+    Dark,
+    Light,
+    TokyoNightOrange,
 }
 
-/// Mode-specific styles for the status line
+impl ThemeName {
+    #[must_use]
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "dark" | "onedark" | "one-dark" => Some(Self::Dark),
+            "light" => Some(Self::Light),
+            "tokyonight" | "tokyo-night" | "tokyonight-orange" | "tokyo-night-orange" => {
+                Some(Self::TokyoNightOrange)
+            }
+            _ => None,
+        }
+    }
+}
+
+// ============================================================================
+// Sub-Struct Definitions
+// ============================================================================
+
+#[derive(Debug, Clone)]
+pub struct BaseStyles {
+    pub default: Style,
+    pub cursor_line: Style,
+    pub command_line: Style,
+}
+
+#[derive(Debug, Clone)]
+pub struct GutterStyles {
+    pub line_number: Style,
+    pub current_line_number: Style,
+    pub sign_column: Style,
+}
+
+#[derive(Debug, Clone)]
+pub struct SelectionStyles {
+    pub visual: Style,
+    pub block: Style,
+}
+
+#[derive(Debug, Clone)]
+pub struct StatusLineStyles {
+    pub background: Style,
+    pub mode: StatusLineModeStyles,
+    pub filename: Style,
+    pub modified: Style,
+    pub position: Style,
+    pub filetype: Style,
+}
+
 #[derive(Debug, Clone)]
 pub struct StatusLineModeStyles {
     pub normal: Style,
@@ -70,58 +89,101 @@ pub struct StatusLineModeStyles {
     pub explorer: Style,
 }
 
-/// Styles for the which-key popup panel
 #[derive(Debug, Clone)]
-pub struct WhichKeyStyles {
-    /// Panel background
-    pub background: Style,
-    /// Key bindings (the key part)
-    pub key: Style,
-    /// Description text
-    pub description: Style,
-    /// Prefix indicator (+)
-    pub prefix: Style,
-    /// Border/separator style
+pub struct PopupStyles {
+    pub normal: Style,
+    pub selected: Style,
     pub border: Style,
 }
 
-impl Default for WhichKeyStyles {
-    fn default() -> Self {
-        // OneDark-inspired colors
-        let bg_medium = Color::Rgb { r: 40, g: 44, b: 52 }; // #282c34
-        let fg = Color::Rgb { r: 171, g: 178, b: 191 }; // #abb2bf
-        let yellow = Color::Rgb { r: 229, g: 192, b: 123 }; // #e5c07b
-        let cyan = Color::Rgb { r: 86, g: 182, b: 194 }; // #56b6c2
-        let fg_dark = Color::Rgb { r: 92, g: 99, b: 112 }; // #5c6370
-
-        Self {
-            background: Style::new().bg(bg_medium),
-            key: Style::new().fg(yellow).bg(bg_medium).bold(),
-            description: Style::new().fg(fg).bg(bg_medium),
-            prefix: Style::new().fg(cyan).bg(bg_medium).bold(),
-            border: Style::new().fg(fg_dark).bg(bg_medium),
-        }
-    }
+#[derive(Debug, Clone)]
+pub struct TelescopeStyles {
+    pub border: Style,
+    pub normal: Style,
+    pub selected: Style,
+    pub preview: Style,
+    pub preview_highlight: Style,
+    pub prompt: Style,
+    pub input: Style,
 }
 
-impl Default for StatusLineModeStyles {
-    fn default() -> Self {
-        // OneDark-inspired colors
-        let bg_dark = Color::Rgb { r: 33, g: 37, b: 43 }; // #21252b
-        let green = Color::Rgb { r: 152, g: 195, b: 121 }; // #98c379
-        let blue = Color::Rgb { r: 97, g: 175, b: 239 }; // #61afef
-        let magenta = Color::Rgb { r: 198, g: 120, b: 221 }; // #c678dd
-        let yellow = Color::Rgb { r: 229, g: 192, b: 123 }; // #e5c07b
-        let cyan = Color::Rgb { r: 86, g: 182, b: 194 }; // #56b6c2
+#[derive(Debug, Clone)]
+pub struct WhichKeyStyles {
+    pub background: Style,
+    pub key: Style,
+    pub description: Style,
+    pub prefix: Style,
+    pub border: Style,
+}
 
-        Self {
-            normal: Style::new().fg(bg_dark).bg(green).bold(),
-            insert: Style::new().fg(bg_dark).bg(blue).bold(),
-            visual: Style::new().fg(bg_dark).bg(magenta).bold(),
-            command: Style::new().fg(bg_dark).bg(yellow).bold(),
-            explorer: Style::new().fg(bg_dark).bg(cyan).bold(),
-        }
-    }
+#[derive(Debug, Clone)]
+pub struct LeapStyles {
+    pub label: Style,
+    pub match_highlight: Style,
+}
+
+#[derive(Debug, Clone)]
+pub struct FoldStyles {
+    pub marker: Style,
+    pub folded_line: Style,
+}
+
+#[derive(Debug, Clone)]
+pub struct IndentStyles {
+    pub guide: Style,
+    pub active: Style,
+}
+
+#[derive(Debug, Clone)]
+pub struct ScrollbarStyles {
+    pub track: Style,
+    pub thumb: Style,
+    pub search_mark: Style,
+    pub error_mark: Style,
+    pub warn_mark: Style,
+    pub info_mark: Style,
+    pub hint_mark: Style,
+}
+
+#[derive(Debug, Clone)]
+pub struct SearchStyles {
+    pub match_highlight: Style,
+    pub current_match: Style,
+    pub inc_search: Style,
+}
+
+#[derive(Debug, Clone)]
+pub struct TabStyles {
+    pub active: Style,
+    pub inactive: Style,
+    pub fill: Style,
+}
+
+#[derive(Debug, Clone)]
+pub struct WindowStyles {
+    pub separator: Style,
+}
+
+// ============================================================================
+// Main Theme Struct
+// ============================================================================
+
+#[derive(Debug, Clone)]
+pub struct Theme {
+    pub base: BaseStyles,
+    pub gutter: GutterStyles,
+    pub selection: SelectionStyles,
+    pub statusline: StatusLineStyles,
+    pub popup: PopupStyles,
+    pub telescope: TelescopeStyles,
+    pub whichkey: WhichKeyStyles,
+    pub leap: LeapStyles,
+    pub fold: FoldStyles,
+    pub indent: IndentStyles,
+    pub scrollbar: ScrollbarStyles,
+    pub search: SearchStyles,
+    pub tab: TabStyles,
+    pub window: WindowStyles,
 }
 
 impl Default for Theme {
@@ -131,162 +193,312 @@ impl Default for Theme {
 }
 
 impl Theme {
-    /// Create the default dark theme (OneDark-inspired)
     #[must_use]
-    pub fn dark() -> Self {
-        // OneDark palette
-        let bg_light = Color::Rgb { r: 50, g: 56, b: 66 }; // #323842
-        let bg_medium = Color::Rgb { r: 40, g: 44, b: 52 }; // #282c34
-        let fg = Color::Rgb { r: 171, g: 178, b: 191 }; // #abb2bf
-        let fg_dark = Color::Rgb { r: 92, g: 99, b: 112 }; // #5c6370
-        let yellow = Color::Rgb { r: 229, g: 192, b: 123 }; // #e5c07b
-        let blue = Color::Rgb { r: 97, g: 175, b: 239 }; // #61afef
-        let bg_dark = Color::Rgb { r: 33, g: 37, b: 43 }; // #21252b
-
-        Self {
-            default: Style::new(),
-
-            // Line numbers: muted
-            line_number: Style::new().fg(fg_dark),
-
-            // Current line number: yellow, bold
-            current_line_number: Style::new().fg(yellow).bold(),
-
-            // Visual selection: subtle highlight
-            visual_selection: Style::new().bg(bg_light),
-
-            // Status line: subtle contrast
-            status_line: Style::new().fg(fg).bg(bg_light),
-
-            // Mode-specific status line styles
-            status_line_mode: StatusLineModeStyles::default(),
-
-            // Command line: default colors
-            command_line: Style::new(),
-
-            // Cursor line: subtle highlight
-            cursor_line: Style::new().bg(bg_light),
-
-            // Completion popup
-            popup_normal: Style::new().fg(fg).bg(bg_medium),
-            popup_selected: Style::new().fg(bg_dark).bg(blue),
-
-            // Telescope: floating panel style
-            telescope_border: Style::new().fg(blue),
-            telescope_normal: Style::new().fg(fg).bg(bg_medium),
-            telescope_selected: Style::new().fg(bg_dark).bg(blue),
-            telescope_preview: Style::new().fg(fg_dark).bg(bg_medium),
-            telescope_preview_highlight: Style::new().fg(yellow).bg(bg_light),
-            telescope_prompt: Style::new().fg(blue).bold(),
-            telescope_input: Style::new().fg(fg),
-
-            // Which-key panel
-            which_key: WhichKeyStyles::default(),
-
-            // Leap labels: bright contrast for visibility
-            leap_label: Style::new().fg(bg_dark).bg(yellow).bold(),
-
-            // Fold marker: muted yellow/orange for collapsed fold indicators
-            fold_marker: Style::new().fg(fg_dark).italic(),
-
-            // Indent guides: subtle vertical lines
-            indent_guide: Style::new().fg(fg_dark),
-            indent_guide_active: Style::new().fg(fg),
-
-            // Tab line styles
-            tab_active: Style::new().fg(fg).bg(bg_medium).bold(),
-            tab_inactive: Style::new().fg(fg_dark).bg(bg_dark),
-            tab_fill: Style::new().bg(bg_dark),
-
-            // Window separator
-            window_separator: Style::new().fg(fg_dark),
+    pub fn from_name(name: ThemeName) -> Self {
+        match name {
+            ThemeName::Dark => Self::dark(),
+            ThemeName::Light => Self::light(),
+            ThemeName::TokyoNightOrange => Self::tokyo_night_orange(),
         }
     }
 
-    /// Create a light theme
     #[must_use]
-    pub fn light() -> Self {
-        let fg_light = Color::Rgb { r: 56, g: 58, b: 66 }; // #383a42
-        let bg_light = Color::Rgb { r: 250, g: 250, b: 250 }; // #fafafa
-        let bg_medium = Color::Rgb { r: 233, g: 233, b: 233 }; // #e9e9e9
+    pub fn dark() -> Self {
+        let bg_dark = Color::Rgb { r: 33, g: 37, b: 43 };
+        let bg_medium = Color::Rgb { r: 40, g: 44, b: 52 };
+        let bg_light = Color::Rgb { r: 50, g: 56, b: 66 };
+        let fg = Color::Rgb { r: 171, g: 178, b: 191 };
+        let fg_dark = Color::Rgb { r: 92, g: 99, b: 112 };
+        let yellow = Color::Rgb { r: 229, g: 192, b: 123 };
+        let blue = Color::Rgb { r: 97, g: 175, b: 239 };
+        let green = Color::Rgb { r: 152, g: 195, b: 121 };
+        let red = Color::Rgb { r: 224, g: 108, b: 117 };
+        let cyan = Color::Rgb { r: 86, g: 182, b: 194 };
+        let magenta = Color::Rgb { r: 198, g: 120, b: 221 };
 
         Self {
-            default: Style::new().fg(fg_light).bg(bg_light),
-
-            line_number: Style::new().fg(Color::Grey),
-
-            current_line_number: Style::new().fg(Color::DarkBlue).bold(),
-
-            visual_selection: Style::new().bg(Color::AnsiValue(153)), // Light blue
-
-            status_line: Style::new().fg(fg_light).bg(bg_medium),
-
-            status_line_mode: StatusLineModeStyles {
-                normal: Style::new()
-                    .fg(Color::White)
-                    .bg(Color::DarkGreen)
-                    .bold(),
-                insert: Style::new()
-                    .fg(Color::White)
-                    .bg(Color::DarkBlue)
-                    .bold(),
-                visual: Style::new()
-                    .fg(Color::White)
-                    .bg(Color::DarkMagenta)
-                    .bold(),
-                command: Style::new()
-                    .fg(Color::Black)
-                    .bg(Color::DarkYellow)
-                    .bold(),
-                explorer: Style::new()
-                    .fg(Color::White)
-                    .bg(Color::DarkCyan)
-                    .bold(),
+            base: BaseStyles {
+                default: Style::new(),
+                cursor_line: Style::new().bg(bg_light),
+                command_line: Style::new(),
             },
+            gutter: GutterStyles {
+                line_number: Style::new().fg(fg_dark),
+                current_line_number: Style::new().fg(yellow).bold(),
+                sign_column: Style::new().fg(fg_dark),
+            },
+            selection: SelectionStyles {
+                visual: Style::new().bg(bg_light),
+                block: Style::new().bg(bg_light),
+            },
+            statusline: StatusLineStyles {
+                background: Style::new().fg(fg).bg(bg_light),
+                mode: StatusLineModeStyles {
+                    normal: Style::new().fg(bg_dark).bg(green).bold(),
+                    insert: Style::new().fg(bg_dark).bg(blue).bold(),
+                    visual: Style::new().fg(bg_dark).bg(magenta).bold(),
+                    command: Style::new().fg(bg_dark).bg(yellow).bold(),
+                    explorer: Style::new().fg(bg_dark).bg(cyan).bold(),
+                },
+                filename: Style::new().fg(fg),
+                modified: Style::new().fg(yellow),
+                position: Style::new().fg(fg_dark),
+                filetype: Style::new().fg(cyan),
+            },
+            popup: PopupStyles {
+                normal: Style::new().fg(fg).bg(bg_medium),
+                selected: Style::new().fg(bg_dark).bg(blue),
+                border: Style::new().fg(fg_dark).bg(bg_medium),
+            },
+            telescope: TelescopeStyles {
+                border: Style::new().fg(blue),
+                normal: Style::new().fg(fg).bg(bg_medium),
+                selected: Style::new().fg(bg_dark).bg(blue),
+                preview: Style::new().fg(fg_dark).bg(bg_medium),
+                preview_highlight: Style::new().fg(yellow).bg(bg_light),
+                prompt: Style::new().fg(blue).bold(),
+                input: Style::new().fg(fg),
+            },
+            whichkey: WhichKeyStyles {
+                background: Style::new().bg(bg_medium),
+                key: Style::new().fg(yellow).bg(bg_medium).bold(),
+                description: Style::new().fg(fg).bg(bg_medium),
+                prefix: Style::new().fg(cyan).bg(bg_medium).bold(),
+                border: Style::new().fg(fg_dark).bg(bg_medium),
+            },
+            leap: LeapStyles {
+                label: Style::new().fg(bg_dark).bg(yellow).bold(),
+                match_highlight: Style::new().fg(magenta).bold(),
+            },
+            fold: FoldStyles {
+                marker: Style::new().fg(fg_dark).italic(),
+                folded_line: Style::new().fg(fg_dark),
+            },
+            indent: IndentStyles {
+                guide: Style::new().fg(fg_dark),
+                active: Style::new().fg(fg),
+            },
+            scrollbar: ScrollbarStyles {
+                track: Style::new().fg(bg_light),
+                thumb: Style::new().fg(fg_dark).bg(bg_light),
+                search_mark: Style::new().fg(yellow),
+                error_mark: Style::new().fg(red),
+                warn_mark: Style::new().fg(yellow),
+                info_mark: Style::new().fg(blue),
+                hint_mark: Style::new().fg(cyan),
+            },
+            search: SearchStyles {
+                match_highlight: Style::new().fg(bg_dark).bg(yellow),
+                current_match: Style::new().fg(bg_dark).bg(Color::Rgb { r: 255, g: 165, b: 0 }),
+                inc_search: Style::new().fg(bg_dark).bg(yellow),
+            },
+            tab: TabStyles {
+                active: Style::new().fg(fg).bg(bg_medium).bold(),
+                inactive: Style::new().fg(fg_dark).bg(bg_dark),
+                fill: Style::new().bg(bg_dark),
+            },
+            window: WindowStyles {
+                separator: Style::new().fg(fg_dark),
+            },
+        }
+    }
 
-            command_line: Style::new().fg(fg_light).bg(bg_light),
+    #[must_use]
+    pub fn light() -> Self {
+        let fg_light = Color::Rgb { r: 56, g: 58, b: 66 };
+        let bg_light = Color::Rgb { r: 250, g: 250, b: 250 };
+        let bg_medium = Color::Rgb { r: 233, g: 233, b: 233 };
+        let bg_highlight = Color::AnsiValue(254);
 
-            cursor_line: Style::new().bg(Color::AnsiValue(254)),
-
-            // Completion popup: light background
-            popup_normal: Style::new().fg(fg_light).bg(Color::AnsiValue(252)),
-            popup_selected: Style::new().fg(Color::White).bg(Color::DarkBlue),
-
-            // Telescope: floating panel style (light)
-            telescope_border: Style::new().fg(Color::DarkBlue),
-            telescope_normal: Style::new().fg(fg_light).bg(Color::AnsiValue(254)),
-            telescope_selected: Style::new().fg(Color::White).bg(Color::DarkBlue),
-            telescope_preview: Style::new().fg(Color::DarkGrey).bg(Color::AnsiValue(255)),
-            telescope_preview_highlight: Style::new().fg(Color::DarkBlue).bg(Color::AnsiValue(250)),
-            telescope_prompt: Style::new().fg(Color::DarkBlue).bold(),
-            telescope_input: Style::new().fg(fg_light),
-
-            // Which-key panel: light version
-            which_key: WhichKeyStyles {
+        Self {
+            base: BaseStyles {
+                default: Style::new().fg(fg_light).bg(bg_light),
+                cursor_line: Style::new().bg(bg_highlight),
+                command_line: Style::new().fg(fg_light).bg(bg_light),
+            },
+            gutter: GutterStyles {
+                line_number: Style::new().fg(Color::Grey),
+                current_line_number: Style::new().fg(Color::DarkBlue).bold(),
+                sign_column: Style::new().fg(Color::Grey),
+            },
+            selection: SelectionStyles {
+                visual: Style::new().bg(Color::AnsiValue(153)),
+                block: Style::new().bg(Color::AnsiValue(153)),
+            },
+            statusline: StatusLineStyles {
+                background: Style::new().fg(fg_light).bg(bg_medium),
+                mode: StatusLineModeStyles {
+                    normal: Style::new().fg(Color::White).bg(Color::DarkGreen).bold(),
+                    insert: Style::new().fg(Color::White).bg(Color::DarkBlue).bold(),
+                    visual: Style::new().fg(Color::White).bg(Color::DarkMagenta).bold(),
+                    command: Style::new().fg(Color::Black).bg(Color::DarkYellow).bold(),
+                    explorer: Style::new().fg(Color::White).bg(Color::DarkCyan).bold(),
+                },
+                filename: Style::new().fg(fg_light),
+                modified: Style::new().fg(Color::DarkYellow),
+                position: Style::new().fg(Color::Grey),
+                filetype: Style::new().fg(Color::DarkCyan),
+            },
+            popup: PopupStyles {
+                normal: Style::new().fg(fg_light).bg(Color::AnsiValue(252)),
+                selected: Style::new().fg(Color::White).bg(Color::DarkBlue),
+                border: Style::new().fg(Color::Grey).bg(Color::AnsiValue(252)),
+            },
+            telescope: TelescopeStyles {
+                border: Style::new().fg(Color::DarkBlue),
+                normal: Style::new().fg(fg_light).bg(Color::AnsiValue(254)),
+                selected: Style::new().fg(Color::White).bg(Color::DarkBlue),
+                preview: Style::new().fg(Color::DarkGrey).bg(Color::AnsiValue(255)),
+                preview_highlight: Style::new().fg(Color::DarkBlue).bg(Color::AnsiValue(250)),
+                prompt: Style::new().fg(Color::DarkBlue).bold(),
+                input: Style::new().fg(fg_light),
+            },
+            whichkey: WhichKeyStyles {
                 background: Style::new().bg(bg_medium),
                 key: Style::new().fg(Color::DarkBlue).bg(bg_medium).bold(),
                 description: Style::new().fg(fg_light).bg(bg_medium),
                 prefix: Style::new().fg(Color::DarkCyan).bg(bg_medium).bold(),
                 border: Style::new().fg(Color::Grey).bg(bg_medium),
             },
+            leap: LeapStyles {
+                label: Style::new().fg(Color::White).bg(Color::DarkYellow).bold(),
+                match_highlight: Style::new().fg(Color::DarkMagenta).bold(),
+            },
+            fold: FoldStyles {
+                marker: Style::new().fg(Color::Grey).italic(),
+                folded_line: Style::new().fg(Color::Grey),
+            },
+            indent: IndentStyles {
+                guide: Style::new().fg(Color::AnsiValue(250)),
+                active: Style::new().fg(Color::Grey),
+            },
+            scrollbar: ScrollbarStyles {
+                track: Style::new().fg(Color::AnsiValue(252)),
+                thumb: Style::new().fg(Color::Grey).bg(Color::AnsiValue(250)),
+                search_mark: Style::new().fg(Color::DarkYellow),
+                error_mark: Style::new().fg(Color::DarkRed),
+                warn_mark: Style::new().fg(Color::DarkYellow),
+                info_mark: Style::new().fg(Color::DarkBlue),
+                hint_mark: Style::new().fg(Color::DarkCyan),
+            },
+            search: SearchStyles {
+                match_highlight: Style::new().fg(Color::Black).bg(Color::Yellow),
+                current_match: Style::new().fg(Color::Black).bg(Color::Rgb { r: 255, g: 165, b: 0 }),
+                inc_search: Style::new().fg(Color::Black).bg(Color::Yellow),
+            },
+            tab: TabStyles {
+                active: Style::new().fg(fg_light).bg(bg_light).bold(),
+                inactive: Style::new().fg(Color::Grey).bg(bg_medium),
+                fill: Style::new().bg(bg_medium),
+            },
+            window: WindowStyles {
+                separator: Style::new().fg(Color::Grey),
+            },
+        }
+    }
 
-            // Leap labels: bright contrast for visibility
-            leap_label: Style::new().fg(Color::White).bg(Color::DarkYellow).bold(),
+    #[must_use]
+    pub fn tokyo_night_orange() -> Self {
+        let bg = Color::Rgb { r: 26, g: 27, b: 38 };
+        let bg_dark = Color::Rgb { r: 22, g: 23, b: 34 };
+        let bg_highlight = Color::Rgb { r: 41, g: 46, b: 66 };
+        let fg = Color::Rgb { r: 192, g: 202, b: 245 };
+        let fg_dark = Color::Rgb { r: 86, g: 95, b: 137 };
+        let comment = Color::Rgb { r: 199, g: 199, b: 199 };
+        let orange = Color::Rgb { r: 255, g: 158, b: 100 };
+        let orange_bright = Color::Rgb { r: 255, g: 122, b: 0 };
+        let blue = Color::Rgb { r: 122, g: 162, b: 247 };
+        let purple = Color::Rgb { r: 187, g: 154, b: 247 };
+        let green = Color::Rgb { r: 158, g: 206, b: 106 };
+        let cyan = Color::Rgb { r: 125, g: 207, b: 255 };
+        let red = Color::Rgb { r: 247, g: 118, b: 142 };
+        let magenta = Color::Rgb { r: 255, g: 0, b: 127 };
+        let yellow = Color::Rgb { r: 224, g: 175, b: 104 };
 
-            // Fold marker: light version
-            fold_marker: Style::new().fg(Color::Grey).italic(),
-
-            // Indent guides: light version
-            indent_guide: Style::new().fg(Color::AnsiValue(250)),
-            indent_guide_active: Style::new().fg(Color::Grey),
-
-            // Tab line styles
-            tab_active: Style::new().fg(fg_light).bg(bg_light).bold(),
-            tab_inactive: Style::new().fg(Color::Grey).bg(bg_medium),
-            tab_fill: Style::new().bg(bg_medium),
-
-            // Window separator
-            window_separator: Style::new().fg(Color::Grey),
+        Self {
+            base: BaseStyles {
+                default: Style::new().fg(fg).bg(bg),
+                cursor_line: Style::new().bg(bg_highlight),
+                command_line: Style::new().fg(fg).bg(bg),
+            },
+            gutter: GutterStyles {
+                line_number: Style::new().fg(fg_dark),
+                current_line_number: Style::new().fg(orange).bold(),
+                sign_column: Style::new().fg(fg_dark),
+            },
+            selection: SelectionStyles {
+                visual: Style::new().bg(bg_highlight),
+                block: Style::new().bg(bg_highlight),
+            },
+            statusline: StatusLineStyles {
+                background: Style::new().fg(fg).bg(bg_dark),
+                mode: StatusLineModeStyles {
+                    normal: Style::new().fg(bg).bg(green).bold(),
+                    insert: Style::new().fg(bg).bg(blue).bold(),
+                    visual: Style::new().fg(bg).bg(magenta).bold(),
+                    command: Style::new().fg(bg).bg(orange).bold(),
+                    explorer: Style::new().fg(bg).bg(cyan).bold(),
+                },
+                filename: Style::new().fg(fg),
+                modified: Style::new().fg(orange),
+                position: Style::new().fg(fg_dark),
+                filetype: Style::new().fg(cyan),
+            },
+            popup: PopupStyles {
+                normal: Style::new().fg(fg).bg(bg_dark),
+                selected: Style::new().fg(bg).bg(blue),
+                border: Style::new().fg(fg_dark).bg(bg_dark),
+            },
+            telescope: TelescopeStyles {
+                border: Style::new().fg(blue),
+                normal: Style::new().fg(fg).bg(bg_dark),
+                selected: Style::new().fg(bg).bg(blue),
+                preview: Style::new().fg(comment).bg(bg_dark),
+                preview_highlight: Style::new().fg(orange).bg(bg_highlight),
+                prompt: Style::new().fg(orange).bold(),
+                input: Style::new().fg(fg),
+            },
+            whichkey: WhichKeyStyles {
+                background: Style::new().bg(bg_dark),
+                key: Style::new().fg(orange).bg(bg_dark).bold(),
+                description: Style::new().fg(fg).bg(bg_dark),
+                prefix: Style::new().fg(cyan).bg(bg_dark).bold(),
+                border: Style::new().fg(fg_dark).bg(bg_dark),
+            },
+            leap: LeapStyles {
+                label: Style::new().fg(bg).bg(orange).bold(),
+                match_highlight: Style::new().fg(purple).bold(),
+            },
+            fold: FoldStyles {
+                marker: Style::new().fg(fg_dark).italic(),
+                folded_line: Style::new().fg(comment),
+            },
+            indent: IndentStyles {
+                guide: Style::new().fg(fg_dark),
+                active: Style::new().fg(fg),
+            },
+            scrollbar: ScrollbarStyles {
+                track: Style::new().fg(bg_highlight),
+                thumb: Style::new().fg(fg_dark).bg(bg_highlight),
+                search_mark: Style::new().fg(orange_bright),
+                error_mark: Style::new().fg(red),
+                warn_mark: Style::new().fg(yellow),
+                info_mark: Style::new().fg(blue),
+                hint_mark: Style::new().fg(cyan),
+            },
+            search: SearchStyles {
+                match_highlight: Style::new().fg(bg).bg(orange),
+                current_match: Style::new().fg(bg).bg(orange_bright),
+                inc_search: Style::new().fg(bg).bg(orange),
+            },
+            tab: TabStyles {
+                active: Style::new().fg(fg).bg(bg).bold(),
+                inactive: Style::new().fg(fg_dark).bg(bg_dark),
+                fill: Style::new().bg(bg_dark),
+            },
+            window: WindowStyles {
+                separator: Style::new().fg(fg_dark),
+            },
         }
     }
 }
@@ -298,35 +510,50 @@ mod tests {
     #[test]
     fn test_default_theme() {
         let theme = Theme::default();
-        // Line number should have foreground color
-        assert!(theme.line_number.fg.is_some());
-        // Current line number should be bold
-        assert!(theme.current_line_number.attributes.contains(crate::highlight::Attributes::BOLD));
+        assert!(theme.gutter.line_number.fg.is_some());
+        assert!(theme.gutter.current_line_number.attributes.contains(crate::highlight::Attributes::BOLD));
     }
 
     #[test]
     fn test_dark_theme() {
         let theme = Theme::dark();
-        // Visual selection should have background
-        assert!(theme.visual_selection.bg.is_some());
+        assert!(theme.selection.visual.bg.is_some());
     }
 
     #[test]
     fn test_light_theme() {
         let theme = Theme::light();
-        // Default should have both fg and bg
-        assert!(theme.default.fg.is_some());
-        assert!(theme.default.bg.is_some());
+        assert!(theme.base.default.fg.is_some());
+        assert!(theme.base.default.bg.is_some());
+    }
+
+    #[test]
+    fn test_tokyo_night_orange_theme() {
+        let theme = Theme::tokyo_night_orange();
+        assert!(theme.gutter.current_line_number.fg.is_some());
+        assert!(theme.gutter.current_line_number.attributes.contains(crate::highlight::Attributes::BOLD));
     }
 
     #[test]
     fn test_status_line_modes() {
-        let modes = StatusLineModeStyles::default();
-        // All modes should have background color
-        assert!(modes.normal.bg.is_some());
-        assert!(modes.insert.bg.is_some());
-        assert!(modes.visual.bg.is_some());
-        assert!(modes.command.bg.is_some());
-        assert!(modes.explorer.bg.is_some());
+        let theme = Theme::dark();
+        assert!(theme.statusline.mode.normal.bg.is_some());
+        assert!(theme.statusline.mode.insert.bg.is_some());
+        assert!(theme.statusline.mode.visual.bg.is_some());
+        assert!(theme.statusline.mode.command.bg.is_some());
+        assert!(theme.statusline.mode.explorer.bg.is_some());
+    }
+
+    #[test]
+    fn test_theme_from_name() {
+        assert!(matches!(Theme::from_name(ThemeName::Dark).base.default.fg, None));
+        assert!(Theme::from_name(ThemeName::Light).base.default.fg.is_some());
+    }
+
+    #[test]
+    fn test_theme_name_parse() {
+        assert_eq!(ThemeName::parse("dark"), Some(ThemeName::Dark));
+        assert_eq!(ThemeName::parse("tokyonight"), Some(ThemeName::TokyoNightOrange));
+        assert_eq!(ThemeName::parse("invalid"), None);
     }
 }

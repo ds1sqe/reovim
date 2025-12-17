@@ -12,6 +12,7 @@ use crate::event::{CompletionEvent, InnerEvent};
 use crate::explorer::ExplorerState;
 use crate::folding::FoldManager;
 use crate::highlight::{ColorMode, HighlightStore, Theme};
+use crate::indent::IndentAnalyzer;
 use crate::jumplist::JumpList;
 use crate::leap::LeapState;
 use crate::modd::ModeState;
@@ -81,6 +82,8 @@ pub struct Runtime {
     pub treesitter: TreesitterManager,
     /// Code folding manager
     pub fold_manager: FoldManager,
+    /// Indent guide analyzer
+    pub indent_analyzer: IndentAnalyzer,
 }
 
 impl Default for Runtime {
@@ -130,6 +133,7 @@ impl Runtime {
             leap_state: LeapState::new(),
             treesitter: TreesitterManager::new(),
             fold_manager: FoldManager::new(),
+            indent_analyzer: IndentAnalyzer::default(),
         }
     }
 
@@ -200,6 +204,7 @@ impl Runtime {
                 &self.telescope_state,
                 &self.leap_state,
                 &self.fold_manager,
+                &self.indent_analyzer,
             )
             .expect("failed to render");
         self.screen.flush().expect("failed to flush");

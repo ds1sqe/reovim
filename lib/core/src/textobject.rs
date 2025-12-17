@@ -1,7 +1,9 @@
-//! Text object types for operator commands (di(, da{, daf, dic, etc.)
+//! Text object types for operator commands (di(, da{, daf, dic, diw, etc.)
 //!
-//! Supports both delimiter-based text objects (di(, da{) and
-//! semantic text objects based on treesitter (daf, dic).
+//! Supports:
+//! - Delimiter-based text objects (di(, da{)
+//! - Word text objects (iw, aw, iW, aW)
+//! - Semantic text objects based on treesitter (daf, dic)
 
 /// Delimiter types for text objects
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,6 +61,75 @@ impl Delimiter {
             '`' => Some(Self::Backtick),
             _ => None,
         }
+    }
+}
+
+/// Word types for word text objects
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WordType {
+    /// Small word - alphanumeric + underscore (iw/aw)
+    /// Sequence of [a-zA-Z0-9_] or sequence of other non-whitespace
+    Word,
+    /// Big WORD - any non-whitespace characters (iW/aW)
+    /// Sequence of non-whitespace characters
+    BigWord,
+}
+
+impl WordType {
+    /// Check if a character is part of a word (for small word)
+    #[must_use]
+    pub const fn is_word_char(c: char) -> bool {
+        c.is_ascii_alphanumeric() || c == '_'
+    }
+
+    /// Check if a character matches this word type
+    #[must_use]
+    pub const fn matches(&self, c: char) -> bool {
+        match self {
+            Self::Word => Self::is_word_char(c),
+            Self::BigWord => !c.is_whitespace(),
+        }
+    }
+
+    /// Parse a character into a word type
+    #[must_use]
+    pub const fn from_char(c: char) -> Option<Self> {
+        match c {
+            'w' => Some(Self::Word),
+            'W' => Some(Self::BigWord),
+            _ => None,
+        }
+    }
+}
+
+/// Word text object specification
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WordTextObject {
+    pub scope: TextObjectScope,
+    pub word_type: WordType,
+}
+
+impl WordTextObject {
+    /// Create a new word text object
+    #[must_use]
+    pub const fn new(scope: TextObjectScope, word_type: WordType) -> Self {
+        Self { scope, word_type }
+    }
+
+    /// Parse a two-character sequence into a word text object (e.g., "iw", "aW")
+    #[must_use]
+    pub const fn from_keys(scope_char: char, word_char: char) -> Option<Self> {
+        let scope = match scope_char {
+            'i' => TextObjectScope::Inner,
+            'a' => TextObjectScope::Around,
+            _ => return None,
+        };
+
+        let Some(word_type) = WordType::from_char(word_char) else {
+            return None;
+        };
+
+        Some(Self::new(scope, word_type))
     }
 }
 
@@ -197,11 +268,13 @@ impl SemanticTextObjectSpec {
     }
 }
 
-/// Unified text object kind - either delimiter-based or semantic
+/// Unified text object kind - delimiter-based, word-based, or semantic
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextObjectKind {
     /// Delimiter-based text object (di(, da{)
     Delimiter(TextObject),
+    /// Word-based text object (iw, aw, iW, aW)
+    Word(WordTextObject),
     /// Semantic text object based on treesitter (daf, dic)
     Semantic(SemanticTextObjectSpec),
 }
@@ -209,12 +282,17 @@ pub enum TextObjectKind {
 impl TextObjectKind {
     /// Try to parse a two-character sequence into any text object
     ///
-    /// First tries delimiter-based, then semantic text objects
+    /// Priority: delimiter -> word -> semantic
     #[must_use]
     pub fn from_keys(scope_char: char, kind_char: char) -> Option<Self> {
         // Try delimiter first
         if let Some(text_obj) = TextObject::from_keys(scope_char, kind_char) {
             return Some(Self::Delimiter(text_obj));
+        }
+
+        // Try word text objects (iw, aw, iW, aW)
+        if let Some(word_obj) = WordTextObject::from_keys(scope_char, kind_char) {
+            return Some(Self::Word(word_obj));
         }
 
         // Try semantic
@@ -230,6 +308,7 @@ impl TextObjectKind {
     pub const fn scope(&self) -> TextObjectScope {
         match self {
             Self::Delimiter(obj) => obj.scope,
+            Self::Word(obj) => obj.scope,
             Self::Semantic(obj) => obj.scope,
         }
     }

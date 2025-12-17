@@ -10,7 +10,8 @@ pub use {
     handler::{CommandHandler, CompletionHandler, PrintEventHandler, TerminateHandler},
     inner::{
         BufferEvent, CommandEvent, CompletionEvent, ExplorerEvent, HighlightEvent, InnerEvent,
-        LeapEvent, TelescopeEvent, TreesitterEvent, WhichKeyBinding, WindowEvent,
+        LeapEvent, TelescopeEvent, TreesitterEvent, VisualTextObjectAction, WhichKeyBinding,
+        WindowEvent,
     },
     input::*,
 };

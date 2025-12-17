@@ -250,6 +250,18 @@ pub enum OperatorMotionAction {
     ChangeSemanticTextObject {
         text_object: crate::textobject::SemanticTextObjectSpec,
     },
+    /// Delete word text object (diw, daw, diW, daW)
+    DeleteWordTextObject {
+        text_object: crate::textobject::WordTextObject,
+    },
+    /// Yank word text object (yiw, yaw, yiW, yaW)
+    YankWordTextObject {
+        text_object: crate::textobject::WordTextObject,
+    },
+    /// Change word text object (ciw, caw, ciW, caW)
+    ChangeWordTextObject {
+        text_object: crate::textobject::WordTextObject,
+    },
 }
 
 /// Command line mode actions

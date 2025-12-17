@@ -20,10 +20,10 @@ use {
             traits::OperatorMotionAction,
             CommandTrait,
         },
-        event::{InnerEvent, KeyEvent, Subscribe},
+        event::{InnerEvent, KeyEvent, Subscribe, VisualTextObjectAction},
         modd::{ModeState, OperatorType, SubMode},
         motion::Motion,
-        textobject::{Delimiter, SemanticTextObject, SemanticTextObjectSpec, TextObject, TextObjectScope},
+        textobject::{Delimiter, SemanticTextObject, SemanticTextObjectSpec, TextObject, TextObjectScope, WordTextObject, WordType},
     },
     std::{collections::HashMap, sync::Arc, time::Duration},
     tokio::sync::{broadcast::Receiver, mpsc::Sender, watch},
@@ -162,6 +162,17 @@ impl CommandHandler {
                     return (Some(action), false);
                 }
 
+                // Try word text object (iw, aw, iW, aW)
+                if let Some(word_type) = WordType::from_char(obj_char) {
+                    let text_object = WordTextObject::new(scope, word_type);
+                    let action = match operator {
+                        OperatorType::Delete => OperatorMotionAction::DeleteWordTextObject { text_object },
+                        OperatorType::Yank => OperatorMotionAction::YankWordTextObject { text_object },
+                        OperatorType::Change => OperatorMotionAction::ChangeWordTextObject { text_object },
+                    };
+                    return (Some(action), false);
+                }
+
                 // Try semantic text object (treesitter-based)
                 if let Some(kind) = SemanticTextObject::from_char(obj_char) {
                     let text_object = SemanticTextObjectSpec::new(scope, kind);
@@ -208,6 +219,51 @@ impl CommandHandler {
                 _ => {}
             }
         }
+        (None, false)
+    }
+
+    /// Handle visual mode text object selection (viw, vi(, vif)
+    /// Returns Some(action) if the key triggers a text object selection, None otherwise
+    /// Returns None with `should_wait=true` if waiting for more keys (i/a pressed)
+    fn handle_visual_text_object(
+        key: &str,
+        pending: &str,
+    ) -> (Option<VisualTextObjectAction>, bool) {
+        // Check for text object completion: pending ends with "i" or "a", key is delimiter/word/semantic
+        if (pending.ends_with('i') || pending.ends_with('a'))
+            && key.len() == 1
+            && let Some(obj_char) = key.chars().next()
+        {
+            let scope = if pending.ends_with('i') {
+                TextObjectScope::Inner
+            } else {
+                TextObjectScope::Around
+            };
+
+            // Try delimiter-based text object first
+            if let Some(delimiter) = Delimiter::from_char(obj_char) {
+                let text_object = TextObject::new(scope, delimiter);
+                return (Some(VisualTextObjectAction::SelectDelimiter { text_object }), false);
+            }
+
+            // Try word text object (iw, aw, iW, aW)
+            if let Some(word_type) = WordType::from_char(obj_char) {
+                let text_object = WordTextObject::new(scope, word_type);
+                return (Some(VisualTextObjectAction::SelectWord { text_object }), false);
+            }
+
+            // Try semantic text object (treesitter-based)
+            if let Some(kind) = SemanticTextObject::from_char(obj_char) {
+                let text_object = SemanticTextObjectSpec::new(scope, kind);
+                return (Some(VisualTextObjectAction::SelectSemantic { text_object }), false);
+            }
+        }
+
+        // If key is "i" or "a", wait for text object specifier
+        if key == "i" || key == "a" {
+            return (None, true); // Wait for text object key
+        }
+
         (None, false)
     }
 
@@ -554,6 +610,33 @@ impl CommandHandler {
                                     }
                                     if should_wait {
                                         // Waiting for text object delimiter (i/a pressed)
+                                        self.pending_keys.push_str(&key_str);
+                                        self.dispatcher
+                                            .send_pending_keys(self.pending_display())
+                                            .await;
+                                        continue;
+                                    }
+                                }
+
+                                // Handle visual mode text object selection (viw, vi(, vif)
+                                let mode = self.current_mode();
+                                if mode.is_visual() {
+                                    let (action, should_wait) = Self::handle_visual_text_object(
+                                        &key_str,
+                                        &self.pending_keys,
+                                    );
+                                    if let Some(action) = action {
+                                        tracing::debug!(?action, "Visual text object selection detected");
+                                        self.pending_keys.clear();
+                                        self.count_parser.take(); // Consume count
+                                        self.dispatcher.send_visual_text_object(action).await;
+                                        self.dispatcher
+                                            .send_pending_keys(self.pending_display())
+                                            .await;
+                                        continue;
+                                    }
+                                    if should_wait {
+                                        // Waiting for text object specifier (i/a pressed)
                                         self.pending_keys.push_str(&key_str);
                                         self.dispatcher
                                             .send_pending_keys(self.pending_display())

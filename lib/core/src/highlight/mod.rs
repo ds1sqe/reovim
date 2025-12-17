@@ -8,7 +8,7 @@ pub use color::{downgrade_color, rgb_to_ansi256, ColorMode};
 pub use span::Span;
 pub use store::{BufferHighlights, HighlightStore, LineHighlight};
 pub use style::{Attributes, Style};
-pub use theme::{StatusLineModeStyles, Theme};
+pub use theme::{StatusLineModeStyles, Theme, ThemeName};
 
 /// Identifies the source/type of highlight for layering and management
 /// Lower values have lower priority (get overridden by higher values)

@@ -1,4 +1,4 @@
-use crate::highlight::ColorMode;
+use crate::highlight::{ColorMode, ThemeName};
 
 /// Set command options
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -6,6 +6,9 @@ pub enum SetOption {
     Number(bool),         // :set nu / :set nonu
     RelativeNumber(bool), // :set rnu / :set nornu
     ColorMode(ColorMode), // :set colormode=ansi|256|truecolor
+    ColorScheme(ThemeName), // :colorscheme dark|light|tokyonight
+    IndentGuide(bool),    // :set indentguide / :set noindentguide
+    Scrollbar(bool),      // :set scrollbar / :set noscrollbar
 }
 
 /// Parsed ex-commands (colon commands)
@@ -16,7 +19,10 @@ pub enum ExCommand {
     WriteQuit,
     /// Open/edit a file (:e filename)
     Edit { filename: String },
+    /// Set an option (:set ...)
     Set { option: SetOption },
+    /// Change colorscheme (:colorscheme name)
+    Colorscheme { name: ThemeName },
 
     // Window management
     /// Horizontal split (:sp, :split)
@@ -76,12 +82,32 @@ impl ExCommand {
             "set nornu" | "set norelativenumber" => Some(Self::Set {
                 option: SetOption::RelativeNumber(false),
             }),
+            // :set indentguide / :set noindentguide
+            "set indentguide" | "set ig" => Some(Self::Set {
+                option: SetOption::IndentGuide(true),
+            }),
+            "set noindentguide" | "set noig" => Some(Self::Set {
+                option: SetOption::IndentGuide(false),
+            }),
+            // :set scrollbar / :set noscrollbar
+            "set scrollbar" | "set sb" => Some(Self::Set {
+                option: SetOption::Scrollbar(true),
+            }),
+            "set noscrollbar" | "set nosb" => Some(Self::Set {
+                option: SetOption::Scrollbar(false),
+            }),
             // :set colormode=ansi|256|truecolor
             s if s.starts_with("set colormode=") => {
                 let mode_str = &s[14..];
                 ColorMode::parse(mode_str).map(|mode| Self::Set {
                     option: SetOption::ColorMode(mode),
                 })
+            }
+            // :colorscheme name
+            s if s.starts_with("colorscheme ") || s.starts_with("colo ") => {
+                let name_start = if s.starts_with("colorscheme ") { 12 } else { 5 };
+                let name_str = s[name_start..].trim();
+                ThemeName::parse(name_str).map(|name| Self::Colorscheme { name })
             }
 
             // Window management
