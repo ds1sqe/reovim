@@ -7,14 +7,28 @@ use reovim_sys::event::{KeyCode, KeyModifiers};
 #[must_use]
 pub fn key_to_string(event: &KeyEvent) -> String {
     let has_ctrl = event.modifiers.contains(KeyModifiers::CONTROL);
+    let has_shift = event.modifiers.contains(KeyModifiers::SHIFT);
 
-    // Handle Ctrl combinations first
+    // Handle Ctrl+Shift combinations (e.g., C-S-H for window movement)
+    if has_ctrl
+        && has_shift
+        && let KeyCode::Char(c) = event.code
+    {
+        return format!("<C-S-{}>", c.to_ascii_uppercase());
+    }
+
+    // Handle Ctrl combinations
     if has_ctrl {
         match event.code {
             KeyCode::Char(c) => return format!("<C-{c}>"),
             KeyCode::Tab => return String::from("<C-Tab>"),
             _ => {}
         }
+    }
+
+    // Handle Shift+Tab
+    if has_shift && event.code == KeyCode::BackTab {
+        return String::from("S-Tab");
     }
 
     match event.code {

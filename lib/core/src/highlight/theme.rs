@@ -50,6 +50,14 @@ pub struct Theme {
     pub indent_guide: Style,
     /// Active indent guide (at cursor's indent level)
     pub indent_guide_active: Style,
+    /// Active tab in tab line
+    pub tab_active: Style,
+    /// Inactive tab in tab line
+    pub tab_inactive: Style,
+    /// Tab line fill (empty space)
+    pub tab_fill: Style,
+    /// Window separator (between split windows)
+    pub window_separator: Style,
 }
 
 /// Mode-specific styles for the status line
@@ -184,6 +192,14 @@ impl Theme {
             // Indent guides: subtle vertical lines
             indent_guide: Style::new().fg(fg_dark),
             indent_guide_active: Style::new().fg(fg),
+
+            // Tab line styles
+            tab_active: Style::new().fg(fg).bg(bg_medium).bold(),
+            tab_inactive: Style::new().fg(fg_dark).bg(bg_dark),
+            tab_fill: Style::new().bg(bg_dark),
+
+            // Window separator
+            window_separator: Style::new().fg(fg_dark),
         }
     }
 
@@ -263,6 +279,14 @@ impl Theme {
             // Indent guides: light version
             indent_guide: Style::new().fg(Color::AnsiValue(250)),
             indent_guide_active: Style::new().fg(Color::Grey),
+
+            // Tab line styles
+            tab_active: Style::new().fg(fg_light).bg(bg_light).bold(),
+            tab_inactive: Style::new().fg(Color::Grey).bg(bg_medium),
+            tab_fill: Style::new().bg(bg_medium),
+
+            // Window separator
+            window_separator: Style::new().fg(Color::Grey),
         }
     }
 }

@@ -350,6 +350,22 @@ impl KeyMap {
         keymap.insert("zc".to_string(), KeyMapInner::with_command_id(builtin::FOLD_CLOSE));
         keymap.insert("zR".to_string(), KeyMapInner::with_command_id(builtin::FOLD_OPEN_ALL));
         keymap.insert("zM".to_string(), KeyMapInner::with_command_id(builtin::FOLD_CLOSE_ALL));
+
+        // Window navigation (C-hjkl)
+        keymap.insert("<C-h>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_LEFT));
+        keymap.insert("<C-j>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_DOWN));
+        keymap.insert("<C-k>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_UP));
+        keymap.insert("<C-l>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_RIGHT));
+
+        // Window movement (C-S-HJKL)
+        keymap.insert("<C-S-H>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_MOVE_LEFT));
+        keymap.insert("<C-S-J>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_MOVE_DOWN));
+        keymap.insert("<C-S-K>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_MOVE_UP));
+        keymap.insert("<C-S-L>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_MOVE_RIGHT));
+
+        // Tab navigation
+        keymap.insert("gt".to_string(), KeyMapInner::with_command_id(builtin::TAB_NEXT));
+        keymap.insert("gT".to_string(), KeyMapInner::with_command_id(builtin::TAB_PREV));
     }
 
     fn setup_insert_mode(keymap: &mut HashMap<String, KeyMapInner>) {

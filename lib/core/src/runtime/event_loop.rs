@@ -216,6 +216,22 @@ impl Runtime {
                     self.screen.focus_editor();
                     self.render();
                 }
+                // TODO: Implement in Phase 7
+                WindowEvent::SplitHorizontal { .. }
+                | WindowEvent::SplitVertical { .. }
+                | WindowEvent::Close { .. }
+                | WindowEvent::CloseOthers
+                | WindowEvent::FocusDirection { .. }
+                | WindowEvent::MoveWindow { .. }
+                | WindowEvent::Resize { .. }
+                | WindowEvent::Equalize
+                | WindowEvent::TabNew { .. }
+                | WindowEvent::TabClose
+                | WindowEvent::TabNext
+                | WindowEvent::TabPrev
+                | WindowEvent::TabGoto { .. } => {
+                    // Window management events - to be implemented
+                }
             },
             InnerEvent::ExplorerEvent(explorer_event) => match explorer_event {
                 ExplorerEvent::Toggle => {

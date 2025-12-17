@@ -17,6 +17,27 @@ pub enum ExCommand {
     /// Open/edit a file (:e filename)
     Edit { filename: String },
     Set { option: SetOption },
+
+    // Window management
+    /// Horizontal split (:sp, :split)
+    Split { filename: Option<String> },
+    /// Vertical split (:vs, :vsplit)
+    VSplit { filename: Option<String> },
+    /// Close current window (:close, :clo)
+    Close,
+    /// Close all other windows (:only, :on)
+    Only,
+
+    // Tab management
+    /// Create new tab (:tabnew, :tabe)
+    TabNew { filename: Option<String> },
+    /// Close current tab (:tabclose, :tabc)
+    TabClose,
+    /// Go to next tab (:tabnext, :tabn)
+    TabNext,
+    /// Go to previous tab (:tabprev, :tabp)
+    TabPrev,
+
     Unknown(String),
 }
 
@@ -62,6 +83,37 @@ impl ExCommand {
                     option: SetOption::ColorMode(mode),
                 })
             }
+
+            // Window management
+            "sp" | "split" => Some(Self::Split { filename: None }),
+            s if s.starts_with("sp ") => Some(Self::Split {
+                filename: Some(s[3..].trim().to_string()),
+            }),
+            s if s.starts_with("split ") => Some(Self::Split {
+                filename: Some(s[6..].trim().to_string()),
+            }),
+            "vs" | "vsplit" => Some(Self::VSplit { filename: None }),
+            s if s.starts_with("vs ") => Some(Self::VSplit {
+                filename: Some(s[3..].trim().to_string()),
+            }),
+            s if s.starts_with("vsplit ") => Some(Self::VSplit {
+                filename: Some(s[7..].trim().to_string()),
+            }),
+            "close" | "clo" => Some(Self::Close),
+            "only" | "on" => Some(Self::Only),
+
+            // Tab management
+            "tabnew" | "tabe" => Some(Self::TabNew { filename: None }),
+            s if s.starts_with("tabnew ") => Some(Self::TabNew {
+                filename: Some(s[7..].trim().to_string()),
+            }),
+            s if s.starts_with("tabe ") => Some(Self::TabNew {
+                filename: Some(s[5..].trim().to_string()),
+            }),
+            "tabclose" | "tabc" => Some(Self::TabClose),
+            "tabnext" | "tabn" => Some(Self::TabNext),
+            "tabprev" | "tabp" => Some(Self::TabPrev),
+
             _ => Some(Self::Unknown(trimmed.to_string())),
         }
     }

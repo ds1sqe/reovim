@@ -2,6 +2,60 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.4.7] - 2025-12-18
+
+### New Features
+
+#### Window Splits and Tab Pages
+- **Vim-style window splits** - Split editor into multiple panes
+  - `:sp [file]` / `:split [file]` - Horizontal split (one above the other)
+  - `:vs [file]` / `:vsplit [file]` - Vertical split (side by side)
+  - `:close` / `:clo` - Close current window
+  - `:only` / `:on` - Close all windows except current
+
+- **Window navigation** - Move focus between splits
+  - `Ctrl-h` - Focus window to the left
+  - `Ctrl-j` - Focus window below
+  - `Ctrl-k` - Focus window above
+  - `Ctrl-l` - Focus window to the right
+
+- **Window movement** - Reposition windows in layout
+  - `Ctrl-Shift-H` - Move window left
+  - `Ctrl-Shift-J` - Move window down
+  - `Ctrl-Shift-K` - Move window up
+  - `Ctrl-Shift-L` - Move window right
+
+- **Tab pages** - Multiple editor layouts
+  - `:tabnew [file]` / `:tabe [file]` - Create new tab
+  - `:tabclose` / `:tabc` - Close current tab
+  - `:tabnext` / `:tabn` - Switch to next tab
+  - `:tabprev` / `:tabp` - Switch to previous tab
+  - `gt` - Next tab
+  - `gT` - Previous tab
+
+- **Tab line rendering** - Visual tab indicator when multiple tabs exist
+- **Window separators** - Visual borders between split windows
+
+### Architecture
+
+- `SplitNode` - Binary tree for recursive window layouts
+- `TabPage` / `TabManager` - Tab page management
+- `WindowAction` / `TabAction` - Deferred action enums
+
+### New Files
+
+- `lib/core/src/screen/split.rs` - Split tree and layout calculation
+- `lib/core/src/screen/tab.rs` - Tab page and manager
+- `lib/core/src/command/builtin/window.rs` - Window commands
+- `lib/core/src/command/builtin/tab.rs` - Tab commands
+
+### Testing
+
+- **152 tests passing**
+- Zero warnings
+
+---
+
 ## [0.4.6] - 2025-12-18
 
 ### Features

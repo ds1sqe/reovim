@@ -7,7 +7,8 @@ use crate::buffer::TextOps;
 use crate::command::{
     traits::{
         CommandLineAction, CommandResult, CompletionAction, DeferredAction, ExecutionContext,
-        ExplorerAction, FoldAction, LeapAction, OperatorMotionAction, TelescopeAction,
+        ExplorerAction, FoldAction, LeapAction, OperatorMotionAction, TabAction, TelescopeAction,
+        WindowAction,
     },
     CommandTrait,
 };
@@ -15,7 +16,7 @@ use crate::explorer::ExplorerState;
 use crate::modd::ModeState;
 use crate::command_line::{ExCommand, SetOption};
 use crate::event::CommandEvent;
-use crate::screen::Position;
+use crate::screen::{NavigateDirection, Position, SplitDirection};
 use crate::textobject::SemanticTextObjectSpec;
 
 use super::Runtime;
@@ -119,7 +120,7 @@ impl Runtime {
 
 impl Runtime {
     /// Handle command line actions. Returns true if editor should quit.
-    #[allow(clippy::match_same_arms)]
+    #[allow(clippy::match_same_arms, clippy::too_many_lines)]
     pub(crate) fn handle_command_line_action(&mut self, action: &CommandLineAction) -> bool {
         match action {
             CommandLineAction::InsertChar(c) => {
@@ -188,6 +189,36 @@ impl Runtime {
                         },
                         ExCommand::Edit { filename } => {
                             self.open_file(&filename);
+                        }
+                        // Window management
+                        ExCommand::Split { filename } => {
+                            self.handle_window_split(false, filename.as_ref());
+                        }
+                        ExCommand::VSplit { filename } => {
+                            self.handle_window_split(true, filename.as_ref());
+                        }
+                        ExCommand::Close => {
+                            if self.handle_window_close(false) {
+                                return true;
+                            }
+                        }
+                        ExCommand::Only => {
+                            self.handle_window_only();
+                        }
+                        // Tab management
+                        ExCommand::TabNew { filename } => {
+                            self.handle_tab_new(filename.as_ref());
+                        }
+                        ExCommand::TabClose => {
+                            if self.handle_tab_close() {
+                                return true;
+                            }
+                        }
+                        ExCommand::TabNext => {
+                            self.handle_tab_next();
+                        }
+                        ExCommand::TabPrev => {
+                            self.handle_tab_prev();
                         }
                         ExCommand::Unknown(cmd) => {
                             tracing::warn!(command = %cmd, "Unknown ex-command");
@@ -331,6 +362,16 @@ impl Runtime {
                         }
                         DeferredAction::Leap(ref leap_action) => {
                             self.handle_leap_action(leap_action);
+                        }
+                        DeferredAction::Window(ref action) => {
+                            if self.handle_window_action(action) {
+                                return true;
+                            }
+                        }
+                        DeferredAction::Tab(ref action) => {
+                            if self.handle_tab_action(action) {
+                                return true;
+                            }
                         }
                     }
                 }
@@ -793,5 +834,146 @@ impl Runtime {
                 self.fold_manager.close_all(buffer_id);
             }
         }
+    }
+
+    // === Window Management Handlers ===
+
+    /// Handle window-related deferred actions. Returns true if editor should quit.
+    pub(crate) fn handle_window_action(&mut self, action: &WindowAction) -> bool {
+        match action {
+            WindowAction::SplitHorizontal { filename } => {
+                self.handle_window_split(false, filename.as_ref());
+            }
+            WindowAction::SplitVertical { filename } => {
+                self.handle_window_split(true, filename.as_ref());
+            }
+            WindowAction::Close { force } => {
+                if self.handle_window_close(*force) {
+                    return true;
+                }
+            }
+            WindowAction::CloseOthers => {
+                self.handle_window_only();
+            }
+            WindowAction::FocusDirection { direction } => {
+                self.handle_window_navigate(*direction);
+            }
+            WindowAction::MoveDirection { direction } => {
+                // Window movement (swap windows) - not yet implemented
+                tracing::info!(direction = ?direction, "Window move direction (not yet implemented)");
+            }
+            WindowAction::Resize { direction, delta } => {
+                tracing::info!(direction = ?direction, delta = %delta, "Window resize (not yet implemented)");
+            }
+            WindowAction::Equalize => {
+                self.handle_window_equalize();
+            }
+        }
+        false
+    }
+
+    /// Handle tab-related deferred actions. Returns true if editor should quit.
+    pub(crate) fn handle_tab_action(&mut self, action: &TabAction) -> bool {
+        match action {
+            TabAction::New { filename } => {
+                self.handle_tab_new(filename.as_ref());
+            }
+            TabAction::Close => {
+                if self.handle_tab_close() {
+                    return true;
+                }
+            }
+            TabAction::Next => {
+                self.handle_tab_next();
+            }
+            TabAction::Prev => {
+                self.handle_tab_prev();
+            }
+            TabAction::Goto { index } => {
+                self.screen.goto_tab(*index);
+            }
+        }
+        false
+    }
+
+    /// Handle window split command
+    pub(crate) fn handle_window_split(&mut self, vertical: bool, filename: Option<&String>) {
+        let direction = if vertical {
+            SplitDirection::Vertical
+        } else {
+            SplitDirection::Horizontal
+        };
+
+        // If a filename is provided, open it
+        if let Some(path) = filename {
+            self.open_file(path);
+        }
+
+        // Get the current buffer ID (either the newly opened file or existing buffer)
+        let buffer_id = self.screen.active_buffer_id().unwrap_or(0);
+
+        // Split the window
+        if let Some(new_window_id) = self.screen.split_window(direction) {
+            // Set the buffer for the new window
+            self.screen.set_window_buffer(new_window_id, buffer_id);
+            tracing::info!(
+                window_id = new_window_id,
+                buffer_id = buffer_id,
+                vertical = vertical,
+                "Window split created"
+            );
+        }
+    }
+
+    /// Handle window close command. Returns true if editor should quit.
+    pub(crate) fn handle_window_close(&mut self, _force: bool) -> bool {
+        // TODO: Check for unsaved changes if force is false
+        self.screen.close_window()
+    }
+
+    /// Handle close all other windows (:only)
+    pub(crate) fn handle_window_only(&mut self) {
+        self.screen.close_other_windows();
+    }
+
+    /// Handle window navigation (focus direction)
+    pub(crate) fn handle_window_navigate(&mut self, direction: NavigateDirection) {
+        self.screen.navigate_window(direction);
+    }
+
+    /// Handle window equalize
+    pub(crate) fn handle_window_equalize(&mut self) {
+        self.screen.equalize_windows();
+    }
+
+    // === Tab Management Handlers ===
+
+    /// Handle new tab command
+    pub(crate) fn handle_tab_new(&mut self, filename: Option<&String>) {
+        // If a filename is provided, open it
+        if let Some(path) = filename {
+            self.open_file(path);
+        }
+
+        // Get the current buffer ID
+        let buffer_id = self.screen.active_buffer_id().unwrap_or(0);
+
+        let tab_id = self.screen.new_tab(buffer_id);
+        tracing::info!(tab_id = tab_id, buffer_id = buffer_id, "New tab created");
+    }
+
+    /// Handle tab close command. Returns true if editor should quit.
+    pub(crate) fn handle_tab_close(&mut self) -> bool {
+        self.screen.close_tab()
+    }
+
+    /// Handle next tab command (gt)
+    pub(crate) fn handle_tab_next(&mut self) {
+        self.screen.next_tab();
+    }
+
+    /// Handle previous tab command (gT)
+    pub(crate) fn handle_tab_prev(&mut self) {
+        self.screen.prev_tab();
     }
 }

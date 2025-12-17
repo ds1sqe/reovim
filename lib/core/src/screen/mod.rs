@@ -34,9 +34,13 @@ pub use which_key::{WhichKeyConfig, WhichKeyPanel};
 
 pub mod cusor;
 pub mod layout;
+pub mod split;
+pub mod tab;
 pub mod window;
 
 pub use layout::{LayoutManager, WindowType};
+pub use split::{NavigateDirection, SplitDirection, SplitNode, WindowLayout, WindowRect};
+pub use tab::{TabInfo, TabManager, TabPage};
 
 pub struct ScreenSize {
     pub height: u16,
@@ -54,6 +58,12 @@ pub struct Screen {
     out_stream: Box<dyn Write>,
     windows: Vec<Window>,
     layout: LayoutManager,
+    /// Tab manager for split windows and tabs
+    tab_manager: TabManager,
+    /// Next available window ID
+    next_window_id: usize,
+    /// Mapping from `window_id` to `buffer_id`
+    window_buffers: std::collections::BTreeMap<usize, usize>,
 }
 
 impl Default for Screen {
@@ -65,8 +75,11 @@ impl Default for Screen {
         let anchor = Anchor { x: 0, y: 0 };
         let editor_height = rows.saturating_sub(1); // Reserve last row for status line
 
+        // Initial window ID is 0
+        let initial_window_id = 0;
+
         windows.push(Window {
-            id: 0,
+            id: initial_window_id,
             window_type: WindowType::Editor,
             anchor,
             width: columns,
@@ -78,6 +91,14 @@ impl Default for Screen {
 
         let layout = LayoutManager::new(columns, editor_height);
 
+        // Initialize tab manager with the first window
+        let mut tab_manager = TabManager::new();
+        tab_manager.init_with_window(initial_window_id);
+
+        // Initial window -> buffer mapping
+        let mut window_buffers = std::collections::BTreeMap::new();
+        window_buffers.insert(initial_window_id, 0);
+
         Self {
             size: ScreenSize {
                 width: columns,
@@ -86,6 +107,9 @@ impl Default for Screen {
             out_stream: Box::new(stdout),
             windows,
             layout,
+            tab_manager,
+            next_window_id: 1, // Next window will be ID 1
+            window_buffers,
         }
     }
 }
@@ -97,8 +121,10 @@ impl Screen {
         let anchor = Anchor { x: 0, y: 0 };
         let editor_height = height.saturating_sub(1);
 
+        let initial_window_id = 0;
+
         let windows = vec![Window {
-            id: 0,
+            id: initial_window_id,
             window_type: WindowType::Editor,
             anchor,
             width,
@@ -110,11 +136,22 @@ impl Screen {
 
         let layout = LayoutManager::new(width, editor_height);
 
+        // Initialize tab manager with the first window
+        let mut tab_manager = TabManager::new();
+        tab_manager.init_with_window(initial_window_id);
+
+        // Initial window -> buffer mapping
+        let mut window_buffers = std::collections::BTreeMap::new();
+        window_buffers.insert(initial_window_id, 0);
+
         Self {
             size: ScreenSize { height, width },
             out_stream: Box::new(writer),
             windows,
             layout,
+            tab_manager,
+            next_window_id: 1,
+            window_buffers,
         }
     }
 
@@ -186,6 +223,9 @@ impl Screen {
         queue!(self.out_stream, Print(RESET_STYLE))?;
         self.clear(ClearType::All)?;
 
+        // Render tab line if multiple tabs exist
+        self.render_tab_line(color_mode, theme)?;
+
         // Track cursor position from main buffer
         let mut cursor_pos: Option<(u16, u16)> = None;
         let mut current_buffer: Option<&Buffer> = None;
@@ -251,6 +291,9 @@ impl Screen {
                 }
             }
         }
+
+        // Render window separators for split windows
+        self.render_window_separators(color_mode, theme)?;
 
         // Render leap labels after windows (avoids borrow conflict)
         if let Some((window_x, window_y, scroll_offset)) = leap_render_info {
@@ -645,28 +688,362 @@ impl Screen {
         self.layout.focus_editor();
     }
 
-    /// Set the buffer ID for the editor window
+    /// Set the buffer ID for the editor window (legacy - use `set_window_buffer` for splits)
     pub fn set_editor_buffer(&mut self, buffer_id: usize) {
+        // Set buffer for active window
+        if let Some(window_id) = self.tab_manager.active_window_id() {
+            self.window_buffers.insert(window_id, buffer_id);
+            // Update the Window struct
+            for win in &mut self.windows {
+                if win.id == window_id {
+                    win.buffer_id = buffer_id;
+                    break;
+                }
+            }
+        }
+    }
+
+    /// Set the buffer ID for a specific window
+    pub fn set_window_buffer(&mut self, window_id: usize, buffer_id: usize) {
+        self.window_buffers.insert(window_id, buffer_id);
         for win in &mut self.windows {
-            if win.window_type == WindowType::Editor {
+            if win.id == window_id {
                 win.buffer_id = buffer_id;
                 break;
             }
         }
     }
 
-    /// Update window layouts based on current layout manager state
+    /// Get the buffer ID for the active window
+    #[must_use]
+    pub fn active_buffer_id(&self) -> Option<usize> {
+        self.tab_manager
+            .active_window_id()
+            .and_then(|wid| self.window_buffers.get(&wid).copied())
+    }
+
+    /// Get the active window ID
+    #[must_use]
+    pub fn active_window_id(&self) -> Option<usize> {
+        self.tab_manager.active_window_id()
+    }
+
+    /// Update window layouts based on current layout manager state and split tree
     fn update_window_layouts(&mut self) {
         let editor_layout = self.layout.editor_layout();
 
-        // Find and update the editor window
-        for win in &mut self.windows {
-            if win.window_type == WindowType::Editor {
-                win.anchor = editor_layout.anchor;
-                win.width = editor_layout.width;
-                win.height = editor_layout.height;
+        // Account for tab line height (1 row when multiple tabs exist)
+        let tab_offset = self.tab_line_height();
+
+        // Get the editor area rect, adjusted for tab line
+        let editor_rect = WindowRect::new(
+            editor_layout.anchor.x,
+            editor_layout.anchor.y + tab_offset,
+            editor_layout.width,
+            editor_layout.height.saturating_sub(tab_offset),
+        );
+
+        // Calculate window layouts from the active tab's split tree
+        if let Some(tab) = self.tab_manager.active_tab() {
+            let layouts = tab.calculate_layouts(editor_rect);
+
+            // Rebuild the windows vec from split tree layouts
+            self.windows.clear();
+            for layout in &layouts {
+                let buffer_id = self.window_buffers.get(&layout.window_id).copied().unwrap_or(0);
+                self.windows.push(Window {
+                    id: layout.window_id,
+                    window_type: WindowType::Editor,
+                    anchor: Anchor {
+                        x: layout.rect.x,
+                        y: layout.rect.y,
+                    },
+                    width: layout.rect.width,
+                    height: layout.rect.height,
+                    buffer_anchor: Anchor { x: 0, y: 0 },
+                    buffer_id,
+                    line_number: LineNumber::default(),
+                });
             }
         }
+    }
+
+    // === Window Split Operations ===
+
+    /// Split the active window
+    ///
+    /// Returns the new window ID if successful
+    pub fn split_window(&mut self, direction: SplitDirection) -> Option<usize> {
+        let new_window_id = self.next_window_id;
+        self.next_window_id += 1;
+
+        if let Some(tab) = self.tab_manager.active_tab_mut() {
+            // Get the current window's buffer to clone into the new window
+            let current_buffer_id = self
+                .window_buffers
+                .get(&tab.active_window_id)
+                .copied()
+                .unwrap_or(0);
+
+            tab.split(new_window_id, direction);
+            self.window_buffers.insert(new_window_id, current_buffer_id);
+            self.update_window_layouts();
+            Some(new_window_id)
+        } else {
+            None
+        }
+    }
+
+    /// Close the active window
+    ///
+    /// Returns true if the last window in the last tab was closed (editor should quit)
+    pub fn close_window(&mut self) -> bool {
+        if let Some(tab) = self.tab_manager.active_tab_mut() {
+            let closing_window_id = tab.active_window_id;
+            let is_last_window = tab.close_window(closing_window_id);
+
+            // Remove window from buffer mapping
+            self.window_buffers.remove(&closing_window_id);
+
+            if is_last_window && !self.tab_manager.close_tab() {
+                // Last window in last tab - return true to signal quit
+                return true;
+            }
+
+            self.update_window_layouts();
+        }
+        false
+    }
+
+    /// Close all windows except the active one
+    pub fn close_other_windows(&mut self) {
+        if let Some(tab) = self.tab_manager.active_tab_mut() {
+            let active_id = tab.active_window_id;
+            let all_ids: Vec<usize> = tab.window_ids();
+
+            // Remove all other windows from buffer mapping
+            for &id in &all_ids {
+                if id != active_id {
+                    self.window_buffers.remove(&id);
+                }
+            }
+
+            // Reset the split tree to just the active window
+            tab.root = SplitNode::leaf(active_id);
+            self.update_window_layouts();
+        }
+    }
+
+    /// Navigate focus to an adjacent window
+    pub fn navigate_window(&mut self, direction: NavigateDirection) {
+        // Calculate layouts for navigation
+        if let Some(tab) = self.tab_manager.active_tab() {
+            let editor_layout = self.layout.editor_layout();
+            let editor_rect = WindowRect::new(
+                editor_layout.anchor.x,
+                editor_layout.anchor.y,
+                editor_layout.width,
+                editor_layout.height,
+            );
+            let layouts = tab.calculate_layouts(editor_rect);
+
+            // Navigate in the active tab
+            if let Some(tab_mut) = self.tab_manager.active_tab_mut() {
+                tab_mut.navigate(direction, &layouts);
+            }
+        }
+    }
+
+    /// Equalize window sizes
+    pub fn equalize_windows(&mut self) {
+        if let Some(tab) = self.tab_manager.active_tab_mut() {
+            tab.equalize();
+            self.update_window_layouts();
+        }
+    }
+
+    // === Tab Operations ===
+
+    /// Create a new tab
+    ///
+    /// Returns the new tab ID
+    pub fn new_tab(&mut self, buffer_id: usize) -> usize {
+        let new_window_id = self.next_window_id;
+        self.next_window_id += 1;
+
+        self.window_buffers.insert(new_window_id, buffer_id);
+        let tab_id = self.tab_manager.new_tab(new_window_id);
+        self.update_window_layouts();
+        tab_id
+    }
+
+    /// Close the current tab
+    ///
+    /// Returns true if the last tab was closed (editor should quit)
+    pub fn close_tab(&mut self) -> bool {
+        // Remove window buffers for all windows in the current tab
+        if let Some(tab) = self.tab_manager.active_tab() {
+            for &window_id in &tab.window_ids() {
+                self.window_buffers.remove(&window_id);
+            }
+        }
+
+        if self.tab_manager.close_tab() {
+            self.update_window_layouts();
+            false
+        } else {
+            true // Last tab - should quit
+        }
+    }
+
+    /// Switch to next tab
+    pub fn next_tab(&mut self) {
+        self.tab_manager.next_tab();
+        self.update_window_layouts();
+    }
+
+    /// Switch to previous tab
+    pub fn prev_tab(&mut self) {
+        self.tab_manager.prev_tab();
+        self.update_window_layouts();
+    }
+
+    /// Go to a specific tab by index
+    pub fn goto_tab(&mut self, index: usize) {
+        self.tab_manager.goto_tab(index);
+        self.update_window_layouts();
+    }
+
+    /// Get tab information for display
+    #[must_use]
+    pub fn tab_info(&self) -> Vec<TabInfo> {
+        self.tab_manager.tab_info()
+    }
+
+    /// Get the number of tabs
+    #[must_use]
+    pub fn tab_count(&self) -> usize {
+        self.tab_manager.tab_count()
+    }
+
+    /// Get a reference to the tab manager
+    #[must_use]
+    pub const fn tab_manager(&self) -> &TabManager {
+        &self.tab_manager
+    }
+
+    /// Render the tab line at the top of the screen
+    #[allow(clippy::cast_possible_truncation)]
+    fn render_tab_line(
+        &mut self,
+        color_mode: ColorMode,
+        theme: &Theme,
+    ) -> std::result::Result<(), std::io::Error> {
+        use reovim_sys::style::{Attribute, SetAttribute};
+
+        let tabs = self.tab_manager.tab_info();
+        if tabs.len() <= 1 {
+            return Ok(());
+        }
+
+        queue!(self.out_stream, MoveTo(0, 0))?;
+
+        let mut x = 0u16;
+        for tab in &tabs {
+            let style = if tab.is_active {
+                &theme.tab_active
+            } else {
+                &theme.tab_inactive
+            };
+
+            let style_start = style.to_ansi_start(color_mode);
+            let label = format!(" {} ", tab.label);
+            let label_len = label.len() as u16;
+
+            // Check if we have room
+            if x + label_len > self.size.width {
+                break;
+            }
+
+            queue!(self.out_stream, Print(&style_start))?;
+            if tab.is_active {
+                queue!(self.out_stream, SetAttribute(Attribute::Bold))?;
+            }
+            queue!(self.out_stream, Print(&label))?;
+            queue!(self.out_stream, Print(RESET_STYLE))?;
+
+            x += label_len;
+        }
+
+        // Fill the rest of the line with tab line background
+        if x < self.size.width {
+            let fill_style = theme.tab_fill.to_ansi_start(color_mode);
+            let spaces = " ".repeat((self.size.width - x) as usize);
+            queue!(self.out_stream, Print(&fill_style))?;
+            queue!(self.out_stream, Print(&spaces))?;
+            queue!(self.out_stream, Print(RESET_STYLE))?;
+        }
+
+        Ok(())
+    }
+
+    /// Get the Y offset for the editor area (1 if tabs are shown, 0 otherwise)
+    #[must_use]
+    fn tab_line_height(&self) -> u16 {
+        u16::from(self.tab_manager.tab_count() > 1)
+    }
+
+    /// Render window separators for split windows
+    #[allow(clippy::cast_possible_truncation)]
+    fn render_window_separators(
+        &mut self,
+        color_mode: ColorMode,
+        theme: &Theme,
+    ) -> std::result::Result<(), std::io::Error> {
+        if self.windows.len() <= 1 {
+            return Ok(());
+        }
+
+        let sep_style = theme.window_separator.to_ansi_start(color_mode);
+
+        // Find vertical separators (where windows meet side-by-side)
+        for i in 0..self.windows.len() {
+            for j in (i + 1)..self.windows.len() {
+                let win_a = &self.windows[i];
+                let win_b = &self.windows[j];
+
+                // Check if windows are adjacent horizontally (vertical separator)
+                if win_a.anchor.x + win_a.width == win_b.anchor.x {
+                    // Draw vertical separator at the boundary
+                    let sep_x = win_b.anchor.x.saturating_sub(1);
+                    let start_y = win_a.anchor.y.max(win_b.anchor.y);
+                    let end_y = (win_a.anchor.y + win_a.height).min(win_b.anchor.y + win_b.height);
+
+                    queue!(self.out_stream, Print(&sep_style))?;
+                    for y in start_y..end_y {
+                        queue!(self.out_stream, MoveTo(sep_x, y))?;
+                        queue!(self.out_stream, Print("│"))?;
+                    }
+                    queue!(self.out_stream, Print(RESET_STYLE))?;
+                }
+
+                // Check if windows are adjacent vertically (horizontal separator)
+                if win_a.anchor.y + win_a.height == win_b.anchor.y {
+                    // Draw horizontal separator at the boundary
+                    let sep_y = win_b.anchor.y.saturating_sub(1);
+                    let start_x = win_a.anchor.x.max(win_b.anchor.x);
+                    let end_x = (win_a.anchor.x + win_a.width).min(win_b.anchor.x + win_b.width);
+
+                    queue!(self.out_stream, Print(&sep_style))?;
+                    queue!(self.out_stream, MoveTo(start_x, sep_y))?;
+                    let sep_line = "─".repeat((end_x - start_x) as usize);
+                    queue!(self.out_stream, Print(&sep_line))?;
+                    queue!(self.out_stream, Print(RESET_STYLE))?;
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// Render leap motion labels as overlays on match positions

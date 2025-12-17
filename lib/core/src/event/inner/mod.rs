@@ -7,6 +7,7 @@ use crate::completion::CompletionItem;
 use crate::highlight::{Highlight, HighlightGroup};
 use crate::leap::LeapDirection;
 use crate::modd::{ModeState, OperatorType};
+use crate::screen::{NavigateDirection, SplitDirection};
 use crate::telescope::{PreviewContent, TelescopeItem};
 use crate::treesitter::BufferEdit;
 
@@ -63,12 +64,31 @@ pub enum BufferEvent {
 
 /// Window-related events
 pub enum WindowEvent {
-    /// Toggle the explorer sidebar
+    // Explorer
     ToggleExplorer,
-    /// Focus the explorer window
     FocusExplorer,
-    /// Focus the editor window
     FocusEditor,
+
+    // Splits
+    SplitHorizontal { filename: Option<String> },
+    SplitVertical { filename: Option<String> },
+    Close { force: bool },
+    CloseOthers,
+
+    // Navigation
+    FocusDirection { direction: NavigateDirection },
+    MoveWindow { direction: NavigateDirection },
+
+    // Resize
+    Resize { direction: SplitDirection, delta: i16 },
+    Equalize,
+
+    // Tabs
+    TabNew { filename: Option<String> },
+    TabClose,
+    TabNext,
+    TabPrev,
+    TabGoto { index: usize },
 }
 
 /// Explorer-related events

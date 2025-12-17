@@ -3,6 +3,7 @@
 use crate::buffer::Buffer;
 use crate::leap::LeapDirection;
 use crate::modd::{ModeState, OperatorType};
+use crate::screen::{NavigateDirection, SplitDirection};
 use std::any::Any;
 use std::fmt::Debug;
 
@@ -41,27 +42,39 @@ pub enum CommandResult {
 /// Actions that require Runtime-level access
 #[derive(Debug)]
 pub enum DeferredAction {
-    /// Paste from register
-    /// `register` is the source register: None for unnamed, Some('a'-'z') for named, '+' for system
     Paste { before: bool, register: Option<char> },
-    /// Command line operations
     CommandLine(CommandLineAction),
-    /// Completion operations
     Completion(CompletionAction),
-    /// Explorer operations
     Explorer(ExplorerAction),
-    /// Telescope operations
     Telescope(TelescopeAction),
-    /// Code folding operations
     Fold(FoldAction),
-    /// Jump to older position (Ctrl-O)
     JumpOlder,
-    /// Jump to newer position (Ctrl-I)
     JumpNewer,
-    /// Execute operator with motion (e.g., dw, yj, c$)
     OperatorMotion(OperatorMotionAction),
-    /// Leap motion actions
     Leap(LeapAction),
+    Window(WindowAction),
+    Tab(TabAction),
+}
+
+#[derive(Debug)]
+pub enum WindowAction {
+    SplitHorizontal { filename: Option<String> },
+    SplitVertical { filename: Option<String> },
+    Close { force: bool },
+    CloseOthers,
+    FocusDirection { direction: NavigateDirection },
+    MoveDirection { direction: NavigateDirection },
+    Resize { direction: SplitDirection, delta: i16 },
+    Equalize,
+}
+
+#[derive(Debug)]
+pub enum TabAction {
+    New { filename: Option<String> },
+    Close,
+    Next,
+    Prev,
+    Goto { index: usize },
 }
 
 /// Leap motion actions

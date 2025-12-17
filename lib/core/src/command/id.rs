@@ -184,4 +184,29 @@ pub mod builtin {
     pub const FOLD_CLOSE: CommandId = CommandId::new("fold_close");
     pub const FOLD_OPEN_ALL: CommandId = CommandId::new("fold_open_all");
     pub const FOLD_CLOSE_ALL: CommandId = CommandId::new("fold_close_all");
+
+    // === Window Navigation ===
+    pub const WINDOW_FOCUS_LEFT: CommandId = CommandId::new("window_focus_left");
+    pub const WINDOW_FOCUS_DOWN: CommandId = CommandId::new("window_focus_down");
+    pub const WINDOW_FOCUS_UP: CommandId = CommandId::new("window_focus_up");
+    pub const WINDOW_FOCUS_RIGHT: CommandId = CommandId::new("window_focus_right");
+
+    // === Window Movement ===
+    pub const WINDOW_MOVE_LEFT: CommandId = CommandId::new("window_move_left");
+    pub const WINDOW_MOVE_DOWN: CommandId = CommandId::new("window_move_down");
+    pub const WINDOW_MOVE_UP: CommandId = CommandId::new("window_move_up");
+    pub const WINDOW_MOVE_RIGHT: CommandId = CommandId::new("window_move_right");
+
+    // === Window Splits ===
+    pub const WINDOW_SPLIT_HORIZONTAL: CommandId = CommandId::new("window_split_horizontal");
+    pub const WINDOW_SPLIT_VERTICAL: CommandId = CommandId::new("window_split_vertical");
+    pub const WINDOW_CLOSE: CommandId = CommandId::new("window_close");
+    pub const WINDOW_ONLY: CommandId = CommandId::new("window_only");
+    pub const WINDOW_EQUALIZE: CommandId = CommandId::new("window_equalize");
+
+    // === Tab Management ===
+    pub const TAB_NEW: CommandId = CommandId::new("tab_new");
+    pub const TAB_CLOSE: CommandId = CommandId::new("tab_close");
+    pub const TAB_NEXT: CommandId = CommandId::new("tab_next");
+    pub const TAB_PREV: CommandId = CommandId::new("tab_prev");
 }
