@@ -624,9 +624,15 @@ impl Buffer {
     #[allow(clippy::cast_possible_truncation)]
     pub fn delete_to_motion(&mut self, motion: Motion, count: usize) -> String {
         let start = self.cur;
-        let target = calculate_motion(&self.contents, self.cur, motion, count);
 
         if motion.is_linewise() {
+            // Special case: count=0 means delete current line only (dd with count=1)
+            // This is needed because calculate_motion forces count=0 to count=1
+            if count == 0 {
+                return self.delete_lines(start.y as usize, start.y as usize);
+            }
+
+            let target = calculate_motion(&self.contents, self.cur, motion, count);
             // Linewise delete (dj, dk, dG, dgg)
             let (from_y, to_y) = if start.y <= target.y {
                 (start.y as usize, target.y as usize)
@@ -636,6 +642,7 @@ impl Buffer {
             self.delete_lines(from_y, to_y)
         } else {
             // Characterwise delete (dw, db, d$, d0)
+            let target = calculate_motion(&self.contents, self.cur, motion, count);
             let (from, to) = if start.y < target.y || (start.y == target.y && start.x <= target.x)
             {
                 (start, target)
@@ -652,9 +659,15 @@ impl Buffer {
     #[allow(clippy::cast_possible_truncation)]
     pub fn yank_to_motion(&mut self, motion: Motion, count: usize) -> String {
         let start = self.cur;
-        let target = calculate_motion(&self.contents, self.cur, motion, count);
 
         if motion.is_linewise() {
+            // Special case: count=0 means yank current line only (yy with count=1)
+            // This is needed because calculate_motion forces count=0 to count=1
+            if count == 0 {
+                return self.yank_lines(start.y as usize, start.y as usize);
+            }
+
+            let target = calculate_motion(&self.contents, self.cur, motion, count);
             // Linewise yank
             let (from_y, to_y) = if start.y <= target.y {
                 (start.y as usize, target.y as usize)
@@ -664,6 +677,7 @@ impl Buffer {
             self.yank_lines(from_y, to_y)
         } else {
             // Characterwise yank
+            let target = calculate_motion(&self.contents, self.cur, motion, count);
             let (from, to) = if start.y < target.y || (start.y == target.y && start.x <= target.x)
             {
                 (start, target)

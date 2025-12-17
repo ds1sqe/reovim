@@ -202,7 +202,7 @@ impl CommandHandler {
             }
 
             // Handle 'd' for dd (delete line), 'y' for yy, 'c' for cc
-            match (key, operator) {
+            match (key, *operator) {
                 ("d", OperatorType::Delete) | ("y", OperatorType::Yank) | ("c", OperatorType::Change) => {
                     // dd/yy/cc: delete/yank/change current line(s)
                     // Use Down motion with count-1 to affect count lines
@@ -452,7 +452,11 @@ impl CommandHandler {
 
                                 // Sync local mode from Runtime's watch channel
                                 // This catches mode changes initiated by Runtime (e.g., explorer focus)
-                                self.local_mode = self.mode_rx.borrow().clone();
+                                // Don't overwrite if in a handler-initiated transient state (OperatorPending, Leap)
+                                // to avoid race condition where runtime hasn't processed mode change yet
+                                if !self.local_mode.is_operator_pending() && !self.local_mode.is_leap() {
+                                    self.local_mode = self.mode_rx.borrow().clone();
+                                }
 
                                 // Hide which-key popup on any key press
                                 self.hide_which_key().await;

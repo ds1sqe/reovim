@@ -20,6 +20,9 @@ pub enum CommandRef {
 pub struct KeyMapInner {
     /// If this is a terminal node, the command to execute
     pub command: Option<CommandRef>,
+    /// Optional description hint for which-key (overrides command description)
+    /// Used for dynamically-handled keys like operator motions
+    pub hint: Option<String>,
     /// Children for multi-key sequences (e.g., "dd", "gg")
     #[allow(dead_code)] // Infrastructure for proper trie-based lookup
     pub next: HashMap<String, Self>,
@@ -30,6 +33,7 @@ impl KeyMapInner {
     pub fn new() -> Self {
         Self {
             command: None,
+            hint: None,
             next: HashMap::new(),
         }
     }
@@ -39,6 +43,7 @@ impl KeyMapInner {
     pub fn with_command_ref(cmd: CommandRef) -> Self {
         Self {
             command: Some(cmd),
+            hint: None,
             next: HashMap::new(),
         }
     }
@@ -48,6 +53,7 @@ impl KeyMapInner {
     pub fn with_command_id(id: CommandId) -> Self {
         Self {
             command: Some(CommandRef::Registered(id)),
+            hint: None,
             next: HashMap::new(),
         }
     }
@@ -57,15 +63,31 @@ impl KeyMapInner {
     pub fn with_inline_command(cmd: Arc<dyn CommandTrait>) -> Self {
         Self {
             command: Some(CommandRef::Inline(cmd)),
+            hint: None,
+            next: HashMap::new(),
+        }
+    }
+
+    /// Create a hint-only node for which-key display (no command)
+    /// Used for dynamically-handled keys like operator motions
+    #[must_use]
+    pub fn with_hint(description: impl Into<String>) -> Self {
+        Self {
+            command: None,
+            hint: Some(description.into()),
             next: HashMap::new(),
         }
     }
 
     /// Get the description for this binding
     ///
-    /// Returns the command's description if available, or a prefix indicator.
+    /// Priority: hint > command description > prefix indicator
     #[must_use]
     pub fn get_description(&self, registry: &CommandRegistry) -> String {
+        // Hint overrides everything
+        if let Some(hint) = &self.hint {
+            return hint.clone();
+        }
         match &self.command {
             Some(CommandRef::Registered(id)) => registry
                 .get(id)
@@ -75,10 +97,10 @@ impl KeyMapInner {
         }
     }
 
-    /// Check if this is a prefix node (has no command, only children)
+    /// Check if this is a prefix node (has no command and no hint)
     #[must_use]
     pub const fn is_prefix(&self) -> bool {
-        self.command.is_none()
+        self.command.is_none() && self.hint.is_none()
     }
 }
 
@@ -92,6 +114,7 @@ impl std::fmt::Debug for KeyMapInner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("KeyMapInner")
             .field("command", &self.command)
+            .field("hint", &self.hint)
             .field("next_keys", &self.next.keys().collect::<Vec<_>>())
             .finish()
     }
@@ -443,8 +466,26 @@ impl KeyMap {
 
     fn setup_operator_pending_mode(keymap: &mut HashMap<String, KeyMapInner>) {
         // Escape cancels operator-pending mode
-        keymap.insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::ENTER_NORMAL_MODE));
-        // Motion keys and 'd' for dd are handled dynamically in CommandHandler
+        keymap.insert("<Escape>".to_string(), KeyMapInner::with_command_id(builtin::ENTER_NORMAL_MODE));
+
+        // Motion hints for which-key (actual handling is dynamic in CommandHandler)
+        // These don't execute commands but show in which-key panel
+        keymap.insert("d".to_string(), KeyMapInner::with_hint("delete line (dd)"));
+        keymap.insert("y".to_string(), KeyMapInner::with_hint("yank line (yy)"));
+        keymap.insert("c".to_string(), KeyMapInner::with_hint("change line (cc)"));
+        keymap.insert("w".to_string(), KeyMapInner::with_hint("word forward"));
+        keymap.insert("b".to_string(), KeyMapInner::with_hint("word backward"));
+        keymap.insert("e".to_string(), KeyMapInner::with_hint("word end"));
+        keymap.insert("$".to_string(), KeyMapInner::with_hint("end of line"));
+        keymap.insert("0".to_string(), KeyMapInner::with_hint("start of line"));
+        keymap.insert("^".to_string(), KeyMapInner::with_hint("first non-blank"));
+        keymap.insert("j".to_string(), KeyMapInner::with_hint("line down"));
+        keymap.insert("k".to_string(), KeyMapInner::with_hint("line up"));
+        keymap.insert("G".to_string(), KeyMapInner::with_hint("end of file"));
+        keymap.insert("g".to_string(), KeyMapInner::new()); // prefix for gg
+        keymap.insert("gg".to_string(), KeyMapInner::with_hint("start of file"));
+        keymap.insert("i".to_string(), KeyMapInner::with_hint("inner text object"));
+        keymap.insert("a".to_string(), KeyMapInner::with_hint("around text object"));
     }
 
     /// Telescope Normal mode - navigation keys (j/k/gg/G)

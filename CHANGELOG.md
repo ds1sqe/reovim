@@ -2,6 +2,35 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.4.10] - 2025-12-18
+
+### Bug Fixes
+
+- **Fixed dd/yy/cc operators not working on real files**:
+  - Race condition fix: Prevent `local_mode` from being overwritten when already in operator-pending mode
+  - Explicit dereference in match pattern for operator type
+  - Count=0 handling: `dd` now correctly deletes only the current line (was deleting 2 lines)
+  - Buffer ID fix: Operators now use active buffer instead of hardcoded buffer 0
+  - Paste fix: `p` command now uses active buffer instead of hardcoded buffer 0
+
+- **Fixed which-key showing "E" instead of proper hints in operator-pending mode**:
+  - Added `hint` field to `KeyMapInner` for hint-only entries
+  - Operator-pending keymap now shows proper descriptions (e.g., "delete line (dd)")
+
+### Files Changed
+
+- `lib/core/src/bind/mod.rs` - Hint system for operator-pending mode
+- `lib/core/src/buffer/mod.rs` - Count=0 fix for dd/yy
+- `lib/core/src/event/handler/command/mod.rs` - Race condition fix
+- `lib/core/src/runtime/handlers.rs` - Buffer ID and paste fixes
+
+### Testing
+
+- **159 tests passing**
+- Zero warnings
+
+---
+
 ## [0.4.9] - 2025-12-18
 
 ### Bug Fixes
@@ -137,11 +166,6 @@ All notable changes to Reovim will be documented in this file.
 - `lib/core/src/buffer/mod.rs` - Word textobject methods
 - `lib/core/src/event/inner/mod.rs` - VisualTextObjectAction
 - `lib/core/src/runtime/handlers.rs` - New command handlers
-
-### Testing
-
-- **155 tests passing**
-- Zero warnings
 
 ---
 

@@ -371,13 +371,15 @@ impl Runtime {
                         DeferredAction::Paste { before: _before, register } => {
                             // Handle paste from specified register
                             // TODO: implement proper PasteBefore (paste at cursor vs before cursor)
+                            // Use active_buffer_id, not context.buffer_id (which is hardcoded to 0 in dispatcher)
+                            let paste_buffer_id = self.active_buffer_id;
                             if let Some(text) = self.registers.get_by_name(register)
-                                && let Some(buf) = self.buffers.get_mut(&context.buffer_id)
+                                && let Some(buf) = self.buffers.get_mut(&paste_buffer_id)
                             {
                                 buf.insert_text(&text);
                             }
                             // Schedule treesitter reparse after paste
-                            self.schedule_treesitter_reparse(context.buffer_id);
+                            self.schedule_treesitter_reparse(paste_buffer_id);
                             self.render();
                         }
                         DeferredAction::CommandLine(cl_action) => {
@@ -651,8 +653,7 @@ impl Runtime {
 
     /// Handle operator + motion action (d/y/c + motion)
     pub(crate) fn handle_operator_motion(&mut self, action: &OperatorMotionAction) {
-        // Get the primary buffer (buffer 0 for now)
-        let buffer_id = 0;
+        let buffer_id = self.active_buffer_id;
         let mut text_modified = false;
 
         if let Some(buffer) = self.buffers.get_mut(&buffer_id) {
