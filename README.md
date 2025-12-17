@@ -32,10 +32,17 @@ A Rust-powered neovim-like text editor.
 - Status line with mode, pending keys, last command
 - Landing page when started without a file
 
+### Syntax & Code Intelligence
+- **Treesitter syntax highlighting** - Accurate parsing for Rust, C, JavaScript, Python, JSON, TOML, Markdown
+- **Code folding** - `za`/`zo`/`zc` to toggle, `zR`/`zM` to open/close all
+- **Semantic text objects** - `af`/`if` (function), `ac`/`ic` (class/struct)
+
 ### Performance
 - **50-80% faster** than v0.3.0 baseline
-- Sub-microsecond window render (~639ns)
+- Sub-microsecond window render (~473ns)
+- Input RTT: 28µs (char insert), 45µs (word motion)
 - 91% faster page navigation
+- Zero-allocation render path (no buffer cloning)
 - Async architecture with tokio runtime
 - Cross-platform terminal support via crossterm
 
@@ -87,6 +94,11 @@ Most movement commands support a numeric prefix (e.g., `5j` moves down 5 lines).
 | `Space f g` | Telescope live grep |
 | `Space f b` | Telescope buffers |
 | `Ctrl-Space` | Trigger completion |
+| `za` | Toggle fold at cursor |
+| `zo` | Open fold at cursor |
+| `zc` | Close fold at cursor |
+| `zR` | Open all folds |
+| `zM` | Close all folds |
 
 **Insert Mode**
 | Key | Action |

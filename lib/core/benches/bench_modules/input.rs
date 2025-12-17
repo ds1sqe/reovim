@@ -5,6 +5,7 @@ use reovim_core::buffer::TextOps;
 use reovim_core::{
     command_line::CommandLine,
     completion::{CompletionItem, CompletionState},
+    folding::FoldManager,
     highlight::{ColorMode, HighlightStore, Theme},
     leap::LeapState,
     modd::ModeState,
@@ -12,7 +13,7 @@ use reovim_core::{
     telescope::TelescopeState,
 };
 
-use super::common::{create_buffer, MockWriter};
+use super::common::{buffer_to_map, create_buffer, MockWriter};
 
 /// Benchmark simulating typing in insert mode
 pub fn bench_typing_simulation(c: &mut Criterion) {
@@ -23,6 +24,7 @@ pub fn bench_typing_simulation(c: &mut Criterion) {
     let color_mode = ColorMode::TrueColor;
     let mode = ModeState::insert();
     let leap = LeapState::new();
+    let fold_manager = FoldManager::new();
     let cmd_line = CommandLine::default();
     let pending_keys = "";
     let last_command = "";
@@ -43,7 +45,7 @@ pub fn bench_typing_simulation(c: &mut Criterion) {
             },
             |(mut buffer, mut screen)| {
                 buffer.insert_char('x');
-                let buffers = vec![buffer.clone()];
+                let buffers = buffer_to_map(buffer.clone());
                 screen
                     .render(
                         black_box(&buffers),
@@ -59,6 +61,7 @@ pub fn bench_typing_simulation(c: &mut Criterion) {
                         black_box(&completion),
                         black_box(&telescope),
                         black_box(&leap),
+                        black_box(&fold_manager),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -80,7 +83,7 @@ pub fn bench_typing_simulation(c: &mut Criterion) {
                 for c in chars_to_type.chars().take(10) {
                     buffer.insert_char(c);
                 }
-                let buffers = vec![buffer.clone()];
+                let buffers = buffer_to_map(buffer.clone());
                 screen
                     .render(
                         black_box(&buffers),
@@ -96,6 +99,7 @@ pub fn bench_typing_simulation(c: &mut Criterion) {
                         black_box(&completion),
                         black_box(&telescope),
                         black_box(&leap),
+                        black_box(&fold_manager),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -116,6 +120,7 @@ pub fn bench_scrolling_simulation(c: &mut Criterion) {
     let color_mode = ColorMode::TrueColor;
     let mode = ModeState::normal();
     let leap = LeapState::new();
+    let fold_manager = FoldManager::new();
     let cmd_line = CommandLine::default();
     let pending_keys = "";
     let last_command = "";
@@ -136,7 +141,7 @@ pub fn bench_scrolling_simulation(c: &mut Criterion) {
                 if (buffer.cur.y as usize) < buffer.contents.len() - 1 {
                     buffer.cur.y += 1;
                 }
-                let buffers = vec![buffer.clone()];
+                let buffers = buffer_to_map(buffer.clone());
                 screen
                     .render(
                         black_box(&buffers),
@@ -152,6 +157,7 @@ pub fn bench_scrolling_simulation(c: &mut Criterion) {
                         black_box(&completion),
                         black_box(&telescope),
                         black_box(&leap),
+                        black_box(&fold_manager),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -174,7 +180,7 @@ pub fn bench_scrolling_simulation(c: &mut Criterion) {
                     if (buffer.cur.y as usize) < buffer.contents.len() - 1 {
                         buffer.cur.y += 1;
                     }
-                    let buffers = vec![buffer.clone()];
+                    let buffers = buffer_to_map(buffer.clone());
                     screen
                         .render(
                             black_box(&buffers),
@@ -190,6 +196,7 @@ pub fn bench_scrolling_simulation(c: &mut Criterion) {
                             black_box(&completion),
                             black_box(&telescope),
                             black_box(&leap),
+                            black_box(&fold_manager),
                         )
                         .unwrap();
                 }
@@ -210,7 +217,7 @@ pub fn bench_scrolling_simulation(c: &mut Criterion) {
             },
             |(mut buffer, mut screen)| {
                 buffer.cur.y = buffer.cur.y.saturating_add(25).min(buffer.contents.len() as u16 - 1);
-                let buffers = vec![buffer.clone()];
+                let buffers = buffer_to_map(buffer.clone());
                 screen
                     .render(
                         black_box(&buffers),
@@ -226,6 +233,7 @@ pub fn bench_scrolling_simulation(c: &mut Criterion) {
                         black_box(&completion),
                         black_box(&telescope),
                         black_box(&leap),
+                        black_box(&fold_manager),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -251,9 +259,10 @@ pub fn bench_mode_switching(c: &mut Criterion) {
     let completion = CompletionState::new();
     let telescope = TelescopeState::new();
     let leap = LeapState::new();
+    let fold_manager = FoldManager::new();
 
     let buffer = create_buffer(1000);
-    let buffers = vec![buffer];
+    let buffers = buffer_to_map(buffer);
 
     let normal_mode = ModeState::normal();
     let insert_mode = ModeState::insert();
@@ -280,6 +289,7 @@ pub fn bench_mode_switching(c: &mut Criterion) {
                         black_box(&completion),
                         black_box(&telescope),
                         black_box(&leap),
+                        black_box(&fold_manager),
                     )
                     .unwrap();
 
@@ -298,6 +308,7 @@ pub fn bench_mode_switching(c: &mut Criterion) {
                         black_box(&completion),
                         black_box(&telescope),
                         black_box(&leap),
+                        black_box(&fold_manager),
                     )
                     .unwrap();
 
@@ -316,6 +327,7 @@ pub fn bench_mode_switching(c: &mut Criterion) {
                         black_box(&completion),
                         black_box(&telescope),
                         black_box(&leap),
+                        black_box(&fold_manager),
                     )
                     .unwrap();
 
@@ -342,9 +354,10 @@ pub fn bench_completion_popup(c: &mut Criterion) {
     let which_key = WhichKeyPanel::new();
     let telescope = TelescopeState::new();
     let leap = LeapState::new();
+    let fold_manager = FoldManager::new();
 
     let buffer = create_buffer(1000);
-    let buffers = vec![buffer];
+    let buffers = buffer_to_map(buffer);
 
     let mut completion = CompletionState::new();
     let items: Vec<CompletionItem> = (0..20)
@@ -374,6 +387,7 @@ pub fn bench_completion_popup(c: &mut Criterion) {
                         black_box(&completion),
                         black_box(&telescope),
                         black_box(&leap),
+                        black_box(&fold_manager),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -405,6 +419,7 @@ pub fn bench_completion_popup(c: &mut Criterion) {
                         black_box(&no_completion),
                         black_box(&telescope),
                         black_box(&leap),
+                        black_box(&fold_manager),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -432,6 +447,7 @@ pub fn bench_sustained_input(c: &mut Criterion) {
     let completion = CompletionState::new();
     let telescope = TelescopeState::new();
     let leap = LeapState::new();
+    let fold_manager = FoldManager::new();
 
     group.bench_function("100_keystrokes_each_rendered", |b| {
         b.iter_with_setup(
@@ -445,7 +461,7 @@ pub fn bench_sustained_input(c: &mut Criterion) {
             |(mut buffer, mut screen)| {
                 for i in 0..100u8 {
                     buffer.insert_char((b'a' + (i % 26)) as char);
-                    let buffers = vec![buffer.clone()];
+                    let buffers = buffer_to_map(buffer.clone());
                     screen
                         .render(
                             black_box(&buffers),
@@ -461,6 +477,7 @@ pub fn bench_sustained_input(c: &mut Criterion) {
                             black_box(&completion),
                             black_box(&telescope),
                             black_box(&leap),
+                            black_box(&fold_manager),
                         )
                         .unwrap();
                 }

@@ -4,12 +4,14 @@ use criterion::{black_box, BenchmarkId, Criterion};
 use reovim_core::{
     command_line::CommandLine,
     completion::CompletionState,
+    folding::FoldManager,
     highlight::{ColorMode, HighlightStore, Theme},
     leap::LeapState,
     modd::ModeState,
     screen::{Screen, WhichKeyPanel},
     telescope::TelescopeState,
 };
+use std::collections::BTreeMap;
 use std::io::BufWriter;
 use tempfile::NamedTempFile;
 
@@ -30,10 +32,12 @@ pub fn bench_screen_render_full_io(c: &mut Criterion) {
     let completion = CompletionState::new();
     let telescope = TelescopeState::new();
     let leap = LeapState::new();
+    let fold_manager = FoldManager::new();
 
     for lines in [100, 1000, 10000] {
         let buffer = create_buffer(lines);
-        let buffers = vec![buffer];
+        let mut buffers = BTreeMap::new();
+        buffers.insert(0, buffer);
 
         group.bench_with_input(
             BenchmarkId::new("full_render", lines),
@@ -60,6 +64,7 @@ pub fn bench_screen_render_full_io(c: &mut Criterion) {
                                 black_box(&completion),
                                 black_box(&telescope),
                                 black_box(&leap),
+                                black_box(&fold_manager),
                             )
                             .unwrap();
                         screen.flush().unwrap();
@@ -82,6 +87,7 @@ pub fn bench_io_bytes_written(c: &mut Criterion) {
     let color_mode = ColorMode::TrueColor;
     let mode = ModeState::normal();
     let leap = LeapState::new();
+    let fold_manager = FoldManager::new();
     let cmd_line = CommandLine::default();
     let pending_keys = "";
     let last_command = "";
@@ -90,7 +96,8 @@ pub fn bench_io_bytes_written(c: &mut Criterion) {
     let telescope = TelescopeState::new();
 
     let buffer = create_buffer(1000);
-    let buffers = vec![buffer];
+    let mut buffers = BTreeMap::new();
+    buffers.insert(0, buffer);
 
     let estimated_bytes = 20_000u64;
     group.throughput(criterion::Throughput::Bytes(estimated_bytes));
@@ -117,6 +124,7 @@ pub fn bench_io_bytes_written(c: &mut Criterion) {
                         black_box(&completion),
                         black_box(&telescope),
                         black_box(&leap),
+                        black_box(&fold_manager),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -137,6 +145,7 @@ pub fn bench_screen_viewport_io(c: &mut Criterion) {
     let color_mode = ColorMode::TrueColor;
     let mode = ModeState::normal();
     let leap = LeapState::new();
+    let fold_manager = FoldManager::new();
     let cmd_line = CommandLine::default();
     let pending_keys = "";
     let last_command = "";
@@ -145,7 +154,8 @@ pub fn bench_screen_viewport_io(c: &mut Criterion) {
     let telescope = TelescopeState::new();
 
     let buffer = create_buffer(10000);
-    let buffers = vec![buffer];
+    let mut buffers = BTreeMap::new();
+    buffers.insert(0, buffer);
 
     for height in [24, 50, 100] {
         group.bench_with_input(
@@ -173,6 +183,7 @@ pub fn bench_screen_viewport_io(c: &mut Criterion) {
                                 black_box(&completion),
                                 black_box(&telescope),
                                 black_box(&leap),
+                                black_box(&fold_manager),
                             )
                             .unwrap();
                         screen.flush().unwrap();
@@ -195,6 +206,7 @@ pub fn bench_file_io(c: &mut Criterion) {
     let color_mode = ColorMode::TrueColor;
     let mode = ModeState::normal();
     let leap = LeapState::new();
+    let fold_manager = FoldManager::new();
     let cmd_line = CommandLine::default();
     let pending_keys = "";
     let last_command = "";
@@ -203,7 +215,8 @@ pub fn bench_file_io(c: &mut Criterion) {
     let telescope = TelescopeState::new();
 
     let buffer = create_buffer(1000);
-    let buffers = vec![buffer];
+    let mut buffers = BTreeMap::new();
+    buffers.insert(0, buffer);
 
     group.bench_function("unbuffered_file", |b| {
         b.iter_with_setup(
@@ -228,6 +241,7 @@ pub fn bench_file_io(c: &mut Criterion) {
                         black_box(&completion),
                         black_box(&telescope),
                         black_box(&leap),
+                        black_box(&fold_manager),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -260,6 +274,7 @@ pub fn bench_file_io(c: &mut Criterion) {
                         black_box(&completion),
                         black_box(&telescope),
                         black_box(&leap),
+                        black_box(&fold_manager),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -280,6 +295,7 @@ pub fn bench_file_io_viewport(c: &mut Criterion) {
     let color_mode = ColorMode::TrueColor;
     let mode = ModeState::normal();
     let leap = LeapState::new();
+    let fold_manager = FoldManager::new();
     let cmd_line = CommandLine::default();
     let pending_keys = "";
     let last_command = "";
@@ -288,7 +304,8 @@ pub fn bench_file_io_viewport(c: &mut Criterion) {
     let telescope = TelescopeState::new();
 
     let buffer = create_buffer(10000);
-    let buffers = vec![buffer];
+    let mut buffers = BTreeMap::new();
+    buffers.insert(0, buffer);
 
     for height in [24, 50, 100] {
         group.bench_with_input(
@@ -318,6 +335,7 @@ pub fn bench_file_io_viewport(c: &mut Criterion) {
                                 black_box(&completion),
                                 black_box(&telescope),
                                 black_box(&leap),
+                                black_box(&fold_manager),
                             )
                             .unwrap();
                         screen.flush().unwrap();

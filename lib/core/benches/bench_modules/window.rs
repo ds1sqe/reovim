@@ -19,7 +19,7 @@ pub fn bench_window_render(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("buffer_lines", lines), &buffer, |b, buf| {
             b.iter(|| {
                 let output =
-                    window.render(black_box(buf), black_box(&highlight_store), black_box(color_mode), black_box(&theme));
+                    window.render(black_box(buf), black_box(&highlight_store), black_box(color_mode), black_box(&theme), None);
                 black_box(output)
             })
         });
@@ -43,7 +43,7 @@ pub fn bench_window_viewport_size(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("height", height), &buffer, |b, buf| {
             b.iter(|| {
                 let output =
-                    window.render(black_box(buf), black_box(&highlight_store), black_box(color_mode), black_box(&theme));
+                    window.render(black_box(buf), black_box(&highlight_store), black_box(color_mode), black_box(&theme), None);
                 black_box(output)
             })
         });
@@ -64,7 +64,7 @@ pub fn bench_window_with_highlights(c: &mut Criterion) {
     group.bench_function("no_highlights", |b| {
         b.iter(|| {
             let output =
-                window.render(black_box(&buffer), black_box(&empty_store), black_box(color_mode), black_box(&theme));
+                window.render(black_box(&buffer), black_box(&empty_store), black_box(color_mode), black_box(&theme), None);
             black_box(output)
         })
     });
@@ -86,7 +86,7 @@ pub fn bench_render_throughput(c: &mut Criterion) {
     group.bench_function("renders_per_second", |b| {
         b.iter(|| {
             let output =
-                window.render(black_box(&buffer), black_box(&highlight_store), black_box(color_mode), black_box(&theme));
+                window.render(black_box(&buffer), black_box(&highlight_store), black_box(color_mode), black_box(&theme), None);
             black_box(output)
         })
     });

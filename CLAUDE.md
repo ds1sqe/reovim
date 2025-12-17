@@ -123,12 +123,14 @@ Reovim is a Rust-based neovim-like text editor built with async tokio runtime an
 
 1.92 (Rust 2024 edition)
 
-### Performance (v0.4.2)
+### Performance (v0.4.4)
 
-- Window render: 639ns - 2.48µs
+- Window render: 473ns - 2.79µs
 - Full screen render: ~6µs
-- Movement RTT: 400µs
+- Input RTT: 28µs (char insert), 45µs (word forward)
+- Movement RTT: 383µs (down), 45µs (right)
 - Throughput: ~400k renders/sec
+- Mode switch: 18µs
 
 ## Detailed Documentation
 

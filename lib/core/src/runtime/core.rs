@@ -184,10 +184,9 @@ impl Runtime {
 
     /// Render the screen with current state
     pub(crate) fn render(&mut self) {
-        let buffers: Vec<Buffer> = self.buffers.values().cloned().collect();
         self.screen
             .render(
-                &buffers,
+                &self.buffers,
                 &self.highlight_store,
                 &self.mode_state,
                 &self.command_line,

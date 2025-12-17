@@ -2,6 +2,57 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.4.4] - 2025-12-17
+
+### Performance Optimization
+
+#### Zero-Copy Render Path
+- **Eliminated buffer cloning in render loop** - Major optimization
+  - Changed `Screen::render()` to accept `&BTreeMap<usize, Buffer>` instead of `&[Buffer]`
+  - Removed costly `buffers.values().cloned().collect()` from every render call
+  - Previous cost: 364µs (10K lines) to 1.96ms (50K lines) per render
+  - Now: Zero allocation - only a reference is passed
+
+### Technical Details
+
+**Files modified:**
+- `lib/core/src/screen/mod.rs` - Changed render signature to accept BTreeMap reference
+- `lib/core/src/runtime/core.rs` - Removed buffer cloning, pass reference directly
+
+**API Change:**
+```rust
+// Before:
+pub fn render(&mut self, buffers: &[Buffer], ...);
+let buffers: Vec<Buffer> = self.buffers.values().cloned().collect();
+screen.render(&buffers, ...);
+
+// After:
+pub fn render(&mut self, buffers: &BTreeMap<usize, Buffer>, ...);
+screen.render(&self.buffers, ...);
+```
+
+### Performance Results (v0.4.2 → v0.4.4)
+
+| Benchmark | v0.4.2 | v0.4.4 | Change |
+|-----------|--------|--------|--------|
+| window_render/10 | 639 ns | 473 ns | **26% faster** |
+| rtt/char_insert | - | 28 µs | baseline |
+| rtt/move_down | 397 µs | 383 µs | **4% faster** |
+| rtt/half_page_down | 410 µs | 390 µs | **5% faster** |
+| rtt/goto_top | 397 µs | 390 µs | **2% faster** |
+| input_mode_switch | - | 18 µs | baseline |
+| stress_editing/50k | 38.99 ms | 37.60 ms | **4% faster** |
+
+### Key Metrics (v0.4.4)
+
+- **Window render**: 473ns (10 lines) - 2.6µs (10K lines)
+- **Input RTT**: 28µs (char insert), 45µs (word motion)
+- **Movement RTT**: 383-390µs (vertical), 45µs (horizontal)
+- **Mode switch**: 18µs (Normal→Insert→Normal cycle)
+- **Throughput**: ~400k renders/sec
+
+---
+
 ## [0.4.3] - 2025-12-17
 
 ### New Features

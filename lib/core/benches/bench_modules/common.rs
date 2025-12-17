@@ -7,6 +7,7 @@ use reovim_core::{
         WindowType,
     },
 };
+use std::collections::BTreeMap;
 use std::io::{self, Write};
 
 /// Create a buffer with the specified number of lines
@@ -84,4 +85,11 @@ impl Write for MockWriter {
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
+}
+
+/// Create a buffer map from an existing buffer
+pub fn buffer_to_map(buffer: Buffer) -> BTreeMap<usize, Buffer> {
+    let mut map = BTreeMap::new();
+    map.insert(0, buffer);
+    map
 }

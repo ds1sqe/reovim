@@ -6,6 +6,7 @@ use reovim_core::{
     command_line::CommandLine,
     completion::{CompletionItem, CompletionState},
     explorer::ExplorerState,
+    folding::FoldManager,
     highlight::{ColorMode, HighlightStore, Theme},
     leap::LeapState,
     modd::ModeState,
@@ -16,7 +17,7 @@ use std::io::BufWriter;
 use std::path::PathBuf;
 use tempfile::NamedTempFile;
 
-use super::common::{create_realistic_buffer, MockWriter};
+use super::common::{buffer_to_map, create_realistic_buffer, MockWriter};
 
 /// Stress test: Rapid editing session (type, move, delete cycle)
 pub fn bench_stress_editing_session(c: &mut Criterion) {
@@ -33,6 +34,7 @@ pub fn bench_stress_editing_session(c: &mut Criterion) {
     let completion = CompletionState::new();
     let telescope = TelescopeState::new();
     let leap = LeapState::new();
+    let fold_manager = FoldManager::new();
     let mode = ModeState::normal();
 
     group.bench_function("edit_navigate_cycle_1k", |b| {
@@ -69,7 +71,7 @@ pub fn bench_stress_editing_session(c: &mut Criterion) {
                         }
                     }
 
-                    let buffers = vec![buffer.clone()];
+                    let buffers = buffer_to_map(buffer.clone());
                     screen
                         .render(
                             black_box(&buffers),
@@ -85,6 +87,7 @@ pub fn bench_stress_editing_session(c: &mut Criterion) {
                             black_box(&completion),
                             black_box(&telescope),
                             black_box(&leap),
+                            black_box(&fold_manager),
                         )
                         .unwrap();
                 }
@@ -119,7 +122,7 @@ pub fn bench_stress_editing_session(c: &mut Criterion) {
                         _ => buffer.cur.y = buffer.cur.y.saturating_sub(3),
                     }
 
-                    let buffers = vec![buffer.clone()];
+                    let buffers = buffer_to_map(buffer.clone());
                     screen
                         .render(
                             black_box(&buffers),
@@ -135,6 +138,7 @@ pub fn bench_stress_editing_session(c: &mut Criterion) {
                             black_box(&completion),
                             black_box(&telescope),
                             black_box(&leap),
+                            black_box(&fold_manager),
                         )
                         .unwrap();
                 }
@@ -166,7 +170,7 @@ pub fn bench_stress_editing_session(c: &mut Criterion) {
                         _ => buffer.cur.y = buffer.cur.y.saturating_sub(3),
                     }
 
-                    let buffers = vec![buffer.clone()];
+                    let buffers = buffer_to_map(buffer.clone());
                     screen
                         .render(
                             black_box(&buffers),
@@ -182,6 +186,7 @@ pub fn bench_stress_editing_session(c: &mut Criterion) {
                             black_box(&completion),
                             black_box(&telescope),
                             black_box(&leap),
+                            black_box(&fold_manager),
                         )
                         .unwrap();
                 }
@@ -210,6 +215,7 @@ pub fn bench_stress_rapid_scroll(c: &mut Criterion) {
     let completion = CompletionState::new();
     let telescope = TelescopeState::new();
     let leap = LeapState::new();
+    let fold_manager = FoldManager::new();
 
     group.bench_function("hold_j_50_lines_10k_file", |b| {
         b.iter_with_setup(
@@ -227,7 +233,7 @@ pub fn bench_stress_rapid_scroll(c: &mut Criterion) {
                     if (buffer.cur.y as usize) < buffer.contents.len() - 1 {
                         buffer.cur.y += 1;
                     }
-                    let buffers = vec![buffer.clone()];
+                    let buffers = buffer_to_map(buffer.clone());
                     screen
                         .render(
                             black_box(&buffers),
@@ -243,6 +249,7 @@ pub fn bench_stress_rapid_scroll(c: &mut Criterion) {
                             black_box(&completion),
                             black_box(&telescope),
                             black_box(&leap),
+                            black_box(&fold_manager),
                         )
                         .unwrap();
                 }
@@ -266,7 +273,7 @@ pub fn bench_stress_rapid_scroll(c: &mut Criterion) {
             |(mut buffer, mut screen, _tmp)| {
                 for _ in 0..10 {
                     buffer.cur.y = buffer.cur.y.saturating_add(25).min(buffer.contents.len() as u16 - 1);
-                    let buffers = vec![buffer.clone()];
+                    let buffers = buffer_to_map(buffer.clone());
                     screen
                         .render(
                             black_box(&buffers),
@@ -282,6 +289,7 @@ pub fn bench_stress_rapid_scroll(c: &mut Criterion) {
                             black_box(&completion),
                             black_box(&telescope),
                             black_box(&leap),
+                            black_box(&fold_manager),
                         )
                         .unwrap();
                 }
@@ -307,7 +315,7 @@ pub fn bench_stress_rapid_scroll(c: &mut Criterion) {
                 for &pos in &positions {
                     buffer.cur.y = pos.min(buffer.contents.len() as u16 - 1);
                     buffer.cur.x = 0;
-                    let buffers = vec![buffer.clone()];
+                    let buffers = buffer_to_map(buffer.clone());
                     screen
                         .render(
                             black_box(&buffers),
@@ -323,6 +331,7 @@ pub fn bench_stress_rapid_scroll(c: &mut Criterion) {
                             black_box(&completion),
                             black_box(&telescope),
                             black_box(&leap),
+                            black_box(&fold_manager),
                         )
                         .unwrap();
                 }
@@ -350,6 +359,7 @@ pub fn bench_stress_mode_operations(c: &mut Criterion) {
     let completion = CompletionState::new();
     let telescope = TelescopeState::new();
     let leap = LeapState::new();
+    let fold_manager = FoldManager::new();
     let normal_mode = ModeState::normal();
     let insert_mode = ModeState::insert();
 
@@ -368,7 +378,7 @@ pub fn bench_stress_mode_operations(c: &mut Criterion) {
             |(mut buffer, mut screen, _tmp)| {
                 for _ in 0..10 {
                     // Enter insert mode
-                    let buffers = vec![buffer.clone()];
+                    let buffers = buffer_to_map(buffer.clone());
                     screen
                         .render(
                             black_box(&buffers),
@@ -384,6 +394,7 @@ pub fn bench_stress_mode_operations(c: &mut Criterion) {
                             black_box(&completion),
                             black_box(&telescope),
                             black_box(&leap),
+                            black_box(&fold_manager),
                         )
                         .unwrap();
 
@@ -392,7 +403,7 @@ pub fn bench_stress_mode_operations(c: &mut Criterion) {
                     buffer.insert_char('e');
                     buffer.insert_char('s');
                     buffer.insert_char('t');
-                    let buffers = vec![buffer.clone()];
+                    let buffers = buffer_to_map(buffer.clone());
                     screen
                         .render(
                             black_box(&buffers),
@@ -408,11 +419,12 @@ pub fn bench_stress_mode_operations(c: &mut Criterion) {
                             black_box(&completion),
                             black_box(&telescope),
                             black_box(&leap),
+                            black_box(&fold_manager),
                         )
                         .unwrap();
 
                     // Escape to normal
-                    let buffers = vec![buffer.clone()];
+                    let buffers = buffer_to_map(buffer.clone());
                     screen
                         .render(
                             black_box(&buffers),
@@ -428,6 +440,7 @@ pub fn bench_stress_mode_operations(c: &mut Criterion) {
                             black_box(&completion),
                             black_box(&telescope),
                             black_box(&leap),
+                            black_box(&fold_manager),
                         )
                         .unwrap();
 
@@ -459,6 +472,7 @@ pub fn bench_stress_completion(c: &mut Criterion) {
     let which_key = WhichKeyPanel::new();
     let telescope = TelescopeState::new();
     let leap = LeapState::new();
+    let fold_manager = FoldManager::new();
 
     let large_items: Vec<CompletionItem> = (0..100)
         .map(|i| CompletionItem::new(format!("completion_item_with_long_name_{:03}", i), "buffer"))
@@ -468,7 +482,7 @@ pub fn bench_stress_completion(c: &mut Criterion) {
     large_completion.activate(large_items, "comp".to_string(), 0, 50);
 
     let buffer = create_realistic_buffer(1000);
-    let buffers = vec![buffer];
+    let buffers = buffer_to_map(buffer);
 
     group.bench_function("completion_scroll_100_items", |b| {
         b.iter_with_setup(
@@ -496,6 +510,7 @@ pub fn bench_stress_completion(c: &mut Criterion) {
                             black_box(&comp),
                             black_box(&telescope),
                             black_box(&leap),
+                            black_box(&fold_manager),
                         )
                         .unwrap();
                 }
@@ -522,6 +537,7 @@ pub fn bench_stress_worst_case(c: &mut Criterion) {
     let which_key = WhichKeyPanel::new();
     let telescope = TelescopeState::new();
     let leap = LeapState::new();
+    let fold_manager = FoldManager::new();
     let mode = ModeState::insert();
 
     let items: Vec<CompletionItem> = (0..50)
@@ -556,7 +572,7 @@ pub fn bench_stress_worst_case(c: &mut Criterion) {
                         _ => buffer.delete_char_backward(),
                     }
 
-                    let buffers = vec![buffer.clone()];
+                    let buffers = buffer_to_map(buffer.clone());
                     screen
                         .render(
                             black_box(&buffers),
@@ -572,6 +588,7 @@ pub fn bench_stress_worst_case(c: &mut Criterion) {
                             black_box(&completion),
                             black_box(&telescope),
                             black_box(&leap),
+                            black_box(&fold_manager),
                         )
                         .unwrap();
                 }

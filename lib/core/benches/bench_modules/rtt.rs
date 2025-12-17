@@ -6,6 +6,7 @@ use reovim_core::{
     command_line::CommandLine,
     completion::CompletionState,
     explorer::ExplorerState,
+    folding::FoldManager,
     highlight::{ColorMode, HighlightStore, Theme},
     leap::LeapState,
     modd::ModeState,
@@ -16,7 +17,7 @@ use std::io::BufWriter;
 use std::path::PathBuf;
 use tempfile::NamedTempFile;
 
-use super::common::{create_buffer, MockWriter};
+use super::common::{buffer_to_map, create_buffer, MockWriter};
 
 /// Benchmark RTT for explorer toggle (open and close)
 pub fn bench_rtt_explorer_toggle(c: &mut Criterion) {
@@ -33,9 +34,10 @@ pub fn bench_rtt_explorer_toggle(c: &mut Criterion) {
     let completion = CompletionState::new();
     let telescope = TelescopeState::new();
     let leap = LeapState::new();
+    let fold_manager = FoldManager::new();
 
     let buffer = create_buffer(1000);
-    let buffers = vec![buffer];
+    let buffers = buffer_to_map(buffer);
 
     let explorer_state = ExplorerState::new(PathBuf::from("/tmp")).ok();
 
@@ -61,6 +63,7 @@ pub fn bench_rtt_explorer_toggle(c: &mut Criterion) {
                         black_box(&completion),
                         black_box(&telescope),
                         black_box(&leap),
+                        black_box(&fold_manager),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -91,6 +94,7 @@ pub fn bench_rtt_explorer_toggle(c: &mut Criterion) {
                         black_box(&completion),
                         black_box(&telescope),
                         black_box(&leap),
+                        black_box(&fold_manager),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -121,6 +125,7 @@ pub fn bench_rtt_explorer_toggle(c: &mut Criterion) {
                         black_box(&completion),
                         black_box(&telescope),
                         black_box(&leap),
+                        black_box(&fold_manager),
                     )
                     .unwrap();
 
@@ -139,6 +144,7 @@ pub fn bench_rtt_explorer_toggle(c: &mut Criterion) {
                         black_box(&completion),
                         black_box(&telescope),
                         black_box(&leap),
+                        black_box(&fold_manager),
                     )
                     .unwrap();
 
@@ -165,6 +171,7 @@ pub fn bench_rtt_input_lag(c: &mut Criterion) {
     let completion = CompletionState::new();
     let telescope = TelescopeState::new();
     let leap = LeapState::new();
+    let fold_manager = FoldManager::new();
     let insert_mode = ModeState::insert();
 
     group.bench_function("char_insert_rtt", |b| {
@@ -181,7 +188,7 @@ pub fn bench_rtt_input_lag(c: &mut Criterion) {
             },
             |(mut buffer, mut screen, _tmp)| {
                 buffer.insert_char('x');
-                let buffers = vec![buffer.clone()];
+                let buffers = buffer_to_map(buffer.clone());
                 screen
                     .render(
                         black_box(&buffers),
@@ -197,6 +204,7 @@ pub fn bench_rtt_input_lag(c: &mut Criterion) {
                         black_box(&completion),
                         black_box(&telescope),
                         black_box(&leap),
+                        black_box(&fold_manager),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -219,7 +227,7 @@ pub fn bench_rtt_input_lag(c: &mut Criterion) {
             },
             |(mut buffer, mut screen, _tmp)| {
                 buffer.delete_char_backward();
-                let buffers = vec![buffer.clone()];
+                let buffers = buffer_to_map(buffer.clone());
                 screen
                     .render(
                         black_box(&buffers),
@@ -235,6 +243,7 @@ pub fn bench_rtt_input_lag(c: &mut Criterion) {
                         black_box(&completion),
                         black_box(&telescope),
                         black_box(&leap),
+                        black_box(&fold_manager),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -261,6 +270,7 @@ pub fn bench_rtt_movement_lag(c: &mut Criterion) {
     let completion = CompletionState::new();
     let telescope = TelescopeState::new();
     let leap = LeapState::new();
+    let fold_manager = FoldManager::new();
 
     group.bench_function("move_down_rtt", |b| {
         b.iter_with_setup(
@@ -277,7 +287,7 @@ pub fn bench_rtt_movement_lag(c: &mut Criterion) {
                 if (buffer.cur.y as usize) < buffer.contents.len() - 1 {
                     buffer.cur.y += 1;
                 }
-                let buffers = vec![buffer.clone()];
+                let buffers = buffer_to_map(buffer.clone());
                 screen
                     .render(
                         black_box(&buffers),
@@ -293,6 +303,7 @@ pub fn bench_rtt_movement_lag(c: &mut Criterion) {
                         black_box(&completion),
                         black_box(&telescope),
                         black_box(&leap),
+                        black_box(&fold_manager),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -315,7 +326,7 @@ pub fn bench_rtt_movement_lag(c: &mut Criterion) {
             },
             |(mut buffer, mut screen, _tmp)| {
                 buffer.cur.x += 1;
-                let buffers = vec![buffer.clone()];
+                let buffers = buffer_to_map(buffer.clone());
                 screen
                     .render(
                         black_box(&buffers),
@@ -331,6 +342,7 @@ pub fn bench_rtt_movement_lag(c: &mut Criterion) {
                         black_box(&completion),
                         black_box(&telescope),
                         black_box(&leap),
+                        black_box(&fold_manager),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -353,7 +365,7 @@ pub fn bench_rtt_movement_lag(c: &mut Criterion) {
             },
             |(mut buffer, mut screen, _tmp)| {
                 buffer.cur.x = buffer.cur.x.saturating_add(5);
-                let buffers = vec![buffer.clone()];
+                let buffers = buffer_to_map(buffer.clone());
                 screen
                     .render(
                         black_box(&buffers),
@@ -369,6 +381,7 @@ pub fn bench_rtt_movement_lag(c: &mut Criterion) {
                         black_box(&completion),
                         black_box(&telescope),
                         black_box(&leap),
+                        black_box(&fold_manager),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -390,7 +403,7 @@ pub fn bench_rtt_movement_lag(c: &mut Criterion) {
             },
             |(mut buffer, mut screen, _tmp)| {
                 buffer.cur.y = buffer.cur.y.saturating_add(25).min(buffer.contents.len() as u16 - 1);
-                let buffers = vec![buffer.clone()];
+                let buffers = buffer_to_map(buffer.clone());
                 screen
                     .render(
                         black_box(&buffers),
@@ -406,6 +419,7 @@ pub fn bench_rtt_movement_lag(c: &mut Criterion) {
                         black_box(&completion),
                         black_box(&telescope),
                         black_box(&leap),
+                        black_box(&fold_manager),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -428,7 +442,7 @@ pub fn bench_rtt_movement_lag(c: &mut Criterion) {
             |(mut buffer, mut screen, _tmp)| {
                 buffer.cur.y = 0;
                 buffer.cur.x = 0;
-                let buffers = vec![buffer.clone()];
+                let buffers = buffer_to_map(buffer.clone());
                 screen
                     .render(
                         black_box(&buffers),
@@ -444,6 +458,7 @@ pub fn bench_rtt_movement_lag(c: &mut Criterion) {
                         black_box(&completion),
                         black_box(&telescope),
                         black_box(&leap),
+                        black_box(&fold_manager),
                     )
                     .unwrap();
                 screen.flush().unwrap();

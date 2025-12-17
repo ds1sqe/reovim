@@ -24,6 +24,7 @@ use {
         style::Print,
         terminal::size,
     },
+    std::collections::BTreeMap,
     std::io::{self, Write},
     window::{Anchor, LineNumber, Window},
 };
@@ -166,7 +167,7 @@ impl Screen {
     #[allow(clippy::too_many_lines)]
     pub fn render(
         &mut self,
-        buffers: &[Buffer],
+        buffers: &BTreeMap<usize, Buffer>,
         highlight_store: &HighlightStore,
         mode: &ModeState,
         cmd_line: &CommandLine,
@@ -215,7 +216,7 @@ impl Screen {
 
         // Render editor windows
         for win in &self.windows {
-            if let Some(buf) = buffers.get(win.buffer_id) {
+            if let Some(buf) = buffers.get(&win.buffer_id) {
                 current_buffer = Some(buf);
 
                 // Get fold state for this buffer
