@@ -2,6 +2,50 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.4.3] - 2025-12-17
+
+### New Features
+
+#### Treesitter Integration
+- **Syntax highlighting** powered by tree-sitter for accurate parsing
+  - Supported languages: Rust, C, JavaScript, Python, JSON, TOML, Markdown
+  - Incremental parsing with 50ms debounce for efficient re-highlighting
+  - Theme-aware capture mapping (keyword, function, type, string, comment, etc.)
+
+- **Code folding** with treesitter queries
+  - `za` - Toggle fold at cursor
+  - `zo` - Open fold at cursor
+  - `zc` - Close fold at cursor
+  - `zR` - Open all folds in buffer
+  - `zM` - Close all folds in buffer
+  - Fold markers show line count and preview text
+
+- **Semantic text objects** (treesitter-based)
+  - `af` / `if` - Around/inner function
+  - `ac` / `ic` - Around/inner class/struct
+  - Works with operators: `daf`, `yif`, `cic`, etc.
+
+- **Indentation guides** (theme support added)
+  - `indent_guide` and `indent_guide_active` theme styles
+
+### Technical Details
+
+**New modules:**
+- `lib/core/src/treesitter/` - TreesitterManager, BufferParser, Highlighter
+- `lib/core/src/folding.rs` - FoldManager, FoldState, FoldRange
+
+**Dependencies added:**
+- tree-sitter = "0.24"
+- tree-sitter-rust, tree-sitter-c, tree-sitter-javascript, tree-sitter-python
+- tree-sitter-json, tree-sitter-toml-ng, tree-sitter-md
+
+### Testing
+
+- **133 tests passing** (up from 118)
+- New tests for folding operations
+
+---
+
 ## [0.4.2] - 2025-12-17
 
 ### New Features

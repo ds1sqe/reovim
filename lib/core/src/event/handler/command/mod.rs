@@ -23,7 +23,7 @@ use {
         event::{InnerEvent, KeyEvent, Subscribe},
         modd::{ModeState, OperatorType, SubMode},
         motion::Motion,
-        textobject::{Delimiter, TextObject, TextObjectScope},
+        textobject::{Delimiter, SemanticTextObject, SemanticTextObjectSpec, TextObject, TextObjectScope},
     },
     std::{collections::HashMap, sync::Arc, time::Duration},
     tokio::sync::{broadcast::Receiver, mpsc::Sender, watch},
@@ -140,29 +140,43 @@ impl CommandHandler {
             // Calculate total count (operator_count * motion_count)
             let _total_count = op_count.unwrap_or(1) * count.unwrap_or(1);
 
-            // Check for text object completion: pending ends with "i" or "a", key is delimiter
+            // Check for text object completion: pending ends with "i" or "a", key is delimiter or semantic
             if (pending.ends_with('i') || pending.ends_with('a'))
                 && key.len() == 1
-                && let Some(delim_char) = key.chars().next()
-                && let Some(delimiter) = Delimiter::from_char(delim_char)
+                && let Some(obj_char) = key.chars().next()
             {
                 let scope = if pending.ends_with('i') {
                     TextObjectScope::Inner
                 } else {
                     TextObjectScope::Around
                 };
-                let text_object = TextObject::new(scope, delimiter);
-                let action = match operator {
-                    OperatorType::Delete => OperatorMotionAction::DeleteTextObject { text_object },
-                    OperatorType::Yank => OperatorMotionAction::YankTextObject { text_object },
-                    OperatorType::Change => OperatorMotionAction::ChangeTextObject { text_object },
-                };
-                return (Some(action), false);
+
+                // Try delimiter-based text object first
+                if let Some(delimiter) = Delimiter::from_char(obj_char) {
+                    let text_object = TextObject::new(scope, delimiter);
+                    let action = match operator {
+                        OperatorType::Delete => OperatorMotionAction::DeleteTextObject { text_object },
+                        OperatorType::Yank => OperatorMotionAction::YankTextObject { text_object },
+                        OperatorType::Change => OperatorMotionAction::ChangeTextObject { text_object },
+                    };
+                    return (Some(action), false);
+                }
+
+                // Try semantic text object (treesitter-based)
+                if let Some(kind) = SemanticTextObject::from_char(obj_char) {
+                    let text_object = SemanticTextObjectSpec::new(scope, kind);
+                    let action = match operator {
+                        OperatorType::Delete => OperatorMotionAction::DeleteSemanticTextObject { text_object },
+                        OperatorType::Yank => OperatorMotionAction::YankSemanticTextObject { text_object },
+                        OperatorType::Change => OperatorMotionAction::ChangeSemanticTextObject { text_object },
+                    };
+                    return (Some(action), false);
+                }
             }
 
-            // If key is "i" or "a", wait for delimiter
+            // If key is "i" or "a", wait for text object specifier
             if key == "i" || key == "a" {
-                return (None, true); // Wait for delimiter
+                return (None, true); // Wait for delimiter or semantic object key
             }
 
             // Check if key is a motion

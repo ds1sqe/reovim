@@ -213,6 +213,19 @@ Operators combine with motions: `d` + `w` = delete word, `y` + `$` = yank to end
 | `leap_backward` | S | Start backward leap |
 | `leap_cancel` | Esc | Cancel active leap |
 
+### Folding (5)
+| Command | Key | Description |
+|---------|-----|-------------|
+| `fold_toggle` | za | Toggle fold at cursor line |
+| `fold_open` | zo | Open (expand) fold at cursor |
+| `fold_close` | zc | Close (collapse) fold at cursor |
+| `fold_open_all` | zR | Open all folds in buffer |
+| `fold_close_all` | zM | Close all folds in buffer |
+
+Folds are computed from treesitter queries when a buffer is opened.
+- Collapsed folds show a marker: `+-- 15 lines: fn example() ----`
+- Folded lines are hidden from display
+
 ### Completion (5)
 | Command | Key | Description |
 |---------|-----|-------------|

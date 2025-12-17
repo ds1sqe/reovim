@@ -44,6 +44,12 @@ pub struct Theme {
     pub which_key: WhichKeyStyles,
     /// Leap motion labels (overlay on matches)
     pub leap_label: Style,
+    /// Fold marker (collapsed fold indicator)
+    pub fold_marker: Style,
+    /// Indent guide (vertical line at indent levels)
+    pub indent_guide: Style,
+    /// Active indent guide (at cursor's indent level)
+    pub indent_guide_active: Style,
 }
 
 /// Mode-specific styles for the status line
@@ -171,6 +177,13 @@ impl Theme {
 
             // Leap labels: bright contrast for visibility
             leap_label: Style::new().fg(bg_dark).bg(yellow).bold(),
+
+            // Fold marker: muted yellow/orange for collapsed fold indicators
+            fold_marker: Style::new().fg(fg_dark).italic(),
+
+            // Indent guides: subtle vertical lines
+            indent_guide: Style::new().fg(fg_dark),
+            indent_guide_active: Style::new().fg(fg),
         }
     }
 
@@ -243,6 +256,13 @@ impl Theme {
 
             // Leap labels: bright contrast for visibility
             leap_label: Style::new().fg(Color::White).bg(Color::DarkYellow).bold(),
+
+            // Fold marker: light version
+            fold_marker: Style::new().fg(Color::Grey).italic(),
+
+            // Indent guides: light version
+            indent_guide: Style::new().fg(Color::AnsiValue(250)),
+            indent_guide_active: Style::new().fg(Color::Grey),
         }
     }
 }

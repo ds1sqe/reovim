@@ -11,6 +11,7 @@ use {
         completion::CompletionState,
         constants::RESET_STYLE,
         explorer::{render_explorer, ExplorerState},
+        folding::FoldManager,
         highlight::{ColorMode, HighlightStore, Theme},
         leap::LeapState,
         modd::ModeState,
@@ -178,6 +179,7 @@ impl Screen {
         completion_state: &CompletionState,
         telescope_state: &TelescopeState,
         leap_state: &LeapState,
+        fold_manager: &FoldManager,
     ) -> std::result::Result<(), std::io::Error> {
         // Reset all styling before clearing
         queue!(self.out_stream, Print(RESET_STYLE))?;
@@ -216,8 +218,11 @@ impl Screen {
             if let Some(buf) = buffers.get(win.buffer_id) {
                 current_buffer = Some(buf);
 
+                // Get fold state for this buffer
+                let fold_state = fold_manager.get(buf.id);
+
                 // Render each line with explicit cursor positioning
-                let lines = win.render(buf, highlight_store, color_mode, theme);
+                let lines = win.render(buf, highlight_store, color_mode, theme, fold_state);
                 for (row_offset, line) in lines.iter().enumerate() {
                     queue!(
                         self.out_stream,

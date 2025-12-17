@@ -342,6 +342,14 @@ impl KeyMap {
         // Leap motion bindings
         keymap.insert("s".to_string(), KeyMapInner::with_command_id(builtin::LEAP_FORWARD));
         keymap.insert("S".to_string(), KeyMapInner::with_command_id(builtin::LEAP_BACKWARD));
+
+        // z-prefix bindings (code folding)
+        keymap.insert("z".to_string(), KeyMapInner::new()); // prefix, no command
+        keymap.insert("za".to_string(), KeyMapInner::with_command_id(builtin::FOLD_TOGGLE));
+        keymap.insert("zo".to_string(), KeyMapInner::with_command_id(builtin::FOLD_OPEN));
+        keymap.insert("zc".to_string(), KeyMapInner::with_command_id(builtin::FOLD_CLOSE));
+        keymap.insert("zR".to_string(), KeyMapInner::with_command_id(builtin::FOLD_OPEN_ALL));
+        keymap.insert("zM".to_string(), KeyMapInner::with_command_id(builtin::FOLD_CLOSE_ALL));
     }
 
     fn setup_insert_mode(keymap: &mut HashMap<String, KeyMapInner>) {

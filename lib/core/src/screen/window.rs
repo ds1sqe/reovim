@@ -1,6 +1,7 @@
 //! Window rendering module
 
 use crate::buffer::{Buffer, SelectionMode, SelectionOps};
+use crate::folding::FoldState;
 use crate::highlight::{ColorMode, Highlight, HighlightGroup, HighlightStore, Span, Style, Theme};
 
 use super::layout::WindowType;
@@ -86,6 +87,7 @@ impl Window {
         highlight_store: &HighlightStore,
         color_mode: ColorMode,
         theme: &Theme,
+        fold_state: Option<&FoldState>,
     ) -> Vec<String> {
         let mut lines: Vec<String> = Vec::new();
 
@@ -133,79 +135,149 @@ impl Window {
         };
         let is_block_mode = buf.selection.active && buf.selection_mode() == SelectionMode::Block;
 
-        for row in self.buffer_anchor.y..(self.height + self.buffer_anchor.y) {
-            let line_content = buf.contents.get(row as usize);
-            let line_out = match line_content {
-                Some(content) => {
-                    let head = if self.line_number.show {
-                        // Determine if this is the current line
-                        let is_current_line = row == buf.cur.y;
-                        let line_num_style = if is_current_line {
-                            &theme.current_line_number
-                        } else {
-                            &theme.line_number
-                        };
+        // Track buffer line position, accounting for folds
+        let mut buffer_row = self.buffer_anchor.y;
+        let mut display_rows_rendered = 0u16;
 
-                        let num_str = match self.line_number.mode() {
-                            LineNumberMode::Absolute => format!("{}", row + 1), // 1-indexed
-                            LineNumberMode::Relative => {
-                                let rel = (i32::from(row) - i32::from(buf.cur.y)).abs();
-                                format!("{rel}")
-                            }
-                            LineNumberMode::Hybrid => {
-                                if !is_current_line {
-                                    let rel = (i32::from(row) - i32::from(buf.cur.y)).abs();
-                                    format!("{rel}")
-                                } else {
-                                    format!("{}", row + 1) // Show absolute on cursor line
-                                }
-                            }
-                        };
-                        // Right-align the number with theme styling and add space separator
-                        format!(
-                            "{}{num_str:>num_width$}{} ",
-                            line_num_style.to_ansi_start(color_mode),
-                            Style::ansi_reset()
-                        )
+        while display_rows_rendered < self.height && (buffer_row as usize) < buf.contents.len() {
+            let row = buffer_row;
+
+            // Check if this line is hidden inside a collapsed fold
+            if let Some(fs) = fold_state
+                && fs.is_line_hidden(u32::from(row))
+            {
+                buffer_row += 1;
+                continue;
+            }
+
+            // Check if this line starts a collapsed fold
+            let fold_marker = fold_state.and_then(|fs| fs.get_fold_marker(u32::from(row)));
+
+            let line_out = if let Some((hidden_count, preview)) = fold_marker {
+                // Render fold marker line
+                let head = if self.line_number.show {
+                    let is_current_line = row == buf.cur.y;
+                    let line_num_style = if is_current_line {
+                        &theme.current_line_number
                     } else {
-                        String::new()
+                        &theme.line_number
                     };
 
-                    // Get highlights for this line
-                    let line_len = content.inner.chars().count() as u32;
-                    let mut line_highlights =
-                        highlight_store.get_line_highlights(buf.id, u32::from(row), line_len);
-
-                    // Add visual selection highlight if applicable
-                    if let Some(ref visual_hl) = visual_highlight {
-                        // Use different column calculation for block mode vs character mode
-                        let cols = if is_block_mode {
-                            visual_hl.span.cols_for_line_block(u32::from(row), line_len)
-                        } else {
-                            visual_hl.span.cols_for_line(u32::from(row), line_len)
-                        };
-                        if let Some((start, end)) = cols {
-                            if start < end {
-                                // Merge visual highlight with stored highlights
-                                line_highlights = self.merge_visual_highlight(
-                                    line_highlights,
-                                    start,
-                                    end,
-                                    &visual_hl.style,
-                                );
+                    let num_str = match self.line_number.mode() {
+                        LineNumberMode::Absolute => format!("{}", row + 1),
+                        LineNumberMode::Relative => {
+                            let rel = (i32::from(row) - i32::from(buf.cur.y)).abs();
+                            format!("{rel}")
+                        }
+                        LineNumberMode::Hybrid => {
+                            if !is_current_line {
+                                let rel = (i32::from(row) - i32::from(buf.cur.y)).abs();
+                                format!("{rel}")
+                            } else {
+                                format!("{}", row + 1)
                             }
                         }
+                    };
+                    format!(
+                        "{}{num_str:>num_width$}{} ",
+                        line_num_style.to_ansi_start(color_mode),
+                        Style::ansi_reset()
+                    )
+                } else {
+                    String::new()
+                };
+
+                // Format fold marker: "+-- N lines: preview ---"
+                let fold_text = format!("+-- {hidden_count} lines: {preview} ---");
+                let fold_style = &theme.fold_marker;
+                let styled_fold = format!(
+                    "{}{}{}",
+                    fold_style.to_ansi_start(color_mode),
+                    fold_text,
+                    Style::ansi_reset()
+                );
+                head + &styled_fold
+            } else {
+                // Render normal line
+                let line_content = buf.contents.get(row as usize);
+                match line_content {
+                    Some(content) => {
+                        let head = if self.line_number.show {
+                            let is_current_line = row == buf.cur.y;
+                            let line_num_style = if is_current_line {
+                                &theme.current_line_number
+                            } else {
+                                &theme.line_number
+                            };
+
+                            let num_str = match self.line_number.mode() {
+                                LineNumberMode::Absolute => format!("{}", row + 1),
+                                LineNumberMode::Relative => {
+                                    let rel = (i32::from(row) - i32::from(buf.cur.y)).abs();
+                                    format!("{rel}")
+                                }
+                                LineNumberMode::Hybrid => {
+                                    if !is_current_line {
+                                        let rel = (i32::from(row) - i32::from(buf.cur.y)).abs();
+                                        format!("{rel}")
+                                    } else {
+                                        format!("{}", row + 1)
+                                    }
+                                }
+                            };
+                            format!(
+                                "{}{num_str:>num_width$}{} ",
+                                line_num_style.to_ansi_start(color_mode),
+                                Style::ansi_reset()
+                            )
+                        } else {
+                            String::new()
+                        };
+
+                        // Get highlights for this line
+                        let line_len = content.inner.chars().count() as u32;
+                        let mut line_highlights =
+                            highlight_store.get_line_highlights(buf.id, u32::from(row), line_len);
+
+                        // Add visual selection highlight if applicable
+                        if let Some(ref visual_hl) = visual_highlight {
+                            let cols = if is_block_mode {
+                                visual_hl.span.cols_for_line_block(u32::from(row), line_len)
+                            } else {
+                                visual_hl.span.cols_for_line(u32::from(row), line_len)
+                            };
+                            if let Some((start, end)) = cols {
+                                if start < end {
+                                    line_highlights = self.merge_visual_highlight(
+                                        line_highlights,
+                                        start,
+                                        end,
+                                        &visual_hl.style,
+                                    );
+                                }
+                            }
+                        }
+
+                        let styled_content =
+                            self.render_styled_line(&content.inner, &line_highlights, color_mode);
+
+                        head + &styled_content
                     }
-
-                    let styled_content =
-                        self.render_styled_line(&content.inner, &line_highlights, color_mode);
-
-                    head + &styled_content
+                    None => String::new(),
                 }
-                None => String::new(),
             };
+
             lines.push(line_out);
+            buffer_row += 1;
+            display_rows_rendered += 1;
         }
+
+        // Fill remaining display rows with empty lines
+        while display_rows_rendered < self.height {
+            lines.push(String::new());
+            display_rows_rendered += 1;
+        }
+
         lines
     }
 

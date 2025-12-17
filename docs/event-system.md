@@ -42,6 +42,7 @@ pub enum InnerEvent {
     ExplorerEvent(ExplorerEvent),
     TelescopeEvent(TelescopeEvent),
     LeapEvent(LeapEvent),
+    TreesitterEvent(TreesitterEvent),
     OperatorMotionEvent(OperatorMotionAction),
 
     // UI events
@@ -131,6 +132,17 @@ pub enum LeapEvent {
     SecondChar { char: char },
     SelectLabel { label: char },
     Cancel,
+}
+```
+
+### TreesitterEvent
+
+Treesitter parsing and highlight events:
+
+```rust
+pub enum TreesitterEvent {
+    /// Request reparse for buffer
+    Reparse { buffer_id: usize },
 }
 ```
 
@@ -340,6 +352,7 @@ impl TerminateHandler {
        CompletionEvent => update completion state
        TelescopeEvent => update telescope state
        LeapEvent => handle leap motion
+       TreesitterEvent => update highlights
        ExplorerEvent => handle explorer
        OperatorMotionEvent => execute operator+motion
        WhichKeyShow/Hide => update which-key panel

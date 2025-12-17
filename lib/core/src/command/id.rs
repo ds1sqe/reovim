@@ -177,4 +177,11 @@ pub mod builtin {
     pub const LEAP_FORWARD: CommandId = CommandId::new("leap_forward");
     pub const LEAP_BACKWARD: CommandId = CommandId::new("leap_backward");
     pub const LEAP_CANCEL: CommandId = CommandId::new("leap_cancel");
+
+    // === Folding ===
+    pub const FOLD_TOGGLE: CommandId = CommandId::new("fold_toggle");
+    pub const FOLD_OPEN: CommandId = CommandId::new("fold_open");
+    pub const FOLD_CLOSE: CommandId = CommandId::new("fold_close");
+    pub const FOLD_OPEN_ALL: CommandId = CommandId::new("fold_open_all");
+    pub const FOLD_CLOSE_ALL: CommandId = CommandId::new("fold_close_all");
 }

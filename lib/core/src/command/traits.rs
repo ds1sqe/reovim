@@ -52,6 +52,8 @@ pub enum DeferredAction {
     Explorer(ExplorerAction),
     /// Telescope operations
     Telescope(TelescopeAction),
+    /// Code folding operations
+    Fold(FoldAction),
     /// Jump to older position (Ctrl-O)
     JumpOlder,
     /// Jump to newer position (Ctrl-I)
@@ -71,6 +73,21 @@ pub enum LeapAction {
         operator: Option<OperatorType>,
         count: Option<usize>,
     },
+}
+
+/// Code folding actions
+#[derive(Debug)]
+pub enum FoldAction {
+    /// Toggle fold at cursor line (za)
+    Toggle,
+    /// Open fold at cursor line (zo)
+    Open,
+    /// Close fold at cursor line (zc)
+    Close,
+    /// Open all folds in buffer (zR)
+    OpenAll,
+    /// Close all folds in buffer (zM)
+    CloseAll,
 }
 
 /// Telescope fuzzy finder actions
@@ -208,6 +225,18 @@ pub enum OperatorMotionAction {
     ChangeTextObject {
         text_object: crate::textobject::TextObject,
     },
+    /// Delete semantic text object (dif, dac, etc.) - uses treesitter
+    DeleteSemanticTextObject {
+        text_object: crate::textobject::SemanticTextObjectSpec,
+    },
+    /// Yank semantic text object (yif, yac, etc.) - uses treesitter
+    YankSemanticTextObject {
+        text_object: crate::textobject::SemanticTextObjectSpec,
+    },
+    /// Change semantic text object (cif, cac, etc.) - uses treesitter
+    ChangeSemanticTextObject {
+        text_object: crate::textobject::SemanticTextObjectSpec,
+    },
 }
 
 /// Command line mode actions
@@ -267,6 +296,14 @@ pub trait CommandTrait: Debug + Send + Sync {
     /// Commands like gg, G, search, etc. return true here so the cursor
     /// position before execution is recorded in the jump list.
     fn is_jump(&self) -> bool {
+        false
+    }
+
+    /// Whether this command modifies buffer text content
+    ///
+    /// Commands that insert, delete, or modify text return true here.
+    /// This is used to trigger treesitter reparsing after buffer modifications.
+    fn is_text_modifying(&self) -> bool {
         false
     }
 }

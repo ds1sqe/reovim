@@ -38,6 +38,10 @@ impl CommandTrait for InsertCharCommand {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn is_text_modifying(&self) -> bool {
+        true
+    }
 }
 
 /// Insert a newline at cursor position (Enter key)
@@ -64,6 +68,10 @@ impl CommandTrait for InsertNewlineCommand {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn is_text_modifying(&self) -> bool {
+        true
     }
 }
 
@@ -92,6 +100,10 @@ impl CommandTrait for DeleteCharBackwardCommand {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn is_text_modifying(&self) -> bool {
+        true
+    }
 }
 
 /// Delete character forward (x in normal mode)
@@ -119,6 +131,10 @@ impl CommandTrait for DeleteCharForwardCommand {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn is_text_modifying(&self) -> bool {
+        true
+    }
 }
 
 /// Delete entire line
@@ -145,6 +161,10 @@ impl CommandTrait for DeleteLineCommand {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn is_text_modifying(&self) -> bool {
+        true
     }
 }
 

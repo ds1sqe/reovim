@@ -52,8 +52,9 @@ lib/core/src/
 | `screen/layout` | Layout calculations | 4 |
 | `telescope` | Item, matcher, state | 11 |
 | `types` | Core data types | 4 |
+| `folding` | Fold state, toggle, markers | 4 |
 
-**Total: 118 tests**
+**Total: 133 tests**
 
 ## Writing Tests
 

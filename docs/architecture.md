@@ -102,6 +102,9 @@ lib/core/src/
 ├── jump_list/      # Navigation history
 ├── registers/      # Copy/paste storage
 ├── theme/          # Color themes
+├── treesitter/     # Syntax highlighting engine
+├── folding.rs      # Code folding state
+├── indent.rs       # Indentation guides
 └── landing.rs      # Splash screen
 ```
 
@@ -150,6 +153,8 @@ pub struct Runtime {
     pub telescope_matcher: TelescopeMatcher,
     pub telescope_pickers: HashMap<String, Arc<dyn Picker>>,
     pub leap_state: LeapState,
+    pub treesitter: TreesitterManager,
+    pub fold_manager: FoldManager,
 }
 ```
 
@@ -291,6 +296,40 @@ Multi-register copy/paste storage.
 
 **Features:** Default register `"`, named registers `a-z`
 
+### Treesitter (`lib/core/src/treesitter/`)
+
+Syntax highlighting and semantic features powered by tree-sitter.
+
+**Components:**
+- `TreesitterManager` - Central manager for all buffers
+- `BufferParser` - Per-buffer incremental parser
+- `Highlighter` - Query execution and highlight generation
+- `GrammarRegistry` - Language detection from file extension
+- `QueryCache` - Compiled query caching
+- `TextObjectResolver` - Semantic text object bounds
+
+**Supported languages:** Rust, C, JavaScript, Python, JSON, TOML, Markdown
+
+**Features:**
+- Incremental parsing with 50ms debounce
+- Visible-range-only highlighting for performance
+- Semantic text objects (function, class, etc.)
+- Fold range computation
+
+### Code Folding (`lib/core/src/folding.rs`)
+
+Code folding with treesitter-computed ranges.
+
+**Components:**
+- `FoldManager` - Per-buffer fold state
+- `FoldState` - Collapsed/expanded tracking
+- `FoldRange` - Foldable region with preview
+
+**Keybindings:**
+- `za` - Toggle fold
+- `zo`/`zc` - Open/close fold
+- `zR`/`zM` - Open/close all folds
+
 ## Architecture Patterns
 
 ### Single-Threaded Event Loop
@@ -367,6 +406,7 @@ CommandEvent         KillSignal
 | `futures` | Async utilities |
 | `nucleo` | Fuzzy matching (for telescope) |
 | `parking_lot` | Synchronization primitives |
+| `tree-sitter` | Incremental parsing |
 
 ## Related Documentation
 

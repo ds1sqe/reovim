@@ -3,8 +3,9 @@
 use crate::buffer::{Buffer, SelectionOps, TextOps};
 use crate::event::{
     BufferEvent, CommandHandler, CompletionEvent, CompletionHandler, ExplorerEvent,
-    HighlightEvent, InnerEvent, InputEventBroker, TerminateHandler, WindowEvent,
+    HighlightEvent, InnerEvent, InputEventBroker, TerminateHandler, TreesitterEvent, WindowEvent,
 };
+use crate::highlight::HighlightGroup;
 use crate::modd::{EditMode, ModExtension, ModeState, SubMode};
 
 use super::Runtime;
@@ -89,18 +90,64 @@ impl Runtime {
     #[allow(clippy::match_same_arms)]
     #[allow(clippy::future_not_send)]
     async fn run_event_loop(&mut self) {
+        use std::time::Duration;
+        use tokio::time::interval;
+
+        // Interval for checking pending treesitter parses
+        let mut treesitter_check_interval =
+            interval(Duration::from_millis(crate::treesitter::TreesitterManager::DEBOUNCE_MS));
+
         loop {
-            let next = self.rx.recv().await;
-            if let Some(ev) = next {
-                if self.handle_event(ev) {
-                    break;
+            tokio::select! {
+                // Check for incoming events
+                next = self.rx.recv() => {
+                    if let Some(ev) = next {
+                        if self.handle_event(ev) {
+                            break;
+                        }
+                    } else {
+                        self.tx
+                            .send(InnerEvent::KillSignal)
+                            .await
+                            .expect("cannot broadcast kill signal");
+                        break;
+                    }
                 }
-            } else {
-                self.tx
-                    .send(InnerEvent::KillSignal)
-                    .await
-                    .expect("cannot broadcast kill signal");
-                break;
+
+                // Periodically check for pending treesitter parses
+                _ = treesitter_check_interval.tick() => {
+                    self.process_pending_treesitter_parses();
+                }
+            }
+        }
+    }
+
+    /// Process any pending treesitter parses that have passed the debounce threshold
+    #[allow(clippy::cast_possible_truncation)]
+    fn process_pending_treesitter_parses(&mut self) {
+        let ready_buffer_ids = self.treesitter.get_ready_parses();
+
+        for buffer_id in ready_buffer_ids {
+            if let Some(buffer) = self.buffers.get(&buffer_id) {
+                let content = buffer.content_to_string();
+                let line_count = buffer.contents.len() as u32;
+
+                // Clear old syntax highlights
+                self.highlight_store
+                    .clear_group(buffer_id, HighlightGroup::Syntax);
+
+                // Perform full reparse (since we don't have edit info at this point)
+                let highlights = self.treesitter.parse_and_highlight(
+                    buffer_id,
+                    &content,
+                    0,
+                    line_count.saturating_sub(1),
+                );
+
+                if !highlights.is_empty() {
+                    self.highlight_store.add(buffer_id, highlights);
+                }
+                self.render();
             }
         }
     }
@@ -232,8 +279,73 @@ impl Runtime {
             InnerEvent::LeapEvent(leap_event) => {
                 self.handle_leap_event(leap_event);
             }
+            InnerEvent::TreesitterEvent(ts_event) => {
+                self.handle_treesitter_event(ts_event);
+            }
         }
         false
+    }
+
+    /// Handle treesitter-related events
+    #[allow(clippy::cast_possible_truncation)]
+    fn handle_treesitter_event(&mut self, event: TreesitterEvent) {
+        match event {
+            TreesitterEvent::ScheduleReparse { buffer_id } => {
+                // Schedule a debounced reparse
+                if self.treesitter.has_parser(buffer_id) {
+                    self.treesitter.schedule_reparse(buffer_id);
+                }
+            }
+            TreesitterEvent::IncrementalParse { buffer_id, edit } => {
+                // Perform incremental parse with edit information
+                if let Some(buffer) = self.buffers.get(&buffer_id) {
+                    let content = buffer.content_to_string();
+                    let line_count = buffer.contents.len() as u32;
+
+                    // Clear old syntax highlights
+                    self.highlight_store
+                        .clear_group(buffer_id, HighlightGroup::Syntax);
+
+                    // Generate new highlights via incremental parse
+                    let highlights = self.treesitter.parse_incremental_and_highlight(
+                        buffer_id,
+                        &content,
+                        &edit,
+                        0,
+                        line_count.saturating_sub(1),
+                    );
+
+                    if !highlights.is_empty() {
+                        self.highlight_store.add(buffer_id, highlights);
+                    }
+                    self.render();
+                }
+            }
+            TreesitterEvent::FullReparse { buffer_id } => {
+                // Perform a full reparse
+                if let Some(buffer) = self.buffers.get(&buffer_id) {
+                    let content = buffer.content_to_string();
+                    let line_count = buffer.contents.len() as u32;
+
+                    // Clear old syntax highlights
+                    self.highlight_store
+                        .clear_group(buffer_id, HighlightGroup::Syntax);
+
+                    // Generate new highlights via full parse
+                    let highlights = self.treesitter.parse_and_highlight(
+                        buffer_id,
+                        &content,
+                        0,
+                        line_count.saturating_sub(1),
+                    );
+
+                    if !highlights.is_empty() {
+                        self.highlight_store.add(buffer_id, highlights);
+                    }
+                    self.render();
+                }
+            }
+        }
     }
 
     /// Handle telescope-related events

@@ -10,6 +10,7 @@ use crate::completion::{CompletionContext, CompletionEngine, CompletionItem, Com
 use crate::constants::EVENT_CHANNEL_CAPACITY;
 use crate::event::{CompletionEvent, InnerEvent};
 use crate::explorer::ExplorerState;
+use crate::folding::FoldManager;
 use crate::highlight::{ColorMode, HighlightStore, Theme};
 use crate::jumplist::JumpList;
 use crate::leap::LeapState;
@@ -21,6 +22,7 @@ use crate::telescope::picker::{
     RecentPicker,
 };
 use crate::telescope::{TelescopeMatcher, TelescopeState};
+use crate::treesitter::TreesitterManager;
 use tracing::debug;
 
 use tokio::sync::{mpsc, watch};
@@ -75,6 +77,10 @@ pub struct Runtime {
     pub telescope_pickers: HashMap<String, Arc<dyn Picker>>,
     /// Leap motion state
     pub leap_state: LeapState,
+    /// Treesitter manager for syntax highlighting
+    pub treesitter: TreesitterManager,
+    /// Code folding manager
+    pub fold_manager: FoldManager,
 }
 
 impl Default for Runtime {
@@ -122,6 +128,8 @@ impl Runtime {
             telescope_matcher: TelescopeMatcher::new(),
             telescope_pickers: Self::create_telescope_pickers(),
             leap_state: LeapState::new(),
+            treesitter: TreesitterManager::new(),
+            fold_manager: FoldManager::new(),
         }
     }
 
@@ -192,6 +200,7 @@ impl Runtime {
                 &self.completion_state,
                 &self.telescope_state,
                 &self.leap_state,
+                &self.fold_manager,
             )
             .expect("failed to render");
         self.screen.flush().expect("failed to flush");
@@ -223,7 +232,35 @@ impl Runtime {
                 let mut buffer = Buffer::empty(id);
                 buffer.set_content(&content);
                 buffer.file_path = Some(path.to_string());
-                self.buffers.insert(id, buffer);
+                self.buffers.insert(id, buffer.clone());
+
+                // Initialize treesitter for this buffer
+                let language_id = self.treesitter.init_buffer(id, Some(path));
+                debug!(id, path, ?language_id, "create_buffer_from_file: treesitter initialized");
+
+                // Generate initial syntax highlights and fold ranges
+                #[allow(clippy::cast_possible_truncation)]
+                if self.treesitter.has_parser(id) {
+                    let line_count = buffer.contents.len() as u32;
+                    let highlights = self.treesitter.parse_and_highlight(
+                        id,
+                        &content,
+                        0,
+                        line_count.saturating_sub(1),
+                    );
+                    if !highlights.is_empty() {
+                        self.highlight_store.add(id, highlights);
+                        debug!(id, "create_buffer_from_file: syntax highlights added");
+                    }
+
+                    // Compute fold ranges
+                    let fold_ranges = self.treesitter.compute_fold_ranges(id, &content);
+                    if !fold_ranges.is_empty() {
+                        self.fold_manager.set_ranges(id, fold_ranges);
+                        debug!(id, "create_buffer_from_file: fold ranges computed");
+                    }
+                }
+
                 debug!(id, path, "create_buffer_from_file: success");
                 Some(id)
             }
@@ -250,6 +287,13 @@ impl Runtime {
         }
 
         if self.buffers.remove(&buffer_id).is_some() {
+            // Clean up treesitter state
+            self.treesitter.remove_buffer(buffer_id);
+            // Clean up highlights
+            self.highlight_store.clear_all(buffer_id);
+            // Clean up fold state
+            self.fold_manager.remove_buffer(buffer_id);
+
             // If we closed the active buffer, switch to another one
             if self.active_buffer_id == buffer_id
                 && let Some(&new_id) = self.buffers.keys().next()

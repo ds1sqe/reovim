@@ -7,7 +7,7 @@ use crate::buffer::TextOps;
 use crate::command::{
     traits::{
         CommandLineAction, CommandResult, CompletionAction, DeferredAction, ExecutionContext,
-        ExplorerAction, LeapAction, OperatorMotionAction, TelescopeAction,
+        ExplorerAction, FoldAction, LeapAction, OperatorMotionAction, TelescopeAction,
     },
     CommandTrait,
 };
@@ -15,8 +15,107 @@ use crate::explorer::ExplorerState;
 use crate::modd::ModeState;
 use crate::command_line::{ExCommand, SetOption};
 use crate::event::CommandEvent;
+use crate::screen::Position;
+use crate::textobject::SemanticTextObjectSpec;
 
 use super::Runtime;
+
+impl Runtime {
+    /// Schedule a treesitter reparse for the given buffer if it has a parser
+    pub(crate) fn schedule_treesitter_reparse(&mut self, buffer_id: usize) {
+        if self.treesitter.has_parser(buffer_id) {
+            self.treesitter.schedule_reparse(buffer_id);
+        }
+    }
+
+    /// Delete a semantic text object using treesitter
+    ///
+    /// Returns the deleted text if successful, None if bounds couldn't be found.
+    #[allow(clippy::cast_possible_truncation)]
+    pub(crate) fn delete_semantic_text_object(
+        &mut self,
+        buffer_id: usize,
+        spec: SemanticTextObjectSpec,
+    ) -> Option<String> {
+        // Get buffer content and cursor position
+        let (content, cursor_row, cursor_col) = {
+            let buffer = self.buffers.get(&buffer_id)?;
+            (
+                buffer.content_to_string(),
+                u32::from(buffer.cur.y),
+                u32::from(buffer.cur.x),
+            )
+        };
+
+        // Find text object bounds using treesitter
+        let bounds = self.treesitter.find_text_object_bounds(
+            buffer_id,
+            &content,
+            cursor_row,
+            cursor_col,
+            spec.kind,
+            spec.scope,
+        )?;
+
+        // Convert treesitter Position to screen Position
+        let start = Position {
+            x: bounds.start.col as u16,
+            y: bounds.start.row as u16,
+        };
+        let end = Position {
+            x: bounds.end.col as u16,
+            y: bounds.end.row as u16,
+        };
+
+        // Delete the range
+        let buffer = self.buffers.get_mut(&buffer_id)?;
+        Some(buffer.delete_range(start, end))
+    }
+
+    /// Yank a semantic text object using treesitter
+    ///
+    /// Returns the yanked text if successful, None if bounds couldn't be found.
+    #[allow(clippy::cast_possible_truncation)]
+    pub(crate) fn yank_semantic_text_object(
+        &mut self,
+        buffer_id: usize,
+        spec: SemanticTextObjectSpec,
+    ) -> Option<String> {
+        // Get buffer content and cursor position
+        let (content, cursor_row, cursor_col) = {
+            let buffer = self.buffers.get(&buffer_id)?;
+            (
+                buffer.content_to_string(),
+                u32::from(buffer.cur.y),
+                u32::from(buffer.cur.x),
+            )
+        };
+
+        // Find text object bounds using treesitter
+        let bounds = self.treesitter.find_text_object_bounds(
+            buffer_id,
+            &content,
+            cursor_row,
+            cursor_col,
+            spec.kind,
+            spec.scope,
+        )?;
+
+        // Convert treesitter Position to screen Position
+        let start = Position {
+            x: bounds.start.col as u16,
+            y: bounds.start.row as u16,
+        };
+        let end = Position {
+            x: bounds.end.col as u16,
+            y: bounds.end.row as u16,
+        };
+
+        // Yank the range
+        let buffer = self.buffers.get(&buffer_id)?;
+        Some(buffer.yank_range(start, end))
+    }
+}
 
 impl Runtime {
     /// Handle command line actions. Returns true if editor should quit.
@@ -116,6 +215,7 @@ impl Runtime {
 
     /// Handle a command event. Returns true if the editor should quit.
     #[allow(clippy::match_same_arms)]
+    #[allow(clippy::too_many_lines)]
     pub(crate) fn handle_command(&mut self, cmd_event: CommandEvent) -> bool {
         let CommandEvent { command, context } = cmd_event;
 
@@ -146,12 +246,23 @@ impl Runtime {
 
             let result = cmd.execute(&mut exec_ctx);
 
+            // Check if command is text-modifying for treesitter reparse
+            let is_text_modifying = cmd.is_text_modifying();
+
             match result {
                 CommandResult::NeedsRender => {
+                    // Schedule treesitter reparse if this command modifies text
+                    if is_text_modifying {
+                        self.schedule_treesitter_reparse(buffer_id);
+                    }
                     self.render();
                 }
                 CommandResult::ModeChange(new_mode) => {
                     // Actually change the mode for commands like o, O
+                    // Commands that change mode to Insert often modify buffer (o, O, etc.)
+                    if is_text_modifying {
+                        self.schedule_treesitter_reparse(buffer_id);
+                    }
                     self.set_mode(new_mode);
                     self.render();
                 }
@@ -172,6 +283,8 @@ impl Runtime {
                             {
                                 buf.insert_text(&text);
                             }
+                            // Schedule treesitter reparse after paste
+                            self.schedule_treesitter_reparse(context.buffer_id);
                             self.render();
                         }
                         DeferredAction::CommandLine(cl_action) => {
@@ -188,6 +301,10 @@ impl Runtime {
                         }
                         DeferredAction::Telescope(telescope_action) => {
                             self.handle_telescope_action(&telescope_action);
+                        }
+                        DeferredAction::Fold(fold_action) => {
+                            self.handle_fold_action(&fold_action, buffer_id);
+                            self.render();
                         }
                         DeferredAction::JumpOlder => {
                             if let Some(entry) = self.jump_list.jump_older() {
@@ -433,6 +550,8 @@ impl Runtime {
     pub(crate) fn handle_operator_motion(&mut self, action: &OperatorMotionAction) {
         // Get the primary buffer (buffer 0 for now)
         let buffer_id = 0;
+        let mut text_modified = false;
+
         if let Some(buffer) = self.buffers.get_mut(&buffer_id) {
             match *action {
                 OperatorMotionAction::Delete { motion, count } => {
@@ -440,6 +559,7 @@ impl Runtime {
                     if !deleted.is_empty() {
                         // Store in unnamed register
                         self.registers.set(deleted);
+                        text_modified = true;
                     }
                 }
                 OperatorMotionAction::Yank { motion, count } => {
@@ -448,12 +568,14 @@ impl Runtime {
                         // Store in unnamed register
                         self.registers.set(yanked);
                     }
+                    // Yank doesn't modify text
                 }
                 OperatorMotionAction::Change { motion, count } => {
                     let deleted = buffer.delete_to_motion(motion, count);
                     if !deleted.is_empty() {
                         // Store in unnamed register
                         self.registers.set(deleted);
+                        text_modified = true;
                     }
                     // Enter insert mode after change
                     self.set_mode(ModeState::insert());
@@ -462,6 +584,7 @@ impl Runtime {
                     let deleted = buffer.delete_text_object(text_object);
                     if !deleted.is_empty() {
                         self.registers.set(deleted);
+                        text_modified = true;
                     }
                 }
                 OperatorMotionAction::YankTextObject { text_object } => {
@@ -469,16 +592,48 @@ impl Runtime {
                     if !yanked.is_empty() {
                         self.registers.set(yanked);
                     }
+                    // Yank doesn't modify text
                 }
                 OperatorMotionAction::ChangeTextObject { text_object } => {
                     let deleted = buffer.delete_text_object(text_object);
                     if !deleted.is_empty() {
                         self.registers.set(deleted);
+                        text_modified = true;
+                    }
+                    // Enter insert mode after change
+                    self.set_mode(ModeState::insert());
+                }
+                OperatorMotionAction::DeleteSemanticTextObject { text_object } => {
+                    if let Some(deleted) = self.delete_semantic_text_object(buffer_id, text_object)
+                        && !deleted.is_empty()
+                    {
+                        self.registers.set(deleted);
+                        text_modified = true;
+                    }
+                }
+                OperatorMotionAction::YankSemanticTextObject { text_object } => {
+                    if let Some(yanked) = self.yank_semantic_text_object(buffer_id, text_object)
+                        && !yanked.is_empty()
+                    {
+                        self.registers.set(yanked);
+                    }
+                }
+                OperatorMotionAction::ChangeSemanticTextObject { text_object } => {
+                    if let Some(deleted) = self.delete_semantic_text_object(buffer_id, text_object)
+                        && !deleted.is_empty()
+                    {
+                        self.registers.set(deleted);
+                        text_modified = true;
                     }
                     // Enter insert mode after change
                     self.set_mode(ModeState::insert());
                 }
             }
+        }
+
+        // Schedule treesitter reparse if text was modified
+        if text_modified {
+            self.schedule_treesitter_reparse(buffer_id);
         }
         self.render();
     }
@@ -608,6 +763,34 @@ impl Runtime {
                 // Change to leap mode
                 self.set_mode(ModeState::leap(*direction, *operator, *count));
                 self.render();
+            }
+        }
+    }
+
+    /// Handle fold actions from keybindings
+    #[allow(clippy::cast_possible_truncation)]
+    pub(crate) fn handle_fold_action(&mut self, action: &FoldAction, buffer_id: usize) {
+        // Get the cursor line from the buffer
+        let cursor_line = self
+            .buffers
+            .get(&buffer_id)
+            .map_or(0, |buf| u32::from(buf.cur.y));
+
+        match action {
+            FoldAction::Toggle => {
+                self.fold_manager.toggle(buffer_id, cursor_line);
+            }
+            FoldAction::Open => {
+                self.fold_manager.open(buffer_id, cursor_line);
+            }
+            FoldAction::Close => {
+                self.fold_manager.close(buffer_id, cursor_line);
+            }
+            FoldAction::OpenAll => {
+                self.fold_manager.open_all(buffer_id);
+            }
+            FoldAction::CloseAll => {
+                self.fold_manager.close_all(buffer_id);
             }
         }
     }

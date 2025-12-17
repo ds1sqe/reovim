@@ -129,6 +129,9 @@ impl CommandRegistry {
             ExplorerInputBackspaceCommand, ExplorerOpenNodeCommand, ExplorerPageDownCommand,
             ExplorerPageUpCommand, ExplorerRefreshCommand, ExplorerRenameCommand,
             ExplorerToggleHiddenCommand, ExplorerToggleNodeCommand,
+            // Fold
+            FoldCloseAllCommand, FoldCloseCommand, FoldOpenAllCommand, FoldOpenCommand,
+            FoldToggleCommand,
             // History (Undo/Redo)
             RedoCommand, UndoCommand,
             // Jump
@@ -279,6 +282,13 @@ impl CommandRegistry {
         let _ = self.register(TelescopeBackspaceCommand);
         let _ = self.register(TelescopeEnterInsertCommand);
         let _ = self.register(TelescopeEnterNormalCommand);
+
+        // Fold commands
+        let _ = self.register(FoldToggleCommand);
+        let _ = self.register(FoldOpenCommand);
+        let _ = self.register(FoldCloseCommand);
+        let _ = self.register(FoldOpenAllCommand);
+        let _ = self.register(FoldCloseAllCommand);
     }
 }
 

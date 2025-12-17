@@ -8,6 +8,7 @@ use crate::highlight::{Highlight, HighlightGroup};
 use crate::leap::LeapDirection;
 use crate::modd::{ModeState, OperatorType};
 use crate::telescope::{PreviewContent, TelescopeItem};
+use crate::treesitter::BufferEdit;
 
 pub enum InnerEvent {
     BufferEvent(BufferEvent),
@@ -22,6 +23,8 @@ pub enum InnerEvent {
     OperatorMotionEvent(OperatorMotionAction),
     TelescopeEvent(TelescopeEvent),
     LeapEvent(LeapEvent),
+    /// Treesitter-related events for incremental parsing
+    TreesitterEvent(TreesitterEvent),
     RenderSignal,
     KillSignal,
     /// Show the which-key popup with available bindings
@@ -165,4 +168,17 @@ pub enum LeapEvent {
     SelectLabel { label: String },
     /// Cancel leap mode (Escape)
     Cancel,
+}
+
+/// Treesitter-related events for incremental parsing
+pub enum TreesitterEvent {
+    /// Schedule a buffer for reparsing after an edit
+    ScheduleReparse { buffer_id: usize },
+    /// Perform incremental parse with edit information
+    IncrementalParse {
+        buffer_id: usize,
+        edit: BufferEdit,
+    },
+    /// Force a full reparse of a buffer
+    FullReparse { buffer_id: usize },
 }
