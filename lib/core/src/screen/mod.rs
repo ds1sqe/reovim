@@ -12,7 +12,7 @@ use {
         constants::RESET_STYLE,
         explorer::{render_explorer, ExplorerState},
         highlight::{ColorMode, HighlightStore, Theme},
-        modd::Mod,
+        modd::ModeState,
         telescope::TelescopeState,
     },
     reovim_sys::{
@@ -138,7 +138,7 @@ impl Screen {
         &mut self,
         buffers: &[Buffer],
         highlight_store: &HighlightStore,
-        mode: &Mod,
+        mode: &ModeState,
         cmd_line: &CommandLine,
         pending_keys: &str,
         last_command: &str,
@@ -218,7 +218,7 @@ impl Screen {
         }
 
         // Show command line in Command mode, status line otherwise
-        if matches!(mode, Mod::Command) {
+        if mode.is_command() {
             render_command_line_to(&mut self.out_stream, self.size.height, cmd_line)?;
         } else {
             render_status_line_to(
@@ -260,7 +260,7 @@ impl Screen {
         }
 
         // Position cursor at buffer cursor (not in command mode)
-        if !matches!(mode, Mod::Command)
+        if !mode.is_command()
             && let Some((x, y)) = cursor_pos
         {
             queue!(self.out_stream, MoveTo(x, y))?;
@@ -614,7 +614,7 @@ impl Screen {
 impl StatusLineRenderer for Screen {
     fn render_status_line(
         &mut self,
-        mode: &Mod,
+        mode: &ModeState,
         buffer: Option<&Buffer>,
         pending_keys: &str,
         last_command: &str,

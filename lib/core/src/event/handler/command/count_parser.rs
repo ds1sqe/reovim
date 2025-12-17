@@ -1,6 +1,6 @@
 //! Count prefix parsing for commands (e.g., 5j moves down 5 lines)
 
-use crate::modd::Mod;
+use crate::modd::ModeState;
 
 /// Manages count prefix state for vim-style commands
 #[derive(Debug, Default)]
@@ -16,9 +16,9 @@ impl CountParser {
 
     /// Check if a key is a digit that should be accumulated as count
     #[must_use]
-    pub fn is_count_digit(&self, key: &str, mode: &Mod) -> bool {
-        // Only parse counts in Normal or Visual mode
-        if !matches!(mode, Mod::Normal | Mod::Visual(_)) {
+    pub fn is_count_digit(&self, key: &str, mode: &ModeState) -> bool {
+        // Only parse counts in Normal, Visual, or OperatorPending mode
+        if !mode.is_normal() && !mode.is_visual() && !mode.is_operator_pending() {
             return false;
         }
 
@@ -74,6 +74,7 @@ impl CountParser {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modd::OperatorType;
 
     #[test]
     fn test_single_digit() {
@@ -95,7 +96,7 @@ mod tests {
     fn test_zero_as_first_digit() {
         let parser = CountParser::new();
         // '0' without existing count should NOT be a count digit
-        assert!(!parser.is_count_digit("0", &Mod::Normal));
+        assert!(!parser.is_count_digit("0", &ModeState::normal()));
     }
 
     #[test]
@@ -103,18 +104,22 @@ mod tests {
         let mut parser = CountParser::new();
         parser.accumulate("1");
         // '0' with existing count SHOULD be a count digit
-        assert!(parser.is_count_digit("0", &Mod::Normal));
+        assert!(parser.is_count_digit("0", &ModeState::normal()));
         parser.accumulate("0");
         assert_eq!(parser.take(), Some(10));
     }
 
     #[test]
-    fn test_count_only_in_normal_visual() {
+    fn test_count_only_in_normal_visual_operator_pending() {
         let parser = CountParser::new();
-        assert!(parser.is_count_digit("5", &Mod::Normal));
-        assert!(parser.is_count_digit("5", &Mod::Visual(crate::modd::ModExtension::Normal)));
-        assert!(!parser.is_count_digit("5", &Mod::Insert(crate::modd::ModExtension::Normal)));
-        assert!(!parser.is_count_digit("5", &Mod::Command));
+        assert!(parser.is_count_digit("5", &ModeState::normal()));
+        assert!(parser.is_count_digit("5", &ModeState::visual()));
+        assert!(parser.is_count_digit(
+            "5",
+            &ModeState::operator_pending(OperatorType::Delete, None)
+        ));
+        assert!(!parser.is_count_digit("5", &ModeState::insert()));
+        assert!(!parser.is_count_digit("5", &ModeState::command()));
     }
 
     #[test]

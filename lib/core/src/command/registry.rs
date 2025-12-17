@@ -143,10 +143,11 @@ impl CommandRegistry {
             NoopCommand, QuitCommand,
             // Telescope
             TelescopeBackspaceCommand, TelescopeCloseCommand, TelescopeCommandsCommand,
-            TelescopeConfirmCommand, TelescopeFindBuffersCommand, TelescopeFindFilesCommand,
-            TelescopeHelpTagsCommand, TelescopeKeymapsCommand, TelescopeLiveGrepCommand,
-            TelescopePageDownCommand, TelescopePageUpCommand, TelescopeRecentFilesCommand,
-            TelescopeSelectNextCommand, TelescopeSelectPrevCommand,
+            TelescopeConfirmCommand, TelescopeEnterInsertCommand, TelescopeEnterNormalCommand,
+            TelescopeFindBuffersCommand, TelescopeFindFilesCommand, TelescopeGotoFirstCommand,
+            TelescopeGotoLastCommand, TelescopeHelpTagsCommand, TelescopeKeymapsCommand,
+            TelescopeLiveGrepCommand, TelescopePageDownCommand, TelescopePageUpCommand,
+            TelescopeRecentFilesCommand, TelescopeSelectNextCommand, TelescopeSelectPrevCommand,
             // Text
             DeleteCharBackwardCommand, DeleteCharForwardCommand, DeleteLineCommand,
             InsertNewlineCommand, YankLineCommand, YankToEndCommand,
@@ -264,9 +265,13 @@ impl CommandRegistry {
         let _ = self.register(TelescopeSelectPrevCommand);
         let _ = self.register(TelescopePageDownCommand);
         let _ = self.register(TelescopePageUpCommand);
+        let _ = self.register(TelescopeGotoFirstCommand);
+        let _ = self.register(TelescopeGotoLastCommand);
         let _ = self.register(TelescopeConfirmCommand);
         let _ = self.register(TelescopeCloseCommand);
         let _ = self.register(TelescopeBackspaceCommand);
+        let _ = self.register(TelescopeEnterInsertCommand);
+        let _ = self.register(TelescopeEnterNormalCommand);
     }
 }
 

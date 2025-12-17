@@ -2,7 +2,7 @@
 
 use crate::buffer::Line;
 use crate::command::traits::{CommandResult, CommandTrait, ExecutionContext};
-use crate::modd::{Mod, ModExtension};
+use crate::modd::ModeState;
 use std::any::Any;
 
 /// Enter normal mode
@@ -23,7 +23,7 @@ impl CommandTrait for EnterNormalModeCommand {
         if ctx.buffer.cur.x > 0 {
             ctx.buffer.cur.x -= 1;
         }
-        CommandResult::ModeChange(Mod::Normal)
+        CommandResult::ModeChange(ModeState::normal())
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
@@ -49,7 +49,7 @@ impl CommandTrait for EnterInsertModeCommand {
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::ModeChange(Mod::Insert(ModExtension::Normal))
+        CommandResult::ModeChange(ModeState::insert())
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
@@ -81,7 +81,7 @@ impl CommandTrait for EnterInsertModeAfterCommand {
         {
             ctx.buffer.cur.x += 1;
         }
-        CommandResult::ModeChange(Mod::Insert(ModExtension::Normal))
+        CommandResult::ModeChange(ModeState::insert())
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
@@ -112,7 +112,7 @@ impl CommandTrait for EnterInsertModeEolCommand {
         if let Some(line) = ctx.buffer.contents.get(ctx.buffer.cur.y as usize) {
             ctx.buffer.cur.x = line.inner.len() as u16;
         }
-        CommandResult::ModeChange(Mod::Insert(ModExtension::Normal))
+        CommandResult::ModeChange(ModeState::insert())
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
@@ -147,7 +147,7 @@ impl CommandTrait for OpenLineBelowCommand {
             ctx.buffer.cur.y += 1;
         }
         ctx.buffer.cur.x = 0;
-        CommandResult::ModeChange(Mod::Insert(ModExtension::Normal))
+        CommandResult::ModeChange(ModeState::insert())
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
@@ -181,7 +181,7 @@ impl CommandTrait for OpenLineAboveCommand {
             ctx.buffer.contents.insert(insert_at, Line::from(""));
         }
         ctx.buffer.cur.x = 0;
-        CommandResult::ModeChange(Mod::Insert(ModExtension::Normal))
+        CommandResult::ModeChange(ModeState::insert())
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
@@ -207,7 +207,7 @@ impl CommandTrait for EnterVisualModeCommand {
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::ModeChange(Mod::Visual(ModExtension::Normal))
+        CommandResult::ModeChange(ModeState::visual())
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
@@ -233,7 +233,7 @@ impl CommandTrait for EnterVisualBlockModeCommand {
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::ModeChange(Mod::Visual(ModExtension::Block))
+        CommandResult::ModeChange(ModeState::visual_block())
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
@@ -259,7 +259,7 @@ impl CommandTrait for EnterCommandModeCommand {
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::ModeChange(Mod::Command)
+        CommandResult::ModeChange(ModeState::command())
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {

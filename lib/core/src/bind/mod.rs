@@ -3,7 +3,7 @@
 use crate::command::builtin::ToggleExplorerCommand;
 use crate::command::{id::builtin, registry::CommandRegistry, CommandId, CommandTrait};
 use crate::event::WhichKeyBinding;
-use crate::modd::Mod;
+use crate::modd::{EditMode, Focus, ModeState, SubMode};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -98,6 +98,17 @@ impl std::fmt::Debug for KeyMapInner {
 }
 
 /// Keymap for each mode
+///
+/// Keymaps are organized by Focus + `EditMode` + `SubMode`:
+/// - Editor + Normal → normal
+/// - Editor + Insert → insert
+/// - Editor + Visual → visual
+/// - Explorer + Normal → explorer
+/// - Explorer + Insert → `explorer_input`
+/// - Telescope + Normal → `telescope_normal`
+/// - Telescope + Insert → `telescope_insert`
+/// - Any + Command → command
+/// - Any + `OperatorPending` → `operator_pending`
 #[derive(Default)]
 pub struct KeyMap {
     pub insert: HashMap<String, KeyMapInner>,
@@ -107,7 +118,8 @@ pub struct KeyMap {
     pub explorer: HashMap<String, KeyMapInner>,
     pub explorer_input: HashMap<String, KeyMapInner>,
     pub operator_pending: HashMap<String, KeyMapInner>,
-    pub telescope: HashMap<String, KeyMapInner>,
+    pub telescope_normal: HashMap<String, KeyMapInner>,
+    pub telescope_insert: HashMap<String, KeyMapInner>,
 }
 
 impl KeyMap {
@@ -121,14 +133,16 @@ impl KeyMap {
         Self::setup_explorer_mode(&mut km.explorer);
         Self::setup_explorer_input_mode(&mut km.explorer_input);
         Self::setup_operator_pending_mode(&mut km.operator_pending);
-        Self::setup_telescope_mode(&mut km.telescope);
+        Self::setup_telescope_normal_mode(&mut km.telescope_normal);
+        Self::setup_telescope_insert_mode(&mut km.telescope_insert);
         km
     }
 
     /// Bind a key sequence to a command reference at runtime
     ///
     /// # Arguments
-    /// * `mode` - Mode identifier: "n"/"normal", "i"/"insert", "v"/"visual", "c"/"command"
+    /// * `mode` - Mode identifier: n/normal, i/insert, v/visual, c/command,
+    ///   tn/telescope\_normal, ti/telescope\_insert
     /// * `keys` - Key sequence (e.g., "jj", "<leader>x")
     /// * `cmd` - Command reference to bind
     pub fn bind(&mut self, mode: &str, keys: &str, cmd: CommandRef) {
@@ -140,7 +154,8 @@ impl KeyMap {
             "e" | "explorer" => &mut self.explorer,
             "E" | "explorer_input" => &mut self.explorer_input,
             "o" | "operator_pending" => &mut self.operator_pending,
-            "t" | "telescope" => &mut self.telescope,
+            "tn" | "telescope_normal" => &mut self.telescope_normal,
+            "ti" | "telescope_insert" => &mut self.telescope_insert,
             _ => return,
         };
         map.insert(keys.to_string(), KeyMapInner::with_command_ref(cmd));
@@ -161,32 +176,53 @@ impl KeyMap {
             "e" | "explorer" => &mut self.explorer,
             "E" | "explorer_input" => &mut self.explorer_input,
             "o" | "operator_pending" => &mut self.operator_pending,
-            "t" | "telescope" => &mut self.telescope,
+            "tn" | "telescope_normal" => &mut self.telescope_normal,
+            "ti" | "telescope_insert" => &mut self.telescope_insert,
             _ => return,
         };
         map.remove(keys);
     }
 
+    /// Get the appropriate keymap for a given `ModeState`
+    ///
+    /// Keymap selection priority:
+    /// 1. `SubMode` takes precedence (Command, `OperatorPending`)
+    /// 2. Focus + `EditMode` determines the keymap otherwise
+    #[must_use]
+    pub const fn get_keymap_for_mode(&self, mode: &ModeState) -> &HashMap<String, KeyMapInner> {
+        // SubMode takes precedence
+        match &mode.sub_mode {
+            SubMode::Command => return &self.command,
+            SubMode::OperatorPending { .. } => return &self.operator_pending,
+            SubMode::None => {}
+        }
+
+        // Focus + EditMode determines keymap
+        match (&mode.focus, &mode.edit_mode) {
+            (Focus::Editor, EditMode::Normal) => &self.normal,
+            (Focus::Editor, EditMode::Insert(_)) => &self.insert,
+            (Focus::Editor, EditMode::Visual(_)) => &self.visual,
+            (Focus::Explorer, EditMode::Normal | EditMode::Visual(_)) => &self.explorer,
+            (Focus::Explorer, EditMode::Insert(_)) => &self.explorer_input,
+            (Focus::Telescope, EditMode::Normal | EditMode::Visual(_)) => &self.telescope_normal,
+            (Focus::Telescope, EditMode::Insert(_)) => &self.telescope_insert,
+        }
+    }
+
     /// Get all available bindings for a given prefix in a mode
     ///
     /// This is used by the which-key feature to display available keybindings.
+    /// Keymap selection is based on Focus + `EditMode` + `SubMode`:
+    /// - `SubMode` takes precedence (Command, `OperatorPending`)
+    /// - Then Focus + `EditMode` determines the keymap
     #[must_use]
     pub fn get_bindings_for_prefix(
         &self,
-        mode: &Mod,
+        mode: &ModeState,
         prefix: &str,
         registry: &CommandRegistry,
     ) -> Vec<WhichKeyBinding> {
-        let keymap = match mode {
-            Mod::Normal => &self.normal,
-            Mod::Insert(_) => &self.insert,
-            Mod::Visual(_) => &self.visual,
-            Mod::Command => &self.command,
-            Mod::Explorer => &self.explorer,
-            Mod::ExplorerInput => &self.explorer_input,
-            Mod::OperatorPending { .. } => &self.operator_pending,
-            Mod::Telescope => &self.telescope,
-        };
+        let keymap = self.get_keymap_for_mode(mode);
 
         let mut bindings = Vec::new();
         let mut seen_keys = std::collections::HashSet::new();
@@ -378,10 +414,28 @@ impl KeyMap {
         // Motion keys and 'd' for dd are handled dynamically in CommandHandler
     }
 
-    fn setup_telescope_mode(keymap: &mut HashMap<String, KeyMapInner>) {
+    /// Telescope Normal mode - navigation keys (j/k/gg/G)
+    fn setup_telescope_normal_mode(keymap: &mut HashMap<String, KeyMapInner>) {
         // Navigation
+        keymap.insert("j".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_NEXT));
+        keymap.insert("k".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_PREV));
+        keymap.insert("g".to_string(), KeyMapInner::new()); // prefix
+        keymap.insert("gg".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_GOTO_FIRST));
+        keymap.insert("G".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_GOTO_LAST));
+        keymap.insert("C-d".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_PAGE_DOWN));
+        keymap.insert("C-u".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_PAGE_UP));
+
+        // Mode switching
+        keymap.insert("i".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_ENTER_INSERT));
+
+        // Actions
         keymap.insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_CLOSE));
         keymap.insert("Enter".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_CONFIRM));
+    }
+
+    /// Telescope Insert mode - typing query with Ctrl-based navigation
+    fn setup_telescope_insert_mode(keymap: &mut HashMap<String, KeyMapInner>) {
+        // Navigation (Ctrl-based to not interfere with typing)
         keymap.insert("C-n".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_NEXT));
         keymap.insert("C-p".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_PREV));
         keymap.insert("Down".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_NEXT));
@@ -390,6 +444,14 @@ impl KeyMap {
         keymap.insert("S-Tab".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_PREV));
         keymap.insert("C-u".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_PAGE_UP));
         keymap.insert("C-d".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_PAGE_DOWN));
+
+        // Editing
         keymap.insert("Backspace".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_DELETE_CHAR));
+
+        // Mode switching (ESC goes to Normal mode in Telescope, not closes)
+        keymap.insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_ENTER_NORMAL));
+
+        // Actions
+        keymap.insert("Enter".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_CONFIRM));
     }
 }

@@ -4,7 +4,7 @@ use crate::buffer::Buffer;
 use crate::command_line::CommandLine;
 use crate::constants::RESET_STYLE;
 use crate::highlight::{ColorMode, Theme};
-use crate::modd::Mod;
+use crate::modd::{EditMode, Focus, ModeState, SubMode};
 use reovim_sys::{cursor::MoveTo, queue, style::Print};
 use std::io::Write;
 
@@ -13,7 +13,7 @@ pub trait StatusLineRenderer {
     /// Render the status line showing current mode, pending keys, last command, and buffer name
     fn render_status_line(
         &mut self,
-        mode: &Mod,
+        mode: &ModeState,
         buffer: Option<&Buffer>,
         pending_keys: &str,
         last_command: &str,
@@ -35,29 +35,30 @@ pub fn render_status_line_to<W: Write>(
     out: &mut W,
     screen_width: u16,
     screen_height: u16,
-    mode: &Mod,
+    mode: &ModeState,
     buffer: Option<&Buffer>,
     pending_keys: &str,
     last_command: &str,
     theme: &Theme,
     color_mode: ColorMode,
 ) -> std::result::Result<(), std::io::Error> {
-    let mode_str = match mode {
-        Mod::Normal => " NORMAL ",
-        Mod::Insert(_) => " INSERT ",
-        Mod::Visual(_) => " VISUAL ",
-        Mod::Command | Mod::Telescope => "", // These modes show their own UI
-        Mod::Explorer | Mod::ExplorerInput => " EXPLORER ",
-        Mod::OperatorPending { .. } => " OPERATOR ",
-    };
+    let mode_str = mode.display_string();
 
     // Get mode-specific style
-    let mode_style = match mode {
-        Mod::Normal | Mod::OperatorPending { .. } => &theme.status_line_mode.normal,
-        Mod::Insert(_) => &theme.status_line_mode.insert,
-        Mod::Visual(_) => &theme.status_line_mode.visual,
-        Mod::Command | Mod::Telescope => &theme.status_line_mode.command,
-        Mod::Explorer | Mod::ExplorerInput => &theme.status_line_mode.explorer,
+    let mode_style = match (&mode.sub_mode, &mode.focus, &mode.edit_mode) {
+        // Command sub-mode or Telescope uses command style
+        (SubMode::Command, _, _) | (SubMode::None, Focus::Telescope, _) => {
+            &theme.status_line_mode.command
+        }
+        // Operator-pending and normal mode in Editor
+        (SubMode::OperatorPending { .. }, _, _)
+        | (SubMode::None, Focus::Editor, EditMode::Normal) => &theme.status_line_mode.normal,
+        // Editor insert mode
+        (SubMode::None, Focus::Editor, EditMode::Insert(_)) => &theme.status_line_mode.insert,
+        // Editor visual mode
+        (SubMode::None, Focus::Editor, EditMode::Visual(_)) => &theme.status_line_mode.visual,
+        // Explorer
+        (SubMode::None, Focus::Explorer, _) => &theme.status_line_mode.explorer,
     };
 
     // Get buffer name (file path or [No Name])

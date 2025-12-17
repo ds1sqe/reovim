@@ -419,3 +419,107 @@ impl CommandTrait for TelescopeBackspaceCommand {
         self
     }
 }
+
+/// Go to first item in telescope
+#[derive(Debug, Clone)]
+pub struct TelescopeGotoFirstCommand;
+
+impl CommandTrait for TelescopeGotoFirstCommand {
+    fn name(&self) -> &'static str {
+        "telescope_goto_first"
+    }
+
+    fn description(&self) -> &'static str {
+        "Go to first item in telescope"
+    }
+
+    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
+        CommandResult::DeferToRuntime(DeferredAction::Telescope(TelescopeAction::GotoFirst))
+    }
+
+    fn clone_box(&self) -> Box<dyn CommandTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+/// Go to last item in telescope
+#[derive(Debug, Clone)]
+pub struct TelescopeGotoLastCommand;
+
+impl CommandTrait for TelescopeGotoLastCommand {
+    fn name(&self) -> &'static str {
+        "telescope_goto_last"
+    }
+
+    fn description(&self) -> &'static str {
+        "Go to last item in telescope"
+    }
+
+    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
+        CommandResult::DeferToRuntime(DeferredAction::Telescope(TelescopeAction::GotoLast))
+    }
+
+    fn clone_box(&self) -> Box<dyn CommandTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+/// Enter insert mode in telescope (for typing query)
+#[derive(Debug, Clone)]
+pub struct TelescopeEnterInsertCommand;
+
+impl CommandTrait for TelescopeEnterInsertCommand {
+    fn name(&self) -> &'static str {
+        "telescope_enter_insert"
+    }
+
+    fn description(&self) -> &'static str {
+        "Enter insert mode for typing query"
+    }
+
+    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
+        CommandResult::DeferToRuntime(DeferredAction::Telescope(TelescopeAction::EnterInsert))
+    }
+
+    fn clone_box(&self) -> Box<dyn CommandTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+/// Enter normal mode in telescope (for j/k navigation)
+#[derive(Debug, Clone)]
+pub struct TelescopeEnterNormalCommand;
+
+impl CommandTrait for TelescopeEnterNormalCommand {
+    fn name(&self) -> &'static str {
+        "telescope_enter_normal"
+    }
+
+    fn description(&self) -> &'static str {
+        "Enter normal mode for navigation"
+    }
+
+    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
+        CommandResult::DeferToRuntime(DeferredAction::Telescope(TelescopeAction::EnterNormal))
+    }
+
+    fn clone_box(&self) -> Box<dyn CommandTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}

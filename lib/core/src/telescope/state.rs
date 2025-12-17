@@ -241,6 +241,22 @@ impl TelescopeState {
         }
     }
 
+    /// Move to first item
+    pub fn move_to_first(&mut self) {
+        if !self.items.is_empty() {
+            self.selected_index = 0;
+            self.ensure_selected_visible();
+        }
+    }
+
+    /// Move to last item
+    pub fn move_to_last(&mut self) {
+        if !self.items.is_empty() {
+            self.selected_index = self.items.len() - 1;
+            self.ensure_selected_visible();
+        }
+    }
+
     /// Get currently selected item
     #[must_use]
     pub fn selected_item(&self) -> Option<&TelescopeItem> {

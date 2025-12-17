@@ -5,7 +5,7 @@ use crate::event::{
     BufferEvent, CommandHandler, CompletionEvent, CompletionHandler, ExplorerEvent,
     HighlightEvent, InnerEvent, InputEventBroker, TerminateHandler, WindowEvent,
 };
-use crate::modd::{Mod, ModExtension};
+use crate::modd::{EditMode, ModExtension, ModeState, SubMode};
 
 use super::Runtime;
 
@@ -258,7 +258,7 @@ impl Runtime {
                     .map_or(("Telescope", "> "), |p| (p.title(), p.prompt()));
 
                 self.telescope_state.open(&picker, title, prompt);
-                self.set_mode(Mod::Telescope);
+                self.set_mode(ModeState::telescope());
                 self.render();
 
                 // Fetch items from picker asynchronously
@@ -328,20 +328,20 @@ impl Runtime {
                         TelescopeData::FilePath(path) => {
                             let path_str = path.to_string_lossy().to_string();
                             self.telescope_state.close();
-                            self.set_mode(Mod::Normal);
+                            self.set_mode(ModeState::normal());
                             self.open_file(&path_str);
                         }
                         TelescopeData::BufferId(buf_id) => {
                             let buf_id = *buf_id;
                             self.telescope_state.close();
-                            self.set_mode(Mod::Normal);
+                            self.set_mode(ModeState::normal());
                             self.switch_buffer(buf_id);
                         }
                         TelescopeData::GrepMatch { path, line, col: _ } => {
                             let path_str = path.to_string_lossy().to_string();
                             let target_line = *line;
                             self.telescope_state.close();
-                            self.set_mode(Mod::Normal);
+                            self.set_mode(ModeState::normal());
                             self.open_file(&path_str);
                             // Move cursor to line
                             if let Some(buffer) = self.buffers.get_mut(&self.active_buffer_id) {
@@ -352,7 +352,7 @@ impl Runtime {
                         TelescopeData::Command(cmd_id) => {
                             let cmd_id = cmd_id.clone();
                             self.telescope_state.close();
-                            self.set_mode(Mod::Normal);
+                            self.set_mode(ModeState::normal());
                             // Execute the command
                             if let Some(cmd) = self.command_registry.get(&cmd_id)
                                 && let Some(buffer) = self.buffers.get_mut(&self.active_buffer_id)
@@ -369,18 +369,18 @@ impl Runtime {
                         TelescopeData::Keymap { .. } | TelescopeData::HelpTag { .. } => {
                             // Informational, just close
                             self.telescope_state.close();
-                            self.set_mode(Mod::Normal);
+                            self.set_mode(ModeState::normal());
                         }
                     }
                 } else {
                     self.telescope_state.close();
-                    self.set_mode(Mod::Normal);
+                    self.set_mode(ModeState::normal());
                 }
                 self.render();
             }
             TelescopeEvent::Close => {
                 self.telescope_state.close();
-                self.set_mode(Mod::Normal);
+                self.set_mode(ModeState::normal());
                 self.render();
             }
             TelescopeEvent::UpdatePreview { content } => {
@@ -438,53 +438,58 @@ impl Runtime {
 
     /// Handle mode change events
     #[allow(clippy::collapsible_if)]
-    fn handle_mode_change(&mut self, new_mode: Mod) {
+    fn handle_mode_change(&mut self, new_mode: ModeState) {
         tracing::debug!(?new_mode, "Mode changed");
 
         // Hide which-key panel on mode change
         self.which_key_panel.hide();
 
-        match &new_mode {
-            Mod::Insert(_) => {
-                // Clear landing page content when entering insert mode (only once)
-                if self.showing_landing_page {
-                    if let Some(buffer) = self.buffers.get_mut(&0) {
-                        buffer.contents.clear();
-                        buffer.cur.x = 0;
-                        buffer.cur.y = 0;
-                    }
-                    self.showing_landing_page = false;
-                }
-            }
-            Mod::Visual(ext) => {
-                // Start selection when entering visual mode
+        // Handle insert mode
+        if new_mode.is_insert() {
+            // Clear landing page content when entering insert mode (only once)
+            if self.showing_landing_page {
                 if let Some(buffer) = self.buffers.get_mut(&0) {
-                    match ext {
-                        ModExtension::Block => buffer.start_block_selection(),
-                        _ => buffer.start_selection(),
-                    }
+                    buffer.contents.clear();
+                    buffer.cur.x = 0;
+                    buffer.cur.y = 0;
                 }
-            }
-            Mod::Normal => {
-                // Clear selection when returning to normal mode
-                if let Some(buffer) = self.buffers.get_mut(&0) {
-                    buffer.clear_selection();
-                }
-                // Note: command line is cleared in handle_command_line_command
-                // after the command is executed, not here (to avoid race condition)
-            }
-            Mod::Command => {
-                // Activate command line when entering command mode
-                self.command_line.activate();
-            }
-            Mod::Explorer | Mod::ExplorerInput | Mod::OperatorPending { .. } | Mod::Telescope => {
-                // Explorer mode is handled via window focus
-                // The explorer state will be set up when opening explorer
-                // ExplorerInput mode is for file operations and filter
-                // OperatorPending mode just waits for a motion key (handled by CommandHandler)
-                // Telescope mode is handled separately when opening a picker
+                self.showing_landing_page = false;
             }
         }
+
+        // Handle visual mode
+        if let EditMode::Visual(ext) = &new_mode.edit_mode {
+            // Start selection when entering visual mode
+            if let Some(buffer) = self.buffers.get_mut(&0) {
+                match ext {
+                    ModExtension::Block => buffer.start_block_selection(),
+                    _ => buffer.start_selection(),
+                }
+            }
+        }
+
+        // Handle normal mode
+        if new_mode.is_normal() && matches!(new_mode.sub_mode, SubMode::None) {
+            // Clear selection when returning to normal mode
+            if let Some(buffer) = self.buffers.get_mut(&0) {
+                buffer.clear_selection();
+            }
+            // Note: command line is cleared in handle_command_line_command
+            // after the command is executed, not here (to avoid race condition)
+        }
+
+        // Handle command mode
+        if new_mode.is_command() {
+            // Activate command line when entering command mode
+            self.command_line.activate();
+        }
+
+        // Explorer, ExplorerInput, OperatorPending, Telescope modes are handled elsewhere:
+        // - Explorer mode is handled via window focus
+        // - ExplorerInput mode is for file operations and filter
+        // - OperatorPending mode just waits for a motion key (handled by CommandHandler)
+        // - Telescope mode is handled separately when opening a picker
+
         // Use set_mode to broadcast via watch channel
         self.set_mode(new_mode);
         self.render();

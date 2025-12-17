@@ -1,7 +1,7 @@
 //! Operator commands for delete, yank, change operations
 
 use crate::command::traits::{CommandResult, CommandTrait, ExecutionContext};
-use crate::modd::{Mod, OperatorType};
+use crate::modd::{ModeState, OperatorType};
 use std::any::Any;
 
 /// Enter operator-pending mode for delete (d)
@@ -18,10 +18,7 @@ impl CommandTrait for EnterDeleteOperatorCommand {
     }
 
     fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::ModeChange(Mod::OperatorPending {
-            operator: OperatorType::Delete,
-            count: ctx.count,
-        })
+        CommandResult::ModeChange(ModeState::operator_pending(OperatorType::Delete, ctx.count))
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
@@ -47,10 +44,7 @@ impl CommandTrait for EnterYankOperatorCommand {
     }
 
     fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::ModeChange(Mod::OperatorPending {
-            operator: OperatorType::Yank,
-            count: ctx.count,
-        })
+        CommandResult::ModeChange(ModeState::operator_pending(OperatorType::Yank, ctx.count))
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
@@ -76,10 +70,7 @@ impl CommandTrait for EnterChangeOperatorCommand {
     }
 
     fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::ModeChange(Mod::OperatorPending {
-            operator: OperatorType::Change,
-            count: ctx.count,
-        })
+        CommandResult::ModeChange(ModeState::operator_pending(OperatorType::Change, ctx.count))
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {

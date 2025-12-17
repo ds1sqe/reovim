@@ -5,7 +5,7 @@ use crate::command::traits::OperatorMotionAction;
 use crate::command::CommandContext;
 use crate::event::inner::{CommandEvent, WhichKeyBinding};
 use crate::event::InnerEvent;
-use crate::modd::{Mod, ModExtension, OperatorType};
+use crate::modd::{ModeState, OperatorType};
 use tokio::sync::mpsc::Sender;
 
 /// Handles command dispatch and mode transitions
@@ -37,7 +37,7 @@ impl Dispatcher {
     }
 
     /// Update the current mode and notify listeners
-    pub async fn update_mode(&self, new_mode: Mod) {
+    pub async fn update_mode(&self, new_mode: ModeState) {
         let _ = self
             .inner_tx
             .send(InnerEvent::ModeChangeEvent(new_mode))
@@ -73,34 +73,26 @@ impl Dispatcher {
     ///
     /// Uses command names to detect mode-changing commands.
     #[must_use]
-    pub fn mode_for_command(cmd: &CommandRef) -> Option<Mod> {
+    pub fn mode_for_command(cmd: &CommandRef) -> Option<ModeState> {
         let name = match cmd {
             CommandRef::Registered(id) => id.as_str(),
             CommandRef::Inline(cmd) => cmd.name(),
         };
 
         match name {
-            "enter_normal_mode" => Some(Mod::Normal),
+            "enter_normal_mode" => Some(ModeState::normal()),
             "enter_insert_mode" | "enter_insert_mode_after" | "enter_insert_mode_eol"
-            | "open_line_below" | "open_line_above" => Some(Mod::Insert(ModExtension::Normal)),
-            "enter_visual_mode" => Some(Mod::Visual(ModExtension::Normal)),
-            "enter_command_mode" => Some(Mod::Command),
+            | "open_line_below" | "open_line_above" => Some(ModeState::insert()),
+            "enter_visual_mode" => Some(ModeState::visual()),
+            "enter_visual_block_mode" => Some(ModeState::visual_block()),
+            "enter_command_mode" => Some(ModeState::command()),
             // Operator-pending mode
-            "enter_delete_operator" => Some(Mod::OperatorPending {
-                operator: OperatorType::Delete,
-                count: None,
-            }),
-            "enter_yank_operator" => Some(Mod::OperatorPending {
-                operator: OperatorType::Yank,
-                count: None,
-            }),
-            "enter_change_operator" => Some(Mod::OperatorPending {
-                operator: OperatorType::Change,
-                count: None,
-            }),
+            "enter_delete_operator" => Some(ModeState::operator_pending(OperatorType::Delete, None)),
+            "enter_yank_operator" => Some(ModeState::operator_pending(OperatorType::Yank, None)),
+            "enter_change_operator" => Some(ModeState::operator_pending(OperatorType::Change, None)),
             // Commands that return to Normal mode
             "command_line_execute" | "command_line_cancel" | "visual_delete" | "visual_yank" => {
-                Some(Mod::Normal)
+                Some(ModeState::normal())
             }
             // Explorer mode transitions are handled in runtime via DeferredAction
             // toggle_explorer, explorer_close, explorer_focus_editor etc.
@@ -113,7 +105,7 @@ impl Dispatcher {
         // Also send mode change back to normal
         let _ = self
             .inner_tx
-            .send(InnerEvent::ModeChangeEvent(Mod::Normal))
+            .send(InnerEvent::ModeChangeEvent(ModeState::normal()))
             .await;
         let _ = self
             .inner_tx

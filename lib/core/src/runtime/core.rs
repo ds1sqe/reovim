@@ -12,7 +12,7 @@ use crate::event::{CompletionEvent, InnerEvent};
 use crate::explorer::ExplorerState;
 use crate::highlight::{ColorMode, HighlightStore, Theme};
 use crate::jumplist::JumpList;
-use crate::modd::Mod;
+use crate::modd::ModeState;
 use crate::register::Registers;
 use crate::screen::{Screen, WhichKeyPanel};
 use crate::telescope::picker::{
@@ -29,7 +29,7 @@ pub struct Runtime {
     pub buffers: BTreeMap<usize, Buffer>,
     pub screen: Screen,
     pub highlight_store: HighlightStore,
-    pub current_mode: Mod,
+    pub mode_state: ModeState,
     pub color_mode: ColorMode,
     pub theme: Theme,
     pub registers: Registers,
@@ -41,9 +41,9 @@ pub struct Runtime {
     pub initial_file: Option<String>,
     pub(crate) showing_landing_page: bool,
     /// Watch channel sender for broadcasting mode changes
-    pub(crate) mode_tx: watch::Sender<Mod>,
+    pub(crate) mode_tx: watch::Sender<ModeState>,
     /// Watch channel receiver (kept to allow subscribing)
-    mode_rx: watch::Receiver<Mod>,
+    mode_rx: watch::Receiver<ModeState>,
     /// Command registry for trait-based command system
     pub command_registry: Arc<CommandRegistry>,
     /// Currently active buffer ID
@@ -85,13 +85,13 @@ impl Runtime {
     #[must_use]
     pub fn new(screen: Screen) -> Self {
         let (tx, rx) = mpsc::channel(EVENT_CHANNEL_CAPACITY);
-        let (mode_tx, mode_rx) = watch::channel(Mod::Normal);
+        let (mode_tx, mode_rx) = watch::channel(ModeState::new());
         let (completion_active_tx, completion_active_rx) = watch::channel(false);
         Self {
             buffers: BTreeMap::new(),
             screen,
             highlight_store: HighlightStore::new(),
-            current_mode: Mod::Normal,
+            mode_state: ModeState::new(),
             color_mode: ColorMode::detect(),
             theme: Theme::default(),
             registers: Registers::new(),
@@ -136,7 +136,7 @@ impl Runtime {
 
     /// Subscribe to mode changes
     #[must_use]
-    pub fn subscribe_mode(&self) -> watch::Receiver<Mod> {
+    pub fn subscribe_mode(&self) -> watch::Receiver<ModeState> {
         self.mode_rx.clone()
     }
 
@@ -152,9 +152,15 @@ impl Runtime {
     }
 
     /// Broadcast a mode change
-    pub(crate) fn set_mode(&mut self, mode: Mod) {
-        self.current_mode = mode.clone();
-        let _ = self.mode_tx.send(mode);
+    pub(crate) fn set_mode(&mut self, mode_state: ModeState) {
+        self.mode_state = mode_state.clone();
+        let _ = self.mode_tx.send(mode_state);
+    }
+
+    /// Get current mode state
+    #[must_use]
+    pub const fn current_mode(&self) -> &ModeState {
+        &self.mode_state
     }
 
     /// Set the initial file to open
@@ -171,7 +177,7 @@ impl Runtime {
             .render(
                 &buffers,
                 &self.highlight_store,
-                &self.current_mode,
+                &self.mode_state,
                 &self.command_line,
                 &self.pending_keys,
                 &self.last_command,

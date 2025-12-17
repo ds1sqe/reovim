@@ -12,7 +12,7 @@ use crate::command::{
     CommandTrait,
 };
 use crate::explorer::ExplorerState;
-use crate::modd::Mod;
+use crate::modd::ModeState;
 use crate::command_line::{ExCommand, SetOption};
 use crate::event::CommandEvent;
 
@@ -234,7 +234,7 @@ impl Runtime {
                 // Toggle explorer visibility and mode
                 self.screen.toggle_explorer();
                 if self.screen.layout().is_explorer_visible() {
-                    self.set_mode(Mod::Explorer);
+                    self.set_mode(ModeState::explorer());
                     // Initialize explorer state if needed
                     if self.explorer_state.is_none()
                         && let Ok(cwd) = std::env::current_dir()
@@ -242,13 +242,13 @@ impl Runtime {
                         self.explorer_state = ExplorerState::new(cwd).ok();
                     }
                 } else {
-                    self.set_mode(Mod::Normal);
+                    self.set_mode(ModeState::normal());
                 }
             }
             ExplorerAction::Close | ExplorerAction::FocusEditor => {
                 // Switch focus back to editor
                 self.screen.focus_editor();
-                self.set_mode(Mod::Normal);
+                self.set_mode(ModeState::normal());
             }
             ExplorerAction::CursorUp { count } => {
                 if let Some(ref mut state) = self.explorer_state {
@@ -308,7 +308,7 @@ impl Runtime {
                         self.screen.set_editor_buffer(self.active_buffer_id);
                         // Switch focus to editor
                         self.screen.focus_editor();
-                        self.set_mode(Mod::Normal);
+                        self.set_mode(ModeState::normal());
                     }
                 }
             }
@@ -335,13 +335,13 @@ impl Runtime {
             ExplorerAction::CreateFile => {
                 if let Some(ref mut state) = self.explorer_state {
                     state.start_create_file();
-                    self.set_mode(Mod::ExplorerInput);
+                    self.set_mode(ModeState::explorer_input());
                 }
             }
             ExplorerAction::CreateDir => {
                 if let Some(ref mut state) = self.explorer_state {
                     state.start_create_dir();
-                    self.set_mode(Mod::ExplorerInput);
+                    self.set_mode(ModeState::explorer_input());
                 }
             }
             ExplorerAction::Rename => {
@@ -349,7 +349,7 @@ impl Runtime {
                     state.start_rename();
                     // Only switch mode if rename actually started (node exists)
                     if state.is_input_mode() {
-                        self.set_mode(Mod::ExplorerInput);
+                        self.set_mode(ModeState::explorer_input());
                     }
                 }
             }
@@ -358,14 +358,14 @@ impl Runtime {
                     state.start_delete();
                     // Only switch mode if delete actually started (node exists)
                     if state.is_input_mode() {
-                        self.set_mode(Mod::ExplorerInput);
+                        self.set_mode(ModeState::explorer_input());
                     }
                 }
             }
             ExplorerAction::StartFilter => {
                 if let Some(ref mut state) = self.explorer_state {
                     state.start_filter();
-                    self.set_mode(Mod::ExplorerInput);
+                    self.set_mode(ModeState::explorer_input());
                 }
             }
             ExplorerAction::ClearFilter => {
@@ -376,13 +376,13 @@ impl Runtime {
             ExplorerAction::ConfirmInput { input: _ } => {
                 if let Some(ref mut state) = self.explorer_state {
                     let _ = state.confirm_input();
-                    self.set_mode(Mod::Explorer);
+                    self.set_mode(ModeState::explorer());
                 }
             }
             ExplorerAction::CancelInput => {
                 if let Some(ref mut state) = self.explorer_state {
                     state.cancel_input();
-                    self.set_mode(Mod::Explorer);
+                    self.set_mode(ModeState::explorer());
                 }
             }
             ExplorerAction::InputChar { c } => {
@@ -453,7 +453,7 @@ impl Runtime {
                         self.registers.set(deleted);
                     }
                     // Enter insert mode after change
-                    self.set_mode(Mod::Insert(crate::modd::ModExtension::Normal));
+                    self.set_mode(ModeState::insert());
                 }
                 OperatorMotionAction::DeleteTextObject { text_object } => {
                     let deleted = buffer.delete_text_object(text_object);
@@ -473,7 +473,7 @@ impl Runtime {
                         self.registers.set(deleted);
                     }
                     // Enter insert mode after change
-                    self.set_mode(Mod::Insert(crate::modd::ModExtension::Normal));
+                    self.set_mode(ModeState::insert());
                 }
             }
         }
@@ -543,6 +543,14 @@ impl Runtime {
                 self.telescope_state.page_up();
                 self.render();
             }
+            TelescopeAction::GotoFirst => {
+                self.telescope_state.move_to_first();
+                self.render();
+            }
+            TelescopeAction::GotoLast => {
+                self.telescope_state.move_to_last();
+                self.render();
+            }
             TelescopeAction::Confirm => {
                 // Send TelescopeEvent::Confirm to the event loop
                 let tx = self.tx.clone();
@@ -560,6 +568,25 @@ impl Runtime {
                         .send(InnerEvent::TelescopeEvent(TelescopeEvent::Close))
                         .await;
                 });
+            }
+            TelescopeAction::EnterInsert => {
+                // Switch telescope to insert mode (for typing query)
+                use crate::modd::{EditMode, Focus, ModExtension, ModeState};
+                let mode = ModeState::with_focus_and_mode(
+                    Focus::Telescope,
+                    EditMode::Insert(ModExtension::Normal),
+                );
+                self.mode_state = mode.clone();
+                let _ = self.mode_tx.send(mode);
+                self.render();
+            }
+            TelescopeAction::EnterNormal => {
+                // Switch telescope to normal mode (for j/k navigation)
+                use crate::modd::{EditMode, Focus, ModeState};
+                let mode = ModeState::with_focus_and_mode(Focus::Telescope, EditMode::Normal);
+                self.mode_state = mode.clone();
+                let _ = self.mode_tx.send(mode);
+                self.render();
             }
         }
     }

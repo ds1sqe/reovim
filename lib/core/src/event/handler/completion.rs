@@ -3,7 +3,7 @@
 use crate::{
     completion::trigger::{TriggerConfig, TriggerDetector, TriggerResult},
     event::{key::KeyCode, CompletionEvent, InnerEvent, KeyEvent, Subscribe},
-    modd::Mod,
+    modd::ModeState,
 };
 use tokio::sync::{broadcast::Receiver, mpsc::Sender, watch};
 
@@ -11,7 +11,7 @@ use tokio::sync::{broadcast::Receiver, mpsc::Sender, watch};
 pub struct CompletionHandler {
     key_event_rx: Option<Receiver<KeyEvent>>,
     event_tx: Sender<InnerEvent>,
-    mode_rx: watch::Receiver<Mod>,
+    mode_rx: watch::Receiver<ModeState>,
     trigger_detector: TriggerDetector,
     /// Current prefix length (tracked from typing)
     prefix_len: usize,
@@ -28,7 +28,7 @@ impl CompletionHandler {
     #[must_use]
     pub fn new(
         tx: Sender<InnerEvent>,
-        mode_rx: watch::Receiver<Mod>,
+        mode_rx: watch::Receiver<ModeState>,
         config: TriggerConfig,
     ) -> Self {
         Self {
@@ -42,18 +42,18 @@ impl CompletionHandler {
 
     /// Create with default trigger config
     #[must_use]
-    pub fn with_defaults(tx: Sender<InnerEvent>, mode_rx: watch::Receiver<Mod>) -> Self {
+    pub fn with_defaults(tx: Sender<InnerEvent>, mode_rx: watch::Receiver<ModeState>) -> Self {
         Self::new(tx, mode_rx, TriggerConfig::default())
     }
 
     /// Get the current mode from the watch channel
-    fn current_mode(&self) -> Mod {
+    fn current_mode(&self) -> ModeState {
         self.mode_rx.borrow().clone()
     }
 
     /// Check if we're in insert mode
     fn is_insert_mode(&self) -> bool {
-        matches!(self.current_mode(), Mod::Insert(_))
+        self.current_mode().is_insert()
     }
 
     /// Send a completion trigger event

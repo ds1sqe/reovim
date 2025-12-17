@@ -5,14 +5,14 @@ use crate::command::traits::OperatorMotionAction;
 use crate::command::CommandContext;
 use crate::completion::CompletionItem;
 use crate::highlight::{Highlight, HighlightGroup};
-use crate::modd::Mod;
+use crate::modd::ModeState;
 use crate::telescope::{PreviewContent, TelescopeItem};
 
 pub enum InnerEvent {
     BufferEvent(BufferEvent),
     WindowEvent(WindowEvent),
     CommandEvent(CommandEvent),
-    ModeChangeEvent(Mod),
+    ModeChangeEvent(ModeState),
     PendingKeysEvent(String),
     HighlightEvent(HighlightEvent),
     CompletionEvent(CompletionEvent),

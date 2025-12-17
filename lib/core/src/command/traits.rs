@@ -1,7 +1,7 @@
 //! Core command trait definitions for extensible command system
 
 use crate::buffer::Buffer;
-use crate::modd::Mod;
+use crate::modd::ModeState;
 use std::any::Any;
 use std::fmt::Debug;
 
@@ -25,7 +25,7 @@ pub enum CommandResult {
     /// Command succeeded, screen needs re-render
     NeedsRender,
     /// Command triggers a mode change
-    ModeChange(Mod),
+    ModeChange(ModeState),
     /// Editor should quit
     Quit,
     /// Command produced text for clipboard (e.g., yank, delete)
@@ -80,10 +80,18 @@ pub enum TelescopeAction {
     PageDown,
     /// Page up
     PageUp,
+    /// Go to first item
+    GotoFirst,
+    /// Go to last item
+    GotoLast,
     /// Confirm selection
     Confirm,
     /// Close telescope
     Close,
+    /// Enter insert mode (for typing query)
+    EnterInsert,
+    /// Enter normal mode (for j/k navigation)
+    EnterNormal,
 }
 
 /// Completion actions
@@ -231,7 +239,7 @@ pub trait CommandTrait: Debug + Send + Sync {
     fn as_any(&self) -> &dyn Any;
 
     /// Optional: which modes this command is valid in (None = all modes)
-    fn valid_modes(&self) -> Option<Vec<Mod>> {
+    fn valid_modes(&self) -> Option<Vec<ModeState>> {
         None
     }
 

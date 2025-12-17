@@ -1,6 +1,6 @@
 //! Editor settings and configuration
 
-use crate::modd::{Mod, ModExtension};
+use crate::modd::{EditMode, ModExtension, ModeState};
 
 /// Represents when virtual edit is allowed
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -21,16 +21,16 @@ pub struct VirtualEditConfig {
 impl VirtualEditConfig {
     /// Check if virtual edit is allowed for the current mode
     #[must_use]
-    pub fn is_virtual_allowed(&self, mode: &Mod) -> bool {
+    pub fn is_virtual_allowed(&self, mode: &ModeState) -> bool {
         if self.modes.contains(&VirtualEditMode::All) {
             return true;
         }
         if self.modes.contains(&VirtualEditMode::Block)
-            && matches!(mode, Mod::Visual(ModExtension::Block))
+            && matches!(mode.edit_mode, EditMode::Visual(ModExtension::Block))
         {
             return true;
         }
-        if self.modes.contains(&VirtualEditMode::Insert) && matches!(mode, Mod::Insert(_)) {
+        if self.modes.contains(&VirtualEditMode::Insert) && mode.is_insert() {
             return true;
         }
         false

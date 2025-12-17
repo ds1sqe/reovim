@@ -21,7 +21,7 @@ use {
             CommandTrait,
         },
         event::{InnerEvent, KeyEvent, Subscribe},
-        modd::{Mod, OperatorType},
+        modd::{ModeState, OperatorType, SubMode},
         motion::Motion,
         textobject::{Delimiter, TextObject, TextObjectScope},
     },
@@ -39,8 +39,10 @@ const COMPLETION_KEYS: &[&str] = &["Tab", "C-n", "C-p", "C-e"];
 pub struct CommandHandler {
     key_event_rx: Option<Receiver<KeyEvent>>,
     keymap: KeyMap,
-    /// Watch receiver for mode changes from Runtime (single source of truth)
-    mode_rx: watch::Receiver<Mod>,
+    /// Watch receiver for mode changes from Runtime
+    mode_rx: watch::Receiver<ModeState>,
+    /// Local mode state for immediate mode tracking (avoids race conditions)
+    local_mode: ModeState,
     /// Watch receiver for completion active state
     completion_active_rx: watch::Receiver<bool>,
     pending_keys: String,
@@ -64,14 +66,16 @@ impl CommandHandler {
     #[must_use]
     pub fn new(
         tx: Sender<InnerEvent>,
-        mode_rx: watch::Receiver<Mod>,
+        mode_rx: watch::Receiver<ModeState>,
         completion_active_rx: watch::Receiver<bool>,
         registry: Arc<CommandRegistry>,
     ) -> Self {
+        let initial_mode = mode_rx.borrow().clone();
         Self {
             key_event_rx: None,
             keymap: KeyMap::with_defaults(),
             mode_rx,
+            local_mode: initial_mode,
             completion_active_rx,
             pending_keys: String::new(),
             count_parser: CountParser::new(),
@@ -82,9 +86,14 @@ impl CommandHandler {
         }
     }
 
-    /// Get the current mode from the watch channel
-    fn current_mode(&self) -> Mod {
-        self.mode_rx.borrow().clone()
+    /// Get the current mode state
+    const fn current_mode(&self) -> &ModeState {
+        &self.local_mode
+    }
+
+    /// Set local mode state immediately
+    const fn set_local_mode(&mut self, mode_state: ModeState) {
+        self.local_mode = mode_state;
     }
 
     /// Check if completion popup is currently active
@@ -97,17 +106,8 @@ impl CommandHandler {
         COMPLETION_KEYS.contains(&key)
     }
 
-    fn get_keymap_for_mode(&self) -> &HashMap<String, KeyMapInner> {
-        match self.current_mode() {
-            Mod::Normal => &self.keymap.normal,
-            Mod::Insert(_) => &self.keymap.insert,
-            Mod::Visual(_) => &self.keymap.visual,
-            Mod::Command => &self.keymap.command,
-            Mod::Explorer => &self.keymap.explorer,
-            Mod::ExplorerInput => &self.keymap.explorer_input,
-            Mod::OperatorPending { .. } => &self.keymap.operator_pending,
-            Mod::Telescope => &self.keymap.telescope,
-        }
+    const fn get_keymap_for_mode(&self) -> &HashMap<String, KeyMapInner> {
+        self.keymap.get_keymap_for_mode(&self.local_mode)
     }
 
     /// Handle operator-pending mode specially
@@ -120,7 +120,7 @@ impl CommandHandler {
         pending: &str,
     ) -> (Option<OperatorMotionAction>, bool) {
         let mode = self.current_mode();
-        if let Mod::OperatorPending { operator, count: op_count } = mode {
+        if let SubMode::OperatorPending { operator, count: op_count } = &mode.sub_mode {
             // Calculate total count (operator_count * motion_count)
             let _total_count = op_count.unwrap_or(1) * count.unwrap_or(1);
 
@@ -161,7 +161,7 @@ impl CommandHandler {
             }
 
             // Handle 'd' for dd (delete line), 'y' for yy, 'c' for cc
-            match (key, &operator) {
+            match (key, operator) {
                 ("d", OperatorType::Delete) | ("y", OperatorType::Yank) | ("c", OperatorType::Change) => {
                     // dd/yy/cc: delete/yank/change current line(s)
                     // Use Down motion with count-1 to affect count lines
@@ -186,7 +186,7 @@ impl CommandHandler {
         let mode = self.current_mode();
         tracing::debug!(?mode, key, pending = %self.pending_keys, "lookup_command_no_push");
 
-        let is_insert = matches!(mode, Mod::Insert(_));
+        let is_insert = mode.is_insert();
         let completion_active = self.is_completion_active();
 
         // In insert mode, completion keys should only trigger completion commands
@@ -239,7 +239,7 @@ impl CommandHandler {
             return (Some(CommandRef::Inline(cmd)), true);
         }
 
-        if matches!(mode, Mod::Command)
+        if mode.is_command()
             && key.len() == 1
             && let Some(c) = key.chars().next()
         {
@@ -248,7 +248,7 @@ impl CommandHandler {
             return (Some(CommandRef::Inline(cmd)), true);
         }
 
-        if matches!(mode, Mod::ExplorerInput)
+        if mode.is_explorer_focus() && mode.is_insert()
             && key.len() == 1
             && let Some(c) = key.chars().next()
         {
@@ -257,7 +257,7 @@ impl CommandHandler {
             return (Some(CommandRef::Inline(cmd)), true);
         }
 
-        if matches!(mode, Mod::Telescope)
+        if mode.is_telescope_focus() && mode.is_insert()
             && key.len() == 1
             && let Some(c) = key.chars().next()
         {
@@ -266,8 +266,9 @@ impl CommandHandler {
             return (Some(CommandRef::Inline(cmd)), true);
         }
 
-        // In Normal/Visual/Explorer modes, keep pending_keys for backspace correction
-        // User can press Escape to clear, or backspace to remove last key
+        // In Normal/Visual/Explorer modes:
+        // Invalid sequence - clear it to allow starting fresh with the next key
+        self.pending_keys.clear();
         (None, true)
     }
 
@@ -289,10 +290,9 @@ impl CommandHandler {
 
     /// Show the which-key popup with available bindings
     async fn show_which_key(&mut self) {
-        let mode = self.current_mode();
         let bindings = self
             .keymap
-            .get_bindings_for_prefix(&mode, &self.pending_keys, &self.registry);
+            .get_bindings_for_prefix(&self.local_mode, &self.pending_keys, &self.registry);
 
         if !bindings.is_empty() {
             self.dispatcher
@@ -327,6 +327,16 @@ impl CommandHandler {
             .any(|k| k.starts_with(&self.pending_keys) && k != &self.pending_keys)
     }
 
+    /// Check if mode is one where ESC should clear pending state
+    const fn is_esc_clearable_mode(mode: &ModeState) -> bool {
+        mode.is_normal() || mode.is_visual() || mode.is_explorer_focus() || mode.is_operator_pending()
+    }
+
+    /// Check if mode is one where Backspace should edit pending keys
+    const fn is_backspace_editable_mode(mode: &ModeState) -> bool {
+        mode.is_normal() || mode.is_visual() || (mode.is_explorer_focus() && mode.is_normal())
+    }
+
     #[allow(clippy::while_let_loop)]
     #[allow(clippy::match_same_arms)]
     #[allow(clippy::too_many_lines)]
@@ -354,12 +364,16 @@ impl CommandHandler {
 
                                 tracing::trace!(key = %key_str, "Key pressed");
 
+                                // Sync local mode from Runtime's watch channel
+                                // This catches mode changes initiated by Runtime (e.g., explorer focus)
+                                self.local_mode = self.mode_rx.borrow().clone();
+
                                 // Hide which-key popup on any key press
                                 self.hide_which_key().await;
 
                                 // Check if this is a count digit
                                 let mode = self.current_mode();
-                                if self.count_parser.is_count_digit(&key_str, &mode) {
+                                if self.count_parser.is_count_digit(&key_str, mode) {
                                     self.count_parser.accumulate(&key_str);
                                     self.dispatcher
                                         .send_pending_keys(self.pending_display())
@@ -367,15 +381,28 @@ impl CommandHandler {
                                     continue;
                                 }
 
-                                // Handle Escape to clear pending_keys in Normal/Visual modes
-                                if key_str == "Escape" && !self.pending_keys.is_empty() {
-                                    let mode = self.current_mode();
-                                    if matches!(mode, Mod::Normal | Mod::Visual(_) | Mod::Explorer) {
-                                        self.pending_keys.clear();
-                                        self.count_parser.clear();
-                                        self.dispatcher
-                                            .send_pending_keys(self.pending_display())
-                                            .await;
+                                // Handle Escape in Normal/Visual/Explorer/OperatorPending modes:
+                                // - Clear pending keys and count
+                                // - In OperatorPending: cancel operator and return to Normal
+                                if key_str == "Escape" {
+                                    let mode = self.current_mode().clone();
+                                    if Self::is_esc_clearable_mode(&mode) {
+                                        // Clear pending state
+                                        if !self.pending_keys.is_empty()
+                                            || self.count_parser.peek().is_some()
+                                        {
+                                            self.pending_keys.clear();
+                                            self.count_parser.clear();
+                                            self.dispatcher
+                                                .send_pending_keys(self.pending_display())
+                                                .await;
+                                        }
+                                        // If in OperatorPending, cancel and return to Normal
+                                        if mode.is_operator_pending() {
+                                            let normal = ModeState::normal();
+                                            self.set_local_mode(normal.clone());
+                                            self.dispatcher.update_mode(normal).await;
+                                        }
                                         continue;
                                     }
                                 }
@@ -383,7 +410,7 @@ impl CommandHandler {
                                 // Handle backspace in Normal/Visual/Explorer modes
                                 if key_str == "Backspace" {
                                     let mode = self.current_mode();
-                                    if matches!(mode, Mod::Normal | Mod::Visual(_) | Mod::Explorer) {
+                                    if Self::is_backspace_editable_mode(mode) {
                                         if !self.pending_keys.is_empty() {
                                             // Remove last character/key from pending
                                             // Handle multi-char keys like "<C-x>" properly
@@ -408,7 +435,7 @@ impl CommandHandler {
 
                                 // Handle operator-pending mode (d, y, c + motion or text object)
                                 let mode = self.current_mode();
-                                if matches!(mode, Mod::OperatorPending { .. }) {
+                                if mode.is_operator_pending() {
                                     let count = self.count_parser.peek();
                                     let (action, should_wait) = self.handle_operator_pending(
                                         &key_str,
@@ -419,6 +446,9 @@ impl CommandHandler {
                                         tracing::debug!(?action, "Operator-pending action detected");
                                         self.pending_keys.clear();
                                         self.count_parser.take(); // Consume count
+                                        // Operator action returns to Normal mode
+                                        let normal = ModeState::normal();
+                                        self.set_local_mode(normal);
                                         self.dispatcher.send_operator_motion(action).await;
                                         self.dispatcher
                                             .send_pending_keys(self.pending_display())
@@ -447,8 +477,10 @@ impl CommandHandler {
                                 if let Some(ref cmd) = cmd {
                                     tracing::debug!(?cmd, count = ?self.count_parser.peek(), "Dispatching command");
 
-                                    // Check for mode change commands and notify Runtime
+                                    // Check for mode change commands and update local mode immediately
+                                    // This avoids race conditions with the Runtime's watch channel
                                     if let Some(new_mode) = Dispatcher::mode_for_command(cmd) {
+                                        self.set_local_mode(new_mode.clone());
                                         self.dispatcher.update_mode(new_mode).await;
                                     }
 

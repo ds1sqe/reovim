@@ -168,4 +168,8 @@ pub mod builtin {
     pub const TELESCOPE_PAGE_UP: CommandId = CommandId::new("telescope_page_up");
     pub const TELESCOPE_PAGE_DOWN: CommandId = CommandId::new("telescope_page_down");
     pub const TELESCOPE_DELETE_CHAR: CommandId = CommandId::new("telescope_backspace");
+    pub const TELESCOPE_GOTO_FIRST: CommandId = CommandId::new("telescope_goto_first");
+    pub const TELESCOPE_GOTO_LAST: CommandId = CommandId::new("telescope_goto_last");
+    pub const TELESCOPE_ENTER_INSERT: CommandId = CommandId::new("telescope_enter_insert");
+    pub const TELESCOPE_ENTER_NORMAL: CommandId = CommandId::new("telescope_enter_normal");
 }
