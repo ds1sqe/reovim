@@ -26,8 +26,8 @@ cargo build
 # Build release
 cargo build --release
 
-# Run the main binary
-cargo run -p reovim
+# Run the main binary (default-members set to main/)
+cargo run
 
 # Run tests
 cargo test
@@ -44,11 +44,14 @@ cargo fmt
 # Run clippy
 cargo clippy
 
-# Run benchmarks
+# Run benchmarks + generate report (unified command)
+cargo run -p perf-report -- bench -v X.Y.Z
+
+# Run benchmarks only
 cargo bench -p reovim-core
 
-# Generate performance report
-cargo run -p perf-report -- update --version X.Y.Z
+# Generate report from existing benchmark data
+cargo run -p perf-report -- update -v X.Y.Z
 ```
 
 ## Architecture
@@ -181,7 +184,7 @@ For releases, Claude should create a proposal file at `tmp/<version>-commit.md` 
    - Resolve any conflicts before landing - contributors own their conflicts
 2. Run `cargo build` and `cargo clippy` (zero warnings)
 3. Run `cargo test`
-4. Generate perf report: `cargo run -p perf-report -- update --version X.Y.Z`
+4. Generate perf report: `cargo run -p perf-report -- bench -v X.Y.Z`
 5. Update `CHANGELOG.md`
 6. Create proposal at `tmp/<version>-commit.md` with:
    - Commit message

@@ -12,7 +12,8 @@
 
 mod bench_modules;
 
-use criterion::{criterion_group, criterion_main};
+use criterion::Criterion;
+use std::time::Duration;
 
 // Window render benchmarks
 use bench_modules::window::{
@@ -58,54 +59,57 @@ use bench_modules::stress::{
     bench_stress_worst_case,
 };
 
-criterion_group!(
-    window_benches,
-    bench_window_render,
-    bench_window_viewport_size,
-    bench_window_with_highlights,
-    bench_render_throughput,
-);
+fn window_benches(c: &mut Criterion) {
+    bench_window_render(c);
+    bench_window_viewport_size(c);
+    bench_window_with_highlights(c);
+    bench_render_throughput(c);
+}
 
-criterion_group!(
-    screen_benches,
-    bench_screen_render_full_io,
-    bench_io_bytes_written,
-    bench_screen_viewport_io,
-    bench_file_io,
-    bench_file_io_viewport,
-);
+fn screen_benches(c: &mut Criterion) {
+    bench_screen_render_full_io(c);
+    bench_io_bytes_written(c);
+    bench_screen_viewport_io(c);
+    bench_file_io(c);
+    bench_file_io_viewport(c);
+}
 
-criterion_group!(
-    input_benches,
-    bench_typing_simulation,
-    bench_scrolling_simulation,
-    bench_mode_switching,
-    bench_completion_popup,
-    bench_sustained_input,
-);
+fn input_benches(c: &mut Criterion) {
+    bench_typing_simulation(c);
+    bench_scrolling_simulation(c);
+    bench_mode_switching(c);
+    bench_completion_popup(c);
+    bench_sustained_input(c);
+}
 
-criterion_group!(
-    rtt_benches,
-    bench_rtt_explorer_toggle,
-    bench_rtt_input_lag,
-    bench_rtt_movement_lag,
-);
+fn rtt_benches(c: &mut Criterion) {
+    bench_rtt_explorer_toggle(c);
+    bench_rtt_input_lag(c);
+    bench_rtt_movement_lag(c);
+}
 
-criterion_group!(
-    stress_benches,
-    bench_stress_editing_session,
-    bench_stress_rapid_scroll,
-    bench_stress_mode_operations,
-    bench_stress_completion,
-    bench_stress_worst_case,
-    bench_buffer_clone_cost,
-    bench_buffer_vec_cost,
-);
+fn stress_benches(c: &mut Criterion) {
+    bench_stress_editing_session(c);
+    bench_stress_rapid_scroll(c);
+    bench_stress_mode_operations(c);
+    bench_stress_completion(c);
+    bench_stress_worst_case(c);
+    bench_buffer_clone_cost(c);
+    bench_buffer_vec_cost(c);
+}
 
-criterion_main!(
-    window_benches,
-    screen_benches,
-    input_benches,
-    rtt_benches,
-    stress_benches,
-);
+fn main() {
+    let mut criterion = Criterion::default()
+        .measurement_time(Duration::from_secs(1))
+        .warm_up_time(Duration::from_millis(200))
+        .sample_size(30)
+        .configure_from_args();
+
+    window_benches(&mut criterion);
+    screen_benches(&mut criterion);
+    input_benches(&mut criterion);
+    rtt_benches(&mut criterion);
+    stress_benches(&mut criterion);
+
+    criterion.final_summary();
+}

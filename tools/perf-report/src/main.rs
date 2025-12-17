@@ -30,6 +30,15 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Run benchmarks, clear old data, and generate report (all-in-one)
+    Bench {
+        /// Version string (e.g., "0.4.5")
+        #[arg(long, short)]
+        version: String,
+        /// Skip clearing old criterion data
+        #[arg(long)]
+        no_clean: bool,
+    },
     /// Update or create a performance report for a version
     Update {
         /// Version string (e.g., "0.3.0")
@@ -322,6 +331,32 @@ fn generate_report(
     report
 }
 
+fn cmd_bench(cli: &Cli, version: &str, no_clean: bool) -> Result<(), Box<dyn std::error::Error>> {
+    // Step 1: Clear old criterion data
+    if !no_clean && cli.criterion_dir.exists() {
+        println!("Clearing old benchmark data from {:?}...", cli.criterion_dir);
+        fs::remove_dir_all(&cli.criterion_dir)?;
+    }
+
+    // Step 2: Run benchmarks
+    println!("Running benchmarks...\n");
+    let status = Command::new("cargo")
+        .args(["bench", "-p", "reovim-core"])
+        .status()?;
+
+    if !status.success() {
+        eprintln!("Benchmark failed");
+        std::process::exit(1);
+    }
+
+    // Step 3: Generate report
+    println!();
+    cmd_update(cli, version)?;
+
+    println!("\n✓ Benchmarks complete! Report: perf/PERF-{}.md", version);
+    Ok(())
+}
+
 fn cmd_update(cli: &Cli, version: &str) -> Result<(), Box<dyn std::error::Error>> {
     println!("Reading benchmark results from {:?}...", cli.criterion_dir);
     let results = read_criterion_results(&cli.criterion_dir);
@@ -421,6 +456,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     match &cli.command {
+        Commands::Bench { version, no_clean } => cmd_bench(&cli, version, *no_clean)?,
         Commands::Update { version } => cmd_update(&cli, version)?,
         Commands::List => cmd_list(&cli)?,
         Commands::Check { fail_on_regression } => cmd_check(&cli, *fail_on_regression)?,

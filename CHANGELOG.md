@@ -2,6 +2,35 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.4.6] - 2025-12-18
+
+### Features
+
+#### Unified Fast Benchmarking
+- **New `bench` subcommand for perf-report** - Single command workflow:
+  - Clears old benchmark data (`target/criterion/`)
+  - Runs all benchmarks (`cargo bench -p reovim-core`)
+  - Generates performance report (`perf/PERF-{version}.md`)
+
+- **Faster benchmark execution** - Reduced from ~8 minutes to ~2 minutes:
+  - measurement_time: 5s → 1s
+  - warm_up_time: 3s → 200ms
+  - sample_size: 100 → 30
+
+- **`cargo run` defaults to reovim** - Added `default-members = ["main/"]` to workspace
+
+### Usage
+
+```bash
+# Run benchmarks + generate report (unified)
+cargo run -p perf-report -- bench -v X.Y.Z
+
+# Run reovim directly
+cargo run
+```
+
+---
+
 ## [0.4.5] - 2025-12-18
 
 ### Bug Fixes
