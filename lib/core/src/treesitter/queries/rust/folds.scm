@@ -1,42 +1,57 @@
-; Rust fold queries
+; Rust fold queries for tree-sitter-rust 0.24
 ; Capture @fold for regions that can be collapsed
 
 ; Function bodies
-(function_item body: (block) @fold)
+(function_item
+  body: (block) @fold)
 
 ; Closure bodies
-(closure_expression body: (block) @fold)
+(closure_expression
+  body: (_) @fold)
 
 ; Struct definitions
-(struct_item body: (field_declaration_list) @fold)
+(struct_item
+  body: (field_declaration_list) @fold)
 
 ; Enum definitions
-(enum_item body: (enum_variant_list) @fold)
+(enum_item
+  body: (enum_variant_list) @fold)
 
 ; Impl blocks
-(impl_item body: (declaration_list) @fold)
+(impl_item
+  body: (declaration_list) @fold)
 
 ; Trait definitions
-(trait_item body: (declaration_list) @fold)
+(trait_item
+  body: (declaration_list) @fold)
+
+; Union definitions
+(union_item
+  body: (field_declaration_list) @fold)
 
 ; Module bodies
-(mod_item body: (declaration_list) @fold)
+(mod_item
+  body: (declaration_list) @fold)
 
 ; Match expressions
-(match_expression body: (match_block) @fold)
+(match_expression
+  body: (match_block) @fold)
 
 ; If expressions with blocks
-(if_expression consequence: (block) @fold)
-(if_expression alternative: (block) @fold)
-(if_expression alternative: (else_clause (block) @fold))
+(if_expression
+  consequence: (block) @fold)
+(else_clause (block) @fold)
 
 ; Loop blocks
-(loop_expression body: (block) @fold)
-(while_expression body: (block) @fold)
-(for_expression body: (block) @fold)
+(loop_expression
+  body: (block) @fold)
+(while_expression
+  body: (block) @fold)
+(for_expression
+  body: (block) @fold)
 
 ; Use declarations (grouped imports)
-(use_declaration (use_tree (use_tree)+ @fold))
+(use_declaration) @fold
 
 ; Attribute macros
 (attribute_item) @fold
@@ -50,6 +65,3 @@
 
 ; Unsafe blocks
 (unsafe_block) @fold
-
-; Generic blocks
-(block) @fold

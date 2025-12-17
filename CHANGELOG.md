@@ -2,6 +2,30 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.4.9] - 2025-12-18
+
+### Bug Fixes
+
+- **Fixed Rust treesitter syntax highlighting** - Query syntax updated to match tree-sitter-rust v0.24:
+  - Keywords `crate`, `self`, `super` now use named node syntax instead of string literals
+  - Field-based patterns (`function:`, `body:`, `macro:`) properly aligned with grammar
+  - Added error logging for query compilation failures
+  - Added unit tests for query validation (4 new tests)
+
+### Files Changed
+
+- `lib/core/src/treesitter/queries.rs` - Error logging and tests
+- `lib/core/src/treesitter/queries/rust/highlights.scm` - Rewritten for v0.24
+- `lib/core/src/treesitter/queries/rust/textobjects.scm` - Fixed field syntax
+- `lib/core/src/treesitter/queries/rust/folds.scm` - Fixed field syntax
+
+### Testing
+
+- **159 tests passing** (4 new treesitter query tests)
+- Zero warnings
+
+---
+
 ## [0.4.8] - 2025-12-18
 
 ### New Features

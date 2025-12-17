@@ -79,7 +79,18 @@ impl QueryCache {
         let source = Self::get_query_source(language_id, query_type)?;
 
         // Compile the query
-        let query = Query::new(ts_language, source).ok()?;
+        let query = match Query::new(ts_language, source) {
+            Ok(q) => q,
+            Err(e) => {
+                tracing::error!(
+                    "Failed to compile {:?} query for {:?}: {}",
+                    query_type,
+                    language_id,
+                    e
+                );
+                return None;
+            }
+        };
         self.queries.insert(key, query);
         self.queries.get(&key)
     }
@@ -115,5 +126,85 @@ impl QueryCache {
             )
             | (LanguageId::Unknown, _) => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tree_sitter::Language;
+
+    fn get_rust_language() -> Language {
+        tree_sitter_rust::LANGUAGE.into()
+    }
+
+    #[test]
+    fn test_rust_highlights_query_compiles() {
+        let lang = get_rust_language();
+        let source = embedded::RUST_HIGHLIGHTS;
+        let result = Query::new(&lang, source);
+        assert!(result.is_ok(), "Rust highlights query failed to compile: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_rust_textobjects_query_compiles() {
+        let lang = get_rust_language();
+        let source = embedded::RUST_TEXTOBJECTS;
+        let result = Query::new(&lang, source);
+        assert!(result.is_ok(), "Rust textobjects query failed to compile: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_rust_folds_query_compiles() {
+        let lang = get_rust_language();
+        let source = embedded::RUST_FOLDS;
+        let result = Query::new(&lang, source);
+        assert!(result.is_ok(), "Rust folds query failed to compile: {:?}", result.err());
+    }
+}
+
+#[cfg(test)]
+mod integration_tests {
+    use crate::treesitter::TreesitterManager;
+
+    #[test]
+    fn test_rust_file_highlighting() {
+        let rust_code = r#"
+use std::collections::HashMap;
+
+const MAX_SIZE: usize = 100;
+
+pub struct MyStruct {
+    pub name: String,
+}
+
+impl MyStruct {
+    pub fn new(name: &str) -> Self {
+        Self { name: name.to_string() }
+    }
+}
+
+fn main() {
+    let s = MyStruct::new("test");
+    println!("Hello!");
+}
+"#;
+
+        let mut manager = TreesitterManager::new();
+        let lang_id = manager.init_buffer(0, Some("test.rs"));
+
+        assert_eq!(
+            lang_id,
+            crate::treesitter::LanguageId::Rust,
+            "Should detect Rust language"
+        );
+        assert!(manager.has_parser(0), "Should have parser for buffer");
+
+        let highlights = manager.parse_and_highlight(0, rust_code, 0, 20);
+
+        assert!(
+            !highlights.is_empty(),
+            "Should generate highlights for Rust code"
+        );
     }
 }
