@@ -47,6 +47,15 @@ else
     exit 1
 fi
 
+# Step 2: Build
+print_step "Building workspace release..."
+if cargo build --release --workspace; then
+    print_success "Build succeeded"
+else
+    print_error "Build failed"
+    exit 1
+fi
+
 # Step 3: Clippy on all targets
 # Uses workspace lint configuration from Cargo.toml
 # (clippy::all = "deny", clippy::pedantic/nursery = "warn")

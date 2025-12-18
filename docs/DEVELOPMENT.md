@@ -129,16 +129,24 @@ cargo run -p perf-report -- update --version X.Y.Z
 cargo run -p perf-report -- compare 0.3.0 0.4.2
 ```
 
-### Current Performance (v0.4.2)
+### Current Performance (v0.6.0 vs v0.5.0)
 
-| Operation | Latency |
-|-----------|---------|
-| Window render (10 lines) | 639 ns |
-| Window render (10k lines) | 2.48 µs |
-| Full screen render | 5.91 µs |
-| Character insert RTT | 34 µs |
-| Movement RTT | 397-410 µs |
-| Throughput | ~400k renders/sec |
+| Operation | v0.5.0 | v0.6.0 | Change |
+|-----------|--------|--------|--------|
+| Window render (10 lines) | 1.63 µs | 10.15 µs | +6.2x (frame buffer overhead) |
+| Window render (10k lines) | 6.91 µs | 56.08 µs | +8.1x (frame buffer overhead) |
+| Full screen render | 14.50 µs | 62.41 µs | +4.3x (diff calculation) |
+| Char insert RTT | 55.58 µs | 108.17 µs | +1.9x |
+| Word forward RTT | 89.31 µs | 135.91 µs | +1.5x |
+| Move down RTT | 751.31 µs | 806.35 µs | +7% |
+| Mode switch | 46.85 µs | 186.77 µs | +4x |
+| Throughput | ~144k/sec | ~18k/sec | -87% (expected) |
+
+**v0.6.0 Trade-offs**: The frame buffer architecture adds per-render overhead but provides:
+- **Zero flickering** - Only changed cells sent to terminal
+- **Consistent performance** - Buffer size doesn't affect I/O
+- **Composable layers** - Clean separation of UI components
+- **Future optimization potential** - Dirty region tracking ready
 
 ### Latency Goals
 

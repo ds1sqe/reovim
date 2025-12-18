@@ -82,11 +82,49 @@ pub async fn run_server(
     let (key_tx, key_source) = ChannelKeySource::new();
 
     // Create runtime with the screen
-    let runtime = Runtime::new(screen).with_file(file_path);
+    // Enable frame buffer rendering to avoid multiple screen clears (reduces flickering)
+    let runtime = Runtime::new(screen)
+        .with_file(file_path)
+        .with_render_strategy(reovim_core::frame::RenderStrategyConfig::VirtualBuffer);
 
     // Get the event sender from runtime (clone for later use)
     let event_tx = runtime.tx.clone();
     let event_tx_for_shutdown = event_tx.clone();
+
+    // In dual mode, spawn a task to read terminal events and forward to key channel
+    if dual_output {
+        let key_tx_terminal = key_tx.clone();
+        let event_tx_resize = event_tx.clone();
+        tokio::spawn(async move {
+            use {
+                futures::StreamExt,
+                reovim_sys::event::{Event, EventStream, KeyEventKind},
+            };
+
+            let mut stream = EventStream::new();
+            while let Some(result) = stream.next().await {
+                match result {
+                    Ok(Event::Key(key_event)) => {
+                        if key_event.kind == KeyEventKind::Press
+                            && key_tx_terminal.send(key_event).await.is_err()
+                        {
+                            break; // Channel closed
+                        }
+                    }
+                    Ok(Event::Resize(cols, rows)) => {
+                        let _ = event_tx_resize
+                            .send(InnerEvent::ScreenResizeEvent {
+                                width: cols,
+                                height: rows,
+                            })
+                            .await;
+                    }
+                    Ok(_) => {} // Ignore other events (Mouse, Focus, Paste)
+                    Err(_) => break,
+                }
+            }
+        });
+    }
 
     // Create channels for RPC communication
     let (request_tx, request_rx) = mpsc::channel::<RpcRequest>(256);

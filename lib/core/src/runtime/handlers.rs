@@ -353,7 +353,7 @@ impl Runtime {
                     if is_text_modifying {
                         self.schedule_treesitter_reparse(buffer_id);
                     }
-                    self.render();
+                    self.request_render();
                 }
                 CommandResult::ModeChange(new_mode) => {
                     // Actually change the mode for commands like o, O
@@ -362,14 +362,14 @@ impl Runtime {
                         self.schedule_treesitter_reparse(buffer_id);
                     }
                     self.set_mode(new_mode);
-                    self.render();
+                    self.request_render();
                 }
                 CommandResult::Quit => {
                     return true;
                 }
                 CommandResult::ClipboardWrite { text, register } => {
                     self.registers.set_by_name(register, text);
-                    self.render();
+                    self.request_render();
                 }
                 CommandResult::DeferToRuntime(action) => {
                     match action {
@@ -388,11 +388,11 @@ impl Runtime {
                             }
                             // Schedule treesitter reparse after paste
                             self.schedule_treesitter_reparse(paste_buffer_id);
-                            self.render();
+                            self.request_render();
                         }
                         DeferredAction::CommandLine(cl_action) => {
                             let should_quit = self.handle_command_line_action(&cl_action);
-                            self.render();
+                            self.request_render();
                             return should_quit;
                         }
                         DeferredAction::Completion(comp_action) => {
@@ -400,14 +400,14 @@ impl Runtime {
                         }
                         DeferredAction::Explorer(explorer_action) => {
                             self.handle_explorer_action(&explorer_action);
-                            self.render();
+                            self.request_render();
                         }
                         DeferredAction::Telescope(telescope_action) => {
                             self.handle_telescope_action(&telescope_action);
                         }
                         DeferredAction::Fold(fold_action) => {
                             self.handle_fold_action(&fold_action, buffer_id);
-                            self.render();
+                            self.request_render();
                         }
                         DeferredAction::JumpOlder => {
                             if let Some(entry) = self.jump_list.jump_older() {
@@ -417,7 +417,7 @@ impl Runtime {
                                     buf.cur = target_pos;
                                 }
                             }
-                            self.render();
+                            self.request_render();
                         }
                         DeferredAction::JumpNewer => {
                             if let Some(entry) = self.jump_list.jump_newer() {
@@ -427,7 +427,7 @@ impl Runtime {
                                     buf.cur = target_pos;
                                 }
                             }
-                            self.render();
+                            self.request_render();
                         }
                         DeferredAction::OperatorMotion(ref op_action) => {
                             self.handle_operator_motion(op_action);
@@ -688,22 +688,22 @@ impl Runtime {
             }
             CompletionAction::SelectNext => {
                 self.completion_state.select_next();
-                self.render();
+                self.request_render();
             }
             CompletionAction::SelectPrev => {
                 self.completion_state.select_prev();
-                self.render();
+                self.request_render();
             }
             CompletionAction::Confirm => {
                 if let Some(item) = self.completion_state.selected_item().cloned() {
                     self.insert_completion(&item);
                 }
                 self.completion_state.dismiss();
-                self.render();
+                self.request_render();
             }
             CompletionAction::Dismiss => {
                 self.completion_state.dismiss();
-                self.render();
+                self.request_render();
             }
         }
     }
@@ -819,7 +819,7 @@ impl Runtime {
         if text_modified {
             self.schedule_treesitter_reparse(buffer_id);
         }
-        self.render();
+        self.request_render();
     }
 
     /// Handle visual mode text object selection (viw, vi(, vif, etc.)
@@ -859,7 +859,7 @@ impl Runtime {
                 }
             }
         }
-        self.render();
+        self.request_render();
     }
 
     /// Handle telescope actions from keybindings
@@ -903,35 +903,35 @@ impl Runtime {
             }
             TelescopeAction::CursorLeft => {
                 self.telescope_state.cursor_left();
-                self.render_telescope_only();
+                self.request_render();
             }
             TelescopeAction::CursorRight => {
                 self.telescope_state.cursor_right();
-                self.render_telescope_only();
+                self.request_render();
             }
             TelescopeAction::SelectNext => {
                 self.telescope_state.select_next();
-                self.render_telescope_only();
+                self.request_render();
             }
             TelescopeAction::SelectPrev => {
                 self.telescope_state.select_prev();
-                self.render_telescope_only();
+                self.request_render();
             }
             TelescopeAction::PageDown => {
                 self.telescope_state.page_down();
-                self.render_telescope_only();
+                self.request_render();
             }
             TelescopeAction::PageUp => {
                 self.telescope_state.page_up();
-                self.render_telescope_only();
+                self.request_render();
             }
             TelescopeAction::GotoFirst => {
                 self.telescope_state.move_to_first();
-                self.render_telescope_only();
+                self.request_render();
             }
             TelescopeAction::GotoLast => {
                 self.telescope_state.move_to_last();
-                self.render_telescope_only();
+                self.request_render();
             }
             TelescopeAction::Confirm => {
                 // Send TelescopeEvent::Confirm to the event loop
@@ -958,7 +958,7 @@ impl Runtime {
                 );
                 self.mode_state = mode.clone();
                 let _ = self.mode_tx.send(mode);
-                self.render_telescope_only();
+                self.request_render();
             }
             TelescopeAction::EnterNormal => {
                 // Switch telescope to normal mode (for j/k navigation)
@@ -966,7 +966,7 @@ impl Runtime {
                 let mode = ModeState::with_focus_and_mode(Focus::Telescope, EditMode::Normal);
                 self.mode_state = mode.clone();
                 let _ = self.mode_tx.send(mode);
-                self.render_telescope_only();
+                self.request_render();
             }
         }
     }
@@ -989,7 +989,7 @@ impl Runtime {
 
                 // Change to leap mode
                 self.set_mode(ModeState::leap(*direction, *operator, *count));
-                self.render();
+                self.request_render();
             }
         }
     }

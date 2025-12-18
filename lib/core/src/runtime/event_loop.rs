@@ -80,7 +80,7 @@ impl Runtime {
         tokio::spawn(async move { completion_hdr.run().await });
         tokio::spawn(async move { input_broker.subscribe().await });
 
-        // Initial render to show content immediately
+        // Initial render to show content immediately (use render directly, not coalesced)
         self.render();
 
         tracing::debug!("Entering event loop");
@@ -150,7 +150,7 @@ impl Runtime {
         tokio::spawn(async move { completion_hdr.run().await });
         tokio::spawn(async move { input_broker.subscribe().await });
 
-        // Initial render
+        // Initial render (use render directly, not coalesced)
         self.render();
 
         tracing::debug!("Entering event loop (server mode)");
@@ -179,6 +179,18 @@ impl Runtime {
                         if self.handle_event(ev) {
                             break;
                         }
+                        // Drain all pending events before rendering
+                        // This coalesces renders across multiple related events
+                        // (e.g., PendingKeysEvent + CommandEvent + ModeChangeEvent from one key)
+                        while let Ok(ev) = self.rx.try_recv() {
+                            if self.handle_event(ev) {
+                                // Flush before breaking on quit
+                                self.flush_render();
+                                return;
+                            }
+                        }
+                        // Flush render once after all pending events processed
+                        self.flush_render();
                     } else {
                         self.tx
                             .send(InnerEvent::KillSignal)
@@ -191,6 +203,8 @@ impl Runtime {
                 // Periodically check for pending treesitter parses
                 _ = treesitter_check_interval.tick() => {
                     self.process_pending_treesitter_parses();
+                    // Flush any pending renders after treesitter updates
+                    self.flush_render();
                 }
             }
         }
@@ -221,7 +235,7 @@ impl Runtime {
                 if !highlights.is_empty() {
                     self.highlight_store.add(buffer_id, highlights);
                 }
-                self.render();
+                self.request_render();
             }
         }
     }
@@ -236,7 +250,7 @@ impl Runtime {
                 BufferEvent::SetContent { buffer_id, content } => {
                     if let Some(b) = self.buffers.get_mut(&buffer_id) {
                         b.set_content(&content);
-                        self.render();
+                        self.request_render();
                     }
                 }
                 BufferEvent::LoadFile { buffer_id, path } => {
@@ -244,7 +258,7 @@ impl Runtime {
                         if let Some(b) = self.buffers.get_mut(&buffer_id) {
                             b.set_content(&content);
                             b.file_path = Some(path.to_string_lossy().to_string());
-                            self.render();
+                            self.request_render();
                         }
                     }
                 }
@@ -254,11 +268,11 @@ impl Runtime {
                 }
                 BufferEvent::Close { buffer_id } => {
                     self.close_buffer(buffer_id);
-                    self.render();
+                    self.request_render();
                 }
                 BufferEvent::Switch { buffer_id } => {
                     self.switch_buffer(buffer_id);
-                    self.render();
+                    self.request_render();
                 }
             },
             InnerEvent::CommandEvent(cmd_event) => {
@@ -275,20 +289,20 @@ impl Runtime {
                     self.last_command = self.pending_keys.clone();
                 }
                 self.pending_keys = keys;
-                self.render();
+                self.request_render();
             }
             InnerEvent::WindowEvent(window_event) => match window_event {
                 WindowEvent::ToggleExplorer => {
                     self.screen.toggle_explorer();
-                    self.render();
+                    self.request_render();
                 }
                 WindowEvent::FocusExplorer => {
                     self.screen.focus_explorer();
-                    self.render();
+                    self.request_render();
                 }
                 WindowEvent::FocusEditor => {
                     self.screen.focus_editor();
-                    self.render();
+                    self.request_render();
                 }
                 // TODO: Implement in Phase 7
                 WindowEvent::SplitHorizontal { .. }
@@ -310,20 +324,20 @@ impl Runtime {
             InnerEvent::ExplorerEvent(explorer_event) => match explorer_event {
                 ExplorerEvent::Toggle => {
                     self.screen.toggle_explorer();
-                    self.render();
+                    self.request_render();
                 }
                 ExplorerEvent::OpenFile { path } => {
                     self.open_file(&path.to_string_lossy());
                     self.screen.focus_editor();
-                    self.render();
+                    self.request_render();
                 }
                 ExplorerEvent::Refresh => {
                     // TODO: Refresh explorer tree when explorer module is implemented
-                    self.render();
+                    self.request_render();
                 }
                 ExplorerEvent::SetRoot { path: _ } => {
                     // TODO: Set explorer root when explorer module is implemented
-                    self.render();
+                    self.request_render();
                 }
             },
             InnerEvent::HighlightEvent(hl_event) => match hl_event {
@@ -332,19 +346,19 @@ impl Runtime {
                     highlights,
                 } => {
                     self.highlight_store.add(buffer_id, highlights);
-                    self.render();
+                    self.request_render();
                 }
                 HighlightEvent::ClearGroup { buffer_id, group } => {
                     self.highlight_store.clear_group(buffer_id, group);
-                    self.render();
+                    self.request_render();
                 }
                 HighlightEvent::ClearAll { buffer_id } => {
                     self.highlight_store.clear_all(buffer_id);
-                    self.render();
+                    self.request_render();
                 }
             },
             InnerEvent::RenderSignal => {
-                self.render();
+                self.request_render();
             }
             InnerEvent::CompletionEvent(comp_event) => {
                 self.handle_completion_event(comp_event);
@@ -354,11 +368,11 @@ impl Runtime {
             }
             InnerEvent::WhichKeyShow { prefix, bindings } => {
                 self.which_key_panel.show(prefix, bindings);
-                self.render();
+                self.request_render();
             }
             InnerEvent::WhichKeyHide => {
                 self.which_key_panel.hide();
-                self.render();
+                self.request_render();
             }
             InnerEvent::OperatorMotionEvent(ref action) => {
                 self.handle_operator_motion(action);
@@ -378,7 +392,7 @@ impl Runtime {
             InnerEvent::ScreenResizeEvent { width, height } => {
                 tracing::debug!("Screen resize: {}x{}", width, height);
                 self.screen.resize(width, height);
-                self.render();
+                self.request_render();
             }
             InnerEvent::SettingsMenuEvent(ref settings_event) => {
                 self.handle_settings_menu_event(settings_event);
@@ -507,7 +521,7 @@ impl Runtime {
                 match (self.buffers.get_mut(&buffer_id), content) {
                     (Some(buffer), Some(content)) => {
                         buffer.set_content(content);
-                        self.render();
+                        self.request_render();
                         RpcResponse::ok(id)
                     }
                     (None, _) => RpcResponse::error(id, RpcError::buffer_not_found(buffer_id)),
@@ -522,7 +536,7 @@ impl Runtime {
                     || RpcResponse::error(id, RpcError::invalid_params("missing 'path' field")),
                     |path| {
                         self.open_file(path);
-                        self.render();
+                        self.request_render();
                         RpcResponse::success(
                             id,
                             serde_json::json!({ "buffer_id": self.active_buffer_id }),
@@ -539,7 +553,7 @@ impl Runtime {
                         #[allow(clippy::cast_possible_truncation)]
                         {
                             self.screen.resize(w as u16, h as u16);
-                            self.render();
+                            self.request_render();
                         }
                         RpcResponse::ok(id)
                     }
@@ -590,7 +604,7 @@ impl Runtime {
                     if !highlights.is_empty() {
                         self.highlight_store.add(buffer_id, highlights);
                     }
-                    self.render();
+                    self.request_render();
                 }
             }
             TreesitterEvent::FullReparse { buffer_id } => {
@@ -614,7 +628,7 @@ impl Runtime {
                     if !highlights.is_empty() {
                         self.highlight_store.add(buffer_id, highlights);
                     }
-                    self.render();
+                    self.request_render();
                 }
             }
         }
@@ -645,7 +659,7 @@ impl Runtime {
 
                 self.telescope_state.open(&picker, title, prompt);
                 self.set_mode(ModeState::telescope());
-                self.render();
+                self.request_render();
 
                 // Fetch items from picker asynchronously
                 if let Some(picker_impl) = self.telescope_pickers.get(&picker).cloned() {
@@ -706,28 +720,28 @@ impl Runtime {
                         .match_items(self.telescope_state.all_items.clone());
                     self.telescope_state.update_filtered_items(filtered);
                 }
-                self.render_telescope_only();
+                self.request_render();
             }
             TelescopeEvent::UpdateItems { items } => {
                 tracing::debug!(count = items.len(), "Telescope items updated");
                 self.telescope_state.update_items(items);
-                self.render();
+                self.request_render();
             }
             TelescopeEvent::SelectNext => {
                 self.telescope_state.select_next();
-                self.render_telescope_only();
+                self.request_render();
             }
             TelescopeEvent::SelectPrev => {
                 self.telescope_state.select_prev();
-                self.render_telescope_only();
+                self.request_render();
             }
             TelescopeEvent::PageDown => {
                 self.telescope_state.page_down();
-                self.render_telescope_only();
+                self.request_render();
             }
             TelescopeEvent::PageUp => {
                 self.telescope_state.page_up();
-                self.render_telescope_only();
+                self.request_render();
             }
             TelescopeEvent::Confirm => {
                 // Get selected item before closing
@@ -804,16 +818,16 @@ impl Runtime {
                     self.telescope_state.close();
                     self.set_mode(ModeState::normal());
                 }
-                self.render();
+                self.request_render();
             }
             TelescopeEvent::Close => {
                 self.telescope_state.close();
                 self.set_mode(ModeState::normal());
-                self.render();
+                self.request_render();
             }
             TelescopeEvent::UpdatePreview { content } => {
                 self.telescope_state.set_preview(Some(content));
-                self.render_telescope_only();
+                self.request_render();
             }
         }
     }
@@ -834,15 +848,15 @@ impl Runtime {
                 self.completion_state
                     .activate(items, prefix, start_col, start_row);
                 self.set_completion_active(true);
-                self.render();
+                self.request_render();
             }
             CompletionEvent::SelectNext => {
                 self.completion_state.select_next();
-                self.render();
+                self.request_render();
             }
             CompletionEvent::SelectPrev => {
                 self.completion_state.select_prev();
-                self.render();
+                self.request_render();
             }
             CompletionEvent::Confirm => {
                 if let Some(item) = self.completion_state.selected_item().cloned() {
@@ -850,17 +864,17 @@ impl Runtime {
                 }
                 self.completion_state.dismiss();
                 self.set_completion_active(false);
-                self.render();
+                self.request_render();
             }
             CompletionEvent::Dismiss => {
                 self.completion_state.dismiss();
                 self.set_completion_active(false);
-                self.render();
+                self.request_render();
             }
             CompletionEvent::UpdateFilter { new_prefix } => {
                 self.completion_state
                     .update_prefix(&new_prefix, &self.completion_items_cache);
-                self.render();
+                self.request_render();
             }
         }
     }
@@ -921,7 +935,7 @@ impl Runtime {
 
         // Use set_mode to broadcast via watch channel
         self.set_mode(new_mode);
-        self.render();
+        self.request_render();
     }
 
     /// Handle leap-related events
@@ -941,12 +955,12 @@ impl Runtime {
                 tracing::debug!(?direction, ?operator, ?count, "Leap mode started");
                 self.leap_state.start(direction, operator, count);
                 self.set_mode(ModeState::leap(direction, operator, count));
-                self.render();
+                self.request_render();
             }
             LeapEvent::FirstChar { char } => {
                 tracing::debug!(?char, "Leap first char");
                 self.leap_state.set_first_char(char);
-                self.render();
+                self.request_render();
             }
             LeapEvent::SecondChar { char } => {
                 tracing::debug!(?char, "Leap second char");
@@ -998,7 +1012,7 @@ impl Runtime {
                         self.leap_state.set_matches_with_labels(matches, labels);
                     }
                 }
-                self.render();
+                self.request_render();
             }
             LeapEvent::SelectLabel { label } => {
                 tracing::debug!(?label, "Leap label selected");
@@ -1017,13 +1031,13 @@ impl Runtime {
 
                 self.leap_state.reset();
                 self.set_mode(ModeState::normal());
-                self.render();
+                self.request_render();
             }
             LeapEvent::Cancel => {
                 tracing::debug!("Leap cancelled");
                 self.leap_state.reset();
                 self.set_mode(ModeState::normal());
-                self.render();
+                self.request_render();
             }
         }
     }
@@ -1044,7 +1058,7 @@ impl Runtime {
                 let (w, h) = self.screen.size();
                 self.settings_menu.calculate_layout(w, h);
                 self.set_mode(ModeState::settings_menu());
-                self.render();
+                self.request_render();
             }
             SettingsMenuEvent::Close => {
                 // If in text input mode, cancel input instead of closing menu
@@ -1054,51 +1068,51 @@ impl Runtime {
                     self.settings_menu.close();
                     self.set_mode(ModeState::normal());
                 }
-                self.render();
+                self.request_render();
             }
             SettingsMenuEvent::SelectNext => {
                 self.settings_menu.select_next();
-                self.render();
+                self.request_render();
             }
             SettingsMenuEvent::SelectPrev => {
                 self.settings_menu.select_prev();
-                self.render();
+                self.request_render();
             }
             SettingsMenuEvent::Toggle => {
                 if self.settings_menu.toggle_selected() {
                     self.apply_settings_from_menu();
                 }
-                self.render();
+                self.request_render();
             }
             SettingsMenuEvent::CycleNext => {
                 if self.settings_menu.cycle_next_selected() {
                     self.apply_settings_from_menu();
                 }
-                self.render();
+                self.request_render();
             }
             SettingsMenuEvent::CyclePrev => {
                 if self.settings_menu.cycle_prev_selected() {
                     self.apply_settings_from_menu();
                 }
-                self.render();
+                self.request_render();
             }
             SettingsMenuEvent::QuickSelect(n) => {
                 if self.settings_menu.quick_select(*n) {
                     self.apply_settings_from_menu();
                 }
-                self.render();
+                self.request_render();
             }
             SettingsMenuEvent::Increment => {
                 if self.settings_menu.increment_selected() {
                     self.apply_settings_from_menu();
                 }
-                self.render();
+                self.request_render();
             }
             SettingsMenuEvent::Decrement => {
                 if self.settings_menu.decrement_selected() {
                     self.apply_settings_from_menu();
                 }
-                self.render();
+                self.request_render();
             }
             SettingsMenuEvent::ExecuteAction => {
                 // If in text input mode, Enter confirms the input
@@ -1140,15 +1154,15 @@ impl Runtime {
                         }
                     }
                 }
-                self.render();
+                self.request_render();
             }
             SettingsMenuEvent::InputChar(c) => {
                 self.settings_menu.input_char(*c);
-                self.render();
+                self.request_render();
             }
             SettingsMenuEvent::InputBackspace => {
                 self.settings_menu.input_backspace();
-                self.render();
+                self.request_render();
             }
             SettingsMenuEvent::InputConfirm => {
                 // Get the input value and pending action before canceling input mode
@@ -1163,11 +1177,11 @@ impl Runtime {
                     // Update current profile name
                     self.current_profile_name.clone_from(&profile_name);
                 }
-                self.render();
+                self.request_render();
             }
             SettingsMenuEvent::InputCancel => {
                 self.settings_menu.cancel_text_input();
-                self.render();
+                self.request_render();
             }
         }
     }

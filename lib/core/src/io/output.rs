@@ -118,11 +118,16 @@ impl Write for MockOutput {
 ///
 /// Used in server mode to render to terminal while also capturing output for RPC clients.
 /// The capture buffer is shared via `Arc<Mutex<>>` so it can be read by the server.
+///
+/// **Important**: Writes are buffered and only sent to the terminal on `flush()`.
+/// This prevents flickering caused by many small writes.
 pub struct DualOutput {
     /// Primary output (typically stdout)
     primary: Option<Box<dyn Write + Send>>,
     /// Capture buffer for RPC clients
     capture: Arc<Mutex<Vec<u8>>>,
+    /// Write buffer for batching writes to terminal (reduces flicker)
+    write_buffer: Vec<u8>,
 }
 
 impl DualOutput {
@@ -132,6 +137,7 @@ impl DualOutput {
         Self {
             primary: Some(primary),
             capture: Arc::new(Mutex::new(Vec::new())),
+            write_buffer: Vec::with_capacity(64 * 1024), // 64KB buffer
         }
     }
 
@@ -141,6 +147,7 @@ impl DualOutput {
         Self {
             primary: None,
             capture: Arc::new(Mutex::new(Vec::new())),
+            write_buffer: Vec::new(),
         }
     }
 
@@ -167,16 +174,21 @@ impl Write for DualOutput {
         // Write to capture buffer
         self.capture.lock().unwrap().extend_from_slice(buf);
 
-        // Write to primary output if present
-        if let Some(ref mut primary) = self.primary {
-            primary.write_all(buf)?;
+        // Buffer writes for terminal (flushed on flush())
+        if self.primary.is_some() {
+            self.write_buffer.extend_from_slice(buf);
         }
 
         Ok(buf.len())
     }
 
     fn flush(&mut self) -> io::Result<()> {
+        // Write buffered content to terminal all at once
         if let Some(ref mut primary) = self.primary {
+            if !self.write_buffer.is_empty() {
+                primary.write_all(&self.write_buffer)?;
+                self.write_buffer.clear();
+            }
             primary.flush()?;
         }
         Ok(())
@@ -239,6 +251,39 @@ impl CaptureHandle {
     #[must_use]
     pub fn len(&self) -> usize {
         self.buffer.lock().unwrap().len()
+    }
+
+    /// Clear the capture buffer
+    ///
+    /// # Panics
+    ///
+    /// Panics if the mutex is poisoned.
+    pub fn clear(&self) {
+        self.buffer.lock().unwrap().clear();
+    }
+
+    /// Take a snapshot of the buffer and clear it atomically
+    ///
+    /// This returns the current buffer contents and clears the buffer,
+    /// ensuring each read gets only the latest frame without accumulation.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the mutex is poisoned.
+    #[must_use]
+    pub fn take_snapshot(&self) -> Vec<u8> {
+        let mut guard = self.buffer.lock().unwrap();
+        std::mem::take(&mut *guard)
+    }
+
+    /// Take a snapshot as string (lossy conversion) and clear
+    ///
+    /// # Panics
+    ///
+    /// Panics if the mutex is poisoned.
+    #[must_use]
+    pub fn take_snapshot_lossy(&self) -> String {
+        String::from_utf8_lossy(&self.take_snapshot()).to_string()
     }
 }
 

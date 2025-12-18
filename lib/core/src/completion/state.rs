@@ -1,6 +1,9 @@
 //! Completion state management
 
-use super::item::CompletionItem;
+use {
+    super::item::CompletionItem,
+    crate::overlay::{OverlayBounds, OverlayGeometry, Selectable},
+};
 
 /// State of the completion popup
 #[derive(Debug, Clone, Default)]
@@ -120,6 +123,75 @@ impl CompletionState {
         if self.items.is_empty() {
             self.active = false;
         }
+    }
+}
+
+// === Overlay Trait Implementations ===
+
+impl Selectable for CompletionState {
+    fn item_count(&self) -> usize {
+        self.items.len()
+    }
+
+    fn selected_index(&self) -> usize {
+        self.selected_index
+    }
+
+    fn set_selected_index(&mut self, index: usize) {
+        self.selected_index = index.min(self.items.len().saturating_sub(1));
+    }
+}
+
+impl OverlayGeometry for CompletionState {
+    /// Compute bounds for the completion popup
+    ///
+    /// Completion popup uses cursor-anchored positioning, so this
+    /// method returns a default position. Use `compute_bounds_anchored` instead.
+    fn compute_bounds(&self, screen_width: u16, screen_height: u16) -> OverlayBounds {
+        // Default to near top-left if no anchor provided
+        self.compute_bounds_anchored(screen_width, screen_height, 0, 0)
+    }
+
+    /// Compute bounds anchored near cursor position
+    ///
+    /// Positions the popup below the cursor if space allows,
+    /// otherwise above. Limited to 10 items maximum.
+    #[allow(clippy::cast_possible_truncation)]
+    fn compute_bounds_anchored(
+        &self,
+        screen_width: u16,
+        screen_height: u16,
+        anchor_x: u16,
+        anchor_y: u16,
+    ) -> OverlayBounds {
+        let max_items = 10.min(self.items.len());
+        let max_label_width = self
+            .items
+            .iter()
+            .take(max_items)
+            .map(|i| i.label.len())
+            .max()
+            .unwrap_or(10);
+
+        #[allow(clippy::cast_possible_truncation)]
+        let popup_width = (max_label_width + 2).min(40) as u16;
+        let popup_height = max_items as u16;
+
+        // Calculate X position, adjusting for prefix length
+        let prefix_len = self.prefix.len() as u16;
+        let popup_x = anchor_x
+            .saturating_sub(prefix_len)
+            .min(screen_width.saturating_sub(popup_width));
+
+        // Calculate Y position: prefer below cursor, fall back to above
+        let space_below = screen_height.saturating_sub(anchor_y + 2);
+        let popup_y = if space_below >= popup_height {
+            anchor_y + 1
+        } else {
+            anchor_y.saturating_sub(popup_height)
+        };
+
+        OverlayBounds::new(popup_x, popup_y, popup_width, popup_height)
     }
 }
 

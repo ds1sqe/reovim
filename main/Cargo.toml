@@ -14,7 +14,8 @@ readme = "../README.md"
 futures.workspace = true
 futures-timer.workspace = true
 tokio.workspace = true
-reovim-core.workspace=true
+reovim-core.workspace = true
+reovim-sys.workspace = true
 
 # Logging
 tracing.workspace = true

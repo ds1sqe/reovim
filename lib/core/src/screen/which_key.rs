@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use crate::{
     event::WhichKeyBinding,
     highlight::{ColorMode, Style, Theme},
+    overlay::{OverlayBounds, OverlayGeometry},
 };
 
 /// Default panel width in characters
@@ -295,5 +296,27 @@ impl WhichKeyPanel {
             "─".repeat(width),
             Style::ansi_reset()
         )
+    }
+}
+
+// === Overlay Trait Implementations ===
+
+impl OverlayGeometry for WhichKeyPanel {
+    /// Compute bounds for the which-key panel
+    ///
+    /// Panel is positioned at the right edge, bottom of screen.
+    #[allow(clippy::cast_possible_truncation)]
+    fn compute_bounds(&self, screen_width: u16, screen_height: u16) -> OverlayBounds {
+        let panel_width = self.config.width.min(screen_width / 3);
+        let panel_x = screen_width.saturating_sub(panel_width);
+
+        // Height based on bindings count
+        let max_height = screen_height.saturating_sub(2);
+        let content_height = (self.bindings.len() as u16 + 2).min(max_height);
+        let panel_y = screen_height
+            .saturating_sub(content_height)
+            .saturating_sub(1);
+
+        OverlayBounds::new(panel_x, panel_y, panel_width, content_height)
     }
 }

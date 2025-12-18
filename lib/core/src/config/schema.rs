@@ -118,6 +118,10 @@ pub struct EditorConfig {
     /// Lines to keep above/below cursor
     #[serde(default = "default_scrolloff")]
     pub scrolloff: u16,
+
+    /// Render strategy: `virtual_buffer`, `dirty_region`, `cell_delta`
+    #[serde(default = "default_render_strategy")]
+    pub render_strategy: String,
 }
 
 impl Default for EditorConfig {
@@ -132,8 +136,13 @@ impl Default for EditorConfig {
             tabwidth: default_tabwidth(),
             expandtab: true,
             scrolloff: default_scrolloff(),
+            render_strategy: default_render_strategy(),
         }
     }
+}
+
+fn default_render_strategy() -> String {
+    "virtual_buffer".to_string()
 }
 
 fn default_theme() -> String {

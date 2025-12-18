@@ -2,6 +2,70 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.6.0] - 2025-12-18
+
+### Features
+
+- **Diff-Based Rendering System** - Eliminates terminal flickering
+  - FrameBuffer: 2D cell grid for double-buffering
+  - Three render strategies: VirtualBuffer (full diff), DirtyRegion, CellDelta
+  - Only changed cells sent to terminal - massive reduction in I/O
+
+- **Overlay System** - Composable UI overlays
+  - Overlay trait with z-order compositing
+  - OverlayCompositor for managing overlay stack
+  - OverlayGeometry for positioning and bounds
+
+- **Layer-Based Compositor** - Structured rendering pipeline
+  - Layer trait with z-order constants (BASE=0, EDITOR=2, COMPLETION=4, etc.)
+  - Implementations: BaseLayer, EditorLayer, ExplorerLayer, CompletionLayer, WhichKeyLayer, TelescopeLayer, LeapLayer, SettingsMenuLayer
+
+- **Theme Background Colors** - All UI styles now have fg AND bg for proper diff-based rendering
+
+### Architecture
+
+- `FrameBuffer` - 2D cell storage with dirty tracking
+- `Cell` - Individual screen cell (char, fg, bg, modifiers)
+- `FrameRenderer` - Coordinates render strategies
+- `RenderStrategy` trait - Pluggable diff algorithms
+- `LayerCompositor` - Coordinates layer rendering to FrameBuffer
+- `OverlayCompositor` - Manages overlay z-order
+
+### Files Added
+
+- `lib/core/src/frame/` - Frame buffer module
+  - `mod.rs`, `buffer.rs`, `cell.rs`, `dirty.rs`, `renderer.rs`
+  - `strategy/` - VirtualBuffer, DirtyRegion, CellDelta strategies
+- `lib/core/src/overlay/` - Overlay system
+  - `mod.rs`, `compositor.rs`, `geometry.rs`, `render.rs`, `selectable.rs`
+- `lib/core/src/screen/layer.rs` - Layer trait and z-order constants
+- `lib/core/src/screen/compositor.rs` - LayerCompositor
+- `lib/core/src/screen/layers/` - Layer implementations
+  - `base.rs`, `editor.rs`, `explorer.rs`, `completion.rs`
+  - `which_key.rs`, `telescope.rs`, `leap.rs`, `settings_menu.rs`
+
+### Files Changed
+
+- `lib/core/src/screen/mod.rs` - Integration with layer compositor
+- `lib/core/src/screen/window.rs` - render_to_buffer method
+- `lib/core/src/runtime/core.rs` - FrameRenderer initialization
+- `lib/core/src/runtime/event_loop.rs` - RenderSignal handling
+- `lib/core/src/highlight/theme.rs` - Background colors for all styles
+
+### Technical Changes
+
+- Screen rendering now goes through LayerCompositor → FrameBuffer → FrameRenderer → Terminal
+- Eliminated full-screen clear on every render
+- Added `*_to_buffer` methods to all renderable components
+
+### Testing
+
+- 256 unit tests passing (includes frame/overlay tests)
+- 95 integration tests passing
+- Zero warnings (build + clippy)
+
+---
+
 ## [0.5.3] - 2025-12-18
 
 ### Features

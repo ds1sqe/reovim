@@ -3,6 +3,7 @@
 use crate::{
     buffer::{Buffer, SelectionMode, SelectionOps},
     folding::FoldState,
+    frame::FrameBuffer,
     highlight::{ColorMode, Highlight, HighlightGroup, HighlightStore, Span, Style, Theme},
     indent::IndentAnalyzer,
 };
@@ -554,6 +555,257 @@ impl Window {
         }
 
         result
+    }
+
+    /// Render a line with highlight ranges directly to a frame buffer
+    ///
+    /// This writes char+style cells directly to the buffer for diff-based rendering.
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::unused_self)]
+    fn render_styled_line_to_buffer(
+        &self,
+        buffer: &mut FrameBuffer,
+        x: u16,
+        y: u16,
+        line: &str,
+        highlights: &[crate::highlight::store::LineHighlight],
+        default_style: &Style,
+    ) -> u16 {
+        let chars: Vec<char> = line.chars().collect();
+        let mut col = x;
+        let mut char_idx: u32 = 0;
+        let mut hl_idx = 0;
+
+        while (char_idx as usize) < chars.len() && col < buffer.width() {
+            // Find applicable highlight
+            while hl_idx < highlights.len() && highlights[hl_idx].end_col <= char_idx {
+                hl_idx += 1;
+            }
+
+            let style = if hl_idx < highlights.len() && highlights[hl_idx].start_col <= char_idx {
+                highlights[hl_idx].style.clone()
+            } else {
+                default_style.clone()
+            };
+
+            buffer.put_char(col, y, chars[char_idx as usize], &style);
+            col += 1;
+            char_idx += 1;
+        }
+
+        col.saturating_sub(x)
+    }
+
+    /// Render line number directly to frame buffer
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::too_many_arguments)]
+    fn render_line_number_to_buffer(
+        &self,
+        buffer: &mut FrameBuffer,
+        x: u16,
+        y: u16,
+        row: u16,
+        cursor_y: u16,
+        num_width: usize,
+        theme: &Theme,
+    ) -> u16 {
+        if !self.line_number.show {
+            return 0;
+        }
+
+        let is_current_line = row == cursor_y;
+        let style = if is_current_line {
+            &theme.gutter.current_line_number
+        } else {
+            &theme.gutter.line_number
+        };
+
+        let num_str = match self.line_number.mode() {
+            LineNumberMode::Absolute => format!("{}", row + 1),
+            LineNumberMode::Relative => {
+                let rel = (i32::from(row) - i32::from(cursor_y)).abs();
+                format!("{rel}")
+            }
+            LineNumberMode::Hybrid => {
+                if is_current_line {
+                    format!("{}", row + 1)
+                } else {
+                    let rel = (i32::from(row) - i32::from(cursor_y)).abs();
+                    format!("{rel}")
+                }
+            }
+        };
+
+        // Right-align number and add space separator
+        let formatted = format!("{num_str:>num_width$} ");
+        let mut col = x;
+        for ch in formatted.chars() {
+            if col < buffer.width() {
+                buffer.put_char(col, y, ch, style);
+                col += 1;
+            }
+        }
+
+        col.saturating_sub(x)
+    }
+
+    /// Render a complete content line to frame buffer
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_content_line_to_buffer(
+        &self,
+        buffer: &mut FrameBuffer,
+        x: u16,
+        y: u16,
+        row: u16,
+        buf: &Buffer,
+        highlight_store: &HighlightStore,
+        visual_highlight: Option<&Highlight>,
+        is_block_mode: bool,
+        num_width: usize,
+        _indent_analyzer: &IndentAnalyzer,
+        theme: &Theme,
+    ) -> u16 {
+        let Some(content) = buf.contents.get(row as usize) else {
+            return 0;
+        };
+
+        let mut col = x;
+
+        // Render line number
+        col += self.render_line_number_to_buffer(buffer, col, y, row, buf.cur.y, num_width, theme);
+
+        // Get highlights for this line
+        let line_len = content.inner.chars().count() as u32;
+        let mut line_highlights =
+            highlight_store.get_line_highlights(buf.id, u32::from(row), line_len);
+
+        // Add visual selection highlight if applicable
+        if let Some(visual_hl) = visual_highlight {
+            let cols = if is_block_mode {
+                visual_hl.span.cols_for_line_block(u32::from(row), line_len)
+            } else {
+                visual_hl.span.cols_for_line(u32::from(row), line_len)
+            };
+            if let Some((start, end)) = cols
+                && start < end
+            {
+                line_highlights =
+                    self.merge_visual_highlight(line_highlights, start, end, &visual_hl.style);
+            }
+        }
+
+        // Apply indent guides (get plain content without ANSI)
+        // For buffer rendering, we skip indent guides for now (they need special handling)
+        let line_content = &content.inner;
+
+        // Render styled content
+        col += self.render_styled_line_to_buffer(
+            buffer,
+            col,
+            y,
+            line_content,
+            &line_highlights,
+            &theme.base.default,
+        );
+
+        col.saturating_sub(x)
+    }
+
+    /// Render the entire window content to frame buffer
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_sign_loss)]
+    #[allow(clippy::cast_precision_loss)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_to_buffer(
+        &self,
+        buffer: &mut FrameBuffer,
+        buf: &Buffer,
+        highlight_store: &HighlightStore,
+        theme: &Theme,
+        fold_state: Option<&FoldState>,
+        indent_analyzer: &IndentAnalyzer,
+    ) {
+        // Calculate line number width for alignment
+        let total_lines = buf.contents.len();
+        let num_width = if self.line_number.show && total_lines > 0 {
+            (total_lines as f64).log10().floor() as usize + 1
+        } else {
+            1
+        };
+
+        // Build visual selection highlight
+        let visual_highlight = Self::build_visual_highlight(buf, theme);
+        let is_block_mode = buf.selection.active && buf.selection_mode() == SelectionMode::Block;
+
+        // Track buffer line position, accounting for folds
+        let mut buffer_row = self.buffer_anchor.y;
+        let mut display_row = 0u16;
+
+        while display_row < self.height && (buffer_row as usize) < buf.contents.len() {
+            let row = buffer_row;
+
+            // Check if this line is hidden inside a collapsed fold
+            if let Some(fs) = fold_state
+                && fs.is_line_hidden(u32::from(row))
+            {
+                buffer_row += 1;
+                continue;
+            }
+
+            // Check if this line starts a collapsed fold
+            let fold_marker = fold_state.and_then(|fs| fs.get_fold_marker(u32::from(row)));
+
+            let screen_y = self.anchor.y + display_row;
+
+            if fold_marker.is_some() {
+                // Render fold marker (simplified - just show fold indicator)
+                let gutter_width = self.render_line_number_to_buffer(
+                    buffer,
+                    self.anchor.x,
+                    screen_y,
+                    row,
+                    buf.cur.y,
+                    num_width,
+                    theme,
+                );
+                let fold_style = &theme.fold.marker;
+                let fold_text = "+-- folded ---";
+                let mut col = self.anchor.x + gutter_width;
+                for ch in fold_text.chars() {
+                    if col < buffer.width() {
+                        buffer.put_char(col, screen_y, ch, fold_style);
+                        col += 1;
+                    }
+                }
+            } else {
+                // Render normal content line
+                self.render_content_line_to_buffer(
+                    buffer,
+                    self.anchor.x,
+                    screen_y,
+                    row,
+                    buf,
+                    highlight_store,
+                    visual_highlight.as_ref(),
+                    is_block_mode,
+                    num_width,
+                    indent_analyzer,
+                    theme,
+                );
+            }
+
+            buffer_row += 1;
+            display_row += 1;
+        }
+
+        // Fill remaining rows with empty cells (tilde markers for empty lines)
+        let tilde_style = &theme.gutter.line_number;
+        while display_row < self.height {
+            let screen_y = self.anchor.y + display_row;
+            buffer.put_char(self.anchor.x, screen_y, '~', tilde_style);
+            display_row += 1;
+        }
     }
 
     pub fn set_number(&mut self, enabled: bool) {

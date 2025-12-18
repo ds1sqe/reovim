@@ -38,11 +38,22 @@ A Rust-powered neovim-like text editor.
 - **Semantic text objects** - `af`/`if` (function), `ac`/`ic` (class/struct)
 
 ### Performance
-- **50-80% faster** than v0.3.0 baseline
-- Sub-microsecond window render (~473ns)
-- Input RTT: 28µs (char insert), 45µs (word motion)
-- 91% faster page navigation
-- Zero-allocation render path (no buffer cloning)
+
+v0.6.0 uses diff-based rendering via FrameBuffer - trades per-render overhead for zero flickering:
+
+| Metric | v0.5.0 | v0.6.0 | Change |
+|--------|--------|--------|--------|
+| Window render (10 lines) | 1.6 µs | 10 µs | +6x |
+| Window render (10k lines) | 6.9 µs | 56 µs | +8x |
+| Full screen render | 14 µs | 62 µs | +4x |
+| Char insert RTT | 56 µs | 108 µs | +2x |
+| Move down RTT | 751 µs | 806 µs | +7% |
+| Throughput | 144k/sec | 18k/sec | -87% |
+
+**Key benefits:**
+- **Zero flickering** - Only changed cells sent to terminal
+- **Consistent I/O** - Buffer size doesn't affect terminal writes
+- **Composable layers** - Clean UI component separation
 - Async architecture with tokio runtime
 - Cross-platform terminal support via crossterm
 
@@ -184,11 +195,15 @@ Most movement commands support a numeric prefix (e.g., `5j` moves down 5 lines).
 
 ```
 MAIN ──▶ CORE ──▶ SYS
+           │
+           └── LayerCompositor ──▶ FrameBuffer ──▶ Terminal
 ```
 
 - `reovim` (MAIN) - Main binary
 - `reovim-core` (CORE) - Core editor logic (runtime, buffers, events, screen)
 - `reovim-sys` (SYS) - System abstraction layer (crossterm re-exports)
+
+**Rendering Pipeline**: LayerCompositor renders UI layers (editor, explorer, overlays) to a FrameBuffer, which diffs against the previous frame to emit minimal terminal updates.
 
 ## Performance
 

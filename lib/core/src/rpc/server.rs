@@ -161,12 +161,18 @@ impl RpcServer {
                     _ => ScreenFormat::PlainText,
                 };
 
+                // Take snapshot and clear buffer atomically to prevent accumulation
                 let content = self
                     .capture_handle
                     .as_ref()
-                    .map_or_else(String::new, |handle| match format {
-                        ScreenFormat::RawAnsi => handle.to_string_lossy(),
-                        ScreenFormat::PlainText | ScreenFormat::CellGrid => handle.strip_ansi(),
+                    .map_or_else(String::new, |handle| {
+                        let raw = handle.take_snapshot_lossy();
+                        match format {
+                            ScreenFormat::RawAnsi => raw,
+                            ScreenFormat::PlainText | ScreenFormat::CellGrid => {
+                                crate::io::output::strip_ansi_codes(&raw)
+                            }
+                        }
                     });
 
                 // Get dimensions from runtime via event

@@ -1,7 +1,11 @@
 #![allow(clippy::missing_errors_doc)]
 
+mod compositor;
+mod layer;
 mod status_line;
 mod which_key;
+
+pub mod layers;
 
 use {
     crate::{
@@ -12,6 +16,7 @@ use {
         constants::RESET_STYLE,
         explorer::{ExplorerState, render_explorer},
         folding::FoldManager,
+        frame::{FrameBuffer, FrameRenderer, RenderStrategyConfig},
         highlight::{ColorMode, HighlightStore, Theme},
         indent::IndentAnalyzer,
         leap::LeapState,
@@ -33,6 +38,8 @@ use {
 };
 
 pub use {
+    compositor::Compositor,
+    layer::{Layer, LayerBounds, z_order},
     status_line::{StatusLineRenderer, render_command_line_to, render_status_line_to},
     which_key::{WhichKeyConfig, WhichKeyPanel},
 };
@@ -71,6 +78,10 @@ pub struct Screen {
     next_window_id: usize,
     /// Mapping from `window_id` to `buffer_id`
     window_buffers: std::collections::BTreeMap<usize, usize>,
+    /// Optional frame renderer for buffered rendering
+    frame_renderer: Option<FrameRenderer>,
+    /// Z-layer compositor for flicker-free rendering
+    compositor: Option<Compositor>,
 }
 
 impl Default for Screen {
@@ -117,11 +128,27 @@ impl Default for Screen {
             tab_manager,
             next_window_id: 1, // Next window will be ID 1
             window_buffers,
+            frame_renderer: None,
+            compositor: None,
         }
     }
 }
 
 impl Screen {
+    /// Enable compositor-based rendering
+    ///
+    /// When enabled, rendering uses the z-layer compositor for flicker-free updates
+    pub fn enable_compositor(&mut self) {
+        self.compositor = Some(Compositor::new(self.size.width, self.size.height));
+        tracing::info!("Z-layer compositor enabled");
+    }
+
+    /// Check if compositor rendering is enabled
+    #[must_use]
+    pub const fn is_compositor_enabled(&self) -> bool {
+        self.compositor.is_some()
+    }
+
     /// Create a new Screen with a custom writer (useful for testing/benchmarking)
     #[must_use]
     pub fn with_writer<W: Write + 'static>(writer: W, width: u16, height: u16) -> Self {
@@ -160,6 +187,8 @@ impl Screen {
             tab_manager,
             next_window_id: 1,
             window_buffers,
+            frame_renderer: None,
+            compositor: None,
         }
     }
 
@@ -230,9 +259,59 @@ impl Screen {
                 "Window layout after resize"
             );
         }
+
+        // Resize frame renderer if enabled
+        if let Some(ref mut renderer) = self.frame_renderer {
+            renderer.resize(width, height);
+        }
+
+        // Resize compositor if enabled
+        if let Some(ref mut compositor) = self.compositor {
+            compositor.resize(width, height);
+        }
     }
 
-    /// update screen
+    /// Enable frame-buffered rendering with the specified strategy
+    ///
+    /// When enabled, rendering will use double-buffering and differential
+    /// updates instead of clearing the entire screen each frame.
+    pub fn enable_frame_renderer(&mut self, strategy: RenderStrategyConfig) {
+        let mut renderer = FrameRenderer::new(self.size.width, self.size.height);
+        renderer.set_strategy(strategy);
+        self.frame_renderer = Some(renderer);
+        tracing::info!(
+            strategy = %strategy.name(),
+            "Frame renderer enabled"
+        );
+    }
+
+    /// Set the render strategy (only if frame renderer is enabled)
+    pub fn set_render_strategy(&mut self, strategy: RenderStrategyConfig) {
+        if let Some(ref mut renderer) = self.frame_renderer {
+            renderer.set_strategy(strategy);
+            tracing::debug!(strategy = %strategy.name(), "Render strategy changed");
+        } else {
+            // Enable frame renderer if not already enabled
+            self.enable_frame_renderer(strategy);
+        }
+    }
+
+    /// Get the current render strategy config
+    #[must_use]
+    pub fn render_strategy(&self) -> Option<RenderStrategyConfig> {
+        self.frame_renderer.as_ref().map(FrameRenderer::strategy)
+    }
+
+    /// Check if frame-buffered rendering is enabled
+    #[must_use]
+    pub const fn is_frame_renderer_enabled(&self) -> bool {
+        self.frame_renderer.is_some()
+    }
+
+    /// update screen using diff-based rendering
+    ///
+    /// When frame renderer is enabled, renders all components to a frame buffer
+    /// and emits only changed cells to the terminal. This eliminates flickering.
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::too_many_arguments)]
     #[allow(clippy::too_many_lines)]
@@ -255,9 +334,248 @@ impl Screen {
         indent_analyzer: &IndentAnalyzer,
         settings_menu: &crate::settings_menu::SettingsMenuState,
     ) -> std::result::Result<(), std::io::Error> {
-        // Reset all styling before clearing
+        // Use frame buffer for diff-based rendering when enabled
+        if self.frame_renderer.is_some() {
+            return self.render_buffered(
+                buffers,
+                highlight_store,
+                mode,
+                cmd_line,
+                pending_keys,
+                last_command,
+                color_mode,
+                theme,
+                explorer_state,
+                which_key_panel,
+                completion_state,
+                telescope_state,
+                leap_state,
+                fold_manager,
+                indent_analyzer,
+                settings_menu,
+            );
+        }
+
+        // Fallback: direct rendering (legacy path)
+        self.render_direct(
+            buffers,
+            highlight_store,
+            mode,
+            cmd_line,
+            pending_keys,
+            last_command,
+            color_mode,
+            theme,
+            explorer_state,
+            which_key_panel,
+            completion_state,
+            telescope_state,
+            leap_state,
+            fold_manager,
+            indent_analyzer,
+            settings_menu,
+        )
+    }
+
+    /// Diff-based rendering using frame buffer
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_lines)]
+    fn render_buffered(
+        &mut self,
+        buffers: &BTreeMap<usize, Buffer>,
+        highlight_store: &HighlightStore,
+        mode: &ModeState,
+        cmd_line: &CommandLine,
+        pending_keys: &str,
+        last_command: &str,
+        color_mode: ColorMode,
+        theme: &Theme,
+        explorer_state: Option<&ExplorerState>,
+        which_key_panel: &WhichKeyPanel,
+        completion_state: &CompletionState,
+        telescope_state: &TelescopeState,
+        leap_state: &LeapState,
+        fold_manager: &FoldManager,
+        indent_analyzer: &IndentAnalyzer,
+        settings_menu: &crate::settings_menu::SettingsMenuState,
+    ) -> std::result::Result<(), std::io::Error> {
+        // Take frame renderer out (borrow checker workaround)
+        let mut renderer = self
+            .frame_renderer
+            .take()
+            .expect("render_buffered called without frame renderer");
+
+        // Set color mode for style conversion
+        renderer.set_color_mode(color_mode);
+
+        // Clear buffer for fresh frame
+        renderer.clear();
+        let buffer = renderer.buffer_mut();
+
+        // Track cursor position
+        let mut cursor_pos: Option<(u16, u16)> = None;
+        let mut current_buffer: Option<&Buffer> = None;
+
+        // Render tab line if multiple tabs exist
+        self.render_tab_line_to_buffer(buffer, color_mode, theme);
+
+        // Render explorer sidebar if visible
+        if self.layout.is_explorer_visible()
+            && let Some(explorer) = explorer_state
+            && let Some(layout) = self.layout.explorer_layout()
+        {
+            self.render_explorer_to_buffer(buffer, explorer, layout, theme, color_mode);
+
+            // If explorer is focused, set cursor position
+            if self.layout.is_explorer_focused() {
+                let cursor_y = explorer.cursor_index.saturating_sub(explorer.scroll_offset);
+                cursor_pos = Some((layout.anchor.x, layout.anchor.y + cursor_y as u16));
+            }
+        }
+
+        // Collect leap rendering info before iterating windows
+        let mut leap_render_info: Option<(u16, u16, u16)> = None;
+
+        // Render editor windows
+        for win in &mut self.windows {
+            if let Some(buf) = buffers.get(&win.buffer_id) {
+                current_buffer = Some(buf);
+
+                // Update scroll to keep cursor visible
+                win.update_scroll(buf.cur.y);
+
+                // Get fold state for this buffer
+                let fold_state = fold_manager.get(buf.id);
+
+                // Render window content to buffer
+                win.render_to_buffer(
+                    buffer,
+                    buf,
+                    highlight_store,
+                    theme,
+                    fold_state,
+                    indent_analyzer,
+                );
+
+                // Calculate cursor position (only if editor is focused)
+                if !self.layout.is_explorer_focused() {
+                    let gutter_width = win.line_number_width(buf.contents.len());
+                    let cursor_x = win.anchor.x + gutter_width + buf.cur.x;
+                    let cursor_y = win.anchor.y + buf.cur.y.saturating_sub(win.buffer_anchor.y);
+                    cursor_pos = Some((cursor_x, cursor_y));
+
+                    if leap_state.is_showing_labels() {
+                        leap_render_info =
+                            Some((win.anchor.x + gutter_width, win.anchor.y, win.buffer_anchor.y));
+                    }
+                }
+            }
+        }
+
+        // Render window separators
+        self.render_window_separators_to_buffer(buffer, theme);
+
+        // Render leap labels
+        if let Some((window_x, window_y, scroll_offset)) = leap_render_info {
+            self.render_leap_labels_to_buffer(
+                buffer,
+                leap_state,
+                window_x,
+                window_y,
+                scroll_offset,
+                theme,
+            );
+        }
+
+        // Render completion popup if visible
+        if completion_state.is_visible()
+            && let Some((cursor_x, cursor_y)) = cursor_pos
+        {
+            self.render_completion_to_buffer(buffer, completion_state, cursor_x, cursor_y, theme);
+        }
+
+        // Render status line or command line
+        if mode.is_command() {
+            self.render_command_line_to_buffer(buffer, cmd_line, theme);
+        } else {
+            self.render_status_line_to_buffer(
+                buffer,
+                mode,
+                current_buffer,
+                pending_keys,
+                last_command,
+                theme,
+                color_mode,
+            );
+        }
+
+        // Render which-key panel overlay
+        if which_key_panel.visible {
+            self.render_which_key_to_buffer(buffer, which_key_panel, color_mode, theme);
+        }
+
+        // Render settings menu overlay
+        if settings_menu.visible {
+            self.render_settings_menu_to_buffer(buffer, settings_menu, theme, color_mode);
+            // Cursor position for settings menu
+            let cursor_y = settings_menu.layout.y
+                + 2
+                + settings_menu
+                    .selected_index
+                    .saturating_sub(settings_menu.scroll_offset) as u16;
+            let cursor_x = settings_menu.layout.x + 2;
+            cursor_pos = Some((cursor_x, cursor_y));
+        }
+
+        // Render telescope overlay (takes over screen when active)
+        if telescope_state.is_visible() {
+            self.render_telescope_to_buffer(buffer, telescope_state, theme, color_mode);
+            let prompt_len = telescope_state.prompt.len() as u16;
+            let cursor_x =
+                telescope_state.layout.x + 1 + prompt_len + telescope_state.cursor_pos as u16;
+            let cursor_y = telescope_state.layout.y + telescope_state.layout.height - 2;
+            cursor_pos = Some((cursor_x, cursor_y));
+        }
+
+        // Put renderer back and flush
+        self.frame_renderer = Some(renderer);
+        let renderer = self.frame_renderer.as_mut().unwrap();
+        renderer.flush(&mut self.out_stream)?;
+
+        // Position cursor
+        if let Some((x, y)) = cursor_pos {
+            queue!(self.out_stream, MoveTo(x, y))?;
+        }
+
+        self.out_stream.flush()
+    }
+
+    /// Direct rendering (legacy path without frame buffer)
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_lines)]
+    fn render_direct(
+        &mut self,
+        buffers: &BTreeMap<usize, Buffer>,
+        highlight_store: &HighlightStore,
+        mode: &ModeState,
+        cmd_line: &CommandLine,
+        pending_keys: &str,
+        last_command: &str,
+        color_mode: ColorMode,
+        theme: &Theme,
+        explorer_state: Option<&ExplorerState>,
+        which_key_panel: &WhichKeyPanel,
+        completion_state: &CompletionState,
+        telescope_state: &TelescopeState,
+        leap_state: &LeapState,
+        fold_manager: &FoldManager,
+        indent_analyzer: &IndentAnalyzer,
+        settings_menu: &crate::settings_menu::SettingsMenuState,
+    ) -> std::result::Result<(), std::io::Error> {
+        // Reset all styling
         queue!(self.out_stream, Print(RESET_STYLE))?;
-        self.clear(ClearType::All)?;
 
         // Render tab line if multiple tabs exist
         self.render_tab_line(color_mode, theme)?;
@@ -405,7 +723,7 @@ impl Screen {
                     .saturating_sub(settings_menu.scroll_offset) as u16;
             let cursor_x = settings_menu.layout.x + 2;
             queue!(self.out_stream, MoveTo(cursor_x, cursor_y))?;
-            return Ok(());
+            return self.out_stream.flush();
         }
 
         // Render telescope overlay (takes over entire screen when active)
@@ -417,7 +735,7 @@ impl Screen {
                 telescope_state.layout.x + 1 + prompt_len + telescope_state.cursor_pos as u16;
             let cursor_y = telescope_state.layout.y + telescope_state.layout.height - 2;
             queue!(self.out_stream, MoveTo(cursor_x, cursor_y))?;
-            return Ok(());
+            return self.out_stream.flush();
         }
 
         // Position cursor at buffer cursor (not in command mode)
@@ -427,32 +745,7 @@ impl Screen {
             queue!(self.out_stream, MoveTo(x, y))?;
         }
 
-        Ok(())
-    }
-
-    /// Render only the telescope overlay without full screen clear.
-    /// Used for telescope-internal updates to avoid flicker.
-    #[allow(clippy::cast_possible_truncation)]
-    pub fn render_telescope_only(
-        &mut self,
-        telescope_state: &TelescopeState,
-        color_mode: ColorMode,
-        theme: &Theme,
-    ) -> std::result::Result<(), std::io::Error> {
-        if !telescope_state.is_visible() {
-            return Ok(());
-        }
-
-        self.render_telescope(telescope_state, color_mode, theme)?;
-
-        // Set cursor in telescope input
-        let prompt_len = telescope_state.prompt.len() as u16;
-        let cursor_x =
-            telescope_state.layout.x + 1 + prompt_len + telescope_state.cursor_pos as u16;
-        let cursor_y = telescope_state.layout.y + telescope_state.layout.height - 2;
-        queue!(self.out_stream, MoveTo(cursor_x, cursor_y))?;
-
-        Ok(())
+        self.out_stream.flush()
     }
 
     /// Render the completion popup
@@ -1217,6 +1510,611 @@ impl Screen {
         }
 
         Ok(())
+    }
+
+    // === Buffer Rendering Methods (for diff-based rendering) ===
+
+    /// Render tab line directly to frame buffer
+    #[allow(clippy::cast_possible_truncation)]
+    fn render_tab_line_to_buffer(
+        &self,
+        buffer: &mut FrameBuffer,
+        _color_mode: ColorMode,
+        theme: &Theme,
+    ) {
+        let tabs = self.tab_manager.tab_info();
+        if tabs.len() <= 1 {
+            return;
+        }
+
+        let mut x = 0u16;
+        for tab in &tabs {
+            let style = if tab.is_active {
+                &theme.tab.active
+            } else {
+                &theme.tab.inactive
+            };
+
+            let label = format!(" {} ", tab.label);
+            for ch in label.chars() {
+                if x < buffer.width() {
+                    buffer.put_char(x, 0, ch, style);
+                    x += 1;
+                }
+            }
+        }
+
+        // Fill rest with tab fill style
+        let fill_style = &theme.tab.fill;
+        while x < buffer.width() {
+            buffer.put_char(x, 0, ' ', fill_style);
+            x += 1;
+        }
+    }
+
+    /// Render explorer sidebar to frame buffer
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::unused_self)]
+    fn render_explorer_to_buffer(
+        &self,
+        buffer: &mut FrameBuffer,
+        explorer: &ExplorerState,
+        layout: layout::WindowLayout,
+        theme: &Theme,
+        _color_mode: ColorMode,
+    ) {
+        use crate::explorer::NodeType;
+
+        // Get visible nodes from explorer
+        let nodes = explorer.visible_nodes();
+        let visible_count = layout
+            .height
+            .min(nodes.len().saturating_sub(explorer.scroll_offset) as u16);
+
+        for row in 0..visible_count {
+            let node_idx = explorer.scroll_offset + row as usize;
+            if node_idx >= nodes.len() {
+                break;
+            }
+
+            let node = nodes[node_idx];
+            let is_selected = node_idx == explorer.cursor_index;
+
+            // Use selection or base styles (no dedicated explorer theme)
+            let style = if is_selected {
+                &theme.selection.visual
+            } else {
+                &theme.base.default
+            };
+
+            let screen_y = layout.anchor.y + row;
+
+            // Indent based on depth
+            let indent = "  ".repeat(node.depth);
+            let icon = match &node.node_type {
+                NodeType::Directory { expanded, .. } => {
+                    if *expanded {
+                        "▼ "
+                    } else {
+                        "▶ "
+                    }
+                }
+                NodeType::File { .. } | NodeType::Symlink { .. } => "  ",
+            };
+
+            let display = format!("{}{}{}", indent, icon, node.name);
+
+            let mut col = layout.anchor.x;
+            for ch in display.chars() {
+                if col < layout.anchor.x + layout.width {
+                    buffer.put_char(col, screen_y, ch, style);
+                    col += 1;
+                }
+            }
+
+            // Fill rest of line
+            while col < layout.anchor.x + layout.width {
+                buffer.put_char(col, screen_y, ' ', style);
+                col += 1;
+            }
+        }
+
+        // Fill empty rows with theme background
+        for row in visible_count..layout.height {
+            let screen_y = layout.anchor.y + row;
+            for col in layout.anchor.x..layout.anchor.x + layout.width {
+                buffer.put_char(col, screen_y, ' ', &theme.base.default);
+            }
+        }
+    }
+
+    /// Render window separators to frame buffer
+    fn render_window_separators_to_buffer(&self, buffer: &mut FrameBuffer, theme: &Theme) {
+        if self.windows.len() <= 1 {
+            return;
+        }
+
+        let sep_style = &theme.window.separator;
+
+        for i in 0..self.windows.len() {
+            for j in (i + 1)..self.windows.len() {
+                let win_a = &self.windows[i];
+                let win_b = &self.windows[j];
+
+                // Vertical separator
+                if win_a.anchor.x + win_a.width == win_b.anchor.x {
+                    let sep_x = win_b.anchor.x.saturating_sub(1);
+                    let start_y = win_a.anchor.y.max(win_b.anchor.y);
+                    let end_y = (win_a.anchor.y + win_a.height).min(win_b.anchor.y + win_b.height);
+
+                    for y in start_y..end_y {
+                        buffer.put_char(sep_x, y, '│', sep_style);
+                    }
+                }
+
+                // Horizontal separator
+                if win_a.anchor.y + win_a.height == win_b.anchor.y {
+                    let sep_y = win_b.anchor.y.saturating_sub(1);
+                    let start_x = win_a.anchor.x.max(win_b.anchor.x);
+                    let end_x = (win_a.anchor.x + win_a.width).min(win_b.anchor.x + win_b.width);
+
+                    for x in start_x..end_x {
+                        buffer.put_char(x, sep_y, '─', sep_style);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Render leap labels to frame buffer
+    #[allow(clippy::cast_possible_truncation)]
+    fn render_leap_labels_to_buffer(
+        &self,
+        buffer: &mut FrameBuffer,
+        leap_state: &LeapState,
+        window_x: u16,
+        window_y: u16,
+        scroll_offset: u16,
+        theme: &Theme,
+    ) {
+        let label_style = &theme.leap.label;
+
+        for m in &leap_state.matches {
+            let screen_line = m.line.saturating_sub(scroll_offset);
+            let screen_x = window_x + m.col;
+            let screen_y = window_y + screen_line;
+
+            if screen_y >= self.size.height.saturating_sub(1) {
+                continue;
+            }
+
+            for (i, ch) in m.label.chars().enumerate() {
+                let x = screen_x + i as u16;
+                if x < buffer.width() {
+                    buffer.put_char(x, screen_y, ch, label_style);
+                }
+            }
+        }
+    }
+
+    /// Render completion popup to frame buffer
+    #[allow(clippy::cast_possible_truncation)]
+    fn render_completion_to_buffer(
+        &self,
+        buffer: &mut FrameBuffer,
+        state: &CompletionState,
+        cursor_x: u16,
+        cursor_y: u16,
+        theme: &Theme,
+    ) {
+        let items = &state.items;
+        if items.is_empty() {
+            return;
+        }
+
+        let max_items = 10.min(items.len());
+        let max_label_width = items
+            .iter()
+            .take(max_items)
+            .map(|i| i.label.len())
+            .max()
+            .unwrap_or(10);
+        let popup_width = (max_label_width + 2).min(40) as u16;
+
+        let prefix_len = state.prefix.len() as u16;
+        let popup_x = cursor_x
+            .saturating_sub(prefix_len)
+            .min(self.size.width.saturating_sub(popup_width));
+        let popup_y = cursor_y + 1;
+
+        for (idx, item) in items.iter().take(max_items).enumerate() {
+            let is_selected = idx == state.selected_index;
+            let style = if is_selected {
+                &theme.popup.selected
+            } else {
+                &theme.popup.normal
+            };
+
+            let row = popup_y + idx as u16;
+            if row >= self.size.height.saturating_sub(1) {
+                break;
+            }
+
+            // Write item label
+            buffer.put_char(popup_x, row, ' ', style);
+            let label_chars: Vec<char> = item.label.chars().collect();
+            for (i, &ch) in label_chars
+                .iter()
+                .take(popup_width as usize - 2)
+                .enumerate()
+            {
+                buffer.put_char(popup_x + 1 + i as u16, row, ch, style);
+            }
+            // Pad to width
+            for i in label_chars.len().min(popup_width as usize - 2)..popup_width as usize - 1 {
+                buffer.put_char(popup_x + 1 + i as u16, row, ' ', style);
+            }
+            buffer.put_char(popup_x + popup_width - 1, row, ' ', style);
+        }
+    }
+
+    /// Render command line to frame buffer
+    #[allow(clippy::cast_possible_truncation)]
+    fn render_command_line_to_buffer(
+        &self,
+        buffer: &mut FrameBuffer,
+        cmd_line: &CommandLine,
+        theme: &Theme,
+    ) {
+        let y = self.size.height.saturating_sub(1);
+        let style = &theme.base.default;
+
+        // Write colon prompt
+        buffer.put_char(0, y, ':', style);
+
+        // Write command text
+        for (i, ch) in cmd_line.input.chars().enumerate() {
+            let x = 1 + i as u16;
+            if x < buffer.width() {
+                buffer.put_char(x, y, ch, style);
+            }
+        }
+
+        // Clear rest of line
+        let input_len = cmd_line.input.len() as u16;
+        for x in (1 + input_len)..buffer.width() {
+            buffer.put_char(x, y, ' ', style);
+        }
+    }
+
+    /// Render status line to frame buffer
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::similar_names)]
+    fn render_status_line_to_buffer(
+        &self,
+        buffer: &mut FrameBuffer,
+        mode: &ModeState,
+        current_buffer: Option<&Buffer>,
+        pending_keys: &str,
+        _last_command: &str,
+        theme: &Theme,
+        _color_mode: ColorMode,
+    ) {
+        let y = self.size.height.saturating_sub(1);
+
+        // Mode indicator
+        let mode_display = mode.display_string();
+        let mode_text = format!(" {mode_display} ");
+        let mode_style = &theme.statusline.mode.normal;
+        let mut x = 0u16;
+
+        for ch in mode_text.chars() {
+            if x < buffer.width() {
+                buffer.put_char(x, y, ch, mode_style);
+                x += 1;
+            }
+        }
+
+        // File name
+        let file_style = &theme.statusline.filename;
+        if let Some(buf) = current_buffer {
+            let file_name = buf.file_path.as_deref().unwrap_or("[No Name]");
+            let file_text = format!(" {file_name} ");
+            for ch in file_text.chars() {
+                if x < buffer.width() {
+                    buffer.put_char(x, y, ch, file_style);
+                    x += 1;
+                }
+            }
+
+            // Modified indicator
+            if buf.modified {
+                let modified_style = &theme.statusline.modified;
+                buffer.put_char(x, y, '[', modified_style);
+                x += 1;
+                buffer.put_char(x, y, '+', modified_style);
+                x += 1;
+                buffer.put_char(x, y, ']', modified_style);
+                x += 1;
+            }
+        }
+
+        // Fill middle with background style
+        let fill_end = self
+            .size
+            .width
+            .saturating_sub(pending_keys.len() as u16 + 10);
+        let bg_style = &theme.statusline.background;
+        while x < fill_end {
+            buffer.put_char(x, y, ' ', bg_style);
+            x += 1;
+        }
+
+        // Position info (right side)
+        if let Some(buf) = current_buffer {
+            let pos_text = format!("{}:{} ", buf.cur.y + 1, buf.cur.x + 1);
+            let pos_style = &theme.statusline.position;
+
+            // Right-align position
+            let pos_start = self
+                .size
+                .width
+                .saturating_sub(pos_text.len() as u16 + pending_keys.len() as u16);
+            for (i, ch) in pos_text.chars().enumerate() {
+                let px = pos_start + i as u16;
+                if px < buffer.width() {
+                    buffer.put_char(px, y, ch, pos_style);
+                }
+            }
+        }
+
+        // Pending keys (far right)
+        if !pending_keys.is_empty() {
+            let keys_style = &theme.statusline.filetype;
+            let keys_start = self.size.width.saturating_sub(pending_keys.len() as u16);
+            for (i, ch) in pending_keys.chars().enumerate() {
+                let px = keys_start + i as u16;
+                if px < buffer.width() {
+                    buffer.put_char(px, y, ch, keys_style);
+                }
+            }
+        }
+    }
+
+    /// Render which-key panel to frame buffer
+    #[allow(clippy::cast_possible_truncation)]
+    fn render_which_key_to_buffer(
+        &self,
+        buffer: &mut FrameBuffer,
+        panel: &WhichKeyPanel,
+        _color_mode: ColorMode,
+        theme: &Theme,
+    ) {
+        use crate::overlay::OverlayGeometry;
+
+        // Get panel bounds to fill background
+        let bounds = panel.compute_bounds(self.size.width, self.size.height);
+        let bg_style = &theme.whichkey.background;
+
+        // Fill panel area with background
+        for row in bounds.y..(bounds.y + bounds.height).min(buffer.height()) {
+            for col in bounds.x..(bounds.x + bounds.width).min(buffer.width()) {
+                buffer.put_char(col, row, ' ', bg_style);
+            }
+        }
+
+        // Render the panel text on top
+        let lines = panel.render(self.size.width, self.size.height, ColorMode::TrueColor, theme);
+        for (line, x, y) in lines {
+            // Strip ANSI codes from the pre-rendered line
+            let stripped = crate::io::output::strip_ansi_codes(&line);
+            for (i, ch) in stripped.chars().enumerate() {
+                let col = x + i as u16;
+                if col < buffer.width() && y < buffer.height() {
+                    buffer.put_char(col, y, ch, &theme.whichkey.key);
+                }
+            }
+        }
+    }
+
+    /// Render settings menu to frame buffer
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::unused_self)]
+    fn render_settings_menu_to_buffer(
+        &self,
+        buffer: &mut FrameBuffer,
+        settings: &crate::settings_menu::SettingsMenuState,
+        theme: &Theme,
+        _color_mode: ColorMode,
+    ) {
+        use crate::settings_menu::FlatItem;
+
+        let layout = &settings.layout;
+        let border_style = &theme.popup.border;
+
+        // Top border with title
+        buffer.put_char(layout.x, layout.y, '╭', border_style);
+        let title = " Settings ";
+        for (i, ch) in title.chars().enumerate() {
+            buffer.put_char(layout.x + 1 + i as u16, layout.y, ch, border_style);
+        }
+        for x in (layout.x + 1 + title.len() as u16)..(layout.x + layout.width - 1) {
+            buffer.put_char(x, layout.y, '─', border_style);
+        }
+        buffer.put_char(layout.x + layout.width - 1, layout.y, '╮', border_style);
+
+        // Menu items
+        for (row, item) in settings.flat_items.iter().enumerate() {
+            let y = layout.y + 1 + row as u16;
+            if y >= layout.y + layout.height - 1 {
+                break;
+            }
+
+            let is_selected = row == settings.selected_index;
+            let style = if is_selected {
+                &theme.popup.selected
+            } else {
+                &theme.popup.normal
+            };
+
+            buffer.put_char(layout.x, y, '│', border_style);
+
+            // Get display text based on item type
+            let item_text = match item {
+                FlatItem::SectionHeader(name) => format!(" [{name}] "),
+                FlatItem::Setting {
+                    section_idx,
+                    item_idx,
+                } => {
+                    if let Some(section) = settings.sections.get(*section_idx)
+                        && let Some(setting) = section.items.get(*item_idx)
+                    {
+                        format!("  {} ", setting.label)
+                    } else {
+                        "  ??? ".to_string()
+                    }
+                }
+            };
+
+            for (i, ch) in item_text.chars().enumerate() {
+                let x = layout.x + 1 + i as u16;
+                if x < layout.x + layout.width - 1 {
+                    buffer.put_char(x, y, ch, style);
+                }
+            }
+
+            // Fill rest
+            for x in (layout.x + 1 + item_text.len() as u16)..(layout.x + layout.width - 1) {
+                buffer.put_char(x, y, ' ', style);
+            }
+
+            buffer.put_char(layout.x + layout.width - 1, y, '│', border_style);
+        }
+
+        // Bottom border
+        let bottom_y = layout.y + layout.height - 1;
+        buffer.put_char(layout.x, bottom_y, '╰', border_style);
+        for x in (layout.x + 1)..(layout.x + layout.width - 1) {
+            buffer.put_char(x, bottom_y, '─', border_style);
+        }
+        buffer.put_char(layout.x + layout.width - 1, bottom_y, '╯', border_style);
+    }
+
+    /// Render telescope overlay to frame buffer
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::unused_self)]
+    fn render_telescope_to_buffer(
+        &self,
+        buffer: &mut FrameBuffer,
+        state: &TelescopeState,
+        theme: &Theme,
+        _color_mode: ColorMode,
+    ) {
+        let layout = &state.layout;
+        let x = layout.x;
+        let y = layout.y;
+        let width = layout.width;
+        let height = layout.height;
+
+        let border_style = &theme.telescope.border;
+
+        // Top border with title
+        buffer.put_char(x, y, '╭', border_style);
+        let title = format!(" {} ", state.picker_name);
+        for (i, ch) in title.chars().enumerate() {
+            let col = x + 1 + i as u16;
+            if col < x + width - 1 {
+                buffer.put_char(col, y, ch, border_style);
+            }
+        }
+        for col in (x + 1 + title.len() as u16)..(x + width - 1) {
+            buffer.put_char(col, y, '─', border_style);
+        }
+        buffer.put_char(x + width - 1, y, '╮', border_style);
+
+        // Results area
+        let items_height = height.saturating_sub(4);
+        let visible_items = state.visible_items();
+
+        for row in 0..items_height {
+            let screen_y = y + 1 + row;
+            buffer.put_char(x, screen_y, '│', border_style);
+
+            let idx = row as usize;
+            if idx < visible_items.len() {
+                let item = &visible_items[idx];
+                let absolute_idx = state.scroll_offset + idx;
+                let is_selected = absolute_idx == state.selected_index;
+
+                let style = if is_selected {
+                    &theme.telescope.selected
+                } else {
+                    &theme.telescope.normal
+                };
+
+                let display = &item.display;
+                for (i, ch) in display.chars().take(width as usize - 2).enumerate() {
+                    buffer.put_char(x + 1 + i as u16, screen_y, ch, style);
+                }
+                // Fill rest
+                for col in (x + 1 + display.len().min(width as usize - 2) as u16)..(x + width - 1) {
+                    buffer.put_char(col, screen_y, ' ', style);
+                }
+            } else {
+                // Empty row - use normal telescope style for consistent background
+                for col in (x + 1)..(x + width - 1) {
+                    buffer.put_char(col, screen_y, ' ', &theme.telescope.normal);
+                }
+            }
+
+            buffer.put_char(x + width - 1, screen_y, '│', border_style);
+        }
+
+        // Separator
+        let sep_y = y + height - 3;
+        buffer.put_char(x, sep_y, '├', border_style);
+        for col in (x + 1)..(x + width - 1) {
+            buffer.put_char(col, sep_y, '─', border_style);
+        }
+        buffer.put_char(x + width - 1, sep_y, '┤', border_style);
+
+        // Prompt line
+        let prompt_y = y + height - 2;
+        buffer.put_char(x, prompt_y, '│', border_style);
+
+        let prompt_style = &theme.telescope.prompt;
+        for (i, ch) in state.prompt.chars().enumerate() {
+            buffer.put_char(x + 1 + i as u16, prompt_y, ch, prompt_style);
+        }
+
+        let query_style = &theme.telescope.input;
+        let query_start = x + 1 + state.prompt.len() as u16;
+        for (i, ch) in state.query.chars().enumerate() {
+            let col = query_start + i as u16;
+            if col < x + width - 1 {
+                buffer.put_char(col, prompt_y, ch, query_style);
+            }
+        }
+
+        // Fill rest of prompt line with input style for consistency
+        for col in (query_start + state.query.len() as u16)..(x + width - 1) {
+            buffer.put_char(col, prompt_y, ' ', query_style);
+        }
+        buffer.put_char(x + width - 1, prompt_y, '│', border_style);
+
+        // Bottom border
+        let bottom_y = y + height - 1;
+        buffer.put_char(x, bottom_y, '╰', border_style);
+        let count_text = format!(" {}/{} ", state.selected_index + 1, state.items.len());
+        let count_start = x + width - 1 - count_text.len() as u16;
+        for col in (x + 1)..count_start {
+            buffer.put_char(col, bottom_y, '─', border_style);
+        }
+        for (i, ch) in count_text.chars().enumerate() {
+            buffer.put_char(count_start + i as u16, bottom_y, ch, border_style);
+        }
+        buffer.put_char(x + width - 1, bottom_y, '╯', border_style);
     }
 }
 

@@ -75,9 +75,36 @@ lib/core/src/
 │   ├── event_loop.rs
 │   └── handlers.rs
 ├── buffer/         # Text storage and cursor
+├── frame/          # Frame buffer for diff-based rendering
+│   ├── mod.rs      # Public API exports
+│   ├── buffer.rs   # FrameBuffer - 2D cell grid
+│   ├── cell.rs     # Cell - char + fg + bg + modifiers
+│   ├── dirty.rs    # Dirty tracking (DirtyCells, DirtyRect)
+│   ├── renderer.rs # FrameRenderer - strategy coordination
+│   └── strategy/   # Pluggable diff algorithms
+│       ├── virtual_buffer.rs  # Full-frame diff (default)
+│       ├── dirty_region.rs    # Region-based updates
+│       └── cell_delta.rs      # Hybrid dirty+diff
+├── overlay/        # Overlay compositing system
+│   ├── mod.rs      # Overlay trait definition
+│   ├── compositor.rs # OverlayCompositor - z-order management
+│   ├── geometry.rs # OverlayBounds, positioning helpers
+│   ├── render.rs   # OverlayRender trait
+│   └── selectable.rs # Scrollable, Selectable traits
 ├── screen/         # Terminal rendering
 │   ├── mod.rs
 │   ├── window.rs
+│   ├── layer.rs    # Layer trait + z-order constants
+│   ├── compositor.rs # LayerCompositor - layer orchestration
+│   ├── layers/     # Layer implementations
+│   │   ├── base.rs       # Tab line, status line (z=0)
+│   │   ├── explorer.rs   # File browser sidebar (z=1)
+│   │   ├── editor.rs     # Buffer windows (z=2)
+│   │   ├── leap.rs       # Jump labels (z=3)
+│   │   ├── completion.rs # Completion popup (z=4)
+│   │   ├── which_key.rs  # Which-key panel (z=5)
+│   │   ├── telescope.rs  # Fuzzy finder (z=6)
+│   │   └── settings_menu.rs # Settings overlay (z=7)
 │   ├── status_line.rs
 │   └── which_key.rs
 ├── command/        # Command system
@@ -208,6 +235,112 @@ pub struct Window {
     pub buffer_anchor: Anchor,    // Scroll position
     pub line_number: LineNumber,
 }
+```
+
+### Frame Buffer System
+
+The frame buffer provides diff-based rendering to eliminate terminal flickering:
+
+```rust
+pub struct FrameBuffer {
+    cells: Vec<Cell>,
+    width: u16,
+    height: u16,
+}
+
+pub struct Cell {
+    pub ch: char,
+    pub fg: Option<Color>,
+    pub bg: Option<Color>,
+    pub modifiers: Modifier,
+}
+```
+
+**Components:**
+- `FrameBuffer` - 2D grid of cells with `get()`/`set()` accessors
+- `Cell` - Individual terminal cell (char, foreground, background, modifiers)
+- `DirtyRegions` - Tracks which regions need redrawing
+- `FrameRenderer` - Coordinates rendering strategies, owns current/previous buffers
+
+**Render Strategies:**
+
+| Strategy | Description | Use Case |
+|----------|-------------|----------|
+| `VirtualBuffer` | Full diff against previous frame | Default, most robust |
+| `DirtyRegion` | Only render marked dirty regions | UI with localized updates |
+| `CellDelta` | Hybrid: dirty hints + cell comparison | Balance of performance/accuracy |
+
+Configure via `REOVIM_RENDER_STRATEGY` environment variable.
+
+### Layer System
+
+Layers provide structured z-order rendering:
+
+```rust
+pub trait Layer {
+    fn render_to_buffer(&self, buffer: &mut FrameBuffer, theme: &Theme, color_mode: ColorMode);
+    fn z_order(&self) -> u8;
+}
+```
+
+**Z-Order Constants:**
+
+| Layer | Z-Order | Description |
+|-------|---------|-------------|
+| BaseLayer | 0 | Tab line, status line |
+| ExplorerLayer | 1 | File browser sidebar |
+| EditorLayer | 2 | Main buffer windows |
+| LeapLayer | 3 | Two-character jump labels |
+| CompletionLayer | 4 | Completion popup |
+| WhichKeyLayer | 5 | Key binding hints |
+| TelescopeLayer | 6 | Fuzzy finder overlay |
+| SettingsMenuLayer | 7 | Settings configuration |
+
+`LayerCompositor` renders all layers in z-order to the frame buffer.
+
+### Overlay System
+
+Overlays are composable popup components:
+
+```rust
+pub trait Overlay {
+    fn render_to_buffer(&self, buffer: &mut FrameBuffer, theme: &Theme);
+    fn bounds(&self) -> OverlayBounds;
+    fn z_order(&self) -> u16;
+}
+```
+
+**Components:**
+- `OverlayCompositor` - Manages overlay stack, renders in z-order
+- `OverlayBounds` - Position and size (x, y, width, height)
+- `OverlayGeometry` - Helpers for centered/anchored positioning
+
+### Rendering Flow
+
+```
+Runtime::render()
+    │
+    ▼
+LayerCompositor::render_all(frame_buffer)
+    │
+    ├── BaseLayer::render_to_buffer()        (z=0)
+    ├── ExplorerLayer::render_to_buffer()    (z=1)
+    ├── EditorLayer::render_to_buffer()      (z=2)
+    ├── LeapLayer::render_to_buffer()        (z=3)
+    ├── CompletionLayer::render_to_buffer()  (z=4)
+    ├── WhichKeyLayer::render_to_buffer()    (z=5)
+    ├── TelescopeLayer::render_to_buffer()   (z=6)
+    └── SettingsMenuLayer::render_to_buffer()(z=7)
+    │
+    ▼
+FrameRenderer::render(frame_buffer)
+    │
+    ├── Strategy: diff current vs previous
+    │
+    └── Generate ANSI escape codes for changes only
+    │
+    ▼
+Terminal Output (minimal I/O)
 ```
 
 ### Mode State System

@@ -100,6 +100,8 @@ pub struct Runtime {
     pub current_profile_name: String,
     /// Settings menu state
     pub settings_menu: SettingsMenuState,
+    /// Flag indicating render is needed (for coalescing)
+    render_pending: bool,
 }
 
 impl Default for Runtime {
@@ -120,7 +122,7 @@ impl Runtime {
         let profile_manager = ProfileManager::default();
         let default_profile_name = profile_manager.default_profile_name().to_string();
 
-        Self {
+        let mut runtime = Self {
             buffers: BTreeMap::new(),
             screen,
             highlight_store: HighlightStore::new(),
@@ -158,7 +160,15 @@ impl Runtime {
             profile_manager,
             current_profile_name: default_profile_name,
             settings_menu: SettingsMenuState::new(),
-        }
+            render_pending: false,
+        };
+
+        // Enable diff-based rendering by default
+        runtime
+            .screen
+            .enable_frame_renderer(crate::frame::RenderStrategyConfig::VirtualBuffer);
+
+        runtime
     }
 
     /// Create the telescope picker registry
@@ -231,6 +241,13 @@ impl Runtime {
         self
     }
 
+    /// Set the render strategy (enables frame-buffered rendering)
+    #[must_use]
+    pub fn with_render_strategy(mut self, strategy: crate::frame::RenderStrategyConfig) -> Self {
+        self.screen.enable_frame_renderer(strategy);
+        self
+    }
+
     /// Render the screen with current state
     pub(crate) fn render(&mut self) {
         self.screen
@@ -256,12 +273,24 @@ impl Runtime {
         self.screen.flush().expect("failed to flush");
     }
 
-    /// Render only telescope overlay (for telescope-internal updates to avoid flicker)
-    pub(crate) fn render_telescope_only(&mut self) {
-        self.screen
-            .render_telescope_only(&self.telescope_state, self.color_mode, &self.theme)
-            .expect("failed to render telescope");
-        self.screen.flush().expect("failed to flush");
+    /// Mark that a render is needed (doesn't render immediately)
+    ///
+    /// Use this instead of `render()` to enable render coalescing.
+    /// Call `flush_render()` at the end of event processing to perform
+    /// the actual render if needed.
+    pub(crate) const fn request_render(&mut self) {
+        self.render_pending = true;
+    }
+
+    /// Flush pending render if needed
+    ///
+    /// Should be called once at the end of each event loop iteration.
+    /// Only renders if `request_render()` was called since the last flush.
+    pub(crate) fn flush_render(&mut self) {
+        if self.render_pending {
+            self.render();
+            self.render_pending = false;
+        }
     }
 
     /// Set color mode (for :set colormode command)
@@ -567,11 +596,20 @@ impl Runtime {
         // Apply indent guide setting
         self.indent_analyzer.set_enabled(config.editor.indentguide);
 
+        // Apply render strategy if specified
+        if let Some(strategy) =
+            crate::frame::RenderStrategyConfig::parse(&config.editor.render_strategy)
+        {
+            self.screen.set_render_strategy(strategy);
+            debug!(render_strategy = %config.editor.render_strategy, "Applied render strategy from profile");
+        }
+
         debug!(
             number = config.editor.number,
             relativenumber = config.editor.relativenumber,
             indentguide = config.editor.indentguide,
             scrollbar = config.editor.scrollbar,
+            render_strategy = %config.editor.render_strategy,
             "Applied editor options from profile"
         );
 

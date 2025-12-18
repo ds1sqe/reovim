@@ -117,6 +117,11 @@ Reovim is a Rust-based neovim-like text editor built with async tokio runtime an
 - `Screen` - Terminal output management with window collection
 - `Window` - View into a buffer with anchor positioning and line number modes (Absolute/Relative/Hybrid)
 
+**Rendering System**:
+- `lib/core/src/frame/` - Frame buffer for diff-based rendering (eliminates flickering)
+- `lib/core/src/overlay/` - Overlay compositing system (z-order popups)
+- `lib/core/src/screen/layers/` - Layer implementations (BaseLayer, EditorLayer, etc.)
+
 **Feature Modules**:
 - `lib/core/src/leap/` - Two-character jump navigation (s/S)
 - `lib/core/src/telescope/` - Fuzzy finder (Space f)
@@ -153,14 +158,19 @@ Reovim is a Rust-based neovim-like text editor built with async tokio runtime an
 
 1.92 (Rust 2024 edition)
 
-### Performance (v0.4.5)
+### Performance (v0.6.0)
 
-- Window render: 473ns - 2.79µs
-- Full screen render: ~6µs
-- Input RTT: 28µs (char insert), 45µs (word forward)
-- Movement RTT: 383µs (down), 45µs (right)
-- Throughput: ~400k renders/sec
-- Mode switch: 18µs
+v0.6.0 uses diff-based rendering via FrameBuffer, trading per-render overhead for zero flickering:
+
+| Metric | v0.5.0 | v0.6.0 |
+|--------|--------|--------|
+| Window render (10 lines) | 1.63 µs | 10.15 µs |
+| Full screen render | 14.50 µs | 62.41 µs |
+| Char insert RTT | 55 µs | 108 µs |
+| Move down RTT | 751 µs | 806 µs |
+| Throughput | ~144k/sec | ~18k/sec |
+
+**Key benefit**: Only changed cells sent to terminal, eliminating flickering.
 
 ## Release Process
 

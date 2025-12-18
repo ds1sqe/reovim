@@ -1,5 +1,6 @@
 pub mod bind;
 pub mod buffer;
+pub mod frame;
 pub mod rpc;
 
 pub mod command;
@@ -18,6 +19,7 @@ pub mod landing;
 pub mod leap;
 pub mod modd;
 pub mod motion;
+pub mod overlay;
 pub mod register;
 pub mod runtime;
 pub mod screen;

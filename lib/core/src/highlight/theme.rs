@@ -262,14 +262,14 @@ impl Theme {
 
         Self {
             base: BaseStyles {
-                default: Style::new(),
+                default: Style::new().fg(fg).bg(bg_dark),
                 cursor_line: Style::new().bg(bg_light),
-                command_line: Style::new(),
+                command_line: Style::new().fg(fg).bg(bg_dark),
             },
             gutter: GutterStyles {
-                line_number: Style::new().fg(fg_dark),
-                current_line_number: Style::new().fg(yellow).bold(),
-                sign_column: Style::new().fg(fg_dark),
+                line_number: Style::new().fg(fg_dark).bg(bg_dark),
+                current_line_number: Style::new().fg(yellow).bg(bg_dark).bold(),
+                sign_column: Style::new().fg(fg_dark).bg(bg_dark),
             },
             selection: SelectionStyles {
                 visual: Style::new().bg(bg_light),
@@ -284,10 +284,10 @@ impl Theme {
                     command: Style::new().fg(bg_dark).bg(yellow).bold(),
                     explorer: Style::new().fg(bg_dark).bg(cyan).bold(),
                 },
-                filename: Style::new().fg(fg),
-                modified: Style::new().fg(yellow),
-                position: Style::new().fg(fg_dark),
-                filetype: Style::new().fg(cyan),
+                filename: Style::new().fg(fg).bg(bg_light),
+                modified: Style::new().fg(yellow).bg(bg_light),
+                position: Style::new().fg(fg_dark).bg(bg_light),
+                filetype: Style::new().fg(cyan).bg(bg_light),
             },
             popup: PopupStyles {
                 normal: Style::new().fg(fg).bg(bg_medium),
@@ -684,8 +684,11 @@ mod tests {
 
     #[test]
     fn test_theme_from_name() {
-        assert!(Theme::from_name(ThemeName::Dark).base.default.fg.is_none());
+        // All themes should have fg and bg set for proper diff-based rendering
+        assert!(Theme::from_name(ThemeName::Dark).base.default.fg.is_some());
+        assert!(Theme::from_name(ThemeName::Dark).base.default.bg.is_some());
         assert!(Theme::from_name(ThemeName::Light).base.default.fg.is_some());
+        assert!(Theme::from_name(ThemeName::Light).base.default.bg.is_some());
     }
 
     #[test]
