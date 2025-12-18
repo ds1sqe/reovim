@@ -201,6 +201,33 @@ impl Screen {
         self.size.height
     }
 
+    /// Update screen dimensions on terminal resize
+    pub fn resize(&mut self, width: u16, height: u16) {
+        let editor_height = height.saturating_sub(1); // Reserve status line
+        self.size = ScreenSize { height, width };
+        self.layout.set_screen_size(width, editor_height);
+        self.update_window_layouts();
+
+        // Debug: log the updated window positions
+        tracing::debug!(
+            screen_width = width,
+            screen_height = height,
+            explorer_visible = self.layout.is_explorer_visible(),
+            explorer_width = self.layout.explorer_width(),
+            "Screen resized"
+        );
+        for win in &self.windows {
+            tracing::debug!(
+                window_id = win.id,
+                anchor_x = win.anchor.x,
+                anchor_y = win.anchor.y,
+                win_width = win.width,
+                win_height = win.height,
+                "Window layout after resize"
+            );
+        }
+    }
+
     /// update screen
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::too_many_arguments)]
@@ -239,7 +266,7 @@ impl Screen {
             && let Some(explorer) = explorer_state
             && let Some(layout) = self.layout.explorer_layout()
         {
-            let lines = render_explorer(explorer, layout.height, theme, color_mode);
+            let lines = render_explorer(explorer, layout.width, layout.height, theme, color_mode);
             for (row_offset, line) in lines.iter().enumerate() {
                 queue!(
                     self.out_stream,
@@ -1167,5 +1194,73 @@ impl StatusLineRenderer for Screen {
         cmd_line: &CommandLine,
     ) -> std::result::Result<(), std::io::Error> {
         render_command_line_to(&mut self.out_stream, self.size.height, cmd_line)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_screen_resize_with_explorer() {
+        // Create screen with a dummy writer
+        let mut screen = Screen::with_writer(std::io::sink(), 100, 50);
+
+        // Toggle explorer on
+        screen.toggle_explorer();
+        assert!(screen.is_explorer_visible());
+
+        // Verify window anchor is at explorer width
+        let explorer_width = screen.layout().explorer_width();
+        assert!(!screen.windows.is_empty());
+        assert_eq!(screen.windows[0].anchor.x, explorer_width);
+
+        // Resize screen
+        screen.resize(80, 40);
+
+        // Window anchor should still be at explorer width
+        assert!(!screen.windows.is_empty());
+        assert_eq!(screen.windows[0].anchor.x, explorer_width);
+        // Window width should be screen width minus explorer width
+        assert_eq!(screen.windows[0].width, 80 - explorer_width);
+    }
+
+    #[test]
+    fn test_screen_resize_without_explorer() {
+        let mut screen = Screen::with_writer(std::io::sink(), 100, 50);
+
+        // Explorer is not visible by default
+        assert!(!screen.is_explorer_visible());
+
+        // Window should start at x=0
+        assert_eq!(screen.windows[0].anchor.x, 0);
+
+        // Resize screen
+        screen.resize(80, 40);
+
+        // Window should still start at x=0
+        assert_eq!(screen.windows[0].anchor.x, 0);
+        // Window width should be full screen width
+        assert_eq!(screen.windows[0].width, 80);
+    }
+
+    #[test]
+    fn test_screen_resize_with_clamped_explorer() {
+        let mut screen = Screen::with_writer(std::io::sink(), 100, 50);
+
+        // Toggle explorer on (default width 30)
+        screen.toggle_explorer();
+        assert_eq!(screen.layout().explorer_width(), 30);
+
+        // Resize to small screen (40 wide, max explorer is 20)
+        screen.resize(40, 40);
+
+        // Explorer width should be clamped
+        let clamped_width = screen.layout().explorer_width();
+        assert_eq!(clamped_width, 20);
+
+        // Window anchor should use clamped width
+        assert_eq!(screen.windows[0].anchor.x, clamped_width);
+        assert_eq!(screen.windows[0].width, 20);
     }
 }

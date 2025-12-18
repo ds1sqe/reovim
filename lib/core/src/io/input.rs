@@ -11,6 +11,8 @@ use futures::StreamExt;
 use reovim_sys::event::{Event, EventStream, KeyEvent, KeyEventKind};
 use tokio::sync::mpsc;
 
+use crate::event::InnerEvent;
+
 /// Trait for abstracting key event sources.
 ///
 /// This allows swapping between real terminal input (`EventStream`) and
@@ -132,6 +134,8 @@ impl KeySource for ChannelKeySource {
 /// This is the default implementation used in production.
 pub struct EventStreamKeySource {
     stream: EventStream,
+    /// Optional sender for resize events
+    event_sender: Option<mpsc::Sender<InnerEvent>>,
 }
 
 impl Default for EventStreamKeySource {
@@ -146,6 +150,16 @@ impl EventStreamKeySource {
     pub fn new() -> Self {
         Self {
             stream: EventStream::new(),
+            event_sender: None,
+        }
+    }
+
+    /// Create a new event stream key source with a resize event sender.
+    #[must_use]
+    pub fn with_event_sender(event_sender: mpsc::Sender<InnerEvent>) -> Self {
+        Self {
+            stream: EventStream::new(),
+            event_sender: Some(event_sender),
         }
     }
 }
@@ -166,8 +180,18 @@ impl KeySource for EventStreamKeySource {
                     }
                     // Continue polling for Press events (fall through to loop)
                 }
+                Poll::Ready(Some(Ok(Event::Resize(cols, rows)))) => {
+                    // Send resize event if we have a sender
+                    if let Some(ref sender) = self.event_sender {
+                        let _ = sender.try_send(InnerEvent::ScreenResizeEvent {
+                            width: cols,
+                            height: rows,
+                        });
+                    }
+                    // Continue polling for key events
+                }
                 Poll::Ready(Some(Ok(_))) => {
-                    // Skip non-key events (Mouse, Focus, Paste, Resize)
+                    // Skip other non-key events (Mouse, Focus, Paste)
                     // Fall through to loop
                 }
                 Poll::Ready(Some(Err(e))) => {

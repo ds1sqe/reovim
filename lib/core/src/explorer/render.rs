@@ -10,6 +10,7 @@ use super::state::{ExplorerInputMode, ExplorerState};
 #[must_use]
 pub fn render_explorer(
     state: &ExplorerState,
+    width: u16,
     height: u16,
     theme: &Theme,
     color_mode: ColorMode,
@@ -30,18 +31,18 @@ pub fn render_explorer(
 
     for (i, node) in nodes.iter().enumerate().skip(start).take(end - start) {
         let is_selected = i == state.cursor_index;
-        let line = render_node(node, is_selected, state.width, theme, color_mode);
+        let line = render_node(node, is_selected, width, theme, color_mode);
         lines.push(line);
     }
 
-    // Pad with empty lines if needed (but leave room for input prompt)
+    // Pad with full-width empty lines to prevent editor content bleeding through
     while lines.len() < tree_height {
-        lines.push(String::new());
+        lines.push(" ".repeat(width as usize));
     }
 
     // Add input prompt if in input mode
     if state.input_mode != ExplorerInputMode::None {
-        let prompt = render_input_prompt(state, state.width, theme, color_mode);
+        let prompt = render_input_prompt(state, width, theme, color_mode);
         lines.push(prompt);
     }
 
@@ -117,12 +118,8 @@ fn render_node(
     // Build the full line
     let content = format!("{indent}{icon}{display_name}");
 
-    // Pad to full width for selection highlight
-    let padded = if is_selected {
-        format!("{content:<width$}", width = width as usize)
-    } else {
-        content
-    };
+    // Pad ALL lines to full width to prevent editor content bleeding through
+    let padded = format!("{content:<width$}", width = width as usize);
 
     // Apply styling
     if is_selected || node.is_dir() {
@@ -178,9 +175,108 @@ mod tests {
 
         let state = ExplorerState::new(dir.path().to_path_buf()).unwrap();
         let theme = Theme::default();
-        let lines = render_explorer(&state, 10, &theme, ColorMode::Ansi16);
+        let lines = render_explorer(&state, 30, 10, &theme, ColorMode::Ansi16);
 
         // Should have lines for root + 2 files + padding
         assert_eq!(lines.len(), 10);
+    }
+
+    #[test]
+    fn test_all_lines_padded_to_full_width() {
+        let dir = tempdir().unwrap();
+        File::create(dir.path().join("a.txt")).unwrap();
+        File::create(dir.path().join("short.txt")).unwrap();
+
+        let state = ExplorerState::new(dir.path().to_path_buf()).unwrap();
+        let theme = Theme::default();
+        let width = 40u16;
+        let lines = render_explorer(&state, width, 10, &theme, ColorMode::Ansi16);
+
+        // All lines should be at least width characters (accounting for ANSI codes)
+        // Content lines have ANSI escape codes, so check visible length
+        for (i, line) in lines.iter().enumerate() {
+            // Strip ANSI codes and check length
+            let visible_len = strip_ansi_codes(line).chars().count();
+            assert!(
+                visible_len >= width as usize,
+                "Line {i} has visible length {visible_len}, expected at least {width}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_empty_padding_lines_full_width() {
+        let dir = tempdir().unwrap();
+        // Create just one file so we have many padding lines
+        File::create(dir.path().join("only.txt")).unwrap();
+
+        let state = ExplorerState::new(dir.path().to_path_buf()).unwrap();
+        let theme = Theme::default();
+        let width = 30u16;
+        let height = 20u16;
+        let lines = render_explorer(&state, width, height, &theme, ColorMode::Ansi16);
+
+        assert_eq!(lines.len(), height as usize);
+
+        // Padding lines (after content) should be full width spaces
+        // Root + 1 file = 2 content lines, rest are padding
+        for line in lines.iter().skip(2) {
+            let visible_len = strip_ansi_codes(line).chars().count();
+            assert!(
+                visible_len >= width as usize,
+                "Padding line has length {visible_len}, expected {width}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_resize_maintains_padding() {
+        let dir = tempdir().unwrap();
+        File::create(dir.path().join("file1.txt")).unwrap();
+        File::create(dir.path().join("file2.txt")).unwrap();
+
+        let state = ExplorerState::new(dir.path().to_path_buf()).unwrap();
+        let theme = Theme::default();
+
+        // Render at original size
+        let lines_original = render_explorer(&state, 40, 15, &theme, ColorMode::Ansi16);
+        for line in &lines_original {
+            let visible_len = strip_ansi_codes(line).chars().count();
+            assert!(visible_len >= 40, "Original: line too short");
+        }
+
+        // Render at smaller size (simulating resize)
+        let lines_smaller = render_explorer(&state, 25, 10, &theme, ColorMode::Ansi16);
+        for line in &lines_smaller {
+            let visible_len = strip_ansi_codes(line).chars().count();
+            assert!(visible_len >= 25, "After resize: line too short");
+        }
+
+        // Render at larger size
+        let lines_larger = render_explorer(&state, 50, 20, &theme, ColorMode::Ansi16);
+        for line in &lines_larger {
+            let visible_len = strip_ansi_codes(line).chars().count();
+            assert!(visible_len >= 50, "After resize larger: line too short");
+        }
+    }
+
+    /// Helper to strip ANSI escape codes from a string
+    fn strip_ansi_codes(s: &str) -> String {
+        let mut result = String::new();
+        let mut in_escape = false;
+
+        for c in s.chars() {
+            if c == '\x1b' {
+                in_escape = true;
+            } else if in_escape {
+                if c == 'm' {
+                    in_escape = false;
+                }
+            } else {
+                result.push(c);
+            }
+        }
+
+        result
     }
 }

@@ -7,10 +7,10 @@ use {
         io::{self, Write},
         time::Duration,
     },
-    tokio::select,
+    tokio::{select, sync::mpsc},
 };
 
-use crate::event::key;
+use crate::event::{key, InnerEvent};
 use crate::io::input::{EventStreamKeySource, KeySource};
 
 const DEFAULT_DELAY: u64 = 1;
@@ -33,6 +33,19 @@ impl Default for InputEventBroker<EventStreamKeySource> {
             key_broker: key::KeyEventBroker::default(),
             error_out: Box::new(io::stdout()),
             key_source: EventStreamKeySource::default(),
+        }
+    }
+}
+
+impl InputEventBroker<EventStreamKeySource> {
+    /// Create an `InputEventBroker` with an event sender for resize events.
+    #[must_use]
+    pub fn with_event_sender(event_sender: mpsc::Sender<InnerEvent>) -> Self {
+        Self {
+            delay: Duration::from_millis(DEFAULT_DELAY),
+            key_broker: key::KeyEventBroker::default(),
+            error_out: Box::new(io::stdout()),
+            key_source: EventStreamKeySource::with_event_sender(event_sender),
         }
     }
 }

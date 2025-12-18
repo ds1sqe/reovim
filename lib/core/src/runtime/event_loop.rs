@@ -48,7 +48,7 @@ impl Runtime {
         }
 
         self.buffers.insert(0, buffer);
-        let input_broker = InputEventBroker::default();
+        let input_broker = InputEventBroker::with_event_sender(self.tx.clone());
 
         // Command handler for key-to-command translation
         // Pass mode receiver so CommandHandler can read mode from Runtime (single source of truth)
@@ -301,6 +301,11 @@ impl Runtime {
             }
             InnerEvent::VisualTextObjectEvent(ref action) => {
                 self.handle_visual_text_object(action);
+            }
+            InnerEvent::ScreenResizeEvent { width, height } => {
+                tracing::debug!("Screen resize: {}x{}", width, height);
+                self.screen.resize(width, height);
+                self.render();
             }
         }
         false

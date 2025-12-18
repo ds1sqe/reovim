@@ -2,6 +2,44 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.4.15] - 2025-12-18
+
+### Features
+
+- **Terminal resize event handling** - Editor now properly responds to terminal resize events:
+  - Screen dimensions update correctly when terminal is resized
+  - Window layouts recalculate to fit new dimensions
+  - Explorer sidebar width clamps correctly on small screens
+  - Explorer rendering uses layout width instead of hardcoded width
+
+### Bug Fixes
+
+- **Fixed editor content bleeding into explorer column** - All explorer lines now padded to full width to prevent editor text from showing through gaps
+
+### Files Changed
+
+- `lib/core/src/event/inner/mod.rs` - Added `ScreenResizeEvent` variant
+- `lib/core/src/event/input.rs` - Added `with_event_sender()` to InputEventBroker
+- `lib/core/src/io/input.rs` - Added `with_event_sender()` to EventStreamKeySource for resize events
+- `lib/core/src/screen/mod.rs` - Added `resize()` method and unit tests
+- `lib/core/src/screen/layout.rs` - Added resize behavior tests
+- `lib/core/src/explorer/render.rs` - Pass layout width, pad all lines to full width
+- `lib/core/src/runtime/event_loop.rs` - Handle resize events
+
+### Testing
+
+- Zero warnings (build + clippy)
+- All tests passing
+- Added 5 new integration tests for resize behavior (`lib/core/tests/resize.rs`)
+
+### Known Issues
+
+- **Panel background bleeding** - The content bleeding through on resize. (Ex, Editor content to Explorer)
+  - Each UI component (explorer, which-key, telescope, etc.) has its own rendering system
+  - Require the common-unified method for managing window and buffer.
+
+---
+
 ## [0.4.14] - 2025-12-18
 
 ### Features

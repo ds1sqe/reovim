@@ -454,54 +454,34 @@ impl Runtime {
         false
     }
 
-    /// Handle explorer toggle action
-    fn handle_explorer_toggle(&mut self) {
-        self.screen.toggle_explorer();
-        if self.screen.layout().is_explorer_visible() {
-            self.set_mode(ModeState::explorer());
-            // Initialize explorer state if needed
-            if self.explorer_state.is_none()
-                && let Ok(cwd) = std::env::current_dir()
-            {
-                self.explorer_state = ExplorerState::new(cwd).ok();
-            }
-        } else {
-            self.set_mode(ModeState::normal());
-        }
-    }
-
-    /// Handle explorer open node action (open file or toggle directory)
-    fn handle_explorer_open_node(&mut self) {
-        // Extract info from current node without holding mutable borrow
-        let node_info = self
-            .explorer_state
-            .as_ref()
-            .and_then(|state| state.current_node())
-            .map(|node| (node.is_dir(), node.is_file(), node.is_symlink(), node.path.clone()));
-
-        let Some((is_dir, is_file, is_symlink, path)) = node_info else {
-            return;
-        };
-
-        if is_dir {
-            if let Some(ref mut state) = self.explorer_state {
-                let _ = state.toggle_current();
-            }
-        } else if is_file || is_symlink {
-            // Open file in a new buffer (symlinks are opened as target file)
-            self.open_file(&path.to_string_lossy());
-            // Update the editor window to show the new buffer
-            self.screen.set_editor_buffer(self.active_buffer_id);
-            // Switch focus to editor
-            self.screen.focus_editor();
-            self.set_mode(ModeState::normal());
-        }
-    }
-
-    /// Handle explorer cursor navigation
+    /// Handle explorer actions
     #[allow(clippy::cast_possible_wrap)]
-    fn handle_explorer_cursor(&mut self, action: &ExplorerAction) {
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::cognitive_complexity)]
+    pub(crate) fn handle_explorer_action(&mut self, action: &ExplorerAction) {
+        // Explorer actions require explorer_state which will be integrated in Phase 5
+        // For now, we handle the basic mode transitions
         match action {
+            ExplorerAction::Toggle => {
+                // Toggle explorer visibility and mode
+                self.screen.toggle_explorer();
+                if self.screen.layout().is_explorer_visible() {
+                    self.set_mode(ModeState::explorer());
+                    // Initialize explorer state if needed
+                    if self.explorer_state.is_none()
+                        && let Ok(cwd) = std::env::current_dir()
+                    {
+                        self.explorer_state = ExplorerState::new(cwd).ok();
+                    }
+                } else {
+                    self.set_mode(ModeState::normal());
+                }
+            }
+            ExplorerAction::Close | ExplorerAction::FocusEditor => {
+                // Switch focus back to editor
+                self.screen.focus_editor();
+                self.set_mode(ModeState::normal());
+            }
             ExplorerAction::CursorUp { count } => {
                 if let Some(ref mut state) = self.explorer_state {
                     state.move_cursor(-(*count as isize));
@@ -534,13 +514,56 @@ impl Runtime {
                     state.move_to_last();
                 }
             }
-            _ => {}
-        }
-    }
+            ExplorerAction::ToggleNode => {
+                if let Some(ref mut state) = self.explorer_state {
+                    let _ = state.toggle_current();
+                }
+            }
+            ExplorerAction::OpenNode => {
+                // Open file or toggle directory
+                // First extract info from current node without holding mutable borrow
+                let node_info = self
+                    .explorer_state
+                    .as_ref()
+                    .and_then(|state| state.current_node())
+                    .map(|node| (node.is_dir(), node.is_file(), node.is_symlink(), node.path.clone()));
 
-    /// Handle explorer file operations (create, rename, delete, etc.)
-    fn handle_explorer_file_ops(&mut self, action: &ExplorerAction) {
-        match action {
+                if let Some((is_dir, is_file, is_symlink, path)) = node_info {
+                    if is_dir {
+                        if let Some(ref mut state) = self.explorer_state {
+                            let _ = state.toggle_current();
+                        }
+                    } else if is_file || is_symlink {
+                        // Open file in a new buffer (symlinks are opened as target file)
+                        self.open_file(&path.to_string_lossy());
+                        // Update the editor window to show the new buffer
+                        self.screen.set_editor_buffer(self.active_buffer_id);
+                        // Switch focus to editor
+                        self.screen.focus_editor();
+                        self.set_mode(ModeState::normal());
+                    }
+                }
+            }
+            ExplorerAction::CloseParent => {
+                if let Some(ref mut state) = self.explorer_state {
+                    state.collapse_current();
+                }
+            }
+            ExplorerAction::GoToParent => {
+                if let Some(ref mut state) = self.explorer_state {
+                    state.go_to_parent();
+                }
+            }
+            ExplorerAction::Refresh => {
+                if let Some(ref mut state) = self.explorer_state {
+                    let _ = state.refresh();
+                }
+            }
+            ExplorerAction::ToggleHidden => {
+                if let Some(ref mut state) = self.explorer_state {
+                    state.toggle_hidden();
+                }
+            }
             ExplorerAction::CreateFile => {
                 if let Some(ref mut state) = self.explorer_state {
                     state.start_create_file();
@@ -556,6 +579,7 @@ impl Runtime {
             ExplorerAction::Rename => {
                 if let Some(ref mut state) = self.explorer_state {
                     state.start_rename();
+                    // Only switch mode if rename actually started (node exists)
                     if state.is_input_mode() {
                         self.set_mode(ModeState::explorer_input());
                     }
@@ -564,28 +588,23 @@ impl Runtime {
             ExplorerAction::Delete => {
                 if let Some(ref mut state) = self.explorer_state {
                     state.start_delete();
+                    // Only switch mode if delete actually started (node exists)
                     if state.is_input_mode() {
                         self.set_mode(ModeState::explorer_input());
                     }
                 }
             }
-            ExplorerAction::Refresh => {
+            ExplorerAction::StartFilter => {
                 if let Some(ref mut state) = self.explorer_state {
-                    let _ = state.refresh();
+                    state.start_filter();
+                    self.set_mode(ModeState::explorer_input());
                 }
             }
-            ExplorerAction::ToggleHidden => {
+            ExplorerAction::ClearFilter => {
                 if let Some(ref mut state) = self.explorer_state {
-                    state.toggle_hidden();
+                    state.clear_filter();
                 }
             }
-            _ => {}
-        }
-    }
-
-    /// Handle explorer input operations
-    fn handle_explorer_input(&mut self, action: &ExplorerAction) {
-        match action {
             ExplorerAction::ConfirmInput { input: _ } => {
                 if let Some(ref mut state) = self.explorer_state {
                     let _ = state.confirm_input();
@@ -608,64 +627,6 @@ impl Runtime {
                     state.input_backspace();
                 }
             }
-            ExplorerAction::StartFilter => {
-                if let Some(ref mut state) = self.explorer_state {
-                    state.start_filter();
-                    self.set_mode(ModeState::explorer_input());
-                }
-            }
-            ExplorerAction::ClearFilter => {
-                if let Some(ref mut state) = self.explorer_state {
-                    state.clear_filter();
-                }
-            }
-            _ => {}
-        }
-    }
-
-    /// Handle explorer actions
-    #[allow(clippy::too_many_lines)]
-    pub(crate) fn handle_explorer_action(&mut self, action: &ExplorerAction) {
-        match action {
-            ExplorerAction::Toggle => self.handle_explorer_toggle(),
-            ExplorerAction::Close | ExplorerAction::FocusEditor => {
-                self.screen.focus_editor();
-                self.set_mode(ModeState::normal());
-            }
-            ExplorerAction::CursorUp { .. }
-            | ExplorerAction::CursorDown { .. }
-            | ExplorerAction::PageUp
-            | ExplorerAction::PageDown
-            | ExplorerAction::GotoFirst
-            | ExplorerAction::GotoLast => self.handle_explorer_cursor(action),
-            ExplorerAction::ToggleNode => {
-                if let Some(ref mut state) = self.explorer_state {
-                    let _ = state.toggle_current();
-                }
-            }
-            ExplorerAction::OpenNode => self.handle_explorer_open_node(),
-            ExplorerAction::CloseParent => {
-                if let Some(ref mut state) = self.explorer_state {
-                    state.collapse_current();
-                }
-            }
-            ExplorerAction::GoToParent => {
-                if let Some(ref mut state) = self.explorer_state {
-                    state.go_to_parent();
-                }
-            }
-            ExplorerAction::CreateFile
-            | ExplorerAction::CreateDir
-            | ExplorerAction::Rename
-            | ExplorerAction::Delete
-            | ExplorerAction::Refresh
-            | ExplorerAction::ToggleHidden => self.handle_explorer_file_ops(action),
-            ExplorerAction::ConfirmInput { .. }
-            | ExplorerAction::CancelInput
-            | ExplorerAction::InputChar { .. }
-            | ExplorerAction::InputBackspace
-            | ExplorerAction::StartFilter
-            | ExplorerAction::ClearFilter => self.handle_explorer_input(action),
         }
     }
 

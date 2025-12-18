@@ -38,6 +38,8 @@ pub enum InnerEvent {
     },
     /// Hide the which-key popup
     WhichKeyHide,
+    /// Terminal screen resize event
+    ScreenResizeEvent { width: u16, height: u16 },
 }
 
 /// A single binding entry for the which-key popup

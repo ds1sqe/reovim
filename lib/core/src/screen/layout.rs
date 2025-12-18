@@ -254,4 +254,50 @@ mod tests {
         assert_eq!(layout.active_window_id(), 1);
         assert!(!layout.is_explorer_focused());
     }
+
+    #[test]
+    fn test_resize_with_explorer_visible() {
+        let mut layout = LayoutManager::new(100, 50);
+
+        // Toggle explorer on
+        layout.toggle_explorer();
+        assert!(layout.is_explorer_visible());
+
+        // Verify initial layout
+        let editor = layout.editor_layout();
+        assert_eq!(editor.anchor.x, LayoutManager::DEFAULT_EXPLORER_WIDTH);
+
+        // Resize to smaller screen
+        layout.set_screen_size(80, 40);
+
+        // Explorer should still be visible
+        assert!(layout.is_explorer_visible());
+
+        // Editor anchor.x should still be explorer_width
+        let editor_after = layout.editor_layout();
+        assert_eq!(editor_after.anchor.x, LayoutManager::DEFAULT_EXPLORER_WIDTH);
+        assert_eq!(editor_after.width, 80 - LayoutManager::DEFAULT_EXPLORER_WIDTH);
+        assert_eq!(editor_after.height, 40);
+    }
+
+    #[test]
+    fn test_resize_clamps_explorer_width() {
+        let mut layout = LayoutManager::new(100, 50);
+        layout.toggle_explorer();
+
+        // Initial explorer width is 30
+        assert_eq!(layout.explorer_width(), 30);
+
+        // Resize to very small screen (width 40)
+        // Max explorer width would be 40 * 0.5 = 20
+        layout.set_screen_size(40, 40);
+
+        // Explorer width should be clamped
+        assert_eq!(layout.explorer_width(), 20);
+
+        // Editor should account for clamped explorer width
+        let editor = layout.editor_layout();
+        assert_eq!(editor.anchor.x, 20);
+        assert_eq!(editor.width, 20);
+    }
 }
