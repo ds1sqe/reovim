@@ -2,6 +2,34 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.5.2] - 2025-12-18
+
+### Bug Fixes
+
+- **`e` motion implemented** - Word end motion now works (`e` moves to end of current/next word)
+- **Count prefix for w/b/e motions** - `2w`, `3b`, `2e` now work correctly
+- **Cross-line word motions** - `w` and `b` now cross line boundaries
+- **dw/cw off-by-one fixed** - Motion inclusivity corrected; `dw` no longer deletes first char of next word
+- **dd+p register populated** - Linewise delete now stores text in register for paste
+- **V (visual line mode) implemented** - `V` enters visual line mode
+- **Visual selection initialization** - Visual mode now properly initializes selection
+- **Undo batching per session** - Insert mode edits are undone as a single unit
+- **`:` bound in visual mode** - Can now enter command mode from visual mode
+- **Leap auto-jump** - Single match automatically jumps to target
+
+### Technical Changes
+
+- Add `Motion::WordEnd` variant and `is_inclusive()` method to Motion enum
+- Add `begin_batch()`/`flush_batch()` methods for undo grouping in Buffer
+- Implement cross-line calculations in `word_forward_calc()` and `word_backward_calc()`
+- Add `ModExtension::Line` variant for visual line mode
+- Fix `cw` to use `WordEnd` motion (vim behavior: `cw` acts like `ce`)
+
+### Tests
+
+- Updated test suite from documenting bugs to expecting correct behavior
+- All 332 tests passing
+
 ## [0.5.1] - 2025-12-18
 
 ### Features

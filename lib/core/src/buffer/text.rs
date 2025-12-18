@@ -14,6 +14,6 @@ pub trait TextOps {
     fn delete_char_backward(&mut self);
     /// Delete character at cursor position (delete)
     fn delete_char_forward(&mut self);
-    /// Delete entire current line
-    fn delete_line(&mut self);
+    /// Delete entire current line, returns deleted text
+    fn delete_line(&mut self) -> String;
 }

@@ -1,17 +1,13 @@
 //! Word motion integration tests
 //!
-//! Tests for w, b word motions using the server-based test harness.
+//! Tests for w, b, e word motions using the server-based test harness.
 //!
-//! ## Current Implementation Notes
+//! ## Implementation Notes
 //!
-//! The word motion implementation has the following limitations:
-//! - `e` (word end) motion is NOT implemented
-//! - Count prefix (e.g., `2w`) is NOT supported - each motion moves one word
-//! - Cross-line movement is NOT supported - motions stay on current line
+//! - `e` (word end) motion IS implemented
+//! - Count prefix (e.g., `2w`) IS supported
+//! - Cross-line movement IS supported
 //! - Only whitespace is treated as word boundary (punctuation is part of word)
-//!
-//! Tests are written to verify current behavior. Tests marked with `_actual_vim_`
-//! prefix document where behavior differs from standard vim.
 
 mod common;
 
@@ -82,9 +78,8 @@ async fn test_w_at_last_word() {
         .run()
         .await;
 
-    // At last word, goes to past end (position 5)
-    // Current implementation doesn't clamp to last char
-    result.assert_cursor(5, 0);
+    // At last word on single line, stays at last char (position 4)
+    result.assert_cursor(4, 0);
 }
 
 #[tokio::test]
@@ -102,7 +97,7 @@ async fn test_w_with_punctuation() {
 }
 
 #[tokio::test]
-async fn test_w_stays_on_line() {
+async fn test_w_crosses_lines() {
     let result = ServerTest::new()
         .await
         .with_content("hello\nworld")
@@ -110,8 +105,8 @@ async fn test_w_stays_on_line() {
         .run()
         .await;
 
-    // Current impl: w doesn't cross lines, stays at end of "hello" (col 5)
-    result.assert_cursor(5, 0);
+    // w crosses to next line when at end of current line
+    result.assert_cursor(0, 1);
 }
 
 #[tokio::test]
@@ -123,8 +118,8 @@ async fn test_w_whitespace_only() {
         .run()
         .await;
 
-    // Whitespace only, goes past end (col 3)
-    result.assert_cursor(3, 0);
+    // Whitespace only, stays at last char (col 2)
+    result.assert_cursor(2, 0);
 }
 
 // ============================================================================
@@ -184,7 +179,7 @@ async fn test_b_at_start() {
 }
 
 #[tokio::test]
-async fn test_b_stays_on_line() {
+async fn test_b_crosses_lines() {
     let result = ServerTest::new()
         .await
         .with_content("hello\nworld")
@@ -192,8 +187,8 @@ async fn test_b_stays_on_line() {
         .run()
         .await;
 
-    // Current impl: b doesn't cross lines, stays at start of "world" (col 0, line 1)
-    result.assert_cursor(0, 1);
+    // b crosses to previous line when at start of current line
+    result.assert_cursor(0, 0);
 }
 
 // ============================================================================
@@ -227,12 +222,12 @@ async fn test_multiple_w_b_cycles() {
 }
 
 // ============================================================================
-// Documentation tests - These document current limitations
+// Count prefix tests
 // ============================================================================
 
-/// Documents that count prefix doesn't work for w motion
+/// Count prefix works for w motion
 #[tokio::test]
-async fn test_doc_count_not_supported_w() {
+async fn test_count_w() {
     let result = ServerTest::new()
         .await
         .with_content("one two three four")
@@ -240,29 +235,31 @@ async fn test_doc_count_not_supported_w() {
         .run()
         .await;
 
-    // Expected vim behavior: 2w -> "three" (col 8)
-    // Actual behavior: count ignored, acts like single w -> "two" (col 4)
-    result.assert_cursor(4, 0);
-}
-
-/// Documents that count prefix doesn't work for b motion
-#[tokio::test]
-async fn test_doc_count_not_supported_b() {
-    let result = ServerTest::new()
-        .await
-        .with_content("one two three four")
-        .with_keys("www2b") // go to "four", then try 2b
-        .run()
-        .await;
-
-    // Expected vim behavior: 2b from "four" -> "two" (col 4)
-    // Actual behavior: count ignored, single b -> "three" (col 8)
+    // 2w moves forward two words to "three" (col 8)
     result.assert_cursor(8, 0);
 }
 
-/// Documents that w doesn't cross lines
+/// Count prefix works for b motion
 #[tokio::test]
-async fn test_doc_w_no_cross_line() {
+async fn test_count_b() {
+    let result = ServerTest::new()
+        .await
+        .with_content("one two three four")
+        .with_keys("www2b") // go to "four", then 2b
+        .run()
+        .await;
+
+    // 2b from "four" goes back two words to "two" (col 4)
+    result.assert_cursor(4, 0);
+}
+
+// ============================================================================
+// Cross-line tests
+// ============================================================================
+
+/// w crosses lines to next word
+#[tokio::test]
+async fn test_w_cross_line() {
     let result = ServerTest::new()
         .await
         .with_content("hello\nworld")
@@ -270,14 +267,13 @@ async fn test_doc_w_no_cross_line() {
         .run()
         .await;
 
-    // Expected vim behavior: w -> "world" on line 2 (col 0, line 1)
-    // Actual behavior: stays on line 1, goes to end of "hello" (col 5, line 0)
-    result.assert_cursor(5, 0);
+    // w crosses to "world" on line 2 (col 0, line 1)
+    result.assert_cursor(0, 1);
 }
 
-/// Documents that b doesn't cross lines
+/// b crosses lines to previous word
 #[tokio::test]
-async fn test_doc_b_no_cross_line() {
+async fn test_b_cross_line() {
     let result = ServerTest::new()
         .await
         .with_content("hello\nworld")
@@ -285,10 +281,13 @@ async fn test_doc_b_no_cross_line() {
         .run()
         .await;
 
-    // Expected vim behavior: b -> "hello" on line 1 (col 0, line 0)
-    // Actual behavior: stays on line 2, at start of "world" (col 0, line 1)
-    result.assert_cursor(0, 1);
+    // b crosses to "hello" on line 1 (col 0, line 0)
+    result.assert_cursor(0, 0);
 }
+
+// ============================================================================
+// Documentation tests - Document current behavior
+// ============================================================================
 
 /// Documents that punctuation is part of word (not separate)
 #[tokio::test]
@@ -300,7 +299,7 @@ async fn test_doc_punctuation_not_word_boundary() {
         .run()
         .await;
 
-    // Expected vim behavior: w -> ',' (col 5) - comma is separate word
-    // Actual behavior: "hello," treated as one word, goes to "world" (col 7)
+    // Note: "hello," treated as one word due to whitespace-only boundaries
+    // Standard vim would treat comma as separate word
     result.assert_cursor(7, 0);
 }

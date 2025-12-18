@@ -49,6 +49,10 @@ pub struct Buffer {
     pub modified: bool,
     /// Undo/redo history
     history: UndoHistory,
+    /// Changes accumulated during insert mode to be batched as single undo unit
+    pending_batch: Vec<Change>,
+    /// Whether batching is active (during insert mode)
+    batching: bool,
 }
 
 impl Buffer {
@@ -63,6 +67,8 @@ impl Buffer {
             file_path: None,
             modified: false,
             history: UndoHistory::new(),
+            pending_batch: Vec::new(),
+            batching: false,
         }
     }
 
@@ -131,9 +137,44 @@ impl Buffer {
     }
 
     /// Record a change for undo
+    ///
+    /// If batching is active (during insert mode), changes are accumulated
+    /// and committed as a single undo unit when batching ends.
     pub fn record_change(&mut self, change: Change) {
-        self.history.push(change);
+        if self.batching {
+            self.pending_batch.push(change);
+        } else {
+            self.history.push(change);
+        }
         self.modified = true;
+    }
+
+    /// Begin batching changes (called when entering insert mode)
+    ///
+    /// All changes recorded while batching is active will be committed
+    /// as a single undo unit when `flush_batch` is called.
+    pub fn begin_batch(&mut self) {
+        self.batching = true;
+        self.pending_batch.clear();
+    }
+
+    /// Flush pending batch to history (called when leaving insert mode)
+    ///
+    /// Commits all accumulated changes as a single undo unit.
+    /// Does nothing if no changes were recorded.
+    #[allow(clippy::missing_panics_doc)] // Safe: we check len() == 1 before unwrap
+    pub fn flush_batch(&mut self) {
+        self.batching = false;
+        if self.pending_batch.is_empty() {
+            return;
+        }
+        let changes = std::mem::take(&mut self.pending_batch);
+        if changes.len() == 1 {
+            // Single change doesn't need wrapping
+            self.history.push(changes.into_iter().next().unwrap());
+        } else {
+            self.history.push(Change::Batch(changes));
+        }
     }
 
     /// Apply undo - returns true if successful
@@ -280,16 +321,23 @@ impl Buffer {
     }
 
     /// Extract text between two positions (internal helper)
+    ///
+    /// `inclusive` - if true, includes the character at `end` position (for visual selection)
+    ///               if false, excludes it (for motion-based operations like dw)
     #[allow(clippy::cast_possible_truncation)]
-    fn extract_text(&self, start: Position, end: Position) -> String {
+    fn extract_text(&self, start: Position, end: Position, inclusive: bool) -> String {
         let mut result = String::new();
 
         if start.y == end.y {
             // Single line selection
             if let Some(line) = self.contents.get(start.y as usize) {
                 let start_x = start.x as usize;
-                let end_x = (end.x as usize + 1).min(line.inner.len());
-                if start_x < line.inner.len() {
+                let end_x = if inclusive {
+                    (end.x as usize + 1).min(line.inner.len())
+                } else {
+                    (end.x as usize).min(line.inner.len())
+                };
+                if start_x < line.inner.len() && start_x < end_x {
                     result.push_str(&line.inner[start_x..end_x]);
                 }
             }
@@ -304,7 +352,11 @@ impl Buffer {
                         }
                         result.push('\n');
                     } else if y == end.y {
-                        let end_x = (end.x as usize + 1).min(line.inner.len());
+                        let end_x = if inclusive {
+                            (end.x as usize + 1).min(line.inner.len())
+                        } else {
+                            (end.x as usize).min(line.inner.len())
+                        };
                         result.push_str(&line.inner[..end_x]);
                     } else {
                         result.push_str(&line.inner);
@@ -376,6 +428,13 @@ impl SelectionOps for Buffer {
     }
 
     #[allow(clippy::missing_const_for_fn)]
+    fn start_line_selection(&mut self) {
+        self.selection.anchor = self.cur;
+        self.selection.active = true;
+        self.selection.mode = SelectionMode::Line;
+    }
+
+    #[allow(clippy::missing_const_for_fn)]
     fn clear_selection(&mut self) {
         self.selection.active = false;
     }
@@ -423,7 +482,7 @@ impl SelectionOps for Buffer {
             }
             SelectionMode::Character | SelectionMode::Line => {
                 let (start, end) = self.selection_bounds();
-                self.extract_text(start, end)
+                self.extract_text(start, end, true) // Visual selection is inclusive
             }
         }
     }
@@ -584,7 +643,7 @@ impl TextOps for Buffer {
     }
 
     #[allow(clippy::cast_possible_truncation)]
-    fn delete_line(&mut self) {
+    fn delete_line(&mut self) -> String {
         let y = self.cur.y as usize;
         if y < self.contents.len() {
             let deleted_line = self.contents.remove(y);
@@ -598,12 +657,17 @@ impl TextOps for Buffer {
             } else {
                 deleted_line.inner
             };
-            self.record_change(Change::Delete { pos, text });
+            self.record_change(Change::Delete {
+                pos,
+                text: text.clone(),
+            });
 
             if self.cur.y as usize >= self.contents.len() && !self.contents.is_empty() {
                 self.cur.y = (self.contents.len() - 1) as u16;
             }
+            return text;
         }
+        String::new()
     }
 }
 
@@ -615,6 +679,10 @@ impl CursorOps for Buffer {
 
     fn word_backward(&mut self) {
         self.cur = calculate_motion(&self.contents, self.cur, Motion::WordBackward, 1);
+    }
+
+    fn word_end(&mut self) {
+        self.cur = calculate_motion(&self.contents, self.cur, Motion::WordEnd, 1);
     }
 
     fn apply_motion(&mut self, motion: Motion, count: usize) {
@@ -649,13 +717,14 @@ impl Buffer {
             self.delete_lines(from_y, to_y)
         } else {
             // Characterwise delete (dw, db, d$, d0)
+            // Use motion's inclusivity: $ and e are inclusive, w and b are exclusive
             let target = calculate_motion(&self.contents, self.cur, motion, count);
             let (from, to) = if start.y < target.y || (start.y == target.y && start.x <= target.x) {
                 (start, target)
             } else {
                 (target, start)
             };
-            self.delete_range(from, to)
+            self.delete_range_ex(from, to, motion.is_inclusive())
         }
     }
 
@@ -683,20 +752,24 @@ impl Buffer {
             self.yank_lines(from_y, to_y)
         } else {
             // Characterwise yank
+            // Use motion's inclusivity: $ and e are inclusive, w and b are exclusive
             let target = calculate_motion(&self.contents, self.cur, motion, count);
             let (from, to) = if start.y < target.y || (start.y == target.y && start.x <= target.x) {
                 (start, target)
             } else {
                 (target, start)
             };
-            self.yank_range(from, to)
+            self.yank_range_ex(from, to, motion.is_inclusive())
         }
     }
 
     /// Delete a range of characters between two positions
+    ///
+    /// `inclusive` - if true, includes the character at `end` position
+    ///               if false, excludes it (for motion-based operations)
     #[allow(clippy::cast_possible_truncation)]
-    pub fn delete_range(&mut self, start: Position, end: Position) -> String {
-        let text = self.extract_text(start, end);
+    pub fn delete_range_ex(&mut self, start: Position, end: Position, inclusive: bool) -> String {
+        let text = self.extract_text(start, end, inclusive);
         if text.is_empty() {
             return text;
         }
@@ -706,8 +779,12 @@ impl Buffer {
             // Single line deletion
             if let Some(line) = self.contents.get_mut(start.y as usize) {
                 let start_x = start.x as usize;
-                let end_x = (end.x as usize + 1).min(line.inner.len());
-                if start_x < line.inner.len() {
+                let end_x = if inclusive {
+                    (end.x as usize + 1).min(line.inner.len())
+                } else {
+                    (end.x as usize).min(line.inner.len())
+                };
+                if start_x < line.inner.len() && start_x < end_x {
                     line.inner.drain(start_x..end_x);
                 }
             }
@@ -716,7 +793,11 @@ impl Buffer {
             if let Some(first_line) = self.contents.get(start.y as usize) {
                 let prefix = first_line.inner[..start.x as usize].to_string();
                 if let Some(last_line) = self.contents.get(end.y as usize) {
-                    let end_x = (end.x as usize + 1).min(last_line.inner.len());
+                    let end_x = if inclusive {
+                        (end.x as usize + 1).min(last_line.inner.len())
+                    } else {
+                        (end.x as usize).min(last_line.inner.len())
+                    };
                     let suffix = last_line.inner[end_x..].to_string();
 
                     // Remove lines from end to start+1
@@ -742,6 +823,14 @@ impl Buffer {
 
         self.cur = start;
         text
+    }
+
+    /// Delete a range of characters between two positions (inclusive end)
+    ///
+    /// Convenience wrapper that calls `delete_range_ex` with inclusive=true
+    #[allow(clippy::cast_possible_truncation)]
+    pub fn delete_range(&mut self, start: Position, end: Position) -> String {
+        self.delete_range_ex(start, end, true)
     }
 
     /// Delete entire lines from `start_y` to `end_y` (inclusive)
@@ -790,9 +879,17 @@ impl Buffer {
     }
 
     /// Yank a range of characters (doesn't modify buffer)
+    ///
+    /// `inclusive` - if true, includes the character at `end` position
+    #[must_use]
+    pub fn yank_range_ex(&self, start: Position, end: Position, inclusive: bool) -> String {
+        self.extract_text(start, end, inclusive)
+    }
+
+    /// Yank a range of characters (inclusive end, doesn't modify buffer)
     #[must_use]
     pub fn yank_range(&self, start: Position, end: Position) -> String {
-        self.extract_text(start, end)
+        self.extract_text(start, end, true)
     }
 
     /// Yank entire lines (doesn't modify buffer)

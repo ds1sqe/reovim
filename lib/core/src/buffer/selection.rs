@@ -31,6 +31,8 @@ pub trait SelectionOps {
     fn start_selection(&mut self);
     /// Start block selection at current cursor position
     fn start_block_selection(&mut self);
+    /// Start line selection at current cursor position
+    fn start_line_selection(&mut self);
     /// Clear selection
     fn clear_selection(&mut self);
     /// Get normalized selection bounds (start always before end)

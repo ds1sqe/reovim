@@ -19,6 +19,7 @@ pub enum Motion {
     // Word motions
     WordForward,
     WordBackward,
+    WordEnd,
 
     // Document motions
     DocumentStart,
@@ -35,6 +36,17 @@ impl Motion {
         matches!(self, Self::Up | Self::Down | Self::DocumentStart | Self::DocumentEnd)
     }
 
+    /// Check if this motion is inclusive
+    ///
+    /// Inclusive motions include the character at the target position in
+    /// operations. In vim:
+    /// - `$` (`LineEnd`) and `e` (`WordEnd`) are inclusive
+    /// - `w` (`WordForward`) and `b` (`WordBackward`) are exclusive
+    #[must_use]
+    pub const fn is_inclusive(&self) -> bool {
+        matches!(self, Self::LineEnd | Self::WordEnd)
+    }
+
     /// Parse a key string into a motion
     #[must_use]
     pub fn from_key(key: &str) -> Option<Self> {
@@ -45,6 +57,7 @@ impl Motion {
             "k" => Some(Self::Up),
             "w" => Some(Self::WordForward),
             "b" => Some(Self::WordBackward),
+            "e" => Some(Self::WordEnd),
             "0" => Some(Self::LineStart),
             "$" => Some(Self::LineEnd),
             "G" => Some(Self::DocumentEnd),

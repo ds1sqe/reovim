@@ -48,6 +48,7 @@ pub mod builtin {
     pub const CURSOR_LINE_END: CommandId = CommandId::new("cursor_line_end");
     pub const CURSOR_WORD_FORWARD: CommandId = CommandId::new("cursor_word_forward");
     pub const CURSOR_WORD_BACKWARD: CommandId = CommandId::new("cursor_word_backward");
+    pub const CURSOR_WORD_END: CommandId = CommandId::new("cursor_word_end");
     pub const GOTO_FIRST_LINE: CommandId = CommandId::new("goto_first_line");
     pub const GOTO_LAST_LINE: CommandId = CommandId::new("goto_last_line");
 
@@ -60,6 +61,7 @@ pub mod builtin {
     pub const OPEN_LINE_ABOVE: CommandId = CommandId::new("open_line_above");
     pub const ENTER_VISUAL_MODE: CommandId = CommandId::new("enter_visual_mode");
     pub const ENTER_VISUAL_BLOCK_MODE: CommandId = CommandId::new("enter_visual_block_mode");
+    pub const ENTER_VISUAL_LINE_MODE: CommandId = CommandId::new("enter_visual_line_mode");
     pub const ENTER_COMMAND_MODE: CommandId = CommandId::new("enter_command_mode");
 
     // === Text Operations ===

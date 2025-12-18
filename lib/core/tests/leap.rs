@@ -77,12 +77,12 @@ async fn test_leap_backward_escape_cancels() {
 }
 
 // ============================================================================
-// Leap with two characters (jump) - documenting actual behavior
+// Leap with two characters (jump)
 // ============================================================================
 
-/// Documents that leap forward doesn't move cursor
+/// Leap forward with single match auto-jumps to target
 #[tokio::test]
-async fn test_doc_leap_forward_no_jump() {
+async fn test_leap_forward_single_match() {
     let result = ServerTest::new()
         .await
         .with_content("hello world test")
@@ -90,15 +90,14 @@ async fn test_doc_leap_forward_no_jump() {
         .run()
         .await;
 
-    // Expected vim-leap behavior: cursor jumps to "world" (col 6)
-    // Actual behavior: cursor stays at starting position
-    result.assert_cursor(0, 0);
+    // Single match "wo" in "world" at col 6 - auto-jumps
+    result.assert_cursor(6, 0);
     result.assert_normal_mode();
 }
 
-/// Documents that leap with multiple matches doesn't jump
+/// Leap with first match after cursor when multiple exist
 #[tokio::test]
-async fn test_doc_leap_multiple_matches_no_jump() {
+async fn test_leap_first_match_after_cursor() {
     let result = ServerTest::new()
         .await
         .with_content("test test more")
@@ -106,9 +105,9 @@ async fn test_doc_leap_multiple_matches_no_jump() {
         .run()
         .await;
 
-    // Expected vim-leap behavior: jump to second "te" at col 5
-    // Actual behavior: cursor stays at starting position
-    result.assert_cursor(0, 0);
+    // First "te" at col 0 is at cursor, second "te" at col 5 is the match
+    // Single match forward from cursor position - auto-jumps to col 5
+    result.assert_cursor(5, 0);
     result.assert_normal_mode();
 }
 
@@ -131,12 +130,12 @@ async fn test_leap_no_match() {
 }
 
 // ============================================================================
-// Leap across lines - documenting actual behavior
+// Leap across lines
 // ============================================================================
 
-/// Documents that leap across lines doesn't jump
+/// Leap forward across lines to single match
 #[tokio::test]
-async fn test_doc_leap_across_lines_no_jump() {
+async fn test_leap_across_lines() {
     let result = ServerTest::new()
         .await
         .with_content("hello\nworld\ntest")
@@ -144,9 +143,8 @@ async fn test_doc_leap_across_lines_no_jump() {
         .run()
         .await;
 
-    // Expected vim-leap behavior: jump to "te" in "test" (line 3, col 0)
-    // Actual behavior: cursor stays at starting position
-    result.assert_cursor(0, 0);
+    // "te" in "test" is on line 2 (0-indexed), col 0 - auto-jumps
+    result.assert_cursor(0, 2);
     result.assert_normal_mode();
 }
 

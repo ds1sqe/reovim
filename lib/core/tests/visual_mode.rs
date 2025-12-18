@@ -119,12 +119,12 @@ async fn test_ctrl_v_enters_visual_block() {
 }
 
 // ============================================================================
-// Document limitations
+// Visual line mode (V)
 // ============================================================================
 
-/// Documents that V (visual line mode) is not implemented
+/// V enters visual line mode
 #[tokio::test]
-async fn test_doc_big_v_not_implemented() {
+async fn test_big_v_enters_visual_line_mode() {
     let result = ServerTest::new()
         .await
         .with_content("line 1\nline 2")
@@ -132,9 +132,8 @@ async fn test_doc_big_v_not_implemented() {
         .run()
         .await;
 
-    // Expected vim behavior: visual line mode
-    // Actual behavior: stays in normal mode (V not bound)
-    result.assert_normal_mode();
+    // V enters visual line mode
+    result.assert_visual_mode();
 }
 
 /// Documents that visual delete with l extend may not work

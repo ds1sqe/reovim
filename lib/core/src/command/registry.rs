@@ -130,6 +130,7 @@ impl CommandRegistry {
             CursorRightCommand,
             CursorUpCommand,
             CursorWordBackwardCommand,
+            CursorWordEndCommand,
             CursorWordForwardCommand,
             // Text
             DeleteCharBackwardCommand,
@@ -145,6 +146,7 @@ impl CommandRegistry {
             EnterInsertModeEolCommand,
             EnterNormalModeCommand,
             EnterVisualBlockModeCommand,
+            EnterVisualLineModeCommand,
             EnterVisualModeCommand,
             EnterYankOperatorCommand,
             // Explorer
@@ -277,6 +279,7 @@ impl CommandRegistry {
         let _ = self.register(CursorLineEndCommand);
         let _ = self.register(CursorWordForwardCommand);
         let _ = self.register(CursorWordBackwardCommand);
+        let _ = self.register(CursorWordEndCommand);
         let _ = self.register(GotoFirstLineCommand);
         let _ = self.register(GotoLastLineCommand);
 
@@ -302,6 +305,7 @@ impl CommandRegistry {
         let _ = self.register(OpenLineAboveCommand);
         let _ = self.register(EnterVisualModeCommand);
         let _ = self.register(EnterVisualBlockModeCommand);
+        let _ = self.register(EnterVisualLineModeCommand);
         let _ = self.register(EnterCommandModeCommand);
 
         // Operator commands

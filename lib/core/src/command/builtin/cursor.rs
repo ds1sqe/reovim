@@ -2,7 +2,7 @@
 
 use {
     crate::{
-        buffer::{CursorOps, calculate_motion_with_desired_col},
+        buffer::calculate_motion_with_desired_col,
         command::traits::{CommandResult, CommandTrait, ExecutionContext},
         motion::Motion,
     },
@@ -217,8 +217,16 @@ impl CommandTrait for CursorWordForwardCommand {
     }
 
     fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
-        ctx.buffer.word_forward();
-        ctx.buffer.clear_desired_col(); // Clear on horizontal movement
+        let count = ctx.count.unwrap_or(1);
+        let (new_pos, new_desired_col) = calculate_motion_with_desired_col(
+            &ctx.buffer.contents,
+            ctx.buffer.cur,
+            ctx.buffer.desired_col,
+            Motion::WordForward,
+            count,
+        );
+        ctx.buffer.cur = new_pos;
+        ctx.buffer.desired_col = new_desired_col;
         CommandResult::NeedsRender
     }
 
@@ -245,8 +253,52 @@ impl CommandTrait for CursorWordBackwardCommand {
     }
 
     fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
-        ctx.buffer.word_backward();
-        ctx.buffer.clear_desired_col(); // Clear on horizontal movement
+        let count = ctx.count.unwrap_or(1);
+        let (new_pos, new_desired_col) = calculate_motion_with_desired_col(
+            &ctx.buffer.contents,
+            ctx.buffer.cur,
+            ctx.buffer.desired_col,
+            Motion::WordBackward,
+            count,
+        );
+        ctx.buffer.cur = new_pos;
+        ctx.buffer.desired_col = new_desired_col;
+        CommandResult::NeedsRender
+    }
+
+    fn clone_box(&self) -> Box<dyn CommandTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+/// Move cursor to end of current/next word
+#[derive(Debug, Clone)]
+pub struct CursorWordEndCommand;
+
+impl CommandTrait for CursorWordEndCommand {
+    fn name(&self) -> &'static str {
+        "cursor_word_end"
+    }
+
+    fn description(&self) -> &'static str {
+        "Move cursor to end of word"
+    }
+
+    fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
+        let count = ctx.count.unwrap_or(1);
+        let (new_pos, new_desired_col) = calculate_motion_with_desired_col(
+            &ctx.buffer.contents,
+            ctx.buffer.cur,
+            ctx.buffer.desired_col,
+            Motion::WordEnd,
+            count,
+        );
+        ctx.buffer.cur = new_pos;
+        ctx.buffer.desired_col = new_desired_col;
         CommandResult::NeedsRender
     }
 

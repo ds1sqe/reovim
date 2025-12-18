@@ -2,7 +2,7 @@
 
 use {
     crate::{
-        buffer::Line,
+        buffer::{Line, SelectionOps},
         command::traits::{CommandResult, CommandTrait, ExecutionContext},
         modd::ModeState,
     },
@@ -210,7 +210,8 @@ impl CommandTrait for EnterVisualModeCommand {
         "Enter visual mode"
     }
 
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
+    fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
+        ctx.buffer.start_selection();
         CommandResult::ModeChange(ModeState::visual())
     }
 
@@ -236,8 +237,36 @@ impl CommandTrait for EnterVisualBlockModeCommand {
         "Enter visual block mode"
     }
 
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
+    fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
+        ctx.buffer.start_block_selection();
         CommandResult::ModeChange(ModeState::visual_block())
+    }
+
+    fn clone_box(&self) -> Box<dyn CommandTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+/// Enter visual line mode (V)
+#[derive(Debug, Clone)]
+pub struct EnterVisualLineModeCommand;
+
+impl CommandTrait for EnterVisualLineModeCommand {
+    fn name(&self) -> &'static str {
+        "enter_visual_line_mode"
+    }
+
+    fn description(&self) -> &'static str {
+        "Enter visual line mode"
+    }
+
+    fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
+        ctx.buffer.start_line_selection();
+        CommandResult::ModeChange(ModeState::visual_line())
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {

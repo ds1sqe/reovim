@@ -194,7 +194,26 @@ impl Runtime {
     }
 
     /// Broadcast a mode change
+    ///
+    /// Handles undo batching: changes made during insert mode are batched
+    /// into a single undo unit when leaving insert mode.
     pub(crate) fn set_mode(&mut self, mode_state: ModeState) {
+        let was_insert = self.mode_state.is_insert();
+        let is_insert = mode_state.is_insert();
+
+        // Handle undo batching on insert mode transitions
+        if !was_insert && is_insert {
+            // Entering insert mode: begin batching
+            if let Some(buf) = self.buffers.get_mut(&self.active_buffer_id) {
+                buf.begin_batch();
+            }
+        } else if was_insert && !is_insert {
+            // Leaving insert mode: flush batch
+            if let Some(buf) = self.buffers.get_mut(&self.active_buffer_id) {
+                buf.flush_batch();
+            }
+        }
+
         self.mode_state = mode_state.clone();
         let _ = self.mode_tx.send(mode_state);
     }

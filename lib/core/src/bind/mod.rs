@@ -316,6 +316,7 @@ impl KeyMap {
         keymap.insert("$".to_string(), KeyMapInner::with_command_id(builtin::CURSOR_LINE_END));
         keymap.insert("w".to_string(), KeyMapInner::with_command_id(builtin::CURSOR_WORD_FORWARD));
         keymap.insert("b".to_string(), KeyMapInner::with_command_id(builtin::CURSOR_WORD_BACKWARD));
+        keymap.insert("e".to_string(), KeyMapInner::with_command_id(builtin::CURSOR_WORD_END));
 
         // Mode switching
         keymap.insert("i".to_string(), KeyMapInner::with_command_id(builtin::ENTER_INSERT_MODE));
@@ -328,6 +329,8 @@ impl KeyMap {
         keymap.insert("o".to_string(), KeyMapInner::with_command_id(builtin::OPEN_LINE_BELOW));
         keymap.insert("O".to_string(), KeyMapInner::with_command_id(builtin::OPEN_LINE_ABOVE));
         keymap.insert("v".to_string(), KeyMapInner::with_command_id(builtin::ENTER_VISUAL_MODE));
+        keymap
+            .insert("V".to_string(), KeyMapInner::with_command_id(builtin::ENTER_VISUAL_LINE_MODE));
         keymap.insert(
             "<C-v>".to_string(),
             KeyMapInner::with_command_id(builtin::ENTER_VISUAL_BLOCK_MODE),
@@ -451,6 +454,7 @@ impl KeyMap {
         keymap.insert("l".to_string(), KeyMapInner::with_command_id(builtin::VISUAL_EXTEND_RIGHT));
         keymap.insert("d".to_string(), KeyMapInner::with_command_id(builtin::VISUAL_DELETE));
         keymap.insert("y".to_string(), KeyMapInner::with_command_id(builtin::VISUAL_YANK));
+        keymap.insert(":".to_string(), KeyMapInner::with_command_id(builtin::ENTER_COMMAND_MODE));
     }
 
     fn setup_command_mode(keymap: &mut HashMap<String, KeyMapInner>) {

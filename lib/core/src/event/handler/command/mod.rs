@@ -224,10 +224,19 @@ impl CommandHandler {
                         motion,
                         count: total_count,
                     },
-                    OperatorType::Change => OperatorMotionAction::Change {
-                        motion,
-                        count: total_count,
-                    },
+                    OperatorType::Change => {
+                        // In vim, `cw` behaves like `ce` (change to end of word)
+                        // Convert WordForward to WordEnd for change operator
+                        let change_motion = if motion == Motion::WordForward {
+                            Motion::WordEnd
+                        } else {
+                            motion
+                        };
+                        OperatorMotionAction::Change {
+                            motion: change_motion,
+                            count: total_count,
+                        }
+                    }
                 };
                 return (Some(action), false);
             }

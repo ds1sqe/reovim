@@ -139,9 +139,9 @@ async fn test_empty_command_enter() {
     result.assert_normal_mode();
 }
 
-/// Documents that : from visual mode doesn't enter command mode
+/// : from visual mode enters command mode
 #[tokio::test]
-async fn test_doc_command_from_visual_not_working() {
+async fn test_command_from_visual() {
     let result = ServerTest::new()
         .await
         .with_content("hello")
@@ -149,7 +149,6 @@ async fn test_doc_command_from_visual_not_working() {
         .run()
         .await;
 
-    // Expected vim behavior: command mode
-    // Actual behavior: stays in visual mode (: not bound in visual mode)
-    result.assert_visual_mode();
+    // : from visual mode enters command mode
+    result.assert_command_mode();
 }

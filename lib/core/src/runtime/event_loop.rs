@@ -951,8 +951,17 @@ impl Runtime {
                         // No matches, cancel leap mode
                         self.leap_state.reset();
                         self.set_mode(ModeState::normal());
+                    } else if matches.len() == 1 {
+                        // Single match: auto-jump directly without showing labels
+                        let target = &matches[0];
+                        if let Some(buf) = self.buffers.get_mut(&self.active_buffer_id) {
+                            buf.cur.y = target.line;
+                            buf.cur.x = target.col;
+                        }
+                        self.leap_state.reset();
+                        self.set_mode(ModeState::normal());
                     } else {
-                        // Generate labels and assign to matches
+                        // Multiple matches: show labels for selection
                         let labels = generate_labels(matches.len());
                         self.leap_state.set_matches_with_labels(matches, labels);
                     }

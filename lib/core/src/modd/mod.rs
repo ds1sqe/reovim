@@ -52,6 +52,7 @@ pub enum ModExtension {
     #[default]
     Normal,
     Block,
+    Line,
     Column,
     MultiCursor,
 }
@@ -154,6 +155,16 @@ impl ModeState {
         Self {
             focus: Focus::Editor,
             edit_mode: EditMode::Visual(ModExtension::Block),
+            sub_mode: SubMode::None,
+        }
+    }
+
+    /// Editor + Visual Line mode
+    #[must_use]
+    pub const fn visual_line() -> Self {
+        Self {
+            focus: Focus::Editor,
+            edit_mode: EditMode::Visual(ModExtension::Line),
             sub_mode: SubMode::None,
         }
     }

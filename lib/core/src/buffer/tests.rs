@@ -134,7 +134,7 @@ fn test_word_forward_at_end() {
     buffer.set_content("hello");
     buffer.cur = Position { x: 3, y: 0 };
     buffer.word_forward();
-    assert_eq!(buffer.cur.x, 5); // At end of line
+    assert_eq!(buffer.cur.x, 4); // Stays at last char when no next word
 }
 
 #[test]

@@ -1,12 +1,6 @@
 //! Undo/Redo integration tests
 //!
 //! Tests for u (undo) and Ctrl-R (redo) functionality.
-//!
-//! ## Implementation Notes
-//!
-//! Current undo behavior:
-//! - Undo removes single character, not entire insert session
-//! - This differs from vim where insert mode is undone as a unit
 
 mod common;
 
@@ -139,26 +133,25 @@ async fn test_edit_clears_redo() {
 }
 
 // ============================================================================
-// Document actual undo behavior - single char undo
+// Session-based undo (insert mode undone as unit)
 // ============================================================================
 
-/// Documents that undo removes single character, not insert session
+/// Undo removes entire insert session, not single character
 #[tokio::test]
-async fn test_doc_undo_single_char() {
+async fn test_undo_insert_session() {
     let result = ServerTest::new()
         .await
         .with_keys("ihello<Esc>u")
         .run()
         .await;
 
-    // Expected vim behavior: "" (whole insert undone)
-    // Actual behavior: "hell" (only last char undone)
-    result.assert_buffer_eq("hell");
+    // Entire insert session undone as single unit
+    result.assert_buffer_eq("");
 }
 
-/// Documents that open line undo is also per-character
+/// Open line followed by text is undone as single unit
 #[tokio::test]
-async fn test_doc_undo_open_line_single_char() {
+async fn test_undo_open_line_session() {
     let result = ServerTest::new()
         .await
         .with_content("line 1")
@@ -166,7 +159,6 @@ async fn test_doc_undo_open_line_single_char() {
         .run()
         .await;
 
-    // Expected vim behavior: "line 1"
-    // Actual behavior: "line 1\ntes" (only last char undone)
-    result.assert_buffer_eq("line 1\ntes");
+    // Entire insert session (newline + text) undone as single unit
+    result.assert_buffer_eq("line 1");
 }

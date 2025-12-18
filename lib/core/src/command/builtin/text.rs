@@ -155,8 +155,15 @@ impl CommandTrait for DeleteLineCommand {
     }
 
     fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
-        ctx.buffer.delete_line();
-        CommandResult::NeedsRender
+        let deleted = ctx.buffer.delete_line();
+        if deleted.is_empty() {
+            CommandResult::NeedsRender
+        } else {
+            CommandResult::ClipboardWrite {
+                text: deleted,
+                register: None,
+            }
+        }
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
