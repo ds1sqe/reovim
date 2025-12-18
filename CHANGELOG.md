@@ -2,6 +2,40 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.5.1] - 2025-12-18
+
+### Features
+
+- **Comprehensive Integration Test Suite** - 95 new server-based E2E tests
+  - `word_motions.rs` (20 tests) - w, b motion tests
+  - `operators.rs` (21 tests) - dd, x, yy, p, dw, cw, dj, dk, d$ tests
+  - `undo_redo.rs` (11 tests) - u and Ctrl-R tests
+  - `visual_mode.rs` (10 tests) - v, V, Ctrl-V mode tests
+  - `command_mode.rs` (10 tests) - : command and :set tests
+  - `cursor_advanced.rs` (14 tests) - gg, G, 0, $, count prefix tests
+  - `leap.rs` (9 tests) - s, S leap navigation tests
+
+### Documentation
+
+- Tests document actual behavior vs expected vim behavior for gaps:
+  - `e` motion not implemented
+  - Count prefix not supported for w/b motions
+  - w/b motions don't cross lines
+  - dw/cw off-by-one bug (deletes first char of next word)
+  - Undo is per-character, not per-insert-session
+  - V (visual line mode) not implemented
+  - Leap jump doesn't move cursor to match position
+
+### Files Added
+
+- `lib/core/tests/word_motions.rs`
+- `lib/core/tests/operators.rs`
+- `lib/core/tests/undo_redo.rs`
+- `lib/core/tests/visual_mode.rs`
+- `lib/core/tests/command_mode.rs`
+- `lib/core/tests/cursor_advanced.rs`
+- `lib/core/tests/leap.rs`
+
 ## [0.5.0] - 2025-12-18
 
 ### Features
