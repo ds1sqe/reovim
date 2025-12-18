@@ -423,272 +423,321 @@ impl CommandHandler {
         mode.is_normal() || mode.is_visual() || (mode.is_explorer_focus() && mode.is_normal())
     }
 
+    /// Handle Escape key in clearable modes (Normal/Visual/Explorer/OperatorPending)
+    /// Returns true if the key was handled and processing should continue to next key
+    async fn handle_escape_key(&mut self) -> bool {
+        let mode = self.current_mode().clone();
+        if !Self::is_esc_clearable_mode(&mode) {
+            return false;
+        }
+
+        // Clear pending state
+        if !self.pending_keys.is_empty() || self.count_parser.peek().is_some() {
+            self.pending_keys.clear();
+            self.count_parser.clear();
+            self.dispatcher
+                .send_pending_keys(self.pending_display())
+                .await;
+        }
+
+        // If in OperatorPending, cancel and return to Normal
+        if mode.is_operator_pending() {
+            let normal = ModeState::normal();
+            self.set_local_mode(normal.clone());
+            self.dispatcher.update_mode(normal).await;
+        }
+
+        true
+    }
+
+    /// Handle Backspace key to edit pending keys in Normal/Visual/Explorer modes
+    /// Returns true if the key was handled and processing should continue to next key
+    async fn handle_backspace_key(&mut self) -> bool {
+        let mode = self.current_mode();
+        if !Self::is_backspace_editable_mode(mode) {
+            return false;
+        }
+
+        if !self.pending_keys.is_empty() {
+            // Remove last character/key from pending
+            // Handle multi-char keys like "<C-x>" properly
+            if self.pending_keys.ends_with('>') {
+                // Remove entire <...> sequence
+                if let Some(start) = self.pending_keys.rfind('<') {
+                    self.pending_keys.truncate(start);
+                } else {
+                    self.pending_keys.pop();
+                }
+            } else {
+                self.pending_keys.pop();
+            }
+            self.dispatcher
+                .send_pending_keys(self.pending_display())
+                .await;
+        }
+
+        true
+    }
+
+    /// Handle key input during leap mode
+    /// Returns true if the key was handled and processing should continue to next key
+    async fn handle_leap_key(&mut self, key_str: &str) -> bool {
+        // Check for Escape to cancel
+        if key_str == "Escape" {
+            self.leap_phase = LeapPhase::Inactive;
+            self.leap_label.clear();
+            self.dispatcher.send_leap_cancel().await;
+            return true;
+        }
+
+        // Handle based on current leap phase
+        match self.leap_phase {
+            LeapPhase::Inactive => {
+                // Just entered leap mode, set phase
+                self.leap_phase = LeapPhase::WaitingFirstChar;
+                // Process this char as first char
+                if key_str.len() == 1
+                    && let Some(c) = key_str.chars().next()
+                {
+                    self.leap_phase = LeapPhase::WaitingSecondChar;
+                    self.dispatcher.send_leap_first_char(c).await;
+                }
+            }
+            LeapPhase::WaitingFirstChar => {
+                // Process first character
+                if key_str.len() == 1
+                    && let Some(c) = key_str.chars().next()
+                {
+                    self.leap_phase = LeapPhase::WaitingSecondChar;
+                    self.dispatcher.send_leap_first_char(c).await;
+                }
+            }
+            LeapPhase::WaitingSecondChar => {
+                // Process second character
+                if key_str.len() == 1
+                    && let Some(c) = key_str.chars().next()
+                {
+                    self.leap_phase = LeapPhase::ShowingLabels;
+                    self.dispatcher.send_leap_second_char(c).await;
+                }
+            }
+            LeapPhase::ShowingLabels => {
+                // Process label selection
+                // Accumulate label characters for multi-char labels
+                if key_str.len() == 1 {
+                    self.leap_label.push_str(key_str);
+                    // Send the label (runtime will handle matching)
+                    self.dispatcher
+                        .send_leap_select_label(self.leap_label.clone())
+                        .await;
+                    self.leap_phase = LeapPhase::Inactive;
+                    self.leap_label.clear();
+                }
+            }
+        }
+
+        true
+    }
+
+    /// Handle operator-pending mode key processing
+    /// Returns true if the key was handled and processing should continue to next key
+    async fn process_operator_pending_key(&mut self, key_str: &str) -> bool {
+        let count = self.count_parser.peek();
+        let (action, should_wait) =
+            self.handle_operator_pending(key_str, count, &self.pending_keys);
+
+        if let Some(action) = action {
+            tracing::debug!(?action, "Operator-pending action detected");
+            self.pending_keys.clear();
+            self.count_parser.take(); // Consume count
+            // Operator action returns to Normal mode
+            let normal = ModeState::normal();
+            self.set_local_mode(normal);
+            self.dispatcher.send_operator_motion(action).await;
+            self.dispatcher
+                .send_pending_keys(self.pending_display())
+                .await;
+            return true;
+        }
+
+        if should_wait {
+            // Waiting for text object delimiter (i/a pressed)
+            self.pending_keys.push_str(key_str);
+            self.dispatcher
+                .send_pending_keys(self.pending_display())
+                .await;
+            return true;
+        }
+
+        false
+    }
+
+    /// Handle visual mode text object key processing
+    /// Returns true if the key was handled and processing should continue to next key
+    async fn process_visual_text_object_key(&mut self, key_str: &str) -> bool {
+        let (action, should_wait) = Self::handle_visual_text_object(key_str, &self.pending_keys);
+
+        if let Some(action) = action {
+            tracing::debug!(?action, "Visual text object selection detected");
+            self.pending_keys.clear();
+            self.count_parser.take(); // Consume count
+            self.dispatcher.send_visual_text_object(action).await;
+            self.dispatcher
+                .send_pending_keys(self.pending_display())
+                .await;
+            return true;
+        }
+
+        if should_wait {
+            // Waiting for text object specifier (i/a pressed)
+            self.pending_keys.push_str(key_str);
+            self.dispatcher
+                .send_pending_keys(self.pending_display())
+                .await;
+            return true;
+        }
+
+        false
+    }
+
+    /// Dispatch a matched command
+    async fn dispatch_matched_command(&mut self, cmd: &CommandRef) {
+        tracing::debug!(?cmd, count = ?self.count_parser.peek(), "Dispatching command");
+
+        // Check for mode change commands and update local mode immediately
+        // This avoids race conditions with the Runtime's watch channel
+        if let Some(new_mode) = Dispatcher::mode_for_command(cmd) {
+            self.set_local_mode(new_mode.clone());
+            self.dispatcher.update_mode(new_mode).await;
+        }
+
+        // Dispatch the command with count
+        let count = self.count_parser.take();
+        self.dispatcher.dispatch(cmd.clone(), count).await;
+
+        // Clear display after command execution
+        self.dispatcher
+            .send_pending_keys(self.pending_display())
+            .await;
+    }
+
+    /// Handle count digit accumulation
+    /// Returns true if the key was a count digit and was handled
+    async fn handle_count_digit(&mut self, key_str: &str) -> bool {
+        let mode = self.current_mode();
+        if self.count_parser.is_count_digit(key_str, mode) {
+            self.count_parser.accumulate(key_str);
+            self.dispatcher
+                .send_pending_keys(self.pending_display())
+                .await;
+            return true;
+        }
+        false
+    }
+
+    /// Check and reset leap state if mode changed
+    fn check_leap_state_reset(&mut self) {
+        if !self.current_mode().is_leap() && self.leap_phase != LeapPhase::Inactive {
+            self.leap_phase = LeapPhase::Inactive;
+            self.leap_label.clear();
+        }
+    }
+
+    /// Process a key event and dispatch appropriate actions
+    /// Returns true to continue the loop, false to break
+    async fn process_key_event(&mut self, key_str: &str) -> bool {
+        // Handle count digit
+        if self.handle_count_digit(key_str).await {
+            return true;
+        }
+
+        // Handle Escape in clearable modes
+        if key_str == "Escape" && self.handle_escape_key().await {
+            return true;
+        }
+
+        // Handle Backspace in editable modes
+        if key_str == "Backspace" && self.handle_backspace_key().await {
+            return true;
+        }
+
+        // Handle leap mode specially
+        if self.current_mode().is_leap() && self.handle_leap_key(key_str).await {
+            return true;
+        }
+        self.check_leap_state_reset();
+
+        // Handle operator-pending mode
+        if self.current_mode().is_operator_pending()
+            && self.process_operator_pending_key(key_str).await
+        {
+            return true;
+        }
+
+        // Handle visual mode text object selection
+        if self.current_mode().is_visual() && self.process_visual_text_object_key(key_str).await {
+            return true;
+        }
+
+        // Show the key being pressed (before lookup clears it)
+        self.pending_keys.push_str(key_str);
+        self.dispatcher
+            .send_pending_keys(self.pending_display())
+            .await;
+
+        // Do the lookup and dispatch
+        let (cmd, _) = self.lookup_command_no_push(key_str);
+        if let Some(ref cmd) = cmd {
+            self.dispatch_matched_command(cmd).await;
+        }
+
+        true
+    }
+
     #[allow(clippy::while_let_loop)]
     #[allow(clippy::match_same_arms)]
-    #[allow(clippy::too_many_lines)]
     pub async fn run(mut self) {
-        if let Some(rx) = self.key_event_rx.take() {
-            let mut rx = rx;
-            loop {
-                // Calculate timeout duration based on pending keys state
-                let timeout = if self.should_show_which_key() && !self.which_key_shown {
-                    self.which_key_timeout
-                } else {
-                    // No pending prefix or already showing - use long timeout
-                    Duration::from_secs(3600)
-                };
+        let Some(rx) = self.key_event_rx.take() else {
+            return;
+        };
+        let mut rx = rx;
 
-                tokio::select! {
-                    // Key event received
-                    result = rx.recv() => {
-                        match result {
-                            Ok(event) => {
-                                let key_str = key_to_string(&event);
-                                if key_str.is_empty() {
-                                    continue;
-                                }
+        loop {
+            // Calculate timeout duration based on pending keys state
+            let timeout = if self.should_show_which_key() && !self.which_key_shown {
+                self.which_key_timeout
+            } else {
+                Duration::from_secs(3600)
+            };
 
-                                tracing::trace!(key = %key_str, "Key pressed");
-
-                                // Sync local mode from Runtime's watch channel
-                                // This catches mode changes initiated by Runtime (e.g., explorer focus)
-                                // Don't overwrite if in a handler-initiated transient state (OperatorPending, Leap)
-                                // to avoid race condition where runtime hasn't processed mode change yet
-                                if !self.local_mode.is_operator_pending() && !self.local_mode.is_leap() {
-                                    self.local_mode = self.mode_rx.borrow().clone();
-                                }
-
-                                // Hide which-key popup on any key press
-                                self.hide_which_key().await;
-
-                                // Check if this is a count digit
-                                let mode = self.current_mode();
-                                if self.count_parser.is_count_digit(&key_str, mode) {
-                                    self.count_parser.accumulate(&key_str);
-                                    self.dispatcher
-                                        .send_pending_keys(self.pending_display())
-                                        .await;
-                                    continue;
-                                }
-
-                                // Handle Escape in Normal/Visual/Explorer/OperatorPending modes:
-                                // - Clear pending keys and count
-                                // - In OperatorPending: cancel operator and return to Normal
-                                if key_str == "Escape" {
-                                    let mode = self.current_mode().clone();
-                                    if Self::is_esc_clearable_mode(&mode) {
-                                        // Clear pending state
-                                        if !self.pending_keys.is_empty()
-                                            || self.count_parser.peek().is_some()
-                                        {
-                                            self.pending_keys.clear();
-                                            self.count_parser.clear();
-                                            self.dispatcher
-                                                .send_pending_keys(self.pending_display())
-                                                .await;
-                                        }
-                                        // If in OperatorPending, cancel and return to Normal
-                                        if mode.is_operator_pending() {
-                                            let normal = ModeState::normal();
-                                            self.set_local_mode(normal.clone());
-                                            self.dispatcher.update_mode(normal).await;
-                                        }
-                                        continue;
-                                    }
-                                }
-
-                                // Handle backspace in Normal/Visual/Explorer modes
-                                if key_str == "Backspace" {
-                                    let mode = self.current_mode();
-                                    if Self::is_backspace_editable_mode(mode) {
-                                        if !self.pending_keys.is_empty() {
-                                            // Remove last character/key from pending
-                                            // Handle multi-char keys like "<C-x>" properly
-                                            if self.pending_keys.ends_with('>') {
-                                                // Remove entire <...> sequence
-                                                if let Some(start) = self.pending_keys.rfind('<') {
-                                                    self.pending_keys.truncate(start);
-                                                } else {
-                                                    self.pending_keys.pop();
-                                                }
-                                            } else {
-                                                self.pending_keys.pop();
-                                            }
-                                            self.dispatcher
-                                                .send_pending_keys(self.pending_display())
-                                                .await;
-                                        }
-                                        // In Normal/Visual/Explorer, ignore backspace (don't add to pending)
-                                        continue;
-                                    }
-                                }
-
-                                // Handle leap mode specially
-                                let mode = self.current_mode();
-                                if mode.is_leap() {
-                                    // Check for Escape to cancel
-                                    if key_str == "Escape" {
-                                        self.leap_phase = LeapPhase::Inactive;
-                                        self.leap_label.clear();
-                                        self.dispatcher.send_leap_cancel().await;
-                                        continue;
-                                    }
-
-                                    // Handle based on current leap phase
-                                    match self.leap_phase {
-                                        LeapPhase::Inactive => {
-                                            // Just entered leap mode, set phase
-                                            self.leap_phase = LeapPhase::WaitingFirstChar;
-                                            // The first char will be processed on next iteration
-                                            // Actually, let's send this char as first char
-                                            if key_str.len() == 1
-                                                && let Some(c) = key_str.chars().next()
-                                            {
-                                                self.leap_phase = LeapPhase::WaitingSecondChar;
-                                                self.dispatcher.send_leap_first_char(c).await;
-                                            }
-                                            continue;
-                                        }
-                                        LeapPhase::WaitingFirstChar => {
-                                            // Process first character
-                                            if key_str.len() == 1
-                                                && let Some(c) = key_str.chars().next()
-                                            {
-                                                self.leap_phase = LeapPhase::WaitingSecondChar;
-                                                self.dispatcher.send_leap_first_char(c).await;
-                                            }
-                                            continue;
-                                        }
-                                        LeapPhase::WaitingSecondChar => {
-                                            // Process second character
-                                            if key_str.len() == 1
-                                                && let Some(c) = key_str.chars().next()
-                                            {
-                                                self.leap_phase = LeapPhase::ShowingLabels;
-                                                self.dispatcher.send_leap_second_char(c).await;
-                                            }
-                                            continue;
-                                        }
-                                        LeapPhase::ShowingLabels => {
-                                            // Process label selection
-                                            // Accumulate label characters for multi-char labels
-                                            if key_str.len() == 1 {
-                                                self.leap_label.push_str(&key_str);
-                                                // Send the label (runtime will handle matching)
-                                                self.dispatcher
-                                                    .send_leap_select_label(self.leap_label.clone())
-                                                    .await;
-                                                self.leap_phase = LeapPhase::Inactive;
-                                                self.leap_label.clear();
-                                            }
-                                            continue;
-                                        }
-                                    }
-                                } else if self.leap_phase != LeapPhase::Inactive {
-                                    // Mode changed, reset leap state
-                                    self.leap_phase = LeapPhase::Inactive;
-                                    self.leap_label.clear();
-                                }
-
-                                // Handle operator-pending mode (d, y, c + motion or text object)
-                                let mode = self.current_mode();
-                                if mode.is_operator_pending() {
-                                    let count = self.count_parser.peek();
-                                    let (action, should_wait) = self.handle_operator_pending(
-                                        &key_str,
-                                        count,
-                                        &self.pending_keys,
-                                    );
-                                    if let Some(action) = action {
-                                        tracing::debug!(?action, "Operator-pending action detected");
-                                        self.pending_keys.clear();
-                                        self.count_parser.take(); // Consume count
-                                        // Operator action returns to Normal mode
-                                        let normal = ModeState::normal();
-                                        self.set_local_mode(normal);
-                                        self.dispatcher.send_operator_motion(action).await;
-                                        self.dispatcher
-                                            .send_pending_keys(self.pending_display())
-                                            .await;
-                                        continue;
-                                    }
-                                    if should_wait {
-                                        // Waiting for text object delimiter (i/a pressed)
-                                        self.pending_keys.push_str(&key_str);
-                                        self.dispatcher
-                                            .send_pending_keys(self.pending_display())
-                                            .await;
-                                        continue;
-                                    }
-                                }
-
-                                // Handle visual mode text object selection (viw, vi(, vif)
-                                let mode = self.current_mode();
-                                if mode.is_visual() {
-                                    let (action, should_wait) = Self::handle_visual_text_object(
-                                        &key_str,
-                                        &self.pending_keys,
-                                    );
-                                    if let Some(action) = action {
-                                        tracing::debug!(?action, "Visual text object selection detected");
-                                        self.pending_keys.clear();
-                                        self.count_parser.take(); // Consume count
-                                        self.dispatcher.send_visual_text_object(action).await;
-                                        self.dispatcher
-                                            .send_pending_keys(self.pending_display())
-                                            .await;
-                                        continue;
-                                    }
-                                    if should_wait {
-                                        // Waiting for text object specifier (i/a pressed)
-                                        self.pending_keys.push_str(&key_str);
-                                        self.dispatcher
-                                            .send_pending_keys(self.pending_display())
-                                            .await;
-                                        continue;
-                                    }
-                                }
-
-                                // Show the key being pressed (before lookup clears it)
-                                self.pending_keys.push_str(&key_str);
-                                self.dispatcher
-                                    .send_pending_keys(self.pending_display())
-                                    .await;
-
-                                // Now do the lookup (which may clear pending_keys)
-                                let (cmd, _) = self.lookup_command_no_push(&key_str);
-
-                                if let Some(ref cmd) = cmd {
-                                    tracing::debug!(?cmd, count = ?self.count_parser.peek(), "Dispatching command");
-
-                                    // Check for mode change commands and update local mode immediately
-                                    // This avoids race conditions with the Runtime's watch channel
-                                    if let Some(new_mode) = Dispatcher::mode_for_command(cmd) {
-                                        self.set_local_mode(new_mode.clone());
-                                        self.dispatcher.update_mode(new_mode).await;
-                                    }
-
-                                    // Dispatch the command with count
-                                    let count = self.count_parser.take();
-                                    self.dispatcher.dispatch(cmd.clone(), count).await;
-
-                                    // Clear display after command execution
-                                    self.dispatcher
-                                        .send_pending_keys(self.pending_display())
-                                        .await;
-                                }
+            tokio::select! {
+                result = rx.recv() => {
+                    match result {
+                        Ok(event) => {
+                            let key_str = key_to_string(&event);
+                            if key_str.is_empty() {
+                                continue;
                             }
-                            Err(e) => {
-                                tracing::debug!(error = %e, "Key event channel closed");
-                                break;
+
+                            tracing::trace!(key = %key_str, "Key pressed");
+
+                            // Sync local mode from Runtime's watch channel
+                            if !self.local_mode.is_operator_pending() && !self.local_mode.is_leap() {
+                                self.local_mode = self.mode_rx.borrow().clone();
                             }
+
+                            self.hide_which_key().await;
+                            self.process_key_event(&key_str).await;
+                        }
+                        Err(e) => {
+                            tracing::debug!(error = %e, "Key event channel closed");
+                            break;
                         }
                     }
-                    // Timeout elapsed - show which-key popup
-                    () = tokio::time::sleep(timeout) => {
-                        if self.should_show_which_key() && !self.which_key_shown {
-                            self.show_which_key().await;
-                        }
+                }
+                () = tokio::time::sleep(timeout) => {
+                    if self.should_show_which_key() && !self.which_key_shown {
+                        self.show_which_key().await;
                     }
                 }
             }

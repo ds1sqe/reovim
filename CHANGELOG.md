@@ -2,6 +2,28 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.4.11] - 2025-12-18
+
+### Refactoring
+
+- **Fixed all clippy cognitive complexity warnings** - Refactored 3 functions to meet complexity threshold (25):
+  - `run()` in command handler: 63→<25 (extracted 8 helper methods)
+  - `handle_explorer_action()` in runtime handlers: 31→<25 (extracted 5 helper methods)
+  - `render()` in window: 30→<25 (extracted 5 helper methods)
+
+### Files Changed
+
+- `lib/core/src/event/handler/command/mod.rs` - Cognitive complexity refactoring
+- `lib/core/src/runtime/handlers.rs` - Cognitive complexity refactoring
+- `lib/core/src/screen/window.rs` - Cognitive complexity refactoring
+
+### Testing
+
+- Zero warnings (build + clippy)
+- All tests passing
+
+---
+
 ## [0.4.10] - 2025-12-18
 
 ### Bug Fixes
