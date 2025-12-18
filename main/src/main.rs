@@ -18,8 +18,9 @@ fn print_help() {
     println!("    [FILE]    File to open");
     println!();
     println!("OPTIONS:");
-    println!("    -h, --help       Print help information");
-    println!("    -v, --version    Print version information");
+    println!("    -h, --help             Print help information");
+    println!("    -v, --version          Print version information");
+    println!("    -p, --profile <NAME>   Load a configuration profile");
 }
 
 fn print_version() {
@@ -36,9 +37,11 @@ async fn main() -> Result<(), io::Error> {
     let args: Vec<String> = std::env::args().collect();
 
     let mut file_path: Option<String> = None;
+    let mut profile_name: Option<String> = None;
 
-    for arg in args.iter().skip(1) {
-        match arg.as_str() {
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
             "-h" | "--help" => {
                 print_help();
                 return Ok(());
@@ -47,16 +50,27 @@ async fn main() -> Result<(), io::Error> {
                 print_version();
                 return Ok(());
             }
-            _ if arg.starts_with('-') => {
+            "-p" | "--profile" => {
+                i += 1;
+                if i < args.len() {
+                    profile_name = Some(args[i].clone());
+                    tracing::debug!(profile = %args[i], "Using profile from command line");
+                } else {
+                    eprintln!("Error: --profile requires a name argument");
+                    std::process::exit(1);
+                }
+            }
+            arg if arg.starts_with('-') => {
                 eprintln!("Unknown option: {arg}");
                 eprintln!("Use --help for usage information");
                 std::process::exit(1);
             }
-            _ => {
-                file_path = Some(arg.clone());
+            arg => {
+                file_path = Some(arg.to_string());
                 tracing::debug!(file = %arg, "Opening file from command line");
             }
         }
+        i += 1;
     }
 
     reovim_core::command::terminal::enable_raw_mode()?;
@@ -66,7 +80,13 @@ async fn main() -> Result<(), io::Error> {
     screen.initialize()?;
     tracing::debug!(width = screen.width(), height = screen.height(), "Screen initialized");
 
-    let runtime = Runtime::new(screen).with_file(file_path);
+    let mut runtime = Runtime::new(screen)
+        .with_file(file_path)
+        .with_profile(profile_name);
+
+    // Initialize profile system (creates default profile if needed)
+    runtime.init_profiles();
+
     runtime.init().await;
 
     tracing::info!("reovim shutting down");

@@ -21,6 +21,7 @@ mod icons {
     pub const LEAP: &str = "󱐋 ";
     pub const OPERATOR: &str = "󰦒 ";
     pub const TELESCOPE: &str = "󰭎 ";
+    pub const SETTINGS: &str = "󰒓 ";
 }
 
 /// Trait for rendering status line and command line
@@ -51,6 +52,7 @@ const fn mode_icon(mode: &ModeState) -> &'static str {
         (SubMode::Leap { .. }, _, _) => icons::LEAP,
         (SubMode::None, Focus::Telescope, _) => icons::TELESCOPE,
         (SubMode::None, Focus::Explorer, _) => icons::EXPLORER,
+        (SubMode::None, Focus::SettingsMenu, _) => icons::SETTINGS,
         (SubMode::None, Focus::Editor, EditMode::Normal) => icons::NORMAL,
         (SubMode::None, Focus::Editor, EditMode::Insert(_)) => icons::INSERT,
         (SubMode::None, Focus::Editor, EditMode::Visual(_)) => icons::VISUAL,
@@ -106,8 +108,9 @@ pub fn render_status_line_to<W: Write>(
 
     // Get mode-specific style
     let mode_style = match (&mode.sub_mode, &mode.focus, &mode.edit_mode) {
-        // Command sub-mode or Telescope uses command style
-        (SubMode::Command, _, _) | (SubMode::None, Focus::Telescope, _) => {
+        // Command sub-mode, Telescope, or SettingsMenu uses command style
+        (SubMode::Command, _, _)
+        | (SubMode::None, Focus::Telescope | Focus::SettingsMenu, _) => {
             &theme.statusline.mode.command
         }
         // Operator-pending, Leap, and normal mode in Editor

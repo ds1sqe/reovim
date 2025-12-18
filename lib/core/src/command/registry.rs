@@ -168,6 +168,14 @@ impl CommandRegistry {
             WindowSplitVerticalCommand,
             // Tab
             TabCloseCommand, TabNewCommand, TabNextCommand, TabPrevCommand,
+            // Settings Menu
+            SettingsMenuCloseCommand, SettingsMenuCycleNextCommand, SettingsMenuCyclePrevCommand,
+            SettingsMenuDecrementCommand, SettingsMenuExecuteCommand, SettingsMenuIncrementCommand,
+            SettingsMenuNextCommand, SettingsMenuOpenCommand, SettingsMenuPrevCommand,
+            SettingsMenuQuick1Command, SettingsMenuQuick2Command, SettingsMenuQuick3Command,
+            SettingsMenuQuick4Command, SettingsMenuQuick5Command, SettingsMenuQuick6Command,
+            SettingsMenuQuick7Command, SettingsMenuQuick8Command, SettingsMenuQuick9Command,
+            SettingsMenuToggleCommand,
         };
 
         // Cursor movement commands
@@ -320,6 +328,27 @@ impl CommandRegistry {
         let _ = self.register(TabCloseCommand);
         let _ = self.register(TabNextCommand);
         let _ = self.register(TabPrevCommand);
+
+        // Settings menu commands
+        let _ = self.register(SettingsMenuOpenCommand);
+        let _ = self.register(SettingsMenuCloseCommand);
+        let _ = self.register(SettingsMenuNextCommand);
+        let _ = self.register(SettingsMenuPrevCommand);
+        let _ = self.register(SettingsMenuToggleCommand);
+        let _ = self.register(SettingsMenuCycleNextCommand);
+        let _ = self.register(SettingsMenuCyclePrevCommand);
+        let _ = self.register(SettingsMenuIncrementCommand);
+        let _ = self.register(SettingsMenuDecrementCommand);
+        let _ = self.register(SettingsMenuExecuteCommand);
+        let _ = self.register(SettingsMenuQuick1Command);
+        let _ = self.register(SettingsMenuQuick2Command);
+        let _ = self.register(SettingsMenuQuick3Command);
+        let _ = self.register(SettingsMenuQuick4Command);
+        let _ = self.register(SettingsMenuQuick5Command);
+        let _ = self.register(SettingsMenuQuick6Command);
+        let _ = self.register(SettingsMenuQuick7Command);
+        let _ = self.register(SettingsMenuQuick8Command);
+        let _ = self.register(SettingsMenuQuick9Command);
     }
 }
 

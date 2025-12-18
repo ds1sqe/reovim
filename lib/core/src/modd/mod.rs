@@ -16,6 +16,7 @@ pub enum Focus {
     Editor,
     Explorer,
     Telescope,
+    SettingsMenu,
 }
 
 /// Edit mode - how you're interacting
@@ -207,6 +208,16 @@ impl ModeState {
         }
     }
 
+    /// Settings menu mode
+    #[must_use]
+    pub const fn settings_menu() -> Self {
+        Self {
+            focus: Focus::SettingsMenu,
+            edit_mode: EditMode::Normal,
+            sub_mode: SubMode::None,
+        }
+    }
+
     /// Operator-pending mode
     #[must_use]
     pub const fn operator_pending(operator: OperatorType, count: Option<usize>) -> Self {
@@ -302,6 +313,7 @@ impl ModeState {
             (Focus::Explorer, _) => " EXPLORER ",
             (Focus::Telescope, EditMode::Insert(_)) => "",
             (Focus::Telescope, EditMode::Normal | EditMode::Visual(_)) => " TELESCOPE ",
+            (Focus::SettingsMenu, _) => " SETTINGS ",
         }
     }
 }

@@ -2,6 +2,73 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.4.18] - 2025-12-18
+
+### Features
+
+- **TOML-based configuration profile system** - Save, load, and switch editor configurations at runtime
+  - Profiles stored at `~/.config/reovim/profiles/` (XDG Base Directory compliant)
+  - Ex-commands: `:profile load <name>`, `:profile save <name>`, `:profile list`
+  - Telescope picker for profile selection (via `:profile list`)
+  - CLI flag: `--profile/-p <name>` to start with a specific profile
+  - First-run auto-creates default profile
+  - Profiles control: theme, colormode, line numbers, relative numbers, indent guides, scrollbar, tab width
+
+- **TUI Settings Menu** - Interactive settings editor with live preview
+  - Open with `Space s` or `:settings` command
+  - Vim-style navigation: `j/k` to navigate, `Space` to toggle, `h/l` to cycle choices
+  - Quick select choices with number keys `1-9`
+  - Number settings adjustable with `+/-`
+  - Immediate apply: changes take effect instantly
+  - Settings organized in sections: Editor, Cursor, Window, Profile
+  - Checkbox-style booleans, dropdown-style choices, number inputs
+
+### Files Added
+
+- `lib/core/src/config/mod.rs` - Config module root
+- `lib/core/src/config/schema.rs` - TOML structs with serde
+- `lib/core/src/config/loader.rs` - XDG paths, load/save utilities
+- `lib/core/src/config/profile.rs` - ProfileManager struct
+- `lib/core/src/telescope/picker/profiles.rs` - Profiles picker
+- `lib/core/src/settings_menu/mod.rs` - Settings menu module root
+- `lib/core/src/settings_menu/item.rs` - SettingItem, SettingValue, SettingSection types
+- `lib/core/src/settings_menu/state.rs` - SettingsMenuState with navigation/manipulation
+- `lib/core/src/settings_menu/render.rs` - TUI rendering with box drawing
+- `lib/core/src/command/builtin/settings_menu.rs` - Settings menu commands
+
+### Files Changed
+
+- `lib/core/Cargo.toml` - Added toml, serde dependencies
+- `lib/core/src/lib.rs` - Added config and settings_menu module exports
+- `lib/core/src/command_line/ex_command.rs` - Added ProfileLoad/Save/List/Settings commands
+- `lib/core/src/runtime/core.rs` - Added ProfileManager, settings_menu field
+- `lib/core/src/runtime/event_loop.rs` - Added profile and settings menu event handling
+- `lib/core/src/runtime/handlers.rs` - Added profile and settings menu handlers
+- `lib/core/src/telescope/item.rs` - Added TelescopeData::Profile variant
+- `lib/core/src/telescope/picker/mod.rs` - Added TelescopeAction::SwitchProfile, ProfilesPicker
+- `lib/core/src/event/inner/mod.rs` - Added SettingsMenuEvent enum
+- `lib/core/src/event/mod.rs` - Export SettingsMenuEvent
+- `lib/core/src/modd/mod.rs` - Added Focus::SettingsMenu variant
+- `lib/core/src/bind/mod.rs` - Added settings_menu keymap and Space-s binding
+- `lib/core/src/command/id.rs` - Added settings menu command IDs
+- `lib/core/src/command/traits.rs` - Added SettingsMenuAction, DeferredAction::SettingsMenu
+- `lib/core/src/command/builtin/mod.rs` - Export settings_menu commands
+- `lib/core/src/command/registry.rs` - Register settings menu commands
+- `lib/core/src/screen/mod.rs` - Render settings menu overlay
+- `lib/core/src/screen/status_line.rs` - Added SETTINGS icon
+- `main/src/main.rs` - Added --profile/-p CLI flag
+
+### Testing
+
+- Zero warnings (build + clippy)
+- All tests passing
+
+### Deferred
+
+- Runtime keybinding modification from profiles (Phase 5) - keybindings stored in TOML but not applied at runtime
+
+---
+
 ## [0.4.17] - 2025-12-18
 
 ### Bug Fixes
@@ -126,10 +193,10 @@ All notable changes to Reovim will be documented in this file.
 ### Files Changed
 
 - `lib/core/Cargo.toml` - Added async-trait dependency
-- `lib/core/src/event/input.rs` - Made InputEventBroker generic over KeySource
-- `lib/core/src/lib.rs` - Added io and testing module exports
-- `lib/core/src/runtime/mod.rs` - Added test module export
+- `lib/core/src/lib.rs` - Added io, testing module exports
 - `lib/core/src/runtime/event_loop.rs` - Made handle_event pub(crate)
+- `lib/core/src/event/input.rs` - Made InputEventBroker generic over KeySource
+- `lib/core/src/runtime/mod.rs` - Added test module export
 
 ---
 

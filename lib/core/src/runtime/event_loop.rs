@@ -1,9 +1,11 @@
 //! Main event loop for the editor
 
 use crate::buffer::{Buffer, SelectionOps, TextOps};
+use crate::config::ProfileConfig;
 use crate::event::{
     BufferEvent, CommandHandler, CompletionEvent, CompletionHandler, ExplorerEvent,
-    HighlightEvent, InnerEvent, InputEventBroker, TerminateHandler, TreesitterEvent, WindowEvent,
+    HighlightEvent, InnerEvent, InputEventBroker, SettingsMenuEvent, TerminateHandler,
+    TreesitterEvent, WindowEvent,
 };
 use crate::highlight::{HighlightGroup, Theme};
 use crate::treesitter::TreesitterTheme;
@@ -307,6 +309,9 @@ impl Runtime {
                 self.screen.resize(width, height);
                 self.render();
             }
+            InnerEvent::SettingsMenuEvent(ref settings_event) => {
+                self.handle_settings_menu_event(settings_event);
+            }
         }
         false
     }
@@ -521,6 +526,13 @@ impl Runtime {
                             self.rehighlight_all_buffers();
                             tracing::info!(theme = ?name, "Theme applied via telescope");
                         }
+                        TelescopeData::Profile(name) => {
+                            let name = name.clone();
+                            self.telescope_state.close();
+                            self.set_mode(ModeState::normal());
+                            // Load and apply the profile
+                            self.load_profile(&name);
+                        }
                     }
                 } else {
                     self.telescope_state.close();
@@ -734,6 +746,193 @@ impl Runtime {
                 self.leap_state.reset();
                 self.set_mode(ModeState::normal());
                 self.render();
+            }
+        }
+    }
+
+    /// Handle settings menu events
+    #[allow(clippy::too_many_lines)]
+    fn handle_settings_menu_event(&mut self, event: &SettingsMenuEvent) {
+        match event {
+            SettingsMenuEvent::Open => {
+                // Use current profile or fall back to default
+                let profile = self
+                    .profile_manager
+                    .current_profile()
+                    .cloned()
+                    .unwrap_or_default();
+                self.settings_menu.open(&profile, &self.current_profile_name);
+                let (w, h) = self.screen.size();
+                self.settings_menu.calculate_layout(w, h);
+                self.set_mode(ModeState::settings_menu());
+                self.render();
+            }
+            SettingsMenuEvent::Close => {
+                // If in text input mode, cancel input instead of closing menu
+                if self.settings_menu.is_text_input_mode() {
+                    self.settings_menu.cancel_text_input();
+                } else {
+                    self.settings_menu.close();
+                    self.set_mode(ModeState::normal());
+                }
+                self.render();
+            }
+            SettingsMenuEvent::SelectNext => {
+                self.settings_menu.select_next();
+                self.render();
+            }
+            SettingsMenuEvent::SelectPrev => {
+                self.settings_menu.select_prev();
+                self.render();
+            }
+            SettingsMenuEvent::Toggle => {
+                if self.settings_menu.toggle_selected() {
+                    self.apply_settings_from_menu();
+                }
+                self.render();
+            }
+            SettingsMenuEvent::CycleNext => {
+                if self.settings_menu.cycle_next_selected() {
+                    self.apply_settings_from_menu();
+                }
+                self.render();
+            }
+            SettingsMenuEvent::CyclePrev => {
+                if self.settings_menu.cycle_prev_selected() {
+                    self.apply_settings_from_menu();
+                }
+                self.render();
+            }
+            SettingsMenuEvent::QuickSelect(n) => {
+                if self.settings_menu.quick_select(*n) {
+                    self.apply_settings_from_menu();
+                }
+                self.render();
+            }
+            SettingsMenuEvent::Increment => {
+                if self.settings_menu.increment_selected() {
+                    self.apply_settings_from_menu();
+                }
+                self.render();
+            }
+            SettingsMenuEvent::Decrement => {
+                if self.settings_menu.decrement_selected() {
+                    self.apply_settings_from_menu();
+                }
+                self.render();
+            }
+            SettingsMenuEvent::ExecuteAction => {
+                // If in text input mode, Enter confirms the input
+                if self.settings_menu.is_text_input_mode() {
+                    let profile_name = self.settings_menu.get_input_value().to_string();
+                    let action = self.settings_menu.take_pending_action();
+                    self.settings_menu.cancel_text_input();
+
+                    if action == Some(crate::settings_menu::ActionType::SaveProfile)
+                        && !profile_name.is_empty()
+                    {
+                        self.save_settings_to_disk_with_name(&profile_name);
+                        self.current_profile_name.clone_from(&profile_name);
+                    }
+                } else if let Some(action) = self.settings_menu.get_selected_action() {
+                    match action {
+                        crate::settings_menu::ActionType::SaveProfile => {
+                            // Enter text input mode for profile name
+                            self.settings_menu.enter_text_input(
+                                crate::settings_menu::ActionType::SaveProfile,
+                                "Profile name",
+                                &self.current_profile_name,
+                            );
+                        }
+                        crate::settings_menu::ActionType::LoadProfile => {
+                            // Close settings menu and open telescope profile picker
+                            self.settings_menu.close();
+                            self.set_mode(ModeState::normal());
+                            self.handle_profile_list();
+                        }
+                        crate::settings_menu::ActionType::ResetToDefault => {
+                            // Reset to default profile
+                            let default_profile = ProfileConfig::default();
+                            self.settings_menu
+                                .open(&default_profile, &self.current_profile_name);
+                            let (w, h) = self.screen.size();
+                            self.settings_menu.calculate_layout(w, h);
+                            self.apply_settings_from_menu();
+                        }
+                    }
+                }
+                self.render();
+            }
+            SettingsMenuEvent::InputChar(c) => {
+                self.settings_menu.input_char(*c);
+                self.render();
+            }
+            SettingsMenuEvent::InputBackspace => {
+                self.settings_menu.input_backspace();
+                self.render();
+            }
+            SettingsMenuEvent::InputConfirm => {
+                // Get the input value and pending action before canceling input mode
+                let profile_name = self.settings_menu.get_input_value().to_string();
+                let action = self.settings_menu.take_pending_action();
+                self.settings_menu.cancel_text_input();
+
+                if action == Some(crate::settings_menu::ActionType::SaveProfile)
+                    && !profile_name.is_empty()
+                {
+                    self.save_settings_to_disk_with_name(&profile_name);
+                    // Update current profile name
+                    self.current_profile_name.clone_from(&profile_name);
+                }
+                self.render();
+            }
+            SettingsMenuEvent::InputCancel => {
+                self.settings_menu.cancel_text_input();
+                self.render();
+            }
+        }
+    }
+
+    /// Apply settings from the menu to the runtime (live preview, no disk save)
+    fn apply_settings_from_menu(&mut self) {
+        let profile = self.settings_menu.to_profile_config();
+
+        // Apply theme
+        if let Some(theme_name) = crate::highlight::ThemeName::parse(&profile.editor.theme) {
+            self.theme = Theme::from_name(theme_name);
+            self.treesitter
+                .set_theme(TreesitterTheme::from_theme_name(theme_name));
+            self.rehighlight_all_buffers();
+        }
+
+        // Apply color mode
+        if let Some(mode) = crate::highlight::ColorMode::parse(&profile.editor.colormode) {
+            self.color_mode = mode;
+        }
+
+        // Apply screen settings
+        self.screen.set_number(profile.editor.number);
+        self.screen.set_relative_number(profile.editor.relativenumber);
+        self.screen.set_scrollbar(profile.editor.scrollbar);
+
+        // Apply indent guide setting
+        self.indent_analyzer.set_enabled(profile.editor.indentguide);
+
+        // Store in profile manager (memory only, no disk save)
+        self.profile_manager.set_current_profile(profile);
+    }
+
+    /// Save current settings to disk with a specific profile name
+    fn save_settings_to_disk_with_name(&self, name: &str) {
+        // Get current profile from settings menu state
+        let profile = self.settings_menu.to_profile_config();
+
+        match self.profile_manager.save_profile(name, &profile) {
+            Ok(()) => {
+                tracing::info!(profile = %name, "Settings saved");
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, profile = %name, "Failed to save settings");
             }
         }
     }

@@ -44,11 +44,24 @@ pub enum ExCommand {
     /// Go to previous tab (:tabprev, :tabp)
     TabPrev,
 
+    // Profile management
+    /// Load a profile (:profile load <name>)
+    ProfileLoad { name: String },
+    /// Save current settings as a profile (:profile save <name>)
+    ProfileSave { name: String },
+    /// List available profiles (:profile list)
+    ProfileList,
+
+    // Settings menu
+    /// Open settings menu (:settings)
+    Settings,
+
     Unknown(String),
 }
 
 impl ExCommand {
     #[must_use]
+    #[allow(clippy::too_many_lines)]
     pub fn parse(input: &str) -> Option<Self> {
         let trimmed = input.trim();
         if trimmed.is_empty() {
@@ -139,6 +152,32 @@ impl ExCommand {
             "tabclose" | "tabc" => Some(Self::TabClose),
             "tabnext" | "tabn" => Some(Self::TabNext),
             "tabprev" | "tabp" => Some(Self::TabPrev),
+
+            // Settings menu
+            "settings" => Some(Self::Settings),
+
+            // Profile management
+            "profile list" | "profile ls" => Some(Self::ProfileList),
+            s if s.starts_with("profile load ") => {
+                let name = s[13..].trim();
+                if name.is_empty() {
+                    None
+                } else {
+                    Some(Self::ProfileLoad {
+                        name: name.to_string(),
+                    })
+                }
+            }
+            s if s.starts_with("profile save ") => {
+                let name = s[13..].trim();
+                if name.is_empty() {
+                    None
+                } else {
+                    Some(Self::ProfileSave {
+                        name: name.to_string(),
+                    })
+                }
+            }
 
             _ => Some(Self::Unknown(trimmed.to_string())),
         }

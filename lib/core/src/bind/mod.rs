@@ -144,6 +144,7 @@ pub struct KeyMap {
     pub telescope_normal: HashMap<String, KeyMapInner>,
     pub telescope_insert: HashMap<String, KeyMapInner>,
     pub leap: HashMap<String, KeyMapInner>,
+    pub settings_menu: HashMap<String, KeyMapInner>,
 }
 
 impl KeyMap {
@@ -160,6 +161,7 @@ impl KeyMap {
         Self::setup_telescope_normal_mode(&mut km.telescope_normal);
         Self::setup_telescope_insert_mode(&mut km.telescope_insert);
         Self::setup_leap_mode(&mut km.leap);
+        Self::setup_settings_menu_mode(&mut km.settings_menu);
         km
     }
 
@@ -234,6 +236,7 @@ impl KeyMap {
             (Focus::Explorer, EditMode::Insert(_)) => &self.explorer_input,
             (Focus::Telescope, EditMode::Normal | EditMode::Visual(_)) => &self.telescope_normal,
             (Focus::Telescope, EditMode::Insert(_)) => &self.telescope_insert,
+            (Focus::SettingsMenu, _) => &self.settings_menu,
         }
     }
 
@@ -351,6 +354,7 @@ impl KeyMap {
             " e".to_string(),
             KeyMapInner::with_inline_command(Arc::new(ToggleExplorerCommand)),
         );
+        keymap.insert(" s".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_OPEN));
 
         // Telescope bindings (Space + f prefix)
         keymap.insert(" f".to_string(), KeyMapInner::new()); // prefix, no command
@@ -546,5 +550,42 @@ impl KeyMap {
         keymap.insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::LEAP_CANCEL));
         // All other keys (characters for search pattern or label selection) are handled
         // directly in CommandHandler without going through keymap
+    }
+
+    fn setup_settings_menu_mode(keymap: &mut HashMap<String, KeyMapInner>) {
+        // Navigation
+        keymap.insert("j".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_NEXT));
+        keymap.insert("k".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_PREV));
+        keymap.insert("Down".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_NEXT));
+        keymap.insert("Up".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_PREV));
+
+        // Toggle/Cycle
+        keymap.insert(" ".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_TOGGLE));
+        keymap.insert("l".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_CYCLE_NEXT));
+        keymap.insert("h".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_CYCLE_PREV));
+        keymap.insert("Right".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_CYCLE_NEXT));
+        keymap.insert("Left".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_CYCLE_PREV));
+
+        // Number increment/decrement
+        keymap.insert("+".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_INCREMENT));
+        keymap.insert("-".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_DECREMENT));
+
+        // Action/Confirm
+        keymap.insert("Enter".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_EXECUTE));
+
+        // Close
+        keymap.insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_CLOSE));
+        keymap.insert("q".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_CLOSE));
+
+        // Quick select (1-9)
+        keymap.insert("1".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_1));
+        keymap.insert("2".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_2));
+        keymap.insert("3".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_3));
+        keymap.insert("4".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_4));
+        keymap.insert("5".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_5));
+        keymap.insert("6".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_6));
+        keymap.insert("7".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_7));
+        keymap.insert("8".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_8));
+        keymap.insert("9".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_9));
     }
 }

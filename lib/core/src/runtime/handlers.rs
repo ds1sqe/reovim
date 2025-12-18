@@ -7,8 +7,8 @@ use crate::buffer::TextOps;
 use crate::command::{
     traits::{
         CommandLineAction, CommandResult, CompletionAction, DeferredAction, ExecutionContext,
-        ExplorerAction, FoldAction, LeapAction, OperatorMotionAction, TabAction, TelescopeAction,
-        WindowAction,
+        ExplorerAction, FoldAction, LeapAction, OperatorMotionAction, SettingsMenuAction,
+        TabAction, TelescopeAction, WindowAction,
     },
     CommandTrait,
 };
@@ -287,6 +287,29 @@ impl Runtime {
                         ExCommand::TabPrev => {
                             self.handle_tab_prev();
                         }
+                        // Profile management
+                        ExCommand::ProfileLoad { name } => {
+                            if self.load_profile(&name) {
+                                tracing::info!(profile = %name, "Profile loaded");
+                            }
+                        }
+                        ExCommand::ProfileSave { name } => {
+                            if self.save_current_as_profile(&name) {
+                                tracing::info!(profile = %name, "Profile saved");
+                            }
+                        }
+                        ExCommand::ProfileList => {
+                            // Open telescope with profiles picker
+                            self.handle_profile_list();
+                        }
+                        ExCommand::Settings => {
+                            // Open settings menu via event
+                            use crate::event::{InnerEvent, SettingsMenuEvent};
+                            let tx = self.tx.clone();
+                            tokio::spawn(async move {
+                                let _ = tx.send(InnerEvent::SettingsMenuEvent(SettingsMenuEvent::Open)).await;
+                            });
+                        }
                         ExCommand::Unknown(cmd) => {
                             tracing::warn!(command = %cmd, "Unknown ex-command");
                         }
@@ -442,6 +465,9 @@ impl Runtime {
                             if self.handle_tab_action(action) {
                                 return true;
                             }
+                        }
+                        DeferredAction::SettingsMenu(ref action) => {
+                            self.handle_settings_menu_action(action);
                         }
                     }
                 }
@@ -1124,5 +1150,52 @@ impl Runtime {
     /// Handle previous tab command (gT)
     pub(crate) fn handle_tab_prev(&mut self) {
         self.screen.prev_tab();
+    }
+
+    // ========================================================================
+    // Profile Management
+    // ========================================================================
+
+    /// Handle :profile list command - opens telescope profiles picker
+    pub(crate) fn handle_profile_list(&self) {
+        use crate::event::{InnerEvent, TelescopeEvent};
+
+        // Open telescope with profiles picker
+        let tx = self.tx.clone();
+        tokio::spawn(async move {
+            let _ = tx
+                .send(InnerEvent::TelescopeEvent(TelescopeEvent::Open {
+                    picker: "profiles".to_string(),
+                }))
+                .await;
+        });
+    }
+
+    // ========================================================================
+    // Settings Menu Handlers
+    // ========================================================================
+
+    /// Handle settings menu actions from deferred commands
+    pub(crate) fn handle_settings_menu_action(&self, action: &SettingsMenuAction) {
+        use crate::event::{InnerEvent, SettingsMenuEvent};
+
+        let event = match *action {
+            SettingsMenuAction::Open => SettingsMenuEvent::Open,
+            SettingsMenuAction::Close => SettingsMenuEvent::Close,
+            SettingsMenuAction::SelectNext => SettingsMenuEvent::SelectNext,
+            SettingsMenuAction::SelectPrev => SettingsMenuEvent::SelectPrev,
+            SettingsMenuAction::Toggle => SettingsMenuEvent::Toggle,
+            SettingsMenuAction::CycleNext => SettingsMenuEvent::CycleNext,
+            SettingsMenuAction::CyclePrev => SettingsMenuEvent::CyclePrev,
+            SettingsMenuAction::QuickSelect(n) => SettingsMenuEvent::QuickSelect(n),
+            SettingsMenuAction::Increment => SettingsMenuEvent::Increment,
+            SettingsMenuAction::Decrement => SettingsMenuEvent::Decrement,
+            SettingsMenuAction::ExecuteAction => SettingsMenuEvent::ExecuteAction,
+        };
+
+        let tx = self.tx.clone();
+        tokio::spawn(async move {
+            let _ = tx.send(InnerEvent::SettingsMenuEvent(event)).await;
+        });
     }
 }

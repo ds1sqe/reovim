@@ -29,6 +29,8 @@ pub enum InnerEvent {
     LeapEvent(LeapEvent),
     /// Treesitter-related events for incremental parsing
     TreesitterEvent(TreesitterEvent),
+    /// Settings menu events
+    SettingsMenuEvent(SettingsMenuEvent),
     RenderSignal,
     KillSignal,
     /// Show the which-key popup with available bindings
@@ -217,4 +219,39 @@ pub enum VisualTextObjectAction {
     SelectWord { text_object: WordTextObject },
     /// Select semantic text object (vif, vac, etc.) - uses treesitter
     SelectSemantic { text_object: SemanticTextObjectSpec },
+}
+
+/// Settings menu events for the TUI settings panel
+#[derive(Debug, Clone)]
+pub enum SettingsMenuEvent {
+    /// Open the settings menu
+    Open,
+    /// Close the settings menu
+    Close,
+    /// Navigate to next item
+    SelectNext,
+    /// Navigate to previous item
+    SelectPrev,
+    /// Toggle boolean setting (Space key)
+    Toggle,
+    /// Cycle to next choice option (l key)
+    CycleNext,
+    /// Cycle to previous choice option (h key)
+    CyclePrev,
+    /// Quick select a choice by index (1-9 keys)
+    QuickSelect(u8),
+    /// Increment number value (+ key)
+    Increment,
+    /// Decrement number value (- key)
+    Decrement,
+    /// Execute action item (Enter key)
+    ExecuteAction,
+    /// Input a character in text input mode
+    InputChar(char),
+    /// Delete character in text input mode (Backspace)
+    InputBackspace,
+    /// Confirm text input
+    InputConfirm,
+    /// Cancel text input (Escape in input mode)
+    InputCancel,
 }

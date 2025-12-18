@@ -54,6 +54,34 @@ pub enum DeferredAction {
     Leap(LeapAction),
     Window(WindowAction),
     Tab(TabAction),
+    SettingsMenu(SettingsMenuAction),
+}
+
+/// Settings menu actions
+#[derive(Debug)]
+pub enum SettingsMenuAction {
+    /// Open the settings menu
+    Open,
+    /// Close the settings menu
+    Close,
+    /// Navigate to next item
+    SelectNext,
+    /// Navigate to previous item
+    SelectPrev,
+    /// Toggle boolean value
+    Toggle,
+    /// Cycle to next choice
+    CycleNext,
+    /// Cycle to previous choice
+    CyclePrev,
+    /// Quick select by number
+    QuickSelect(u8),
+    /// Increment number value
+    Increment,
+    /// Decrement number value
+    Decrement,
+    /// Execute action item
+    ExecuteAction,
 }
 
 #[derive(Debug)]

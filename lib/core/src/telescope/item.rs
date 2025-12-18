@@ -30,6 +30,8 @@ pub enum TelescopeData {
     },
     /// A theme/colorscheme to apply
     Theme(ThemeName),
+    /// A configuration profile to load
+    Profile(String),
 }
 
 /// Represents a single item in the telescope results list

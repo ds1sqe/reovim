@@ -201,6 +201,12 @@ impl Screen {
         self.size.height
     }
 
+    /// Get screen dimensions as (width, height) tuple
+    #[must_use]
+    pub const fn size(&self) -> (u16, u16) {
+        (self.size.width, self.size.height)
+    }
+
     /// Update screen dimensions on terminal resize
     pub fn resize(&mut self, width: u16, height: u16) {
         let editor_height = height.saturating_sub(1); // Reserve status line
@@ -249,6 +255,7 @@ impl Screen {
         leap_state: &LeapState,
         fold_manager: &FoldManager,
         indent_analyzer: &IndentAnalyzer,
+        settings_menu: &crate::settings_menu::SettingsMenuState,
     ) -> std::result::Result<(), std::io::Error> {
         // Reset all styling before clearing
         queue!(self.out_stream, Print(RESET_STYLE))?;
@@ -380,6 +387,20 @@ impl Screen {
                 queue!(self.out_stream, MoveTo(x, y))?;
                 queue!(self.out_stream, Print(line))?;
             }
+        }
+
+        // Render settings menu overlay (centered popup when active)
+        if settings_menu.visible {
+            let menu_lines = settings_menu.render(theme, color_mode);
+            for (line, x, y) in menu_lines {
+                queue!(self.out_stream, MoveTo(x, y))?;
+                queue!(self.out_stream, Print(line))?;
+            }
+            // Position cursor at selected item
+            let cursor_y = settings_menu.layout.y + 2 + settings_menu.selected_index.saturating_sub(settings_menu.scroll_offset) as u16;
+            let cursor_x = settings_menu.layout.x + 2;
+            queue!(self.out_stream, MoveTo(cursor_x, cursor_y))?;
+            return Ok(());
         }
 
         // Render telescope overlay (takes over entire screen when active)

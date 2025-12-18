@@ -20,6 +20,10 @@ tokio.workspace = true
 tracing.workspace = true
 arboard = "3"
 
+# Config system
+toml = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+
 # Telescope (fuzzy finder)
 nucleo = "0.5"
 ignore = "0.4"

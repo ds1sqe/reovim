@@ -11,6 +11,7 @@ pub mod files;
 pub mod grep;
 pub mod help;
 pub mod keymaps;
+pub mod profiles;
 pub mod recent;
 pub mod themes;
 
@@ -20,6 +21,7 @@ pub use files::FilesPicker;
 pub use grep::GrepPicker;
 pub use help::HelpPicker;
 pub use keymaps::KeymapsPicker;
+pub use profiles::ProfilesPicker;
 pub use recent::RecentPicker;
 pub use themes::ThemesPicker;
 
@@ -73,6 +75,8 @@ pub enum TelescopeAction {
     ShowHelp(String),
     /// Apply a theme/colorscheme
     ApplyTheme(ThemeName),
+    /// Switch to a configuration profile
+    SwitchProfile(String),
     /// Close telescope without action
     Close,
     /// Do nothing

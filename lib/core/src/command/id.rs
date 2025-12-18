@@ -209,4 +209,25 @@ pub mod builtin {
     pub const TAB_CLOSE: CommandId = CommandId::new("tab_close");
     pub const TAB_NEXT: CommandId = CommandId::new("tab_next");
     pub const TAB_PREV: CommandId = CommandId::new("tab_prev");
+
+    // === Settings Menu ===
+    pub const SETTINGS_MENU_OPEN: CommandId = CommandId::new("settings_menu_open");
+    pub const SETTINGS_MENU_CLOSE: CommandId = CommandId::new("settings_menu_close");
+    pub const SETTINGS_MENU_NEXT: CommandId = CommandId::new("settings_menu_next");
+    pub const SETTINGS_MENU_PREV: CommandId = CommandId::new("settings_menu_prev");
+    pub const SETTINGS_MENU_TOGGLE: CommandId = CommandId::new("settings_menu_toggle");
+    pub const SETTINGS_MENU_CYCLE_NEXT: CommandId = CommandId::new("settings_menu_cycle_next");
+    pub const SETTINGS_MENU_CYCLE_PREV: CommandId = CommandId::new("settings_menu_cycle_prev");
+    pub const SETTINGS_MENU_INCREMENT: CommandId = CommandId::new("settings_menu_increment");
+    pub const SETTINGS_MENU_DECREMENT: CommandId = CommandId::new("settings_menu_decrement");
+    pub const SETTINGS_MENU_EXECUTE: CommandId = CommandId::new("settings_menu_execute");
+    pub const SETTINGS_MENU_QUICK_1: CommandId = CommandId::new("settings_menu_quick_1");
+    pub const SETTINGS_MENU_QUICK_2: CommandId = CommandId::new("settings_menu_quick_2");
+    pub const SETTINGS_MENU_QUICK_3: CommandId = CommandId::new("settings_menu_quick_3");
+    pub const SETTINGS_MENU_QUICK_4: CommandId = CommandId::new("settings_menu_quick_4");
+    pub const SETTINGS_MENU_QUICK_5: CommandId = CommandId::new("settings_menu_quick_5");
+    pub const SETTINGS_MENU_QUICK_6: CommandId = CommandId::new("settings_menu_quick_6");
+    pub const SETTINGS_MENU_QUICK_7: CommandId = CommandId::new("settings_menu_quick_7");
+    pub const SETTINGS_MENU_QUICK_8: CommandId = CommandId::new("settings_menu_quick_8");
+    pub const SETTINGS_MENU_QUICK_9: CommandId = CommandId::new("settings_menu_quick_9");
 }
