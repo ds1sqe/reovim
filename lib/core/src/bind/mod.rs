@@ -451,9 +451,21 @@ impl KeyMap {
         keymap.insert("C".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CLEAR_FILTER));
 
         // Window control
-        keymap.insert("q".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CLOSE));
         keymap.insert("Tab".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_FOCUS_EDITOR));
         keymap.insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_FOCUS_EDITOR));
+
+        // Window navigation (C-hjkl)
+        keymap.insert("<C-h>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_LEFT));
+        keymap.insert("<C-j>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_DOWN));
+        keymap.insert("<C-k>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_UP));
+        keymap.insert("<C-l>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_RIGHT));
+
+        // Space (leader) bindings
+        keymap.insert(" ".to_string(), KeyMapInner::new()); // prefix
+        keymap.insert(
+            " e".to_string(),
+            KeyMapInner::with_inline_command(Arc::new(ToggleExplorerCommand)),
+        );
     }
 
     fn setup_explorer_input_mode(keymap: &mut HashMap<String, KeyMapInner>) {

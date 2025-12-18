@@ -431,6 +431,7 @@ impl Runtime {
                             if self.handle_window_action(action) {
                                 return true;
                             }
+                            self.sync_mode_with_screen_focus();
                         }
                         DeferredAction::Tab(ref action) => {
                             if self.handle_tab_action(action) {
@@ -1002,6 +1003,23 @@ impl Runtime {
     }
 
     // === Window Management Handlers ===
+
+    /// Synchronize mode state with screen focus
+    ///
+    /// The screen is the source of truth for focus (explorer vs editor).
+    /// This method updates the mode state to match.
+    pub(crate) fn sync_mode_with_screen_focus(&mut self) {
+        use crate::modd::Focus;
+
+        let screen_has_explorer_focus = self.screen.is_explorer_focused();
+        let mode_has_explorer_focus = self.mode_state.focus == Focus::Explorer;
+
+        if screen_has_explorer_focus && !mode_has_explorer_focus {
+            self.set_mode(ModeState::explorer());
+        } else if !screen_has_explorer_focus && mode_has_explorer_focus {
+            self.set_mode(ModeState::normal());
+        }
+    }
 
     /// Handle window-related deferred actions. Returns true if editor should quit.
     pub(crate) fn handle_window_action(&mut self, action: &WindowAction) -> bool {

@@ -2,6 +2,33 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.4.12] - 2025-12-18
+
+### Bug Fixes
+
+- **Fixed window navigation commands not working** - Window and tab commands were defined but never registered in CommandRegistry
+- **Fixed C-hjkl not working in explorer mode** - Added window navigation keybindings to explorer mode
+- **Fixed mode not syncing when navigating between explorer and editor** - Screen is now source of truth for focus, mode syncs after window actions
+
+### Features
+
+- **Added Space e toggle to explorer mode** - Can now toggle explorer from within explorer
+- **Explorer included in window navigation** - C-l from explorer moves to editor, C-h from editor moves to explorer
+
+### Removed
+
+- Removed `q` binding from explorer (use C-l or Escape instead)
+
+### Files Changed
+
+- `lib/core/src/command/registry.rs` - Register window/tab commands
+- `lib/core/src/bind/mod.rs` - Add explorer keybindings (C-hjkl, Space e)
+- `lib/core/src/runtime/handlers.rs` - Add sync_mode_with_screen_focus()
+- `lib/core/src/screen/mod.rs` - navigate_window() includes explorer as virtual window
+- `lib/core/src/screen/split.rs` - Add EXPLORER_WINDOW_ID constant
+
+---
+
 ## [0.4.11] - 2025-12-18
 
 ### Refactoring

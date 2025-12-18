@@ -159,6 +159,14 @@ impl CommandRegistry {
             // Visual
             VisualDeleteCommand, VisualExtendDownCommand, VisualExtendLeftCommand,
             VisualExtendRightCommand, VisualExtendUpCommand, VisualYankCommand,
+            // Window
+            WindowCloseCommand, WindowEqualizeCommand, WindowFocusDownCommand,
+            WindowFocusLeftCommand, WindowFocusRightCommand, WindowFocusUpCommand,
+            WindowMoveDownCommand, WindowMoveLeftCommand, WindowMoveRightCommand,
+            WindowMoveUpCommand, WindowOnlyCommand, WindowSplitHorizontalCommand,
+            WindowSplitVerticalCommand,
+            // Tab
+            TabCloseCommand, TabNewCommand, TabNextCommand, TabPrevCommand,
         };
 
         // Cursor movement commands
@@ -289,6 +297,27 @@ impl CommandRegistry {
         let _ = self.register(FoldCloseCommand);
         let _ = self.register(FoldOpenAllCommand);
         let _ = self.register(FoldCloseAllCommand);
+
+        // Window commands
+        let _ = self.register(WindowFocusLeftCommand);
+        let _ = self.register(WindowFocusDownCommand);
+        let _ = self.register(WindowFocusUpCommand);
+        let _ = self.register(WindowFocusRightCommand);
+        let _ = self.register(WindowMoveLeftCommand);
+        let _ = self.register(WindowMoveDownCommand);
+        let _ = self.register(WindowMoveUpCommand);
+        let _ = self.register(WindowMoveRightCommand);
+        let _ = self.register(WindowSplitHorizontalCommand);
+        let _ = self.register(WindowSplitVerticalCommand);
+        let _ = self.register(WindowCloseCommand);
+        let _ = self.register(WindowOnlyCommand);
+        let _ = self.register(WindowEqualizeCommand);
+
+        // Tab commands
+        let _ = self.register(TabNewCommand);
+        let _ = self.register(TabCloseCommand);
+        let _ = self.register(TabNextCommand);
+        let _ = self.register(TabPrevCommand);
     }
 }
 

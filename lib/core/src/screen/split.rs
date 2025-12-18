@@ -1,5 +1,8 @@
 //! Binary split tree for window layout management
 
+/// Special window ID for the explorer sidebar
+pub const EXPLORER_WINDOW_ID: usize = usize::MAX;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SplitDirection {
     Horizontal,

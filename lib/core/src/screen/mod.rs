@@ -845,8 +845,11 @@ impl Screen {
         }
     }
 
-    /// Navigate focus to an adjacent window
-    pub fn navigate_window(&mut self, direction: NavigateDirection) {
+    /// Navigate focus to an adjacent window (including explorer as a window)
+    ///
+    /// Returns `Some(true)` if focus moved to explorer, `Some(false)` if moved from explorer to editor,
+    /// `None` if navigation stayed within editor windows.
+    pub fn navigate_window(&mut self, direction: NavigateDirection) -> Option<bool> {
         // Calculate layouts for navigation
         if let Some(tab) = self.tab_manager.active_tab() {
             let editor_layout = self.layout.editor_layout();
@@ -856,13 +859,49 @@ impl Screen {
                 editor_layout.width,
                 editor_layout.height,
             );
-            let layouts = tab.calculate_layouts(editor_rect);
+            let mut layouts = tab.calculate_layouts(editor_rect);
 
-            // Navigate in the active tab
-            if let Some(tab_mut) = self.tab_manager.active_tab_mut() {
-                tab_mut.navigate(direction, &layouts);
+            // Include explorer as a window in navigation if visible
+            if let Some(exp_layout) = self.layout.explorer_layout() {
+                layouts.push(split::WindowLayout {
+                    window_id: split::EXPLORER_WINDOW_ID,
+                    rect: WindowRect::new(
+                        exp_layout.anchor.x,
+                        exp_layout.anchor.y,
+                        exp_layout.width,
+                        exp_layout.height,
+                    ),
+                });
+            }
+
+            // Determine current window ID (explorer or editor window)
+            let current_id = if self.layout.is_explorer_focused() {
+                split::EXPLORER_WINDOW_ID
+            } else {
+                tab.active_window_id
+            };
+
+            // Find adjacent window
+            if let Some(next_id) = split::find_adjacent_window(current_id, direction, &layouts) {
+                if next_id == split::EXPLORER_WINDOW_ID {
+                    // Moving to explorer
+                    self.focus_explorer();
+                    return Some(true);
+                } else if current_id == split::EXPLORER_WINDOW_ID {
+                    // Moving from explorer to editor window
+                    self.focus_editor();
+                    if let Some(tab_mut) = self.tab_manager.active_tab_mut() {
+                        tab_mut.active_window_id = next_id;
+                    }
+                    return Some(false);
+                }
+                // Moving between editor windows
+                if let Some(tab_mut) = self.tab_manager.active_tab_mut() {
+                    tab_mut.active_window_id = next_id;
+                }
             }
         }
+        None
     }
 
     /// Equalize window sizes
