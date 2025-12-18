@@ -2,14 +2,18 @@
 //!
 //! Reads Criterion benchmark results and generates/updates PERF-{version}.md files.
 
-use chrono::{DateTime, Utc};
-use clap::{Parser, Subcommand};
-use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
-use walkdir::WalkDir;
+use {
+    chrono::{DateTime, Utc},
+    clap::{Parser, Subcommand},
+    serde::{Deserialize, Serialize},
+    std::{
+        collections::BTreeMap,
+        fs,
+        path::{Path, PathBuf},
+        process::Command,
+    },
+    walkdir::WalkDir,
+};
 
 /// Performance report generator for reovim benchmarks
 #[derive(Parser)]
@@ -265,11 +269,7 @@ fn generate_report(
     // Group results by category
     let mut categories: BTreeMap<String, Vec<(&String, &BenchResult)>> = BTreeMap::new();
     for (name, result) in results {
-        let category = name
-            .split('/')
-            .next()
-            .unwrap_or("other")
-            .to_string();
+        let category = name.split('/').next().unwrap_or("other").to_string();
         categories.entry(category).or_default().push((name, result));
     }
 
@@ -279,14 +279,11 @@ fn generate_report(
     report.push_str("|----------|------------|----------|\n");
     for (category, benches) in &categories {
         let avg: f64 = benches.iter().map(|(_, r)| r.mean).sum::<f64>() / benches.len() as f64;
-        let unit = benches.first().map(|(_, r)| r.unit.as_str()).unwrap_or("µs");
-        report.push_str(&format!(
-            "| {} | {} | {:.2} {} |\n",
-            category,
-            benches.len(),
-            avg,
-            unit
-        ));
+        let unit = benches
+            .first()
+            .map(|(_, r)| r.unit.as_str())
+            .unwrap_or("µs");
+        report.push_str(&format!("| {} | {} | {:.2} {} |\n", category, benches.len(), avg, unit));
     }
     report.push('\n');
 
@@ -391,10 +388,7 @@ fn cmd_list(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Benchmark Results ({} total):\n", results.len());
     for (name, result) in &results {
-        println!(
-            "  {}: {:.2} {} (±{:.2})",
-            name, result.mean, result.unit, result.std_dev
-        );
+        println!("  {}: {:.2} {} (±{:.2})", name, result.mean, result.unit, result.std_dev);
     }
     Ok(())
 }
@@ -411,10 +405,7 @@ fn cmd_check(cli: &Cli, fail_on_regression: bool) -> Result<(), Box<dyn std::err
     // For now, just print results
     println!("Current benchmark results:");
     for (name, result) in &results {
-        println!(
-            "  {}: {:.2} {} (±{:.2})",
-            name, result.mean, result.unit, result.std_dev
-        );
+        println!("  {}: {:.2} {} (±{:.2})", name, result.mean, result.unit, result.std_dev);
     }
 
     if fail_on_regression {

@@ -40,19 +40,26 @@ lib/core/src/
 
 ## Integration Testing
 
-Reovim includes an end-to-end integration test system that verifies key input → expected output behavior without requiring a real terminal.
+Reovim includes an end-to-end integration test system that uses the server mode (`--server --test`) to verify key input → expected output behavior by spawning a real server process.
 
 ### Architecture
 
 ```
-TestRuntime
-├── MockKeySource (injected key events)
-├── MockOutput (captured screen output)
-└── Runtime (full editor runtime)
-         ↓
-    KeyEventBroker → CommandHandler → Runtime → Screen → MockOutput
-         ↑                                              ↓
-    MockKeySource                              Assertions on TestResult
+ServerTestHarness
+├── Spawns: reovim --server --test --listen-tcp <port>
+├── TestClient (TCP connection via JSON-RPC)
+└── Auto-cleanup on Drop
+
+Test Flow:
+┌─────────────┐     JSON-RPC      ┌─────────────────────────┐
+│ TestClient  │ ────────────────→ │ reovim --server --test  │
+│             │                   │                         │
+│ keys()      │  input/keys       │  ChannelKeySource       │
+│ mode()      │  state/mode       │  Runtime                │
+│ cursor()    │  state/cursor     │  Buffer, Screen         │
+│ buffer()    │  buffer/content   │                         │
+└─────────────┘ ←──────────────── └─────────────────────────┘
+                   Response
 ```
 
 ### Running Integration Tests
@@ -68,6 +75,8 @@ cargo test -p reovim-core --test basic_editing
 cargo test -p reovim-core --test mode_switching test_visual_mode
 ```
 
+**Note:** Integration tests require the release binary. Run `cargo build --release` before running integration tests.
+
 ### Writing Integration Tests
 
 #### Basic Structure
@@ -78,21 +87,19 @@ use common::*;
 
 #[tokio::test]
 async fn test_example() {
-    let rt = TestRuntime::builder()
-        .with_size(80, 24)           // Screen dimensions
-        .with_content("hello")       // Initial buffer content
-        .with_keys(keys_from_str("jj")) // Key sequence
-        .with_timeout_ms(5000)       // Test timeout
-        .build();
+    let result = ServerTest::new()
+        .await
+        .with_content("hello\nworld")  // Initial buffer content
+        .with_keys("jj")               // Key sequence (vim notation)
+        .run()
+        .await;
 
-    let result = rt.run().await;
-
-    result.assert_no_timeout();
     result.assert_cursor(0, 2);
+    result.assert_normal_mode();
 }
 ```
 
-#### Key Notation (`keys_from_str`)
+#### Key Notation
 
 | Notation | Key Event |
 |----------|-----------|
@@ -110,39 +117,38 @@ async fn test_example() {
 
 **Examples:**
 ```rust
-keys_from_str("ihello<Esc>")    // Enter insert, type "hello", escape
-keys_from_str(":wq<CR>")        // Command mode, type "wq", enter
-keys_from_str("<C-d>")          // Ctrl+D
-keys_from_str("5j")             // Move down 5 lines
-keys_from_str("daw")            // Delete a word
+.with_keys("ihello<Esc>")    // Enter insert, type "hello", escape
+.with_keys(":wq<CR>")        // Command mode, type "wq", enter
+.with_keys("<C-d>")          // Ctrl+D
+.with_keys("5j")             // Move down 5 lines
+.with_keys("daw")            // Delete a word
 ```
 
-#### TestResult Assertions
+#### ServerTestResult Assertions
 
 | Method | Description |
 |--------|-------------|
-| `assert_no_timeout()` | Test completed without timeout |
 | `assert_normal_mode()` | Editor is in normal mode |
 | `assert_insert_mode()` | Editor is in insert mode |
-| `assert_mode(&ModeState)` | Check specific mode state |
+| `assert_visual_mode()` | Editor is in visual mode |
+| `assert_command_mode()` | Editor is in command mode |
 | `assert_cursor(x, y)` | Cursor at position |
 | `assert_buffer_contains("text")` | Buffer contains substring |
 | `assert_buffer_eq("text")` | Buffer equals exactly |
-| `assert_output_contains("text")` | Screen output contains (ANSI stripped) |
 
-#### Accessing TestResult Fields
+#### Accessing ServerTestResult Fields
 
 ```rust
-let result = rt.run().await;
+let result = ServerTest::new()
+    .await
+    .with_keys("ihello<Esc>")
+    .run()
+    .await;
 
 // Direct field access
 println!("Mode: {:?}", result.mode);
 println!("Buffer: {}", result.buffer_content);
-println!("Cursor: {:?}", result.cursor_position);
-println!("Timed out: {}", result.timed_out);
-
-// Screen output (with ANSI stripped)
-let screen_text = result.output.strip_ansi();
+println!("Cursor: {:?}", result.cursor);
 ```
 
 ### Integration Test Organization
@@ -150,35 +156,74 @@ let screen_text = result.output.strip_ansi();
 ```
 lib/core/tests/
 ├── common/
-│   └── mod.rs              # Shared utilities (standard_runtime, etc.)
+│   └── mod.rs              # Re-exports ServerTest
 ├── basic_editing.rs        # Insert, delete, cursor movement
-└── mode_switching.rs       # Mode transitions (i, a, v, :, Esc)
+├── mode_switching.rs       # Mode transitions (i, a, v, :, Esc)
+└── resize.rs               # Layout and explorer resize tests
 ```
 
-### Shared Test Utilities (`common/mod.rs`)
+### Test Harness Components
+
+#### ServerTestHarness (`lib/core/src/testing/server.rs`)
+
+Spawns and manages a reovim server process:
 
 ```rust
-pub use reovim_core::runtime::test::{TestRuntime, TestRuntimeBuilder};
-pub use reovim_core::testing::keys_from_str;
+// Automatically spawns server on unique port (12600-12699)
+let harness = ServerTestHarness::spawn().await?;
 
-/// Standard 80x24 runtime with default settings.
-pub fn standard_runtime() -> TestRuntimeBuilder {
-    TestRuntime::builder().with_size(80, 24)
-}
+// Get a connected client
+let client = harness.client().await?;
 
-/// Runtime with initial buffer content.
-pub fn runtime_with_content(content: &str) -> TestRuntimeBuilder {
-    standard_runtime().with_content(content)
-}
+// Server is killed when harness is dropped
+```
+
+#### TestClient (`lib/core/src/testing/client.rs`)
+
+JSON-RPC client for testing:
+
+```rust
+let mut client = TestClient::connect("127.0.0.1", port).await?;
+
+client.keys("ihello<Esc>").await?;   // Inject keys
+let mode = client.mode().await?;      // Get mode
+let cursor = client.cursor().await?;  // Get cursor (x, y)
+let content = client.buffer_content().await?;  // Get buffer
+client.set_buffer_content("text").await?;      // Set buffer
+client.resize(100, 40).await?;        // Resize editor
+client.kill().await?;                 // Kill server
+```
+
+#### ServerTest (`lib/core/src/testing/assertions.rs`)
+
+Fluent builder for tests:
+
+```rust
+ServerTest::new()
+    .await
+    .with_content("initial text")  // Optional: set initial buffer
+    .with_keys("dd")               // Optional: inject keys (can chain)
+    .with_keys("p")
+    .run()
+    .await
 ```
 
 ### Best Practices
 
-1. **Use `assert_no_timeout()` first** - Ensures test completed before checking state
+1. **Build release first** - Tests spawn `./target/release/reovim`
 2. **Keep key sequences short** - Long sequences are harder to debug
 3. **Test one behavior per test** - Makes failures easier to diagnose
-4. **Use `runtime_with_content()` for cursor tests** - Need text to move through
-5. **Avoid timing-dependent assertions** - Use mode/buffer state, not output timing
+4. **Use `with_content()` for cursor tests** - Need text to move through
+5. **Tests run in parallel** - Each spawns its own server on a unique port
+
+### How It Works
+
+1. `ServerTest::new()` spawns `reovim --server --test --listen-tcp <port>`
+2. Server runs in headless mode with JSON-RPC interface
+3. `TestClient` connects via TCP and sends commands
+4. Keys are injected with 1ms delay between each (for mode propagation)
+5. After keys, 50ms delay allows processing before querying state
+6. Server auto-exits when client disconnects (test mode)
 
 ## Current Test Coverage
 
@@ -195,8 +240,11 @@ pub fn runtime_with_content(content: &str) -> TestRuntimeBuilder {
 | `telescope` | Item, matcher, state | 11 |
 | `types` | Core data types | 4 |
 | `folding` | Fold state, toggle, markers | 4 |
+| `rpc` | Server config, transport, types | 15 |
+| `testing` | Key parsing, port allocation | 10 |
 
-**Total: 133 tests**
+**Unit Tests: 213**
+**Integration Tests: 23** (basic_editing: 10, mode_switching: 8, resize: 5)
 
 ## Writing Tests
 
@@ -356,9 +404,10 @@ lib/core/benches/
 Before submitting a PR:
 
 ```bash
-cargo test           # All tests must pass
-cargo clippy         # No warnings allowed
-cargo fmt -- --check # Code must be formatted
+cargo build --release  # Required for integration tests
+cargo test             # All tests must pass
+cargo clippy           # No warnings allowed
+cargo fmt -- --check   # Code must be formatted
 ```
 
 ## Related Documentation

@@ -19,21 +19,8 @@ mod text;
 mod visual;
 mod window;
 
-pub use clipboard::*;
-pub use command_line::*;
-pub use completion::*;
-pub use cursor::*;
-pub use explorer::*;
-pub use fold::*;
-pub use history::*;
-pub use jump::*;
-pub use leap::*;
-pub use mode::*;
-pub use operator::*;
-pub use settings_menu::*;
-pub use system::*;
-pub use tab::*;
-pub use telescope::*;
-pub use text::*;
-pub use visual::*;
-pub use window::*;
+pub use {
+    clipboard::*, command_line::*, completion::*, cursor::*, explorer::*, fold::*, history::*,
+    jump::*, leap::*, mode::*, operator::*, settings_menu::*, system::*, tab::*, telescope::*,
+    text::*, visual::*, window::*,
+};

@@ -1,23 +1,31 @@
 //! RTT (Round-Trip Time) benchmarks - Real-world latency measurements
 
-use criterion::{black_box, Criterion};
-use reovim_core::buffer::TextOps;
-use reovim_core::{
-    command_line::CommandLine,
-    completion::CompletionState,
-    explorer::ExplorerState,
-    folding::FoldManager,
-    highlight::{ColorMode, HighlightStore, Theme},
-    leap::LeapState,
-    modd::ModeState,
-    screen::{Screen, WhichKeyPanel},
-    telescope::TelescopeState,
-};
-use std::io::BufWriter;
-use std::path::PathBuf;
-use tempfile::NamedTempFile;
+#![allow(clippy::semicolon_if_nothing_returned)]
+#![allow(clippy::too_many_lines)]
+#![allow(clippy::cast_possible_truncation)]
 
-use super::common::{buffer_to_map, create_buffer, MockWriter};
+use std::{hint::black_box, io::BufWriter, path::PathBuf};
+
+use {
+    criterion::Criterion,
+    reovim_core::{
+        buffer::TextOps,
+        command_line::CommandLine,
+        completion::CompletionState,
+        explorer::ExplorerState,
+        folding::FoldManager,
+        highlight::{ColorMode, HighlightStore, Theme},
+        indent::IndentAnalyzer,
+        leap::LeapState,
+        modd::ModeState,
+        screen::{Screen, WhichKeyPanel},
+        settings_menu::SettingsMenuState,
+        telescope::TelescopeState,
+    },
+    tempfile::NamedTempFile,
+};
+
+use super::common::{MockWriter, buffer_to_map, create_buffer};
 
 /// Benchmark RTT for explorer toggle (open and close)
 pub fn bench_rtt_explorer_toggle(c: &mut Criterion) {
@@ -35,6 +43,8 @@ pub fn bench_rtt_explorer_toggle(c: &mut Criterion) {
     let telescope = TelescopeState::new();
     let leap = LeapState::new();
     let fold_manager = FoldManager::new();
+    let indent_analyzer = IndentAnalyzer::new(4);
+    let settings_menu = SettingsMenuState::new();
 
     let buffer = create_buffer(1000);
     let buffers = buffer_to_map(buffer);
@@ -64,6 +74,8 @@ pub fn bench_rtt_explorer_toggle(c: &mut Criterion) {
                         black_box(&telescope),
                         black_box(&leap),
                         black_box(&fold_manager),
+                        black_box(&indent_analyzer),
+                        black_box(&settings_menu),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -95,6 +107,8 @@ pub fn bench_rtt_explorer_toggle(c: &mut Criterion) {
                         black_box(&telescope),
                         black_box(&leap),
                         black_box(&fold_manager),
+                        black_box(&indent_analyzer),
+                        black_box(&settings_menu),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -126,6 +140,8 @@ pub fn bench_rtt_explorer_toggle(c: &mut Criterion) {
                         black_box(&telescope),
                         black_box(&leap),
                         black_box(&fold_manager),
+                        black_box(&indent_analyzer),
+                        black_box(&settings_menu),
                     )
                     .unwrap();
 
@@ -145,6 +161,8 @@ pub fn bench_rtt_explorer_toggle(c: &mut Criterion) {
                         black_box(&telescope),
                         black_box(&leap),
                         black_box(&fold_manager),
+                        black_box(&indent_analyzer),
+                        black_box(&settings_menu),
                     )
                     .unwrap();
 
@@ -172,6 +190,8 @@ pub fn bench_rtt_input_lag(c: &mut Criterion) {
     let telescope = TelescopeState::new();
     let leap = LeapState::new();
     let fold_manager = FoldManager::new();
+    let indent_analyzer = IndentAnalyzer::new(4);
+    let settings_menu = SettingsMenuState::new();
     let insert_mode = ModeState::insert();
 
     group.bench_function("char_insert_rtt", |b| {
@@ -205,6 +225,8 @@ pub fn bench_rtt_input_lag(c: &mut Criterion) {
                         black_box(&telescope),
                         black_box(&leap),
                         black_box(&fold_manager),
+                        black_box(&indent_analyzer),
+                        black_box(&settings_menu),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -244,6 +266,8 @@ pub fn bench_rtt_input_lag(c: &mut Criterion) {
                         black_box(&telescope),
                         black_box(&leap),
                         black_box(&fold_manager),
+                        black_box(&indent_analyzer),
+                        black_box(&settings_menu),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -271,6 +295,8 @@ pub fn bench_rtt_movement_lag(c: &mut Criterion) {
     let telescope = TelescopeState::new();
     let leap = LeapState::new();
     let fold_manager = FoldManager::new();
+    let indent_analyzer = IndentAnalyzer::new(4);
+    let settings_menu = SettingsMenuState::new();
 
     group.bench_function("move_down_rtt", |b| {
         b.iter_with_setup(
@@ -304,6 +330,8 @@ pub fn bench_rtt_movement_lag(c: &mut Criterion) {
                         black_box(&telescope),
                         black_box(&leap),
                         black_box(&fold_manager),
+                        black_box(&indent_analyzer),
+                        black_box(&settings_menu),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -343,6 +371,8 @@ pub fn bench_rtt_movement_lag(c: &mut Criterion) {
                         black_box(&telescope),
                         black_box(&leap),
                         black_box(&fold_manager),
+                        black_box(&indent_analyzer),
+                        black_box(&settings_menu),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -382,6 +412,8 @@ pub fn bench_rtt_movement_lag(c: &mut Criterion) {
                         black_box(&telescope),
                         black_box(&leap),
                         black_box(&fold_manager),
+                        black_box(&indent_analyzer),
+                        black_box(&settings_menu),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -402,7 +434,11 @@ pub fn bench_rtt_movement_lag(c: &mut Criterion) {
                 (buffer, screen, tmp)
             },
             |(mut buffer, mut screen, _tmp)| {
-                buffer.cur.y = buffer.cur.y.saturating_add(25).min(buffer.contents.len() as u16 - 1);
+                buffer.cur.y = buffer
+                    .cur
+                    .y
+                    .saturating_add(25)
+                    .min(buffer.contents.len() as u16 - 1);
                 let buffers = buffer_to_map(buffer.clone());
                 screen
                     .render(
@@ -420,6 +456,8 @@ pub fn bench_rtt_movement_lag(c: &mut Criterion) {
                         black_box(&telescope),
                         black_box(&leap),
                         black_box(&fold_manager),
+                        black_box(&indent_analyzer),
+                        black_box(&settings_menu),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -459,6 +497,8 @@ pub fn bench_rtt_movement_lag(c: &mut Criterion) {
                         black_box(&telescope),
                         black_box(&leap),
                         black_box(&fold_manager),
+                        black_box(&indent_analyzer),
+                        black_box(&settings_menu),
                     )
                     .unwrap();
                 screen.flush().unwrap();

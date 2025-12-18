@@ -1,9 +1,11 @@
 //! Tab management commands
 
-use crate::command::traits::{
-    CommandResult, CommandTrait, DeferredAction, ExecutionContext, TabAction,
+use {
+    crate::command::traits::{
+        CommandResult, CommandTrait, DeferredAction, ExecutionContext, TabAction,
+    },
+    std::any::Any,
 };
-use std::any::Any;
 
 /// Create new tab (:tabnew)
 #[derive(Debug, Clone)]

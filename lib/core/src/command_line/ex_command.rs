@@ -3,32 +3,44 @@ use crate::highlight::{ColorMode, ThemeName};
 /// Set command options
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SetOption {
-    Number(bool),         // :set nu / :set nonu
-    RelativeNumber(bool), // :set rnu / :set nornu
-    ColorMode(ColorMode), // :set colormode=ansi|256|truecolor
+    Number(bool),           // :set nu / :set nonu
+    RelativeNumber(bool),   // :set rnu / :set nornu
+    ColorMode(ColorMode),   // :set colormode=ansi|256|truecolor
     ColorScheme(ThemeName), // :colorscheme dark|light|tokyonight
-    IndentGuide(bool),    // :set indentguide / :set noindentguide
-    Scrollbar(bool),      // :set scrollbar / :set noscrollbar
+    IndentGuide(bool),      // :set indentguide / :set noindentguide
+    Scrollbar(bool),        // :set scrollbar / :set noscrollbar
 }
 
 /// Parsed ex-commands (colon commands)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExCommand {
     Quit,
-    Write { filename: Option<String> },
+    Write {
+        filename: Option<String>,
+    },
     WriteQuit,
     /// Open/edit a file (:e filename)
-    Edit { filename: String },
+    Edit {
+        filename: String,
+    },
     /// Set an option (:set ...)
-    Set { option: SetOption },
+    Set {
+        option: SetOption,
+    },
     /// Change colorscheme (:colorscheme name)
-    Colorscheme { name: ThemeName },
+    Colorscheme {
+        name: ThemeName,
+    },
 
     // Window management
     /// Horizontal split (:sp, :split)
-    Split { filename: Option<String> },
+    Split {
+        filename: Option<String>,
+    },
     /// Vertical split (:vs, :vsplit)
-    VSplit { filename: Option<String> },
+    VSplit {
+        filename: Option<String>,
+    },
     /// Close current window (:close, :clo)
     Close,
     /// Close all other windows (:only, :on)
@@ -36,7 +48,9 @@ pub enum ExCommand {
 
     // Tab management
     /// Create new tab (:tabnew, :tabe)
-    TabNew { filename: Option<String> },
+    TabNew {
+        filename: Option<String>,
+    },
     /// Close current tab (:tabclose, :tabc)
     TabClose,
     /// Go to next tab (:tabnext, :tabn)
@@ -46,9 +60,13 @@ pub enum ExCommand {
 
     // Profile management
     /// Load a profile (:profile load <name>)
-    ProfileLoad { name: String },
+    ProfileLoad {
+        name: String,
+    },
     /// Save current settings as a profile (:profile save <name>)
-    ProfileSave { name: String },
+    ProfileSave {
+        name: String,
+    },
     /// List available profiles (:profile list)
     ProfileList,
 

@@ -18,9 +18,11 @@ mod loader;
 mod profile;
 mod schema;
 
-pub use loader::{get_config_dir, load_toml, save_toml, ConfigError};
-pub use profile::ProfileManager;
-pub use schema::{
-    CompletionConfig, EditorConfig, GlobalConfig, KeybindingValue, KeybindingsConfig,
-    ProfileConfig, ProfileMeta, WindowConfig,
+pub use {
+    loader::{ConfigError, get_config_dir, load_toml, save_toml},
+    profile::ProfileManager,
+    schema::{
+        CompletionConfig, EditorConfig, GlobalConfig, KeybindingValue, KeybindingsConfig,
+        ProfileConfig, ProfileMeta, WindowConfig,
+    },
 };

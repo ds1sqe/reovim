@@ -1,10 +1,11 @@
 //! Buffer picker implementation
 
-use std::future::Future;
-use std::pin::Pin;
+use std::{future::Future, pin::Pin};
 
-use crate::telescope::item::{TelescopeData, TelescopeItem};
-use crate::telescope::state::PreviewContent;
+use crate::telescope::{
+    item::{TelescopeData, TelescopeItem},
+    state::PreviewContent,
+};
 
 use super::{Picker, PickerContext, TelescopeAction};
 
@@ -105,8 +106,6 @@ impl Picker for BuffersPicker {
             .find(|b| b.id == buffer_id)
             .map(|b| b.preview_lines.clone());
 
-        Box::pin(async move {
-            preview_lines.map(PreviewContent::new)
-        })
+        Box::pin(async move { preview_lines.map(PreviewContent::new) })
     }
 }

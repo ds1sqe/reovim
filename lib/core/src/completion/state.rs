@@ -147,7 +147,7 @@ mod tests {
     fn test_activate() {
         let mut state = CompletionState::new();
         let items = sample_items();
-        state.activate(items.clone(), "app".to_string(), 5, 10);
+        state.activate(items, "app".to_string(), 5, 10);
 
         assert!(state.active);
         assert_eq!(state.items.len(), 3);
@@ -177,7 +177,7 @@ mod tests {
     #[test]
     fn test_select_next() {
         let mut state = CompletionState::new();
-        state.activate(sample_items(), "".to_string(), 0, 0);
+        state.activate(sample_items(), String::new(), 0, 0);
 
         assert_eq!(state.selected_index, 0);
         state.select_next();
@@ -191,7 +191,7 @@ mod tests {
     #[test]
     fn test_select_prev() {
         let mut state = CompletionState::new();
-        state.activate(sample_items(), "".to_string(), 0, 0);
+        state.activate(sample_items(), String::new(), 0, 0);
 
         assert_eq!(state.selected_index, 0);
         state.select_prev();
@@ -203,21 +203,18 @@ mod tests {
     #[test]
     fn test_selected_item() {
         let mut state = CompletionState::new();
-        state.activate(sample_items(), "".to_string(), 0, 0);
+        state.activate(sample_items(), String::new(), 0, 0);
 
         assert_eq!(state.selected_item().map(|i| &i.label), Some(&"apple".to_string()));
         state.select_next();
-        assert_eq!(
-            state.selected_item().map(|i| &i.label),
-            Some(&"application".to_string())
-        );
+        assert_eq!(state.selected_item().map(|i| &i.label), Some(&"application".to_string()));
     }
 
     #[test]
     fn test_update_prefix() {
         let mut state = CompletionState::new();
         let items = sample_items();
-        state.activate(items.clone(), "".to_string(), 0, 0);
+        state.activate(items.clone(), String::new(), 0, 0);
 
         state.update_prefix("app", &items);
         assert_eq!(state.items.len(), 2); // "apple" and "application"

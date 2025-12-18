@@ -1,7 +1,5 @@
 pub mod terminal {
-    pub use reovim_sys::terminal::{
-        disable_raw_mode, enable_raw_mode, Clear, ClearType,
-    };
+    pub use reovim_sys::terminal::{Clear, ClearType, disable_raw_mode, enable_raw_mode};
 }
 
 mod context;
@@ -14,9 +12,11 @@ pub mod id;
 pub mod registry;
 pub mod traits;
 
-pub use id::CommandId;
-pub use registry::{CommandRegistry, RegistryError};
-pub use traits::{
-    CommandLineAction, CommandResult, CommandTrait, CompletionAction, DeferredAction,
-    ExecutionContext,
+pub use {
+    id::CommandId,
+    registry::{CommandRegistry, RegistryError},
+    traits::{
+        CommandLineAction, CommandResult, CommandTrait, CompletionAction, DeferredAction,
+        ExecutionContext,
+    },
 };

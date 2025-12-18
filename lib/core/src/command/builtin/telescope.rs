@@ -1,9 +1,11 @@
 //! Telescope fuzzy finder commands
 
-use crate::command::traits::{
-    CommandResult, CommandTrait, DeferredAction, ExecutionContext, TelescopeAction,
+use {
+    crate::command::traits::{
+        CommandResult, CommandTrait, DeferredAction, ExecutionContext, TelescopeAction,
+    },
+    std::any::Any,
 };
-use std::any::Any;
 
 /// Open telescope find files picker
 #[derive(Debug, Clone)]

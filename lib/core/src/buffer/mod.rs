@@ -8,13 +8,17 @@ mod text;
 #[cfg(test)]
 mod tests;
 
-pub use cursor::{calculate_motion, calculate_motion_with_desired_col, CursorOps};
-pub use history::{Change, UndoHistory};
-pub use selection::{Selection, SelectionMode, SelectionOps};
-pub use text::TextOps;
+pub use {
+    cursor::{CursorOps, calculate_motion, calculate_motion_with_desired_col},
+    history::{Change, UndoHistory},
+    selection::{Selection, SelectionMode, SelectionOps},
+    text::TextOps,
+};
 
-use crate::motion::Motion;
-use crate::textobject::{TextObject, TextObjectScope};
+use crate::{
+    motion::Motion,
+    textobject::{TextObject, TextObjectScope},
+};
 
 use crate::screen::Position;
 
@@ -585,7 +589,10 @@ impl TextOps for Buffer {
         if y < self.contents.len() {
             let deleted_line = self.contents.remove(y);
             // Record change for undo (include newline if not last line)
-            let pos = Position { x: 0, y: self.cur.y };
+            let pos = Position {
+                x: 0,
+                y: self.cur.y,
+            };
             let text = if y < self.contents.len() {
                 deleted_line.inner + "\n"
             } else {
@@ -643,8 +650,7 @@ impl Buffer {
         } else {
             // Characterwise delete (dw, db, d$, d0)
             let target = calculate_motion(&self.contents, self.cur, motion, count);
-            let (from, to) = if start.y < target.y || (start.y == target.y && start.x <= target.x)
-            {
+            let (from, to) = if start.y < target.y || (start.y == target.y && start.x <= target.x) {
                 (start, target)
             } else {
                 (target, start)
@@ -678,8 +684,7 @@ impl Buffer {
         } else {
             // Characterwise yank
             let target = calculate_motion(&self.contents, self.cur, motion, count);
-            let (from, to) = if start.y < target.y || (start.y == target.y && start.x <= target.x)
-            {
+            let (from, to) = if start.y < target.y || (start.y == target.y && start.x <= target.x) {
                 (start, target)
             } else {
                 (target, start)
@@ -838,7 +843,9 @@ impl Buffer {
             TextObjectScope::Inner => {
                 // Inner: between delimiters (exclusive)
                 // Start after opening delimiter
-                let start = if open_pos.x as usize + 1 < self.contents.get(open_pos.y as usize)?.inner.len() {
+                let start = if open_pos.x as usize + 1
+                    < self.contents.get(open_pos.y as usize)?.inner.len()
+                {
                     Position {
                         x: open_pos.x + 1,
                         y: open_pos.y,
@@ -938,7 +945,11 @@ impl Buffer {
 
     /// Find matching asymmetric delimiter pair (brackets)
     #[allow(clippy::cast_possible_truncation)]
-    fn find_asymmetric_delimiter_pair(&self, open: char, close: char) -> Option<(Position, Position)> {
+    fn find_asymmetric_delimiter_pair(
+        &self,
+        open: char,
+        close: char,
+    ) -> Option<(Position, Position)> {
         // Search backward for opening delimiter
         let open_pos = self.find_backward(open, close)?;
         // Search forward for closing delimiter
@@ -1024,7 +1035,10 @@ impl Buffer {
     // === Word Text Object Operations ===
 
     /// Delete word text object (diw, daw, diW, daW)
-    pub fn delete_word_text_object(&mut self, text_object: crate::textobject::WordTextObject) -> String {
+    pub fn delete_word_text_object(
+        &mut self,
+        text_object: crate::textobject::WordTextObject,
+    ) -> String {
         if let Some((start, end)) = self.find_word_text_object_bounds(text_object) {
             self.delete_range(start, end)
         } else {
@@ -1068,13 +1082,17 @@ impl Buffer {
                 // For small word, we need to handle word chars vs punctuation vs whitespace
                 if cursor_char.is_whitespace() {
                     // Cursor on whitespace - select whitespace region
-                    let start = Self::find_word_boundary_backward(&chars, cursor_x, char::is_whitespace);
-                    let end = Self::find_word_boundary_forward(&chars, cursor_x, char::is_whitespace);
+                    let start =
+                        Self::find_word_boundary_backward(&chars, cursor_x, char::is_whitespace);
+                    let end =
+                        Self::find_word_boundary_forward(&chars, cursor_x, char::is_whitespace);
                     (start, end)
                 } else if WordType::is_word_char(*cursor_char) {
                     // Cursor on word char - select word
-                    let start = Self::find_word_boundary_backward(&chars, cursor_x, WordType::is_word_char);
-                    let end = Self::find_word_boundary_forward(&chars, cursor_x, WordType::is_word_char);
+                    let start =
+                        Self::find_word_boundary_backward(&chars, cursor_x, WordType::is_word_char);
+                    let end =
+                        Self::find_word_boundary_forward(&chars, cursor_x, WordType::is_word_char);
                     (start, end)
                 } else {
                     // Cursor on punctuation - select punctuation sequence
@@ -1088,13 +1106,16 @@ impl Buffer {
                 // For big WORD, just find non-whitespace boundaries
                 if cursor_char.is_whitespace() {
                     // Cursor on whitespace - select whitespace region
-                    let start = Self::find_word_boundary_backward(&chars, cursor_x, char::is_whitespace);
-                    let end = Self::find_word_boundary_forward(&chars, cursor_x, char::is_whitespace);
+                    let start =
+                        Self::find_word_boundary_backward(&chars, cursor_x, char::is_whitespace);
+                    let end =
+                        Self::find_word_boundary_forward(&chars, cursor_x, char::is_whitespace);
                     (start, end)
                 } else {
                     // Cursor on non-whitespace - select WORD
                     let is_non_whitespace = |c: char| !c.is_whitespace();
-                    let start = Self::find_word_boundary_backward(&chars, cursor_x, is_non_whitespace);
+                    let start =
+                        Self::find_word_boundary_backward(&chars, cursor_x, is_non_whitespace);
                     let end = Self::find_word_boundary_forward(&chars, cursor_x, is_non_whitespace);
                     (start, end)
                 }
@@ -1114,7 +1135,8 @@ impl Buffer {
             TextObjectScope::Inner => Some((start_pos, end_pos)),
             TextObjectScope::Around => {
                 // "Around" includes trailing whitespace (or leading if no trailing)
-                let trailing_end = Self::find_word_boundary_forward(&chars, word_end, char::is_whitespace);
+                let trailing_end =
+                    Self::find_word_boundary_forward(&chars, word_end, char::is_whitespace);
                 if trailing_end > word_end {
                     // Include trailing whitespace
                     Some((
@@ -1126,7 +1148,8 @@ impl Buffer {
                     ))
                 } else {
                     // No trailing whitespace, try leading
-                    let leading_start = Self::find_word_boundary_backward(&chars, word_start, char::is_whitespace);
+                    let leading_start =
+                        Self::find_word_boundary_backward(&chars, word_start, char::is_whitespace);
                     if leading_start < word_start {
                         Some((
                             Position {

@@ -1,19 +1,29 @@
 //! Input simulation benchmarks
 
-use criterion::{black_box, Criterion};
-use reovim_core::buffer::TextOps;
-use reovim_core::{
-    command_line::CommandLine,
-    completion::{CompletionItem, CompletionState},
-    folding::FoldManager,
-    highlight::{ColorMode, HighlightStore, Theme},
-    leap::LeapState,
-    modd::ModeState,
-    screen::{Screen, WhichKeyPanel},
-    telescope::TelescopeState,
+#![allow(clippy::semicolon_if_nothing_returned)]
+#![allow(clippy::too_many_lines)]
+#![allow(clippy::cast_possible_truncation)]
+
+use std::hint::black_box;
+
+use {
+    criterion::Criterion,
+    reovim_core::{
+        buffer::TextOps,
+        command_line::CommandLine,
+        completion::{CompletionItem, CompletionState},
+        folding::FoldManager,
+        highlight::{ColorMode, HighlightStore, Theme},
+        indent::IndentAnalyzer,
+        leap::LeapState,
+        modd::ModeState,
+        screen::{Screen, WhichKeyPanel},
+        settings_menu::SettingsMenuState,
+        telescope::TelescopeState,
+    },
 };
 
-use super::common::{buffer_to_map, create_buffer, MockWriter};
+use super::common::{MockWriter, buffer_to_map, create_buffer};
 
 /// Benchmark simulating typing in insert mode
 pub fn bench_typing_simulation(c: &mut Criterion) {
@@ -31,6 +41,8 @@ pub fn bench_typing_simulation(c: &mut Criterion) {
     let which_key = WhichKeyPanel::new();
     let completion = CompletionState::new();
     let telescope = TelescopeState::new();
+    let indent_analyzer = IndentAnalyzer::new(4);
+    let settings_menu = SettingsMenuState::new();
 
     let chars_to_type = "Hello, world! This is a test of typing speed.";
 
@@ -62,6 +74,8 @@ pub fn bench_typing_simulation(c: &mut Criterion) {
                         black_box(&telescope),
                         black_box(&leap),
                         black_box(&fold_manager),
+                        black_box(&indent_analyzer),
+                        black_box(&settings_menu),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -100,6 +114,8 @@ pub fn bench_typing_simulation(c: &mut Criterion) {
                         black_box(&telescope),
                         black_box(&leap),
                         black_box(&fold_manager),
+                        black_box(&indent_analyzer),
+                        black_box(&settings_menu),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -127,6 +143,8 @@ pub fn bench_scrolling_simulation(c: &mut Criterion) {
     let which_key = WhichKeyPanel::new();
     let completion = CompletionState::new();
     let telescope = TelescopeState::new();
+    let indent_analyzer = IndentAnalyzer::new(4);
+    let settings_menu = SettingsMenuState::new();
 
     group.bench_function("scroll_one_line", |b| {
         b.iter_with_setup(
@@ -158,6 +176,8 @@ pub fn bench_scrolling_simulation(c: &mut Criterion) {
                         black_box(&telescope),
                         black_box(&leap),
                         black_box(&fold_manager),
+                        black_box(&indent_analyzer),
+                        black_box(&settings_menu),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -197,6 +217,8 @@ pub fn bench_scrolling_simulation(c: &mut Criterion) {
                             black_box(&telescope),
                             black_box(&leap),
                             black_box(&fold_manager),
+                            black_box(&indent_analyzer),
+                            black_box(&settings_menu),
                         )
                         .unwrap();
                 }
@@ -216,7 +238,11 @@ pub fn bench_scrolling_simulation(c: &mut Criterion) {
                 (buffer, screen)
             },
             |(mut buffer, mut screen)| {
-                buffer.cur.y = buffer.cur.y.saturating_add(25).min(buffer.contents.len() as u16 - 1);
+                buffer.cur.y = buffer
+                    .cur
+                    .y
+                    .saturating_add(25)
+                    .min(buffer.contents.len() as u16 - 1);
                 let buffers = buffer_to_map(buffer.clone());
                 screen
                     .render(
@@ -234,6 +260,8 @@ pub fn bench_scrolling_simulation(c: &mut Criterion) {
                         black_box(&telescope),
                         black_box(&leap),
                         black_box(&fold_manager),
+                        black_box(&indent_analyzer),
+                        black_box(&settings_menu),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -260,6 +288,8 @@ pub fn bench_mode_switching(c: &mut Criterion) {
     let telescope = TelescopeState::new();
     let leap = LeapState::new();
     let fold_manager = FoldManager::new();
+    let indent_analyzer = IndentAnalyzer::new(4);
+    let settings_menu = SettingsMenuState::new();
 
     let buffer = create_buffer(1000);
     let buffers = buffer_to_map(buffer);
@@ -290,6 +320,8 @@ pub fn bench_mode_switching(c: &mut Criterion) {
                         black_box(&telescope),
                         black_box(&leap),
                         black_box(&fold_manager),
+                        black_box(&indent_analyzer),
+                        black_box(&settings_menu),
                     )
                     .unwrap();
 
@@ -309,6 +341,8 @@ pub fn bench_mode_switching(c: &mut Criterion) {
                         black_box(&telescope),
                         black_box(&leap),
                         black_box(&fold_manager),
+                        black_box(&indent_analyzer),
+                        black_box(&settings_menu),
                     )
                     .unwrap();
 
@@ -328,6 +362,8 @@ pub fn bench_mode_switching(c: &mut Criterion) {
                         black_box(&telescope),
                         black_box(&leap),
                         black_box(&fold_manager),
+                        black_box(&indent_analyzer),
+                        black_box(&settings_menu),
                     )
                     .unwrap();
 
@@ -355,13 +391,15 @@ pub fn bench_completion_popup(c: &mut Criterion) {
     let telescope = TelescopeState::new();
     let leap = LeapState::new();
     let fold_manager = FoldManager::new();
+    let indent_analyzer = IndentAnalyzer::new(4);
+    let settings_menu = SettingsMenuState::new();
 
     let buffer = create_buffer(1000);
     let buffers = buffer_to_map(buffer);
 
     let mut completion = CompletionState::new();
     let items: Vec<CompletionItem> = (0..20)
-        .map(|i| CompletionItem::new(format!("completion_item_{}", i), "buffer"))
+        .map(|i| CompletionItem::new(format!("completion_item_{i}"), "buffer"))
         .collect();
     completion.activate(items, "comp".to_string(), 0, 50);
 
@@ -388,6 +426,8 @@ pub fn bench_completion_popup(c: &mut Criterion) {
                         black_box(&telescope),
                         black_box(&leap),
                         black_box(&fold_manager),
+                        black_box(&indent_analyzer),
+                        black_box(&settings_menu),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -420,6 +460,8 @@ pub fn bench_completion_popup(c: &mut Criterion) {
                         black_box(&telescope),
                         black_box(&leap),
                         black_box(&fold_manager),
+                        black_box(&indent_analyzer),
+                        black_box(&settings_menu),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -448,6 +490,8 @@ pub fn bench_sustained_input(c: &mut Criterion) {
     let telescope = TelescopeState::new();
     let leap = LeapState::new();
     let fold_manager = FoldManager::new();
+    let indent_analyzer = IndentAnalyzer::new(4);
+    let settings_menu = SettingsMenuState::new();
 
     group.bench_function("100_keystrokes_each_rendered", |b| {
         b.iter_with_setup(
@@ -478,6 +522,8 @@ pub fn bench_sustained_input(c: &mut Criterion) {
                             black_box(&telescope),
                             black_box(&leap),
                             black_box(&fold_manager),
+                            black_box(&indent_analyzer),
+                            black_box(&settings_menu),
                         )
                         .unwrap();
                 }

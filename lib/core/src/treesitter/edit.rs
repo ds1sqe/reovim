@@ -233,14 +233,8 @@ mod tests {
         assert_eq!(input_edit.old_end_byte, 10);
         assert_eq!(input_edit.new_end_byte, 11);
         assert_eq!(input_edit.start_position, Point { row: 0, column: 10 });
-        assert_eq!(
-            input_edit.old_end_position,
-            Point { row: 0, column: 10 }
-        );
-        assert_eq!(
-            input_edit.new_end_position,
-            Point { row: 0, column: 11 }
-        );
+        assert_eq!(input_edit.old_end_position, Point { row: 0, column: 10 });
+        assert_eq!(input_edit.new_end_position, Point { row: 0, column: 11 });
     }
 
     #[test]
@@ -264,14 +258,8 @@ mod tests {
         assert_eq!(input_edit.old_end_byte, 11);
         assert_eq!(input_edit.new_end_byte, 10);
         assert_eq!(input_edit.start_position, Point { row: 0, column: 10 });
-        assert_eq!(
-            input_edit.old_end_position,
-            Point { row: 0, column: 11 }
-        );
-        assert_eq!(
-            input_edit.new_end_position,
-            Point { row: 0, column: 10 }
-        );
+        assert_eq!(input_edit.old_end_position, Point { row: 0, column: 11 });
+        assert_eq!(input_edit.new_end_position, Point { row: 0, column: 10 });
     }
 
     #[test]
@@ -285,9 +273,6 @@ mod tests {
         assert_eq!(input_edit.new_end_byte, 10);
         assert_eq!(input_edit.start_position, Point { row: 0, column: 10 });
         assert_eq!(input_edit.old_end_position, Point { row: 1, column: 0 });
-        assert_eq!(
-            input_edit.new_end_position,
-            Point { row: 0, column: 10 }
-        );
+        assert_eq!(input_edit.new_end_position, Point { row: 0, column: 10 });
     }
 }

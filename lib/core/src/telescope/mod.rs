@@ -11,7 +11,9 @@ pub mod matcher;
 pub mod picker;
 pub mod state;
 
-pub use item::{TelescopeData, TelescopeItem};
-pub use matcher::TelescopeMatcher;
-pub use picker::{Picker, PickerContext, TelescopeAction};
-pub use state::{PreviewContent, TelescopeLayout, TelescopeState};
+pub use {
+    item::{TelescopeData, TelescopeItem},
+    matcher::TelescopeMatcher,
+    picker::{Picker, PickerContext, TelescopeAction},
+    state::{PreviewContent, TelescopeLayout, TelescopeState},
+};

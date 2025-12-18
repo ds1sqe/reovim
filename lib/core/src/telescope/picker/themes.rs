@@ -1,11 +1,14 @@
 //! Theme/colorscheme picker implementation
 
-use std::future::Future;
-use std::pin::Pin;
+use std::{future::Future, pin::Pin};
 
-use crate::highlight::ThemeName;
-use crate::telescope::item::{TelescopeData, TelescopeItem};
-use crate::telescope::state::PreviewContent;
+use crate::{
+    highlight::ThemeName,
+    telescope::{
+        item::{TelescopeData, TelescopeItem},
+        state::PreviewContent,
+    },
+};
 
 use super::{Picker, PickerContext, TelescopeAction};
 
@@ -24,7 +27,11 @@ impl ThemesPicker {
         vec![
             (ThemeName::Dark, "Dark", "Default dark theme with classic syntax colors"),
             (ThemeName::Light, "Light", "Light theme for bright environments"),
-            (ThemeName::TokyoNightOrange, "Tokyo Night Orange", "Modern dark theme with orange accents"),
+            (
+                ThemeName::TokyoNightOrange,
+                "Tokyo Night Orange",
+                "Modern dark theme with orange accents",
+            ),
         ]
     }
 }
@@ -56,14 +63,9 @@ impl Picker for ThemesPicker {
             Self::available_themes()
                 .into_iter()
                 .map(|(name, display, description)| {
-                    TelescopeItem::new(
-                        display,
-                        display,
-                        TelescopeData::Theme(name),
-                        "themes",
-                    )
-                    .with_detail(description)
-                    .with_icon('🎨')
+                    TelescopeItem::new(display, display, TelescopeData::Theme(name), "themes")
+                        .with_detail(description)
+                        .with_icon('🎨')
                 })
                 .collect()
         })
@@ -84,10 +86,7 @@ impl Picker for ThemesPicker {
         let description = item.detail.clone();
 
         Box::pin(async move {
-            let mut lines = vec![
-                format!("Theme: {display}"),
-                String::new(),
-            ];
+            let mut lines = vec![format!("Theme: {display}"), String::new()];
 
             if let Some(desc) = description {
                 lines.push(format!("Description: {desc}"));

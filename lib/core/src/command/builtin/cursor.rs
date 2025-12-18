@@ -1,9 +1,13 @@
 //! Cursor movement commands
 
-use crate::buffer::{calculate_motion_with_desired_col, CursorOps};
-use crate::command::traits::{CommandResult, CommandTrait, ExecutionContext};
-use crate::motion::Motion;
-use std::any::Any;
+use {
+    crate::{
+        buffer::{CursorOps, calculate_motion_with_desired_col},
+        command::traits::{CommandResult, CommandTrait, ExecutionContext},
+        motion::Motion,
+    },
+    std::any::Any,
+};
 
 /// Move cursor up
 #[derive(Debug, Clone)]

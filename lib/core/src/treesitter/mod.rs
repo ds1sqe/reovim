@@ -8,20 +8,23 @@ mod queries;
 mod text_objects;
 mod theme;
 
-use std::collections::HashMap;
-use std::time::Instant;
+use std::{collections::HashMap, time::Instant};
 
-pub use edit::BufferEdit;
-pub use grammar::{BundledGrammar, GrammarRegistry, LanguageId};
-pub use highlighter::Highlighter;
-pub use parser::BufferParser;
-pub use queries::{QueryCache, QueryType};
-pub use text_objects::{Position, TextObjectBounds, TextObjectResolver};
-pub use theme::TreesitterTheme;
+pub use {
+    edit::BufferEdit,
+    grammar::{BundledGrammar, GrammarRegistry, LanguageId},
+    highlighter::Highlighter,
+    parser::BufferParser,
+    queries::{QueryCache, QueryType},
+    text_objects::{Position, TextObjectBounds, TextObjectResolver},
+    theme::TreesitterTheme,
+};
 
-use crate::folding::{FoldKind, FoldRange};
-use crate::highlight::Highlight;
-use crate::textobject::{SemanticTextObject, TextObjectScope};
+use crate::{
+    folding::{FoldKind, FoldRange},
+    highlight::Highlight,
+    textobject::{SemanticTextObject, TextObjectScope},
+};
 
 /// Manages treesitter state for all buffers
 pub struct TreesitterManager {
@@ -64,8 +67,8 @@ impl TreesitterManager {
     /// Detects language from file extension and sets up the parser.
     /// Returns the detected language ID.
     pub fn init_buffer(&mut self, buffer_id: usize, file_path: Option<&str>) -> LanguageId {
-        let language_id = file_path
-            .map_or(LanguageId::Unknown, |p| self.grammars.detect_language(p));
+        let language_id =
+            file_path.map_or(LanguageId::Unknown, |p| self.grammars.detect_language(p));
 
         if language_id == LanguageId::Unknown {
             return language_id;
@@ -111,12 +114,16 @@ impl TreesitterManager {
         };
 
         // Get or compile the highlight query
-        let Some(query) = self.queries.get_or_compile(language_id, QueryType::Highlights, &ts_language) else {
+        let Some(query) =
+            self.queries
+                .get_or_compile(language_id, QueryType::Highlights, &ts_language)
+        else {
             return Vec::new();
         };
 
         // Generate highlights
-        self.highlighter.highlight_range(tree, query, content, start_line, end_line)
+        self.highlighter
+            .highlight_range(tree, query, content, start_line, end_line)
     }
 
     /// Schedule a buffer for reparsing (with debounce)
@@ -259,9 +266,9 @@ impl TreesitterManager {
         let ts_language = self.grammars.get_language(language_id)?;
 
         // Get or compile the text objects query
-        let query = self
-            .queries
-            .get_or_compile(language_id, QueryType::TextObjects, &ts_language)?;
+        let query =
+            self.queries
+                .get_or_compile(language_id, QueryType::TextObjects, &ts_language)?;
 
         // Resolve the text object bounds
         TextObjectResolver::resolve(tree, query, content, cursor_row, cursor_col, kind, scope)

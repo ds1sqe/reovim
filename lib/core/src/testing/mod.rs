@@ -1,8 +1,17 @@
 //! Testing utilities for integration tests
 //!
 //! This module provides helpers for writing integration tests,
-//! including key event creation and string-to-key conversion.
+//! including key event creation, string-to-key conversion,
+//! and server-based end-to-end test harness.
 
+pub mod assertions;
+pub mod client;
 pub mod keys;
+pub mod server;
 
-pub use keys::{char_key, ctrl, key, key_mod, keys_from_str};
+pub use {
+    assertions::{ServerTest, ServerTestResult},
+    client::{ClientError, ModeInfo, TestClient},
+    keys::{char_key, ctrl, key, key_mod, keys_from_str},
+    server::ServerTestHarness,
+};

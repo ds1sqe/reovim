@@ -1,7 +1,9 @@
 //! Jump list navigation commands (Ctrl-O / Ctrl-I)
 
-use crate::command::traits::{CommandResult, CommandTrait, DeferredAction, ExecutionContext};
-use std::any::Any;
+use {
+    crate::command::traits::{CommandResult, CommandTrait, DeferredAction, ExecutionContext},
+    std::any::Any,
+};
 
 /// Jump to older position (Ctrl-O)
 #[derive(Debug, Clone)]

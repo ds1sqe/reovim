@@ -12,10 +12,12 @@ pub mod source;
 pub mod state;
 pub mod trigger;
 
-pub use item::CompletionItem;
-pub use source::{CompletionContext, CompletionSource};
-pub use state::CompletionState;
-pub use trigger::{TriggerConfig, TriggerDetector, TriggerResult};
+pub use {
+    item::CompletionItem,
+    source::{CompletionContext, CompletionSource},
+    state::CompletionState,
+    trigger::{TriggerConfig, TriggerDetector, TriggerResult},
+};
 
 use std::sync::Arc;
 

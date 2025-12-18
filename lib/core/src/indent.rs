@@ -159,12 +159,14 @@ impl IndentAnalyzer {
         }
 
         // Append the rest of the line (non-whitespace)
-        let whitespace_chars = line
-            .chars()
-            .take_while(|&c| c == ' ' || c == '\t')
-            .count();
+        let whitespace_chars = line.chars().take_while(|&c| c == ' ' || c == '\t').count();
         if whitespace_chars < chars.len() {
-            result.push_str(&line[line.char_indices().nth(whitespace_chars).map_or(0, |(i, _)| i)..]);
+            result.push_str(
+                &line[line
+                    .char_indices()
+                    .nth(whitespace_chars)
+                    .map_or(0, |(i, _)| i)..],
+            );
         }
 
         result

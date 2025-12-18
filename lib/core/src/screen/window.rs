@@ -1,9 +1,11 @@
 //! Window rendering module
 
-use crate::buffer::{Buffer, SelectionMode, SelectionOps};
-use crate::folding::FoldState;
-use crate::highlight::{ColorMode, Highlight, HighlightGroup, HighlightStore, Span, Style, Theme};
-use crate::indent::IndentAnalyzer;
+use crate::{
+    buffer::{Buffer, SelectionMode, SelectionOps},
+    folding::FoldState,
+    highlight::{ColorMode, Highlight, HighlightGroup, HighlightStore, Span, Style, Theme},
+    indent::IndentAnalyzer,
+};
 
 use super::layout::WindowType;
 
@@ -51,11 +53,22 @@ pub enum LineNumberMode {
     Hybrid,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct LineNumber {
     show: bool,
     number: bool,          // :set number flag
     relative_number: bool, // :set relativenumber flag
+}
+
+impl Default for LineNumber {
+    /// Default to hybrid line numbers (both number and relativenumber enabled)
+    fn default() -> Self {
+        Self {
+            show: true,
+            number: true,
+            relative_number: true,
+        }
+    }
 }
 
 impl LineNumber {
@@ -222,7 +235,10 @@ impl Window {
         }
 
         // Append the rest of the line (non-whitespace)
-        let whitespace_chars = content.chars().take_while(|&c| c == ' ' || c == '\t').count();
+        let whitespace_chars = content
+            .chars()
+            .take_while(|&c| c == ' ' || c == '\t')
+            .count();
         if whitespace_chars < chars.len() {
             let start_idx = content
                 .char_indices()
@@ -249,12 +265,8 @@ impl Window {
         let head = self.render_line_number(row, cursor_y, num_width, theme, color_mode);
         let fold_text = format!("+-- {hidden_count} lines: {preview} ---");
         let fold_style = &theme.fold.marker;
-        let styled_fold = format!(
-            "{}{}{}",
-            fold_style.to_ansi_start(color_mode),
-            fold_text,
-            Style::ansi_reset()
-        );
+        let styled_fold =
+            format!("{}{}{}", fold_style.to_ansi_start(color_mode), fold_text, Style::ansi_reset());
         head + &styled_fold
     }
 
@@ -303,7 +315,8 @@ impl Window {
         let line_with_guides =
             Self::apply_indent_guides(&content.inner, buf, row, indent_analyzer, theme, color_mode);
 
-        let styled_content = self.render_styled_line(&line_with_guides, &line_highlights, color_mode);
+        let styled_content =
+            self.render_styled_line(&line_with_guides, &line_highlights, color_mode);
         head + &styled_content
     }
 
@@ -358,7 +371,15 @@ impl Window {
             let fold_marker = fold_state.and_then(|fs| fs.get_fold_marker(u32::from(row)));
 
             let line_out = if let Some((hidden_count, preview)) = fold_marker {
-                self.render_fold_marker_line(row, buf.cur.y, hidden_count, preview, num_width, theme, color_mode)
+                self.render_fold_marker_line(
+                    row,
+                    buf.cur.y,
+                    hidden_count,
+                    preview,
+                    num_width,
+                    theme,
+                    color_mode,
+                )
             } else {
                 self.render_content_line(
                     row,
@@ -374,7 +395,8 @@ impl Window {
             };
 
             // Append scrollbar character
-            let scrollbar_char = Self::render_scrollbar_char(display_rows_rendered, scrollbar, theme, color_mode);
+            let scrollbar_char =
+                Self::render_scrollbar_char(display_rows_rendered, scrollbar, theme, color_mode);
             lines.push(line_out + &scrollbar_char);
             buffer_row += 1;
             display_rows_rendered += 1;
@@ -382,7 +404,8 @@ impl Window {
 
         // Fill remaining display rows with empty lines (with scrollbar)
         while display_rows_rendered < self.height {
-            let scrollbar_char = Self::render_scrollbar_char(display_rows_rendered, scrollbar, theme, color_mode);
+            let scrollbar_char =
+                Self::render_scrollbar_char(display_rows_rendered, scrollbar, theme, color_mode);
             lines.push(scrollbar_char);
             display_rows_rendered += 1;
         }
@@ -640,19 +663,13 @@ impl Window {
         // Use block characters for the scrollbar
         let ch = if is_thumb { '█' } else { '▕' };
 
-        format!(
-            "{}{}{}",
-            style.to_ansi_start(color_mode),
-            ch,
-            Style::ansi_reset()
-        )
+        format!("{}{}{}", style.to_ansi_start(color_mode), ch, Style::ansi_reset())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::screen::layout::WindowType;
+    use {super::*, crate::screen::layout::WindowType};
 
     fn create_test_window(height: u16) -> Window {
         Window {

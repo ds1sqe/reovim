@@ -114,16 +114,56 @@ impl TreesitterTheme {
         let mut captures = HashMap::new();
 
         // Tokyo Night color palette with orange accents
-        let orange = Color::Rgb { r: 255, g: 158, b: 100 };      // #ff9e64
-        let purple = Color::Rgb { r: 187, g: 154, b: 247 };      // #bb9af7
-        let blue = Color::Rgb { r: 122, g: 162, b: 247 };        // #7aa2f7
-        let cyan = Color::Rgb { r: 125, g: 207, b: 255 };        // #7dcfff
-        let green = Color::Rgb { r: 158, g: 206, b: 106 };       // #9ece6a
-        let yellow = Color::Rgb { r: 224, g: 175, b: 104 };      // #e0af68
-        let red = Color::Rgb { r: 247, g: 118, b: 142 };         // #f7768e
-        let comment = Color::Rgb { r: 199, g: 199, b: 199 };     // #c7c7c7
-        let fg = Color::Rgb { r: 192, g: 202, b: 245 };          // #c0caf5
-        let magenta = Color::Rgb { r: 255, g: 0, b: 127 };       // #ff007f
+        let orange = Color::Rgb {
+            r: 255,
+            g: 158,
+            b: 100,
+        }; // #ff9e64
+        let purple = Color::Rgb {
+            r: 187,
+            g: 154,
+            b: 247,
+        }; // #bb9af7
+        let blue = Color::Rgb {
+            r: 122,
+            g: 162,
+            b: 247,
+        }; // #7aa2f7
+        let cyan = Color::Rgb {
+            r: 125,
+            g: 207,
+            b: 255,
+        }; // #7dcfff
+        let green = Color::Rgb {
+            r: 158,
+            g: 206,
+            b: 106,
+        }; // #9ece6a
+        let yellow = Color::Rgb {
+            r: 224,
+            g: 175,
+            b: 104,
+        }; // #e0af68
+        let red = Color::Rgb {
+            r: 247,
+            g: 118,
+            b: 142,
+        }; // #f7768e
+        let comment = Color::Rgb {
+            r: 199,
+            g: 199,
+            b: 199,
+        }; // #c7c7c7
+        let fg = Color::Rgb {
+            r: 192,
+            g: 202,
+            b: 245,
+        }; // #c0caf5
+        let magenta = Color::Rgb {
+            r: 255,
+            g: 0,
+            b: 127,
+        }; // #ff007f
 
         // Keywords - purple, bold, italic
         captures.insert("keyword", Style::new().fg(purple).bold().italic());

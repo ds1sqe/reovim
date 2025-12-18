@@ -1,7 +1,9 @@
 //! Settings menu state management
 
-use super::item::{ActionType, FlatItem, SettingItem, SettingSection, SettingValue};
-use crate::config::ProfileConfig;
+use {
+    super::item::{ActionType, FlatItem, SettingItem, SettingSection, SettingValue},
+    crate::config::ProfileConfig,
+};
 
 /// Input mode for the settings menu
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -104,7 +106,8 @@ impl SettingsMenuState {
         self.sections.push(Self::build_editor_section(profile));
         self.sections.push(Self::build_cursor_section());
         self.sections.push(Self::build_window_section(profile));
-        self.sections.push(Self::build_profile_section(profile_name));
+        self.sections
+            .push(Self::build_profile_section(profile_name));
         self.rebuild_flat_items();
     }
 
@@ -664,22 +667,22 @@ mod tests {
 
         // Find a boolean setting
         while state.selected_item().is_some() {
-            if let Some(item) = state.selected_item() {
-                if item.value.is_bool() {
-                    break;
-                }
+            if let Some(item) = state.selected_item()
+                && item.value.is_bool()
+            {
+                break;
             }
             state.select_next();
         }
 
-        if let Some(item) = state.selected_item() {
-            if let SettingValue::Bool(initial) = item.value {
-                state.toggle_selected();
-                if let Some(item) = state.selected_item() {
-                    if let SettingValue::Bool(after) = item.value {
-                        assert_ne!(initial, after);
-                    }
-                }
+        if let Some(item) = state.selected_item()
+            && let SettingValue::Bool(initial) = item.value
+        {
+            state.toggle_selected();
+            if let Some(item) = state.selected_item()
+                && let SettingValue::Bool(after) = item.value
+            {
+                assert_ne!(initial, after);
             }
         }
     }

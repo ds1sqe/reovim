@@ -1,6 +1,8 @@
 //! Tab page management for vim-style tabs
 
-use super::split::{find_adjacent_window, NavigateDirection, SplitDirection, SplitNode, WindowLayout, WindowRect};
+use super::split::{
+    NavigateDirection, SplitDirection, SplitNode, WindowLayout, WindowRect, find_adjacent_window,
+};
 
 #[derive(Debug)]
 pub struct TabPage {
@@ -32,7 +34,8 @@ impl TabPage {
     }
 
     pub fn split(&mut self, new_window_id: usize, direction: SplitDirection) {
-        self.root.split_window(self.active_window_id, new_window_id, direction);
+        self.root
+            .split_window(self.active_window_id, new_window_id, direction);
         self.active_window_id = new_window_id;
     }
 
@@ -190,7 +193,10 @@ impl TabManager {
             .enumerate()
             .map(|(i, tab)| TabInfo {
                 id: tab.id,
-                label: tab.label.clone().unwrap_or_else(|| format!("Tab {}", i + 1)),
+                label: tab
+                    .label
+                    .clone()
+                    .unwrap_or_else(|| format!("Tab {}", i + 1)),
                 is_active: i == self.active_tab_index,
             })
             .collect()

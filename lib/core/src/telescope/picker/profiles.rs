@@ -1,11 +1,14 @@
 //! Configuration profile picker implementation
 
-use std::future::Future;
-use std::pin::Pin;
+use std::{future::Future, pin::Pin};
 
-use crate::config::ProfileManager;
-use crate::telescope::item::{TelescopeData, TelescopeItem};
-use crate::telescope::state::PreviewContent;
+use crate::{
+    config::ProfileManager,
+    telescope::{
+        item::{TelescopeData, TelescopeItem},
+        state::PreviewContent,
+    },
+};
 
 use super::{Picker, PickerContext, TelescopeAction};
 
@@ -93,10 +96,7 @@ impl Picker for ProfilesPicker {
             let manager = ProfileManager::default();
             let config = manager.load_profile_readonly(&name).ok()?;
 
-            let mut lines = vec![
-                format!("Profile: {}", config.profile.name),
-                String::new(),
-            ];
+            let mut lines = vec![format!("Profile: {}", config.profile.name), String::new()];
 
             if !config.profile.description.is_empty() {
                 lines.push(format!("Description: {}", config.profile.description));
@@ -134,10 +134,7 @@ impl Picker for ProfilesPicker {
 
             if !config.keybindings.mappings.is_empty() {
                 lines.push(String::new());
-                lines.push(format!(
-                    "Custom Keybindings: {}",
-                    config.keybindings.mappings.len()
-                ));
+                lines.push(format!("Custom Keybindings: {}", config.keybindings.mappings.len()));
             }
 
             Some(PreviewContent::new(lines))

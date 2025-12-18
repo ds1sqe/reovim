@@ -1,12 +1,13 @@
 //! File picker implementation
 
-use std::future::Future;
-use std::pin::Pin;
+use std::{future::Future, pin::Pin};
 
 use ignore::WalkBuilder;
 
-use crate::telescope::item::{TelescopeData, TelescopeItem};
-use crate::telescope::state::PreviewContent;
+use crate::telescope::{
+    item::{TelescopeData, TelescopeItem},
+    state::PreviewContent,
+};
 
 use super::{Picker, PickerContext, TelescopeAction};
 
@@ -100,7 +101,7 @@ impl Picker for FilesPicker {
 
                 // Determine icon based on extension
                 let icon = match path.extension().and_then(|e| e.to_str()) {
-                    Some("rs") => '\u{e7a8}',  // Rust icon or fallback
+                    Some("rs") => '\u{e7a8}', // Rust icon or fallback
                     Some("js" | "ts") => '\u{e781}',
                     Some("py") => '\u{e73c}',
                     Some("md") => '\u{e73e}',
@@ -143,10 +144,7 @@ impl Picker for FilesPicker {
             // Read file content for preview
             tokio::fs::read_to_string(&path).await.ok().map(|content| {
                 let lines: Vec<String> = content.lines().map(String::from).collect();
-                let syntax = path
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .map(String::from);
+                let syntax = path.extension().and_then(|e| e.to_str()).map(String::from);
                 PreviewContent {
                     lines,
                     highlight_line: None,

@@ -151,9 +151,7 @@ impl TextObjectResolver {
 
         // Find the capture index for outer
         let capture_names = query.capture_names();
-        let capture_index = capture_names
-            .iter()
-            .position(|name| *name == outer_name)?;
+        let capture_index = capture_names.iter().position(|name| *name == outer_name)?;
 
         let mut cursor = QueryCursor::new();
         let mut matches = cursor.matches(query, tree.root_node(), source_bytes);
@@ -175,8 +173,7 @@ impl TextObjectResolver {
                     // Compare by row/column positions
                     let contains = start.row <= inner_start_row
                         && end.row >= inner_end_row
-                        && (start.row < inner_start_row
-                            || start.column <= inner.start.column)
+                        && (start.row < inner_start_row || start.column <= inner.start.column)
                         && (end.row > inner_end_row || end.column >= inner.end.column);
 
                     if contains {
@@ -260,10 +257,7 @@ mod tests {
     #[test]
     fn test_node_size() {
         let start = Point { row: 0, column: 0 };
-        let end = Point {
-            row: 2,
-            column: 10,
-        };
+        let end = Point { row: 2, column: 10 };
         let size = TextObjectResolver::node_size(&start, &end);
         assert_eq!(size, 2010); // 2 * 1000 + 10
     }

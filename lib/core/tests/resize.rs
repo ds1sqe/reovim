@@ -2,11 +2,15 @@
 //!
 //! Tests for terminal resize behavior and explorer rendering.
 
-use reovim_core::explorer::{render_explorer, ExplorerState};
-use reovim_core::highlight::{ColorMode, Theme};
-use reovim_core::screen::LayoutManager;
-use std::fs::File;
-use tempfile::tempdir;
+use {
+    reovim_core::{
+        explorer::{ExplorerState, render_explorer},
+        highlight::{ColorMode, Theme},
+        screen::LayoutManager,
+    },
+    std::fs::File,
+    tempfile::tempdir,
+};
 
 /// Strip ANSI escape codes from a string for visible length calculation.
 fn strip_ansi_codes(s: &str) -> String {
@@ -78,14 +82,23 @@ fn test_layout_manager_resize_preserves_visibility() {
 
     // Resize multiple times
     layout.set_screen_size(80, 20);
-    assert!(layout.explorer_layout().is_some(), "Explorer should remain visible after resize");
+    assert!(
+        layout.explorer_layout().is_some(),
+        "Explorer should remain visible after resize"
+    );
 
     layout.set_screen_size(60, 15);
-    assert!(layout.explorer_layout().is_some(), "Explorer should remain visible after second resize");
+    assert!(
+        layout.explorer_layout().is_some(),
+        "Explorer should remain visible after second resize"
+    );
 
     // Even at very small sizes, explorer should be visible (clamped to MIN_WIDTH)
     layout.set_screen_size(30, 10);
-    assert!(layout.explorer_layout().is_some(), "Explorer should remain visible at small size");
+    assert!(
+        layout.explorer_layout().is_some(),
+        "Explorer should remain visible at small size"
+    );
 }
 
 #[test]
@@ -121,9 +134,7 @@ fn test_explorer_render_after_resize_simulation() {
     let after_len = strip_ansi_codes(&lines_after[0]).len();
     assert!(
         before_len > after_len,
-        "Lines should be shorter after resize: {} vs {}",
-        before_len,
-        after_len
+        "Lines should be shorter after resize: {before_len} vs {after_len}"
     );
 }
 
@@ -153,11 +164,7 @@ fn test_no_content_bleeding_simulation() {
         // Every line must be at least `width` characters
         assert!(
             visible_len >= width as usize,
-            "Line {} has {} visible chars, expected at least {} to prevent bleeding. Content: '{}'",
-            i,
-            visible_len,
-            width,
-            stripped
+            "Line {i} has {visible_len} visible chars, expected at least {width} to prevent bleeding. Content: '{stripped}'"
         );
     }
 }

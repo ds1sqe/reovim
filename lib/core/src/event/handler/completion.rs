@@ -1,11 +1,13 @@
 //! Completion handler for auto-triggering completion on typing
 
-use crate::{
-    completion::trigger::{TriggerConfig, TriggerDetector, TriggerResult},
-    event::{key::KeyCode, CompletionEvent, InnerEvent, KeyEvent, Subscribe},
-    modd::ModeState,
+use {
+    crate::{
+        completion::trigger::{TriggerConfig, TriggerDetector, TriggerResult},
+        event::{CompletionEvent, InnerEvent, KeyEvent, Subscribe, key::KeyCode},
+        modd::ModeState,
+    },
+    tokio::sync::{broadcast::Receiver, mpsc::Sender, watch},
 };
-use tokio::sync::{broadcast::Receiver, mpsc::Sender, watch};
 
 /// Handler that auto-triggers completion when typing in Insert mode
 pub struct CompletionHandler {
@@ -78,9 +80,7 @@ impl CompletionHandler {
     async fn update_filter(&self, new_prefix: String) {
         let _ = self
             .event_tx
-            .send(InnerEvent::CompletionEvent(CompletionEvent::UpdateFilter {
-                new_prefix,
-            }))
+            .send(InnerEvent::CompletionEvent(CompletionEvent::UpdateFilter { new_prefix }))
             .await;
     }
 

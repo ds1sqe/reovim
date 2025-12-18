@@ -59,10 +59,7 @@ pub enum FlatItem {
     /// Section header (not selectable for value changes)
     SectionHeader(String),
     /// Setting item reference
-    Setting {
-        section_idx: usize,
-        item_idx: usize,
-    },
+    Setting { section_idx: usize, item_idx: usize },
 }
 
 impl SettingValue {
@@ -104,10 +101,7 @@ impl SettingValue {
     /// Increment a number value
     pub fn increment(&mut self) {
         if let Self::Number {
-            value,
-            max,
-            step,
-            ..
+            value, max, step, ..
         } = self
         {
             *value = (*value + *step).min(*max);
@@ -117,10 +111,7 @@ impl SettingValue {
     /// Decrement a number value
     pub fn decrement(&mut self) {
         if let Self::Number {
-            value,
-            min,
-            step,
-            ..
+            value, min, step, ..
         } = self
         {
             *value = (*value - *step).max(*min);

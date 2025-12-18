@@ -10,8 +10,10 @@ use {
     tokio::{select, sync::mpsc},
 };
 
-use crate::event::{key, InnerEvent};
-use crate::io::input::{EventStreamKeySource, KeySource};
+use crate::{
+    event::{InnerEvent, key},
+    io::input::{EventStreamKeySource, KeySource},
+};
 
 const DEFAULT_DELAY: u64 = 1;
 

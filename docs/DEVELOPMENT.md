@@ -26,6 +26,19 @@ cargo run -p reovim
 # Run with a file
 cargo run -p reovim -- path/to/file.txt
 
+# Run in server mode (TCP on 127.0.0.1:12521)
+cargo run -p reovim -- --server
+
+# Run server with stdio transport
+cargo run -p reovim -- --stdio
+
+# Run server on Unix socket
+cargo run -p reovim -- --listen-socket /tmp/reovim.sock
+
+# Run reo-cli client
+cargo run -p reo-cli -- mode
+cargo run -p reo-cli -- keys 'iHello<Esc>'
+
 # Check code without building
 cargo check
 
@@ -70,6 +83,7 @@ reovim/
 │   └── benches/       # Performance benchmarks
 ├── lib/sys/           # reovim-sys - terminal abstraction
 ├── tools/perf-report/ # Performance report generator
+├── tools/reo-cli/     # CLI client for server mode
 └── perf/              # Versioned performance reports
 ```
 

@@ -1,10 +1,14 @@
 //! Window management commands
 
-use crate::command::traits::{
-    CommandResult, CommandTrait, DeferredAction, ExecutionContext, WindowAction,
+use {
+    crate::{
+        command::traits::{
+            CommandResult, CommandTrait, DeferredAction, ExecutionContext, WindowAction,
+        },
+        screen::NavigateDirection,
+    },
+    std::any::Any,
 };
-use crate::screen::NavigateDirection;
-use std::any::Any;
 
 /// Focus window to the left (C-h)
 #[derive(Debug, Clone)]

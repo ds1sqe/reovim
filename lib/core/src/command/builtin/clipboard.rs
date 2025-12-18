@@ -1,7 +1,9 @@
 //! Clipboard commands
 
-use crate::command::traits::{CommandResult, CommandTrait, DeferredAction, ExecutionContext};
-use std::any::Any;
+use {
+    crate::command::traits::{CommandResult, CommandTrait, DeferredAction, ExecutionContext},
+    std::any::Any,
+};
 
 /// Paste after cursor
 #[derive(Debug, Clone)]
@@ -17,7 +19,10 @@ impl CommandTrait for PasteCommand {
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::DeferToRuntime(DeferredAction::Paste { before: false, register: None })
+        CommandResult::DeferToRuntime(DeferredAction::Paste {
+            before: false,
+            register: None,
+        })
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
@@ -43,7 +48,10 @@ impl CommandTrait for PasteBeforeCommand {
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::DeferToRuntime(DeferredAction::Paste { before: true, register: None })
+        CommandResult::DeferToRuntime(DeferredAction::Paste {
+            before: true,
+            register: None,
+        })
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {

@@ -1,7 +1,9 @@
 //! Key event to string conversion
 
-use crate::event::KeyEvent;
-use reovim_sys::event::{KeyCode, KeyModifiers};
+use {
+    crate::event::KeyEvent,
+    reovim_sys::event::{KeyCode, KeyModifiers},
+};
 
 /// Convert a key event to its string representation for keymap lookup
 #[must_use]

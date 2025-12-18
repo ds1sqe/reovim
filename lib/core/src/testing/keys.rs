@@ -111,13 +111,13 @@ fn parse_special_key(s: &str) -> Option<KeyEvent> {
         return Some(key_mod(KeyCode::Char(c), KeyModifiers::SHIFT));
     }
 
-    if let Some(rest) = upper.strip_prefix("A-").or_else(|| upper.strip_prefix("M-")) {
+    if let Some(rest) = upper
+        .strip_prefix("A-")
+        .or_else(|| upper.strip_prefix("M-"))
+    {
         // Alt/Meta combination
         let c = rest.chars().next()?;
-        return Some(key_mod(
-            KeyCode::Char(c.to_ascii_lowercase()),
-            KeyModifiers::ALT,
-        ));
+        return Some(key_mod(KeyCode::Char(c.to_ascii_lowercase()), KeyModifiers::ALT));
     }
 
     // Function keys

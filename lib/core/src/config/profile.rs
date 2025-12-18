@@ -1,9 +1,13 @@
 //! Profile manager for loading, saving, and switching profiles
 
-use super::loader::{file_exists, get_config_dir, get_profiles_dir, load_toml, save_toml};
-use super::schema::{GlobalConfig, ProfileConfig};
-use super::ConfigError;
-use std::path::PathBuf;
+use {
+    super::{
+        ConfigError,
+        loader::{file_exists, get_config_dir, get_profiles_dir, load_toml, save_toml},
+        schema::{GlobalConfig, ProfileConfig},
+    },
+    std::path::PathBuf,
+};
 
 /// Manages configuration profiles
 #[derive(Debug)]

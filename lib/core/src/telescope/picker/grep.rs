@@ -1,14 +1,16 @@
 //! Live grep picker implementation
 
-use std::future::Future;
-use std::pin::Pin;
-use std::process::Stdio;
+use std::{future::Future, pin::Pin, process::Stdio};
 
-use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::Command;
+use tokio::{
+    io::{AsyncBufReadExt, BufReader},
+    process::Command,
+};
 
-use crate::telescope::item::{TelescopeData, TelescopeItem};
-use crate::telescope::state::PreviewContent;
+use crate::telescope::{
+    item::{TelescopeData, TelescopeItem},
+    state::PreviewContent,
+};
 
 use super::{Picker, PickerContext, TelescopeAction};
 
@@ -167,10 +169,7 @@ impl Picker for GrepPicker {
         Box::pin(async move {
             tokio::fs::read_to_string(&path).await.ok().map(|content| {
                 let lines: Vec<String> = content.lines().map(String::from).collect();
-                let syntax = path
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .map(String::from);
+                let syntax = path.extension().and_then(|e| e.to_str()).map(String::from);
                 PreviewContent::new(lines)
                     .with_highlight_line(highlight_line.saturating_sub(1))
                     .with_syntax(syntax.unwrap_or_default())

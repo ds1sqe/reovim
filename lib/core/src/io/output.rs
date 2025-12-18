@@ -1,10 +1,14 @@
 //! Output abstraction for terminal rendering
 //!
-//! Provides `MockOutput` for capturing rendered output in tests,
-//! enabling assertions on display content.
+//! Provides:
+//! - `MockOutput` for capturing rendered output in tests
+//! - `DualOutput` for server mode (writes to terminal AND capture buffer)
+//! - `strip_ansi_codes` for removing ANSI escape sequences
 
-use std::io::{self, Write};
-use std::sync::{Arc, Mutex};
+use std::{
+    io::{self, Write},
+    sync::{Arc, Mutex},
+};
 
 /// Mock output that captures all written bytes.
 ///
@@ -110,6 +114,134 @@ impl Write for MockOutput {
     }
 }
 
+/// Dual output that writes to both a primary output (terminal) and a capture buffer.
+///
+/// Used in server mode to render to terminal while also capturing output for RPC clients.
+/// The capture buffer is shared via `Arc<Mutex<>>` so it can be read by the server.
+pub struct DualOutput {
+    /// Primary output (typically stdout)
+    primary: Option<Box<dyn Write + Send>>,
+    /// Capture buffer for RPC clients
+    capture: Arc<Mutex<Vec<u8>>>,
+}
+
+impl DualOutput {
+    /// Create a dual output with terminal and capture buffer
+    #[must_use]
+    pub fn new(primary: Box<dyn Write + Send>) -> Self {
+        Self {
+            primary: Some(primary),
+            capture: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    /// Create a headless dual output (capture only, no terminal)
+    #[must_use]
+    pub fn headless() -> Self {
+        Self {
+            primary: None,
+            capture: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    /// Get a handle to the capture buffer for reading
+    #[must_use]
+    pub fn capture_handle(&self) -> CaptureHandle {
+        CaptureHandle {
+            buffer: Arc::clone(&self.capture),
+        }
+    }
+
+    /// Clear the capture buffer
+    ///
+    /// # Panics
+    ///
+    /// Panics if the mutex is poisoned.
+    pub fn clear_capture(&self) {
+        self.capture.lock().unwrap().clear();
+    }
+}
+
+impl Write for DualOutput {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        // Write to capture buffer
+        self.capture.lock().unwrap().extend_from_slice(buf);
+
+        // Write to primary output if present
+        if let Some(ref mut primary) = self.primary {
+            primary.write_all(buf)?;
+        }
+
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        if let Some(ref mut primary) = self.primary {
+            primary.flush()?;
+        }
+        Ok(())
+    }
+}
+
+/// Handle to read captured output from a `DualOutput`
+#[derive(Clone)]
+pub struct CaptureHandle {
+    buffer: Arc<Mutex<Vec<u8>>>,
+}
+
+impl CaptureHandle {
+    /// Get captured output as raw bytes
+    ///
+    /// # Panics
+    ///
+    /// Panics if the mutex is poisoned.
+    #[must_use]
+    pub fn to_bytes(&self) -> Vec<u8> {
+        self.buffer.lock().unwrap().clone()
+    }
+
+    /// Get captured output as a string (lossy conversion)
+    ///
+    /// # Panics
+    ///
+    /// Panics if the mutex is poisoned.
+    #[must_use]
+    pub fn to_string_lossy(&self) -> String {
+        let buf = self.buffer.lock().unwrap();
+        String::from_utf8_lossy(&buf).to_string()
+    }
+
+    /// Get captured output with ANSI codes stripped
+    ///
+    /// # Panics
+    ///
+    /// Panics if the mutex is poisoned.
+    #[must_use]
+    pub fn strip_ansi(&self) -> String {
+        strip_ansi_codes(&self.to_string_lossy())
+    }
+
+    /// Check if the capture buffer is empty
+    ///
+    /// # Panics
+    ///
+    /// Panics if the mutex is poisoned.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.buffer.lock().unwrap().is_empty()
+    }
+
+    /// Get the length of captured bytes
+    ///
+    /// # Panics
+    ///
+    /// Panics if the mutex is poisoned.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.buffer.lock().unwrap().len()
+    }
+}
+
 /// Strip ANSI escape sequences from a string.
 ///
 /// Handles:
@@ -117,7 +249,8 @@ impl Write for MockOutput {
 /// - CSI sequences: `\x1b[...H` (cursor positioning)
 /// - CSI sequences: `\x1b[...J`, `\x1b[...K` (clear screen/line)
 /// - Other CSI sequences: `\x1b[...X` where X is any letter
-fn strip_ansi_codes(s: &str) -> String {
+#[must_use]
+pub fn strip_ansi_codes(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
 

@@ -1,7 +1,9 @@
 pub use reovim_sys::event::{KeyCode, KeyEvent};
 
-use crate::constants::KEY_EVENT_CHANNEL_CAPACITY;
-use tokio::sync::broadcast::{channel, error::SendError, Sender};
+use {
+    crate::constants::KEY_EVENT_CHANNEL_CAPACITY,
+    tokio::sync::broadcast::{Sender, channel, error::SendError},
+};
 
 use super::Subscribe;
 

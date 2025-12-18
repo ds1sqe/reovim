@@ -2,6 +2,102 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.5.0] - 2025-12-18
+
+### Features
+
+- **Server Mode with JSON-RPC 2.0 Protocol** - Headless server for programmatic editor control
+  - `--server` flag starts persistent server (runs until killed)
+  - `--server --test` starts test server (exits when all clients disconnect)
+  - Headless operation: no terminal required, captures output for RPC responses
+
+- **Multiple Transport Options** - Flexible connectivity
+  - `--stdio` - Stdio transport (stdin/stdout)
+  - `--listen-tcp <port>` - TCP transport on specified port
+  - `--listen-socket <path>` - Unix socket transport
+  - Default TCP port: 12521 ('r'×100 + 'e'×10 + 'o')
+
+- **RPC API Methods** - Full editor control via JSON-RPC 2.0
+  - `input/keys` - Send key sequences (e.g., `{"keys": "iHello<Esc>"}`)
+  - `state/mode` - Get current mode state
+  - `state/cursor` - Get cursor position (x, y)
+  - `state/buffer` - Get buffer content
+  - `state/screen` - Get full screen state (cells, cursor, mode, dimensions)
+  - `editor/quit` - Request editor quit
+
+- **reo-cli Client Tool** - Command-line client for server interaction
+  - `reo-cli mode` - Query current mode
+  - `reo-cli cursor` - Query cursor position
+  - `reo-cli buffer` - Query buffer content
+  - `reo-cli screen` - Query screen state
+  - `reo-cli keys '<keys>'` - Send key sequence
+  - `reo-cli quit` - Request server quit
+  - `reo-cli repl` - Interactive REPL mode
+  - Configurable host/port: `--host`, `--port`
+
+- **Hybrid Line Numbers by Default** - Line numbers now show hybrid mode (absolute for current line, relative for others) on startup
+
+- **Server-Based Integration Testing** - E2E test infrastructure using real server
+  - `ServerTestHarness` - Spawns test server with auto port allocation (ports 12600-12699)
+  - `TestClient` - Async JSON-RPC client for test communication
+  - `ServerTest` - Fluent builder API: `.with_content()`, `.with_keys()`, `.run()`
+  - `ServerTestResult` - Assertion methods: `assert_normal_mode()`, `assert_cursor()`, `assert_buffer_contains()`
+  - 1ms delay between key injections for reliable mode propagation
+  - Replaces mock-based `TestRuntime` with real end-to-end testing
+
+### Architecture
+
+- `RpcServer` - Coordinates JSON-RPC request handling
+- `TransportConfig` - Transport selection: Stdio, UnixSocket, Tcp
+- `TransportReader`/`TransportWriter` - Async I/O abstraction
+- `TransportListener` - Accepts connections for socket/TCP
+- `ChannelKeySource` - Injects keys from RPC into runtime
+- `DualOutput` - Captures screen output for headless mode
+- `ServerConfig` - Server behavior configuration (headless, test mode)
+
+### Files Added
+
+- `lib/core/src/rpc/mod.rs` - RPC module root
+- `lib/core/src/rpc/server.rs` - RpcServer implementation
+- `lib/core/src/rpc/state.rs` - Screen state serialization
+- `lib/core/src/rpc/transport.rs` - Transport abstractions
+- `lib/core/src/rpc/types.rs` - JSON-RPC message types
+- `lib/core/src/testing/client.rs` - TestClient for JSON-RPC communication
+- `lib/core/src/testing/server.rs` - ServerTestHarness for spawning test servers
+- `lib/core/src/testing/assertions.rs` - ServerTest builder and ServerTestResult assertions
+- `main/src/server.rs` - Server mode entry point
+- `tools/reo-cli/` - CLI client tool (Cargo.toml, src/main.rs, client.rs, commands.rs, repl.rs)
+
+### Files Changed
+
+- `Cargo.toml` - Added reo-cli workspace member, serde_json dependency
+- `lib/core/Cargo.toml` - Added serde_json dependency
+- `lib/core/src/lib.rs` - Added rpc, testing module exports
+- `lib/core/src/io/output.rs` - Added DualOutput for screen capture
+- `lib/core/src/event/inner/mod.rs` - Added RpcRequestEvent
+- `lib/core/src/runtime/core.rs` - Added RPC request handling
+- `lib/core/src/runtime/event_loop.rs` - Added RPC event handling
+- `lib/core/src/runtime/mod.rs` - Removed TestRuntime exports
+- `lib/core/src/testing/mod.rs` - Added exports for server-based testing
+- `lib/core/tests/common/mod.rs` - Switched to ServerTest
+- `lib/core/tests/basic_editing.rs` - Rewritten to use ServerTest
+- `lib/core/tests/mode_switching.rs` - Rewritten to use ServerTest
+- `main/src/main.rs` - Added server mode CLI flags
+- `docs/TESTING.md` - Updated for server-based testing architecture
+
+### Files Removed
+
+- `lib/core/src/runtime/test.rs` - Old mock-based TestRuntime (replaced by server-based testing)
+
+### Testing
+
+- 213 unit tests passing
+- 23 integration tests passing (basic_editing: 10, mode_switching: 8, resize: 5)
+- Zero warnings (build + clippy)
+- Performance: No regression in core benchmarks
+
+---
+
 ## [0.4.18] - 2025-12-18
 
 ### Features

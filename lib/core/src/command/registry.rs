@@ -1,10 +1,13 @@
 //! Command registry for runtime command management
 
-use super::id::CommandId;
-use super::traits::CommandTrait;
-use std::collections::HashMap;
-use std::fmt;
-use std::sync::{Arc, RwLock};
+use {
+    super::{id::CommandId, traits::CommandTrait},
+    std::{
+        collections::HashMap,
+        fmt,
+        sync::{Arc, RwLock},
+    },
+};
 
 /// Thread-safe command registry
 ///
@@ -109,73 +112,160 @@ impl CommandRegistry {
     #[allow(clippy::too_many_lines)]
     fn register_builtins(&self) {
         use super::builtin::{
-            // Clipboard
-            PasteBeforeCommand, PasteCommand,
             // Command line
-            CommandLineBackspaceCommand, CommandLineCancelCommand, CommandLineExecuteCommand,
+            CommandLineBackspaceCommand,
+            CommandLineCancelCommand,
+            CommandLineExecuteCommand,
             // Completion
-            CompletionConfirmCommand, CompletionDismissCommand, CompletionNextCommand,
-            CompletionPrevCommand, CompletionTriggerCommand,
+            CompletionConfirmCommand,
+            CompletionDismissCommand,
+            CompletionNextCommand,
+            CompletionPrevCommand,
+            CompletionTriggerCommand,
             // Cursor
-            CursorDownCommand, CursorLeftCommand, CursorLineEndCommand, CursorLineStartCommand,
-            CursorRightCommand, CursorUpCommand, CursorWordBackwardCommand,
-            CursorWordForwardCommand, GotoFirstLineCommand, GotoLastLineCommand,
-            // Explorer
-            ExplorerCancelInputCommand, ExplorerClearFilterCommand, ExplorerCloseCommand,
-            ExplorerCloseParentCommand, ExplorerConfirmInputCommand, ExplorerCreateDirCommand,
-            ExplorerCreateFileCommand, ExplorerCursorDownCommand, ExplorerCursorUpCommand,
-            ExplorerDeleteCommand, ExplorerFilterCommand, ExplorerFocusEditorCommand,
-            ExplorerGoToParentCommand, ExplorerGotoFirstCommand, ExplorerGotoLastCommand,
-            ExplorerInputBackspaceCommand, ExplorerOpenNodeCommand, ExplorerPageDownCommand,
-            ExplorerPageUpCommand, ExplorerRefreshCommand, ExplorerRenameCommand,
-            ExplorerToggleHiddenCommand, ExplorerToggleNodeCommand,
-            // Fold
-            FoldCloseAllCommand, FoldCloseCommand, FoldOpenAllCommand, FoldOpenCommand,
-            FoldToggleCommand,
-            // History (Undo/Redo)
-            RedoCommand, UndoCommand,
-            // Jump
-            JumpNewerCommand, JumpOlderCommand,
-            // Leap
-            LeapBackwardCommand, LeapCancelCommand, LeapForwardCommand,
-            // Mode
-            EnterCommandModeCommand, EnterInsertModeAfterCommand, EnterInsertModeCommand,
-            EnterInsertModeEolCommand, EnterNormalModeCommand, EnterVisualBlockModeCommand,
-            EnterVisualModeCommand, OpenLineAboveCommand, OpenLineBelowCommand,
-            // Operators
-            EnterChangeOperatorCommand, EnterDeleteOperatorCommand, EnterYankOperatorCommand,
-            // System
-            NoopCommand, QuitCommand,
-            // Telescope
-            TelescopeBackspaceCommand, TelescopeCloseCommand, TelescopeCommandsCommand,
-            TelescopeConfirmCommand, TelescopeEnterInsertCommand, TelescopeEnterNormalCommand,
-            TelescopeFindBuffersCommand, TelescopeFindFilesCommand, TelescopeGotoFirstCommand,
-            TelescopeGotoLastCommand, TelescopeHelpTagsCommand, TelescopeKeymapsCommand,
-            TelescopeLiveGrepCommand, TelescopePageDownCommand, TelescopePageUpCommand,
-            TelescopeRecentFilesCommand, TelescopeSelectNextCommand, TelescopeSelectPrevCommand,
-            TelescopeThemesCommand,
+            CursorDownCommand,
+            CursorLeftCommand,
+            CursorLineEndCommand,
+            CursorLineStartCommand,
+            CursorRightCommand,
+            CursorUpCommand,
+            CursorWordBackwardCommand,
+            CursorWordForwardCommand,
             // Text
-            DeleteCharBackwardCommand, DeleteCharForwardCommand, DeleteLineCommand,
-            InsertNewlineCommand, YankLineCommand, YankToEndCommand,
-            // Visual
-            VisualDeleteCommand, VisualExtendDownCommand, VisualExtendLeftCommand,
-            VisualExtendRightCommand, VisualExtendUpCommand, VisualYankCommand,
-            // Window
-            WindowCloseCommand, WindowEqualizeCommand, WindowFocusDownCommand,
-            WindowFocusLeftCommand, WindowFocusRightCommand, WindowFocusUpCommand,
-            WindowMoveDownCommand, WindowMoveLeftCommand, WindowMoveRightCommand,
-            WindowMoveUpCommand, WindowOnlyCommand, WindowSplitHorizontalCommand,
-            WindowSplitVerticalCommand,
-            // Tab
-            TabCloseCommand, TabNewCommand, TabNextCommand, TabPrevCommand,
+            DeleteCharBackwardCommand,
+            DeleteCharForwardCommand,
+            DeleteLineCommand,
+            // Operators
+            EnterChangeOperatorCommand,
+            // Mode
+            EnterCommandModeCommand,
+            EnterDeleteOperatorCommand,
+            EnterInsertModeAfterCommand,
+            EnterInsertModeCommand,
+            EnterInsertModeEolCommand,
+            EnterNormalModeCommand,
+            EnterVisualBlockModeCommand,
+            EnterVisualModeCommand,
+            EnterYankOperatorCommand,
+            // Explorer
+            ExplorerCancelInputCommand,
+            ExplorerClearFilterCommand,
+            ExplorerCloseCommand,
+            ExplorerCloseParentCommand,
+            ExplorerConfirmInputCommand,
+            ExplorerCreateDirCommand,
+            ExplorerCreateFileCommand,
+            ExplorerCursorDownCommand,
+            ExplorerCursorUpCommand,
+            ExplorerDeleteCommand,
+            ExplorerFilterCommand,
+            ExplorerFocusEditorCommand,
+            ExplorerGoToParentCommand,
+            ExplorerGotoFirstCommand,
+            ExplorerGotoLastCommand,
+            ExplorerInputBackspaceCommand,
+            ExplorerOpenNodeCommand,
+            ExplorerPageDownCommand,
+            ExplorerPageUpCommand,
+            ExplorerRefreshCommand,
+            ExplorerRenameCommand,
+            ExplorerToggleHiddenCommand,
+            ExplorerToggleNodeCommand,
+            // Fold
+            FoldCloseAllCommand,
+            FoldCloseCommand,
+            FoldOpenAllCommand,
+            FoldOpenCommand,
+            FoldToggleCommand,
+            GotoFirstLineCommand,
+            GotoLastLineCommand,
+            InsertNewlineCommand,
+            // Jump
+            JumpNewerCommand,
+            JumpOlderCommand,
+            // Leap
+            LeapBackwardCommand,
+            LeapCancelCommand,
+            LeapForwardCommand,
+            // System
+            NoopCommand,
+            OpenLineAboveCommand,
+            OpenLineBelowCommand,
+            // Clipboard
+            PasteBeforeCommand,
+            PasteCommand,
+            QuitCommand,
+            // History (Undo/Redo)
+            RedoCommand,
             // Settings Menu
-            SettingsMenuCloseCommand, SettingsMenuCycleNextCommand, SettingsMenuCyclePrevCommand,
-            SettingsMenuDecrementCommand, SettingsMenuExecuteCommand, SettingsMenuIncrementCommand,
-            SettingsMenuNextCommand, SettingsMenuOpenCommand, SettingsMenuPrevCommand,
-            SettingsMenuQuick1Command, SettingsMenuQuick2Command, SettingsMenuQuick3Command,
-            SettingsMenuQuick4Command, SettingsMenuQuick5Command, SettingsMenuQuick6Command,
-            SettingsMenuQuick7Command, SettingsMenuQuick8Command, SettingsMenuQuick9Command,
+            SettingsMenuCloseCommand,
+            SettingsMenuCycleNextCommand,
+            SettingsMenuCyclePrevCommand,
+            SettingsMenuDecrementCommand,
+            SettingsMenuExecuteCommand,
+            SettingsMenuIncrementCommand,
+            SettingsMenuNextCommand,
+            SettingsMenuOpenCommand,
+            SettingsMenuPrevCommand,
+            SettingsMenuQuick1Command,
+            SettingsMenuQuick2Command,
+            SettingsMenuQuick3Command,
+            SettingsMenuQuick4Command,
+            SettingsMenuQuick5Command,
+            SettingsMenuQuick6Command,
+            SettingsMenuQuick7Command,
+            SettingsMenuQuick8Command,
+            SettingsMenuQuick9Command,
             SettingsMenuToggleCommand,
+            // Tab
+            TabCloseCommand,
+            TabNewCommand,
+            TabNextCommand,
+            TabPrevCommand,
+            // Telescope
+            TelescopeBackspaceCommand,
+            TelescopeCloseCommand,
+            TelescopeCommandsCommand,
+            TelescopeConfirmCommand,
+            TelescopeEnterInsertCommand,
+            TelescopeEnterNormalCommand,
+            TelescopeFindBuffersCommand,
+            TelescopeFindFilesCommand,
+            TelescopeGotoFirstCommand,
+            TelescopeGotoLastCommand,
+            TelescopeHelpTagsCommand,
+            TelescopeKeymapsCommand,
+            TelescopeLiveGrepCommand,
+            TelescopePageDownCommand,
+            TelescopePageUpCommand,
+            TelescopeRecentFilesCommand,
+            TelescopeSelectNextCommand,
+            TelescopeSelectPrevCommand,
+            TelescopeThemesCommand,
+            UndoCommand,
+            // Visual
+            VisualDeleteCommand,
+            VisualExtendDownCommand,
+            VisualExtendLeftCommand,
+            VisualExtendRightCommand,
+            VisualExtendUpCommand,
+            VisualYankCommand,
+            // Window
+            WindowCloseCommand,
+            WindowEqualizeCommand,
+            WindowFocusDownCommand,
+            WindowFocusLeftCommand,
+            WindowFocusRightCommand,
+            WindowFocusUpCommand,
+            WindowMoveDownCommand,
+            WindowMoveLeftCommand,
+            WindowMoveRightCommand,
+            WindowMoveUpCommand,
+            WindowOnlyCommand,
+            WindowSplitHorizontalCommand,
+            WindowSplitVerticalCommand,
+            YankLineCommand,
+            YankToEndCommand,
         };
 
         // Cursor movement commands
@@ -381,7 +471,9 @@ pub enum RegistryError {
 impl fmt::Display for RegistryError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::AlreadyRegistered(id) => write!(f, "Command already registered: {id}"),
+            Self::AlreadyRegistered(id) => {
+                write!(f, "Command already registered: {id}")
+            }
             Self::NotFound(id) => write!(f, "Command not found: {id}"),
             Self::LockPoisoned => write!(f, "Registry lock poisoned"),
         }

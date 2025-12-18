@@ -11,7 +11,9 @@ pub struct CountParser {
 impl CountParser {
     #[must_use]
     pub const fn new() -> Self {
-        Self { pending_count: None }
+        Self {
+            pending_count: None,
+        }
     }
 
     /// Check if a key is a digit that should be accumulated as count
@@ -73,8 +75,7 @@ impl CountParser {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::modd::OperatorType;
+    use {super::*, crate::modd::OperatorType};
 
     #[test]
     fn test_single_digit() {
@@ -114,10 +115,9 @@ mod tests {
         let parser = CountParser::new();
         assert!(parser.is_count_digit("5", &ModeState::normal()));
         assert!(parser.is_count_digit("5", &ModeState::visual()));
-        assert!(parser.is_count_digit(
-            "5",
-            &ModeState::operator_pending(OperatorType::Delete, None)
-        ));
+        assert!(
+            parser.is_count_digit("5", &ModeState::operator_pending(OperatorType::Delete, None))
+        );
         assert!(!parser.is_count_digit("5", &ModeState::insert()));
         assert!(!parser.is_count_digit("5", &ModeState::command()));
     }

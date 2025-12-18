@@ -1,12 +1,17 @@
 //! Command dispatch and mode change handling
 
-use crate::bind::CommandRef;
-use crate::command::traits::OperatorMotionAction;
-use crate::command::CommandContext;
-use crate::event::inner::{CommandEvent, VisualTextObjectAction, WhichKeyBinding};
-use crate::event::InnerEvent;
-use crate::modd::{ModeState, OperatorType};
-use tokio::sync::mpsc::Sender;
+use {
+    crate::{
+        bind::CommandRef,
+        command::{CommandContext, traits::OperatorMotionAction},
+        event::{
+            InnerEvent,
+            inner::{CommandEvent, VisualTextObjectAction, WhichKeyBinding},
+        },
+        modd::{ModeState, OperatorType},
+    },
+    tokio::sync::mpsc::Sender,
+};
 
 /// Handles command dispatch and mode transitions
 pub struct Dispatcher {
@@ -17,11 +22,7 @@ pub struct Dispatcher {
 
 impl Dispatcher {
     #[must_use]
-    pub const fn new(
-        tx: Sender<InnerEvent>,
-        buffer_id: usize,
-        window_id: usize,
-    ) -> Self {
+    pub const fn new(tx: Sender<InnerEvent>, buffer_id: usize, window_id: usize) -> Self {
         Self {
             inner_tx: tx,
             current_buffer_id: buffer_id,
@@ -81,15 +82,22 @@ impl Dispatcher {
 
         match name {
             "enter_normal_mode" => Some(ModeState::normal()),
-            "enter_insert_mode" | "enter_insert_mode_after" | "enter_insert_mode_eol"
-            | "open_line_below" | "open_line_above" => Some(ModeState::insert()),
+            "enter_insert_mode"
+            | "enter_insert_mode_after"
+            | "enter_insert_mode_eol"
+            | "open_line_below"
+            | "open_line_above" => Some(ModeState::insert()),
             "enter_visual_mode" => Some(ModeState::visual()),
             "enter_visual_block_mode" => Some(ModeState::visual_block()),
             "enter_command_mode" => Some(ModeState::command()),
             // Operator-pending mode
-            "enter_delete_operator" => Some(ModeState::operator_pending(OperatorType::Delete, None)),
+            "enter_delete_operator" => {
+                Some(ModeState::operator_pending(OperatorType::Delete, None))
+            }
             "enter_yank_operator" => Some(ModeState::operator_pending(OperatorType::Yank, None)),
-            "enter_change_operator" => Some(ModeState::operator_pending(OperatorType::Change, None)),
+            "enter_change_operator" => {
+                Some(ModeState::operator_pending(OperatorType::Change, None))
+            }
             // Commands that return to Normal mode
             "command_line_execute" | "command_line_cancel" | "visual_delete" | "visual_yank" => {
                 Some(ModeState::normal())
@@ -130,9 +138,7 @@ impl Dispatcher {
     pub async fn send_leap_first_char(&self, c: char) {
         let _ = self
             .inner_tx
-            .send(InnerEvent::LeapEvent(crate::event::LeapEvent::FirstChar {
-                char: c,
-            }))
+            .send(InnerEvent::LeapEvent(crate::event::LeapEvent::FirstChar { char: c }))
             .await;
     }
 
@@ -140,9 +146,7 @@ impl Dispatcher {
     pub async fn send_leap_second_char(&self, c: char) {
         let _ = self
             .inner_tx
-            .send(InnerEvent::LeapEvent(crate::event::LeapEvent::SecondChar {
-                char: c,
-            }))
+            .send(InnerEvent::LeapEvent(crate::event::LeapEvent::SecondChar { char: c }))
             .await;
     }
 
@@ -150,9 +154,7 @@ impl Dispatcher {
     pub async fn send_leap_select_label(&self, label: String) {
         let _ = self
             .inner_tx
-            .send(InnerEvent::LeapEvent(crate::event::LeapEvent::SelectLabel {
-                label,
-            }))
+            .send(InnerEvent::LeapEvent(crate::event::LeapEvent::SelectLabel { label }))
             .await;
     }
 

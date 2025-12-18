@@ -1,10 +1,11 @@
 //! Help tags picker implementation
 
-use std::future::Future;
-use std::pin::Pin;
+use std::{future::Future, pin::Pin};
 
-use crate::telescope::item::{TelescopeData, TelescopeItem};
-use crate::telescope::state::PreviewContent;
+use crate::telescope::{
+    item::{TelescopeData, TelescopeItem},
+    state::PreviewContent,
+};
 
 use super::{Picker, PickerContext, TelescopeAction};
 

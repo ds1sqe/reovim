@@ -1,7 +1,11 @@
 //! Code folding commands
 
-use crate::command::traits::{CommandResult, CommandTrait, DeferredAction, ExecutionContext, FoldAction};
-use std::any::Any;
+use {
+    crate::command::traits::{
+        CommandResult, CommandTrait, DeferredAction, ExecutionContext, FoldAction,
+    },
+    std::any::Any,
+};
 
 /// Toggle fold at cursor line (za)
 #[derive(Debug, Clone)]

@@ -10,7 +10,7 @@ use {
         command_line::CommandLine,
         completion::CompletionState,
         constants::RESET_STYLE,
-        explorer::{render_explorer, ExplorerState},
+        explorer::{ExplorerState, render_explorer},
         folding::FoldManager,
         highlight::{ColorMode, HighlightStore, Theme},
         indent::IndentAnalyzer,
@@ -25,13 +25,17 @@ use {
         style::Print,
         terminal::size,
     },
-    std::collections::BTreeMap,
-    std::io::{self, Write},
+    std::{
+        collections::BTreeMap,
+        io::{self, Write},
+    },
     window::{Anchor, LineNumber, Window},
 };
 
-pub use status_line::{render_command_line_to, render_status_line_to, StatusLineRenderer};
-pub use which_key::{WhichKeyConfig, WhichKeyPanel};
+pub use {
+    status_line::{StatusLineRenderer, render_command_line_to, render_status_line_to},
+    which_key::{WhichKeyConfig, WhichKeyPanel},
+};
 
 pub mod cusor;
 pub mod layout;
@@ -39,9 +43,11 @@ pub mod split;
 pub mod tab;
 pub mod window;
 
-pub use layout::{LayoutManager, WindowType};
-pub use split::{NavigateDirection, SplitDirection, SplitNode, WindowLayout, WindowRect};
-pub use tab::{TabInfo, TabManager, TabPage};
+pub use {
+    layout::{LayoutManager, WindowType},
+    split::{NavigateDirection, SplitDirection, SplitNode, WindowLayout, WindowRect},
+    tab::{TabInfo, TabManager, TabPage},
+};
 
 pub struct ScreenSize {
     pub height: u16,
@@ -70,8 +76,7 @@ pub struct Screen {
 impl Default for Screen {
     fn default() -> Self {
         let stdout = io::stdout();
-        let (columns, rows) =
-            size().expect("failed to get screen size on screen creation");
+        let (columns, rows) = size().expect("failed to get screen size on screen creation");
         let mut windows = Vec::new();
         let anchor = Anchor { x: 0, y: 0 };
         let editor_height = rows.saturating_sub(1); // Reserve last row for status line
@@ -158,10 +163,7 @@ impl Screen {
         }
     }
 
-    pub fn clear(
-        &mut self,
-        ctype: ClearType,
-    ) -> std::result::Result<(), std::io::Error> {
+    pub fn clear(&mut self, ctype: ClearType) -> std::result::Result<(), std::io::Error> {
         queue!(self.out_stream, Clear(ctype))
     }
 
@@ -169,15 +171,11 @@ impl Screen {
         self.out_stream.flush()
     }
 
-    pub fn enable_mouse_capture(
-        &mut self,
-    ) -> std::result::Result<(), std::io::Error> {
+    pub fn enable_mouse_capture(&mut self) -> std::result::Result<(), std::io::Error> {
         queue!(self.out_stream, EnableMouseCapture)
     }
 
-    pub fn disable_mouse_capture(
-        &mut self,
-    ) -> std::result::Result<(), std::io::Error> {
+    pub fn disable_mouse_capture(&mut self) -> std::result::Result<(), std::io::Error> {
         queue!(self.out_stream, DisableMouseCapture)
     }
 
@@ -304,7 +302,14 @@ impl Screen {
                 let fold_state = fold_manager.get(buf.id);
 
                 // Render each line with explicit cursor positioning
-                let lines = win.render(buf, highlight_store, color_mode, theme, fold_state, indent_analyzer);
+                let lines = win.render(
+                    buf,
+                    highlight_store,
+                    color_mode,
+                    theme,
+                    fold_state,
+                    indent_analyzer,
+                );
                 for (row_offset, line) in lines.iter().enumerate() {
                     queue!(
                         self.out_stream,
@@ -324,7 +329,8 @@ impl Screen {
 
                     // Collect leap rendering info if needed
                     if leap_state.is_showing_labels() {
-                        leap_render_info = Some((win.anchor.x + gutter_width, win.anchor.y, win.buffer_anchor.y));
+                        leap_render_info =
+                            Some((win.anchor.x + gutter_width, win.anchor.y, win.buffer_anchor.y));
                     }
                 }
             }
@@ -349,13 +355,7 @@ impl Screen {
         if completion_state.is_visible()
             && let Some((cursor_x, cursor_y)) = cursor_pos
         {
-            self.render_completion_popup(
-                completion_state,
-                cursor_x,
-                cursor_y,
-                color_mode,
-                theme,
-            )?;
+            self.render_completion_popup(completion_state, cursor_x, cursor_y, color_mode, theme)?;
         }
 
         // Show command line in Command mode, status line otherwise
@@ -377,12 +377,8 @@ impl Screen {
 
         // Render which-key panel overlay (after windows and status line)
         if which_key_panel.visible {
-            let panel_lines = which_key_panel.render(
-                self.size.width,
-                self.size.height,
-                color_mode,
-                theme,
-            );
+            let panel_lines =
+                which_key_panel.render(self.size.width, self.size.height, color_mode, theme);
             for (line, x, y) in panel_lines {
                 queue!(self.out_stream, MoveTo(x, y))?;
                 queue!(self.out_stream, Print(line))?;
@@ -397,7 +393,11 @@ impl Screen {
                 queue!(self.out_stream, Print(line))?;
             }
             // Position cursor at selected item
-            let cursor_y = settings_menu.layout.y + 2 + settings_menu.selected_index.saturating_sub(settings_menu.scroll_offset) as u16;
+            let cursor_y = settings_menu.layout.y
+                + 2
+                + settings_menu
+                    .selected_index
+                    .saturating_sub(settings_menu.scroll_offset) as u16;
             let cursor_x = settings_menu.layout.x + 2;
             queue!(self.out_stream, MoveTo(cursor_x, cursor_y))?;
             return Ok(());
@@ -408,7 +408,8 @@ impl Screen {
             self.render_telescope(telescope_state, color_mode, theme)?;
             // Set cursor in telescope input
             let prompt_len = telescope_state.prompt.len() as u16;
-            let cursor_x = telescope_state.layout.x + 1 + prompt_len + telescope_state.cursor_pos as u16;
+            let cursor_x =
+                telescope_state.layout.x + 1 + prompt_len + telescope_state.cursor_pos as u16;
             let cursor_y = telescope_state.layout.y + telescope_state.layout.height - 2;
             queue!(self.out_stream, MoveTo(cursor_x, cursor_y))?;
             return Ok(());
@@ -661,10 +662,7 @@ impl Screen {
         let sep_y = y + height - 3;
         queue!(self.out_stream, MoveTo(x, sep_y))?;
         queue!(self.out_stream, Print(&border_style))?;
-        let separator = format!(
-            "├{}┤",
-            "─".repeat((total_width as usize).saturating_sub(2))
-        );
+        let separator = format!("├{}┤", "─".repeat((total_width as usize).saturating_sub(2)));
         queue!(self.out_stream, Print(&separator))?;
         queue!(self.out_stream, Print(RESET_STYLE))?;
 
@@ -833,7 +831,11 @@ impl Screen {
             // Rebuild the windows vec from split tree layouts
             self.windows.clear();
             for layout in &layouts {
-                let buffer_id = self.window_buffers.get(&layout.window_id).copied().unwrap_or(0);
+                let buffer_id = self
+                    .window_buffers
+                    .get(&layout.window_id)
+                    .copied()
+                    .unwrap_or(0);
                 self.windows.push(Window {
                     id: layout.window_id,
                     window_type: WindowType::Editor,
@@ -1181,7 +1183,9 @@ impl Screen {
         _color_mode: ColorMode,
         theme: &Theme,
     ) -> std::result::Result<(), std::io::Error> {
-        use reovim_sys::style::{Attribute, Color, SetAttribute, SetBackgroundColor, SetForegroundColor};
+        use reovim_sys::style::{
+            Attribute, Color, SetAttribute, SetBackgroundColor, SetForegroundColor,
+        };
 
         // Use leap theme style or fallback to search highlight
         let label_fg = theme.leap.label.fg.unwrap_or(Color::Black);

@@ -3,13 +3,13 @@
 //! Provides the `KeySource` trait for abstracting key event sources,
 //! enabling tests to inject mock key sequences.
 
-use std::collections::VecDeque;
-use std::error::Error;
-use std::time::Duration;
+use std::{collections::VecDeque, error::Error, time::Duration};
 
-use futures::StreamExt;
-use reovim_sys::event::{Event, EventStream, KeyEvent, KeyEventKind};
-use tokio::sync::mpsc;
+use {
+    futures::StreamExt,
+    reovim_sys::event::{Event, EventStream, KeyEvent, KeyEventKind},
+    tokio::sync::mpsc,
+};
 
 use crate::event::InnerEvent;
 
@@ -210,9 +210,11 @@ impl KeySource for EventStreamKeySource {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use reovim_sys::event::{KeyCode, KeyEventState, KeyModifiers};
-    use std::task::{Context, Poll, Wake, Waker};
+    use {
+        super::*,
+        reovim_sys::event::{KeyCode, KeyEventState, KeyModifiers},
+        std::task::{Context, Poll, Wake, Waker},
+    };
 
     fn key_event(code: KeyCode) -> KeyEvent {
         KeyEvent {

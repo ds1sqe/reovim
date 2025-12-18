@@ -1,8 +1,8 @@
 //! Nucleo-based fuzzy matching
 
 use nucleo::{
-    pattern::{CaseMatching, Normalization, Pattern},
     Matcher, Utf32Str,
+    pattern::{CaseMatching, Normalization, Pattern},
 };
 
 use super::item::TelescopeItem;
@@ -25,7 +25,8 @@ impl TelescopeMatcher {
 
     /// Update the search pattern
     pub fn set_pattern(&mut self, query: &str) {
-        self.pattern.reparse(query, CaseMatching::Smart, Normalization::Smart);
+        self.pattern
+            .reparse(query, CaseMatching::Smart, Normalization::Smart);
     }
 
     /// Check if pattern is empty
@@ -89,12 +90,15 @@ impl Default for TelescopeMatcher {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::telescope::item::TelescopeData;
-    use std::path::PathBuf;
+    use {super::*, crate::telescope::item::TelescopeData, std::path::PathBuf};
 
     fn make_item(display: &str) -> TelescopeItem {
-        TelescopeItem::new(display, display, TelescopeData::FilePath(PathBuf::from(display)), "test")
+        TelescopeItem::new(
+            display,
+            display,
+            TelescopeData::FilePath(PathBuf::from(display)),
+            "test",
+        )
     }
 
     #[test]

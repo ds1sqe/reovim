@@ -4,26 +4,27 @@ mod count_parser;
 mod dispatcher;
 mod key_parser;
 
-pub use count_parser::CountParser;
-pub use dispatcher::Dispatcher;
-pub use key_parser::key_to_string;
+pub use {count_parser::CountParser, dispatcher::Dispatcher, key_parser::key_to_string};
 
 use {
     crate::{
         bind::{CommandRef, KeyMap, KeyMapInner},
         command::{
+            CommandTrait,
             builtin::{
                 CommandLineCharCommand, ExplorerInputCharCommand, InsertCharCommand,
                 TelescopeInsertCharCommand,
             },
             registry::CommandRegistry,
             traits::OperatorMotionAction,
-            CommandTrait,
         },
         event::{InnerEvent, KeyEvent, Subscribe, VisualTextObjectAction},
         modd::{ModeState, OperatorType, SubMode},
         motion::Motion,
-        textobject::{Delimiter, SemanticTextObject, SemanticTextObjectSpec, TextObject, TextObjectScope, WordTextObject, WordType},
+        textobject::{
+            Delimiter, SemanticTextObject, SemanticTextObjectSpec, TextObject, TextObjectScope,
+            WordTextObject, WordType,
+        },
     },
     std::{collections::HashMap, sync::Arc, time::Duration},
     tokio::sync::{broadcast::Receiver, mpsc::Sender, watch},
@@ -129,6 +130,7 @@ impl CommandHandler {
     /// Handle operator-pending mode specially
     /// Returns Some(action) if the key triggers an operator, None otherwise
     /// Returns None with `should_wait=true` if waiting for more keys (text object)
+    #[allow(clippy::too_many_lines)]
     fn handle_operator_pending(
         &self,
         key: &str,
@@ -136,7 +138,11 @@ impl CommandHandler {
         pending: &str,
     ) -> (Option<OperatorMotionAction>, bool) {
         let mode = self.current_mode();
-        if let SubMode::OperatorPending { operator, count: op_count } = &mode.sub_mode {
+        if let SubMode::OperatorPending {
+            operator,
+            count: op_count,
+        } = &mode.sub_mode
+        {
             // Calculate total count (operator_count * motion_count)
             let _total_count = op_count.unwrap_or(1) * count.unwrap_or(1);
 
@@ -155,9 +161,13 @@ impl CommandHandler {
                 if let Some(delimiter) = Delimiter::from_char(obj_char) {
                     let text_object = TextObject::new(scope, delimiter);
                     let action = match operator {
-                        OperatorType::Delete => OperatorMotionAction::DeleteTextObject { text_object },
+                        OperatorType::Delete => {
+                            OperatorMotionAction::DeleteTextObject { text_object }
+                        }
                         OperatorType::Yank => OperatorMotionAction::YankTextObject { text_object },
-                        OperatorType::Change => OperatorMotionAction::ChangeTextObject { text_object },
+                        OperatorType::Change => {
+                            OperatorMotionAction::ChangeTextObject { text_object }
+                        }
                     };
                     return (Some(action), false);
                 }
@@ -166,9 +176,15 @@ impl CommandHandler {
                 if let Some(word_type) = WordType::from_char(obj_char) {
                     let text_object = WordTextObject::new(scope, word_type);
                     let action = match operator {
-                        OperatorType::Delete => OperatorMotionAction::DeleteWordTextObject { text_object },
-                        OperatorType::Yank => OperatorMotionAction::YankWordTextObject { text_object },
-                        OperatorType::Change => OperatorMotionAction::ChangeWordTextObject { text_object },
+                        OperatorType::Delete => {
+                            OperatorMotionAction::DeleteWordTextObject { text_object }
+                        }
+                        OperatorType::Yank => {
+                            OperatorMotionAction::YankWordTextObject { text_object }
+                        }
+                        OperatorType::Change => {
+                            OperatorMotionAction::ChangeWordTextObject { text_object }
+                        }
                     };
                     return (Some(action), false);
                 }
@@ -177,9 +193,15 @@ impl CommandHandler {
                 if let Some(kind) = SemanticTextObject::from_char(obj_char) {
                     let text_object = SemanticTextObjectSpec::new(scope, kind);
                     let action = match operator {
-                        OperatorType::Delete => OperatorMotionAction::DeleteSemanticTextObject { text_object },
-                        OperatorType::Yank => OperatorMotionAction::YankSemanticTextObject { text_object },
-                        OperatorType::Change => OperatorMotionAction::ChangeSemanticTextObject { text_object },
+                        OperatorType::Delete => {
+                            OperatorMotionAction::DeleteSemanticTextObject { text_object }
+                        }
+                        OperatorType::Yank => {
+                            OperatorMotionAction::YankSemanticTextObject { text_object }
+                        }
+                        OperatorType::Change => {
+                            OperatorMotionAction::ChangeSemanticTextObject { text_object }
+                        }
                     };
                     return (Some(action), false);
                 }
@@ -194,25 +216,45 @@ impl CommandHandler {
             if let Some(motion) = Motion::from_key(key) {
                 let total_count = op_count.unwrap_or(1) * count.unwrap_or(1);
                 let action = match operator {
-                    OperatorType::Delete => OperatorMotionAction::Delete { motion, count: total_count },
-                    OperatorType::Yank => OperatorMotionAction::Yank { motion, count: total_count },
-                    OperatorType::Change => OperatorMotionAction::Change { motion, count: total_count },
+                    OperatorType::Delete => OperatorMotionAction::Delete {
+                        motion,
+                        count: total_count,
+                    },
+                    OperatorType::Yank => OperatorMotionAction::Yank {
+                        motion,
+                        count: total_count,
+                    },
+                    OperatorType::Change => OperatorMotionAction::Change {
+                        motion,
+                        count: total_count,
+                    },
                 };
                 return (Some(action), false);
             }
 
             // Handle 'd' for dd (delete line), 'y' for yy, 'c' for cc
             match (key, *operator) {
-                ("d", OperatorType::Delete) | ("y", OperatorType::Yank) | ("c", OperatorType::Change) => {
+                ("d", OperatorType::Delete)
+                | ("y", OperatorType::Yank)
+                | ("c", OperatorType::Change) => {
                     // dd/yy/cc: delete/yank/change current line(s)
                     // Use Down motion with count-1 to affect count lines
                     let total_count = op_count.unwrap_or(1) * count.unwrap_or(1);
                     let motion = Motion::Down;
                     let line_count = if total_count == 1 { 0 } else { total_count - 1 };
                     let action = match operator {
-                        OperatorType::Delete => OperatorMotionAction::Delete { motion, count: line_count },
-                        OperatorType::Yank => OperatorMotionAction::Yank { motion, count: line_count },
-                        OperatorType::Change => OperatorMotionAction::Change { motion, count: line_count },
+                        OperatorType::Delete => OperatorMotionAction::Delete {
+                            motion,
+                            count: line_count,
+                        },
+                        OperatorType::Yank => OperatorMotionAction::Yank {
+                            motion,
+                            count: line_count,
+                        },
+                        OperatorType::Change => OperatorMotionAction::Change {
+                            motion,
+                            count: line_count,
+                        },
                     };
                     return (Some(action), false);
                 }
@@ -334,7 +376,8 @@ impl CommandHandler {
             return (Some(CommandRef::Inline(cmd)), true);
         }
 
-        if mode.is_explorer_focus() && mode.is_insert()
+        if mode.is_explorer_focus()
+            && mode.is_insert()
             && key.len() == 1
             && let Some(c) = key.chars().next()
         {
@@ -343,7 +386,8 @@ impl CommandHandler {
             return (Some(CommandRef::Inline(cmd)), true);
         }
 
-        if mode.is_telescope_focus() && mode.is_insert()
+        if mode.is_telescope_focus()
+            && mode.is_insert()
             && key.len() == 1
             && let Some(c) = key.chars().next()
         {
@@ -376,9 +420,11 @@ impl CommandHandler {
 
     /// Show the which-key popup with available bindings
     async fn show_which_key(&mut self) {
-        let bindings = self
-            .keymap
-            .get_bindings_for_prefix(&self.local_mode, &self.pending_keys, &self.registry);
+        let bindings = self.keymap.get_bindings_for_prefix(
+            &self.local_mode,
+            &self.pending_keys,
+            &self.registry,
+        );
 
         if !bindings.is_empty() {
             self.dispatcher

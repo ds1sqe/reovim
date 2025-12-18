@@ -2,8 +2,10 @@
 
 #![allow(clippy::missing_errors_doc)]
 
-use std::io;
-use std::path::{Path, PathBuf};
+use std::{
+    io,
+    path::{Path, PathBuf},
+};
 
 use super::node::FileNode;
 
@@ -129,7 +131,8 @@ impl FileTree {
     /// Expand a directory by path
     pub fn expand(&mut self, path: &Path) -> io::Result<()> {
         if let Some(node) = self.get_node_mut(path)
-            && node.is_dir() && !node.is_expanded()
+            && node.is_dir()
+            && !node.is_expanded()
         {
             node.set_expanded(true);
             node.load_children()?;
@@ -194,9 +197,11 @@ impl FileTree {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use std::fs::{self, File};
-    use tempfile::tempdir;
+    use {
+        super::*,
+        std::fs::{self, File},
+        tempfile::tempdir,
+    };
 
     #[test]
     fn test_new_tree() {

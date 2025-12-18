@@ -2,9 +2,11 @@
 
 use std::any::Any;
 
-use crate::command::traits::{CommandResult, CommandTrait, DeferredAction, ExecutionContext, LeapAction};
-use crate::leap::LeapDirection;
-use crate::modd::ModeState;
+use crate::{
+    command::traits::{CommandResult, CommandTrait, DeferredAction, ExecutionContext, LeapAction},
+    leap::LeapDirection,
+    modd::ModeState,
+};
 
 /// Enter leap mode (forward search)
 #[derive(Debug, Clone)]

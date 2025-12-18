@@ -1,23 +1,31 @@
 //! Stress test benchmarks - Combined real-world scenarios
 
-use criterion::{black_box, BenchmarkId, Criterion};
-use reovim_core::buffer::TextOps;
-use reovim_core::{
-    command_line::CommandLine,
-    completion::{CompletionItem, CompletionState},
-    explorer::ExplorerState,
-    folding::FoldManager,
-    highlight::{ColorMode, HighlightStore, Theme},
-    leap::LeapState,
-    modd::ModeState,
-    screen::{Screen, WhichKeyPanel},
-    telescope::TelescopeState,
-};
-use std::io::BufWriter;
-use std::path::PathBuf;
-use tempfile::NamedTempFile;
+#![allow(clippy::semicolon_if_nothing_returned)]
+#![allow(clippy::too_many_lines)]
+#![allow(clippy::cast_possible_truncation)]
 
-use super::common::{buffer_to_map, create_realistic_buffer, MockWriter};
+use std::{hint::black_box, io::BufWriter, path::PathBuf};
+
+use {
+    criterion::{BenchmarkId, Criterion},
+    reovim_core::{
+        buffer::TextOps,
+        command_line::CommandLine,
+        completion::{CompletionItem, CompletionState},
+        explorer::ExplorerState,
+        folding::FoldManager,
+        highlight::{ColorMode, HighlightStore, Theme},
+        indent::IndentAnalyzer,
+        leap::LeapState,
+        modd::ModeState,
+        screen::{Screen, WhichKeyPanel},
+        settings_menu::SettingsMenuState,
+        telescope::TelescopeState,
+    },
+    tempfile::NamedTempFile,
+};
+
+use super::common::{MockWriter, buffer_to_map, create_realistic_buffer};
 
 /// Stress test: Rapid editing session (type, move, delete cycle)
 pub fn bench_stress_editing_session(c: &mut Criterion) {
@@ -35,6 +43,8 @@ pub fn bench_stress_editing_session(c: &mut Criterion) {
     let telescope = TelescopeState::new();
     let leap = LeapState::new();
     let fold_manager = FoldManager::new();
+    let indent_analyzer = IndentAnalyzer::new(4);
+    let settings_menu = SettingsMenuState::new();
     let mode = ModeState::normal();
 
     group.bench_function("edit_navigate_cycle_1k", |b| {
@@ -53,7 +63,11 @@ pub fn bench_stress_editing_session(c: &mut Criterion) {
                 for i in 0..20 {
                     match i % 5 {
                         0 => {
-                            buffer.cur.y = buffer.cur.y.saturating_add(5).min(buffer.contents.len() as u16 - 1);
+                            buffer.cur.y = buffer
+                                .cur
+                                .y
+                                .saturating_add(5)
+                                .min(buffer.contents.len() as u16 - 1);
                         }
                         1 => {
                             buffer.insert_char('/');
@@ -88,6 +102,8 @@ pub fn bench_stress_editing_session(c: &mut Criterion) {
                             black_box(&telescope),
                             black_box(&leap),
                             black_box(&fold_manager),
+                            black_box(&indent_analyzer),
+                            black_box(&settings_menu),
                         )
                         .unwrap();
                 }
@@ -112,7 +128,13 @@ pub fn bench_stress_editing_session(c: &mut Criterion) {
             |(mut buffer, mut screen, _tmp)| {
                 for i in 0..20 {
                     match i % 5 {
-                        0 => buffer.cur.y = buffer.cur.y.saturating_add(5).min(buffer.contents.len() as u16 - 1),
+                        0 => {
+                            buffer.cur.y = buffer
+                                .cur
+                                .y
+                                .saturating_add(5)
+                                .min(buffer.contents.len() as u16 - 1)
+                        }
                         1 => {
                             buffer.insert_char('/');
                             buffer.insert_char('/');
@@ -139,6 +161,8 @@ pub fn bench_stress_editing_session(c: &mut Criterion) {
                             black_box(&telescope),
                             black_box(&leap),
                             black_box(&fold_manager),
+                            black_box(&indent_analyzer),
+                            black_box(&settings_menu),
                         )
                         .unwrap();
                 }
@@ -163,7 +187,13 @@ pub fn bench_stress_editing_session(c: &mut Criterion) {
             |(mut buffer, mut screen, _tmp)| {
                 for i in 0..20 {
                     match i % 5 {
-                        0 => buffer.cur.y = buffer.cur.y.saturating_add(5).min(buffer.contents.len() as u16 - 1),
+                        0 => {
+                            buffer.cur.y = buffer
+                                .cur
+                                .y
+                                .saturating_add(5)
+                                .min(buffer.contents.len() as u16 - 1)
+                        }
                         1 => buffer.insert_char('x'),
                         2 => buffer.cur.x = buffer.cur.x.saturating_add(10),
                         3 => buffer.delete_char_backward(),
@@ -187,6 +217,8 @@ pub fn bench_stress_editing_session(c: &mut Criterion) {
                             black_box(&telescope),
                             black_box(&leap),
                             black_box(&fold_manager),
+                            black_box(&indent_analyzer),
+                            black_box(&settings_menu),
                         )
                         .unwrap();
                 }
@@ -216,6 +248,8 @@ pub fn bench_stress_rapid_scroll(c: &mut Criterion) {
     let telescope = TelescopeState::new();
     let leap = LeapState::new();
     let fold_manager = FoldManager::new();
+    let indent_analyzer = IndentAnalyzer::new(4);
+    let settings_menu = SettingsMenuState::new();
 
     group.bench_function("hold_j_50_lines_10k_file", |b| {
         b.iter_with_setup(
@@ -250,6 +284,8 @@ pub fn bench_stress_rapid_scroll(c: &mut Criterion) {
                             black_box(&telescope),
                             black_box(&leap),
                             black_box(&fold_manager),
+                            black_box(&indent_analyzer),
+                            black_box(&settings_menu),
                         )
                         .unwrap();
                 }
@@ -272,7 +308,11 @@ pub fn bench_stress_rapid_scroll(c: &mut Criterion) {
             },
             |(mut buffer, mut screen, _tmp)| {
                 for _ in 0..10 {
-                    buffer.cur.y = buffer.cur.y.saturating_add(25).min(buffer.contents.len() as u16 - 1);
+                    buffer.cur.y = buffer
+                        .cur
+                        .y
+                        .saturating_add(25)
+                        .min(buffer.contents.len() as u16 - 1);
                     let buffers = buffer_to_map(buffer.clone());
                     screen
                         .render(
@@ -290,6 +330,8 @@ pub fn bench_stress_rapid_scroll(c: &mut Criterion) {
                             black_box(&telescope),
                             black_box(&leap),
                             black_box(&fold_manager),
+                            black_box(&indent_analyzer),
+                            black_box(&settings_menu),
                         )
                         .unwrap();
                 }
@@ -332,6 +374,8 @@ pub fn bench_stress_rapid_scroll(c: &mut Criterion) {
                             black_box(&telescope),
                             black_box(&leap),
                             black_box(&fold_manager),
+                            black_box(&indent_analyzer),
+                            black_box(&settings_menu),
                         )
                         .unwrap();
                 }
@@ -360,6 +404,8 @@ pub fn bench_stress_mode_operations(c: &mut Criterion) {
     let telescope = TelescopeState::new();
     let leap = LeapState::new();
     let fold_manager = FoldManager::new();
+    let indent_analyzer = IndentAnalyzer::new(4);
+    let settings_menu = SettingsMenuState::new();
     let normal_mode = ModeState::normal();
     let insert_mode = ModeState::insert();
 
@@ -395,6 +441,8 @@ pub fn bench_stress_mode_operations(c: &mut Criterion) {
                             black_box(&telescope),
                             black_box(&leap),
                             black_box(&fold_manager),
+                            black_box(&indent_analyzer),
+                            black_box(&settings_menu),
                         )
                         .unwrap();
 
@@ -420,6 +468,8 @@ pub fn bench_stress_mode_operations(c: &mut Criterion) {
                             black_box(&telescope),
                             black_box(&leap),
                             black_box(&fold_manager),
+                            black_box(&indent_analyzer),
+                            black_box(&settings_menu),
                         )
                         .unwrap();
 
@@ -441,6 +491,8 @@ pub fn bench_stress_mode_operations(c: &mut Criterion) {
                             black_box(&telescope),
                             black_box(&leap),
                             black_box(&fold_manager),
+                            black_box(&indent_analyzer),
+                            black_box(&settings_menu),
                         )
                         .unwrap();
 
@@ -473,9 +525,11 @@ pub fn bench_stress_completion(c: &mut Criterion) {
     let telescope = TelescopeState::new();
     let leap = LeapState::new();
     let fold_manager = FoldManager::new();
+    let indent_analyzer = IndentAnalyzer::new(4);
+    let settings_menu = SettingsMenuState::new();
 
     let large_items: Vec<CompletionItem> = (0..100)
-        .map(|i| CompletionItem::new(format!("completion_item_with_long_name_{:03}", i), "buffer"))
+        .map(|i| CompletionItem::new(format!("completion_item_with_long_name_{i:03}"), "buffer"))
         .collect();
 
     let mut large_completion = CompletionState::new();
@@ -511,6 +565,8 @@ pub fn bench_stress_completion(c: &mut Criterion) {
                             black_box(&telescope),
                             black_box(&leap),
                             black_box(&fold_manager),
+                            black_box(&indent_analyzer),
+                            black_box(&settings_menu),
                         )
                         .unwrap();
                 }
@@ -538,10 +594,12 @@ pub fn bench_stress_worst_case(c: &mut Criterion) {
     let telescope = TelescopeState::new();
     let leap = LeapState::new();
     let fold_manager = FoldManager::new();
+    let indent_analyzer = IndentAnalyzer::new(4);
+    let settings_menu = SettingsMenuState::new();
     let mode = ModeState::insert();
 
     let items: Vec<CompletionItem> = (0..50)
-        .map(|i| CompletionItem::new(format!("item_{}", i), "buffer"))
+        .map(|i| CompletionItem::new(format!("item_{i}"), "buffer"))
         .collect();
     let mut completion = CompletionState::new();
     completion.activate(items, "it".to_string(), 0, 50);
@@ -589,6 +647,8 @@ pub fn bench_stress_worst_case(c: &mut Criterion) {
                             black_box(&telescope),
                             black_box(&leap),
                             black_box(&fold_manager),
+                            black_box(&indent_analyzer),
+                            black_box(&settings_menu),
                         )
                         .unwrap();
                 }
@@ -608,16 +668,12 @@ pub fn bench_buffer_clone_cost(c: &mut Criterion) {
     for lines in [100, 1000, 10000, 50000] {
         let buffer = create_realistic_buffer(lines);
 
-        group.bench_with_input(
-            BenchmarkId::new("clone", lines),
-            &buffer,
-            |b, buf| {
-                b.iter(|| {
-                    let cloned = black_box(buf).clone();
-                    black_box(cloned)
-                })
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("clone", lines), &buffer, |b, buf| {
+            b.iter(|| {
+                let cloned = black_box(buf).clone();
+                black_box(cloned)
+            });
+        });
     }
 
     group.finish();
@@ -630,16 +686,12 @@ pub fn bench_buffer_vec_cost(c: &mut Criterion) {
     for lines in [100, 1000, 10000, 50000] {
         let buffer = create_realistic_buffer(lines);
 
-        group.bench_with_input(
-            BenchmarkId::new("vec_clone", lines),
-            &buffer,
-            |b, buf| {
-                b.iter(|| {
-                    let buffers = vec![black_box(buf).clone()];
-                    black_box(buffers)
-                })
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("vec_clone", lines), &buffer, |b, buf| {
+            b.iter(|| {
+                let buffers = vec![black_box(buf).clone()];
+                black_box(buffers)
+            });
+        });
     }
 
     group.finish();

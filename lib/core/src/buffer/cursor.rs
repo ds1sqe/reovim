@@ -1,7 +1,6 @@
 //! Cursor and word motion operations for buffers
 
-use crate::motion::Motion;
-use crate::screen::Position;
+use crate::{motion::Motion, screen::Position};
 
 /// Cursor movement operations for Buffer
 pub trait CursorOps {

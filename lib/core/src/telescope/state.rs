@@ -335,15 +335,28 @@ impl TelescopeState {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::telescope::item::TelescopeData;
-    use std::path::PathBuf;
+    use {super::*, crate::telescope::item::TelescopeData, std::path::PathBuf};
 
     fn sample_items() -> Vec<TelescopeItem> {
         vec![
-            TelescopeItem::new("1", "file1.rs", TelescopeData::FilePath(PathBuf::from("file1.rs")), "files"),
-            TelescopeItem::new("2", "file2.rs", TelescopeData::FilePath(PathBuf::from("file2.rs")), "files"),
-            TelescopeItem::new("3", "file3.rs", TelescopeData::FilePath(PathBuf::from("file3.rs")), "files"),
+            TelescopeItem::new(
+                "1",
+                "file1.rs",
+                TelescopeData::FilePath(PathBuf::from("file1.rs")),
+                "files",
+            ),
+            TelescopeItem::new(
+                "2",
+                "file2.rs",
+                TelescopeData::FilePath(PathBuf::from("file2.rs")),
+                "files",
+            ),
+            TelescopeItem::new(
+                "3",
+                "file3.rs",
+                TelescopeData::FilePath(PathBuf::from("file3.rs")),
+                "files",
+            ),
         ]
     }
 

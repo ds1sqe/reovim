@@ -1,9 +1,11 @@
 //! Settings menu commands
 
-use crate::command::traits::{
-    CommandResult, CommandTrait, DeferredAction, ExecutionContext, SettingsMenuAction,
+use {
+    crate::command::traits::{
+        CommandResult, CommandTrait, DeferredAction, ExecutionContext, SettingsMenuAction,
+    },
+    std::any::Any,
 };
-use std::any::Any;
 
 /// Open settings menu
 #[derive(Debug, Clone)]

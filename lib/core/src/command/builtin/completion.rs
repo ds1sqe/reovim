@@ -1,9 +1,11 @@
 //! Completion-related commands
 
-use crate::command::traits::{
-    CommandResult, CommandTrait, CompletionAction, DeferredAction, ExecutionContext,
+use {
+    crate::command::traits::{
+        CommandResult, CommandTrait, CompletionAction, DeferredAction, ExecutionContext,
+    },
+    std::any::Any,
 };
-use std::any::Any;
 
 /// Trigger completion at current cursor position
 #[derive(Debug, Clone)]

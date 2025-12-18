@@ -1,11 +1,11 @@
 //! Recent files picker implementation
 
-use std::future::Future;
-use std::path::PathBuf;
-use std::pin::Pin;
+use std::{future::Future, path::PathBuf, pin::Pin};
 
-use crate::telescope::item::{TelescopeData, TelescopeItem};
-use crate::telescope::state::PreviewContent;
+use crate::telescope::{
+    item::{TelescopeData, TelescopeItem},
+    state::PreviewContent,
+};
 
 use super::{Picker, PickerContext, TelescopeAction};
 
@@ -106,10 +106,7 @@ impl Picker for RecentPicker {
         Box::pin(async move {
             tokio::fs::read_to_string(&path).await.ok().map(|content| {
                 let lines: Vec<String> = content.lines().map(String::from).collect();
-                let syntax = path
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .map(String::from);
+                let syntax = path.extension().and_then(|e| e.to_str()).map(String::from);
                 PreviewContent {
                     lines,
                     highlight_line: None,

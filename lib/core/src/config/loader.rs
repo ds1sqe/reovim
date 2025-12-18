@@ -1,8 +1,12 @@
 //! Configuration file loading and saving utilities
 
-use serde::{de::DeserializeOwned, Serialize};
-use std::path::{Path, PathBuf};
-use std::{fmt, fs, io};
+use {
+    serde::{Serialize, de::DeserializeOwned},
+    std::{
+        fmt, fs, io,
+        path::{Path, PathBuf},
+    },
+};
 
 /// Configuration-related errors
 #[derive(Debug)]
@@ -131,8 +135,7 @@ pub fn file_exists(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::config::ProfileConfig;
+    use {super::*, crate::config::ProfileConfig};
 
     #[test]
     fn test_get_config_dir() {

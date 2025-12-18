@@ -1,10 +1,14 @@
 //! Explorer rendering
 
-use crate::highlight::{ColorMode, Style, Theme};
-use std::fmt::Write;
+use {
+    crate::highlight::{ColorMode, Style, Theme},
+    std::fmt::Write,
+};
 
-use super::node::FileNode;
-use super::state::{ExplorerInputMode, ExplorerState};
+use super::{
+    node::FileNode,
+    state::{ExplorerInputMode, ExplorerState},
+};
 
 /// Render the explorer state to a vector of styled lines
 #[must_use]
@@ -135,11 +139,17 @@ fn render_node(
 
 /// Render the explorer header (shows current directory)
 #[must_use]
-pub fn render_header(state: &ExplorerState, width: u16, theme: &Theme, color_mode: ColorMode) -> String {
+pub fn render_header(
+    state: &ExplorerState,
+    width: u16,
+    theme: &Theme,
+    color_mode: ColorMode,
+) -> String {
     let root_path = state.tree.root_path();
-    let path_str = root_path
-        .file_name()
-        .map_or_else(|| root_path.to_string_lossy().to_string(), |n| n.to_string_lossy().to_string());
+    let path_str = root_path.file_name().map_or_else(
+        || root_path.to_string_lossy().to_string(),
+        |n| n.to_string_lossy().to_string(),
+    );
 
     // Truncate if needed
     let available = (width as usize).saturating_sub(2);
@@ -163,9 +173,7 @@ pub fn render_header(state: &ExplorerState, width: u16, theme: &Theme, color_mod
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use std::fs::File;
-    use tempfile::tempdir;
+    use {super::*, std::fs::File, tempfile::tempdir};
 
     #[test]
     fn test_render_explorer() {

@@ -1,7 +1,6 @@
 //! Vim-style register system with system clipboard integration
 
-use arboard::Clipboard;
-use std::collections::HashMap;
+use {arboard::Clipboard, std::collections::HashMap};
 
 /// Vim-style register storage with system clipboard integration
 pub struct Registers {

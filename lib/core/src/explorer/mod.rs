@@ -5,7 +5,9 @@ mod render;
 mod state;
 mod tree;
 
-pub use node::{FileNode, NodeType};
-pub use render::{render_explorer, render_header};
-pub use state::{ExplorerInputMode, ExplorerState};
-pub use tree::FileTree;
+pub use {
+    node::{FileNode, NodeType},
+    render::{render_explorer, render_header},
+    state::{ExplorerInputMode, ExplorerState},
+    tree::FileTree,
+};

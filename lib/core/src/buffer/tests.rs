@@ -1,7 +1,6 @@
 //! Tests for buffer operations
 
-use super::*;
-use crate::screen::Position;
+use {super::*, crate::screen::Position};
 
 // === Buffer Creation Tests ===
 

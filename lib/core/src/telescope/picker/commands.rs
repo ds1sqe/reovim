@@ -1,11 +1,14 @@
 //! Command palette picker implementation
 
-use std::future::Future;
-use std::pin::Pin;
+use std::{future::Future, pin::Pin};
 
-use crate::command::CommandId;
-use crate::telescope::item::{TelescopeData, TelescopeItem};
-use crate::telescope::state::PreviewContent;
+use crate::{
+    command::CommandId,
+    telescope::{
+        item::{TelescopeData, TelescopeItem},
+        state::PreviewContent,
+    },
+};
 
 use super::{Picker, PickerContext, TelescopeAction};
 

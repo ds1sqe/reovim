@@ -2,9 +2,11 @@
 
 #![allow(clippy::missing_errors_doc)]
 
-use std::io;
-use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::{
+    io,
+    path::{Path, PathBuf},
+    time::SystemTime,
+};
 
 /// Represents a single node in the file tree
 #[derive(Clone, Debug)]
@@ -49,9 +51,10 @@ impl FileNode {
     /// Create a new file node from a path
     pub fn from_path(path: &Path, depth: usize) -> io::Result<Self> {
         let metadata = path.symlink_metadata()?;
-        let name = path
-            .file_name()
-            .map_or_else(|| path.to_string_lossy().to_string(), |n| n.to_string_lossy().to_string());
+        let name = path.file_name().map_or_else(
+            || path.to_string_lossy().to_string(),
+            |n| n.to_string_lossy().to_string(),
+        );
         let is_hidden = name.starts_with('.');
 
         let node_type = if metadata.is_symlink() {
@@ -148,12 +151,10 @@ impl FileNode {
             }
 
             // Sort: directories first, then alphabetically (case-insensitive)
-            nodes.sort_by(|a, b| {
-                match (a.is_dir(), b.is_dir()) {
-                    (true, false) => std::cmp::Ordering::Less,
-                    (false, true) => std::cmp::Ordering::Greater,
-                    _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-                }
+            nodes.sort_by(|a, b| match (a.is_dir(), b.is_dir()) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
             });
 
             *children = nodes;
@@ -166,7 +167,9 @@ impl FileNode {
     pub const fn icon(&self) -> &'static str {
         match &self.node_type {
             NodeType::Directory { expanded: true, .. } => "v ",
-            NodeType::Directory { expanded: false, .. } => "> ",
+            NodeType::Directory {
+                expanded: false, ..
+            } => "> ",
             NodeType::Symlink { .. } => "@ ",
             NodeType::File { .. } => "  ",
         }
@@ -175,9 +178,11 @@ impl FileNode {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use std::fs::{self, File};
-    use tempfile::tempdir;
+    use {
+        super::*,
+        std::fs::{self, File},
+        tempfile::tempdir,
+    };
 
     #[test]
     fn test_file_node_from_path() {

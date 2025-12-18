@@ -9,11 +9,7 @@ pub fn filter_by_prefix(items: &[CompletionItem], prefix: &str) -> Vec<Completio
 
     let mut filtered: Vec<_> = items
         .iter()
-        .filter(|item| {
-            item.filter_text()
-                .to_lowercase()
-                .starts_with(&prefix_lower)
-        })
+        .filter(|item| item.filter_text().to_lowercase().starts_with(&prefix_lower))
         .cloned()
         .collect();
 
@@ -34,24 +30,14 @@ pub fn filter_contains(items: &[CompletionItem], pattern: &str) -> Vec<Completio
 
     let mut filtered: Vec<_> = items
         .iter()
-        .filter(|item| {
-            item.filter_text()
-                .to_lowercase()
-                .contains(&pattern_lower)
-        })
+        .filter(|item| item.filter_text().to_lowercase().contains(&pattern_lower))
         .cloned()
         .collect();
 
     // Sort by priority, then by whether it starts with prefix, then alphabetically
     filtered.sort_by(|a, b| {
-        let a_starts = a
-            .filter_text()
-            .to_lowercase()
-            .starts_with(&pattern_lower);
-        let b_starts = b
-            .filter_text()
-            .to_lowercase()
-            .starts_with(&pattern_lower);
+        let a_starts = a.filter_text().to_lowercase().starts_with(&pattern_lower);
+        let b_starts = b.filter_text().to_lowercase().starts_with(&pattern_lower);
 
         // Items starting with prefix come first
         match (a_starts, b_starts) {
@@ -87,7 +73,11 @@ mod tests {
 
         let filtered = filter_by_prefix(&items, "app");
         assert_eq!(filtered.len(), 3);
-        assert!(filtered.iter().all(|i| i.label.to_lowercase().starts_with("app")));
+        assert!(
+            filtered
+                .iter()
+                .all(|i| i.label.to_lowercase().starts_with("app"))
+        );
     }
 
     #[test]

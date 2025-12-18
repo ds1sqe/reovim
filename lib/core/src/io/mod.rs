@@ -6,5 +6,7 @@
 pub mod input;
 pub mod output;
 
-pub use input::{ChannelKeySource, EventStreamKeySource, KeySource, MockKeySource};
-pub use output::MockOutput;
+pub use {
+    input::{ChannelKeySource, EventStreamKeySource, KeySource, MockKeySource},
+    output::MockOutput,
+};

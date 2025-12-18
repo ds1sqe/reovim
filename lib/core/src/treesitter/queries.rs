@@ -96,12 +96,17 @@ impl QueryCache {
     }
 
     /// Get the raw query source for a language and type
-    const fn get_query_source(language_id: LanguageId, query_type: QueryType) -> Option<&'static str> {
+    const fn get_query_source(
+        language_id: LanguageId,
+        query_type: QueryType,
+    ) -> Option<&'static str> {
         match (language_id, query_type) {
             // Highlight queries
             (LanguageId::Rust, QueryType::Highlights) => Some(embedded::RUST_HIGHLIGHTS),
             (LanguageId::C, QueryType::Highlights) => Some(embedded::C_HIGHLIGHTS),
-            (LanguageId::JavaScript, QueryType::Highlights) => Some(embedded::JAVASCRIPT_HIGHLIGHTS),
+            (LanguageId::JavaScript, QueryType::Highlights) => {
+                Some(embedded::JAVASCRIPT_HIGHLIGHTS)
+            }
             (LanguageId::Python, QueryType::Highlights) => Some(embedded::PYTHON_HIGHLIGHTS),
             (LanguageId::Json, QueryType::Highlights) => Some(embedded::JSON_HIGHLIGHTS),
             (LanguageId::Toml, QueryType::Highlights) => Some(embedded::TOML_HIGHLIGHTS),
@@ -110,7 +115,9 @@ impl QueryCache {
             // Text object queries (for semantic text objects like daf, dic)
             (LanguageId::Rust, QueryType::TextObjects) => Some(embedded::RUST_TEXTOBJECTS),
             (LanguageId::C, QueryType::TextObjects) => Some(embedded::C_TEXTOBJECTS),
-            (LanguageId::JavaScript, QueryType::TextObjects) => Some(embedded::JAVASCRIPT_TEXTOBJECTS),
+            (LanguageId::JavaScript, QueryType::TextObjects) => {
+                Some(embedded::JAVASCRIPT_TEXTOBJECTS)
+            }
             (LanguageId::Python, QueryType::TextObjects) => Some(embedded::PYTHON_TEXTOBJECTS),
 
             // Fold queries (for code folding)
@@ -131,8 +138,7 @@ impl QueryCache {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use tree_sitter::Language;
+    use {super::*, tree_sitter::Language};
 
     fn get_rust_language() -> Language {
         tree_sitter_rust::LANGUAGE.into()
@@ -193,18 +199,11 @@ fn main() {
         let mut manager = TreesitterManager::new();
         let lang_id = manager.init_buffer(0, Some("test.rs"));
 
-        assert_eq!(
-            lang_id,
-            crate::treesitter::LanguageId::Rust,
-            "Should detect Rust language"
-        );
+        assert_eq!(lang_id, crate::treesitter::LanguageId::Rust, "Should detect Rust language");
         assert!(manager.has_parser(0), "Should have parser for buffer");
 
         let highlights = manager.parse_and_highlight(0, rust_code, 0, 20);
 
-        assert!(
-            !highlights.is_empty(),
-            "Should generate highlights for Rust code"
-        );
+        assert!(!highlights.is_empty(), "Should generate highlights for Rust code");
     }
 }

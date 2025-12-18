@@ -1,8 +1,12 @@
 //! Text editing commands
 
-use crate::buffer::TextOps;
-use crate::command::traits::{CommandResult, CommandTrait, ExecutionContext};
-use std::any::Any;
+use {
+    crate::{
+        buffer::TextOps,
+        command::traits::{CommandResult, CommandTrait, ExecutionContext},
+    },
+    std::any::Any,
+};
 
 /// Insert a character at cursor position
 #[derive(Debug, Clone)]

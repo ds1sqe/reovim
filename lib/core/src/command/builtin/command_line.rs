@@ -1,9 +1,11 @@
 //! Command line mode commands
 
-use crate::command::traits::{
-    CommandLineAction, CommandResult, CommandTrait, DeferredAction, ExecutionContext,
+use {
+    crate::command::traits::{
+        CommandLineAction, CommandResult, CommandTrait, DeferredAction, ExecutionContext,
+    },
+    std::any::Any,
 };
-use std::any::Any;
 
 /// Insert character into command line
 #[derive(Debug, Clone)]

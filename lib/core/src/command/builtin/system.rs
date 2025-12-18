@@ -1,7 +1,9 @@
 //! System commands
 
-use crate::command::traits::{CommandResult, CommandTrait, ExecutionContext};
-use std::any::Any;
+use {
+    crate::command::traits::{CommandResult, CommandTrait, ExecutionContext},
+    std::any::Any,
+};
 
 /// Quit the editor
 #[derive(Debug, Clone)]

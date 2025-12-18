@@ -52,6 +52,22 @@ cargo bench -p reovim-core
 
 # Generate report from existing benchmark data
 cargo run -p perf-report -- update -v X.Y.Z
+
+# Run in server mode (TCP on 127.0.0.1:12521)
+cargo run -- --server
+
+# Run server with stdio transport
+cargo run -- --stdio
+
+# Run server on Unix socket
+cargo run -- --listen-socket /tmp/reovim.sock
+
+# Run server on custom TCP port
+cargo run -- --listen-tcp 9000
+
+# Run reo-cli client
+cargo run -p reo-cli -- mode
+cargo run -p reo-cli -- keys 'iHello<Esc>'
 ```
 
 ## Architecture
@@ -64,6 +80,7 @@ Reovim is a Rust-based neovim-like text editor built with async tokio runtime an
 - `lib/core/` (reovim-core) - Core editor logic: runtime, buffers, events, screen rendering
 - `lib/sys/` (reovim-sys) - Re-exports crossterm for terminal abstraction
 - `tools/perf-report/` - Performance report generator CLI
+- `tools/reo-cli/` - CLI client for server mode
 - `perf/` - Versioned performance reports (PERF-{version}.md)
 
 ### Core Architecture
@@ -106,6 +123,16 @@ Reovim is a Rust-based neovim-like text editor built with async tokio runtime an
 - `lib/core/src/explorer/` - File browser (Space e)
 - `lib/core/src/completion/` - Async completion (Ctrl-Space)
 - `lib/core/src/modd/` - Multi-dimensional mode state (Focus, EditMode, SubMode)
+
+**RPC / Server Mode** (`lib/core/src/rpc/`):
+- `RpcServer` - Coordinates JSON-RPC 2.0 request handling
+- `TransportConfig` - Transport selection: Stdio, UnixSocket, Tcp
+- `TransportReader`/`TransportWriter` - Async I/O abstraction
+- `TransportListener` - Accepts connections for socket/TCP
+- `ChannelKeySource` - Injects keys from RPC into runtime
+- `DualOutput` - Captures screen output for headless or dual mode
+- Default port: 12521 ('r'×100 + 'e'×10 + 'o')
+- Server modes: `--server` (persistent, runs forever), `--server --test` (exit when all clients disconnect), `--stdio` (always one-shot)
 
 ### Event Flow
 

@@ -6,7 +6,7 @@ use crate::modd::{EditMode, ModExtension, ModeState};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum VirtualEditMode {
     #[default]
-    None,   // Never allow virtual positions (default, current behavior)
+    None, // Never allow virtual positions (default, current behavior)
     All,    // Always allow virtual positions
     Block,  // Only in visual block mode
     Insert, // Only in insert mode

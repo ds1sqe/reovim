@@ -32,10 +32,7 @@ impl Motion {
     /// Used by operators like `dj` (delete current + next line) vs `dw` (delete word).
     #[must_use]
     pub const fn is_linewise(&self) -> bool {
-        matches!(
-            self,
-            Self::Up | Self::Down | Self::DocumentStart | Self::DocumentEnd
-        )
+        matches!(self, Self::Up | Self::Down | Self::DocumentStart | Self::DocumentEnd)
     }
 
     /// Parse a key string into a motion

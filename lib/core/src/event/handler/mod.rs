@@ -1,6 +1,6 @@
 use {
-    super::{inner::BufferEvent, InnerEvent},
-    crate::event::{key::KeyCode, KeyEvent, Subscribe},
+    super::{InnerEvent, inner::BufferEvent},
+    crate::event::{KeyEvent, Subscribe, key::KeyCode},
     reovim_sys::{cursor, event::KeyModifiers},
     tokio::sync::{broadcast::Receiver, mpsc::Sender},
 };
@@ -8,8 +8,7 @@ use {
 mod command;
 mod completion;
 
-pub use command::CommandHandler;
-pub use completion::CompletionHandler;
+pub use {command::CommandHandler, completion::CompletionHandler};
 
 pub struct PrintEventHandler {
     pub buffer_id: usize,
@@ -49,14 +48,10 @@ impl PrintEventHandler {
             let mut rx = rx;
             while let Ok(event) = rx.recv().await {
                 if event == KeyCode::Char('c').into() {
-                    self.send_event(format!(
-                        "\rCursor position: {:?}",
-                        cursor::position()
-                    ))
-                    .await;
-                } else {
-                    self.send_event(format!("\rEvent::{event:?}"))
+                    self.send_event(format!("\rCursor position: {:?}", cursor::position()))
                         .await;
+                } else {
+                    self.send_event(format!("\rEvent::{event:?}")).await;
                 }
             }
         }
@@ -95,9 +90,7 @@ impl TerminateHandler {
         if let Some(rx) = self.key_event_rx.take() {
             let mut rx = rx;
             while let Ok(event) = rx.recv().await {
-                if event.code == KeyCode::Char('d')
-                    && event.modifiers == (KeyModifiers::CONTROL)
-                {
+                if event.code == KeyCode::Char('d') && event.modifiers == (KeyModifiers::CONTROL) {
                     self.send_event().await;
                     break;
                 }

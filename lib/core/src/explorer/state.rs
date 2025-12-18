@@ -2,12 +2,12 @@
 
 #![allow(clippy::missing_errors_doc)]
 
-use std::fs;
-use std::io;
-use std::path::{Path, PathBuf};
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+};
 
-use super::node::FileNode;
-use super::tree::FileTree;
+use super::{node::FileNode, tree::FileTree};
 
 /// Input mode for file operations
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -418,9 +418,7 @@ impl ExplorerState {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use std::fs::File;
-    use tempfile::tempdir;
+    use {super::*, std::fs::File, tempfile::tempdir};
 
     #[test]
     fn test_new_state() {

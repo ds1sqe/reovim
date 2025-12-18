@@ -28,7 +28,12 @@ pub struct WindowRect {
 impl WindowRect {
     #[must_use]
     pub const fn new(x: u16, y: u16, width: u16, height: u16) -> Self {
-        Self { x, y, width, height }
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
     }
 
     #[must_use]
@@ -50,7 +55,9 @@ pub struct WindowLayout {
 
 #[derive(Debug)]
 pub enum SplitNode {
-    Leaf { window_id: usize },
+    Leaf {
+        window_id: usize,
+    },
     Split {
         direction: SplitDirection,
         ratio: f32,
@@ -294,11 +301,8 @@ mod tests {
 
     #[test]
     fn test_split_node() {
-        let node = SplitNode::split(
-            SplitDirection::Vertical,
-            SplitNode::leaf(1),
-            SplitNode::leaf(2),
-        );
+        let node =
+            SplitNode::split(SplitDirection::Vertical, SplitNode::leaf(1), SplitNode::leaf(2));
         assert_eq!(node.window_ids(), vec![1, 2]);
         assert!(node.contains_window(1));
         assert!(node.contains_window(2));
@@ -319,11 +323,8 @@ mod tests {
 
     #[test]
     fn test_calculate_layouts_vertical_split() {
-        let node = SplitNode::split(
-            SplitDirection::Vertical,
-            SplitNode::leaf(1),
-            SplitNode::leaf(2),
-        );
+        let node =
+            SplitNode::split(SplitDirection::Vertical, SplitNode::leaf(1), SplitNode::leaf(2));
         let rect = WindowRect::new(0, 0, 100, 50);
         let mut layouts = Vec::new();
         node.calculate_layouts(rect, &mut layouts);
@@ -344,11 +345,8 @@ mod tests {
 
     #[test]
     fn test_remove_window() {
-        let mut node = SplitNode::split(
-            SplitDirection::Vertical,
-            SplitNode::leaf(1),
-            SplitNode::leaf(2),
-        );
+        let mut node =
+            SplitNode::split(SplitDirection::Vertical, SplitNode::leaf(1), SplitNode::leaf(2));
         assert!(node.remove_window(1));
         assert_eq!(node.window_ids(), vec![2]);
     }
@@ -366,17 +364,8 @@ mod tests {
             },
         ];
 
-        assert_eq!(
-            find_adjacent_window(1, NavigateDirection::Right, &layouts),
-            Some(2)
-        );
-        assert_eq!(
-            find_adjacent_window(2, NavigateDirection::Left, &layouts),
-            Some(1)
-        );
-        assert_eq!(
-            find_adjacent_window(1, NavigateDirection::Left, &layouts),
-            None
-        );
+        assert_eq!(find_adjacent_window(1, NavigateDirection::Right, &layouts), Some(2));
+        assert_eq!(find_adjacent_window(2, NavigateDirection::Left, &layouts), Some(1));
+        assert_eq!(find_adjacent_window(1, NavigateDirection::Left, &layouts), None);
     }
 }

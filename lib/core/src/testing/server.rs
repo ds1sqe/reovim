@@ -1,0 +1,144 @@
+//! Server test harness for integration testing
+//!
+//! Spawns a reovim server process and provides a client for testing.
+
+use std::{
+    path::PathBuf,
+    process::{Child, Command, Stdio},
+    sync::atomic::{AtomicU16, Ordering},
+    time::Duration,
+};
+
+use tokio::time::sleep;
+
+use super::client::TestClient;
+
+/// Port range for tests: 12600-12699
+static TEST_PORT: AtomicU16 = AtomicU16::new(12600);
+
+/// Get the next available test port
+fn next_test_port() -> u16 {
+    let port = TEST_PORT.fetch_add(1, Ordering::SeqCst);
+    // Wrap around if we exceed the range
+    if port > 12699 {
+        TEST_PORT.store(12600, Ordering::SeqCst);
+        12600
+    } else {
+        port
+    }
+}
+
+/// Get the path to the reovim binary
+fn binary_path() -> PathBuf {
+    // CARGO_MANIFEST_DIR is lib/core, so we go up two levels to workspace root
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    PathBuf::from(manifest_dir)
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("Failed to find workspace root")
+        .join("target/release/reovim")
+}
+
+/// Test harness that spawns a reovim server for integration testing
+pub struct ServerTestHarness {
+    process: Child,
+    port: u16,
+}
+
+impl ServerTestHarness {
+    /// Spawn a new server on a unique port
+    ///
+    /// Uses `--server --test` mode so the server exits when all clients disconnect.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the server process fails to spawn.
+    pub async fn spawn() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let port = next_test_port();
+
+        let process = Command::new(binary_path())
+            .args(["--server", "--test", "--listen-tcp", &port.to_string()])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()?;
+
+        // Wait for server to be ready
+        sleep(Duration::from_millis(100)).await;
+
+        Ok(Self { process, port })
+    }
+
+    /// Spawn with initial file content
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the server process fails to spawn.
+    pub async fn spawn_with_file(
+        path: &str,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let port = next_test_port();
+
+        let process = Command::new(binary_path())
+            .args([
+                "--server",
+                "--test",
+                "--listen-tcp",
+                &port.to_string(),
+                path,
+            ])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()?;
+
+        // Wait for server to be ready
+        sleep(Duration::from_millis(100)).await;
+
+        Ok(Self { process, port })
+    }
+
+    /// Get a connected test client
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the connection fails.
+    pub async fn client(&self) -> Result<TestClient, Box<dyn std::error::Error + Send + Sync>> {
+        // Retry connection a few times in case server isn't ready yet
+        for _ in 0..10 {
+            match TestClient::connect("127.0.0.1", self.port).await {
+                Ok(client) => return Ok(client),
+                Err(_) => sleep(Duration::from_millis(50)).await,
+            }
+        }
+        TestClient::connect("127.0.0.1", self.port)
+            .await
+            .map_err(std::convert::Into::into)
+    }
+
+    /// Get the port this server is listening on
+    #[must_use]
+    pub const fn port(&self) -> u16 {
+        self.port
+    }
+}
+
+impl Drop for ServerTestHarness {
+    fn drop(&mut self) {
+        // Kill the server process when the harness is dropped
+        let _ = self.process.kill();
+        let _ = self.process.wait();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_port_allocation() {
+        let port1 = next_test_port();
+        let port2 = next_test_port();
+        assert_ne!(port1, port2);
+        assert!((12600..=12699).contains(&port1));
+        assert!((12600..=12699).contains(&port2));
+    }
+}

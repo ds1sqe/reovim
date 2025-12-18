@@ -66,6 +66,61 @@ cargo build --release
 reovim [file]
 ```
 
+### Server Mode
+
+Reovim can run as a JSON-RPC 2.0 server for programmatic control, enabling integration with external tools, IDEs, and automation scripts. The server accepts multiple sequential connections - clients can connect, disconnect, and reconnect without restarting the server.
+
+```bash
+# Start server (TCP on 127.0.0.1:12521 by default)
+reovim --server
+
+# With a file
+reovim --server myfile.txt
+
+# Custom TCP port
+reovim --server --listen-tcp 9000
+
+# Unix socket
+reovim --listen-socket /tmp/reovim.sock
+
+# Stdio transport (for process piping)
+reovim --stdio
+
+# Dual output: render to terminal while serving RPC
+reovim --server --terminal
+```
+
+**Server Options:**
+| Flag | Description |
+|------|-------------|
+| `--server` | Start in server mode (TCP on 127.0.0.1:12521) |
+| `--test` | Exit when all clients disconnect (for testing/CI) |
+| `--stdio` | Use stdio instead of TCP (for process piping, always one-shot) |
+| `--listen-socket <PATH>` | Listen on Unix socket |
+| `--listen-tcp <PORT>` | Listen on custom TCP port |
+| `--listen-host <HOST>` | Bind to specific host (default: 127.0.0.1) |
+| `--terminal` | Also render to terminal in server mode |
+
+**Default port:** `12521` (derived from ASCII: 'r'×100 + 'e'×10 + 'o')
+
+#### reo-cli Client
+
+A CLI client tool is available for interacting with the server:
+
+```bash
+# Connect to default server (127.0.0.1:12521)
+reo-cli mode                    # Get current mode
+reo-cli keys 'iHello<Esc>'      # Inject key sequence
+reo-cli cursor                  # Get cursor position
+
+# Connect to custom address
+reo-cli --tcp localhost:9000 mode
+reo-cli --socket /tmp/reovim.sock mode
+
+# Interactive REPL
+reo-cli --interactive
+```
+
 ### Key Bindings
 
 Most movement commands support a numeric prefix (e.g., `5j` moves down 5 lines).

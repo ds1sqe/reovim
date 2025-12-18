@@ -2,8 +2,7 @@
 
 use std::path::PathBuf;
 
-use crate::command::CommandId;
-use crate::highlight::ThemeName;
+use crate::{command::CommandId, highlight::ThemeName};
 
 /// Data associated with a telescope item, determining the action on selection
 #[derive(Debug, Clone)]
@@ -56,7 +55,12 @@ pub struct TelescopeItem {
 impl TelescopeItem {
     /// Create a new telescope item
     #[must_use]
-    pub fn new(id: impl Into<String>, display: impl Into<String>, data: TelescopeData, source: &'static str) -> Self {
+    pub fn new(
+        id: impl Into<String>,
+        display: impl Into<String>,
+        data: TelescopeData,
+        source: &'static str,
+    ) -> Self {
         Self {
             id: id.into(),
             display: display.into(),
@@ -119,15 +123,10 @@ mod tests {
 
     #[test]
     fn test_builder_methods() {
-        let item = TelescopeItem::new(
-            "buf1",
-            "buffer.rs",
-            TelescopeData::BufferId(1),
-            "buffers",
-        )
-        .with_detail("modified")
-        .with_score(100)
-        .with_icon('*');
+        let item = TelescopeItem::new("buf1", "buffer.rs", TelescopeData::BufferId(1), "buffers")
+            .with_detail("modified")
+            .with_score(100)
+            .with_icon('*');
 
         assert_eq!(item.detail.as_deref(), Some("modified"));
         assert_eq!(item.score, Some(100));

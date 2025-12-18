@@ -1,9 +1,13 @@
 //! Mode switching commands
 
-use crate::buffer::Line;
-use crate::command::traits::{CommandResult, CommandTrait, ExecutionContext};
-use crate::modd::ModeState;
-use std::any::Any;
+use {
+    crate::{
+        buffer::Line,
+        command::traits::{CommandResult, CommandTrait, ExecutionContext},
+        modd::ModeState,
+    },
+    std::any::Any,
+};
 
 /// Enter normal mode
 #[derive(Debug, Clone)]

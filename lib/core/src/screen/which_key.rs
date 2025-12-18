@@ -1,7 +1,9 @@
 //! Which-key popup panel for displaying available keybindings
 
-use crate::event::WhichKeyBinding;
-use crate::highlight::{ColorMode, Style, Theme};
+use crate::{
+    event::WhichKeyBinding,
+    highlight::{ColorMode, Style, Theme},
+};
 
 /// Default panel width in characters
 const DEFAULT_PANEL_WIDTH: u16 = 40;
@@ -80,7 +82,9 @@ impl WhichKeyPanel {
         // Calculate panel height (bindings + header + footer)
         let max_height = screen_height.saturating_sub(2); // Leave room for status line
         let content_height = (self.bindings.len() as u16 + 2).min(max_height);
-        let panel_y = screen_height.saturating_sub(content_height).saturating_sub(1);
+        let panel_y = screen_height
+            .saturating_sub(content_height)
+            .saturating_sub(1);
 
         // Use theme styles
         let styles = &theme.whichkey;
@@ -151,7 +155,11 @@ impl WhichKeyPanel {
 
         // Truncate description if needed
         let desc: String = if binding.description.chars().count() > desc_width {
-            let truncated: String = binding.description.chars().take(desc_width.saturating_sub(3)).collect();
+            let truncated: String = binding
+                .description
+                .chars()
+                .take(desc_width.saturating_sub(3))
+                .collect();
             format!("{truncated}...")
         } else {
             binding.description.clone()

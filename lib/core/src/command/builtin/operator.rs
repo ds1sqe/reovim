@@ -1,8 +1,12 @@
 //! Operator commands for delete, yank, change operations
 
-use crate::command::traits::{CommandResult, CommandTrait, ExecutionContext};
-use crate::modd::{ModeState, OperatorType};
-use std::any::Any;
+use {
+    crate::{
+        command::traits::{CommandResult, CommandTrait, ExecutionContext},
+        modd::{ModeState, OperatorType},
+    },
+    std::any::Any,
+};
 
 /// Enter operator-pending mode for delete (d)
 #[derive(Debug, Clone)]

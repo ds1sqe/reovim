@@ -1,7 +1,9 @@
 //! TOML schema definitions for configuration profiles
 
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use {
+    serde::{Deserialize, Serialize},
+    std::collections::HashMap,
+};
 
 /// Global configuration (config.toml)
 #[derive(Debug, Clone, Serialize, Deserialize)]

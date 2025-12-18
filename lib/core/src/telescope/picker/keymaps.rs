@@ -1,11 +1,14 @@
 //! Keymaps picker implementation
 
-use std::future::Future;
-use std::pin::Pin;
+use std::{future::Future, pin::Pin};
 
-use crate::bind::{CommandRef, KeyMap};
-use crate::telescope::item::{TelescopeData, TelescopeItem};
-use crate::telescope::state::PreviewContent;
+use crate::{
+    bind::{CommandRef, KeyMap},
+    telescope::{
+        item::{TelescopeData, TelescopeItem},
+        state::PreviewContent,
+    },
+};
 
 use super::{Picker, PickerContext, TelescopeAction};
 

@@ -59,7 +59,12 @@ impl HighlightStore {
     /// Get all highlight ranges for a specific line (for efficient rendering)
     /// Returns ranges sorted by start column with merged styles
     #[must_use]
-    pub fn get_line_highlights(&self, buffer_id: usize, line: u32, line_len: u32) -> Vec<LineHighlight> {
+    pub fn get_line_highlights(
+        &self,
+        buffer_id: usize,
+        line: u32,
+        line_len: u32,
+    ) -> Vec<LineHighlight> {
         self.highlights
             .get(&buffer_id)
             .map(|bh| bh.get_line_highlights(line, line_len))
@@ -142,8 +147,7 @@ impl BufferHighlights {
 
         // Sort events: by position, then end before start at same position
         events.sort_by(|a, b| {
-            a.0.cmp(&b.0)
-                .then_with(|| a.1.cmp(&b.1)) // false (end) before true (start)
+            a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)) // false (end) before true (start)
         });
 
         let mut result: Vec<LineHighlight> = Vec::new();
@@ -193,9 +197,7 @@ impl BufferHighlights {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::highlight::Span;
-    use reovim_sys::style::Color;
+    use {super::*, crate::highlight::Span, reovim_sys::style::Color};
 
     #[test]
     fn test_single_highlight() {

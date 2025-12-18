@@ -152,8 +152,7 @@ impl Default for TriggerDetector {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use std::thread;
+    use {super::*, std::thread};
 
     #[test]
     fn test_trigger_on_trigger_char() {

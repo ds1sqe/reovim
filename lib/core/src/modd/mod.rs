@@ -230,11 +230,19 @@ impl ModeState {
 
     /// Leap motion mode
     #[must_use]
-    pub const fn leap(direction: LeapDirection, operator: Option<OperatorType>, count: Option<usize>) -> Self {
+    pub const fn leap(
+        direction: LeapDirection,
+        operator: Option<OperatorType>,
+        count: Option<usize>,
+    ) -> Self {
         Self {
             focus: Focus::Editor,
             edit_mode: EditMode::Normal,
-            sub_mode: SubMode::Leap { direction, operator, count },
+            sub_mode: SubMode::Leap {
+                direction,
+                operator,
+                count,
+            },
         }
     }
 

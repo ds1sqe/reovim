@@ -1,7 +1,11 @@
 //! Explorer mode commands
 
-use crate::command::traits::{CommandResult, CommandTrait, DeferredAction, ExecutionContext, ExplorerAction};
-use std::any::Any;
+use {
+    crate::command::traits::{
+        CommandResult, CommandTrait, DeferredAction, ExecutionContext, ExplorerAction,
+    },
+    std::any::Any,
+};
 
 /// Move cursor up in explorer
 #[derive(Debug, Clone)]
@@ -45,7 +49,9 @@ impl CommandTrait for ExplorerCursorDownCommand {
 
     fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
         let count = ctx.count.unwrap_or(1);
-        CommandResult::DeferToRuntime(DeferredAction::Explorer(ExplorerAction::CursorDown { count }))
+        CommandResult::DeferToRuntime(DeferredAction::Explorer(ExplorerAction::CursorDown {
+            count,
+        }))
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
@@ -574,7 +580,9 @@ impl CommandTrait for ExplorerInputCharCommand {
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::DeferToRuntime(DeferredAction::Explorer(ExplorerAction::InputChar { c: self.c }))
+        CommandResult::DeferToRuntime(DeferredAction::Explorer(ExplorerAction::InputChar {
+            c: self.c,
+        }))
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {

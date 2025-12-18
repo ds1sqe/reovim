@@ -16,8 +16,7 @@
 //! - `tab`: Tab line styles
 //! - `window`: Window separator styles
 
-use crate::highlight::Style;
-use reovim_sys::style::Color;
+use {crate::highlight::Style, reovim_sys::style::Color};
 
 // ============================================================================
 // Theme Name Enum
@@ -202,19 +201,64 @@ impl Theme {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     #[must_use]
     pub fn dark() -> Self {
-        let bg_dark = Color::Rgb { r: 33, g: 37, b: 43 };
-        let bg_medium = Color::Rgb { r: 40, g: 44, b: 52 };
-        let bg_light = Color::Rgb { r: 50, g: 56, b: 66 };
-        let fg = Color::Rgb { r: 171, g: 178, b: 191 };
-        let fg_dark = Color::Rgb { r: 92, g: 99, b: 112 };
-        let yellow = Color::Rgb { r: 229, g: 192, b: 123 };
-        let blue = Color::Rgb { r: 97, g: 175, b: 239 };
-        let green = Color::Rgb { r: 152, g: 195, b: 121 };
-        let red = Color::Rgb { r: 224, g: 108, b: 117 };
-        let cyan = Color::Rgb { r: 86, g: 182, b: 194 };
-        let magenta = Color::Rgb { r: 198, g: 120, b: 221 };
+        let bg_dark = Color::Rgb {
+            r: 33,
+            g: 37,
+            b: 43,
+        };
+        let bg_medium = Color::Rgb {
+            r: 40,
+            g: 44,
+            b: 52,
+        };
+        let bg_light = Color::Rgb {
+            r: 50,
+            g: 56,
+            b: 66,
+        };
+        let fg = Color::Rgb {
+            r: 171,
+            g: 178,
+            b: 191,
+        };
+        let fg_dark = Color::Rgb {
+            r: 92,
+            g: 99,
+            b: 112,
+        };
+        let yellow = Color::Rgb {
+            r: 229,
+            g: 192,
+            b: 123,
+        };
+        let blue = Color::Rgb {
+            r: 97,
+            g: 175,
+            b: 239,
+        };
+        let green = Color::Rgb {
+            r: 152,
+            g: 195,
+            b: 121,
+        };
+        let red = Color::Rgb {
+            r: 224,
+            g: 108,
+            b: 117,
+        };
+        let cyan = Color::Rgb {
+            r: 86,
+            g: 182,
+            b: 194,
+        };
+        let magenta = Color::Rgb {
+            r: 198,
+            g: 120,
+            b: 221,
+        };
 
         Self {
             base: BaseStyles {
@@ -289,7 +333,11 @@ impl Theme {
             },
             search: SearchStyles {
                 match_highlight: Style::new().fg(bg_dark).bg(yellow),
-                current_match: Style::new().fg(bg_dark).bg(Color::Rgb { r: 255, g: 165, b: 0 }),
+                current_match: Style::new().fg(bg_dark).bg(Color::Rgb {
+                    r: 255,
+                    g: 165,
+                    b: 0,
+                }),
                 inc_search: Style::new().fg(bg_dark).bg(yellow),
             },
             tab: TabStyles {
@@ -303,11 +351,24 @@ impl Theme {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     #[must_use]
     pub fn light() -> Self {
-        let fg_light = Color::Rgb { r: 56, g: 58, b: 66 };
-        let bg_light = Color::Rgb { r: 250, g: 250, b: 250 };
-        let bg_medium = Color::Rgb { r: 233, g: 233, b: 233 };
+        let fg_light = Color::Rgb {
+            r: 56,
+            g: 58,
+            b: 66,
+        };
+        let bg_light = Color::Rgb {
+            r: 250,
+            g: 250,
+            b: 250,
+        };
+        let bg_medium = Color::Rgb {
+            r: 233,
+            g: 233,
+            b: 233,
+        };
         let bg_highlight = Color::AnsiValue(254);
 
         Self {
@@ -383,7 +444,11 @@ impl Theme {
             },
             search: SearchStyles {
                 match_highlight: Style::new().fg(Color::Black).bg(Color::Yellow),
-                current_match: Style::new().fg(Color::Black).bg(Color::Rgb { r: 255, g: 165, b: 0 }),
+                current_match: Style::new().fg(Color::Black).bg(Color::Rgb {
+                    r: 255,
+                    g: 165,
+                    b: 0,
+                }),
                 inc_search: Style::new().fg(Color::Black).bg(Color::Yellow),
             },
             tab: TabStyles {
@@ -397,23 +462,84 @@ impl Theme {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     #[must_use]
     pub fn tokyo_night_orange() -> Self {
-        let bg = Color::Rgb { r: 26, g: 27, b: 38 };
-        let bg_dark = Color::Rgb { r: 22, g: 23, b: 34 };
-        let bg_highlight = Color::Rgb { r: 41, g: 46, b: 66 };
-        let fg = Color::Rgb { r: 192, g: 202, b: 245 };
-        let fg_dark = Color::Rgb { r: 86, g: 95, b: 137 };
-        let comment = Color::Rgb { r: 199, g: 199, b: 199 };
-        let orange = Color::Rgb { r: 255, g: 158, b: 100 };
-        let orange_bright = Color::Rgb { r: 255, g: 122, b: 0 };
-        let blue = Color::Rgb { r: 122, g: 162, b: 247 };
-        let purple = Color::Rgb { r: 187, g: 154, b: 247 };
-        let green = Color::Rgb { r: 158, g: 206, b: 106 };
-        let cyan = Color::Rgb { r: 125, g: 207, b: 255 };
-        let red = Color::Rgb { r: 247, g: 118, b: 142 };
-        let magenta = Color::Rgb { r: 255, g: 0, b: 127 };
-        let yellow = Color::Rgb { r: 224, g: 175, b: 104 };
+        let bg = Color::Rgb {
+            r: 26,
+            g: 27,
+            b: 38,
+        };
+        let bg_dark = Color::Rgb {
+            r: 22,
+            g: 23,
+            b: 34,
+        };
+        let bg_highlight = Color::Rgb {
+            r: 41,
+            g: 46,
+            b: 66,
+        };
+        let fg = Color::Rgb {
+            r: 192,
+            g: 202,
+            b: 245,
+        };
+        let fg_dark = Color::Rgb {
+            r: 86,
+            g: 95,
+            b: 137,
+        };
+        let comment = Color::Rgb {
+            r: 199,
+            g: 199,
+            b: 199,
+        };
+        let orange = Color::Rgb {
+            r: 255,
+            g: 158,
+            b: 100,
+        };
+        let orange_bright = Color::Rgb {
+            r: 255,
+            g: 122,
+            b: 0,
+        };
+        let blue = Color::Rgb {
+            r: 122,
+            g: 162,
+            b: 247,
+        };
+        let purple = Color::Rgb {
+            r: 187,
+            g: 154,
+            b: 247,
+        };
+        let green = Color::Rgb {
+            r: 158,
+            g: 206,
+            b: 106,
+        };
+        let cyan = Color::Rgb {
+            r: 125,
+            g: 207,
+            b: 255,
+        };
+        let red = Color::Rgb {
+            r: 247,
+            g: 118,
+            b: 142,
+        };
+        let magenta = Color::Rgb {
+            r: 255,
+            g: 0,
+            b: 127,
+        };
+        let yellow = Color::Rgb {
+            r: 224,
+            g: 175,
+            b: 104,
+        };
 
         Self {
             base: BaseStyles {
@@ -511,7 +637,13 @@ mod tests {
     fn test_default_theme() {
         let theme = Theme::default();
         assert!(theme.gutter.line_number.fg.is_some());
-        assert!(theme.gutter.current_line_number.attributes.contains(crate::highlight::Attributes::BOLD));
+        assert!(
+            theme
+                .gutter
+                .current_line_number
+                .attributes
+                .contains(crate::highlight::Attributes::BOLD)
+        );
     }
 
     #[test]
@@ -531,7 +663,13 @@ mod tests {
     fn test_tokyo_night_orange_theme() {
         let theme = Theme::tokyo_night_orange();
         assert!(theme.gutter.current_line_number.fg.is_some());
-        assert!(theme.gutter.current_line_number.attributes.contains(crate::highlight::Attributes::BOLD));
+        assert!(
+            theme
+                .gutter
+                .current_line_number
+                .attributes
+                .contains(crate::highlight::Attributes::BOLD)
+        );
     }
 
     #[test]
@@ -546,7 +684,7 @@ mod tests {
 
     #[test]
     fn test_theme_from_name() {
-        assert!(matches!(Theme::from_name(ThemeName::Dark).base.default.fg, None));
+        assert!(Theme::from_name(ThemeName::Dark).base.default.fg.is_none());
         assert!(Theme::from_name(ThemeName::Light).base.default.fg.is_some());
     }
 

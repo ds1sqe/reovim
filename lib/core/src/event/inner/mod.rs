@@ -1,16 +1,20 @@
 use std::path::PathBuf;
 
-use crate::bind::CommandRef;
-use crate::command::traits::OperatorMotionAction;
-use crate::command::CommandContext;
-use crate::completion::CompletionItem;
-use crate::highlight::{Highlight, HighlightGroup};
-use crate::leap::LeapDirection;
-use crate::modd::{ModeState, OperatorType};
-use crate::screen::{NavigateDirection, SplitDirection};
-use crate::telescope::{PreviewContent, TelescopeItem};
-use crate::textobject::{SemanticTextObjectSpec, TextObject, WordTextObject};
-use crate::treesitter::BufferEdit;
+use tokio::sync::oneshot;
+
+use crate::{
+    bind::CommandRef,
+    command::{CommandContext, traits::OperatorMotionAction},
+    completion::CompletionItem,
+    highlight::{Highlight, HighlightGroup},
+    leap::LeapDirection,
+    modd::{ModeState, OperatorType},
+    rpc::RpcResponse,
+    screen::{NavigateDirection, SplitDirection},
+    telescope::{PreviewContent, TelescopeItem},
+    textobject::{SemanticTextObjectSpec, TextObject, WordTextObject},
+    treesitter::BufferEdit,
+};
 
 pub enum InnerEvent {
     BufferEvent(BufferEvent),
@@ -41,7 +45,21 @@ pub enum InnerEvent {
     /// Hide the which-key popup
     WhichKeyHide,
     /// Terminal screen resize event
-    ScreenResizeEvent { width: u16, height: u16 },
+    ScreenResizeEvent {
+        width: u16,
+        height: u16,
+    },
+    /// RPC request from server mode
+    RpcRequest {
+        /// Request ID
+        id: u64,
+        /// Method name
+        method: String,
+        /// Method parameters
+        params: serde_json::Value,
+        /// Channel to send the response
+        response_tx: oneshot::Sender<RpcResponse>,
+    },
 }
 
 /// A single binding entry for the which-key popup
@@ -77,25 +95,42 @@ pub enum WindowEvent {
     FocusEditor,
 
     // Splits
-    SplitHorizontal { filename: Option<String> },
-    SplitVertical { filename: Option<String> },
-    Close { force: bool },
+    SplitHorizontal {
+        filename: Option<String>,
+    },
+    SplitVertical {
+        filename: Option<String>,
+    },
+    Close {
+        force: bool,
+    },
     CloseOthers,
 
     // Navigation
-    FocusDirection { direction: NavigateDirection },
-    MoveWindow { direction: NavigateDirection },
+    FocusDirection {
+        direction: NavigateDirection,
+    },
+    MoveWindow {
+        direction: NavigateDirection,
+    },
 
     // Resize
-    Resize { direction: SplitDirection, delta: i16 },
+    Resize {
+        direction: SplitDirection,
+        delta: i16,
+    },
     Equalize,
 
     // Tabs
-    TabNew { filename: Option<String> },
+    TabNew {
+        filename: Option<String>,
+    },
     TabClose,
     TabNext,
     TabPrev,
-    TabGoto { index: usize },
+    TabGoto {
+        index: usize,
+    },
 }
 
 /// Explorer-related events
@@ -202,10 +237,7 @@ pub enum TreesitterEvent {
     /// Schedule a buffer for reparsing after an edit
     ScheduleReparse { buffer_id: usize },
     /// Perform incremental parse with edit information
-    IncrementalParse {
-        buffer_id: usize,
-        edit: BufferEdit,
-    },
+    IncrementalParse { buffer_id: usize, edit: BufferEdit },
     /// Force a full reparse of a buffer
     FullReparse { buffer_id: usize },
 }

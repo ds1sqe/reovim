@@ -2,25 +2,26 @@
 
 use std::sync::Arc;
 
-use crate::bind::CommandRef;
-use crate::buffer::TextOps;
-use crate::command::{
-    traits::{
-        CommandLineAction, CommandResult, CompletionAction, DeferredAction, ExecutionContext,
-        ExplorerAction, FoldAction, LeapAction, OperatorMotionAction, SettingsMenuAction,
-        TabAction, TelescopeAction, WindowAction,
+use crate::{
+    bind::CommandRef,
+    buffer::TextOps,
+    command::{
+        CommandTrait,
+        traits::{
+            CommandLineAction, CommandResult, CompletionAction, DeferredAction, ExecutionContext,
+            ExplorerAction, FoldAction, LeapAction, OperatorMotionAction, SettingsMenuAction,
+            TabAction, TelescopeAction, WindowAction,
+        },
     },
-    CommandTrait,
+    command_line::{ExCommand, SetOption},
+    event::{CommandEvent, VisualTextObjectAction},
+    explorer::ExplorerState,
+    highlight::Theme,
+    modd::ModeState,
+    screen::{NavigateDirection, Position, SplitDirection},
+    textobject::SemanticTextObjectSpec,
+    treesitter::TreesitterTheme,
 };
-use crate::event::VisualTextObjectAction;
-use crate::explorer::ExplorerState;
-use crate::modd::ModeState;
-use crate::command_line::{ExCommand, SetOption};
-use crate::highlight::Theme;
-use crate::treesitter::TreesitterTheme;
-use crate::event::CommandEvent;
-use crate::screen::{NavigateDirection, Position, SplitDirection};
-use crate::textobject::SemanticTextObjectSpec;
 
 use super::Runtime;
 
@@ -44,21 +45,12 @@ impl Runtime {
         // Get buffer content and cursor position
         let (content, cursor_row, cursor_col) = {
             let buffer = self.buffers.get(&buffer_id)?;
-            (
-                buffer.content_to_string(),
-                u32::from(buffer.cur.y),
-                u32::from(buffer.cur.x),
-            )
+            (buffer.content_to_string(), u32::from(buffer.cur.y), u32::from(buffer.cur.x))
         };
 
         // Find text object bounds using treesitter
         let bounds = self.treesitter.find_text_object_bounds(
-            buffer_id,
-            &content,
-            cursor_row,
-            cursor_col,
-            spec.kind,
-            spec.scope,
+            buffer_id, &content, cursor_row, cursor_col, spec.kind, spec.scope,
         )?;
 
         // Convert treesitter Position to screen Position
@@ -88,21 +80,12 @@ impl Runtime {
         // Get buffer content and cursor position
         let (content, cursor_row, cursor_col) = {
             let buffer = self.buffers.get(&buffer_id)?;
-            (
-                buffer.content_to_string(),
-                u32::from(buffer.cur.y),
-                u32::from(buffer.cur.x),
-            )
+            (buffer.content_to_string(), u32::from(buffer.cur.y), u32::from(buffer.cur.x))
         };
 
         // Find text object bounds using treesitter
         let bounds = self.treesitter.find_text_object_bounds(
-            buffer_id,
-            &content,
-            cursor_row,
-            cursor_col,
-            spec.kind,
-            spec.scope,
+            buffer_id, &content, cursor_row, cursor_col, spec.kind, spec.scope,
         )?;
 
         // Convert treesitter Position to screen Position
@@ -132,21 +115,12 @@ impl Runtime {
         // Get buffer content and cursor position
         let (content, cursor_row, cursor_col) = {
             let buffer = self.buffers.get(&buffer_id)?;
-            (
-                buffer.content_to_string(),
-                u32::from(buffer.cur.y),
-                u32::from(buffer.cur.x),
-            )
+            (buffer.content_to_string(), u32::from(buffer.cur.y), u32::from(buffer.cur.x))
         };
 
         // Find text object bounds using treesitter
         let bounds = self.treesitter.find_text_object_bounds(
-            buffer_id,
-            &content,
-            cursor_row,
-            cursor_col,
-            spec.kind,
-            spec.scope,
+            buffer_id, &content, cursor_row, cursor_col, spec.kind, spec.scope,
         )?;
 
         // Convert treesitter Position to screen Position
@@ -183,9 +157,8 @@ impl Runtime {
                         }
                         ExCommand::Write { filename } => {
                             // Determine file path: use provided filename or buffer's file_path
-                            let path = filename.or_else(|| {
-                                self.buffers.get(&0).and_then(|b| b.file_path.clone())
-                            });
+                            let path = filename
+                                .or_else(|| self.buffers.get(&0).and_then(|b| b.file_path.clone()));
 
                             if let Some(path) = path
                                 && let Some(buffer) = self.buffers.get_mut(&0)
@@ -235,7 +208,8 @@ impl Runtime {
                             }
                             SetOption::ColorScheme(name) => {
                                 self.theme = Theme::from_name(name);
-                                self.treesitter.set_theme(TreesitterTheme::from_theme_name(name));
+                                self.treesitter
+                                    .set_theme(TreesitterTheme::from_theme_name(name));
                                 self.rehighlight_all_buffers();
                                 tracing::info!(theme = ?name, "Colorscheme changed");
                             }
@@ -250,7 +224,8 @@ impl Runtime {
                         },
                         ExCommand::Colorscheme { name } => {
                             self.theme = Theme::from_name(name);
-                            self.treesitter.set_theme(TreesitterTheme::from_theme_name(name));
+                            self.treesitter
+                                .set_theme(TreesitterTheme::from_theme_name(name));
                             self.rehighlight_all_buffers();
                             tracing::info!(theme = ?name, "Colorscheme changed");
                         }
@@ -307,7 +282,9 @@ impl Runtime {
                             use crate::event::{InnerEvent, SettingsMenuEvent};
                             let tx = self.tx.clone();
                             tokio::spawn(async move {
-                                let _ = tx.send(InnerEvent::SettingsMenuEvent(SettingsMenuEvent::Open)).await;
+                                let _ = tx
+                                    .send(InnerEvent::SettingsMenuEvent(SettingsMenuEvent::Open))
+                                    .await;
                             });
                         }
                         ExCommand::Unknown(cmd) => {
@@ -396,7 +373,10 @@ impl Runtime {
                 }
                 CommandResult::DeferToRuntime(action) => {
                     match action {
-                        DeferredAction::Paste { before: _before, register } => {
+                        DeferredAction::Paste {
+                            before: _before,
+                            register,
+                        } => {
                             // Handle paste from specified register
                             // TODO: implement proper PasteBefore (paste at cursor vs before cursor)
                             // Use active_buffer_id, not context.buffer_id (which is hardcoded to 0 in dispatcher)
@@ -552,7 +532,9 @@ impl Runtime {
                     .explorer_state
                     .as_ref()
                     .and_then(|state| state.current_node())
-                    .map(|node| (node.is_dir(), node.is_file(), node.is_symlink(), node.path.clone()));
+                    .map(|node| {
+                        (node.is_dir(), node.is_file(), node.is_symlink(), node.path.clone())
+                    });
 
                 if let Some((is_dir, is_file, is_symlink, path)) = node_info {
                     if is_dir {
@@ -824,7 +806,8 @@ impl Runtime {
                 }
                 VisualTextObjectAction::SelectSemantic { text_object } => {
                     // Find semantic text object bounds using treesitter
-                    if let Some((start, end)) = self.find_semantic_text_object_bounds(buffer_id, text_object)
+                    if let Some((start, end)) =
+                        self.find_semantic_text_object_bounds(buffer_id, text_object)
                         && let Some(buf) = self.buffers.get_mut(&buffer_id)
                     {
                         buf.selection.anchor = start;
@@ -951,10 +934,15 @@ impl Runtime {
     /// Handle leap motion actions
     pub(crate) fn handle_leap_action(&mut self, action: &LeapAction) {
         match action {
-            LeapAction::Start { direction, operator, count } => {
+            LeapAction::Start {
+                direction,
+                operator,
+                count,
+            } => {
                 // Activate leap state
                 if let Some(op) = operator {
-                    self.leap_state.activate_with_operator(*direction, *op, *count);
+                    self.leap_state
+                        .activate_with_operator(*direction, *op, *count);
                 } else {
                     self.leap_state.activate(*direction);
                 }

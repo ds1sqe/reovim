@@ -5,12 +5,14 @@
 
 use std::path::PathBuf;
 
-use tracing_appender::non_blocking::WorkerGuard;
-use tracing_subscriber::{
-    fmt::{self, time::UtcTime},
-    layer::SubscriberExt,
-    util::SubscriberInitExt,
-    EnvFilter,
+use {
+    tracing_appender::non_blocking::WorkerGuard,
+    tracing_subscriber::{
+        EnvFilter,
+        fmt::{self, time::UtcTime},
+        layer::SubscriberExt,
+        util::SubscriberInitExt,
+    },
 };
 
 /// Default log level when `REOVIM_LOG` is not set

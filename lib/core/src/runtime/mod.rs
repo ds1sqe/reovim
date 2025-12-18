@@ -4,7 +4,4 @@ mod core;
 mod event_loop;
 mod handlers;
 
-pub mod test;
-
 pub use core::Runtime;
-pub use test::{TestResult, TestRuntime, TestRuntimeBuilder};

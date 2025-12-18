@@ -3,13 +3,17 @@
 //! Enhanced statusline format:
 //! `[MODE_ICON MODE] [pending/cmd] ... [FILENAME][+] [FILETYPE] Ln X, Col Y`
 
-use crate::buffer::Buffer;
-use crate::command_line::CommandLine;
-use crate::constants::RESET_STYLE;
-use crate::highlight::{ColorMode, Theme};
-use crate::modd::{EditMode, Focus, ModeState, SubMode};
-use reovim_sys::{cursor::MoveTo, queue, style::Print};
-use std::io::Write;
+use {
+    crate::{
+        buffer::Buffer,
+        command_line::CommandLine,
+        constants::RESET_STYLE,
+        highlight::{ColorMode, Theme},
+        modd::{EditMode, Focus, ModeState, SubMode},
+    },
+    reovim_sys::{cursor::MoveTo, queue, style::Print},
+    std::io::Write,
+};
 
 /// Mode icons (Nerd Font)
 mod icons {
@@ -109,8 +113,7 @@ pub fn render_status_line_to<W: Write>(
     // Get mode-specific style
     let mode_style = match (&mode.sub_mode, &mode.focus, &mode.edit_mode) {
         // Command sub-mode, Telescope, or SettingsMenu uses command style
-        (SubMode::Command, _, _)
-        | (SubMode::None, Focus::Telescope | Focus::SettingsMenu, _) => {
+        (SubMode::Command, _, _) | (SubMode::None, Focus::Telescope | Focus::SettingsMenu, _) => {
             &theme.statusline.mode.command
         }
         // Operator-pending, Leap, and normal mode in Editor

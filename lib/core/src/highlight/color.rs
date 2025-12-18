@@ -196,9 +196,7 @@ pub fn rgb_to_ansi256(r: u8, g: u8, b: u8) -> u8 {
 pub fn downgrade_color(color: Color, mode: ColorMode) -> Color {
     match (color, mode) {
         // 256-color mode: convert RGB to 256
-        (Color::Rgb { r, g, b }, ColorMode::Color256) => {
-            Color::AnsiValue(rgb_to_ansi256(r, g, b))
-        }
+        (Color::Rgb { r, g, b }, ColorMode::Color256) => Color::AnsiValue(rgb_to_ansi256(r, g, b)),
 
         // ANSI 16 mode: convert everything to basic colors
         (Color::Rgb { r, g, b }, ColorMode::Ansi16) => rgb_to_nearest_ansi16(r, g, b),
@@ -244,28 +242,29 @@ mod tests {
     fn test_rgb_to_ansi256_colors() {
         // Pure red should map to red area of cube
         let red = rgb_to_ansi256(255, 0, 0);
-        assert!(red >= 16 && red < 232);
+        assert!((16..232).contains(&red));
         // Pure green
         let green = rgb_to_ansi256(0, 255, 0);
-        assert!(green >= 16 && green < 232);
+        assert!((16..232).contains(&green));
         // Pure blue
         let blue = rgb_to_ansi256(0, 0, 255);
-        assert!(blue >= 16 && blue < 232);
+        assert!((16..232).contains(&blue));
     }
 
     #[test]
     fn test_downgrade_color_truecolor() {
         // TrueColor mode passes everything through
-        let rgb = Color::Rgb { r: 255, g: 128, b: 64 };
+        let rgb = Color::Rgb {
+            r: 255,
+            g: 128,
+            b: 64,
+        };
         assert_eq!(downgrade_color(rgb, ColorMode::TrueColor), rgb);
 
         let ansi = Color::AnsiValue(196);
         assert_eq!(downgrade_color(ansi, ColorMode::TrueColor), ansi);
 
-        assert_eq!(
-            downgrade_color(Color::Red, ColorMode::TrueColor),
-            Color::Red
-        );
+        assert_eq!(downgrade_color(Color::Red, ColorMode::TrueColor), Color::Red);
     }
 
     #[test]

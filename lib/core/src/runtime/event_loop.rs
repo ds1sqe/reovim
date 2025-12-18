@@ -1,15 +1,17 @@
 //! Main event loop for the editor
 
-use crate::buffer::{Buffer, SelectionOps, TextOps};
-use crate::config::ProfileConfig;
-use crate::event::{
-    BufferEvent, CommandHandler, CompletionEvent, CompletionHandler, ExplorerEvent,
-    HighlightEvent, InnerEvent, InputEventBroker, SettingsMenuEvent, TerminateHandler,
-    TreesitterEvent, WindowEvent,
+use crate::{
+    buffer::{Buffer, SelectionOps, TextOps},
+    config::ProfileConfig,
+    event::{
+        BufferEvent, CommandHandler, CompletionEvent, CompletionHandler, ExplorerEvent,
+        HighlightEvent, InnerEvent, InputEventBroker, SettingsMenuEvent, TerminateHandler,
+        TreesitterEvent, WindowEvent,
+    },
+    highlight::{HighlightGroup, Theme},
+    modd::{EditMode, ModExtension, ModeState, SubMode},
+    treesitter::TreesitterTheme,
 };
-use crate::highlight::{HighlightGroup, Theme};
-use crate::treesitter::TreesitterTheme;
-use crate::modd::{EditMode, ModExtension, ModeState, SubMode};
 
 use super::Runtime;
 
@@ -88,13 +90,82 @@ impl Runtime {
         let _ = self.screen.finalize();
     }
 
+    /// Initialize and run the editor with a custom key source.
+    ///
+    /// Used for server mode where keys are injected via `ChannelKeySource`
+    /// instead of reading from the terminal.
+    #[allow(clippy::missing_panics_doc)]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::future_not_send)]
+    pub async fn init_with_key_source<K: crate::io::input::KeySource + 'static>(
+        mut self,
+        key_source: K,
+    ) {
+        tracing::info!("Runtime initializing (server mode)");
+
+        let mut buffer = Buffer::empty(0);
+
+        // Load file if provided
+        if let Some(ref path) = self.initial_file {
+            match std::fs::read_to_string(path) {
+                Ok(content) => {
+                    let line_count = content.lines().count();
+                    buffer.set_content(&content);
+                    tracing::info!(path = %path, lines = line_count, "File loaded");
+                }
+                Err(e) => {
+                    tracing::warn!(path = %path, error = %e, "Failed to load file");
+                }
+            }
+            buffer.file_path = Some(path.clone());
+        }
+
+        self.buffers.insert(0, buffer);
+
+        // Use custom key source for server mode
+        let input_broker = crate::event::InputEventBroker::with_key_source(key_source);
+
+        // Command handler for key-to-command translation
+        let mode_rx = self.subscribe_mode();
+        let completion_active_rx = self.subscribe_completion_active();
+        let mut command_hdr = crate::event::CommandHandler::new(
+            self.tx.clone(),
+            mode_rx,
+            completion_active_rx,
+            self.command_registry.clone(),
+        );
+        let mut terminate_hdr = crate::event::TerminateHandler::new(self.tx.clone());
+
+        // Completion handler for auto-triggering completion on typing
+        let completion_mode_rx = self.subscribe_mode();
+        let mut completion_hdr =
+            crate::event::CompletionHandler::with_defaults(self.tx.clone(), completion_mode_rx);
+
+        input_broker.key_broker.enlist(&mut command_hdr);
+        input_broker.key_broker.enlist(&mut terminate_hdr);
+        input_broker.key_broker.enlist(&mut completion_hdr);
+
+        tokio::spawn(async move { command_hdr.run().await });
+        tokio::spawn(async move { terminate_hdr.run().await });
+        tokio::spawn(async move { completion_hdr.run().await });
+        tokio::spawn(async move { input_broker.subscribe().await });
+
+        // Initial render
+        self.render();
+
+        tracing::debug!("Entering event loop (server mode)");
+        self.run_event_loop().await;
+
+        tracing::debug!("Event loop ended (server mode)");
+        let _ = self.screen.finalize();
+    }
+
     /// The main event processing loop
     #[allow(clippy::collapsible_if)]
     #[allow(clippy::match_same_arms)]
     #[allow(clippy::future_not_send)]
     async fn run_event_loop(&mut self) {
-        use std::time::Duration;
-        use tokio::time::interval;
+        use {std::time::Duration, tokio::time::interval};
 
         // Interval for checking pending treesitter parses
         let mut treesitter_check_interval =
@@ -312,8 +383,171 @@ impl Runtime {
             InnerEvent::SettingsMenuEvent(ref settings_event) => {
                 self.handle_settings_menu_event(settings_event);
             }
+            InnerEvent::RpcRequest {
+                id,
+                method,
+                params,
+                response_tx,
+            } => {
+                let response = self.handle_rpc_request(id, &method, &params);
+                let _ = response_tx.send(response);
+            }
         }
         false
+    }
+
+    /// Handle an RPC request from server mode
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::missing_panics_doc)]
+    fn handle_rpc_request(
+        &mut self,
+        id: u64,
+        method: &str,
+        params: &serde_json::Value,
+    ) -> crate::rpc::RpcResponse {
+        use crate::rpc::{RpcError, RpcResponse, methods};
+
+        // Helper to extract buffer_id from params
+        #[allow(clippy::cast_possible_truncation)]
+        let get_buffer_id = |params: &serde_json::Value, default: usize| -> usize {
+            params
+                .get("buffer_id")
+                .and_then(serde_json::Value::as_u64)
+                .map_or(default, |v| v as usize)
+        };
+
+        match method {
+            methods::STATE_MODE => {
+                let snapshot = self.mode_snapshot();
+                RpcResponse::success(id, serde_json::to_value(snapshot).unwrap())
+            }
+            methods::STATE_CURSOR => {
+                let buffer_id = get_buffer_id(params, self.active_buffer_id);
+                self.cursor_snapshot(buffer_id).map_or_else(
+                    || RpcResponse::error(id, RpcError::buffer_not_found(buffer_id)),
+                    |snapshot| RpcResponse::success(id, serde_json::to_value(snapshot).unwrap()),
+                )
+            }
+            methods::STATE_SELECTION => {
+                let buffer_id = get_buffer_id(params, self.active_buffer_id);
+                self.selection_snapshot(buffer_id).map_or_else(
+                    || RpcResponse::error(id, RpcError::buffer_not_found(buffer_id)),
+                    |snapshot| RpcResponse::success(id, serde_json::to_value(snapshot).unwrap()),
+                )
+            }
+            methods::STATE_SCREEN => {
+                let snapshot = self.screen_snapshot();
+                RpcResponse::success(id, serde_json::to_value(snapshot).unwrap())
+            }
+            methods::STATE_SCREEN_CONTENT => {
+                // Note: Full screen content capture requires the DualOutput capture handle
+                // which is managed at the server level. Return dimensions for now.
+                let snapshot = crate::rpc::ScreenContentSnapshot {
+                    width: self.screen.width(),
+                    height: self.screen.height(),
+                    format: crate::rpc::ScreenFormat::PlainText,
+                    content: String::new(), // Populated by server layer
+                };
+                RpcResponse::success(id, serde_json::to_value(snapshot).unwrap())
+            }
+            methods::INPUT_KEYS => {
+                // Key injection is handled at the server level via ChannelKeySource
+                // This handler is a fallback that returns an error
+                RpcResponse::error(
+                    id,
+                    RpcError::internal_error("input/keys must be handled at server level"),
+                )
+            }
+            methods::COMMAND_EXECUTE => {
+                // Direct command execution by command ID
+                let command_name = params.get("command").and_then(serde_json::Value::as_str);
+                #[allow(clippy::cast_possible_truncation)]
+                let count = params
+                    .get("count")
+                    .and_then(serde_json::Value::as_u64)
+                    .map(|v| v as usize);
+
+                command_name.map_or_else(
+                    || RpcResponse::error(id, RpcError::invalid_params("missing 'command' field")),
+                    |name| {
+                        // TODO: Full implementation needs command lookup
+                        RpcResponse::success(
+                            id,
+                            serde_json::json!({
+                                "executed": false,
+                                "message": format!("Command execution for '{}' (count: {:?}) - not yet implemented", name, count)
+                            }),
+                        )
+                    },
+                )
+            }
+            methods::BUFFER_LIST => {
+                let snapshots = self.buffer_list_snapshot();
+                RpcResponse::success(id, serde_json::to_value(snapshots).unwrap())
+            }
+            methods::BUFFER_GET_CONTENT => {
+                let buffer_id = get_buffer_id(params, self.active_buffer_id);
+                self.buffer_content(buffer_id).map_or_else(
+                    || RpcResponse::error(id, RpcError::buffer_not_found(buffer_id)),
+                    |content| RpcResponse::success(id, serde_json::json!({ "content": content })),
+                )
+            }
+            methods::BUFFER_SET_CONTENT => {
+                let buffer_id = get_buffer_id(params, self.active_buffer_id);
+                let content = params.get("content").and_then(serde_json::Value::as_str);
+
+                match (self.buffers.get_mut(&buffer_id), content) {
+                    (Some(buffer), Some(content)) => {
+                        buffer.set_content(content);
+                        self.render();
+                        RpcResponse::ok(id)
+                    }
+                    (None, _) => RpcResponse::error(id, RpcError::buffer_not_found(buffer_id)),
+                    (_, None) => {
+                        RpcResponse::error(id, RpcError::invalid_params("missing 'content' field"))
+                    }
+                }
+            }
+            methods::BUFFER_OPEN_FILE => {
+                let path = params.get("path").and_then(serde_json::Value::as_str);
+                path.map_or_else(
+                    || RpcResponse::error(id, RpcError::invalid_params("missing 'path' field")),
+                    |path| {
+                        self.open_file(path);
+                        self.render();
+                        RpcResponse::success(
+                            id,
+                            serde_json::json!({ "buffer_id": self.active_buffer_id }),
+                        )
+                    },
+                )
+            }
+            methods::EDITOR_RESIZE => {
+                let width = params.get("width").and_then(serde_json::Value::as_u64);
+                let height = params.get("height").and_then(serde_json::Value::as_u64);
+
+                match (width, height) {
+                    (Some(w), Some(h)) => {
+                        #[allow(clippy::cast_possible_truncation)]
+                        {
+                            self.screen.resize(w as u16, h as u16);
+                            self.render();
+                        }
+                        RpcResponse::ok(id)
+                    }
+                    _ => RpcResponse::error(
+                        id,
+                        RpcError::invalid_params("missing 'width' or 'height' field"),
+                    ),
+                }
+            }
+            methods::EDITOR_QUIT => {
+                // Note: This doesn't actually quit - the caller needs to check response
+                // and send KillSignal separately if needed
+                RpcResponse::ok(id)
+            }
+            _ => RpcResponse::error(id, RpcError::method_not_found(method)),
+        }
     }
 
     /// Handle treesitter-related events
@@ -382,19 +616,18 @@ impl Runtime {
     #[allow(clippy::too_many_lines)]
     #[allow(clippy::cast_possible_truncation)]
     fn handle_telescope_event(&mut self, event: crate::event::TelescopeEvent) {
-        use crate::event::TelescopeEvent;
-        use crate::telescope::TelescopeData;
-        use crate::telescope::picker::PickerContext;
-        use crate::command::traits::ExecutionContext;
+        use crate::{
+            command::traits::ExecutionContext,
+            event::TelescopeEvent,
+            telescope::{TelescopeData, picker::PickerContext},
+        };
 
         match event {
             TelescopeEvent::Open { picker } => {
                 tracing::debug!(?picker, "Telescope open requested");
                 // Calculate layout based on screen size
-                self.telescope_state.calculate_layout(
-                    self.screen.width(),
-                    self.screen.height(),
-                );
+                self.telescope_state
+                    .calculate_layout(self.screen.width(), self.screen.height());
 
                 // Get title and prompt from picker registry
                 let (title, prompt) = self
@@ -419,9 +652,9 @@ impl Runtime {
                         };
                         let items = picker_impl.fetch(&ctx).await;
                         tracing::debug!(count = items.len(), "Fetched telescope items");
-                        let _ = tx.send(InnerEvent::TelescopeEvent(
-                            TelescopeEvent::UpdateItems { items }
-                        )).await;
+                        let _ = tx
+                            .send(InnerEvent::TelescopeEvent(TelescopeEvent::UpdateItems { items }))
+                            .await;
                     });
                 }
             }
@@ -436,9 +669,9 @@ impl Runtime {
                     self.telescope_state.items = self.telescope_state.all_items.clone();
                 } else if !self.telescope_state.all_items.is_empty() {
                     self.telescope_matcher.set_pattern(&query);
-                    let filtered = self.telescope_matcher.match_items(
-                        self.telescope_state.all_items.clone(),
-                    );
+                    let filtered = self
+                        .telescope_matcher
+                        .match_items(self.telescope_state.all_items.clone());
                     self.telescope_state.update_filtered_items(filtered);
                 }
                 self.render_telescope_only();
@@ -522,7 +755,8 @@ impl Runtime {
                             self.set_mode(ModeState::normal());
                             // Apply the theme
                             self.theme = Theme::from_name(name);
-                            self.treesitter.set_theme(TreesitterTheme::from_theme_name(name));
+                            self.treesitter
+                                .set_theme(TreesitterTheme::from_theme_name(name));
                             self.rehighlight_all_buffers();
                             tracing::info!(theme = ?name, "Theme applied via telescope");
                         }
@@ -565,7 +799,8 @@ impl Runtime {
                 start_row,
             } => {
                 self.completion_items_cache.clone_from(&items);
-                self.completion_state.activate(items, prefix, start_col, start_row);
+                self.completion_state
+                    .activate(items, prefix, start_col, start_row);
                 self.set_completion_active(true);
                 self.render();
             }
@@ -660,8 +895,10 @@ impl Runtime {
     /// Handle leap-related events
     #[allow(clippy::cast_possible_truncation)]
     fn handle_leap_event(&mut self, event: crate::event::LeapEvent) {
-        use crate::event::LeapEvent;
-        use crate::leap::{find_matches, generate_labels};
+        use crate::{
+            event::LeapEvent,
+            leap::{find_matches, generate_labels},
+        };
 
         match event {
             LeapEvent::Start {
@@ -761,7 +998,8 @@ impl Runtime {
                     .current_profile()
                     .cloned()
                     .unwrap_or_default();
-                self.settings_menu.open(&profile, &self.current_profile_name);
+                self.settings_menu
+                    .open(&profile, &self.current_profile_name);
                 let (w, h) = self.screen.size();
                 self.settings_menu.calculate_layout(w, h);
                 self.set_mode(ModeState::settings_menu());
@@ -912,7 +1150,8 @@ impl Runtime {
 
         // Apply screen settings
         self.screen.set_number(profile.editor.number);
-        self.screen.set_relative_number(profile.editor.relativenumber);
+        self.screen
+            .set_relative_number(profile.editor.relativenumber);
         self.screen.set_scrollbar(profile.editor.scrollbar);
 
         // Apply indent guide setting

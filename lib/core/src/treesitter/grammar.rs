@@ -1,7 +1,6 @@
 //! Grammar loading and language detection
 
-use std::collections::HashMap;
-use std::path::Path;
+use std::{collections::HashMap, path::Path};
 
 use tree_sitter::Language;
 
@@ -73,11 +72,7 @@ impl BundledGrammar {
     /// Create Rust grammar
     #[must_use]
     pub fn rust() -> Self {
-        Self::new(
-            LanguageId::Rust,
-            tree_sitter_rust::LANGUAGE.into(),
-            &["rs"],
-        )
+        Self::new(LanguageId::Rust, tree_sitter_rust::LANGUAGE.into(), &["rs"])
     }
 
     /// Create C grammar
@@ -99,41 +94,25 @@ impl BundledGrammar {
     /// Create Python grammar
     #[must_use]
     pub fn python() -> Self {
-        Self::new(
-            LanguageId::Python,
-            tree_sitter_python::LANGUAGE.into(),
-            &["py", "pyi"],
-        )
+        Self::new(LanguageId::Python, tree_sitter_python::LANGUAGE.into(), &["py", "pyi"])
     }
 
     /// Create JSON grammar
     #[must_use]
     pub fn json() -> Self {
-        Self::new(
-            LanguageId::Json,
-            tree_sitter_json::LANGUAGE.into(),
-            &["json"],
-        )
+        Self::new(LanguageId::Json, tree_sitter_json::LANGUAGE.into(), &["json"])
     }
 
     /// Create TOML grammar
     #[must_use]
     pub fn toml() -> Self {
-        Self::new(
-            LanguageId::Toml,
-            tree_sitter_toml_ng::LANGUAGE.into(),
-            &["toml"],
-        )
+        Self::new(LanguageId::Toml, tree_sitter_toml_ng::LANGUAGE.into(), &["toml"])
     }
 
     /// Create Markdown grammar
     #[must_use]
     pub fn markdown() -> Self {
-        Self::new(
-            LanguageId::Markdown,
-            tree_sitter_md::LANGUAGE.into(),
-            &["md", "markdown"],
-        )
+        Self::new(LanguageId::Markdown, tree_sitter_md::LANGUAGE.into(), &["md", "markdown"])
     }
 }
 

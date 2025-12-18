@@ -1,11 +1,16 @@
 //! Key binding system for mapping key sequences to commands
 
-use crate::command::builtin::ToggleExplorerCommand;
-use crate::command::{id::builtin, registry::CommandRegistry, CommandId, CommandTrait};
-use crate::event::WhichKeyBinding;
-use crate::modd::{EditMode, Focus, ModeState, SubMode};
-use std::collections::HashMap;
-use std::sync::Arc;
+use {
+    crate::{
+        command::{
+            CommandId, CommandTrait, builtin::ToggleExplorerCommand, id::builtin,
+            registry::CommandRegistry,
+        },
+        event::WhichKeyBinding,
+        modd::{EditMode, Focus, ModeState, SubMode},
+    },
+    std::{collections::HashMap, sync::Arc},
+};
 
 /// Reference to a command - either by ID (for registered commands) or inline
 #[derive(Debug, Clone)]
@@ -314,12 +319,19 @@ impl KeyMap {
 
         // Mode switching
         keymap.insert("i".to_string(), KeyMapInner::with_command_id(builtin::ENTER_INSERT_MODE));
-        keymap.insert("a".to_string(), KeyMapInner::with_command_id(builtin::ENTER_INSERT_MODE_AFTER));
-        keymap.insert("A".to_string(), KeyMapInner::with_command_id(builtin::ENTER_INSERT_MODE_EOL));
+        keymap.insert(
+            "a".to_string(),
+            KeyMapInner::with_command_id(builtin::ENTER_INSERT_MODE_AFTER),
+        );
+        keymap
+            .insert("A".to_string(), KeyMapInner::with_command_id(builtin::ENTER_INSERT_MODE_EOL));
         keymap.insert("o".to_string(), KeyMapInner::with_command_id(builtin::OPEN_LINE_BELOW));
         keymap.insert("O".to_string(), KeyMapInner::with_command_id(builtin::OPEN_LINE_ABOVE));
         keymap.insert("v".to_string(), KeyMapInner::with_command_id(builtin::ENTER_VISUAL_MODE));
-        keymap.insert("<C-v>".to_string(), KeyMapInner::with_command_id(builtin::ENTER_VISUAL_BLOCK_MODE));
+        keymap.insert(
+            "<C-v>".to_string(),
+            KeyMapInner::with_command_id(builtin::ENTER_VISUAL_BLOCK_MODE),
+        );
         keymap.insert(":".to_string(), KeyMapInner::with_command_id(builtin::ENTER_COMMAND_MODE));
 
         // Editing
@@ -341,12 +353,14 @@ impl KeyMap {
         keymap.insert("<C-r>".to_string(), KeyMapInner::with_command_id(builtin::REDO));
 
         // Operators (d, y, c enter operator-pending mode)
-        keymap.insert("d".to_string(), KeyMapInner::with_command_id(builtin::ENTER_DELETE_OPERATOR));
+        keymap
+            .insert("d".to_string(), KeyMapInner::with_command_id(builtin::ENTER_DELETE_OPERATOR));
         keymap.insert("dd".to_string(), KeyMapInner::with_command_id(builtin::DELETE_LINE));
         keymap.insert("y".to_string(), KeyMapInner::with_command_id(builtin::ENTER_YANK_OPERATOR));
         keymap.insert("yy".to_string(), KeyMapInner::with_command_id(builtin::YANK_LINE));
         keymap.insert("Y".to_string(), KeyMapInner::with_command_id(builtin::YANK_TO_END));
-        keymap.insert("c".to_string(), KeyMapInner::with_command_id(builtin::ENTER_CHANGE_OPERATOR));
+        keymap
+            .insert("c".to_string(), KeyMapInner::with_command_id(builtin::ENTER_CHANGE_OPERATOR));
 
         // Space (leader) bindings
         keymap.insert(" ".to_string(), KeyMapInner::new()); // prefix, no command
@@ -358,9 +372,14 @@ impl KeyMap {
 
         // Telescope bindings (Space + f prefix)
         keymap.insert(" f".to_string(), KeyMapInner::new()); // prefix, no command
-        keymap.insert(" ff".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_FIND_FILES));
-        keymap.insert(" fb".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_FIND_BUFFERS));
-        keymap.insert(" fg".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_LIVE_GREP));
+        keymap
+            .insert(" ff".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_FIND_FILES));
+        keymap.insert(
+            " fb".to_string(),
+            KeyMapInner::with_command_id(builtin::TELESCOPE_FIND_BUFFERS),
+        );
+        keymap
+            .insert(" fg".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_LIVE_GREP));
         keymap.insert(" fr".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_RECENT));
         keymap.insert(" fc".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_COMMANDS));
         keymap.insert(" fh".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_HELP));
@@ -379,16 +398,24 @@ impl KeyMap {
         keymap.insert("zM".to_string(), KeyMapInner::with_command_id(builtin::FOLD_CLOSE_ALL));
 
         // Window navigation (C-hjkl)
-        keymap.insert("<C-h>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_LEFT));
-        keymap.insert("<C-j>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_DOWN));
+        keymap
+            .insert("<C-h>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_LEFT));
+        keymap
+            .insert("<C-j>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_DOWN));
         keymap.insert("<C-k>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_UP));
-        keymap.insert("<C-l>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_RIGHT));
+        keymap
+            .insert("<C-l>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_RIGHT));
 
         // Window movement (C-S-HJKL)
-        keymap.insert("<C-S-H>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_MOVE_LEFT));
-        keymap.insert("<C-S-J>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_MOVE_DOWN));
+        keymap
+            .insert("<C-S-H>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_MOVE_LEFT));
+        keymap
+            .insert("<C-S-J>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_MOVE_DOWN));
         keymap.insert("<C-S-K>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_MOVE_UP));
-        keymap.insert("<C-S-L>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_MOVE_RIGHT));
+        keymap.insert(
+            "<C-S-L>".to_string(),
+            KeyMapInner::with_command_id(builtin::WINDOW_MOVE_RIGHT),
+        );
 
         // Tab navigation
         keymap.insert("gt".to_string(), KeyMapInner::with_command_id(builtin::TAB_NEXT));
@@ -396,12 +423,19 @@ impl KeyMap {
     }
 
     fn setup_insert_mode(keymap: &mut HashMap<String, KeyMapInner>) {
-        keymap.insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::ENTER_NORMAL_MODE));
-        keymap.insert("Backspace".to_string(), KeyMapInner::with_command_id(builtin::DELETE_CHAR_BACKWARD));
+        keymap
+            .insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::ENTER_NORMAL_MODE));
+        keymap.insert(
+            "Backspace".to_string(),
+            KeyMapInner::with_command_id(builtin::DELETE_CHAR_BACKWARD),
+        );
         keymap.insert("Enter".to_string(), KeyMapInner::with_command_id(builtin::INSERT_NEWLINE));
 
         // Completion keybindings
-        keymap.insert("C-Space".to_string(), KeyMapInner::with_command_id(builtin::COMPLETION_TRIGGER));
+        keymap.insert(
+            "C-Space".to_string(),
+            KeyMapInner::with_command_id(builtin::COMPLETION_TRIGGER),
+        );
         keymap.insert("C-n".to_string(), KeyMapInner::with_command_id(builtin::COMPLETION_NEXT));
         keymap.insert("C-p".to_string(), KeyMapInner::with_command_id(builtin::COMPLETION_PREV));
         keymap.insert("Tab".to_string(), KeyMapInner::with_command_id(builtin::COMPLETION_CONFIRM));
@@ -409,7 +443,8 @@ impl KeyMap {
     }
 
     fn setup_visual_mode(keymap: &mut HashMap<String, KeyMapInner>) {
-        keymap.insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::ENTER_NORMAL_MODE));
+        keymap
+            .insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::ENTER_NORMAL_MODE));
         keymap.insert("h".to_string(), KeyMapInner::with_command_id(builtin::VISUAL_EXTEND_LEFT));
         keymap.insert("j".to_string(), KeyMapInner::with_command_id(builtin::VISUAL_EXTEND_DOWN));
         keymap.insert("k".to_string(), KeyMapInner::with_command_id(builtin::VISUAL_EXTEND_UP));
@@ -419,30 +454,47 @@ impl KeyMap {
     }
 
     fn setup_command_mode(keymap: &mut HashMap<String, KeyMapInner>) {
-        keymap.insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::COMMAND_LINE_CANCEL));
-        keymap.insert("Enter".to_string(), KeyMapInner::with_command_id(builtin::COMMAND_LINE_EXECUTE));
-        keymap.insert("Backspace".to_string(), KeyMapInner::with_command_id(builtin::COMMAND_LINE_BACKSPACE));
+        keymap.insert(
+            "Escape".to_string(),
+            KeyMapInner::with_command_id(builtin::COMMAND_LINE_CANCEL),
+        );
+        keymap.insert(
+            "Enter".to_string(),
+            KeyMapInner::with_command_id(builtin::COMMAND_LINE_EXECUTE),
+        );
+        keymap.insert(
+            "Backspace".to_string(),
+            KeyMapInner::with_command_id(builtin::COMMAND_LINE_BACKSPACE),
+        );
     }
 
     fn setup_explorer_mode(keymap: &mut HashMap<String, KeyMapInner>) {
         // Navigation
         keymap.insert("j".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CURSOR_DOWN));
         keymap.insert("k".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CURSOR_UP));
-        keymap.insert("Ctrl+d".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_PAGE_DOWN));
-        keymap.insert("Ctrl+u".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_PAGE_UP));
+        keymap.insert(
+            "Ctrl+d".to_string(),
+            KeyMapInner::with_command_id(builtin::EXPLORER_PAGE_DOWN),
+        );
+        keymap
+            .insert("Ctrl+u".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_PAGE_UP));
         keymap.insert("g".to_string(), KeyMapInner::new()); // prefix
         keymap.insert("gg".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_GOTO_FIRST));
         keymap.insert("G".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_GOTO_LAST));
 
         // Tree operations
-        keymap.insert("Enter".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_OPEN_NODE));
+        keymap
+            .insert("Enter".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_OPEN_NODE));
         keymap.insert("o".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_TOGGLE_NODE));
-        keymap.insert("x".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CLOSE_PARENT));
-        keymap.insert("u".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_GO_TO_PARENT));
+        keymap
+            .insert("x".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CLOSE_PARENT));
+        keymap
+            .insert("u".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_GO_TO_PARENT));
         keymap.insert("R".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_REFRESH));
 
         // Display
-        keymap.insert("I".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_TOGGLE_HIDDEN));
+        keymap
+            .insert("I".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_TOGGLE_HIDDEN));
 
         // File operations
         keymap.insert("a".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CREATE_FILE));
@@ -452,17 +504,27 @@ impl KeyMap {
 
         // Filter
         keymap.insert("/".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_FILTER));
-        keymap.insert("C".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CLEAR_FILTER));
+        keymap
+            .insert("C".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CLEAR_FILTER));
 
         // Window control
-        keymap.insert("Tab".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_FOCUS_EDITOR));
-        keymap.insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_FOCUS_EDITOR));
+        keymap.insert(
+            "Tab".to_string(),
+            KeyMapInner::with_command_id(builtin::EXPLORER_FOCUS_EDITOR),
+        );
+        keymap.insert(
+            "Escape".to_string(),
+            KeyMapInner::with_command_id(builtin::EXPLORER_FOCUS_EDITOR),
+        );
 
         // Window navigation (C-hjkl)
-        keymap.insert("<C-h>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_LEFT));
-        keymap.insert("<C-j>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_DOWN));
+        keymap
+            .insert("<C-h>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_LEFT));
+        keymap
+            .insert("<C-j>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_DOWN));
         keymap.insert("<C-k>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_UP));
-        keymap.insert("<C-l>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_RIGHT));
+        keymap
+            .insert("<C-l>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_RIGHT));
 
         // Space (leader) bindings
         keymap.insert(" ".to_string(), KeyMapInner::new()); // prefix
@@ -475,14 +537,26 @@ impl KeyMap {
     fn setup_explorer_input_mode(keymap: &mut HashMap<String, KeyMapInner>) {
         // In explorer input mode, we only handle special keys
         // Characters are handled via inline commands in the command handler
-        keymap.insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CANCEL_INPUT));
-        keymap.insert("Enter".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CONFIRM_INPUT));
-        keymap.insert("Backspace".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_INPUT_BACKSPACE));
+        keymap.insert(
+            "Escape".to_string(),
+            KeyMapInner::with_command_id(builtin::EXPLORER_CANCEL_INPUT),
+        );
+        keymap.insert(
+            "Enter".to_string(),
+            KeyMapInner::with_command_id(builtin::EXPLORER_CONFIRM_INPUT),
+        );
+        keymap.insert(
+            "Backspace".to_string(),
+            KeyMapInner::with_command_id(builtin::EXPLORER_INPUT_BACKSPACE),
+        );
     }
 
     fn setup_operator_pending_mode(keymap: &mut HashMap<String, KeyMapInner>) {
         // Escape cancels operator-pending mode
-        keymap.insert("<Escape>".to_string(), KeyMapInner::with_command_id(builtin::ENTER_NORMAL_MODE));
+        keymap.insert(
+            "<Escape>".to_string(),
+            KeyMapInner::with_command_id(builtin::ENTER_NORMAL_MODE),
+        );
 
         // Motion hints for which-key (actual handling is dynamic in CommandHandler)
         // These don't execute commands but show in which-key panel
@@ -510,17 +584,21 @@ impl KeyMap {
         keymap.insert("j".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_NEXT));
         keymap.insert("k".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_PREV));
         keymap.insert("g".to_string(), KeyMapInner::new()); // prefix
-        keymap.insert("gg".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_GOTO_FIRST));
+        keymap
+            .insert("gg".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_GOTO_FIRST));
         keymap.insert("G".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_GOTO_LAST));
-        keymap.insert("C-d".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_PAGE_DOWN));
+        keymap
+            .insert("C-d".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_PAGE_DOWN));
         keymap.insert("C-u".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_PAGE_UP));
 
         // Mode switching
-        keymap.insert("i".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_ENTER_INSERT));
+        keymap
+            .insert("i".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_ENTER_INSERT));
 
         // Actions
         keymap.insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_CLOSE));
-        keymap.insert("Enter".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_CONFIRM));
+        keymap
+            .insert("Enter".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_CONFIRM));
     }
 
     /// Telescope Insert mode - typing query with Ctrl-based navigation
@@ -533,16 +611,24 @@ impl KeyMap {
         keymap.insert("Tab".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_NEXT));
         keymap.insert("S-Tab".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_PREV));
         keymap.insert("C-u".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_PAGE_UP));
-        keymap.insert("C-d".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_PAGE_DOWN));
+        keymap
+            .insert("C-d".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_PAGE_DOWN));
 
         // Editing
-        keymap.insert("Backspace".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_DELETE_CHAR));
+        keymap.insert(
+            "Backspace".to_string(),
+            KeyMapInner::with_command_id(builtin::TELESCOPE_DELETE_CHAR),
+        );
 
         // Mode switching (ESC goes to Normal mode in Telescope, not closes)
-        keymap.insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_ENTER_NORMAL));
+        keymap.insert(
+            "Escape".to_string(),
+            KeyMapInner::with_command_id(builtin::TELESCOPE_ENTER_NORMAL),
+        );
 
         // Actions
-        keymap.insert("Enter".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_CONFIRM));
+        keymap
+            .insert("Enter".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_CONFIRM));
     }
 
     fn setup_leap_mode(keymap: &mut HashMap<String, KeyMapInner>) {
@@ -556,36 +642,70 @@ impl KeyMap {
         // Navigation
         keymap.insert("j".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_NEXT));
         keymap.insert("k".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_PREV));
-        keymap.insert("Down".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_NEXT));
+        keymap
+            .insert("Down".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_NEXT));
         keymap.insert("Up".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_PREV));
 
         // Toggle/Cycle
         keymap.insert(" ".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_TOGGLE));
-        keymap.insert("l".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_CYCLE_NEXT));
-        keymap.insert("h".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_CYCLE_PREV));
-        keymap.insert("Right".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_CYCLE_NEXT));
-        keymap.insert("Left".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_CYCLE_PREV));
+        keymap.insert(
+            "l".to_string(),
+            KeyMapInner::with_command_id(builtin::SETTINGS_MENU_CYCLE_NEXT),
+        );
+        keymap.insert(
+            "h".to_string(),
+            KeyMapInner::with_command_id(builtin::SETTINGS_MENU_CYCLE_PREV),
+        );
+        keymap.insert(
+            "Right".to_string(),
+            KeyMapInner::with_command_id(builtin::SETTINGS_MENU_CYCLE_NEXT),
+        );
+        keymap.insert(
+            "Left".to_string(),
+            KeyMapInner::with_command_id(builtin::SETTINGS_MENU_CYCLE_PREV),
+        );
 
         // Number increment/decrement
-        keymap.insert("+".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_INCREMENT));
-        keymap.insert("-".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_DECREMENT));
+        keymap.insert(
+            "+".to_string(),
+            KeyMapInner::with_command_id(builtin::SETTINGS_MENU_INCREMENT),
+        );
+        keymap.insert(
+            "-".to_string(),
+            KeyMapInner::with_command_id(builtin::SETTINGS_MENU_DECREMENT),
+        );
 
         // Action/Confirm
-        keymap.insert("Enter".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_EXECUTE));
+        keymap.insert(
+            "Enter".to_string(),
+            KeyMapInner::with_command_id(builtin::SETTINGS_MENU_EXECUTE),
+        );
 
         // Close
-        keymap.insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_CLOSE));
+        keymap.insert(
+            "Escape".to_string(),
+            KeyMapInner::with_command_id(builtin::SETTINGS_MENU_CLOSE),
+        );
         keymap.insert("q".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_CLOSE));
 
         // Quick select (1-9)
-        keymap.insert("1".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_1));
-        keymap.insert("2".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_2));
-        keymap.insert("3".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_3));
-        keymap.insert("4".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_4));
-        keymap.insert("5".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_5));
-        keymap.insert("6".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_6));
-        keymap.insert("7".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_7));
-        keymap.insert("8".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_8));
-        keymap.insert("9".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_9));
+        keymap
+            .insert("1".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_1));
+        keymap
+            .insert("2".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_2));
+        keymap
+            .insert("3".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_3));
+        keymap
+            .insert("4".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_4));
+        keymap
+            .insert("5".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_5));
+        keymap
+            .insert("6".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_6));
+        keymap
+            .insert("7".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_7));
+        keymap
+            .insert("8".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_8));
+        keymap
+            .insert("9".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_9));
     }
 }

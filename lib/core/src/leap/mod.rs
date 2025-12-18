@@ -5,8 +5,7 @@
 //! - Press `S` + two characters to search backward
 //! - Labels appear on all matches, press a label to jump
 
-use crate::modd::OperatorType;
-use crate::screen::Position;
+use crate::{modd::OperatorType, screen::Position};
 
 /// Direction of leap search
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

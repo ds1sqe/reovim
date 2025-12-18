@@ -14,7 +14,8 @@ This document provides an overview of the reovim editor architecture.
 reovim/
 ├── main/           # Binary crate - editor entry point
 ├── lib/core/       # reovim-core - core editor logic
-└── lib/sys/        # reovim-sys - terminal abstraction (crossterm)
+├── lib/sys/        # reovim-sys - terminal abstraction (crossterm)
+└── tools/reo-cli/  # CLI client for server mode
 ```
 
 ### Dependency Graph
@@ -103,6 +104,11 @@ lib/core/src/
 ├── registers/      # Copy/paste storage
 ├── theme/          # Color themes
 ├── treesitter/     # Syntax highlighting engine
+├── rpc/            # JSON-RPC server mode
+│   ├── server.rs   # RpcServer, request handling
+│   ├── transport.rs# Transport layer (Stdio, Socket, TCP)
+│   ├── types.rs    # RpcRequest, RpcResponse
+│   └── state.rs    # State snapshot types
 ├── folding.rs      # Code folding state
 ├── indent.rs       # Indentation guides
 └── landing.rs      # Splash screen
@@ -329,6 +335,78 @@ Code folding with treesitter-computed ranges.
 - `za` - Toggle fold
 - `zo`/`zc` - Open/close fold
 - `zR`/`zM` - Open/close all folds
+
+### RPC / Server Mode (`lib/core/src/rpc/`)
+
+JSON-RPC 2.0 server for programmatic control of the editor.
+
+**Server Modes:**
+| Mode | Behavior |
+|------|----------|
+| `--server` (default) | Persistent - runs forever, accepts new connections |
+| `--server --test` | Exit when all clients disconnect (for testing/CI) |
+| `--stdio` | Always one-shot (stdin closes = done) |
+
+**Components:**
+- `RpcServer` - Request coordinator, handles JSON-RPC methods
+- `TransportConfig` - Transport selection enum (Stdio, UnixSocket, Tcp)
+- `TransportReader`/`TransportWriter` - Async I/O abstraction
+- `TransportListener` - Accepts incoming connections (socket/TCP)
+- `TransportClient` - Client-side connection helper
+
+**Transport Options:**
+| Transport | Use Case |
+|-----------|----------|
+| TCP (default) | Network access, default port 12521 |
+| Unix Socket | Local IPC, lower latency |
+| Stdio | Process piping, spawned by parent |
+
+**Integration with Runtime:**
+- `ChannelKeySource` - Injects keys from RPC into runtime's key channel
+- `DualOutput` - Captures screen output for headless or dual mode
+- `InnerEvent::RpcRequest` - Forwards requests to runtime for state queries
+
+**Server Mode Flow:**
+```
+main.rs --server
+     │
+     ▼
+TransportListener::bind()
+     │
+     ▼
+┌─► accept() loop ◄───────────────────────────┐
+│        │                                    │
+│        ▼                                    │
+│   TransportConnection                       │
+│        │                                    │
+│        ├── TransportReader ──► run_reader() │
+│        │                            │       │
+│        └── TransportWriter ◄── run_writer() │
+│                                     │       │
+│   (client disconnects) ─────────────┼───────┘
+│                                     │
+└─────────────────────────────────────┘
+                                      │
+                                      ▼
+                              request channel
+                                      │
+                                      ▼
+               RpcServer::handle_request()
+                          │
+                          ├── input/keys → ChannelKeySource → Runtime
+                          ├── state/* → InnerEvent::RpcRequest → Runtime
+                          └── editor/* → InnerEvent::RpcRequest → Runtime
+```
+
+**Default Port:** 12521 (derived from ASCII: 'r'×100 + 'e'×10 + 'o' = 11400 + 1010 + 111)
+
+**Edge Cases:**
+| Case | Behavior |
+|------|----------|
+| Client disconnects mid-request | Response send fails silently, server continues |
+| New client while old connected | Old connection orphaned, new one takes over |
+| No client connected | Requests process, responses dropped |
+| `--test` all clients disconnect | Server exits cleanly |
 
 ## Architecture Patterns
 

@@ -1,32 +1,40 @@
 //! Core Runtime struct and initialization
 
-use std::collections::{BTreeMap, HashMap};
-use std::sync::Arc;
-
-use crate::buffer::{Buffer, TextOps};
-use crate::command::CommandRegistry;
-use crate::command_line::CommandLine;
-use crate::config::{ProfileConfig, ProfileManager};
-use crate::completion::{CompletionContext, CompletionEngine, CompletionItem, CompletionState};
-use crate::constants::EVENT_CHANNEL_CAPACITY;
-use crate::event::{CompletionEvent, InnerEvent};
-use crate::explorer::ExplorerState;
-use crate::folding::FoldManager;
-use crate::highlight::{ColorMode, HighlightStore, Theme};
-use crate::indent::IndentAnalyzer;
-use crate::jumplist::JumpList;
-use crate::leap::LeapState;
-use crate::modd::ModeState;
-use crate::register::Registers;
-use crate::screen::{Screen, WhichKeyPanel};
-use crate::settings_menu::SettingsMenuState;
-use crate::telescope::picker::{
-    BuffersPicker, CommandsPicker, FilesPicker, GrepPicker, HelpPicker, KeymapsPicker, Picker,
-    ProfilesPicker, RecentPicker, ThemesPicker,
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
 };
-use crate::telescope::{TelescopeMatcher, TelescopeState};
-use crate::treesitter::TreesitterManager;
-use tracing::debug;
+
+use {
+    crate::{
+        buffer::{Buffer, TextOps},
+        command::CommandRegistry,
+        command_line::CommandLine,
+        completion::{CompletionContext, CompletionEngine, CompletionItem, CompletionState},
+        config::{ProfileConfig, ProfileManager},
+        constants::EVENT_CHANNEL_CAPACITY,
+        event::{CompletionEvent, InnerEvent},
+        explorer::ExplorerState,
+        folding::FoldManager,
+        highlight::{ColorMode, HighlightStore, Theme},
+        indent::IndentAnalyzer,
+        jumplist::JumpList,
+        leap::LeapState,
+        modd::ModeState,
+        register::Registers,
+        screen::{Screen, WhichKeyPanel},
+        settings_menu::SettingsMenuState,
+        telescope::{
+            TelescopeMatcher, TelescopeState,
+            picker::{
+                BuffersPicker, CommandsPicker, FilesPicker, GrepPicker, HelpPicker, KeymapsPicker,
+                Picker, ProfilesPicker, RecentPicker, ThemesPicker,
+            },
+        },
+        treesitter::TreesitterManager,
+    },
+    tracing::debug,
+};
 
 use tokio::sync::{mpsc, watch};
 
@@ -432,13 +440,7 @@ impl Runtime {
             String::new()
         };
 
-        CompletionContext::new(
-            buffer.id,
-            position,
-            line,
-            word_start as u16,
-            prefix,
-        )
+        CompletionContext::new(buffer.id, position, line, word_start as u16, prefix)
     }
 
     /// Insert a completion item at current cursor position
@@ -522,8 +524,7 @@ impl Runtime {
 
     /// Apply a profile configuration to the runtime
     pub fn apply_profile(&mut self, config: &ProfileConfig) {
-        use crate::highlight::ThemeName;
-        use crate::treesitter::TreesitterTheme;
+        use crate::{highlight::ThemeName, treesitter::TreesitterTheme};
 
         // Apply theme
         if let Some(theme_name) = ThemeName::parse(&config.editor.theme) {
@@ -618,5 +619,72 @@ impl Runtime {
         } else {
             debug!(profile = %profile_name, "Startup profile not found, using defaults");
         }
+    }
+
+    // === RPC State Snapshot Methods ===
+
+    /// Get a snapshot of the current mode state for RPC
+    #[must_use]
+    pub fn mode_snapshot(&self) -> crate::rpc::ModeSnapshot {
+        crate::rpc::ModeSnapshot::from(&self.mode_state)
+    }
+
+    /// Get a snapshot of cursor position for a buffer
+    #[must_use]
+    pub fn cursor_snapshot(&self, buffer_id: usize) -> Option<crate::rpc::CursorSnapshot> {
+        self.buffers
+            .get(&buffer_id)
+            .map(|buf| crate::rpc::CursorSnapshot::from(&buf.cur))
+    }
+
+    /// Get a snapshot of buffer metadata
+    #[must_use]
+    pub fn buffer_snapshot(&self, buffer_id: usize) -> Option<crate::rpc::BufferSnapshot> {
+        self.buffers
+            .get(&buffer_id)
+            .map(crate::rpc::BufferSnapshot::from)
+    }
+
+    /// Get a list of all buffer snapshots
+    #[must_use]
+    pub fn buffer_list_snapshot(&self) -> Vec<crate::rpc::BufferSnapshot> {
+        self.buffers
+            .values()
+            .map(crate::rpc::BufferSnapshot::from)
+            .collect()
+    }
+
+    /// Get a snapshot of selection state for a buffer
+    #[must_use]
+    pub fn selection_snapshot(&self, buffer_id: usize) -> Option<crate::rpc::SelectionSnapshot> {
+        self.buffers.get(&buffer_id).map(|buf| {
+            let mut snapshot = crate::rpc::SelectionSnapshot::from(&buf.selection);
+            // Fill in the actual cursor position
+            snapshot.cursor = crate::rpc::CursorSnapshot::from(&buf.cur);
+            snapshot
+        })
+    }
+
+    /// Get a snapshot of screen dimensions and state
+    #[must_use]
+    pub fn screen_snapshot(&self) -> crate::rpc::ScreenSnapshot {
+        crate::rpc::ScreenSnapshot {
+            width: self.screen.width(),
+            height: self.screen.height(),
+            active_buffer_id: self.active_buffer_id,
+            active_window_id: self.screen.active_window_id(),
+        }
+    }
+
+    /// Get the content of a buffer as a string
+    #[must_use]
+    pub fn buffer_content(&self, buffer_id: usize) -> Option<String> {
+        self.buffers.get(&buffer_id).map(|buf| {
+            buf.contents
+                .iter()
+                .map(|line| line.inner.as_str())
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
     }
 }

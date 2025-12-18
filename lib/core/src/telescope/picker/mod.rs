@@ -15,25 +15,17 @@ pub mod profiles;
 pub mod recent;
 pub mod themes;
 
-pub use buffers::BuffersPicker;
-pub use commands::CommandsPicker;
-pub use files::FilesPicker;
-pub use grep::GrepPicker;
-pub use help::HelpPicker;
-pub use keymaps::KeymapsPicker;
-pub use profiles::ProfilesPicker;
-pub use recent::RecentPicker;
-pub use themes::ThemesPicker;
+pub use {
+    buffers::BuffersPicker, commands::CommandsPicker, files::FilesPicker, grep::GrepPicker,
+    help::HelpPicker, keymaps::KeymapsPicker, profiles::ProfilesPicker, recent::RecentPicker,
+    themes::ThemesPicker,
+};
 
-use std::future::Future;
-use std::path::PathBuf;
-use std::pin::Pin;
+use std::{future::Future, path::PathBuf, pin::Pin};
 
-use crate::command::CommandId;
-use crate::highlight::ThemeName;
+use crate::{command::CommandId, highlight::ThemeName};
 
-use super::item::TelescopeItem;
-use super::state::PreviewContent;
+use super::{item::TelescopeItem, state::PreviewContent};
 
 /// Context for picker operations
 #[derive(Debug, Clone)]

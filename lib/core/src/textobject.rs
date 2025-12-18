@@ -42,10 +42,7 @@ impl Delimiter {
     /// Check if this delimiter has symmetric open/close chars (quotes)
     #[must_use]
     pub const fn is_symmetric(&self) -> bool {
-        matches!(
-            self,
-            Self::DoubleQuote | Self::SingleQuote | Self::Backtick
-        )
+        matches!(self, Self::DoubleQuote | Self::SingleQuote | Self::Backtick)
     }
 
     /// Parse a character into a delimiter

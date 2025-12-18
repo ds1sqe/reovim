@@ -1,21 +1,29 @@
 //! Screen and I/O benchmarks
 
-use criterion::{black_box, BenchmarkId, Criterion};
-use reovim_core::{
-    command_line::CommandLine,
-    completion::CompletionState,
-    folding::FoldManager,
-    highlight::{ColorMode, HighlightStore, Theme},
-    leap::LeapState,
-    modd::ModeState,
-    screen::{Screen, WhichKeyPanel},
-    telescope::TelescopeState,
-};
-use std::collections::BTreeMap;
-use std::io::BufWriter;
-use tempfile::NamedTempFile;
+#![allow(clippy::semicolon_if_nothing_returned)]
+#![allow(clippy::too_many_lines)]
+#![allow(clippy::doc_markdown)]
 
-use super::common::{create_buffer, MockWriter};
+use std::{collections::BTreeMap, hint::black_box, io::BufWriter};
+
+use {
+    criterion::{BenchmarkId, Criterion},
+    reovim_core::{
+        command_line::CommandLine,
+        completion::CompletionState,
+        folding::FoldManager,
+        highlight::{ColorMode, HighlightStore, Theme},
+        indent::IndentAnalyzer,
+        leap::LeapState,
+        modd::ModeState,
+        screen::{Screen, WhichKeyPanel},
+        settings_menu::SettingsMenuState,
+        telescope::TelescopeState,
+    },
+    tempfile::NamedTempFile,
+};
+
+use super::common::{MockWriter, create_buffer};
 
 /// Benchmark full Screen::render() with I/O (mock writer)
 pub fn bench_screen_render_full_io(c: &mut Criterion) {
@@ -33,46 +41,46 @@ pub fn bench_screen_render_full_io(c: &mut Criterion) {
     let telescope = TelescopeState::new();
     let leap = LeapState::new();
     let fold_manager = FoldManager::new();
+    let indent_analyzer = IndentAnalyzer::new(4);
+    let settings_menu = SettingsMenuState::new();
 
     for lines in [100, 1000, 10000] {
         let buffer = create_buffer(lines);
         let mut buffers = BTreeMap::new();
         buffers.insert(0, buffer);
 
-        group.bench_with_input(
-            BenchmarkId::new("full_render", lines),
-            &buffers,
-            |b, bufs| {
-                b.iter_with_setup(
-                    || {
-                        let writer = MockWriter::new();
-                        Screen::with_writer(writer, 120, 50)
-                    },
-                    |mut screen| {
-                        screen
-                            .render(
-                                black_box(bufs),
-                                black_box(&highlight_store),
-                                black_box(&mode),
-                                black_box(&cmd_line),
-                                black_box(pending_keys),
-                                black_box(last_command),
-                                black_box(color_mode),
-                                black_box(&theme),
-                                black_box(None),
-                                black_box(&which_key),
-                                black_box(&completion),
-                                black_box(&telescope),
-                                black_box(&leap),
-                                black_box(&fold_manager),
-                            )
-                            .unwrap();
-                        screen.flush().unwrap();
-                        black_box(screen)
-                    },
-                )
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("full_render", lines), &buffers, |b, bufs| {
+            b.iter_with_setup(
+                || {
+                    let writer = MockWriter::new();
+                    Screen::with_writer(writer, 120, 50)
+                },
+                |mut screen| {
+                    screen
+                        .render(
+                            black_box(bufs),
+                            black_box(&highlight_store),
+                            black_box(&mode),
+                            black_box(&cmd_line),
+                            black_box(pending_keys),
+                            black_box(last_command),
+                            black_box(color_mode),
+                            black_box(&theme),
+                            black_box(None),
+                            black_box(&which_key),
+                            black_box(&completion),
+                            black_box(&telescope),
+                            black_box(&leap),
+                            black_box(&fold_manager),
+                            black_box(&indent_analyzer),
+                            black_box(&settings_menu),
+                        )
+                        .unwrap();
+                    screen.flush().unwrap();
+                    black_box(screen)
+                },
+            )
+        });
     }
 
     group.finish();
@@ -94,6 +102,8 @@ pub fn bench_io_bytes_written(c: &mut Criterion) {
     let which_key = WhichKeyPanel::new();
     let completion = CompletionState::new();
     let telescope = TelescopeState::new();
+    let indent_analyzer = IndentAnalyzer::new(4);
+    let settings_menu = SettingsMenuState::new();
 
     let buffer = create_buffer(1000);
     let mut buffers = BTreeMap::new();
@@ -125,6 +135,8 @@ pub fn bench_io_bytes_written(c: &mut Criterion) {
                         black_box(&telescope),
                         black_box(&leap),
                         black_box(&fold_manager),
+                        black_box(&indent_analyzer),
+                        black_box(&settings_menu),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -152,46 +164,46 @@ pub fn bench_screen_viewport_io(c: &mut Criterion) {
     let which_key = WhichKeyPanel::new();
     let completion = CompletionState::new();
     let telescope = TelescopeState::new();
+    let indent_analyzer = IndentAnalyzer::new(4);
+    let settings_menu = SettingsMenuState::new();
 
     let buffer = create_buffer(10000);
     let mut buffers = BTreeMap::new();
     buffers.insert(0, buffer);
 
     for height in [24, 50, 100] {
-        group.bench_with_input(
-            BenchmarkId::new("viewport_height", height),
-            &buffers,
-            |b, bufs| {
-                b.iter_with_setup(
-                    || {
-                        let writer = MockWriter::new();
-                        Screen::with_writer(writer, 120, height)
-                    },
-                    |mut screen| {
-                        screen
-                            .render(
-                                black_box(bufs),
-                                black_box(&highlight_store),
-                                black_box(&mode),
-                                black_box(&cmd_line),
-                                black_box(pending_keys),
-                                black_box(last_command),
-                                black_box(color_mode),
-                                black_box(&theme),
-                                black_box(None),
-                                black_box(&which_key),
-                                black_box(&completion),
-                                black_box(&telescope),
-                                black_box(&leap),
-                                black_box(&fold_manager),
-                            )
-                            .unwrap();
-                        screen.flush().unwrap();
-                        black_box(screen)
-                    },
-                )
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("viewport_height", height), &buffers, |b, bufs| {
+            b.iter_with_setup(
+                || {
+                    let writer = MockWriter::new();
+                    Screen::with_writer(writer, 120, height)
+                },
+                |mut screen| {
+                    screen
+                        .render(
+                            black_box(bufs),
+                            black_box(&highlight_store),
+                            black_box(&mode),
+                            black_box(&cmd_line),
+                            black_box(pending_keys),
+                            black_box(last_command),
+                            black_box(color_mode),
+                            black_box(&theme),
+                            black_box(None),
+                            black_box(&which_key),
+                            black_box(&completion),
+                            black_box(&telescope),
+                            black_box(&leap),
+                            black_box(&fold_manager),
+                            black_box(&indent_analyzer),
+                            black_box(&settings_menu),
+                        )
+                        .unwrap();
+                    screen.flush().unwrap();
+                    black_box(screen)
+                },
+            )
+        });
     }
 
     group.finish();
@@ -213,6 +225,8 @@ pub fn bench_file_io(c: &mut Criterion) {
     let which_key = WhichKeyPanel::new();
     let completion = CompletionState::new();
     let telescope = TelescopeState::new();
+    let indent_analyzer = IndentAnalyzer::new(4);
+    let settings_menu = SettingsMenuState::new();
 
     let buffer = create_buffer(1000);
     let mut buffers = BTreeMap::new();
@@ -242,6 +256,8 @@ pub fn bench_file_io(c: &mut Criterion) {
                         black_box(&telescope),
                         black_box(&leap),
                         black_box(&fold_manager),
+                        black_box(&indent_analyzer),
+                        black_box(&settings_menu),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -275,6 +291,8 @@ pub fn bench_file_io(c: &mut Criterion) {
                         black_box(&telescope),
                         black_box(&leap),
                         black_box(&fold_manager),
+                        black_box(&indent_analyzer),
+                        black_box(&settings_menu),
                     )
                     .unwrap();
                 screen.flush().unwrap();
@@ -302,48 +320,48 @@ pub fn bench_file_io_viewport(c: &mut Criterion) {
     let which_key = WhichKeyPanel::new();
     let completion = CompletionState::new();
     let telescope = TelescopeState::new();
+    let indent_analyzer = IndentAnalyzer::new(4);
+    let settings_menu = SettingsMenuState::new();
 
     let buffer = create_buffer(10000);
     let mut buffers = BTreeMap::new();
     buffers.insert(0, buffer);
 
     for height in [24, 50, 100] {
-        group.bench_with_input(
-            BenchmarkId::new("viewport", height),
-            &buffers,
-            |b, bufs| {
-                b.iter_with_setup(
-                    || {
-                        let tmp = NamedTempFile::new().unwrap();
-                        let file = tmp.reopen().unwrap();
-                        let writer = BufWriter::with_capacity(64 * 1024, file);
-                        (Screen::with_writer(writer, 120, height), tmp)
-                    },
-                    |(mut screen, _tmp)| {
-                        screen
-                            .render(
-                                black_box(bufs),
-                                black_box(&highlight_store),
-                                black_box(&mode),
-                                black_box(&cmd_line),
-                                black_box(pending_keys),
-                                black_box(last_command),
-                                black_box(color_mode),
-                                black_box(&theme),
-                                black_box(None),
-                                black_box(&which_key),
-                                black_box(&completion),
-                                black_box(&telescope),
-                                black_box(&leap),
-                                black_box(&fold_manager),
-                            )
-                            .unwrap();
-                        screen.flush().unwrap();
-                        black_box(screen)
-                    },
-                )
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("viewport", height), &buffers, |b, bufs| {
+            b.iter_with_setup(
+                || {
+                    let tmp = NamedTempFile::new().unwrap();
+                    let file = tmp.reopen().unwrap();
+                    let writer = BufWriter::with_capacity(64 * 1024, file);
+                    (Screen::with_writer(writer, 120, height), tmp)
+                },
+                |(mut screen, _tmp)| {
+                    screen
+                        .render(
+                            black_box(bufs),
+                            black_box(&highlight_store),
+                            black_box(&mode),
+                            black_box(&cmd_line),
+                            black_box(pending_keys),
+                            black_box(last_command),
+                            black_box(color_mode),
+                            black_box(&theme),
+                            black_box(None),
+                            black_box(&which_key),
+                            black_box(&completion),
+                            black_box(&telescope),
+                            black_box(&leap),
+                            black_box(&fold_manager),
+                            black_box(&indent_analyzer),
+                            black_box(&settings_menu),
+                        )
+                        .unwrap();
+                    screen.flush().unwrap();
+                    black_box(screen)
+                },
+            )
+        });
     }
 
     group.finish();

@@ -1,8 +1,12 @@
 //! Settings menu rendering
 
-use super::item::{FlatItem, SettingValue};
-use super::state::{SettingsInputMode, SettingsMenuState};
-use crate::highlight::{ColorMode, Theme};
+use {
+    super::{
+        item::{FlatItem, SettingValue},
+        state::{SettingsInputMode, SettingsMenuState},
+    },
+    crate::highlight::{ColorMode, Theme},
+};
 
 /// Box drawing characters
 const BORDER_TOP_LEFT: char = '┌';
@@ -43,8 +47,12 @@ impl SettingsMenuState {
         let title_pos = (width.saturating_sub(title.len())) / 2;
         let top_border = format!(
             "{border_style}{BORDER_TOP_LEFT}{left}{title}{right}{BORDER_TOP_RIGHT}{reset}",
-            left = BORDER_HORIZONTAL.to_string().repeat(title_pos.saturating_sub(1)),
-            right = BORDER_HORIZONTAL.to_string().repeat(width.saturating_sub(title_pos + title.len() + 1)),
+            left = BORDER_HORIZONTAL
+                .to_string()
+                .repeat(title_pos.saturating_sub(1)),
+            right = BORDER_HORIZONTAL
+                .to_string()
+                .repeat(width.saturating_sub(title_pos + title.len() + 1)),
         );
         lines.push((top_border, layout.x, layout.y));
 
@@ -56,7 +64,10 @@ impl SettingsMenuState {
         let visible_start = self.scroll_offset;
         let visible_end = (visible_start + layout.visible_items).min(self.flat_items.len());
 
-        for (idx, flat_item) in self.flat_items[visible_start..visible_end].iter().enumerate() {
+        for (idx, flat_item) in self.flat_items[visible_start..visible_end]
+            .iter()
+            .enumerate()
+        {
             let global_idx = visible_start + idx;
             let is_selected = global_idx == self.selected_index;
 
@@ -110,11 +121,8 @@ impl SettingsMenuState {
 
         // Footer: either input prompt or keybinding hints
         let footer_line = if self.input_mode == SettingsInputMode::TextInput {
-            let input_line = Self::render_input_prompt(
-                &self.input_prompt,
-                &self.input_buffer,
-                content_width,
-            );
+            let input_line =
+                Self::render_input_prompt(&self.input_prompt, &self.input_buffer, content_width);
             format!(
                 "{border_style}{BORDER_VERTICAL}{reset} {selected_style}{input_line}{reset} {border_style}{BORDER_VERTICAL}{reset}"
             )
@@ -130,7 +138,9 @@ impl SettingsMenuState {
         // Bottom border
         let bottom_border = format!(
             "{border_style}{BORDER_BOTTOM_LEFT}{}{BORDER_BOTTOM_RIGHT}{reset}",
-            BORDER_HORIZONTAL.to_string().repeat(width.saturating_sub(2)),
+            BORDER_HORIZONTAL
+                .to_string()
+                .repeat(width.saturating_sub(2)),
         );
         lines.push((bottom_border, layout.x, y));
 
@@ -236,9 +246,10 @@ impl SettingsMenuState {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::config::ProfileConfig;
-    use crate::highlight::Theme;
+    use {
+        super::*,
+        crate::{config::ProfileConfig, highlight::Theme},
+    };
 
     #[test]
     fn test_render_not_visible() {

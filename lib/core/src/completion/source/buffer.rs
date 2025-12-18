@@ -6,8 +6,10 @@ use std::{collections::HashSet, future::Future, pin::Pin};
 
 use crate::buffer::Line;
 
-use super::{CompletionContext, CompletionSource};
-use crate::completion::item::CompletionItem;
+use {
+    super::{CompletionContext, CompletionSource},
+    crate::completion::item::CompletionItem,
+};
 
 /// Completion source that provides words from the current buffer
 pub struct BufferWordsSource {
@@ -122,8 +124,7 @@ impl CompletionSource for BufferWordsSource {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::screen::Position;
+    use {super::*, crate::screen::Position};
 
     fn make_lines(text: &str) -> Vec<Line> {
         text.lines().map(Line::from).collect()

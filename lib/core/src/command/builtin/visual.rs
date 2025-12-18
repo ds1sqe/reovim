@@ -1,8 +1,12 @@
 //! Visual mode commands
 
-use crate::buffer::SelectionOps;
-use crate::command::traits::{CommandResult, CommandTrait, ExecutionContext};
-use std::any::Any;
+use {
+    crate::{
+        buffer::SelectionOps,
+        command::traits::{CommandResult, CommandTrait, ExecutionContext},
+    },
+    std::any::Any,
+};
 
 /// Extend selection up
 #[derive(Debug, Clone)]
@@ -139,7 +143,10 @@ impl CommandTrait for VisualDeleteCommand {
 
     fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
         let text = ctx.buffer.delete_selection();
-        CommandResult::ClipboardWrite { text, register: None }
+        CommandResult::ClipboardWrite {
+            text,
+            register: None,
+        }
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
@@ -167,7 +174,10 @@ impl CommandTrait for VisualYankCommand {
     fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
         let text = ctx.buffer.get_selected_text();
         ctx.buffer.clear_selection();
-        CommandResult::ClipboardWrite { text, register: None }
+        CommandResult::ClipboardWrite {
+            text,
+            register: None,
+        }
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {

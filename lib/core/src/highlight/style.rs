@@ -1,8 +1,12 @@
 //! Text styling for syntax highlighting
 
-use crate::constants::RESET_STYLE;
-use crate::highlight::color::{downgrade_color, ColorMode};
-use reovim_sys::style::Color;
+use {
+    crate::{
+        constants::RESET_STYLE,
+        highlight::color::{ColorMode, downgrade_color},
+    },
+    reovim_sys::style::Color,
+};
 
 /// Bitflags for text attributes
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
