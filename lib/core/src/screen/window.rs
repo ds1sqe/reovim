@@ -85,15 +85,232 @@ impl LineNumber {
 }
 
 impl Window {
+    /// Render line number for a row
+    fn render_line_number(
+        &self,
+        row: u16,
+        cursor_y: u16,
+        num_width: usize,
+        theme: &Theme,
+        color_mode: ColorMode,
+    ) -> String {
+        if !self.line_number.show {
+            return String::new();
+        }
+
+        let is_current_line = row == cursor_y;
+        let line_num_style = if is_current_line {
+            &theme.gutter.current_line_number
+        } else {
+            &theme.gutter.line_number
+        };
+
+        let num_str = match self.line_number.mode() {
+            LineNumberMode::Absolute => format!("{}", row + 1),
+            LineNumberMode::Relative => {
+                let rel = (i32::from(row) - i32::from(cursor_y)).abs();
+                format!("{rel}")
+            }
+            LineNumberMode::Hybrid => {
+                if is_current_line {
+                    format!("{}", row + 1)
+                } else {
+                    let rel = (i32::from(row) - i32::from(cursor_y)).abs();
+                    format!("{rel}")
+                }
+            }
+        };
+
+        format!(
+            "{}{num_str:>num_width$}{} ",
+            line_num_style.to_ansi_start(color_mode),
+            Style::ansi_reset()
+        )
+    }
+
+    /// Build visual selection highlight if active
+    fn build_visual_highlight(buf: &Buffer, theme: &Theme) -> Option<Highlight> {
+        if !buf.selection.active {
+            return None;
+        }
+
+        match buf.selection_mode() {
+            SelectionMode::Block => {
+                let (top_left, bottom_right) = buf.block_bounds();
+                Some(Highlight::new(
+                    Span::new(
+                        u32::from(top_left.y),
+                        u32::from(top_left.x),
+                        u32::from(bottom_right.y),
+                        u32::from(bottom_right.x) + 1,
+                    ),
+                    theme.selection.visual.clone(),
+                    HighlightGroup::Visual,
+                ))
+            }
+            SelectionMode::Character | SelectionMode::Line => {
+                let (sel_start, sel_end) = buf.selection_bounds();
+                Some(Highlight::new(
+                    Span::new(
+                        u32::from(sel_start.y),
+                        u32::from(sel_start.x),
+                        u32::from(sel_end.y),
+                        u32::from(sel_end.x) + 1,
+                    ),
+                    theme.selection.visual.clone(),
+                    HighlightGroup::Visual,
+                ))
+            }
+        }
+    }
+
+    /// Apply indent guides to line content
+    #[allow(clippy::cast_possible_truncation)]
+    fn apply_indent_guides(
+        content: &str,
+        buf: &Buffer,
+        row: u16,
+        indent_analyzer: &IndentAnalyzer,
+        theme: &Theme,
+        color_mode: ColorMode,
+    ) -> String {
+        if !indent_analyzer.is_enabled() {
+            return content.to_string();
+        }
+
+        // Get cursor's indent level for active guide highlight
+        let cursor_indent = if row == buf.cur.y {
+            Some(indent_analyzer.indent_level(content))
+        } else {
+            buf.contents
+                .get(buf.cur.y as usize)
+                .map(|l| indent_analyzer.indent_level(&l.inner))
+        };
+
+        let guides = indent_analyzer.guides_for_line(content, cursor_indent);
+        if guides.is_empty() {
+            return content.to_string();
+        }
+
+        let mut result = String::new();
+        let chars: Vec<char> = content.chars().collect();
+        let mut col = 0u32;
+        let mut guide_idx = 0;
+        let tab_size = indent_analyzer.tab_size;
+
+        // Process leading whitespace with guide injection
+        for &ch in &chars {
+            if ch != ' ' && ch != '\t' {
+                break;
+            }
+
+            if guide_idx < guides.len() && guides[guide_idx].column == col {
+                let style = if guides[guide_idx].active {
+                    &theme.indent.active
+                } else {
+                    &theme.indent.guide
+                };
+                result.push_str(&style.to_ansi_start(color_mode));
+                result.push(indent_analyzer.guide_char);
+                result.push_str(Style::ansi_reset());
+                guide_idx += 1;
+            } else {
+                result.push(ch);
+            }
+
+            col += if ch == '\t' { tab_size } else { 1 };
+        }
+
+        // Append the rest of the line (non-whitespace)
+        let whitespace_chars = content.chars().take_while(|&c| c == ' ' || c == '\t').count();
+        if whitespace_chars < chars.len() {
+            let start_idx = content
+                .char_indices()
+                .nth(whitespace_chars)
+                .map_or(0, |(i, _)| i);
+            result.push_str(&content[start_idx..]);
+        }
+
+        result
+    }
+
+    /// Render a fold marker line
+    #[allow(clippy::too_many_arguments)]
+    fn render_fold_marker_line(
+        &self,
+        row: u16,
+        cursor_y: u16,
+        hidden_count: u32,
+        preview: &str,
+        num_width: usize,
+        theme: &Theme,
+        color_mode: ColorMode,
+    ) -> String {
+        let head = self.render_line_number(row, cursor_y, num_width, theme, color_mode);
+        let fold_text = format!("+-- {hidden_count} lines: {preview} ---");
+        let fold_style = &theme.fold.marker;
+        let styled_fold = format!(
+            "{}{}{}",
+            fold_style.to_ansi_start(color_mode),
+            fold_text,
+            Style::ansi_reset()
+        );
+        head + &styled_fold
+    }
+
+    /// Render a normal content line
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::too_many_arguments)]
+    fn render_content_line(
+        &self,
+        row: u16,
+        buf: &Buffer,
+        highlight_store: &HighlightStore,
+        visual_highlight: Option<&Highlight>,
+        is_block_mode: bool,
+        num_width: usize,
+        indent_analyzer: &IndentAnalyzer,
+        theme: &Theme,
+        color_mode: ColorMode,
+    ) -> String {
+        let Some(content) = buf.contents.get(row as usize) else {
+            return String::new();
+        };
+
+        let head = self.render_line_number(row, buf.cur.y, num_width, theme, color_mode);
+
+        // Get highlights for this line
+        let line_len = content.inner.chars().count() as u32;
+        let mut line_highlights =
+            highlight_store.get_line_highlights(buf.id, u32::from(row), line_len);
+
+        // Add visual selection highlight if applicable
+        if let Some(visual_hl) = visual_highlight {
+            let cols = if is_block_mode {
+                visual_hl.span.cols_for_line_block(u32::from(row), line_len)
+            } else {
+                visual_hl.span.cols_for_line(u32::from(row), line_len)
+            };
+            if let Some((start, end)) = cols
+                && start < end
+            {
+                line_highlights =
+                    self.merge_visual_highlight(line_highlights, start, end, &visual_hl.style);
+            }
+        }
+
+        // Apply indent guides
+        let line_with_guides =
+            Self::apply_indent_guides(&content.inner, buf, row, indent_analyzer, theme, color_mode);
+
+        let styled_content = self.render_styled_line(&line_with_guides, &line_highlights, color_mode);
+        head + &styled_content
+    }
+
     #[must_use]
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::cast_sign_loss)]
     #[allow(clippy::cast_precision_loss)]
-    #[allow(clippy::single_match_else)]
-    #[allow(clippy::collapsible_if)]
-    #[allow(clippy::collapsible_else_if)]
-    #[allow(clippy::option_if_let_else)]
-    #[allow(clippy::if_not_else)]
     #[allow(clippy::too_many_lines)]
     pub fn render(
         &self,
@@ -117,40 +334,8 @@ impl Window {
         // Compute scrollbar state
         let scrollbar = self.compute_scrollbar_state(total_lines);
 
-        // Build visual selection highlight dynamically if active
-        // Block mode needs special handling (same columns for all lines)
-        let visual_highlight = if buf.selection.active {
-            match buf.selection_mode() {
-                SelectionMode::Block => {
-                    let (top_left, bottom_right) = buf.block_bounds();
-                    Some(Highlight::new(
-                        Span::new(
-                            u32::from(top_left.y),
-                            u32::from(top_left.x),
-                            u32::from(bottom_right.y),
-                            u32::from(bottom_right.x) + 1, // +1 because end_col is exclusive
-                        ),
-                        theme.selection.visual.clone(),
-                        HighlightGroup::Visual,
-                    ))
-                }
-                SelectionMode::Character | SelectionMode::Line => {
-                    let (sel_start, sel_end) = buf.selection_bounds();
-                    Some(Highlight::new(
-                        Span::new(
-                            u32::from(sel_start.y),
-                            u32::from(sel_start.x),
-                            u32::from(sel_end.y),
-                            u32::from(sel_end.x) + 1, // +1 because end_col is exclusive
-                        ),
-                        theme.selection.visual.clone(),
-                        HighlightGroup::Visual,
-                    ))
-                }
-            }
-        } else {
-            None
-        };
+        // Build visual selection highlight
+        let visual_highlight = Self::build_visual_highlight(buf, theme);
         let is_block_mode = buf.selection.active && buf.selection_mode() == SelectionMode::Block;
 
         // Track buffer line position, accounting for folds
@@ -172,185 +357,19 @@ impl Window {
             let fold_marker = fold_state.and_then(|fs| fs.get_fold_marker(u32::from(row)));
 
             let line_out = if let Some((hidden_count, preview)) = fold_marker {
-                // Render fold marker line
-                let head = if self.line_number.show {
-                    let is_current_line = row == buf.cur.y;
-                    let line_num_style = if is_current_line {
-                        &theme.gutter.current_line_number
-                    } else {
-                        &theme.gutter.line_number
-                    };
-
-                    let num_str = match self.line_number.mode() {
-                        LineNumberMode::Absolute => format!("{}", row + 1),
-                        LineNumberMode::Relative => {
-                            let rel = (i32::from(row) - i32::from(buf.cur.y)).abs();
-                            format!("{rel}")
-                        }
-                        LineNumberMode::Hybrid => {
-                            if !is_current_line {
-                                let rel = (i32::from(row) - i32::from(buf.cur.y)).abs();
-                                format!("{rel}")
-                            } else {
-                                format!("{}", row + 1)
-                            }
-                        }
-                    };
-                    format!(
-                        "{}{num_str:>num_width$}{} ",
-                        line_num_style.to_ansi_start(color_mode),
-                        Style::ansi_reset()
-                    )
-                } else {
-                    String::new()
-                };
-
-                // Format fold marker: "+-- N lines: preview ---"
-                let fold_text = format!("+-- {hidden_count} lines: {preview} ---");
-                let fold_style = &theme.fold.marker;
-                let styled_fold = format!(
-                    "{}{}{}",
-                    fold_style.to_ansi_start(color_mode),
-                    fold_text,
-                    Style::ansi_reset()
-                );
-                head + &styled_fold
+                self.render_fold_marker_line(row, buf.cur.y, hidden_count, preview, num_width, theme, color_mode)
             } else {
-                // Render normal line
-                let line_content = buf.contents.get(row as usize);
-                match line_content {
-                    Some(content) => {
-                        let head = if self.line_number.show {
-                            let is_current_line = row == buf.cur.y;
-                            let line_num_style = if is_current_line {
-                                &theme.gutter.current_line_number
-                            } else {
-                                &theme.gutter.line_number
-                            };
-
-                            let num_str = match self.line_number.mode() {
-                                LineNumberMode::Absolute => format!("{}", row + 1),
-                                LineNumberMode::Relative => {
-                                    let rel = (i32::from(row) - i32::from(buf.cur.y)).abs();
-                                    format!("{rel}")
-                                }
-                                LineNumberMode::Hybrid => {
-                                    if !is_current_line {
-                                        let rel = (i32::from(row) - i32::from(buf.cur.y)).abs();
-                                        format!("{rel}")
-                                    } else {
-                                        format!("{}", row + 1)
-                                    }
-                                }
-                            };
-                            format!(
-                                "{}{num_str:>num_width$}{} ",
-                                line_num_style.to_ansi_start(color_mode),
-                                Style::ansi_reset()
-                            )
-                        } else {
-                            String::new()
-                        };
-
-                        // Get highlights for this line
-                        let line_len = content.inner.chars().count() as u32;
-                        let mut line_highlights =
-                            highlight_store.get_line_highlights(buf.id, u32::from(row), line_len);
-
-                        // Add visual selection highlight if applicable
-                        if let Some(ref visual_hl) = visual_highlight {
-                            let cols = if is_block_mode {
-                                visual_hl.span.cols_for_line_block(u32::from(row), line_len)
-                            } else {
-                                visual_hl.span.cols_for_line(u32::from(row), line_len)
-                            };
-                            if let Some((start, end)) = cols {
-                                if start < end {
-                                    line_highlights = self.merge_visual_highlight(
-                                        line_highlights,
-                                        start,
-                                        end,
-                                        &visual_hl.style,
-                                    );
-                                }
-                            }
-                        }
-
-                        // Apply indent guides if enabled
-                        let line_with_guides = if indent_analyzer.is_enabled() {
-                            // Get cursor's indent level for active guide highlight
-                            let cursor_indent = if row == buf.cur.y {
-                                Some(indent_analyzer.indent_level(&content.inner))
-                            } else {
-                                // Use cursor line's indent level for all lines
-                                let cursor_line = buf.contents.get(buf.cur.y as usize);
-                                cursor_line.map(|l| indent_analyzer.indent_level(&l.inner))
-                            };
-
-                            let guides = indent_analyzer.guides_for_line(&content.inner, cursor_indent);
-                            if guides.is_empty() {
-                                content.inner.clone()
-                            } else {
-                                // Build style strings for guides
-                                // Use active style for active guide, normal style otherwise
-                                let mut result = String::new();
-                                let chars: Vec<char> = content.inner.chars().collect();
-                                let mut col = 0u32;
-                                let mut guide_idx = 0;
-                                let tab_size = indent_analyzer.tab_size;
-
-                                // Process leading whitespace with guide injection
-                                for &ch in &chars {
-                                    if ch != ' ' && ch != '\t' {
-                                        break;
-                                    }
-
-                                    // Check if we should insert a guide at this position
-                                    if guide_idx < guides.len() && guides[guide_idx].column == col {
-                                        let style = if guides[guide_idx].active {
-                                            &theme.indent.active
-                                        } else {
-                                            &theme.indent.guide
-                                        };
-                                        result.push_str(&style.to_ansi_start(color_mode));
-                                        result.push(indent_analyzer.guide_char);
-                                        result.push_str(Style::ansi_reset());
-                                        guide_idx += 1;
-                                    } else {
-                                        result.push(ch);
-                                    }
-
-                                    // Advance column position
-                                    if ch == '\t' {
-                                        col += tab_size;
-                                    } else {
-                                        col += 1;
-                                    }
-                                }
-
-                                // Append the rest of the line (non-whitespace)
-                                let whitespace_chars = content.inner
-                                    .chars()
-                                    .take_while(|&c| c == ' ' || c == '\t')
-                                    .count();
-                                if whitespace_chars < chars.len() {
-                                    let start_idx = content.inner.char_indices().nth(whitespace_chars).map_or(0, |(i, _)| i);
-                                    result.push_str(&content.inner[start_idx..]);
-                                }
-
-                                result
-                            }
-                        } else {
-                            content.inner.clone()
-                        };
-
-                        let styled_content =
-                            self.render_styled_line(&line_with_guides, &line_highlights, color_mode);
-
-                        head + &styled_content
-                    }
-                    None => String::new(),
-                }
+                self.render_content_line(
+                    row,
+                    buf,
+                    highlight_store,
+                    visual_highlight.as_ref(),
+                    is_block_mode,
+                    num_width,
+                    indent_analyzer,
+                    theme,
+                    color_mode,
+                )
             };
 
             // Append scrollbar character
