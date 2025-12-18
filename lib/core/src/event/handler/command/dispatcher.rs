@@ -81,7 +81,13 @@ impl Dispatcher {
         };
 
         match name {
-            "enter_normal_mode" => Some(ModeState::normal()),
+            // Commands that return to Normal mode (Editor focus)
+            "enter_normal_mode"
+            | "command_line_execute"
+            | "command_line_cancel"
+            | "visual_delete"
+            | "visual_yank"
+            | "telescope_close" => Some(ModeState::normal()),
             "enter_insert_mode"
             | "enter_insert_mode_after"
             | "enter_insert_mode_eol"
@@ -98,10 +104,12 @@ impl Dispatcher {
             "enter_change_operator" => {
                 Some(ModeState::operator_pending(OperatorType::Change, None))
             }
-            // Commands that return to Normal mode
-            "command_line_execute" | "command_line_cancel" | "visual_delete" | "visual_yank" => {
-                Some(ModeState::normal())
-            }
+            // Telescope mode transitions
+            "telescope_enter_normal" => Some(ModeState::with_focus_and_mode(
+                crate::modd::Focus::Telescope,
+                crate::modd::EditMode::Normal,
+            )),
+            "telescope_enter_insert" => Some(ModeState::telescope()),
             // Explorer mode transitions are handled in runtime via DeferredAction
             // toggle_explorer, explorer_close, explorer_focus_editor etc.
             _ => None,
@@ -110,10 +118,17 @@ impl Dispatcher {
 
     /// Send operator + motion action to runtime
     pub async fn send_operator_motion(&self, action: OperatorMotionAction) {
-        // Also send mode change back to normal
+        // Change actions enter Insert mode, others return to Normal
+        let new_mode = match &action {
+            OperatorMotionAction::Change { .. }
+            | OperatorMotionAction::ChangeTextObject { .. }
+            | OperatorMotionAction::ChangeWordTextObject { .. }
+            | OperatorMotionAction::ChangeSemanticTextObject { .. } => ModeState::insert(),
+            _ => ModeState::normal(),
+        };
         let _ = self
             .inner_tx
-            .send(InnerEvent::ModeChangeEvent(ModeState::normal()))
+            .send(InnerEvent::ModeChangeEvent(new_mode))
             .await;
         let _ = self
             .inner_tx

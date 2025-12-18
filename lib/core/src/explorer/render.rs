@@ -6,7 +6,7 @@ use {
 };
 
 use super::{
-    node::FileNode,
+    node::{FileNode, format_size},
     state::{ExplorerInputMode, ExplorerState},
 };
 
@@ -34,8 +34,10 @@ pub fn render_explorer(
     let end = (start + tree_height).min(nodes.len());
 
     for (i, node) in nodes.iter().enumerate().skip(start).take(end - start) {
-        let is_selected = i == state.cursor_index;
-        let line = render_node(node, is_selected, width, theme, color_mode);
+        let is_cursor = i == state.cursor_index;
+        let is_marked = state.is_selected(&node.path);
+        let line =
+            render_node(node, is_cursor, is_marked, state.show_sizes, width, theme, color_mode);
         lines.push(line);
     }
 
@@ -86,18 +88,23 @@ fn render_input_prompt(
     result
 }
 
+/// Width reserved for size column (including trailing space)
+const SIZE_COLUMN_WIDTH: usize = 6;
+
 /// Render a single node to a styled string
 fn render_node(
     node: &FileNode,
-    is_selected: bool,
+    is_cursor: bool,
+    is_marked: bool,
+    show_sizes: bool,
     width: u16,
     theme: &Theme,
     color_mode: ColorMode,
 ) -> String {
     let mut result = String::new();
 
-    // Apply selection style if selected
-    let base_style = if is_selected {
+    // Apply cursor style if under cursor
+    let base_style = if is_cursor {
         &theme.selection.visual
     } else {
         &Style::default()
@@ -108,8 +115,19 @@ fn render_node(
     let icon = node.icon();
     let name = &node.name;
 
-    // Calculate available width for the name
-    let prefix_len = indent.len() + icon.len();
+    // Selection marker
+    let marker = if is_marked { "*" } else { " " };
+
+    // Get size string if showing sizes
+    let size_str = if show_sizes {
+        node.size()
+            .map_or_else(|| " ".repeat(SIZE_COLUMN_WIDTH), |s| format!("{:>5} ", format_size(s)))
+    } else {
+        String::new()
+    };
+
+    // Calculate available width for the name (account for marker)
+    let prefix_len = marker.len() + indent.len() + icon.len() + size_str.len();
     let available_width = (width as usize).saturating_sub(prefix_len);
 
     // Truncate name if needed
@@ -119,14 +137,14 @@ fn render_node(
         name.clone()
     };
 
-    // Build the full line
-    let content = format!("{indent}{icon}{display_name}");
+    // Build the full line (marker at start)
+    let content = format!("{marker}{indent}{icon}{display_name}{size_str}");
 
     // Pad ALL lines to full width to prevent editor content bleeding through
     let padded = format!("{content:<width$}", width = width as usize);
 
     // Apply styling
-    if is_selected || node.is_dir() {
+    if is_cursor || is_marked || node.is_dir() {
         result.push_str(&base_style.to_ansi_start(color_mode));
         result.push_str(&padded);
         result.push_str(Style::ansi_reset());

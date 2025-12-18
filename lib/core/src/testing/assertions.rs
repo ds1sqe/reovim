@@ -4,13 +4,24 @@
 
 use std::time::Duration;
 
-use super::{client::ModeInfo, server::ServerTestHarness};
+use super::{
+    client::{ModeInfo, TelescopeInfo, WhichKeyInfo},
+    server::ServerTestHarness,
+};
+
+/// A key sequence with optional delay after it
+struct KeySequence {
+    keys: String,
+    delay_ms: u64,
+}
 
 /// Builder for running server-based tests
 pub struct ServerTest {
     harness: ServerTestHarness,
     initial_content: Option<String>,
-    keys: Vec<String>,
+    key_sequences: Vec<KeySequence>,
+    /// Default delay between key sequences (ms)
+    default_delay: u64,
 }
 
 impl ServerTest {
@@ -27,7 +38,8 @@ impl ServerTest {
                 .await
                 .expect("Failed to spawn server"),
             initial_content: None,
-            keys: Vec::new(),
+            key_sequences: Vec::new(),
+            default_delay: 50,
         }
     }
 
@@ -38,10 +50,29 @@ impl ServerTest {
         self
     }
 
-    /// Add key sequence to inject
+    /// Add key sequence to inject with default delay (50ms)
     #[must_use]
     pub fn with_keys(mut self, keys: &str) -> Self {
-        self.keys.push(keys.to_string());
+        self.key_sequences.push(KeySequence {
+            keys: keys.to_string(),
+            delay_ms: self.default_delay,
+        });
+        self
+    }
+
+    /// Add delay after the last key sequence
+    ///
+    /// This modifies the delay of the most recently added key sequence.
+    /// Useful for which-key timeout testing (popup appears after 500ms).
+    ///
+    /// # Panics
+    ///
+    /// Panics if called before any `with_keys()`.
+    #[must_use]
+    pub fn with_delay(mut self, ms: u64) -> Self {
+        if let Some(last) = self.key_sequences.last_mut() {
+            last.delay_ms = ms;
+        }
         self
     }
 
@@ -65,23 +96,25 @@ impl ServerTest {
                 .expect("Failed to set buffer content");
         }
 
-        // Inject keys
-        for keys in &self.keys {
-            client.keys(keys).await.expect("Failed to inject keys");
+        // Inject keys with delays between sequences
+        for seq in &self.key_sequences {
+            client.keys(&seq.keys).await.expect("Failed to inject keys");
+            tokio::time::sleep(Duration::from_millis(seq.delay_ms)).await;
         }
-
-        // Small delay for processing
-        tokio::time::sleep(Duration::from_millis(50)).await;
 
         // Gather results
         let mode = client.mode().await.expect("Failed to get mode");
         let cursor = client.cursor().await.ok();
         let buffer_content = client.buffer_content().await.unwrap_or_default();
+        let whichkey = client.whichkey().await.ok();
+        let telescope = client.telescope().await.ok();
 
         ServerTestResult {
             mode,
             cursor,
             buffer_content,
+            whichkey,
+            telescope,
             _harness: self.harness, // Keep alive until assertions done
         }
     }
@@ -95,6 +128,10 @@ pub struct ServerTestResult {
     pub cursor: Option<(u16, u16)>,
     /// Final buffer content
     pub buffer_content: String,
+    /// Which-key panel state
+    pub whichkey: Option<WhichKeyInfo>,
+    /// Telescope state
+    pub telescope: Option<TelescopeInfo>,
     /// Keep server alive until assertions are done
     _harness: ServerTestHarness,
 }
@@ -181,5 +218,127 @@ impl ServerTestResult {
     /// Panics if not in command mode.
     pub fn assert_command_mode(&self) {
         assert_eq!(self.mode.sub_mode, "Command", "Expected command mode, got {:?}", self.mode);
+    }
+
+    /// Assert that the which-key panel is visible
+    ///
+    /// # Panics
+    ///
+    /// Panics if the which-key panel is not visible.
+    pub fn assert_whichkey_visible(&self) {
+        let wk = self
+            .whichkey
+            .as_ref()
+            .expect("Which-key state not available");
+        assert!(wk.visible, "Expected which-key panel to be visible");
+    }
+
+    /// Assert that the which-key panel is hidden
+    ///
+    /// # Panics
+    ///
+    /// Panics if the which-key panel is visible.
+    pub fn assert_whichkey_hidden(&self) {
+        let wk = self
+            .whichkey
+            .as_ref()
+            .expect("Which-key state not available");
+        assert!(!wk.visible, "Expected which-key panel to be hidden");
+    }
+
+    /// Assert that the which-key panel has a specific prefix
+    ///
+    /// # Panics
+    ///
+    /// Panics if the prefix doesn't match.
+    pub fn assert_whichkey_prefix(&self, expected: &str) {
+        let wk = self
+            .whichkey
+            .as_ref()
+            .expect("Which-key state not available");
+        assert_eq!(wk.prefix, expected, "Which-key prefix mismatch");
+    }
+
+    /// Assert that the which-key panel has a binding with the given key
+    ///
+    /// # Panics
+    ///
+    /// Panics if no binding with the key exists.
+    pub fn assert_whichkey_has_binding(&self, key: &str) {
+        let wk = self
+            .whichkey
+            .as_ref()
+            .expect("Which-key state not available");
+        assert!(
+            wk.bindings.iter().any(|b| b.key == key),
+            "Which-key panel does not have binding for key '{}'. Available: {:?}",
+            key,
+            wk.bindings.iter().map(|b| &b.key).collect::<Vec<_>>()
+        );
+    }
+
+    /// Assert that telescope is active/visible
+    ///
+    /// # Panics
+    ///
+    /// Panics if telescope is not active.
+    pub fn assert_telescope_active(&self) {
+        let ts = self
+            .telescope
+            .as_ref()
+            .expect("Telescope state not available");
+        assert!(ts.active, "Expected telescope to be active");
+    }
+
+    /// Assert that telescope is inactive/hidden
+    ///
+    /// # Panics
+    ///
+    /// Panics if telescope is active.
+    pub fn assert_telescope_inactive(&self) {
+        let ts = self
+            .telescope
+            .as_ref()
+            .expect("Telescope state not available");
+        assert!(!ts.active, "Expected telescope to be inactive");
+    }
+
+    /// Assert that telescope has the specified picker
+    ///
+    /// # Panics
+    ///
+    /// Panics if the picker name doesn't match.
+    pub fn assert_telescope_picker(&self, expected: &str) {
+        let ts = self
+            .telescope
+            .as_ref()
+            .expect("Telescope state not available");
+        assert_eq!(ts.picker_name, expected, "Telescope picker mismatch");
+    }
+
+    /// Assert that telescope has items
+    ///
+    /// # Panics
+    ///
+    /// Panics if telescope has no items.
+    pub fn assert_telescope_has_items(&self) {
+        let ts = self
+            .telescope
+            .as_ref()
+            .expect("Telescope state not available");
+        assert!(ts.item_count > 0, "Expected telescope to have items, but got 0");
+    }
+
+    /// Assert that telescope query matches
+    ///
+    /// # Panics
+    ///
+    /// Panics if the query doesn't match.
+    pub fn assert_telescope_query(&self, expected: &str) {
+        let ts = self
+            .telescope
+            .as_ref()
+            .expect("Telescope state not available");
+        assert_eq!(ts.query, expected, "Telescope query mismatch");
     }
 }

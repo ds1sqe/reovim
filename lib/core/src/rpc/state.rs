@@ -201,6 +201,88 @@ impl From<&crate::buffer::Buffer> for BufferSnapshot {
     }
 }
 
+/// Snapshot of which-key panel state
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WhichKeySnapshot {
+    /// Whether the panel is visible
+    pub visible: bool,
+    /// Current prefix being shown
+    pub prefix: String,
+    /// Available bindings for the current prefix
+    pub bindings: Vec<WhichKeyBindingSnapshot>,
+}
+
+/// Individual binding in which-key panel
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WhichKeyBindingSnapshot {
+    /// The key sequence (e.g., "g" or "gg")
+    pub key: String,
+    /// Description of what this key does
+    pub description: String,
+    /// Whether this is a prefix (has more bindings) or a terminal command
+    pub is_prefix: bool,
+}
+
+impl From<&crate::screen::WhichKeyPanel> for WhichKeySnapshot {
+    fn from(panel: &crate::screen::WhichKeyPanel) -> Self {
+        Self {
+            visible: panel.visible,
+            prefix: panel.prefix.clone(),
+            bindings: panel
+                .bindings
+                .iter()
+                .map(WhichKeyBindingSnapshot::from)
+                .collect(),
+        }
+    }
+}
+
+impl From<&crate::event::WhichKeyBinding> for WhichKeyBindingSnapshot {
+    fn from(binding: &crate::event::WhichKeyBinding) -> Self {
+        Self {
+            key: binding.key.clone(),
+            description: binding.description.clone(),
+            is_prefix: binding.is_prefix,
+        }
+    }
+}
+
+/// Snapshot of telescope state
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TelescopeSnapshot {
+    /// Whether telescope is currently active/visible
+    pub active: bool,
+    /// Current search query
+    pub query: String,
+    /// Currently selected item index
+    pub selected_index: usize,
+    /// Number of items in results
+    pub item_count: usize,
+    /// Name of the current picker
+    pub picker_name: String,
+    /// Title displayed
+    pub title: String,
+    /// Selected item display text (if any)
+    pub selected_item: Option<String>,
+}
+
+impl From<&crate::telescope::TelescopeState> for TelescopeSnapshot {
+    fn from(state: &crate::telescope::TelescopeState) -> Self {
+        Self {
+            active: state.active,
+            query: state.query.clone(),
+            selected_index: state.selected_index,
+            item_count: state.items.len(),
+            picker_name: state.picker_name.clone(),
+            title: state.title.clone(),
+            selected_item: state
+                .items
+                .get(state.selected_index)
+                .map(|i| i.display.clone()),
+        }
+    }
+}
+
 impl From<&crate::buffer::Selection> for SelectionSnapshot {
     fn from(sel: &crate::buffer::Selection) -> Self {
         let mode = match sel.mode {

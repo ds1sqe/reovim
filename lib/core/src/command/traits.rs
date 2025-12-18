@@ -230,6 +230,14 @@ pub enum ExplorerAction {
     Refresh,
     /// Toggle showing hidden files
     ToggleHidden,
+    /// Toggle showing file sizes
+    ToggleSizes,
+    /// Yank (copy) current item to clipboard
+    Yank,
+    /// Cut current item to clipboard
+    Cut,
+    /// Paste from clipboard
+    Paste,
     /// Close explorer (switch to editor)
     Close,
     /// Focus editor window
@@ -256,6 +264,14 @@ pub enum ExplorerAction {
     InputChar { c: char },
     /// Handle backspace during input mode
     InputBackspace,
+    /// Enter visual selection mode
+    VisualMode,
+    /// Toggle selection of current item
+    ToggleSelect,
+    /// Select all visible items
+    SelectAll,
+    /// Exit visual selection mode
+    ExitVisual,
 }
 
 /// Operator + motion action (e.g., dw, yj, c$)

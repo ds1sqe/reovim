@@ -69,6 +69,8 @@ pub struct CommandHandler {
     leap_phase: LeapPhase,
     /// Accumulated leap label (for multi-char labels)
     leap_label: String,
+    /// Track when mode was locally changed (avoids race condition with `mode_rx` sync)
+    mode_locally_changed: bool,
 }
 
 impl Subscribe<KeyEvent> for CommandHandler {
@@ -100,6 +102,7 @@ impl CommandHandler {
             which_key_shown: false,
             leap_phase: LeapPhase::Inactive,
             leap_label: String::new(),
+            mode_locally_changed: false,
         }
     }
 
@@ -365,23 +368,19 @@ impl CommandHandler {
         }
 
         // No match and not a valid prefix
-        // In insert/command/explorer-input modes, handle single chars specially
+        // In insert/command/explorer-input/telescope modes, handle single chars specially
         // In these modes, clear pending and process the char immediately
-        if is_insert
-            && key.len() == 1
-            && let Some(c) = key.chars().next()
-        {
-            self.pending_keys.clear();
-            let cmd: Arc<dyn CommandTrait> = Arc::new(InsertCharCommand::new(c));
-            return (Some(CommandRef::Inline(cmd)), true);
-        }
+        //
+        // IMPORTANT: Check specific focus modes (telescope, explorer) BEFORE generic insert mode
+        // because they also use Insert edit mode but need different command types.
 
-        if mode.is_command()
+        if mode.is_telescope_focus()
+            && mode.is_insert()
             && key.len() == 1
             && let Some(c) = key.chars().next()
         {
             self.pending_keys.clear();
-            let cmd: Arc<dyn CommandTrait> = Arc::new(CommandLineCharCommand::new(c));
+            let cmd: Arc<dyn CommandTrait> = Arc::new(TelescopeInsertCharCommand::new(c));
             return (Some(CommandRef::Inline(cmd)), true);
         }
 
@@ -395,13 +394,22 @@ impl CommandHandler {
             return (Some(CommandRef::Inline(cmd)), true);
         }
 
-        if mode.is_telescope_focus()
-            && mode.is_insert()
+        if mode.is_command()
             && key.len() == 1
             && let Some(c) = key.chars().next()
         {
             self.pending_keys.clear();
-            let cmd: Arc<dyn CommandTrait> = Arc::new(TelescopeInsertCharCommand::new(c));
+            let cmd: Arc<dyn CommandTrait> = Arc::new(CommandLineCharCommand::new(c));
+            return (Some(CommandRef::Inline(cmd)), true);
+        }
+
+        // Generic editor insert mode - must be AFTER telescope/explorer checks
+        if is_insert
+            && key.len() == 1
+            && let Some(c) = key.chars().next()
+        {
+            self.pending_keys.clear();
+            let cmd: Arc<dyn CommandTrait> = Arc::new(InsertCharCommand::new(c));
             return (Some(CommandRef::Inline(cmd)), true);
         }
 
@@ -470,8 +478,13 @@ impl CommandHandler {
 
     /// Check if mode is one where ESC should only clear pending state (not trigger keymap lookup)
     /// Visual mode is excluded because it has an Escape binding in the keymap to exit to Normal
+    /// Telescope mode is excluded because it has Escape bindings for mode switching and closing
     const fn is_esc_clearable_mode(mode: &ModeState) -> bool {
-        mode.is_normal() || mode.is_explorer_focus() || mode.is_operator_pending()
+        // Editor Normal, Explorer focus, or OperatorPending
+        // Telescope has its own Escape handlers via keymap
+        (mode.is_normal() && !mode.is_telescope_focus())
+            || (mode.is_explorer_focus() && !mode.is_insert())
+            || mode.is_operator_pending()
     }
 
     /// Check if mode is one where Backspace should edit pending keys
@@ -510,9 +523,19 @@ impl CommandHandler {
                                 // Sync local mode from Runtime's watch channel
                                 // This catches mode changes initiated by Runtime (e.g., explorer focus)
                                 // Don't overwrite if in a handler-initiated transient state (OperatorPending, Leap)
-                                // to avoid race condition where runtime hasn't processed mode change yet
+                                // or if mode was locally changed and runtime hasn't caught up yet
                                 if !self.local_mode.is_operator_pending() && !self.local_mode.is_leap() {
-                                    self.local_mode = self.mode_rx.borrow().clone();
+                                    let runtime_mode = self.mode_rx.borrow().clone();
+                                    if self.mode_locally_changed {
+                                        // Check if runtime has caught up with our local change
+                                        if runtime_mode == self.local_mode {
+                                            self.mode_locally_changed = false;
+                                        }
+                                        // Otherwise keep using local_mode until runtime catches up
+                                    } else {
+                                        // Normal sync from runtime
+                                        self.local_mode = runtime_mode;
+                                    }
                                 }
 
                                 // Hide which-key popup on any key press
@@ -548,6 +571,7 @@ impl CommandHandler {
                                         if mode.is_operator_pending() {
                                             let normal = ModeState::normal();
                                             self.set_local_mode(normal.clone());
+                                            self.mode_locally_changed = true;
                                             self.dispatcher.update_mode(normal).await;
                                         }
                                         continue;
@@ -660,9 +684,21 @@ impl CommandHandler {
                                         tracing::debug!(?action, "Operator-pending action detected");
                                         self.pending_keys.clear();
                                         self.count_parser.take(); // Consume count
-                                        // Operator action returns to Normal mode
-                                        let normal = ModeState::normal();
-                                        self.set_local_mode(normal);
+                                        // Change actions enter Insert mode, others return to Normal
+                                        let is_change_action = matches!(
+                                            &action,
+                                            OperatorMotionAction::Change { .. }
+                                                | OperatorMotionAction::ChangeTextObject { .. }
+                                                | OperatorMotionAction::ChangeWordTextObject { .. }
+                                                | OperatorMotionAction::ChangeSemanticTextObject { .. }
+                                        );
+                                        let new_mode = if is_change_action {
+                                            ModeState::insert()
+                                        } else {
+                                            ModeState::normal()
+                                        };
+                                        self.set_local_mode(new_mode);
+                                        self.mode_locally_changed = true;
                                         self.dispatcher.send_operator_motion(action).await;
                                         self.dispatcher
                                             .send_pending_keys(self.pending_display())
@@ -722,6 +758,7 @@ impl CommandHandler {
                                     // This avoids race conditions with the Runtime's watch channel
                                     if let Some(new_mode) = Dispatcher::mode_for_command(cmd) {
                                         self.set_local_mode(new_mode.clone());
+                                        self.mode_locally_changed = true;
                                         self.dispatcher.update_mode(new_mode).await;
                                     }
 

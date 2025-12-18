@@ -323,6 +323,214 @@ impl CommandTrait for ExplorerToggleHiddenCommand {
     }
 }
 
+/// Toggle showing file sizes
+#[derive(Debug, Clone)]
+pub struct ExplorerToggleSizesCommand;
+
+impl CommandTrait for ExplorerToggleSizesCommand {
+    fn name(&self) -> &'static str {
+        "explorer_toggle_sizes"
+    }
+
+    fn description(&self) -> &'static str {
+        "Toggle showing file sizes"
+    }
+
+    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
+        CommandResult::DeferToRuntime(DeferredAction::Explorer(ExplorerAction::ToggleSizes))
+    }
+
+    fn clone_box(&self) -> Box<dyn CommandTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+/// Yank (copy) current item to clipboard
+#[derive(Debug, Clone)]
+pub struct ExplorerYankCommand;
+
+impl CommandTrait for ExplorerYankCommand {
+    fn name(&self) -> &'static str {
+        "explorer_yank"
+    }
+
+    fn description(&self) -> &'static str {
+        "Yank (copy) current item"
+    }
+
+    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
+        CommandResult::DeferToRuntime(DeferredAction::Explorer(ExplorerAction::Yank))
+    }
+
+    fn clone_box(&self) -> Box<dyn CommandTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+/// Cut current item to clipboard
+#[derive(Debug, Clone)]
+pub struct ExplorerCutCommand;
+
+impl CommandTrait for ExplorerCutCommand {
+    fn name(&self) -> &'static str {
+        "explorer_cut"
+    }
+
+    fn description(&self) -> &'static str {
+        "Cut current item"
+    }
+
+    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
+        CommandResult::DeferToRuntime(DeferredAction::Explorer(ExplorerAction::Cut))
+    }
+
+    fn clone_box(&self) -> Box<dyn CommandTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+/// Paste from clipboard
+#[derive(Debug, Clone)]
+pub struct ExplorerPasteCommand;
+
+impl CommandTrait for ExplorerPasteCommand {
+    fn name(&self) -> &'static str {
+        "explorer_paste"
+    }
+
+    fn description(&self) -> &'static str {
+        "Paste from clipboard"
+    }
+
+    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
+        CommandResult::DeferToRuntime(DeferredAction::Explorer(ExplorerAction::Paste))
+    }
+
+    fn clone_box(&self) -> Box<dyn CommandTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+/// Enter visual selection mode
+#[derive(Debug, Clone)]
+pub struct ExplorerVisualModeCommand;
+
+impl CommandTrait for ExplorerVisualModeCommand {
+    fn name(&self) -> &'static str {
+        "explorer_visual_mode"
+    }
+
+    fn description(&self) -> &'static str {
+        "Enter visual selection mode"
+    }
+
+    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
+        CommandResult::DeferToRuntime(DeferredAction::Explorer(ExplorerAction::VisualMode))
+    }
+
+    fn clone_box(&self) -> Box<dyn CommandTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+/// Toggle selection of current item
+#[derive(Debug, Clone)]
+pub struct ExplorerToggleSelectCommand;
+
+impl CommandTrait for ExplorerToggleSelectCommand {
+    fn name(&self) -> &'static str {
+        "explorer_toggle_select"
+    }
+
+    fn description(&self) -> &'static str {
+        "Toggle selection"
+    }
+
+    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
+        CommandResult::DeferToRuntime(DeferredAction::Explorer(ExplorerAction::ToggleSelect))
+    }
+
+    fn clone_box(&self) -> Box<dyn CommandTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+/// Select all visible items
+#[derive(Debug, Clone)]
+pub struct ExplorerSelectAllCommand;
+
+impl CommandTrait for ExplorerSelectAllCommand {
+    fn name(&self) -> &'static str {
+        "explorer_select_all"
+    }
+
+    fn description(&self) -> &'static str {
+        "Select all items"
+    }
+
+    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
+        CommandResult::DeferToRuntime(DeferredAction::Explorer(ExplorerAction::SelectAll))
+    }
+
+    fn clone_box(&self) -> Box<dyn CommandTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+/// Exit visual selection mode
+#[derive(Debug, Clone)]
+pub struct ExplorerExitVisualCommand;
+
+impl CommandTrait for ExplorerExitVisualCommand {
+    fn name(&self) -> &'static str {
+        "explorer_exit_visual"
+    }
+
+    fn description(&self) -> &'static str {
+        "Exit visual mode"
+    }
+
+    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
+        CommandResult::DeferToRuntime(DeferredAction::Explorer(ExplorerAction::ExitVisual))
+    }
+
+    fn clone_box(&self) -> Box<dyn CommandTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
 /// Close explorer
 #[derive(Debug, Clone)]
 pub struct ExplorerCloseCommand;

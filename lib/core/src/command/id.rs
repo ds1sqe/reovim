@@ -117,6 +117,18 @@ pub mod builtin {
 
     // === Explorer Display ===
     pub const EXPLORER_TOGGLE_HIDDEN: CommandId = CommandId::new("explorer_toggle_hidden");
+    pub const EXPLORER_TOGGLE_SIZES: CommandId = CommandId::new("explorer_toggle_sizes");
+
+    // === Explorer Clipboard ===
+    pub const EXPLORER_YANK: CommandId = CommandId::new("explorer_yank");
+    pub const EXPLORER_CUT: CommandId = CommandId::new("explorer_cut");
+    pub const EXPLORER_PASTE: CommandId = CommandId::new("explorer_paste");
+
+    // === Explorer Selection ===
+    pub const EXPLORER_VISUAL_MODE: CommandId = CommandId::new("explorer_visual_mode");
+    pub const EXPLORER_TOGGLE_SELECT: CommandId = CommandId::new("explorer_toggle_select");
+    pub const EXPLORER_SELECT_ALL: CommandId = CommandId::new("explorer_select_all");
+    pub const EXPLORER_EXIT_VISUAL: CommandId = CommandId::new("explorer_exit_visual");
 
     // === Explorer Window ===
     pub const EXPLORER_CLOSE: CommandId = CommandId::new("explorer_close");

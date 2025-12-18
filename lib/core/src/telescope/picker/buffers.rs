@@ -23,23 +23,13 @@ pub struct BufferInfo {
 }
 
 /// Picker for switching between open buffers
-pub struct BuffersPicker {
-    /// Available buffers (set by runtime before opening)
-    buffers: Vec<BufferInfo>,
-}
+pub struct BuffersPicker;
 
 impl BuffersPicker {
     /// Create a new buffers picker
     #[must_use]
     pub const fn new() -> Self {
-        Self {
-            buffers: Vec::new(),
-        }
-    }
-
-    /// Set available buffers
-    pub fn set_buffers(&mut self, buffers: Vec<BufferInfo>) {
-        self.buffers = buffers;
+        Self
     }
 }
 
@@ -64,10 +54,11 @@ impl Picker for BuffersPicker {
 
     fn fetch(
         &self,
-        _ctx: &PickerContext,
+        ctx: &PickerContext,
     ) -> Pin<Box<dyn Future<Output = Vec<TelescopeItem>> + Send + '_>> {
+        let buffers = ctx.buffers.clone();
         Box::pin(async move {
-            self.buffers
+            buffers
                 .iter()
                 .map(|buf| {
                     let icon = if buf.modified { '*' } else { ' ' };
@@ -93,19 +84,10 @@ impl Picker for BuffersPicker {
 
     fn preview(
         &self,
-        item: &TelescopeItem,
+        _item: &TelescopeItem,
     ) -> Pin<Box<dyn Future<Output = Option<PreviewContent>> + Send + '_>> {
-        let buffer_id = match &item.data {
-            TelescopeData::BufferId(id) => *id,
-            _ => return Box::pin(async { None }),
-        };
-
-        let preview_lines = self
-            .buffers
-            .iter()
-            .find(|b| b.id == buffer_id)
-            .map(|b| b.preview_lines.clone());
-
-        Box::pin(async move { preview_lines.map(PreviewContent::new) })
+        // Preview would require buffer content which isn't available in this context
+        // For now, just return None
+        Box::pin(async { None })
     }
 }

@@ -2,6 +2,50 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.5.3] - 2025-12-18
+
+### Features
+
+- **Which-Key Enhancements**
+  - RPC endpoint `state/whichkey` for querying which-key popup state
+  - Keybinding grouping - bindings now categorized (motion, operator, mode, edit, jump, fold, telescope, window, misc)
+  - Grouped rendering with section headers in which-key popup
+
+- **Explorer File Operations**
+  - Copy/Cut/Paste: `yy` (yank), `dd` (cut), `p` (paste), `D` (delete)
+  - Multi-file selection: `v` (visual mode), `V` (select all)
+  - Selection marker (`*`) displayed for selected items
+  - Visual selection updates as cursor moves with j/k
+
+- **Explorer Display Enhancements**
+  - Human-readable file sizes: `S` toggles size column (1.2K, 3.4M, etc.)
+  - Broken symlink detection: shows `! ` icon for broken links
+
+- **Telescope Enhancements**
+  - RPC endpoint `state/telescope` for querying telescope state
+  - Fixed escape race condition in telescope close handling
+  - Fixed buffer picker returning empty items
+
+### Bug Fixes
+
+- **`cw` operator enters insert mode** - Fixed race condition where change operator stayed in normal mode instead of entering insert mode after deletion
+- **Explorer cursor position with tabs** - Cursor now correctly positioned when tab line is visible
+- **Explorer root protection** - Prevents accidental delete/rename of root directory
+- **Explorer cursor bounds** - Cursor now validated after tree modifications
+- **Telescope escape handling** - Fixed race condition causing stuck mode
+
+### Tests
+
+- New `lib/core/tests/which_key.rs` - Which-key visibility and binding tests
+- New `lib/core/tests/telescope.rs` - Telescope picker integration tests
+
+### Technical Changes
+
+- Added `group` field to `WhichKeyBinding` and `KeyMapInner` structs
+- Added `ExplorerClipboard` and `ExplorerSelection` structures
+- Added `format_size()` for human-readable byte formatting
+- Added `WhichKeySnapshot` and `TelescopeSnapshot` RPC types
+
 ## [0.5.2] - 2025-12-18
 
 ### Bug Fixes

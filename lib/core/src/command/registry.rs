@@ -159,7 +159,9 @@ impl CommandRegistry {
             ExplorerCreateFileCommand,
             ExplorerCursorDownCommand,
             ExplorerCursorUpCommand,
+            ExplorerCutCommand,
             ExplorerDeleteCommand,
+            ExplorerExitVisualCommand,
             ExplorerFilterCommand,
             ExplorerFocusEditorCommand,
             ExplorerGoToParentCommand,
@@ -169,10 +171,16 @@ impl CommandRegistry {
             ExplorerOpenNodeCommand,
             ExplorerPageDownCommand,
             ExplorerPageUpCommand,
+            ExplorerPasteCommand,
             ExplorerRefreshCommand,
             ExplorerRenameCommand,
+            ExplorerSelectAllCommand,
             ExplorerToggleHiddenCommand,
             ExplorerToggleNodeCommand,
+            ExplorerToggleSelectCommand,
+            ExplorerToggleSizesCommand,
+            ExplorerVisualModeCommand,
+            ExplorerYankCommand,
             // Fold
             FoldCloseAllCommand,
             FoldCloseCommand,
@@ -362,6 +370,14 @@ impl CommandRegistry {
         let _ = self.register(ExplorerGoToParentCommand);
         let _ = self.register(ExplorerRefreshCommand);
         let _ = self.register(ExplorerToggleHiddenCommand);
+        let _ = self.register(ExplorerToggleSizesCommand);
+        let _ = self.register(ExplorerYankCommand);
+        let _ = self.register(ExplorerCutCommand);
+        let _ = self.register(ExplorerPasteCommand);
+        let _ = self.register(ExplorerVisualModeCommand);
+        let _ = self.register(ExplorerToggleSelectCommand);
+        let _ = self.register(ExplorerSelectAllCommand);
+        let _ = self.register(ExplorerExitVisualCommand);
         let _ = self.register(ExplorerCloseCommand);
         let _ = self.register(ExplorerFocusEditorCommand);
         let _ = self.register(ExplorerCreateFileCommand);

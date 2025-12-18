@@ -71,6 +71,8 @@ pub struct WhichKeyBinding {
     pub description: String,
     /// Whether this is a prefix (has more bindings) or a terminal command
     pub is_prefix: bool,
+    /// Optional group for categorization (e.g., "motion", "operator", "mode")
+    pub group: Option<String>,
 }
 
 /// Buffer-related events

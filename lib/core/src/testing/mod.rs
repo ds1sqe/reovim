@@ -11,7 +11,7 @@ pub mod server;
 
 pub use {
     assertions::{ServerTest, ServerTestResult},
-    client::{ClientError, ModeInfo, TestClient},
+    client::{ClientError, ModeInfo, TelescopeInfo, TestClient, WhichKeyBindingInfo, WhichKeyInfo},
     keys::{char_key, ctrl, key, key_mod, keys_from_str},
     server::ServerTestHarness,
 };

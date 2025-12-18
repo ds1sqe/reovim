@@ -28,6 +28,8 @@ pub struct KeyMapInner {
     /// Optional description hint for which-key (overrides command description)
     /// Used for dynamically-handled keys like operator motions
     pub hint: Option<String>,
+    /// Group for which-key categorization (e.g., "motion", "operator", "mode")
+    pub group: Option<&'static str>,
     /// Children for multi-key sequences (e.g., "dd", "gg")
     #[allow(dead_code)] // Infrastructure for proper trie-based lookup
     pub next: HashMap<String, Self>,
@@ -39,6 +41,7 @@ impl KeyMapInner {
         Self {
             command: None,
             hint: None,
+            group: None,
             next: HashMap::new(),
         }
     }
@@ -49,6 +52,7 @@ impl KeyMapInner {
         Self {
             command: Some(cmd),
             hint: None,
+            group: None,
             next: HashMap::new(),
         }
     }
@@ -59,6 +63,7 @@ impl KeyMapInner {
         Self {
             command: Some(CommandRef::Registered(id)),
             hint: None,
+            group: None,
             next: HashMap::new(),
         }
     }
@@ -69,6 +74,7 @@ impl KeyMapInner {
         Self {
             command: Some(CommandRef::Inline(cmd)),
             hint: None,
+            group: None,
             next: HashMap::new(),
         }
     }
@@ -80,8 +86,16 @@ impl KeyMapInner {
         Self {
             command: None,
             hint: Some(description.into()),
+            group: None,
             next: HashMap::new(),
         }
+    }
+
+    /// Set the group for this binding (builder pattern)
+    #[must_use]
+    pub const fn group(mut self, group: &'static str) -> Self {
+        self.group = Some(group);
+        self
     }
 
     /// Get the description for this binding
@@ -120,6 +134,7 @@ impl std::fmt::Debug for KeyMapInner {
         f.debug_struct("KeyMapInner")
             .field("command", &self.command)
             .field("hint", &self.hint)
+            .field("group", &self.group)
             .field("next_keys", &self.next.keys().collect::<Vec<_>>())
             .finish()
     }
@@ -283,6 +298,7 @@ impl KeyMap {
                     key: next_key.to_string(),
                     description,
                     is_prefix,
+                    group: inner.group.map(String::from),
                 });
             }
         }
@@ -306,123 +322,267 @@ impl KeyMap {
         s.chars().next().map_or(s, |c| &s[..c.len_utf8()])
     }
 
+    #[allow(clippy::too_many_lines)]
     fn setup_normal_mode(keymap: &mut HashMap<String, KeyMapInner>) {
         // Movement
-        keymap.insert("h".to_string(), KeyMapInner::with_command_id(builtin::CURSOR_LEFT));
-        keymap.insert("j".to_string(), KeyMapInner::with_command_id(builtin::CURSOR_DOWN));
-        keymap.insert("k".to_string(), KeyMapInner::with_command_id(builtin::CURSOR_UP));
-        keymap.insert("l".to_string(), KeyMapInner::with_command_id(builtin::CURSOR_RIGHT));
-        keymap.insert("0".to_string(), KeyMapInner::with_command_id(builtin::CURSOR_LINE_START));
-        keymap.insert("$".to_string(), KeyMapInner::with_command_id(builtin::CURSOR_LINE_END));
-        keymap.insert("w".to_string(), KeyMapInner::with_command_id(builtin::CURSOR_WORD_FORWARD));
-        keymap.insert("b".to_string(), KeyMapInner::with_command_id(builtin::CURSOR_WORD_BACKWARD));
-        keymap.insert("e".to_string(), KeyMapInner::with_command_id(builtin::CURSOR_WORD_END));
+        keymap.insert(
+            "h".to_string(),
+            KeyMapInner::with_command_id(builtin::CURSOR_LEFT).group("motion"),
+        );
+        keymap.insert(
+            "j".to_string(),
+            KeyMapInner::with_command_id(builtin::CURSOR_DOWN).group("motion"),
+        );
+        keymap.insert(
+            "k".to_string(),
+            KeyMapInner::with_command_id(builtin::CURSOR_UP).group("motion"),
+        );
+        keymap.insert(
+            "l".to_string(),
+            KeyMapInner::with_command_id(builtin::CURSOR_RIGHT).group("motion"),
+        );
+        keymap.insert(
+            "0".to_string(),
+            KeyMapInner::with_command_id(builtin::CURSOR_LINE_START).group("motion"),
+        );
+        keymap.insert(
+            "$".to_string(),
+            KeyMapInner::with_command_id(builtin::CURSOR_LINE_END).group("motion"),
+        );
+        keymap.insert(
+            "w".to_string(),
+            KeyMapInner::with_command_id(builtin::CURSOR_WORD_FORWARD).group("motion"),
+        );
+        keymap.insert(
+            "b".to_string(),
+            KeyMapInner::with_command_id(builtin::CURSOR_WORD_BACKWARD).group("motion"),
+        );
+        keymap.insert(
+            "e".to_string(),
+            KeyMapInner::with_command_id(builtin::CURSOR_WORD_END).group("motion"),
+        );
 
         // Mode switching
-        keymap.insert("i".to_string(), KeyMapInner::with_command_id(builtin::ENTER_INSERT_MODE));
+        keymap.insert(
+            "i".to_string(),
+            KeyMapInner::with_command_id(builtin::ENTER_INSERT_MODE).group("mode"),
+        );
         keymap.insert(
             "a".to_string(),
-            KeyMapInner::with_command_id(builtin::ENTER_INSERT_MODE_AFTER),
+            KeyMapInner::with_command_id(builtin::ENTER_INSERT_MODE_AFTER).group("mode"),
         );
-        keymap
-            .insert("A".to_string(), KeyMapInner::with_command_id(builtin::ENTER_INSERT_MODE_EOL));
-        keymap.insert("o".to_string(), KeyMapInner::with_command_id(builtin::OPEN_LINE_BELOW));
-        keymap.insert("O".to_string(), KeyMapInner::with_command_id(builtin::OPEN_LINE_ABOVE));
-        keymap.insert("v".to_string(), KeyMapInner::with_command_id(builtin::ENTER_VISUAL_MODE));
-        keymap
-            .insert("V".to_string(), KeyMapInner::with_command_id(builtin::ENTER_VISUAL_LINE_MODE));
+        keymap.insert(
+            "A".to_string(),
+            KeyMapInner::with_command_id(builtin::ENTER_INSERT_MODE_EOL).group("mode"),
+        );
+        keymap.insert(
+            "o".to_string(),
+            KeyMapInner::with_command_id(builtin::OPEN_LINE_BELOW).group("edit"),
+        );
+        keymap.insert(
+            "O".to_string(),
+            KeyMapInner::with_command_id(builtin::OPEN_LINE_ABOVE).group("edit"),
+        );
+        keymap.insert(
+            "v".to_string(),
+            KeyMapInner::with_command_id(builtin::ENTER_VISUAL_MODE).group("mode"),
+        );
+        keymap.insert(
+            "V".to_string(),
+            KeyMapInner::with_command_id(builtin::ENTER_VISUAL_LINE_MODE).group("mode"),
+        );
         keymap.insert(
             "<C-v>".to_string(),
-            KeyMapInner::with_command_id(builtin::ENTER_VISUAL_BLOCK_MODE),
+            KeyMapInner::with_command_id(builtin::ENTER_VISUAL_BLOCK_MODE).group("mode"),
         );
-        keymap.insert(":".to_string(), KeyMapInner::with_command_id(builtin::ENTER_COMMAND_MODE));
+        keymap.insert(
+            ":".to_string(),
+            KeyMapInner::with_command_id(builtin::ENTER_COMMAND_MODE).group("mode"),
+        );
 
         // Editing
-        keymap.insert("x".to_string(), KeyMapInner::with_command_id(builtin::DELETE_CHAR_FORWARD));
-        keymap.insert("p".to_string(), KeyMapInner::with_command_id(builtin::PASTE));
-        keymap.insert("P".to_string(), KeyMapInner::with_command_id(builtin::PASTE_BEFORE));
+        keymap.insert(
+            "x".to_string(),
+            KeyMapInner::with_command_id(builtin::DELETE_CHAR_FORWARD).group("edit"),
+        );
+        keymap.insert("p".to_string(), KeyMapInner::with_command_id(builtin::PASTE).group("edit"));
+        keymap.insert(
+            "P".to_string(),
+            KeyMapInner::with_command_id(builtin::PASTE_BEFORE).group("edit"),
+        );
 
         // g-prefix bindings
         keymap.insert("g".to_string(), KeyMapInner::new()); // prefix, no command
-        keymap.insert("gg".to_string(), KeyMapInner::with_command_id(builtin::GOTO_FIRST_LINE));
-        keymap.insert("G".to_string(), KeyMapInner::with_command_id(builtin::GOTO_LAST_LINE));
+        keymap.insert(
+            "gg".to_string(),
+            KeyMapInner::with_command_id(builtin::GOTO_FIRST_LINE).group("jump"),
+        );
+        keymap.insert(
+            "G".to_string(),
+            KeyMapInner::with_command_id(builtin::GOTO_LAST_LINE).group("jump"),
+        );
 
         // Jump list navigation
-        keymap.insert("<C-o>".to_string(), KeyMapInner::with_command_id(builtin::JUMP_OLDER));
-        keymap.insert("<C-i>".to_string(), KeyMapInner::with_command_id(builtin::JUMP_NEWER));
+        keymap.insert(
+            "<C-o>".to_string(),
+            KeyMapInner::with_command_id(builtin::JUMP_OLDER).group("jump"),
+        );
+        keymap.insert(
+            "<C-i>".to_string(),
+            KeyMapInner::with_command_id(builtin::JUMP_NEWER).group("jump"),
+        );
 
         // Undo/Redo
-        keymap.insert("u".to_string(), KeyMapInner::with_command_id(builtin::UNDO));
-        keymap.insert("<C-r>".to_string(), KeyMapInner::with_command_id(builtin::REDO));
+        keymap.insert("u".to_string(), KeyMapInner::with_command_id(builtin::UNDO).group("edit"));
+        keymap
+            .insert("<C-r>".to_string(), KeyMapInner::with_command_id(builtin::REDO).group("edit"));
 
         // Operators (d, y, c enter operator-pending mode)
-        keymap
-            .insert("d".to_string(), KeyMapInner::with_command_id(builtin::ENTER_DELETE_OPERATOR));
-        keymap.insert("dd".to_string(), KeyMapInner::with_command_id(builtin::DELETE_LINE));
-        keymap.insert("y".to_string(), KeyMapInner::with_command_id(builtin::ENTER_YANK_OPERATOR));
-        keymap.insert("yy".to_string(), KeyMapInner::with_command_id(builtin::YANK_LINE));
-        keymap.insert("Y".to_string(), KeyMapInner::with_command_id(builtin::YANK_TO_END));
-        keymap
-            .insert("c".to_string(), KeyMapInner::with_command_id(builtin::ENTER_CHANGE_OPERATOR));
+        keymap.insert(
+            "d".to_string(),
+            KeyMapInner::with_command_id(builtin::ENTER_DELETE_OPERATOR).group("operator"),
+        );
+        keymap.insert(
+            "dd".to_string(),
+            KeyMapInner::with_command_id(builtin::DELETE_LINE).group("operator"),
+        );
+        keymap.insert(
+            "y".to_string(),
+            KeyMapInner::with_command_id(builtin::ENTER_YANK_OPERATOR).group("operator"),
+        );
+        keymap.insert(
+            "yy".to_string(),
+            KeyMapInner::with_command_id(builtin::YANK_LINE).group("operator"),
+        );
+        keymap.insert(
+            "Y".to_string(),
+            KeyMapInner::with_command_id(builtin::YANK_TO_END).group("operator"),
+        );
+        keymap.insert(
+            "c".to_string(),
+            KeyMapInner::with_command_id(builtin::ENTER_CHANGE_OPERATOR).group("operator"),
+        );
 
         // Space (leader) bindings
         keymap.insert(" ".to_string(), KeyMapInner::new()); // prefix, no command
         keymap.insert(
             " e".to_string(),
-            KeyMapInner::with_inline_command(Arc::new(ToggleExplorerCommand)),
+            KeyMapInner::with_inline_command(Arc::new(ToggleExplorerCommand)).group("misc"),
         );
-        keymap.insert(" s".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_OPEN));
+        keymap.insert(
+            " s".to_string(),
+            KeyMapInner::with_command_id(builtin::SETTINGS_MENU_OPEN).group("misc"),
+        );
 
         // Telescope bindings (Space + f prefix)
         keymap.insert(" f".to_string(), KeyMapInner::new()); // prefix, no command
-        keymap
-            .insert(" ff".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_FIND_FILES));
+        keymap.insert(
+            " ff".to_string(),
+            KeyMapInner::with_command_id(builtin::TELESCOPE_FIND_FILES).group("telescope"),
+        );
         keymap.insert(
             " fb".to_string(),
-            KeyMapInner::with_command_id(builtin::TELESCOPE_FIND_BUFFERS),
+            KeyMapInner::with_command_id(builtin::TELESCOPE_FIND_BUFFERS).group("telescope"),
         );
-        keymap
-            .insert(" fg".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_LIVE_GREP));
-        keymap.insert(" fr".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_RECENT));
-        keymap.insert(" fc".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_COMMANDS));
-        keymap.insert(" fh".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_HELP));
-        keymap.insert(" fk".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_KEYMAPS));
+        keymap.insert(
+            " fg".to_string(),
+            KeyMapInner::with_command_id(builtin::TELESCOPE_LIVE_GREP).group("telescope"),
+        );
+        keymap.insert(
+            " fr".to_string(),
+            KeyMapInner::with_command_id(builtin::TELESCOPE_RECENT).group("telescope"),
+        );
+        keymap.insert(
+            " fc".to_string(),
+            KeyMapInner::with_command_id(builtin::TELESCOPE_COMMANDS).group("telescope"),
+        );
+        keymap.insert(
+            " fh".to_string(),
+            KeyMapInner::with_command_id(builtin::TELESCOPE_HELP).group("telescope"),
+        );
+        keymap.insert(
+            " fk".to_string(),
+            KeyMapInner::with_command_id(builtin::TELESCOPE_KEYMAPS).group("telescope"),
+        );
 
         // Leap motion bindings
-        keymap.insert("s".to_string(), KeyMapInner::with_command_id(builtin::LEAP_FORWARD));
-        keymap.insert("S".to_string(), KeyMapInner::with_command_id(builtin::LEAP_BACKWARD));
+        keymap.insert(
+            "s".to_string(),
+            KeyMapInner::with_command_id(builtin::LEAP_FORWARD).group("jump"),
+        );
+        keymap.insert(
+            "S".to_string(),
+            KeyMapInner::with_command_id(builtin::LEAP_BACKWARD).group("jump"),
+        );
 
         // z-prefix bindings (code folding)
         keymap.insert("z".to_string(), KeyMapInner::new()); // prefix, no command
-        keymap.insert("za".to_string(), KeyMapInner::with_command_id(builtin::FOLD_TOGGLE));
-        keymap.insert("zo".to_string(), KeyMapInner::with_command_id(builtin::FOLD_OPEN));
-        keymap.insert("zc".to_string(), KeyMapInner::with_command_id(builtin::FOLD_CLOSE));
-        keymap.insert("zR".to_string(), KeyMapInner::with_command_id(builtin::FOLD_OPEN_ALL));
-        keymap.insert("zM".to_string(), KeyMapInner::with_command_id(builtin::FOLD_CLOSE_ALL));
+        keymap.insert(
+            "za".to_string(),
+            KeyMapInner::with_command_id(builtin::FOLD_TOGGLE).group("fold"),
+        );
+        keymap.insert(
+            "zo".to_string(),
+            KeyMapInner::with_command_id(builtin::FOLD_OPEN).group("fold"),
+        );
+        keymap.insert(
+            "zc".to_string(),
+            KeyMapInner::with_command_id(builtin::FOLD_CLOSE).group("fold"),
+        );
+        keymap.insert(
+            "zR".to_string(),
+            KeyMapInner::with_command_id(builtin::FOLD_OPEN_ALL).group("fold"),
+        );
+        keymap.insert(
+            "zM".to_string(),
+            KeyMapInner::with_command_id(builtin::FOLD_CLOSE_ALL).group("fold"),
+        );
 
         // Window navigation (C-hjkl)
-        keymap
-            .insert("<C-h>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_LEFT));
-        keymap
-            .insert("<C-j>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_DOWN));
-        keymap.insert("<C-k>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_UP));
-        keymap
-            .insert("<C-l>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_RIGHT));
+        keymap.insert(
+            "<C-h>".to_string(),
+            KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_LEFT).group("window"),
+        );
+        keymap.insert(
+            "<C-j>".to_string(),
+            KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_DOWN).group("window"),
+        );
+        keymap.insert(
+            "<C-k>".to_string(),
+            KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_UP).group("window"),
+        );
+        keymap.insert(
+            "<C-l>".to_string(),
+            KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_RIGHT).group("window"),
+        );
 
         // Window movement (C-S-HJKL)
-        keymap
-            .insert("<C-S-H>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_MOVE_LEFT));
-        keymap
-            .insert("<C-S-J>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_MOVE_DOWN));
-        keymap.insert("<C-S-K>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_MOVE_UP));
+        keymap.insert(
+            "<C-S-H>".to_string(),
+            KeyMapInner::with_command_id(builtin::WINDOW_MOVE_LEFT).group("window"),
+        );
+        keymap.insert(
+            "<C-S-J>".to_string(),
+            KeyMapInner::with_command_id(builtin::WINDOW_MOVE_DOWN).group("window"),
+        );
+        keymap.insert(
+            "<C-S-K>".to_string(),
+            KeyMapInner::with_command_id(builtin::WINDOW_MOVE_UP).group("window"),
+        );
         keymap.insert(
             "<C-S-L>".to_string(),
-            KeyMapInner::with_command_id(builtin::WINDOW_MOVE_RIGHT),
+            KeyMapInner::with_command_id(builtin::WINDOW_MOVE_RIGHT).group("window"),
         );
 
         // Tab navigation
-        keymap.insert("gt".to_string(), KeyMapInner::with_command_id(builtin::TAB_NEXT));
-        keymap.insert("gT".to_string(), KeyMapInner::with_command_id(builtin::TAB_PREV));
+        keymap.insert(
+            "gt".to_string(),
+            KeyMapInner::with_command_id(builtin::TAB_NEXT).group("window"),
+        );
+        keymap.insert(
+            "gT".to_string(),
+            KeyMapInner::with_command_id(builtin::TAB_PREV).group("window"),
+        );
     }
 
     fn setup_insert_mode(keymap: &mut HashMap<String, KeyMapInner>) {
@@ -499,12 +659,25 @@ impl KeyMap {
         // Display
         keymap
             .insert("I".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_TOGGLE_HIDDEN));
+        keymap
+            .insert("S".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_TOGGLE_SIZES));
 
         // File operations
         keymap.insert("a".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CREATE_FILE));
         keymap.insert("A".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CREATE_DIR));
         keymap.insert("r".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_RENAME));
-        keymap.insert("d".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_DELETE));
+        keymap.insert("D".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_DELETE));
+
+        // Clipboard operations
+        keymap.insert("y".to_string(), KeyMapInner::new()); // prefix
+        keymap.insert("yy".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_YANK));
+        keymap.insert("d".to_string(), KeyMapInner::new()); // prefix
+        keymap.insert("dd".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CUT));
+        keymap.insert("p".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_PASTE));
+
+        // Selection
+        keymap.insert("v".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_VISUAL_MODE));
+        keymap.insert("V".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_SELECT_ALL));
 
         // Filter
         keymap.insert("/".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_FILTER));
@@ -564,22 +737,26 @@ impl KeyMap {
 
         // Motion hints for which-key (actual handling is dynamic in CommandHandler)
         // These don't execute commands but show in which-key panel
-        keymap.insert("d".to_string(), KeyMapInner::with_hint("delete line (dd)"));
-        keymap.insert("y".to_string(), KeyMapInner::with_hint("yank line (yy)"));
-        keymap.insert("c".to_string(), KeyMapInner::with_hint("change line (cc)"));
-        keymap.insert("w".to_string(), KeyMapInner::with_hint("word forward"));
-        keymap.insert("b".to_string(), KeyMapInner::with_hint("word backward"));
-        keymap.insert("e".to_string(), KeyMapInner::with_hint("word end"));
-        keymap.insert("$".to_string(), KeyMapInner::with_hint("end of line"));
-        keymap.insert("0".to_string(), KeyMapInner::with_hint("start of line"));
-        keymap.insert("^".to_string(), KeyMapInner::with_hint("first non-blank"));
-        keymap.insert("j".to_string(), KeyMapInner::with_hint("line down"));
-        keymap.insert("k".to_string(), KeyMapInner::with_hint("line up"));
-        keymap.insert("G".to_string(), KeyMapInner::with_hint("end of file"));
+        keymap
+            .insert("d".to_string(), KeyMapInner::with_hint("delete line (dd)").group("operator"));
+        keymap.insert("y".to_string(), KeyMapInner::with_hint("yank line (yy)").group("operator"));
+        keymap
+            .insert("c".to_string(), KeyMapInner::with_hint("change line (cc)").group("operator"));
+        keymap.insert("w".to_string(), KeyMapInner::with_hint("word forward").group("motion"));
+        keymap.insert("b".to_string(), KeyMapInner::with_hint("word backward").group("motion"));
+        keymap.insert("e".to_string(), KeyMapInner::with_hint("word end").group("motion"));
+        keymap.insert("$".to_string(), KeyMapInner::with_hint("end of line").group("motion"));
+        keymap.insert("0".to_string(), KeyMapInner::with_hint("start of line").group("motion"));
+        keymap.insert("^".to_string(), KeyMapInner::with_hint("first non-blank").group("motion"));
+        keymap.insert("j".to_string(), KeyMapInner::with_hint("line down").group("motion"));
+        keymap.insert("k".to_string(), KeyMapInner::with_hint("line up").group("motion"));
+        keymap.insert("G".to_string(), KeyMapInner::with_hint("end of file").group("motion"));
         keymap.insert("g".to_string(), KeyMapInner::new()); // prefix for gg
-        keymap.insert("gg".to_string(), KeyMapInner::with_hint("start of file"));
-        keymap.insert("i".to_string(), KeyMapInner::with_hint("inner text object"));
-        keymap.insert("a".to_string(), KeyMapInner::with_hint("around text object"));
+        keymap.insert("gg".to_string(), KeyMapInner::with_hint("start of file").group("motion"));
+        keymap
+            .insert("i".to_string(), KeyMapInner::with_hint("inner text object").group("textobj"));
+        keymap
+            .insert("a".to_string(), KeyMapInner::with_hint("around text object").group("textobj"));
     }
 
     /// Telescope Normal mode - navigation keys (j/k/gg/G)

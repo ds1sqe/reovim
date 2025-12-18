@@ -27,6 +27,36 @@ pub enum ExplorerInputMode {
     Filter,
 }
 
+/// Clipboard operation type
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum ClipboardOperation {
+    /// Copy operation (keep original)
+    #[default]
+    Copy,
+    /// Cut operation (delete original after paste)
+    Cut,
+}
+
+/// Explorer clipboard for copy/cut/paste operations
+#[derive(Clone, Debug, Default)]
+pub struct ExplorerClipboard {
+    /// Paths in the clipboard
+    pub paths: Vec<PathBuf>,
+    /// Operation type
+    pub operation: ClipboardOperation,
+}
+
+/// Multi-file selection for explorer
+#[derive(Clone, Debug, Default)]
+pub struct ExplorerSelection {
+    /// Set of selected file paths
+    pub selected: std::collections::HashSet<PathBuf>,
+    /// Whether visual selection mode is active
+    pub active: bool,
+    /// Anchor index for visual selection (where selection started)
+    pub anchor_index: Option<usize>,
+}
+
 /// State of the file explorer
 #[derive(Clone, Debug)]
 pub struct ExplorerState {
@@ -36,6 +66,8 @@ pub struct ExplorerState {
     pub cursor_index: usize,
     /// Whether to show hidden files
     pub show_hidden: bool,
+    /// Whether to show file sizes
+    pub show_sizes: bool,
     /// Current filter text
     pub filter_text: String,
     /// Width of the explorer panel
@@ -48,6 +80,10 @@ pub struct ExplorerState {
     pub input_buffer: String,
     /// Message to display (e.g., error or confirmation prompt)
     pub message: Option<String>,
+    /// Clipboard for copy/cut/paste operations
+    pub clipboard: ExplorerClipboard,
+    /// Multi-file selection state
+    pub selection: ExplorerSelection,
 }
 
 impl ExplorerState {
@@ -59,12 +95,15 @@ impl ExplorerState {
             tree,
             cursor_index: 0,
             show_hidden: false,
+            show_sizes: false,
             filter_text: String::new(),
             width: 30,
             scroll_offset: 0,
             input_mode: ExplorerInputMode::None,
             input_buffer: String::new(),
             message: None,
+            clipboard: ExplorerClipboard::default(),
+            selection: ExplorerSelection::default(),
         })
     }
 
@@ -90,9 +129,14 @@ impl ExplorerState {
 
     /// Start renaming current item
     pub fn start_rename(&mut self) {
-        // Extract name first to avoid borrow issues
-        let name = self.current_node().map(|n| n.name.clone());
-        if let Some(name) = name {
+        // Extract info first to avoid borrow issues
+        let info = self.current_node().map(|n| (n.name.clone(), n.depth));
+        if let Some((name, depth)) = info {
+            // Protect root directory from being renamed
+            if depth == 0 {
+                self.message = Some("Cannot rename root directory".to_string());
+                return;
+            }
             self.input_mode = ExplorerInputMode::Rename;
             self.input_buffer = name;
             self.message = Some("Rename to: ".to_string());
@@ -101,9 +145,14 @@ impl ExplorerState {
 
     /// Start delete confirmation
     pub fn start_delete(&mut self) {
-        // Extract name first to avoid borrow issues
-        let name = self.current_node().map(|n| n.name.clone());
-        if let Some(name) = name {
+        // Extract info first to avoid borrow issues
+        let info = self.current_node().map(|n| (n.name.clone(), n.depth));
+        if let Some((name, depth)) = info {
+            // Protect root directory from being deleted
+            if depth == 0 {
+                self.message = Some("Cannot delete root directory".to_string());
+                return;
+            }
             self.input_mode = ExplorerInputMode::ConfirmDelete;
             self.input_buffer.clear();
             self.message = Some(format!("Delete '{name}'? (y/n): "));
@@ -144,12 +193,21 @@ impl ExplorerState {
         }
     }
 
-    /// Adjust cursor after filter changes
-    fn adjust_cursor_after_filter(&mut self) {
+    /// Ensure cursor is within valid bounds
+    ///
+    /// Call this after any operation that may change the number of visible nodes.
+    fn validate_cursor_bounds(&mut self) {
         let len = self.visible_nodes().len();
-        if self.cursor_index >= len {
+        if len == 0 {
+            self.cursor_index = 0;
+        } else if self.cursor_index >= len {
             self.cursor_index = len.saturating_sub(1);
         }
+    }
+
+    /// Adjust cursor after filter changes
+    fn adjust_cursor_after_filter(&mut self) {
+        self.validate_cursor_bounds();
     }
 
     /// Confirm current input operation
@@ -362,11 +420,7 @@ impl ExplorerState {
     /// Set the filter text
     pub fn set_filter(&mut self, text: String) {
         self.filter_text = text;
-        // Reset cursor to ensure it's within bounds
-        let len = self.visible_nodes().len();
-        if self.cursor_index >= len {
-            self.cursor_index = len.saturating_sub(1);
-        }
+        self.validate_cursor_bounds();
     }
 
     /// Clear the filter
@@ -377,21 +431,18 @@ impl ExplorerState {
     /// Toggle showing hidden files
     pub fn toggle_hidden(&mut self) {
         self.show_hidden = !self.show_hidden;
-        // Reset cursor to ensure it's within bounds
-        let len = self.visible_nodes().len();
-        if self.cursor_index >= len {
-            self.cursor_index = len.saturating_sub(1);
-        }
+        self.validate_cursor_bounds();
+    }
+
+    /// Toggle showing file sizes
+    pub const fn toggle_sizes(&mut self) {
+        self.show_sizes = !self.show_sizes;
     }
 
     /// Refresh the tree from the filesystem
     pub fn refresh(&mut self) -> io::Result<()> {
         self.tree.refresh()?;
-        // Ensure cursor is within bounds
-        let len = self.visible_nodes().len();
-        if self.cursor_index >= len {
-            self.cursor_index = len.saturating_sub(1);
-        }
+        self.validate_cursor_bounds();
         Ok(())
     }
 
@@ -414,6 +465,252 @@ impl ExplorerState {
             self.scroll_offset = self.cursor_index.saturating_sub(height) + 1;
         }
     }
+
+    /// Yank (copy) current item to clipboard
+    pub fn yank_current(&mut self) {
+        // Extract data first to avoid borrow conflicts
+        let node_info = self
+            .current_node()
+            .map(|node| (node.path.clone(), node.name.clone(), node.depth));
+
+        if let Some((path, name, depth)) = node_info {
+            // Don't allow yanking root
+            if depth == 0 {
+                self.message = Some("Cannot yank root directory".to_string());
+                return;
+            }
+            self.clipboard.paths = vec![path];
+            self.clipboard.operation = ClipboardOperation::Copy;
+            self.message = Some(format!("Yanked: {name}"));
+        }
+    }
+
+    /// Cut current item to clipboard
+    pub fn cut_current(&mut self) {
+        // Extract data first to avoid borrow conflicts
+        let node_info = self
+            .current_node()
+            .map(|node| (node.path.clone(), node.name.clone(), node.depth));
+
+        if let Some((path, name, depth)) = node_info {
+            // Don't allow cutting root
+            if depth == 0 {
+                self.message = Some("Cannot cut root directory".to_string());
+                return;
+            }
+            self.clipboard.paths = vec![path];
+            self.clipboard.operation = ClipboardOperation::Cut;
+            self.message = Some(format!("Cut: {name}"));
+        }
+    }
+
+    /// Paste from clipboard to current directory
+    pub fn paste(&mut self) -> io::Result<()> {
+        if self.clipboard.paths.is_empty() {
+            self.message = Some("Clipboard is empty".to_string());
+            return Ok(());
+        }
+
+        // Get target directory
+        let target_dir = self
+            .get_creation_parent()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "No target directory"))?;
+
+        let mut success_count = 0;
+        let operation = self.clipboard.operation.clone();
+
+        for source_path in self.clipboard.paths.clone() {
+            let file_name = source_path
+                .file_name()
+                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Invalid path"))?;
+            let mut dest_path = target_dir.join(file_name);
+
+            // Handle name conflicts by appending _copy
+            if dest_path.exists() && dest_path != source_path {
+                let stem = dest_path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("file");
+                let ext = dest_path.extension().and_then(|s| s.to_str());
+                let new_name =
+                    ext.map_or_else(|| format!("{stem}_copy"), |ext| format!("{stem}_copy.{ext}"));
+                dest_path = target_dir.join(new_name);
+            }
+
+            // Skip if source and dest are the same
+            if dest_path == source_path {
+                continue;
+            }
+
+            // Perform the operation
+            let result = if source_path.is_dir() {
+                copy_dir_recursive(&source_path, &dest_path)
+            } else {
+                fs::copy(&source_path, &dest_path).map(|_| ())
+            };
+
+            if result.is_ok() {
+                success_count += 1;
+                // For cut operation, delete the source after successful copy
+                if operation == ClipboardOperation::Cut {
+                    if source_path.is_dir() {
+                        let _ = fs::remove_dir_all(&source_path);
+                    } else {
+                        let _ = fs::remove_file(&source_path);
+                    }
+                }
+            }
+        }
+
+        // Clear clipboard after cut operation
+        if operation == ClipboardOperation::Cut {
+            self.clipboard.paths.clear();
+        }
+
+        self.message = Some(format!("Pasted {success_count} item(s)"));
+        self.refresh()?;
+        Ok(())
+    }
+
+    /// Enter visual selection mode
+    pub fn enter_visual_mode(&mut self) {
+        self.selection.active = true;
+        self.selection.anchor_index = Some(self.cursor_index);
+        self.selection.selected.clear();
+
+        // Select current item
+        if let Some(node) = self.current_node()
+            && node.depth > 0
+        {
+            self.selection.selected.insert(node.path.clone());
+        }
+    }
+
+    /// Exit visual selection mode
+    pub fn exit_visual_mode(&mut self) {
+        self.selection.active = false;
+        self.selection.anchor_index = None;
+        self.selection.selected.clear();
+    }
+
+    /// Toggle selection of current item
+    pub fn toggle_select_current(&mut self) {
+        let path = self
+            .current_node()
+            .filter(|n| n.depth > 0)
+            .map(|n| n.path.clone());
+
+        if let Some(path) = path {
+            if self.selection.selected.contains(&path) {
+                self.selection.selected.remove(&path);
+            } else {
+                self.selection.selected.insert(path);
+            }
+        }
+    }
+
+    /// Select all visible items
+    pub fn select_all(&mut self) {
+        // Collect paths first to avoid borrow conflict
+        let paths: Vec<PathBuf> = self
+            .visible_nodes()
+            .iter()
+            .filter(|node| node.depth > 0)
+            .map(|node| node.path.clone())
+            .collect();
+
+        self.selection.active = true;
+        self.selection.selected.clear();
+        for path in paths {
+            self.selection.selected.insert(path);
+        }
+
+        let count = self.selection.selected.len();
+        self.message = Some(format!("Selected {count} item(s)"));
+    }
+
+    /// Update visual selection when cursor moves
+    pub fn update_visual_selection(&mut self) {
+        if !self.selection.active {
+            return;
+        }
+
+        let Some(anchor) = self.selection.anchor_index else {
+            return;
+        };
+
+        let start = anchor.min(self.cursor_index);
+        let end = anchor.max(self.cursor_index);
+
+        // Collect paths first to avoid borrow conflict
+        let paths: Vec<PathBuf> = self
+            .visible_nodes()
+            .iter()
+            .enumerate()
+            .filter(|(i, node)| *i >= start && *i <= end && node.depth > 0)
+            .map(|(_, node)| node.path.clone())
+            .collect();
+
+        self.selection.selected.clear();
+        for path in paths {
+            self.selection.selected.insert(path);
+        }
+    }
+
+    /// Check if a path is selected
+    #[must_use]
+    pub fn is_selected(&self, path: &Path) -> bool {
+        self.selection.selected.contains(path)
+    }
+
+    /// Yank selected items to clipboard (for multi-selection)
+    pub fn yank_selected(&mut self) {
+        if self.selection.selected.is_empty() {
+            self.yank_current();
+            return;
+        }
+
+        let paths: Vec<PathBuf> = self.selection.selected.iter().cloned().collect();
+        let count = paths.len();
+        self.clipboard.paths = paths;
+        self.clipboard.operation = ClipboardOperation::Copy;
+        self.message = Some(format!("Yanked {count} item(s)"));
+        self.exit_visual_mode();
+    }
+
+    /// Cut selected items (for multi-selection)
+    pub fn cut_selected(&mut self) {
+        if self.selection.selected.is_empty() {
+            self.cut_current();
+            return;
+        }
+
+        let paths: Vec<PathBuf> = self.selection.selected.iter().cloned().collect();
+        let count = paths.len();
+        self.clipboard.paths = paths;
+        self.clipboard.operation = ClipboardOperation::Cut;
+        self.message = Some(format!("Cut {count} item(s)"));
+        self.exit_visual_mode();
+    }
+}
+
+/// Recursively copy a directory and its contents
+fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
+    fs::create_dir_all(dst)?;
+
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            fs::copy(&src_path, &dst_path)?;
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

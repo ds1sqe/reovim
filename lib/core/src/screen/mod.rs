@@ -271,11 +271,15 @@ impl Screen {
             && let Some(explorer) = explorer_state
             && let Some(layout) = self.layout.explorer_layout()
         {
-            let lines = render_explorer(explorer, layout.width, layout.height, theme, color_mode);
+            // Account for tab line when multiple tabs exist
+            let tab_offset = self.tab_line_height();
+            let explorer_height = layout.height.saturating_sub(tab_offset);
+
+            let lines = render_explorer(explorer, layout.width, explorer_height, theme, color_mode);
             for (row_offset, line) in lines.iter().enumerate() {
                 queue!(
                     self.out_stream,
-                    MoveTo(layout.anchor.x, layout.anchor.y + row_offset as u16)
+                    MoveTo(layout.anchor.x, layout.anchor.y + tab_offset + row_offset as u16)
                 )?;
                 queue!(self.out_stream, Print(line))?;
             }
@@ -283,7 +287,8 @@ impl Screen {
             // If explorer is focused, set cursor position in explorer
             if self.layout.is_explorer_focused() {
                 let cursor_y = explorer.cursor_index.saturating_sub(explorer.scroll_offset);
-                cursor_pos = Some((layout.anchor.x, layout.anchor.y + cursor_y as u16));
+                cursor_pos =
+                    Some((layout.anchor.x, layout.anchor.y + tab_offset + cursor_y as u16));
             }
         }
 

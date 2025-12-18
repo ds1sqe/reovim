@@ -450,6 +450,14 @@ impl Runtime {
                 };
                 RpcResponse::success(id, serde_json::to_value(snapshot).unwrap())
             }
+            methods::STATE_WHICHKEY => {
+                let snapshot = crate::rpc::WhichKeySnapshot::from(&self.which_key_panel);
+                RpcResponse::success(id, serde_json::to_value(snapshot).unwrap())
+            }
+            methods::STATE_TELESCOPE => {
+                let snapshot = crate::rpc::TelescopeSnapshot::from(&self.telescope_state);
+                RpcResponse::success(id, serde_json::to_value(snapshot).unwrap())
+            }
             methods::INPUT_KEYS => {
                 // Key injection is handled at the server level via ChannelKeySource
                 // This handler is a fallback that returns an error
@@ -644,11 +652,35 @@ impl Runtime {
                     let tx = self.tx.clone();
                     let cwd = std::env::current_dir().unwrap_or_default();
 
+                    // Collect buffer info for buffer picker
+                    let buffers: Vec<_> = self
+                        .buffers
+                        .iter()
+                        .map(|(id, buf)| {
+                            use crate::telescope::picker::BufferInfo;
+                            BufferInfo {
+                                id: *id,
+                                name: buf
+                                    .file_path
+                                    .clone()
+                                    .unwrap_or_else(|| format!("[Buffer {id}]")),
+                                modified: buf.modified,
+                                preview_lines: buf
+                                    .contents
+                                    .iter()
+                                    .take(20)
+                                    .map(|line| line.inner.clone())
+                                    .collect(),
+                            }
+                        })
+                        .collect();
+
                     tokio::spawn(async move {
                         let ctx = PickerContext {
                             query: String::new(),
                             cwd,
                             max_items: 1000,
+                            buffers,
                         };
                         let items = picker_impl.fetch(&ctx).await;
                         tracing::debug!(count = items.len(), "Fetched telescope items");

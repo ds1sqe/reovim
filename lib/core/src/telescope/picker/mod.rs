@@ -27,6 +27,8 @@ use crate::{command::CommandId, highlight::ThemeName};
 
 use super::{item::TelescopeItem, state::PreviewContent};
 
+pub use buffers::BufferInfo;
+
 /// Context for picker operations
 #[derive(Debug, Clone)]
 pub struct PickerContext {
@@ -36,6 +38,8 @@ pub struct PickerContext {
     pub cwd: PathBuf,
     /// Maximum items to fetch
     pub max_items: usize,
+    /// Available buffers (for buffers picker)
+    pub buffers: Vec<BufferInfo>,
 }
 
 impl Default for PickerContext {
@@ -44,6 +48,7 @@ impl Default for PickerContext {
             query: String::new(),
             cwd: std::env::current_dir().unwrap_or_default(),
             max_items: 1000,
+            buffers: Vec::new(),
         }
     }
 }

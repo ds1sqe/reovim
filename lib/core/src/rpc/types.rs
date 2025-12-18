@@ -226,6 +226,8 @@ pub mod methods {
     pub const STATE_SELECTION: &str = "state/selection";
     pub const STATE_SCREEN: &str = "state/screen";
     pub const STATE_SCREEN_CONTENT: &str = "state/screen_content";
+    pub const STATE_WHICHKEY: &str = "state/whichkey";
+    pub const STATE_TELESCOPE: &str = "state/telescope";
 
     // Editor methods
     pub const EDITOR_RESIZE: &str = "editor/resize";

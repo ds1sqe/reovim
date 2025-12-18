@@ -491,11 +491,13 @@ impl Runtime {
             ExplorerAction::CursorUp { count } => {
                 if let Some(ref mut state) = self.explorer_state {
                     state.move_cursor(-(*count as isize));
+                    state.update_visual_selection();
                 }
             }
             ExplorerAction::CursorDown { count } => {
                 if let Some(ref mut state) = self.explorer_state {
                     state.move_cursor(*count as isize);
+                    state.update_visual_selection();
                 }
             }
             ExplorerAction::PageUp => {
@@ -570,6 +572,46 @@ impl Runtime {
             ExplorerAction::ToggleHidden => {
                 if let Some(ref mut state) = self.explorer_state {
                     state.toggle_hidden();
+                }
+            }
+            ExplorerAction::ToggleSizes => {
+                if let Some(ref mut state) = self.explorer_state {
+                    state.toggle_sizes();
+                }
+            }
+            ExplorerAction::Yank => {
+                if let Some(ref mut state) = self.explorer_state {
+                    state.yank_current();
+                }
+            }
+            ExplorerAction::Cut => {
+                if let Some(ref mut state) = self.explorer_state {
+                    state.cut_current();
+                }
+            }
+            ExplorerAction::Paste => {
+                if let Some(ref mut state) = self.explorer_state {
+                    let _ = state.paste();
+                }
+            }
+            ExplorerAction::VisualMode => {
+                if let Some(ref mut state) = self.explorer_state {
+                    state.enter_visual_mode();
+                }
+            }
+            ExplorerAction::ToggleSelect => {
+                if let Some(ref mut state) = self.explorer_state {
+                    state.toggle_select_current();
+                }
+            }
+            ExplorerAction::SelectAll => {
+                if let Some(ref mut state) = self.explorer_state {
+                    state.select_all();
+                }
+            }
+            ExplorerAction::ExitVisual => {
+                if let Some(ref mut state) = self.explorer_state {
+                    state.exit_visual_mode();
                 }
             }
             ExplorerAction::CreateFile => {
@@ -901,13 +943,11 @@ impl Runtime {
                 });
             }
             TelescopeAction::Close => {
-                // Send TelescopeEvent::Close to the event loop
-                let tx = self.tx.clone();
-                tokio::spawn(async move {
-                    let _ = tx
-                        .send(InnerEvent::TelescopeEvent(TelescopeEvent::Close))
-                        .await;
-                });
+                // Close telescope and return to normal mode (synchronous)
+                use crate::modd::ModeState;
+                self.telescope_state.close();
+                self.set_mode(ModeState::normal());
+                self.render();
             }
             TelescopeAction::EnterInsert => {
                 // Switch telescope to insert mode (for typing query)
