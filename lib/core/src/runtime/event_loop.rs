@@ -436,7 +436,7 @@ impl Runtime {
                     );
                     self.telescope_state.update_filtered_items(filtered);
                 }
-                self.render();
+                self.render_telescope_only();
             }
             TelescopeEvent::UpdateItems { items } => {
                 tracing::debug!(count = items.len(), "Telescope items updated");
@@ -445,19 +445,19 @@ impl Runtime {
             }
             TelescopeEvent::SelectNext => {
                 self.telescope_state.select_next();
-                self.render();
+                self.render_telescope_only();
             }
             TelescopeEvent::SelectPrev => {
                 self.telescope_state.select_prev();
-                self.render();
+                self.render_telescope_only();
             }
             TelescopeEvent::PageDown => {
                 self.telescope_state.page_down();
-                self.render();
+                self.render_telescope_only();
             }
             TelescopeEvent::PageUp => {
                 self.telescope_state.page_up();
-                self.render();
+                self.render_telescope_only();
             }
             TelescopeEvent::Confirm => {
                 // Get selected item before closing
@@ -535,7 +535,7 @@ impl Runtime {
             }
             TelescopeEvent::UpdatePreview { content } => {
                 self.telescope_state.set_preview(Some(content));
-                self.render();
+                self.render_telescope_only();
             }
         }
     }

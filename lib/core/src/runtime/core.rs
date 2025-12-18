@@ -211,6 +211,14 @@ impl Runtime {
         self.screen.flush().expect("failed to flush");
     }
 
+    /// Render only telescope overlay (for telescope-internal updates to avoid flicker)
+    pub(crate) fn render_telescope_only(&mut self) {
+        self.screen
+            .render_telescope_only(&self.telescope_state, self.color_mode, &self.theme)
+            .expect("failed to render telescope");
+        self.screen.flush().expect("failed to flush");
+    }
+
     /// Set color mode (for :set colormode command)
     #[allow(clippy::missing_const_for_fn)]
     pub fn set_color_mode(&mut self, mode: ColorMode) {

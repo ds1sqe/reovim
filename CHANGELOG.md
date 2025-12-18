@@ -2,6 +2,26 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.4.16] - 2025-12-18
+
+### Bug Fixes
+
+- **Fixed telescope display jitter** - Eliminated screen flickering during telescope navigation and typing by adding a dedicated `render_telescope_only()` path that skips full screen clear
+
+### Files Changed
+
+- `lib/core/src/screen/mod.rs` - Added `render_telescope_only()` method
+- `lib/core/src/runtime/core.rs` - Added `render_telescope_only()` wrapper method
+- `lib/core/src/runtime/event_loop.rs` - Use `render_telescope_only()` for telescope internal updates
+- `lib/core/src/runtime/handlers.rs` - Use `render_telescope_only()` for telescope actions
+
+### Testing
+
+- Zero warnings (build + clippy)
+- All 186 tests passing
+
+---
+
 ## [0.4.15] - 2025-12-18
 
 ### Features

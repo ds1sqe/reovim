@@ -403,6 +403,31 @@ impl Screen {
         Ok(())
     }
 
+    /// Render only the telescope overlay without full screen clear.
+    /// Used for telescope-internal updates to avoid flicker.
+    #[allow(clippy::cast_possible_truncation)]
+    pub fn render_telescope_only(
+        &mut self,
+        telescope_state: &TelescopeState,
+        color_mode: ColorMode,
+        theme: &Theme,
+    ) -> std::result::Result<(), std::io::Error> {
+        if !telescope_state.is_visible() {
+            return Ok(());
+        }
+
+        self.render_telescope(telescope_state, color_mode, theme)?;
+
+        // Set cursor in telescope input
+        let prompt_len = telescope_state.prompt.len() as u16;
+        let cursor_x =
+            telescope_state.layout.x + 1 + prompt_len + telescope_state.cursor_pos as u16;
+        let cursor_y = telescope_state.layout.y + telescope_state.layout.height - 2;
+        queue!(self.out_stream, MoveTo(cursor_x, cursor_y))?;
+
+        Ok(())
+    }
+
     /// Render the completion popup
     #[allow(clippy::cast_possible_truncation)]
     fn render_completion_popup(

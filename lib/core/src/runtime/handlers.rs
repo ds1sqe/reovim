@@ -852,35 +852,35 @@ impl Runtime {
             }
             TelescopeAction::CursorLeft => {
                 self.telescope_state.cursor_left();
-                self.render();
+                self.render_telescope_only();
             }
             TelescopeAction::CursorRight => {
                 self.telescope_state.cursor_right();
-                self.render();
+                self.render_telescope_only();
             }
             TelescopeAction::SelectNext => {
                 self.telescope_state.select_next();
-                self.render();
+                self.render_telescope_only();
             }
             TelescopeAction::SelectPrev => {
                 self.telescope_state.select_prev();
-                self.render();
+                self.render_telescope_only();
             }
             TelescopeAction::PageDown => {
                 self.telescope_state.page_down();
-                self.render();
+                self.render_telescope_only();
             }
             TelescopeAction::PageUp => {
                 self.telescope_state.page_up();
-                self.render();
+                self.render_telescope_only();
             }
             TelescopeAction::GotoFirst => {
                 self.telescope_state.move_to_first();
-                self.render();
+                self.render_telescope_only();
             }
             TelescopeAction::GotoLast => {
                 self.telescope_state.move_to_last();
-                self.render();
+                self.render_telescope_only();
             }
             TelescopeAction::Confirm => {
                 // Send TelescopeEvent::Confirm to the event loop
@@ -909,7 +909,7 @@ impl Runtime {
                 );
                 self.mode_state = mode.clone();
                 let _ = self.mode_tx.send(mode);
-                self.render();
+                self.render_telescope_only();
             }
             TelescopeAction::EnterNormal => {
                 // Switch telescope to normal mode (for j/k navigation)
@@ -917,7 +917,7 @@ impl Runtime {
                 let mode = ModeState::with_focus_and_mode(Focus::Telescope, EditMode::Normal);
                 self.mode_state = mode.clone();
                 let _ = self.mode_tx.send(mode);
-                self.render();
+                self.render_telescope_only();
             }
         }
     }
