@@ -201,6 +201,34 @@ impl CommandTrait for TelescopeKeymapsCommand {
     }
 }
 
+/// Open telescope themes picker
+#[derive(Debug, Clone)]
+pub struct TelescopeThemesCommand;
+
+impl CommandTrait for TelescopeThemesCommand {
+    fn name(&self) -> &'static str {
+        "telescope_themes"
+    }
+
+    fn description(&self) -> &'static str {
+        "Select colorscheme/theme"
+    }
+
+    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
+        CommandResult::DeferToRuntime(DeferredAction::Telescope(TelescopeAction::Open {
+            picker: "themes".to_string(),
+        }))
+    }
+
+    fn clone_box(&self) -> Box<dyn CommandTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
 /// Select next item in telescope
 #[derive(Debug, Clone)]
 pub struct TelescopeSelectNextCommand;

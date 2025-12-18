@@ -153,6 +153,7 @@ impl CommandRegistry {
             TelescopeGotoLastCommand, TelescopeHelpTagsCommand, TelescopeKeymapsCommand,
             TelescopeLiveGrepCommand, TelescopePageDownCommand, TelescopePageUpCommand,
             TelescopeRecentFilesCommand, TelescopeSelectNextCommand, TelescopeSelectPrevCommand,
+            TelescopeThemesCommand,
             // Text
             DeleteCharBackwardCommand, DeleteCharForwardCommand, DeleteLineCommand,
             InsertNewlineCommand, YankLineCommand, YankToEndCommand,
@@ -279,6 +280,7 @@ impl CommandRegistry {
         let _ = self.register(TelescopeCommandsCommand);
         let _ = self.register(TelescopeHelpTagsCommand);
         let _ = self.register(TelescopeKeymapsCommand);
+        let _ = self.register(TelescopeThemesCommand);
         let _ = self.register(TelescopeSelectNextCommand);
         let _ = self.register(TelescopeSelectPrevCommand);
         let _ = self.register(TelescopePageDownCommand);

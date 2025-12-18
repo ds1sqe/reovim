@@ -2,6 +2,35 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.4.13] - 2025-12-18
+
+### Bug Fixes
+
+- **Fixed treesitter theme not syncing with UI theme** - TreesitterTheme was hardcoded to default, ignoring `:colorscheme` changes. Now syncs with UI theme.
+- **Fixed telescope keymaps picker showing empty results** - KeymapsPicker now populates from KeyMap::with_defaults()
+
+### Features
+
+- **Added telescope theme picker** - New `telescope_themes` command to select colorschemes visually with preview
+- **Theme changes now rehighlight all buffers** - Switching themes immediately updates syntax highlighting
+
+### Files Changed
+
+- `lib/core/src/treesitter/theme.rs` - Added `from_theme_name()` method
+- `lib/core/src/treesitter/highlighter.rs` - Added `set_theme()` method
+- `lib/core/src/treesitter/mod.rs` - Added `set_theme()` method
+- `lib/core/src/runtime/handlers.rs` - Updated `:colorscheme` to sync treesitter theme
+- `lib/core/src/runtime/core.rs` - Added `rehighlight_all_buffers()`, registered ThemesPicker
+- `lib/core/src/runtime/event_loop.rs` - Handle theme selection from telescope
+- `lib/core/src/telescope/item.rs` - Added `Theme(ThemeName)` variant
+- `lib/core/src/telescope/picker/mod.rs` - Added `ApplyTheme` action, themes module
+- `lib/core/src/telescope/picker/themes.rs` - New ThemesPicker implementation
+- `lib/core/src/command/builtin/telescope.rs` - Added `TelescopeThemesCommand`
+- `lib/core/src/command/registry.rs` - Registered `TelescopeThemesCommand`
+- `lib/core/src/telescope/picker/keymaps.rs` - Populate keymaps from `KeyMap::with_defaults()`
+
+---
+
 ## [0.4.12] - 2025-12-18
 
 ### Bug Fixes

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use reovim_sys::style::Color;
 
-use crate::highlight::Style;
+use crate::highlight::{Style, ThemeName};
 
 /// Theme mapping from treesitter capture names to styles
 pub struct TreesitterTheme {
@@ -227,5 +227,14 @@ impl TreesitterTheme {
         }
 
         None
+    }
+
+    /// Create a treesitter theme matching the given UI theme name
+    #[must_use]
+    pub fn from_theme_name(name: ThemeName) -> Self {
+        match name {
+            ThemeName::TokyoNightOrange => Self::tokyo_night_orange(),
+            ThemeName::Dark | ThemeName::Light => Self::new(),
+        }
     }
 }

@@ -17,6 +17,7 @@ use crate::explorer::ExplorerState;
 use crate::modd::ModeState;
 use crate::command_line::{ExCommand, SetOption};
 use crate::highlight::Theme;
+use crate::treesitter::TreesitterTheme;
 use crate::event::CommandEvent;
 use crate::screen::{NavigateDirection, Position, SplitDirection};
 use crate::textobject::SemanticTextObjectSpec;
@@ -234,6 +235,8 @@ impl Runtime {
                             }
                             SetOption::ColorScheme(name) => {
                                 self.theme = Theme::from_name(name);
+                                self.treesitter.set_theme(TreesitterTheme::from_theme_name(name));
+                                self.rehighlight_all_buffers();
                                 tracing::info!(theme = ?name, "Colorscheme changed");
                             }
                             SetOption::IndentGuide(enabled) => {
@@ -247,6 +250,8 @@ impl Runtime {
                         },
                         ExCommand::Colorscheme { name } => {
                             self.theme = Theme::from_name(name);
+                            self.treesitter.set_theme(TreesitterTheme::from_theme_name(name));
+                            self.rehighlight_all_buffers();
                             tracing::info!(theme = ?name, "Colorscheme changed");
                         }
                         ExCommand::Edit { filename } => {

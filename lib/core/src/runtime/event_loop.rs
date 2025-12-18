@@ -5,7 +5,8 @@ use crate::event::{
     BufferEvent, CommandHandler, CompletionEvent, CompletionHandler, ExplorerEvent,
     HighlightEvent, InnerEvent, InputEventBroker, TerminateHandler, TreesitterEvent, WindowEvent,
 };
-use crate::highlight::HighlightGroup;
+use crate::highlight::{HighlightGroup, Theme};
+use crate::treesitter::TreesitterTheme;
 use crate::modd::{EditMode, ModExtension, ModeState, SubMode};
 
 use super::Runtime;
@@ -504,6 +505,16 @@ impl Runtime {
                             // Informational, just close
                             self.telescope_state.close();
                             self.set_mode(ModeState::normal());
+                        }
+                        TelescopeData::Theme(name) => {
+                            let name = *name;
+                            self.telescope_state.close();
+                            self.set_mode(ModeState::normal());
+                            // Apply the theme
+                            self.theme = Theme::from_name(name);
+                            self.treesitter.set_theme(TreesitterTheme::from_theme_name(name));
+                            self.rehighlight_all_buffers();
+                            tracing::info!(theme = ?name, "Theme applied via telescope");
                         }
                     }
                 } else {

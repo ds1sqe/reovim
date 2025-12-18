@@ -12,6 +12,7 @@ pub mod grep;
 pub mod help;
 pub mod keymaps;
 pub mod recent;
+pub mod themes;
 
 pub use buffers::BuffersPicker;
 pub use commands::CommandsPicker;
@@ -20,12 +21,14 @@ pub use grep::GrepPicker;
 pub use help::HelpPicker;
 pub use keymaps::KeymapsPicker;
 pub use recent::RecentPicker;
+pub use themes::ThemesPicker;
 
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
 
 use crate::command::CommandId;
+use crate::highlight::ThemeName;
 
 use super::item::TelescopeItem;
 use super::state::PreviewContent;
@@ -68,6 +71,8 @@ pub enum TelescopeAction {
     },
     /// Show help for a tag
     ShowHelp(String),
+    /// Apply a theme/colorscheme
+    ApplyTheme(ThemeName),
     /// Close telescope without action
     Close,
     /// Do nothing

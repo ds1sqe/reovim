@@ -20,7 +20,7 @@ use crate::register::Registers;
 use crate::screen::{Screen, WhichKeyPanel};
 use crate::telescope::picker::{
     BuffersPicker, CommandsPicker, FilesPicker, GrepPicker, HelpPicker, KeymapsPicker, Picker,
-    RecentPicker,
+    RecentPicker, ThemesPicker,
 };
 use crate::telescope::{TelescopeMatcher, TelescopeState};
 use crate::treesitter::TreesitterManager;
@@ -147,6 +147,7 @@ impl Runtime {
         pickers.insert("grep".to_string(), Arc::new(GrepPicker::new()));
         pickers.insert("recent".to_string(), Arc::new(RecentPicker::new()));
         pickers.insert("help".to_string(), Arc::new(HelpPicker::new()));
+        pickers.insert("themes".to_string(), Arc::new(ThemesPicker::new()));
         pickers
     }
 
@@ -429,6 +430,36 @@ impl Runtime {
         // Insert the completion text
         for ch in item.insert_text.chars() {
             buffer.insert_char(ch);
+        }
+    }
+
+    /// Re-highlight all buffers after theme change
+    #[allow(clippy::cast_possible_truncation)]
+    pub(crate) fn rehighlight_all_buffers(&mut self) {
+        let buffer_ids: Vec<usize> = self.buffers.keys().copied().collect();
+        for buffer_id in buffer_ids {
+            if self.treesitter.has_parser(buffer_id) {
+                let Some(buffer) = self.buffers.get(&buffer_id) else {
+                    continue;
+                };
+                let content: String = buffer
+                    .contents
+                    .iter()
+                    .map(|l| l.inner.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let line_count = buffer.contents.len() as u32;
+                let highlights = self.treesitter.parse_and_highlight(
+                    buffer_id,
+                    &content,
+                    0,
+                    line_count.saturating_sub(1),
+                );
+                self.highlight_store.clear_all(buffer_id);
+                if !highlights.is_empty() {
+                    self.highlight_store.add(buffer_id, highlights);
+                }
+            }
         }
     }
 }

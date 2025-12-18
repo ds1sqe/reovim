@@ -32,6 +32,11 @@ impl Highlighter {
         Self { theme }
     }
 
+    /// Set the treesitter theme
+    pub fn set_theme(&mut self, theme: TreesitterTheme) {
+        self.theme = theme;
+    }
+
     /// Generate highlights for a range of lines
     ///
     /// Only generates highlights for nodes that intersect with the given line range.

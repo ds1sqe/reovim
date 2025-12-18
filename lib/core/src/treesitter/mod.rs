@@ -220,6 +220,11 @@ impl TreesitterManager {
         self.pending_parses.remove(&buffer_id);
     }
 
+    /// Set the treesitter syntax theme
+    pub fn set_theme(&mut self, theme: TreesitterTheme) {
+        self.highlighter.set_theme(theme);
+    }
+
     /// Find bounds for a semantic text object at the cursor position
     ///
     /// Uses treesitter queries to locate language constructs like functions,

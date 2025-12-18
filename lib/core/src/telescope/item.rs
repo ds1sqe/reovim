@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use crate::command::CommandId;
+use crate::highlight::ThemeName;
 
 /// Data associated with a telescope item, determining the action on selection
 #[derive(Debug, Clone)]
@@ -27,6 +28,8 @@ pub enum TelescopeData {
         line: usize,
         col: usize,
     },
+    /// A theme/colorscheme to apply
+    Theme(ThemeName),
 }
 
 /// Represents a single item in the telescope results list
