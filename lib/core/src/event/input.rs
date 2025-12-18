@@ -21,6 +21,10 @@ const DEFAULT_DELAY: u64 = 1;
 /// Defaults to `EventStreamKeySource` which reads from the real terminal.
 pub struct InputEventBroker<K: KeySource = EventStreamKeySource> {
     delay: Duration,
+    /// Grace period to wait after source exhaustion before exiting.
+    /// This allows pending events to propagate through the async pipeline.
+    /// Useful for tests where the source is immediately exhausted.
+    grace_period: Duration,
     pub key_broker: key::KeyEventBroker,
     error_out: Box<dyn Write + Send>,
     key_source: K,
@@ -30,6 +34,7 @@ impl Default for InputEventBroker<EventStreamKeySource> {
     fn default() -> Self {
         Self {
             delay: Duration::from_millis(DEFAULT_DELAY),
+            grace_period: Duration::ZERO,
             key_broker: key::KeyEventBroker::default(),
             error_out: Box::new(io::stdout()),
             key_source: EventStreamKeySource::default(),
@@ -43,6 +48,7 @@ impl InputEventBroker<EventStreamKeySource> {
     pub fn with_event_sender(event_sender: mpsc::Sender<InnerEvent>) -> Self {
         Self {
             delay: Duration::from_millis(DEFAULT_DELAY),
+            grace_period: Duration::ZERO,
             key_broker: key::KeyEventBroker::default(),
             error_out: Box::new(io::stdout()),
             key_source: EventStreamKeySource::with_event_sender(event_sender),
@@ -57,10 +63,22 @@ impl<K: KeySource> InputEventBroker<K> {
     pub fn with_key_source(key_source: K) -> Self {
         Self {
             delay: Duration::from_millis(DEFAULT_DELAY),
+            grace_period: Duration::ZERO,
             key_broker: key::KeyEventBroker::default(),
             error_out: Box::new(io::stdout()),
             key_source,
         }
+    }
+
+    /// Set the grace period to wait after source exhaustion before exiting.
+    ///
+    /// This allows pending events to propagate through the async pipeline
+    /// before the broker exits. Useful for tests where events need time
+    /// to be processed by handlers.
+    #[must_use]
+    pub const fn with_grace_period(mut self, grace_period: Duration) -> Self {
+        self.grace_period = grace_period;
+        self
     }
 
     #[allow(clippy::missing_panics_doc)]
@@ -96,6 +114,10 @@ impl<K: KeySource> InputEventBroker<K> {
                         None => {
                             // Source exhausted
                             if self.key_source.is_exhausted() {
+                                // Wait for grace period to allow pending events to propagate
+                                if !self.grace_period.is_zero() {
+                                    tokio::time::sleep(self.grace_period).await;
+                                }
                                 break;
                             }
                         }

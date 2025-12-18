@@ -38,6 +38,148 @@ lib/core/src/
 └── types.rs               # Core type tests
 ```
 
+## Integration Testing
+
+Reovim includes an end-to-end integration test system that verifies key input → expected output behavior without requiring a real terminal.
+
+### Architecture
+
+```
+TestRuntime
+├── MockKeySource (injected key events)
+├── MockOutput (captured screen output)
+└── Runtime (full editor runtime)
+         ↓
+    KeyEventBroker → CommandHandler → Runtime → Screen → MockOutput
+         ↑                                              ↓
+    MockKeySource                              Assertions on TestResult
+```
+
+### Running Integration Tests
+
+```bash
+# All integration tests
+cargo test -p reovim-core --test basic_editing --test mode_switching
+
+# Specific test file
+cargo test -p reovim-core --test basic_editing
+
+# Single test
+cargo test -p reovim-core --test mode_switching test_visual_mode
+```
+
+### Writing Integration Tests
+
+#### Basic Structure
+
+```rust
+mod common;
+use common::*;
+
+#[tokio::test]
+async fn test_example() {
+    let rt = TestRuntime::builder()
+        .with_size(80, 24)           // Screen dimensions
+        .with_content("hello")       // Initial buffer content
+        .with_keys(keys_from_str("jj")) // Key sequence
+        .with_timeout_ms(5000)       // Test timeout
+        .build();
+
+    let result = rt.run().await;
+
+    result.assert_no_timeout();
+    result.assert_cursor(0, 2);
+}
+```
+
+#### Key Notation (`keys_from_str`)
+
+| Notation | Key Event |
+|----------|-----------|
+| `a`-`z`, `0`-`9` | Character keys |
+| `<Esc>` | Escape key |
+| `<CR>` or `<Enter>` | Enter key |
+| `<BS>` | Backspace |
+| `<Tab>` | Tab |
+| `<Space>` | Space |
+| `<C-x>` | Ctrl+X |
+| `<S-x>` | Shift+X |
+| `<Up>`, `<Down>`, `<Left>`, `<Right>` | Arrow keys |
+| `<Home>`, `<End>` | Navigation keys |
+| `<PageUp>`, `<PageDown>` | Page keys |
+
+**Examples:**
+```rust
+keys_from_str("ihello<Esc>")    // Enter insert, type "hello", escape
+keys_from_str(":wq<CR>")        // Command mode, type "wq", enter
+keys_from_str("<C-d>")          // Ctrl+D
+keys_from_str("5j")             // Move down 5 lines
+keys_from_str("daw")            // Delete a word
+```
+
+#### TestResult Assertions
+
+| Method | Description |
+|--------|-------------|
+| `assert_no_timeout()` | Test completed without timeout |
+| `assert_normal_mode()` | Editor is in normal mode |
+| `assert_insert_mode()` | Editor is in insert mode |
+| `assert_mode(&ModeState)` | Check specific mode state |
+| `assert_cursor(x, y)` | Cursor at position |
+| `assert_buffer_contains("text")` | Buffer contains substring |
+| `assert_buffer_eq("text")` | Buffer equals exactly |
+| `assert_output_contains("text")` | Screen output contains (ANSI stripped) |
+
+#### Accessing TestResult Fields
+
+```rust
+let result = rt.run().await;
+
+// Direct field access
+println!("Mode: {:?}", result.mode);
+println!("Buffer: {}", result.buffer_content);
+println!("Cursor: {:?}", result.cursor_position);
+println!("Timed out: {}", result.timed_out);
+
+// Screen output (with ANSI stripped)
+let screen_text = result.output.strip_ansi();
+```
+
+### Integration Test Organization
+
+```
+lib/core/tests/
+├── common/
+│   └── mod.rs              # Shared utilities (standard_runtime, etc.)
+├── basic_editing.rs        # Insert, delete, cursor movement
+└── mode_switching.rs       # Mode transitions (i, a, v, :, Esc)
+```
+
+### Shared Test Utilities (`common/mod.rs`)
+
+```rust
+pub use reovim_core::runtime::test::{TestRuntime, TestRuntimeBuilder};
+pub use reovim_core::testing::keys_from_str;
+
+/// Standard 80x24 runtime with default settings.
+pub fn standard_runtime() -> TestRuntimeBuilder {
+    TestRuntime::builder().with_size(80, 24)
+}
+
+/// Runtime with initial buffer content.
+pub fn runtime_with_content(content: &str) -> TestRuntimeBuilder {
+    standard_runtime().with_content(content)
+}
+```
+
+### Best Practices
+
+1. **Use `assert_no_timeout()` first** - Ensures test completed before checking state
+2. **Keep key sequences short** - Long sequences are harder to debug
+3. **Test one behavior per test** - Makes failures easier to diagnose
+4. **Use `runtime_with_content()` for cursor tests** - Need text to move through
+5. **Avoid timing-dependent assertions** - Use mode/buffer state, not output timing
+
 ## Current Test Coverage
 
 | Module | Coverage Area | Tests |

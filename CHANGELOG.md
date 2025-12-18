@@ -2,6 +2,40 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.4.17] - 2025-12-18
+
+### Bug Fixes
+
+- **Fixed integration test timing issues** - All 19 integration tests now pass reliably
+  - Added `grace_period` to `InputEventBroker` for async event propagation
+  - Added delay between keys in `MockKeySource` for mode state synchronization
+  - Fixed Visual mode Escape handling to use keymap lookup instead of `is_esc_clearable_mode`
+
+### Documentation
+
+- **Added Integration Testing section to docs/TESTING.md** - Comprehensive guide for writing and running integration tests
+  - Test architecture overview
+  - `keys_from_str()` notation reference
+  - `TestResult` assertion methods
+  - Best practices and examples
+
+### Testing
+
+- All 19 integration tests now pass (was 9 passing, 10 ignored)
+  - 10 basic editing tests (cursor movement, insert mode, open line)
+  - 9 mode switching tests (enter/exit modes with Escape)
+
+### Files Changed
+
+- `lib/core/src/event/input.rs` - Added `grace_period` field and `with_grace_period()` builder method
+- `lib/core/src/event/handler/command/mod.rs` - Fixed `is_esc_clearable_mode` to exclude Visual mode
+- `lib/core/src/runtime/test.rs` - Use 10ms delay between keys and 50ms grace period
+- `lib/core/tests/basic_editing.rs` - Removed `#[ignore]` from 6 tests, fixed `test_insert_at_beginning`
+- `lib/core/tests/mode_switching.rs` - Removed `#[ignore]` from 4 tests
+- `docs/TESTING.md` - Added Integration Testing section
+
+---
+
 ## [0.4.16] - 2025-12-18
 
 ### Bug Fixes

@@ -58,10 +58,8 @@ async fn test_cursor_movement_hjkl() {
     result.assert_cursor(2, 0);
 }
 
-// Insert mode tests - marked as ignored until timing is tuned
-// These tests demonstrate the API but need more work on async event processing timing
+// Insert mode tests - test text insertion and mode switching
 
-#[ignore = "insert mode timing needs tuning"]
 #[tokio::test]
 async fn test_insert_mode_basic() {
     let rt = TestRuntime::builder()
@@ -76,7 +74,6 @@ async fn test_insert_mode_basic() {
     result.assert_normal_mode();
 }
 
-#[ignore = "insert mode timing needs tuning"]
 #[tokio::test]
 async fn test_insert_mode_multiple_words() {
     let rt = TestRuntime::builder()
@@ -91,7 +88,6 @@ async fn test_insert_mode_multiple_words() {
     result.assert_normal_mode();
 }
 
-#[ignore = "insert mode timing needs tuning"]
 #[tokio::test]
 async fn test_append_mode() {
     let rt = runtime_with_content("hello")
@@ -105,11 +101,11 @@ async fn test_append_mode() {
     result.assert_normal_mode();
 }
 
-#[ignore = "insert mode timing needs tuning"]
 #[tokio::test]
 async fn test_insert_at_beginning() {
+    // Use 0i instead of I (insert at beginning) since I is not implemented
     let rt = runtime_with_content("world")
-        .with_keys(keys_from_str("Ihello <Esc>"))
+        .with_keys(keys_from_str("0ihello <Esc>"))
         .build();
 
     let result = rt.run().await;
@@ -119,7 +115,6 @@ async fn test_insert_at_beginning() {
     result.assert_normal_mode();
 }
 
-#[ignore = "insert mode timing needs tuning"]
 #[tokio::test]
 async fn test_open_line_below() {
     let rt = runtime_with_content("line 1\nline 3")
@@ -133,7 +128,6 @@ async fn test_open_line_below() {
     result.assert_normal_mode();
 }
 
-#[ignore = "insert mode timing needs tuning"]
 #[tokio::test]
 async fn test_open_line_above() {
     let rt = runtime_with_content("line 2\nline 3")

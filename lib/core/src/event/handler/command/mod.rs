@@ -413,9 +413,10 @@ impl CommandHandler {
             .any(|k| k.starts_with(&self.pending_keys) && k != &self.pending_keys)
     }
 
-    /// Check if mode is one where ESC should clear pending state
+    /// Check if mode is one where ESC should only clear pending state (not trigger keymap lookup)
+    /// Visual mode is excluded because it has an Escape binding in the keymap to exit to Normal
     const fn is_esc_clearable_mode(mode: &ModeState) -> bool {
-        mode.is_normal() || mode.is_visual() || mode.is_explorer_focus() || mode.is_operator_pending()
+        mode.is_normal() || mode.is_explorer_focus() || mode.is_operator_pending()
     }
 
     /// Check if mode is one where Backspace should edit pending keys

@@ -118,9 +118,12 @@ impl TestRuntime {
         }
         self.runtime.buffers.insert(0, buffer);
 
-        // Create mock key source
-        let key_source = MockKeySource::new(std::mem::take(&mut self.key_events));
-        let input_broker = InputEventBroker::with_key_source(key_source);
+        // Create mock key source with delay between keys for mode propagation
+        // and grace period at the end for final event processing
+        let key_source = MockKeySource::new(std::mem::take(&mut self.key_events))
+            .with_delay(Duration::from_millis(10));
+        let input_broker = InputEventBroker::with_key_source(key_source)
+            .with_grace_period(Duration::from_millis(50));
 
         // Set up handlers
         let mode_rx = self.runtime.subscribe_mode();

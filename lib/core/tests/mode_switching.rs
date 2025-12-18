@@ -69,9 +69,8 @@ async fn test_quit_command() {
     result.assert_no_timeout();
 }
 
-// Tests with Escape key timing issues - marked ignored until fixed
+// Tests for returning to normal mode from other modes
 
-#[ignore = "Escape key timing needs tuning"]
 #[tokio::test]
 async fn test_normal_to_insert_and_back() {
     let rt = standard_runtime()
@@ -84,7 +83,6 @@ async fn test_normal_to_insert_and_back() {
     result.assert_normal_mode();
 }
 
-#[ignore = "Escape key timing needs tuning"]
 #[tokio::test]
 async fn test_visual_mode_exit() {
     let rt = runtime_with_content("hello world")
@@ -97,7 +95,6 @@ async fn test_visual_mode_exit() {
     result.assert_normal_mode();
 }
 
-#[ignore = "Escape key timing needs tuning"]
 #[tokio::test]
 async fn test_command_mode_escape() {
     let rt = standard_runtime()
@@ -110,7 +107,6 @@ async fn test_command_mode_escape() {
     result.assert_normal_mode();
 }
 
-#[ignore = "Escape key timing needs tuning"]
 #[tokio::test]
 async fn test_multiple_mode_switches() {
     // i → insert, Esc → normal, v → visual, Esc → normal, : → command, Esc → normal
