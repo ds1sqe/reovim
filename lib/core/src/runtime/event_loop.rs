@@ -157,7 +157,7 @@ impl Runtime {
     #[allow(clippy::collapsible_if)]
     #[allow(clippy::match_same_arms)]
     #[allow(clippy::too_many_lines)]
-    fn handle_event(&mut self, ev: InnerEvent) -> bool {
+    pub(crate) fn handle_event(&mut self, ev: InnerEvent) -> bool {
         match ev {
             InnerEvent::BufferEvent(buffer_event) => match buffer_event {
                 BufferEvent::SetContent { buffer_id, content } => {

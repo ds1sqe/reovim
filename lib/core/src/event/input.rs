@@ -1,9 +1,9 @@
 use {
-    futures::{future::FutureExt, StreamExt},
+    futures::future::FutureExt,
     futures_timer::Delay,
-    reovim_sys::event::{Event, EventStream, KeyEventKind},
     std::{
         error::Error,
+        future::poll_fn,
         io::{self, Write},
         time::Duration,
     },
@@ -11,26 +11,45 @@ use {
 };
 
 use crate::event::key;
+use crate::io::input::{EventStreamKeySource, KeySource};
 
 const DEFAULT_DELAY: u64 = 1;
 
-pub struct InputEventBroker {
+/// Input event broker that reads key events and dispatches to handlers.
+///
+/// Generic over `KeySource` to allow injecting mock input for testing.
+/// Defaults to `EventStreamKeySource` which reads from the real terminal.
+pub struct InputEventBroker<K: KeySource = EventStreamKeySource> {
     delay: Duration,
     pub key_broker: key::KeyEventBroker,
     error_out: Box<dyn Write + Send>,
+    key_source: K,
 }
 
-impl Default for InputEventBroker {
+impl Default for InputEventBroker<EventStreamKeySource> {
     fn default() -> Self {
         Self {
             delay: Duration::from_millis(DEFAULT_DELAY),
             key_broker: key::KeyEventBroker::default(),
             error_out: Box::new(io::stdout()),
+            key_source: EventStreamKeySource::default(),
         }
     }
 }
 
-impl InputEventBroker {
+impl<K: KeySource> InputEventBroker<K> {
+    /// Create an `InputEventBroker` with a custom key source.
+    ///
+    /// This is primarily used for testing to inject mock key events.
+    pub fn with_key_source(key_source: K) -> Self {
+        Self {
+            delay: Duration::from_millis(DEFAULT_DELAY),
+            key_broker: key::KeyEventBroker::default(),
+            error_out: Box::new(io::stdout()),
+            key_source,
+        }
+    }
+
     #[allow(clippy::missing_panics_doc)]
     pub fn handle_error(&mut self, err: impl Error) {
         tracing::error!(error = %err, "Input event error");
@@ -40,43 +59,33 @@ impl InputEventBroker {
     }
 
     #[allow(clippy::ignored_unit_patterns)]
-    #[allow(clippy::match_same_arms)]
     pub async fn subscribe(mut self) {
-        let mut reader = EventStream::new();
-
         loop {
             let delay = Delay::new(self.delay).fuse();
-            let event = reader.next().fuse();
+
+            // Use poll_fn to convert the polling KeySource to a future
+            let next_key = poll_fn(|cx| self.key_source.poll_next_key(cx));
 
             select! {
                 () = delay => {},
-                maybe_event = event => {
+                maybe_event = next_key => {
                     match maybe_event {
-                        Some(Ok(ev)) => {
-                            match ev {
-                                Event::Key(key_event) => {
-                                    // Only handle Press events, ignore Release/Repeat
-                                    if key_event.kind != KeyEventKind::Press {
-                                        continue;
-                                    }
-                                    if let Err(e) = self.key_broker.handle(key_event) {
-                                        self.handle_error(e);
-                                        break;
-                                    }
-                                }
-                                Event::Mouse(_) |
-                                Event::FocusGained |
-                                Event::FocusLost |
-                                Event::Paste(_) |
-                                Event::Resize(_, _) => ()
+                        Some(Ok(key_event)) => {
+                            if let Err(e) = self.key_broker.handle(key_event) {
+                                self.handle_error(e);
+                                break;
                             }
                         }
                         Some(Err(e)) => {
-                            self.handle_error(e);
+                            self.handle_error(&*e);
                             break;
-
                         }
-                        None => break,
+                        None => {
+                            // Source exhausted
+                            if self.key_source.is_exhausted() {
+                                break;
+                            }
+                        }
                     }
                 }
             };

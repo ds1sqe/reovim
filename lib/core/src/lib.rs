@@ -1,5 +1,8 @@
 pub mod bind;
 pub mod buffer;
+
+pub mod io;
+pub mod testing;
 pub mod command;
 pub mod command_line;
 pub mod completion;

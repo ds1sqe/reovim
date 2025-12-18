@@ -2,6 +2,45 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.4.14] - 2025-12-18
+
+### Features
+
+- **Integration test system with mock I/O layer** - End-to-end testing capability that verifies key input → expected output without requiring a real terminal
+  - `KeySource` trait abstraction for terminal input (MockKeySource, ChannelKeySource, EventStreamKeySource)
+  - `MockOutput` for capturing screen render output
+  - `TestRuntime` with builder pattern for integration tests
+  - `keys_from_str()` helper for readable key sequences (e.g., "ihello<Esc>")
+  - Generic `InputEventBroker<K: KeySource>` to support mock input injection
+
+### Testing
+
+- Added integration tests for cursor movement (j, jj, l, hjkl)
+- Added integration tests for mode transitions (i, a, v, :, :q<CR>)
+- 9 integration tests passing, 10 ignored (timing issues documented for future work)
+
+### Files Added
+
+- `lib/core/src/io/mod.rs` - I/O abstraction module
+- `lib/core/src/io/input.rs` - KeySource trait and implementations
+- `lib/core/src/io/output.rs` - MockOutput for capturing display
+- `lib/core/src/testing/mod.rs` - Testing utilities module
+- `lib/core/src/testing/keys.rs` - Key event helpers
+- `lib/core/src/runtime/test.rs` - TestRuntime and TestResult
+- `lib/core/tests/basic_editing.rs` - Cursor movement tests
+- `lib/core/tests/mode_switching.rs` - Mode transition tests
+- `lib/core/tests/common/mod.rs` - Shared test utilities
+
+### Files Changed
+
+- `lib/core/Cargo.toml` - Added async-trait dependency
+- `lib/core/src/event/input.rs` - Made InputEventBroker generic over KeySource
+- `lib/core/src/lib.rs` - Added io and testing module exports
+- `lib/core/src/runtime/mod.rs` - Added test module export
+- `lib/core/src/runtime/event_loop.rs` - Made handle_event pub(crate)
+
+---
+
 ## [0.4.13] - 2025-12-18
 
 ### Bug Fixes
