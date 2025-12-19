@@ -79,12 +79,7 @@ lib/core/src/
 │   ├── mod.rs      # Public API exports
 │   ├── buffer.rs   # FrameBuffer - 2D cell grid
 │   ├── cell.rs     # Cell - char + fg + bg + modifiers
-│   ├── dirty.rs    # Dirty tracking (DirtyCells, DirtyRect)
-│   ├── renderer.rs # FrameRenderer - strategy coordination
-│   └── strategy/   # Pluggable diff algorithms
-│       ├── virtual_buffer.rs  # Full-frame diff (default)
-│       ├── dirty_region.rs    # Region-based updates
-│       └── cell_delta.rs      # Hybrid dirty+diff
+│   └── renderer.rs # FrameRenderer - double-buffer diff rendering
 ├── overlay/        # Overlay compositing system
 │   ├── mod.rs      # Overlay trait definition
 │   ├── compositor.rs # OverlayCompositor - z-order management
@@ -95,7 +90,6 @@ lib/core/src/
 │   ├── mod.rs
 │   ├── window.rs
 │   ├── layer.rs    # Layer trait + z-order constants
-│   ├── compositor.rs # LayerCompositor - layer orchestration
 │   ├── layers/     # Layer implementations
 │   │   ├── base.rs       # Tab line, status line (z=0)
 │   │   ├── explorer.rs   # File browser sidebar (z=1)
@@ -239,7 +233,7 @@ pub struct Window {
 
 ### Frame Buffer System
 
-The frame buffer provides diff-based rendering to eliminate terminal flickering:
+The frame buffer provides diff-based rendering to eliminate terminal flickering using a double-buffer architecture:
 
 ```rust
 pub struct FrameBuffer {
@@ -249,28 +243,37 @@ pub struct FrameBuffer {
 }
 
 pub struct Cell {
-    pub ch: char,
-    pub fg: Option<Color>,
-    pub bg: Option<Color>,
-    pub modifiers: Modifier,
+    pub char: char,
+    pub style: Style,       // fg, bg, attributes
+    pub width: u8,          // 1 for ASCII, 2 for wide chars
+}
+
+pub struct FrameRenderer {
+    front: FrameBuffer,     // Latest complete frame (external readers)
+    back: FrameBuffer,      // Currently being rendered to
+    capture: Option<Arc<RwLock<FrameBuffer>>>,  // For RPC CellGrid
 }
 ```
 
 **Components:**
 - `FrameBuffer` - 2D grid of cells with `get()`/`set()` accessors
-- `Cell` - Individual terminal cell (char, foreground, background, modifiers)
-- `DirtyRegions` - Tracks which regions need redrawing
-- `FrameRenderer` - Coordinates rendering strategies, owns current/previous buffers
+- `Cell` - Individual terminal cell (char, style, display width)
+- `FrameRenderer` - Double-buffer renderer with cell-by-cell diff
+- `FrameBufferHandle` - Thread-safe handle for external readers (RPC)
 
-**Render Strategies:**
+**Rendering Flow:**
+1. Content is rendered to `back` buffer via `buffer_mut()`
+2. `flush()` computes diff between `back` and `front`
+3. Only changed cells are written to terminal
+4. Buffers swap: `front ↔ back`
+5. Capture buffer (if enabled) is updated for RPC clients
 
-| Strategy | Description | Use Case |
-|----------|-------------|----------|
-| `VirtualBuffer` | Full diff against previous frame | Default, most robust |
-| `DirtyRegion` | Only render marked dirty regions | UI with localized updates |
-| `CellDelta` | Hybrid: dirty hints + cell comparison | Balance of performance/accuracy |
-
-Configure via `REOVIM_RENDER_STRATEGY` environment variable.
+**Frame Buffer Capture:**
+For RPC `CellGrid` format, the renderer can provide a thread-safe capture handle:
+```rust
+let handle = renderer.enable_capture();  // Returns FrameBufferHandle
+let snapshot = handle.snapshot();        // Clone of current frame
+```
 
 ### Layer System
 
@@ -296,7 +299,7 @@ pub trait Layer {
 | TelescopeLayer | 6 | Fuzzy finder overlay |
 | SettingsMenuLayer | 7 | Settings configuration |
 
-`LayerCompositor` renders all layers in z-order to the frame buffer.
+`Screen::render_buffered()` renders all layers in z-order to the frame buffer.
 
 ### Overlay System
 
@@ -321,26 +324,29 @@ pub trait Overlay {
 Runtime::render()
     │
     ▼
-LayerCompositor::render_all(frame_buffer)
+Screen::render_buffered()
     │
-    ├── BaseLayer::render_to_buffer()        (z=0)
-    ├── ExplorerLayer::render_to_buffer()    (z=1)
-    ├── EditorLayer::render_to_buffer()      (z=2)
-    ├── LeapLayer::render_to_buffer()        (z=3)
-    ├── CompletionLayer::render_to_buffer()  (z=4)
-    ├── WhichKeyLayer::render_to_buffer()    (z=5)
-    ├── TelescopeLayer::render_to_buffer()   (z=6)
-    └── SettingsMenuLayer::render_to_buffer()(z=7)
+    ├── FrameRenderer::buffer_mut() ──► get back buffer
     │
-    ▼
-FrameRenderer::render(frame_buffer)
+    ├── Render layers in z-order to back buffer:
+    │   ├── Tab line, status line           (z=0)
+    │   ├── Explorer sidebar                (z=1)
+    │   ├── Editor windows                  (z=2)
+    │   ├── Leap labels                     (z=3)
+    │   ├── Completion popup                (z=4)
+    │   ├── Which-key panel                 (z=5)
+    │   ├── Telescope overlay               (z=6)
+    │   └── Settings menu                   (z=7)
     │
-    ├── Strategy: diff current vs previous
-    │
-    └── Generate ANSI escape codes for changes only
-    │
-    ▼
-Terminal Output (minimal I/O)
+    └── FrameRenderer::flush()
+        │
+        ├── Diff: back vs front (cell-by-cell)
+        ├── Generate ANSI codes for changed cells only
+        ├── Swap buffers: front ↔ back
+        └── Update capture buffer (for RPC clients)
+        │
+        ▼
+    Terminal Output (minimal I/O)
 ```
 
 ### Mode State System
@@ -496,8 +502,17 @@ JSON-RPC 2.0 server for programmatic control of the editor.
 
 **Integration with Runtime:**
 - `ChannelKeySource` - Injects keys from RPC into runtime's key channel
-- `DualOutput` - Captures screen output for headless or dual mode
+- `FrameBufferHandle` - Unified capture for all RPC formats (RawAnsi, PlainText, CellGrid)
 - `InnerEvent::RpcRequest` - Forwards requests to runtime for state queries
+
+**Screen Content Formats:**
+| Format | Description |
+|--------|-------------|
+| `RawAnsi` | Terminal output with ANSI escape codes |
+| `PlainText` | ANSI codes stripped, plain text only |
+| `CellGrid` | Structured cell data (char + style per cell) |
+
+All formats are derived from the unified `FrameBufferHandle` capture system.
 
 **Server Mode Flow:**
 ```

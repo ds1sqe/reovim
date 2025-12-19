@@ -118,7 +118,10 @@ Reovim is a Rust-based neovim-like text editor built with async tokio runtime an
 - `Window` - View into a buffer with anchor positioning and line number modes (Absolute/Relative/Hybrid)
 
 **Rendering System**:
-- `lib/core/src/frame/` - Frame buffer for diff-based rendering (eliminates flickering)
+- `lib/core/src/frame/` - Double-buffer frame renderer for diff-based rendering (eliminates flickering)
+  - `FrameBuffer` - 2D cell grid (char + style)
+  - `FrameRenderer` - Double-buffer with cell-by-cell diff, swap pattern
+  - `FrameBufferHandle` - Thread-safe capture for RPC clients
 - `lib/core/src/overlay/` - Overlay compositing system (z-order popups)
 - `lib/core/src/screen/layers/` - Layer implementations (BaseLayer, EditorLayer, etc.)
 
@@ -135,7 +138,7 @@ Reovim is a Rust-based neovim-like text editor built with async tokio runtime an
 - `TransportReader`/`TransportWriter` - Async I/O abstraction
 - `TransportListener` - Accepts connections for socket/TCP
 - `ChannelKeySource` - Injects keys from RPC into runtime
-- `DualOutput` - Captures screen output for headless or dual mode
+- `FrameBufferHandle` - Unified capture for all RPC formats (RawAnsi, PlainText, CellGrid)
 - Default port: 12521 ('r'×100 + 'e'×10 + 'o')
 - Server modes: `--server` (persistent, runs forever), `--server --test` (exit when all clients disconnect), `--stdio` (always one-shot)
 

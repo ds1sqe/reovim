@@ -376,30 +376,6 @@ impl ServerTestResult {
         assert_eq!(ts.query, expected, "Telescope query mismatch");
     }
 
-    /// Assert that cursor visibility is properly managed during rendering
-    ///
-    /// Verifies that the terminal output contains Hide cursor escape code
-    /// before the Show cursor escape code, ensuring cursor is hidden during
-    /// screen updates to prevent blinking.
-    ///
-    /// # Panics
-    ///
-    /// Panics if Hide/Show escape codes are missing or in wrong order.
-    pub fn assert_cursor_visibility_managed(&self) {
-        const HIDE_CURSOR: &str = "\x1b[?25l";
-        const SHOW_CURSOR: &str = "\x1b[?25h";
-
-        let hide_pos = self.screen_content.find(HIDE_CURSOR);
-        let show_pos = self.screen_content.rfind(SHOW_CURSOR);
-
-        assert!(hide_pos.is_some(), "Hide cursor escape code not found in screen output");
-        assert!(show_pos.is_some(), "Show cursor escape code not found in screen output");
-        assert!(
-            hide_pos.unwrap() < show_pos.unwrap(),
-            "Hide cursor should appear before Show cursor in output"
-        );
-    }
-
     /// Assert that the active buffer ID matches
     ///
     /// # Panics

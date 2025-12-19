@@ -6,13 +6,10 @@
 
 mod buffer;
 mod cell;
-mod dirty;
 mod renderer;
-pub mod strategy;
 
 pub use {
     buffer::FrameBuffer,
     cell::Cell,
-    dirty::{DirtyCells, DirtyRect, DirtyRegions},
-    renderer::{FrameRenderer, RenderStrategyConfig},
+    renderer::{FrameBufferHandle, FrameRenderer, RenderCommand},
 };

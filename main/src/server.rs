@@ -16,7 +16,7 @@ use std::{
 use {
     reovim_core::{
         event::InnerEvent,
-        io::{input::ChannelKeySource, output::DualOutput},
+        io::input::ChannelKeySource,
         rpc::{
             RpcNotification, RpcRequest, RpcResponse, TransportConfig, TransportConnection,
             TransportListener,
@@ -56,36 +56,30 @@ pub async fn run_server(
     let height = 24;
 
     // Create screen with optional terminal output
-    let (screen, capture_handle) = if dual_output {
-        // Dual mode: render to terminal AND capture
+    let mut screen = if dual_output {
+        // Dual mode: render to terminal and capture via frame buffer
         reovim_core::command::terminal::enable_raw_mode()?;
 
-        let dual = DualOutput::new(Box::new(io::stdout()));
-        let handle = dual.capture_handle();
-
-        let mut screen = Screen::with_writer(dual, width, height);
+        let mut screen = Screen::with_writer(io::stdout(), width, height);
         screen.initialize()?;
 
-        (screen, Some(handle))
+        screen
     } else {
-        // Headless mode: capture only, no terminal
-        let dual = DualOutput::headless();
-        let handle = dual.capture_handle();
-
-        let screen = Screen::with_writer(dual, width, height);
+        // Headless mode: capture only via frame buffer, no terminal output
+        Screen::with_writer(io::sink(), width, height)
         // Don't call initialize() in headless mode - no terminal to initialize
-
-        (screen, Some(handle))
     };
+
+    // Enable frame renderer and capture for RPC (all formats: PlainText, RawAnsi, CellGrid)
+    screen.enable_frame_renderer();
+    let frame_handle = screen.enable_frame_capture();
 
     // Create channels for key injection
     let (key_tx, key_source) = ChannelKeySource::new();
 
     // Create runtime with the screen
-    // Enable frame buffer rendering to avoid multiple screen clears (reduces flickering)
-    let runtime = Runtime::new(screen)
-        .with_file(file_path)
-        .with_render_strategy(reovim_core::frame::RenderStrategyConfig::VirtualBuffer);
+    // Frame buffer rendering is enabled by default in Runtime::new()
+    let runtime = Runtime::new(screen).with_file(file_path);
 
     // Get the event sender from runtime (clone for later use)
     let event_tx = runtime.tx.clone();
@@ -131,8 +125,8 @@ pub async fn run_server(
     let (response_tx, response_rx) = mpsc::channel::<RpcResponse>(256);
     let (notification_tx, notification_rx) = mpsc::channel::<RpcNotification>(256);
 
-    // Create RPC server
-    let server = Arc::new(RpcServer::new(event_tx, key_tx, capture_handle, notification_tx));
+    // Create RPC server with frame buffer handle for all capture formats
+    let server = Arc::new(RpcServer::new(event_tx, key_tx, frame_handle, notification_tx));
 
     // Set up transport based on configuration
     match &transport_config {

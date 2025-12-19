@@ -1,6 +1,5 @@
 #![allow(clippy::missing_errors_doc)]
 
-mod compositor;
 mod layer;
 mod status_line;
 mod which_key;
@@ -16,7 +15,7 @@ use {
         constants::RESET_STYLE,
         explorer::{ExplorerState, render_explorer},
         folding::FoldManager,
-        frame::{FrameBuffer, FrameRenderer, RenderStrategyConfig},
+        frame::{FrameBuffer, FrameRenderer},
         highlight::{ColorMode, HighlightStore, Theme},
         indent::IndentAnalyzer,
         leap::LeapState,
@@ -38,7 +37,6 @@ use {
 };
 
 pub use {
-    compositor::Compositor,
     layer::{Layer, LayerBounds, z_order},
     status_line::{StatusLineRenderer, render_command_line_to, render_status_line_to},
     which_key::{WhichKeyConfig, WhichKeyPanel},
@@ -80,8 +78,6 @@ pub struct Screen {
     window_buffers: std::collections::BTreeMap<usize, usize>,
     /// Optional frame renderer for buffered rendering
     frame_renderer: Option<FrameRenderer>,
-    /// Z-layer compositor for flicker-free rendering
-    compositor: Option<Compositor>,
 }
 
 impl Default for Screen {
@@ -132,26 +128,11 @@ impl Default for Screen {
             next_window_id: 1, // Next window will be ID 1
             window_buffers,
             frame_renderer: None,
-            compositor: None,
         }
     }
 }
 
 impl Screen {
-    /// Enable compositor-based rendering
-    ///
-    /// When enabled, rendering uses the z-layer compositor for flicker-free updates
-    pub fn enable_compositor(&mut self) {
-        self.compositor = Some(Compositor::new(self.size.width, self.size.height));
-        tracing::info!("Z-layer compositor enabled");
-    }
-
-    /// Check if compositor rendering is enabled
-    #[must_use]
-    pub const fn is_compositor_enabled(&self) -> bool {
-        self.compositor.is_some()
-    }
-
     /// Create a new Screen with a custom writer (useful for testing/benchmarking)
     #[must_use]
     pub fn with_writer<W: Write + 'static>(writer: W, width: u16, height: u16) -> Self {
@@ -194,7 +175,6 @@ impl Screen {
             next_window_id: 1,
             window_buffers,
             frame_renderer: None,
-            compositor: None,
         }
     }
 
@@ -270,42 +250,43 @@ impl Screen {
         if let Some(ref mut renderer) = self.frame_renderer {
             renderer.resize(width, height);
         }
-
-        // Resize compositor if enabled
-        if let Some(ref mut compositor) = self.compositor {
-            compositor.resize(width, height);
-        }
     }
 
-    /// Enable frame-buffered rendering with the specified strategy
+    /// Enable frame-buffered rendering
     ///
     /// When enabled, rendering will use double-buffering and differential
     /// updates instead of clearing the entire screen each frame.
-    pub fn enable_frame_renderer(&mut self, strategy: RenderStrategyConfig) {
-        let mut renderer = FrameRenderer::new(self.size.width, self.size.height);
-        renderer.set_strategy(strategy);
-        self.frame_renderer = Some(renderer);
-        tracing::info!(
-            strategy = %strategy.name(),
-            "Frame renderer enabled"
-        );
-    }
-
-    /// Set the render strategy (only if frame renderer is enabled)
-    pub fn set_render_strategy(&mut self, strategy: RenderStrategyConfig) {
-        if let Some(ref mut renderer) = self.frame_renderer {
-            renderer.set_strategy(strategy);
-            tracing::debug!(strategy = %strategy.name(), "Render strategy changed");
-        } else {
-            // Enable frame renderer if not already enabled
-            self.enable_frame_renderer(strategy);
+    ///
+    /// This is idempotent - if a frame renderer is already enabled, this does nothing.
+    /// This ensures any existing capture handles remain valid.
+    pub fn enable_frame_renderer(&mut self) {
+        if self.frame_renderer.is_some() {
+            return; // Already enabled, preserve existing capture handles
         }
+        let renderer = FrameRenderer::new(self.size.width, self.size.height);
+        self.frame_renderer = Some(renderer);
+        tracing::info!("Frame renderer enabled");
     }
 
-    /// Get the current render strategy config
+    /// Enable frame buffer capture and return a handle for external readers
+    ///
+    /// This enables capture on the frame renderer and returns a handle that
+    /// provides thread-safe access to the latest complete frame.
+    /// Used by RPC server for `CellGrid` format.
+    ///
+    /// Returns `None` if frame renderer is not enabled.
+    pub fn enable_frame_capture(&mut self) -> Option<crate::frame::FrameBufferHandle> {
+        self.frame_renderer
+            .as_mut()
+            .map(FrameRenderer::enable_capture)
+    }
+
+    /// Get the frame buffer capture handle (if capture is enabled)
     #[must_use]
-    pub fn render_strategy(&self) -> Option<RenderStrategyConfig> {
-        self.frame_renderer.as_ref().map(FrameRenderer::strategy)
+    pub fn frame_capture_handle(&self) -> Option<crate::frame::FrameBufferHandle> {
+        self.frame_renderer
+            .as_ref()
+            .and_then(FrameRenderer::capture_handle)
     }
 
     /// Check if frame-buffered rendering is enabled

@@ -105,7 +105,7 @@ impl Runtime {
 
         let mut buffer = Buffer::empty(0);
 
-        // Load file if provided
+        // Load file if provided, otherwise show landing page
         if let Some(ref path) = self.initial_file {
             match std::fs::read_to_string(path) {
                 Ok(content) => {
@@ -118,6 +118,14 @@ impl Runtime {
                 }
             }
             buffer.file_path = Some(path.clone());
+        } else {
+            // Show landing page when no file is opened (unified with regular mode)
+            let landing_content = crate::landing::generate(
+                self.screen.width(),
+                self.screen.height().saturating_sub(1), // Reserve status line
+            );
+            buffer.set_content(&landing_content);
+            self.showing_landing_page = true;
         }
 
         self.buffers.insert(0, buffer);
@@ -455,8 +463,8 @@ impl Runtime {
                 RpcResponse::success(id, serde_json::to_value(snapshot).unwrap())
             }
             methods::STATE_SCREEN_CONTENT => {
-                // Note: Full screen content capture requires the DualOutput capture handle
-                // which is managed at the server level. Return dimensions for now.
+                // Note: Full screen content capture is handled at the server level
+                // via FrameBufferHandle. Return dimensions for now.
                 let snapshot = crate::rpc::ScreenContentSnapshot {
                     width: self.screen.width(),
                     height: self.screen.height(),
@@ -574,6 +582,8 @@ impl Runtime {
                 match (self.buffers.get_mut(&buffer_id), content) {
                     (Some(buffer), Some(content)) => {
                         buffer.set_content(content);
+                        // Clear landing page flag when buffer content is set via RPC
+                        self.showing_landing_page = false;
                         self.request_render();
                         RpcResponse::ok(id)
                     }

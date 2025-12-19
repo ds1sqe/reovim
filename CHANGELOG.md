@@ -2,6 +2,52 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.6.6] - 2025-12-19
+
+### Architecture
+
+- **Double-Buffer Rendering Refactor** - Simplified and unified rendering architecture
+  - `FrameRenderer` uses front/back buffer swap pattern for flicker-free updates
+  - `front` buffer: Latest complete frame (external readers access this)
+  - `back` buffer: Currently being rendered to
+  - Cell-by-cell diff computed between buffers, only changed cells sent to terminal
+  - After flush: `std::mem::swap(&mut front, &mut back)` for efficient buffer rotation
+
+- **Unified Capture System** - Consolidated all RPC capture formats into `FrameBufferHandle`
+  - Single capture handle provides: `RawAnsi`, `PlainText`, `CellGrid` formats
+  - Added `to_ansi()` and `to_plain_text()` methods to `FrameBuffer`
+  - Removed `CaptureHandle` and `DualOutput` (redundant with unified system)
+  - Capture buffer updated after each flush for RPC clients
+
+- **Rendering Pipeline Cleanup**
+  - Removed unused render strategies (`cell_delta`, `dirty_region`, `virtual_buffer`)
+  - Removed unused `screen/compositor.rs` - rendering now via `Screen::render_buffered()`
+  - Streamlined frame module: just `buffer.rs`, `cell.rs`, `renderer.rs`
+  - Direct layer rendering in z-order without intermediate compositor
+
+### Documentation
+
+- Updated `docs/architecture.md`:
+  - Rendering flow diagram now reflects actual `Screen::render_buffered()` implementation
+  - Removed stale `LayerCompositor` references
+  - Documented double-buffer swap pattern
+- Updated `CLAUDE.md` - Simplified RPC capture documentation
+
+### Removed
+
+- `lib/core/src/frame/dirty.rs` - Unused dirty tracking
+- `lib/core/src/frame/strategy/` - Entire unused strategy module (4 files)
+- `lib/core/src/screen/compositor.rs` - Unused z-layer compositor
+- `lib/core/src/io/output.rs` - `CaptureHandle`, `DualOutput` types
+
+### Performance
+
+- Window render (10 lines): 10.14 µs
+- Full screen render: 62.80 µs
+- Char insert RTT: 108 µs
+- Throughput: ~18.1k renders/sec
+- Double-buffer swap: O(1) pointer swap, no data copy
+
 ## [0.6.5] - 2025-12-19
 
 ### Features

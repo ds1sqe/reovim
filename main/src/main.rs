@@ -1,7 +1,5 @@
 use {
-    reovim_core::{
-        self, frame::RenderStrategyConfig, rpc::TransportConfig, runtime::Runtime, screen::Screen,
-    },
+    reovim_core::{self, rpc::TransportConfig, runtime::Runtime, screen::Screen},
     std::io::{self},
 };
 
@@ -36,9 +34,6 @@ fn print_help() {
     println!("    --listen-socket <PATH>      Listen on Unix socket");
     println!("    --listen-tcp <PORT>         Listen on TCP port (default: {DEFAULT_PORT})");
     println!("    --listen-host <HOST>        Host for TCP (default: 127.0.0.1)");
-    println!(
-        "    --render-strategy <STRAT>   Render strategy: virtual_buffer, dirty_region, cell_delta"
-    );
 }
 
 fn print_version() {
@@ -64,7 +59,6 @@ async fn main() -> Result<(), io::Error> {
     let mut listen_socket: Option<String> = None;
     let mut listen_tcp: Option<u16> = None;
     let mut listen_host = "127.0.0.1".to_string();
-    let mut render_strategy: Option<String> = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -132,16 +126,6 @@ async fn main() -> Result<(), io::Error> {
                 }
                 listen_host.clone_from(&args[i]);
             }
-            "--render-strategy" => {
-                i += 1;
-                if i >= args.len() {
-                    eprintln!(
-                        "--render-strategy requires an argument (virtual_buffer, dirty_region, cell_delta)"
-                    );
-                    std::process::exit(1);
-                }
-                render_strategy = Some(args[i].clone());
-            }
             _ if arg.starts_with('-') => {
                 eprintln!("Unknown option: {arg}");
                 eprintln!("Use --help for usage information");
@@ -191,15 +175,6 @@ async fn main() -> Result<(), io::Error> {
     let mut runtime = Runtime::new(screen)
         .with_file(file_path)
         .with_profile(profile_name);
-
-    // Apply render strategy from CLI if specified
-    if let Some(strategy_str) = render_strategy {
-        if let Some(strategy) = RenderStrategyConfig::parse(&strategy_str) {
-            runtime = runtime.with_render_strategy(strategy);
-        } else {
-            eprintln!("Warning: Unknown render strategy '{strategy_str}', using default");
-        }
-    }
 
     // Initialize profile system (creates default profile if needed)
     runtime.init_profiles();

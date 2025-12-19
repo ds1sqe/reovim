@@ -164,9 +164,7 @@ impl Runtime {
         };
 
         // Enable diff-based rendering by default
-        runtime
-            .screen
-            .enable_frame_renderer(crate::frame::RenderStrategyConfig::VirtualBuffer);
+        runtime.screen.enable_frame_renderer();
 
         runtime
     }
@@ -238,13 +236,6 @@ impl Runtime {
     #[must_use]
     pub fn with_file(mut self, file_path: Option<String>) -> Self {
         self.initial_file = file_path;
-        self
-    }
-
-    /// Set the render strategy (enables frame-buffered rendering)
-    #[must_use]
-    pub fn with_render_strategy(mut self, strategy: crate::frame::RenderStrategyConfig) -> Self {
-        self.screen.enable_frame_renderer(strategy);
         self
     }
 
@@ -624,20 +615,11 @@ impl Runtime {
         // Apply indent guide setting
         self.indent_analyzer.set_enabled(config.editor.indentguide);
 
-        // Apply render strategy if specified
-        if let Some(strategy) =
-            crate::frame::RenderStrategyConfig::parse(&config.editor.render_strategy)
-        {
-            self.screen.set_render_strategy(strategy);
-            debug!(render_strategy = %config.editor.render_strategy, "Applied render strategy from profile");
-        }
-
         debug!(
             number = config.editor.number,
             relativenumber = config.editor.relativenumber,
             indentguide = config.editor.indentguide,
             scrollbar = config.editor.scrollbar,
-            render_strategy = %config.editor.render_strategy,
             "Applied editor options from profile"
         );
 

@@ -5,7 +5,7 @@
 
 use std::fmt::Write;
 
-use crate::frame::FrameBuffer;
+use crate::{constants::RESET_STYLE, frame::FrameBuffer, highlight::ColorMode};
 
 /// Configuration for ASCII rendering
 #[derive(Debug, Clone, Default)]
@@ -80,11 +80,11 @@ impl AsciiRenderConfig {
 }
 
 impl FrameBuffer {
-    /// Render to plain ASCII (characters only)
+    /// Get the frame buffer as plain text (characters only, no formatting)
     ///
     /// Returns a string with newline-separated rows, trailing whitespace trimmed.
     #[must_use]
-    pub fn to_ascii(&self) -> String {
+    pub fn to_plain_text(&self) -> String {
         let mut result = String::new();
 
         for y in 0..self.height() {
@@ -94,6 +94,57 @@ impl FrameBuffer {
             if let Some(row) = self.row(y) {
                 let row_str: String = row.iter().map(|c| c.char).collect();
                 result.push_str(row_str.trim_end());
+            }
+        }
+
+        result
+    }
+
+    /// Render to plain ASCII (characters only)
+    ///
+    /// Alias for [`to_plain_text`](Self::to_plain_text).
+    #[must_use]
+    pub fn to_ascii(&self) -> String {
+        self.to_plain_text()
+    }
+
+    /// Get the frame buffer as ANSI-formatted text (with escape codes for colors/styles)
+    ///
+    /// Returns a string with ANSI escape sequences for styling and newline-separated rows.
+    #[must_use]
+    pub fn to_ansi(&self, color_mode: ColorMode) -> String {
+        let mut result = String::new();
+        let mut last_style: Option<String> = None;
+
+        for y in 0..self.height() {
+            if y > 0 {
+                result.push('\n');
+            }
+
+            if let Some(row) = self.row(y) {
+                for cell in row {
+                    let style_str = cell.style.to_ansi_start(color_mode);
+
+                    // Only emit style change if different from last
+                    if last_style.as_ref() != Some(&style_str) {
+                        if style_str.is_empty() {
+                            if last_style.as_ref().is_some_and(|s| !s.is_empty()) {
+                                result.push_str(RESET_STYLE);
+                            }
+                        } else {
+                            result.push_str(&style_str);
+                        }
+                        last_style = Some(style_str);
+                    }
+
+                    result.push(cell.char);
+                }
+            }
+
+            // Reset style at end of each line for clean line breaks
+            if last_style.as_ref().is_some_and(|s| !s.is_empty()) {
+                result.push_str(RESET_STYLE);
+                last_style = None;
             }
         }
 
@@ -271,17 +322,23 @@ mod tests {
     }
 
     #[test]
-    fn test_to_ascii() {
+    fn test_to_plain_text() {
         let buf = make_buffer(&["Hello", "World"]);
-        let ascii = buf.to_ascii();
-        assert_eq!(ascii, "Hello\nWorld");
+        let text = buf.to_plain_text();
+        assert_eq!(text, "Hello\nWorld");
     }
 
     #[test]
-    fn test_to_ascii_trims_trailing_whitespace() {
+    fn test_to_plain_text_trims_trailing_whitespace() {
         let buf = make_buffer(&["Hi   ", "  "]);
-        let ascii = buf.to_ascii();
-        assert_eq!(ascii, "Hi\n");
+        let text = buf.to_plain_text();
+        assert_eq!(text, "Hi\n");
+    }
+
+    #[test]
+    fn test_to_ascii_alias() {
+        let buf = make_buffer(&["Test"]);
+        assert_eq!(buf.to_ascii(), buf.to_plain_text());
     }
 
     #[test]
@@ -306,5 +363,28 @@ mod tests {
         let config = AsciiRenderConfig::new().with_cursor(1, 0);
         let annotated = buf.to_annotated_ascii(&config);
         assert!(annotated.contains("[cursor: (1, 0)]"));
+    }
+
+    #[test]
+    fn test_to_ansi_unstyled() {
+        // With default style (no colors), to_ansi should just return characters
+        let buf = make_buffer(&["Hello", "World"]);
+        let ansi = buf.to_ansi(ColorMode::TrueColor);
+        // No ANSI codes for default style, so should match plain text
+        assert_eq!(ansi, "Hello\nWorld");
+    }
+
+    #[test]
+    fn test_to_ansi_with_style() {
+        use {crate::highlight::Style, reovim_sys::style::Color};
+
+        let mut buf = FrameBuffer::new(5, 1);
+        let style = Style::default().fg(Color::Red);
+        buf.write_str(0, 0, "Red", &style);
+
+        let ansi = buf.to_ansi(ColorMode::TrueColor);
+        // Should contain ANSI escape for red and the text
+        assert!(ansi.contains("Red"));
+        assert!(ansi.contains("\x1b[")); // Contains ANSI escape
     }
 }

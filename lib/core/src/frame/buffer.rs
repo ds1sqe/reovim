@@ -3,6 +3,7 @@
 use {super::Cell, crate::highlight::Style};
 
 /// A 2D frame buffer representing the entire screen
+#[derive(Clone)]
 pub struct FrameBuffer {
     width: u16,
     height: u16,

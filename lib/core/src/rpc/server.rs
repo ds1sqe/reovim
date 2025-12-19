@@ -4,7 +4,7 @@
 //! - Reading JSON-RPC requests from transport (stdio/socket/TCP)
 //! - Writing responses and notifications to transport
 //! - Key injection via `ChannelKeySource`
-//! - Screen content capture via `DualOutput`
+//! - Screen content capture via `FrameBufferHandle`
 //!
 //! Supports three transport modes:
 //! - Stdio: For process piping (spawned by parent)
@@ -18,10 +18,11 @@ use tokio::sync::{mpsc, oneshot};
 use {
     crate::{
         event::InnerEvent,
-        io::output::CaptureHandle,
+        frame::FrameBufferHandle,
+        highlight::ColorMode,
         rpc::{
-            RpcError, RpcNotification, RpcRequest, RpcResponse, ScreenContentSnapshot,
-            ScreenFormat, keys_from_str, methods,
+            CellSnapshot, RpcError, RpcNotification, RpcRequest, RpcResponse,
+            ScreenContentSnapshot, ScreenFormat, keys_from_str, methods,
             transport::{TransportReader, TransportWriter},
         },
     },
@@ -76,8 +77,8 @@ pub struct RpcServer {
     event_tx: mpsc::Sender<InnerEvent>,
     /// Channel to inject keys
     key_tx: mpsc::Sender<KeyEvent>,
-    /// Handle to read captured screen output
-    capture_handle: Option<CaptureHandle>,
+    /// Handle to read captured frame buffer (for all screen content formats)
+    frame_handle: Option<FrameBufferHandle>,
     /// Notification output channel
     #[allow(dead_code)]
     notification_tx: mpsc::Sender<RpcNotification>,
@@ -89,13 +90,13 @@ impl RpcServer {
     pub const fn new(
         event_tx: mpsc::Sender<InnerEvent>,
         key_tx: mpsc::Sender<KeyEvent>,
-        capture_handle: Option<CaptureHandle>,
+        frame_handle: Option<FrameBufferHandle>,
         notification_tx: mpsc::Sender<RpcNotification>,
     ) -> Self {
         Self {
             event_tx,
             key_tx,
-            capture_handle,
+            frame_handle,
             notification_tx,
         }
     }
@@ -161,25 +162,39 @@ impl RpcServer {
                     _ => ScreenFormat::PlainText,
                 };
 
-                // Take snapshot and clear buffer atomically to prevent accumulation
-                let content = self
-                    .capture_handle
-                    .as_ref()
-                    .map_or_else(String::new, |handle| {
-                        let raw = handle.take_snapshot_lossy();
-                        match format {
-                            ScreenFormat::RawAnsi => raw,
-                            ScreenFormat::PlainText | ScreenFormat::CellGrid => {
-                                crate::io::output::strip_ansi_codes(&raw)
+                // Get content based on format (all formats use frame_handle)
+                let (content, width, height) = self.frame_handle.as_ref().map_or_else(
+                    || (String::new(), 0, 0),
+                    |handle| {
+                        let (w, h) = handle.dimensions();
+                        let content = match format {
+                            ScreenFormat::CellGrid => {
+                                let buf = handle.snapshot();
+                                // Convert to 2D array of CellSnapshots
+                                let rows: Vec<Vec<CellSnapshot>> = (0..h)
+                                    .map(|y| {
+                                        (0..w)
+                                            .map(|x| {
+                                                buf.get(x, y).map_or_else(
+                                                    || CellSnapshot::new(' '),
+                                                    CellSnapshot::from,
+                                                )
+                                            })
+                                            .collect()
+                                    })
+                                    .collect();
+                                serde_json::to_string(&rows).unwrap_or_default()
                             }
-                        }
-                    });
+                            ScreenFormat::RawAnsi => handle.to_ansi(ColorMode::TrueColor),
+                            ScreenFormat::PlainText => handle.to_plain_text(),
+                        };
+                        (content, w, h)
+                    },
+                );
 
-                // Get dimensions from runtime via event
-                // For now, return placeholder - full impl needs state query
                 let snapshot = ScreenContentSnapshot {
-                    width: 80,  // TODO: Get from runtime
-                    height: 24, // TODO: Get from runtime
+                    width,
+                    height,
                     format,
                     content,
                 };
