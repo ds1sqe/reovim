@@ -367,11 +367,11 @@ mod tests {
 
     #[test]
     fn test_to_ansi_unstyled() {
-        // With default style (no colors), to_ansi should just return characters
+        // With default style, to_ansi emits background reset (49) for transparent bg
         let buf = make_buffer(&["Hello", "World"]);
         let ansi = buf.to_ansi(ColorMode::TrueColor);
-        // No ANSI codes for default style, so should match plain text
-        assert_eq!(ansi, "Hello\nWorld");
+        // bg: None emits "49" reset code, so output includes ANSI sequences
+        assert_eq!(ansi, "\x1b[49mHello\x1b[0m\n\x1b[49mWorld\x1b[0m");
     }
 
     #[test]

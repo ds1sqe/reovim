@@ -263,9 +263,9 @@ impl Theme {
 
         Self {
             base: BaseStyles {
-                default: Style::new().fg(fg).bg(bg_dark),
+                default: Style::new().fg(fg),
                 cursor_line: Style::new().bg(bg_light),
-                command_line: Style::new().fg(fg).bg(bg_dark),
+                command_line: Style::new().fg(fg),
             },
             gutter: GutterStyles {
                 line_number: Style::new().fg(fg_dark).bg(bg_dark),
@@ -375,9 +375,9 @@ impl Theme {
 
         Self {
             base: BaseStyles {
-                default: Style::new().fg(fg_light).bg(bg_light),
+                default: Style::new().fg(fg_light),
                 cursor_line: Style::new().bg(bg_highlight),
-                command_line: Style::new().fg(fg_light).bg(bg_light),
+                command_line: Style::new().fg(fg_light),
             },
             gutter: GutterStyles {
                 line_number: Style::new().fg(Color::Grey),
@@ -558,9 +558,9 @@ impl Theme {
 
         Self {
             base: BaseStyles {
-                default: Style::new().fg(fg).bg(bg),
+                default: Style::new().fg(fg),
                 cursor_line: Style::new().bg(bg_highlight),
-                command_line: Style::new().fg(fg).bg(bg),
+                command_line: Style::new().fg(fg),
             },
             gutter: GutterStyles {
                 line_number: Style::new().fg(fg_dark),
@@ -672,7 +672,6 @@ mod tests {
     fn test_light_theme() {
         let theme = Theme::light();
         assert!(theme.base.default.fg.is_some());
-        assert!(theme.base.default.bg.is_some());
     }
 
     #[test]
@@ -700,11 +699,9 @@ mod tests {
 
     #[test]
     fn test_theme_from_name() {
-        // All themes should have fg and bg set for proper diff-based rendering
+        // All themes should have fg set
         assert!(Theme::from_name(ThemeName::Dark).base.default.fg.is_some());
-        assert!(Theme::from_name(ThemeName::Dark).base.default.bg.is_some());
         assert!(Theme::from_name(ThemeName::Light).base.default.fg.is_some());
-        assert!(Theme::from_name(ThemeName::Light).base.default.bg.is_some());
     }
 
     #[test]

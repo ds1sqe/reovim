@@ -315,8 +315,14 @@ async fn test_shared_buffer_scroll_independence() {
     assert_eq!(windows.len(), 2, "Expected 2 windows");
 
     // Find the active window (Win1) and inactive window (Win2)
-    let win1 = windows.iter().find(|w| w.is_active).expect("Should have active window");
-    let win2 = windows.iter().find(|w| !w.is_active).expect("Should have inactive window");
+    let win1 = windows
+        .iter()
+        .find(|w| w.is_active)
+        .expect("Should have active window");
+    let win2 = windows
+        .iter()
+        .find(|w| !w.is_active)
+        .expect("Should have inactive window");
 
     // Win1 scroll should be at 0 (never scrolled)
     assert_eq!(
@@ -370,7 +376,10 @@ async fn test_shared_buffer_scroll_preserved_after_navigation() {
 
     let windows = result.windows().await;
     let win1 = windows.iter().find(|w| w.is_active).expect("Active window");
-    let win2 = windows.iter().find(|w| !w.is_active).expect("Inactive window");
+    let win2 = windows
+        .iter()
+        .find(|w| !w.is_active)
+        .expect("Inactive window");
 
     // Win1 cursor should be around line 20
     assert!(

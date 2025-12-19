@@ -2,6 +2,41 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.6.8] - 2025-12-19
+
+### Fixed
+
+- **Transparent Background Support** - Editor now uses terminal's native background
+  - Removed explicit background from `base.default` and `command_line` styles
+  - Fixed visual artifacts by emitting ANSI code `49` (background reset) when `bg: None`
+  - Added `flush()` after `clear()` in screen `initialize()` and `finalize()`
+
+### Changed
+
+- `Style::to_ansi_start()` now emits `49` reset code when background is `None`
+- All themes (Dark, Light, TokyoNight) use terminal default background for text areas
+
+## [0.6.7] - 2025-12-19
+
+### Fixed
+
+- **Independent Scroll Per Window** - Each window maintains its own scroll position
+  - Fixed bug where scrolling in one window would sync across all windows sharing the same buffer
+  - Root cause: All windows called `update_scroll()` with buffer's live cursor
+  - Fix: Active window uses `buf.cur.y`, inactive windows use saved `win.cursor.y`
+
+### Added
+
+- **`state/windows` RPC Endpoint** - Query per-window scroll and cursor state
+  - `WindowSnapshot` struct with `buffer_anchor`, `cursor`, `is_active` fields
+  - Useful for testing and debugging window state
+
+### Tests
+
+- `test_shared_buffer_scroll_independence` - Verifies scroll isolation between splits
+- `test_shared_buffer_scroll_preserved_after_navigation` - Verifies scroll preserved on window switch
+- `test_three_windows_scroll_isolation` - Verifies 3-window scroll independence
+
 ## [0.6.6] - 2025-12-19
 
 ### Architecture

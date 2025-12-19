@@ -196,12 +196,14 @@ impl Screen {
 
     pub fn initialize(&mut self) -> std::result::Result<(), std::io::Error> {
         self.enable_mouse_capture()?;
-        self.clear(ClearType::All)
+        self.clear(ClearType::All)?;
+        self.out_stream.flush()
     }
 
     pub fn finalize(&mut self) -> std::result::Result<(), std::io::Error> {
         self.disable_mouse_capture()?;
-        self.clear(ClearType::All)
+        self.clear(ClearType::All)?;
+        self.out_stream.flush()
     }
 
     #[must_use]
@@ -567,7 +569,11 @@ impl Screen {
 
                 // Update scroll to keep cursor visible
                 // Active window uses buffer's live cursor; inactive windows use saved cursor
-                let effective_cursor_y = if win.is_active { buf.cur.y } else { win.cursor.y };
+                let effective_cursor_y = if win.is_active {
+                    buf.cur.y
+                } else {
+                    win.cursor.y
+                };
                 win.update_scroll(effective_cursor_y);
 
                 // Get fold state for this buffer
@@ -748,7 +754,11 @@ impl Screen {
 
                 // Update scroll to keep cursor visible
                 // Active window uses buffer's live cursor; inactive windows use saved cursor
-                let effective_cursor_y = if win.is_active { buf.cur.y } else { win.cursor.y };
+                let effective_cursor_y = if win.is_active {
+                    buf.cur.y
+                } else {
+                    win.cursor.y
+                };
                 win.update_scroll(effective_cursor_y);
 
                 // Get fold state for this buffer

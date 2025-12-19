@@ -110,9 +110,12 @@ impl Style {
         }
 
         // Background color (with downgrade based on color mode)
+        // When bg is None, emit reset code (49) to clear any previous background
         if let Some(bg) = &self.bg {
             let converted = downgrade_color(*bg, color_mode);
             owned_codes.push(color_to_bg_ansi(&converted));
+        } else {
+            codes.push("49"); // Reset background to terminal default
         }
 
         // Attributes
