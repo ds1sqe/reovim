@@ -231,6 +231,7 @@ impl Runtime {
                         }
                         ExCommand::Edit { filename } => {
                             self.open_file(&filename);
+                            self.screen.set_editor_buffer(self.active_buffer_id);
                         }
                         // Window management
                         ExCommand::Split { filename } => {
@@ -1113,7 +1114,8 @@ impl Runtime {
         }
 
         // Get the current buffer ID (either the newly opened file or existing buffer)
-        let buffer_id = self.screen.active_buffer_id().unwrap_or(0);
+        // Use self.active_buffer_id directly since open_file updates it
+        let buffer_id = self.active_buffer_id;
 
         // Split the window
         if let Some(new_window_id) = self.screen.split_window(direction) {
@@ -1159,7 +1161,8 @@ impl Runtime {
         }
 
         // Get the current buffer ID
-        let buffer_id = self.screen.active_buffer_id().unwrap_or(0);
+        // Use self.active_buffer_id directly since open_file updates it
+        let buffer_id = self.active_buffer_id;
 
         let tab_id = self.screen.new_tab(buffer_id);
         tracing::info!(tab_id = tab_id, buffer_id = buffer_id, "New tab created");

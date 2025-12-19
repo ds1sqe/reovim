@@ -5,7 +5,7 @@
 use std::time::Duration;
 
 use super::{
-    client::{ModeInfo, TelescopeInfo, WhichKeyInfo},
+    client::{ModeInfo, ScreenInfo, TelescopeInfo, WhichKeyInfo},
     server::ServerTestHarness,
 };
 
@@ -109,6 +109,7 @@ impl ServerTest {
         let whichkey = client.whichkey().await.ok();
         let telescope = client.telescope().await.ok();
         let screen_content = client.screen_content_raw().await.unwrap_or_default();
+        let screen = client.screen().await.ok();
 
         ServerTestResult {
             mode,
@@ -117,6 +118,7 @@ impl ServerTest {
             whichkey,
             telescope,
             screen_content,
+            screen,
             _harness: self.harness, // Keep alive until assertions done
         }
     }
@@ -136,6 +138,8 @@ pub struct ServerTestResult {
     pub telescope: Option<TelescopeInfo>,
     /// Raw screen content with ANSI escape codes
     pub screen_content: String,
+    /// Screen state (dimensions and active buffer)
+    pub screen: Option<ScreenInfo>,
     /// Keep server alive until assertions are done
     _harness: ServerTestHarness,
 }
@@ -368,5 +372,36 @@ impl ServerTestResult {
             hide_pos.unwrap() < show_pos.unwrap(),
             "Hide cursor should appear before Show cursor in output"
         );
+    }
+
+    /// Assert that the active buffer ID matches
+    ///
+    /// # Panics
+    ///
+    /// Panics if the active buffer ID doesn't match.
+    pub fn assert_active_buffer_id(&self, expected: usize) {
+        let screen = self
+            .screen
+            .as_ref()
+            .expect("Screen state not available");
+        assert_eq!(
+            screen.active_buffer_id, expected,
+            "Active buffer ID mismatch: expected {}, got {}",
+            expected, screen.active_buffer_id
+        );
+    }
+
+    /// Get the active buffer ID
+    ///
+    /// # Panics
+    ///
+    /// Panics if screen state is not available.
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)] // expect is not const
+    pub fn active_buffer_id(&self) -> usize {
+        self.screen
+            .as_ref()
+            .expect("Screen state not available")
+            .active_buffer_id
     }
 }

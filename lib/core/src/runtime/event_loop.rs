@@ -272,6 +272,7 @@ impl Runtime {
                 }
                 BufferEvent::Switch { buffer_id } => {
                     self.switch_buffer(buffer_id);
+                    self.screen.set_editor_buffer(buffer_id);
                     self.request_render();
                 }
             },
@@ -754,12 +755,14 @@ impl Runtime {
                             self.telescope_state.close();
                             self.set_mode(ModeState::normal());
                             self.open_file(&path_str);
+                            self.screen.set_editor_buffer(self.active_buffer_id);
                         }
                         TelescopeData::BufferId(buf_id) => {
                             let buf_id = *buf_id;
                             self.telescope_state.close();
                             self.set_mode(ModeState::normal());
                             self.switch_buffer(buf_id);
+                            self.screen.set_editor_buffer(buf_id);
                         }
                         TelescopeData::GrepMatch { path, line, col: _ } => {
                             let path_str = path.to_string_lossy().to_string();
@@ -767,6 +770,7 @@ impl Runtime {
                             self.telescope_state.close();
                             self.set_mode(ModeState::normal());
                             self.open_file(&path_str);
+                            self.screen.set_editor_buffer(self.active_buffer_id);
                             // Move cursor to line
                             if let Some(buffer) = self.buffers.get_mut(&self.active_buffer_id) {
                                 buffer.cur.y = target_line.saturating_sub(1) as u16;

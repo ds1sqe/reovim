@@ -2,6 +2,23 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.6.2] - 2025-12-19
+
+### Fixed
+
+- **Buffer Switching Not Updating Screen** - Fix 6 locations where screen state wasn't synchronized
+  - Telescope buffer picker now properly switches displayed buffer
+  - Telescope file picker and grep match now sync screen after open
+  - `:e` command now updates screen after opening file
+  - `BufferEvent::Switch` now syncs screen
+  - `:split`/`:vsplit` and `:tabnew` use correct buffer ID after file open
+
+### Testing
+
+- Add buffer switching integration tests (10 tests)
+- Add `screen()`, `buffer_list()`, `open_file()` to testing framework
+- Add `assert_active_buffer_id()` and `active_buffer_id()` assertions
+
 ## [0.6.1] - 2025-12-19
 
 ### Fixed

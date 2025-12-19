@@ -83,6 +83,23 @@ pub struct TelescopeInfo {
     pub selected_item: Option<String>,
 }
 
+/// Screen state information returned by the server
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScreenInfo {
+    pub width: u16,
+    pub height: u16,
+    pub active_buffer_id: usize,
+    pub active_window_id: Option<usize>,
+}
+
+/// Buffer information returned by buffer/list
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BufferListItem {
+    pub id: usize,
+    pub name: String,
+    pub modified: bool,
+}
+
 /// Test client for server-based integration tests
 pub struct TestClient {
     reader: BufReader<tokio::net::tcp::OwnedReadHalf>,
@@ -291,5 +308,36 @@ impl TestClient {
             .send("state/screen_content", json!({ "format": "raw_ansi" }))
             .await?;
         Ok(result["content"].as_str().unwrap_or("").to_string())
+    }
+
+    /// Get screen state (dimensions and active buffer)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails.
+    pub async fn screen(&mut self) -> Result<ScreenInfo, ClientError> {
+        let result = self.send("state/screen", json!({})).await?;
+        serde_json::from_value(result).map_err(ClientError::ParseFailed)
+    }
+
+    /// Get list of all buffers
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails.
+    pub async fn buffer_list(&mut self) -> Result<Vec<BufferListItem>, ClientError> {
+        let result = self.send("buffer/list", json!({})).await?;
+        serde_json::from_value(result["buffers"].clone()).map_err(ClientError::ParseFailed)
+    }
+
+    /// Open a file in a new buffer
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails.
+    #[allow(clippy::cast_possible_truncation)]
+    pub async fn open_file(&mut self, path: &str) -> Result<usize, ClientError> {
+        let result = self.send("buffer/open_file", json!({ "path": path })).await?;
+        Ok(result["buffer_id"].as_u64().unwrap_or(0) as usize)
     }
 }
