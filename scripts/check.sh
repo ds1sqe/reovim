@@ -29,7 +29,16 @@ if [[ "$1" == "--quick" ]]; then
     QUICK_MODE=true
 fi
 
-# Step 1: Format check
+# Step 1: Format all workspaces with nightly
+print_step "Formatting code with nightly..."
+if cargo +nightly fmt --all; then
+    print_success "Code formatted"
+else
+    print_error "Code formatting failed"
+    exit 1
+fi
+
+# Step 2: Format check
 print_step "Checking code formatting..."
 if cargo fmt --check; then
     print_success "Code formatting OK"
@@ -38,7 +47,7 @@ else
     exit 1
 fi
 
-# Step 2: Build
+# Step 3: Build
 print_step "Building workspace..."
 if cargo build --workspace; then
     print_success "Build succeeded"
@@ -47,7 +56,7 @@ else
     exit 1
 fi
 
-# Step 2: Build
+# Step 4: Build release
 print_step "Building workspace release..."
 if cargo build --release --workspace; then
     print_success "Build succeeded"
@@ -56,7 +65,7 @@ else
     exit 1
 fi
 
-# Step 3: Clippy on all targets
+# Step 5: Clippy on all targets
 # Uses workspace lint configuration from Cargo.toml
 # (clippy::all = "deny", clippy::pedantic/nursery = "warn")
 print_step "Running clippy on all workspace targets..."
@@ -67,7 +76,7 @@ else
     exit 1
 fi
 
-# Step 4: Tests
+# Step 6: Tests
 print_step "Running tests..."
 if cargo test --workspace; then
     print_success "All tests passed"
@@ -76,7 +85,7 @@ else
     exit 1
 fi
 
-# Step 5: Doc tests (optional in quick mode)
+# Step 7: Doc tests (optional in quick mode)
 if [[ "$QUICK_MODE" == false ]]; then
     print_step "Running doc tests..."
     if cargo test --doc --workspace; then

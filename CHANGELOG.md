@@ -2,6 +2,24 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.6.1] - 2025-12-19
+
+### Fixed
+
+- **Cursor Blinking During Movement** - Hide cursor during render operations
+  - Wrap render with Hide/Show escape sequences to prevent visual artifacts
+  - Fixes flickering cursor when navigating with hjkl
+
+### Testing
+
+- Add cursor visibility integration tests
+- Add `screen_content_raw()` to testing framework
+- Add `assert_cursor_visibility_managed()` assertion
+
+### Chores
+
+- Add `cargo +nightly fmt --all` step to `scripts/check.sh` for consistent formatting
+
 ## [0.6.0] - 2025-12-18
 
 ### Features

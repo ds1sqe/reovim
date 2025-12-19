@@ -108,6 +108,7 @@ impl ServerTest {
         let buffer_content = client.buffer_content().await.unwrap_or_default();
         let whichkey = client.whichkey().await.ok();
         let telescope = client.telescope().await.ok();
+        let screen_content = client.screen_content_raw().await.unwrap_or_default();
 
         ServerTestResult {
             mode,
@@ -115,6 +116,7 @@ impl ServerTest {
             buffer_content,
             whichkey,
             telescope,
+            screen_content,
             _harness: self.harness, // Keep alive until assertions done
         }
     }
@@ -132,6 +134,8 @@ pub struct ServerTestResult {
     pub whichkey: Option<WhichKeyInfo>,
     /// Telescope state
     pub telescope: Option<TelescopeInfo>,
+    /// Raw screen content with ANSI escape codes
+    pub screen_content: String,
     /// Keep server alive until assertions are done
     _harness: ServerTestHarness,
 }
@@ -340,5 +344,29 @@ impl ServerTestResult {
             .as_ref()
             .expect("Telescope state not available");
         assert_eq!(ts.query, expected, "Telescope query mismatch");
+    }
+
+    /// Assert that cursor visibility is properly managed during rendering
+    ///
+    /// Verifies that the terminal output contains Hide cursor escape code
+    /// before the Show cursor escape code, ensuring cursor is hidden during
+    /// screen updates to prevent blinking.
+    ///
+    /// # Panics
+    ///
+    /// Panics if Hide/Show escape codes are missing or in wrong order.
+    pub fn assert_cursor_visibility_managed(&self) {
+        const HIDE_CURSOR: &str = "\x1b[?25l";
+        const SHOW_CURSOR: &str = "\x1b[?25h";
+
+        let hide_pos = self.screen_content.find(HIDE_CURSOR);
+        let show_pos = self.screen_content.rfind(SHOW_CURSOR);
+
+        assert!(hide_pos.is_some(), "Hide cursor escape code not found in screen output");
+        assert!(show_pos.is_some(), "Show cursor escape code not found in screen output");
+        assert!(
+            hide_pos.unwrap() < show_pos.unwrap(),
+            "Hide cursor should appear before Show cursor in output"
+        );
     }
 }

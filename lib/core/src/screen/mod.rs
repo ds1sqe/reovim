@@ -24,7 +24,7 @@ use {
         telescope::TelescopeState,
     },
     reovim_sys::{
-        cursor::MoveTo,
+        cursor::{Hide, MoveTo, Show},
         event::{DisableMouseCapture, EnableMouseCapture},
         queue,
         style::Print,
@@ -541,6 +541,7 @@ impl Screen {
         // Put renderer back and flush
         self.frame_renderer = Some(renderer);
         let renderer = self.frame_renderer.as_mut().unwrap();
+        queue!(self.out_stream, Hide)?;
         renderer.flush(&mut self.out_stream)?;
 
         // Position cursor
@@ -548,6 +549,7 @@ impl Screen {
             queue!(self.out_stream, MoveTo(x, y))?;
         }
 
+        queue!(self.out_stream, Show)?;
         self.out_stream.flush()
     }
 
@@ -574,8 +576,9 @@ impl Screen {
         indent_analyzer: &IndentAnalyzer,
         settings_menu: &crate::settings_menu::SettingsMenuState,
     ) -> std::result::Result<(), std::io::Error> {
-        // Reset all styling
+        // Reset all styling and hide cursor during render
         queue!(self.out_stream, Print(RESET_STYLE))?;
+        queue!(self.out_stream, Hide)?;
 
         // Render tab line if multiple tabs exist
         self.render_tab_line(color_mode, theme)?;
@@ -723,6 +726,7 @@ impl Screen {
                     .saturating_sub(settings_menu.scroll_offset) as u16;
             let cursor_x = settings_menu.layout.x + 2;
             queue!(self.out_stream, MoveTo(cursor_x, cursor_y))?;
+            queue!(self.out_stream, Show)?;
             return self.out_stream.flush();
         }
 
@@ -735,6 +739,7 @@ impl Screen {
                 telescope_state.layout.x + 1 + prompt_len + telescope_state.cursor_pos as u16;
             let cursor_y = telescope_state.layout.y + telescope_state.layout.height - 2;
             queue!(self.out_stream, MoveTo(cursor_x, cursor_y))?;
+            queue!(self.out_stream, Show)?;
             return self.out_stream.flush();
         }
 
@@ -745,6 +750,7 @@ impl Screen {
             queue!(self.out_stream, MoveTo(x, y))?;
         }
 
+        queue!(self.out_stream, Show)?;
         self.out_stream.flush()
     }
 

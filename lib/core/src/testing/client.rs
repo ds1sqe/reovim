@@ -280,4 +280,16 @@ impl TestClient {
         let result = self.send("state/telescope", json!({})).await?;
         serde_json::from_value(result).map_err(ClientError::ParseFailed)
     }
+
+    /// Get screen content with raw ANSI escape codes
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails.
+    pub async fn screen_content_raw(&mut self) -> Result<String, ClientError> {
+        let result = self
+            .send("state/screen_content", json!({ "format": "raw_ansi" }))
+            .await?;
+        Ok(result["content"].as_str().unwrap_or("").to_string())
+    }
 }
