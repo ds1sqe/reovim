@@ -566,7 +566,9 @@ impl Screen {
                 current_buffer = Some(buf);
 
                 // Update scroll to keep cursor visible
-                win.update_scroll(buf.cur.y);
+                // Active window uses buffer's live cursor; inactive windows use saved cursor
+                let effective_cursor_y = if win.is_active { buf.cur.y } else { win.cursor.y };
+                win.update_scroll(effective_cursor_y);
 
                 // Get fold state for this buffer
                 let fold_state = fold_manager.get(buf.id);
@@ -745,7 +747,9 @@ impl Screen {
                 current_buffer = Some(buf);
 
                 // Update scroll to keep cursor visible
-                win.update_scroll(buf.cur.y);
+                // Active window uses buffer's live cursor; inactive windows use saved cursor
+                let effective_cursor_y = if win.is_active { buf.cur.y } else { win.cursor.y };
+                win.update_scroll(effective_cursor_y);
 
                 // Get fold state for this buffer
                 let fold_state = fold_manager.get(buf.id);
@@ -1255,6 +1259,12 @@ impl Screen {
         self.tab_manager
             .active_tab()
             .map_or(0, tab::TabPage::window_count)
+    }
+
+    /// Get a reference to all windows
+    #[must_use]
+    pub fn windows(&self) -> &[Window] {
+        &self.windows
     }
 
     /// Update window layouts based on current layout manager state and split tree

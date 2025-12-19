@@ -93,6 +93,18 @@ pub struct ScreenInfo {
     pub window_count: usize,
 }
 
+/// Window state information returned by the server
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WindowInfo {
+    pub id: usize,
+    pub buffer_id: usize,
+    pub buffer_anchor_x: u16,
+    pub buffer_anchor_y: u16,
+    pub is_active: bool,
+    pub cursor_x: u16,
+    pub cursor_y: u16,
+}
+
 /// Buffer information returned by buffer/list
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BufferListItem {
@@ -318,6 +330,16 @@ impl TestClient {
     /// Returns an error if the request fails.
     pub async fn screen(&mut self) -> Result<ScreenInfo, ClientError> {
         let result = self.send("state/screen", json!({})).await?;
+        serde_json::from_value(result).map_err(ClientError::ParseFailed)
+    }
+
+    /// Get all windows state (scroll position, cursor, active state)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails.
+    pub async fn windows(&mut self) -> Result<Vec<WindowInfo>, ClientError> {
+        let result = self.send("state/windows", json!({})).await?;
         serde_json::from_value(result).map_err(ClientError::ParseFailed)
     }
 

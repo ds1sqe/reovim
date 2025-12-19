@@ -744,6 +744,24 @@ impl Runtime {
         }
     }
 
+    /// Get a snapshot of all windows and their states
+    #[must_use]
+    pub fn windows_snapshot(&self) -> Vec<crate::rpc::WindowSnapshot> {
+        self.screen
+            .windows()
+            .iter()
+            .map(|w| crate::rpc::WindowSnapshot {
+                id: w.id,
+                buffer_id: w.buffer_id,
+                buffer_anchor_x: w.buffer_anchor.x,
+                buffer_anchor_y: w.buffer_anchor.y,
+                is_active: w.is_active,
+                cursor_x: w.cursor.x,
+                cursor_y: w.cursor.y,
+            })
+            .collect()
+    }
+
     /// Get the content of a buffer as a string
     #[must_use]
     pub fn buffer_content(&self, buffer_id: usize) -> Option<String> {

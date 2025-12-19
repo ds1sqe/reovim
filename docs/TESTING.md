@@ -58,6 +58,7 @@ Test Flow:
 │ mode()      │  state/mode       │  Runtime                │
 │ cursor()    │  state/cursor     │  Buffer, Screen         │
 │ buffer()    │  buffer/content   │                         │
+│ windows()   │  state/windows    │  Screen (scroll/cursor) │
 └─────────────┘ ←──────────────── └─────────────────────────┘
                    Response
 ```

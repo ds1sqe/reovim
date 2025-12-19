@@ -68,6 +68,25 @@ pub struct ScreenSnapshot {
     pub window_count: usize,
 }
 
+/// Snapshot of a single window's state
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WindowSnapshot {
+    /// Window ID
+    pub id: usize,
+    /// Buffer ID displayed in this window
+    pub buffer_id: usize,
+    /// Horizontal scroll offset (buffer column at left edge)
+    pub buffer_anchor_x: u16,
+    /// Vertical scroll offset (buffer line at top edge)
+    pub buffer_anchor_y: u16,
+    /// Whether this window is currently active
+    pub is_active: bool,
+    /// Saved cursor X position (for inactive windows)
+    pub cursor_x: u16,
+    /// Saved cursor Y position (for inactive windows)
+    pub cursor_y: u16,
+}
+
 /// Format for screen content
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]

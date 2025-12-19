@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use {
     super::{
-        client::{ModeInfo, ScreenInfo, TelescopeInfo, TestClient, WhichKeyInfo},
+        client::{ModeInfo, ScreenInfo, TelescopeInfo, TestClient, WhichKeyInfo, WindowInfo},
         server::ServerTestHarness,
     },
     crate::visual::{LayerInfo, VisualSnapshot},
@@ -476,5 +476,60 @@ impl ServerTestResult {
             .layer_info()
             .await
             .expect("Failed to get layer info")
+    }
+
+    // === Window methods ===
+
+    /// Get all windows state
+    ///
+    /// Returns a list of all windows with their scroll positions, cursors, and active state.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the request fails.
+    pub async fn windows(&mut self) -> Vec<WindowInfo> {
+        self.client.windows().await.expect("Failed to get windows")
+    }
+
+    /// Assert that a window has the expected scroll position (`buffer_anchor_y`)
+    ///
+    /// # Arguments
+    ///
+    /// * `windows` - The list of windows from `windows()` call
+    /// * `window_index` - Index of the window in the list
+    /// * `expected_y` - Expected vertical scroll position (buffer line at top of viewport)
+    ///
+    /// # Panics
+    ///
+    /// Panics if the window doesn't exist or scroll position doesn't match.
+    pub fn assert_window_scroll(windows: &[WindowInfo], window_index: usize, expected_y: u16) {
+        let window = windows
+            .get(window_index)
+            .unwrap_or_else(|| panic!("Window index {window_index} does not exist"));
+        assert_eq!(
+            window.buffer_anchor_y, expected_y,
+            "Window {} scroll mismatch: expected y={}, got y={}",
+            window_index, expected_y, window.buffer_anchor_y
+        );
+    }
+
+    /// Find a window by its active state
+    ///
+    /// # Returns
+    ///
+    /// The first window with `is_active == true`, or None if no active window.
+    #[must_use]
+    pub fn find_active_window(windows: &[WindowInfo]) -> Option<&WindowInfo> {
+        windows.iter().find(|w| w.is_active)
+    }
+
+    /// Find a window by its ID
+    ///
+    /// # Returns
+    ///
+    /// The window with the given ID, or None if not found.
+    #[must_use]
+    pub fn find_window_by_id(windows: &[WindowInfo], id: usize) -> Option<&WindowInfo> {
+        windows.iter().find(|w| w.id == id)
     }
 }

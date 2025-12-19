@@ -481,6 +481,10 @@ impl Runtime {
                 let snapshot = crate::rpc::TelescopeSnapshot::from(&self.telescope_state);
                 RpcResponse::success(id, serde_json::to_value(snapshot).unwrap())
             }
+            methods::STATE_WINDOWS => {
+                let snapshot = self.windows_snapshot();
+                RpcResponse::success(id, serde_json::to_value(snapshot).unwrap())
+            }
             methods::STATE_VISUAL_SNAPSHOT => {
                 // Return visual snapshot with cell grid and layer info
                 self.visual_snapshot().map_or_else(
