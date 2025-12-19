@@ -229,6 +229,11 @@ pub mod methods {
     pub const STATE_WHICHKEY: &str = "state/whichkey";
     pub const STATE_TELESCOPE: &str = "state/telescope";
 
+    // Visual methods (for debugging and AI understanding)
+    pub const STATE_VISUAL_SNAPSHOT: &str = "state/visual_snapshot";
+    pub const STATE_ASCII_ART: &str = "state/ascii_art";
+    pub const STATE_LAYER_INFO: &str = "state/layer_info";
+
     // Editor methods
     pub const EDITOR_RESIZE: &str = "editor/resize";
     pub const EDITOR_QUIT: &str = "editor/quit";

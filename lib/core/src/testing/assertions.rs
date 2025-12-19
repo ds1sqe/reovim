@@ -4,9 +4,12 @@
 
 use std::time::Duration;
 
-use super::{
-    client::{ModeInfo, ScreenInfo, TelescopeInfo, WhichKeyInfo},
-    server::ServerTestHarness,
+use {
+    super::{
+        client::{ModeInfo, ScreenInfo, TelescopeInfo, TestClient, WhichKeyInfo},
+        server::ServerTestHarness,
+    },
+    crate::visual::{LayerInfo, VisualSnapshot},
 };
 
 /// A key sequence with optional delay after it
@@ -22,6 +25,8 @@ pub struct ServerTest {
     key_sequences: Vec<KeySequence>,
     /// Default delay between key sequences (ms)
     default_delay: u64,
+    /// Explicit screen size (width, height)
+    screen_size: Option<(u16, u16)>,
 }
 
 impl ServerTest {
@@ -40,7 +45,17 @@ impl ServerTest {
             initial_content: None,
             key_sequences: Vec::new(),
             default_delay: 50,
+            screen_size: None,
         }
+    }
+
+    /// Set explicit screen size (width, height)
+    ///
+    /// This resizes the editor to the specified dimensions before running the test.
+    #[must_use]
+    pub const fn with_size(mut self, width: u16, height: u16) -> Self {
+        self.screen_size = Some((width, height));
+        self
     }
 
     /// Set initial buffer content
@@ -88,6 +103,14 @@ impl ServerTest {
             .await
             .expect("Failed to connect to server");
 
+        // Set screen size if specified
+        if let Some((width, height)) = self.screen_size {
+            client
+                .resize(width, height)
+                .await
+                .expect("Failed to resize screen");
+        }
+
         // Set initial content
         if let Some(content) = &self.initial_content {
             client
@@ -119,6 +142,7 @@ impl ServerTest {
             telescope,
             screen_content,
             screen,
+            client,                 // Keep client for visual methods
             _harness: self.harness, // Keep alive until assertions done
         }
     }
@@ -140,6 +164,8 @@ pub struct ServerTestResult {
     pub screen_content: String,
     /// Screen state (dimensions and active buffer)
     pub screen: Option<ScreenInfo>,
+    /// Client for visual methods (async)
+    client: TestClient,
     /// Keep server alive until assertions are done
     _harness: ServerTestHarness,
 }
@@ -380,10 +406,7 @@ impl ServerTestResult {
     ///
     /// Panics if the active buffer ID doesn't match.
     pub fn assert_active_buffer_id(&self, expected: usize) {
-        let screen = self
-            .screen
-            .as_ref()
-            .expect("Screen state not available");
+        let screen = self.screen.as_ref().expect("Screen state not available");
         assert_eq!(
             screen.active_buffer_id, expected,
             "Active buffer ID mismatch: expected {}, got {}",
@@ -403,5 +426,51 @@ impl ServerTestResult {
             .as_ref()
             .expect("Screen state not available")
             .active_buffer_id
+    }
+
+    // === Visual methods ===
+
+    /// Get visual snapshot for testing
+    ///
+    /// Returns a structured snapshot with cell grid, cursor, and layer info.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the request fails.
+    pub async fn visual_snapshot(&mut self) -> VisualSnapshot {
+        self.client
+            .visual_snapshot()
+            .await
+            .expect("Failed to get visual snapshot")
+    }
+
+    /// Get ASCII art representation of the screen
+    ///
+    /// # Arguments
+    ///
+    /// * `annotated` - If true, includes borders and row/column numbers
+    ///
+    /// # Panics
+    ///
+    /// Panics if the request fails.
+    pub async fn ascii_art(&mut self, annotated: bool) -> String {
+        self.client
+            .ascii_art(annotated)
+            .await
+            .expect("Failed to get ASCII art")
+    }
+
+    /// Get layer information
+    ///
+    /// Returns information about all layers including their z-order and bounds.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the request fails.
+    pub async fn layer_info(&mut self) -> Vec<LayerInfo> {
+        self.client
+            .layer_info()
+            .await
+            .expect("Failed to get layer info")
     }
 }

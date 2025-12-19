@@ -107,13 +107,13 @@ pub struct CellSnapshot {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bg: Option<String>,
     /// Bold style
-    #[serde(skip_serializing_if = "is_false")]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub bold: bool,
     /// Italic style
-    #[serde(skip_serializing_if = "is_false")]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub italic: bool,
     /// Underline style
-    #[serde(skip_serializing_if = "is_false")]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub underline: bool,
 }
 
@@ -296,6 +296,52 @@ impl From<&crate::buffer::Selection> for SelectionSnapshot {
             mode: mode.to_string(),
             anchor: CursorSnapshot::from(&sel.anchor),
             cursor: CursorSnapshot { x: 0, y: 0 }, // Cursor is set separately from buffer
+        }
+    }
+}
+
+// === Color conversion ===
+
+/// Convert a Color to a CSS-style hex string
+#[must_use]
+pub fn color_to_hex(color: &reovim_sys::style::Color) -> String {
+    use reovim_sys::style::Color;
+    match color {
+        Color::Rgb { r, g, b } => format!("#{r:02x}{g:02x}{b:02x}"),
+        Color::AnsiValue(n) => format!("ansi:{n}"),
+        Color::Black => "#000000".to_string(),
+        Color::DarkGrey => "#808080".to_string(),
+        Color::Red => "#ff0000".to_string(),
+        Color::DarkRed => "#800000".to_string(),
+        Color::Green => "#00ff00".to_string(),
+        Color::DarkGreen => "#008000".to_string(),
+        Color::Yellow => "#ffff00".to_string(),
+        Color::DarkYellow => "#808000".to_string(),
+        Color::Blue => "#0000ff".to_string(),
+        Color::DarkBlue => "#000080".to_string(),
+        Color::Magenta => "#ff00ff".to_string(),
+        Color::DarkMagenta => "#800080".to_string(),
+        Color::Cyan => "#00ffff".to_string(),
+        Color::DarkCyan => "#008080".to_string(),
+        Color::White => "#ffffff".to_string(),
+        Color::Grey => "#c0c0c0".to_string(),
+        Color::Reset => "reset".to_string(),
+    }
+}
+
+// === Cell conversion ===
+
+impl From<&crate::frame::Cell> for CellSnapshot {
+    fn from(cell: &crate::frame::Cell) -> Self {
+        use crate::highlight::Attributes;
+
+        Self {
+            char: cell.char,
+            fg: cell.style.fg.as_ref().map(color_to_hex),
+            bg: cell.style.bg.as_ref().map(color_to_hex),
+            bold: cell.style.attributes.contains(Attributes::BOLD),
+            italic: cell.style.attributes.contains(Attributes::ITALIC),
+            underline: cell.style.attributes.contains(Attributes::UNDERLINE),
         }
     }
 }

@@ -2,6 +2,7 @@ pub mod bind;
 pub mod buffer;
 pub mod frame;
 pub mod rpc;
+pub mod visual;
 
 pub mod command;
 pub mod command_line;

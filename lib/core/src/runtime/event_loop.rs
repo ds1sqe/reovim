@@ -473,6 +473,58 @@ impl Runtime {
                 let snapshot = crate::rpc::TelescopeSnapshot::from(&self.telescope_state);
                 RpcResponse::success(id, serde_json::to_value(snapshot).unwrap())
             }
+            methods::STATE_VISUAL_SNAPSHOT => {
+                // Return visual snapshot with cell grid and layer info
+                self.visual_snapshot().map_or_else(
+                    || {
+                        RpcResponse::error(
+                            id,
+                            RpcError::internal_error("frame renderer not enabled"),
+                        )
+                    },
+                    |snapshot| RpcResponse::success(id, serde_json::to_value(snapshot).unwrap()),
+                )
+            }
+            methods::STATE_ASCII_ART => {
+                // Return ASCII art representation of the screen
+                let annotated = params
+                    .get("annotated")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false);
+
+                let cursor_pos = self
+                    .buffers
+                    .get(&self.active_buffer_id)
+                    .map(|b| (b.cur.x, b.cur.y));
+
+                let content = if annotated {
+                    self.screen.to_annotated_ascii(cursor_pos)
+                } else {
+                    self.screen.to_ascii()
+                };
+
+                content.map_or_else(
+                    || {
+                        RpcResponse::error(
+                            id,
+                            RpcError::internal_error("frame renderer not enabled"),
+                        )
+                    },
+                    |content| RpcResponse::success(id, serde_json::json!({ "content": content })),
+                )
+            }
+            methods::STATE_LAYER_INFO => {
+                // Return layer visibility information
+                let layers = self.screen.layer_info(
+                    self.explorer_state.is_some(),
+                    self.which_key_panel.visible,
+                    self.completion_state.active,
+                    self.telescope_state.active,
+                    self.leap_state.is_active(),
+                    self.settings_menu.visible,
+                );
+                RpcResponse::success(id, serde_json::to_value(layers).unwrap())
+            }
             methods::INPUT_KEYS => {
                 // Key injection is handled at the server level via ChannelKeySource
                 // This handler is a fallback that returns an error

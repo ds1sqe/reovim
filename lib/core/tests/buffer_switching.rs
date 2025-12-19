@@ -106,10 +106,7 @@ async fn test_edit_command_switches_active_buffer() {
 
     // After :e, we should be in normal mode with Editor focus
     result.assert_normal_mode();
-    assert_eq!(
-        result.mode.focus, "Editor",
-        "Focus should be on Editor after :e command"
-    );
+    assert_eq!(result.mode.focus, "Editor", "Focus should be on Editor after :e command");
 }
 
 // ============================================================================
@@ -173,10 +170,7 @@ async fn test_edit_command_returns_to_normal_mode() {
         .await;
 
     result.assert_normal_mode();
-    assert_eq!(
-        result.mode.focus, "Editor",
-        "Focus should be on Editor after :e command"
-    );
+    assert_eq!(result.mode.focus, "Editor", "Focus should be on Editor after :e command");
 }
 
 // ============================================================================
@@ -222,7 +216,10 @@ async fn test_buffer_picker_shows_all_buffers() {
 
     // Should have at least 2 buffers (initial + at least one from :e)
     // Note: :e may reuse existing buffer with same name, so we're lenient here
-    let ts = result.telescope.as_ref().expect("Telescope state not available");
+    let ts = result
+        .telescope
+        .as_ref()
+        .expect("Telescope state not available");
     assert!(
         ts.item_count >= 1,
         "Expected at least 1 buffer in picker, got {}",

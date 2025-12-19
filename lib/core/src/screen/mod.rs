@@ -308,6 +308,142 @@ impl Screen {
         self.frame_renderer.is_some()
     }
 
+    /// Get a read-only reference to the frame buffer (if enabled)
+    #[must_use]
+    pub fn frame_buffer(&self) -> Option<&FrameBuffer> {
+        self.frame_renderer.as_ref().map(FrameRenderer::buffer)
+    }
+
+    /// Get the screen as ASCII art (for debugging)
+    ///
+    /// Returns None if frame renderer is not enabled.
+    #[must_use]
+    pub fn to_ascii(&self) -> Option<String> {
+        self.frame_buffer().map(FrameBuffer::to_ascii)
+    }
+
+    /// Get annotated ASCII art with cursor position
+    ///
+    /// Returns None if frame renderer is not enabled.
+    #[must_use]
+    pub fn to_annotated_ascii(&self, cursor: Option<(u16, u16)>) -> Option<String> {
+        self.frame_buffer().map(|buf| {
+            let mut config = crate::visual::AsciiRenderConfig::new().annotated();
+            if let Some((x, y)) = cursor {
+                config = config.with_cursor(x, y);
+            }
+            buf.to_annotated_ascii(&config)
+        })
+    }
+
+    /// Get layer visibility information for visual debugging
+    #[must_use]
+    #[allow(clippy::fn_params_excessive_bools)]
+    pub fn layer_info(
+        &self,
+        explorer_visible: bool,
+        which_key_visible: bool,
+        completion_visible: bool,
+        telescope_active: bool,
+        leap_active: bool,
+        settings_visible: bool,
+    ) -> Vec<crate::visual::LayerInfo> {
+        use crate::visual::{BoundsInfo, LayerInfo};
+
+        let mut layers = Vec::new();
+
+        // Base layer (tab line, status line)
+        layers.push(LayerInfo {
+            name: "base".to_string(),
+            z_order: layer::z_order::BASE,
+            visible: true,
+            bounds: BoundsInfo::new(0, 0, self.size.width, self.size.height),
+        });
+
+        // Explorer
+        if explorer_visible {
+            let explorer_width = self.layout.explorer_width();
+            if explorer_width > 0 {
+                layers.push(LayerInfo {
+                    name: "explorer".to_string(),
+                    z_order: layer::z_order::EXPLORER,
+                    visible: true,
+                    bounds: BoundsInfo::new(
+                        0,
+                        1,
+                        explorer_width,
+                        self.size.height.saturating_sub(2),
+                    ),
+                });
+            }
+        }
+
+        // Editor
+        layers.push(LayerInfo {
+            name: "editor".to_string(),
+            z_order: layer::z_order::EDITOR,
+            visible: true,
+            bounds: BoundsInfo::new(0, 1, self.size.width, self.size.height.saturating_sub(2)),
+        });
+
+        // Leap
+        if leap_active {
+            layers.push(LayerInfo {
+                name: "leap".to_string(),
+                z_order: layer::z_order::LEAP,
+                visible: true,
+                bounds: BoundsInfo::new(0, 1, self.size.width, self.size.height.saturating_sub(2)),
+            });
+        }
+
+        // Completion
+        if completion_visible {
+            layers.push(LayerInfo {
+                name: "completion".to_string(),
+                z_order: layer::z_order::COMPLETION,
+                visible: true,
+                bounds: BoundsInfo::new(0, 0, 40, 10), // Approximate
+            });
+        }
+
+        // Which-key
+        if which_key_visible {
+            layers.push(LayerInfo {
+                name: "which_key".to_string(),
+                z_order: layer::z_order::WHICH_KEY,
+                visible: true,
+                bounds: BoundsInfo::new(
+                    0,
+                    self.size.height.saturating_sub(10),
+                    self.size.width,
+                    10,
+                ),
+            });
+        }
+
+        // Telescope
+        if telescope_active {
+            layers.push(LayerInfo {
+                name: "telescope".to_string(),
+                z_order: layer::z_order::TELESCOPE,
+                visible: true,
+                bounds: BoundsInfo::new(0, 0, self.size.width, self.size.height),
+            });
+        }
+
+        // Settings menu
+        if settings_visible {
+            layers.push(LayerInfo {
+                name: "settings".to_string(),
+                z_order: layer::z_order::SETTINGS_MENU,
+                visible: true,
+                bounds: BoundsInfo::new(0, 0, self.size.width, self.size.height),
+            });
+        }
+
+        layers
+    }
+
     /// update screen using diff-based rendering
     ///
     /// When frame renderer is enabled, renders all components to a frame buffer

@@ -337,7 +337,52 @@ impl TestClient {
     /// Returns an error if the request fails.
     #[allow(clippy::cast_possible_truncation)]
     pub async fn open_file(&mut self, path: &str) -> Result<usize, ClientError> {
-        let result = self.send("buffer/open_file", json!({ "path": path })).await?;
+        let result = self
+            .send("buffer/open_file", json!({ "path": path }))
+            .await?;
         Ok(result["buffer_id"].as_u64().unwrap_or(0) as usize)
+    }
+
+    // === Visual methods ===
+
+    /// Get visual snapshot of the screen
+    ///
+    /// Returns a structured snapshot with cell grid, cursor, and layer info.
+    /// Useful for debugging and programmatic assertions.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails or frame renderer is not enabled.
+    pub async fn visual_snapshot(&mut self) -> Result<crate::visual::VisualSnapshot, ClientError> {
+        let result = self.send("state/visual_snapshot", json!({})).await?;
+        serde_json::from_value(result).map_err(ClientError::ParseFailed)
+    }
+
+    /// Get ASCII art representation of the screen
+    ///
+    /// # Arguments
+    ///
+    /// * `annotated` - If true, includes borders and row/column numbers
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails or frame renderer is not enabled.
+    pub async fn ascii_art(&mut self, annotated: bool) -> Result<String, ClientError> {
+        let result = self
+            .send("state/ascii_art", json!({ "annotated": annotated }))
+            .await?;
+        Ok(result["content"].as_str().unwrap_or("").to_string())
+    }
+
+    /// Get layer visibility information
+    ///
+    /// Returns information about all layers including their z-order and bounds.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails.
+    pub async fn layer_info(&mut self) -> Result<Vec<crate::visual::LayerInfo>, ClientError> {
+        let result = self.send("state/layer_info", json!({})).await?;
+        serde_json::from_value(result).map_err(ClientError::ParseFailed)
     }
 }
