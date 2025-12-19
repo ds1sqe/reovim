@@ -2,6 +2,35 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.6.3] - 2025-12-19
+
+### Features
+
+- **Visual Testing Infrastructure** - Comprehensive TUI debugging for tests and AI assistants
+  - ASCII art snapshots: Plain and annotated views with borders/line numbers
+  - Structured visual snapshots: Cell grid, cursor info, layer visibility (JSON)
+  - `with_size(width, height)` builder method for explicit screen dimensions
+  - `VisualAssertions` trait: `assert_cell_char`, `assert_row_content`, `assert_contains`, etc.
+
+### New Modules
+
+- `lib/core/src/visual/` - Visual snapshot types and ASCII rendering
+  - `VisualSnapshot`, `CursorInfo`, `LayerInfo`, `BoundsInfo`
+  - `AsciiRenderConfig` for customized ASCII output
+- `lib/core/src/testing/visual.rs` - Visual assertions trait
+
+### RPC Methods
+
+- `state/visual_snapshot` - Full visual snapshot with cells, cursor, layers
+- `state/ascii_art` - ASCII art representation (plain or annotated)
+- `state/layer_info` - Layer visibility and bounds information
+
+### Testing
+
+- Add 17 visual snapshot integration tests
+- Add `visual_snapshot()`, `ascii_art()`, `layer_info()` to `ServerTestResult`
+- Update `docs/TESTING.md` with visual testing examples
+
 ## [0.6.2] - 2025-12-19
 
 ### Fixed

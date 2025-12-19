@@ -744,4 +744,63 @@ impl Runtime {
                 .join("\n")
         })
     }
+
+    /// Get a visual snapshot of the screen for debugging/AI understanding
+    ///
+    /// Returns None if the frame renderer is not enabled.
+    #[must_use]
+    pub fn visual_snapshot(&self) -> Option<crate::visual::VisualSnapshot> {
+        let buffer = self.screen.frame_buffer()?;
+
+        // Build cell grid
+        let mut cells = Vec::with_capacity(buffer.height() as usize);
+        for y in 0..buffer.height() {
+            let mut row = Vec::with_capacity(buffer.width() as usize);
+            if let Some(buffer_row) = buffer.row(y) {
+                for cell in buffer_row {
+                    row.push(crate::rpc::CellSnapshot::from(cell));
+                }
+            }
+            cells.push(row);
+        }
+
+        // Get cursor info
+        let cursor =
+            self.buffers
+                .get(&self.active_buffer_id)
+                .map(|buf| crate::visual::CursorInfo {
+                    x: buf.cur.x,
+                    y: buf.cur.y,
+                    layer: if self.telescope_state.active {
+                        "telescope"
+                    } else if self.settings_menu.visible {
+                        "settings"
+                    } else {
+                        "editor"
+                    }
+                    .to_string(),
+                });
+
+        // Get layer info
+        let layers = self.screen.layer_info(
+            self.explorer_state.is_some(),
+            self.which_key_panel.visible,
+            self.completion_state.active,
+            self.telescope_state.active,
+            self.leap_state.is_active(),
+            self.settings_menu.visible,
+        );
+
+        // Build plain text
+        let plain_text = buffer.to_ascii();
+
+        Some(crate::visual::VisualSnapshot {
+            width: buffer.width(),
+            height: buffer.height(),
+            cells,
+            cursor,
+            layers,
+            plain_text,
+        })
+    }
 }
