@@ -105,6 +105,9 @@ impl Default for Screen {
             buffer_id: 0,
             line_number: LineNumber::default(),
             scrollbar_enabled: false,
+            is_active: true,
+            cursor: Position { x: 0, y: 0 },
+            desired_col: None,
         });
 
         let layout = LayoutManager::new(columns, editor_height);
@@ -167,6 +170,9 @@ impl Screen {
             buffer_id: 0,
             line_number: LineNumber::default(),
             scrollbar_enabled: false,
+            is_active: true,
+            cursor: Position { x: 0, y: 0 },
+            desired_col: None,
         }];
 
         let layout = LayoutManager::new(width, editor_height);
@@ -1249,6 +1255,19 @@ impl Screen {
         self.tab_manager.active_window_id()
     }
 
+    /// Get a reference to the active window
+    #[must_use]
+    pub fn active_window(&self) -> Option<&Window> {
+        let active_id = self.active_window_id()?;
+        self.windows.iter().find(|w| w.id == active_id)
+    }
+
+    /// Get a mutable reference to the active window
+    pub fn active_window_mut(&mut self) -> Option<&mut Window> {
+        let active_id = self.active_window_id()?;
+        self.windows.iter_mut().find(|w| w.id == active_id)
+    }
+
     /// Update window layouts based on current layout manager state and split tree
     fn update_window_layouts(&mut self) {
         let editor_layout = self.layout.editor_layout();
@@ -1267,6 +1286,14 @@ impl Screen {
         // Calculate window layouts from the active tab's split tree
         if let Some(tab) = self.tab_manager.active_tab() {
             let layouts = tab.calculate_layouts(editor_rect);
+            let active_window_id = tab.active_window_id;
+
+            // Preserve cursor positions before rebuilding
+            let old_cursors: std::collections::HashMap<usize, (Position, Option<u16>)> = self
+                .windows
+                .iter()
+                .map(|w| (w.id, (w.cursor, w.desired_col)))
+                .collect();
 
             // Rebuild the windows vec from split tree layouts
             self.windows.clear();
@@ -1276,6 +1303,13 @@ impl Screen {
                     .get(&layout.window_id)
                     .copied()
                     .unwrap_or(0);
+
+                // Try to preserve cursor from previous window, otherwise default to (0,0)
+                let (cursor, desired_col) = old_cursors
+                    .get(&layout.window_id)
+                    .copied()
+                    .unwrap_or((Position { x: 0, y: 0 }, None));
+
                 self.windows.push(Window {
                     id: layout.window_id,
                     window_type: WindowType::Editor,
@@ -1289,6 +1323,9 @@ impl Screen {
                     buffer_id,
                     line_number: LineNumber::default(),
                     scrollbar_enabled: false,
+                    is_active: layout.window_id == active_window_id,
+                    cursor,
+                    desired_col,
                 });
             }
         }
@@ -1303,6 +1340,11 @@ impl Screen {
         let new_window_id = self.next_window_id;
         self.next_window_id += 1;
 
+        // Save the current window's cursor to copy to the new window
+        let parent_cursor = self
+            .active_window()
+            .map_or((Position { x: 0, y: 0 }, None), |w| (w.cursor, w.desired_col));
+
         if let Some(tab) = self.tab_manager.active_tab_mut() {
             // Get the current window's buffer to clone into the new window
             let current_buffer_id = self
@@ -1314,6 +1356,13 @@ impl Screen {
             tab.split(new_window_id, direction);
             self.window_buffers.insert(new_window_id, current_buffer_id);
             self.update_window_layouts();
+
+            // Copy parent's cursor to the new window
+            if let Some(new_win) = self.windows.iter_mut().find(|w| w.id == new_window_id) {
+                new_win.cursor = parent_cursor.0;
+                new_win.desired_col = parent_cursor.1;
+            }
+
             Some(new_window_id)
         } else {
             None
@@ -1360,6 +1409,15 @@ impl Screen {
         }
     }
 
+    /// Update `is_active` flag on all windows based on active window ID
+    fn update_window_active_state(&mut self) {
+        if let Some(active_id) = self.tab_manager.active_window_id() {
+            for window in &mut self.windows {
+                window.is_active = window.id == active_id;
+            }
+        }
+    }
+
     /// Navigate focus to an adjacent window (including explorer as a window)
     ///
     /// Returns `Some(true)` if focus moved to explorer, `Some(false)` if moved from explorer to editor,
@@ -1401,6 +1459,7 @@ impl Screen {
                 if next_id == split::EXPLORER_WINDOW_ID {
                     // Moving to explorer
                     self.focus_explorer();
+                    self.update_window_active_state();
                     return Some(true);
                 } else if current_id == split::EXPLORER_WINDOW_ID {
                     // Moving from explorer to editor window
@@ -1408,12 +1467,14 @@ impl Screen {
                     if let Some(tab_mut) = self.tab_manager.active_tab_mut() {
                         tab_mut.active_window_id = next_id;
                     }
+                    self.update_window_active_state();
                     return Some(false);
                 }
                 // Moving between editor windows
                 if let Some(tab_mut) = self.tab_manager.active_tab_mut() {
                     tab_mut.active_window_id = next_id;
                 }
+                self.update_window_active_state();
             }
         }
         None

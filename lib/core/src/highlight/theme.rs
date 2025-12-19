@@ -60,6 +60,7 @@ pub struct BaseStyles {
 pub struct GutterStyles {
     pub line_number: Style,
     pub current_line_number: Style,
+    pub inactive_line_number: Style,
     pub sign_column: Style,
 }
 
@@ -269,6 +270,7 @@ impl Theme {
             gutter: GutterStyles {
                 line_number: Style::new().fg(fg_dark).bg(bg_dark),
                 current_line_number: Style::new().fg(yellow).bg(bg_dark).bold(),
+                inactive_line_number: Style::new().fg(fg_dark).bg(bg_dark),
                 sign_column: Style::new().fg(fg_dark).bg(bg_dark),
             },
             selection: SelectionStyles {
@@ -380,6 +382,7 @@ impl Theme {
             gutter: GutterStyles {
                 line_number: Style::new().fg(Color::Grey),
                 current_line_number: Style::new().fg(Color::DarkBlue).bold(),
+                inactive_line_number: Style::new().fg(Color::Grey),
                 sign_column: Style::new().fg(Color::Grey),
             },
             selection: SelectionStyles {
@@ -490,6 +493,18 @@ impl Theme {
             g: 95,
             b: 137,
         };
+        // TokyoNight fg_gutter color for active non-current line numbers (#3b4261)
+        let fg_gutter = Color::Rgb {
+            r: 59,
+            g: 66,
+            b: 97,
+        };
+        // Much darker color for inactive windows (#292e42)
+        let fg_inactive = Color::Rgb {
+            r: 41,
+            g: 46,
+            b: 66,
+        };
         let comment = Color::Rgb {
             r: 199,
             g: 199,
@@ -549,8 +564,9 @@ impl Theme {
             },
             gutter: GutterStyles {
                 line_number: Style::new().fg(fg_dark),
-                current_line_number: Style::new().fg(orange).bold(),
-                sign_column: Style::new().fg(fg_dark),
+                current_line_number: Style::new().fg(orange_bright).bold(),
+                inactive_line_number: Style::new().fg(fg_inactive),
+                sign_column: Style::new().fg(fg_gutter),
             },
             selection: SelectionStyles {
                 visual: Style::new().bg(bg_highlight),
@@ -576,7 +592,7 @@ impl Theme {
                 border: Style::new().fg(fg_dark).bg(bg_dark),
             },
             telescope: TelescopeStyles {
-                border: Style::new().fg(blue),
+                border: Style::new().fg(bg_dark).bg(bg_dark),
                 normal: Style::new().fg(fg).bg(bg_dark),
                 selected: Style::new().fg(bg).bg(blue),
                 preview: Style::new().fg(comment).bg(bg_dark),

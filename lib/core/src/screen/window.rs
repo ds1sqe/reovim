@@ -8,7 +8,7 @@ use crate::{
     indent::IndentAnalyzer,
 };
 
-use super::layout::WindowType;
+use super::{Position, layout::WindowType};
 
 /// Scrollbar rendering state
 #[derive(Debug, Clone, Copy)]
@@ -45,6 +45,12 @@ pub struct Window {
     pub line_number: LineNumber,
     /// Whether to show scrollbar
     pub scrollbar_enabled: bool,
+    /// Whether this window is the active/focused window
+    pub is_active: bool,
+    /// Per-window cursor position (independent of buffer cursor)
+    pub cursor: Position,
+    /// Track preferred column for vertical movement (j/k)
+    pub desired_col: Option<u16>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -113,26 +119,33 @@ impl Window {
         }
 
         let is_current_line = row == cursor_y;
-        let line_num_style = if is_current_line {
+        let line_num_style = if !self.is_active {
+            &theme.gutter.inactive_line_number
+        } else if is_current_line {
             &theme.gutter.current_line_number
         } else {
             &theme.gutter.line_number
         };
 
-        let num_str = match self.line_number.mode() {
-            LineNumberMode::Absolute => format!("{}", row + 1),
-            LineNumberMode::Relative => {
-                let rel = (i32::from(row) - i32::from(cursor_y)).abs();
-                format!("{rel}")
-            }
-            LineNumberMode::Hybrid => {
-                if is_current_line {
-                    format!("{}", row + 1)
-                } else {
+        // Active windows use configured mode, inactive always use absolute
+        let num_str = if self.is_active {
+            match self.line_number.mode() {
+                LineNumberMode::Absolute => format!("{}", row + 1),
+                LineNumberMode::Relative => {
                     let rel = (i32::from(row) - i32::from(cursor_y)).abs();
                     format!("{rel}")
                 }
+                LineNumberMode::Hybrid => {
+                    if is_current_line {
+                        format!("{}", row + 1)
+                    } else {
+                        let rel = (i32::from(row) - i32::from(cursor_y)).abs();
+                        format!("{rel}")
+                    }
+                }
             }
+        } else {
+            format!("{}", row + 1)
         };
 
         format!(
@@ -140,6 +153,17 @@ impl Window {
             line_num_style.to_ansi_start(color_mode),
             Style::ansi_reset()
         )
+    }
+
+    /// Get the effective cursor Y position for rendering
+    /// Active window uses buffer cursor, inactive uses stored window cursor
+    #[must_use]
+    pub const fn effective_cursor_y(&self, buf: &Buffer) -> u16 {
+        if self.is_active {
+            buf.cur.y
+        } else {
+            self.cursor.y
+        }
     }
 
     /// Build visual selection highlight if active
@@ -184,6 +208,7 @@ impl Window {
         content: &str,
         buf: &Buffer,
         row: u16,
+        cursor_y: u16,
         indent_analyzer: &IndentAnalyzer,
         theme: &Theme,
         color_mode: ColorMode,
@@ -193,11 +218,11 @@ impl Window {
         }
 
         // Get cursor's indent level for active guide highlight
-        let cursor_indent = if row == buf.cur.y {
+        let cursor_indent = if row == cursor_y {
             Some(indent_analyzer.indent_level(content))
         } else {
             buf.contents
-                .get(buf.cur.y as usize)
+                .get(cursor_y as usize)
                 .map(|l| indent_analyzer.indent_level(&l.inner))
         };
 
@@ -290,7 +315,8 @@ impl Window {
             return String::new();
         };
 
-        let head = self.render_line_number(row, buf.cur.y, num_width, theme, color_mode);
+        let cursor_y = self.effective_cursor_y(buf);
+        let head = self.render_line_number(row, cursor_y, num_width, theme, color_mode);
 
         // Get highlights for this line
         let line_len = content.inner.chars().count() as u32;
@@ -313,8 +339,15 @@ impl Window {
         }
 
         // Apply indent guides
-        let line_with_guides =
-            Self::apply_indent_guides(&content.inner, buf, row, indent_analyzer, theme, color_mode);
+        let line_with_guides = Self::apply_indent_guides(
+            &content.inner,
+            buf,
+            row,
+            cursor_y,
+            indent_analyzer,
+            theme,
+            color_mode,
+        );
 
         let styled_content =
             self.render_styled_line(&line_with_guides, &line_highlights, color_mode);
@@ -349,6 +382,9 @@ impl Window {
         // Compute scrollbar state
         let scrollbar = self.compute_scrollbar_state(total_lines);
 
+        // Get effective cursor position (buffer cursor for active, window cursor for inactive)
+        let cursor_y = self.effective_cursor_y(buf);
+
         // Build visual selection highlight
         let visual_highlight = Self::build_visual_highlight(buf, theme);
         let is_block_mode = buf.selection.active && buf.selection_mode() == SelectionMode::Block;
@@ -374,7 +410,7 @@ impl Window {
             let line_out = if let Some((hidden_count, preview)) = fold_marker {
                 self.render_fold_marker_line(
                     row,
-                    buf.cur.y,
+                    cursor_y,
                     hidden_count,
                     preview,
                     num_width,
@@ -614,26 +650,33 @@ impl Window {
         }
 
         let is_current_line = row == cursor_y;
-        let style = if is_current_line {
+        let style = if !self.is_active {
+            &theme.gutter.inactive_line_number
+        } else if is_current_line {
             &theme.gutter.current_line_number
         } else {
             &theme.gutter.line_number
         };
 
-        let num_str = match self.line_number.mode() {
-            LineNumberMode::Absolute => format!("{}", row + 1),
-            LineNumberMode::Relative => {
-                let rel = (i32::from(row) - i32::from(cursor_y)).abs();
-                format!("{rel}")
-            }
-            LineNumberMode::Hybrid => {
-                if is_current_line {
-                    format!("{}", row + 1)
-                } else {
+        // Active windows use configured mode, inactive always use absolute
+        let num_str = if self.is_active {
+            match self.line_number.mode() {
+                LineNumberMode::Absolute => format!("{}", row + 1),
+                LineNumberMode::Relative => {
                     let rel = (i32::from(row) - i32::from(cursor_y)).abs();
                     format!("{rel}")
                 }
+                LineNumberMode::Hybrid => {
+                    if is_current_line {
+                        format!("{}", row + 1)
+                    } else {
+                        let rel = (i32::from(row) - i32::from(cursor_y)).abs();
+                        format!("{rel}")
+                    }
+                }
             }
+        } else {
+            format!("{}", row + 1)
         };
 
         // Right-align number and add space separator
@@ -658,6 +701,7 @@ impl Window {
         x: u16,
         y: u16,
         row: u16,
+        cursor_y: u16,
         buf: &Buffer,
         highlight_store: &HighlightStore,
         visual_highlight: Option<&Highlight>,
@@ -673,7 +717,7 @@ impl Window {
         let mut col = x;
 
         // Render line number
-        col += self.render_line_number_to_buffer(buffer, col, y, row, buf.cur.y, num_width, theme);
+        col += self.render_line_number_to_buffer(buffer, col, y, row, cursor_y, num_width, theme);
 
         // Get highlights for this line
         let line_len = content.inner.chars().count() as u32;
@@ -738,6 +782,9 @@ impl Window {
         let visual_highlight = Self::build_visual_highlight(buf, theme);
         let is_block_mode = buf.selection.active && buf.selection_mode() == SelectionMode::Block;
 
+        // Get effective cursor position (buffer cursor for active, window cursor for inactive)
+        let cursor_y = self.effective_cursor_y(buf);
+
         // Track buffer line position, accounting for folds
         let mut buffer_row = self.buffer_anchor.y;
         let mut display_row = 0u16;
@@ -765,7 +812,7 @@ impl Window {
                     self.anchor.x,
                     screen_y,
                     row,
-                    buf.cur.y,
+                    cursor_y,
                     num_width,
                     theme,
                 );
@@ -785,6 +832,7 @@ impl Window {
                     self.anchor.x,
                     screen_y,
                     row,
+                    cursor_y,
                     buf,
                     highlight_store,
                     visual_highlight.as_ref(),
@@ -934,6 +982,9 @@ mod tests {
             buffer_anchor: Anchor { x: 0, y: 0 },
             line_number: LineNumber::default(),
             scrollbar_enabled: false,
+            is_active: true,
+            cursor: Position { x: 0, y: 0 },
+            desired_col: None,
         }
     }
 

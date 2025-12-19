@@ -1143,7 +1143,32 @@ impl Runtime {
 
     /// Handle window navigation (focus direction)
     pub(crate) fn handle_window_navigate(&mut self, direction: NavigateDirection) {
+        // Before navigation: save current buffer cursor to current window
+        if let Some(window) = self.screen.active_window_mut()
+            && let Some(buffer) = self.buffers.get(&window.buffer_id)
+        {
+            window.cursor = buffer.cur;
+            window.desired_col = buffer.desired_col;
+        }
+
+        // Navigate to new window
         self.screen.navigate_window(direction);
+
+        // After navigation: load new window's cursor into buffer and update active_buffer_id
+        if let Some(window) = self.screen.active_window() {
+            let new_buffer_id = window.buffer_id;
+            let window_cursor = window.cursor;
+            let window_desired_col = window.desired_col;
+
+            // Update active_buffer_id to match the new window's buffer
+            self.active_buffer_id = new_buffer_id;
+
+            // Load window's cursor into buffer
+            if let Some(buffer) = self.buffers.get_mut(&new_buffer_id) {
+                buffer.cur = window_cursor;
+                buffer.desired_col = window_desired_col;
+            }
+        }
     }
 
     /// Handle window equalize

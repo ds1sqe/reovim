@@ -217,16 +217,40 @@ For releases, Claude should create a proposal file at `tmp/<version>-commit.md` 
    - `fix/*` - Bug fix branches
 
 **Request-for-Landing (End of Work):**
-1. **Sync with upstream (CRUCIAL)**: `git fetch origin develop && git rebase origin/develop`
-   - Resolve any conflicts before landing - contributors own their conflicts
-2. Run `cargo build` and `cargo clippy` (zero warnings)
-3. Run `cargo test`
-4. Generate perf report: `cargo run -p perf-report -- bench -v X.Y.Z`
-5. Update `CHANGELOG.md`
-6. Create proposal at `tmp/<version>-commit.md` with:
+1. **Sync with upstream (CRUCIAL)**:
+   ```bash
+   git fetch origin develop && git rebase origin/develop
+   ```
+   - Carefully rebase - resolve any conflicts before landing
+   - Contributors own their conflicts
+   - Use `git stash` if needed to save work before rebasing
+
+2. **Run full check script**:
+   ```bash
+   ./scripts/check.sh
+   ```
+   - Runs `cargo +nightly fmt --all` (format)
+   - Runs `cargo build --workspace` (dev + release)
+   - Runs `cargo clippy --workspace --all-targets` (zero warnings required)
+   - Runs `cargo test --workspace` (all tests must pass)
+   - Runs doc tests
+
+3. **Generate performance report**:
+   ```bash
+   cargo run -p perf-report -- bench -v X.Y.Z
+   ```
+   - Creates `perf/PERF-X.Y.Z.md` with benchmark results
+   - (Optional) Compare with previous version to check for regressions:
+     - Window render, full screen render, char insert RTT, move down RTT
+     - Throughput should remain stable (~17-18k renders/sec for v0.6.x)
+
+4. **Update `CHANGELOG.md`** with new version entry
+
+5. **Create proposal at `tmp/<version>-commit.md`** with:
    - Commit message
-   - Files to stage
+   - Files to stage (include `perf/PERF-X.Y.Z.md`)
    - Verification checklist
+   - Performance summary
    - Git commands for user
 
 ### Cross-Session Communication

@@ -2,6 +2,35 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.6.4] - 2025-12-19
+
+### Features
+
+- **Per-Window Cursor** - Each window maintains its own cursor position (Vim-like behavior)
+  - `cursor` and `desired_col` fields added to Window struct
+  - Cursor syncs between window and buffer on navigation
+  - `effective_cursor_y()` method for rendering (active uses buffer cursor, inactive uses window cursor)
+
+- **Inactive Line Number Styling** - Dimmed line numbers for inactive windows
+  - `inactive_line_number` style in theme's gutter configuration
+  - `fg_gutter` (#3b4261) and `fg_inactive` (#292e42) colors for TokyoNightOrange
+  - `is_active` field on Window to track focus state
+
+### Fixed
+
+- **Split Window Cursor Movement** - j/k now works immediately after Ctrl-h/l window navigation
+  - `active_buffer_id` now syncs when navigating between windows
+  - Buffer cursor properly loads from window's saved cursor on switch
+
+### Testing
+
+- Add 6 split window visual tests
+  - `test_vsplit_creates_two_windows` - Verify split shows content in both windows
+  - `test_vsplit_navigate_right/left` - Test Ctrl-l/h navigation
+  - `test_vsplit_cursor_movement_after_navigate` - Verify j/k works after switch
+  - `test_vsplit_independent_cursors` - Windows maintain separate cursor positions
+  - `test_vsplit_cursor_preserved_on_switch` - Cursor restored when returning to window
+
 ## [0.6.3] - 2025-12-19
 
 ### Features

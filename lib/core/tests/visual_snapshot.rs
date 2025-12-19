@@ -295,3 +295,154 @@ async fn test_cursor_after_insert() {
     let snap = result.visual_snapshot().await;
     assert!(snap.cursor.is_some(), "Cursor should be present");
 }
+
+// ============================================================================
+// Split window tests
+// ============================================================================
+
+/// Test that :vs creates a vertical split showing same content in both windows
+#[tokio::test]
+async fn test_vsplit_creates_two_windows() {
+    let mut result = ServerTest::new()
+        .await
+        .with_size(80, 24)
+        .with_content("Line 1\nLine 2\nLine 3")
+        .with_keys(":vs<CR>")
+        .with_delay(100)
+        .run()
+        .await;
+
+    let snap = result.visual_snapshot().await;
+    // Both windows should show the same content
+    // The content "Line 1" should appear twice (once in each window)
+    let line1_count = snap.plain_text.matches("Line 1").count();
+    assert!(
+        line1_count >= 2,
+        "Expected 'Line 1' to appear in both windows (at least 2 times), found {line1_count} times.\nScreen:\n{}",
+        snap.plain_text
+    );
+}
+
+/// Test that Ctrl-l navigates to right window after vsplit
+#[tokio::test]
+async fn test_vsplit_navigate_right() {
+    let mut result = ServerTest::new()
+        .await
+        .with_size(80, 24)
+        .with_content("Hello World")
+        .with_keys(":vs<CR>")
+        .with_delay(50)
+        .with_keys("<C-l>")
+        .with_delay(50)
+        .run()
+        .await;
+
+    // After navigation, we should still be in normal mode and cursor should be present
+    result.assert_normal_mode();
+    let snap = result.visual_snapshot().await;
+    assert!(snap.cursor.is_some(), "Cursor should be present after window navigation");
+}
+
+/// Test that cursor movement works after switching windows
+#[tokio::test]
+async fn test_vsplit_cursor_movement_after_navigate() {
+    let mut result = ServerTest::new()
+        .await
+        .with_size(80, 24)
+        .with_content("Line 1\nLine 2\nLine 3\nLine 4\nLine 5")
+        .with_keys(":vs<CR>")
+        .with_delay(50)
+        .with_keys("<C-l>") // Navigate to right window
+        .with_delay(50)
+        .with_keys("jj") // Move down 2 lines
+        .run()
+        .await;
+
+    // Should be in normal mode with cursor moved
+    result.assert_normal_mode();
+    let snap = result.visual_snapshot().await;
+    let cursor = snap.cursor.expect("Cursor should be present");
+    // Cursor y should be 2 (moved down twice from line 0)
+    assert_eq!(cursor.y, 2, "Cursor should be on line 2 after jj, got line {}", cursor.y);
+}
+
+/// Test that Ctrl-h navigates back to left window
+#[tokio::test]
+async fn test_vsplit_navigate_left() {
+    let mut result = ServerTest::new()
+        .await
+        .with_size(80, 24)
+        .with_content("Test content")
+        .with_keys(":vs<CR>")
+        .with_delay(50)
+        .with_keys("<C-l>") // Go right
+        .with_delay(50)
+        .with_keys("<C-h>") // Go back left
+        .with_delay(50)
+        .run()
+        .await;
+
+    result.assert_normal_mode();
+    let snap = result.visual_snapshot().await;
+    assert!(snap.cursor.is_some(), "Cursor should be present after navigating back");
+}
+
+/// Test that windows have independent cursors after split
+/// After :vs, focus is on the NEW (right) window. Move cursor there, then navigate
+/// to the left window which should still have cursor at 0.
+#[tokio::test]
+async fn test_vsplit_independent_cursors() {
+    let mut result = ServerTest::new()
+        .await
+        .with_size(80, 24)
+        .with_content("Line 1\nLine 2\nLine 3\nLine 4\nLine 5")
+        .with_keys(":vs<CR>")
+        .with_delay(100)
+        .with_keys("jj") // Move cursor down in RIGHT window (active after split) to line 2
+        .with_delay(100)
+        .with_keys("<C-h>") // Navigate to LEFT window - cursor should be at 0
+        .with_delay(100)
+        .run()
+        .await;
+
+    result.assert_normal_mode();
+    let snap = result.visual_snapshot().await;
+    let cursor = snap.cursor.expect("Cursor should be present");
+    // After navigating to left window, cursor should be at line 0
+    // (left window's saved cursor, not right window's cursor)
+    assert_eq!(
+        cursor.y, 0,
+        "Left window cursor should be at line 0 after navigation, got line {}",
+        cursor.y
+    );
+}
+
+/// Test cursor position is preserved when switching back to a window
+/// After :vs, focus is on the RIGHT window. Move cursor, switch to left, switch back.
+#[tokio::test]
+async fn test_vsplit_cursor_preserved_on_switch() {
+    let mut result = ServerTest::new()
+        .await
+        .with_size(80, 24)
+        .with_content("Line 1\nLine 2\nLine 3\nLine 4\nLine 5")
+        .with_keys(":vs<CR>")
+        .with_delay(100)
+        .with_keys("jjj") // Move to line 3 in RIGHT window (active after split)
+        .with_delay(100)
+        .with_keys("<C-h>") // Go to left window
+        .with_delay(100)
+        .with_keys("<C-l>") // Go back to right window
+        .with_delay(100)
+        .run()
+        .await;
+
+    result.assert_normal_mode();
+    let snap = result.visual_snapshot().await;
+    let cursor = snap.cursor.expect("Cursor should be present");
+    // Cursor should be restored to line 3 where we left it in the right window
+    assert_eq!(
+        cursor.y, 3,
+        "Right window cursor should be preserved at line 3, got line {}",
+        cursor.y
+    );
+}

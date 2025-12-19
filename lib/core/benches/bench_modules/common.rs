@@ -4,7 +4,7 @@ use {
     reovim_core::{
         buffer::{Buffer, TextOps},
         screen::{
-            WindowType,
+            Position, WindowType,
             window::{Anchor, LineNumber, Window},
         },
     },
@@ -59,6 +59,9 @@ pub fn create_window(height: u16) -> Window {
         buffer_anchor: Anchor { x: 0, y: 0 },
         line_number: LineNumber::default(),
         scrollbar_enabled: false,
+        is_active: true,
+        cursor: Position { x: 0, y: 0 },
+        desired_col: None,
     }
 }
 
