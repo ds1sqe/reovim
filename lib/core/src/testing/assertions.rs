@@ -428,6 +428,34 @@ impl ServerTestResult {
             .active_buffer_id
     }
 
+    /// Assert that the window count matches
+    ///
+    /// # Panics
+    ///
+    /// Panics if the window count doesn't match.
+    pub fn assert_window_count(&self, expected: usize) {
+        let screen = self.screen.as_ref().expect("Screen state not available");
+        assert_eq!(
+            screen.window_count, expected,
+            "Window count mismatch: expected {}, got {}",
+            expected, screen.window_count
+        );
+    }
+
+    /// Get the current window count
+    ///
+    /// # Panics
+    ///
+    /// Panics if screen state is not available.
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn window_count(&self) -> usize {
+        self.screen
+            .as_ref()
+            .expect("Screen state not available")
+            .window_count
+    }
+
     // === Visual methods ===
 
     /// Get visual snapshot for testing

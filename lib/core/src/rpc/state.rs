@@ -64,6 +64,8 @@ pub struct ScreenSnapshot {
     pub active_buffer_id: usize,
     /// ID of the active window (if any)
     pub active_window_id: Option<usize>,
+    /// Number of windows in the active tab
+    pub window_count: usize,
 }
 
 /// Format for screen content

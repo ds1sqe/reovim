@@ -600,8 +600,8 @@ impl Screen {
                     indent_analyzer,
                 );
 
-                // Calculate cursor position (only if editor is focused)
-                if !self.layout.is_explorer_focused() {
+                // Calculate cursor position only for the ACTIVE window (and if editor is focused)
+                if win.is_active && !self.layout.is_explorer_focused() {
                     let gutter_width = win.line_number_width(buf.contents.len());
                     let cursor_x = win.anchor.x + gutter_width + buf.cur.x;
                     let cursor_y = win.anchor.y + buf.cur.y.saturating_sub(win.buffer_anchor.y);
@@ -1266,6 +1266,14 @@ impl Screen {
     pub fn active_window_mut(&mut self) -> Option<&mut Window> {
         let active_id = self.active_window_id()?;
         self.windows.iter_mut().find(|w| w.id == active_id)
+    }
+
+    /// Get the number of windows in the active tab
+    #[must_use]
+    pub fn window_count(&self) -> usize {
+        self.tab_manager
+            .active_tab()
+            .map_or(0, tab::TabPage::window_count)
     }
 
     /// Update window layouts based on current layout manager state and split tree

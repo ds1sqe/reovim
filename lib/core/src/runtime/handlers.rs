@@ -8,9 +8,9 @@ use crate::{
     command::{
         CommandTrait,
         traits::{
-            CommandLineAction, CommandResult, CompletionAction, DeferredAction, ExecutionContext,
-            ExplorerAction, FoldAction, LeapAction, OperatorMotionAction, SettingsMenuAction,
-            TabAction, TelescopeAction, WindowAction,
+            BufferAction, CommandLineAction, CommandResult, CompletionAction, DeferredAction,
+            ExecutionContext, ExplorerAction, FoldAction, LeapAction, OperatorMotionAction,
+            SettingsMenuAction, TabAction, TelescopeAction, WindowAction,
         },
     },
     command_line::{ExCommand, SetOption},
@@ -447,6 +447,9 @@ impl Runtime {
                                 return true;
                             }
                         }
+                        DeferredAction::Buffer(ref action) => {
+                            self.handle_buffer_action(action);
+                        }
                         DeferredAction::SettingsMenu(ref action) => {
                             self.handle_settings_menu_action(action);
                         }
@@ -710,6 +713,7 @@ impl Runtime {
     }
 
     /// Handle operator + motion action (d/y/c + motion)
+    #[allow(clippy::too_many_lines)]
     pub(crate) fn handle_operator_motion(&mut self, action: &OperatorMotionAction) {
         let buffer_id = self.active_buffer_id;
         let mut text_modified = false;
@@ -810,6 +814,23 @@ impl Runtime {
                         self.registers.set(deleted);
                         text_modified = true;
                     }
+                    // Enter insert mode after change
+                    self.set_mode(ModeState::insert());
+                }
+                OperatorMotionAction::ChangeLine => {
+                    // Get current line content
+                    let y = buffer.cur.y as usize;
+                    if let Some(line) = buffer.contents.get_mut(y) {
+                        // Store line content in register
+                        if !line.inner.is_empty() {
+                            self.registers.set(line.inner.clone());
+                            // Clear the line content
+                            line.inner.clear();
+                            text_modified = true;
+                        }
+                    }
+                    // Move cursor to start of line
+                    buffer.cur.x = 0;
                     // Enter insert mode after change
                     self.set_mode(ModeState::insert());
                 }
@@ -1072,6 +1093,18 @@ impl Runtime {
             WindowAction::Equalize => {
                 self.handle_window_equalize();
             }
+            WindowAction::FocusOrSplitLeft => {
+                self.handle_focus_or_split(NavigateDirection::Left, SplitDirection::Vertical);
+            }
+            WindowAction::FocusOrSplitDown => {
+                self.handle_focus_or_split(NavigateDirection::Down, SplitDirection::Horizontal);
+            }
+            WindowAction::FocusOrSplitUp => {
+                self.handle_focus_or_split(NavigateDirection::Up, SplitDirection::Horizontal);
+            }
+            WindowAction::FocusOrSplitRight => {
+                self.handle_focus_or_split(NavigateDirection::Right, SplitDirection::Vertical);
+            }
         }
         false
     }
@@ -1101,6 +1134,9 @@ impl Runtime {
     }
 
     /// Handle window split command
+    ///
+    /// Saves the current window's cursor before splitting so the new window
+    /// inherits the correct cursor position. See docs/window-buffer.md.
     pub(crate) fn handle_window_split(&mut self, vertical: bool, filename: Option<&String>) {
         let direction = if vertical {
             SplitDirection::Vertical
@@ -1116,6 +1152,24 @@ impl Runtime {
         // Get the current buffer ID (either the newly opened file or existing buffer)
         // Use self.active_buffer_id directly since open_file updates it
         let buffer_id = self.active_buffer_id;
+
+        // CRITICAL: Save the buffer's live cursor to the current window BEFORE splitting.
+        // split_window() reads window.cursor to copy to the new window, so we must
+        // ensure it reflects the current buffer cursor, not a stale saved value.
+        if let Some(window) = self.screen.active_window_mut()
+            && let Some(buffer) = self.buffers.get(&buffer_id)
+        {
+            tracing::debug!(
+                window_id = window.id,
+                "SPLIT: saving buffer.cur=({},{}) to window.cursor before split",
+                buffer.cur.x,
+                buffer.cur.y
+            );
+            window.cursor = buffer.cur;
+            window.desired_col = buffer.desired_col;
+        } else {
+            tracing::warn!("SPLIT: failed to get active window or buffer!");
+        }
 
         // Split the window
         if let Some(new_window_id) = self.screen.split_window(direction) {
@@ -1143,10 +1197,18 @@ impl Runtime {
 
     /// Handle window navigation (focus direction)
     pub(crate) fn handle_window_navigate(&mut self, direction: NavigateDirection) {
+        let before_window_id = self.screen.active_window_id();
+
         // Before navigation: save current buffer cursor to current window
         if let Some(window) = self.screen.active_window_mut()
             && let Some(buffer) = self.buffers.get(&window.buffer_id)
         {
+            tracing::debug!(
+                window_id = window.id,
+                "SAVE cursor: buffer.cur=({},{}) -> window.cursor",
+                buffer.cur.x,
+                buffer.cur.y
+            );
             window.cursor = buffer.cur;
             window.desired_col = buffer.desired_col;
         }
@@ -1154,11 +1216,21 @@ impl Runtime {
         // Navigate to new window
         self.screen.navigate_window(direction);
 
+        let after_window_id = self.screen.active_window_id();
+        tracing::debug!(?before_window_id, ?after_window_id, ?direction, "Window navigation");
+
         // After navigation: load new window's cursor into buffer and update active_buffer_id
         if let Some(window) = self.screen.active_window() {
             let new_buffer_id = window.buffer_id;
             let window_cursor = window.cursor;
             let window_desired_col = window.desired_col;
+
+            tracing::debug!(
+                window_id = window.id,
+                "LOAD cursor: window.cursor=({},{}) -> buffer.cur",
+                window_cursor.x,
+                window_cursor.y
+            );
 
             // Update active_buffer_id to match the new window's buffer
             self.active_buffer_id = new_buffer_id;
@@ -1174,6 +1246,43 @@ impl Runtime {
     /// Handle window equalize
     pub(crate) fn handle_window_equalize(&mut self) {
         self.screen.equalize_windows();
+    }
+
+    /// Handle smart focus: focus existing window or create split if none exists
+    ///
+    /// Uses `handle_window_navigate` for proper cursor save/restore.
+    /// See docs/window-buffer.md for the window-buffer architecture.
+    pub(crate) fn handle_focus_or_split(
+        &mut self,
+        direction: NavigateDirection,
+        split_direction: SplitDirection,
+    ) {
+        // Get current window ID before navigation attempt
+        let before_id = self.screen.active_window_id();
+
+        // Try to navigate using the proper handler (with cursor save/restore)
+        self.handle_window_navigate(direction);
+
+        // Check if navigation succeeded by comparing window IDs
+        let after_id = self.screen.active_window_id();
+
+        // If window ID didn't change, no adjacent window exists - create a split
+        if before_id == after_id {
+            // Create a split with the current buffer
+            let buffer_id = self.active_buffer_id;
+            if let Some(new_window_id) = self.screen.split_window(split_direction) {
+                self.screen.set_window_buffer(new_window_id, buffer_id);
+                // Navigate to the new window (with cursor save/restore)
+                self.handle_window_navigate(direction);
+                tracing::info!(
+                    direction = ?direction,
+                    new_window_id = new_window_id,
+                    "Smart focus: created split"
+                );
+            }
+        } else {
+            tracing::info!(direction = ?direction, "Smart focus: navigated to existing window");
+        }
     }
 
     // === Tab Management Handlers ===
@@ -1206,6 +1315,42 @@ impl Runtime {
     /// Handle previous tab command (gT)
     pub(crate) fn handle_tab_prev(&mut self) {
         self.screen.prev_tab();
+    }
+
+    // === Buffer Navigation Handlers ===
+
+    /// Handle buffer-related deferred actions
+    pub(crate) fn handle_buffer_action(&mut self, action: &BufferAction) {
+        match action {
+            BufferAction::Prev => {
+                if let Some(prev_id) = self.prev_buffer_id() {
+                    self.switch_buffer(prev_id);
+                    // Update window's buffer
+                    if let Some(window_id) = self.screen.active_window_id() {
+                        self.screen.set_window_buffer(window_id, prev_id);
+                    }
+                }
+            }
+            BufferAction::Next => {
+                if let Some(next_id) = self.next_buffer_id() {
+                    self.switch_buffer(next_id);
+                    if let Some(window_id) = self.screen.active_window_id() {
+                        self.screen.set_window_buffer(window_id, next_id);
+                    }
+                }
+            }
+            BufferAction::Delete { force: _ } => {
+                // TODO: Check modified state if !force
+                let buffer_id = self.active_buffer_id;
+                self.close_buffer(buffer_id);
+                // Update window to show the new active buffer
+                if let Some(window_id) = self.screen.active_window_id() {
+                    self.screen
+                        .set_window_buffer(window_id, self.active_buffer_id);
+                }
+            }
+        }
+        self.request_render();
     }
 
     // ========================================================================

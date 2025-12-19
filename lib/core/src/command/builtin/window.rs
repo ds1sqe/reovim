@@ -367,3 +367,107 @@ impl CommandTrait for WindowEqualizeCommand {
         self
     }
 }
+
+/// Focus window left or create split (<leader>wh)
+#[derive(Debug, Clone)]
+pub struct WindowFocusOrSplitLeftCommand;
+
+impl CommandTrait for WindowFocusOrSplitLeftCommand {
+    fn name(&self) -> &'static str {
+        "window_focus_or_split_left"
+    }
+
+    fn description(&self) -> &'static str {
+        "Focus or split left"
+    }
+
+    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
+        CommandResult::DeferToRuntime(DeferredAction::Window(WindowAction::FocusOrSplitLeft))
+    }
+
+    fn clone_box(&self) -> Box<dyn CommandTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+/// Focus window down or create split (<leader>wj)
+#[derive(Debug, Clone)]
+pub struct WindowFocusOrSplitDownCommand;
+
+impl CommandTrait for WindowFocusOrSplitDownCommand {
+    fn name(&self) -> &'static str {
+        "window_focus_or_split_down"
+    }
+
+    fn description(&self) -> &'static str {
+        "Focus or split down"
+    }
+
+    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
+        CommandResult::DeferToRuntime(DeferredAction::Window(WindowAction::FocusOrSplitDown))
+    }
+
+    fn clone_box(&self) -> Box<dyn CommandTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+/// Focus window up or create split (<leader>wk)
+#[derive(Debug, Clone)]
+pub struct WindowFocusOrSplitUpCommand;
+
+impl CommandTrait for WindowFocusOrSplitUpCommand {
+    fn name(&self) -> &'static str {
+        "window_focus_or_split_up"
+    }
+
+    fn description(&self) -> &'static str {
+        "Focus or split up"
+    }
+
+    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
+        CommandResult::DeferToRuntime(DeferredAction::Window(WindowAction::FocusOrSplitUp))
+    }
+
+    fn clone_box(&self) -> Box<dyn CommandTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+/// Focus window right or create split (<leader>wl)
+#[derive(Debug, Clone)]
+pub struct WindowFocusOrSplitRightCommand;
+
+impl CommandTrait for WindowFocusOrSplitRightCommand {
+    fn name(&self) -> &'static str {
+        "window_focus_or_split_right"
+    }
+
+    fn description(&self) -> &'static str {
+        "Focus or split right"
+    }
+
+    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
+        CommandResult::DeferToRuntime(DeferredAction::Window(WindowAction::FocusOrSplitRight))
+    }
+
+    fn clone_box(&self) -> Box<dyn CommandTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}

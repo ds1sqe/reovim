@@ -70,6 +70,7 @@ pub mod builtin {
     pub const DELETE_CHAR_BACKWARD: CommandId = CommandId::new("delete_char_backward");
     pub const DELETE_CHAR_FORWARD: CommandId = CommandId::new("delete_char_forward");
     pub const DELETE_LINE: CommandId = CommandId::new("delete_line");
+    pub const CHANGE_LINE: CommandId = CommandId::new("change_line");
 
     // === Visual Mode ===
     pub const VISUAL_EXTEND_UP: CommandId = CommandId::new("visual_extend_up");
@@ -218,11 +219,23 @@ pub mod builtin {
     pub const WINDOW_ONLY: CommandId = CommandId::new("window_only");
     pub const WINDOW_EQUALIZE: CommandId = CommandId::new("window_equalize");
 
+    // === Smart Window Focus/Create ===
+    pub const WINDOW_FOCUS_OR_SPLIT_LEFT: CommandId = CommandId::new("window_focus_or_split_left");
+    pub const WINDOW_FOCUS_OR_SPLIT_DOWN: CommandId = CommandId::new("window_focus_or_split_down");
+    pub const WINDOW_FOCUS_OR_SPLIT_UP: CommandId = CommandId::new("window_focus_or_split_up");
+    pub const WINDOW_FOCUS_OR_SPLIT_RIGHT: CommandId =
+        CommandId::new("window_focus_or_split_right");
+
     // === Tab Management ===
     pub const TAB_NEW: CommandId = CommandId::new("tab_new");
     pub const TAB_CLOSE: CommandId = CommandId::new("tab_close");
     pub const TAB_NEXT: CommandId = CommandId::new("tab_next");
     pub const TAB_PREV: CommandId = CommandId::new("tab_prev");
+
+    // === Buffer Navigation ===
+    pub const BUFFER_PREV: CommandId = CommandId::new("buffer_prev");
+    pub const BUFFER_NEXT: CommandId = CommandId::new("buffer_next");
+    pub const BUFFER_DELETE: CommandId = CommandId::new("buffer_delete");
 
     // === Settings Menu ===
     pub const SETTINGS_MENU_OPEN: CommandId = CommandId::new("settings_menu_open");

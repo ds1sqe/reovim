@@ -63,6 +63,7 @@ pub enum DeferredAction {
     Leap(LeapAction),
     Window(WindowAction),
     Tab(TabAction),
+    Buffer(BufferAction),
     SettingsMenu(SettingsMenuAction),
 }
 
@@ -116,6 +117,11 @@ pub enum WindowAction {
         delta: i16,
     },
     Equalize,
+    /// Focus window or create split if none exists
+    FocusOrSplitLeft,
+    FocusOrSplitDown,
+    FocusOrSplitUp,
+    FocusOrSplitRight,
 }
 
 #[derive(Debug)]
@@ -125,6 +131,17 @@ pub enum TabAction {
     Next,
     Prev,
     Goto { index: usize },
+}
+
+/// Buffer navigation actions
+#[derive(Debug)]
+pub enum BufferAction {
+    /// Go to previous buffer
+    Prev,
+    /// Go to next buffer
+    Next,
+    /// Delete current buffer
+    Delete { force: bool },
 }
 
 /// Leap motion actions
@@ -328,6 +345,8 @@ pub enum OperatorMotionAction {
     ChangeWordTextObject {
         text_object: crate::textobject::WordTextObject,
     },
+    /// Change entire line (cc) - clears line content and enters insert mode
+    ChangeLine,
 }
 
 /// Command line mode actions

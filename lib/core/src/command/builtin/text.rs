@@ -3,7 +3,9 @@
 use {
     crate::{
         buffer::TextOps,
-        command::traits::{CommandResult, CommandTrait, ExecutionContext},
+        command::traits::{
+            CommandResult, CommandTrait, DeferredAction, ExecutionContext, OperatorMotionAction,
+        },
     },
     std::any::Any,
 };
@@ -257,5 +259,37 @@ impl CommandTrait for YankToEndCommand {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+}
+
+/// Change entire line (cc) - clears line content and enters insert mode
+#[derive(Debug, Clone)]
+pub struct ChangeLineCommand;
+
+impl CommandTrait for ChangeLineCommand {
+    fn name(&self) -> &'static str {
+        "change_line"
+    }
+
+    fn description(&self) -> &'static str {
+        "Change entire line"
+    }
+
+    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
+        CommandResult::DeferToRuntime(DeferredAction::OperatorMotion(
+            OperatorMotionAction::ChangeLine,
+        ))
+    }
+
+    fn clone_box(&self) -> Box<dyn CommandTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn is_text_modifying(&self) -> bool {
+        true
     }
 }

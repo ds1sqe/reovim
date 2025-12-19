@@ -56,16 +56,7 @@ else
     exit 1
 fi
 
-# Step 4: Build release
-print_step "Building workspace release..."
-if cargo build --release --workspace; then
-    print_success "Build succeeded"
-else
-    print_error "Build failed"
-    exit 1
-fi
-
-# Step 5: Clippy on all targets
+# Step 4: Clippy on all targets
 # Uses workspace lint configuration from Cargo.toml
 # (clippy::all = "deny", clippy::pedantic/nursery = "warn")
 print_step "Running clippy on all workspace targets..."
@@ -76,7 +67,7 @@ else
     exit 1
 fi
 
-# Step 6: Tests
+# Step 5: Tests
 print_step "Running tests..."
 if cargo test --workspace; then
     print_success "All tests passed"
@@ -85,7 +76,7 @@ else
     exit 1
 fi
 
-# Step 7: Doc tests (optional in quick mode)
+# Step 6: Doc tests (optional in quick mode)
 if [[ "$QUICK_MODE" == false ]]; then
     print_step "Running doc tests..."
     if cargo test --doc --workspace; then

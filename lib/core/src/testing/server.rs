@@ -36,7 +36,7 @@ fn binary_path() -> PathBuf {
         .parent()
         .and_then(|p| p.parent())
         .expect("Failed to find workspace root")
-        .join("target/release/reovim")
+        .join("target/debug/reovim")
 }
 
 /// Test harness that spawns a reovim server for integration testing

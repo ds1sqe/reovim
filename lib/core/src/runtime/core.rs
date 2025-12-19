@@ -393,6 +393,34 @@ impl Runtime {
         }
     }
 
+    /// Get the previous buffer ID (wraps around)
+    #[must_use]
+    pub fn prev_buffer_id(&self) -> Option<usize> {
+        let ids: Vec<usize> = self.buffers.keys().copied().collect();
+        if ids.len() <= 1 {
+            return None;
+        }
+        let current_pos = ids.iter().position(|&id| id == self.active_buffer_id)?;
+        let prev_pos = if current_pos == 0 {
+            ids.len() - 1
+        } else {
+            current_pos - 1
+        };
+        Some(ids[prev_pos])
+    }
+
+    /// Get the next buffer ID (wraps around)
+    #[must_use]
+    pub fn next_buffer_id(&self) -> Option<usize> {
+        let ids: Vec<usize> = self.buffers.keys().copied().collect();
+        if ids.len() <= 1 {
+            return None;
+        }
+        let current_pos = ids.iter().position(|&id| id == self.active_buffer_id)?;
+        let next_pos = (current_pos + 1) % ids.len();
+        Some(ids[next_pos])
+    }
+
     /// Get the currently active buffer
     #[must_use]
     pub fn active_buffer(&self) -> Option<&Buffer> {
@@ -730,6 +758,7 @@ impl Runtime {
             height: self.screen.height(),
             active_buffer_id: self.active_buffer_id,
             active_window_id: self.screen.active_window_id(),
+            window_count: self.screen.window_count(),
         }
     }
 

@@ -462,6 +462,10 @@ impl KeyMap {
             "c".to_string(),
             KeyMapInner::with_command_id(builtin::ENTER_CHANGE_OPERATOR).group("operator"),
         );
+        keymap.insert(
+            "cc".to_string(),
+            KeyMapInner::with_command_id(builtin::CHANGE_LINE).group("operator"),
+        );
 
         // Space (leader) bindings
         keymap.insert(" ".to_string(), KeyMapInner::new()); // prefix, no command
@@ -538,42 +542,6 @@ impl KeyMap {
             KeyMapInner::with_command_id(builtin::FOLD_CLOSE_ALL).group("fold"),
         );
 
-        // Window navigation (C-hjkl)
-        keymap.insert(
-            "<C-h>".to_string(),
-            KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_LEFT).group("window"),
-        );
-        keymap.insert(
-            "<C-j>".to_string(),
-            KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_DOWN).group("window"),
-        );
-        keymap.insert(
-            "<C-k>".to_string(),
-            KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_UP).group("window"),
-        );
-        keymap.insert(
-            "<C-l>".to_string(),
-            KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_RIGHT).group("window"),
-        );
-
-        // Window movement (C-S-HJKL)
-        keymap.insert(
-            "<C-S-H>".to_string(),
-            KeyMapInner::with_command_id(builtin::WINDOW_MOVE_LEFT).group("window"),
-        );
-        keymap.insert(
-            "<C-S-J>".to_string(),
-            KeyMapInner::with_command_id(builtin::WINDOW_MOVE_DOWN).group("window"),
-        );
-        keymap.insert(
-            "<C-S-K>".to_string(),
-            KeyMapInner::with_command_id(builtin::WINDOW_MOVE_UP).group("window"),
-        );
-        keymap.insert(
-            "<C-S-L>".to_string(),
-            KeyMapInner::with_command_id(builtin::WINDOW_MOVE_RIGHT).group("window"),
-        );
-
         // Tab navigation
         keymap.insert(
             "gt".to_string(),
@@ -582,6 +550,62 @@ impl KeyMap {
         keymap.insert(
             "gT".to_string(),
             KeyMapInner::with_command_id(builtin::TAB_PREV).group("window"),
+        );
+
+        // Buffer navigation (S-h/S-l like LazyVim)
+        keymap.insert(
+            "H".to_string(),
+            KeyMapInner::with_command_id(builtin::BUFFER_PREV).group("buffer"),
+        );
+        keymap.insert(
+            "L".to_string(),
+            KeyMapInner::with_command_id(builtin::BUFFER_NEXT).group("buffer"),
+        );
+
+        // Leader buffer prefix
+        keymap.insert(" b".to_string(), KeyMapInner::with_hint("+buffer").group("buffer"));
+        keymap.insert(
+            " bd".to_string(),
+            KeyMapInner::with_command_id(builtin::BUFFER_DELETE).group("buffer"),
+        );
+
+        // Leader window prefix (smart focus: focuses window or creates split if none exists)
+        keymap.insert(" w".to_string(), KeyMapInner::with_hint("+window").group("window"));
+        keymap.insert(
+            " wh".to_string(),
+            KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_OR_SPLIT_LEFT).group("window"),
+        );
+        keymap.insert(
+            " wj".to_string(),
+            KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_OR_SPLIT_DOWN).group("window"),
+        );
+        keymap.insert(
+            " wk".to_string(),
+            KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_OR_SPLIT_UP).group("window"),
+        );
+        keymap.insert(
+            " wl".to_string(),
+            KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_OR_SPLIT_RIGHT).group("window"),
+        );
+        keymap.insert(
+            " wv".to_string(),
+            KeyMapInner::with_command_id(builtin::WINDOW_SPLIT_VERTICAL).group("window"),
+        );
+        keymap.insert(
+            " ws".to_string(),
+            KeyMapInner::with_command_id(builtin::WINDOW_SPLIT_HORIZONTAL).group("window"),
+        );
+        keymap.insert(
+            " wc".to_string(),
+            KeyMapInner::with_command_id(builtin::WINDOW_CLOSE).group("window"),
+        );
+        keymap.insert(
+            " wo".to_string(),
+            KeyMapInner::with_command_id(builtin::WINDOW_ONLY).group("window"),
+        );
+        keymap.insert(
+            " w=".to_string(),
+            KeyMapInner::with_command_id(builtin::WINDOW_EQUALIZE).group("window"),
         );
     }
 
@@ -888,5 +912,122 @@ impl KeyMap {
             .insert("8".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_8));
         keymap
             .insert("9".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_9));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_keymap_has_buffer_navigation_keys() {
+        let keymap = KeyMap::with_defaults();
+
+        // Test H (prev buffer) key exists
+        let h_binding = keymap.normal.get("H");
+        assert!(h_binding.is_some(), "H key should be bound in normal mode");
+        let h_inner = h_binding.unwrap();
+        assert!(h_inner.command.is_some(), "H should have a command");
+        assert_eq!(h_inner.group, Some("buffer"));
+
+        // Test L (next buffer) key exists
+        let l_binding = keymap.normal.get("L");
+        assert!(l_binding.is_some(), "L key should be bound in normal mode");
+        let l_inner = l_binding.unwrap();
+        assert!(l_inner.command.is_some(), "L should have a command");
+        assert_eq!(l_inner.group, Some("buffer"));
+    }
+
+    #[test]
+    fn test_keymap_has_leader_buffer_prefix() {
+        let keymap = KeyMap::with_defaults();
+
+        // Test <leader>b prefix exists
+        let b_prefix = keymap.normal.get(" b");
+        assert!(b_prefix.is_some(), "<leader>b prefix should be bound in normal mode");
+        let b_inner = b_prefix.unwrap();
+        assert_eq!(b_inner.hint, Some("+buffer".to_string()));
+        assert_eq!(b_inner.group, Some("buffer"));
+
+        // Test <leader>bd exists
+        let delete_binding = keymap.normal.get(" bd");
+        assert!(delete_binding.is_some(), "<leader>bd should be bound in normal mode");
+        let delete_inner = delete_binding.unwrap();
+        assert!(delete_inner.command.is_some(), "<leader>bd should have a command");
+        assert_eq!(delete_inner.group, Some("buffer"));
+    }
+
+    #[test]
+    fn test_keymap_has_leader_window_prefix() {
+        let keymap = KeyMap::with_defaults();
+
+        // Test <leader>w prefix exists
+        let w_prefix = keymap.normal.get(" w");
+        assert!(w_prefix.is_some(), "<leader>w prefix should be bound in normal mode");
+        let w_inner = w_prefix.unwrap();
+        assert_eq!(w_inner.hint, Some("+window".to_string()));
+        assert_eq!(w_inner.group, Some("window"));
+    }
+
+    #[test]
+    fn test_keymap_has_leader_window_bindings() {
+        let keymap = KeyMap::with_defaults();
+
+        let window_keys = [
+            (" wh", "focus or split left"),
+            (" wj", "focus or split down"),
+            (" wk", "focus or split up"),
+            (" wl", "focus or split right"),
+            (" wv", "vertical split"),
+            (" ws", "horizontal split"),
+            (" wc", "close window"),
+            (" wo", "only window"),
+            (" w=", "equalize windows"),
+        ];
+
+        for (key, desc) in window_keys {
+            let binding = keymap.normal.get(key);
+            assert!(binding.is_some(), "{key} ({desc}) should be bound in normal mode");
+            let inner = binding.unwrap();
+            assert!(inner.command.is_some(), "{key} should have a command");
+            assert_eq!(inner.group, Some("window"), "{key} should be in window group");
+        }
+    }
+
+    #[test]
+    fn test_buffer_command_ids_are_registered() {
+        // Verify that buffer command IDs are properly defined
+        assert_eq!(builtin::BUFFER_PREV.as_str(), "buffer_prev");
+        assert_eq!(builtin::BUFFER_NEXT.as_str(), "buffer_next");
+        assert_eq!(builtin::BUFFER_DELETE.as_str(), "buffer_delete");
+    }
+
+    #[test]
+    fn test_keymap_buffer_commands_use_correct_ids() {
+        let keymap = KeyMap::with_defaults();
+
+        // Check H key command is BUFFER_PREV
+        let h_binding = keymap.normal.get("H").unwrap();
+        if let Some(CommandRef::Registered(id)) = &h_binding.command {
+            assert_eq!(id.as_str(), "buffer_prev");
+        } else {
+            panic!("H should have a registered command");
+        }
+
+        // Check L key command is BUFFER_NEXT
+        let l_binding = keymap.normal.get("L").unwrap();
+        if let Some(CommandRef::Registered(id)) = &l_binding.command {
+            assert_eq!(id.as_str(), "buffer_next");
+        } else {
+            panic!("L should have a registered command");
+        }
+
+        // Check <leader>bd command is BUFFER_DELETE
+        let bd_binding = keymap.normal.get(" bd").unwrap();
+        if let Some(CommandRef::Registered(id)) = &bd_binding.command {
+            assert_eq!(id.as_str(), "buffer_delete");
+        } else {
+            panic!("<leader>bd should have a registered command");
+        }
     }
 }

@@ -90,6 +90,7 @@ pub struct ScreenInfo {
     pub height: u16,
     pub active_buffer_id: usize,
     pub active_window_id: Option<usize>,
+    pub window_count: usize,
 }
 
 /// Buffer information returned by buffer/list

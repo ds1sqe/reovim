@@ -2,6 +2,74 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.6.5] - 2025-12-19
+
+### Features
+
+- **Smart Window Focus/Split** - `<leader>wh/j/k/l` focuses existing window OR creates split
+  - Unified window operations under `<leader>w*` prefix
+  - Smart behavior: navigate if adjacent window exists, split if not
+  - Removed `<C-hjkl>` from normal mode (use `<leader>w*` instead)
+
+- **Buffer Navigation** - LazyVim-style buffer switching
+  - `H` / `L` - Previous/next buffer
+  - `<leader>bd` - Delete current buffer
+  - `<leader>b` prefix group in which-key
+
+- **Change Line Command** - `cc` deletes line content and enters insert mode
+  - Consistent with `dd` (delete line) and `yy` (yank line)
+
+### Documentation
+
+- **Window-Buffer Architecture** - New `docs/window-buffer.md`
+  - Explains N:1 window-to-buffer relationship
+  - Dual cursor state (buffer cursor vs window cursor)
+  - Cursor handoff protocol on window switch
+
+### Fixed
+
+- **Smart Focus Cursor Bug** - `handle_focus_or_split` now uses proper cursor save/restore
+  - Was calling `screen.navigate_window()` directly, bypassing cursor handoff
+  - Now calls `handle_window_navigate()` for correct behavior
+
+- **Cursor Rendering in Multi-Window** - Fixed cursor highlight appearing in wrong window
+  - `render_buffered()` was calculating cursor position for ALL windows
+  - Last window in loop always overwrote `cursor_pos`, ignoring active window
+  - Fix: Added `win.is_active &&` check before cursor position calculation
+  - Line numbers updated correctly but cursor highlight didn't follow
+
+### New Keymaps
+
+| Key | Action |
+|-----|--------|
+| `H` | Previous buffer |
+| `L` | Next buffer |
+| `cc` | Change line |
+| `<leader>b` | +buffer (prefix) |
+| `<leader>bd` | Delete buffer |
+| `<leader>wh` | Smart focus left (or vsplit) |
+| `<leader>wj` | Smart focus down (or hsplit) |
+| `<leader>wk` | Smart focus up (or hsplit) |
+| `<leader>wl` | Smart focus right (or vsplit) |
+| `<leader>wv` | Vertical split |
+| `<leader>ws` | Horizontal split |
+| `<leader>wc` | Close window |
+| `<leader>wo` | Close other windows |
+| `<leader>w=` | Equalize windows |
+
+### Removed Keymaps
+
+- `<C-h/j/k/l>` - Window focus (now use `<leader>wh/j/k/l`)
+- `<C-S-H/J/K/L>` - Window move (all window ops under `<leader>w`)
+
+### Testing
+
+- Add 13 window split integration tests (`window_splits.rs`)
+  - 11 window split/focus tests
+  - 2 shared buffer cursor preservation tests
+- Update visual_snapshot tests to use `<leader>w*` instead of `<C-h/l>`
+- Total: 311 tests passing
+
 ## [0.6.4] - 2025-12-19
 
 ### Features

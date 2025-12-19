@@ -20,6 +20,7 @@ const GROUP_ORDER: &[(&str, &str)] = &[
     ("edit", "Edit"),
     ("jump", "Jump"),
     ("fold", "Fold"),
+    ("buffer", "Buffer"),
     ("telescope", "Telescope"),
     ("window", "Window"),
     ("misc", "Misc"),

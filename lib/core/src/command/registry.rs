@@ -112,6 +112,12 @@ impl CommandRegistry {
     #[allow(clippy::too_many_lines)]
     fn register_builtins(&self) {
         use super::builtin::{
+            // Buffer
+            BufferDeleteCommand,
+            BufferNextCommand,
+            BufferPrevCommand,
+            // Change
+            ChangeLineCommand,
             // Command line
             CommandLineBackspaceCommand,
             CommandLineCancelCommand,
@@ -265,6 +271,10 @@ impl CommandRegistry {
             WindowEqualizeCommand,
             WindowFocusDownCommand,
             WindowFocusLeftCommand,
+            WindowFocusOrSplitDownCommand,
+            WindowFocusOrSplitLeftCommand,
+            WindowFocusOrSplitRightCommand,
+            WindowFocusOrSplitUpCommand,
             WindowFocusRightCommand,
             WindowFocusUpCommand,
             WindowMoveDownCommand,
@@ -328,6 +338,7 @@ impl CommandRegistry {
         let _ = self.register(InsertNewlineCommand);
         let _ = self.register(YankLineCommand);
         let _ = self.register(YankToEndCommand);
+        let _ = self.register(ChangeLineCommand);
 
         // Visual mode commands
         let _ = self.register(VisualExtendUpCommand);
@@ -432,12 +443,21 @@ impl CommandRegistry {
         let _ = self.register(WindowCloseCommand);
         let _ = self.register(WindowOnlyCommand);
         let _ = self.register(WindowEqualizeCommand);
+        let _ = self.register(WindowFocusOrSplitLeftCommand);
+        let _ = self.register(WindowFocusOrSplitDownCommand);
+        let _ = self.register(WindowFocusOrSplitUpCommand);
+        let _ = self.register(WindowFocusOrSplitRightCommand);
 
         // Tab commands
         let _ = self.register(TabNewCommand);
         let _ = self.register(TabCloseCommand);
         let _ = self.register(TabNextCommand);
         let _ = self.register(TabPrevCommand);
+
+        // Buffer commands
+        let _ = self.register(BufferPrevCommand);
+        let _ = self.register(BufferNextCommand);
+        let _ = self.register(BufferDeleteCommand);
 
         // Settings menu commands
         let _ = self.register(SettingsMenuOpenCommand);

@@ -1,5 +1,6 @@
 //! Built-in command implementations
 
+mod buffer;
 mod clipboard;
 mod command_line;
 mod completion;
@@ -20,7 +21,7 @@ mod visual;
 mod window;
 
 pub use {
-    clipboard::*, command_line::*, completion::*, cursor::*, explorer::*, fold::*, history::*,
-    jump::*, leap::*, mode::*, operator::*, settings_menu::*, system::*, tab::*, telescope::*,
-    text::*, visual::*, window::*,
+    buffer::*, clipboard::*, command_line::*, completion::*, cursor::*, explorer::*, fold::*,
+    history::*, jump::*, leap::*, mode::*, operator::*, settings_menu::*, system::*, tab::*,
+    telescope::*, text::*, visual::*, window::*,
 };
