@@ -1,11 +1,11 @@
 //! Mode state management for the editor
 //!
-//! Uses `InteractorId` for focus context and `EditMode`/`SubMode` for input handling.
+//! Uses `ComponentId` for focus context and `EditMode`/`SubMode` for input handling.
 
 use crate::leap::LeapDirection;
 
-// Re-export InteractorId for convenience
-pub use crate::interactor::InteractorId;
+// Re-export ComponentId for convenience (replaces ComponentId)
+pub use crate::ui_component::ComponentId;
 
 /// Operator type for operator-pending mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -65,11 +65,11 @@ pub enum VisualVariant {
     Block,
 }
 
-/// Complete mode state combining interactor context, edit mode, and sub-mode
+/// Complete mode state combining component context, edit mode, and sub-mode
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ModeState {
-    /// The interactor ID - identifies which component has focus
-    pub interactor_id: InteractorId,
+    /// The component ID - identifies which component has focus
+    pub interactor_id: ComponentId,
     /// The current edit mode (Normal, Insert, Visual)
     pub edit_mode: EditMode,
     /// The current sub-mode (Command, `OperatorPending`, Leap, etc.)
@@ -81,7 +81,7 @@ impl ModeState {
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            interactor_id: InteractorId::EDITOR,
+            interactor_id: ComponentId::EDITOR,
             edit_mode: EditMode::Normal,
             sub_mode: SubMode::None,
         }
@@ -90,7 +90,7 @@ impl ModeState {
     /// Create `ModeState` with specific interactor ID and edit mode
     #[must_use]
     pub const fn with_interactor_id_and_mode(
-        interactor_id: InteractorId,
+        interactor_id: ComponentId,
         edit_mode: EditMode,
     ) -> Self {
         Self {
@@ -103,7 +103,7 @@ impl ModeState {
     /// Create `ModeState` with interactor ID, edit mode, and sub-mode
     #[must_use]
     pub const fn with_interactor_id_sub_mode(
-        interactor_id: InteractorId,
+        interactor_id: ComponentId,
         edit_mode: EditMode,
         sub_mode: SubMode,
     ) -> Self {
@@ -116,7 +116,7 @@ impl ModeState {
 
     /// Set interactor ID while preserving edit mode and sub-mode
     #[must_use]
-    pub const fn set_interactor_id(mut self, interactor_id: InteractorId) -> Self {
+    pub const fn set_interactor_id(mut self, interactor_id: ComponentId) -> Self {
         self.interactor_id = interactor_id;
         self
     }
@@ -141,7 +141,7 @@ impl ModeState {
     #[must_use]
     pub const fn normal() -> Self {
         Self {
-            interactor_id: InteractorId::EDITOR,
+            interactor_id: ComponentId::EDITOR,
             edit_mode: EditMode::Normal,
             sub_mode: SubMode::None,
         }
@@ -151,7 +151,7 @@ impl ModeState {
     #[must_use]
     pub const fn insert() -> Self {
         Self {
-            interactor_id: InteractorId::EDITOR,
+            interactor_id: ComponentId::EDITOR,
             edit_mode: EditMode::Insert(InsertVariant::Standard),
             sub_mode: SubMode::None,
         }
@@ -161,7 +161,7 @@ impl ModeState {
     #[must_use]
     pub const fn visual() -> Self {
         Self {
-            interactor_id: InteractorId::EDITOR,
+            interactor_id: ComponentId::EDITOR,
             edit_mode: EditMode::Visual(VisualVariant::Char),
             sub_mode: SubMode::None,
         }
@@ -171,7 +171,7 @@ impl ModeState {
     #[must_use]
     pub const fn visual_block() -> Self {
         Self {
-            interactor_id: InteractorId::EDITOR,
+            interactor_id: ComponentId::EDITOR,
             edit_mode: EditMode::Visual(VisualVariant::Block),
             sub_mode: SubMode::None,
         }
@@ -181,7 +181,7 @@ impl ModeState {
     #[must_use]
     pub const fn visual_line() -> Self {
         Self {
-            interactor_id: InteractorId::EDITOR,
+            interactor_id: ComponentId::EDITOR,
             edit_mode: EditMode::Visual(VisualVariant::Line),
             sub_mode: SubMode::None,
         }
@@ -191,7 +191,7 @@ impl ModeState {
     #[must_use]
     pub const fn command() -> Self {
         Self {
-            interactor_id: InteractorId::EDITOR,
+            interactor_id: ComponentId::EDITOR,
             edit_mode: EditMode::Normal,
             sub_mode: SubMode::Command,
         }
@@ -201,7 +201,7 @@ impl ModeState {
     #[must_use]
     pub const fn explorer() -> Self {
         Self {
-            interactor_id: InteractorId::EXPLORER,
+            interactor_id: ComponentId::EXPLORER,
             edit_mode: EditMode::Normal,
             sub_mode: SubMode::None,
         }
@@ -211,7 +211,7 @@ impl ModeState {
     #[must_use]
     pub const fn explorer_input() -> Self {
         Self {
-            interactor_id: InteractorId::EXPLORER,
+            interactor_id: ComponentId::EXPLORER,
             edit_mode: EditMode::Insert(InsertVariant::Standard),
             sub_mode: SubMode::None,
         }
@@ -221,7 +221,7 @@ impl ModeState {
     #[must_use]
     pub const fn telescope() -> Self {
         Self {
-            interactor_id: InteractorId::TELESCOPE,
+            interactor_id: ComponentId::TELESCOPE,
             edit_mode: EditMode::Insert(InsertVariant::Standard),
             sub_mode: SubMode::None,
         }
@@ -231,7 +231,7 @@ impl ModeState {
     #[must_use]
     pub const fn telescope_normal() -> Self {
         Self {
-            interactor_id: InteractorId::TELESCOPE,
+            interactor_id: ComponentId::TELESCOPE,
             edit_mode: EditMode::Normal,
             sub_mode: SubMode::None,
         }
@@ -241,7 +241,7 @@ impl ModeState {
     #[must_use]
     pub const fn settings_menu() -> Self {
         Self {
-            interactor_id: InteractorId::SETTINGS,
+            interactor_id: ComponentId::SETTINGS,
             edit_mode: EditMode::Normal,
             sub_mode: SubMode::None,
         }
@@ -251,7 +251,7 @@ impl ModeState {
     #[must_use]
     pub const fn operator_pending(operator: OperatorType, count: Option<usize>) -> Self {
         Self {
-            interactor_id: InteractorId::EDITOR,
+            interactor_id: ComponentId::EDITOR,
             edit_mode: EditMode::Normal,
             sub_mode: SubMode::OperatorPending { operator, count },
         }
@@ -265,7 +265,7 @@ impl ModeState {
         count: Option<usize>,
     ) -> Self {
         Self {
-            interactor_id: InteractorId::EDITOR,
+            interactor_id: ComponentId::EDITOR,
             edit_mode: EditMode::Normal,
             sub_mode: SubMode::Leap {
                 direction,
@@ -279,7 +279,7 @@ impl ModeState {
 
     /// Check if the current interactor matches the given interactor ID
     #[must_use]
-    pub fn is_interactor(&self, id: InteractorId) -> bool {
+    pub fn is_interactor(&self, id: ComponentId) -> bool {
         self.interactor_id.0 == id.0
     }
 
@@ -322,19 +322,19 @@ impl ModeState {
     /// Check if focused on editor
     #[must_use]
     pub fn is_editor_focus(&self) -> bool {
-        self.is_interactor(InteractorId::EDITOR)
+        self.is_interactor(ComponentId::EDITOR)
     }
 
     /// Check if focused on explorer
     #[must_use]
     pub fn is_explorer_focus(&self) -> bool {
-        self.is_interactor(InteractorId::EXPLORER)
+        self.is_interactor(ComponentId::EXPLORER)
     }
 
     /// Check if focused on telescope
     #[must_use]
     pub fn is_telescope_focus(&self) -> bool {
-        self.is_interactor(InteractorId::TELESCOPE)
+        self.is_interactor(ComponentId::TELESCOPE)
     }
 
     /// Check if the mode accepts character input (insert mode or command mode)
@@ -356,11 +356,11 @@ impl ModeState {
             SubMode::None => {}
         }
 
-        // InteractorId × EditMode (orthogonal display)
-        let is_editor = self.interactor_id == InteractorId::EDITOR;
-        let is_explorer = self.interactor_id == InteractorId::EXPLORER;
-        let is_telescope = self.interactor_id == InteractorId::TELESCOPE;
-        let is_settings = self.interactor_id == InteractorId::SETTINGS;
+        // ComponentId × EditMode (orthogonal display)
+        let is_editor = self.interactor_id == ComponentId::EDITOR;
+        let is_explorer = self.interactor_id == ComponentId::EXPLORER;
+        let is_telescope = self.interactor_id == ComponentId::TELESCOPE;
+        let is_settings = self.interactor_id == ComponentId::SETTINGS;
 
         match &self.edit_mode {
             EditMode::Normal if is_editor => " NORMAL ",

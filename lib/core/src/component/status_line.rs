@@ -6,11 +6,10 @@
 
 use crate::{
     buffer::Buffer,
-    component::{DisplayComponent, RenderContext},
+    component::RenderContext,
     frame::FrameBuffer,
-    interactor::InteractorId,
     modd::{EditMode, ModeState, SubMode},
-    screen::{z_order, LayerBounds},
+    screen::{LayerBounds, z_order},
     ui_component::{ComponentId, UIComponent},
 };
 
@@ -71,13 +70,13 @@ impl<'a> StatusLineComponent<'a> {
         }
 
         // Then check interactor
-        if self.mode.interactor_id == InteractorId::TELESCOPE {
+        if self.mode.interactor_id == ComponentId::TELESCOPE {
             return icons::TELESCOPE;
         }
-        if self.mode.interactor_id == InteractorId::EXPLORER {
+        if self.mode.interactor_id == ComponentId::EXPLORER {
             return icons::EXPLORER;
         }
-        if self.mode.interactor_id == InteractorId::SETTINGS {
+        if self.mode.interactor_id == ComponentId::SETTINGS {
             return icons::SETTINGS;
         }
 
@@ -104,12 +103,12 @@ impl<'a> StatusLineComponent<'a> {
         }
 
         // Interactor-specific styles
-        if self.mode.interactor_id == InteractorId::TELESCOPE
-            || self.mode.interactor_id == InteractorId::SETTINGS
+        if self.mode.interactor_id == ComponentId::TELESCOPE
+            || self.mode.interactor_id == ComponentId::SETTINGS
         {
             return &theme.statusline.mode.command;
         }
-        if self.mode.interactor_id == InteractorId::EXPLORER {
+        if self.mode.interactor_id == ComponentId::EXPLORER {
             return &theme.statusline.mode.explorer;
         }
 
@@ -152,17 +151,38 @@ fn filetype_from_path(path: &str) -> &'static str {
     }
 }
 
-impl DisplayComponent for StatusLineComponent<'_> {
-    fn component_id(&self) -> &'static str {
-        "status_line"
+impl UIComponent for StatusLineComponent<'_> {
+    fn id(&self) -> ComponentId {
+        ComponentId::STATUS_LINE
+    }
+
+    fn display_name(&self) -> &'static str {
+        "STATUS"
+    }
+
+    fn z_order(&self) -> u8 {
+        z_order::BASE
+    }
+
+    fn is_visible(&self, _ctx: &RenderContext<'_>) -> bool {
+        true // Status line is always visible
+    }
+
+    fn bounds(&self, ctx: &RenderContext<'_>) -> LayerBounds {
+        LayerBounds {
+            x: 0,
+            y: ctx.status_line_row(),
+            width: ctx.screen_width,
+            height: 1,
+        }
     }
 
     #[allow(clippy::cast_possible_truncation)]
-    fn render_to_frame(&self, buffer: &mut FrameBuffer, context: &RenderContext<'_>) {
+    fn render_to_frame(&self, frame: &mut FrameBuffer, ctx: &RenderContext<'_>) {
         let mode_str = self.mode.display_string();
         let icon = self.mode_icon();
-        let theme = context.theme;
-        let status_row = context.status_line_row();
+        let theme = ctx.theme;
+        let status_row = ctx.status_line_row();
 
         // Get mode-specific style
         let mode_style = self.get_mode_style(theme);
@@ -190,59 +210,22 @@ impl DisplayComponent for StatusLineComponent<'_> {
 
         // Render mode indicator
         let mode_text = format!(" {icon}{mode_str} ");
-        let mut x = buffer.write_str(0, status_row, &mode_text, mode_style);
+        let mut x = frame.write_str(0, status_row, &mode_text, mode_style);
 
         // Render pending keys
-        x += buffer.write_str(x, status_row, &cmd_section, &theme.statusline.background);
+        x += frame.write_str(x, status_row, &cmd_section, &theme.statusline.background);
 
         // Calculate fill space
-        let right_start = context
-            .screen_width
-            .saturating_sub(right_content.len() as u16);
+        let right_start = ctx.screen_width.saturating_sub(right_content.len() as u16);
         let fill_style = theme.statusline.background.clone();
 
         // Fill middle
         for col in x..right_start {
-            buffer.put_char(col, status_row, ' ', &fill_style);
+            frame.put_char(col, status_row, ' ', &fill_style);
         }
 
         // Render right side content
-        buffer.write_str(right_start, status_row, &right_content, &theme.statusline.background);
-    }
-
-    fn bounds(&self, context: &RenderContext<'_>) -> LayerBounds {
-        LayerBounds {
-            x: 0,
-            y: context.status_line_row(),
-            width: context.screen_width,
-            height: 1,
-        }
-    }
-}
-
-impl UIComponent for StatusLineComponent<'_> {
-    fn id(&self) -> ComponentId {
-        ComponentId::STATUS_LINE
-    }
-
-    fn display_name(&self) -> &'static str {
-        "STATUS"
-    }
-
-    fn z_order(&self) -> u8 {
-        z_order::BASE
-    }
-
-    fn is_visible(&self, _ctx: &RenderContext<'_>) -> bool {
-        true // Status line is always visible
-    }
-
-    fn bounds(&self, ctx: &RenderContext<'_>) -> LayerBounds {
-        DisplayComponent::bounds(self, ctx)
-    }
-
-    fn render_to_frame(&self, buffer: &mut FrameBuffer, ctx: &RenderContext<'_>) {
-        DisplayComponent::render_to_frame(self, buffer, ctx);
+        frame.write_str(right_start, status_row, &right_content, &theme.statusline.background);
     }
 
     fn is_focusable(&self) -> bool {

@@ -201,9 +201,9 @@ mod tests {
     use {
         super::*,
         crate::{
-            interactor::InteractorId,
             modd::{EditMode, SubMode},
             modifier::traits::{ActiveWindowModifier, FiletypeModifier, InsertModeModifier},
+            ui_component::ComponentId,
         },
         reovim_sys::style::Color,
     };
@@ -212,7 +212,7 @@ mod tests {
         edit_mode: &'a EditMode,
         sub_mode: &'a SubMode,
     ) -> ModifierContext<'a> {
-        ModifierContext::new(InteractorId::EDITOR, edit_mode, sub_mode, 0, 0)
+        ModifierContext::new(ComponentId::EDITOR, edit_mode, sub_mode, 0, 0)
     }
 
     #[test]

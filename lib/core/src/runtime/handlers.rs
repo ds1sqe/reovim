@@ -1,8 +1,5 @@
 //! Event handler dispatch methods for Runtime
 
-// Allow deprecated Focus enum during transition to FocusId
-#![allow(deprecated)]
-
 use std::sync::Arc;
 
 use crate::{
@@ -1051,10 +1048,10 @@ impl Runtime {
     /// The screen is the source of truth for focus (explorer vs editor).
     /// This method updates the mode state to match.
     pub(crate) fn sync_mode_with_screen_focus(&mut self) {
-        use crate::interactor::InteractorId;
+        use crate::ui_component::ComponentId;
 
         let screen_has_explorer_focus = self.screen.is_explorer_focused();
-        let mode_has_explorer_focus = self.mode_state.interactor_id == InteractorId::EXPLORER;
+        let mode_has_explorer_focus = self.mode_state.interactor_id == ComponentId::EXPLORER;
 
         if screen_has_explorer_focus && !mode_has_explorer_focus {
             self.set_mode(ModeState::explorer());

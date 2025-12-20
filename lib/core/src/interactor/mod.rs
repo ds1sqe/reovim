@@ -1,11 +1,11 @@
-//! Extensible interactor system for UI components that handle user input
+//! UI component interactor system
 //!
-//! The interactor system uses a trait-based approach allowing plugins to register
-//! custom interactors without modifying core code.
+//! This module provides input-handling UI components that implement `UIComponent`.
+//! The `InteractorRegistry` uses `UIComponent` trait for all registered components.
 //!
 //! Conceptual model:
 //! ```text
-//! User <-> Window <- Interactor -> Buffer
+//! User <-> Window <- UIComponent -> Buffer
 //!          (view)    (input handler)  (data)
 //! ```
 
@@ -20,36 +20,11 @@ use crate::{
     ui_component::{ComponentId, UIComponent},
 };
 
-/// Unique identifier for an interactor
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct InteractorId(pub &'static str);
+// Re-export ComponentId for backward compatibility
+// (InteractorId is now an alias for ComponentId)
+pub use crate::ui_component::ComponentId as InteractorId;
 
-impl InteractorId {
-    /// Editor interactor (main text editing area)
-    pub const EDITOR: Self = Self("editor");
-    /// Explorer interactor (file browser sidebar)
-    pub const EXPLORER: Self = Self("explorer");
-    /// Telescope interactor (fuzzy finder)
-    pub const TELESCOPE: Self = Self("telescope");
-    /// Settings menu interactor
-    pub const SETTINGS: Self = Self("settings");
-    /// Command line interactor (`:` commands)
-    pub const COMMAND_LINE: Self = Self("command_line");
-}
-
-impl std::fmt::Display for InteractorId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl Default for InteractorId {
-    fn default() -> Self {
-        Self::EDITOR
-    }
-}
-
-/// Result of handling input in an interactor
+/// Result of handling input in a component
 pub enum InputResult {
     /// Input was not handled
     NotHandled,
@@ -59,36 +34,14 @@ pub enum InputResult {
     SendEvent(InnerEvent),
 }
 
-/// Trait for components that handle user input
+/// Registry of UI component interactors
 ///
-/// Implement this trait to create custom interactors that can be registered
-/// with the [`InteractorRegistry`].
-pub trait Interactor: std::fmt::Debug + Send + Sync {
-    /// Unique identifier for this interactor
-    fn id(&self) -> InteractorId;
-
-    /// Display name for status line
-    fn display_name(&self) -> &'static str;
-
-    /// Handle character input
-    fn handle_insert_char(&mut self, c: char, mode_state: &ModeState) -> InputResult;
-
-    /// Handle backspace/delete backward
-    fn handle_delete_backward(&mut self, mode_state: &ModeState) -> InputResult;
-
-    /// Icon for status line (optional)
-    fn icon(&self) -> Option<&'static str> {
-        None
-    }
-}
-
-/// Registry of interactors
-///
-/// Manages all registered interactors and tracks the currently active one.
+/// Manages all registered UI components and tracks the currently active one.
+/// Uses `UIComponent` trait instead of the deprecated `Interactor` trait.
 #[derive(Debug)]
 pub struct InteractorRegistry {
-    targets: HashMap<InteractorId, Box<dyn Interactor>>,
-    active: InteractorId,
+    targets: HashMap<ComponentId, Box<dyn UIComponent>>,
+    active: ComponentId,
 }
 
 impl Default for InteractorRegistry {
@@ -103,22 +56,22 @@ impl InteractorRegistry {
     pub fn new() -> Self {
         Self {
             targets: HashMap::new(),
-            active: InteractorId::EDITOR,
+            active: ComponentId::EDITOR,
         }
     }
 
-    /// Register an interactor
+    /// Register a UI component
     ///
-    /// If an interactor with the same ID already exists, it will be replaced.
-    pub fn register(&mut self, target: Box<dyn Interactor>) {
+    /// If a component with the same ID already exists, it will be replaced.
+    pub fn register(&mut self, target: Box<dyn UIComponent>) {
         let id = target.id();
         self.targets.insert(id, target);
     }
 
-    /// Set the active interactor
+    /// Set the active component
     ///
-    /// Returns `true` if the focus was changed, `false` if the interactor ID is not registered.
-    pub fn set_active(&mut self, id: InteractorId) -> bool {
+    /// Returns `true` if the focus was changed, `false` if the component ID is not registered.
+    pub fn set_active(&mut self, id: ComponentId) -> bool {
         if self.targets.contains_key(&id) {
             self.active = id;
             true
@@ -127,54 +80,54 @@ impl InteractorRegistry {
         }
     }
 
-    /// Get the active interactor
+    /// Get the active component
     ///
     /// # Panics
     ///
-    /// Panics if the active interactor is not registered (should never happen in normal use).
+    /// Panics if the active component is not registered (should never happen in normal use).
     #[must_use]
-    pub fn active(&self) -> &dyn Interactor {
+    pub fn active(&self) -> &dyn UIComponent {
         self.targets
             .get(&self.active)
             .map(AsRef::as_ref)
-            .expect("active interactor should always be registered")
+            .expect("active component should always be registered")
     }
 
-    /// Get the active interactor mutably
+    /// Get the active component mutably
     ///
     /// # Panics
     ///
-    /// Panics if the active interactor is not registered.
-    pub fn active_mut(&mut self) -> &mut Box<dyn Interactor> {
+    /// Panics if the active component is not registered.
+    pub fn active_mut(&mut self) -> &mut Box<dyn UIComponent> {
         self.targets
             .get_mut(&self.active)
-            .expect("active interactor should always be registered")
+            .expect("active component should always be registered")
     }
 
-    /// Get the active interactor ID
+    /// Get the active component ID
     #[must_use]
-    pub const fn active_id(&self) -> InteractorId {
+    pub const fn active_id(&self) -> ComponentId {
         self.active
     }
 
-    /// Get an interactor by ID
+    /// Get a component by ID
     #[must_use]
-    pub fn get(&self, id: InteractorId) -> Option<&dyn Interactor> {
+    pub fn get(&self, id: ComponentId) -> Option<&dyn UIComponent> {
         self.targets.get(&id).map(AsRef::as_ref)
     }
 
-    /// Get an interactor by ID mutably
-    pub fn get_mut(&mut self, id: InteractorId) -> Option<&mut Box<dyn Interactor>> {
+    /// Get a component by ID mutably
+    pub fn get_mut(&mut self, id: ComponentId) -> Option<&mut Box<dyn UIComponent>> {
         self.targets.get_mut(&id)
     }
 
-    /// Check if an interactor is registered
+    /// Check if a component is registered
     #[must_use]
-    pub fn contains(&self, id: InteractorId) -> bool {
+    pub fn contains(&self, id: ComponentId) -> bool {
         self.targets.contains_key(&id)
     }
 
-    /// Get the number of registered interactors
+    /// Get the number of registered components
     #[must_use]
     pub fn len(&self) -> usize {
         self.targets.len()
@@ -186,7 +139,7 @@ impl InteractorRegistry {
         self.targets.is_empty()
     }
 
-    /// Create a registry with default interactors registered
+    /// Create a registry with default components registered
     #[must_use]
     pub fn with_defaults() -> Self {
         let mut registry = Self::new();
@@ -199,52 +152,13 @@ impl InteractorRegistry {
     }
 }
 
-// Built-in interactors
+// Built-in UI components
 
-/// Editor interactor (main text editing area)
+/// Editor component (main text editing area)
 #[derive(Debug, Default)]
 pub struct Editor {
     /// Clear landing page on next input
     pub clear_landing_on_input: bool,
-}
-
-impl Interactor for Editor {
-    fn id(&self) -> InteractorId {
-        InteractorId::EDITOR
-    }
-
-    fn display_name(&self) -> &'static str {
-        "EDITOR"
-    }
-
-    fn icon(&self) -> Option<&'static str> {
-        Some("")
-    }
-
-    fn handle_insert_char(&mut self, c: char, mode_state: &ModeState) -> InputResult {
-        if mode_state.is_command() || mode_state.is_insert() {
-            let clear = std::mem::take(&mut self.clear_landing_on_input);
-            InputResult::SendEvent(InnerEvent::FocusInput {
-                char: Some(c),
-                delete: false,
-                clear_landing: clear,
-            })
-        } else {
-            InputResult::NotHandled
-        }
-    }
-
-    fn handle_delete_backward(&mut self, mode_state: &ModeState) -> InputResult {
-        if mode_state.is_command() || mode_state.is_insert() {
-            InputResult::SendEvent(InnerEvent::FocusInput {
-                char: None,
-                delete: true,
-                clear_landing: false,
-            })
-        } else {
-            InputResult::NotHandled
-        }
-    }
 }
 
 impl UIComponent for Editor {
@@ -280,19 +194,35 @@ impl UIComponent for Editor {
 
     fn render_to_frame(&self, _buffer: &mut FrameBuffer, _ctx: &RenderContext<'_>) {
         // Rendering is delegated to EditorLayer which has access to Runtime state.
-        // This will be unified in Stream C when plugins can provide full components.
     }
 
     fn is_focusable(&self) -> bool {
         true
     }
 
-    fn handle_insert_char(&mut self, c: char, mode: &ModeState) -> InputResult {
-        Interactor::handle_insert_char(self, c, mode)
+    fn handle_insert_char(&mut self, c: char, mode_state: &ModeState) -> InputResult {
+        if mode_state.is_command() || mode_state.is_insert() {
+            let clear = std::mem::take(&mut self.clear_landing_on_input);
+            InputResult::SendEvent(InnerEvent::FocusInput {
+                char: Some(c),
+                delete: false,
+                clear_landing: clear,
+            })
+        } else {
+            InputResult::NotHandled
+        }
     }
 
-    fn handle_delete_backward(&mut self, mode: &ModeState) -> InputResult {
-        Interactor::handle_delete_backward(self, mode)
+    fn handle_delete_backward(&mut self, mode_state: &ModeState) -> InputResult {
+        if mode_state.is_command() || mode_state.is_insert() {
+            InputResult::SendEvent(InnerEvent::FocusInput {
+                char: None,
+                delete: true,
+                clear_landing: false,
+            })
+        } else {
+            InputResult::NotHandled
+        }
     }
 
     fn captures_input(&self) -> bool {
@@ -300,7 +230,7 @@ impl UIComponent for Editor {
     }
 }
 
-/// Explorer interactor (file browser sidebar)
+/// Explorer component (file browser sidebar)
 ///
 /// Handles filename input for create/rename operations.
 #[derive(Debug, Default)]
@@ -309,38 +239,6 @@ pub struct Explorer {
     pub input_buffer: String,
     /// Whether input mode is active
     pub input_active: bool,
-}
-
-impl Interactor for Explorer {
-    fn id(&self) -> InteractorId {
-        InteractorId::EXPLORER
-    }
-
-    fn display_name(&self) -> &'static str {
-        "EXPLORER"
-    }
-
-    fn icon(&self) -> Option<&'static str> {
-        Some("")
-    }
-
-    fn handle_insert_char(&mut self, c: char, _mode_state: &ModeState) -> InputResult {
-        if self.input_active {
-            self.input_buffer.push(c);
-            InputResult::Handled
-        } else {
-            InputResult::NotHandled
-        }
-    }
-
-    fn handle_delete_backward(&mut self, _mode_state: &ModeState) -> InputResult {
-        if self.input_active {
-            self.input_buffer.pop();
-            InputResult::Handled
-        } else {
-            InputResult::NotHandled
-        }
-    }
 }
 
 impl UIComponent for Explorer {
@@ -383,12 +281,22 @@ impl UIComponent for Explorer {
         true
     }
 
-    fn handle_insert_char(&mut self, c: char, mode: &ModeState) -> InputResult {
-        Interactor::handle_insert_char(self, c, mode)
+    fn handle_insert_char(&mut self, c: char, _mode_state: &ModeState) -> InputResult {
+        if self.input_active {
+            self.input_buffer.push(c);
+            InputResult::Handled
+        } else {
+            InputResult::NotHandled
+        }
     }
 
-    fn handle_delete_backward(&mut self, mode: &ModeState) -> InputResult {
-        Interactor::handle_delete_backward(self, mode)
+    fn handle_delete_backward(&mut self, _mode_state: &ModeState) -> InputResult {
+        if self.input_active {
+            self.input_buffer.pop();
+            InputResult::Handled
+        } else {
+            InputResult::NotHandled
+        }
     }
 
     fn captures_input(&self) -> bool {
@@ -396,41 +304,11 @@ impl UIComponent for Explorer {
     }
 }
 
-/// Telescope interactor (fuzzy finder)
+/// Telescope component (fuzzy finder)
 ///
 /// Marker struct - actual state is in `TelescopeState` on Runtime.
 #[derive(Debug, Default)]
 pub struct Telescope;
-
-impl Interactor for Telescope {
-    fn id(&self) -> InteractorId {
-        InteractorId::TELESCOPE
-    }
-
-    fn display_name(&self) -> &'static str {
-        "TELESCOPE"
-    }
-
-    fn icon(&self) -> Option<&'static str> {
-        Some("")
-    }
-
-    fn handle_insert_char(&mut self, c: char, _mode_state: &ModeState) -> InputResult {
-        InputResult::SendEvent(InnerEvent::FocusInput {
-            char: Some(c),
-            delete: false,
-            clear_landing: false,
-        })
-    }
-
-    fn handle_delete_backward(&mut self, _mode_state: &ModeState) -> InputResult {
-        InputResult::SendEvent(InnerEvent::FocusInput {
-            char: None,
-            delete: true,
-            clear_landing: false,
-        })
-    }
-}
 
 impl UIComponent for Telescope {
     fn id(&self) -> ComponentId {
@@ -467,12 +345,20 @@ impl UIComponent for Telescope {
         true
     }
 
-    fn handle_insert_char(&mut self, c: char, mode: &ModeState) -> InputResult {
-        Interactor::handle_insert_char(self, c, mode)
+    fn handle_insert_char(&mut self, c: char, _mode_state: &ModeState) -> InputResult {
+        InputResult::SendEvent(InnerEvent::FocusInput {
+            char: Some(c),
+            delete: false,
+            clear_landing: false,
+        })
     }
 
-    fn handle_delete_backward(&mut self, mode: &ModeState) -> InputResult {
-        Interactor::handle_delete_backward(self, mode)
+    fn handle_delete_backward(&mut self, _mode_state: &ModeState) -> InputResult {
+        InputResult::SendEvent(InnerEvent::FocusInput {
+            char: None,
+            delete: true,
+            clear_landing: false,
+        })
     }
 
     fn captures_input(&self) -> bool {
@@ -480,31 +366,9 @@ impl UIComponent for Telescope {
     }
 }
 
-/// Settings menu interactor
+/// Settings menu component
 #[derive(Debug, Default)]
 pub struct Settings;
-
-impl Interactor for Settings {
-    fn id(&self) -> InteractorId {
-        InteractorId::SETTINGS
-    }
-
-    fn display_name(&self) -> &'static str {
-        "SETTINGS"
-    }
-
-    fn icon(&self) -> Option<&'static str> {
-        Some("")
-    }
-
-    fn handle_insert_char(&mut self, _c: char, _mode_state: &ModeState) -> InputResult {
-        InputResult::NotHandled
-    }
-
-    fn handle_delete_backward(&mut self, _mode_state: &ModeState) -> InputResult {
-        InputResult::NotHandled
-    }
-}
 
 impl UIComponent for Settings {
     fn id(&self) -> ComponentId {
@@ -546,42 +410,12 @@ impl UIComponent for Settings {
     }
 }
 
-/// Command line interactor (`:` command input)
+/// Command line component (`:` command input)
 ///
 /// Handles input for command-line mode. State is managed via the enlist pattern,
 /// with the actual `CommandLine` struct on Runtime.
 #[derive(Debug, Default)]
 pub struct CommandLineInt;
-
-impl Interactor for CommandLineInt {
-    fn id(&self) -> InteractorId {
-        InteractorId::COMMAND_LINE
-    }
-
-    fn display_name(&self) -> &'static str {
-        "COMMAND"
-    }
-
-    fn icon(&self) -> Option<&'static str> {
-        Some("󰘳 ")
-    }
-
-    fn handle_insert_char(&mut self, c: char, _mode_state: &ModeState) -> InputResult {
-        InputResult::SendEvent(InnerEvent::FocusInput {
-            char: Some(c),
-            delete: false,
-            clear_landing: false,
-        })
-    }
-
-    fn handle_delete_backward(&mut self, _mode_state: &ModeState) -> InputResult {
-        InputResult::SendEvent(InnerEvent::FocusInput {
-            char: None,
-            delete: true,
-            clear_landing: false,
-        })
-    }
-}
 
 impl UIComponent for CommandLineInt {
     fn id(&self) -> ComponentId {
@@ -623,12 +457,20 @@ impl UIComponent for CommandLineInt {
         true
     }
 
-    fn handle_insert_char(&mut self, c: char, mode: &ModeState) -> InputResult {
-        Interactor::handle_insert_char(self, c, mode)
+    fn handle_insert_char(&mut self, c: char, _mode_state: &ModeState) -> InputResult {
+        InputResult::SendEvent(InnerEvent::FocusInput {
+            char: Some(c),
+            delete: false,
+            clear_landing: false,
+        })
     }
 
-    fn handle_delete_backward(&mut self, mode: &ModeState) -> InputResult {
-        Interactor::handle_delete_backward(self, mode)
+    fn handle_delete_backward(&mut self, _mode_state: &ModeState) -> InputResult {
+        InputResult::SendEvent(InnerEvent::FocusInput {
+            char: None,
+            delete: true,
+            clear_landing: false,
+        })
     }
 
     fn captures_input(&self) -> bool {
@@ -642,8 +484,8 @@ mod tests {
 
     #[test]
     fn test_interactor_id_equality() {
-        assert_eq!(InteractorId::EDITOR, InteractorId("editor"));
-        assert_ne!(InteractorId::EDITOR, InteractorId::EXPLORER);
+        assert_eq!(ComponentId::EDITOR, ComponentId("editor"));
+        assert_ne!(ComponentId::EDITOR, ComponentId::EXPLORER);
     }
 
     #[test]
@@ -653,7 +495,7 @@ mod tests {
 
         registry.register(Box::new(Editor::default()));
         assert_eq!(registry.len(), 1);
-        assert!(registry.contains(InteractorId::EDITOR));
+        assert!(registry.contains(ComponentId::EDITOR));
     }
 
     #[test]
@@ -662,13 +504,13 @@ mod tests {
         registry.register(Box::new(Editor::default()));
         registry.register(Box::new(Telescope));
 
-        assert_eq!(registry.active_id(), InteractorId::EDITOR);
+        assert_eq!(registry.active_id(), ComponentId::EDITOR);
 
-        assert!(registry.set_active(InteractorId::TELESCOPE));
-        assert_eq!(registry.active_id(), InteractorId::TELESCOPE);
+        assert!(registry.set_active(ComponentId::TELESCOPE));
+        assert_eq!(registry.active_id(), ComponentId::TELESCOPE);
 
         // Can't set to unregistered interactor
-        assert!(!registry.set_active(InteractorId::EXPLORER));
-        assert_eq!(registry.active_id(), InteractorId::TELESCOPE);
+        assert!(!registry.set_active(ComponentId::EXPLORER));
+        assert_eq!(registry.active_id(), ComponentId::TELESCOPE);
     }
 }

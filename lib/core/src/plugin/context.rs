@@ -5,10 +5,11 @@ use std::{any::TypeId, collections::HashMap, sync::Arc};
 use crate::{
     bind::{CommandRef, KeyMap},
     command::{CommandId, CommandRegistry, CommandTrait},
-    interactor::{Interactor, InteractorId, InteractorRegistry},
+    interactor::InteractorRegistry,
     modifier::ModifierRegistry,
     runtime::FocusInputHandler,
     telescope::picker::Picker,
+    ui_component::{ComponentId, ComponentRegistry, UIComponent},
 };
 
 /// Context passed to plugins during the build phase
@@ -32,10 +33,13 @@ pub struct PluginContext {
     pub(crate) pickers: HashMap<String, Arc<dyn Picker>>,
 
     /// Focus input handlers (enlist pattern)
-    pub(crate) focus_handlers: HashMap<InteractorId, FocusInputHandler>,
+    pub(crate) focus_handlers: HashMap<ComponentId, FocusInputHandler>,
 
     /// Track which plugins have been loaded
     pub(crate) loaded_plugins: std::collections::HashSet<TypeId>,
+
+    /// Component registry for UI components
+    pub(crate) components: ComponentRegistry,
 }
 
 impl Default for PluginContext {
@@ -56,6 +60,7 @@ impl PluginContext {
             pickers: HashMap::new(),
             focus_handlers: HashMap::new(),
             loaded_plugins: std::collections::HashSet::new(),
+            components: ComponentRegistry::new(),
         }
     }
 
@@ -85,8 +90,8 @@ impl PluginContext {
 
     // === Interactor Registration ===
 
-    /// Register an interactor
-    pub fn register_interactor(&mut self, interactor: Box<dyn Interactor>) {
+    /// Register an interactor (UI component)
+    pub fn register_interactor(&mut self, interactor: Box<dyn UIComponent>) {
         self.interactors.register(interactor);
     }
 
@@ -94,7 +99,7 @@ impl PluginContext {
     ///
     /// This uses the "enlist" pattern where handlers are function pointers
     /// that receive the runtime and input data.
-    pub fn register_focus_handler(&mut self, id: InteractorId, handler: FocusInputHandler) {
+    pub fn register_focus_handler(&mut self, id: ComponentId, handler: FocusInputHandler) {
         self.focus_handlers.insert(id, handler);
     }
 
@@ -167,6 +172,27 @@ impl PluginContext {
         &mut self.modifiers
     }
 
+    // === Component Registration ===
+
+    /// Register a UI component
+    ///
+    /// If a component with the same ID already exists, it will be replaced.
+    pub fn register_component(&mut self, component: Box<dyn UIComponent>) {
+        self.components.register(component);
+    }
+
+    /// Get access to the component registry
+    #[must_use]
+    pub const fn component_registry(&self) -> &ComponentRegistry {
+        &self.components
+    }
+
+    /// Get mutable access to the component registry
+    #[must_use]
+    pub const fn component_registry_mut(&mut self) -> &mut ComponentRegistry {
+        &mut self.components
+    }
+
     // === Plugin Queries ===
 
     /// Check if a plugin has been loaded
@@ -201,7 +227,8 @@ impl PluginContext {
         ModifierRegistry,
         KeyMap,
         HashMap<String, Arc<dyn Picker>>,
-        HashMap<InteractorId, FocusInputHandler>,
+        HashMap<ComponentId, FocusInputHandler>,
+        ComponentRegistry,
     ) {
         (
             self.commands,
@@ -210,6 +237,7 @@ impl PluginContext {
             self.keymap,
             self.pickers,
             self.focus_handlers,
+            self.components,
         )
     }
 }

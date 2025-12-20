@@ -1,33 +1,16 @@
 //! UI Component System
 //!
-//! This module provides a unified architecture for UI components:
+//! This module provides UI components that implement the unified [`UIComponent`] trait:
 //!
-//! - [`DisplayComponent`] trait for display-only components (`StatusLine`, `TabLine`)
 //! - [`RenderContext`] for passing render-time state to components
+//! - [`StatusLineComponent`] for displaying mode, file info, and cursor position
+//! - [`TabLineComponent`] for displaying open tabs
 //!
-//! For input-handling components, see the [`interactor`](crate::interactor) module.
-//!
-//! # Architecture
-//!
-//! ```text
-//! ┌─────────────────────────────────────────────────────────────────┐
-//! │                      UI Component System                         │
-//! ├─────────────────────────────────────────────────────────────────┤
-//! │  Interactor (input-receiving)    │  DisplayComponent (display)  │
-//! │  ─────────────────────────────   │  ───────────────────────────  │
-//! │  • Editor                        │  • StatusLineComponent       │
-//! │  • Explorer                      │  • TabLineComponent          │
-//! │  • Telescope                     │                              │
-//! │  • CommandLine                   │                              │
-//! └─────────────────────────────────────────────────────────────────┘
-//! ```
+//! All components implement the [`UIComponent`](crate::ui_component::UIComponent) trait
+//! from the [`ui_component`](crate::ui_component) module.
 
 mod display;
 mod status_line;
 mod tab_line;
 
-pub use {
-    display::{DisplayComponent, RenderContext},
-    status_line::StatusLineComponent,
-    tab_line::TabLineComponent,
-};
+pub use {display::RenderContext, status_line::StatusLineComponent, tab_line::TabLineComponent};

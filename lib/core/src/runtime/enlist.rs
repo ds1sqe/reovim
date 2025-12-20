@@ -9,8 +9,8 @@ use {
     crate::{
         buffer::TextOps,
         event::{InnerEvent, TelescopeEvent},
-        interactor::InteractorId,
         screen::Position,
+        ui_component::ComponentId,
     },
 };
 
@@ -20,9 +20,9 @@ impl Runtime {
     /// This is called during Runtime initialization. Each interactor that
     /// needs runtime state access registers its handler here.
     pub(crate) fn enlist_default_handlers(&mut self) {
-        self.enlist_focus_input_handler(InteractorId::TELESCOPE, handle_telescope_input);
-        self.enlist_focus_input_handler(InteractorId::EDITOR, handle_editor_input);
-        self.enlist_focus_input_handler(InteractorId::COMMAND_LINE, handle_command_line_input);
+        self.enlist_focus_input_handler(ComponentId::TELESCOPE, handle_telescope_input);
+        self.enlist_focus_input_handler(ComponentId::EDITOR, handle_editor_input);
+        self.enlist_focus_input_handler(ComponentId::COMMAND_LINE, handle_command_line_input);
         // Explorer handles input internally via InputResult::Handled, no handler needed
     }
 }

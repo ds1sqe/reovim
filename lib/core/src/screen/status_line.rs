@@ -9,8 +9,8 @@ use {
         command_line::CommandLine,
         constants::RESET_STYLE,
         highlight::{ColorMode, Theme},
-        interactor::InteractorId,
         modd::{EditMode, ModeState, SubMode},
+        ui_component::ComponentId,
     },
     reovim_sys::{cursor::MoveTo, queue, style::Print},
     std::io::Write,
@@ -60,13 +60,13 @@ fn mode_icon(mode: &ModeState) -> &'static str {
     }
 
     // Then check interactor
-    if mode.interactor_id == InteractorId::TELESCOPE {
+    if mode.interactor_id == ComponentId::TELESCOPE {
         return icons::TELESCOPE;
     }
-    if mode.interactor_id == InteractorId::EXPLORER {
+    if mode.interactor_id == ComponentId::EXPLORER {
         return icons::EXPLORER;
     }
-    if mode.interactor_id == InteractorId::SETTINGS {
+    if mode.interactor_id == ComponentId::SETTINGS {
         return icons::SETTINGS;
     }
 
@@ -90,11 +90,10 @@ fn get_mode_style<'t>(mode: &ModeState, theme: &'t Theme) -> &'t crate::highligh
     }
 
     // Interactor-specific styles
-    if mode.interactor_id == InteractorId::TELESCOPE || mode.interactor_id == InteractorId::SETTINGS
-    {
+    if mode.interactor_id == ComponentId::TELESCOPE || mode.interactor_id == ComponentId::SETTINGS {
         return &theme.statusline.mode.command;
     }
-    if mode.interactor_id == InteractorId::EXPLORER {
+    if mode.interactor_id == ComponentId::EXPLORER {
         return &theme.statusline.mode.explorer;
     }
 

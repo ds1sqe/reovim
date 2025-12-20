@@ -1,8 +1,5 @@
 //! Command dispatch and mode change handling
 
-// Allow deprecated Focus enum during transition to FocusId
-#![allow(deprecated)]
-
 use {
     crate::{
         bind::CommandRef,

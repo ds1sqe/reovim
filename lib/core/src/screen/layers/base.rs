@@ -1,15 +1,16 @@
 //! Base layer - tab line and status line
 //!
-//! Uses `DisplayComponent` trait implementations for rendering.
+//! Uses `UIComponent` trait implementations for rendering.
 
 use crate::{
     buffer::Buffer,
     command_line::CommandLine,
-    component::{DisplayComponent, RenderContext, StatusLineComponent, TabLineComponent},
+    component::{RenderContext, StatusLineComponent, TabLineComponent},
     frame::FrameBuffer,
     highlight::{ColorMode, Style, Theme},
     modd::ModeState,
     screen::{Layer, LayerBounds, tab::TabManager, z_order},
+    ui_component::UIComponent,
 };
 
 /// Layer wrapper for base UI elements (tab line, status line)

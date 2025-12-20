@@ -4,10 +4,7 @@
 //! of `Interactor`, `DisplayComponent`, and `Layer` traits into a single interface.
 
 use crate::{
-    component::RenderContext,
-    frame::FrameBuffer,
-    interactor::InputResult,
-    modd::ModeState,
+    component::RenderContext, frame::FrameBuffer, interactor::InputResult, modd::ModeState,
     screen::LayerBounds,
 };
 

@@ -5,8 +5,10 @@
 
 use std::collections::HashMap;
 
-use super::{ComponentId, UIComponent};
-use crate::component::RenderContext;
+use {
+    super::{ComponentId, UIComponent},
+    crate::component::RenderContext,
+};
 
 /// Registry of UI components
 ///
@@ -160,8 +162,10 @@ impl ComponentRegistry {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{frame::FrameBuffer, screen::LayerBounds};
+    use {
+        super::*,
+        crate::{frame::FrameBuffer, screen::LayerBounds},
+    };
 
     // Test component for unit tests
     #[derive(Debug)]
@@ -216,12 +220,7 @@ mod tests {
         let mut registry = ComponentRegistry::new();
         assert!(registry.is_empty());
 
-        registry.register(Box::new(TestComponent::new(
-            ComponentId::EDITOR,
-            true,
-            true,
-            1,
-        )));
+        registry.register(Box::new(TestComponent::new(ComponentId::EDITOR, true, true, 1)));
         assert_eq!(registry.len(), 1);
         assert!(registry.contains(ComponentId::EDITOR));
     }
@@ -231,20 +230,10 @@ mod tests {
         let mut registry = ComponentRegistry::new();
 
         // Register focusable component
-        registry.register(Box::new(TestComponent::new(
-            ComponentId::EDITOR,
-            true,
-            true,
-            1,
-        )));
+        registry.register(Box::new(TestComponent::new(ComponentId::EDITOR, true, true, 1)));
 
         // Register non-focusable component
-        registry.register(Box::new(TestComponent::new(
-            ComponentId::STATUS_LINE,
-            false,
-            true,
-            0,
-        )));
+        registry.register(Box::new(TestComponent::new(ComponentId::STATUS_LINE, false, true, 0)));
 
         // Can set active to focusable component
         assert!(registry.set_active(ComponentId::EDITOR));
@@ -262,12 +251,7 @@ mod tests {
     #[test]
     fn test_registry_unregister() {
         let mut registry = ComponentRegistry::new();
-        registry.register(Box::new(TestComponent::new(
-            ComponentId::EDITOR,
-            true,
-            true,
-            1,
-        )));
+        registry.register(Box::new(TestComponent::new(ComponentId::EDITOR, true, true, 1)));
 
         assert!(registry.contains(ComponentId::EDITOR));
         let removed = registry.unregister(ComponentId::EDITOR);

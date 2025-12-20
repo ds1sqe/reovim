@@ -38,6 +38,7 @@ use {
             },
         },
         treesitter::TreesitterManager,
+        ui_component::ComponentRegistry,
     },
     tracing::debug,
 };
@@ -113,7 +114,9 @@ pub struct Runtime {
     /// Modifier registry for style and behavior modifiers
     pub modifier_registry: ModifierRegistry,
     /// Registered focus input handlers per interactor (enlist pattern)
-    pub(crate) focus_input_handlers: HashMap<crate::interactor::InteractorId, FocusInputHandler>,
+    pub(crate) focus_input_handlers: HashMap<crate::ui_component::ComponentId, FocusInputHandler>,
+    /// Component registry for unified UI components
+    pub component_registry: ComponentRegistry,
 }
 
 impl Default for Runtime {
@@ -176,6 +179,7 @@ impl Runtime {
             interactor_registry: InteractorRegistry::with_defaults(),
             modifier_registry: ModifierRegistry::new(),
             focus_input_handlers: HashMap::new(),
+            component_registry: ComponentRegistry::new(),
         };
 
         // Enlist default handlers (Bevy/Zed pattern)
@@ -234,6 +238,7 @@ impl Runtime {
             _keymap,
             telescope_pickers,
             focus_handlers,
+            component_registry,
         ) = ctx.into_parts();
 
         let mut runtime = Self {
@@ -278,6 +283,7 @@ impl Runtime {
             interactor_registry,
             modifier_registry,
             focus_input_handlers: focus_handlers,
+            component_registry,
         };
 
         // Enable diff-based rendering by default
@@ -355,7 +361,7 @@ impl Runtime {
     /// initialization time, enabling fully generic dispatch at runtime.
     pub fn enlist_focus_input_handler(
         &mut self,
-        id: crate::interactor::InteractorId,
+        id: crate::ui_component::ComponentId,
         handler: FocusInputHandler,
     ) {
         self.focus_input_handlers.insert(id, handler);

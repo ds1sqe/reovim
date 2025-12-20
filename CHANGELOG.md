@@ -2,6 +2,77 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.6.14] - 2025-12-20
+
+### Breaking Changes
+
+- **Removed `DisplayComponent` trait** - Use `UIComponent` exclusively for all components
+- **Removed `Interactor` trait** - Input handling now integrated into `UIComponent`
+- **`InteractorId` is now an alias** - Use `ComponentId` directly (InteractorId re-exported for backward compatibility)
+
+### Architecture
+
+- **Unified UIComponent-Only Architecture**
+  - All UI components now implement the single `UIComponent` trait
+  - `StatusLineComponent` and `TabLineComponent` render logic inlined into `UIComponent` impl
+  - `InteractorRegistry` now stores `Box<dyn UIComponent>` instead of `Box<dyn Interactor>`
+  - Input handling methods (`handle_insert_char`, `handle_delete_backward`) integrated into `UIComponent`
+
+- **Plugin Component Registration**
+  - Added `ComponentRegistry` to `PluginContext` for plugin-registered components
+  - `register_component()` method for plugins to register custom UI components
+  - `component_registry()` / `component_registry_mut()` accessors
+  - Runtime receives and stores `ComponentRegistry` from plugin context
+
+- **ComponentId Unification**
+  - `InteractorId` replaced with `ComponentId` across entire codebase
+  - `ModeState.interactor_id` now uses `ComponentId`
+  - Focus handlers use `ComponentId` as HashMap key
+  - All interactor comparisons use `ComponentId` constants
+
+### Files Changed
+
+- `lib/core/src/component/display.rs` - Removed `DisplayComponent` trait, kept `RenderContext`
+- `lib/core/src/component/mod.rs` - Removed `DisplayComponent` export
+- `lib/core/src/component/status_line.rs` - Inlined DisplayComponent logic into UIComponent
+- `lib/core/src/component/tab_line.rs` - Inlined DisplayComponent logic into UIComponent
+- `lib/core/src/interactor/mod.rs` - Removed Interactor trait, updated registry to use UIComponent
+- `lib/core/src/plugin/context.rs` - Added ComponentRegistry support
+- `lib/core/src/runtime/core.rs` - Added component_registry field
+- `lib/core/src/modd/mod.rs` - Re-export ComponentId instead of InteractorId
+- `lib/core/src/screen/layers/base.rs` - Use UIComponent trait for rendering
+- `lib/core/src/event/handler/command/dispatcher.rs` - Removed deprecated allow block
+- `lib/core/src/runtime/handlers.rs` - Removed deprecated allow block
+
+### Migration Guide
+
+```rust
+// Before (DisplayComponent):
+impl DisplayComponent for MyComponent {
+    fn render_to_frame(&self, buffer: &mut FrameBuffer, ctx: &RenderContext<'_>) { ... }
+}
+
+// After (UIComponent only):
+impl UIComponent for MyComponent {
+    fn render_to_frame(&self, buffer: &mut FrameBuffer, ctx: &RenderContext<'_>) { ... }
+    fn is_focusable(&self) -> bool { false }
+}
+
+// Before (InteractorId):
+use crate::interactor::InteractorId;
+if mode.interactor_id == InteractorId::EDITOR { ... }
+
+// After (ComponentId):
+use crate::ui_component::ComponentId;
+if mode.interactor_id == ComponentId::EDITOR { ... }
+```
+
+### Testing
+
+- All unit tests passing
+- All integration tests passing
+- Zero warnings (build + clippy)
+
 ## [0.6.13] - 2025-12-20
 
 ### Architecture

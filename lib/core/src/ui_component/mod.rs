@@ -61,8 +61,10 @@
 mod component;
 mod registry;
 
-pub use component::{ComponentId, UIComponent};
-pub use registry::ComponentRegistry;
+pub use {
+    component::{ComponentId, UIComponent},
+    registry::ComponentRegistry,
+};
 
 // Re-export InputResult from interactor for convenience
 pub use crate::interactor::InputResult;

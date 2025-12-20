@@ -7,8 +7,8 @@ use {
             registry::CommandRegistry,
         },
         event::WhichKeyBinding,
-        interactor::InteractorId,
         modd::{EditMode, ModeState, SubMode},
+        ui_component::ComponentId,
     },
     std::{collections::HashMap, sync::Arc},
 };
@@ -237,7 +237,7 @@ impl KeyMap {
     ///
     /// Keymap selection priority:
     /// 1. `SubMode` takes precedence (Command, `OperatorPending`)
-    /// 2. `InteractorId` + `EditMode` determines the keymap otherwise
+    /// 2. `ComponentId` + `EditMode` determines the keymap otherwise
     #[must_use]
     pub fn get_keymap_for_mode(&self, mode: &ModeState) -> &HashMap<String, KeyMapInner> {
         // SubMode takes precedence
@@ -248,22 +248,22 @@ impl KeyMap {
             SubMode::None => {}
         }
 
-        // InteractorId + EditMode determines keymap
+        // ComponentId + EditMode determines keymap
         let id = &mode.interactor_id;
 
-        if *id == InteractorId::EXPLORER {
+        if *id == ComponentId::EXPLORER {
             return match &mode.edit_mode {
                 EditMode::Insert(_) => &self.explorer_input,
                 _ => &self.explorer,
             };
         }
-        if *id == InteractorId::TELESCOPE {
+        if *id == ComponentId::TELESCOPE {
             return match &mode.edit_mode {
                 EditMode::Insert(_) => &self.telescope_insert,
                 _ => &self.telescope_normal,
             };
         }
-        if *id == InteractorId::SETTINGS {
+        if *id == ComponentId::SETTINGS {
             return &self.settings_menu;
         }
 

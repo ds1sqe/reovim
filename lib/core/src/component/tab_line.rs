@@ -3,7 +3,7 @@
 //! Renders the tab bar at the top of the screen when multiple tabs are open.
 
 use crate::{
-    component::{DisplayComponent, RenderContext},
+    component::RenderContext,
     frame::FrameBuffer,
     screen::{LayerBounds, tab::TabInfo, z_order},
     ui_component::{ComponentId, UIComponent},
@@ -29,59 +29,6 @@ impl<'a> TabLineComponent<'a> {
     }
 }
 
-impl DisplayComponent for TabLineComponent<'_> {
-    fn component_id(&self) -> &'static str {
-        "tab_line"
-    }
-
-    fn is_visible(&self, _context: &RenderContext<'_>) -> bool {
-        // Only visible when there are multiple tabs
-        self.tabs.len() > 1
-    }
-
-    #[allow(clippy::cast_possible_truncation)]
-    fn render_to_frame(&self, buffer: &mut FrameBuffer, context: &RenderContext<'_>) {
-        if !DisplayComponent::is_visible(self, context) {
-            return;
-        }
-
-        let theme = context.theme;
-        let mut x = 0u16;
-
-        for (idx, tab) in self.tabs.iter().enumerate() {
-            let is_active = idx == self.active_index;
-            let style = if is_active {
-                &theme.tab.active
-            } else {
-                &theme.tab.inactive
-            };
-
-            let label = format!(" {} ", tab.label);
-            buffer.write_str(x, 0, &label, style);
-            x += label.len() as u16;
-        }
-
-        // Fill rest of tab line with fill style
-        let fill_style = theme.tab.fill.clone();
-        for col in x..context.screen_width {
-            buffer.put_char(col, 0, ' ', &fill_style);
-        }
-    }
-
-    fn bounds(&self, context: &RenderContext<'_>) -> LayerBounds {
-        if DisplayComponent::is_visible(self, context) {
-            LayerBounds {
-                x: 0,
-                y: 0,
-                width: context.screen_width,
-                height: 1,
-            }
-        } else {
-            LayerBounds::default()
-        }
-    }
-}
-
 impl UIComponent for TabLineComponent<'_> {
     fn id(&self) -> ComponentId {
         ComponentId::TAB_LINE
@@ -95,16 +42,51 @@ impl UIComponent for TabLineComponent<'_> {
         z_order::BASE
     }
 
-    fn is_visible(&self, ctx: &RenderContext<'_>) -> bool {
-        DisplayComponent::is_visible(self, ctx)
+    fn is_visible(&self, _ctx: &RenderContext<'_>) -> bool {
+        // Only visible when there are multiple tabs
+        self.tabs.len() > 1
     }
 
     fn bounds(&self, ctx: &RenderContext<'_>) -> LayerBounds {
-        DisplayComponent::bounds(self, ctx)
+        if self.tabs.len() > 1 {
+            LayerBounds {
+                x: 0,
+                y: 0,
+                width: ctx.screen_width,
+                height: 1,
+            }
+        } else {
+            LayerBounds::default()
+        }
     }
 
-    fn render_to_frame(&self, buffer: &mut FrameBuffer, ctx: &RenderContext<'_>) {
-        DisplayComponent::render_to_frame(self, buffer, ctx);
+    #[allow(clippy::cast_possible_truncation)]
+    fn render_to_frame(&self, frame: &mut FrameBuffer, ctx: &RenderContext<'_>) {
+        if self.tabs.len() <= 1 {
+            return;
+        }
+
+        let theme = ctx.theme;
+        let mut x = 0u16;
+
+        for (idx, tab) in self.tabs.iter().enumerate() {
+            let is_active = idx == self.active_index;
+            let style = if is_active {
+                &theme.tab.active
+            } else {
+                &theme.tab.inactive
+            };
+
+            let label = format!(" {} ", tab.label);
+            frame.write_str(x, 0, &label, style);
+            x += label.len() as u16;
+        }
+
+        // Fill rest of tab line with fill style
+        let fill_style = theme.tab.fill.clone();
+        for col in x..ctx.screen_width {
+            frame.put_char(col, 0, ' ', &fill_style);
+        }
     }
 
     fn is_focusable(&self) -> bool {

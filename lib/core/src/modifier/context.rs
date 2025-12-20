@@ -1,8 +1,8 @@
 //! Modifier evaluation context
 
 use crate::{
-    interactor::InteractorId,
     modd::{EditMode, SubMode},
+    ui_component::ComponentId,
 };
 
 /// Context for evaluating modifiers
@@ -11,7 +11,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct ModifierContext<'a> {
     /// Current interactor ID (extensible, trait-based)
-    pub interactor_id: InteractorId,
+    pub interactor_id: ComponentId,
     /// Current edit mode (Normal, Insert, Visual)
     pub edit_mode: &'a EditMode,
     /// Current sub-mode (Command, `OperatorPending`, Leap, etc.)
@@ -34,7 +34,7 @@ impl<'a> ModifierContext<'a> {
     /// Create a new modifier context
     #[must_use]
     pub const fn new(
-        interactor_id: InteractorId,
+        interactor_id: ComponentId,
         edit_mode: &'a EditMode,
         sub_mode: &'a SubMode,
         window_id: usize,
@@ -108,12 +108,12 @@ impl<'a> ModifierContext<'a> {
     /// Check if focus is on editor
     #[must_use]
     pub fn is_editor_focused(&self) -> bool {
-        self.interactor_id.0 == InteractorId::EDITOR.0
+        self.interactor_id.0 == ComponentId::EDITOR.0
     }
 
     /// Check if the current interactor matches the given interactor ID
     #[must_use]
-    pub fn is_interactor(&self, id: InteractorId) -> bool {
+    pub fn is_interactor(&self, id: ComponentId) -> bool {
         self.interactor_id.0 == id.0
     }
 }
@@ -130,7 +130,7 @@ mod tests {
         let edit_mode = EditMode::Normal;
         let sub_mode = SubMode::None;
 
-        let ctx = ModifierContext::new(InteractorId::EDITOR, &edit_mode, &sub_mode, 0, 0)
+        let ctx = ModifierContext::new(ComponentId::EDITOR, &edit_mode, &sub_mode, 0, 0)
             .with_filetype(Some("rust"))
             .with_active(true)
             .with_modified(false);
@@ -147,7 +147,7 @@ mod tests {
         let edit_mode = EditMode::Insert(crate::modd::InsertVariant::Standard);
         let sub_mode = SubMode::None;
 
-        let ctx = ModifierContext::new(InteractorId::EDITOR, &edit_mode, &sub_mode, 0, 0);
+        let ctx = ModifierContext::new(ComponentId::EDITOR, &edit_mode, &sub_mode, 0, 0);
 
         assert!(!ctx.is_normal());
         assert!(ctx.is_insert());
