@@ -3,7 +3,7 @@
 use std::{future::Future, pin::Pin};
 
 use crate::{
-    bind::{CommandRef, KeyMap},
+    bind::{CommandRef, KeyMap, KeymapScope},
     telescope::{
         item::{TelescopeData, TelescopeItem},
         state::PreviewContent,
@@ -44,40 +44,55 @@ impl KeymapsPicker {
     fn extract_keymaps(keymap: &KeyMap) -> Vec<KeymapEntry> {
         let mut entries = Vec::new();
 
-        // Helper to extract entries from a mode's keymap
-        let mut extract_mode =
-            |mode_name: &str, map: &std::collections::HashMap<String, crate::bind::KeyMapInner>| {
-                for (key, inner) in map {
-                    if let Some(cmd_ref) = &inner.command {
-                        let command = match cmd_ref {
-                            CommandRef::Registered(id) => id.as_str().to_string(),
-                            CommandRef::Inline(cmd) => cmd.name().to_string(),
-                        };
-                        entries.push(KeymapEntry {
-                            mode: mode_name.to_string(),
-                            key: key.clone(),
-                            command,
-                            description: inner.hint.clone(),
-                        });
-                    }
+        for (scope, map) in keymap.iter_scopes() {
+            let mode_name = Self::scope_to_mode_name(scope);
+            for (key, inner) in map {
+                if let Some(cmd_ref) = &inner.command {
+                    let command = match cmd_ref {
+                        CommandRef::Registered(id) => id.as_str().to_string(),
+                        CommandRef::Inline(cmd) => cmd.name().to_string(),
+                    };
+                    entries.push(KeymapEntry {
+                        mode: mode_name.to_string(),
+                        key: key.clone(),
+                        command,
+                        description: inner.hint.clone(),
+                    });
                 }
-            };
-
-        extract_mode("Normal", &keymap.normal);
-        extract_mode("Insert", &keymap.insert);
-        extract_mode("Visual", &keymap.visual);
-        extract_mode("Command", &keymap.command);
-        extract_mode("Explorer", &keymap.explorer);
-        extract_mode("Explorer Input", &keymap.explorer_input);
-        extract_mode("Operator", &keymap.operator_pending);
-        extract_mode("Telescope Normal", &keymap.telescope_normal);
-        extract_mode("Telescope Insert", &keymap.telescope_insert);
-        extract_mode("Leap", &keymap.leap);
+            }
+        }
 
         // Sort by mode, then by key
         entries.sort_by(|a, b| a.mode.cmp(&b.mode).then_with(|| a.key.cmp(&b.key)));
 
         entries
+    }
+
+    /// Convert a `KeymapScope` to a display mode name
+    fn scope_to_mode_name(scope: &KeymapScope) -> &'static str {
+        use crate::{
+            bind::{EditModeKind, SubModeKind},
+            ui_component::ComponentId,
+        };
+
+        match scope {
+            KeymapScope::Component { id, mode } => match (*id, mode) {
+                (ComponentId::EDITOR, EditModeKind::Normal) => "Normal",
+                (ComponentId::EDITOR, EditModeKind::Insert) => "Insert",
+                (ComponentId::EDITOR, EditModeKind::Visual) => "Visual",
+                (ComponentId::EXPLORER, EditModeKind::Normal) => "Explorer",
+                (ComponentId::EXPLORER, EditModeKind::Insert) => "Explorer Input",
+                (ComponentId::TELESCOPE, EditModeKind::Normal) => "Telescope Normal",
+                (ComponentId::TELESCOPE, EditModeKind::Insert) => "Telescope Insert",
+                (ComponentId::SETTINGS, _) => "Settings",
+                _ => "Unknown",
+            },
+            KeymapScope::SubMode(submode) => match submode {
+                SubModeKind::Command => "Command",
+                SubModeKind::OperatorPending => "Operator",
+                SubModeKind::Leap => "Leap",
+            },
+        }
     }
 
     /// Set keymaps from bind module

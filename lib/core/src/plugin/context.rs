@@ -3,8 +3,8 @@
 use std::{any::TypeId, collections::HashMap, sync::Arc};
 
 use crate::{
-    bind::{CommandRef, KeyMap},
-    command::{CommandId, CommandRegistry, CommandTrait},
+    bind::{CommandRef, KeyMap, KeymapScope},
+    command::{CommandRegistry, CommandTrait},
     interactor::InteractorRegistry,
     modifier::ModifierRegistry,
     runtime::FocusInputHandler,
@@ -117,21 +117,6 @@ impl PluginContext {
 
     // === Keybinding Registration ===
 
-    /// Bind a key sequence to a command reference
-    ///
-    /// # Arguments
-    /// * `mode` - The mode name (e.g., "normal", "insert", "visual")
-    /// * `keys` - The key sequence (e.g., "j", " ff", "gg")
-    /// * `cmd` - The command reference to bind
-    pub fn bind_key(&mut self, mode: &str, keys: &str, cmd: CommandRef) {
-        self.keymap.bind(mode, keys, cmd);
-    }
-
-    /// Bind a key sequence to a command ID
-    pub fn bind_key_to_id(&mut self, mode: &str, keys: &str, id: CommandId) {
-        self.keymap.bind(mode, keys, CommandRef::Registered(id));
-    }
-
     /// Get access to the keymap
     #[must_use]
     pub const fn keymap(&self) -> &KeyMap {
@@ -177,8 +162,27 @@ impl PluginContext {
     /// Register a UI component
     ///
     /// If a component with the same ID already exists, it will be replaced.
+    /// This also automatically registers any keybindings provided by the component
+    /// via `UIComponent::keybindings()`.
     pub fn register_component(&mut self, component: Box<dyn UIComponent>) {
+        let id = component.id();
+
+        // Register keybindings from the component
+        for (mode, binding) in component.keybindings() {
+            let scope = KeymapScope::Component { id, mode };
+            self.keymap.bind_with_metadata(scope, binding);
+        }
+
+        // Register the component itself
         self.components.register(component);
+    }
+
+    /// Bind a key sequence to a command with a specific scope
+    ///
+    /// This allows direct scope-based keybinding registration without
+    /// going through the legacy mode string API.
+    pub fn bind_key_scoped(&mut self, scope: KeymapScope, keys: &str, cmd: CommandRef) {
+        self.keymap.bind_scoped(scope, keys, cmd);
     }
 
     /// Get access to the component registry

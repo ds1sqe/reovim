@@ -13,6 +13,136 @@ use {
     std::{collections::HashMap, sync::Arc},
 };
 
+// ============================================================================
+// Keymap Scope Types
+// ============================================================================
+
+/// Simplified edit mode for keybinding scope (no variants)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum EditModeKind {
+    Normal,
+    Insert,
+    Visual,
+}
+
+impl From<&EditMode> for EditModeKind {
+    fn from(mode: &EditMode) -> Self {
+        match mode {
+            EditMode::Normal => Self::Normal,
+            EditMode::Insert(_) => Self::Insert,
+            EditMode::Visual(_) => Self::Visual,
+        }
+    }
+}
+
+/// Simplified sub-mode for keybinding scope
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SubModeKind {
+    Command,
+    OperatorPending,
+    Leap,
+}
+
+/// Identifies which keymap a binding belongs to
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum KeymapScope {
+    /// Component-specific scope: `ComponentId` + `EditModeKind`
+    Component { id: ComponentId, mode: EditModeKind },
+    /// Global sub-mode scope (applies across components)
+    SubMode(SubModeKind),
+}
+
+impl KeymapScope {
+    /// Create a component scope for Editor + Normal mode
+    #[must_use]
+    pub const fn editor_normal() -> Self {
+        Self::Component {
+            id: ComponentId::EDITOR,
+            mode: EditModeKind::Normal,
+        }
+    }
+
+    /// Create a component scope for Editor + Insert mode
+    #[must_use]
+    pub const fn editor_insert() -> Self {
+        Self::Component {
+            id: ComponentId::EDITOR,
+            mode: EditModeKind::Insert,
+        }
+    }
+
+    /// Create a component scope for Editor + Visual mode
+    #[must_use]
+    pub const fn editor_visual() -> Self {
+        Self::Component {
+            id: ComponentId::EDITOR,
+            mode: EditModeKind::Visual,
+        }
+    }
+}
+
+/// A declarative keybinding definition
+#[derive(Clone)]
+pub struct KeyBinding {
+    /// Key sequence (e.g., "h", "gg", " ff")
+    pub keys: &'static str,
+    /// Command to execute
+    pub command: CommandRef,
+    /// Optional hint for which-key display (overrides command description)
+    pub hint: Option<&'static str>,
+    /// Group for which-key categorization (e.g., "motion", "operator")
+    pub group: Option<&'static str>,
+}
+
+impl KeyBinding {
+    /// Create a binding with a registered command ID
+    #[must_use]
+    pub const fn id(keys: &'static str, id: CommandId) -> Self {
+        Self {
+            keys,
+            command: CommandRef::Registered(id),
+            hint: None,
+            group: None,
+        }
+    }
+
+    /// Create a binding with a command ID and group
+    #[must_use]
+    pub const fn id_group(keys: &'static str, id: CommandId, group: &'static str) -> Self {
+        Self {
+            keys,
+            command: CommandRef::Registered(id),
+            hint: None,
+            group: Some(group),
+        }
+    }
+
+    /// Create a hint-only binding (prefix node for which-key)
+    #[must_use]
+    pub const fn hint(keys: &'static str, hint: &'static str, group: &'static str) -> Self {
+        Self {
+            keys,
+            command: CommandRef::Registered(CommandId::new("")),
+            hint: Some(hint),
+            group: Some(group),
+        }
+    }
+}
+
+impl std::fmt::Debug for KeyBinding {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KeyBinding")
+            .field("keys", &self.keys)
+            .field("hint", &self.hint)
+            .field("group", &self.group)
+            .finish_non_exhaustive()
+    }
+}
+
+// ============================================================================
+// Command Reference
+// ============================================================================
+
 /// Reference to a command - either by ID (for registered commands) or inline
 #[derive(Debug, Clone)]
 pub enum CommandRef {
@@ -99,6 +229,13 @@ impl KeyMapInner {
         self
     }
 
+    /// Set the group if Some (builder pattern)
+    #[must_use]
+    pub const fn with_group_opt(mut self, group: Option<&'static str>) -> Self {
+        self.group = group;
+        self
+    }
+
     /// Get the description for this binding
     ///
     /// Priority: hint > command description > prefix indicator
@@ -141,137 +278,123 @@ impl std::fmt::Debug for KeyMapInner {
     }
 }
 
+/// Empty keymap for fallback returns
+static EMPTY_MAP: std::sync::LazyLock<HashMap<String, KeyMapInner>> =
+    std::sync::LazyLock::new(HashMap::new);
+
 /// Keymap for each mode
 ///
-/// Keymaps are organized by Focus + `EditMode` + `SubMode`:
-/// - Editor + Normal → normal
-/// - Editor + Insert → insert
-/// - Editor + Visual → visual
-/// - Explorer + Normal → explorer
-/// - Explorer + Insert → `explorer_input`
-/// - Telescope + Normal → `telescope_normal`
-/// - Telescope + Insert → `telescope_insert`
-/// - Any + Command → command
-/// - Any + `OperatorPending` → `operator_pending`
+/// Keymaps are organized by `KeymapScope`:
+/// - `Component { id, mode }` for component-specific keymaps
+/// - `SubMode` for global sub-mode keymaps (Command, `OperatorPending`, Leap)
 #[derive(Default)]
 pub struct KeyMap {
-    pub insert: HashMap<String, KeyMapInner>,
-    pub normal: HashMap<String, KeyMapInner>,
-    pub command: HashMap<String, KeyMapInner>,
-    pub visual: HashMap<String, KeyMapInner>,
-    pub explorer: HashMap<String, KeyMapInner>,
-    pub explorer_input: HashMap<String, KeyMapInner>,
-    pub operator_pending: HashMap<String, KeyMapInner>,
-    pub telescope_normal: HashMap<String, KeyMapInner>,
-    pub telescope_insert: HashMap<String, KeyMapInner>,
-    pub leap: HashMap<String, KeyMapInner>,
-    pub settings_menu: HashMap<String, KeyMapInner>,
+    /// All keymaps indexed by scope
+    maps: HashMap<KeymapScope, HashMap<String, KeyMapInner>>,
 }
 
 impl KeyMap {
+    /// Create a new empty keymap
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            maps: HashMap::new(),
+        }
+    }
+
     #[must_use]
     pub fn with_defaults() -> Self {
-        let mut km = Self::default();
-        Self::setup_normal_mode(&mut km.normal);
-        Self::setup_insert_mode(&mut km.insert);
-        Self::setup_visual_mode(&mut km.visual);
-        Self::setup_command_mode(&mut km.command);
-        Self::setup_explorer_mode(&mut km.explorer);
-        Self::setup_explorer_input_mode(&mut km.explorer_input);
-        Self::setup_operator_pending_mode(&mut km.operator_pending);
-        Self::setup_telescope_normal_mode(&mut km.telescope_normal);
-        Self::setup_telescope_insert_mode(&mut km.telescope_insert);
-        Self::setup_leap_mode(&mut km.leap);
-        Self::setup_settings_menu_mode(&mut km.settings_menu);
+        let mut km = Self::new();
+        km.setup_editor_keybindings();
+        km.setup_explorer_keybindings();
+        km.setup_telescope_keybindings();
+        km.setup_settings_keybindings();
+        km.setup_submode_keybindings();
         km
     }
 
-    /// Bind a key sequence to a command reference at runtime
-    ///
-    /// # Arguments
-    /// * `mode` - Mode identifier: n/normal, i/insert, v/visual, c/command,
-    ///   tn/telescope\_normal, ti/telescope\_insert
-    /// * `keys` - Key sequence (e.g., "jj", "<leader>x")
-    /// * `cmd` - Command reference to bind
-    pub fn bind(&mut self, mode: &str, keys: &str, cmd: CommandRef) {
-        let map = match mode {
-            "n" | "normal" => &mut self.normal,
-            "i" | "insert" => &mut self.insert,
-            "v" | "visual" => &mut self.visual,
-            "c" | "command" => &mut self.command,
-            "e" | "explorer" => &mut self.explorer,
-            "E" | "explorer_input" => &mut self.explorer_input,
-            "o" | "operator_pending" => &mut self.operator_pending,
-            "tn" | "telescope_normal" => &mut self.telescope_normal,
-            "ti" | "telescope_insert" => &mut self.telescope_insert,
-            "l" | "leap" => &mut self.leap,
-            _ => return,
-        };
-        map.insert(keys.to_string(), KeyMapInner::with_command_ref(cmd));
+    // ========================================================================
+    // Scope-based API (new)
+    // ========================================================================
+
+    /// Bind a key to a command in a specific scope
+    pub fn bind_scoped(&mut self, scope: KeymapScope, keys: &str, cmd: CommandRef) {
+        self.maps
+            .entry(scope)
+            .or_default()
+            .insert(keys.to_string(), KeyMapInner::with_command_ref(cmd));
     }
 
-    /// Bind a key sequence to a registered command ID at runtime
-    pub fn bind_id(&mut self, mode: &str, keys: &str, id: CommandId) {
-        self.bind(mode, keys, CommandRef::Registered(id));
+    /// Bind with full metadata (hint, group)
+    pub fn bind_with_metadata(&mut self, scope: KeymapScope, binding: KeyBinding) {
+        let inner = if binding.hint.is_some() {
+            KeyMapInner::with_hint(binding.hint.unwrap_or_default()).with_group_opt(binding.group)
+        } else {
+            KeyMapInner::with_command_ref(binding.command).with_group_opt(binding.group)
+        };
+        self.maps
+            .entry(scope)
+            .or_default()
+            .insert(binding.keys.to_string(), inner);
     }
 
-    /// Unbind a key sequence
-    pub fn unbind(&mut self, mode: &str, keys: &str) {
-        let map = match mode {
-            "n" | "normal" => &mut self.normal,
-            "i" | "insert" => &mut self.insert,
-            "v" | "visual" => &mut self.visual,
-            "c" | "command" => &mut self.command,
-            "e" | "explorer" => &mut self.explorer,
-            "E" | "explorer_input" => &mut self.explorer_input,
-            "o" | "operator_pending" => &mut self.operator_pending,
-            "tn" | "telescope_normal" => &mut self.telescope_normal,
-            "ti" | "telescope_insert" => &mut self.telescope_insert,
-            "l" | "leap" => &mut self.leap,
-            _ => return,
-        };
-        map.remove(keys);
+    /// Unbind a key in a specific scope
+    pub fn unbind_scoped(&mut self, scope: &KeymapScope, keys: &str) {
+        if let Some(map) = self.maps.get_mut(scope) {
+            map.remove(keys);
+        }
     }
+
+    /// Get the keymap for a specific scope
+    #[must_use]
+    pub fn get_scope(&self, scope: &KeymapScope) -> &HashMap<String, KeyMapInner> {
+        self.maps.get(scope).unwrap_or(&EMPTY_MAP)
+    }
+
+    /// Get mutable access to a scope's keymap
+    pub fn get_scope_mut(&mut self, scope: KeymapScope) -> &mut HashMap<String, KeyMapInner> {
+        self.maps.entry(scope).or_default()
+    }
+
+    /// Iterate over all scopes and their keymaps
+    pub fn iter_scopes(
+        &self,
+    ) -> impl Iterator<Item = (&KeymapScope, &HashMap<String, KeyMapInner>)> {
+        self.maps.iter()
+    }
+
+    // ========================================================================
+    // Mode resolution
+    // ========================================================================
 
     /// Get the appropriate keymap for a given `ModeState`
     ///
     /// Keymap selection priority:
-    /// 1. `SubMode` takes precedence (Command, `OperatorPending`)
+    /// 1. `SubMode` takes precedence (Command, `OperatorPending`, Leap)
     /// 2. `ComponentId` + `EditMode` determines the keymap otherwise
     #[must_use]
     pub fn get_keymap_for_mode(&self, mode: &ModeState) -> &HashMap<String, KeyMapInner> {
+        let scope = Self::mode_to_scope(mode);
+        self.maps.get(&scope).unwrap_or(&EMPTY_MAP)
+    }
+
+    /// Convert `ModeState` to `KeymapScope`
+    #[must_use]
+    pub fn mode_to_scope(mode: &ModeState) -> KeymapScope {
         // SubMode takes precedence
         match &mode.sub_mode {
-            SubMode::Command => return &self.command,
-            SubMode::OperatorPending { .. } => return &self.operator_pending,
-            SubMode::Leap { .. } => return &self.leap,
+            SubMode::Command => return KeymapScope::SubMode(SubModeKind::Command),
+            SubMode::OperatorPending { .. } => {
+                return KeymapScope::SubMode(SubModeKind::OperatorPending);
+            }
+            SubMode::Leap { .. } => return KeymapScope::SubMode(SubModeKind::Leap),
             SubMode::None => {}
         }
 
         // ComponentId + EditMode determines keymap
-        let id = &mode.interactor_id;
-
-        if *id == ComponentId::EXPLORER {
-            return match &mode.edit_mode {
-                EditMode::Insert(_) => &self.explorer_input,
-                _ => &self.explorer,
-            };
-        }
-        if *id == ComponentId::TELESCOPE {
-            return match &mode.edit_mode {
-                EditMode::Insert(_) => &self.telescope_insert,
-                _ => &self.telescope_normal,
-            };
-        }
-        if *id == ComponentId::SETTINGS {
-            return &self.settings_menu;
-        }
-
-        // Default: Editor
-        match &mode.edit_mode {
-            EditMode::Normal => &self.normal,
-            EditMode::Insert(_) => &self.insert,
-            EditMode::Visual(_) => &self.visual,
+        KeymapScope::Component {
+            id: mode.interactor_id,
+            mode: EditModeKind::from(&mode.edit_mode),
         }
     }
 
@@ -337,596 +460,485 @@ impl KeyMap {
         s.chars().next().map_or(s, |c| &s[..c.len_utf8()])
     }
 
+    // ========================================================================
+    // Default keybinding setup methods
+    // ========================================================================
+
     #[allow(clippy::too_many_lines)]
-    fn setup_normal_mode(keymap: &mut HashMap<String, KeyMapInner>) {
+    fn setup_editor_keybindings(&mut self) {
+        // Editor Normal mode
+        let normal = self.get_scope_mut(KeymapScope::editor_normal());
+
         // Movement
-        keymap.insert(
-            "h".to_string(),
-            KeyMapInner::with_command_id(builtin::CURSOR_LEFT).group("motion"),
-        );
-        keymap.insert(
-            "j".to_string(),
-            KeyMapInner::with_command_id(builtin::CURSOR_DOWN).group("motion"),
-        );
-        keymap.insert(
-            "k".to_string(),
-            KeyMapInner::with_command_id(builtin::CURSOR_UP).group("motion"),
-        );
-        keymap.insert(
-            "l".to_string(),
+        normal
+            .insert("h".into(), KeyMapInner::with_command_id(builtin::CURSOR_LEFT).group("motion"));
+        normal
+            .insert("j".into(), KeyMapInner::with_command_id(builtin::CURSOR_DOWN).group("motion"));
+        normal.insert("k".into(), KeyMapInner::with_command_id(builtin::CURSOR_UP).group("motion"));
+        normal.insert(
+            "l".into(),
             KeyMapInner::with_command_id(builtin::CURSOR_RIGHT).group("motion"),
         );
-        keymap.insert(
-            "0".to_string(),
+        normal.insert(
+            "0".into(),
             KeyMapInner::with_command_id(builtin::CURSOR_LINE_START).group("motion"),
         );
-        keymap.insert(
-            "$".to_string(),
+        normal.insert(
+            "$".into(),
             KeyMapInner::with_command_id(builtin::CURSOR_LINE_END).group("motion"),
         );
-        keymap.insert(
-            "w".to_string(),
+        normal.insert(
+            "w".into(),
             KeyMapInner::with_command_id(builtin::CURSOR_WORD_FORWARD).group("motion"),
         );
-        keymap.insert(
-            "b".to_string(),
+        normal.insert(
+            "b".into(),
             KeyMapInner::with_command_id(builtin::CURSOR_WORD_BACKWARD).group("motion"),
         );
-        keymap.insert(
-            "e".to_string(),
+        normal.insert(
+            "e".into(),
             KeyMapInner::with_command_id(builtin::CURSOR_WORD_END).group("motion"),
         );
 
         // Mode switching
-        keymap.insert(
-            "i".to_string(),
+        normal.insert(
+            "i".into(),
             KeyMapInner::with_command_id(builtin::ENTER_INSERT_MODE).group("mode"),
         );
-        keymap.insert(
-            "a".to_string(),
+        normal.insert(
+            "a".into(),
             KeyMapInner::with_command_id(builtin::ENTER_INSERT_MODE_AFTER).group("mode"),
         );
-        keymap.insert(
-            "A".to_string(),
+        normal.insert(
+            "A".into(),
             KeyMapInner::with_command_id(builtin::ENTER_INSERT_MODE_EOL).group("mode"),
         );
-        keymap.insert(
-            "o".to_string(),
+        normal.insert(
+            "o".into(),
             KeyMapInner::with_command_id(builtin::OPEN_LINE_BELOW).group("edit"),
         );
-        keymap.insert(
-            "O".to_string(),
+        normal.insert(
+            "O".into(),
             KeyMapInner::with_command_id(builtin::OPEN_LINE_ABOVE).group("edit"),
         );
-        keymap.insert(
-            "v".to_string(),
+        normal.insert(
+            "v".into(),
             KeyMapInner::with_command_id(builtin::ENTER_VISUAL_MODE).group("mode"),
         );
-        keymap.insert(
-            "V".to_string(),
+        normal.insert(
+            "V".into(),
             KeyMapInner::with_command_id(builtin::ENTER_VISUAL_LINE_MODE).group("mode"),
         );
-        keymap.insert(
-            "<C-v>".to_string(),
+        normal.insert(
+            "<C-v>".into(),
             KeyMapInner::with_command_id(builtin::ENTER_VISUAL_BLOCK_MODE).group("mode"),
         );
-        keymap.insert(
-            ":".to_string(),
+        normal.insert(
+            ":".into(),
             KeyMapInner::with_command_id(builtin::ENTER_COMMAND_MODE).group("mode"),
         );
 
         // Editing
-        keymap.insert(
-            "x".to_string(),
+        normal.insert(
+            "x".into(),
             KeyMapInner::with_command_id(builtin::DELETE_CHAR_FORWARD).group("edit"),
         );
-        keymap.insert("p".to_string(), KeyMapInner::with_command_id(builtin::PASTE).group("edit"));
-        keymap.insert(
-            "P".to_string(),
-            KeyMapInner::with_command_id(builtin::PASTE_BEFORE).group("edit"),
-        );
+        normal.insert("p".into(), KeyMapInner::with_command_id(builtin::PASTE).group("edit"));
+        normal
+            .insert("P".into(), KeyMapInner::with_command_id(builtin::PASTE_BEFORE).group("edit"));
 
         // g-prefix bindings
-        keymap.insert("g".to_string(), KeyMapInner::new()); // prefix, no command
-        keymap.insert(
-            "gg".to_string(),
+        normal.insert("g".into(), KeyMapInner::new());
+        normal.insert(
+            "gg".into(),
             KeyMapInner::with_command_id(builtin::GOTO_FIRST_LINE).group("jump"),
         );
-        keymap.insert(
-            "G".to_string(),
+        normal.insert(
+            "G".into(),
             KeyMapInner::with_command_id(builtin::GOTO_LAST_LINE).group("jump"),
         );
+        normal.insert("gt".into(), KeyMapInner::with_command_id(builtin::TAB_NEXT).group("window"));
+        normal.insert("gT".into(), KeyMapInner::with_command_id(builtin::TAB_PREV).group("window"));
 
-        // Jump list navigation
-        keymap.insert(
-            "<C-o>".to_string(),
+        // Jump list
+        normal.insert(
+            "<C-o>".into(),
             KeyMapInner::with_command_id(builtin::JUMP_OLDER).group("jump"),
         );
-        keymap.insert(
-            "<C-i>".to_string(),
+        normal.insert(
+            "<C-i>".into(),
             KeyMapInner::with_command_id(builtin::JUMP_NEWER).group("jump"),
         );
 
         // Undo/Redo
-        keymap.insert("u".to_string(), KeyMapInner::with_command_id(builtin::UNDO).group("edit"));
-        keymap
-            .insert("<C-r>".to_string(), KeyMapInner::with_command_id(builtin::REDO).group("edit"));
+        normal.insert("u".into(), KeyMapInner::with_command_id(builtin::UNDO).group("edit"));
+        normal.insert("<C-r>".into(), KeyMapInner::with_command_id(builtin::REDO).group("edit"));
 
-        // Operators (d, y, c enter operator-pending mode)
-        keymap.insert(
-            "d".to_string(),
+        // Operators
+        normal.insert(
+            "d".into(),
             KeyMapInner::with_command_id(builtin::ENTER_DELETE_OPERATOR).group("operator"),
         );
-        keymap.insert(
-            "dd".to_string(),
+        normal.insert(
+            "dd".into(),
             KeyMapInner::with_command_id(builtin::DELETE_LINE).group("operator"),
         );
-        keymap.insert(
-            "y".to_string(),
+        normal.insert(
+            "y".into(),
             KeyMapInner::with_command_id(builtin::ENTER_YANK_OPERATOR).group("operator"),
         );
-        keymap.insert(
-            "yy".to_string(),
+        normal.insert(
+            "yy".into(),
             KeyMapInner::with_command_id(builtin::YANK_LINE).group("operator"),
         );
-        keymap.insert(
-            "Y".to_string(),
+        normal.insert(
+            "Y".into(),
             KeyMapInner::with_command_id(builtin::YANK_TO_END).group("operator"),
         );
-        keymap.insert(
-            "c".to_string(),
+        normal.insert(
+            "c".into(),
             KeyMapInner::with_command_id(builtin::ENTER_CHANGE_OPERATOR).group("operator"),
         );
-        keymap.insert(
-            "cc".to_string(),
+        normal.insert(
+            "cc".into(),
             KeyMapInner::with_command_id(builtin::CHANGE_LINE).group("operator"),
         );
 
-        // Space (leader) bindings
-        keymap.insert(" ".to_string(), KeyMapInner::new()); // prefix, no command
-        keymap.insert(
-            " e".to_string(),
+        // Leader bindings
+        normal.insert(" ".into(), KeyMapInner::new());
+        normal.insert(
+            " e".into(),
             KeyMapInner::with_inline_command(Arc::new(ToggleExplorerCommand)).group("misc"),
         );
-        keymap.insert(
-            " s".to_string(),
+        normal.insert(
+            " s".into(),
             KeyMapInner::with_command_id(builtin::SETTINGS_MENU_OPEN).group("misc"),
         );
-
-        // Telescope bindings (Space + f prefix)
-        keymap.insert(" f".to_string(), KeyMapInner::new()); // prefix, no command
-        keymap.insert(
-            " ff".to_string(),
+        normal.insert(" f".into(), KeyMapInner::new());
+        normal.insert(
+            " ff".into(),
             KeyMapInner::with_command_id(builtin::TELESCOPE_FIND_FILES).group("telescope"),
         );
-        keymap.insert(
-            " fb".to_string(),
+        normal.insert(
+            " fb".into(),
             KeyMapInner::with_command_id(builtin::TELESCOPE_FIND_BUFFERS).group("telescope"),
         );
-        keymap.insert(
-            " fg".to_string(),
+        normal.insert(
+            " fg".into(),
             KeyMapInner::with_command_id(builtin::TELESCOPE_LIVE_GREP).group("telescope"),
         );
-        keymap.insert(
-            " fr".to_string(),
+        normal.insert(
+            " fr".into(),
             KeyMapInner::with_command_id(builtin::TELESCOPE_RECENT).group("telescope"),
         );
-        keymap.insert(
-            " fc".to_string(),
+        normal.insert(
+            " fc".into(),
             KeyMapInner::with_command_id(builtin::TELESCOPE_COMMANDS).group("telescope"),
         );
-        keymap.insert(
-            " fh".to_string(),
+        normal.insert(
+            " fh".into(),
             KeyMapInner::with_command_id(builtin::TELESCOPE_HELP).group("telescope"),
         );
-        keymap.insert(
-            " fk".to_string(),
+        normal.insert(
+            " fk".into(),
             KeyMapInner::with_command_id(builtin::TELESCOPE_KEYMAPS).group("telescope"),
         );
 
-        // Leap motion bindings
-        keymap.insert(
-            "s".to_string(),
-            KeyMapInner::with_command_id(builtin::LEAP_FORWARD).group("jump"),
-        );
-        keymap.insert(
-            "S".to_string(),
-            KeyMapInner::with_command_id(builtin::LEAP_BACKWARD).group("jump"),
-        );
+        // Leap
+        normal
+            .insert("s".into(), KeyMapInner::with_command_id(builtin::LEAP_FORWARD).group("jump"));
+        normal
+            .insert("S".into(), KeyMapInner::with_command_id(builtin::LEAP_BACKWARD).group("jump"));
 
-        // z-prefix bindings (code folding)
-        keymap.insert("z".to_string(), KeyMapInner::new()); // prefix, no command
-        keymap.insert(
-            "za".to_string(),
-            KeyMapInner::with_command_id(builtin::FOLD_TOGGLE).group("fold"),
-        );
-        keymap.insert(
-            "zo".to_string(),
-            KeyMapInner::with_command_id(builtin::FOLD_OPEN).group("fold"),
-        );
-        keymap.insert(
-            "zc".to_string(),
-            KeyMapInner::with_command_id(builtin::FOLD_CLOSE).group("fold"),
-        );
-        keymap.insert(
-            "zR".to_string(),
+        // Folding
+        normal.insert("z".into(), KeyMapInner::new());
+        normal
+            .insert("za".into(), KeyMapInner::with_command_id(builtin::FOLD_TOGGLE).group("fold"));
+        normal.insert("zo".into(), KeyMapInner::with_command_id(builtin::FOLD_OPEN).group("fold"));
+        normal.insert("zc".into(), KeyMapInner::with_command_id(builtin::FOLD_CLOSE).group("fold"));
+        normal.insert(
+            "zR".into(),
             KeyMapInner::with_command_id(builtin::FOLD_OPEN_ALL).group("fold"),
         );
-        keymap.insert(
-            "zM".to_string(),
+        normal.insert(
+            "zM".into(),
             KeyMapInner::with_command_id(builtin::FOLD_CLOSE_ALL).group("fold"),
         );
 
-        // Tab navigation
-        keymap.insert(
-            "gt".to_string(),
-            KeyMapInner::with_command_id(builtin::TAB_NEXT).group("window"),
-        );
-        keymap.insert(
-            "gT".to_string(),
-            KeyMapInner::with_command_id(builtin::TAB_PREV).group("window"),
-        );
-
-        // Buffer navigation (S-h/S-l like LazyVim)
-        keymap.insert(
-            "H".to_string(),
-            KeyMapInner::with_command_id(builtin::BUFFER_PREV).group("buffer"),
-        );
-        keymap.insert(
-            "L".to_string(),
-            KeyMapInner::with_command_id(builtin::BUFFER_NEXT).group("buffer"),
-        );
-
-        // Leader buffer prefix
-        keymap.insert(" b".to_string(), KeyMapInner::with_hint("+buffer").group("buffer"));
-        keymap.insert(
-            " bd".to_string(),
+        // Buffer navigation
+        normal
+            .insert("H".into(), KeyMapInner::with_command_id(builtin::BUFFER_PREV).group("buffer"));
+        normal
+            .insert("L".into(), KeyMapInner::with_command_id(builtin::BUFFER_NEXT).group("buffer"));
+        normal.insert(" b".into(), KeyMapInner::with_hint("+buffer").group("buffer"));
+        normal.insert(
+            " bd".into(),
             KeyMapInner::with_command_id(builtin::BUFFER_DELETE).group("buffer"),
         );
 
-        // Leader window prefix (smart focus: focuses window or creates split if none exists)
-        keymap.insert(" w".to_string(), KeyMapInner::with_hint("+window").group("window"));
-        keymap.insert(
-            " wh".to_string(),
+        // Window management
+        normal.insert(" w".into(), KeyMapInner::with_hint("+window").group("window"));
+        normal.insert(
+            " wh".into(),
             KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_OR_SPLIT_LEFT).group("window"),
         );
-        keymap.insert(
-            " wj".to_string(),
+        normal.insert(
+            " wj".into(),
             KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_OR_SPLIT_DOWN).group("window"),
         );
-        keymap.insert(
-            " wk".to_string(),
+        normal.insert(
+            " wk".into(),
             KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_OR_SPLIT_UP).group("window"),
         );
-        keymap.insert(
-            " wl".to_string(),
+        normal.insert(
+            " wl".into(),
             KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_OR_SPLIT_RIGHT).group("window"),
         );
-        keymap.insert(
-            " wv".to_string(),
+        normal.insert(
+            " wv".into(),
             KeyMapInner::with_command_id(builtin::WINDOW_SPLIT_VERTICAL).group("window"),
         );
-        keymap.insert(
-            " ws".to_string(),
+        normal.insert(
+            " ws".into(),
             KeyMapInner::with_command_id(builtin::WINDOW_SPLIT_HORIZONTAL).group("window"),
         );
-        keymap.insert(
-            " wc".to_string(),
+        normal.insert(
+            " wc".into(),
             KeyMapInner::with_command_id(builtin::WINDOW_CLOSE).group("window"),
         );
-        keymap.insert(
-            " wo".to_string(),
+        normal.insert(
+            " wo".into(),
             KeyMapInner::with_command_id(builtin::WINDOW_ONLY).group("window"),
         );
-        keymap.insert(
-            " w=".to_string(),
+        normal.insert(
+            " w=".into(),
             KeyMapInner::with_command_id(builtin::WINDOW_EQUALIZE).group("window"),
         );
-    }
 
-    fn setup_insert_mode(keymap: &mut HashMap<String, KeyMapInner>) {
-        keymap
-            .insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::ENTER_NORMAL_MODE));
-        keymap.insert(
-            "Backspace".to_string(),
+        // Editor Insert mode
+        let insert = self.get_scope_mut(KeymapScope::editor_insert());
+        insert.insert("Escape".into(), KeyMapInner::with_command_id(builtin::ENTER_NORMAL_MODE));
+        insert.insert(
+            "Backspace".into(),
             KeyMapInner::with_command_id(builtin::DELETE_CHAR_BACKWARD),
         );
-        keymap.insert("Enter".to_string(), KeyMapInner::with_command_id(builtin::INSERT_NEWLINE));
+        insert.insert("Enter".into(), KeyMapInner::with_command_id(builtin::INSERT_NEWLINE));
+        insert.insert("C-Space".into(), KeyMapInner::with_command_id(builtin::COMPLETION_TRIGGER));
+        insert.insert("C-n".into(), KeyMapInner::with_command_id(builtin::COMPLETION_NEXT));
+        insert.insert("C-p".into(), KeyMapInner::with_command_id(builtin::COMPLETION_PREV));
+        insert.insert("Tab".into(), KeyMapInner::with_command_id(builtin::COMPLETION_CONFIRM));
+        insert.insert("C-e".into(), KeyMapInner::with_command_id(builtin::COMPLETION_DISMISS));
 
-        // Completion keybindings
-        keymap.insert(
-            "C-Space".to_string(),
-            KeyMapInner::with_command_id(builtin::COMPLETION_TRIGGER),
-        );
-        keymap.insert("C-n".to_string(), KeyMapInner::with_command_id(builtin::COMPLETION_NEXT));
-        keymap.insert("C-p".to_string(), KeyMapInner::with_command_id(builtin::COMPLETION_PREV));
-        keymap.insert("Tab".to_string(), KeyMapInner::with_command_id(builtin::COMPLETION_CONFIRM));
-        keymap.insert("C-e".to_string(), KeyMapInner::with_command_id(builtin::COMPLETION_DISMISS));
+        // Editor Visual mode
+        let visual = self.get_scope_mut(KeymapScope::editor_visual());
+        visual.insert("Escape".into(), KeyMapInner::with_command_id(builtin::ENTER_NORMAL_MODE));
+        visual.insert("h".into(), KeyMapInner::with_command_id(builtin::VISUAL_EXTEND_LEFT));
+        visual.insert("j".into(), KeyMapInner::with_command_id(builtin::VISUAL_EXTEND_DOWN));
+        visual.insert("k".into(), KeyMapInner::with_command_id(builtin::VISUAL_EXTEND_UP));
+        visual.insert("l".into(), KeyMapInner::with_command_id(builtin::VISUAL_EXTEND_RIGHT));
+        visual.insert("d".into(), KeyMapInner::with_command_id(builtin::VISUAL_DELETE));
+        visual.insert("y".into(), KeyMapInner::with_command_id(builtin::VISUAL_YANK));
+        visual.insert(":".into(), KeyMapInner::with_command_id(builtin::ENTER_COMMAND_MODE));
     }
 
-    fn setup_visual_mode(keymap: &mut HashMap<String, KeyMapInner>) {
-        keymap
-            .insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::ENTER_NORMAL_MODE));
-        keymap.insert("h".to_string(), KeyMapInner::with_command_id(builtin::VISUAL_EXTEND_LEFT));
-        keymap.insert("j".to_string(), KeyMapInner::with_command_id(builtin::VISUAL_EXTEND_DOWN));
-        keymap.insert("k".to_string(), KeyMapInner::with_command_id(builtin::VISUAL_EXTEND_UP));
-        keymap.insert("l".to_string(), KeyMapInner::with_command_id(builtin::VISUAL_EXTEND_RIGHT));
-        keymap.insert("d".to_string(), KeyMapInner::with_command_id(builtin::VISUAL_DELETE));
-        keymap.insert("y".to_string(), KeyMapInner::with_command_id(builtin::VISUAL_YANK));
-        keymap.insert(":".to_string(), KeyMapInner::with_command_id(builtin::ENTER_COMMAND_MODE));
-    }
+    fn setup_explorer_keybindings(&mut self) {
+        // Explorer Normal mode
+        let scope = KeymapScope::Component {
+            id: ComponentId::EXPLORER,
+            mode: EditModeKind::Normal,
+        };
+        let explorer = self.get_scope_mut(scope);
 
-    fn setup_command_mode(keymap: &mut HashMap<String, KeyMapInner>) {
-        keymap.insert(
-            "Escape".to_string(),
-            KeyMapInner::with_command_id(builtin::COMMAND_LINE_CANCEL),
-        );
-        keymap.insert(
-            "Enter".to_string(),
-            KeyMapInner::with_command_id(builtin::COMMAND_LINE_EXECUTE),
-        );
-        keymap.insert(
-            "Backspace".to_string(),
-            KeyMapInner::with_command_id(builtin::COMMAND_LINE_BACKSPACE),
-        );
-    }
-
-    fn setup_explorer_mode(keymap: &mut HashMap<String, KeyMapInner>) {
         // Navigation
-        keymap.insert("j".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CURSOR_DOWN));
-        keymap.insert("k".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CURSOR_UP));
-        keymap.insert(
-            "Ctrl+d".to_string(),
-            KeyMapInner::with_command_id(builtin::EXPLORER_PAGE_DOWN),
-        );
-        keymap
-            .insert("Ctrl+u".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_PAGE_UP));
-        keymap.insert("g".to_string(), KeyMapInner::new()); // prefix
-        keymap.insert("gg".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_GOTO_FIRST));
-        keymap.insert("G".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_GOTO_LAST));
+        explorer.insert("j".into(), KeyMapInner::with_command_id(builtin::EXPLORER_CURSOR_DOWN));
+        explorer.insert("k".into(), KeyMapInner::with_command_id(builtin::EXPLORER_CURSOR_UP));
+        explorer.insert("Ctrl+d".into(), KeyMapInner::with_command_id(builtin::EXPLORER_PAGE_DOWN));
+        explorer.insert("Ctrl+u".into(), KeyMapInner::with_command_id(builtin::EXPLORER_PAGE_UP));
+        explorer.insert("g".into(), KeyMapInner::new());
+        explorer.insert("gg".into(), KeyMapInner::with_command_id(builtin::EXPLORER_GOTO_FIRST));
+        explorer.insert("G".into(), KeyMapInner::with_command_id(builtin::EXPLORER_GOTO_LAST));
 
         // Tree operations
-        keymap
-            .insert("Enter".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_OPEN_NODE));
-        keymap.insert("o".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_TOGGLE_NODE));
-        keymap
-            .insert("x".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CLOSE_PARENT));
-        keymap
-            .insert("u".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_GO_TO_PARENT));
-        keymap.insert("R".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_REFRESH));
+        explorer.insert("Enter".into(), KeyMapInner::with_command_id(builtin::EXPLORER_OPEN_NODE));
+        explorer.insert("o".into(), KeyMapInner::with_command_id(builtin::EXPLORER_TOGGLE_NODE));
+        explorer.insert("x".into(), KeyMapInner::with_command_id(builtin::EXPLORER_CLOSE_PARENT));
+        explorer.insert("u".into(), KeyMapInner::with_command_id(builtin::EXPLORER_GO_TO_PARENT));
+        explorer.insert("R".into(), KeyMapInner::with_command_id(builtin::EXPLORER_REFRESH));
 
         // Display
-        keymap
-            .insert("I".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_TOGGLE_HIDDEN));
-        keymap
-            .insert("S".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_TOGGLE_SIZES));
+        explorer.insert("I".into(), KeyMapInner::with_command_id(builtin::EXPLORER_TOGGLE_HIDDEN));
+        explorer.insert("S".into(), KeyMapInner::with_command_id(builtin::EXPLORER_TOGGLE_SIZES));
 
         // File operations
-        keymap.insert("a".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CREATE_FILE));
-        keymap.insert("A".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CREATE_DIR));
-        keymap.insert("r".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_RENAME));
-        keymap.insert("D".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_DELETE));
+        explorer.insert("a".into(), KeyMapInner::with_command_id(builtin::EXPLORER_CREATE_FILE));
+        explorer.insert("A".into(), KeyMapInner::with_command_id(builtin::EXPLORER_CREATE_DIR));
+        explorer.insert("r".into(), KeyMapInner::with_command_id(builtin::EXPLORER_RENAME));
+        explorer.insert("D".into(), KeyMapInner::with_command_id(builtin::EXPLORER_DELETE));
 
-        // Clipboard operations
-        keymap.insert("y".to_string(), KeyMapInner::new()); // prefix
-        keymap.insert("yy".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_YANK));
-        keymap.insert("d".to_string(), KeyMapInner::new()); // prefix
-        keymap.insert("dd".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CUT));
-        keymap.insert("p".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_PASTE));
+        // Clipboard
+        explorer.insert("y".into(), KeyMapInner::new());
+        explorer.insert("yy".into(), KeyMapInner::with_command_id(builtin::EXPLORER_YANK));
+        explorer.insert("d".into(), KeyMapInner::new());
+        explorer.insert("dd".into(), KeyMapInner::with_command_id(builtin::EXPLORER_CUT));
+        explorer.insert("p".into(), KeyMapInner::with_command_id(builtin::EXPLORER_PASTE));
 
         // Selection
-        keymap.insert("v".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_VISUAL_MODE));
-        keymap.insert("V".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_SELECT_ALL));
+        explorer.insert("v".into(), KeyMapInner::with_command_id(builtin::EXPLORER_VISUAL_MODE));
+        explorer.insert("V".into(), KeyMapInner::with_command_id(builtin::EXPLORER_SELECT_ALL));
 
         // Filter
-        keymap.insert("/".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_FILTER));
-        keymap
-            .insert("C".to_string(), KeyMapInner::with_command_id(builtin::EXPLORER_CLEAR_FILTER));
+        explorer.insert("/".into(), KeyMapInner::with_command_id(builtin::EXPLORER_FILTER));
+        explorer.insert("C".into(), KeyMapInner::with_command_id(builtin::EXPLORER_CLEAR_FILTER));
 
-        // Window control
-        keymap.insert(
-            "Tab".to_string(),
-            KeyMapInner::with_command_id(builtin::EXPLORER_FOCUS_EDITOR),
-        );
-        keymap.insert(
-            "Escape".to_string(),
-            KeyMapInner::with_command_id(builtin::EXPLORER_FOCUS_EDITOR),
-        );
+        // Window
+        explorer.insert("Tab".into(), KeyMapInner::with_command_id(builtin::EXPLORER_FOCUS_EDITOR));
+        explorer
+            .insert("Escape".into(), KeyMapInner::with_command_id(builtin::EXPLORER_FOCUS_EDITOR));
+        explorer.insert("<C-h>".into(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_LEFT));
+        explorer.insert("<C-j>".into(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_DOWN));
+        explorer.insert("<C-k>".into(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_UP));
+        explorer.insert("<C-l>".into(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_RIGHT));
 
-        // Window navigation (C-hjkl)
-        keymap
-            .insert("<C-h>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_LEFT));
-        keymap
-            .insert("<C-j>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_DOWN));
-        keymap.insert("<C-k>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_UP));
-        keymap
-            .insert("<C-l>".to_string(), KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_RIGHT));
+        // Leader
+        explorer.insert(" ".into(), KeyMapInner::new());
+        explorer
+            .insert(" e".into(), KeyMapInner::with_inline_command(Arc::new(ToggleExplorerCommand)));
 
-        // Space (leader) bindings
-        keymap.insert(" ".to_string(), KeyMapInner::new()); // prefix
-        keymap.insert(
-            " e".to_string(),
-            KeyMapInner::with_inline_command(Arc::new(ToggleExplorerCommand)),
-        );
-    }
-
-    fn setup_explorer_input_mode(keymap: &mut HashMap<String, KeyMapInner>) {
-        // In explorer input mode, we only handle special keys
-        // Characters are handled via inline commands in the command handler
-        keymap.insert(
-            "Escape".to_string(),
-            KeyMapInner::with_command_id(builtin::EXPLORER_CANCEL_INPUT),
-        );
-        keymap.insert(
-            "Enter".to_string(),
-            KeyMapInner::with_command_id(builtin::EXPLORER_CONFIRM_INPUT),
-        );
-        keymap.insert(
-            "Backspace".to_string(),
+        // Explorer Input mode
+        let input_scope = KeymapScope::Component {
+            id: ComponentId::EXPLORER,
+            mode: EditModeKind::Insert,
+        };
+        let explorer_input = self.get_scope_mut(input_scope);
+        explorer_input
+            .insert("Escape".into(), KeyMapInner::with_command_id(builtin::EXPLORER_CANCEL_INPUT));
+        explorer_input
+            .insert("Enter".into(), KeyMapInner::with_command_id(builtin::EXPLORER_CONFIRM_INPUT));
+        explorer_input.insert(
+            "Backspace".into(),
             KeyMapInner::with_command_id(builtin::EXPLORER_INPUT_BACKSPACE),
         );
     }
 
-    fn setup_operator_pending_mode(keymap: &mut HashMap<String, KeyMapInner>) {
-        // Escape cancels operator-pending mode
-        keymap.insert(
-            "<Escape>".to_string(),
-            KeyMapInner::with_command_id(builtin::ENTER_NORMAL_MODE),
-        );
+    fn setup_telescope_keybindings(&mut self) {
+        // Telescope Normal mode
+        let normal_scope = KeymapScope::Component {
+            id: ComponentId::TELESCOPE,
+            mode: EditModeKind::Normal,
+        };
+        let tn = self.get_scope_mut(normal_scope);
+        tn.insert("j".into(), KeyMapInner::with_command_id(builtin::TELESCOPE_NEXT));
+        tn.insert("k".into(), KeyMapInner::with_command_id(builtin::TELESCOPE_PREV));
+        tn.insert("g".into(), KeyMapInner::new());
+        tn.insert("gg".into(), KeyMapInner::with_command_id(builtin::TELESCOPE_GOTO_FIRST));
+        tn.insert("G".into(), KeyMapInner::with_command_id(builtin::TELESCOPE_GOTO_LAST));
+        tn.insert("C-d".into(), KeyMapInner::with_command_id(builtin::TELESCOPE_PAGE_DOWN));
+        tn.insert("C-u".into(), KeyMapInner::with_command_id(builtin::TELESCOPE_PAGE_UP));
+        tn.insert("i".into(), KeyMapInner::with_command_id(builtin::TELESCOPE_ENTER_INSERT));
+        tn.insert("Escape".into(), KeyMapInner::with_command_id(builtin::TELESCOPE_CLOSE));
+        tn.insert("Enter".into(), KeyMapInner::with_command_id(builtin::TELESCOPE_CONFIRM));
 
-        // Motion hints for which-key (actual handling is dynamic in CommandHandler)
-        // These don't execute commands but show in which-key panel
-        keymap
-            .insert("d".to_string(), KeyMapInner::with_hint("delete line (dd)").group("operator"));
-        keymap.insert("y".to_string(), KeyMapInner::with_hint("yank line (yy)").group("operator"));
-        keymap
-            .insert("c".to_string(), KeyMapInner::with_hint("change line (cc)").group("operator"));
-        keymap.insert("w".to_string(), KeyMapInner::with_hint("word forward").group("motion"));
-        keymap.insert("b".to_string(), KeyMapInner::with_hint("word backward").group("motion"));
-        keymap.insert("e".to_string(), KeyMapInner::with_hint("word end").group("motion"));
-        keymap.insert("$".to_string(), KeyMapInner::with_hint("end of line").group("motion"));
-        keymap.insert("0".to_string(), KeyMapInner::with_hint("start of line").group("motion"));
-        keymap.insert("^".to_string(), KeyMapInner::with_hint("first non-blank").group("motion"));
-        keymap.insert("j".to_string(), KeyMapInner::with_hint("line down").group("motion"));
-        keymap.insert("k".to_string(), KeyMapInner::with_hint("line up").group("motion"));
-        keymap.insert("G".to_string(), KeyMapInner::with_hint("end of file").group("motion"));
-        keymap.insert("g".to_string(), KeyMapInner::new()); // prefix for gg
-        keymap.insert("gg".to_string(), KeyMapInner::with_hint("start of file").group("motion"));
-        keymap
-            .insert("i".to_string(), KeyMapInner::with_hint("inner text object").group("textobj"));
-        keymap
-            .insert("a".to_string(), KeyMapInner::with_hint("around text object").group("textobj"));
+        // Telescope Insert mode
+        let insert_scope = KeymapScope::Component {
+            id: ComponentId::TELESCOPE,
+            mode: EditModeKind::Insert,
+        };
+        let ti = self.get_scope_mut(insert_scope);
+        ti.insert("C-n".into(), KeyMapInner::with_command_id(builtin::TELESCOPE_NEXT));
+        ti.insert("C-p".into(), KeyMapInner::with_command_id(builtin::TELESCOPE_PREV));
+        ti.insert("Down".into(), KeyMapInner::with_command_id(builtin::TELESCOPE_NEXT));
+        ti.insert("Up".into(), KeyMapInner::with_command_id(builtin::TELESCOPE_PREV));
+        ti.insert("Tab".into(), KeyMapInner::with_command_id(builtin::TELESCOPE_NEXT));
+        ti.insert("S-Tab".into(), KeyMapInner::with_command_id(builtin::TELESCOPE_PREV));
+        ti.insert("C-u".into(), KeyMapInner::with_command_id(builtin::TELESCOPE_PAGE_UP));
+        ti.insert("C-d".into(), KeyMapInner::with_command_id(builtin::TELESCOPE_PAGE_DOWN));
+        ti.insert("Backspace".into(), KeyMapInner::with_command_id(builtin::TELESCOPE_DELETE_CHAR));
+        ti.insert("Escape".into(), KeyMapInner::with_command_id(builtin::TELESCOPE_ENTER_NORMAL));
+        ti.insert("Enter".into(), KeyMapInner::with_command_id(builtin::TELESCOPE_CONFIRM));
     }
 
-    /// Telescope Normal mode - navigation keys (j/k/gg/G)
-    fn setup_telescope_normal_mode(keymap: &mut HashMap<String, KeyMapInner>) {
+    fn setup_settings_keybindings(&mut self) {
+        let scope = KeymapScope::Component {
+            id: ComponentId::SETTINGS,
+            mode: EditModeKind::Normal,
+        };
+        let settings = self.get_scope_mut(scope);
+
         // Navigation
-        keymap.insert("j".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_NEXT));
-        keymap.insert("k".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_PREV));
-        keymap.insert("g".to_string(), KeyMapInner::new()); // prefix
-        keymap
-            .insert("gg".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_GOTO_FIRST));
-        keymap.insert("G".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_GOTO_LAST));
-        keymap
-            .insert("C-d".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_PAGE_DOWN));
-        keymap.insert("C-u".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_PAGE_UP));
-
-        // Mode switching
-        keymap
-            .insert("i".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_ENTER_INSERT));
-
-        // Actions
-        keymap.insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_CLOSE));
-        keymap
-            .insert("Enter".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_CONFIRM));
-    }
-
-    /// Telescope Insert mode - typing query with Ctrl-based navigation
-    fn setup_telescope_insert_mode(keymap: &mut HashMap<String, KeyMapInner>) {
-        // Navigation (Ctrl-based to not interfere with typing)
-        keymap.insert("C-n".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_NEXT));
-        keymap.insert("C-p".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_PREV));
-        keymap.insert("Down".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_NEXT));
-        keymap.insert("Up".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_PREV));
-        keymap.insert("Tab".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_NEXT));
-        keymap.insert("S-Tab".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_PREV));
-        keymap.insert("C-u".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_PAGE_UP));
-        keymap
-            .insert("C-d".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_PAGE_DOWN));
-
-        // Editing
-        keymap.insert(
-            "Backspace".to_string(),
-            KeyMapInner::with_command_id(builtin::TELESCOPE_DELETE_CHAR),
-        );
-
-        // Mode switching (ESC goes to Normal mode in Telescope, not closes)
-        keymap.insert(
-            "Escape".to_string(),
-            KeyMapInner::with_command_id(builtin::TELESCOPE_ENTER_NORMAL),
-        );
-
-        // Actions
-        keymap
-            .insert("Enter".to_string(), KeyMapInner::with_command_id(builtin::TELESCOPE_CONFIRM));
-    }
-
-    fn setup_leap_mode(keymap: &mut HashMap<String, KeyMapInner>) {
-        // Escape cancels leap mode
-        keymap.insert("Escape".to_string(), KeyMapInner::with_command_id(builtin::LEAP_CANCEL));
-        // All other keys (characters for search pattern or label selection) are handled
-        // directly in CommandHandler without going through keymap
-    }
-
-    fn setup_settings_menu_mode(keymap: &mut HashMap<String, KeyMapInner>) {
-        // Navigation
-        keymap.insert("j".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_NEXT));
-        keymap.insert("k".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_PREV));
-        keymap
-            .insert("Down".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_NEXT));
-        keymap.insert("Up".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_PREV));
+        settings.insert("j".into(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_NEXT));
+        settings.insert("k".into(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_PREV));
+        settings.insert("Down".into(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_NEXT));
+        settings.insert("Up".into(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_PREV));
 
         // Toggle/Cycle
-        keymap.insert(" ".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_TOGGLE));
-        keymap.insert(
-            "l".to_string(),
+        settings.insert(" ".into(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_TOGGLE));
+        settings
+            .insert("l".into(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_CYCLE_NEXT));
+        settings
+            .insert("h".into(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_CYCLE_PREV));
+        settings.insert(
+            "Right".into(),
             KeyMapInner::with_command_id(builtin::SETTINGS_MENU_CYCLE_NEXT),
         );
-        keymap.insert(
-            "h".to_string(),
-            KeyMapInner::with_command_id(builtin::SETTINGS_MENU_CYCLE_PREV),
-        );
-        keymap.insert(
-            "Right".to_string(),
-            KeyMapInner::with_command_id(builtin::SETTINGS_MENU_CYCLE_NEXT),
-        );
-        keymap.insert(
-            "Left".to_string(),
-            KeyMapInner::with_command_id(builtin::SETTINGS_MENU_CYCLE_PREV),
+        settings
+            .insert("Left".into(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_CYCLE_PREV));
+
+        // Inc/Dec
+        settings.insert("+".into(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_INCREMENT));
+        settings.insert("-".into(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_DECREMENT));
+
+        // Action
+        settings
+            .insert("Enter".into(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_EXECUTE));
+        settings
+            .insert("Escape".into(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_CLOSE));
+        settings.insert("q".into(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_CLOSE));
+
+        // Quick select
+        settings.insert("1".into(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_1));
+        settings.insert("2".into(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_2));
+        settings.insert("3".into(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_3));
+        settings.insert("4".into(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_4));
+        settings.insert("5".into(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_5));
+        settings.insert("6".into(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_6));
+        settings.insert("7".into(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_7));
+        settings.insert("8".into(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_8));
+        settings.insert("9".into(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_9));
+    }
+
+    fn setup_submode_keybindings(&mut self) {
+        // Command mode
+        let cmd = self.get_scope_mut(KeymapScope::SubMode(SubModeKind::Command));
+        cmd.insert("Escape".into(), KeyMapInner::with_command_id(builtin::COMMAND_LINE_CANCEL));
+        cmd.insert("Enter".into(), KeyMapInner::with_command_id(builtin::COMMAND_LINE_EXECUTE));
+        cmd.insert(
+            "Backspace".into(),
+            KeyMapInner::with_command_id(builtin::COMMAND_LINE_BACKSPACE),
         );
 
-        // Number increment/decrement
-        keymap.insert(
-            "+".to_string(),
-            KeyMapInner::with_command_id(builtin::SETTINGS_MENU_INCREMENT),
-        );
-        keymap.insert(
-            "-".to_string(),
-            KeyMapInner::with_command_id(builtin::SETTINGS_MENU_DECREMENT),
-        );
+        // Operator-pending mode
+        let op = self.get_scope_mut(KeymapScope::SubMode(SubModeKind::OperatorPending));
+        op.insert("<Escape>".into(), KeyMapInner::with_command_id(builtin::ENTER_NORMAL_MODE));
+        op.insert("d".into(), KeyMapInner::with_hint("delete line (dd)").group("operator"));
+        op.insert("y".into(), KeyMapInner::with_hint("yank line (yy)").group("operator"));
+        op.insert("c".into(), KeyMapInner::with_hint("change line (cc)").group("operator"));
+        op.insert("w".into(), KeyMapInner::with_hint("word forward").group("motion"));
+        op.insert("b".into(), KeyMapInner::with_hint("word backward").group("motion"));
+        op.insert("e".into(), KeyMapInner::with_hint("word end").group("motion"));
+        op.insert("$".into(), KeyMapInner::with_hint("end of line").group("motion"));
+        op.insert("0".into(), KeyMapInner::with_hint("start of line").group("motion"));
+        op.insert("^".into(), KeyMapInner::with_hint("first non-blank").group("motion"));
+        op.insert("j".into(), KeyMapInner::with_hint("line down").group("motion"));
+        op.insert("k".into(), KeyMapInner::with_hint("line up").group("motion"));
+        op.insert("G".into(), KeyMapInner::with_hint("end of file").group("motion"));
+        op.insert("g".into(), KeyMapInner::new());
+        op.insert("gg".into(), KeyMapInner::with_hint("start of file").group("motion"));
+        op.insert("i".into(), KeyMapInner::with_hint("inner text object").group("textobj"));
+        op.insert("a".into(), KeyMapInner::with_hint("around text object").group("textobj"));
 
-        // Action/Confirm
-        keymap.insert(
-            "Enter".to_string(),
-            KeyMapInner::with_command_id(builtin::SETTINGS_MENU_EXECUTE),
-        );
-
-        // Close
-        keymap.insert(
-            "Escape".to_string(),
-            KeyMapInner::with_command_id(builtin::SETTINGS_MENU_CLOSE),
-        );
-        keymap.insert("q".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_CLOSE));
-
-        // Quick select (1-9)
-        keymap
-            .insert("1".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_1));
-        keymap
-            .insert("2".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_2));
-        keymap
-            .insert("3".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_3));
-        keymap
-            .insert("4".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_4));
-        keymap
-            .insert("5".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_5));
-        keymap
-            .insert("6".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_6));
-        keymap
-            .insert("7".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_7));
-        keymap
-            .insert("8".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_8));
-        keymap
-            .insert("9".to_string(), KeyMapInner::with_command_id(builtin::SETTINGS_MENU_QUICK_9));
+        // Leap mode
+        let leap = self.get_scope_mut(KeymapScope::SubMode(SubModeKind::Leap));
+        leap.insert("Escape".into(), KeyMapInner::with_command_id(builtin::LEAP_CANCEL));
     }
 }
 
@@ -934,19 +946,24 @@ impl KeyMap {
 mod tests {
     use super::*;
 
+    fn get_normal_keymap(keymap: &KeyMap) -> &HashMap<String, KeyMapInner> {
+        keymap.get_scope(&KeymapScope::editor_normal())
+    }
+
     #[test]
     fn test_keymap_has_buffer_navigation_keys() {
         let keymap = KeyMap::with_defaults();
+        let normal = get_normal_keymap(&keymap);
 
         // Test H (prev buffer) key exists
-        let h_binding = keymap.normal.get("H");
+        let h_binding = normal.get("H");
         assert!(h_binding.is_some(), "H key should be bound in normal mode");
         let h_inner = h_binding.unwrap();
         assert!(h_inner.command.is_some(), "H should have a command");
         assert_eq!(h_inner.group, Some("buffer"));
 
         // Test L (next buffer) key exists
-        let l_binding = keymap.normal.get("L");
+        let l_binding = normal.get("L");
         assert!(l_binding.is_some(), "L key should be bound in normal mode");
         let l_inner = l_binding.unwrap();
         assert!(l_inner.command.is_some(), "L should have a command");
@@ -956,16 +973,17 @@ mod tests {
     #[test]
     fn test_keymap_has_leader_buffer_prefix() {
         let keymap = KeyMap::with_defaults();
+        let normal = get_normal_keymap(&keymap);
 
         // Test <leader>b prefix exists
-        let b_prefix = keymap.normal.get(" b");
+        let b_prefix = normal.get(" b");
         assert!(b_prefix.is_some(), "<leader>b prefix should be bound in normal mode");
         let b_inner = b_prefix.unwrap();
         assert_eq!(b_inner.hint, Some("+buffer".to_string()));
         assert_eq!(b_inner.group, Some("buffer"));
 
         // Test <leader>bd exists
-        let delete_binding = keymap.normal.get(" bd");
+        let delete_binding = normal.get(" bd");
         assert!(delete_binding.is_some(), "<leader>bd should be bound in normal mode");
         let delete_inner = delete_binding.unwrap();
         assert!(delete_inner.command.is_some(), "<leader>bd should have a command");
@@ -975,9 +993,10 @@ mod tests {
     #[test]
     fn test_keymap_has_leader_window_prefix() {
         let keymap = KeyMap::with_defaults();
+        let normal = get_normal_keymap(&keymap);
 
         // Test <leader>w prefix exists
-        let w_prefix = keymap.normal.get(" w");
+        let w_prefix = normal.get(" w");
         assert!(w_prefix.is_some(), "<leader>w prefix should be bound in normal mode");
         let w_inner = w_prefix.unwrap();
         assert_eq!(w_inner.hint, Some("+window".to_string()));
@@ -987,6 +1006,7 @@ mod tests {
     #[test]
     fn test_keymap_has_leader_window_bindings() {
         let keymap = KeyMap::with_defaults();
+        let normal = get_normal_keymap(&keymap);
 
         let window_keys = [
             (" wh", "focus or split left"),
@@ -1001,7 +1021,7 @@ mod tests {
         ];
 
         for (key, desc) in window_keys {
-            let binding = keymap.normal.get(key);
+            let binding = normal.get(key);
             assert!(binding.is_some(), "{key} ({desc}) should be bound in normal mode");
             let inner = binding.unwrap();
             assert!(inner.command.is_some(), "{key} should have a command");
@@ -1020,9 +1040,10 @@ mod tests {
     #[test]
     fn test_keymap_buffer_commands_use_correct_ids() {
         let keymap = KeyMap::with_defaults();
+        let normal = get_normal_keymap(&keymap);
 
         // Check H key command is BUFFER_PREV
-        let h_binding = keymap.normal.get("H").unwrap();
+        let h_binding = normal.get("H").unwrap();
         if let Some(CommandRef::Registered(id)) = &h_binding.command {
             assert_eq!(id.as_str(), "buffer_prev");
         } else {
@@ -1030,7 +1051,7 @@ mod tests {
         }
 
         // Check L key command is BUFFER_NEXT
-        let l_binding = keymap.normal.get("L").unwrap();
+        let l_binding = normal.get("L").unwrap();
         if let Some(CommandRef::Registered(id)) = &l_binding.command {
             assert_eq!(id.as_str(), "buffer_next");
         } else {
@@ -1038,7 +1059,7 @@ mod tests {
         }
 
         // Check <leader>bd command is BUFFER_DELETE
-        let bd_binding = keymap.normal.get(" bd").unwrap();
+        let bd_binding = normal.get(" bd").unwrap();
         if let Some(CommandRef::Registered(id)) = &bd_binding.command {
             assert_eq!(id.as_str(), "buffer_delete");
         } else {

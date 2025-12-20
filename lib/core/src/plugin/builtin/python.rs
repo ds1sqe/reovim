@@ -73,7 +73,8 @@ impl PythonPlugin {
         // (requires filetype-aware keymaps, future enhancement)
         //
         // Example:
-        // ctx.bind_key("normal", " pr", CommandRef::Registered(PYTHON_RUN_FILE));
-        // ctx.bind_key("normal", " pi", CommandRef::Registered(PYTHON_START_REPL));
+        // let scope = KeymapScope::editor_normal();
+        // ctx.bind_key_scoped(scope.clone(), " pr", CommandRef::Registered(PYTHON_RUN_FILE));
+        // ctx.bind_key_scoped(scope, " pi", CommandRef::Registered(PYTHON_START_REPL));
     }
 }

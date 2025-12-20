@@ -4,7 +4,11 @@
 //! of `Interactor`, `DisplayComponent`, and `Layer` traits into a single interface.
 
 use crate::{
-    component::RenderContext, frame::FrameBuffer, interactor::InputResult, modd::ModeState,
+    bind::{EditModeKind, KeyBinding},
+    component::RenderContext,
+    frame::FrameBuffer,
+    interactor::InputResult,
+    modd::ModeState,
     screen::LayerBounds,
 };
 
@@ -156,6 +160,34 @@ pub trait UIComponent: std::fmt::Debug + Send + Sync {
     /// not passed to other handlers.
     fn captures_input(&self) -> bool {
         false
+    }
+
+    // === Keybindings ===
+
+    /// Provide keybindings for this component
+    ///
+    /// Returns a list of `(EditModeKind, KeyBinding)` tuples that define the
+    /// keybindings for this component. These are registered automatically
+    /// when the component is registered with the plugin system.
+    ///
+    /// The default implementation returns an empty list.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// fn keybindings(&self) -> Vec<(EditModeKind, KeyBinding)> {
+    ///     vec![
+    ///         (EditModeKind::Normal, KeyBinding {
+    ///             keys: "h",
+    ///             command: CommandRef::Registered(builtin::CURSOR_LEFT),
+    ///             hint: Some("Move left"),
+    ///             group: Some("motion"),
+    ///         }),
+    ///     ]
+    /// }
+    /// ```
+    fn keybindings(&self) -> Vec<(EditModeKind, KeyBinding)> {
+        vec![]
     }
 }
 
