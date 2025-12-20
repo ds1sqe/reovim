@@ -26,6 +26,8 @@ impl InteractorId {
     pub const TELESCOPE: Self = Self("telescope");
     /// Settings menu interactor
     pub const SETTINGS: Self = Self("settings");
+    /// Command line interactor (`:` commands)
+    pub const COMMAND_LINE: Self = Self("command_line");
 }
 
 impl std::fmt::Display for InteractorId {
@@ -185,6 +187,7 @@ impl InteractorRegistry {
         registry.register(Box::new(Explorer::default()));
         registry.register(Box::new(Telescope));
         registry.register(Box::new(Settings));
+        registry.register(Box::new(CommandLineInt));
         registry
     }
 }
@@ -339,6 +342,43 @@ impl Interactor for Settings {
 
     fn handle_delete_backward(&mut self, _mode_state: &ModeState) -> InputResult {
         InputResult::NotHandled
+    }
+}
+
+/// Command line interactor (`:` command input)
+///
+/// Handles input for command-line mode. State is managed via the enlist pattern,
+/// with the actual `CommandLine` struct on Runtime.
+#[derive(Debug, Default)]
+pub struct CommandLineInt;
+
+impl Interactor for CommandLineInt {
+    fn id(&self) -> InteractorId {
+        InteractorId::COMMAND_LINE
+    }
+
+    fn display_name(&self) -> &'static str {
+        "COMMAND"
+    }
+
+    fn icon(&self) -> Option<&'static str> {
+        Some("󰘳 ")
+    }
+
+    fn handle_insert_char(&mut self, c: char, _mode_state: &ModeState) -> InputResult {
+        InputResult::SendEvent(InnerEvent::FocusInput {
+            char: Some(c),
+            delete: false,
+            clear_landing: false,
+        })
+    }
+
+    fn handle_delete_backward(&mut self, _mode_state: &ModeState) -> InputResult {
+        InputResult::SendEvent(InnerEvent::FocusInput {
+            char: None,
+            delete: true,
+            clear_landing: false,
+        })
     }
 }
 

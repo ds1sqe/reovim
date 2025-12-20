@@ -1,36 +1,23 @@
 //! Base layer - tab line and status line
-
-// Allow deprecated Focus enum during transition to FocusId
-#![allow(deprecated)]
+//!
+//! Uses `DisplayComponent` trait implementations for rendering.
 
 use crate::{
     buffer::Buffer,
     command_line::CommandLine,
+    component::{DisplayComponent, RenderContext, StatusLineComponent, TabLineComponent},
     frame::FrameBuffer,
     highlight::{ColorMode, Style, Theme},
-    modd::{EditMode, Focus, ModeState},
+    modd::ModeState,
     screen::{Layer, LayerBounds, tab::TabManager, z_order},
 };
-
-/// Get the appropriate mode style from the theme based on current mode state
-fn get_mode_style(mode: &ModeState, theme: &Theme) -> Style {
-    match (&mode.focus, &mode.edit_mode) {
-        (Focus::Editor, EditMode::Insert(_)) => theme.statusline.mode.insert.clone(),
-        (Focus::Editor, EditMode::Visual(_)) => theme.statusline.mode.visual.clone(),
-        (Focus::Explorer, _) => theme.statusline.mode.explorer.clone(),
-        // Normal mode, telescope, settings menu all use normal style
-        (Focus::Editor, EditMode::Normal) | (Focus::Telescope | Focus::SettingsMenu, _) => {
-            theme.statusline.mode.normal.clone()
-        }
-    }
-}
 
 /// Layer wrapper for base UI elements (tab line, status line)
 pub struct BaseLayer<'a> {
     mode: &'a ModeState,
     cmd_line: &'a CommandLine,
     pending_keys: &'a str,
-    _last_command: &'a str,
+    last_command: &'a str,
     current_buffer: Option<&'a Buffer>,
     tab_manager: &'a TabManager,
     screen_width: u16,
@@ -55,7 +42,7 @@ impl<'a> BaseLayer<'a> {
             mode,
             cmd_line,
             pending_keys,
-            _last_command: last_command,
+            last_command,
             current_buffer,
             tab_manager,
             screen_width,
@@ -78,17 +65,28 @@ impl Layer for BaseLayer<'_> {
     }
 
     fn render_to_buffer(&self, buffer: &mut FrameBuffer, theme: &Theme, color_mode: ColorMode) {
-        // Render tab line if multiple tabs
-        if self.tab_manager.tab_count() > 1 {
-            self.render_tab_line(buffer, theme, color_mode);
-        }
+        // Create render context
+        let tab_offset = u16::from(self.tab_manager.tab_count() > 1);
+        let context = RenderContext::new(self.screen_width, self.screen_height, theme, color_mode)
+            .with_tab_offset(tab_offset);
+
+        // Render tab line using TabLineComponent
+        let tabs = self.tab_manager.tab_info();
+        let tab_component = TabLineComponent::new(&tabs, self.tab_manager.active_tab_index());
+        tab_component.render_to_frame(buffer, &context);
 
         // Render status line or command line at bottom
-        let status_y = self.screen_height - 1;
         if self.mode.is_command() {
-            self.render_command_line(buffer, status_y);
+            self.render_command_line(buffer, context.status_line_row());
         } else {
-            self.render_status_line(buffer, status_y, theme, color_mode);
+            // Use StatusLineComponent
+            let status_component = StatusLineComponent::new(
+                self.mode,
+                self.current_buffer,
+                self.pending_keys,
+                self.last_command,
+            );
+            status_component.render_to_frame(buffer, &context);
         }
     }
 
@@ -105,73 +103,6 @@ impl Layer for BaseLayer<'_> {
 }
 
 impl BaseLayer<'_> {
-    #[allow(clippy::cast_possible_truncation)]
-    fn render_tab_line(&self, buffer: &mut FrameBuffer, theme: &Theme, _color_mode: ColorMode) {
-        let tabs = self.tab_manager.tab_info();
-        let active_idx = self.tab_manager.active_tab_index();
-
-        let mut x = 0u16;
-        for (idx, tab) in tabs.iter().enumerate() {
-            let is_active = idx == active_idx;
-            let style = if is_active {
-                &theme.tab.active
-            } else {
-                &theme.tab.inactive
-            };
-
-            let label = format!(" {} ", tab.label);
-            buffer.write_str(x, 0, &label, style);
-            x += label.len() as u16;
-        }
-
-        // Fill rest of tab line
-        let fill_style = theme.tab.fill.clone();
-        for col in x..self.screen_width {
-            buffer.put_char(col, 0, ' ', &fill_style);
-        }
-    }
-
-    #[allow(clippy::cast_possible_truncation)]
-    fn render_status_line(
-        &self,
-        buffer: &mut FrameBuffer,
-        y: u16,
-        theme: &Theme,
-        _color_mode: ColorMode,
-    ) {
-        // Mode indicator
-        let mode_display = self.mode.display_string();
-        let mode_style = get_mode_style(self.mode, theme);
-        let mode_text = format!(" {mode_display} ");
-        buffer.write_str(0, y, &mode_text, &mode_style);
-
-        let mut x = mode_text.len() as u16;
-
-        // Pending keys
-        if !self.pending_keys.is_empty() {
-            let pending = format!(" {} ", self.pending_keys);
-            buffer.write_str(x, y, &pending, &theme.statusline.background);
-            x += pending.len() as u16;
-        }
-
-        // Fill middle
-        let right_content = self.current_buffer.map_or_else(String::new, |buf| {
-            let name = buf.file_path.as_deref().unwrap_or("[No Name]");
-            let modified = if buf.modified { "[+]" } else { "" };
-            format!("{name}{modified} Ln {}, Col {} ", buf.cur.y + 1, buf.cur.x + 1)
-        });
-
-        let right_start = self.screen_width.saturating_sub(right_content.len() as u16);
-        let fill_style = theme.statusline.background.clone();
-
-        for col in x..right_start {
-            buffer.put_char(col, y, ' ', &fill_style);
-        }
-
-        // Right side content
-        buffer.write_str(right_start, y, &right_content, &theme.statusline.background);
-    }
-
     #[allow(clippy::cast_possible_truncation)]
     fn render_command_line(&self, buffer: &mut FrameBuffer, y: u16) {
         let style = Style::default();

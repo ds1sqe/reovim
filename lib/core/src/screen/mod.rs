@@ -1,7 +1,7 @@
 #![allow(clippy::missing_errors_doc)]
 
 pub mod border;
-mod layer;
+pub mod layer;
 mod status_line;
 mod which_key;
 

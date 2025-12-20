@@ -22,6 +22,7 @@ impl Runtime {
     pub(crate) fn enlist_default_handlers(&mut self) {
         self.enlist_focus_input_handler(InteractorId::TELESCOPE, handle_telescope_input);
         self.enlist_focus_input_handler(InteractorId::EDITOR, handle_editor_input);
+        self.enlist_focus_input_handler(InteractorId::COMMAND_LINE, handle_command_line_input);
         // Explorer handles input internally via InputResult::Handled, no handler needed
     }
 }
@@ -75,5 +76,17 @@ fn handle_editor_input(rt: &mut Runtime, char: Option<char>, delete: bool, clear
                 buffer.delete_char_backward();
             }
         }
+    }
+}
+
+/// Command line focus input handler
+///
+/// Handles input for `:` command mode.
+fn handle_command_line_input(rt: &mut Runtime, char: Option<char>, delete: bool, _clear: bool) {
+    if let Some(c) = char {
+        rt.command_line.insert_char(c);
+    }
+    if delete {
+        rt.command_line.delete_char();
     }
 }

@@ -2,6 +2,49 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.6.11] - 2025-12-20
+
+### Architecture
+
+- **DisplayComponent Trait** (`lib/core/src/component/`)
+  - `DisplayComponent` trait for display-only UI components (no input handling)
+  - `RenderContext` struct passed to components during rendering
+  - Clean separation: Interactor for input, DisplayComponent for display
+
+- **StatusLineComponent** - Renders mode indicator, pending keys, filename, cursor position
+  - Uses `DisplayComponent` trait
+  - Mode-specific icons and styling
+
+- **TabLineComponent** - Renders tab bar when multiple tabs are open
+  - Uses `DisplayComponent` trait
+  - Visibility conditional on tab count
+
+- **CommandLine Interactor** - Input handling for `:` command mode
+  - `InteractorId::COMMAND_LINE` for identifying command line focus
+  - `CommandLineInt` struct implementing `Interactor` trait
+  - `handle_command_line_input()` enlist handler
+
+### Changed
+
+- **BaseLayer uses DisplayComponents** - Rendering delegated to components
+  - `TabLineComponent` replaces inline tab line rendering
+  - `StatusLineComponent` replaces inline status line rendering
+  - Removed unused `render_tab_line()` and `render_status_line()` methods
+
+- **Screen layer module made public** - `pub mod layer` for component access
+
+### Files Added
+
+- `lib/core/src/component/mod.rs` - Component module exports
+- `lib/core/src/component/display.rs` - DisplayComponent trait + RenderContext
+- `lib/core/src/component/status_line.rs` - StatusLineComponent
+- `lib/core/src/component/tab_line.rs` - TabLineComponent
+
+### Testing
+
+- 318 unit tests passing
+- All integration tests passing
+
 ## [0.6.10] - 2025-12-20
 
 ### Architecture
