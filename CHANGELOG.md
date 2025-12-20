@@ -2,6 +2,37 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.6.21] - 2025-12-20
+
+### Architecture
+
+- **Explicit Keystroke and KeySequence types** - Replace implicit string-based key definitions
+  - New `keystroke` module with `Key`, `Modifiers`, `Keystroke`, `KeySequence` types
+  - Type-safe key definitions instead of strings like `"gg"`, `" ff"`, `"<C-d>"`
+  - `key!` macro for single keystrokes: `key!('a')`, `key!(Ctrl 'd')`, `key!(Space)`
+  - `keys!` macro for sequences: `keys!['g' 'g']`, `keys![Space 'f' 'f']`, `keys![(Ctrl 'd')]`
+
+- **Multiple render formats for key display**
+  - Vim notation: `<C-d>`, `<Space>ff`, `<Esc>`
+  - Human-readable: `Ctrl+D`, `Space → F → F`, `Escape`
+  - StatusLine: `C-d`, `SPC f f`, `ESC`
+
+- **KeySequence integration throughout codebase**
+  - `CommandHandler.pending_keys` now uses `KeySequence` instead of `String`
+  - `KeyMap` uses `KeySequence` as HashMap key type
+  - `KeyBinding.keys` field changed from `&'static str` to `KeySequence`
+  - Status line displays pending keys using StatusLine render format
+
+### Files Changed
+
+- `lib/core/src/keystroke/mod.rs` - Core types (Key, Modifiers, Keystroke, KeySequence)
+- `lib/core/src/keystroke/notation.rs` - Render methods for multiple formats
+- `lib/core/src/keystroke/macros.rs` - key! and keys! macros
+- `lib/core/src/bind/mod.rs` - Updated KeyBinding and KeyMap to use KeySequence
+- `lib/core/src/event/handler/command/mod.rs` - pending_keys as KeySequence
+- `lib/core/src/plugin/context.rs` - bind_key_scoped takes KeySequence
+- `lib/core/src/telescope/picker/keymaps.rs` - Renders KeySequence for display
+
 ## [0.6.20] - 2025-12-20
 
 ### Refactoring

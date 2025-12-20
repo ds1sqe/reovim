@@ -83,7 +83,7 @@ async fn test_whichkey_space_prefix() {
         .await;
 
     result.assert_whichkey_visible();
-    result.assert_whichkey_prefix(" ");
+    result.assert_whichkey_prefix("SPC");
     result.assert_whichkey_has_binding("e"); // Space e - explorer
     result.assert_whichkey_has_binding("f"); // Space f - telescope prefix
 }

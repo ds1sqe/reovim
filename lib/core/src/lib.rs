@@ -2,6 +2,7 @@ pub mod bind;
 pub mod buffer;
 pub mod component;
 pub mod frame;
+pub mod keystroke;
 pub mod rpc;
 pub mod ui_component;
 pub mod visual;

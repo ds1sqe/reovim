@@ -6,6 +6,7 @@ use crate::{
     bind::{CommandRef, KeyMap, KeymapScope},
     command::{CommandRegistry, CommandTrait},
     interactor::InteractorRegistry,
+    keystroke::KeySequence,
     modifier::ModifierRegistry,
     runtime::FocusInputHandler,
     telescope::picker::Picker,
@@ -181,7 +182,7 @@ impl PluginContext {
     ///
     /// This allows direct scope-based keybinding registration without
     /// going through the legacy mode string API.
-    pub fn bind_key_scoped(&mut self, scope: KeymapScope, keys: &str, cmd: CommandRef) {
+    pub fn bind_key_scoped(&mut self, scope: KeymapScope, keys: KeySequence, cmd: CommandRef) {
         self.keymap.bind_scoped(scope, keys, cmd);
     }
 

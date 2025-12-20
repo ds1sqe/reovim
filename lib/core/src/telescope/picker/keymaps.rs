@@ -54,7 +54,7 @@ impl KeymapsPicker {
                     };
                     entries.push(KeymapEntry {
                         mode: mode_name.to_string(),
-                        key: key.clone(),
+                        key: key.to_string(),
                         command,
                         description: inner.hint.clone(),
                     });

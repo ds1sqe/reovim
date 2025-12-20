@@ -11,6 +11,7 @@ use {
         bind::{CommandRef, KeyMap, KeyMapInner},
         command::{registry::CommandRegistry, traits::OperatorMotionAction},
         event::{InnerEvent, KeyEvent, Subscribe, VisualTextObjectAction},
+        keystroke::{KeyNotationFormat, KeySequence, Keystroke},
         modd::{ModeState, OperatorType, SubMode},
         motion::Motion,
         textobject::{
@@ -48,7 +49,7 @@ pub struct CommandHandler {
     local_mode: ModeState,
     /// Watch receiver for completion active state
     completion_active_rx: watch::Receiver<bool>,
-    pending_keys: String,
+    pending_keys: KeySequence,
     count_parser: CountParser,
     dispatcher: Dispatcher,
     /// Command registry for looking up command descriptions
@@ -86,7 +87,7 @@ impl CommandHandler {
             mode_rx,
             local_mode: initial_mode,
             completion_active_rx,
-            pending_keys: String::new(),
+            pending_keys: KeySequence::new(),
             count_parser: CountParser::new(),
             dispatcher: Dispatcher::new(tx, 0, 0),
             registry,
@@ -118,7 +119,7 @@ impl CommandHandler {
         COMPLETION_KEYS.contains(&key)
     }
 
-    fn get_keymap_for_mode(&self) -> &HashMap<String, KeyMapInner> {
+    fn get_keymap_for_mode(&self) -> &HashMap<KeySequence, KeyMapInner> {
         self.keymap.get_keymap_for_mode(&self.local_mode)
     }
 
@@ -130,8 +131,10 @@ impl CommandHandler {
         &self,
         key: &str,
         count: Option<usize>,
-        pending: &str,
+        pending: &KeySequence,
     ) -> (Option<OperatorMotionAction>, bool) {
+        use crate::keystroke::Key;
+
         let mode = self.current_mode();
         if let SubMode::OperatorPending {
             operator,
@@ -141,12 +144,20 @@ impl CommandHandler {
             // Calculate total count (operator_count * motion_count)
             let _total_count = op_count.unwrap_or(1) * count.unwrap_or(1);
 
+            // Check if pending ends with 'i' or 'a' (for text object scope)
+            let pending_ends_with_i = pending
+                .last()
+                .is_some_and(|k| k.key == Key::Char('i') && k.modifiers.is_empty());
+            let pending_ends_with_a = pending
+                .last()
+                .is_some_and(|k| k.key == Key::Char('a') && k.modifiers.is_empty());
+
             // Check for text object completion: pending ends with "i" or "a", key is delimiter or semantic
-            if (pending.ends_with('i') || pending.ends_with('a'))
+            if (pending_ends_with_i || pending_ends_with_a)
                 && key.len() == 1
                 && let Some(obj_char) = key.chars().next()
             {
-                let scope = if pending.ends_with('i') {
+                let scope = if pending_ends_with_i {
                     TextObjectScope::Inner
                 } else {
                     TextObjectScope::Around
@@ -273,14 +284,24 @@ impl CommandHandler {
     /// Returns None with `should_wait=true` if waiting for more keys (i/a pressed)
     fn handle_visual_text_object(
         key: &str,
-        pending: &str,
+        pending: &KeySequence,
     ) -> (Option<VisualTextObjectAction>, bool) {
+        use crate::keystroke::Key;
+
+        // Check if pending ends with 'i' or 'a' (for text object scope)
+        let pending_ends_with_i = pending
+            .last()
+            .is_some_and(|k| k.key == Key::Char('i') && k.modifiers.is_empty());
+        let pending_ends_with_a = pending
+            .last()
+            .is_some_and(|k| k.key == Key::Char('a') && k.modifiers.is_empty());
+
         // Check for text object completion: pending ends with "i" or "a", key is delimiter/word/semantic
-        if (pending.ends_with('i') || pending.ends_with('a'))
+        if (pending_ends_with_i || pending_ends_with_a)
             && key.len() == 1
             && let Some(obj_char) = key.chars().next()
         {
-            let scope = if pending.ends_with('i') {
+            let scope = if pending_ends_with_i {
                 TextObjectScope::Inner
             } else {
                 TextObjectScope::Around
@@ -369,13 +390,8 @@ impl CommandHandler {
         if let Some(count) = self.count_parser.peek() {
             display.push_str(&count.to_string());
         }
-        // Replace invisible/special characters with visible representations
-        for c in self.pending_keys.chars() {
-            match c {
-                ' ' => display.push_str("SPC "),
-                _ => display.push(c),
-            }
-        }
+        // Use KeySequence's render method for status line format
+        display.push_str(&self.pending_keys.render(KeyNotationFormat::StatusLine));
         display
     }
 
@@ -388,8 +404,9 @@ impl CommandHandler {
         );
 
         if !bindings.is_empty() {
+            let prefix_str = self.pending_keys.render(KeyNotationFormat::StatusLine);
             self.dispatcher
-                .send_which_key_show(self.pending_keys.clone(), bindings)
+                .send_which_key_show(prefix_str, bindings)
                 .await;
             self.which_key_shown = true;
         }
@@ -461,6 +478,8 @@ impl CommandHandler {
                                 if key_str.is_empty() {
                                     continue;
                                 }
+                                // Convert KeyEvent to Keystroke for pending_keys
+                                let keystroke = Keystroke::from(&event);
 
                                 tracing::trace!(key = %key_str, "Key pressed");
 
@@ -527,18 +546,8 @@ impl CommandHandler {
                                     let mode = self.current_mode();
                                     if Self::is_backspace_editable_mode(mode) {
                                         if !self.pending_keys.is_empty() {
-                                            // Remove last character/key from pending
-                                            // Handle multi-char keys like "<C-x>" properly
-                                            if self.pending_keys.ends_with('>') {
-                                                // Remove entire <...> sequence
-                                                if let Some(start) = self.pending_keys.rfind('<') {
-                                                    self.pending_keys.truncate(start);
-                                                } else {
-                                                    self.pending_keys.pop();
-                                                }
-                                            } else {
-                                                self.pending_keys.pop();
-                                            }
+                                            // Remove last keystroke from pending
+                                            self.pending_keys.pop();
                                             self.dispatcher
                                                 .send_pending_keys(self.pending_display())
                                                 .await;
@@ -651,7 +660,7 @@ impl CommandHandler {
                                     }
                                     if should_wait {
                                         // Waiting for text object delimiter (i/a pressed)
-                                        self.pending_keys.push_str(&key_str);
+                                        self.pending_keys.push(keystroke.clone());
                                         self.dispatcher
                                             .send_pending_keys(self.pending_display())
                                             .await;
@@ -678,7 +687,7 @@ impl CommandHandler {
                                     }
                                     if should_wait {
                                         // Waiting for text object specifier (i/a pressed)
-                                        self.pending_keys.push_str(&key_str);
+                                        self.pending_keys.push(keystroke.clone());
                                         self.dispatcher
                                             .send_pending_keys(self.pending_display())
                                             .await;
@@ -732,7 +741,7 @@ impl CommandHandler {
                                 }
 
                                 // Show the key being pressed (before lookup clears it)
-                                self.pending_keys.push_str(&key_str);
+                                self.pending_keys.push(keystroke);
                                 self.dispatcher
                                     .send_pending_keys(self.pending_display())
                                     .await;
