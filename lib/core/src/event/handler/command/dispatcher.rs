@@ -6,7 +6,7 @@ use {
         command::{CommandContext, traits::OperatorMotionAction},
         event::{
             InnerEvent,
-            inner::{CommandEvent, VisualTextObjectAction, WhichKeyBinding},
+            inner::{CommandEvent, VisualTextObjectAction},
         },
         modd::{ModeState, OperatorType},
     },
@@ -131,19 +131,6 @@ impl Dispatcher {
             .inner_tx
             .send(InnerEvent::OperatorMotionEvent(action))
             .await;
-    }
-
-    /// Send event to show which-key popup
-    pub async fn send_which_key_show(&self, prefix: String, bindings: Vec<WhichKeyBinding>) {
-        let _ = self
-            .inner_tx
-            .send(InnerEvent::WhichKeyShow { prefix, bindings })
-            .await;
-    }
-
-    /// Send event to hide which-key popup
-    pub async fn send_which_key_hide(&self) {
-        let _ = self.inner_tx.send(InnerEvent::WhichKeyHide).await;
     }
 
     /// Send leap first character event

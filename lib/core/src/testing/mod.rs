@@ -12,7 +12,7 @@ pub mod visual;
 
 pub use {
     assertions::{ServerTest, ServerTestResult},
-    client::{ClientError, ModeInfo, TelescopeInfo, TestClient, WhichKeyBindingInfo, WhichKeyInfo},
+    client::{ClientError, ModeInfo, TelescopeInfo, TestClient},
     keys::{char_key, ctrl, key, key_mod, keys_from_str},
     server::ServerTestHarness,
     visual::VisualAssertions,

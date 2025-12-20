@@ -11,7 +11,7 @@ pub use {
     inner::{
         BufferEvent, CommandEvent, CompletionEvent, ExplorerEvent, FocusInputEvent, HighlightEvent,
         InnerEvent, LeapEvent, SettingsMenuEvent, TelescopeEvent, TreesitterEvent,
-        VisualTextObjectAction, WhichKeyBinding, WindowEvent,
+        VisualTextObjectAction, WindowEvent,
     },
     input::*,
 };

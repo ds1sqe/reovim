@@ -218,52 +218,6 @@ impl From<&crate::buffer::Buffer> for BufferSnapshot {
     }
 }
 
-/// Snapshot of which-key panel state
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WhichKeySnapshot {
-    /// Whether the panel is visible
-    pub visible: bool,
-    /// Current prefix being shown
-    pub prefix: String,
-    /// Available bindings for the current prefix
-    pub bindings: Vec<WhichKeyBindingSnapshot>,
-}
-
-/// Individual binding in which-key panel
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WhichKeyBindingSnapshot {
-    /// The key sequence (e.g., "g" or "gg")
-    pub key: String,
-    /// Description of what this key does
-    pub description: String,
-    /// Whether this is a prefix (has more bindings) or a terminal command
-    pub is_prefix: bool,
-}
-
-impl From<&crate::screen::WhichKeyPanel> for WhichKeySnapshot {
-    fn from(panel: &crate::screen::WhichKeyPanel) -> Self {
-        Self {
-            visible: panel.visible,
-            prefix: panel.prefix.clone(),
-            bindings: panel
-                .bindings
-                .iter()
-                .map(WhichKeyBindingSnapshot::from)
-                .collect(),
-        }
-    }
-}
-
-impl From<&crate::event::WhichKeyBinding> for WhichKeyBindingSnapshot {
-    fn from(binding: &crate::event::WhichKeyBinding) -> Self {
-        Self {
-            key: binding.key.clone(),
-            description: binding.description.clone(),
-            is_prefix: binding.is_prefix,
-        }
-    }
-}
-
 /// Snapshot of telescope state
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TelescopeSnapshot {

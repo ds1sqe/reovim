@@ -37,13 +37,6 @@ pub enum InnerEvent {
     SettingsMenuEvent(SettingsMenuEvent),
     RenderSignal,
     KillSignal,
-    /// Show the which-key popup with available bindings
-    WhichKeyShow {
-        prefix: String,
-        bindings: Vec<WhichKeyBinding>,
-    },
-    /// Hide the which-key popup
-    WhichKeyHide,
     /// Terminal screen resize event
     ScreenResizeEvent {
         width: u16,
@@ -80,19 +73,6 @@ pub enum FocusInputEvent {
     InsertChar(char),
     /// Delete the character before the cursor
     DeleteCharBackward,
-}
-
-/// A single binding entry for the which-key popup
-#[derive(Debug, Clone)]
-pub struct WhichKeyBinding {
-    /// The key sequence (e.g., "g" or "gg")
-    pub key: String,
-    /// Description of what this key does
-    pub description: String,
-    /// Whether this is a prefix (has more bindings) or a terminal command
-    pub is_prefix: bool,
-    /// Optional group for categorization (e.g., "motion", "operator", "mode")
-    pub group: Option<String>,
 }
 
 /// Buffer-related events

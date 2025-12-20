@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use {
     super::{
-        client::{ModeInfo, ScreenInfo, TelescopeInfo, TestClient, WhichKeyInfo, WindowInfo},
+        client::{ModeInfo, ScreenInfo, TelescopeInfo, TestClient, WindowInfo},
         server::ServerTestHarness,
     },
     crate::visual::{LayerInfo, VisualSnapshot},
@@ -129,7 +129,6 @@ impl ServerTest {
         let mode = client.mode().await.expect("Failed to get mode");
         let cursor = client.cursor().await.ok();
         let buffer_content = client.buffer_content().await.unwrap_or_default();
-        let whichkey = client.whichkey().await.ok();
         let telescope = client.telescope().await.ok();
         let screen_content = client.screen_content_raw().await.unwrap_or_default();
         let screen = client.screen().await.ok();
@@ -138,7 +137,6 @@ impl ServerTest {
             mode,
             cursor,
             buffer_content,
-            whichkey,
             telescope,
             screen_content,
             screen,
@@ -156,8 +154,6 @@ pub struct ServerTestResult {
     pub cursor: Option<(u16, u16)>,
     /// Final buffer content
     pub buffer_content: String,
-    /// Which-key panel state
-    pub whichkey: Option<WhichKeyInfo>,
     /// Telescope state
     pub telescope: Option<TelescopeInfo>,
     /// Raw screen content with ANSI escape codes
@@ -252,63 +248,6 @@ impl ServerTestResult {
     /// Panics if not in command mode.
     pub fn assert_command_mode(&self) {
         assert_eq!(self.mode.sub_mode, "Command", "Expected command mode, got {:?}", self.mode);
-    }
-
-    /// Assert that the which-key panel is visible
-    ///
-    /// # Panics
-    ///
-    /// Panics if the which-key panel is not visible.
-    pub fn assert_whichkey_visible(&self) {
-        let wk = self
-            .whichkey
-            .as_ref()
-            .expect("Which-key state not available");
-        assert!(wk.visible, "Expected which-key panel to be visible");
-    }
-
-    /// Assert that the which-key panel is hidden
-    ///
-    /// # Panics
-    ///
-    /// Panics if the which-key panel is visible.
-    pub fn assert_whichkey_hidden(&self) {
-        let wk = self
-            .whichkey
-            .as_ref()
-            .expect("Which-key state not available");
-        assert!(!wk.visible, "Expected which-key panel to be hidden");
-    }
-
-    /// Assert that the which-key panel has a specific prefix
-    ///
-    /// # Panics
-    ///
-    /// Panics if the prefix doesn't match.
-    pub fn assert_whichkey_prefix(&self, expected: &str) {
-        let wk = self
-            .whichkey
-            .as_ref()
-            .expect("Which-key state not available");
-        assert_eq!(wk.prefix, expected, "Which-key prefix mismatch");
-    }
-
-    /// Assert that the which-key panel has a binding with the given key
-    ///
-    /// # Panics
-    ///
-    /// Panics if no binding with the key exists.
-    pub fn assert_whichkey_has_binding(&self, key: &str) {
-        let wk = self
-            .whichkey
-            .as_ref()
-            .expect("Which-key state not available");
-        assert!(
-            wk.bindings.iter().any(|b| b.key == key),
-            "Which-key panel does not have binding for key '{}'. Available: {:?}",
-            key,
-            wk.bindings.iter().map(|b| &b.key).collect::<Vec<_>>()
-        );
     }
 
     /// Assert that telescope is active/visible

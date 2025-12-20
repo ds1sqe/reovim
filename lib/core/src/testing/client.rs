@@ -55,22 +55,6 @@ pub struct ModeInfo {
     pub sub_mode: String,
 }
 
-/// Which-key panel information returned by the server
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WhichKeyInfo {
-    pub visible: bool,
-    pub prefix: String,
-    pub bindings: Vec<WhichKeyBindingInfo>,
-}
-
-/// Single binding in which-key panel
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WhichKeyBindingInfo {
-    pub key: String,
-    pub description: String,
-    pub is_prefix: bool,
-}
-
 /// Telescope state information returned by the server
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TelescopeInfo {
@@ -289,16 +273,6 @@ impl TestClient {
     pub async fn quit(&mut self) -> Result<(), ClientError> {
         self.send("editor/quit", json!({})).await?;
         Ok(())
-    }
-
-    /// Get which-key panel state
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the request fails.
-    pub async fn whichkey(&mut self) -> Result<WhichKeyInfo, ClientError> {
-        let result = self.send("state/whichkey", json!({})).await?;
-        serde_json::from_value(result).map_err(ClientError::ParseFailed)
     }
 
     /// Get telescope state

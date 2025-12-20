@@ -9,7 +9,7 @@ pub use {count_parser::CountParser, dispatcher::Dispatcher, key_parser::key_to_s
 use {
     crate::{
         bind::{CommandRef, KeyMap, KeyMapInner},
-        command::{registry::CommandRegistry, traits::OperatorMotionAction},
+        command::traits::OperatorMotionAction,
         event::{InnerEvent, KeyEvent, Subscribe, VisualTextObjectAction},
         keystroke::{KeyNotationFormat, KeySequence, Keystroke},
         modd::{ModeState, OperatorType, SubMode},
@@ -19,12 +19,9 @@ use {
             WordTextObject, WordType,
         },
     },
-    std::{collections::HashMap, sync::Arc, time::Duration},
+    std::{collections::HashMap, time::Duration},
     tokio::sync::{broadcast::Receiver, mpsc::Sender, watch},
 };
-
-/// Default timeout for which-key popup (500ms)
-const WHICH_KEY_TIMEOUT_MS: u64 = 500;
 
 /// Keys that are handled differently when completion popup is visible
 const COMPLETION_KEYS: &[&str] = &["Tab", "C-n", "C-p", "C-e"];
@@ -52,12 +49,6 @@ pub struct CommandHandler {
     pending_keys: KeySequence,
     count_parser: CountParser,
     dispatcher: Dispatcher,
-    /// Command registry for looking up command descriptions
-    registry: Arc<CommandRegistry>,
-    /// Timeout duration for which-key popup
-    which_key_timeout: Duration,
-    /// Whether the which-key popup is currently shown
-    which_key_shown: bool,
     /// Current leap mode phase
     leap_phase: LeapPhase,
     /// Accumulated leap label (for multi-char labels)
@@ -78,7 +69,6 @@ impl CommandHandler {
         tx: Sender<InnerEvent>,
         mode_rx: watch::Receiver<ModeState>,
         completion_active_rx: watch::Receiver<bool>,
-        registry: Arc<CommandRegistry>,
     ) -> Self {
         let initial_mode = mode_rx.borrow().clone();
         Self {
@@ -90,9 +80,6 @@ impl CommandHandler {
             pending_keys: KeySequence::new(),
             count_parser: CountParser::new(),
             dispatcher: Dispatcher::new(tx, 0, 0),
-            registry,
-            which_key_timeout: Duration::from_millis(WHICH_KEY_TIMEOUT_MS),
-            which_key_shown: false,
             leap_phase: LeapPhase::Inactive,
             leap_label: String::new(),
             mode_locally_changed: false,
@@ -395,48 +382,6 @@ impl CommandHandler {
         display
     }
 
-    /// Show the which-key popup with available bindings
-    async fn show_which_key(&mut self) {
-        let bindings = self.keymap.get_bindings_for_prefix(
-            &self.local_mode,
-            &self.pending_keys,
-            &self.registry,
-        );
-
-        if !bindings.is_empty() {
-            let prefix_str = self.pending_keys.render(KeyNotationFormat::StatusLine);
-            self.dispatcher
-                .send_which_key_show(prefix_str, bindings)
-                .await;
-            self.which_key_shown = true;
-        }
-    }
-
-    /// Hide the which-key popup
-    async fn hide_which_key(&mut self) {
-        if self.which_key_shown {
-            self.dispatcher.send_which_key_hide().await;
-            self.which_key_shown = false;
-        }
-    }
-
-    /// Check if which-key should be shown
-    /// Returns true when:
-    /// - `pending_keys` is empty (show all bindings)
-    /// - `pending_keys` is a valid prefix (show prefix-specific bindings)
-    fn should_show_which_key(&self) -> bool {
-        // Always show which-key when pending_keys is empty (show all bindings)
-        if self.pending_keys.is_empty() {
-            return true;
-        }
-
-        // Check if there are any bindings that start with this prefix
-        let keymap = self.get_keymap_for_mode();
-        keymap
-            .keys()
-            .any(|k| k.starts_with(&self.pending_keys) && k != &self.pending_keys)
-    }
-
     /// Check if mode is one where ESC should only clear pending state (not trigger keymap lookup)
     /// Visual mode is excluded because it has an Escape binding in the keymap to exit to Normal
     /// Telescope mode is excluded because it has Escape bindings for mode switching and closing
@@ -461,13 +406,8 @@ impl CommandHandler {
         if let Some(rx) = self.key_event_rx.take() {
             let mut rx = rx;
             loop {
-                // Calculate timeout duration based on pending keys state
-                let timeout = if self.should_show_which_key() && !self.which_key_shown {
-                    self.which_key_timeout
-                } else {
-                    // No pending prefix or already showing - use long timeout
-                    Duration::from_secs(3600)
-                };
+                // Use long timeout - no time-sensitive features
+                let timeout = Duration::from_secs(3600);
 
                 tokio::select! {
                     // Key event received
@@ -500,9 +440,6 @@ impl CommandHandler {
                                         self.local_mode = runtime_mode;
                                     }
                                 }
-
-                                // Hide which-key popup on any key press
-                                self.hide_which_key().await;
 
                                 // Check if this is a count digit
                                 let mode = self.current_mode();
@@ -776,12 +713,8 @@ impl CommandHandler {
                             }
                         }
                     }
-                    // Timeout elapsed - show which-key popup
-                    () = tokio::time::sleep(timeout) => {
-                        if self.should_show_which_key() && !self.which_key_shown {
-                            self.show_which_key().await;
-                        }
-                    }
+                    // Timeout elapsed - no action needed
+                    () = tokio::time::sleep(timeout) => {}
                 }
             }
         }

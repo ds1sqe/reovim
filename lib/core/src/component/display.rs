@@ -18,7 +18,6 @@ use crate::{
     leap::LeapState,
     modd::ModeState,
     modifier::{ModifierRegistry, StyleModifiers, WindowBehaviorState, WindowStyleState},
-    screen::WhichKeyPanel,
     settings_menu::SettingsMenuState,
     telescope::TelescopeState,
 };
@@ -47,8 +46,6 @@ pub struct RenderState<'a> {
     pub theme: &'a Theme,
     /// Explorer state (if explorer is enabled)
     pub explorer: Option<&'a ExplorerState>,
-    /// Which-key panel state
-    pub which_key: &'a WhichKeyPanel,
     /// Completion popup state
     pub completion: &'a CompletionState,
     /// Telescope fuzzy finder state

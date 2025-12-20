@@ -6,9 +6,8 @@ use {
             CommandId, CommandTrait, builtin::ToggleExplorerCommand, id::builtin,
             registry::CommandRegistry,
         },
-        event::WhichKeyBinding,
         keys,
-        keystroke::{KeyNotationFormat, KeySequence},
+        keystroke::KeySequence,
         modd::{EditMode, ModeState, SubMode},
         ui_component::ComponentId,
     },
@@ -401,54 +400,6 @@ impl KeyMap {
             id: mode.interactor_id,
             mode: EditModeKind::from(&mode.edit_mode),
         }
-    }
-
-    /// Get all available bindings for a given prefix in a mode
-    ///
-    /// This is used by the which-key feature to display available keybindings.
-    /// Keymap selection is based on Focus + `EditMode` + `SubMode`:
-    /// - `SubMode` takes precedence (Command, `OperatorPending`)
-    /// - Then Focus + `EditMode` determines the keymap
-    #[must_use]
-    pub fn get_bindings_for_prefix(
-        &self,
-        mode: &ModeState,
-        prefix: &KeySequence,
-        registry: &CommandRegistry,
-    ) -> Vec<WhichKeyBinding> {
-        let keymap = self.get_keymap_for_mode(mode);
-
-        let mut bindings = Vec::new();
-        let mut seen_keys = std::collections::HashSet::new();
-
-        for (key_seq, inner) in keymap {
-            // Check if key sequence starts with the prefix and is longer
-            if key_seq.starts_with(prefix) && key_seq.len() > prefix.len() {
-                // Get the next keystroke after the prefix
-                let next_keystroke = &key_seq.0[prefix.len()];
-                let next_key_str = next_keystroke.render(KeyNotationFormat::StatusLine);
-
-                // Avoid duplicates
-                if seen_keys.contains(&next_key_str) {
-                    continue;
-                }
-                seen_keys.insert(next_key_str.clone());
-
-                let description = inner.get_description(registry);
-                let is_prefix = inner.is_prefix();
-
-                bindings.push(WhichKeyBinding {
-                    key: next_key_str,
-                    description,
-                    is_prefix,
-                    group: inner.group.map(String::from),
-                });
-            }
-        }
-
-        // Sort by key for consistent display
-        bindings.sort_by(|a, b| a.key.cmp(&b.key));
-        bindings
     }
 
     // ========================================================================

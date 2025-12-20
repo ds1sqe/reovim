@@ -2,7 +2,6 @@
 
 pub mod border;
 mod status_line;
-mod which_key;
 
 /// Z-order constants for rendering layers
 /// Higher values render on top (occlude lower values)
@@ -17,12 +16,10 @@ pub mod z_order {
     pub const LEAP: u8 = 3;
     /// Completion popup
     pub const COMPLETION: u8 = 4;
-    /// Which-key hint panel
-    pub const WHICH_KEY: u8 = 5;
     /// Telescope fuzzy finder (full-screen overlay)
-    pub const TELESCOPE: u8 = 6;
+    pub const TELESCOPE: u8 = 5;
     /// Settings menu (full-screen overlay)
-    pub const SETTINGS_MENU: u8 = 7;
+    pub const SETTINGS_MENU: u8 = 6;
 }
 
 /// Bounds of a layer (x, y, width, height)
@@ -97,10 +94,7 @@ use {
     window::{Anchor, LineNumber, Window},
 };
 
-pub use {
-    status_line::{StatusLineRenderer, render_command_line_to, render_status_line_to},
-    which_key::{WhichKeyConfig, WhichKeyPanel},
-};
+pub use status_line::{StatusLineRenderer, render_command_line_to, render_status_line_to};
 
 pub mod cusor;
 pub mod layout;
@@ -399,7 +393,6 @@ impl Screen {
     pub fn layer_info(
         &self,
         explorer_visible: bool,
-        which_key_visible: bool,
         completion_visible: bool,
         telescope_active: bool,
         leap_active: bool,
@@ -463,21 +456,6 @@ impl Screen {
             });
         }
 
-        // Which-key
-        if which_key_visible {
-            layers.push(LayerInfo {
-                name: "which_key".to_string(),
-                z_order: z_order::WHICH_KEY,
-                visible: true,
-                bounds: BoundsInfo::new(
-                    0,
-                    self.size.height.saturating_sub(10),
-                    self.size.width,
-                    10,
-                ),
-            });
-        }
-
         // Telescope
         if telescope_active {
             layers.push(LayerInfo {
@@ -519,7 +497,6 @@ impl Screen {
         color_mode: ColorMode,
         theme: &Theme,
         explorer_state: Option<&ExplorerState>,
-        which_key_panel: &WhichKeyPanel,
         completion_state: &CompletionState,
         telescope_state: &TelescopeState,
         leap_state: &LeapState,
@@ -539,7 +516,6 @@ impl Screen {
                 color_mode,
                 theme,
                 explorer_state,
-                which_key_panel,
                 completion_state,
                 telescope_state,
                 leap_state,
@@ -561,7 +537,6 @@ impl Screen {
             color_mode,
             theme,
             explorer_state,
-            which_key_panel,
             completion_state,
             telescope_state,
             leap_state,
@@ -592,7 +567,6 @@ impl Screen {
                 state.color_mode,
                 state.theme,
                 state.explorer,
-                state.which_key,
                 state.completion,
                 state.telescope,
                 state.leap,
@@ -614,7 +588,6 @@ impl Screen {
             state.color_mode,
             state.theme,
             state.explorer,
-            state.which_key,
             state.completion,
             state.telescope,
             state.leap,
@@ -639,7 +612,6 @@ impl Screen {
         color_mode: ColorMode,
         theme: &Theme,
         explorer_state: Option<&ExplorerState>,
-        which_key_panel: &WhichKeyPanel,
         completion_state: &CompletionState,
         telescope_state: &TelescopeState,
         leap_state: &LeapState,
@@ -823,14 +795,6 @@ impl Screen {
             );
         }
 
-        // Render which-key panel overlay (if visible and not disabled by modifiers)
-        let which_key_disabled = behavior_flags
-            .as_ref()
-            .is_some_and(|b| b.behavior.features.is_which_key_disabled());
-        if which_key_panel.visible && !which_key_disabled {
-            self.render_which_key_to_buffer(buffer, which_key_panel, color_mode, theme);
-        }
-
         // Render settings menu overlay
         if settings_menu.visible {
             self.render_settings_menu_to_buffer(buffer, settings_menu, theme, color_mode);
@@ -884,7 +848,6 @@ impl Screen {
         color_mode: ColorMode,
         theme: &Theme,
         explorer_state: Option<&ExplorerState>,
-        which_key_panel: &WhichKeyPanel,
         completion_state: &CompletionState,
         telescope_state: &TelescopeState,
         leap_state: &LeapState,
@@ -1021,16 +984,6 @@ impl Screen {
                 theme,
                 color_mode,
             )?;
-        }
-
-        // Render which-key panel overlay (after windows and status line)
-        if which_key_panel.visible {
-            let panel_lines =
-                which_key_panel.render(self.size.width, self.size.height, color_mode, theme);
-            for (line, x, y) in panel_lines {
-                queue!(self.out_stream, MoveTo(x, y))?;
-                queue!(self.out_stream, Print(line))?;
-            }
         }
 
         // Render settings menu overlay (centered popup when active)
@@ -2276,42 +2229,6 @@ impl Screen {
                 let px = keys_start + i as u16;
                 if px < buffer.width() {
                     buffer.put_char(px, y, ch, keys_style);
-                }
-            }
-        }
-    }
-
-    /// Render which-key panel to frame buffer
-    #[allow(clippy::cast_possible_truncation)]
-    fn render_which_key_to_buffer(
-        &self,
-        buffer: &mut FrameBuffer,
-        panel: &WhichKeyPanel,
-        _color_mode: ColorMode,
-        theme: &Theme,
-    ) {
-        use crate::overlay::OverlayGeometry;
-
-        // Get panel bounds to fill background
-        let bounds = panel.compute_bounds(self.size.width, self.size.height);
-        let bg_style = &theme.whichkey.background;
-
-        // Fill panel area with background
-        for row in bounds.y..(bounds.y + bounds.height).min(buffer.height()) {
-            for col in bounds.x..(bounds.x + bounds.width).min(buffer.width()) {
-                buffer.put_char(col, row, ' ', bg_style);
-            }
-        }
-
-        // Render the panel text on top
-        let lines = panel.render(self.size.width, self.size.height, ColorMode::TrueColor, theme);
-        for (line, x, y) in lines {
-            // Strip ANSI codes from the pre-rendered line
-            let stripped = crate::io::output::strip_ansi_codes(&line);
-            for (i, ch) in stripped.chars().enumerate() {
-                let col = x + i as u16;
-                if col < buffer.width() && y < buffer.height() {
-                    buffer.put_char(col, y, ch, &theme.whichkey.key);
                 }
             }
         }

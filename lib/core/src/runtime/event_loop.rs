@@ -63,7 +63,6 @@ impl Runtime {
             self.tx.clone(),
             mode_rx,
             completion_active_rx,
-            self.command_registry.clone(),
         );
         let mut terminate_hdr = TerminateHandler::new(self.tx.clone());
 
@@ -141,7 +140,6 @@ impl Runtime {
             self.tx.clone(),
             mode_rx,
             completion_active_rx,
-            self.command_registry.clone(),
         );
         let mut terminate_hdr = crate::event::TerminateHandler::new(self.tx.clone());
 
@@ -376,14 +374,6 @@ impl Runtime {
             InnerEvent::KillSignal => {
                 return true;
             }
-            InnerEvent::WhichKeyShow { prefix, bindings } => {
-                self.which_key_panel.show(prefix, bindings);
-                self.request_render();
-            }
-            InnerEvent::WhichKeyHide => {
-                self.which_key_panel.hide();
-                self.request_render();
-            }
             InnerEvent::OperatorMotionEvent(ref action) => {
                 self.handle_operator_motion(action);
             }
@@ -490,10 +480,6 @@ impl Runtime {
                 };
                 RpcResponse::success(id, serde_json::to_value(snapshot).unwrap())
             }
-            methods::STATE_WHICHKEY => {
-                let snapshot = crate::rpc::WhichKeySnapshot::from(&self.which_key_panel);
-                RpcResponse::success(id, serde_json::to_value(snapshot).unwrap())
-            }
             methods::STATE_TELESCOPE => {
                 let snapshot = crate::rpc::TelescopeSnapshot::from(&self.telescope_state);
                 RpcResponse::success(id, serde_json::to_value(snapshot).unwrap())
@@ -546,7 +532,6 @@ impl Runtime {
                 // Return layer visibility information
                 let layers = self.screen.layer_info(
                     self.explorer_state.is_some(),
-                    self.which_key_panel.visible,
                     self.completion_state.active,
                     self.telescope_state.active,
                     self.leap_state.is_active(),
@@ -970,9 +955,6 @@ impl Runtime {
     #[allow(clippy::collapsible_if)]
     fn handle_mode_change(&mut self, new_mode: ModeState) {
         tracing::debug!(?new_mode, "Mode changed");
-
-        // Hide which-key panel on mode change
-        self.which_key_panel.hide();
 
         // Handle insert mode
         if new_mode.is_insert() {

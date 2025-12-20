@@ -175,24 +175,6 @@ async fn test_layer_info_telescope() {
     );
 }
 
-/// Test that which-key layer is visible after timeout
-#[tokio::test]
-async fn test_layer_info_which_key() {
-    let mut result = ServerTest::new()
-        .await
-        .with_size(80, 24)
-        .with_keys("g")
-        .with_delay(600) // 500ms timeout + buffer
-        .run()
-        .await;
-
-    let layers = result.layer_info().await;
-    assert!(
-        layers.iter().any(|l| l.name == "which_key" && l.visible),
-        "Which-key layer should be visible after timeout. Layers: {layers:?}"
-    );
-}
-
 // ============================================================================
 // Visual assertions tests
 // ============================================================================

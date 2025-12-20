@@ -29,7 +29,7 @@ use {
         modifier::{ModifierContext, ModifierRegistry},
         plugin::{PluginContext, PluginLoader, PluginTuple},
         register::Registers,
-        screen::{Screen, WhichKeyPanel},
+        screen::Screen,
         settings_menu::SettingsMenuState,
         telescope::{TelescopeMatcher, TelescopeState, picker::Picker},
         treesitter::TreesitterManager,
@@ -70,8 +70,6 @@ pub struct Runtime {
     pub explorer_state: Option<ExplorerState>,
     /// Jump list for Ctrl-O/Ctrl-I navigation
     pub jump_list: JumpList,
-    /// Which-key popup panel state
-    pub which_key_panel: WhichKeyPanel,
     /// Completion engine
     pub completion_engine: Arc<CompletionEngine>,
     /// Current completion state
@@ -202,7 +200,6 @@ impl Runtime {
             next_buffer_id: 1,
             explorer_state: None,
             jump_list: JumpList::new(),
-            which_key_panel: WhichKeyPanel::new(),
             completion_engine: Arc::new(CompletionEngine::default()),
             completion_state: CompletionState::new(),
             completion_items_cache: Vec::new(),
@@ -343,7 +340,6 @@ impl Runtime {
             color_mode: self.color_mode,
             theme: &self.theme,
             explorer: self.explorer_state.as_ref(),
-            which_key: &self.which_key_panel,
             completion: &self.completion_state,
             telescope: &self.telescope_state,
             leap: &self.leap_state,
@@ -907,7 +903,6 @@ impl Runtime {
         // Get layer info
         let layers = self.screen.layer_info(
             self.explorer_state.is_some(),
-            self.which_key_panel.visible,
             self.completion_state.active,
             self.telescope_state.active,
             self.leap_state.is_active(),
