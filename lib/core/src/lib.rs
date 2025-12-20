@@ -1,8 +1,10 @@
 pub mod bind;
 pub mod buffer;
 pub mod component;
+pub mod decoration;
 pub mod frame;
 pub mod keystroke;
+pub mod language;
 pub mod rpc;
 pub mod ui_component;
 pub mod visual;

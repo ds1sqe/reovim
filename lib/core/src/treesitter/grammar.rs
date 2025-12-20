@@ -14,6 +14,8 @@ pub enum LanguageId {
     Json,
     Toml,
     Markdown,
+    /// Markdown inline content (emphasis, links, code spans)
+    MarkdownInline,
     Unknown,
 }
 
@@ -29,6 +31,7 @@ impl LanguageId {
             Self::Json => "json",
             Self::Toml => "toml",
             Self::Markdown => "markdown",
+            Self::MarkdownInline => "markdown_inline",
             Self::Unknown => "unknown",
         }
     }
@@ -114,6 +117,16 @@ impl BundledGrammar {
     pub fn markdown() -> Self {
         Self::new(LanguageId::Markdown, tree_sitter_md::LANGUAGE.into(), &["md", "markdown"])
     }
+
+    /// Create Markdown Inline grammar (for emphasis, links, etc.)
+    #[must_use]
+    pub fn markdown_inline() -> Self {
+        Self::new(
+            LanguageId::MarkdownInline,
+            tree_sitter_md::INLINE_LANGUAGE.into(),
+            &[], // No file extensions - used internally for markdown inline parsing
+        )
+    }
 }
 
 /// Registry of available grammars with language detection
@@ -145,6 +158,7 @@ impl GrammarRegistry {
         registry.register(BundledGrammar::json());
         registry.register(BundledGrammar::toml());
         registry.register(BundledGrammar::markdown());
+        registry.register(BundledGrammar::markdown_inline());
 
         registry
     }

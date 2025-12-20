@@ -235,6 +235,14 @@ impl From<&KeyEvent> for Keystroke {
             modifiers.shift = true;
         }
 
+        // For uppercase ASCII letters, the shift is already encoded in the character.
+        // Don't consider it as a modifier for binding matching (e.g., 'G' matches Shift+g).
+        if let KeyCode::Char(c) = event.code
+            && c.is_ascii_uppercase()
+        {
+            modifiers.shift = false;
+        }
+
         Self { key, modifiers }
     }
 }
@@ -485,5 +493,37 @@ mod tests {
         let seq2 = KeySequence::from_vec(vec![Keystroke::char('g'), Keystroke::char('g')]);
         assert!(seq1.is_prefix_of(&seq2));
         assert!(!seq2.is_prefix_of(&seq1));
+    }
+
+    #[test]
+    fn test_uppercase_letter_ignores_shift_modifier() {
+        // When pressing Shift+G, crossterm sends Char('G') with SHIFT modifier.
+        // For uppercase letters, shift is redundant (already encoded in the character).
+        // The keystroke should match keys!['G'] which has no modifiers.
+        let event = KeyEvent::new(KeyCode::Char('G'), KeyModifiers::SHIFT);
+        let k = Keystroke::from(&event);
+
+        assert_eq!(k.key, Key::Char('G'));
+        // Shift should NOT be set for uppercase letters
+        assert!(!k.modifiers.shift, "Shift should be cleared for uppercase letters");
+        assert!(k.modifiers.is_empty());
+
+        // This should match the binding keys!['G']
+        let binding = Keystroke::char('G');
+        assert_eq!(k, binding);
+    }
+
+    #[test]
+    fn test_ctrl_uppercase_preserves_ctrl() {
+        // Ctrl+Shift+G should preserve ctrl but clear shift
+        let event = KeyEvent::new(
+            KeyCode::Char('G'),
+            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+        );
+        let k = Keystroke::from(&event);
+
+        assert_eq!(k.key, Key::Char('G'));
+        assert!(k.modifiers.ctrl);
+        assert!(!k.modifiers.shift, "Shift should be cleared for uppercase letters");
     }
 }

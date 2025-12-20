@@ -69,6 +69,7 @@ use {
         completion::CompletionState,
         component::RenderState,
         constants::RESET_STYLE,
+        decoration::DecorationStore,
         explorer::{ExplorerState, render_explorer},
         folding::FoldManager,
         frame::{FrameBuffer, FrameRenderer},
@@ -523,6 +524,7 @@ impl Screen {
                 indent_analyzer,
                 settings_menu,
                 None, // Legacy path: no modifier support
+                None, // Legacy path: no decoration support
             );
         }
 
@@ -574,6 +576,7 @@ impl Screen {
                 state.indent_analyzer,
                 state.settings_menu,
                 state.modifier_registry,
+                state.decoration_store,
             );
         }
 
@@ -619,6 +622,7 @@ impl Screen {
         indent_analyzer: &IndentAnalyzer,
         settings_menu: &crate::settings_menu::SettingsMenuState,
         modifier_registry: Option<&ModifierRegistry>,
+        decoration_store: Option<&DecorationStore>,
     ) -> std::result::Result<(), std::io::Error> {
         // Take frame renderer out (borrow checker workaround)
         let mut renderer = self
@@ -714,6 +718,8 @@ impl Screen {
                     theme,
                     fold_state,
                     indent_analyzer,
+                    decoration_store,
+                    &mode.edit_mode,
                 );
 
                 // Calculate cursor position only for the ACTIVE window (and if editor is focused)

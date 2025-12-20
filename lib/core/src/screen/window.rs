@@ -2,10 +2,15 @@
 
 use crate::{
     buffer::{Buffer, SelectionMode, SelectionOps},
+    decoration::{Decoration, DecorationStore},
     folding::FoldState,
     frame::FrameBuffer,
-    highlight::{ColorMode, Highlight, HighlightGroup, HighlightStore, Span, Style, Theme},
+    highlight::{
+        ColorMode, Highlight, HighlightGroup, HighlightStore, Span, Style, Theme,
+        store::LineHighlight,
+    },
     indent::IndentAnalyzer,
+    modd::EditMode,
 };
 
 use super::{
@@ -601,45 +606,6 @@ impl Window {
         result
     }
 
-    /// Render a line with highlight ranges directly to a frame buffer
-    ///
-    /// This writes char+style cells directly to the buffer for diff-based rendering.
-    #[allow(clippy::cast_possible_truncation)]
-    #[allow(clippy::unused_self)]
-    fn render_styled_line_to_buffer(
-        &self,
-        buffer: &mut FrameBuffer,
-        x: u16,
-        y: u16,
-        line: &str,
-        highlights: &[crate::highlight::store::LineHighlight],
-        default_style: &Style,
-    ) -> u16 {
-        let chars: Vec<char> = line.chars().collect();
-        let mut col = x;
-        let mut char_idx: u32 = 0;
-        let mut hl_idx = 0;
-
-        while (char_idx as usize) < chars.len() && col < buffer.width() {
-            // Find applicable highlight
-            while hl_idx < highlights.len() && highlights[hl_idx].end_col <= char_idx {
-                hl_idx += 1;
-            }
-
-            let style = if hl_idx < highlights.len() && highlights[hl_idx].start_col <= char_idx {
-                highlights[hl_idx].style.clone()
-            } else {
-                default_style.clone()
-            };
-
-            buffer.put_char(col, y, chars[char_idx as usize], &style);
-            col += 1;
-            char_idx += 1;
-        }
-
-        col.saturating_sub(x)
-    }
-
     /// Render line number directly to frame buffer
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::too_many_arguments)]
@@ -717,6 +683,8 @@ impl Window {
         num_width: usize,
         _indent_analyzer: &IndentAnalyzer,
         theme: &Theme,
+        decoration_store: Option<&DecorationStore>,
+        edit_mode: &EditMode,
     ) -> u16 {
         let Some(content) = buf.contents.get(row as usize) else {
             return 0;
@@ -747,19 +715,216 @@ impl Window {
             }
         }
 
-        // Apply indent guides (get plain content without ANSI)
-        // For buffer rendering, we skip indent guides for now (they need special handling)
-        let line_content = &content.inner;
+        // In insert mode, show raw content without decorations
+        let show_raw = matches!(edit_mode, EditMode::Insert(_));
 
-        // Render styled content
-        col += self.render_styled_line_to_buffer(
+        // Get line background decoration if present (skip in insert mode)
+        let line_bg = if show_raw {
+            None
+        } else {
+            decoration_store.and_then(|ds| ds.get_line_background(buf.id, u32::from(row)))
+        };
+
+        // Apply line background if present
+        if let Some(Decoration::LineBackground { style, .. }) = line_bg {
+            // Fill line with background color (after gutter)
+            let content_start = col;
+            let content_end = x + self.width;
+            for bg_col in content_start..content_end {
+                buffer.put_char(bg_col, y, ' ', style);
+            }
+        }
+
+        // Get conceals for this line (skip in insert mode to show raw markdown)
+        let conceals = if show_raw {
+            Vec::new()
+        } else {
+            decoration_store
+                .map(|ds| ds.get_conceals(buf.id, u32::from(row)))
+                .unwrap_or_default()
+        };
+
+        // Get inline styles for this line (skip in insert mode)
+        let inline_styles = if show_raw {
+            Vec::new()
+        } else {
+            decoration_store
+                .map(|ds| ds.get_inline_styles(buf.id, u32::from(row)))
+                .unwrap_or_default()
+        };
+
+        // Convert inline styles to spans: (start_col, end_col, style)
+        let inline_style_spans: Vec<(u32, u32, Style)> = inline_styles
+            .iter()
+            .filter_map(|d| match d {
+                Decoration::InlineStyle { span, style } => {
+                    Some((span.start_col, span.end_col, style.clone()))
+                }
+                _ => None,
+            })
+            .collect();
+
+        // Convert conceals to the format needed for apply_conceals
+        // Format: (start_col, end_col, replacement_text, style)
+        let conceal_spans: Vec<(u32, u32, Option<String>, Option<Style>)> = conceals
+            .iter()
+            .filter_map(|d| match d {
+                Decoration::Conceal {
+                    span,
+                    replacement,
+                    style,
+                } => Some((span.start_col, span.end_col, Some(replacement.clone()), style.clone())),
+                Decoration::Hide { span } => Some((span.start_col, span.end_col, None, None)),
+                Decoration::LineBackground { .. } | Decoration::InlineStyle { .. } => None,
+            })
+            .collect();
+
+        // Build the effective line content with conceals applied
+        let (effective_content, char_mapping, style_overrides) =
+            Self::apply_conceals(&content.inner, &conceal_spans);
+
+        // Render styled content with conceals applied
+        col += self.render_styled_line_with_conceals(
             buffer,
             col,
             y,
-            line_content,
+            &effective_content,
+            &content.inner,
+            &char_mapping,
+            &style_overrides,
+            &inline_style_spans,
             &line_highlights,
             &theme.base.default,
         );
+
+        col.saturating_sub(x)
+    }
+
+    /// Apply conceals to a line and return the effective content with character mapping
+    ///
+    /// Returns (`effective_content`, `char_mapping`, `style_overrides`) where:
+    /// - `char_mapping` maps effective positions back to original positions for highlight lookup
+    /// - `style_overrides` contains the conceal's style for replacement chars (None for normal chars)
+    #[allow(clippy::cast_possible_truncation)]
+    fn apply_conceals(
+        original: &str,
+        conceals: &[(u32, u32, Option<String>, Option<Style>)],
+    ) -> (String, Vec<Option<u32>>, Vec<Option<Style>>) {
+        if conceals.is_empty() {
+            // No conceals - direct mapping, no style overrides
+            let len = original.chars().count();
+            let mapping: Vec<Option<u32>> = (0..len as u32).map(Some).collect();
+            let style_overrides: Vec<Option<Style>> = vec![None; len];
+            return (original.to_string(), mapping, style_overrides);
+        }
+
+        let mut result = String::new();
+        let mut mapping = Vec::new();
+        let mut style_overrides = Vec::new();
+        let chars: Vec<char> = original.chars().collect();
+        let mut i = 0u32;
+
+        // Sort conceals by start position
+        let mut sorted_conceals = conceals.to_vec();
+        sorted_conceals.sort_by_key(|(start, _, _, _)| *start);
+
+        let mut conceal_idx = 0;
+
+        while (i as usize) < chars.len() {
+            // Check if we're at a conceal start
+            if conceal_idx < sorted_conceals.len() && sorted_conceals[conceal_idx].0 == i {
+                let (start, end, replacement, style) = &sorted_conceals[conceal_idx];
+
+                // Add replacement text (if any)
+                if let Some(repl) = replacement {
+                    for ch in repl.chars() {
+                        result.push(ch);
+                        // Replacement chars map to the original start position
+                        mapping.push(Some(*start));
+                        // Store the conceal's style override
+                        style_overrides.push(style.clone());
+                    }
+                }
+
+                // Skip the concealed range
+                i = *end;
+                conceal_idx += 1;
+            } else {
+                // Normal character - add it with mapping, no style override
+                result.push(chars[i as usize]);
+                mapping.push(Some(i));
+                style_overrides.push(None);
+                i += 1;
+            }
+        }
+
+        (result, mapping, style_overrides)
+    }
+
+    /// Render styled line with conceal support
+    ///
+    /// Uses character mapping to apply highlights from original positions to effective positions.
+    /// Style overrides (from conceals) are merged with syntax highlights.
+    /// Inline styles (italic, bold) are applied based on original column position.
+    #[allow(clippy::too_many_arguments)]
+    fn render_styled_line_with_conceals(
+        &self,
+        buffer: &mut FrameBuffer,
+        x: u16,
+        y: u16,
+        effective_content: &str,
+        _original_content: &str,
+        char_mapping: &[Option<u32>],
+        style_overrides: &[Option<Style>],
+        inline_styles: &[(u32, u32, Style)],
+        highlights: &[LineHighlight],
+        default_style: &Style,
+    ) -> u16 {
+        let mut col = x;
+        let max_col = x + self.width;
+
+        for (eff_idx, ch) in effective_content.chars().enumerate() {
+            if col >= max_col {
+                break;
+            }
+
+            // Get the original position for highlight lookup
+            let original_pos = char_mapping.get(eff_idx).copied().flatten();
+
+            // Find syntax highlight style at original position
+            let syntax_style = original_pos.map_or(default_style, |orig_col| {
+                highlights
+                    .iter()
+                    .find(|hl| hl.start_col <= orig_col && orig_col < hl.end_col)
+                    .map_or(default_style, |hl| &hl.style)
+            });
+
+            // Check for style override from conceal - merge with syntax style
+            let mut final_style = style_overrides
+                .get(eff_idx)
+                .and_then(|opt| opt.as_ref())
+                .map_or_else(
+                    || syntax_style.clone(),
+                    |override_style| {
+                        // Merge: conceal style takes precedence, but inherit missing properties from syntax
+                        syntax_style.merge(override_style)
+                    },
+                );
+
+            // Apply inline styles (italic, bold) if applicable
+            if let Some(orig_col) = original_pos {
+                for (start, end, inline_style) in inline_styles {
+                    if orig_col >= *start && orig_col < *end {
+                        // Merge inline style with current style
+                        final_style = final_style.merge(inline_style);
+                        break;
+                    }
+                }
+            }
+
+            buffer.put_char(col, y, ch, &final_style);
+            col += 1;
+        }
 
         col.saturating_sub(x)
     }
@@ -777,6 +942,8 @@ impl Window {
         theme: &Theme,
         fold_state: Option<&FoldState>,
         indent_analyzer: &IndentAnalyzer,
+        decoration_store: Option<&DecorationStore>,
+        edit_mode: &EditMode,
     ) {
         // Calculate line number width for alignment
         let total_lines = buf.contents.len();
@@ -848,6 +1015,8 @@ impl Window {
                     num_width,
                     indent_analyzer,
                     theme,
+                    decoration_store,
+                    edit_mode,
                 );
             }
 

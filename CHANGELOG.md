@@ -2,6 +2,41 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.6.22] - 2025-12-20
+
+### Markdown Rendering (Phase 4)
+
+- **Dual-grammar support for inline elements** - Added `MarkdownInline` language for tree-sitter-md's `INLINE_LANGUAGE`
+  - Registered `LanguageId::MarkdownInline` in grammar system
+  - Created inline parser for emphasis, strong emphasis, and links
+  - Added `queries/markdown_inline/highlights.scm` and `decorations.scm`
+
+- **Inline formatting concealment** - Hide markdown markers in normal mode
+  - `*italic*` → `italic` (single asterisks hidden)
+  - `**bold**` → `bold` (double asterisks hidden)
+  - `[text](url)` → `text` (brackets and URL hidden)
+
+- **Table rendering** - Header and delimiter row styling
+  - Header row background highlighting
+  - Delimiter row dimmed styling via `pipe_table*` node captures
+
+- **Style system enhancements** - Added new text attributes
+  - Added `BLINK` and `DIM` attribute constants
+  - Added `blink()` and `dim()` builder methods to `Style`
+
+- **Conceal style merging** - Fixed replacement character styling
+  - Conceal replacement chars now use conceal's style merged with syntax highlights
+  - Heading icons display with proper bold + color styling
+
+- **Insert mode raw display** - Show raw markdown when editing
+  - Decorations disabled in insert mode for accurate cursor positioning
+  - Raw `#`, `*`, `**`, `[]()` markers visible during editing
+  - Returns to concealed view on mode exit
+
+### Known Limitations
+
+- Code block language injection not yet implemented (fenced code blocks don't have syntax highlighting for inner content)
+
 ## [0.6.21] - 2025-12-20
 
 ### Architecture

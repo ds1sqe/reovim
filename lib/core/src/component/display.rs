@@ -11,6 +11,7 @@ use crate::{
     buffer::Buffer,
     command_line::CommandLine,
     completion::CompletionState,
+    decoration::{DecorationStore, LanguageRendererRegistry},
     explorer::ExplorerState,
     folding::FoldManager,
     highlight::{ColorMode, HighlightStore, Theme},
@@ -60,6 +61,10 @@ pub struct RenderState<'a> {
     pub settings_menu: &'a SettingsMenuState,
     /// Modifier registry for evaluating style/behavior modifiers
     pub modifier_registry: Option<&'a ModifierRegistry>,
+    /// Decoration store for language-specific decorations
+    pub decoration_store: Option<&'a DecorationStore>,
+    /// Language renderer registry for decoration generation
+    pub renderer_registry: Option<&'a LanguageRendererRegistry>,
 }
 
 /// Context passed to UI components during rendering

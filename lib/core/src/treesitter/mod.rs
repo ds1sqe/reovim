@@ -367,4 +367,33 @@ impl TreesitterManager {
         _ = capture_name; // Suppress unused warning
         FoldKind::Block
     }
+
+    /// Get the parsed tree for a buffer
+    ///
+    /// Returns None if the buffer has no parser or hasn't been parsed yet.
+    #[must_use]
+    pub fn get_tree(&self, buffer_id: usize) -> Option<&tree_sitter::Tree> {
+        self.parsers.get(&buffer_id).and_then(BufferParser::tree)
+    }
+
+    /// Get or compile a decoration query for a language
+    ///
+    /// Returns None if the language doesn't have a decoration query.
+    pub fn get_decoration_query(&mut self, language_id: LanguageId) -> Option<&tree_sitter::Query> {
+        let ts_language = self.grammars.get_language(language_id)?;
+        self.queries
+            .get_or_compile(language_id, QueryType::Decorations, &ts_language)
+    }
+
+    /// Get a cached decoration query (does not compile if not cached)
+    ///
+    /// Use this when you need an immutable borrow of the treesitter manager.
+    /// Call `get_decoration_query` first to ensure the query is compiled.
+    #[must_use]
+    pub fn get_cached_decoration_query(
+        &self,
+        language_id: LanguageId,
+    ) -> Option<&tree_sitter::Query> {
+        self.queries.get(language_id, QueryType::Decorations)
+    }
 }

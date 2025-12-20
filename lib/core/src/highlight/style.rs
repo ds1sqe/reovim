@@ -18,6 +18,8 @@ impl Attributes {
     pub const UNDERLINE: u8 = 1 << 2;
     pub const STRIKETHROUGH: u8 = 1 << 3;
     pub const REVERSE: u8 = 1 << 4;
+    pub const BLINK: u8 = 1 << 5;
+    pub const DIM: u8 = 1 << 6;
 
     #[must_use]
     pub const fn new() -> Self {
@@ -86,6 +88,30 @@ impl Style {
         self
     }
 
+    #[must_use]
+    pub fn strikethrough(mut self) -> Self {
+        self.attributes.set(Attributes::STRIKETHROUGH);
+        self
+    }
+
+    #[must_use]
+    pub fn reverse(mut self) -> Self {
+        self.attributes.set(Attributes::REVERSE);
+        self
+    }
+
+    #[must_use]
+    pub fn blink(mut self) -> Self {
+        self.attributes.set(Attributes::BLINK);
+        self
+    }
+
+    #[must_use]
+    pub fn dim(mut self) -> Self {
+        self.attributes.set(Attributes::DIM);
+        self
+    }
+
     /// Merge another style on top of this one (other takes precedence for colors)
     #[must_use]
     pub fn merge(&self, other: &Self) -> Self {
@@ -133,6 +159,12 @@ impl Style {
         }
         if self.attributes.contains(Attributes::REVERSE) {
             codes.push("7");
+        }
+        if self.attributes.contains(Attributes::BLINK) {
+            codes.push("5");
+        }
+        if self.attributes.contains(Attributes::DIM) {
+            codes.push("2");
         }
 
         if codes.is_empty() && owned_codes.is_empty() {

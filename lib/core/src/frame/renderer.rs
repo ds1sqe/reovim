@@ -296,14 +296,20 @@ impl FrameRenderer {
                 commands.push(RenderCommand::MoveTo(start_x, y));
 
                 if let Some(s) = style {
-                    if s.is_empty() {
+                    // Check if style changed from last emitted
+                    let style_changed = last_emitted.as_ref() != Some(s);
+
+                    if style_changed {
+                        // Always reset before setting new style to clear any lingering attributes
+                        // (e.g., underline from previous cell)
                         if last_emitted.as_ref().is_some_and(|prev| !prev.is_empty()) {
                             commands.push(RenderCommand::ResetStyle);
                         }
-                    } else {
-                        commands.push(RenderCommand::SetStyle(s.clone()));
+                        if !s.is_empty() {
+                            commands.push(RenderCommand::SetStyle(s.clone()));
+                        }
+                        *last_emitted = Some(s.clone());
                     }
-                    *last_emitted = Some(s.clone());
                 }
 
                 commands.push(RenderCommand::Print(std::mem::take(pending)));
@@ -389,12 +395,13 @@ impl FrameRenderer {
                             commands.push(RenderCommand::Print(std::mem::take(&mut line_content)));
                         }
 
-                        // Set new style
-                        if style_str.is_empty() {
-                            if last_style.is_some() {
-                                commands.push(RenderCommand::ResetStyle);
-                            }
-                        } else {
+                        // Reset before setting new style to clear lingering attributes
+                        if last_style.as_ref().is_some_and(|s| !s.is_empty()) {
+                            commands.push(RenderCommand::ResetStyle);
+                        }
+
+                        // Set new style if non-empty
+                        if !style_str.is_empty() {
                             commands.push(RenderCommand::SetStyle(style_str.clone()));
                         }
                         last_style = Some(style_str);

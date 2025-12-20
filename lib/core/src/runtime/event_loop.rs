@@ -27,32 +27,29 @@ impl Runtime {
     pub async fn init(mut self) {
         tracing::info!("Runtime initializing");
 
-        let mut buffer = Buffer::empty(0);
-
         // Load file if provided, otherwise show landing page
-        if let Some(ref path) = self.initial_file {
-            match std::fs::read_to_string(path) {
-                Ok(content) => {
-                    let line_count = content.lines().count();
-                    buffer.set_content(&content);
-                    tracing::info!(path = %path, lines = line_count, "File loaded");
-                }
-                Err(e) => {
-                    tracing::warn!(path = %path, error = %e, "Failed to load file");
-                }
+        if let Some(path) = self.initial_file.clone() {
+            // Use create_buffer_from_file which handles treesitter parsing and decorations
+            if let Some(buffer_id) = self.create_buffer_from_file(&path) {
+                // Update active buffer to the newly created one
+                self.active_buffer_id = buffer_id;
+            } else {
+                // File failed to load, create empty buffer
+                let mut buffer = Buffer::empty(0);
+                buffer.file_path = Some(path);
+                self.buffers.insert(0, buffer);
             }
-            buffer.file_path = Some(path.clone());
         } else {
             // Show landing page when no file is opened
+            let mut buffer = Buffer::empty(0);
             let landing_content = crate::landing::generate(
                 self.screen.width(),
                 self.screen.height().saturating_sub(1), // Reserve status line
             );
             buffer.set_content(&landing_content);
             self.showing_landing_page = true;
+            self.buffers.insert(0, buffer);
         }
-
-        self.buffers.insert(0, buffer);
         let input_broker = InputEventBroker::with_event_sender(self.tx.clone());
 
         // Command handler for key-to-command translation
@@ -103,32 +100,29 @@ impl Runtime {
     ) {
         tracing::info!("Runtime initializing (server mode)");
 
-        let mut buffer = Buffer::empty(0);
-
         // Load file if provided, otherwise show landing page
-        if let Some(ref path) = self.initial_file {
-            match std::fs::read_to_string(path) {
-                Ok(content) => {
-                    let line_count = content.lines().count();
-                    buffer.set_content(&content);
-                    tracing::info!(path = %path, lines = line_count, "File loaded");
-                }
-                Err(e) => {
-                    tracing::warn!(path = %path, error = %e, "Failed to load file");
-                }
+        if let Some(path) = self.initial_file.clone() {
+            // Use create_buffer_from_file which handles treesitter parsing and decorations
+            if let Some(buffer_id) = self.create_buffer_from_file(&path) {
+                // Update active buffer to the newly created one
+                self.active_buffer_id = buffer_id;
+            } else {
+                // File failed to load, create empty buffer with path
+                let mut buffer = Buffer::empty(0);
+                buffer.file_path = Some(path);
+                self.buffers.insert(0, buffer);
             }
-            buffer.file_path = Some(path.clone());
         } else {
             // Show landing page when no file is opened (unified with regular mode)
+            let mut buffer = Buffer::empty(0);
             let landing_content = crate::landing::generate(
                 self.screen.width(),
                 self.screen.height().saturating_sub(1), // Reserve status line
             );
             buffer.set_content(&landing_content);
             self.showing_landing_page = true;
+            self.buffers.insert(0, buffer);
         }
-
-        self.buffers.insert(0, buffer);
 
         // Use custom key source for server mode
         let input_broker = crate::event::InputEventBroker::with_key_source(key_source);

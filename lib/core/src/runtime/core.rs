@@ -17,6 +17,9 @@ use {
         component::RenderState,
         config::{ProfileConfig, ProfileManager},
         constants::EVENT_CHANNEL_CAPACITY,
+        decoration::{
+            DecorationContext, DecorationGroup, DecorationStore, LanguageRendererRegistry,
+        },
         event::{CompletionEvent, InnerEvent},
         explorer::ExplorerState,
         folding::FoldManager,
@@ -32,7 +35,7 @@ use {
         screen::Screen,
         settings_menu::SettingsMenuState,
         telescope::{TelescopeMatcher, TelescopeState, picker::Picker},
-        treesitter::TreesitterManager,
+        treesitter::{LanguageId, TreesitterManager},
         ui_component::ComponentRegistry,
     },
     tracing::debug,
@@ -110,6 +113,10 @@ pub struct Runtime {
     pub(crate) focus_input_handlers: HashMap<crate::ui_component::ComponentId, FocusInputHandler>,
     /// Component registry for unified UI components
     pub component_registry: ComponentRegistry,
+    /// Decoration store for language-specific visual decorations
+    pub decoration_store: DecorationStore,
+    /// Language renderer registry for decoration generation
+    pub renderer_registry: LanguageRendererRegistry,
 }
 
 impl Default for Runtime {
@@ -197,7 +204,7 @@ impl Runtime {
             mode_rx,
             command_registry: Arc::new(command_registry),
             active_buffer_id: 0,
-            next_buffer_id: 1,
+            next_buffer_id: 0,
             explorer_state: None,
             jump_list: JumpList::new(),
             completion_engine: Arc::new(CompletionEngine::default()),
@@ -220,7 +227,14 @@ impl Runtime {
             modifier_registry,
             focus_input_handlers: focus_handlers,
             component_registry,
+            decoration_store: DecorationStore::new(),
+            renderer_registry: LanguageRendererRegistry::new(),
         };
+
+        // Register markdown renderer
+        runtime
+            .renderer_registry
+            .register(Box::new(crate::language::markdown::MarkdownRenderer::new()));
 
         // Enable diff-based rendering by default
         runtime.screen.enable_frame_renderer();
@@ -347,6 +361,8 @@ impl Runtime {
             indent_analyzer: &self.indent_analyzer,
             settings_menu: &self.settings_menu,
             modifier_registry: Some(&self.modifier_registry),
+            decoration_store: Some(&self.decoration_store),
+            renderer_registry: Some(&self.renderer_registry),
         };
         self.screen
             .render_with_state(&state)
@@ -427,6 +443,9 @@ impl Runtime {
                         self.fold_manager.set_ranges(id, fold_ranges);
                         debug!(id, "create_buffer_from_file: fold ranges computed");
                     }
+
+                    // Generate language-specific decorations (e.g., markdown rendering)
+                    self.generate_decorations(id, &content, language_id);
                 }
 
                 debug!(id, path, "create_buffer_from_file: success");
@@ -920,5 +939,77 @@ impl Runtime {
             layers,
             plain_text,
         })
+    }
+
+    /// Generate language-specific decorations for a buffer
+    ///
+    /// This is called when a buffer is opened and after significant content changes.
+    /// Uses the registered `LanguageRenderer` for the buffer's language to generate
+    /// visual decorations like heading icons, list bullets, code block backgrounds.
+    #[allow(clippy::cast_possible_truncation)]
+    fn generate_decorations(&mut self, buffer_id: usize, content: &str, language_id: LanguageId) {
+        // Check if renderer is registered and enabled
+        let renderer_enabled = self
+            .renderer_registry
+            .get(language_id)
+            .is_some_and(crate::decoration::LanguageRenderer::is_enabled);
+
+        if !renderer_enabled {
+            return;
+        }
+
+        // Get the decoration query for this language (requires mutable borrow)
+        // This must be done before getting the tree to avoid borrow conflicts
+        let query_exists = self.treesitter.get_decoration_query(language_id).is_some();
+        if !query_exists {
+            debug!(?language_id, "generate_decorations: no decoration query");
+            return;
+        }
+
+        // Now get immutable borrows for tree and renderer
+        let Some(tree) = self.treesitter.get_tree(buffer_id) else {
+            debug!(buffer_id, "generate_decorations: no tree available");
+            return;
+        };
+
+        let Some(renderer) = self.renderer_registry.get(language_id) else {
+            return;
+        };
+
+        // We need the query again - this time as immutable since it's cached
+        let query = self
+            .treesitter
+            .get_cached_decoration_query(language_id)
+            .expect("query was just checked to exist");
+
+        // Build decoration context
+        let cursor_line = self
+            .buffers
+            .get(&buffer_id)
+            .map_or(0, |b| u32::from(b.cur.y));
+
+        let ctx = DecorationContext::new(
+            content,
+            tree,
+            &self.mode_state.edit_mode,
+            cursor_line,
+            buffer_id,
+        );
+
+        // Generate decorations
+        let decorations = renderer.render(&ctx, query);
+
+        if !decorations.is_empty() {
+            debug!(
+                buffer_id,
+                count = decorations.len(),
+                "generate_decorations: generated decorations"
+            );
+            self.decoration_store.set_decorations(
+                buffer_id,
+                DecorationGroup::Language,
+                decorations,
+            );
+        }
     }
 }
