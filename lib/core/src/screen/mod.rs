@@ -1,5 +1,6 @@
 #![allow(clippy::missing_errors_doc)]
 
+pub mod border;
 mod layer;
 mod status_line;
 mod which_key;
@@ -49,8 +50,12 @@ pub mod tab;
 pub mod window;
 
 pub use {
+    border::{BorderConfig, BorderMode, BorderStyle, WindowAdjacency},
     layout::{LayoutManager, WindowType},
-    split::{NavigateDirection, SplitDirection, SplitNode, WindowLayout, WindowRect},
+    split::{
+        NavigateDirection, SplitDirection, SplitNode, WindowLayout, WindowRect, compute_adjacency,
+        compute_all_adjacencies,
+    },
     tab::{TabInfo, TabManager, TabPage},
 };
 
@@ -104,6 +109,8 @@ impl Default for Screen {
             is_active: true,
             cursor: Position { x: 0, y: 0 },
             desired_col: None,
+            border_config: None,
+            is_floating: false,
         });
 
         let layout = LayoutManager::new(columns, editor_height);
@@ -154,6 +161,8 @@ impl Screen {
             is_active: true,
             cursor: Position { x: 0, y: 0 },
             desired_col: None,
+            border_config: None,
+            is_floating: false,
         }];
 
         let layout = LayoutManager::new(width, editor_height);
@@ -1335,6 +1344,8 @@ impl Screen {
                     is_active: layout.window_id == active_window_id,
                     cursor,
                     desired_col,
+                    border_config: None,
+                    is_floating: false,
                 });
             }
         }

@@ -9,15 +9,7 @@ pub use {count_parser::CountParser, dispatcher::Dispatcher, key_parser::key_to_s
 use {
     crate::{
         bind::{CommandRef, KeyMap, KeyMapInner},
-        command::{
-            CommandTrait,
-            builtin::{
-                CommandLineCharCommand, ExplorerInputCharCommand, InsertCharCommand,
-                TelescopeInsertCharCommand,
-            },
-            registry::CommandRegistry,
-            traits::OperatorMotionAction,
-        },
+        command::{registry::CommandRegistry, traits::OperatorMotionAction},
         event::{InnerEvent, KeyEvent, Subscribe, VisualTextObjectAction},
         modd::{ModeState, OperatorType, SubMode},
         motion::Motion,
@@ -331,15 +323,9 @@ impl CommandHandler {
 
         // In insert mode, completion keys should only trigger completion commands
         // when the popup is visible. Otherwise, fall through to default behavior.
-        if is_insert && Self::is_completion_key(key) && !completion_active {
+        // Note: Tab insertion is now handled in run() via FocusInputEvent.
+        if is_insert && Self::is_completion_key(key) && !completion_active && key != "Tab" {
             self.pending_keys.clear();
-
-            // Tab inserts a tab character when completion is not active
-            if key == "Tab" {
-                let cmd: Arc<dyn CommandTrait> = Arc::new(InsertCharCommand::new('\t'));
-                return (Some(CommandRef::Inline(cmd)), true);
-            }
-
             // C-n, C-p, C-e do nothing when completion is not active
             return (None, true);
         }
@@ -368,52 +354,10 @@ impl CommandHandler {
         }
 
         // No match and not a valid prefix
-        // In insert/command/explorer-input/telescope modes, handle single chars specially
-        // In these modes, clear pending and process the char immediately
-        //
-        // IMPORTANT: Check specific focus modes (telescope, explorer) BEFORE generic insert mode
-        // because they also use Insert edit mode but need different command types.
+        // Note: Single-character input in insert/command modes is now handled earlier
+        // in run() via FocusInputEvent, so this code path is only reached for special keys
+        // or invalid sequences in those modes, or for any key in Normal/Visual/Explorer modes.
 
-        if mode.is_telescope_focus()
-            && mode.is_insert()
-            && key.len() == 1
-            && let Some(c) = key.chars().next()
-        {
-            self.pending_keys.clear();
-            let cmd: Arc<dyn CommandTrait> = Arc::new(TelescopeInsertCharCommand::new(c));
-            return (Some(CommandRef::Inline(cmd)), true);
-        }
-
-        if mode.is_explorer_focus()
-            && mode.is_insert()
-            && key.len() == 1
-            && let Some(c) = key.chars().next()
-        {
-            self.pending_keys.clear();
-            let cmd: Arc<dyn CommandTrait> = Arc::new(ExplorerInputCharCommand::new(c));
-            return (Some(CommandRef::Inline(cmd)), true);
-        }
-
-        if mode.is_command()
-            && key.len() == 1
-            && let Some(c) = key.chars().next()
-        {
-            self.pending_keys.clear();
-            let cmd: Arc<dyn CommandTrait> = Arc::new(CommandLineCharCommand::new(c));
-            return (Some(CommandRef::Inline(cmd)), true);
-        }
-
-        // Generic editor insert mode - must be AFTER telescope/explorer checks
-        if is_insert
-            && key.len() == 1
-            && let Some(c) = key.chars().next()
-        {
-            self.pending_keys.clear();
-            let cmd: Arc<dyn CommandTrait> = Arc::new(InsertCharCommand::new(c));
-            return (Some(CommandRef::Inline(cmd)), true);
-        }
-
-        // In Normal/Visual/Explorer modes:
         // Invalid sequence - clear it to allow starting fresh with the next key
         self.pending_keys.clear();
         (None, true)
@@ -479,7 +423,7 @@ impl CommandHandler {
     /// Check if mode is one where ESC should only clear pending state (not trigger keymap lookup)
     /// Visual mode is excluded because it has an Escape binding in the keymap to exit to Normal
     /// Telescope mode is excluded because it has Escape bindings for mode switching and closing
-    const fn is_esc_clearable_mode(mode: &ModeState) -> bool {
+    fn is_esc_clearable_mode(mode: &ModeState) -> bool {
         // Editor Normal, Explorer focus, or OperatorPending
         // Telescope has its own Escape handlers via keymap
         (mode.is_normal() && !mode.is_telescope_focus())
@@ -488,7 +432,7 @@ impl CommandHandler {
     }
 
     /// Check if mode is one where Backspace should edit pending keys
-    const fn is_backspace_editable_mode(mode: &ModeState) -> bool {
+    fn is_backspace_editable_mode(mode: &ModeState) -> bool {
         mode.is_normal() || mode.is_visual() || (mode.is_explorer_focus() && mode.is_normal())
     }
 
@@ -740,6 +684,51 @@ impl CommandHandler {
                                             .await;
                                         continue;
                                     }
+                                }
+
+                                // Handle single-character input in insert/command/telescope modes
+                                // Route via FocusInputEvent instead of creating inline commands
+                                let mode = self.current_mode();
+                                if (mode.is_insert() || mode.is_command() || mode.is_telescope_focus())
+                                    && key_str.len() == 1
+                                    && let Some(c) = key_str.chars().next()
+                                {
+                                    // Single printable character - route through focus system
+                                    self.pending_keys.clear();
+                                    self.dispatcher.send_focus_insert_char(c).await;
+                                    self.dispatcher
+                                        .send_pending_keys(self.pending_display())
+                                        .await;
+                                    continue;
+                                }
+
+                                // Handle Backspace in insert/command/telescope modes
+                                // Route via FocusInputEvent for focus-based handling
+                                let mode = self.current_mode();
+                                if (mode.is_insert() || mode.is_command() || mode.is_telescope_focus())
+                                    && key_str == "Backspace"
+                                {
+                                    self.pending_keys.clear();
+                                    self.dispatcher.send_focus_delete_backward().await;
+                                    self.dispatcher
+                                        .send_pending_keys(self.pending_display())
+                                        .await;
+                                    continue;
+                                }
+
+                                // Handle Tab in insert mode when completion is not active
+                                // Tab inserts a tab character via FocusInputEvent
+                                let mode = self.current_mode();
+                                if mode.is_insert()
+                                    && key_str == "Tab"
+                                    && !self.is_completion_active()
+                                {
+                                    self.pending_keys.clear();
+                                    self.dispatcher.send_focus_insert_char('\t').await;
+                                    self.dispatcher
+                                        .send_pending_keys(self.pending_display())
+                                        .await;
+                                    continue;
                                 }
 
                                 // Show the key being pressed (before lookup clears it)

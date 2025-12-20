@@ -75,6 +75,13 @@ lib/core/src/
 │   ├── event_loop.rs
 │   └── handlers.rs
 ├── buffer/         # Text storage and cursor
+├── compositor/     # Compositing system
+│   ├── mod.rs      # ZOrder, ZGroup
+│   └── types.rs    # ComposableId, Bounds
+├── filetype/       # File type detection
+│   └── mod.rs      # FiletypeRegistry, FiletypeInfo
+├── focus/          # Focus target system
+│   └── mod.rs      # FocusId, FocusTarget, FocusRegistry
 ├── frame/          # Frame buffer for diff-based rendering
 │   ├── mod.rs      # Public API exports
 │   ├── buffer.rs   # FrameBuffer - 2D cell grid
@@ -89,6 +96,7 @@ lib/core/src/
 ├── screen/         # Terminal rendering
 │   ├── mod.rs
 │   ├── window.rs
+│   ├── border.rs   # Border system (BorderStyle, BorderConfig)
 │   ├── layer.rs    # Layer trait + z-order constants
 │   ├── layers/     # Layer implementations
 │   │   ├── base.rs       # Tab line, status line (z=0)
@@ -116,6 +124,13 @@ lib/core/src/
 ├── motion/         # Cursor movement logic
 ├── highlight/      # Syntax highlighting
 ├── modd/           # Editor modes (ModeState)
+├── modifier/       # Context-aware modifiers
+│   ├── mod.rs
+│   ├── traits.rs   # Modifier trait
+│   ├── registry.rs # ModifierRegistry
+│   ├── context.rs  # ModifierContext
+│   ├── style.rs    # StyleModifiers
+│   └── behavior.rs # BehaviorModifiers
 ├── bind/           # Key bindings
 ├── completion/     # Text completion engine
 ├── telescope/      # Fuzzy finder
@@ -474,6 +489,102 @@ Code folding with treesitter-computed ranges.
 - `za` - Toggle fold
 - `zo`/`zc` - Open/close fold
 - `zR`/`zM` - Open/close all folds
+
+### Focus System (`lib/core/src/focus/`)
+
+Manages which component receives input events.
+
+**Components:**
+- `FocusId` - Unique identifier for focus targets (Editor, Telescope, Explorer, Settings, Custom)
+- `FocusTarget` trait - Interface for input-receiving components
+- `FocusRegistry` - Manages registered focus targets and tracks active focus
+
+**Focus IDs:**
+| FocusId | Component |
+|---------|-----------|
+| `EDITOR` | Main editor windows |
+| `TELESCOPE` | Fuzzy finder |
+| `EXPLORER` | File browser |
+| `SETTINGS` | Settings menu |
+
+**Input Routing:**
+```rust
+// Runtime routes FocusInputEvent based on active focus
+match mode_state.focus_id {
+    FocusId::TELESCOPE => self.handle_telescope_input(event),
+    FocusId::EXPLORER => self.focus_registry.handle_input(focus_id, event),
+    FocusId::EDITOR => self.handle_editor_input(event),
+    _ => self.focus_registry.handle_input(focus_id, event),
+}
+```
+
+### Modifier System (`lib/core/src/modifier/`)
+
+Context-aware styling and behavior modifications.
+
+**Components:**
+- `Modifier` trait - Interface for context-aware modifications
+- `ModifierRegistry` - Manages modifiers with priority ordering and caching
+- `ModifierContext` - Context passed to modifiers (window, buffer, mode, filetype)
+- `StyleModifiers` - Visual style overrides (border, gutter style, decorations)
+- `BehaviorModifiers` - Keybinding overrides and feature flags
+
+**Modifier Priority:**
+Modifiers are evaluated in priority order. Higher priority modifiers override lower ones.
+
+```rust
+pub trait Modifier: Send + Sync {
+    fn name(&self) -> &str;
+    fn priority(&self) -> i32;
+    fn matches(&self, ctx: &ModifierContext<'_>) -> bool;
+    fn style_modifiers(&self) -> Option<&StyleModifiers>;
+    fn behavior_modifiers(&self) -> Option<&BehaviorModifiers>;
+}
+```
+
+**Use Cases:**
+- Active window highlighting (border style, gutter emphasis)
+- Insert mode visual feedback
+- Filetype-specific settings
+- Disabled commands per mode
+
+### Border System (`lib/core/src/screen/border.rs`)
+
+Configurable window borders for visual separation.
+
+**Components:**
+- `BorderStyle` - Predefined styles (None, Single, Double, Rounded, Heavy, Custom)
+- `BorderSides` - Selective borders (top, bottom, left, right)
+- `BorderConfig` - Builder pattern for border configuration
+- `BorderMode` - Layout behavior (Collide for shared borders, Float for individual)
+
+**Border Styles:**
+| Style | Characters |
+|-------|------------|
+| Single | `─│┌┐└┘` |
+| Double | `═║╔╗╚╝` |
+| Rounded | `─│╭╮╰╯` |
+| Heavy | `━┃┏┓┗┛` |
+
+**Usage:**
+```rust
+let config = BorderConfig::new()
+    .style(BorderStyle::Rounded)
+    .sides(BorderSides::all())
+    .mode(BorderMode::Collide);
+```
+
+### Filetype Detection (`lib/core/src/filetype/`)
+
+Automatic file type detection for syntax highlighting and settings.
+
+**Components:**
+- `FiletypeRegistry` - Global registry of file type mappings
+- `FiletypeInfo` - File type metadata (name, icon, color)
+
+**Detection Methods:**
+1. Filename match (e.g., `Makefile`, `Dockerfile`)
+2. Extension match (e.g., `.rs`, `.py`, `.js`)
 
 ### RPC / Server Mode (`lib/core/src/rpc/`)
 

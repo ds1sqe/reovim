@@ -1,5 +1,8 @@
 //! Key binding system for mapping key sequences to commands
 
+// Allow deprecated Focus enum during transition to FocusId
+#![allow(deprecated)]
+
 use {
     crate::{
         command::{

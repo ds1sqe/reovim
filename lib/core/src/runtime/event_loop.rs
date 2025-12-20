@@ -5,11 +5,12 @@ use crate::{
     config::ProfileConfig,
     event::{
         BufferEvent, CommandHandler, CompletionEvent, CompletionHandler, ExplorerEvent,
-        HighlightEvent, InnerEvent, InputEventBroker, SettingsMenuEvent, TerminateHandler,
-        TreesitterEvent, WindowEvent,
+        FocusInputEvent, HighlightEvent, InnerEvent, InputEventBroker, SettingsMenuEvent,
+        TerminateHandler, TreesitterEvent, WindowEvent,
     },
+    focus::FocusId,
     highlight::{HighlightGroup, Theme},
-    modd::{EditMode, ModExtension, ModeState, SubMode},
+    modd::{EditMode, ModeState, SubMode, VisualVariant},
     treesitter::TreesitterTheme,
 };
 
@@ -414,6 +415,9 @@ impl Runtime {
             } => {
                 let response = self.handle_rpc_request(id, &method, &params);
                 let _ = response_tx.send(response);
+            }
+            InnerEvent::FocusInputEvent(focus_event) => {
+                self.handle_focus_input(focus_event);
             }
         }
         false
@@ -971,12 +975,12 @@ impl Runtime {
         }
 
         // Handle visual mode
-        if let EditMode::Visual(ext) = &new_mode.edit_mode {
+        if let EditMode::Visual(variant) = &new_mode.edit_mode {
             // Start selection when entering visual mode
             if let Some(buffer) = self.buffers.get_mut(&0) {
-                match ext {
-                    ModExtension::Block => buffer.start_block_selection(),
-                    _ => buffer.start_selection(),
+                match variant {
+                    VisualVariant::Block => buffer.start_block_selection(),
+                    VisualVariant::Char | VisualVariant::Line => buffer.start_selection(),
                 }
             }
         }
@@ -1297,6 +1301,103 @@ impl Runtime {
             }
             Err(e) => {
                 tracing::warn!(error = %e, profile = %name, "Failed to save settings");
+            }
+        }
+    }
+
+    /// Handle focus input events by routing to the active focus target
+    fn handle_focus_input(&mut self, event: FocusInputEvent) {
+        let focus_id = self.mode_state.focus_id;
+
+        match event {
+            FocusInputEvent::InsertChar(c) => {
+                // Route based on focus ID
+                match focus_id {
+                    id if id == FocusId::TELESCOPE => {
+                        // Telescope: update query
+                        self.telescope_state.insert_char(c);
+                        // Send update query event to trigger async filtering
+                        let query = self.telescope_state.query.clone();
+                        drop(self.tx.try_send(InnerEvent::TelescopeEvent(
+                            crate::event::TelescopeEvent::UpdateQuery { query },
+                        )));
+                        self.request_render();
+                    }
+                    id if id == FocusId::EXPLORER => {
+                        // Explorer: handled by FocusRegistry if input mode
+                        if let Some(target) = self.focus_registry.get_mut(FocusId::EXPLORER)
+                            && target.insert_char(c)
+                        {
+                            self.request_render();
+                        }
+                    }
+                    id if id == FocusId::EDITOR => {
+                        // Editor: check if command mode or insert mode
+                        if self.mode_state.is_command() {
+                            self.command_line.insert_char(c);
+                        } else if self.mode_state.is_insert() {
+                            // Clear landing page on first input
+                            if self.showing_landing_page {
+                                if let Some(buffer) = self.buffers.get_mut(&0) {
+                                    buffer.contents.clear();
+                                    buffer.cur = crate::screen::Position::default();
+                                }
+                                self.showing_landing_page = false;
+                            }
+                            // Insert character in active buffer
+                            if let Some(buffer) = self.buffers.get_mut(&self.active_buffer_id) {
+                                buffer.insert_char(c);
+                            }
+                        }
+                        self.request_render();
+                    }
+                    _ => {
+                        // Unknown focus - try the registry
+                        if let Some(target) = self.focus_registry.get_mut(focus_id)
+                            && target.insert_char(c)
+                        {
+                            self.request_render();
+                        }
+                    }
+                }
+            }
+            FocusInputEvent::DeleteCharBackward => {
+                // Route based on focus ID
+                match focus_id {
+                    id if id == FocusId::TELESCOPE => {
+                        self.telescope_state.delete_char();
+                        // Send update query event to trigger async filtering
+                        let query = self.telescope_state.query.clone();
+                        drop(self.tx.try_send(InnerEvent::TelescopeEvent(
+                            crate::event::TelescopeEvent::UpdateQuery { query },
+                        )));
+                        self.request_render();
+                    }
+                    id if id == FocusId::EXPLORER => {
+                        if let Some(target) = self.focus_registry.get_mut(FocusId::EXPLORER)
+                            && target.delete_char_backward()
+                        {
+                            self.request_render();
+                        }
+                    }
+                    id if id == FocusId::EDITOR => {
+                        if self.mode_state.is_command() {
+                            self.command_line.delete_char();
+                        } else if self.mode_state.is_insert()
+                            && let Some(buffer) = self.buffers.get_mut(&self.active_buffer_id)
+                        {
+                            buffer.delete_char_backward();
+                        }
+                        self.request_render();
+                    }
+                    _ => {
+                        if let Some(target) = self.focus_registry.get_mut(focus_id)
+                            && target.delete_char_backward()
+                        {
+                            self.request_render();
+                        }
+                    }
+                }
             }
         }
     }

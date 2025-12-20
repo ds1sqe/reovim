@@ -9,9 +9,9 @@ mod input;
 pub use {
     handler::{CommandHandler, CompletionHandler, PrintEventHandler, TerminateHandler},
     inner::{
-        BufferEvent, CommandEvent, CompletionEvent, ExplorerEvent, HighlightEvent, InnerEvent,
-        LeapEvent, SettingsMenuEvent, TelescopeEvent, TreesitterEvent, VisualTextObjectAction,
-        WhichKeyBinding, WindowEvent,
+        BufferEvent, CommandEvent, CompletionEvent, ExplorerEvent, FocusInputEvent, HighlightEvent,
+        InnerEvent, LeapEvent, SettingsMenuEvent, TelescopeEvent, TreesitterEvent,
+        VisualTextObjectAction, WhichKeyBinding, WindowEvent,
     },
     input::*,
 };

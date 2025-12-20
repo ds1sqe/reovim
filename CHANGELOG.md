@@ -2,6 +2,65 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.6.9] - 2025-12-20
+
+### Architecture
+
+- **Compositor System** (`lib/core/src/compositor/`)
+  - `ZOrder` and `ZGroup` for layered rendering priority (Base, Editor, Popup, Overlay, Modal)
+  - `Bounds` for component layout bounds with collision detection
+  - `ComposableId` for unique component identification
+
+- **Modifier System** (`lib/core/src/modifier/`)
+  - `Modifier` trait for context-aware styling and behavior
+  - `ModifierRegistry` with caching for efficient evaluation
+  - `ModifierContext` for passing window/buffer/mode context
+  - `StyleModifiers` for visual style overrides (borders, decorations, colors)
+  - `BehaviorModifiers` for keybinding overrides and feature flags
+
+- **Focus System** (`lib/core/src/focus/`)
+  - `FocusId` for identifying focus targets (Editor, Telescope, Explorer, etc.)
+  - `FocusTarget` trait for input-receiving components
+  - `FocusRegistry` for managing focus targets and active focus
+
+- **Border System** (`lib/core/src/screen/border.rs`)
+  - `BorderStyle` variants (None, Single, Double, Rounded, Heavy, Custom)
+  - `BorderSides` for selective borders (top, bottom, left, right)
+  - `BorderConfig` builder pattern with fluent API
+  - `BorderMode::Collide` and `BorderMode::Float` for multi-window layouts
+
+- **Filetype Detection** (`lib/core/src/filetype/`)
+  - Extension-based and filename-based detection
+  - `FiletypeInfo` with icon and color
+  - Global `FiletypeRegistry` for language detection
+
+### Changed
+
+- **Focus-based Input Routing** - Input events now routed via `FocusInputEvent`
+  - `FocusInputEvent::InsertChar(char)` for character insertion
+  - `FocusInputEvent::DeleteCharBackward` for backspace handling
+  - CommandHandler emits `FocusInputEvent` for insert/command/telescope modes
+  - Runtime routes events to Telescope, Explorer, or Editor based on `FocusId`
+
+### Files Added
+
+- `lib/core/src/compositor/mod.rs` - Compositor types and ZOrder
+- `lib/core/src/compositor/types.rs` - Bounds, ComposableId
+- `lib/core/src/modifier/mod.rs` - Modifier module root
+- `lib/core/src/modifier/traits.rs` - Modifier trait definition
+- `lib/core/src/modifier/registry.rs` - ModifierRegistry
+- `lib/core/src/modifier/context.rs` - ModifierContext
+- `lib/core/src/modifier/style.rs` - StyleModifiers
+- `lib/core/src/modifier/behavior.rs` - BehaviorModifiers
+- `lib/core/src/focus/mod.rs` - Focus system
+- `lib/core/src/filetype/mod.rs` - Filetype detection
+- `lib/core/src/screen/border.rs` - Border system
+
+### Testing
+
+- 320 unit tests passing
+- 154 integration tests passing
+
 ## [0.6.8] - 2025-12-19
 
 ### Fixed

@@ -106,7 +106,7 @@ async fn test_edit_command_switches_active_buffer() {
 
     // After :e, we should be in normal mode with Editor focus
     result.assert_normal_mode();
-    assert_eq!(result.mode.focus, "Editor", "Focus should be on Editor after :e command");
+    assert_eq!(result.mode.focus, "editor", "Focus should be on Editor after :e command");
 }
 
 // ============================================================================
@@ -154,7 +154,7 @@ async fn test_telescope_switch_returns_to_normal_mode() {
 
     result.assert_normal_mode();
     assert_eq!(
-        result.mode.focus, "Editor",
+        result.mode.focus, "editor",
         "Focus should return to Editor after telescope selection"
     );
 }
@@ -170,7 +170,7 @@ async fn test_edit_command_returns_to_normal_mode() {
         .await;
 
     result.assert_normal_mode();
-    assert_eq!(result.mode.focus, "Editor", "Focus should be on Editor after :e command");
+    assert_eq!(result.mode.focus, "editor", "Focus should be on Editor after :e command");
 }
 
 // ============================================================================

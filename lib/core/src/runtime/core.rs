@@ -15,12 +15,14 @@ use {
         constants::EVENT_CHANNEL_CAPACITY,
         event::{CompletionEvent, InnerEvent},
         explorer::ExplorerState,
+        focus::FocusRegistry,
         folding::FoldManager,
         highlight::{ColorMode, HighlightStore, Theme},
         indent::IndentAnalyzer,
         jumplist::JumpList,
         leap::LeapState,
         modd::ModeState,
+        modifier::{ModifierContext, ModifierRegistry},
         register::Registers,
         screen::{Screen, WhichKeyPanel},
         settings_menu::SettingsMenuState,
@@ -102,6 +104,10 @@ pub struct Runtime {
     pub settings_menu: SettingsMenuState,
     /// Flag indicating render is needed (for coalescing)
     render_pending: bool,
+    /// Focus registry for extensible focus targets
+    pub focus_registry: FocusRegistry,
+    /// Modifier registry for style and behavior modifiers
+    pub modifier_registry: ModifierRegistry,
 }
 
 impl Default for Runtime {
@@ -161,6 +167,8 @@ impl Runtime {
             current_profile_name: default_profile_name,
             settings_menu: SettingsMenuState::new(),
             render_pending: false,
+            focus_registry: FocusRegistry::with_defaults(),
+            modifier_registry: ModifierRegistry::new(),
         };
 
         // Enable diff-based rendering by default
@@ -230,6 +238,39 @@ impl Runtime {
     #[must_use]
     pub const fn current_mode(&self) -> &ModeState {
         &self.mode_state
+    }
+
+    /// Build a modifier context for the given window
+    ///
+    /// This creates a context with all the information needed to evaluate
+    /// which modifiers should apply to a window.
+    #[must_use]
+    pub fn build_modifier_context(
+        &self,
+        window_id: usize,
+        buffer_id: usize,
+        is_active: bool,
+        is_floating: bool,
+    ) -> ModifierContext<'_> {
+        let filetype = self
+            .buffers
+            .get(&buffer_id)
+            .and_then(|b| b.file_path.as_ref())
+            .map(|p| crate::filetype::filetype_id(p));
+
+        let is_modified = self.buffers.get(&buffer_id).is_some_and(|b| b.modified);
+
+        ModifierContext::new(
+            self.mode_state.focus_id,
+            &self.mode_state.edit_mode,
+            &self.mode_state.sub_mode,
+            window_id,
+            buffer_id,
+        )
+        .with_filetype(filetype)
+        .with_active(is_active)
+        .with_modified(is_modified)
+        .with_floating(is_floating)
     }
 
     /// Set the initial file to open

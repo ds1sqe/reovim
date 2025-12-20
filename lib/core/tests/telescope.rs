@@ -157,7 +157,7 @@ async fn test_telescope_focus_mode() {
         .await;
 
     assert_eq!(
-        result.mode.focus, "Telescope",
+        result.mode.focus, "telescope",
         "Expected Telescope focus, got {:?}",
         result.mode.focus
     );
@@ -184,7 +184,7 @@ async fn test_telescope_returns_focus_to_editor() {
         .await;
 
     assert_eq!(
-        result.mode.focus, "Editor",
+        result.mode.focus, "editor",
         "Expected Editor focus, got {:?}",
         result.mode.focus
     );

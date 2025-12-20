@@ -8,7 +8,11 @@ use crate::{
     indent::IndentAnalyzer,
 };
 
-use super::{Position, layout::WindowType};
+use super::{
+    Position,
+    border::{BorderConfig, BorderInsets, WindowAdjacency},
+    layout::WindowType,
+};
 
 /// Scrollbar rendering state
 #[derive(Debug, Clone, Copy)]
@@ -51,6 +55,10 @@ pub struct Window {
     pub cursor: Position,
     /// Track preferred column for vertical movement (j/k)
     pub desired_col: Option<u16>,
+    /// Border configuration for this window
+    pub border_config: Option<BorderConfig>,
+    /// Whether this window is a floating window (for `OnFloat` border mode)
+    pub is_floating: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -864,6 +872,30 @@ impl Window {
         self.line_number.set_relative_number(enabled);
     }
 
+    /// Compute the content rectangle (area inside borders)
+    ///
+    /// Returns (x, y, width, height) of the area available for content.
+    /// Takes adjacency into account for `OnCollide` mode.
+    #[must_use]
+    pub fn content_rect(&self, adjacency: &WindowAdjacency) -> (u16, u16, u16, u16) {
+        let insets = self.border_insets(adjacency);
+        let x = self.anchor.x + insets.left;
+        let y = self.anchor.y + insets.top;
+        let width = self.width.saturating_sub(insets.horizontal());
+        let height = self.height.saturating_sub(insets.vertical());
+        (x, y, width, height)
+    }
+
+    /// Get border insets for this window
+    #[must_use]
+    pub fn border_insets(&self, adjacency: &WindowAdjacency) -> BorderInsets {
+        self.border_config
+            .as_ref()
+            .map_or(BorderInsets::ZERO, |config| {
+                config.insets_with_context(adjacency, self.is_floating)
+            })
+    }
+
     /// Update `buffer_anchor` to keep cursor visible within the viewport
     pub const fn update_scroll(&mut self, cursor_y: u16) {
         let visible_height = self.height;
@@ -985,6 +1017,8 @@ mod tests {
             is_active: true,
             cursor: Position { x: 0, y: 0 },
             desired_col: None,
+            border_config: None,
+            is_floating: false,
         }
     }
 

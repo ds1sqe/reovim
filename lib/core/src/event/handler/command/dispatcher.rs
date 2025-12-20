@@ -1,5 +1,8 @@
 //! Command dispatch and mode change handling
 
+// Allow deprecated Focus enum during transition to FocusId
+#![allow(deprecated)]
+
 use {
     crate::{
         bind::CommandRef,
@@ -186,6 +189,22 @@ impl Dispatcher {
         let _ = self
             .inner_tx
             .send(InnerEvent::VisualTextObjectEvent(action))
+            .await;
+    }
+
+    /// Send focus input event for character insertion
+    pub async fn send_focus_insert_char(&self, c: char) {
+        let _ = self
+            .inner_tx
+            .send(InnerEvent::FocusInputEvent(crate::event::FocusInputEvent::InsertChar(c)))
+            .await;
+    }
+
+    /// Send focus input event for character deletion (backspace)
+    pub async fn send_focus_delete_backward(&self) {
+        let _ = self
+            .inner_tx
+            .send(InnerEvent::FocusInputEvent(crate::event::FocusInputEvent::DeleteCharBackward))
             .await;
     }
 }

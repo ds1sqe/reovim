@@ -1,5 +1,8 @@
 //! Event handler dispatch methods for Runtime
 
+// Allow deprecated Focus enum during transition to FocusId
+#![allow(deprecated)]
+
 use std::sync::Arc;
 
 use crate::{
@@ -973,10 +976,10 @@ impl Runtime {
             }
             TelescopeAction::EnterInsert => {
                 // Switch telescope to insert mode (for typing query)
-                use crate::modd::{EditMode, Focus, ModExtension, ModeState};
+                use crate::modd::{EditMode, Focus, InsertVariant, ModeState};
                 let mode = ModeState::with_focus_and_mode(
                     Focus::Telescope,
-                    EditMode::Insert(ModExtension::Normal),
+                    EditMode::Insert(InsertVariant::Standard),
                 );
                 self.mode_state = mode.clone();
                 let _ = self.mode_tx.send(mode);

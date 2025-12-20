@@ -60,6 +60,17 @@ pub enum InnerEvent {
         /// Channel to send the response
         response_tx: oneshot::Sender<RpcResponse>,
     },
+    /// Focus-related input events (delegated to active focus target)
+    FocusInputEvent(FocusInputEvent),
+}
+
+/// Input events routed to the active focus target
+#[derive(Debug, Clone, Copy)]
+pub enum FocusInputEvent {
+    /// Insert a character at the cursor position
+    InsertChar(char),
+    /// Delete the character before the cursor
+    DeleteCharBackward,
 }
 
 /// A single binding entry for the which-key popup

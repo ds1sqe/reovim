@@ -251,6 +251,59 @@ impl SplitNode {
     }
 }
 
+use super::border::WindowAdjacency;
+
+/// Compute adjacency information for a window
+///
+/// Returns a `WindowAdjacency` struct indicating which sides have neighboring windows.
+/// Two windows are considered adjacent if they share an edge (touching, not overlapping).
+#[must_use]
+pub fn compute_adjacency(window_id: usize, layouts: &[WindowLayout]) -> WindowAdjacency {
+    let Some(target) = layouts.iter().find(|l| l.window_id == window_id) else {
+        return WindowAdjacency::default();
+    };
+    let rect = &target.rect;
+
+    let mut adjacency = WindowAdjacency::default();
+
+    for layout in layouts {
+        if layout.window_id == window_id {
+            continue;
+        }
+        let other = &layout.rect;
+
+        // Check left adjacency: other window's right edge touches our left edge
+        if other.x + other.width == rect.x && other.overlaps_vertical(rect) {
+            adjacency.left = true;
+        }
+        // Check right adjacency: other window's left edge touches our right edge
+        if rect.x + rect.width == other.x && other.overlaps_vertical(rect) {
+            adjacency.right = true;
+        }
+        // Check top adjacency: other window's bottom edge touches our top edge
+        if other.y + other.height == rect.y && other.overlaps_horizontal(rect) {
+            adjacency.top = true;
+        }
+        // Check bottom adjacency: other window's top edge touches our bottom edge
+        if rect.y + rect.height == other.y && other.overlaps_horizontal(rect) {
+            adjacency.bottom = true;
+        }
+    }
+
+    adjacency
+}
+
+/// Compute adjacencies for all windows in a layout
+#[must_use]
+pub fn compute_all_adjacencies(
+    layouts: &[WindowLayout],
+) -> std::collections::HashMap<usize, WindowAdjacency> {
+    layouts
+        .iter()
+        .map(|l| (l.window_id, compute_adjacency(l.window_id, layouts)))
+        .collect()
+}
+
 #[must_use]
 pub fn find_adjacent_window(
     from_window_id: usize,
@@ -367,5 +420,113 @@ mod tests {
         assert_eq!(find_adjacent_window(1, NavigateDirection::Right, &layouts), Some(2));
         assert_eq!(find_adjacent_window(2, NavigateDirection::Left, &layouts), Some(1));
         assert_eq!(find_adjacent_window(1, NavigateDirection::Left, &layouts), None);
+    }
+
+    #[test]
+    fn test_compute_adjacency_horizontal() {
+        let layouts = vec![
+            WindowLayout {
+                window_id: 1,
+                rect: WindowRect::new(0, 0, 50, 50),
+            },
+            WindowLayout {
+                window_id: 2,
+                rect: WindowRect::new(50, 0, 50, 50),
+            },
+        ];
+
+        let adj1 = compute_adjacency(1, &layouts);
+        assert!(!adj1.left);
+        assert!(adj1.right);
+        assert!(!adj1.top);
+        assert!(!adj1.bottom);
+
+        let adj2 = compute_adjacency(2, &layouts);
+        assert!(adj2.left);
+        assert!(!adj2.right);
+        assert!(!adj2.top);
+        assert!(!adj2.bottom);
+    }
+
+    #[test]
+    fn test_compute_adjacency_vertical() {
+        let layouts = vec![
+            WindowLayout {
+                window_id: 1,
+                rect: WindowRect::new(0, 0, 100, 25),
+            },
+            WindowLayout {
+                window_id: 2,
+                rect: WindowRect::new(0, 25, 100, 25),
+            },
+        ];
+
+        let adj1 = compute_adjacency(1, &layouts);
+        assert!(!adj1.left);
+        assert!(!adj1.right);
+        assert!(!adj1.top);
+        assert!(adj1.bottom);
+
+        let adj2 = compute_adjacency(2, &layouts);
+        assert!(!adj2.left);
+        assert!(!adj2.right);
+        assert!(adj2.top);
+        assert!(!adj2.bottom);
+    }
+
+    #[test]
+    fn test_compute_adjacency_four_windows() {
+        // 2x2 grid layout
+        let layouts = vec![
+            WindowLayout {
+                window_id: 1,
+                rect: WindowRect::new(0, 0, 50, 25),
+            },
+            WindowLayout {
+                window_id: 2,
+                rect: WindowRect::new(50, 0, 50, 25),
+            },
+            WindowLayout {
+                window_id: 3,
+                rect: WindowRect::new(0, 25, 50, 25),
+            },
+            WindowLayout {
+                window_id: 4,
+                rect: WindowRect::new(50, 25, 50, 25),
+            },
+        ];
+
+        // Window 1 (top-left): right and bottom adjacency
+        let adj1 = compute_adjacency(1, &layouts);
+        assert!(!adj1.left);
+        assert!(adj1.right);
+        assert!(!adj1.top);
+        assert!(adj1.bottom);
+
+        // Window 4 (bottom-right): left and top adjacency
+        let adj4 = compute_adjacency(4, &layouts);
+        assert!(adj4.left);
+        assert!(!adj4.right);
+        assert!(adj4.top);
+        assert!(!adj4.bottom);
+    }
+
+    #[test]
+    fn test_compute_all_adjacencies() {
+        let layouts = vec![
+            WindowLayout {
+                window_id: 1,
+                rect: WindowRect::new(0, 0, 50, 50),
+            },
+            WindowLayout {
+                window_id: 2,
+                rect: WindowRect::new(50, 0, 50, 50),
+            },
+        ];
+
+        let adjacencies = compute_all_adjacencies(&layouts);
+        assert_eq!(adjacencies.len(), 2);
+        assert!(adjacencies[&1].right);
+        assert!(adjacencies[&2].left);
     }
 }

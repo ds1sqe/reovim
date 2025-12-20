@@ -3,6 +3,9 @@
 //! Enhanced statusline format:
 //! `[MODE_ICON MODE] [pending/cmd] ... [FILENAME][+] [FILETYPE] Ln X, Col Y`
 
+// Allow deprecated Focus enum during transition to FocusId
+#![allow(deprecated)]
+
 use {
     crate::{
         buffer::Buffer,

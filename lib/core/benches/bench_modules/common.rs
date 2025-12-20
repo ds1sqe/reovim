@@ -62,6 +62,8 @@ pub fn create_window(height: u16) -> Window {
         is_active: true,
         cursor: Position { x: 0, y: 0 },
         desired_col: None,
+        border_config: None,
+        is_floating: false,
     }
 }
 

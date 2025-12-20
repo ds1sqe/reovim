@@ -1,5 +1,8 @@
 //! Base layer - tab line and status line
 
+// Allow deprecated Focus enum during transition to FocusId
+#![allow(deprecated)]
+
 use crate::{
     buffer::Buffer,
     command_line::CommandLine,

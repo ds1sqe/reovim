@@ -162,12 +162,8 @@ impl CellSnapshot {
 
 impl From<&crate::modd::ModeState> for ModeSnapshot {
     fn from(mode: &crate::modd::ModeState) -> Self {
-        let focus = match mode.focus {
-            crate::modd::Focus::Editor => "Editor",
-            crate::modd::Focus::Explorer => "Explorer",
-            crate::modd::Focus::Telescope => "Telescope",
-            crate::modd::Focus::SettingsMenu => "SettingsMenu",
-        };
+        // Use the new focus_id field
+        let focus = mode.focus_id.0;
 
         let edit_mode = match &mode.edit_mode {
             crate::modd::EditMode::Normal => "Normal".to_string(),

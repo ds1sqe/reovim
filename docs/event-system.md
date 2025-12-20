@@ -45,6 +45,10 @@ pub enum InnerEvent {
     TreesitterEvent(TreesitterEvent),
     OperatorMotionEvent(OperatorMotionAction),
 
+    // Focus input events
+    FocusInputEvent(FocusInputEvent),
+    VisualTextObjectEvent(VisualTextObjectAction),
+
     // UI events
     WhichKeyShow { prefix: String, bindings: Vec<WhichKeyBinding> },
     WhichKeyHide,
@@ -134,6 +138,28 @@ pub enum LeapEvent {
     Cancel,
 }
 ```
+
+### FocusInputEvent
+
+Focus-based input routing events. Sent by CommandHandler and handled by Runtime based on active `FocusId`:
+
+```rust
+pub enum FocusInputEvent {
+    InsertChar(char),
+    DeleteCharBackward,
+}
+```
+
+**Routing Logic:**
+- `FocusId::TELESCOPE` → Updates telescope query, triggers async filtering
+- `FocusId::EXPLORER` → Delegates to FocusRegistry for filter input
+- `FocusId::EDITOR` → Handles command line (command mode) or buffer editing (insert mode)
+- Other → Falls back to FocusRegistry lookup
+
+**Emitted by:**
+- CommandHandler when in insert, command, or telescope mode
+- Single printable characters → `InsertChar(char)`
+- Backspace key → `DeleteCharBackward`
 
 ### TreesitterEvent
 
