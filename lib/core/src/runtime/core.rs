@@ -14,6 +14,7 @@ use {
         command::CommandRegistry,
         command_line::CommandLine,
         completion::{CompletionContext, CompletionEngine, CompletionItem, CompletionState},
+        component::RenderState,
         config::{ProfileConfig, ProfileManager},
         constants::EVENT_CHANNEL_CAPACITY,
         event::{CompletionEvent, InnerEvent},
@@ -332,25 +333,26 @@ impl Runtime {
 
     /// Render the screen with current state
     pub(crate) fn render(&mut self) {
+        let state = RenderState {
+            buffers: &self.buffers,
+            highlight_store: &self.highlight_store,
+            mode: &self.mode_state,
+            command_line: &self.command_line,
+            pending_keys: &self.pending_keys,
+            last_command: &self.last_command,
+            color_mode: self.color_mode,
+            theme: &self.theme,
+            explorer: self.explorer_state.as_ref(),
+            which_key: &self.which_key_panel,
+            completion: &self.completion_state,
+            telescope: &self.telescope_state,
+            leap: &self.leap_state,
+            fold_manager: &self.fold_manager,
+            indent_analyzer: &self.indent_analyzer,
+            settings_menu: &self.settings_menu,
+        };
         self.screen
-            .render(
-                &self.buffers,
-                &self.highlight_store,
-                &self.mode_state,
-                &self.command_line,
-                &self.pending_keys,
-                &self.last_command,
-                self.color_mode,
-                &self.theme,
-                self.explorer_state.as_ref(),
-                &self.which_key_panel,
-                &self.completion_state,
-                &self.telescope_state,
-                &self.leap_state,
-                &self.fold_manager,
-                &self.indent_analyzer,
-                &self.settings_menu,
-            )
+            .render_with_state(&state)
             .expect("failed to render");
         self.screen.flush().expect("failed to flush");
     }

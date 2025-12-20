@@ -2,6 +2,46 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.6.17] - 2025-12-20
+
+### Architecture
+
+- **RenderState for Bundled Render Parameters**
+  - Created `RenderState<'a>` struct to bundle all runtime state needed for rendering
+  - Reduces 16-parameter render function signatures to single state struct
+  - Fields: buffers, highlight_store, mode, command_line, pending_keys, last_command,
+    color_mode, theme, explorer, which_key, completion, telescope, leap, fold_manager,
+    indent_analyzer, settings_menu
+
+- **Enhanced RenderContext**
+  - Added optional `state: Option<&'a RenderState<'a>>` field to `RenderContext`
+  - Added `RenderContext::with_state()` constructor for creating context with state
+  - Added `RenderContext::state()` getter method
+  - Backward compatible - existing code using `RenderContext::new()` still works
+
+- **New Screen::render_with_state() Method**
+  - Added `Screen::render_with_state(&mut self, state: &RenderState)` method
+  - Preferred rendering entry point with cleaner API
+  - Runtime::render() now creates RenderState and calls this method
+  - Legacy `Screen::render()` with 16 parameters kept for compatibility
+
+- **WhichKeyPanel Debug Derive**
+  - Added `Debug` derive to `WhichKeyPanel` for RenderState compatibility
+
+### Files Changed
+
+- `lib/core/src/component/display.rs` - Added RenderState struct, updated RenderContext
+- `lib/core/src/component/mod.rs` - Export RenderState
+- `lib/core/src/screen/mod.rs` - Added render_with_state() method
+- `lib/core/src/screen/which_key.rs` - Added Debug derive to WhichKeyPanel
+- `lib/core/src/runtime/core.rs` - Use RenderState in render()
+
+### Testing
+
+- All unit tests passing (324 tests)
+- All integration tests passing
+- Zero warnings (build + clippy)
+
 ## [0.6.16] - 2025-12-20
 
 ### Architecture

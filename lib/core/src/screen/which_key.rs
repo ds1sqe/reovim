@@ -45,7 +45,7 @@ impl Default for WhichKeyConfig {
 }
 
 /// State for the which-key popup panel
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct WhichKeyPanel {
     /// Whether the panel is visible
     pub visible: bool,

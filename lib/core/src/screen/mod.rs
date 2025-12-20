@@ -70,6 +70,7 @@ use {
         command::terminal::{Clear, ClearType},
         command_line::CommandLine,
         completion::CompletionState,
+        component::RenderState,
         constants::RESET_STYLE,
         explorer::{ExplorerState, render_explorer},
         folding::FoldManager,
@@ -564,6 +565,58 @@ impl Screen {
             fold_manager,
             indent_analyzer,
             settings_menu,
+        )
+    }
+
+    /// Render with bundled state
+    ///
+    /// This is the preferred rendering method that takes all runtime state as a single
+    /// `RenderState` struct instead of many individual parameters.
+    pub fn render_with_state(
+        &mut self,
+        state: &RenderState<'_>,
+    ) -> std::result::Result<(), std::io::Error> {
+        // Delegate to the existing render_buffered with extracted fields
+        // In future versions, render_buffered will take RenderState directly
+        if self.frame_renderer.is_some() {
+            return self.render_buffered(
+                state.buffers,
+                state.highlight_store,
+                state.mode,
+                state.command_line,
+                state.pending_keys,
+                state.last_command,
+                state.color_mode,
+                state.theme,
+                state.explorer,
+                state.which_key,
+                state.completion,
+                state.telescope,
+                state.leap,
+                state.fold_manager,
+                state.indent_analyzer,
+                state.settings_menu,
+            );
+        }
+
+        // Fallback: direct rendering (legacy path)
+        self.render_direct(
+            state.buffers,
+            state.highlight_store,
+            state.mode,
+            state.command_line,
+            state.pending_keys,
+            state.last_command,
+            state.color_mode,
+            state.theme,
+            state.explorer,
+            state.which_key,
+            state.completion,
+            state.telescope,
+            state.leap,
+            state.fold_manager,
+            state.indent_analyzer,
+            state.settings_menu,
         )
     }
 
