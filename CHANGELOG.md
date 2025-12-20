@@ -2,6 +2,49 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.6.13] - 2025-12-20
+
+### Architecture
+
+- **Unified UIComponent Trait** (`lib/core/src/ui_component/`)
+  - `UIComponent` trait combining `Interactor`, `DisplayComponent`, and `Layer` functionality
+  - `ComponentId` for unique component identification (STATUS_LINE, TAB_LINE, EDITOR, EXPLORER, TELESCOPE, SETTINGS, COMMAND_LINE)
+  - `ComponentRegistry` for managing registered components and tracking active focus
+  - Unified interface for identity, rendering, and input handling
+
+- **UIComponent Implementations**
+  - `StatusLineComponent` - Display-only, not focusable
+  - `TabLineComponent` - Display-only, not focusable
+  - `Editor` - Focusable, handles insert/delete input
+  - `Explorer` - Focusable, handles input when `input_active`
+  - `Telescope` - Focusable, captures all input when active
+  - `Settings` - Focusable, captures all input when active
+  - `CommandLineInt` - Focusable, captures all input when active
+
+### Files Added
+
+- `lib/core/src/ui_component/mod.rs` - Module root with documentation
+- `lib/core/src/ui_component/component.rs` - `UIComponent` trait and `ComponentId`
+- `lib/core/src/ui_component/registry.rs` - `ComponentRegistry` for component management
+
+### Files Changed
+
+- `lib/core/src/lib.rs` - Added `pub mod ui_component`
+- `lib/core/src/component/status_line.rs` - Added `UIComponent` impl
+- `lib/core/src/component/tab_line.rs` - Added `UIComponent` impl
+- `lib/core/src/interactor/mod.rs` - Added `UIComponent` impl for all interactors
+
+### Testing
+
+- 324 unit tests passing
+- 100 integration tests passing
+- Zero warnings (build + clippy)
+
+### Notes
+
+- Rendering for interactors is currently delegated to existing Layer implementations
+- Full rendering unification will be completed in Stream C (v0.6.14) with plugin registration
+
 ## [0.6.12] - 2025-12-20
 
 ### Breaking Changes

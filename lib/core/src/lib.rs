@@ -3,6 +3,7 @@ pub mod buffer;
 pub mod component;
 pub mod frame;
 pub mod rpc;
+pub mod ui_component;
 pub mod visual;
 
 pub mod command;
