@@ -1,9 +1,10 @@
-// Allow deprecated Focus enum during transition to InteractorId
-#![allow(deprecated)]
+//! Mode state management for the editor
+//!
+//! Uses `InteractorId` for focus context and `EditMode`/`SubMode` for input handling.
 
 use crate::leap::LeapDirection;
 
-// Re-export InteractorId for backward compatibility
+// Re-export InteractorId for convenience
 pub use crate::interactor::InteractorId;
 
 /// Operator type for operator-pending mode
@@ -13,31 +14,6 @@ pub enum OperatorType {
     Delete,
     Yank,
     Change,
-}
-
-/// Focus context - where you are in the editor
-///
-/// DEPRECATED: Use [`InteractorId`] directly instead.
-#[deprecated(since = "0.7.0", note = "Use InteractorId instead")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Focus {
-    #[default]
-    Editor,
-    Explorer,
-    Telescope,
-    SettingsMenu,
-}
-
-#[allow(deprecated)]
-impl From<Focus> for InteractorId {
-    fn from(focus: Focus) -> Self {
-        match focus {
-            Focus::Editor => Self::EDITOR,
-            Focus::Explorer => Self::EXPLORER,
-            Focus::Telescope => Self::TELESCOPE,
-            Focus::SettingsMenu => Self::SETTINGS,
-        }
-    }
 }
 
 /// Edit mode - how you're interacting
@@ -89,46 +65,24 @@ pub enum VisualVariant {
     Block,
 }
 
-/// Complete mode state combining focus, edit mode, and sub-mode
+/// Complete mode state combining interactor context, edit mode, and sub-mode
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-#[allow(deprecated)]
 pub struct ModeState {
-    /// The interactor ID (extensible, trait-based)
+    /// The interactor ID - identifies which component has focus
     pub interactor_id: InteractorId,
-    /// Deprecated: Use `interactor_id` instead. Kept for backward compatibility with
-    /// code that pattern-matches on Focus enum.
-    pub focus: Focus,
+    /// The current edit mode (Normal, Insert, Visual)
     pub edit_mode: EditMode,
+    /// The current sub-mode (Command, `OperatorPending`, Leap, etc.)
     pub sub_mode: SubMode,
 }
 
-#[allow(deprecated)]
 impl ModeState {
     /// Create a new `ModeState` with defaults (Editor + Normal + None)
     #[must_use]
     pub const fn new() -> Self {
         Self {
             interactor_id: InteractorId::EDITOR,
-            focus: Focus::Editor,
             edit_mode: EditMode::Normal,
-            sub_mode: SubMode::None,
-        }
-    }
-
-    /// Create `ModeState` with specific focus and edit mode
-    #[must_use]
-    #[deprecated(since = "0.7.0", note = "Use with_interactor_id_and_mode instead")]
-    pub const fn with_focus_and_mode(focus: Focus, edit_mode: EditMode) -> Self {
-        let interactor_id = match focus {
-            Focus::Editor => InteractorId::EDITOR,
-            Focus::Explorer => InteractorId::EXPLORER,
-            Focus::Telescope => InteractorId::TELESCOPE,
-            Focus::SettingsMenu => InteractorId::SETTINGS,
-        };
-        Self {
-            interactor_id,
-            focus,
-            edit_mode,
             sub_mode: SubMode::None,
         }
     }
@@ -139,75 +93,42 @@ impl ModeState {
         interactor_id: InteractorId,
         edit_mode: EditMode,
     ) -> Self {
-        let focus = match interactor_id.0.as_bytes() {
-            b"explorer" => Focus::Explorer,
-            b"telescope" => Focus::Telescope,
-            b"settings" => Focus::SettingsMenu,
-            // "editor" and custom interactor IDs default to Editor
-            _ => Focus::Editor,
-        };
         Self {
             interactor_id,
-            focus,
             edit_mode,
             sub_mode: SubMode::None,
         }
     }
 
-    /// Create `ModeState` with sub-mode
+    /// Create `ModeState` with interactor ID, edit mode, and sub-mode
     #[must_use]
-    #[deprecated(since = "0.7.0", note = "Use with_interactor_id_sub_mode instead")]
-    pub const fn with_sub_mode(focus: Focus, edit_mode: EditMode, sub_mode: SubMode) -> Self {
-        let interactor_id = match focus {
-            Focus::Editor => InteractorId::EDITOR,
-            Focus::Explorer => InteractorId::EXPLORER,
-            Focus::Telescope => InteractorId::TELESCOPE,
-            Focus::SettingsMenu => InteractorId::SETTINGS,
-        };
+    pub const fn with_interactor_id_sub_mode(
+        interactor_id: InteractorId,
+        edit_mode: EditMode,
+        sub_mode: SubMode,
+    ) -> Self {
         Self {
             interactor_id,
-            focus,
             edit_mode,
             sub_mode,
         }
-    }
-
-    /// Set focus while preserving edit mode and sub-mode
-    #[must_use]
-    #[deprecated(since = "0.7.0", note = "Use set_interactor_id instead")]
-    pub const fn with_focus(mut self, focus: Focus) -> Self {
-        self.interactor_id = match focus {
-            Focus::Editor => InteractorId::EDITOR,
-            Focus::Explorer => InteractorId::EXPLORER,
-            Focus::Telescope => InteractorId::TELESCOPE,
-            Focus::SettingsMenu => InteractorId::SETTINGS,
-        };
-        self.focus = focus;
-        self
     }
 
     /// Set interactor ID while preserving edit mode and sub-mode
     #[must_use]
     pub const fn set_interactor_id(mut self, interactor_id: InteractorId) -> Self {
         self.interactor_id = interactor_id;
-        self.focus = match interactor_id.0.as_bytes() {
-            b"explorer" => Focus::Explorer,
-            b"telescope" => Focus::Telescope,
-            b"settings" => Focus::SettingsMenu,
-            // "editor" and custom interactor IDs default to Editor
-            _ => Focus::Editor,
-        };
         self
     }
 
-    /// Set edit mode while preserving focus and sub-mode
+    /// Set edit mode while preserving interactor and sub-mode
     #[must_use]
     pub const fn with_edit_mode(mut self, edit_mode: EditMode) -> Self {
         self.edit_mode = edit_mode;
         self
     }
 
-    /// Set sub-mode while preserving focus and edit mode
+    /// Set sub-mode while preserving interactor and edit mode
     #[must_use]
     pub const fn with_sub(mut self, sub_mode: SubMode) -> Self {
         self.sub_mode = sub_mode;
@@ -221,7 +142,6 @@ impl ModeState {
     pub const fn normal() -> Self {
         Self {
             interactor_id: InteractorId::EDITOR,
-            focus: Focus::Editor,
             edit_mode: EditMode::Normal,
             sub_mode: SubMode::None,
         }
@@ -232,7 +152,6 @@ impl ModeState {
     pub const fn insert() -> Self {
         Self {
             interactor_id: InteractorId::EDITOR,
-            focus: Focus::Editor,
             edit_mode: EditMode::Insert(InsertVariant::Standard),
             sub_mode: SubMode::None,
         }
@@ -243,7 +162,6 @@ impl ModeState {
     pub const fn visual() -> Self {
         Self {
             interactor_id: InteractorId::EDITOR,
-            focus: Focus::Editor,
             edit_mode: EditMode::Visual(VisualVariant::Char),
             sub_mode: SubMode::None,
         }
@@ -254,7 +172,6 @@ impl ModeState {
     pub const fn visual_block() -> Self {
         Self {
             interactor_id: InteractorId::EDITOR,
-            focus: Focus::Editor,
             edit_mode: EditMode::Visual(VisualVariant::Block),
             sub_mode: SubMode::None,
         }
@@ -265,7 +182,6 @@ impl ModeState {
     pub const fn visual_line() -> Self {
         Self {
             interactor_id: InteractorId::EDITOR,
-            focus: Focus::Editor,
             edit_mode: EditMode::Visual(VisualVariant::Line),
             sub_mode: SubMode::None,
         }
@@ -276,7 +192,6 @@ impl ModeState {
     pub const fn command() -> Self {
         Self {
             interactor_id: InteractorId::EDITOR,
-            focus: Focus::Editor,
             edit_mode: EditMode::Normal,
             sub_mode: SubMode::Command,
         }
@@ -287,7 +202,6 @@ impl ModeState {
     pub const fn explorer() -> Self {
         Self {
             interactor_id: InteractorId::EXPLORER,
-            focus: Focus::Explorer,
             edit_mode: EditMode::Normal,
             sub_mode: SubMode::None,
         }
@@ -298,7 +212,6 @@ impl ModeState {
     pub const fn explorer_input() -> Self {
         Self {
             interactor_id: InteractorId::EXPLORER,
-            focus: Focus::Explorer,
             edit_mode: EditMode::Insert(InsertVariant::Standard),
             sub_mode: SubMode::None,
         }
@@ -309,7 +222,6 @@ impl ModeState {
     pub const fn telescope() -> Self {
         Self {
             interactor_id: InteractorId::TELESCOPE,
-            focus: Focus::Telescope,
             edit_mode: EditMode::Insert(InsertVariant::Standard),
             sub_mode: SubMode::None,
         }
@@ -320,7 +232,6 @@ impl ModeState {
     pub const fn telescope_normal() -> Self {
         Self {
             interactor_id: InteractorId::TELESCOPE,
-            focus: Focus::Telescope,
             edit_mode: EditMode::Normal,
             sub_mode: SubMode::None,
         }
@@ -331,7 +242,6 @@ impl ModeState {
     pub const fn settings_menu() -> Self {
         Self {
             interactor_id: InteractorId::SETTINGS,
-            focus: Focus::SettingsMenu,
             edit_mode: EditMode::Normal,
             sub_mode: SubMode::None,
         }
@@ -342,7 +252,6 @@ impl ModeState {
     pub const fn operator_pending(operator: OperatorType, count: Option<usize>) -> Self {
         Self {
             interactor_id: InteractorId::EDITOR,
-            focus: Focus::Editor,
             edit_mode: EditMode::Normal,
             sub_mode: SubMode::OperatorPending { operator, count },
         }
@@ -357,7 +266,6 @@ impl ModeState {
     ) -> Self {
         Self {
             interactor_id: InteractorId::EDITOR,
-            focus: Focus::Editor,
             edit_mode: EditMode::Normal,
             sub_mode: SubMode::Leap {
                 direction,
@@ -437,9 +345,9 @@ impl ModeState {
 
     /// Get display string for status line (orthogonal format)
     ///
-    /// Format: ` FOCUS | EDIT_MODE ` or ` FOCUS | EDIT_MODE | SUB_MODE `
+    /// Format: ` INTERACTOR | EDIT_MODE ` or shows sub-mode when active
     #[must_use]
-    pub const fn display_string(&self) -> &'static str {
+    pub fn display_string(&self) -> &'static str {
         // Sub-mode display (if active)
         match &self.sub_mode {
             SubMode::Command => return " COMMAND ",
@@ -448,26 +356,34 @@ impl ModeState {
             SubMode::None => {}
         }
 
-        // Focus × EditMode (orthogonal display)
-        match (&self.focus, &self.edit_mode) {
-            // Editor focus
-            (Focus::Editor, EditMode::Normal) => " NORMAL ",
-            (Focus::Editor, EditMode::Insert(_)) => " INSERT ",
-            (Focus::Editor, EditMode::Visual(VisualVariant::Char)) => " VISUAL ",
-            (Focus::Editor, EditMode::Visual(VisualVariant::Line)) => " V-LINE ",
-            (Focus::Editor, EditMode::Visual(VisualVariant::Block)) => " V-BLOCK ",
-            // Explorer focus
-            (Focus::Explorer, EditMode::Normal) => " EXPLORER ",
-            (Focus::Explorer, EditMode::Insert(_)) => " EXPLORER | INSERT ",
-            (Focus::Explorer, EditMode::Visual(_)) => " EXPLORER | VISUAL ",
-            // Telescope focus
-            (Focus::Telescope, EditMode::Normal) => " TELESCOPE ",
-            (Focus::Telescope, EditMode::Insert(_)) => " TELESCOPE | INSERT ",
-            (Focus::Telescope, EditMode::Visual(_)) => " TELESCOPE | VISUAL ",
-            // Settings focus
-            (Focus::SettingsMenu, EditMode::Normal) => " SETTINGS ",
-            (Focus::SettingsMenu, EditMode::Insert(_)) => " SETTINGS | INSERT ",
-            (Focus::SettingsMenu, EditMode::Visual(_)) => " SETTINGS | VISUAL ",
+        // InteractorId × EditMode (orthogonal display)
+        let is_editor = self.interactor_id == InteractorId::EDITOR;
+        let is_explorer = self.interactor_id == InteractorId::EXPLORER;
+        let is_telescope = self.interactor_id == InteractorId::TELESCOPE;
+        let is_settings = self.interactor_id == InteractorId::SETTINGS;
+
+        match &self.edit_mode {
+            EditMode::Normal if is_editor => " NORMAL ",
+            EditMode::Insert(_) if is_editor => " INSERT ",
+            EditMode::Visual(VisualVariant::Char) if is_editor => " VISUAL ",
+            EditMode::Visual(VisualVariant::Line) if is_editor => " V-LINE ",
+            EditMode::Visual(VisualVariant::Block) if is_editor => " V-BLOCK ",
+            // Explorer
+            EditMode::Normal if is_explorer => " EXPLORER ",
+            EditMode::Insert(_) if is_explorer => " EXPLORER | INSERT ",
+            EditMode::Visual(_) if is_explorer => " EXPLORER | VISUAL ",
+            // Telescope
+            EditMode::Normal if is_telescope => " TELESCOPE ",
+            EditMode::Insert(_) if is_telescope => " TELESCOPE | INSERT ",
+            EditMode::Visual(_) if is_telescope => " TELESCOPE | VISUAL ",
+            // Settings
+            EditMode::Normal if is_settings => " SETTINGS ",
+            EditMode::Insert(_) if is_settings => " SETTINGS | INSERT ",
+            EditMode::Visual(_) if is_settings => " SETTINGS | VISUAL ",
+            // Fallback for custom interactor IDs
+            EditMode::Normal => " NORMAL ",
+            EditMode::Insert(_) => " INSERT ",
+            EditMode::Visual(_) => " VISUAL ",
         }
     }
 }

@@ -108,10 +108,7 @@ impl Dispatcher {
                 Some(ModeState::operator_pending(OperatorType::Change, None))
             }
             // Telescope mode transitions
-            "telescope_enter_normal" => Some(ModeState::with_focus_and_mode(
-                crate::modd::Focus::Telescope,
-                crate::modd::EditMode::Normal,
-            )),
+            "telescope_enter_normal" => Some(ModeState::telescope_normal()),
             "telescope_enter_insert" => Some(ModeState::telescope()),
             // Explorer mode transitions are handled in runtime via DeferredAction
             // toggle_explorer, explorer_close, explorer_focus_editor etc.

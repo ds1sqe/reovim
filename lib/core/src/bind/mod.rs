@@ -1,8 +1,5 @@
 //! Key binding system for mapping key sequences to commands
 
-// Allow deprecated Focus enum during transition to FocusId
-#![allow(deprecated)]
-
 use {
     crate::{
         command::{
@@ -10,7 +7,8 @@ use {
             registry::CommandRegistry,
         },
         event::WhichKeyBinding,
-        modd::{EditMode, Focus, ModeState, SubMode},
+        interactor::InteractorId,
+        modd::{EditMode, ModeState, SubMode},
     },
     std::{collections::HashMap, sync::Arc},
 };
@@ -239,9 +237,9 @@ impl KeyMap {
     ///
     /// Keymap selection priority:
     /// 1. `SubMode` takes precedence (Command, `OperatorPending`)
-    /// 2. Focus + `EditMode` determines the keymap otherwise
+    /// 2. `InteractorId` + `EditMode` determines the keymap otherwise
     #[must_use]
-    pub const fn get_keymap_for_mode(&self, mode: &ModeState) -> &HashMap<String, KeyMapInner> {
+    pub fn get_keymap_for_mode(&self, mode: &ModeState) -> &HashMap<String, KeyMapInner> {
         // SubMode takes precedence
         match &mode.sub_mode {
             SubMode::Command => return &self.command,
@@ -250,16 +248,30 @@ impl KeyMap {
             SubMode::None => {}
         }
 
-        // Focus + EditMode determines keymap
-        match (&mode.focus, &mode.edit_mode) {
-            (Focus::Editor, EditMode::Normal) => &self.normal,
-            (Focus::Editor, EditMode::Insert(_)) => &self.insert,
-            (Focus::Editor, EditMode::Visual(_)) => &self.visual,
-            (Focus::Explorer, EditMode::Normal | EditMode::Visual(_)) => &self.explorer,
-            (Focus::Explorer, EditMode::Insert(_)) => &self.explorer_input,
-            (Focus::Telescope, EditMode::Normal | EditMode::Visual(_)) => &self.telescope_normal,
-            (Focus::Telescope, EditMode::Insert(_)) => &self.telescope_insert,
-            (Focus::SettingsMenu, _) => &self.settings_menu,
+        // InteractorId + EditMode determines keymap
+        let id = &mode.interactor_id;
+
+        if *id == InteractorId::EXPLORER {
+            return match &mode.edit_mode {
+                EditMode::Insert(_) => &self.explorer_input,
+                _ => &self.explorer,
+            };
+        }
+        if *id == InteractorId::TELESCOPE {
+            return match &mode.edit_mode {
+                EditMode::Insert(_) => &self.telescope_insert,
+                _ => &self.telescope_normal,
+            };
+        }
+        if *id == InteractorId::SETTINGS {
+            return &self.settings_menu;
+        }
+
+        // Default: Editor
+        match &mode.edit_mode {
+            EditMode::Normal => &self.normal,
+            EditMode::Insert(_) => &self.insert,
+            EditMode::Visual(_) => &self.visual,
         }
     }
 

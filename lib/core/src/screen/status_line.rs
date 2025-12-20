@@ -3,16 +3,14 @@
 //! Enhanced statusline format:
 //! `[MODE_ICON MODE] [pending/cmd] ... [FILENAME][+] [FILETYPE] Ln X, Col Y`
 
-// Allow deprecated Focus enum during transition to FocusId
-#![allow(deprecated)]
-
 use {
     crate::{
         buffer::Buffer,
         command_line::CommandLine,
         constants::RESET_STYLE,
         highlight::{ColorMode, Theme},
-        modd::{EditMode, Focus, ModeState, SubMode},
+        interactor::InteractorId,
+        modd::{EditMode, ModeState, SubMode},
     },
     reovim_sys::{cursor::MoveTo, queue, style::Print},
     std::io::Write,
@@ -52,17 +50,59 @@ pub trait StatusLineRenderer {
 }
 
 /// Get mode icon for the current mode state
-const fn mode_icon(mode: &ModeState) -> &'static str {
-    match (&mode.sub_mode, &mode.focus, &mode.edit_mode) {
-        (SubMode::Command, _, _) => icons::COMMAND,
-        (SubMode::OperatorPending { .. }, _, _) => icons::OPERATOR,
-        (SubMode::Leap { .. }, _, _) => icons::LEAP,
-        (SubMode::None, Focus::Telescope, _) => icons::TELESCOPE,
-        (SubMode::None, Focus::Explorer, _) => icons::EXPLORER,
-        (SubMode::None, Focus::SettingsMenu, _) => icons::SETTINGS,
-        (SubMode::None, Focus::Editor, EditMode::Normal) => icons::NORMAL,
-        (SubMode::None, Focus::Editor, EditMode::Insert(_)) => icons::INSERT,
-        (SubMode::None, Focus::Editor, EditMode::Visual(_)) => icons::VISUAL,
+fn mode_icon(mode: &ModeState) -> &'static str {
+    // Sub-modes take precedence
+    match &mode.sub_mode {
+        SubMode::Command => return icons::COMMAND,
+        SubMode::OperatorPending { .. } => return icons::OPERATOR,
+        SubMode::Leap { .. } => return icons::LEAP,
+        SubMode::None => {}
+    }
+
+    // Then check interactor
+    if mode.interactor_id == InteractorId::TELESCOPE {
+        return icons::TELESCOPE;
+    }
+    if mode.interactor_id == InteractorId::EXPLORER {
+        return icons::EXPLORER;
+    }
+    if mode.interactor_id == InteractorId::SETTINGS {
+        return icons::SETTINGS;
+    }
+
+    // Editor modes
+    match &mode.edit_mode {
+        EditMode::Normal => icons::NORMAL,
+        EditMode::Insert(_) => icons::INSERT,
+        EditMode::Visual(_) => icons::VISUAL,
+    }
+}
+
+/// Get style for current mode
+fn get_mode_style<'t>(mode: &ModeState, theme: &'t Theme) -> &'t crate::highlight::Style {
+    // Sub-modes
+    match &mode.sub_mode {
+        SubMode::Command => return &theme.statusline.mode.command,
+        SubMode::OperatorPending { .. } | SubMode::Leap { .. } => {
+            return &theme.statusline.mode.normal;
+        }
+        SubMode::None => {}
+    }
+
+    // Interactor-specific styles
+    if mode.interactor_id == InteractorId::TELESCOPE || mode.interactor_id == InteractorId::SETTINGS
+    {
+        return &theme.statusline.mode.command;
+    }
+    if mode.interactor_id == InteractorId::EXPLORER {
+        return &theme.statusline.mode.explorer;
+    }
+
+    // Editor edit modes
+    match &mode.edit_mode {
+        EditMode::Normal => &theme.statusline.mode.normal,
+        EditMode::Insert(_) => &theme.statusline.mode.insert,
+        EditMode::Visual(_) => &theme.statusline.mode.visual,
     }
 }
 
@@ -114,21 +154,7 @@ pub fn render_status_line_to<W: Write>(
     let icon = mode_icon(mode);
 
     // Get mode-specific style
-    let mode_style = match (&mode.sub_mode, &mode.focus, &mode.edit_mode) {
-        // Command sub-mode, Telescope, or SettingsMenu uses command style
-        (SubMode::Command, _, _) | (SubMode::None, Focus::Telescope | Focus::SettingsMenu, _) => {
-            &theme.statusline.mode.command
-        }
-        // Operator-pending, Leap, and normal mode in Editor
-        (SubMode::OperatorPending { .. } | SubMode::Leap { .. }, _, _)
-        | (SubMode::None, Focus::Editor, EditMode::Normal) => &theme.statusline.mode.normal,
-        // Editor insert mode
-        (SubMode::None, Focus::Editor, EditMode::Insert(_)) => &theme.statusline.mode.insert,
-        // Editor visual mode
-        (SubMode::None, Focus::Editor, EditMode::Visual(_)) => &theme.statusline.mode.visual,
-        // Explorer
-        (SubMode::None, Focus::Explorer, _) => &theme.statusline.mode.explorer,
-    };
+    let mode_style = get_mode_style(mode, theme);
 
     // Get buffer info
     let buffer_name = buffer

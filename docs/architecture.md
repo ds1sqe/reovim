@@ -123,7 +123,7 @@ lib/core/src/
 │   └── inner/      # InnerEvent types
 ├── motion/         # Cursor movement logic
 ├── highlight/      # Syntax highlighting
-├── modd/           # Editor modes (ModeState)
+├── modd/           # Editor modes (ModeState, EditMode, SubMode)
 ├── modifier/       # Context-aware modifiers
 │   ├── mod.rs
 │   ├── traits.rs   # Modifier trait
@@ -370,9 +370,20 @@ Editor mode is represented by a multi-dimensional `ModeState`:
 
 ```rust
 pub struct ModeState {
-    pub focus: Focus,        // Editor, Explorer, Telescope
-    pub edit_mode: EditMode, // Normal, Insert, Visual
-    pub sub_mode: SubMode,   // None, Command, OperatorPending, Leap
+    pub interactor_id: InteractorId, // Editor, Explorer, Telescope, Settings, or custom
+    pub edit_mode: EditMode,         // Normal, Insert, Visual
+    pub sub_mode: SubMode,           // None, Command, OperatorPending, Leap
+}
+
+// InteractorId is extensible (plugins can define custom IDs)
+pub struct InteractorId(pub &'static str);
+
+impl InteractorId {
+    pub const EDITOR: Self = Self("editor");
+    pub const EXPLORER: Self = Self("explorer");
+    pub const TELESCOPE: Self = Self("telescope");
+    pub const SETTINGS: Self = Self("settings");
+    pub const COMMAND_LINE: Self = Self("command_line");
 }
 ```
 
@@ -382,14 +393,18 @@ pub struct ModeState {
 - `ModeState::visual()` - Editor + Visual mode
 - `ModeState::command()` - Editor + Command sub-mode
 - `ModeState::explorer()` - Explorer focus
-- `ModeState::telescope()` - Telescope focus
+- `ModeState::telescope()` - Telescope focus (Insert mode)
+- `ModeState::telescope_normal()` - Telescope focus (Normal mode)
+- `ModeState::settings_menu()` - Settings menu focus
 - `ModeState::operator_pending(op, count)` - Operator-pending mode
 - `ModeState::leap(direction, op, count)` - Leap motion mode
+- `ModeState::with_interactor_id_and_mode(id, edit_mode)` - Custom interactor
 
 **State checks:**
 - `is_normal()`, `is_insert()`, `is_visual()` - Edit mode checks
 - `is_command()`, `is_operator_pending()`, `is_leap()` - Sub-mode checks
-- `is_editor_focus()`, `is_explorer_focus()`, `is_telescope_focus()` - Focus checks
+- `is_interactor(id)` - Check if current interactor matches given ID
+- `is_editor_focus()`, `is_explorer_focus()`, `is_telescope_focus()` - Focus shortcuts
 
 ## Feature Modules
 

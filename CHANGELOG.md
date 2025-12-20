@@ -2,6 +2,74 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.6.12] - 2025-12-20
+
+### Breaking Changes
+
+- **Removed `Focus` enum** - Use `InteractorId` exclusively for focus tracking
+  - `ModeState.focus` field removed
+  - `ModeState::with_focus_and_mode()` removed
+  - `ModeState::with_sub_mode()` (Focus-based) removed
+  - `ModeState::with_focus()` removed
+
+### Architecture
+
+- **InteractorId-based Focus System** - Complete migration from closed enum to extensible IDs
+  - `ModeState` now contains only `interactor_id`, `edit_mode`, `sub_mode`
+  - Pattern matching replaced with `InteractorId` equality checks
+  - Enables plugins to define custom focus targets without core changes
+
+### Changed
+
+- **modd/mod.rs** - Simplified `ModeState` struct
+  - Removed `focus: Focus` field
+  - `display_string()` now matches on `interactor_id`
+  - All convenience constructors updated
+
+- **Status Line Rendering** - Updated for `InteractorId`
+  - `mode_icon()` uses `InteractorId` comparison
+  - New `get_mode_style()` helper method
+  - Both `component/status_line.rs` and `screen/status_line.rs` updated
+
+- **Keymap Selection** - `bind/mod.rs`
+  - `get_keymap_for_mode()` matches on `interactor_id` instead of `focus`
+  - Changed from `const fn` to `fn` (InteractorId comparison not const)
+
+- **Runtime Handlers** - `runtime/handlers.rs`
+  - `sync_mode_with_screen_focus()` uses `InteractorId::EXPLORER`
+  - Telescope handlers use convenience constructors
+
+- **Command Dispatcher** - `dispatcher.rs`
+  - `telescope_enter_normal` uses `ModeState::telescope_normal()`
+
+### Migration Guide
+
+```rust
+// Before:
+match (&mode.focus, &mode.edit_mode) {
+    (Focus::Editor, EditMode::Normal) => ...
+}
+
+// After:
+if mode.interactor_id == InteractorId::EDITOR {
+    match &mode.edit_mode {
+        EditMode::Normal => ...
+    }
+}
+
+// Before:
+ModeState::with_focus_and_mode(Focus::Telescope, EditMode::Normal)
+
+// After:
+ModeState::telescope_normal()
+```
+
+### Testing
+
+- 318 unit tests passing
+- All integration tests passing
+- Zero clippy warnings
+
 ## [0.6.11] - 2025-12-20
 
 ### Architecture

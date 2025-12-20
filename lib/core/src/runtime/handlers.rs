@@ -976,19 +976,16 @@ impl Runtime {
             }
             TelescopeAction::EnterInsert => {
                 // Switch telescope to insert mode (for typing query)
-                use crate::modd::{EditMode, Focus, InsertVariant, ModeState};
-                let mode = ModeState::with_focus_and_mode(
-                    Focus::Telescope,
-                    EditMode::Insert(InsertVariant::Standard),
-                );
+                use crate::modd::ModeState;
+                let mode = ModeState::telescope();
                 self.mode_state = mode.clone();
                 let _ = self.mode_tx.send(mode);
                 self.request_render();
             }
             TelescopeAction::EnterNormal => {
                 // Switch telescope to normal mode (for j/k navigation)
-                use crate::modd::{EditMode, Focus, ModeState};
-                let mode = ModeState::with_focus_and_mode(Focus::Telescope, EditMode::Normal);
+                use crate::modd::ModeState;
+                let mode = ModeState::telescope_normal();
                 self.mode_state = mode.clone();
                 let _ = self.mode_tx.send(mode);
                 self.request_render();
@@ -1054,10 +1051,10 @@ impl Runtime {
     /// The screen is the source of truth for focus (explorer vs editor).
     /// This method updates the mode state to match.
     pub(crate) fn sync_mode_with_screen_focus(&mut self) {
-        use crate::modd::Focus;
+        use crate::interactor::InteractorId;
 
         let screen_has_explorer_focus = self.screen.is_explorer_focused();
-        let mode_has_explorer_focus = self.mode_state.focus == Focus::Explorer;
+        let mode_has_explorer_focus = self.mode_state.interactor_id == InteractorId::EXPLORER;
 
         if screen_has_explorer_focus && !mode_has_explorer_focus {
             self.set_mode(ModeState::explorer());

@@ -118,7 +118,7 @@ impl CommandHandler {
         COMPLETION_KEYS.contains(&key)
     }
 
-    const fn get_keymap_for_mode(&self) -> &HashMap<String, KeyMapInner> {
+    fn get_keymap_for_mode(&self) -> &HashMap<String, KeyMapInner> {
         self.keymap.get_keymap_for_mode(&self.local_mode)
     }
 
