@@ -123,7 +123,7 @@ Reovim is a Rust-based neovim-like text editor built with async tokio runtime an
   - `FrameRenderer` - Double-buffer with cell-by-cell diff, swap pattern
   - `FrameBufferHandle` - Thread-safe capture for RPC clients
 - `lib/core/src/overlay/` - Overlay compositing system (z-order popups)
-- `lib/core/src/screen/layers/` - Layer implementations (BaseLayer, EditorLayer, etc.)
+- `lib/core/src/screen/mod.rs` - Contains `z_order` constants and `LayerBounds` for rendering layers
 
 **Feature Modules**:
 - `lib/core/src/leap/` - Two-character jump navigation (s/S)

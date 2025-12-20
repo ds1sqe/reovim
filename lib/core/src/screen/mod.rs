@@ -1,11 +1,68 @@
 #![allow(clippy::missing_errors_doc)]
 
 pub mod border;
-pub mod layer;
 mod status_line;
 mod which_key;
 
-pub mod layers;
+/// Z-order constants for rendering layers
+/// Higher values render on top (occlude lower values)
+pub mod z_order {
+    /// Base layer: tab line, status line (always visible)
+    pub const BASE: u8 = 0;
+    /// Explorer sidebar
+    pub const EXPLORER: u8 = 1;
+    /// Editor windows (text content)
+    pub const EDITOR: u8 = 2;
+    /// Leap labels (jump targets)
+    pub const LEAP: u8 = 3;
+    /// Completion popup
+    pub const COMPLETION: u8 = 4;
+    /// Which-key hint panel
+    pub const WHICH_KEY: u8 = 5;
+    /// Telescope fuzzy finder (full-screen overlay)
+    pub const TELESCOPE: u8 = 6;
+    /// Settings menu (full-screen overlay)
+    pub const SETTINGS_MENU: u8 = 7;
+}
+
+/// Bounds of a layer (x, y, width, height)
+#[derive(Debug, Clone, Copy, Default)]
+pub struct LayerBounds {
+    pub x: u16,
+    pub y: u16,
+    pub width: u16,
+    pub height: u16,
+}
+
+impl LayerBounds {
+    /// Create new bounds
+    #[must_use]
+    pub const fn new(x: u16, y: u16, width: u16, height: u16) -> Self {
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+
+    /// Create full-screen bounds
+    #[must_use]
+    pub const fn full_screen(width: u16, height: u16) -> Self {
+        Self {
+            x: 0,
+            y: 0,
+            width,
+            height,
+        }
+    }
+
+    /// Check if this bounds contains a point
+    #[must_use]
+    pub const fn contains(&self, px: u16, py: u16) -> bool {
+        px >= self.x && px < self.x + self.width && py >= self.y && py < self.y + self.height
+    }
+}
 
 use {
     crate::{
@@ -38,7 +95,6 @@ use {
 };
 
 pub use {
-    layer::{Layer, LayerBounds, z_order},
     status_line::{StatusLineRenderer, render_command_line_to, render_status_line_to},
     which_key::{WhichKeyConfig, WhichKeyPanel},
 };
@@ -353,7 +409,7 @@ impl Screen {
         // Base layer (tab line, status line)
         layers.push(LayerInfo {
             name: "base".to_string(),
-            z_order: layer::z_order::BASE,
+            z_order: z_order::BASE,
             visible: true,
             bounds: BoundsInfo::new(0, 0, self.size.width, self.size.height),
         });
@@ -364,7 +420,7 @@ impl Screen {
             if explorer_width > 0 {
                 layers.push(LayerInfo {
                     name: "explorer".to_string(),
-                    z_order: layer::z_order::EXPLORER,
+                    z_order: z_order::EXPLORER,
                     visible: true,
                     bounds: BoundsInfo::new(
                         0,
@@ -379,7 +435,7 @@ impl Screen {
         // Editor
         layers.push(LayerInfo {
             name: "editor".to_string(),
-            z_order: layer::z_order::EDITOR,
+            z_order: z_order::EDITOR,
             visible: true,
             bounds: BoundsInfo::new(0, 1, self.size.width, self.size.height.saturating_sub(2)),
         });
@@ -388,7 +444,7 @@ impl Screen {
         if leap_active {
             layers.push(LayerInfo {
                 name: "leap".to_string(),
-                z_order: layer::z_order::LEAP,
+                z_order: z_order::LEAP,
                 visible: true,
                 bounds: BoundsInfo::new(0, 1, self.size.width, self.size.height.saturating_sub(2)),
             });
@@ -398,7 +454,7 @@ impl Screen {
         if completion_visible {
             layers.push(LayerInfo {
                 name: "completion".to_string(),
-                z_order: layer::z_order::COMPLETION,
+                z_order: z_order::COMPLETION,
                 visible: true,
                 bounds: BoundsInfo::new(0, 0, 40, 10), // Approximate
             });
@@ -408,7 +464,7 @@ impl Screen {
         if which_key_visible {
             layers.push(LayerInfo {
                 name: "which_key".to_string(),
-                z_order: layer::z_order::WHICH_KEY,
+                z_order: z_order::WHICH_KEY,
                 visible: true,
                 bounds: BoundsInfo::new(
                     0,
@@ -423,7 +479,7 @@ impl Screen {
         if telescope_active {
             layers.push(LayerInfo {
                 name: "telescope".to_string(),
-                z_order: layer::z_order::TELESCOPE,
+                z_order: z_order::TELESCOPE,
                 visible: true,
                 bounds: BoundsInfo::new(0, 0, self.size.width, self.size.height),
             });
@@ -433,7 +489,7 @@ impl Screen {
         if settings_visible {
             layers.push(LayerInfo {
                 name: "settings".to_string(),
-                z_order: layer::z_order::SETTINGS_MENU,
+                z_order: z_order::SETTINGS_MENU,
                 visible: true,
                 bounds: BoundsInfo::new(0, 0, self.size.width, self.size.height),
             });

@@ -2,6 +2,46 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.6.16] - 2025-12-20
+
+### Architecture
+
+- **Removed Layer Trait**
+  - Deleted `Layer` trait from `screen/layer.rs` - unused dead code
+  - Deleted `screen/layers/` directory with all Layer implementations
+  - Layer wrappers (CompletionLayer, LeapLayer, etc.) were never instantiated
+  - Buffered rendering path already had all logic directly in Screen
+
+- **Consolidated z_order and LayerBounds**
+  - Moved `z_order` module constants to `screen/mod.rs`
+  - Moved `LayerBounds` struct to `screen/mod.rs`
+  - These are now directly available via `screen::z_order::*` and `screen::LayerBounds`
+
+### Files Changed
+
+- `lib/core/src/screen/mod.rs` - Added z_order module and LayerBounds struct
+- `lib/core/src/screen/layer.rs` - **DELETED** (Layer trait, z_order, LayerBounds moved)
+- `lib/core/src/screen/layers/` - **DELETED** (8 unused Layer implementations)
+
+### Deleted Files
+
+- `lib/core/src/screen/layer.rs`
+- `lib/core/src/screen/layers/mod.rs`
+- `lib/core/src/screen/layers/base.rs`
+- `lib/core/src/screen/layers/completion.rs`
+- `lib/core/src/screen/layers/editor.rs`
+- `lib/core/src/screen/layers/explorer.rs`
+- `lib/core/src/screen/layers/leap.rs`
+- `lib/core/src/screen/layers/settings_menu.rs`
+- `lib/core/src/screen/layers/telescope.rs`
+- `lib/core/src/screen/layers/which_key.rs`
+
+### Testing
+
+- All unit tests passing (324 tests)
+- All integration tests passing
+- Zero warnings (build + clippy)
+
 ## [0.6.15] - 2025-12-20
 
 ### Architecture
