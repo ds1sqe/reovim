@@ -30,6 +30,12 @@ impl ComponentId {
     pub const STATUS_LINE: Self = Self("status_line");
     /// Tab line component (top bar with tabs)
     pub const TAB_LINE: Self = Self("tab_line");
+    /// Completion popup overlay
+    pub const COMPLETION: Self = Self("completion");
+    /// Leap motion overlay (jump labels)
+    pub const LEAP: Self = Self("leap");
+    /// Which-key hint panel overlay
+    pub const WHICH_KEY: Self = Self("which_key");
 }
 
 impl std::fmt::Display for ComponentId {

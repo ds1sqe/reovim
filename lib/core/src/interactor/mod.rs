@@ -138,18 +138,6 @@ impl InteractorRegistry {
     pub fn is_empty(&self) -> bool {
         self.targets.is_empty()
     }
-
-    /// Create a registry with default components registered
-    #[must_use]
-    pub fn with_defaults() -> Self {
-        let mut registry = Self::new();
-        registry.register(Box::new(Editor::default()));
-        registry.register(Box::new(Explorer::default()));
-        registry.register(Box::new(Telescope));
-        registry.register(Box::new(Settings));
-        registry.register(Box::new(CommandLineInt));
-        registry
-    }
 }
 
 // Built-in UI components

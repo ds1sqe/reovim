@@ -11,12 +11,13 @@ mod leap;
 mod python;
 mod settings;
 mod telescope;
+mod ui_components;
 mod window;
 
 pub use {
     self::core::CorePlugin, completion::CompletionPlugin, explorer::ExplorerPlugin,
     fold::FoldPlugin, leap::LeapPlugin, python::PythonPlugin, settings::SettingsPlugin,
-    telescope::TelescopePlugin, window::WindowPlugin,
+    telescope::TelescopePlugin, ui_components::UIComponentsPlugin, window::WindowPlugin,
 };
 
 use super::{PluginLoader, PluginTuple};
@@ -38,6 +39,9 @@ impl PluginTuple for DefaultPlugins {
     fn add_to(self, loader: &mut PluginLoader) {
         // Core must be first - all others depend on it
         loader.add(CorePlugin);
+
+        // UI Components registers built-in components (Editor, Explorer, etc.)
+        loader.add(UIComponentsPlugin);
 
         // Feature plugins (order doesn't matter due to dependency resolution)
         loader.add(CompletionPlugin);

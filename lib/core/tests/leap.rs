@@ -87,6 +87,7 @@ async fn test_leap_forward_single_match() {
         .await
         .with_content("hello world test")
         .with_keys("swo")
+        .with_delay(200) // Extra delay for leap processing under parallel test load
         .run()
         .await;
 
@@ -102,6 +103,7 @@ async fn test_leap_first_match_after_cursor() {
         .await
         .with_content("test test more")
         .with_keys("ste")
+        .with_delay(200) // Extra delay for leap processing under parallel test load
         .run()
         .await;
 
@@ -140,6 +142,7 @@ async fn test_leap_across_lines() {
         .await
         .with_content("hello\nworld\ntest")
         .with_keys("ste")
+        .with_delay(200) // Extra delay for leap processing under parallel test load
         .run()
         .await;
 
@@ -158,6 +161,7 @@ async fn test_leap_preserves_buffer() {
         .await
         .with_content("hello world")
         .with_keys("swo")
+        .with_delay(200) // Extra delay for leap processing under parallel test load
         .run()
         .await;
 

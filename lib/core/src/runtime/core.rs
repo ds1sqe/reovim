@@ -30,13 +30,7 @@ use {
         register::Registers,
         screen::{Screen, WhichKeyPanel},
         settings_menu::SettingsMenuState,
-        telescope::{
-            TelescopeMatcher, TelescopeState,
-            picker::{
-                BuffersPicker, CommandsPicker, FilesPicker, GrepPicker, HelpPicker, KeymapsPicker,
-                Picker, ProfilesPicker, RecentPicker, ThemesPicker,
-            },
-        },
+        telescope::{TelescopeMatcher, TelescopeState, picker::Picker},
         treesitter::TreesitterManager,
         ui_component::ComponentRegistry,
     },
@@ -127,68 +121,12 @@ impl Default for Runtime {
 
 impl Runtime {
     /// Create a new Runtime with the given screen
+    ///
+    /// This is equivalent to calling `Runtime::with_plugins(screen, DefaultPlugins)`.
     #[must_use]
     pub fn new(screen: Screen) -> Self {
-        let (tx, rx) = mpsc::channel(EVENT_CHANNEL_CAPACITY);
-        let (mode_tx, mode_rx) = watch::channel(ModeState::new());
-        let (completion_active_tx, completion_active_rx) = watch::channel(false);
-
-        // Initialize profile manager
-        let profile_manager = ProfileManager::default();
-        let default_profile_name = profile_manager.default_profile_name().to_string();
-
-        let mut runtime = Self {
-            buffers: BTreeMap::new(),
-            screen,
-            highlight_store: HighlightStore::new(),
-            mode_state: ModeState::new(),
-            color_mode: ColorMode::detect(),
-            theme: Theme::default(),
-            registers: Registers::new(),
-            command_line: CommandLine::default(),
-            pending_keys: String::new(),
-            last_command: String::new(),
-            tx,
-            rx,
-            initial_file: None,
-            showing_landing_page: false,
-            mode_tx,
-            mode_rx,
-            command_registry: Arc::new(CommandRegistry::with_defaults()),
-            active_buffer_id: 0,
-            next_buffer_id: 1, // Start at 1 since 0 is reserved for initial buffer
-            explorer_state: None,
-            jump_list: JumpList::new(),
-            which_key_panel: WhichKeyPanel::new(),
-            completion_engine: Arc::new(CompletionEngine::default()),
-            completion_state: CompletionState::new(),
-            completion_items_cache: Vec::new(),
-            completion_active_tx,
-            completion_active_rx,
-            telescope_state: TelescopeState::new(),
-            telescope_matcher: TelescopeMatcher::new(),
-            telescope_pickers: Self::create_telescope_pickers(),
-            leap_state: LeapState::new(),
-            treesitter: TreesitterManager::new(),
-            fold_manager: FoldManager::new(),
-            indent_analyzer: IndentAnalyzer::default(),
-            profile_manager,
-            current_profile_name: default_profile_name,
-            settings_menu: SettingsMenuState::new(),
-            render_pending: false,
-            interactor_registry: InteractorRegistry::with_defaults(),
-            modifier_registry: ModifierRegistry::new(),
-            focus_input_handlers: HashMap::new(),
-            component_registry: ComponentRegistry::new(),
-        };
-
-        // Enlist default handlers (Bevy/Zed pattern)
-        runtime.enlist_default_handlers();
-
-        // Enable diff-based rendering by default
-        runtime.screen.enable_frame_renderer();
-
-        runtime
+        use crate::plugin::builtin::DefaultPlugins;
+        Self::with_plugins(screen, DefaultPlugins)
     }
 
     /// Create a Runtime with custom plugins
@@ -290,21 +228,6 @@ impl Runtime {
         runtime.screen.enable_frame_renderer();
 
         runtime
-    }
-
-    /// Create the telescope picker registry
-    fn create_telescope_pickers() -> HashMap<String, Arc<dyn Picker>> {
-        let mut pickers: HashMap<String, Arc<dyn Picker>> = HashMap::new();
-        pickers.insert("files".to_string(), Arc::new(FilesPicker::new()));
-        pickers.insert("buffers".to_string(), Arc::new(BuffersPicker::new()));
-        pickers.insert("commands".to_string(), Arc::new(CommandsPicker::new()));
-        pickers.insert("keymaps".to_string(), Arc::new(KeymapsPicker::new()));
-        pickers.insert("grep".to_string(), Arc::new(GrepPicker::new()));
-        pickers.insert("recent".to_string(), Arc::new(RecentPicker::new()));
-        pickers.insert("help".to_string(), Arc::new(HelpPicker::new()));
-        pickers.insert("themes".to_string(), Arc::new(ThemesPicker::new()));
-        pickers.insert("profiles".to_string(), Arc::new(ProfilesPicker::new()));
-        pickers
     }
 
     /// Subscribe to mode changes

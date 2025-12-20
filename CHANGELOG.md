@@ -2,6 +2,42 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.6.15] - 2025-12-20
+
+### Architecture
+
+- **Plugin-Based Component Registration**
+  - Created `UIComponentsPlugin` to register built-in UI components via plugin system
+  - Editor, Explorer, Telescope, Settings, `CommandLine` now registered through plugins
+  - Focus input handlers registered via `PluginContext.register_focus_handler()`
+  - `Runtime::new()` now delegates to `Runtime::with_plugins(screen, DefaultPlugins)`
+
+- **Removed Hardcoded Defaults**
+  - Removed `InteractorRegistry::with_defaults()` - components come from plugins
+  - Removed hardcoded telescope pickers - registered by `TelescopePlugin`
+  - Removed `enlist_default_handlers()` - handlers registered by `UIComponentsPlugin`
+
+- **New ComponentId Constants**
+  - Added `ComponentId::COMPLETION` for completion popup overlay
+  - Added `ComponentId::LEAP` for leap motion overlay
+  - Added `ComponentId::WHICH_KEY` for which-key hint panel
+
+### Files Changed
+
+- `lib/core/src/plugin/builtin/ui_components.rs` - **NEW** `UIComponentsPlugin`
+- `lib/core/src/plugin/builtin/mod.rs` - Added UIComponentsPlugin to DefaultPlugins
+- `lib/core/src/runtime/core.rs` - `new()` delegates to `with_plugins()`
+- `lib/core/src/runtime/enlist.rs` - Made handler functions public for plugin use
+- `lib/core/src/runtime/mod.rs` - Export handler functions
+- `lib/core/src/interactor/mod.rs` - Removed `with_defaults()` method
+- `lib/core/src/ui_component/component.rs` - Added COMPLETION, LEAP, WHICH_KEY constants
+
+### Testing
+
+- All unit tests passing
+- All integration tests passing
+- Zero warnings (build + clippy)
+
 ## [0.6.14] - 2025-12-20
 
 ### Breaking Changes

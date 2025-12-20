@@ -5,4 +5,7 @@ mod enlist;
 mod event_loop;
 mod handlers;
 
-pub use core::{FocusInputHandler, Runtime};
+pub use {
+    core::{FocusInputHandler, Runtime},
+    enlist::{handle_command_line_input, handle_editor_input, handle_telescope_input},
+};
