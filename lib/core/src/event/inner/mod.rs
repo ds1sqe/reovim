@@ -62,6 +62,15 @@ pub enum InnerEvent {
     },
     /// Focus-related input events (delegated to active focus target)
     FocusInputEvent(FocusInputEvent),
+    /// Generic focus input - dispatched to registered handler via enlist pattern
+    FocusInput {
+        /// Character to insert (None for delete-only)
+        char: Option<char>,
+        /// Whether to delete backward
+        delete: bool,
+        /// Whether to clear landing page (editor-specific flag)
+        clear_landing: bool,
+    },
 }
 
 /// Input events routed to the active focus target

@@ -45,8 +45,8 @@ pub enum InnerEvent {
     TreesitterEvent(TreesitterEvent),
     OperatorMotionEvent(OperatorMotionAction),
 
-    // Focus input events
-    FocusInputEvent(FocusInputEvent),
+    // Focus input events (enlist pattern)
+    FocusInput { char: Option<char>, delete: bool, clear_landing: bool },
     VisualTextObjectEvent(VisualTextObjectAction),
 
     // UI events
@@ -139,27 +139,37 @@ pub enum LeapEvent {
 }
 ```
 
-### FocusInputEvent
+### FocusInput Event
 
-Focus-based input routing events. Sent by CommandHandler and handled by Runtime based on active `FocusId`:
+Generic focus input event using the enlist-based handler registration pattern. Dispatched to registered handlers based on active `InteractorId`:
 
 ```rust
-pub enum FocusInputEvent {
-    InsertChar(char),
-    DeleteCharBackward,
+InnerEvent::FocusInput {
+    char: Option<char>,    // Character to insert (None for delete-only)
+    delete: bool,          // Whether to delete backward
+    clear_landing: bool,   // Whether to clear landing page (editor-specific)
 }
 ```
 
-**Routing Logic:**
-- `FocusId::TELESCOPE` → Updates telescope query, triggers async filtering
-- `FocusId::EXPLORER` → Delegates to FocusRegistry for filter input
-- `FocusId::EDITOR` → Handles command line (command mode) or buffer editing (insert mode)
-- Other → Falls back to FocusRegistry lookup
+**Enlist Pattern (Runtime Dispatch):**
+```rust
+// Fully generic - no match on InteractorId!
+InnerEvent::FocusInput { char, delete, clear_landing } => {
+    if let Some(&handler) = self.focus_input_handlers.get(&self.mode_state.interactor_id) {
+        handler(self, char, delete, clear_landing);
+    }
+}
+```
+
+**Registered Handlers (enlist.rs):**
+- `InteractorId::TELESCOPE` → Updates telescope query, triggers async filtering
+- `InteractorId::EDITOR` → Handles command line (command mode) or buffer editing (insert mode)
+- `InteractorId::EXPLORER` → Handles input internally via `InputResult::Handled`
 
 **Emitted by:**
-- CommandHandler when in insert, command, or telescope mode
-- Single printable characters → `InsertChar(char)`
-- Backspace key → `DeleteCharBackward`
+- Interactor implementations via `InputResult::SendEvent(InnerEvent::FocusInput { ... })`
+- Single printable characters → `char: Some(c), delete: false`
+- Backspace key → `char: None, delete: true`
 
 ### TreesitterEvent
 

@@ -2,6 +2,47 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.6.10] - 2025-12-20
+
+### Architecture
+
+- **Enlist-Based Handler Registration** (Bevy/Zed Pattern)
+  - Fully removes hardcoding from runtime dispatch - only enlist (initialization) knows about specific interactors
+  - Function pointer registry: `HashMap<InteractorId, FocusInputHandler>`
+  - Handlers registered at initialization via `enlist_focus_input_handler()`
+  - Runtime dispatch is fully generic via handler lookup
+
+- **Interactor System** (`lib/core/src/interactor/`) - Renamed from Focus System
+  - `InteractorId` for identifying input targets (Editor, Telescope, Explorer, etc.)
+  - `Interactor` trait for input-receiving components
+  - `InteractorRegistry` for managing interactors and active focus
+  - `InputResult` enum: `NotHandled`, `Handled`, `SendEvent(InnerEvent)`
+
+### Changed
+
+- **Generic Event Dispatch** - Runtime no longer matches on interactor types
+  - Before: `match InteractorId::TELESCOPE => ...`
+  - After: `handlers.get(&interactor_id)` - fully generic lookup
+  - Adding new interactors only requires calling `enlist_*` at initialization
+
+- **FocusInput Event** - Generic focus input event for all interactors
+  - `InnerEvent::FocusInput { char, delete, clear_landing }`
+  - Dispatched to registered handler based on active `InteractorId`
+
+### Files Added
+
+- `lib/core/src/interactor/mod.rs` - Interactor trait and registry
+- `lib/core/src/runtime/enlist.rs` - Handler implementations (enlist pattern)
+
+### Files Removed
+
+- `lib/core/src/focus/mod.rs` - Replaced by interactor module
+
+### Testing
+
+- 318 unit tests passing
+- 132 integration tests passing
+
 ## [0.6.9] - 2025-12-20
 
 ### Architecture
@@ -17,11 +58,6 @@ All notable changes to Reovim will be documented in this file.
   - `ModifierContext` for passing window/buffer/mode context
   - `StyleModifiers` for visual style overrides (borders, decorations, colors)
   - `BehaviorModifiers` for keybinding overrides and feature flags
-
-- **Focus System** (`lib/core/src/focus/`)
-  - `FocusId` for identifying focus targets (Editor, Telescope, Explorer, etc.)
-  - `FocusTarget` trait for input-receiving components
-  - `FocusRegistry` for managing focus targets and active focus
 
 - **Border System** (`lib/core/src/screen/border.rs`)
   - `BorderStyle` variants (None, Single, Double, Rounded, Heavy, Custom)

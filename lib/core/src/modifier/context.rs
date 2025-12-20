@@ -1,7 +1,7 @@
 //! Modifier evaluation context
 
 use crate::{
-    focus::FocusId,
+    interactor::InteractorId,
     modd::{EditMode, SubMode},
 };
 
@@ -10,8 +10,8 @@ use crate::{
 /// Contains all the information needed to determine which modifiers should apply.
 #[derive(Debug, Clone)]
 pub struct ModifierContext<'a> {
-    /// Current focus ID (extensible, trait-based)
-    pub focus_id: FocusId,
+    /// Current interactor ID (extensible, trait-based)
+    pub interactor_id: InteractorId,
     /// Current edit mode (Normal, Insert, Visual)
     pub edit_mode: &'a EditMode,
     /// Current sub-mode (Command, `OperatorPending`, Leap, etc.)
@@ -34,14 +34,14 @@ impl<'a> ModifierContext<'a> {
     /// Create a new modifier context
     #[must_use]
     pub const fn new(
-        focus_id: FocusId,
+        interactor_id: InteractorId,
         edit_mode: &'a EditMode,
         sub_mode: &'a SubMode,
         window_id: usize,
         buffer_id: usize,
     ) -> Self {
         Self {
-            focus_id,
+            interactor_id,
             edit_mode,
             sub_mode,
             filetype: None,
@@ -108,13 +108,13 @@ impl<'a> ModifierContext<'a> {
     /// Check if focus is on editor
     #[must_use]
     pub fn is_editor_focused(&self) -> bool {
-        self.focus_id.0 == FocusId::EDITOR.0
+        self.interactor_id.0 == InteractorId::EDITOR.0
     }
 
-    /// Check if the current focus matches the given focus ID
+    /// Check if the current interactor matches the given interactor ID
     #[must_use]
-    pub fn is_focus(&self, id: FocusId) -> bool {
-        self.focus_id.0 == id.0
+    pub fn is_interactor(&self, id: InteractorId) -> bool {
+        self.interactor_id.0 == id.0
     }
 }
 
@@ -130,7 +130,7 @@ mod tests {
         let edit_mode = EditMode::Normal;
         let sub_mode = SubMode::None;
 
-        let ctx = ModifierContext::new(FocusId::EDITOR, &edit_mode, &sub_mode, 0, 0)
+        let ctx = ModifierContext::new(InteractorId::EDITOR, &edit_mode, &sub_mode, 0, 0)
             .with_filetype(Some("rust"))
             .with_active(true)
             .with_modified(false);
@@ -147,7 +147,7 @@ mod tests {
         let edit_mode = EditMode::Insert(crate::modd::InsertVariant::Standard);
         let sub_mode = SubMode::None;
 
-        let ctx = ModifierContext::new(FocusId::EDITOR, &edit_mode, &sub_mode, 0, 0);
+        let ctx = ModifierContext::new(InteractorId::EDITOR, &edit_mode, &sub_mode, 0, 0);
 
         assert!(!ctx.is_normal());
         assert!(ctx.is_insert());

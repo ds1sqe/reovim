@@ -80,8 +80,8 @@ lib/core/src/
 │   └── types.rs    # ComposableId, Bounds
 ├── filetype/       # File type detection
 │   └── mod.rs      # FiletypeRegistry, FiletypeInfo
-├── focus/          # Focus target system
-│   └── mod.rs      # FocusId, FocusTarget, FocusRegistry
+├── interactor/     # Interactor system (input handlers)
+│   └── mod.rs      # InteractorId, Interactor trait, InteractorRegistry
 ├── frame/          # Frame buffer for diff-based rendering
 │   ├── mod.rs      # Public API exports
 │   ├── buffer.rs   # FrameBuffer - 2D cell grid
@@ -490,33 +490,42 @@ Code folding with treesitter-computed ranges.
 - `zo`/`zc` - Open/close fold
 - `zR`/`zM` - Open/close all folds
 
-### Focus System (`lib/core/src/focus/`)
+### Interactor System (`lib/core/src/interactor/`)
 
-Manages which component receives input events.
+Manages input-receiving components with the enlist-based handler registration pattern (inspired by Bevy Plugin and Zed Action patterns).
 
 **Components:**
-- `FocusId` - Unique identifier for focus targets (Editor, Telescope, Explorer, Settings, Custom)
-- `FocusTarget` trait - Interface for input-receiving components
-- `FocusRegistry` - Manages registered focus targets and tracks active focus
+- `InteractorId` - Unique identifier for interactors (Editor, Telescope, Explorer, Settings)
+- `Interactor` trait - Interface for input-receiving components
+- `InteractorRegistry` - Manages registered interactors and tracks active focus
+- `InputResult` - Result enum: `NotHandled`, `Handled`, `SendEvent(InnerEvent)`
 
-**Focus IDs:**
-| FocusId | Component |
-|---------|-----------|
+**Interactor IDs:**
+| InteractorId | Component |
+|--------------|-----------|
 | `EDITOR` | Main editor windows |
 | `TELESCOPE` | Fuzzy finder |
 | `EXPLORER` | File browser |
 | `SETTINGS` | Settings menu |
 
-**Input Routing:**
+**Enlist Pattern (Handler Registration):**
 ```rust
-// Runtime routes FocusInputEvent based on active focus
-match mode_state.focus_id {
-    FocusId::TELESCOPE => self.handle_telescope_input(event),
-    FocusId::EXPLORER => self.focus_registry.handle_input(focus_id, event),
-    FocusId::EDITOR => self.handle_editor_input(event),
-    _ => self.focus_registry.handle_input(focus_id, event),
+// At initialization (enlist.rs) - hardcoding OK here
+runtime.enlist_focus_input_handler(InteractorId::TELESCOPE, handle_telescope_input);
+runtime.enlist_focus_input_handler(InteractorId::EDITOR, handle_editor_input);
+
+// At runtime (event_loop.rs) - fully generic dispatch
+InnerEvent::FocusInput { char, delete, clear_landing } => {
+    if let Some(&handler) = self.focus_input_handlers.get(&self.mode_state.interactor_id) {
+        handler(self, char, delete, clear_landing);  // No match on InteractorId!
+    }
 }
 ```
+
+**Benefits:**
+- Adding new interactors only requires calling `enlist_*` at initialization
+- Runtime dispatch is fully generic via function pointer lookup
+- Handler implementations centralized in `enlist.rs`
 
 ### Modifier System (`lib/core/src/modifier/`)
 

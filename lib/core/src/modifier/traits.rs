@@ -293,7 +293,7 @@ mod tests {
     use {
         super::*,
         crate::{
-            focus::FocusId,
+            interactor::InteractorId,
             modd::{EditMode, InsertVariant, SubMode},
         },
     };
@@ -304,12 +304,12 @@ mod tests {
 
         let edit_mode = EditMode::Normal;
         let sub_mode = SubMode::None;
-        let ctx = ModifierContext::new(FocusId::EDITOR, &edit_mode, &sub_mode, 0, 0)
+        let ctx = ModifierContext::new(InteractorId::EDITOR, &edit_mode, &sub_mode, 0, 0)
             .with_filetype(Some("rust"));
 
         assert!(modifier.matches(&ctx));
 
-        let ctx_python = ModifierContext::new(FocusId::EDITOR, &edit_mode, &sub_mode, 0, 0)
+        let ctx_python = ModifierContext::new(InteractorId::EDITOR, &edit_mode, &sub_mode, 0, 0)
             .with_filetype(Some("python"));
 
         assert!(!modifier.matches(&ctx_python));
@@ -322,10 +322,10 @@ mod tests {
         let edit_mode = EditMode::Normal;
         let sub_mode = SubMode::None;
 
-        let ctx_active =
-            ModifierContext::new(FocusId::EDITOR, &edit_mode, &sub_mode, 0, 0).with_active(true);
-        let ctx_inactive =
-            ModifierContext::new(FocusId::EDITOR, &edit_mode, &sub_mode, 0, 0).with_active(false);
+        let ctx_active = ModifierContext::new(InteractorId::EDITOR, &edit_mode, &sub_mode, 0, 0)
+            .with_active(true);
+        let ctx_inactive = ModifierContext::new(InteractorId::EDITOR, &edit_mode, &sub_mode, 0, 0)
+            .with_active(false);
 
         assert!(modifier.matches(&ctx_active));
         assert!(!modifier.matches(&ctx_inactive));
@@ -339,8 +339,8 @@ mod tests {
         let normal_mode = EditMode::Normal;
         let sub_mode = SubMode::None;
 
-        let ctx_insert = ModifierContext::new(FocusId::EDITOR, &insert_mode, &sub_mode, 0, 0);
-        let ctx_normal = ModifierContext::new(FocusId::EDITOR, &normal_mode, &sub_mode, 0, 0);
+        let ctx_insert = ModifierContext::new(InteractorId::EDITOR, &insert_mode, &sub_mode, 0, 0);
+        let ctx_normal = ModifierContext::new(InteractorId::EDITOR, &normal_mode, &sub_mode, 0, 0);
 
         assert!(modifier.matches(&ctx_insert));
         assert!(!modifier.matches(&ctx_normal));

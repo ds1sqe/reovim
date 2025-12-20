@@ -5,6 +5,9 @@ use std::{
     sync::Arc,
 };
 
+/// Function pointer type for focus input handlers (enlist pattern)
+pub type FocusInputHandler = fn(&mut Runtime, Option<char>, bool, bool);
+
 use {
     crate::{
         buffer::{Buffer, TextOps},
@@ -15,10 +18,10 @@ use {
         constants::EVENT_CHANNEL_CAPACITY,
         event::{CompletionEvent, InnerEvent},
         explorer::ExplorerState,
-        focus::FocusRegistry,
         folding::FoldManager,
         highlight::{ColorMode, HighlightStore, Theme},
         indent::IndentAnalyzer,
+        interactor::InteractorRegistry,
         jumplist::JumpList,
         leap::LeapState,
         modd::ModeState,
@@ -104,10 +107,12 @@ pub struct Runtime {
     pub settings_menu: SettingsMenuState,
     /// Flag indicating render is needed (for coalescing)
     render_pending: bool,
-    /// Focus registry for extensible focus targets
-    pub focus_registry: FocusRegistry,
+    /// Interactor registry for extensible input handlers
+    pub interactor_registry: InteractorRegistry,
     /// Modifier registry for style and behavior modifiers
     pub modifier_registry: ModifierRegistry,
+    /// Registered focus input handlers per interactor (enlist pattern)
+    pub(crate) focus_input_handlers: HashMap<crate::interactor::InteractorId, FocusInputHandler>,
 }
 
 impl Default for Runtime {
@@ -167,9 +172,13 @@ impl Runtime {
             current_profile_name: default_profile_name,
             settings_menu: SettingsMenuState::new(),
             render_pending: false,
-            focus_registry: FocusRegistry::with_defaults(),
+            interactor_registry: InteractorRegistry::with_defaults(),
             modifier_registry: ModifierRegistry::new(),
+            focus_input_handlers: HashMap::new(),
         };
+
+        // Enlist default handlers (Bevy/Zed pattern)
+        runtime.enlist_default_handlers();
 
         // Enable diff-based rendering by default
         runtime.screen.enable_frame_renderer();
@@ -240,6 +249,18 @@ impl Runtime {
         &self.mode_state
     }
 
+    /// Register a focus input handler for an interactor (enlist pattern)
+    ///
+    /// This follows the Bevy/Zed pattern where handlers are registered at
+    /// initialization time, enabling fully generic dispatch at runtime.
+    pub fn enlist_focus_input_handler(
+        &mut self,
+        id: crate::interactor::InteractorId,
+        handler: FocusInputHandler,
+    ) {
+        self.focus_input_handlers.insert(id, handler);
+    }
+
     /// Build a modifier context for the given window
     ///
     /// This creates a context with all the information needed to evaluate
@@ -261,7 +282,7 @@ impl Runtime {
         let is_modified = self.buffers.get(&buffer_id).is_some_and(|b| b.modified);
 
         ModifierContext::new(
-            self.mode_state.focus_id,
+            self.mode_state.interactor_id,
             &self.mode_state.edit_mode,
             &self.mode_state.sub_mode,
             window_id,

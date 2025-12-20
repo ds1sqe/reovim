@@ -162,8 +162,8 @@ impl CellSnapshot {
 
 impl From<&crate::modd::ModeState> for ModeSnapshot {
     fn from(mode: &crate::modd::ModeState) -> Self {
-        // Use the new focus_id field
-        let focus = mode.focus_id.0;
+        // Use the interactor_id field
+        let focus = mode.interactor_id.0;
 
         let edit_mode = match &mode.edit_mode {
             crate::modd::EditMode::Normal => "Normal".to_string(),

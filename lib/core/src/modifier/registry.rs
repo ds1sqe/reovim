@@ -201,7 +201,7 @@ mod tests {
     use {
         super::*,
         crate::{
-            focus::FocusId,
+            interactor::InteractorId,
             modd::{EditMode, SubMode},
             modifier::traits::{ActiveWindowModifier, FiletypeModifier, InsertModeModifier},
         },
@@ -212,7 +212,7 @@ mod tests {
         edit_mode: &'a EditMode,
         sub_mode: &'a SubMode,
     ) -> ModifierContext<'a> {
-        ModifierContext::new(FocusId::EDITOR, edit_mode, sub_mode, 0, 0)
+        ModifierContext::new(InteractorId::EDITOR, edit_mode, sub_mode, 0, 0)
     }
 
     #[test]
