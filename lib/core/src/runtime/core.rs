@@ -26,6 +26,7 @@ use {
         leap::LeapState,
         modd::ModeState,
         modifier::{ModifierContext, ModifierRegistry},
+        plugin::{PluginContext, PluginLoader, PluginTuple},
         register::Registers,
         screen::{Screen, WhichKeyPanel},
         settings_menu::SettingsMenuState,
@@ -179,6 +180,105 @@ impl Runtime {
 
         // Enlist default handlers (Bevy/Zed pattern)
         runtime.enlist_default_handlers();
+
+        // Enable diff-based rendering by default
+        runtime.screen.enable_frame_renderer();
+
+        runtime
+    }
+
+    /// Create a Runtime with custom plugins
+    ///
+    /// This allows loading a custom set of plugins instead of the defaults.
+    /// Useful for creating minimal runtimes or adding custom plugins.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use reovim_core::plugin::{DefaultPlugins, CorePlugin};
+    /// use reovim_core::runtime::Runtime;
+    /// use reovim_core::screen::Screen;
+    ///
+    /// // Use default plugins
+    /// let runtime = Runtime::with_plugins(screen, DefaultPlugins);
+    ///
+    /// // Or use a minimal set
+    /// let runtime = Runtime::with_plugins(screen, CorePlugin);
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// Panics if plugin loading fails (e.g., missing dependencies or
+    /// cyclic dependency detected).
+    #[must_use]
+    pub fn with_plugins<T: PluginTuple>(screen: Screen, plugins: T) -> Self {
+        let (tx, rx) = mpsc::channel(EVENT_CHANNEL_CAPACITY);
+        let (mode_tx, mode_rx) = watch::channel(ModeState::new());
+        let (completion_active_tx, completion_active_rx) = watch::channel(false);
+
+        // Initialize profile manager
+        let profile_manager = ProfileManager::default();
+        let default_profile_name = profile_manager.default_profile_name().to_string();
+
+        // Load plugins
+        let mut ctx = PluginContext::new();
+        let mut loader = PluginLoader::new();
+        loader.add_plugins(plugins);
+        loader.load(&mut ctx).expect("Plugin loading failed");
+
+        // Extract components from plugin context
+        let (
+            command_registry,
+            interactor_registry,
+            modifier_registry,
+            _keymap,
+            telescope_pickers,
+            focus_handlers,
+        ) = ctx.into_parts();
+
+        let mut runtime = Self {
+            buffers: BTreeMap::new(),
+            screen,
+            highlight_store: HighlightStore::new(),
+            mode_state: ModeState::new(),
+            color_mode: ColorMode::detect(),
+            theme: Theme::default(),
+            registers: Registers::new(),
+            command_line: CommandLine::default(),
+            pending_keys: String::new(),
+            last_command: String::new(),
+            tx,
+            rx,
+            initial_file: None,
+            showing_landing_page: false,
+            mode_tx,
+            mode_rx,
+            command_registry: Arc::new(command_registry),
+            active_buffer_id: 0,
+            next_buffer_id: 1,
+            explorer_state: None,
+            jump_list: JumpList::new(),
+            which_key_panel: WhichKeyPanel::new(),
+            completion_engine: Arc::new(CompletionEngine::default()),
+            completion_state: CompletionState::new(),
+            completion_items_cache: Vec::new(),
+            completion_active_tx,
+            completion_active_rx,
+            telescope_state: TelescopeState::new(),
+            telescope_matcher: TelescopeMatcher::new(),
+            telescope_pickers,
+            leap_state: LeapState::new(),
+            treesitter: TreesitterManager::new(),
+            fold_manager: FoldManager::new(),
+            indent_analyzer: IndentAnalyzer::default(),
+            profile_manager,
+            current_profile_name: default_profile_name,
+            settings_menu: SettingsMenuState::new(),
+            render_pending: false,
+            interactor_registry,
+            modifier_registry,
+            focus_input_handlers: focus_handlers,
+        };
 
         // Enable diff-based rendering by default
         runtime.screen.enable_frame_renderer();

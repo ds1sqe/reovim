@@ -5,4 +5,4 @@ mod enlist;
 mod event_loop;
 mod handlers;
 
-pub use core::Runtime;
+pub use core::{FocusInputHandler, Runtime};

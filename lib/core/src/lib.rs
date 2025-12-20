@@ -25,6 +25,7 @@ pub mod modd;
 pub mod modifier;
 pub mod motion;
 pub mod overlay;
+pub mod plugin;
 pub mod register;
 pub mod runtime;
 pub mod screen;
