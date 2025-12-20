@@ -79,7 +79,9 @@ use {
         indent::IndentAnalyzer,
         leap::LeapState,
         modd::ModeState,
+        modifier::{ModifierContext, ModifierRegistry},
         telescope::TelescopeState,
+        ui_component::ComponentId,
     },
     reovim_sys::{
         cursor::{Hide, MoveTo, Show},
@@ -544,6 +546,7 @@ impl Screen {
                 fold_manager,
                 indent_analyzer,
                 settings_menu,
+                None, // Legacy path: no modifier support
             );
         }
 
@@ -596,6 +599,7 @@ impl Screen {
                 state.fold_manager,
                 state.indent_analyzer,
                 state.settings_menu,
+                state.modifier_registry,
             );
         }
 
@@ -642,6 +646,7 @@ impl Screen {
         fold_manager: &FoldManager,
         indent_analyzer: &IndentAnalyzer,
         settings_menu: &crate::settings_menu::SettingsMenuState,
+        modifier_registry: Option<&ModifierRegistry>,
     ) -> std::result::Result<(), std::io::Error> {
         // Take frame renderer out (borrow checker workaround)
         let mut renderer = self
@@ -684,6 +689,38 @@ impl Screen {
         for win in &mut self.windows {
             if let Some(buf) = buffers.get(&win.buffer_id) {
                 current_buffer = Some(buf);
+
+                // Evaluate modifiers for this window
+                if let Some(registry) = modifier_registry {
+                    let filetype = buf
+                        .file_path
+                        .as_ref()
+                        .map(|p| crate::filetype::filetype_id(p));
+                    let mod_ctx = ModifierContext::new(
+                        ComponentId::EDITOR,
+                        &mode.edit_mode,
+                        &mode.sub_mode,
+                        win.id,
+                        win.buffer_id,
+                    )
+                    .with_filetype(filetype)
+                    .with_active(win.is_active)
+                    .with_modified(buf.modified)
+                    .with_floating(win.is_floating);
+
+                    let style_state = registry.evaluate(&mod_ctx);
+
+                    // Apply window decorations from modifiers
+                    if let Some(show_ln) = style_state.style.decorations.line_numbers {
+                        win.line_number.set_number(show_ln);
+                    }
+                    if let Some(relative) = style_state.style.decorations.relative_numbers {
+                        win.line_number.set_relative_number(relative);
+                    }
+                    if let Some(scrollbar) = style_state.style.decorations.scrollbar {
+                        win.scrollbar_enabled = scrollbar;
+                    }
+                }
 
                 // Update scroll to keep cursor visible
                 // Active window uses buffer's live cursor; inactive windows use saved cursor
@@ -737,8 +774,35 @@ impl Screen {
             );
         }
 
-        // Render completion popup if visible
-        if completion_state.is_visible()
+        // Evaluate behavior modifiers for active window context
+        let behavior_flags = modifier_registry.and_then(|registry| {
+            self.windows.iter().find(|w| w.is_active).and_then(|win| {
+                let buf = buffers.get(&win.buffer_id)?;
+                let filetype = buf
+                    .file_path
+                    .as_ref()
+                    .map(|p| crate::filetype::filetype_id(p));
+                let mod_ctx = ModifierContext::new(
+                    ComponentId::EDITOR,
+                    &mode.edit_mode,
+                    &mode.sub_mode,
+                    win.id,
+                    win.buffer_id,
+                )
+                .with_filetype(filetype)
+                .with_active(true)
+                .with_modified(buf.modified)
+                .with_floating(win.is_floating);
+                Some(registry.evaluate_behavior(&mod_ctx))
+            })
+        });
+
+        // Render completion popup if visible and not disabled by modifiers
+        let completion_disabled = behavior_flags
+            .as_ref()
+            .is_some_and(|b| b.behavior.features.is_completion_disabled());
+        if !completion_disabled
+            && completion_state.is_visible()
             && let Some((cursor_x, cursor_y)) = cursor_pos
         {
             self.render_completion_to_buffer(buffer, completion_state, cursor_x, cursor_y, theme);
@@ -759,8 +823,11 @@ impl Screen {
             );
         }
 
-        // Render which-key panel overlay
-        if which_key_panel.visible {
+        // Render which-key panel overlay (if visible and not disabled by modifiers)
+        let which_key_disabled = behavior_flags
+            .as_ref()
+            .is_some_and(|b| b.behavior.features.is_which_key_disabled());
+        if which_key_panel.visible && !which_key_disabled {
             self.render_which_key_to_buffer(buffer, which_key_panel, color_mode, theme);
         }
 

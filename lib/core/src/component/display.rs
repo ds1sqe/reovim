@@ -17,6 +17,7 @@ use crate::{
     indent::IndentAnalyzer,
     leap::LeapState,
     modd::ModeState,
+    modifier::{ModifierRegistry, StyleModifiers, WindowBehaviorState, WindowStyleState},
     screen::WhichKeyPanel,
     settings_menu::SettingsMenuState,
     telescope::TelescopeState,
@@ -60,6 +61,8 @@ pub struct RenderState<'a> {
     pub indent_analyzer: &'a IndentAnalyzer,
     /// Settings menu state
     pub settings_menu: &'a SettingsMenuState,
+    /// Modifier registry for evaluating style/behavior modifiers
+    pub modifier_registry: Option<&'a ModifierRegistry>,
 }
 
 /// Context passed to UI components during rendering
@@ -81,6 +84,10 @@ pub struct RenderContext<'a> {
     pub tab_line_offset: u16,
     /// Optional runtime state for components that need full state access
     pub state: Option<&'a RenderState<'a>>,
+    /// Evaluated style modifiers for this rendering context
+    pub modifier_style: Option<&'a WindowStyleState>,
+    /// Evaluated behavior modifiers for this rendering context
+    pub modifier_behavior: Option<&'a WindowBehaviorState>,
 }
 
 impl<'a> RenderContext<'a> {
@@ -99,6 +106,8 @@ impl<'a> RenderContext<'a> {
             color_mode,
             tab_line_offset: 0,
             state: None,
+            modifier_style: None,
+            modifier_behavior: None,
         }
     }
 
@@ -118,6 +127,8 @@ impl<'a> RenderContext<'a> {
             color_mode,
             tab_line_offset: 0,
             state: Some(state),
+            modifier_style: None,
+            modifier_behavior: None,
         }
     }
 
@@ -125,6 +136,20 @@ impl<'a> RenderContext<'a> {
     #[must_use]
     pub const fn with_tab_offset(mut self, offset: u16) -> Self {
         self.tab_line_offset = offset;
+        self
+    }
+
+    /// Set the evaluated style modifiers
+    #[must_use]
+    pub const fn with_modifier_style(mut self, style: &'a WindowStyleState) -> Self {
+        self.modifier_style = Some(style);
+        self
+    }
+
+    /// Set the evaluated behavior modifiers
+    #[must_use]
+    pub const fn with_modifier_behavior(mut self, behavior: &'a WindowBehaviorState) -> Self {
+        self.modifier_behavior = Some(behavior);
         self
     }
 
@@ -140,5 +165,21 @@ impl<'a> RenderContext<'a> {
     #[must_use]
     pub const fn state(&self) -> Option<&RenderState<'a>> {
         self.state
+    }
+
+    /// Get style overrides from evaluated modifiers
+    ///
+    /// Returns `None` if no modifiers were evaluated.
+    #[must_use]
+    pub fn style_overrides(&self) -> Option<&StyleModifiers> {
+        self.modifier_style.map(|s| &s.style)
+    }
+
+    /// Get behavior flags from evaluated modifiers
+    ///
+    /// Returns `None` if no modifiers were evaluated.
+    #[must_use]
+    pub const fn behavior(&self) -> Option<&WindowBehaviorState> {
+        self.modifier_behavior
     }
 }

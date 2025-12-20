@@ -350,6 +350,7 @@ impl Runtime {
             fold_manager: &self.fold_manager,
             indent_analyzer: &self.indent_analyzer,
             settings_menu: &self.settings_menu,
+            modifier_registry: Some(&self.modifier_registry),
         };
         self.screen
             .render_with_state(&state)
