@@ -2,6 +2,17 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.6.20] - 2025-12-20
+
+### Refactoring
+
+- **Clap-based CLI argument parsing** - Replaced manual argument parsing with clap v4
+  - Added `clap` to workspace dependencies with derive feature
+  - Defined `Cli` struct with clap derive macros in `main/src/main.rs`
+  - Removed manual `print_help()` and `print_version()` functions (clap auto-generates)
+  - Reduced argument parsing code from ~80 lines to ~30 lines
+  - Consistent with `reo-cli` which already uses clap
+
 ## [0.6.17] - 2025-12-20
 
 ### Architecture
