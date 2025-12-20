@@ -12,7 +12,8 @@ use crate::{
     component::{DisplayComponent, RenderContext},
     frame::FrameBuffer,
     modd::{EditMode, Focus, ModeState, SubMode},
-    screen::LayerBounds,
+    screen::{LayerBounds, z_order},
+    ui_component::{ComponentId, UIComponent},
 };
 
 /// Mode icons (Nerd Font)
@@ -182,5 +183,35 @@ impl DisplayComponent for StatusLineComponent<'_> {
             width: context.screen_width,
             height: 1,
         }
+    }
+}
+
+impl UIComponent for StatusLineComponent<'_> {
+    fn id(&self) -> ComponentId {
+        ComponentId::STATUS_LINE
+    }
+
+    fn display_name(&self) -> &'static str {
+        "STATUS"
+    }
+
+    fn z_order(&self) -> u8 {
+        z_order::BASE
+    }
+
+    fn is_visible(&self, _ctx: &RenderContext<'_>) -> bool {
+        true // Status line is always visible
+    }
+
+    fn bounds(&self, ctx: &RenderContext<'_>) -> LayerBounds {
+        DisplayComponent::bounds(self, ctx)
+    }
+
+    fn render_to_frame(&self, buffer: &mut FrameBuffer, ctx: &RenderContext<'_>) {
+        DisplayComponent::render_to_frame(self, buffer, ctx);
+    }
+
+    fn is_focusable(&self) -> bool {
+        false // Status line does not receive focus
     }
 }

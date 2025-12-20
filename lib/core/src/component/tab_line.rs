@@ -5,7 +5,8 @@
 use crate::{
     component::{DisplayComponent, RenderContext},
     frame::FrameBuffer,
-    screen::{LayerBounds, tab::TabInfo},
+    screen::{LayerBounds, tab::TabInfo, z_order},
+    ui_component::{ComponentId, UIComponent},
 };
 
 /// Tab line display component
@@ -40,7 +41,7 @@ impl DisplayComponent for TabLineComponent<'_> {
 
     #[allow(clippy::cast_possible_truncation)]
     fn render_to_frame(&self, buffer: &mut FrameBuffer, context: &RenderContext<'_>) {
-        if !self.is_visible(context) {
+        if !DisplayComponent::is_visible(self, context) {
             return;
         }
 
@@ -68,7 +69,7 @@ impl DisplayComponent for TabLineComponent<'_> {
     }
 
     fn bounds(&self, context: &RenderContext<'_>) -> LayerBounds {
-        if self.is_visible(context) {
+        if DisplayComponent::is_visible(self, context) {
             LayerBounds {
                 x: 0,
                 y: 0,
@@ -78,5 +79,35 @@ impl DisplayComponent for TabLineComponent<'_> {
         } else {
             LayerBounds::default()
         }
+    }
+}
+
+impl UIComponent for TabLineComponent<'_> {
+    fn id(&self) -> ComponentId {
+        ComponentId::TAB_LINE
+    }
+
+    fn display_name(&self) -> &'static str {
+        "TABS"
+    }
+
+    fn z_order(&self) -> u8 {
+        z_order::BASE
+    }
+
+    fn is_visible(&self, ctx: &RenderContext<'_>) -> bool {
+        DisplayComponent::is_visible(self, ctx)
+    }
+
+    fn bounds(&self, ctx: &RenderContext<'_>) -> LayerBounds {
+        DisplayComponent::bounds(self, ctx)
+    }
+
+    fn render_to_frame(&self, buffer: &mut FrameBuffer, ctx: &RenderContext<'_>) {
+        DisplayComponent::render_to_frame(self, buffer, ctx);
+    }
+
+    fn is_focusable(&self) -> bool {
+        false // Tab line does not receive focus
     }
 }

@@ -11,7 +11,14 @@
 
 use std::collections::HashMap;
 
-use crate::{event::InnerEvent, modd::ModeState};
+use crate::{
+    component::RenderContext,
+    event::InnerEvent,
+    frame::FrameBuffer,
+    modd::ModeState,
+    screen::{LayerBounds, z_order},
+    ui_component::{ComponentId, UIComponent},
+};
 
 /// Unique identifier for an interactor
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -240,6 +247,59 @@ impl Interactor for Editor {
     }
 }
 
+impl UIComponent for Editor {
+    fn id(&self) -> ComponentId {
+        ComponentId::EDITOR
+    }
+
+    fn display_name(&self) -> &'static str {
+        "EDITOR"
+    }
+
+    fn icon(&self) -> Option<&'static str> {
+        Some("")
+    }
+
+    fn z_order(&self) -> u8 {
+        z_order::EDITOR
+    }
+
+    fn is_visible(&self, _ctx: &RenderContext<'_>) -> bool {
+        true // Editor is always visible
+    }
+
+    fn bounds(&self, ctx: &RenderContext<'_>) -> LayerBounds {
+        // Editor takes remaining space after tab line and before status line
+        LayerBounds {
+            x: 0,
+            y: ctx.tab_line_offset,
+            width: ctx.screen_width,
+            height: ctx.screen_height.saturating_sub(ctx.tab_line_offset + 1),
+        }
+    }
+
+    fn render_to_frame(&self, _buffer: &mut FrameBuffer, _ctx: &RenderContext<'_>) {
+        // Rendering is delegated to EditorLayer which has access to Runtime state.
+        // This will be unified in Stream C when plugins can provide full components.
+    }
+
+    fn is_focusable(&self) -> bool {
+        true
+    }
+
+    fn handle_insert_char(&mut self, c: char, mode: &ModeState) -> InputResult {
+        Interactor::handle_insert_char(self, c, mode)
+    }
+
+    fn handle_delete_backward(&mut self, mode: &ModeState) -> InputResult {
+        Interactor::handle_delete_backward(self, mode)
+    }
+
+    fn captures_input(&self) -> bool {
+        true
+    }
+}
+
 /// Explorer interactor (file browser sidebar)
 ///
 /// Handles filename input for create/rename operations.
@@ -283,6 +343,59 @@ impl Interactor for Explorer {
     }
 }
 
+impl UIComponent for Explorer {
+    fn id(&self) -> ComponentId {
+        ComponentId::EXPLORER
+    }
+
+    fn display_name(&self) -> &'static str {
+        "EXPLORER"
+    }
+
+    fn icon(&self) -> Option<&'static str> {
+        Some("")
+    }
+
+    fn z_order(&self) -> u8 {
+        z_order::EXPLORER
+    }
+
+    fn is_visible(&self, _ctx: &RenderContext<'_>) -> bool {
+        // Visibility controlled by layout manager
+        true
+    }
+
+    fn bounds(&self, ctx: &RenderContext<'_>) -> LayerBounds {
+        // Explorer sidebar bounds - actual size controlled by layout manager
+        LayerBounds {
+            x: 0,
+            y: ctx.tab_line_offset,
+            width: 30, // Default width, actual controlled by layout
+            height: ctx.screen_height.saturating_sub(ctx.tab_line_offset + 1),
+        }
+    }
+
+    fn render_to_frame(&self, _buffer: &mut FrameBuffer, _ctx: &RenderContext<'_>) {
+        // Rendering is delegated to ExplorerLayer which has access to Runtime state.
+    }
+
+    fn is_focusable(&self) -> bool {
+        true
+    }
+
+    fn handle_insert_char(&mut self, c: char, mode: &ModeState) -> InputResult {
+        Interactor::handle_insert_char(self, c, mode)
+    }
+
+    fn handle_delete_backward(&mut self, mode: &ModeState) -> InputResult {
+        Interactor::handle_delete_backward(self, mode)
+    }
+
+    fn captures_input(&self) -> bool {
+        self.input_active
+    }
+}
+
 /// Telescope interactor (fuzzy finder)
 ///
 /// Marker struct - actual state is in `TelescopeState` on Runtime.
@@ -319,6 +432,54 @@ impl Interactor for Telescope {
     }
 }
 
+impl UIComponent for Telescope {
+    fn id(&self) -> ComponentId {
+        ComponentId::TELESCOPE
+    }
+
+    fn display_name(&self) -> &'static str {
+        "TELESCOPE"
+    }
+
+    fn icon(&self) -> Option<&'static str> {
+        Some("")
+    }
+
+    fn z_order(&self) -> u8 {
+        z_order::TELESCOPE
+    }
+
+    fn is_visible(&self, _ctx: &RenderContext<'_>) -> bool {
+        // Visibility controlled by TelescopeState
+        true
+    }
+
+    fn bounds(&self, ctx: &RenderContext<'_>) -> LayerBounds {
+        // Telescope is a modal overlay - full screen
+        LayerBounds::full_screen(ctx.screen_width, ctx.screen_height)
+    }
+
+    fn render_to_frame(&self, _buffer: &mut FrameBuffer, _ctx: &RenderContext<'_>) {
+        // Rendering is delegated to TelescopeLayer which has access to Runtime state.
+    }
+
+    fn is_focusable(&self) -> bool {
+        true
+    }
+
+    fn handle_insert_char(&mut self, c: char, mode: &ModeState) -> InputResult {
+        Interactor::handle_insert_char(self, c, mode)
+    }
+
+    fn handle_delete_backward(&mut self, mode: &ModeState) -> InputResult {
+        Interactor::handle_delete_backward(self, mode)
+    }
+
+    fn captures_input(&self) -> bool {
+        true // Telescope captures all input when active
+    }
+}
+
 /// Settings menu interactor
 #[derive(Debug, Default)]
 pub struct Settings;
@@ -342,6 +503,46 @@ impl Interactor for Settings {
 
     fn handle_delete_backward(&mut self, _mode_state: &ModeState) -> InputResult {
         InputResult::NotHandled
+    }
+}
+
+impl UIComponent for Settings {
+    fn id(&self) -> ComponentId {
+        ComponentId::SETTINGS
+    }
+
+    fn display_name(&self) -> &'static str {
+        "SETTINGS"
+    }
+
+    fn icon(&self) -> Option<&'static str> {
+        Some("")
+    }
+
+    fn z_order(&self) -> u8 {
+        z_order::SETTINGS_MENU
+    }
+
+    fn is_visible(&self, _ctx: &RenderContext<'_>) -> bool {
+        // Visibility controlled by SettingsMenuState
+        true
+    }
+
+    fn bounds(&self, ctx: &RenderContext<'_>) -> LayerBounds {
+        // Settings is a modal overlay - full screen
+        LayerBounds::full_screen(ctx.screen_width, ctx.screen_height)
+    }
+
+    fn render_to_frame(&self, _buffer: &mut FrameBuffer, _ctx: &RenderContext<'_>) {
+        // Rendering is delegated to SettingsMenuLayer which has access to Runtime state.
+    }
+
+    fn is_focusable(&self) -> bool {
+        true
+    }
+
+    fn captures_input(&self) -> bool {
+        true // Settings menu captures all input when active
     }
 }
 
@@ -379,6 +580,59 @@ impl Interactor for CommandLineInt {
             delete: true,
             clear_landing: false,
         })
+    }
+}
+
+impl UIComponent for CommandLineInt {
+    fn id(&self) -> ComponentId {
+        ComponentId::COMMAND_LINE
+    }
+
+    fn display_name(&self) -> &'static str {
+        "COMMAND"
+    }
+
+    fn icon(&self) -> Option<&'static str> {
+        Some("󰘳 ")
+    }
+
+    fn z_order(&self) -> u8 {
+        z_order::BASE // Command line is at bottom, same level as status line
+    }
+
+    fn is_visible(&self, _ctx: &RenderContext<'_>) -> bool {
+        // Visibility controlled by mode state (command mode)
+        true
+    }
+
+    fn bounds(&self, ctx: &RenderContext<'_>) -> LayerBounds {
+        // Command line is at the bottom of the screen (same as status line)
+        LayerBounds {
+            x: 0,
+            y: ctx.screen_height.saturating_sub(1),
+            width: ctx.screen_width,
+            height: 1,
+        }
+    }
+
+    fn render_to_frame(&self, _buffer: &mut FrameBuffer, _ctx: &RenderContext<'_>) {
+        // Rendering is handled by Screen::render_command_line_to_buffer
+    }
+
+    fn is_focusable(&self) -> bool {
+        true
+    }
+
+    fn handle_insert_char(&mut self, c: char, mode: &ModeState) -> InputResult {
+        Interactor::handle_insert_char(self, c, mode)
+    }
+
+    fn handle_delete_backward(&mut self, mode: &ModeState) -> InputResult {
+        Interactor::handle_delete_backward(self, mode)
+    }
+
+    fn captures_input(&self) -> bool {
+        true // Command line captures all input when active
     }
 }
 
