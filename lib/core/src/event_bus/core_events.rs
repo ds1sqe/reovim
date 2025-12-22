@@ -246,6 +246,23 @@ impl Event for RequestFocusChange {
     }
 }
 
+/// Request to change the editor mode
+///
+/// Plugins emit this event to request a mode change (edit mode, sub-mode, etc.).
+/// The runtime subscribes to this event and updates `ModeState` to change
+/// keybinding routing and input handling.
+#[derive(Debug, Clone)]
+pub struct RequestModeChange {
+    /// The new mode state to set
+    pub mode: crate::modd::ModeState,
+}
+
+impl Event for RequestModeChange {
+    fn priority(&self) -> u32 {
+        priority::CORE
+    }
+}
+
 /// Request to open a file in the editor
 ///
 /// Plugins emit this event to request opening a file. The runtime subscribes

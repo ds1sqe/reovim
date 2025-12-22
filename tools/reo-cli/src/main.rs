@@ -4,6 +4,7 @@
 //! to control the editor programmatically.
 
 use clap::{Parser, Subcommand};
+use serde_json::Value;
 
 mod client;
 mod commands;
@@ -172,7 +173,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // One-shot mode
     let mut client = client::ReoClient::connect(&config).await?;
 
-    let result = match cli.command.unwrap() {
+    let command = cli.command.unwrap();
+
+    // Handle screen-content specially - print content directly, not as JSON
+    if let Commands::ScreenContent { ref format } = command {
+        let result = commands::cmd_screen_content(&mut client, format).await?;
+
+        // Extract and print just the content field
+        if let Some(content) = result.get("content").and_then(Value::as_str) {
+            println!("{content}");
+        } else {
+            // Fallback to JSON if content field is missing
+            if cli.json {
+                println!("{}", serde_json::to_string(&result)?);
+            } else {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            }
+        }
+        return Ok(());
+    }
+
+    // All other commands - return JSON
+    let result = match command {
         Commands::Keys { keys } => commands::cmd_keys(&mut client, &keys).await?,
         Commands::Mode => commands::cmd_mode(&mut client).await?,
         Commands::Cursor { buffer_id } => commands::cmd_cursor(&mut client, buffer_id).await?,
@@ -180,9 +202,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             commands::cmd_selection(&mut client, buffer_id).await?
         }
         Commands::Screen => commands::cmd_screen(&mut client).await?,
-        Commands::ScreenContent { format } => {
-            commands::cmd_screen_content(&mut client, &format).await?
-        }
         Commands::Buffer { command } => match command {
             BufferCommands::List => commands::cmd_buffer_list(&mut client).await?,
             BufferCommands::Content { buffer_id } => {
@@ -199,6 +218,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Quit => commands::cmd_quit(&mut client).await?,
         Commands::Kill => commands::cmd_kill(&mut client).await?,
         Commands::Raw { json } => commands::cmd_raw(&mut client, &json).await?,
+        Commands::ScreenContent { .. } => unreachable!("handled above"),
     };
 
     // Output result

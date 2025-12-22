@@ -2,6 +2,23 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- **Explorer file operations** - Fixed character input not working in explorer file operations
+  - Explorer now implements `UIComponent` trait for proper input routing
+  - Character input (create file, rename, etc.) now correctly captures typed characters
+  - Backspace works correctly in input mode
+  - Fixed architecture mismatch between focus handlers and interactor registry
+
+### Improved
+
+- **reo-cli screen-content** - Simplified output format
+  - `screen-content` command now prints raw screen content directly
+  - Removed JSON wrapper for better usability and piping
+  - Maintains JSON format for other commands
+
 ## [0.6.22] - 2025-12-20
 
 ### Markdown Rendering (Phase 4)

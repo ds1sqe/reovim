@@ -36,10 +36,6 @@ struct ConnectionState {
     notification_tx: Mutex<Option<mpsc::Sender<RpcNotification>>>,
     /// Number of active connections
     connection_count: AtomicUsize,
-    /// Channel to signal shutdown (test mode only)
-    shutdown_tx: Option<mpsc::Sender<()>>,
-    /// Whether test mode is enabled
-    test_mode: bool,
 }
 
 /// Run the editor in server mode with the specified transport
@@ -145,15 +141,10 @@ pub async fn run_server(
                 .await?
                 .expect("listener should be Some for non-stdio transport");
 
-            // Create shutdown channel for test mode
-            let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
-
             let conn_state = Arc::new(ConnectionState {
                 response_tx: Mutex::new(None),
                 notification_tx: Mutex::new(None),
                 connection_count: AtomicUsize::new(0),
-                shutdown_tx: if test_mode { Some(shutdown_tx) } else { None },
-                test_mode,
             });
 
             // Spawn persistent server loop (uses shared state for responses)
@@ -199,11 +190,11 @@ pub async fn run_server(
                 }
             });
 
-            // In test mode: wait for shutdown signal, then trigger runtime exit
+            // In test mode: run for 3 minutes then shutdown
             if test_mode {
                 tokio::spawn(async move {
-                    shutdown_rx.recv().await;
-                    tracing::info!("Test mode: all clients disconnected, shutting down");
+                    tokio::time::sleep(tokio::time::Duration::from_secs(180)).await;
+                    tracing::info!("Test mode: 3 minutes elapsed, shutting down");
                     let _ = event_tx_for_shutdown.send(InnerEvent::KillSignal).await;
                 });
             }
@@ -245,14 +236,6 @@ async fn handle_connection(
     let prev = state.connection_count.fetch_sub(1, Ordering::SeqCst);
     let new_count = prev - 1;
     tracing::info!("Client disconnected (active connections: {new_count})");
-
-    // In test mode: if all clients gone, trigger shutdown
-    if state.test_mode
-        && prev == 1
-        && let Some(ref tx) = state.shutdown_tx
-    {
-        let _ = tx.send(()).await;
-    }
 }
 
 /// Server loop that uses shared state to route responses to the current connection

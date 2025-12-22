@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 reovim-core = { path = "../../../lib/core" }
+reovim-sys = { path = "../../../lib/sys" }
 tracing = "0.1"
 
 [dev-dependencies]

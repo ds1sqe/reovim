@@ -569,23 +569,76 @@ fn build(&self, ctx: &mut PluginContext) {
 Plugins implement and register `UIComponent` for input handling:
 
 ```rust
-use reovim_core::interactor::{UIComponent, InputResult};
+use reovim_core::{
+    ui_component::{ComponentId, UIComponent},
+    interactor::InputResult,
+    event::InnerEvent,
+    modd::ModeState,
+    component::RenderContext,
+    frame::FrameBuffer,
+    screen::{z_order, LayerBounds},
+};
 
-impl UIComponent for Explorer {
-    fn id(&self) -> ComponentId { COMPONENT_ID }
+#[derive(Debug)]
+pub struct ExplorerComponent;
 
-    fn handle_input(&mut self, input: InputEvent) -> InputResult {
-        match input {
-            InputEvent::Key(key) => { /* handle key */ }
-            _ => InputResult::NotHandled,
-        }
+impl UIComponent for ExplorerComponent {
+    fn id(&self) -> ComponentId {
+        ComponentId("explorer")
+    }
+
+    fn display_name(&self) -> &'static str {
+        "EXPLORER"
+    }
+
+    fn z_order(&self) -> u8 {
+        z_order::BASE
+    }
+
+    fn is_visible(&self, _ctx: &RenderContext<'_>) -> bool {
+        true
+    }
+
+    fn bounds(&self, _ctx: &RenderContext<'_>) -> LayerBounds {
+        LayerBounds { x: 0, y: 0, width: 0, height: 0 }
+    }
+
+    fn render_to_frame(&self, _buffer: &mut FrameBuffer, _ctx: &RenderContext<'_>) {
+        // Rendering handled by WindowProvider
+    }
+
+    fn is_focusable(&self) -> bool {
+        true
+    }
+
+    fn handle_insert_char(&mut self, c: char, _mode_state: &ModeState) -> InputResult {
+        // Route to focus handler
+        InputResult::SendEvent(InnerEvent::FocusInput {
+            char: Some(c),
+            delete: false,
+            clear_landing: false,
+        })
+    }
+
+    fn handle_delete_backward(&mut self, _mode_state: &ModeState) -> InputResult {
+        InputResult::SendEvent(InnerEvent::FocusInput {
+            char: None,
+            delete: true,
+            clear_landing: false,
+        })
+    }
+
+    fn captures_input(&self) -> bool {
+        true
     }
 }
 
 fn build(&self, ctx: &mut PluginContext) {
-    ctx.register_ui_component(Explorer::new());
+    ctx.register_interactor(Box::new(ExplorerComponent));
 }
 ```
+
+**Note**: UIComponents route input via `InputResult::SendEvent(InnerEvent::FocusInput{...})` which allows the component to delegate actual state management to focus handlers registered separately.
 
 ## Creating External Plugins
 

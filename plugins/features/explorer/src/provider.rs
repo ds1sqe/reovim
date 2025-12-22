@@ -6,6 +6,8 @@ use reovim_core::{
     screen::Position,
 };
 
+use reovim_sys::event::KeyCode;
+
 use crate::state::ExplorerState;
 
 /// Explorer buffer provider - generates virtual buffer content for file tree
@@ -25,9 +27,16 @@ impl PluginBufferProvider for ExplorerBufferProvider {
                 let nodes = explorer.visible_nodes();
                 let mut lines = Vec::with_capacity(ctx.height as usize);
 
+                // Reserve last line for message/prompt if present
+                let available_height = if explorer.message.is_some() {
+                    ctx.height.saturating_sub(1) as usize
+                } else {
+                    ctx.height as usize
+                };
+
                 // Calculate visible range based on scroll offset
                 let start = explorer.scroll_offset;
-                let end = (start + ctx.height as usize).min(nodes.len());
+                let end = (start + available_height).min(nodes.len());
 
                 // Generate plain text lines for each visible node
                 for (i, node) in nodes.iter().enumerate().skip(start).take(end - start) {
@@ -67,7 +76,20 @@ impl PluginBufferProvider for ExplorerBufferProvider {
                     lines.push(line);
                 }
 
-                // Pad with empty lines if needed
+                // Add message/input prompt at the bottom if present
+                tracing::debug!("ExplorerBufferProvider: message={:?}, input_buffer={:?}", explorer.message, explorer.input_buffer);
+                if let Some(ref message) = explorer.message {
+                    let input_display = if !explorer.input_buffer.is_empty() {
+                        explorer.input_buffer.as_str()
+                    } else {
+                        "_" // Show cursor placeholder
+                    };
+                    let prompt_line = format!("{}{}", message, input_display);
+                    tracing::info!("ExplorerBufferProvider: Adding prompt line: {}", prompt_line);
+                    lines.push(prompt_line);
+                }
+
+                // Pad with empty lines if needed to fill remaining height
                 while lines.len() < ctx.height as usize {
                     lines.push(String::new());
                 }
@@ -89,8 +111,34 @@ impl PluginBufferProvider for ExplorerBufferProvider {
             });
     }
 
-    fn on_input(&mut self, _key: KeyEvent, _ctx: &mut BufferContext) -> InputResult {
-        // Explorer handles input via commands, not direct key handling
+    fn on_input(&mut self, key: KeyEvent, ctx: &mut BufferContext) -> InputResult {
+        use crate::state::ExplorerInputMode;
+
+        tracing::info!("ExplorerBufferProvider::on_input called with key: {:?}", key);
+
+        // Check if explorer is in input mode (create file, rename, etc.)
+        let in_input_mode = ctx.state
+            .with::<ExplorerState, _, _>(|explorer| {
+                !matches!(explorer.input_mode, ExplorerInputMode::None)
+            })
+            .unwrap_or(false);
+
+        tracing::info!("ExplorerBufferProvider::on_input: in_input_mode={}", in_input_mode);
+
+        if !in_input_mode {
+            return InputResult::Unhandled;
+        }
+
+        // Handle character input
+        if let KeyCode::Char(c) = key.code {
+            tracing::info!("ExplorerBufferProvider::on_input: Adding char '{}' to input buffer", c);
+            ctx.state.with_mut::<ExplorerState, _, _>(|explorer| {
+                explorer.input_buffer.push(c);
+            });
+            return InputResult::Handled;
+        }
+
+        // Let other keys (Enter, Escape, Backspace) be handled by commands
         InputResult::Unhandled
     }
 

@@ -249,7 +249,7 @@ impl ModeState {
     /// Check if the mode accepts character input (insert mode or command mode)
     #[must_use]
     pub const fn accepts_char_input(&self) -> bool {
-        self.is_insert() || self.is_command()
+        self.is_insert() || self.is_command() || matches!(self.sub_mode, SubMode::Interactor(_))
     }
 
     /// Get display string for status line (orthogonal format)

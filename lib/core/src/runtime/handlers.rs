@@ -317,8 +317,11 @@ impl Runtime {
         // Resolve the command reference to a trait object
         let Some(cmd) = self.resolve_command(&command) else {
             // Command not found in registry
+            tracing::warn!("Command not found in registry: {:?}", command);
             return false;
         };
+
+        tracing::info!("Command resolved successfully: name={}", cmd.name());
 
         // Use active_buffer_id instead of context.buffer_id since the dispatcher
         // doesn't track buffer changes. In a single-window editor, active_buffer_id
@@ -340,6 +343,7 @@ impl Runtime {
             };
 
             let result = cmd.execute(&mut exec_ctx);
+            tracing::info!("Command executed: name={}, checking result type", cmd.name());
 
             // Check if command is text-modifying for treesitter reparse
             let is_text_modifying = cmd.is_text_modifying();
@@ -435,10 +439,12 @@ impl Runtime {
                     }
                 }
                 CommandResult::EmitEvent(event) => {
+                    tracing::info!("Command result: EmitEvent, type={}", event.type_name());
                     // Dispatch the event to the event bus for plugin handling
                     let sender = self.event_bus.sender();
                     let mut ctx = crate::event_bus::HandlerContext::new(&sender);
                     let result = self.event_bus.dispatch(&event, &mut ctx);
+                    tracing::info!("Event dispatched: type={}, result={:?}", event.type_name(), result);
 
                     // Check if any handler requested render or quit
                     if ctx.render_requested() {

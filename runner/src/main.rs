@@ -1,7 +1,7 @@
 use {
     clap::Parser,
     reovim_core::{self, rpc::TransportConfig, runtime::Runtime, screen::Screen},
-    std::io::{self},
+    std::io::{self, IsTerminal},
 };
 
 mod logging;
@@ -29,15 +29,15 @@ struct Cli {
     #[arg(long)]
     server: bool,
 
-    /// With --server: also render to terminal (dual output)
+    /// Disable terminal rendering in server mode (terminal is enabled by default)
     #[arg(long)]
-    terminal: bool,
+    no_terminal: bool,
 
     /// Use stdio instead of TCP (implies --server)
     #[arg(long)]
     stdio: bool,
 
-    /// Exit when all clients disconnect (for testing/CI)
+    /// Run for 3 minutes then exit (for testing/CI)
     #[arg(long)]
     test: bool,
 
@@ -90,13 +90,18 @@ async fn main() -> Result<(), io::Error> {
             TransportConfig::unix_socket,
         );
 
+        // Auto-detect terminal availability: only enable if explicitly enabled AND we have a TTY
+        let terminal_output = !cli.no_terminal && io::stdout().is_terminal();
+        if !cli.no_terminal && !terminal_output {
+            tracing::info!("Terminal output disabled: not running in a TTY");
+        }
         tracing::info!(
             "Starting in server mode (dual_output={}, test_mode={}, transport={:?})",
-            cli.terminal,
+            terminal_output,
             cli.test,
             transport_config
         );
-        return server::run_server(cli.file, cli.terminal, transport_config, cli.test).await;
+        return server::run_server(cli.file, terminal_output, transport_config, cli.test).await;
     }
 
     // Normal interactive mode

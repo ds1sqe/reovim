@@ -604,7 +604,7 @@ impl Runtime {
     /// Handle mode change events
     #[allow(clippy::collapsible_if)]
     fn handle_mode_change(&mut self, new_mode: ModeState) {
-        tracing::debug!("Mode changed: edit_mode={:?}, interactor={}", new_mode.edit_mode, new_mode.interactor_id.0);
+        tracing::info!("Mode changed: edit_mode={:?}, interactor={}", new_mode.edit_mode, new_mode.interactor_id.0);
 
         // Handle insert mode
         if new_mode.is_insert() {

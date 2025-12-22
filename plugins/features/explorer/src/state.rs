@@ -132,6 +132,7 @@ impl ExplorerState {
         self.input_mode = ExplorerInputMode::CreateFile;
         self.input_buffer.clear();
         self.message = Some("Create file: ".to_string());
+        tracing::info!("ExplorerState: start_create_file() called, message set to: {:?}", self.message);
     }
 
     /// Start creating a new directory

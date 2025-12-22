@@ -289,11 +289,14 @@ impl CommandHandler {
     fn lookup_command_no_push(&mut self, key: &str) -> (Option<CommandRef>, bool) {
         let mode = self.current_mode();
         tracing::debug!(?mode, key, pending = %self.pending_keys, "lookup_command_no_push");
+        tracing::info!("Key lookup: interactor_id={}, key={}, pending={}", self.local_mode.interactor_id.0, key, self.pending_keys);
 
         let keymap = self.get_keymap_for_mode();
+        tracing::info!("Keymap has {} bindings for current scope", keymap.len());
 
         // Check for exact match
         if let Some(inner) = keymap.get(&self.pending_keys) {
+            tracing::info!("Found binding for key={}, has_command={}", &self.pending_keys, inner.command.is_some());
             if inner.command.is_some() {
                 let cmd = inner.command.clone();
                 self.pending_keys.clear();
@@ -302,6 +305,8 @@ impl CommandHandler {
             // Has children, wait for more keys
             return (None, true);
         }
+
+        tracing::info!("No exact binding found for key={}", &self.pending_keys);
 
         // Check if current pending_keys is a valid prefix for any binding
         let is_valid_prefix = keymap

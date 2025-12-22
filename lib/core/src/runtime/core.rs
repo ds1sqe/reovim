@@ -236,6 +236,25 @@ impl Runtime {
                 });
         }
 
+        // Subscribe to mode change requests from plugins
+        {
+            use crate::event_bus::{core_events::RequestModeChange, EventResult};
+            let tx = runtime.tx.clone();
+            runtime
+                .event_bus
+                .subscribe::<RequestModeChange, _>(100, move |event, _ctx| {
+                    // Send through event loop to properly update runtime.mode_state
+                    let _ = tx.try_send(crate::event::InnerEvent::ModeChangeEvent(event.mode.clone()));
+                    tracing::info!(
+                        "Runtime: Requesting mode change to interactor='{}', edit_mode={:?}, sub_mode={:?}",
+                        event.mode.interactor_id.0,
+                        event.mode.edit_mode,
+                        event.mode.sub_mode
+                    );
+                    EventResult::Handled
+                });
+        }
+
         // Subscribe to file open requests from plugins
         {
             use crate::event_bus::{core_events::RequestOpenFile, EventResult};
