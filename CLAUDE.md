@@ -69,13 +69,21 @@ cargo run -- --listen-tcp 9000
 cargo run -p reo-cli -- mode
 cargo run -p reo-cli -- keys 'iHello<Esc>'
 
-# View logs
-tail -f ~/.local/share/reovim/reovim.log
+# View logs (timestamped files)
+tail -f ~/.local/share/reovim/reovim-*.log
+
+# View latest log
+tail -f $(ls -t ~/.local/share/reovim/reovim-*.log | head -1)
 ```
 
 ## Logs and Debugging
 
-Runtime logs are written to `~/.local/share/reovim/reovim.log` when running in server mode. Use `tail -f` to monitor logs in real-time during debugging.
+Runtime logs are written to timestamped files in `~/.local/share/reovim/` when running in server mode (e.g., `reovim-2025-12-22-15-36-20.log`). Each server instance creates a new log file with format `reovim-YYYY-MM-DD-HH-MM-SS.log`.
+
+To monitor the latest log in real-time:
+```bash
+tail -f $(ls -t ~/.local/share/reovim/reovim-*.log | head -1)
+```
 
 ## Architecture
 
@@ -147,6 +155,14 @@ Reovim is a Rust-based neovim-like text editor built with async tokio runtime an
 - `PluginStateRegistry` - Shared state between plugins
 - `EventBus` - Publish/subscribe event system for plugin communication
 - Plugins are loaded by `runner/src/plugins.rs`
+
+**Unified Command-Event Pattern** (v0.6.22+):
+- Single type serves as both CommandTrait and Event implementation
+- Macros: `declare_event_command!` (zero-sized), `declare_counted_event_command!` (with count)
+- Benefits: 50% fewer types, ~20 lines less boilerplate per command
+- All feature plugins migrated (Fold, Settings, Completion, Explorer, Telescope)
+- Example: `ExplorerRefresh` (not `ExplorerRefreshCommand` + `ExplorerRefreshEvent`)
+- See: `docs/commands.md`, `docs/plugin-system.md`, `docs/event-system.md`
 
 **Treesitter Plugin** (`plugins/features/treesitter/`):
 - Syntax highlighting via tree-sitter parsing
@@ -299,7 +315,48 @@ Check `git worktree list` to see active worktrees. Common setup:
 
 For in-depth information, see:
 - [docs/architecture.md](./docs/architecture.md) - Full architecture overview
-- [docs/event-system.md](./docs/event-system.md) - Event flow details
-- [docs/commands.md](./docs/commands.md) - Command system
+- [docs/event-system.md](./docs/event-system.md) - Event flow details and unified pattern
+- [docs/commands.md](./docs/commands.md) - Command system and unified pattern macros
+- [docs/plugin-system.md](./docs/plugin-system.md) - Plugin development with unified pattern
 - [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md) - Development guide
 - [docs/TESTING.md](./docs/TESTING.md) - Testing guide
+
+### Creating Plugin Commands (Modern Pattern)
+
+When adding new plugin commands, use the unified command-event pattern:
+
+**Zero-sized commands:**
+```rust
+use reovim_core::declare_event_command;
+
+declare_event_command! {
+    MyAction,
+    id: "my_action",
+    description: "Perform my action",
+}
+```
+
+**Counted commands (with repeat count):**
+```rust
+use reovim_core::declare_counted_event_command;
+
+declare_counted_event_command! {
+    MyMove,
+    id: "my_move",
+    description: "Move by count",
+}
+```
+
+**Commands with custom data:**
+```rust
+#[derive(Debug, Clone, Copy)]
+pub struct MyInputChar {
+    pub c: char,
+}
+
+impl Event for MyInputChar {
+    fn priority(&self) -> u32 { 100 }
+}
+```
+
+See `plugins/features/explorer/src/command.rs` for a complete example with all three patterns.

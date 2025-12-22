@@ -213,9 +213,9 @@ impl Plugin for CorePlugin {
     fn name(&self) -> &'static str { "Core" }
 
     fn build(&self, ctx: &mut PluginContext) {
-        // Register cursor commands
-        ctx.register_command(CursorLeftCommand);
-        ctx.register_command(CursorDownCommand);
+        // Register cursor commands (unified command-event types)
+        ctx.register_command(CursorLeft);
+        ctx.register_command(CursorDown);
         // ... more commands
 
         // Register keybindings
@@ -239,9 +239,10 @@ impl Plugin for LeapPlugin {
     fn dependencies(&self) -> Vec<TypeId> { vec![TypeId::of::<CorePlugin>()] }
 
     fn build(&self, ctx: &mut PluginContext) {
-        ctx.register_command(LeapForwardCommand);
-        ctx.register_command(LeapBackwardCommand);
-        ctx.register_command(LeapCancelCommand);
+        // Register unified command-event types
+        ctx.register_command(LeapForward);
+        ctx.register_command(LeapBackward);
+        ctx.register_command(LeapCancel);
     }
 
     fn init_state(&self, registry: &PluginStateRegistry) {
@@ -250,7 +251,8 @@ impl Plugin for LeapPlugin {
 
     fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<LeapStartEvent, _>(100, move |event, _ctx| {
+        // Subscribe using the same unified type (no "Event" suffix)
+        bus.subscribe::<LeapStart, _>(100, move |event, _ctx| {
             state_clone.with_mut::<LeapState, _, _>(|leap_state| {
                 leap_state.start(event.direction, event.operator, event.count);
             });
@@ -346,13 +348,104 @@ Language plugins provide language-specific support:
 | TOML | `reovim-lang-toml` | `.toml` |
 | Markdown | `reovim-lang-markdown` | `.md` |
 
-## Defining Events
+## Unified Command-Event Pattern (Recommended)
 
-Create events by implementing the `Event` trait:
+**Modern approach:** Use a single type that serves as both command and event.
+
+### Using Declaration Macros
+
+For most plugin commands, use the `declare_event_command!` macro:
 
 ```rust
-use crate::event_bus::Event;
+use reovim_core::declare_event_command;
 
+// Single unified type - both command AND event
+declare_event_command! {
+    ExplorerRefresh,
+    id: "explorer_refresh",
+    description: "Refresh explorer view",
+}
+
+// Register as command
+ctx.register_command(ExplorerRefresh);
+
+// Subscribe as event (same type!)
+bus.subscribe::<ExplorerRefresh, _>(100, |event, ctx| {
+    // Handle refresh
+    EventResult::Handled
+});
+```
+
+**Benefits:**
+- 50% fewer types (one instead of two)
+- ~20 lines of boilerplate eliminated per command
+- Clearer intent - action is both trigger and notification
+- Zero-cost abstraction (zero-sized type)
+
+### For Commands with Count
+
+Use `declare_counted_event_command!` for commands that use repeat counts:
+
+```rust
+use reovim_core::declare_counted_event_command;
+
+// Single type with count - both command AND event
+declare_counted_event_command! {
+    ExplorerCursorDown,
+    id: "explorer_cursor_down",
+    description: "Move cursor down",
+}
+
+// Register (Default provides count=1)
+ctx.register_command(ExplorerCursorDown::new(1));
+
+// Subscribe - access event.count directly
+bus.subscribe::<ExplorerCursorDown, _>(100, |event, ctx| {
+    for _ in 0..event.count {
+        // Move down
+    }
+    EventResult::Handled
+});
+```
+
+### For Commands with Custom Data
+
+For commands that need custom data fields, implement manually:
+
+```rust
+use reovim_core::event_bus::Event;
+
+#[derive(Debug, Clone, Copy)]
+pub struct ExplorerInputChar {
+    pub c: char,
+}
+
+impl ExplorerInputChar {
+    pub const fn new(c: char) -> Self {
+        Self { c }
+    }
+}
+
+impl Event for ExplorerInputChar {
+    fn priority(&self) -> u32 { 100 }
+}
+
+// Still register and subscribe with same type
+ctx.register_command(ExplorerInputChar::new('a'));
+bus.subscribe::<ExplorerInputChar, _>(100, |event, ctx| {
+    // Access event.c
+    EventResult::Handled
+});
+```
+
+## Legacy: Separate Command/Event Types (Deprecated)
+
+**Old approach:** Create separate Command and Event types (no longer recommended).
+
+```rust
+// DON'T DO THIS - deprecated pattern
+
+// Separate event type
 #[derive(Debug, Clone)]
 pub struct LeapStartEvent {
     pub direction: LeapDirection,
@@ -361,9 +454,21 @@ pub struct LeapStartEvent {
 }
 
 impl Event for LeapStartEvent {
-    fn priority(&self) -> u32 { 50 }  // High priority for mode changes
+    fn priority(&self) -> u32 { 50 }
+}
+
+// Separate command type
+pub struct LeapStartCommand;
+
+impl CommandTrait for LeapStartCommand {
+    fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
+        CommandResult::EmitEvent(DynEvent::new(LeapStartEvent { ... }))
+    }
+    // ... 15 more lines of boilerplate
 }
 ```
+
+**Migration:** Use unified types instead (see above).
 
 ## Plugin Loading
 
@@ -561,14 +666,14 @@ Plugins register their own keybindings during `build()`:
 
 ```rust
 fn build(&self, ctx: &mut PluginContext) {
-    // Register commands
-    ctx.register_command(ExplorerToggleCommand);
-    ctx.register_command(ExplorerUpCommand);
+    // Register unified command-event types (no "Command" suffix)
+    ctx.register_command(ExplorerToggle);
+    ctx.register_command(ExplorerCursorUp::new(1));
 
     // Register keybindings for specific scopes
     ctx.register_keybinding("normal", "Space e", EXPLORER_TOGGLE);
-    ctx.register_keybinding("explorer", "k", EXPLORER_UP);
-    ctx.register_keybinding("explorer", "j", EXPLORER_DOWN);
+    ctx.register_keybinding("explorer", "k", EXPLORER_CURSOR_UP);
+    ctx.register_keybinding("explorer", "j", EXPLORER_CURSOR_DOWN);
 }
 ```
 

@@ -31,25 +31,17 @@ use reovim_core::{
     ui_component::ComponentId,
 };
 
-// Re-export command types
+// Re-export unified command-event types
 pub use commands::{
-    TelescopeBackspaceCommand, TelescopeCloseCommand, TelescopeCommandsCommand,
-    TelescopeConfirmCommand, TelescopeEnterInsertCommand, TelescopeEnterNormalCommand,
-    TelescopeFindBuffersCommand, TelescopeFindFilesCommand, TelescopeGotoFirstCommand,
-    TelescopeGotoLastCommand, TelescopeHelpTagsCommand, TelescopeInsertCharCommand,
-    TelescopeKeymapsCommand, TelescopeLiveGrepCommand, TelescopePageDownCommand,
-    TelescopePageUpCommand, TelescopeRecentFilesCommand, TelescopeSelectNextCommand,
-    TelescopeSelectPrevCommand, TelescopeThemesCommand,
+    TelescopeBackspace, TelescopeClose, TelescopeCommands, TelescopeConfirm, TelescopeCursorLeft,
+    TelescopeCursorRight, TelescopeEnterInsert, TelescopeEnterNormal, TelescopeFindBuffers,
+    TelescopeFindFiles, TelescopeFindRecent, TelescopeGotoFirst, TelescopeGotoLast, TelescopeHelp,
+    TelescopeInsertChar, TelescopeKeymaps, TelescopeLiveGrep, TelescopeOpen, TelescopePageDown,
+    TelescopePageUp, TelescopeProfiles, TelescopeSelectNext, TelescopeSelectPrev, TelescopeThemes,
 };
 
-// Re-export telescope types
-pub use telescope::{
-    TelescopeBackspaceEvent, TelescopeCloseEvent, TelescopeConfirmEvent, TelescopeEnterInsertEvent,
-    TelescopeEnterNormalEvent, TelescopeGotoFirstEvent, TelescopeGotoLastEvent,
-    TelescopeInsertCharEvent, TelescopeItem, TelescopeMatcher, TelescopeOpenEvent,
-    TelescopePageDownEvent, TelescopePageUpEvent, TelescopeSelectNextEvent,
-    TelescopeSelectPrevEvent, TelescopeState,
-};
+// Re-export telescope types (non-command/event)
+pub use telescope::{TelescopeItem, TelescopeMatcher, TelescopeState};
 
 /// Telescope overlay
 ///
@@ -282,26 +274,29 @@ impl Plugin for TelescopePlugin {
             DisplayInfo::new(" TELESCOPE | INSERT ", "󰍉 "),
         );
 
-        // Register commands
-        let _ = ctx.register_command(TelescopeFindFilesCommand);
-        let _ = ctx.register_command(TelescopeFindBuffersCommand);
-        let _ = ctx.register_command(TelescopeLiveGrepCommand);
-        let _ = ctx.register_command(TelescopeRecentFilesCommand);
-        let _ = ctx.register_command(TelescopeCommandsCommand);
-        let _ = ctx.register_command(TelescopeHelpTagsCommand);
-        let _ = ctx.register_command(TelescopeKeymapsCommand);
-        let _ = ctx.register_command(TelescopeThemesCommand);
-        let _ = ctx.register_command(TelescopeSelectNextCommand);
-        let _ = ctx.register_command(TelescopeSelectPrevCommand);
-        let _ = ctx.register_command(TelescopePageDownCommand);
-        let _ = ctx.register_command(TelescopePageUpCommand);
-        let _ = ctx.register_command(TelescopeGotoFirstCommand);
-        let _ = ctx.register_command(TelescopeGotoLastCommand);
-        let _ = ctx.register_command(TelescopeConfirmCommand);
-        let _ = ctx.register_command(TelescopeCloseCommand);
-        let _ = ctx.register_command(TelescopeBackspaceCommand);
-        let _ = ctx.register_command(TelescopeEnterInsertCommand);
-        let _ = ctx.register_command(TelescopeEnterNormalCommand);
+        // Register commands (unified types)
+        let _ = ctx.register_command(TelescopeFindFiles);
+        let _ = ctx.register_command(TelescopeFindBuffers);
+        let _ = ctx.register_command(TelescopeLiveGrep);
+        let _ = ctx.register_command(TelescopeFindRecent);
+        let _ = ctx.register_command(TelescopeCommands);
+        let _ = ctx.register_command(TelescopeHelp);
+        let _ = ctx.register_command(TelescopeKeymaps);
+        let _ = ctx.register_command(TelescopeThemes);
+        let _ = ctx.register_command(TelescopeProfiles);
+        let _ = ctx.register_command(TelescopeSelectNext);
+        let _ = ctx.register_command(TelescopeSelectPrev);
+        let _ = ctx.register_command(TelescopePageDown);
+        let _ = ctx.register_command(TelescopePageUp);
+        let _ = ctx.register_command(TelescopeGotoFirst);
+        let _ = ctx.register_command(TelescopeGotoLast);
+        let _ = ctx.register_command(TelescopeConfirm);
+        let _ = ctx.register_command(TelescopeClose);
+        let _ = ctx.register_command(TelescopeBackspace);
+        let _ = ctx.register_command(TelescopeCursorLeft);
+        let _ = ctx.register_command(TelescopeCursorRight);
+        let _ = ctx.register_command(TelescopeEnterInsert);
+        let _ = ctx.register_command(TelescopeEnterNormal);
 
         // Register keybindings (editor normal mode)
         let editor_normal = KeymapScope::editor_normal();

@@ -4,6 +4,10 @@
 //! and icons for different modes and components. This allows plugins to define their
 //! own visual representations without modifying core code.
 
+mod builder;
+
+pub use builder::DisplayInfoBuilder;
+
 use std::collections::HashMap;
 
 use crate::{

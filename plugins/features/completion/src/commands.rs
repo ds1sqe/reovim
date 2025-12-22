@@ -1,22 +1,29 @@
-//! Completion-related commands
+//! Completion-related commands (unified command-event types)
 
-use {
-    crate::completion::{
-        CompletionConfirmEvent, CompletionDismissEvent, CompletionSelectNextEvent,
-        CompletionSelectPrevEvent, CompletionTriggerEvent,
-    },
-    reovim_core::{
-        command::traits::{CommandResult, CommandTrait, ExecutionContext},
-        event_bus::DynEvent,
-    },
-    std::any::Any,
+use reovim_core::{
+    command::traits::*,
+    declare_event_command,
+    event_bus::{DynEvent, Event},
 };
 
-/// Trigger completion at current cursor position
-#[derive(Debug, Clone)]
-pub struct CompletionTriggerCommand;
+// === Trigger Command (custom impl for context data + priority) ===
 
-impl CommandTrait for CompletionTriggerCommand {
+/// Trigger completion at current cursor position
+#[derive(Debug, Clone, Copy)]
+pub struct CompletionTrigger {
+    /// Buffer ID where completion was triggered
+    pub buffer_id: usize,
+}
+
+impl CompletionTrigger {
+    /// Create instance from buffer ID
+    #[must_use]
+    pub const fn new(buffer_id: usize) -> Self {
+        Self { buffer_id }
+    }
+}
+
+impl CommandTrait for CompletionTrigger {
     fn name(&self) -> &'static str {
         "completion_trigger"
     }
@@ -26,120 +33,47 @@ impl CommandTrait for CompletionTriggerCommand {
     }
 
     fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(CompletionTriggerEvent {
-            buffer_id: ctx.buffer_id,
-        }))
+        let event = Self::new(ctx.buffer_id);
+        CommandResult::EmitEvent(DynEvent::new(event))
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
+        Box::new(*self)
     }
 
-    fn as_any(&self) -> &dyn Any {
+    fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 }
 
-/// Select next completion item
-#[derive(Debug, Clone)]
-pub struct CompletionNextCommand;
-
-impl CommandTrait for CompletionNextCommand {
-    fn name(&self) -> &'static str {
-        "completion_next"
-    }
-
-    fn description(&self) -> &'static str {
-        "Select next completion item"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(CompletionSelectNextEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
+impl Event for CompletionTrigger {
+    fn priority(&self) -> u32 {
+        50 // High priority for UI updates
     }
 }
 
-/// Select previous completion item
-#[derive(Debug, Clone)]
-pub struct CompletionPrevCommand;
+// === Navigation & Action Commands (using macro) ===
 
-impl CommandTrait for CompletionPrevCommand {
-    fn name(&self) -> &'static str {
-        "completion_prev"
-    }
-
-    fn description(&self) -> &'static str {
-        "Select previous completion item"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(CompletionSelectPrevEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    CompletionSelectNext,
+    id: "completion_next",
+    description: "Select next completion item",
 }
 
-/// Confirm and insert selected completion
-#[derive(Debug, Clone)]
-pub struct CompletionConfirmCommand;
-
-impl CommandTrait for CompletionConfirmCommand {
-    fn name(&self) -> &'static str {
-        "completion_confirm"
-    }
-
-    fn description(&self) -> &'static str {
-        "Confirm and insert selected completion"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(CompletionConfirmEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    CompletionSelectPrev,
+    id: "completion_prev",
+    description: "Select previous completion item",
 }
 
-/// Dismiss completion popup
-#[derive(Debug, Clone)]
-pub struct CompletionDismissCommand;
+declare_event_command! {
+    CompletionConfirm,
+    id: "completion_confirm",
+    description: "Confirm and insert selected completion",
+}
 
-impl CommandTrait for CompletionDismissCommand {
-    fn name(&self) -> &'static str {
-        "completion_dismiss"
-    }
-
-    fn description(&self) -> &'static str {
-        "Dismiss completion popup"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(CompletionDismissEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    CompletionDismiss,
+    id: "completion_dismiss",
+    description: "Dismiss completion popup",
 }

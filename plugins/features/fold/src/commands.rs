@@ -1,23 +1,39 @@
 //! Fold commands
 //!
-//! Commands emit fold events via the event bus.
+//! Unified command-event types that extract data from `ExecutionContext`.
 
 use std::any::Any;
 
 use reovim_core::{
     command::traits::{CommandResult, CommandTrait, ExecutionContext},
-    event_bus::DynEvent,
-};
-
-use crate::events::{
-    FoldCloseAllEvent, FoldCloseEvent, FoldOpenAllEvent, FoldOpenEvent, FoldToggleEvent,
+    event_bus::{DynEvent, Event},
+    folding::FoldRange,
 };
 
 /// Toggle fold at cursor line (za)
 #[derive(Debug, Clone)]
-pub struct FoldToggleCommand;
+pub struct FoldToggle {
+    /// Buffer ID where the fold was toggled
+    pub buffer_id: usize,
+    /// Line number where the fold starts
+    pub line: u32,
+    /// Whether the fold is now collapsed (true) or expanded (false)
+    pub is_collapsed: bool,
+}
 
-impl CommandTrait for FoldToggleCommand {
+impl FoldToggle {
+    /// Create a default instance for registration
+    #[must_use]
+    pub const fn default_instance() -> Self {
+        Self {
+            buffer_id: 0,
+            line: 0,
+            is_collapsed: false,
+        }
+    }
+}
+
+impl CommandTrait for FoldToggle {
     fn name(&self) -> &'static str {
         "fold_toggle"
     }
@@ -28,7 +44,7 @@ impl CommandTrait for FoldToggleCommand {
 
     fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
         let line = u32::from(ctx.buffer.cur.y);
-        let event = FoldToggleEvent {
+        let event = Self {
             buffer_id: ctx.buffer_id,
             line,
             is_collapsed: false, // Will be determined by subscriber
@@ -45,11 +61,33 @@ impl CommandTrait for FoldToggleCommand {
     }
 }
 
+impl Event for FoldToggle {
+    fn priority(&self) -> u32 {
+        100
+    }
+}
+
 /// Open fold at cursor line (zo)
 #[derive(Debug, Clone)]
-pub struct FoldOpenCommand;
+pub struct FoldOpen {
+    /// Buffer ID where the fold was opened
+    pub buffer_id: usize,
+    /// Line number where the fold starts
+    pub line: u32,
+}
 
-impl CommandTrait for FoldOpenCommand {
+impl FoldOpen {
+    /// Create a default instance for registration
+    #[must_use]
+    pub const fn default_instance() -> Self {
+        Self {
+            buffer_id: 0,
+            line: 0,
+        }
+    }
+}
+
+impl CommandTrait for FoldOpen {
     fn name(&self) -> &'static str {
         "fold_open"
     }
@@ -60,7 +98,7 @@ impl CommandTrait for FoldOpenCommand {
 
     fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
         let line = u32::from(ctx.buffer.cur.y);
-        let event = FoldOpenEvent {
+        let event = Self {
             buffer_id: ctx.buffer_id,
             line,
         };
@@ -76,11 +114,33 @@ impl CommandTrait for FoldOpenCommand {
     }
 }
 
+impl Event for FoldOpen {
+    fn priority(&self) -> u32 {
+        100
+    }
+}
+
 /// Close fold at cursor line (zc)
 #[derive(Debug, Clone)]
-pub struct FoldCloseCommand;
+pub struct FoldClose {
+    /// Buffer ID where the fold was closed
+    pub buffer_id: usize,
+    /// Line number where the fold starts
+    pub line: u32,
+}
 
-impl CommandTrait for FoldCloseCommand {
+impl FoldClose {
+    /// Create a default instance for registration
+    #[must_use]
+    pub const fn default_instance() -> Self {
+        Self {
+            buffer_id: 0,
+            line: 0,
+        }
+    }
+}
+
+impl CommandTrait for FoldClose {
     fn name(&self) -> &'static str {
         "fold_close"
     }
@@ -91,7 +151,7 @@ impl CommandTrait for FoldCloseCommand {
 
     fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
         let line = u32::from(ctx.buffer.cur.y);
-        let event = FoldCloseEvent {
+        let event = Self {
             buffer_id: ctx.buffer_id,
             line,
         };
@@ -107,11 +167,28 @@ impl CommandTrait for FoldCloseCommand {
     }
 }
 
+impl Event for FoldClose {
+    fn priority(&self) -> u32 {
+        100
+    }
+}
+
 /// Open all folds in buffer (zR)
 #[derive(Debug, Clone)]
-pub struct FoldOpenAllCommand;
+pub struct FoldOpenAll {
+    /// Buffer ID where all folds were opened
+    pub buffer_id: usize,
+}
 
-impl CommandTrait for FoldOpenAllCommand {
+impl FoldOpenAll {
+    /// Create a default instance for registration
+    #[must_use]
+    pub const fn default_instance() -> Self {
+        Self { buffer_id: 0 }
+    }
+}
+
+impl CommandTrait for FoldOpenAll {
     fn name(&self) -> &'static str {
         "fold_open_all"
     }
@@ -121,7 +198,7 @@ impl CommandTrait for FoldOpenAllCommand {
     }
 
     fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
-        let event = FoldOpenAllEvent {
+        let event = Self {
             buffer_id: ctx.buffer_id,
         };
         CommandResult::EmitEvent(DynEvent::new(event))
@@ -136,11 +213,28 @@ impl CommandTrait for FoldOpenAllCommand {
     }
 }
 
+impl Event for FoldOpenAll {
+    fn priority(&self) -> u32 {
+        100
+    }
+}
+
 /// Close all folds in buffer (zM)
 #[derive(Debug, Clone)]
-pub struct FoldCloseAllCommand;
+pub struct FoldCloseAll {
+    /// Buffer ID where all folds were closed
+    pub buffer_id: usize,
+}
 
-impl CommandTrait for FoldCloseAllCommand {
+impl FoldCloseAll {
+    /// Create a default instance for registration
+    #[must_use]
+    pub const fn default_instance() -> Self {
+        Self { buffer_id: 0 }
+    }
+}
+
+impl CommandTrait for FoldCloseAll {
     fn name(&self) -> &'static str {
         "fold_close_all"
     }
@@ -150,7 +244,7 @@ impl CommandTrait for FoldCloseAllCommand {
     }
 
     fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
-        let event = FoldCloseAllEvent {
+        let event = Self {
             buffer_id: ctx.buffer_id,
         };
         CommandResult::EmitEvent(DynEvent::new(event))
@@ -162,5 +256,28 @@ impl CommandTrait for FoldCloseAllCommand {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+}
+
+impl Event for FoldCloseAll {
+    fn priority(&self) -> u32 {
+        100
+    }
+}
+
+/// Event emitted when fold ranges are updated (e.g., after parsing)
+///
+/// This is an event-only type (not triggered by a command).
+#[derive(Debug, Clone)]
+pub struct FoldRangesUpdated {
+    /// Buffer ID where ranges were updated
+    pub buffer_id: usize,
+    /// The new fold ranges
+    pub ranges: Vec<FoldRange>,
+}
+
+impl Event for FoldRangesUpdated {
+    fn priority(&self) -> u32 {
+        50 // Higher priority for range updates
     }
 }

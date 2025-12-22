@@ -1,24 +1,21 @@
-//! Settings menu commands
+//! Settings menu commands (unified command-event types)
 
-use {
-    crate::settings_menu::{
-        SettingsMenuCloseEvent, SettingsMenuCycleNextEvent, SettingsMenuCyclePrevEvent,
-        SettingsMenuDecrementEvent, SettingsMenuExecuteActionEvent, SettingsMenuIncrementEvent,
-        SettingsMenuOpenEvent, SettingsMenuQuickSelectEvent, SettingsMenuSelectNextEvent,
-        SettingsMenuSelectPrevEvent, SettingsMenuToggleEvent,
-    },
-    reovim_core::{
-        command::traits::{CommandResult, CommandTrait, ExecutionContext},
-        event_bus::DynEvent,
-    },
-    std::any::Any,
+use reovim_core::{
+    command::traits::*,
+    declare_event_command,
+    event_bus::{DynEvent, Event},
 };
 
-/// Open the settings menu
-#[derive(Debug, Clone)]
-pub struct SettingsMenuOpenCommand;
+// === Navigation Commands (unified types) ===
+//
+// Note: Open/Close use custom Event priority (50 instead of default 100)
+// so they're implemented manually instead of using declare_event_command!
 
-impl CommandTrait for SettingsMenuOpenCommand {
+/// Open the settings menu
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SettingsMenuOpen;
+
+impl CommandTrait for SettingsMenuOpen {
     fn name(&self) -> &'static str {
         "settings_menu_open"
     }
@@ -28,23 +25,29 @@ impl CommandTrait for SettingsMenuOpenCommand {
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(SettingsMenuOpenEvent))
+        CommandResult::EmitEvent(DynEvent::new(*self))
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
+        Box::new(*self)
     }
 
-    fn as_any(&self) -> &dyn Any {
+    fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 }
 
-/// Close the settings menu
-#[derive(Debug, Clone)]
-pub struct SettingsMenuCloseCommand;
+impl Event for SettingsMenuOpen {
+    fn priority(&self) -> u32 {
+        50 // High priority for mode changes
+    }
+}
 
-impl CommandTrait for SettingsMenuCloseCommand {
+/// Close the settings menu
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SettingsMenuClose;
+
+impl CommandTrait for SettingsMenuClose {
     fn name(&self) -> &'static str {
         "settings_menu_close"
     }
@@ -54,230 +57,125 @@ impl CommandTrait for SettingsMenuCloseCommand {
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(SettingsMenuCloseEvent))
+        CommandResult::EmitEvent(DynEvent::new(*self))
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
+        Box::new(*self)
     }
 
-    fn as_any(&self) -> &dyn Any {
+    fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 }
 
-/// Select next item in settings menu
-#[derive(Debug, Clone)]
-pub struct SettingsMenuNextCommand;
+impl Event for SettingsMenuClose {
+    fn priority(&self) -> u32 {
+        50 // High priority for mode changes
+    }
+}
 
-impl CommandTrait for SettingsMenuNextCommand {
+declare_event_command! {
+    SettingsMenuSelectNext,
+    id: "settings_menu_next",
+    description: "Select next item in settings menu",
+}
+
+declare_event_command! {
+    SettingsMenuSelectPrev,
+    id: "settings_menu_prev",
+    description: "Select previous item in settings menu",
+}
+
+// === Action Commands (unified types) ===
+
+declare_event_command! {
+    SettingsMenuToggle,
+    id: "settings_menu_toggle",
+    description: "Toggle current boolean setting",
+}
+
+declare_event_command! {
+    SettingsMenuCycleNext,
+    id: "settings_menu_cycle_next",
+    description: "Cycle to next choice option",
+}
+
+declare_event_command! {
+    SettingsMenuCyclePrev,
+    id: "settings_menu_cycle_prev",
+    description: "Cycle to previous choice option",
+}
+
+declare_event_command! {
+    SettingsMenuIncrement,
+    id: "settings_menu_increment",
+    description: "Increment current number setting",
+}
+
+declare_event_command! {
+    SettingsMenuDecrement,
+    id: "settings_menu_decrement",
+    description: "Decrement current number setting",
+}
+
+declare_event_command! {
+    SettingsMenuExecuteAction,
+    id: "settings_menu_execute",
+    description: "Execute current action item",
+}
+
+// === Quick Select Command (unified type with data) ===
+
+/// Quick select option by number (1-9)
+#[derive(Debug, Clone, Copy)]
+pub struct SettingsMenuQuickSelect {
+    /// The quick select number (1-9)
+    pub number: u8,
+}
+
+impl SettingsMenuQuickSelect {
+    /// Create instance for specific number
+    #[must_use]
+    pub const fn new(number: u8) -> Self {
+        Self { number }
+    }
+}
+
+impl CommandTrait for SettingsMenuQuickSelect {
     fn name(&self) -> &'static str {
-        "settings_menu_next"
+        "settings_menu_quick_select"
     }
 
     fn description(&self) -> &'static str {
-        "Select next item in settings menu"
+        "Quick select option by number"
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(SettingsMenuSelectNextEvent))
+        CommandResult::EmitEvent(DynEvent::new(*self))
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
+        Box::new(*self)
     }
 
-    fn as_any(&self) -> &dyn Any {
+    fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 }
 
-/// Select previous item in settings menu
-#[derive(Debug, Clone)]
-pub struct SettingsMenuPrevCommand;
-
-impl CommandTrait for SettingsMenuPrevCommand {
-    fn name(&self) -> &'static str {
-        "settings_menu_prev"
-    }
-
-    fn description(&self) -> &'static str {
-        "Select previous item in settings menu"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(SettingsMenuSelectPrevEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
+impl Event for SettingsMenuQuickSelect {
+    fn priority(&self) -> u32 {
+        100
     }
 }
 
-/// Toggle boolean setting
-#[derive(Debug, Clone)]
-pub struct SettingsMenuToggleCommand;
+// === Individual quick select commands (1-9) ===
+// These are type aliases that create instances of SettingsMenuQuickSelect
 
-impl CommandTrait for SettingsMenuToggleCommand {
-    fn name(&self) -> &'static str {
-        "settings_menu_toggle"
-    }
-
-    fn description(&self) -> &'static str {
-        "Toggle current boolean setting"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(SettingsMenuToggleEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-/// Cycle to next choice option
-#[derive(Debug, Clone)]
-pub struct SettingsMenuCycleNextCommand;
-
-impl CommandTrait for SettingsMenuCycleNextCommand {
-    fn name(&self) -> &'static str {
-        "settings_menu_cycle_next"
-    }
-
-    fn description(&self) -> &'static str {
-        "Cycle to next choice option"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(SettingsMenuCycleNextEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-/// Cycle to previous choice option
-#[derive(Debug, Clone)]
-pub struct SettingsMenuCyclePrevCommand;
-
-impl CommandTrait for SettingsMenuCyclePrevCommand {
-    fn name(&self) -> &'static str {
-        "settings_menu_cycle_prev"
-    }
-
-    fn description(&self) -> &'static str {
-        "Cycle to previous choice option"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(SettingsMenuCyclePrevEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-/// Increment number setting
-#[derive(Debug, Clone)]
-pub struct SettingsMenuIncrementCommand;
-
-impl CommandTrait for SettingsMenuIncrementCommand {
-    fn name(&self) -> &'static str {
-        "settings_menu_increment"
-    }
-
-    fn description(&self) -> &'static str {
-        "Increment current number setting"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(SettingsMenuIncrementEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-/// Decrement number setting
-#[derive(Debug, Clone)]
-pub struct SettingsMenuDecrementCommand;
-
-impl CommandTrait for SettingsMenuDecrementCommand {
-    fn name(&self) -> &'static str {
-        "settings_menu_decrement"
-    }
-
-    fn description(&self) -> &'static str {
-        "Decrement current number setting"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(SettingsMenuDecrementEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-/// Execute action item
-#[derive(Debug, Clone)]
-pub struct SettingsMenuExecuteCommand;
-
-impl CommandTrait for SettingsMenuExecuteCommand {
-    fn name(&self) -> &'static str {
-        "settings_menu_execute"
-    }
-
-    fn description(&self) -> &'static str {
-        "Execute current action item"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(SettingsMenuExecuteActionEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-/// Macro to generate quick select commands (1-9)
 macro_rules! quick_select_command {
     ($name:ident, $num:literal, $cmd_name:literal) => {
-        #[derive(Debug, Clone)]
+        #[derive(Debug, Clone, Copy)]
         pub struct $name;
 
         impl CommandTrait for $name {
@@ -290,28 +188,26 @@ macro_rules! quick_select_command {
             }
 
             fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-                CommandResult::EmitEvent(DynEvent::new(SettingsMenuQuickSelectEvent {
-                    number: $num,
-                }))
+                CommandResult::EmitEvent(DynEvent::new(SettingsMenuQuickSelect::new($num)))
             }
 
             fn clone_box(&self) -> Box<dyn CommandTrait> {
-                Box::new(self.clone())
+                Box::new(*self)
             }
 
-            fn as_any(&self) -> &dyn Any {
+            fn as_any(&self) -> &dyn std::any::Any {
                 self
             }
         }
     };
 }
 
-quick_select_command!(SettingsMenuQuick1Command, 1, "settings_menu_quick_1");
-quick_select_command!(SettingsMenuQuick2Command, 2, "settings_menu_quick_2");
-quick_select_command!(SettingsMenuQuick3Command, 3, "settings_menu_quick_3");
-quick_select_command!(SettingsMenuQuick4Command, 4, "settings_menu_quick_4");
-quick_select_command!(SettingsMenuQuick5Command, 5, "settings_menu_quick_5");
-quick_select_command!(SettingsMenuQuick6Command, 6, "settings_menu_quick_6");
-quick_select_command!(SettingsMenuQuick7Command, 7, "settings_menu_quick_7");
-quick_select_command!(SettingsMenuQuick8Command, 8, "settings_menu_quick_8");
-quick_select_command!(SettingsMenuQuick9Command, 9, "settings_menu_quick_9");
+quick_select_command!(SettingsMenuQuick1, 1, "settings_menu_quick_1");
+quick_select_command!(SettingsMenuQuick2, 2, "settings_menu_quick_2");
+quick_select_command!(SettingsMenuQuick3, 3, "settings_menu_quick_3");
+quick_select_command!(SettingsMenuQuick4, 4, "settings_menu_quick_4");
+quick_select_command!(SettingsMenuQuick5, 5, "settings_menu_quick_5");
+quick_select_command!(SettingsMenuQuick6, 6, "settings_menu_quick_6");
+quick_select_command!(SettingsMenuQuick7, 7, "settings_menu_quick_7");
+quick_select_command!(SettingsMenuQuick8, 8, "settings_menu_quick_8");
+quick_select_command!(SettingsMenuQuick9, 9, "settings_menu_quick_9");

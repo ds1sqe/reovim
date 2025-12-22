@@ -1,902 +1,290 @@
-//! Explorer mode commands
-//!
-//! These commands emit `EventBus` events that are handled by the runtime.
-//! The events are defined in `super::events`.
+//! Explorer commands (unified command-event types)
 
-use {
-    super::events::{
-        ExplorerCancelInputEvent, ExplorerClearFilterEvent, ExplorerCloseEvent,
-        ExplorerCloseParentEvent, ExplorerConfirmInputEvent, ExplorerCreateDirEvent,
-        ExplorerCreateFileEvent, ExplorerCursorDownEvent, ExplorerCursorUpEvent, ExplorerCutEvent,
-        ExplorerDeleteEvent, ExplorerExitVisualEvent, ExplorerFocusEditorEvent,
-        ExplorerGoToParentEvent, ExplorerGotoFirstEvent, ExplorerGotoLastEvent,
-        ExplorerInputBackspaceEvent, ExplorerInputCharEvent, ExplorerOpenNodeEvent,
-        ExplorerPageDownEvent, ExplorerPageUpEvent, ExplorerPasteEvent, ExplorerRefreshEvent,
-        ExplorerRenameEvent, ExplorerSelectAllEvent, ExplorerStartFilterEvent, ExplorerToggleEvent,
-        ExplorerToggleHiddenEvent, ExplorerToggleNodeEvent, ExplorerToggleSelectEvent,
-        ExplorerToggleSizesEvent, ExplorerVisualModeEvent, ExplorerYankEvent,
-    },
-    reovim_core::{
-        command::traits::{CommandResult, CommandTrait, ExecutionContext},
-        event_bus::DynEvent,
-    },
-    std::any::Any,
-};
+use reovim_core::{declare_counted_event_command, declare_event_command, event_bus::Event};
 
-/// Move cursor up in explorer
-#[derive(Debug, Clone)]
-pub struct ExplorerCursorUpCommand;
+// === Counted navigation commands ===
 
-impl CommandTrait for ExplorerCursorUpCommand {
-    fn name(&self) -> &'static str {
-        "explorer_cursor_up"
-    }
-
-    fn description(&self) -> &'static str {
-        "Move cursor up in explorer"
-    }
-
-    fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
-        let count = ctx.count.unwrap_or(1);
-        CommandResult::EmitEvent(DynEvent::new(ExplorerCursorUpEvent { count }))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_counted_event_command! {
+    ExplorerCursorUp,
+    id: "explorer_cursor_up",
+    description: "Move cursor up",
 }
 
-/// Move cursor down in explorer
-#[derive(Debug, Clone)]
-pub struct ExplorerCursorDownCommand;
-
-impl CommandTrait for ExplorerCursorDownCommand {
-    fn name(&self) -> &'static str {
-        "explorer_cursor_down"
-    }
-
-    fn description(&self) -> &'static str {
-        "Move cursor down in explorer"
-    }
-
-    fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
-        let count = ctx.count.unwrap_or(1);
-        CommandResult::EmitEvent(DynEvent::new(ExplorerCursorDownEvent { count }))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_counted_event_command! {
+    ExplorerCursorDown,
+    id: "explorer_cursor_down",
+    description: "Move cursor down",
 }
 
-/// Page up in explorer
-#[derive(Debug, Clone)]
-pub struct ExplorerPageUpCommand;
+// === Zero-sized navigation commands ===
 
-impl CommandTrait for ExplorerPageUpCommand {
-    fn name(&self) -> &'static str {
-        "explorer_page_up"
-    }
-
-    fn description(&self) -> &'static str {
-        "Page up in explorer"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(ExplorerPageUpEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    ExplorerPageUp,
+    id: "explorer_page_up",
+    description: "Page up",
 }
 
-/// Page down in explorer
-#[derive(Debug, Clone)]
-pub struct ExplorerPageDownCommand;
-
-impl CommandTrait for ExplorerPageDownCommand {
-    fn name(&self) -> &'static str {
-        "explorer_page_down"
-    }
-
-    fn description(&self) -> &'static str {
-        "Page down in explorer"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(ExplorerPageDownEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    ExplorerPageDown,
+    id: "explorer_page_down",
+    description: "Page down",
 }
 
-/// Go to first item in explorer
-#[derive(Debug, Clone)]
-pub struct ExplorerGotoFirstCommand;
-
-impl CommandTrait for ExplorerGotoFirstCommand {
-    fn name(&self) -> &'static str {
-        "explorer_goto_first"
-    }
-
-    fn description(&self) -> &'static str {
-        "Go to first item in explorer"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(ExplorerGotoFirstEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    ExplorerGotoFirst,
+    id: "explorer_goto_first",
+    description: "Go to first item",
 }
 
-/// Go to last item in explorer
-#[derive(Debug, Clone)]
-pub struct ExplorerGotoLastCommand;
-
-impl CommandTrait for ExplorerGotoLastCommand {
-    fn name(&self) -> &'static str {
-        "explorer_goto_last"
-    }
-
-    fn description(&self) -> &'static str {
-        "Go to last item in explorer"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(ExplorerGotoLastEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    ExplorerGotoLast,
+    id: "explorer_goto_last",
+    description: "Go to last item",
 }
 
-/// Toggle expand/collapse on current node
-#[derive(Debug, Clone)]
-pub struct ExplorerToggleNodeCommand;
+// === Node operations ===
 
-impl CommandTrait for ExplorerToggleNodeCommand {
-    fn name(&self) -> &'static str {
-        "explorer_toggle_node"
-    }
-
-    fn description(&self) -> &'static str {
-        "Toggle expand/collapse on current directory"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(ExplorerToggleNodeEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    ExplorerToggleNode,
+    id: "explorer_toggle_node",
+    description: "Toggle expand/collapse on current node",
 }
 
-/// Open file or toggle directory
-#[derive(Debug, Clone)]
-pub struct ExplorerOpenNodeCommand;
-
-impl CommandTrait for ExplorerOpenNodeCommand {
-    fn name(&self) -> &'static str {
-        "explorer_open_node"
-    }
-
-    fn description(&self) -> &'static str {
-        "Open file or toggle directory"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        tracing::info!("ExplorerOpenNodeCommand::execute() called");
-        CommandResult::EmitEvent(DynEvent::new(ExplorerOpenNodeEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    ExplorerOpenNode,
+    id: "explorer_open_node",
+    description: "Open file or toggle directory",
 }
 
-/// Close parent directory
-#[derive(Debug, Clone)]
-pub struct ExplorerCloseParentCommand;
-
-impl CommandTrait for ExplorerCloseParentCommand {
-    fn name(&self) -> &'static str {
-        "explorer_close_parent"
-    }
-
-    fn description(&self) -> &'static str {
-        "Close parent directory"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(ExplorerCloseParentEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    ExplorerCloseParent,
+    id: "explorer_close_parent",
+    description: "Close parent directory",
 }
 
-/// Go to parent directory
-#[derive(Debug, Clone)]
-pub struct ExplorerGoToParentCommand;
-
-impl CommandTrait for ExplorerGoToParentCommand {
-    fn name(&self) -> &'static str {
-        "explorer_go_to_parent"
-    }
-
-    fn description(&self) -> &'static str {
-        "Go to parent directory"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(ExplorerGoToParentEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    ExplorerGoToParent,
+    id: "explorer_goto_parent",
+    description: "Go to parent directory",
 }
 
-/// Refresh tree from filesystem
-#[derive(Debug, Clone)]
-pub struct ExplorerRefreshCommand;
+// === Display & refresh ===
 
-impl CommandTrait for ExplorerRefreshCommand {
-    fn name(&self) -> &'static str {
-        "explorer_refresh"
-    }
-
-    fn description(&self) -> &'static str {
-        "Refresh tree from filesystem"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(ExplorerRefreshEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    ExplorerRefresh,
+    id: "explorer_refresh",
+    description: "Refresh tree from filesystem",
 }
 
-/// Toggle showing hidden files
-#[derive(Debug, Clone)]
-pub struct ExplorerToggleHiddenCommand;
-
-impl CommandTrait for ExplorerToggleHiddenCommand {
-    fn name(&self) -> &'static str {
-        "explorer_toggle_hidden"
-    }
-
-    fn description(&self) -> &'static str {
-        "Toggle showing hidden files"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(ExplorerToggleHiddenEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    ExplorerToggleHidden,
+    id: "explorer_toggle_hidden",
+    description: "Toggle showing hidden files",
 }
 
-/// Toggle showing file sizes
-#[derive(Debug, Clone)]
-pub struct ExplorerToggleSizesCommand;
-
-impl CommandTrait for ExplorerToggleSizesCommand {
-    fn name(&self) -> &'static str {
-        "explorer_toggle_sizes"
-    }
-
-    fn description(&self) -> &'static str {
-        "Toggle showing file sizes"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(ExplorerToggleSizesEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    ExplorerToggleSizes,
+    id: "explorer_toggle_sizes",
+    description: "Toggle showing file sizes",
 }
 
-/// Yank (copy) current item to clipboard
-#[derive(Debug, Clone)]
-pub struct ExplorerYankCommand;
+// === Clipboard operations ===
 
-impl CommandTrait for ExplorerYankCommand {
-    fn name(&self) -> &'static str {
-        "explorer_yank"
-    }
-
-    fn description(&self) -> &'static str {
-        "Yank (copy) current item"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(ExplorerYankEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    ExplorerYank,
+    id: "explorer_yank",
+    description: "Yank (copy) current item to clipboard",
 }
 
-/// Cut current item to clipboard
-#[derive(Debug, Clone)]
-pub struct ExplorerCutCommand;
-
-impl CommandTrait for ExplorerCutCommand {
-    fn name(&self) -> &'static str {
-        "explorer_cut"
-    }
-
-    fn description(&self) -> &'static str {
-        "Cut current item"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(ExplorerCutEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    ExplorerCut,
+    id: "explorer_cut",
+    description: "Cut current item to clipboard",
 }
 
-/// Paste from clipboard
-#[derive(Debug, Clone)]
-pub struct ExplorerPasteCommand;
-
-impl CommandTrait for ExplorerPasteCommand {
-    fn name(&self) -> &'static str {
-        "explorer_paste"
-    }
-
-    fn description(&self) -> &'static str {
-        "Paste from clipboard"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(ExplorerPasteEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    ExplorerPaste,
+    id: "explorer_paste",
+    description: "Paste from clipboard",
 }
 
-/// Enter visual selection mode
-#[derive(Debug, Clone)]
-pub struct ExplorerVisualModeCommand;
+// === Window management ===
 
-impl CommandTrait for ExplorerVisualModeCommand {
-    fn name(&self) -> &'static str {
-        "explorer_visual_mode"
-    }
-
-    fn description(&self) -> &'static str {
-        "Enter visual selection mode"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(ExplorerVisualModeEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    ExplorerClose,
+    id: "explorer_close",
+    description: "Close explorer (switch to editor)",
 }
 
-/// Toggle selection of current item
-#[derive(Debug, Clone)]
-pub struct ExplorerToggleSelectCommand;
-
-impl CommandTrait for ExplorerToggleSelectCommand {
-    fn name(&self) -> &'static str {
-        "explorer_toggle_select"
-    }
-
-    fn description(&self) -> &'static str {
-        "Toggle selection"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(ExplorerToggleSelectEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    ExplorerFocusEditor,
+    id: "explorer_focus_editor",
+    description: "Focus editor window",
 }
 
-/// Select all visible items
-#[derive(Debug, Clone)]
-pub struct ExplorerSelectAllCommand;
-
-impl CommandTrait for ExplorerSelectAllCommand {
-    fn name(&self) -> &'static str {
-        "explorer_select_all"
-    }
-
-    fn description(&self) -> &'static str {
-        "Select all items"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(ExplorerSelectAllEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    ExplorerToggle,
+    id: "explorer_toggle",
+    description: "Toggle explorer visibility",
 }
 
-/// Exit visual selection mode
-#[derive(Debug, Clone)]
-pub struct ExplorerExitVisualCommand;
+// === File operations ===
 
-impl CommandTrait for ExplorerExitVisualCommand {
-    fn name(&self) -> &'static str {
-        "explorer_exit_visual"
-    }
-
-    fn description(&self) -> &'static str {
-        "Exit visual mode"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(ExplorerExitVisualEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    ExplorerCreateFile,
+    id: "explorer_create_file",
+    description: "Start creating a new file",
 }
 
-/// Close explorer
-#[derive(Debug, Clone)]
-pub struct ExplorerCloseCommand;
-
-impl CommandTrait for ExplorerCloseCommand {
-    fn name(&self) -> &'static str {
-        "explorer_close"
-    }
-
-    fn description(&self) -> &'static str {
-        "Close explorer"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(ExplorerCloseEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    ExplorerCreateDir,
+    id: "explorer_create_dir",
+    description: "Start creating a new directory",
 }
 
-/// Focus editor window
-#[derive(Debug, Clone)]
-pub struct ExplorerFocusEditorCommand;
-
-impl CommandTrait for ExplorerFocusEditorCommand {
-    fn name(&self) -> &'static str {
-        "explorer_focus_editor"
-    }
-
-    fn description(&self) -> &'static str {
-        "Focus editor window"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(ExplorerFocusEditorEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    ExplorerRename,
+    id: "explorer_rename",
+    description: "Start renaming current item",
 }
 
-/// Toggle explorer visibility
-#[derive(Debug, Clone)]
-pub struct ToggleExplorerCommand;
-
-impl CommandTrait for ToggleExplorerCommand {
-    fn name(&self) -> &'static str {
-        "toggle_explorer"
-    }
-
-    fn description(&self) -> &'static str {
-        "Toggle explorer visibility"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        tracing::info!("ToggleExplorerCommand::execute() called");
-        CommandResult::EmitEvent(DynEvent::new(ExplorerToggleEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    ExplorerDelete,
+    id: "explorer_delete",
+    description: "Delete current item",
 }
 
-/// Create a new file
-#[derive(Debug, Clone)]
-pub struct ExplorerCreateFileCommand;
+// === Filter & search ===
 
-impl CommandTrait for ExplorerCreateFileCommand {
-    fn name(&self) -> &'static str {
-        "explorer_create_file"
-    }
-
-    fn description(&self) -> &'static str {
-        "Create a new file"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(ExplorerCreateFileEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    ExplorerStartFilter,
+    id: "explorer_start_filter",
+    description: "Start filtering by pattern",
 }
 
-/// Create a new directory
-#[derive(Debug, Clone)]
-pub struct ExplorerCreateDirCommand;
-
-impl CommandTrait for ExplorerCreateDirCommand {
-    fn name(&self) -> &'static str {
-        "explorer_create_dir"
-    }
-
-    fn description(&self) -> &'static str {
-        "Create a new directory"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(ExplorerCreateDirEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    ExplorerClearFilter,
+    id: "explorer_clear_filter",
+    description: "Clear current filter",
 }
 
-/// Rename current item
-#[derive(Debug, Clone)]
-pub struct ExplorerRenameCommand;
-
-impl CommandTrait for ExplorerRenameCommand {
-    fn name(&self) -> &'static str {
-        "explorer_rename"
-    }
-
-    fn description(&self) -> &'static str {
-        "Rename current file or directory"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(ExplorerRenameEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    ExplorerToggleGitIgnore,
+    id: "explorer_toggle_gitignore",
+    description: "Toggle gitignore filtering",
 }
 
-/// Delete current item
-#[derive(Debug, Clone)]
-pub struct ExplorerDeleteCommand;
+// === Advanced operations ===
 
-impl CommandTrait for ExplorerDeleteCommand {
-    fn name(&self) -> &'static str {
-        "explorer_delete"
-    }
-
-    fn description(&self) -> &'static str {
-        "Delete current file or directory"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(ExplorerDeleteEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    ExplorerRevealCurrentFile,
+    id: "explorer_reveal_current_file",
+    description: "Reveal current file in explorer",
 }
 
-/// Start filter mode
-#[derive(Debug, Clone)]
-pub struct ExplorerFilterCommand;
-
-impl CommandTrait for ExplorerFilterCommand {
-    fn name(&self) -> &'static str {
-        "explorer_filter"
-    }
-
-    fn description(&self) -> &'static str {
-        "Filter files by name"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(ExplorerStartFilterEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    ExplorerCollapseAll,
+    id: "explorer_collapse_all",
+    description: "Collapse all directories",
 }
 
-/// Clear filter
-#[derive(Debug, Clone)]
-pub struct ExplorerClearFilterCommand;
-
-impl CommandTrait for ExplorerClearFilterCommand {
-    fn name(&self) -> &'static str {
-        "explorer_clear_filter"
-    }
-
-    fn description(&self) -> &'static str {
-        "Clear file filter"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(ExplorerClearFilterEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    ExplorerExpandAll,
+    id: "explorer_expand_all",
+    description: "Expand all directories",
 }
 
-/// Input character in explorer input mode
-///
-/// Used dynamically when a character is typed in explorer input mode.
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub struct ExplorerInputCharCommand {
-    c: char,
+declare_event_command! {
+    ExplorerChangeRoot,
+    id: "explorer_change_root",
+    description: "Change root to selected directory",
 }
 
-#[allow(dead_code)]
-impl ExplorerInputCharCommand {
+declare_event_command! {
+    ExplorerOpenInSplit,
+    id: "explorer_open_in_split",
+    description: "Open file in split",
+}
+
+declare_event_command! {
+    ExplorerOpenInVSplit,
+    id: "explorer_open_in_vsplit",
+    description: "Open file in vertical split",
+}
+
+declare_event_command! {
+    ExplorerOpenExternal,
+    id: "explorer_open_external",
+    description: "Open with external program",
+}
+
+declare_event_command! {
+    ExplorerShowInfo,
+    id: "explorer_show_info",
+    description: "Show file/directory info",
+}
+
+// === Input mode commands ===
+
+declare_event_command! {
+    ExplorerConfirmInput,
+    id: "explorer_confirm_input",
+    description: "Confirm input operation",
+}
+
+declare_event_command! {
+    ExplorerCancelInput,
+    id: "explorer_cancel_input",
+    description: "Cancel input operation",
+}
+
+/// Insert character in input mode
+#[derive(Debug, Clone, Copy)]
+pub struct ExplorerInputChar {
+    pub c: char,
+}
+
+impl ExplorerInputChar {
     #[must_use]
     pub const fn new(c: char) -> Self {
         Self { c }
     }
 }
 
-impl CommandTrait for ExplorerInputCharCommand {
-    fn name(&self) -> &'static str {
-        "explorer_input_char"
-    }
-
-    fn description(&self) -> &'static str {
-        "Input character in explorer"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(ExplorerInputCharEvent { c: self.c }))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
+impl Event for ExplorerInputChar {
+    fn priority(&self) -> u32 {
+        100
     }
 }
 
-/// Confirm input in explorer input mode
-#[derive(Debug, Clone)]
-pub struct ExplorerConfirmInputCommand;
-
-impl CommandTrait for ExplorerConfirmInputCommand {
-    fn name(&self) -> &'static str {
-        "explorer_confirm_input"
-    }
-
-    fn description(&self) -> &'static str {
-        "Confirm input in explorer"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        // Input will be retrieved from explorer state by the handler
-        CommandResult::EmitEvent(DynEvent::new(ExplorerConfirmInputEvent {
-            input: String::new(),
-        }))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    ExplorerInputBackspace,
+    id: "explorer_input_backspace",
+    description: "Delete character in input",
 }
 
-/// Cancel input in explorer input mode
-#[derive(Debug, Clone)]
-pub struct ExplorerCancelInputCommand;
+// === Visual mode commands ===
 
-impl CommandTrait for ExplorerCancelInputCommand {
-    fn name(&self) -> &'static str {
-        "explorer_cancel_input"
-    }
-
-    fn description(&self) -> &'static str {
-        "Cancel input in explorer"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(ExplorerCancelInputEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    ExplorerVisualMode,
+    id: "explorer_visual_mode",
+    description: "Enter visual selection mode",
 }
 
-/// Backspace in explorer input mode
-#[derive(Debug, Clone)]
-pub struct ExplorerInputBackspaceCommand;
+declare_event_command! {
+    ExplorerToggleSelect,
+    id: "explorer_toggle_select",
+    description: "Toggle selection of current item",
+}
 
-impl CommandTrait for ExplorerInputBackspaceCommand {
-    fn name(&self) -> &'static str {
-        "explorer_input_backspace"
-    }
+declare_event_command! {
+    ExplorerSelectAll,
+    id: "explorer_select_all",
+    description: "Select all items",
+}
 
-    fn description(&self) -> &'static str {
-        "Backspace in explorer input"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(ExplorerInputBackspaceEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+declare_event_command! {
+    ExplorerExitVisual,
+    id: "explorer_exit_visual",
+    description: "Exit visual mode",
 }

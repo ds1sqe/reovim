@@ -21,37 +21,31 @@ mod settings_menu;
 
 use std::any::TypeId;
 
-use {
-    commands::{
-        SettingsMenuCloseCommand, SettingsMenuCycleNextCommand, SettingsMenuCyclePrevCommand,
-        SettingsMenuDecrementCommand, SettingsMenuExecuteCommand, SettingsMenuIncrementCommand,
-        SettingsMenuNextCommand, SettingsMenuOpenCommand, SettingsMenuPrevCommand,
-        SettingsMenuQuick1Command, SettingsMenuQuick2Command, SettingsMenuQuick3Command,
-        SettingsMenuQuick4Command, SettingsMenuQuick5Command, SettingsMenuQuick6Command,
-        SettingsMenuQuick7Command, SettingsMenuQuick8Command, SettingsMenuQuick9Command,
-        SettingsMenuToggleCommand,
-    },
-    reovim_core::{
-        bind::{CommandRef, KeymapScope},
-        command::id::CommandId,
-        component::RenderContext,
-        display::{DisplayInfo, EditModeKey},
-        frame::FrameBuffer,
-        keys,
-        overlay::{OverlayBounds, OverlayRenderer},
-        plugin::{Plugin, PluginContext, PluginId},
-        ui_component::ComponentId,
-    },
+// Import unified command-event types
+pub use commands::{
+    SettingsMenuClose, SettingsMenuCycleNext, SettingsMenuCyclePrev, SettingsMenuDecrement,
+    SettingsMenuExecuteAction, SettingsMenuIncrement, SettingsMenuOpen, SettingsMenuQuick1,
+    SettingsMenuQuick2, SettingsMenuQuick3, SettingsMenuQuick4, SettingsMenuQuick5,
+    SettingsMenuQuick6, SettingsMenuQuick7, SettingsMenuQuick8, SettingsMenuQuick9,
+    SettingsMenuQuickSelect, SettingsMenuSelectNext, SettingsMenuSelectPrev, SettingsMenuToggle,
 };
 
-// Re-export key types for external use
+use reovim_core::{
+    bind::{CommandRef, KeymapScope},
+    command::id::CommandId,
+    component::RenderContext,
+    display::{DisplayInfo, EditModeKey},
+    frame::FrameBuffer,
+    keys,
+    overlay::{OverlayBounds, OverlayRenderer},
+    plugin::{Plugin, PluginContext, PluginId},
+    ui_component::ComponentId,
+};
+
+// Re-export key types for external use (non-command/event types)
 pub use settings_menu::{
     ActionType, FlatItem, MenuLayout, MessageKind, SettingItem, SettingSection, SettingValue,
-    SettingsInputMode, SettingsMenuCloseEvent, SettingsMenuCycleNextEvent,
-    SettingsMenuCyclePrevEvent, SettingsMenuDecrementEvent, SettingsMenuExecuteActionEvent,
-    SettingsMenuIncrementEvent, SettingsMenuOpenEvent, SettingsMenuQuickSelectEvent,
-    SettingsMenuSelectNextEvent, SettingsMenuSelectPrevEvent, SettingsMenuState,
-    SettingsMenuToggleEvent,
+    SettingsInputMode, SettingsMenuState,
 };
 
 /// Plugin-local command IDs
@@ -232,30 +226,30 @@ impl Plugin for SettingsMenuPlugin {
             DisplayInfo::new(" SETTINGS | INSERT ", " "),
         );
 
-        // Register navigation commands
-        let _ = ctx.register_command(SettingsMenuOpenCommand);
-        let _ = ctx.register_command(SettingsMenuCloseCommand);
-        let _ = ctx.register_command(SettingsMenuNextCommand);
-        let _ = ctx.register_command(SettingsMenuPrevCommand);
+        // Register navigation commands (unified types)
+        let _ = ctx.register_command(SettingsMenuOpen);
+        let _ = ctx.register_command(SettingsMenuClose);
+        let _ = ctx.register_command(SettingsMenuSelectNext);
+        let _ = ctx.register_command(SettingsMenuSelectPrev);
 
-        // Register action commands
-        let _ = ctx.register_command(SettingsMenuToggleCommand);
-        let _ = ctx.register_command(SettingsMenuCycleNextCommand);
-        let _ = ctx.register_command(SettingsMenuCyclePrevCommand);
-        let _ = ctx.register_command(SettingsMenuIncrementCommand);
-        let _ = ctx.register_command(SettingsMenuDecrementCommand);
-        let _ = ctx.register_command(SettingsMenuExecuteCommand);
+        // Register action commands (unified types)
+        let _ = ctx.register_command(SettingsMenuToggle);
+        let _ = ctx.register_command(SettingsMenuCycleNext);
+        let _ = ctx.register_command(SettingsMenuCyclePrev);
+        let _ = ctx.register_command(SettingsMenuIncrement);
+        let _ = ctx.register_command(SettingsMenuDecrement);
+        let _ = ctx.register_command(SettingsMenuExecuteAction);
 
-        // Register quick select commands (1-9)
-        let _ = ctx.register_command(SettingsMenuQuick1Command);
-        let _ = ctx.register_command(SettingsMenuQuick2Command);
-        let _ = ctx.register_command(SettingsMenuQuick3Command);
-        let _ = ctx.register_command(SettingsMenuQuick4Command);
-        let _ = ctx.register_command(SettingsMenuQuick5Command);
-        let _ = ctx.register_command(SettingsMenuQuick6Command);
-        let _ = ctx.register_command(SettingsMenuQuick7Command);
-        let _ = ctx.register_command(SettingsMenuQuick8Command);
-        let _ = ctx.register_command(SettingsMenuQuick9Command);
+        // Register quick select commands (1-9, unified types)
+        let _ = ctx.register_command(SettingsMenuQuick1);
+        let _ = ctx.register_command(SettingsMenuQuick2);
+        let _ = ctx.register_command(SettingsMenuQuick3);
+        let _ = ctx.register_command(SettingsMenuQuick4);
+        let _ = ctx.register_command(SettingsMenuQuick5);
+        let _ = ctx.register_command(SettingsMenuQuick6);
+        let _ = ctx.register_command(SettingsMenuQuick7);
+        let _ = ctx.register_command(SettingsMenuQuick8);
+        let _ = ctx.register_command(SettingsMenuQuick9);
 
         // Register overlay
         ctx.register_overlay(SettingsOverlay);

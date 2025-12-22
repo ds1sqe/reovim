@@ -108,38 +108,25 @@ event_bus.emit(LeapStartEvent {
 
 When designing events for your plugin, choose the appropriate pattern based on your needs.
 
-### Zero-Sized Events
+### Unified Command-Event Types (Recommended)
 
-Use zero-sized events for simple notifications where the handler has access to all needed state.
+**Modern approach:** Use `declare_event_command!` macro to create a single type that serves as both command and event.
 
 ```rust
-#[derive(Debug, Clone, Copy, Default)]
-pub struct RefreshEvent;
+use reovim_core::declare_event_command;
 
-impl Event for RefreshEvent {}
-```
+// Single unified type - both command AND event
+declare_event_command! {
+    ExplorerRefresh,
+    id: "explorer_refresh",
+    description: "Refresh explorer view",
+}
 
-**When to use:**
-- Handler has access to all needed state via `PluginStateRegistry`
-- No parameters required from command
-- Simple trigger/notification
-- State is managed elsewhere
+// Register as command
+ctx.register_command(ExplorerRefresh);
 
-**Benefits:**
-- Minimal memory overhead (zero-sized type)
-- Implements `Copy` - cheap to clone
-- Simple to construct with `Default`
-
-**Example:**
-```rust
-// Define event
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ExplorerRefreshEvent;
-
-impl Event for ExplorerRefreshEvent {}
-
-// Handler accesses state directly
-bus.subscribe::<ExplorerRefreshEvent, _>(100, |_event, ctx| {
+// Subscribe as event (same type!)
+bus.subscribe::<ExplorerRefresh, _>(100, |_event, ctx| {
     ctx.state.with_mut::<ExplorerState, _, _>(|state| {
         state.refresh();
         EventResult::Handled
@@ -147,109 +134,165 @@ bus.subscribe::<ExplorerRefreshEvent, _>(100, |_event, ctx| {
 });
 ```
 
-### Data-Carrying Events
-
-Use data-carrying events when the handler needs specific context that isn't available in state.
-
-```rust
-#[derive(Debug, Clone)]
-pub struct MoveEvent {
-    pub count: usize,
-    pub direction: Direction,
-}
-
-impl MoveEvent {
-    pub fn new(count: usize, direction: Direction) -> Self {
-        Self { count, direction }
-    }
-}
-
-impl Event for MoveEvent {}
-```
-
 **When to use:**
-- Command receives parameters (count, direction, arguments)
-- Handler needs specific context not in state
-- Information passed from external source
-- Event carries data between different components
+- ✅ Handler has access to all needed state via `PluginStateRegistry`
+- ✅ No parameters required from command
+- ✅ Simple trigger/notification
+- ✅ **Preferred for most plugin commands**
 
 **Benefits:**
-- Explicit context passing
-- Type-safe parameters
-- Self-documenting through fields
+- 50% fewer types (one instead of two)
+- ~20 lines of boilerplate eliminated per command
+- Minimal memory overhead (zero-sized type)
+- Implements `Copy` - cheap to clone
+- Simple to construct with `Default`
 
-**Example:**
+### Legacy: Separate Event Types (Deprecated)
+
+**Old approach:** Define standalone event types (no longer recommended).
+
 ```rust
-// Define event with data
-#[derive(Debug, Clone)]
-pub struct CursorMoveEvent {
-    pub count: usize,
-    pub direction: Direction,
+// DON'T DO THIS - use declare_event_command! instead
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ExplorerRefreshEvent;
+
+impl Event for ExplorerRefreshEvent {}
+
+// Requires separate command type too (20+ lines of boilerplate)
+```
+
+### Unified Types with Data (Counted Commands)
+
+Use `declare_counted_event_command!` for commands that use repeat counts:
+
+```rust
+use reovim_core::declare_counted_event_command;
+
+// Single type with count - both command AND event
+declare_counted_event_command! {
+    ExplorerCursorDown,
+    id: "explorer_cursor_down",
+    description: "Move cursor down",
 }
 
-impl CursorMoveEvent {
-    pub fn new(count: usize, direction: Direction) -> Self {
-        Self { count, direction }
-    }
-}
+// Register (Default provides count=1)
+ctx.register_command(ExplorerCursorDown::new(1));
 
-impl Event for CursorMoveEvent {}
-
-// Handler uses event data
-bus.subscribe::<CursorMoveEvent, _>(100, |event, ctx| {
+// Subscribe - access event.count directly
+bus.subscribe::<ExplorerCursorDown, _>(100, |event, ctx| {
     for _ in 0..event.count {
-        ctx.state.move_cursor(event.direction);
+        // Move down
     }
     EventResult::Handled
 });
 ```
 
+**When to use:**
+- ✅ Command receives repeat count (e.g., `5j` for "down 5 times")
+- ✅ Handler needs count parameter
+- ✅ **Preferred over separate Command/Event types**
+
+### Custom Data Fields
+
+For events with custom data that don't fit the standard macros:
+
+```rust
+use reovim_core::event_bus::Event;
+
+#[derive(Debug, Clone, Copy)]
+pub struct ExplorerInputChar {
+    pub c: char,
+}
+
+impl ExplorerInputChar {
+    pub const fn new(c: char) -> Self {
+        Self { c }
+    }
+}
+
+impl Event for ExplorerInputChar {
+    fn priority(&self) -> u32 { 100 }
+}
+
+// Still use same type for both command and event
+bus.subscribe::<ExplorerInputChar, _>(100, |event, ctx| {
+    // Access event.c
+    EventResult::Handled
+});
+```
+
+**When to use:**
+- Command receives custom parameters (char, string, complex data)
+- Handler needs specific context not available in state
+- Information passed from external source
+
+**Benefits:**
+- Explicit context passing
+- Type-safe parameters
+- Self-documenting through fields
+- Still uses single type for both command and event
+
 ### Decision Guidelines
 
-**Prefer zero-sized events when:**
+**Use `declare_event_command!` when:**
 - ✅ State is in `PluginStateRegistry`
 - ✅ No parameters needed
 - ✅ Simple trigger action
+- ✅ **This is the default choice for most commands**
 
-**Prefer data-carrying events when:**
-- ✅ Need count from command execution
-- ✅ Passing data between plugins
-- ✅ External context required
+**Use `declare_counted_event_command!` when:**
+- ✅ Need count from command execution (e.g., `5j`)
+- ✅ Command accepts repeat count parameter
+
+**Use custom implementation when:**
+- ✅ Passing custom data between plugins
+- ✅ External context required (char, string, complex data)
 - ✅ Handler can't access needed information from state
 
-### Common Patterns
+### Common Patterns (Modern)
 
 **Pattern 1: Simple Toggle**
 ```rust
-// Zero-sized - state knows whether it's on/off
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ToggleEvent;
+// Unified type - state knows whether it's on/off
+declare_event_command! {
+    Toggle,
+    id: "toggle",
+    description: "Toggle feature",
+}
 ```
 
 **Pattern 2: Counted Action**
 ```rust
-// Data-carrying - count affects behavior
-#[derive(Debug, Clone)]
-pub struct RepeatEvent {
-    pub count: usize,
+// Unified with count - count affects behavior
+declare_counted_event_command! {
+    Repeat,
+    id: "repeat",
+    description: "Repeat action",
 }
 ```
 
-**Pattern 3: Directional Movement**
+**Pattern 3: Custom Data**
 ```rust
-// Data-carrying - direction is essential context
+// Custom implementation for specific data
 #[derive(Debug, Clone)]
-pub struct MoveEvent {
+pub struct MoveInDirection {
     pub direction: Direction,
     pub count: usize,
+}
+
+impl Event for MoveInDirection {
+    fn priority(&self) -> u32 { 100 }
 }
 ```
 
 **Pattern 4: State Change Notification**
 ```rust
-// Zero-sized - handler queries state
-#[derive(Debug, Clone, Copy, Default)]
-pub struct StateChangedEvent;
+// Unified type - handler queries state
+declare_event_command! {
+    StateChanged,
+    id: "state_changed",
+    description: "State has changed",
+}
 ```
 
 ### InnerEvent (Legacy)

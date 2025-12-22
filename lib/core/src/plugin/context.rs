@@ -281,6 +281,24 @@ impl PluginContext {
         &mut self.display_registry
     }
 
+    /// Create a display info builder for fluent registration
+    ///
+    /// Provides a builder pattern for registering display info across multiple scopes.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// ctx.display_info(ComponentId("explorer"))
+    ///     .default(" EXPLORER ", "󰙅 ")
+    ///     .when_mode(&EditMode::Insert(InsertVariant::Standard), " EXPLORER | INSERT ", "󰙅 ")
+    ///     .register();
+    /// ```
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)] // Cannot be const - returns builder with mutable borrow
+    pub fn display_info(&mut self, id: ComponentId) -> crate::display::DisplayInfoBuilder<'_> {
+        crate::display::DisplayInfoBuilder::new(self, id)
+    }
+
     // === Plugin Queries ===
 
     /// Check if a plugin has been loaded

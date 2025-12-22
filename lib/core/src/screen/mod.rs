@@ -464,6 +464,7 @@ impl Screen {
     /// Render pipeline data to frame buffer
     #[allow(clippy::too_many_arguments)]
     #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::too_many_lines)]
     fn render_data_to_framebuffer(
         &self,
         render_data: &crate::render::RenderData,
@@ -481,6 +482,42 @@ impl Screen {
             window.cursor.y
         };
 
+        // Calculate selection bounds if active
+        let selection_bounds = if buffer.selection.active {
+            use crate::buffer::SelectionMode;
+            match buffer.selection.mode {
+                SelectionMode::Block => {
+                    let anchor = buffer.selection.anchor;
+                    let cursor = buffer.cur;
+                    let top_left = Position {
+                        x: anchor.x.min(cursor.x),
+                        y: anchor.y.min(cursor.y),
+                    };
+                    let bottom_right = Position {
+                        x: anchor.x.max(cursor.x),
+                        y: anchor.y.max(cursor.y),
+                    };
+                    Some((top_left, bottom_right, SelectionMode::Block))
+                }
+                SelectionMode::Character | SelectionMode::Line => {
+                    let anchor = buffer.selection.anchor;
+                    let cursor = buffer.cur;
+                    let (start, end) =
+                        if anchor.y < cursor.y || (anchor.y == cursor.y && anchor.x <= cursor.x) {
+                            (anchor, cursor)
+                        } else {
+                            (cursor, anchor)
+                        };
+                    Some((start, end, buffer.selection.mode))
+                }
+            }
+        } else {
+            None
+        };
+
+        // Get scroll offset from buffer anchor
+        let scroll_offset = window.buffer_anchor().map_or(0, |anchor| anchor.y);
+
         // Calculate line number width
         let total_lines = render_data.lines.len();
         #[allow(clippy::cast_precision_loss)]
@@ -497,9 +534,16 @@ impl Screen {
             1
         };
 
-        // Render each visible line
+        // Render each visible line, starting from scroll offset
         let mut display_row = 0u16;
-        for (line_idx, line) in render_data.lines.iter().enumerate() {
+        let start_line = scroll_offset as usize;
+        for (idx, line) in render_data
+            .lines
+            .iter()
+            .enumerate()
+            .skip(start_line)
+        {
+            let line_idx = idx;
             if display_row >= window.height {
                 break;
             }
@@ -548,11 +592,58 @@ impl Screen {
                     // Render line content
                     // TODO: Apply highlights and decorations
                     let mut col = window.anchor.x + gutter_width;
-                    for ch in line.chars() {
+                    #[allow(clippy::cast_possible_truncation)]
+                    let buffer_line_y = line_idx as u16;
+
+                    for (char_idx, ch) in line.chars().enumerate() {
                         if col >= window.anchor.x + window.width {
                             break;
                         }
-                        frame_buffer.put_char(col, screen_y, ch, &theme.base.default);
+
+                        // Check if this character is within the selection
+                        #[allow(clippy::cast_possible_truncation)]
+                        let char_x = char_idx as u16;
+                        let is_selected = if let Some((start, end, mode)) = selection_bounds {
+                            use crate::buffer::SelectionMode;
+                            match mode {
+                                SelectionMode::Block => {
+                                    // Block selection: check if within rectangle
+                                    buffer_line_y >= start.y
+                                        && buffer_line_y <= end.y
+                                        && char_x >= start.x
+                                        && char_x <= end.x
+                                }
+                                SelectionMode::Character | SelectionMode::Line => {
+                                    // Character/line selection: check if within range
+                                    if buffer_line_y < start.y || buffer_line_y > end.y {
+                                        false
+                                    } else if buffer_line_y == start.y && buffer_line_y == end.y {
+                                        // Single line selection
+                                        char_x >= start.x && char_x <= end.x
+                                    } else if buffer_line_y == start.y {
+                                        // First line of selection
+                                        char_x >= start.x
+                                    } else if buffer_line_y == end.y {
+                                        // Last line of selection
+                                        char_x <= end.x
+                                    } else {
+                                        // Middle lines - all selected
+                                        true
+                                    }
+                                }
+                            }
+                        } else {
+                            false
+                        };
+
+                        // Apply appropriate style
+                        let style = if is_selected {
+                            &theme.selection.visual
+                        } else {
+                            &theme.base.default
+                        };
+
+                        frame_buffer.put_char(col, screen_y, ch, style);
                         col += 1;
                     }
                     display_row += 1;
@@ -681,6 +772,20 @@ impl Screen {
         // Phase 2: Render editor windows
         // Phase 3 will add overlay collection and unified z-order rendering
 
+        // Update scroll positions BEFORE cloning windows
+        for win in &mut self.windows {
+            if let Some(buffer_id) = win.buffer_id()
+                && let Some(buf) = buffers.get(&buffer_id)
+            {
+                let effective_cursor_y = if win.is_active {
+                    buf.cur.y
+                } else {
+                    win.cursor.y
+                };
+                win.update_scroll(effective_cursor_y);
+            }
+        }
+
         // Collect all windows (editor + plugin windows)
         let mut windows_to_render = self.windows.clone();
 
@@ -769,14 +874,7 @@ impl Screen {
                     if let Some(scrollbar) = style_state.style.decorations.scrollbar {
                         win_mut.scrollbar_enabled = scrollbar;
                     }
-
-                    // Update scroll to keep cursor visible
-                    let effective_cursor_y = if win.is_active {
-                        buf.cur.y
-                    } else {
-                        win.cursor.y
-                    };
-                    self.windows[editor_idx].update_scroll(effective_cursor_y);
+                    // Note: scroll position already updated before window cloning
                 }
 
                 // Execute render pipeline with the window from windows_to_render

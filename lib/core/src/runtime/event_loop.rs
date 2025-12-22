@@ -5,11 +5,11 @@ use std::sync::Arc;
 use crate::{
     buffer::{Buffer, SelectionOps, TextOps},
     event::{
-        BufferEvent, CommandHandler, TextInputEvent, HighlightEvent, InnerEvent, InputEventBroker,
-        TerminateHandler, WindowEvent,
+        BufferEvent, CommandHandler, HighlightEvent, InnerEvent, InputEventBroker,
+        TerminateHandler, TextInputEvent, WindowEvent,
     },
     interactor::InputResult,
-    modd::{EditMode, ModeState, SubMode, VisualVariant},
+    modd::{ModeState, SubMode},
 };
 
 use super::Runtime;
@@ -611,21 +611,10 @@ impl Runtime {
             }
         }
 
-        // Handle visual mode
-        if let EditMode::Visual(variant) = &new_mode.edit_mode {
-            // Start selection when entering visual mode
-            if let Some(buffer) = self.buffers.get_mut(&0) {
-                match variant {
-                    VisualVariant::Block => buffer.start_block_selection(),
-                    VisualVariant::Char | VisualVariant::Line => buffer.start_selection(),
-                }
-            }
-        }
-
         // Handle normal mode
         if new_mode.is_normal() && matches!(new_mode.sub_mode, SubMode::None) {
             // Clear selection when returning to normal mode
-            if let Some(buffer) = self.buffers.get_mut(&0) {
+            if let Some(buffer) = self.buffers.get_mut(&self.active_buffer_id) {
                 buffer.clear_selection();
             }
             // Note: command line is cleared in handle_command_line_command
@@ -708,7 +697,10 @@ impl Runtime {
             }
             InputResult::SendEvent(event) => {
                 // Deprecated path - plugins should use Handled instead
-                tracing::warn!("Plugin component {} returned SendEvent - should use Handled", interactor_id.0);
+                tracing::warn!(
+                    "Plugin component {} returned SendEvent - should use Handled",
+                    interactor_id.0
+                );
                 if let Err(e) = self.tx.try_send(event) {
                     tracing::error!("Failed to send event: {}", e);
                 }

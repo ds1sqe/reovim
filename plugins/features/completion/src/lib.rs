@@ -18,11 +18,13 @@ mod completion;
 
 use std::any::TypeId;
 
+// Import unified command-event types
+pub use commands::{
+    CompletionConfirm, CompletionDismiss, CompletionSelectNext, CompletionSelectPrev,
+    CompletionTrigger,
+};
+
 use {
-    commands::{
-        CompletionConfirmCommand, CompletionDismissCommand, CompletionNextCommand,
-        CompletionPrevCommand, CompletionTriggerCommand,
-    },
     completion::CompletionState,
     reovim_core::{
         bind::CommandRef,
@@ -35,11 +37,8 @@ use {
     },
 };
 
-// Re-export key types for external use
-pub use completion::{
-    CompletionConfirmEvent, CompletionDismissEvent, CompletionEngine, CompletionItem,
-    CompletionSelectNextEvent, CompletionSelectPrevEvent, CompletionSource, CompletionTriggerEvent,
-};
+// Re-export key types for external use (non-command/event types)
+pub use completion::{CompletionEngine, CompletionItem, CompletionSource};
 
 /// Plugin-local command IDs
 pub mod command_id {
@@ -199,12 +198,12 @@ impl Plugin for CompletionPlugin {
     }
 
     fn build(&self, ctx: &mut PluginContext) {
-        // Register commands
-        let _ = ctx.register_command(CompletionTriggerCommand);
-        let _ = ctx.register_command(CompletionNextCommand);
-        let _ = ctx.register_command(CompletionPrevCommand);
-        let _ = ctx.register_command(CompletionConfirmCommand);
-        let _ = ctx.register_command(CompletionDismissCommand);
+        // Register commands (unified types)
+        let _ = ctx.register_command(CompletionTrigger::new(0));
+        let _ = ctx.register_command(CompletionSelectNext);
+        let _ = ctx.register_command(CompletionSelectPrev);
+        let _ = ctx.register_command(CompletionConfirm);
+        let _ = ctx.register_command(CompletionDismiss);
 
         // Register overlay
         ctx.register_overlay(CompletionOverlay);

@@ -1,28 +1,143 @@
-//! Telescope fuzzy finder commands
-//!
-//! These commands emit `EventBus` events that are handled by the runtime.
-//! The events are defined in `crate::telescope::events`.
+//! Telescope fuzzy finder commands (unified command-event types)
 
-use {
-    crate::telescope::{
-        TelescopeBackspaceEvent, TelescopeCloseEvent, TelescopeConfirmEvent,
-        TelescopeEnterInsertEvent, TelescopeEnterNormalEvent, TelescopeGotoFirstEvent,
-        TelescopeGotoLastEvent, TelescopeInsertCharEvent, TelescopeOpenEvent,
-        TelescopePageDownEvent, TelescopePageUpEvent, TelescopeSelectNextEvent,
-        TelescopeSelectPrevEvent,
-    },
-    reovim_core::{
-        command::traits::{CommandResult, CommandTrait, ExecutionContext},
-        event_bus::DynEvent,
-    },
-    std::any::Any,
+use reovim_core::{
+    command::traits::*,
+    declare_event_command,
+    event_bus::{DynEvent, Event},
 };
 
-/// Open telescope find files picker
-#[derive(Debug, Clone)]
-pub struct TelescopeFindFilesCommand;
+// === Core Events (unified types) ===
 
-impl CommandTrait for TelescopeFindFilesCommand {
+/// Open telescope with a specific picker
+#[derive(Debug, Clone)]
+pub struct TelescopeOpen {
+    pub picker: String,
+}
+
+impl TelescopeOpen {
+    /// Create event for a specific picker
+    #[must_use]
+    pub fn new(picker: impl Into<String>) -> Self {
+        Self {
+            picker: picker.into(),
+        }
+    }
+}
+
+impl Event for TelescopeOpen {
+    fn priority(&self) -> u32 {
+        100
+    }
+}
+
+/// Insert a character into the query
+#[derive(Debug, Clone, Copy)]
+pub struct TelescopeInsertChar {
+    pub c: char,
+}
+
+impl TelescopeInsertChar {
+    /// Create event for specific character
+    #[must_use]
+    pub const fn new(c: char) -> Self {
+        Self { c }
+    }
+}
+
+impl Event for TelescopeInsertChar {
+    fn priority(&self) -> u32 {
+        100
+    }
+}
+
+// === Navigation & Control (using macro) ===
+
+declare_event_command! {
+    TelescopeBackspace,
+    id: "telescope_backspace",
+    description: "Delete character from query (backspace)",
+}
+
+declare_event_command! {
+    TelescopeCursorLeft,
+    id: "telescope_cursor_left",
+    description: "Move cursor left in query",
+}
+
+declare_event_command! {
+    TelescopeCursorRight,
+    id: "telescope_cursor_right",
+    description: "Move cursor right in query",
+}
+
+declare_event_command! {
+    TelescopeSelectNext,
+    id: "telescope_select_next",
+    description: "Select next item",
+}
+
+declare_event_command! {
+    TelescopeSelectPrev,
+    id: "telescope_select_prev",
+    description: "Select previous item",
+}
+
+declare_event_command! {
+    TelescopePageDown,
+    id: "telescope_page_down",
+    description: "Page down",
+}
+
+declare_event_command! {
+    TelescopePageUp,
+    id: "telescope_page_up",
+    description: "Page up",
+}
+
+declare_event_command! {
+    TelescopeGotoFirst,
+    id: "telescope_goto_first",
+    description: "Go to first item",
+}
+
+declare_event_command! {
+    TelescopeGotoLast,
+    id: "telescope_goto_last",
+    description: "Go to last item",
+}
+
+declare_event_command! {
+    TelescopeConfirm,
+    id: "telescope_confirm",
+    description: "Confirm selection",
+}
+
+declare_event_command! {
+    TelescopeClose,
+    id: "telescope_close",
+    description: "Close telescope",
+}
+
+declare_event_command! {
+    TelescopeEnterInsert,
+    id: "telescope_enter_insert",
+    description: "Enter insert mode (for typing query)",
+}
+
+declare_event_command! {
+    TelescopeEnterNormal,
+    id: "telescope_enter_normal",
+    description: "Enter normal mode (for j/k navigation)",
+}
+
+// === Picker Commands ===
+// These are separate command types that emit TelescopeOpen with different picker names
+
+/// Open telescope find files picker
+#[derive(Debug, Clone, Copy)]
+pub struct TelescopeFindFiles;
+
+impl CommandTrait for TelescopeFindFiles {
     fn name(&self) -> &'static str {
         "telescope_find_files"
     }
@@ -32,25 +147,23 @@ impl CommandTrait for TelescopeFindFilesCommand {
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(TelescopeOpenEvent {
-            picker: "files".to_string(),
-        }))
+        CommandResult::EmitEvent(DynEvent::new(TelescopeOpen::new("files")))
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
+        Box::new(*self)
     }
 
-    fn as_any(&self) -> &dyn Any {
+    fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 }
 
 /// Open telescope buffers picker
-#[derive(Debug, Clone)]
-pub struct TelescopeFindBuffersCommand;
+#[derive(Debug, Clone, Copy)]
+pub struct TelescopeFindBuffers;
 
-impl CommandTrait for TelescopeFindBuffersCommand {
+impl CommandTrait for TelescopeFindBuffers {
     fn name(&self) -> &'static str {
         "telescope_find_buffers"
     }
@@ -60,25 +173,23 @@ impl CommandTrait for TelescopeFindBuffersCommand {
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(TelescopeOpenEvent {
-            picker: "buffers".to_string(),
-        }))
+        CommandResult::EmitEvent(DynEvent::new(TelescopeOpen::new("buffers")))
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
+        Box::new(*self)
     }
 
-    fn as_any(&self) -> &dyn Any {
+    fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 }
 
 /// Open telescope live grep picker
-#[derive(Debug, Clone)]
-pub struct TelescopeLiveGrepCommand;
+#[derive(Debug, Clone, Copy)]
+pub struct TelescopeLiveGrep;
 
-impl CommandTrait for TelescopeLiveGrepCommand {
+impl CommandTrait for TelescopeLiveGrep {
     fn name(&self) -> &'static str {
         "telescope_live_grep"
     }
@@ -88,83 +199,51 @@ impl CommandTrait for TelescopeLiveGrepCommand {
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(TelescopeOpenEvent {
-            picker: "grep".to_string(),
-        }))
+        CommandResult::EmitEvent(DynEvent::new(TelescopeOpen::new("grep")))
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
+        Box::new(*self)
     }
 
-    fn as_any(&self) -> &dyn Any {
+    fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 }
 
 /// Open telescope recent files picker
-#[derive(Debug, Clone)]
-pub struct TelescopeRecentFilesCommand;
+#[derive(Debug, Clone, Copy)]
+pub struct TelescopeFindRecent;
 
-impl CommandTrait for TelescopeRecentFilesCommand {
+impl CommandTrait for TelescopeFindRecent {
     fn name(&self) -> &'static str {
-        "telescope_recent_files"
+        "telescope_find_recent"
     }
 
     fn description(&self) -> &'static str {
-        "Find recently opened files"
+        "Find recent files"
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(TelescopeOpenEvent {
-            picker: "recent".to_string(),
-        }))
+        CommandResult::EmitEvent(DynEvent::new(TelescopeOpen::new("recent")))
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
+        Box::new(*self)
     }
 
-    fn as_any(&self) -> &dyn Any {
+    fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 }
 
-/// Open telescope commands picker (command palette)
-#[derive(Debug, Clone)]
-pub struct TelescopeCommandsCommand;
+/// Open telescope help picker
+#[derive(Debug, Clone, Copy)]
+pub struct TelescopeHelp;
 
-impl CommandTrait for TelescopeCommandsCommand {
+impl CommandTrait for TelescopeHelp {
     fn name(&self) -> &'static str {
-        "telescope_commands"
-    }
-
-    fn description(&self) -> &'static str {
-        "Open command palette"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(TelescopeOpenEvent {
-            picker: "commands".to_string(),
-        }))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-/// Open telescope help tags picker
-#[derive(Debug, Clone)]
-pub struct TelescopeHelpTagsCommand;
-
-impl CommandTrait for TelescopeHelpTagsCommand {
-    fn name(&self) -> &'static str {
-        "telescope_help_tags"
+        "telescope_help"
     }
 
     fn description(&self) -> &'static str {
@@ -172,25 +251,49 @@ impl CommandTrait for TelescopeHelpTagsCommand {
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(TelescopeOpenEvent {
-            picker: "help".to_string(),
-        }))
+        CommandResult::EmitEvent(DynEvent::new(TelescopeOpen::new("help")))
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
+        Box::new(*self)
     }
 
-    fn as_any(&self) -> &dyn Any {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+/// Open telescope commands picker
+#[derive(Debug, Clone, Copy)]
+pub struct TelescopeCommands;
+
+impl CommandTrait for TelescopeCommands {
+    fn name(&self) -> &'static str {
+        "telescope_commands"
+    }
+
+    fn description(&self) -> &'static str {
+        "Search available commands"
+    }
+
+    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
+        CommandResult::EmitEvent(DynEvent::new(TelescopeOpen::new("commands")))
+    }
+
+    fn clone_box(&self) -> Box<dyn CommandTrait> {
+        Box::new(*self)
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 }
 
 /// Open telescope keymaps picker
-#[derive(Debug, Clone)]
-pub struct TelescopeKeymapsCommand;
+#[derive(Debug, Clone, Copy)]
+pub struct TelescopeKeymaps;
 
-impl CommandTrait for TelescopeKeymapsCommand {
+impl CommandTrait for TelescopeKeymaps {
     fn name(&self) -> &'static str {
         "telescope_keymaps"
     }
@@ -200,365 +303,66 @@ impl CommandTrait for TelescopeKeymapsCommand {
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(TelescopeOpenEvent {
-            picker: "keymaps".to_string(),
-        }))
+        CommandResult::EmitEvent(DynEvent::new(TelescopeOpen::new("keymaps")))
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
+        Box::new(*self)
     }
 
-    fn as_any(&self) -> &dyn Any {
+    fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 }
 
 /// Open telescope themes picker
-#[derive(Debug, Clone)]
-pub struct TelescopeThemesCommand;
+#[derive(Debug, Clone, Copy)]
+pub struct TelescopeThemes;
 
-impl CommandTrait for TelescopeThemesCommand {
+impl CommandTrait for TelescopeThemes {
     fn name(&self) -> &'static str {
         "telescope_themes"
     }
 
     fn description(&self) -> &'static str {
-        "Select colorscheme/theme"
+        "Search available themes"
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(TelescopeOpenEvent {
-            picker: "themes".to_string(),
-        }))
+        CommandResult::EmitEvent(DynEvent::new(TelescopeOpen::new("themes")))
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
+        Box::new(*self)
     }
 
-    fn as_any(&self) -> &dyn Any {
+    fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 }
 
-/// Select next item in telescope
-#[derive(Debug, Clone)]
-pub struct TelescopeSelectNextCommand;
+/// Open telescope profiles picker  
+#[derive(Debug, Clone, Copy)]
+pub struct TelescopeProfiles;
 
-impl CommandTrait for TelescopeSelectNextCommand {
+impl CommandTrait for TelescopeProfiles {
     fn name(&self) -> &'static str {
-        "telescope_select_next"
+        "telescope_profiles"
     }
 
     fn description(&self) -> &'static str {
-        "Select next item in telescope"
+        "Search profiles"
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(TelescopeSelectNextEvent))
+        CommandResult::EmitEvent(DynEvent::new(TelescopeOpen::new("profiles")))
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
+        Box::new(*self)
     }
 
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-/// Select previous item in telescope
-#[derive(Debug, Clone)]
-pub struct TelescopeSelectPrevCommand;
-
-impl CommandTrait for TelescopeSelectPrevCommand {
-    fn name(&self) -> &'static str {
-        "telescope_select_prev"
-    }
-
-    fn description(&self) -> &'static str {
-        "Select previous item in telescope"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(TelescopeSelectPrevEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-/// Page down in telescope
-#[derive(Debug, Clone)]
-pub struct TelescopePageDownCommand;
-
-impl CommandTrait for TelescopePageDownCommand {
-    fn name(&self) -> &'static str {
-        "telescope_page_down"
-    }
-
-    fn description(&self) -> &'static str {
-        "Page down in telescope"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(TelescopePageDownEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-/// Page up in telescope
-#[derive(Debug, Clone)]
-pub struct TelescopePageUpCommand;
-
-impl CommandTrait for TelescopePageUpCommand {
-    fn name(&self) -> &'static str {
-        "telescope_page_up"
-    }
-
-    fn description(&self) -> &'static str {
-        "Page up in telescope"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(TelescopePageUpEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-/// Confirm selection in telescope
-#[derive(Debug, Clone)]
-pub struct TelescopeConfirmCommand;
-
-impl CommandTrait for TelescopeConfirmCommand {
-    fn name(&self) -> &'static str {
-        "telescope_confirm"
-    }
-
-    fn description(&self) -> &'static str {
-        "Confirm selection in telescope"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(TelescopeConfirmEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-/// Close telescope
-#[derive(Debug, Clone)]
-pub struct TelescopeCloseCommand;
-
-impl CommandTrait for TelescopeCloseCommand {
-    fn name(&self) -> &'static str {
-        "telescope_close"
-    }
-
-    fn description(&self) -> &'static str {
-        "Close telescope"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(TelescopeCloseEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-/// Insert character in telescope query
-#[derive(Debug, Clone)]
-pub struct TelescopeInsertCharCommand {
-    c: char,
-}
-
-impl TelescopeInsertCharCommand {
-    #[must_use]
-    pub const fn new(c: char) -> Self {
-        Self { c }
-    }
-}
-
-impl CommandTrait for TelescopeInsertCharCommand {
-    fn name(&self) -> &'static str {
-        "telescope_insert_char"
-    }
-
-    fn description(&self) -> &'static str {
-        "Insert character in telescope query"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(TelescopeInsertCharEvent { c: self.c }))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-/// Backspace in telescope query
-#[derive(Debug, Clone)]
-pub struct TelescopeBackspaceCommand;
-
-impl CommandTrait for TelescopeBackspaceCommand {
-    fn name(&self) -> &'static str {
-        "telescope_backspace"
-    }
-
-    fn description(&self) -> &'static str {
-        "Delete character in telescope query"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(TelescopeBackspaceEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-/// Go to first item in telescope
-#[derive(Debug, Clone)]
-pub struct TelescopeGotoFirstCommand;
-
-impl CommandTrait for TelescopeGotoFirstCommand {
-    fn name(&self) -> &'static str {
-        "telescope_goto_first"
-    }
-
-    fn description(&self) -> &'static str {
-        "Go to first item in telescope"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(TelescopeGotoFirstEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-/// Go to last item in telescope
-#[derive(Debug, Clone)]
-pub struct TelescopeGotoLastCommand;
-
-impl CommandTrait for TelescopeGotoLastCommand {
-    fn name(&self) -> &'static str {
-        "telescope_goto_last"
-    }
-
-    fn description(&self) -> &'static str {
-        "Go to last item in telescope"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(TelescopeGotoLastEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-/// Enter insert mode in telescope (for typing query)
-#[derive(Debug, Clone)]
-pub struct TelescopeEnterInsertCommand;
-
-impl CommandTrait for TelescopeEnterInsertCommand {
-    fn name(&self) -> &'static str {
-        "telescope_enter_insert"
-    }
-
-    fn description(&self) -> &'static str {
-        "Enter insert mode for typing query"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(TelescopeEnterInsertEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-/// Enter normal mode in telescope (for j/k navigation)
-#[derive(Debug, Clone)]
-pub struct TelescopeEnterNormalCommand;
-
-impl CommandTrait for TelescopeEnterNormalCommand {
-    fn name(&self) -> &'static str {
-        "telescope_enter_normal"
-    }
-
-    fn description(&self) -> &'static str {
-        "Enter normal mode for navigation"
-    }
-
-    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(TelescopeEnterNormalEvent))
-    }
-
-    fn clone_box(&self) -> Box<dyn CommandTrait> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
+    fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 }

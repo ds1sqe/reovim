@@ -399,6 +399,11 @@ impl CorePlugin {
         );
         ctx.bind_key_scoped(
             editor_normal.clone(),
+            keys!['Y'],
+            CommandRef::Registered(CommandId::new("yank_to_end")),
+        );
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
             keys!['x'],
             CommandRef::Registered(CommandId::new("delete_char_forward")),
         );
@@ -501,29 +506,8 @@ impl CorePlugin {
         );
         ctx.bind_key_scoped(
             editor_visual.clone(),
-            keys![Escape],
-            CommandRef::Registered(CommandId::new("enter_normal_mode")),
-        );
-
-        ctx.bind_key_scoped(
-            editor_visual.clone(),
-            keys!['j'],
-            CommandRef::Registered(CommandId::new("visual_extend_down")),
-        );
-        ctx.bind_key_scoped(
-            editor_visual.clone(),
-            keys!['k'],
-            CommandRef::Registered(CommandId::new("visual_extend_up")),
-        );
-        ctx.bind_key_scoped(
-            editor_visual.clone(),
-            keys!['d'],
-            CommandRef::Registered(CommandId::new("visual_delete")),
-        );
-        ctx.bind_key_scoped(
-            editor_visual.clone(),
-            keys!['y'],
-            CommandRef::Registered(CommandId::new("visual_yank")),
+            keys![':'],
+            CommandRef::Registered(CommandId::new("enter_command_mode")),
         );
         ctx.bind_key_scoped(
             editor_visual,

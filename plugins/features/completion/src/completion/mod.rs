@@ -6,7 +6,6 @@
 //! - Debounced trigger detection
 //! - State management for popup UI
 
-pub mod events;
 pub mod filter;
 pub mod item;
 pub mod source;
@@ -14,10 +13,6 @@ pub mod state;
 pub mod trigger;
 
 pub use {
-    events::{
-        CompletionConfirmEvent, CompletionDismissEvent, CompletionSelectNextEvent,
-        CompletionSelectPrevEvent, CompletionTriggerEvent,
-    },
     item::CompletionItem,
     source::{CompletionContext, CompletionSource},
     state::CompletionState,

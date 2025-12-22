@@ -18,16 +18,15 @@ use std::{any::TypeId, sync::Arc};
 
 use reovim_core::{
     bind::{CommandRef, EditModeKind, KeymapScope},
-    display::{DisplayInfo, EditModeKey},
     event_bus::{EventBus, EventResult},
     keys,
+    modd::{EditMode, InsertVariant, VisualVariant},
     plugin::{Plugin, PluginContext, PluginId, PluginStateRegistry},
     ui_component::ComponentId,
 };
 
 mod command;
 mod component;
-mod events;
 mod node;
 mod provider;
 mod render;
@@ -45,7 +44,7 @@ pub use {provider::ExplorerBufferProvider, state::ExplorerState};
 pub mod command_id {
     use reovim_core::command::id::CommandId;
 
-    pub const TOGGLE_EXPLORER: CommandId = CommandId::new("toggle_explorer");
+    pub const TOGGLE_EXPLORER: CommandId = CommandId::new("explorer_toggle");
 
     // Navigation
     pub const CURSOR_UP: CommandId = CommandId::new("explorer_cursor_up");
@@ -91,18 +90,16 @@ pub mod command_id {
     pub const INPUT_BACKSPACE: CommandId = CommandId::new("explorer_input_backspace");
 }
 
-// Plugin command types
-use command::{
-    ExplorerCancelInputCommand, ExplorerClearFilterCommand, ExplorerCloseCommand,
-    ExplorerCloseParentCommand, ExplorerConfirmInputCommand, ExplorerCreateDirCommand,
-    ExplorerCreateFileCommand, ExplorerCursorDownCommand, ExplorerCursorUpCommand,
-    ExplorerCutCommand, ExplorerDeleteCommand, ExplorerExitVisualCommand, ExplorerFilterCommand,
-    ExplorerFocusEditorCommand, ExplorerGoToParentCommand, ExplorerGotoFirstCommand,
-    ExplorerGotoLastCommand, ExplorerInputBackspaceCommand, ExplorerOpenNodeCommand,
-    ExplorerPageDownCommand, ExplorerPageUpCommand, ExplorerPasteCommand, ExplorerRefreshCommand,
-    ExplorerRenameCommand, ExplorerSelectAllCommand, ExplorerToggleHiddenCommand,
-    ExplorerToggleNodeCommand, ExplorerToggleSelectCommand, ExplorerToggleSizesCommand,
-    ExplorerVisualModeCommand, ExplorerYankCommand, ToggleExplorerCommand,
+// Plugin unified command-event types
+pub use command::{
+    ExplorerCancelInput, ExplorerClearFilter, ExplorerClose, ExplorerCloseParent,
+    ExplorerConfirmInput, ExplorerCreateDir, ExplorerCreateFile, ExplorerCursorDown,
+    ExplorerCursorUp, ExplorerCut, ExplorerDelete, ExplorerExitVisual, ExplorerFocusEditor,
+    ExplorerGoToParent, ExplorerGotoFirst, ExplorerGotoLast, ExplorerInputBackspace,
+    ExplorerInputChar, ExplorerOpenNode, ExplorerPageDown, ExplorerPageUp, ExplorerPaste,
+    ExplorerRefresh, ExplorerRename, ExplorerSelectAll, ExplorerStartFilter, ExplorerToggle,
+    ExplorerToggleHidden, ExplorerToggleNode, ExplorerToggleSelect, ExplorerToggleSizes,
+    ExplorerVisualMode, ExplorerYank,
 };
 
 /// File explorer plugin
@@ -167,18 +164,15 @@ impl Plugin for ExplorerPlugin {
     }
 
     fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {
-        use {
-            events::*,
-            reovim_core::{
-                event_bus::core_events::{RequestFocusChange, RequestModeChange, RequestOpenFile},
-                modd::{EditMode, ModeState, SubMode},
-                ui_component::ComponentId,
-            },
+        use reovim_core::{
+            event_bus::core_events::{RequestFocusChange, RequestModeChange, RequestOpenFile},
+            modd::{EditMode, ModeState, SubMode},
+            ui_component::ComponentId,
         };
 
         // Navigation events
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerCursorUpEvent, _>(100, move |event, ctx| {
+        bus.subscribe::<ExplorerCursorUp, _>(100, move |event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.move_cursor(-(event.count as isize));
             });
@@ -187,7 +181,7 @@ impl Plugin for ExplorerPlugin {
         });
 
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerCursorDownEvent, _>(100, move |event, ctx| {
+        bus.subscribe::<ExplorerCursorDown, _>(100, move |event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.move_cursor(event.count as isize);
             });
@@ -196,7 +190,7 @@ impl Plugin for ExplorerPlugin {
         });
 
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerPageUpEvent, _>(100, move |_event, ctx| {
+        bus.subscribe::<ExplorerPageUp, _>(100, move |_event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.move_page(20, false); // TODO: get actual height
             });
@@ -205,7 +199,7 @@ impl Plugin for ExplorerPlugin {
         });
 
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerPageDownEvent, _>(100, move |_event, ctx| {
+        bus.subscribe::<ExplorerPageDown, _>(100, move |_event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.move_page(20, true); // TODO: get actual height
             });
@@ -214,7 +208,7 @@ impl Plugin for ExplorerPlugin {
         });
 
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerGotoFirstEvent, _>(100, move |_event, ctx| {
+        bus.subscribe::<ExplorerGotoFirst, _>(100, move |_event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.move_to_first();
             });
@@ -223,7 +217,7 @@ impl Plugin for ExplorerPlugin {
         });
 
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerGotoLastEvent, _>(100, move |_event, ctx| {
+        bus.subscribe::<ExplorerGotoLast, _>(100, move |_event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.move_to_last();
             });
@@ -232,7 +226,7 @@ impl Plugin for ExplorerPlugin {
         });
 
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerGoToParentEvent, _>(100, move |_event, ctx| {
+        bus.subscribe::<ExplorerGoToParent, _>(100, move |_event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.go_to_parent();
             });
@@ -242,8 +236,8 @@ impl Plugin for ExplorerPlugin {
 
         // Open file or toggle directory
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerOpenNodeEvent, _>(100, move |_event, ctx| {
-            tracing::info!("ExplorerPlugin: ExplorerOpenNodeEvent received");
+        bus.subscribe::<ExplorerOpenNode, _>(100, move |_event, ctx| {
+            tracing::info!("ExplorerPlugin: ExplorerOpenNode received");
 
             let result = state_clone.with::<ExplorerState, _, _>(|explorer| {
                 if let Some(node) = explorer.current_node() {
@@ -283,7 +277,7 @@ impl Plugin for ExplorerPlugin {
 
         // Tree manipulation events
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerToggleNodeEvent, _>(100, move |_event, ctx| {
+        bus.subscribe::<ExplorerToggleNode, _>(100, move |_event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 let _ = s.toggle_current();
             });
@@ -292,7 +286,7 @@ impl Plugin for ExplorerPlugin {
         });
 
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerCloseParentEvent, _>(100, move |_event, ctx| {
+        bus.subscribe::<ExplorerCloseParent, _>(100, move |_event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.collapse_current();
             });
@@ -301,7 +295,7 @@ impl Plugin for ExplorerPlugin {
         });
 
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerRefreshEvent, _>(100, move |_event, ctx| {
+        bus.subscribe::<ExplorerRefresh, _>(100, move |_event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 let _ = s.refresh();
             });
@@ -310,7 +304,7 @@ impl Plugin for ExplorerPlugin {
         });
 
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerToggleHiddenEvent, _>(100, move |_event, ctx| {
+        bus.subscribe::<ExplorerToggleHidden, _>(100, move |_event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.toggle_hidden();
             });
@@ -319,7 +313,7 @@ impl Plugin for ExplorerPlugin {
         });
 
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerToggleSizesEvent, _>(100, move |_event, ctx| {
+        bus.subscribe::<ExplorerToggleSizes, _>(100, move |_event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.toggle_sizes();
             });
@@ -329,7 +323,7 @@ impl Plugin for ExplorerPlugin {
 
         // Clipboard events
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerYankEvent, _>(100, move |_event, ctx| {
+        bus.subscribe::<ExplorerYank, _>(100, move |_event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.yank_current();
             });
@@ -338,7 +332,7 @@ impl Plugin for ExplorerPlugin {
         });
 
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerCutEvent, _>(100, move |_event, ctx| {
+        bus.subscribe::<ExplorerCut, _>(100, move |_event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.cut_current();
             });
@@ -347,7 +341,7 @@ impl Plugin for ExplorerPlugin {
         });
 
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerPasteEvent, _>(100, move |_event, ctx| {
+        bus.subscribe::<ExplorerPaste, _>(100, move |_event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 let _ = s.paste();
             });
@@ -357,7 +351,7 @@ impl Plugin for ExplorerPlugin {
 
         // File operation events
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerCreateFileEvent, _>(100, move |_event, ctx| {
+        bus.subscribe::<ExplorerCreateFile, _>(100, move |_event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.start_create_file();
             });
@@ -375,7 +369,7 @@ impl Plugin for ExplorerPlugin {
         });
 
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerCreateDirEvent, _>(100, move |_event, ctx| {
+        bus.subscribe::<ExplorerCreateDir, _>(100, move |_event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.start_create_dir();
             });
@@ -393,7 +387,7 @@ impl Plugin for ExplorerPlugin {
         });
 
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerRenameEvent, _>(100, move |_event, ctx| {
+        bus.subscribe::<ExplorerRename, _>(100, move |_event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.start_rename();
             });
@@ -411,7 +405,7 @@ impl Plugin for ExplorerPlugin {
         });
 
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerDeleteEvent, _>(100, move |_event, ctx| {
+        bus.subscribe::<ExplorerDelete, _>(100, move |_event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.start_delete();
             });
@@ -429,7 +423,7 @@ impl Plugin for ExplorerPlugin {
         });
 
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerStartFilterEvent, _>(100, move |_event, ctx| {
+        bus.subscribe::<ExplorerStartFilter, _>(100, move |_event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.start_filter();
             });
@@ -447,7 +441,7 @@ impl Plugin for ExplorerPlugin {
         });
 
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerClearFilterEvent, _>(100, move |_event, ctx| {
+        bus.subscribe::<ExplorerClearFilter, _>(100, move |_event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.clear_filter();
             });
@@ -462,7 +456,7 @@ impl Plugin for ExplorerPlugin {
 
         // Input events
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerConfirmInputEvent, _>(100, move |_event, ctx| {
+        bus.subscribe::<ExplorerConfirmInput, _>(100, move |_event, ctx| {
             // Check if in input mode
             let in_input_mode = state_clone
                 .with::<ExplorerState, _, _>(|s| {
@@ -481,7 +475,7 @@ impl Plugin for ExplorerPlugin {
                 ctx.emit(RequestModeChange { mode });
             } else {
                 // Not in input mode - open the selected node (file/directory)
-                ctx.emit(ExplorerOpenNodeEvent);
+                ctx.emit(ExplorerOpenNode);
             }
 
             ctx.request_render();
@@ -489,7 +483,7 @@ impl Plugin for ExplorerPlugin {
         });
 
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerCancelInputEvent, _>(100, move |_event, ctx| {
+        bus.subscribe::<ExplorerCancelInput, _>(100, move |_event, ctx| {
             // Check if in input mode
             let in_input_mode = state_clone
                 .with::<ExplorerState, _, _>(|s| {
@@ -508,7 +502,7 @@ impl Plugin for ExplorerPlugin {
                 ctx.emit(RequestModeChange { mode });
             } else {
                 // Not in input mode - return focus to editor
-                ctx.emit(ExplorerFocusEditorEvent);
+                ctx.emit(ExplorerFocusEditor);
             }
 
             ctx.request_render();
@@ -516,7 +510,7 @@ impl Plugin for ExplorerPlugin {
         });
 
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerInputCharEvent, _>(100, move |event, ctx| {
+        bus.subscribe::<ExplorerInputChar, _>(100, move |event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.input_char(event.c);
             });
@@ -525,7 +519,7 @@ impl Plugin for ExplorerPlugin {
         });
 
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerInputBackspaceEvent, _>(100, move |_event, ctx| {
+        bus.subscribe::<ExplorerInputBackspace, _>(100, move |_event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.input_backspace();
             });
@@ -535,7 +529,7 @@ impl Plugin for ExplorerPlugin {
 
         // Visual selection events
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerVisualModeEvent, _>(100, move |_event, ctx| {
+        bus.subscribe::<ExplorerVisualMode, _>(100, move |_event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.enter_visual_mode();
             });
@@ -544,7 +538,7 @@ impl Plugin for ExplorerPlugin {
         });
 
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerToggleSelectEvent, _>(100, move |_event, ctx| {
+        bus.subscribe::<ExplorerToggleSelect, _>(100, move |_event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.toggle_select_current();
             });
@@ -553,7 +547,7 @@ impl Plugin for ExplorerPlugin {
         });
 
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerSelectAllEvent, _>(100, move |_event, ctx| {
+        bus.subscribe::<ExplorerSelectAll, _>(100, move |_event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.select_all();
             });
@@ -562,7 +556,7 @@ impl Plugin for ExplorerPlugin {
         });
 
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerExitVisualEvent, _>(100, move |_event, ctx| {
+        bus.subscribe::<ExplorerExitVisual, _>(100, move |_event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.exit_visual_mode();
             });
@@ -572,8 +566,8 @@ impl Plugin for ExplorerPlugin {
 
         // Toggle explorer visibility
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerToggleEvent, _>(100, move |_event, ctx| {
-            tracing::info!("ExplorerPlugin: ExplorerToggleEvent received");
+        bus.subscribe::<ExplorerToggle, _>(100, move |_event, ctx| {
+            tracing::info!("ExplorerPlugin: ExplorerToggle received");
 
             let old_visible = state_clone
                 .with::<ExplorerState, _, _>(|e| e.visible)
@@ -611,8 +605,8 @@ impl Plugin for ExplorerPlugin {
 
         // Close explorer and return focus to editor
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerCloseEvent, _>(100, move |_event, ctx| {
-            tracing::info!("ExplorerPlugin: ExplorerCloseEvent received");
+        bus.subscribe::<ExplorerClose, _>(100, move |_event, ctx| {
+            tracing::info!("ExplorerPlugin: ExplorerClose received");
 
             state_clone.with_mut::<ExplorerState, _, _>(|explorer| {
                 explorer.visible = false;
@@ -629,8 +623,8 @@ impl Plugin for ExplorerPlugin {
 
         // Focus editor (without closing explorer)
         let _state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerFocusEditorEvent, _>(100, move |_event, ctx| {
-            tracing::info!("ExplorerPlugin: ExplorerFocusEditorEvent received");
+        bus.subscribe::<ExplorerFocusEditor, _>(100, move |_event, ctx| {
+            tracing::info!("ExplorerPlugin: ExplorerFocusEditor received");
 
             ctx.emit(RequestFocusChange {
                 target: ComponentId::EDITOR,
@@ -649,67 +643,61 @@ pub const COMPONENT_ID: ComponentId = ComponentId("explorer");
 #[allow(clippy::unused_self)]
 impl ExplorerPlugin {
     fn register_display_info(&self, ctx: &mut PluginContext) {
-        ctx.register_display(COMPONENT_ID, DisplayInfo::new(" EXPLORER ", "󰙅 "));
-        ctx.register_component_mode_display(
-            COMPONENT_ID,
-            EditModeKey::Insert,
-            DisplayInfo::new(" EXPLORER | INSERT ", "󰙅 "),
-        );
-        ctx.register_component_mode_display(
-            COMPONENT_ID,
-            EditModeKey::VisualChar,
-            DisplayInfo::new(" EXPLORER | VISUAL ", "󰙅 "),
-        );
+        ctx.display_info(COMPONENT_ID)
+            .default(" EXPLORER ", "󰙅 ")
+            .when_mode(&EditMode::Insert(InsertVariant::Standard), " EXPLORER | INSERT ", "󰙅 ")
+            .when_mode(&EditMode::Visual(VisualVariant::Char), " EXPLORER | VISUAL ", "󰙅 ")
+            .register();
     }
 
     fn register_navigation_commands(&self, ctx: &PluginContext) {
-        let _ = ctx.register_command(ExplorerCursorUpCommand);
-        let _ = ctx.register_command(ExplorerCursorDownCommand);
-        let _ = ctx.register_command(ExplorerPageUpCommand);
-        let _ = ctx.register_command(ExplorerPageDownCommand);
-        let _ = ctx.register_command(ExplorerGotoFirstCommand);
-        let _ = ctx.register_command(ExplorerGotoLastCommand);
-        let _ = ctx.register_command(ExplorerGoToParentCommand);
+        let _ = ctx.register_command(ExplorerCursorUp::new(1));
+        let _ = ctx.register_command(ExplorerCursorDown::new(1));
+        let _ = ctx.register_command(ExplorerPageUp);
+        let _ = ctx.register_command(ExplorerPageDown);
+        let _ = ctx.register_command(ExplorerGotoFirst);
+        let _ = ctx.register_command(ExplorerGotoLast);
+        let _ = ctx.register_command(ExplorerGoToParent);
     }
 
     fn register_tree_commands(&self, ctx: &PluginContext) {
-        let _ = ctx.register_command(ToggleExplorerCommand);
-        let _ = ctx.register_command(ExplorerToggleNodeCommand);
-        let _ = ctx.register_command(ExplorerOpenNodeCommand);
-        let _ = ctx.register_command(ExplorerCloseParentCommand);
-        let _ = ctx.register_command(ExplorerRefreshCommand);
-        let _ = ctx.register_command(ExplorerToggleHiddenCommand);
-        let _ = ctx.register_command(ExplorerToggleSizesCommand);
-        let _ = ctx.register_command(ExplorerCloseCommand);
-        let _ = ctx.register_command(ExplorerFocusEditorCommand);
+        let _ = ctx.register_command(ExplorerToggle);
+        let _ = ctx.register_command(ExplorerToggleNode);
+        let _ = ctx.register_command(ExplorerOpenNode);
+        let _ = ctx.register_command(ExplorerCloseParent);
+        let _ = ctx.register_command(ExplorerRefresh);
+        let _ = ctx.register_command(ExplorerToggleHidden);
+        let _ = ctx.register_command(ExplorerToggleSizes);
+        let _ = ctx.register_command(ExplorerClose);
+        let _ = ctx.register_command(ExplorerFocusEditor);
     }
 
     fn register_file_commands(&self, ctx: &PluginContext) {
-        let _ = ctx.register_command(ExplorerCreateFileCommand);
-        let _ = ctx.register_command(ExplorerCreateDirCommand);
-        let _ = ctx.register_command(ExplorerRenameCommand);
-        let _ = ctx.register_command(ExplorerDeleteCommand);
-        let _ = ctx.register_command(ExplorerFilterCommand);
-        let _ = ctx.register_command(ExplorerClearFilterCommand);
+        let _ = ctx.register_command(ExplorerCreateFile);
+        let _ = ctx.register_command(ExplorerCreateDir);
+        let _ = ctx.register_command(ExplorerRename);
+        let _ = ctx.register_command(ExplorerDelete);
+        let _ = ctx.register_command(ExplorerStartFilter);
+        let _ = ctx.register_command(ExplorerClearFilter);
     }
 
     fn register_clipboard_commands(&self, ctx: &PluginContext) {
-        let _ = ctx.register_command(ExplorerYankCommand);
-        let _ = ctx.register_command(ExplorerCutCommand);
-        let _ = ctx.register_command(ExplorerPasteCommand);
+        let _ = ctx.register_command(ExplorerYank);
+        let _ = ctx.register_command(ExplorerCut);
+        let _ = ctx.register_command(ExplorerPaste);
     }
 
     fn register_visual_commands(&self, ctx: &PluginContext) {
-        let _ = ctx.register_command(ExplorerVisualModeCommand);
-        let _ = ctx.register_command(ExplorerToggleSelectCommand);
-        let _ = ctx.register_command(ExplorerSelectAllCommand);
-        let _ = ctx.register_command(ExplorerExitVisualCommand);
+        let _ = ctx.register_command(ExplorerVisualMode);
+        let _ = ctx.register_command(ExplorerToggleSelect);
+        let _ = ctx.register_command(ExplorerSelectAll);
+        let _ = ctx.register_command(ExplorerExitVisual);
     }
 
     fn register_input_commands(&self, ctx: &PluginContext) {
-        let _ = ctx.register_command(ExplorerConfirmInputCommand);
-        let _ = ctx.register_command(ExplorerCancelInputCommand);
-        let _ = ctx.register_command(ExplorerInputBackspaceCommand);
+        let _ = ctx.register_command(ExplorerConfirmInput);
+        let _ = ctx.register_command(ExplorerCancelInput);
+        let _ = ctx.register_command(ExplorerInputBackspace);
     }
 
     fn register_keybindings(&self, ctx: &mut PluginContext) {
@@ -898,21 +886,3 @@ impl ExplorerPlugin {
         );
     }
 }
-
-// Re-export key types for external use
-pub use {
-    events::{
-        ExplorerCancelInputEvent, ExplorerClearFilterEvent, ExplorerCloseEvent,
-        ExplorerCloseParentEvent, ExplorerConfirmInputEvent, ExplorerCreateDirEvent,
-        ExplorerCreateFileEvent, ExplorerCursorDownEvent, ExplorerCursorUpEvent, ExplorerCutEvent,
-        ExplorerDeleteEvent, ExplorerExitVisualEvent, ExplorerFocusEditorEvent,
-        ExplorerGoToParentEvent, ExplorerGotoFirstEvent, ExplorerGotoLastEvent,
-        ExplorerInputBackspaceEvent, ExplorerInputCharEvent, ExplorerOpenNodeEvent,
-        ExplorerPageDownEvent, ExplorerPageUpEvent, ExplorerPasteEvent, ExplorerRefreshEvent,
-        ExplorerRenameEvent, ExplorerSelectAllEvent, ExplorerStartFilterEvent, ExplorerToggleEvent,
-        ExplorerToggleHiddenEvent, ExplorerToggleNodeEvent, ExplorerToggleSelectEvent,
-        ExplorerToggleSizesEvent, ExplorerVisualModeEvent, ExplorerYankEvent,
-    },
-    node::FileNode,
-    tree::FileTree,
-};

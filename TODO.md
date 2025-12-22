@@ -1,0 +1,2 @@
+Visual 
+- selection copy, paste

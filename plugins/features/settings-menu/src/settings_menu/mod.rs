@@ -8,18 +8,11 @@
 //! - Vim-style navigation (j/k/h/l)
 //! - Live preview of changes
 
-pub mod events;
 pub mod item;
 pub mod render;
 pub mod state;
 
 pub use {
-    events::{
-        SettingsMenuCloseEvent, SettingsMenuCycleNextEvent, SettingsMenuCyclePrevEvent,
-        SettingsMenuDecrementEvent, SettingsMenuExecuteActionEvent, SettingsMenuIncrementEvent,
-        SettingsMenuOpenEvent, SettingsMenuQuickSelectEvent, SettingsMenuSelectNextEvent,
-        SettingsMenuSelectPrevEvent, SettingsMenuToggleEvent,
-    },
     item::{ActionType, FlatItem, SettingItem, SettingSection, SettingValue},
     state::{MenuLayout, MessageKind, SettingsInputMode, SettingsMenuState},
 };

@@ -421,3 +421,304 @@ registry.register(CommandId::MY_COMMAND, Box::new(MyCommand));
 // bind/mod.rs (in normal map setup)
 ("mc", CommandRef::ById(CommandId::MY_COMMAND)),
 ```
+
+## Command Declaration Macros
+
+To reduce boilerplate, reovim provides macros for common command patterns. These macros are especially useful for plugin commands that emit events to the event bus.
+
+### Available Macros
+
+#### `declare_event_command!` - Unified Type (Recommended)
+
+**The modern pattern:** Single type serves as both command and event.
+
+```rust
+use reovim_core::declare_event_command;
+
+// Single unified type - both command AND event
+declare_event_command! {
+    Refresh,
+    id: "refresh",
+    description: "Refresh the view",
+}
+
+// Register as command
+ctx.register_command(Refresh);
+
+// Subscribe as event (same type!)
+bus.subscribe::<Refresh, _>(100, |event, ctx| {
+    // Handle refresh
+    EventResult::Handled
+});
+```
+
+**Benefits:**
+- 50% less types (one instead of two)
+- ~20 lines of boilerplate eliminated per command
+- Clearer intent - action is both trigger and notification
+- Zero-cost abstraction (zero-sized type)
+
+**When to use:**
+- ✅ Simple actions that don't need separate representations
+- ✅ Most plugin commands (navigation, toggles, actions)
+- ✅ Commands that just trigger an action in the event handler
+- ✅ Preferred over separate Command/Event types
+
+#### `declare_counted_event_command!` - Unified With Count (Recommended)
+
+**The modern pattern for counted commands:**
+
+```rust
+use reovim_core::declare_counted_event_command;
+
+// Single type with count - both command AND event
+declare_counted_event_command! {
+    MoveDown,
+    id: "move_down",
+    description: "Move down by count lines",
+}
+
+// The macro generates:
+// - MoveDown { count: usize }
+// - MoveDown::new(count: usize)
+// - impl Default (count = 1)
+// - impl CommandTrait (emits self with count from context)
+// - impl Event
+
+// Use it
+ctx.register_command(MoveDown);
+
+bus.subscribe::<MoveDown, _>(100, |event, ctx| {
+    // Access event.count directly
+    for _ in 0..event.count {
+        // Move down
+    }
+    EventResult::Handled
+});
+```
+
+### Migration Pattern
+
+**Old style (separate types):**
+
+```rust
+// commands.rs (20+ lines)
+pub struct ExplorerRefreshCommand;
+
+impl CommandTrait for ExplorerRefreshCommand {
+    fn name(&self) -> &'static str { "explorer_refresh" }
+    fn description(&self) -> &'static str { "Refresh explorer view" }
+    fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
+        CommandResult::EmitEvent(DynEvent::new(ExplorerRefreshEvent))
+    }
+    fn clone_box(&self) -> Box<dyn CommandTrait> { Box::new(self.clone()) }
+    fn as_any(&self) -> &dyn Any { self }
+}
+
+// events.rs (5+ lines)
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ExplorerRefreshEvent;
+impl Event for ExplorerRefreshEvent {}
+
+// lib.rs - register separately
+ctx.register_command(ExplorerRefreshCommand);
+bus.subscribe::<ExplorerRefreshEvent, _>(100, |event, ctx| { ... });
+```
+
+**New style (unified):**
+
+```rust
+// commands.rs (4 lines)
+declare_event_command! {
+    ExplorerRefresh,
+    id: "explorer_refresh",
+    description: "Refresh explorer view",
+}
+
+// lib.rs - single type for both!
+ctx.register_command(ExplorerRefresh);
+bus.subscribe::<ExplorerRefresh, _>(100, |event, ctx| { ... });
+```
+
+**Savings:** ~21 lines eliminated, one type instead of two.
+
+### When Commands Need ExecutionContext Data
+
+Some commands need to extract data from the execution context (buffer state, cursor position, etc.) to create their events. For these, the unified macros may not work directly.
+
+**Option 1: Custom execute() with unified event**
+
+```rust
+// Define unified type manually
+#[derive(Debug, Clone, Copy, Default)]
+pub struct FoldToggle {
+    pub buffer_id: usize,
+    pub line: u32,
+}
+
+impl Event for FoldToggle {}
+
+impl CommandTrait for FoldToggle {
+    fn name(&self) -> &'static str { "fold_toggle" }
+    fn description(&self) -> &'static str { "Toggle fold at cursor" }
+
+    fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
+        // Extract context data
+        let event = Self {
+            buffer_id: ctx.buffer_id,
+            line: u32::from(ctx.buffer.cur.y),
+        };
+        CommandResult::EmitEvent(DynEvent::new(event))
+    }
+
+    fn clone_box(&self) -> Box<dyn CommandTrait> { Box::new(*self) }
+    fn as_any(&self) -> &dyn Any { self }
+}
+```
+
+**Option 2: Builder pattern (for complex data)**
+
+```rust
+#[derive(Debug, Clone)]
+pub struct ComplexAction {
+    pub data: Vec<String>,
+    // ... complex fields
+}
+
+impl ComplexAction {
+    pub fn from_context(ctx: &ExecutionContext) -> Self {
+        Self {
+            data: extract_from_buffer(&ctx.buffer),
+        }
+    }
+}
+
+impl Event for ComplexAction {}
+
+// Still use macro for command shell
+impl CommandTrait for ComplexActionCommand {
+    fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
+        let event = ComplexAction::from_context(ctx);
+        CommandResult::EmitEvent(DynEvent::new(event))
+    }
+    // ...
+}
+```
+
+### Best Practices
+
+1. **Prefer unified types** (`declare_event_command!`) for simple actions
+2. **Use counted variant** when commands need repeat counts
+3. **Custom impl** only when you need complex context extraction
+4. **Consistent naming**: Drop "Command" and "Event" suffixes for unified types
+   - Old: `ExplorerRefreshCommand` + `ExplorerRefreshEvent`
+   - New: `ExplorerRefresh` (serves both roles)
+
+5. **Event handlers don't need Default**: Unified commands only need `Default` for command instantiation, handlers receive fully formed events
+
+### Example: Full Plugin Migration
+
+**Before:**
+```rust
+// 5 separate event types
+pub struct CursorUpEvent;
+pub struct CursorDownEvent;
+pub struct PageUpEvent;
+pub struct PageDownEvent;
+pub struct RefreshEvent;
+
+// 5 separate command types (100+ lines total)
+pub struct CursorUpCommand;
+pub struct CursorDownCommand;
+pub struct PageUpCommand;
+pub struct PageDownCommand;
+pub struct RefreshCommand;
+
+// Registration
+ctx.register_command(CursorUpCommand);
+ctx.register_command(CursorDownCommand);
+// ... etc
+
+// Subscriptions
+bus.subscribe::<CursorUpEvent, _>(...);
+bus.subscribe::<CursorDownEvent, _>(...);
+// ... etc
+```
+
+**After:**
+```rust
+// 5 unified types (20 lines total)
+declare_event_command!(CursorUp, id: "cursor_up", description: "Move cursor up");
+declare_event_command!(CursorDown, id: "cursor_down", description: "Move cursor down");
+declare_event_command!(PageUp, id: "page_up", description: "Page up");
+declare_event_command!(PageDown, id: "page_down", description: "Page down");
+declare_event_command!(Refresh, id: "refresh", description: "Refresh view");
+
+// Registration (same type!)
+ctx.register_command(CursorUp);
+ctx.register_command(CursorDown);
+// ... etc
+
+// Subscriptions (same type!)
+bus.subscribe::<CursorUp, _>(...);
+bus.subscribe::<CursorDown, _>(...);
+// ... etc
+```
+
+**Result:** ~80% reduction in boilerplate, 50% fewer types, identical functionality.
+
+### Deprecated Macros (Legacy)
+
+#### `declare_command!` - Separate Command/Event (Deprecated)
+
+**This pattern is deprecated.** Use `declare_event_command!` instead.
+
+```rust
+// DON'T USE - deprecated pattern
+use reovim_core::declare_command;
+
+// Define event first
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RefreshEvent;
+impl Event for RefreshEvent {}
+
+// Declare command that emits this event
+declare_command! {
+    RefreshCommand => RefreshEvent,
+    name: "refresh",
+    description: "Refresh the view",
+}
+```
+
+**Migration:** Replace with unified type using `declare_event_command!`
+
+#### `declare_counted_command!` - Separate with Count (Deprecated)
+
+**This pattern is deprecated.** Use `declare_counted_event_command!` instead.
+
+```rust
+// DON'T USE - deprecated pattern
+use reovim_core::declare_counted_command;
+
+// Event with count
+#[derive(Debug, Clone)]
+pub struct MoveDownEvent {
+    pub count: usize,
+}
+
+impl MoveDownEvent {
+    pub fn new(count: usize) -> Self { Self { count } }
+}
+
+impl Event for MoveDownEvent {}
+
+// Command that extracts count from context
+declare_counted_command! {
+    MoveDownCommand => MoveDownEvent,
+    name: "move_down",
+    description: "Move down by count lines",
+}
+```
+
+**Migration:** Replace with unified type using `declare_counted_event_command!`
+```

@@ -156,7 +156,8 @@ impl Window {
     }
 
     /// Set buffer anchor in content source (if applicable)
-    pub const fn set_buffer_anchor(&mut self, new_anchor: Anchor) {
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn set_buffer_anchor(&mut self, new_anchor: Anchor) {
         match &mut self.source {
             WindowContentSource::FileBuffer { buffer_anchor, .. }
             | WindowContentSource::PluginBuffer { buffer_anchor, .. } => {
@@ -1145,7 +1146,7 @@ impl Window {
     }
 
     /// Update `buffer_anchor` to keep cursor visible within the viewport
-    pub const fn update_scroll(&mut self, cursor_y: u16) {
+    pub fn update_scroll(&mut self, cursor_y: u16) {
         let visible_height = self.height;
         let Some(mut buffer_anchor) = self.buffer_anchor() else {
             return;

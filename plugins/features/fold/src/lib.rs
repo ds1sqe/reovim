@@ -11,10 +11,9 @@
 //!
 //! # Event Bus Integration
 //!
-//! Commands emit fold events, and the plugin subscribes to handle them.
+//! Commands emit fold events (unified types), and the plugin subscribes to handle them.
 
 pub mod commands;
-pub mod events;
 pub mod stage;
 pub mod state;
 
@@ -30,9 +29,8 @@ use reovim_core::{
 
 use {stage::FoldRenderStage, state::SharedFoldManager};
 
-use commands::{
-    FoldCloseAllCommand, FoldCloseCommand, FoldOpenAllCommand, FoldOpenCommand, FoldToggleCommand,
-};
+// Import unified command-event types for internal use and re-export
+pub use commands::{FoldClose, FoldCloseAll, FoldOpen, FoldOpenAll, FoldRangesUpdated, FoldToggle};
 
 /// Code folding plugin
 ///
@@ -81,12 +79,12 @@ impl Plugin for FoldPlugin {
     }
 
     fn build(&self, ctx: &mut PluginContext) {
-        // Register commands
-        let _ = ctx.register_command(FoldToggleCommand);
-        let _ = ctx.register_command(FoldOpenCommand);
-        let _ = ctx.register_command(FoldCloseCommand);
-        let _ = ctx.register_command(FoldOpenAllCommand);
-        let _ = ctx.register_command(FoldCloseAllCommand);
+        // Register commands (unified types)
+        let _ = ctx.register_command(FoldToggle::default_instance());
+        let _ = ctx.register_command(FoldOpen::default_instance());
+        let _ = ctx.register_command(FoldClose::default_instance());
+        let _ = ctx.register_command(FoldOpenAll::default_instance());
+        let _ = ctx.register_command(FoldCloseAll::default_instance());
 
         // Register render stage for fold visibility transformations
         let stage = Arc::new(FoldRenderStage::new(Arc::clone(&self.fold_manager)));
@@ -105,9 +103,9 @@ impl Plugin for FoldPlugin {
     }
 
     fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {
-        // Handle fold toggle
+        // Handle fold toggle (unified type)
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<FoldToggleEvent, _>(100, move |event, _ctx| {
+        bus.subscribe::<FoldToggle, _>(100, move |event, _ctx| {
             state_clone.with::<Arc<SharedFoldManager>, _, _>(|fm| {
                 fm.with_mut(|m| m.toggle(event.buffer_id, event.line));
             });
@@ -119,9 +117,9 @@ impl Plugin for FoldPlugin {
             EventResult::Handled
         });
 
-        // Handle fold open
+        // Handle fold open (unified type)
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<FoldOpenEvent, _>(100, move |event, _ctx| {
+        bus.subscribe::<FoldOpen, _>(100, move |event, _ctx| {
             state_clone.with::<Arc<SharedFoldManager>, _, _>(|fm| {
                 fm.with_mut(|m| m.open(event.buffer_id, event.line));
             });
@@ -133,9 +131,9 @@ impl Plugin for FoldPlugin {
             EventResult::Handled
         });
 
-        // Handle fold close
+        // Handle fold close (unified type)
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<FoldCloseEvent, _>(100, move |event, _ctx| {
+        bus.subscribe::<FoldClose, _>(100, move |event, _ctx| {
             state_clone.with::<Arc<SharedFoldManager>, _, _>(|fm| {
                 fm.with_mut(|m| m.close(event.buffer_id, event.line));
             });
@@ -147,9 +145,9 @@ impl Plugin for FoldPlugin {
             EventResult::Handled
         });
 
-        // Handle open all folds
+        // Handle open all folds (unified type)
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<FoldOpenAllEvent, _>(100, move |event, _ctx| {
+        bus.subscribe::<FoldOpenAll, _>(100, move |event, _ctx| {
             state_clone.with::<Arc<SharedFoldManager>, _, _>(|fm| {
                 fm.with_mut(|m| m.open_all(event.buffer_id));
             });
@@ -157,9 +155,9 @@ impl Plugin for FoldPlugin {
             EventResult::Handled
         });
 
-        // Handle close all folds
+        // Handle close all folds (unified type)
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<FoldCloseAllEvent, _>(100, move |event, _ctx| {
+        bus.subscribe::<FoldCloseAll, _>(100, move |event, _ctx| {
             state_clone.with::<Arc<SharedFoldManager>, _, _>(|fm| {
                 fm.with_mut(|m| m.close_all(event.buffer_id));
             });
@@ -169,7 +167,7 @@ impl Plugin for FoldPlugin {
 
         // Handle fold ranges update (from plugin events)
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<FoldRangesUpdatedEvent, _>(50, move |event, _ctx| {
+        bus.subscribe::<FoldRangesUpdated, _>(50, move |event, _ctx| {
             state_clone.with::<Arc<SharedFoldManager>, _, _>(|fm| {
                 fm.with_mut(|m| m.set_ranges(event.buffer_id, event.ranges.clone()));
             });
@@ -212,11 +210,6 @@ impl Plugin for FoldPlugin {
     }
 }
 
-// Re-export key types for external use
-pub use events::{
-    FoldCloseAllEvent, FoldCloseEvent, FoldOpenAllEvent, FoldOpenEvent, FoldRangesUpdatedEvent,
-    FoldToggleEvent,
-};
 // Re-export fold types
 // Data types (FoldKind, FoldRange) come from core (used by treesitter)
 // State types (FoldState, FoldManager, SharedFoldManager) are plugin-owned
