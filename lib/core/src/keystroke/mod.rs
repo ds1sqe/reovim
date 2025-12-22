@@ -516,10 +516,7 @@ mod tests {
     #[test]
     fn test_ctrl_uppercase_preserves_ctrl() {
         // Ctrl+Shift+G should preserve ctrl but clear shift
-        let event = KeyEvent::new(
-            KeyCode::Char('G'),
-            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
-        );
+        let event = KeyEvent::new(KeyCode::Char('G'), KeyModifiers::CONTROL | KeyModifiers::SHIFT);
         let k = Keystroke::from(&event);
 
         assert_eq!(k.key, Key::Char('G'));

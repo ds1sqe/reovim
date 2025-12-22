@@ -7,10 +7,9 @@ mod inner;
 mod input;
 
 pub use {
-    handler::{CommandHandler, CompletionHandler, PrintEventHandler, TerminateHandler},
+    handler::{CommandHandler, PrintEventHandler, TerminateHandler},
     inner::{
-        BufferEvent, CommandEvent, CompletionEvent, ExplorerEvent, FocusInputEvent, HighlightEvent,
-        InnerEvent, LeapEvent, SettingsMenuEvent, TelescopeEvent, TreesitterEvent,
+        BufferEvent, CommandEvent, FocusInputEvent, HighlightEvent, InnerEvent,
         VisualTextObjectAction, WindowEvent,
     },
     input::*,

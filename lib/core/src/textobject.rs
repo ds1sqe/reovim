@@ -5,6 +5,8 @@
 //! - Word text objects (iw, aw, iW, aW)
 //! - Semantic text objects based on treesitter (daf, dic)
 
+use std::sync::Arc;
+
 /// Delimiter types for text objects
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Delimiter {
@@ -310,3 +312,74 @@ impl TextObjectKind {
         }
     }
 }
+
+// =============================================================================
+// Text Object Bounds (for semantic text objects)
+// =============================================================================
+
+/// A position in the buffer (row, column)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Position {
+    /// 0-indexed row
+    pub row: u32,
+    /// 0-indexed column
+    pub col: u32,
+}
+
+impl Position {
+    /// Create a new position
+    #[must_use]
+    pub const fn new(row: u32, col: u32) -> Self {
+        Self { row, col }
+    }
+}
+
+/// Bounds of a text object (start and end positions)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TextObjectBounds {
+    /// Start position (inclusive)
+    pub start: Position,
+    /// End position (inclusive)
+    pub end: Position,
+}
+
+impl TextObjectBounds {
+    /// Create new text object bounds
+    #[must_use]
+    pub const fn new(start: Position, end: Position) -> Self {
+        Self { start, end }
+    }
+}
+
+// =============================================================================
+// Semantic Text Object Source Trait
+// =============================================================================
+
+/// Trait for plugins that provide semantic text object resolution
+///
+/// This trait allows the treesitter plugin to provide text object bounds
+/// to the runtime without the runtime needing to know about treesitter.
+pub trait SemanticTextObjectSource: Send + Sync {
+    /// Find the bounds of a semantic text object at the given cursor position
+    ///
+    /// # Arguments
+    /// * `buffer_id` - The buffer to search in
+    /// * `content` - The buffer content
+    /// * `cursor_row` - 0-indexed cursor row
+    /// * `cursor_col` - 0-indexed cursor column
+    /// * `spec` - The semantic text object specification
+    ///
+    /// # Returns
+    /// The bounds of the text object if found
+    fn find_bounds(
+        &self,
+        buffer_id: usize,
+        content: &str,
+        cursor_row: u32,
+        cursor_col: u32,
+        spec: &SemanticTextObjectSpec,
+    ) -> Option<TextObjectBounds>;
+}
+
+/// Type alias for a shared semantic text object source
+pub type SharedSemanticTextObjectSource = Arc<dyn SemanticTextObjectSource>;

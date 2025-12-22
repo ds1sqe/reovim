@@ -1,0 +1,12 @@
+[package]
+name = "reovim-lang-c"
+version.workspace = true
+edition.workspace = true
+description = "C language support for reovim"
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+reovim-core = { path = "../../../lib/core" }
+reovim-plugin-treesitter = { path = "../../features/treesitter" }
+tree-sitter-c = "0.23"

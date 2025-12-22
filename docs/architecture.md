@@ -12,33 +12,63 @@ This document provides an overview of the reovim editor architecture.
 
 ```
 reovim/
-├── main/           # Binary crate - editor entry point
-├── lib/core/       # reovim-core - core editor logic
-├── lib/sys/        # reovim-sys - terminal abstraction (crossterm)
-└── tools/reo-cli/  # CLI client for server mode
+├── runner/                 # Binary crate - editor entry point
+├── lib/core/               # reovim-core - core editor logic
+├── lib/sys/                # reovim-sys - terminal abstraction (crossterm)
+├── plugins/features/       # External feature plugins
+│   ├── fold/               # reovim-plugin-fold
+│   ├── settings-menu/      # reovim-plugin-settings-menu
+│   ├── completion/         # reovim-plugin-completion
+│   ├── explorer/           # reovim-plugin-explorer
+│   ├── telescope/          # reovim-plugin-telescope
+│   └── treesitter/         # reovim-plugin-treesitter
+├── plugins/languages/      # Language plugins
+│   ├── rust/               # reovim-lang-rust
+│   ├── c/                  # reovim-lang-c
+│   ├── javascript/         # reovim-lang-javascript
+│   ├── python/             # reovim-lang-python
+│   ├── json/               # reovim-lang-json
+│   ├── toml/               # reovim-lang-toml
+│   └── markdown/           # reovim-lang-markdown
+└── tools/
+    ├── perf-report/        # Performance report generator
+    ├── reo-cli/            # CLI client for server mode
+    └── bench/              # Performance benchmarks (criterion)
 ```
 
 ### Dependency Graph
 
 ```
-┌──────────┐     ┌──────────────┐     ┌─────────────┐
-│   MAIN   │────▶│     CORE     │────▶│     SYS     │
-│ (reovim) │     │ (reovim-core)│     │ (reovim-sys)│
-└──────────┘     └──────────────┘     └─────────────┘
-     │                  │                    │
-     │                  │                    │
-     ▼                  ▼                    ▼
-  Binary           Runtime, Buffer      crossterm
-  Entry            Events, Screen       re-exports
+┌──────────────────────────────────────────────────────────────┐
+│                          RUNNER                               │
+│                         (reovim)                              │
+└──────────────────────────────────────────────────────────────┘
+        │                    │                    │
+        ▼                    ▼                    ▼
+┌──────────────┐   ┌──────────────────┐   ┌──────────────────┐
+│    CORE      │◄──│ Feature Plugins  │   │ Language Plugins │
+│(reovim-core) │   │ (fold, telescope,│   │ (rust, c, js,    │
+└──────────────┘   │  explorer, etc.) │   │  python, etc.)   │
+        │          └──────────────────┘   └──────────────────┘
+        ▼
+┌──────────────┐
+│     SYS      │
+│(reovim-sys)  │
+└──────────────┘
+        │
+        ▼
+   crossterm
 ```
 
 ### Crate Responsibilities
 
 | Crate | Purpose |
 |-------|---------|
-| `main` | Bootstrap editor, parse CLI args, invoke runtime |
-| `reovim-core` | Runtime, buffers, events, screen, commands, features |
+| `runner` | Bootstrap editor, parse CLI args, configure plugins (AllPlugins), invoke runtime |
+| `reovim-core` | Runtime, buffers, events, screen, commands, plugin system, DefaultPlugins |
 | `reovim-sys` | Re-exports crossterm for terminal I/O |
+| `reovim-plugin-*` | External feature plugins (fold, completion, explorer, telescope, etc.) |
+| `reovim-lang-*` | Language support plugins (syntax highlighting, queries) |
 
 ## Core Architecture Overview
 
@@ -74,6 +104,17 @@ lib/core/src/
 │   ├── core.rs     # Runtime struct
 │   ├── event_loop.rs
 │   └── handlers.rs
+├── event_bus/      # Type-erased event system
+│   ├── mod.rs      # Event trait, DynEvent
+│   └── bus.rs      # EventBus implementation
+├── plugin/         # Plugin system
+│   ├── mod.rs      # Public exports
+│   ├── traits.rs   # Plugin trait definition
+│   ├── context.rs  # PluginContext for registration
+│   ├── loader.rs   # PluginLoader for dependency resolution
+│   ├── state.rs    # PluginStateRegistry
+│   ├── runtime_context.rs  # RuntimeContext for plugins
+│   └── builtin/    # Built-in plugins (core, leap)
 ├── buffer/         # Text storage and cursor
 ├── compositor/     # Compositing system
 │   ├── mod.rs      # ZOrder, ZGroup
@@ -104,11 +145,9 @@ lib/core/src/
 │   │   ├── editor.rs     # Buffer windows (z=2)
 │   │   ├── leap.rs       # Jump labels (z=3)
 │   │   ├── completion.rs # Completion popup (z=4)
-│   │   ├── which_key.rs  # Which-key panel (z=5)
-│   │   ├── telescope.rs  # Fuzzy finder (z=6)
-│   │   └── settings_menu.rs # Settings overlay (z=7)
-│   ├── status_line.rs
-│   └── which_key.rs
+│   │   ├── telescope.rs  # Fuzzy finder (z=5)
+│   │   └── settings_menu.rs # Settings overlay (z=6)
+│   └── status_line.rs
 ├── command/        # Command system
 │   ├── traits.rs   # CommandTrait, ExecutionContext
 │   ├── registry.rs # CommandRegistry
@@ -139,7 +178,6 @@ lib/core/src/
 ├── jump_list/      # Navigation history
 ├── registers/      # Copy/paste storage
 ├── theme/          # Color themes
-├── treesitter/     # Syntax highlighting engine
 ├── rpc/            # JSON-RPC server mode
 │   ├── server.rs   # RpcServer, request handling
 │   ├── transport.rs# Transport layer (Stdio, Socket, TCP)
@@ -181,22 +219,25 @@ pub struct Runtime {
     pub mode_tx: watch::Sender<ModeState>,
     pub mode_rx: watch::Receiver<ModeState>,
 
+    // Plugin infrastructure (NEW)
+    pub event_bus: Arc<EventBus>,
+    pub plugin_state: Arc<PluginStateRegistry>,
+
     // Command system
     pub command_registry: Arc<CommandRegistry>,
     pub registers: Registers,
 
-    // Features
+    // Features (some migrated to plugins, accessed via plugin_state)
     pub explorer_state: Option<ExplorerState>,
     pub jump_list: JumpList,
-    pub which_key_panel: WhichKeyPanel,
     pub completion_engine: Arc<CompletionEngine>,
     pub completion_state: CompletionState,
     pub telescope_state: TelescopeState,
     pub telescope_matcher: TelescopeMatcher,
     pub telescope_pickers: HashMap<String, Arc<dyn Picker>>,
     pub leap_state: LeapState,
-    pub treesitter: TreesitterManager,
     pub fold_manager: FoldManager,
+    // Note: Treesitter is now a plugin, accessed via plugin_state.text_object_source()
 }
 ```
 
@@ -303,16 +344,19 @@ pub trait Layer {
 
 **Z-Order Constants:**
 
-| Layer | Z-Order | Description |
-|-------|---------|-------------|
-| BaseLayer | 0 | Tab line, status line |
-| ExplorerLayer | 1 | File browser sidebar |
-| EditorLayer | 2 | Main buffer windows |
-| LeapLayer | 3 | Two-character jump labels |
-| CompletionLayer | 4 | Completion popup |
-| WhichKeyLayer | 5 | Key binding hints |
-| TelescopeLayer | 6 | Fuzzy finder overlay |
-| SettingsMenuLayer | 7 | Settings configuration |
+Core defines only base z-order constants. Plugins define their own via `OverlayRenderer::z_order()`:
+
+| Layer | Z-Order | Source |
+|-------|---------|--------|
+| BaseLayer | 0 | Core (`z_order::BASE`) |
+| EditorLayer | 2 | Core (`z_order::EDITOR`) |
+| Plugin overlays | 100-400 | `OverlayRenderer::z_order()` |
+
+Plugins register overlays with their own z-orders:
+- Leap: 100
+- Completion: 200
+- Telescope: 300
+- Settings: 400
 
 `Screen::render_buffered()` renders all layers in z-order to the frame buffer.
 
@@ -343,15 +387,14 @@ Screen::render_buffered()
     │
     ├── FrameRenderer::buffer_mut() ──► get back buffer
     │
-    ├── Render layers in z-order to back buffer:
-    │   ├── Tab line, status line           (z=0)
-    │   ├── Explorer sidebar                (z=1)
-    │   ├── Editor windows                  (z=2)
-    │   ├── Leap labels                     (z=3)
-    │   ├── Completion popup                (z=4)
-    │   ├── Which-key panel                 (z=5)
-    │   ├── Telescope overlay               (z=6)
-    │   └── Settings menu                   (z=7)
+    ├── Render core layers:
+    │   ├── Base layer (tab line, status line)    (z=0)
+    │   └── Editor windows                        (z=2)
+    │
+    ├── Render plugin overlays (via OverlayRegistry):
+    │   └── For each visible overlay in z-order:
+    │       overlay.render_to_buffer(buffer, theme)
+    │       (z-order defined by plugin's OverlayRenderer::z_order())
     │
     └── FrameRenderer::flush()
         │
@@ -370,41 +413,239 @@ Editor mode is represented by a multi-dimensional `ModeState`:
 
 ```rust
 pub struct ModeState {
-    pub interactor_id: InteractorId, // Editor, Explorer, Telescope, Settings, or custom
+    pub interactor_id: ComponentId,  // Editor, CommandLine, or plugin-defined
     pub edit_mode: EditMode,         // Normal, Insert, Visual
-    pub sub_mode: SubMode,           // None, Command, OperatorPending, Leap
+    pub sub_mode: SubMode,           // None, Command, OperatorPending, Interactor(id)
 }
 
-// InteractorId is extensible (plugins can define custom IDs)
-pub struct InteractorId(pub &'static str);
+// ComponentId is extensible (plugins define their own IDs)
+pub struct ComponentId(pub &'static str);
 
-impl InteractorId {
+// Core defines only essential IDs
+impl ComponentId {
     pub const EDITOR: Self = Self("editor");
-    pub const EXPLORER: Self = Self("explorer");
-    pub const TELESCOPE: Self = Self("telescope");
-    pub const SETTINGS: Self = Self("settings");
     pub const COMMAND_LINE: Self = Self("command_line");
+    pub const STATUS_LINE: Self = Self("status_line");
+    pub const TAB_LINE: Self = Self("tab_line");
 }
+
+// Plugins define their own IDs in their crates:
+// pub const COMPONENT_ID: ComponentId = ComponentId("explorer");
+// pub const COMPONENT_ID: ComponentId = ComponentId("telescope");
 ```
 
-**Convenience constructors:**
+**Core constructors:**
 - `ModeState::normal()` - Editor + Normal mode
 - `ModeState::insert()` - Editor + Insert mode
 - `ModeState::visual()` - Editor + Visual mode
 - `ModeState::command()` - Editor + Command sub-mode
-- `ModeState::explorer()` - Explorer focus
-- `ModeState::telescope()` - Telescope focus (Insert mode)
-- `ModeState::telescope_normal()` - Telescope focus (Normal mode)
-- `ModeState::settings_menu()` - Settings menu focus
 - `ModeState::operator_pending(op, count)` - Operator-pending mode
-- `ModeState::leap(direction, op, count)` - Leap motion mode
-- `ModeState::with_interactor_id_and_mode(id, edit_mode)` - Custom interactor
+- `ModeState::with_interactor(id)` - Generic interactor focus
+- `ModeState::with_interactor_insert(id)` - Interactor + Insert mode
 
 **State checks:**
 - `is_normal()`, `is_insert()`, `is_visual()` - Edit mode checks
-- `is_command()`, `is_operator_pending()`, `is_leap()` - Sub-mode checks
+- `is_command()`, `is_operator_pending()` - Sub-mode checks
 - `is_interactor(id)` - Check if current interactor matches given ID
-- `is_editor_focus()`, `is_explorer_focus()`, `is_telescope_focus()` - Focus shortcuts
+- `is_editor_focus()` - Check if focused on editor
+
+## Plugin System
+
+The plugin system enables modular features with full lifecycle management.
+
+### Plugin Trait
+
+```rust
+pub trait Plugin: Send + Sync + 'static {
+    fn id(&self) -> PluginId;
+    fn name(&self) -> &'static str;
+    fn description(&self) -> &'static str;
+    fn dependencies(&self) -> Vec<TypeId> { vec![] }
+
+    // Lifecycle methods
+    fn build(&self, ctx: &mut PluginContext);
+    fn init_state(&self, registry: &PluginStateRegistry) {}
+    fn finish(&self, ctx: &mut PluginContext) {}
+    fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {}
+}
+```
+
+**Lifecycle:**
+1. `build()` - Register commands, keybindings
+2. `init_state()` - Initialize plugin state in registry
+3. `finish()` - Post-registration setup
+4. `subscribe()` - Subscribe to events via event bus
+
+### PluginStateRegistry
+
+Type-erased state storage for plugins:
+
+```rust
+pub struct PluginStateRegistry {
+    states: RwLock<HashMap<TypeId, Box<dyn Any + Send + Sync>>>,
+}
+
+impl PluginStateRegistry {
+    pub fn register<T: Send + Sync + 'static>(&self, state: T);
+    pub fn get<T: Send + Sync + 'static>(&self) -> Option<T>;
+    pub fn with_mut<T, R, F>(&self, f: F) -> Option<R>
+    where
+        T: Send + Sync + 'static,
+        F: FnOnce(&mut T) -> R;
+}
+```
+
+### Event Bus
+
+Type-erased event system for plugin communication:
+
+```rust
+pub trait Event: Send + Sync + 'static {
+    fn priority(&self) -> u32 { 100 }
+}
+
+pub struct EventBus {
+    handlers: RwLock<HashMap<TypeId, Vec<EventHandler>>>,
+}
+
+impl EventBus {
+    pub fn subscribe<E: Event, F>(&self, priority: u32, handler: F)
+    where
+        F: Fn(&E, &EventContext) -> EventResult + Send + Sync + 'static;
+
+    pub fn emit<E: Event>(&self, event: E);
+}
+```
+
+**Example - LeapPlugin:**
+```rust
+impl Plugin for LeapPlugin {
+    fn init_state(&self, registry: &PluginStateRegistry) {
+        registry.register(LeapState::new());
+    }
+
+    fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {
+        let state_clone = Arc::clone(&state);
+        bus.subscribe::<LeapStartEvent, _>(100, move |event, _ctx| {
+            state_clone.with_mut::<LeapState, _, _>(|leap_state| {
+                leap_state.start(event.direction, event.operator, event.count);
+            });
+            EventResult::Handled
+        });
+    }
+}
+```
+
+### Built-in Plugins (DefaultPlugins)
+
+| Plugin | Purpose |
+|--------|---------|
+| `CorePlugin` | Essential commands, keybindings |
+| `LeapPlugin` | Two-character jump navigation |
+| `WindowPlugin` | Window splits and navigation |
+| `UIComponentsPlugin` | UI component infrastructure |
+
+### External Feature Plugins
+
+| Plugin | Crate | Purpose |
+|--------|-------|---------|
+| `FoldPlugin` | `reovim-plugin-fold` | Code folding |
+| `SettingsMenuPlugin` | `reovim-plugin-settings-menu` | In-editor settings |
+| `CompletionPlugin` | `reovim-plugin-completion` | Text completion |
+| `ExplorerPlugin` | `reovim-plugin-explorer` | File browser |
+| `TelescopePlugin` | `reovim-plugin-telescope` | Fuzzy finder |
+| `TreesitterPlugin` | `reovim-plugin-treesitter` | Syntax highlighting |
+
+### Language Plugins
+
+| Plugin | Crate | Extensions |
+|--------|-------|------------|
+| `RustPlugin` | `reovim-lang-rust` | `.rs` |
+| `CPlugin` | `reovim-lang-c` | `.c`, `.h` |
+| `JavaScriptPlugin` | `reovim-lang-javascript` | `.js`, `.jsx` |
+| `PythonPlugin` | `reovim-lang-python` | `.py` |
+| `JsonPlugin` | `reovim-lang-json` | `.json` |
+| `TomlPlugin` | `reovim-lang-toml` | `.toml` |
+| `MarkdownPlugin` | `reovim-lang-markdown` | `.md` |
+
+### Decoupling Patterns
+
+When extracting plugins to separate crates, avoid tight coupling between core and plugin types.
+
+**BAD: Concrete type dependency**
+```rust
+// Core depends on concrete plugin type - TIGHT COUPLING
+// lib/core/src/screen/window.rs
+use crate::folding::FoldState;  // Core imports plugin type
+
+pub fn render(&self, fold_state: Option<&FoldState>) {
+    if fold_state.is_line_hidden(line) { ... }
+}
+```
+
+This prevents `FoldState` from moving to a plugin crate because:
+- Core directly imports the concrete type
+- Moving the type breaks core's compilation
+- Circular dependency: plugin depends on core, core depends on plugin type
+
+**GOOD: Trait-based abstraction**
+```rust
+// Core defines abstract trait - LOOSE COUPLING
+// lib/core/src/visibility.rs
+pub trait VisibilityProvider: Send + Sync {
+    fn is_hidden(&self, query: VisibilityQuery) -> bool;
+    fn get_marker(&self, query: VisibilityQuery) -> Option<VisibilityMarker>;
+}
+
+// lib/core/src/screen/window.rs
+pub fn render(&self, visibility: &dyn VisibilityProvider) {
+    if visibility.is_hidden(VisibilityQuery::Line(line)) { ... }
+}
+
+// Plugin implements the trait - can live in separate crate
+// plugins/features/fold/src/state.rs
+impl VisibilityProvider for FoldState {
+    fn is_hidden(&self, query: VisibilityQuery) -> bool {
+        match query {
+            VisibilityQuery::Line(line) => self.is_line_hidden(line),
+            _ => false,
+        }
+    }
+}
+```
+
+**Decoupling hierarchy:**
+```
+┌───────────────────────────────────────────────────────────┐
+│                          Core                             │
+│  ┌─────────────────────┐   ┌───────────────────────────┐  │
+│  │ VisibilityProvider  │◄──│ Window/Screen (uses trait)│  │
+│  │       (trait)       │   └───────────────────────────┘  │
+│  └─────────────────────┘                                  │
+└───────────────────────────────────────────────────────────┘
+              ▲
+              │ implements (no core dependency on impl)
+              │
+┌───────────────────────────────────────────────────────────┐
+│                    Fold Plugin Crate                      │
+│  ┌─────────────────────┐   ┌───────────────────────────┐  │
+│  │     FoldState       │──▶│ impl VisibilityProvider   │  │
+│  │    FoldManager      │   └───────────────────────────┘  │
+│  └─────────────────────┘                                  │
+└───────────────────────────────────────────────────────────┘
+```
+
+**Key principles:**
+1. Core defines traits, not concrete types
+2. Plugins implement traits
+3. Core uses `&dyn Trait` for dynamic dispatch
+4. Provide `NoOp` implementations as defaults
+
+**Available abstraction traits:**
+
+| Trait | Purpose | Query Types |
+|-------|---------|-------------|
+| `VisibilityProvider` | Line/cell visibility | `Line(u32)`, `Cell{line,col}`, `LineRange{start,end}` |
 
 ## Feature Modules
 
@@ -453,12 +694,6 @@ Two-character motion for quick cursor jumps (inspired by leap.nvim).
 
 **Integration:** Works with operators (`ds{char}{char}` to delete to target)
 
-### Which-Key (`lib/core/src/screen/which_key.rs`)
-
-Popup panel showing available keybindings after prefix keys.
-
-**Behavior:** Appears after timeout when prefix key is pressed (e.g., `g`, `Space`)
-
 ### Jump List (`lib/core/src/jump_list/`)
 
 Navigation history for Ctrl-O/Ctrl-I.
@@ -471,25 +706,31 @@ Multi-register copy/paste storage.
 
 **Features:** Default register `"`, named registers `a-z`
 
-### Treesitter (`lib/core/src/treesitter/`)
+### Treesitter Plugin (`plugins/features/treesitter/`)
 
-Syntax highlighting and semantic features powered by tree-sitter.
+Syntax highlighting and semantic features powered by tree-sitter. Now a separate plugin crate.
 
-**Components:**
-- `TreesitterManager` - Central manager for all buffers
+**Plugin Structure:**
+- `TreesitterPlugin` - Main plugin, handles events and lifecycle
+- `SharedTreesitterManager` - Shared state for all buffers
+- `LanguageRegistry` - Dynamic language registration
 - `BufferParser` - Per-buffer incremental parser
 - `Highlighter` - Query execution and highlight generation
-- `GrammarRegistry` - Language detection from file extension
-- `QueryCache` - Compiled query caching
 - `TextObjectResolver` - Semantic text object bounds
+
+**Language Plugins** (`plugins/languages/{lang}/`):
+- Each language implements `LanguageSupport` trait
+- Registers with treesitter via `RegisterLanguage` event
+- Provides grammar, highlight queries, decoration queries
 
 **Supported languages:** Rust, C, JavaScript, Python, JSON, TOML, Markdown
 
 **Features:**
-- Incremental parsing with 50ms debounce
+- Dynamic language registration via event bus
+- Incremental parsing with debouncing
 - Visible-range-only highlighting for performance
 - Semantic text objects (function, class, etc.)
-- Fold range computation
+- Core accesses via `plugin_state.text_object_source()`
 
 ### Code Folding (`lib/core/src/folding.rs`)
 
@@ -507,40 +748,50 @@ Code folding with treesitter-computed ranges.
 
 ### Interactor System (`lib/core/src/interactor/`)
 
-Manages input-receiving components with the enlist-based handler registration pattern (inspired by Bevy Plugin and Zed Action patterns).
+Manages input-receiving components (UIComponents) that can receive focus and handle input.
 
 **Components:**
-- `InteractorId` - Unique identifier for interactors (Editor, Telescope, Explorer, Settings)
-- `Interactor` trait - Interface for input-receiving components
-- `InteractorRegistry` - Manages registered interactors and tracks active focus
+- `ComponentId` - Unique identifier for interactors (core defines Editor, CommandLine only)
+- `UIComponent` trait - Interface for input-receiving components
+- `UIComponentRegistry` - Manages registered UI components and tracks active focus
 - `InputResult` - Result enum: `NotHandled`, `Handled`, `SendEvent(InnerEvent)`
 
-**Interactor IDs:**
-| InteractorId | Component |
-|--------------|-----------|
+**Core ComponentIds:**
+| ComponentId | Component |
+|-------------|-----------|
 | `EDITOR` | Main editor windows |
-| `TELESCOPE` | Fuzzy finder |
-| `EXPLORER` | File browser |
-| `SETTINGS` | Settings menu |
+| `COMMAND_LINE` | Ex-command input |
 
-**Enlist Pattern (Handler Registration):**
+Plugins define their own `ComponentId` constants and register UIComponent implementations:
 ```rust
-// At initialization (enlist.rs) - hardcoding OK here
-runtime.enlist_focus_input_handler(InteractorId::TELESCOPE, handle_telescope_input);
-runtime.enlist_focus_input_handler(InteractorId::EDITOR, handle_editor_input);
+// In plugins/features/explorer/src/lib.rs
+pub const COMPONENT_ID: ComponentId = ComponentId("explorer");
 
-// At runtime (event_loop.rs) - fully generic dispatch
-InnerEvent::FocusInput { char, delete, clear_landing } => {
-    if let Some(&handler) = self.focus_input_handlers.get(&self.mode_state.interactor_id) {
-        handler(self, char, delete, clear_landing);  // No match on InteractorId!
+impl UIComponent for Explorer {
+    fn id(&self) -> ComponentId { COMPONENT_ID }
+    fn handle_input(&mut self, input: InputEvent) -> InputResult { ... }
+}
+```
+
+**Registration Pattern:**
+```rust
+// Plugins register their UIComponents during build()
+fn build(&self, ctx: &mut PluginContext) {
+    ctx.register_ui_component(Explorer::new());
+}
+
+// Runtime dispatches generically via ComponentId lookup
+fn handle_focus_input(&mut self, input: InputEvent) {
+    if let Some(component) = self.ui_registry.get_mut(&self.mode_state.interactor_id) {
+        component.handle_input(input);
     }
 }
 ```
 
 **Benefits:**
-- Adding new interactors only requires calling `enlist_*` at initialization
-- Runtime dispatch is fully generic via function pointer lookup
-- Handler implementations centralized in `enlist.rs`
+- Core has no knowledge of specific plugins
+- Plugins self-register their UIComponents
+- Runtime dispatch is fully generic via ComponentId lookup
 
 ### Modifier System (`lib/core/src/modifier/`)
 

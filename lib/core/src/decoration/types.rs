@@ -8,8 +8,75 @@ use std::any::Any;
 use crate::{
     highlight::{Span, Style},
     modd::EditMode,
-    treesitter::LanguageId,
 };
+
+/// Language identifier for decoration system
+///
+/// Uses string-based identification to allow dynamic language registration
+/// via the plugin system.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LanguageId {
+    /// Rust language
+    Rust,
+    /// C language
+    C,
+    /// JavaScript language
+    JavaScript,
+    /// Python language
+    Python,
+    /// JSON format
+    Json,
+    /// TOML format
+    Toml,
+    /// Markdown
+    Markdown,
+    /// Markdown inline content
+    MarkdownInline,
+    /// Unknown language
+    Unknown,
+}
+
+impl LanguageId {
+    /// Get the language ID as a string
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Rust => "rust",
+            Self::C => "c",
+            Self::JavaScript => "javascript",
+            Self::Python => "python",
+            Self::Json => "json",
+            Self::Toml => "toml",
+            Self::Markdown => "markdown",
+            Self::MarkdownInline => "markdown_inline",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    /// Create a `LanguageId` from a string
+    #[must_use]
+    pub fn from_string(s: &str) -> Self {
+        match s {
+            "rust" => Self::Rust,
+            "c" => Self::C,
+            "javascript" | "js" => Self::JavaScript,
+            "python" | "py" => Self::Python,
+            "json" => Self::Json,
+            "toml" => Self::Toml,
+            "markdown" | "md" => Self::Markdown,
+            "markdown_inline" => Self::MarkdownInline,
+            _ => Self::Unknown,
+        }
+    }
+}
+
+impl std::str::FromStr for LanguageId {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self::from_string(s))
+    }
+}
 
 /// Context passed to language renderers for decoration generation
 #[derive(Debug)]

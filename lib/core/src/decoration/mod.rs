@@ -27,5 +27,5 @@ mod types;
 pub use {
     registry::LanguageRendererRegistry,
     store::{BufferDecorations, DecorationRef, DecorationStore},
-    types::{Decoration, DecorationContext, DecorationGroup, LanguageRenderer},
+    types::{Decoration, DecorationContext, DecorationGroup, LanguageId, LanguageRenderer},
 };

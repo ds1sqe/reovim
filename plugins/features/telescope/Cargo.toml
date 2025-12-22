@@ -1,0 +1,11 @@
+[package]
+name = "reovim-plugin-telescope"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+reovim-core = { path = "../../../lib/core" }
+nucleo = "0.5"
+ignore = "0.4"
+tokio = { version = "1", features = ["sync", "process", "io-util"] }

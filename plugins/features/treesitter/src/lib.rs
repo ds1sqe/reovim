@@ -1,0 +1,171 @@
+//! Treesitter plugin for reovim
+//!
+//! Provides syntax highlighting, code folding, and semantic text objects
+//! via tree-sitter parsing. Language support is provided by separate
+//! language plugins that register with this infrastructure plugin.
+
+use std::sync::Arc;
+
+use reovim_core::{
+    event_bus::{EventBus, EventResult, FileOpened},
+    plugin::{Plugin, PluginContext, PluginId, PluginStateRegistry},
+};
+
+pub mod edit;
+pub mod events;
+pub mod highlighter;
+pub mod manager;
+pub mod parser;
+pub mod queries;
+pub mod registry;
+pub mod state;
+pub mod text_objects;
+pub mod theme;
+
+pub use {
+    edit::BufferEdit,
+    events::{
+        HighlightsReady, ParseCompleted, ParseRequest, RegisterLanguage, TreesitterFoldRanges,
+    },
+    highlighter::Highlighter,
+    manager::TreesitterManager,
+    parser::BufferParser,
+    queries::{QueryCache, QueryType},
+    registry::{LanguageRegistry, LanguageSupport, RegisteredLanguage},
+    state::SharedTreesitterManager,
+    theme::TreesitterTheme,
+};
+
+/// Re-export tree-sitter types for language plugins
+pub use tree_sitter::Language;
+
+/// Treesitter infrastructure plugin
+///
+/// Manages tree-sitter parsing and highlighting for all buffers.
+/// Language support is provided dynamically by language plugins
+/// that emit `RegisterLanguage` events.
+pub struct TreesitterPlugin;
+
+impl Plugin for TreesitterPlugin {
+    fn id(&self) -> PluginId {
+        PluginId::new("reovim:treesitter")
+    }
+
+    fn name(&self) -> &'static str {
+        "Treesitter"
+    }
+
+    fn description(&self) -> &'static str {
+        "Syntax highlighting and semantic analysis via tree-sitter"
+    }
+
+    fn build(&self, _ctx: &mut PluginContext) {
+        // No commands to register - treesitter works via events
+    }
+
+    fn init_state(&self, registry: &PluginStateRegistry) {
+        // Create shared treesitter manager
+        let shared = Arc::new(SharedTreesitterManager::new());
+
+        // Register as the semantic text object source
+        registry.set_text_object_source(Arc::clone(&shared) as _);
+
+        // Store in plugin state registry for other plugins to access
+        registry.register(shared);
+
+        tracing::debug!("TreesitterPlugin: initialized state in registry");
+    }
+
+    fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {
+        // Handle language registration from language plugins
+        {
+            let state = Arc::clone(&state);
+            bus.subscribe::<RegisterLanguage, _>(100, move |event, _ctx| {
+                state.with_mut::<Arc<SharedTreesitterManager>, _, _>(|manager| {
+                    manager.with_mut(|m| {
+                        m.register_language(Arc::clone(&event.language));
+                    });
+                    tracing::info!(
+                        language_id = %event.language.language_id(),
+                        "Registered language with treesitter"
+                    );
+                });
+                EventResult::Handled
+            });
+        }
+
+        // Handle file open - detect language and init parser
+        {
+            let state = Arc::clone(&state);
+            bus.subscribe::<FileOpened, _>(100, move |event, _ctx| {
+                state.with_mut::<Arc<SharedTreesitterManager>, _, _>(|manager| {
+                    let language_id =
+                        manager.with_mut(|m| m.init_buffer(event.buffer_id, Some(&event.path)));
+
+                    if let Some(lang_id) = language_id {
+                        tracing::debug!(
+                            buffer_id = event.buffer_id,
+                            language_id = %lang_id,
+                            "Initialized treesitter for buffer"
+                        );
+                    }
+                });
+                EventResult::Handled
+            });
+        }
+
+        // Handle buffer close - cleanup parser state
+        {
+            use reovim_core::event_bus::BufferClosed;
+            let state = Arc::clone(&state);
+            bus.subscribe::<BufferClosed, _>(100, move |event, _ctx| {
+                state.with_mut::<Arc<SharedTreesitterManager>, _, _>(|manager| {
+                    manager.with_mut(|m| {
+                        m.remove_buffer(event.buffer_id);
+                    });
+                });
+                EventResult::Handled
+            });
+        }
+
+        // Handle buffer modifications - schedule reparse
+        {
+            use reovim_core::event_bus::BufferModified;
+            let state = Arc::clone(&state);
+            bus.subscribe::<BufferModified, _>(100, move |event, _ctx| {
+                state.with_mut::<Arc<SharedTreesitterManager>, _, _>(|manager| {
+                    manager.with_mut(|m| {
+                        if m.has_parser(event.buffer_id) {
+                            m.schedule_reparse(event.buffer_id);
+                        }
+                    });
+                });
+                EventResult::Handled
+            });
+        }
+
+        // Handle parse requests
+        {
+            let state = Arc::clone(&state);
+            bus.subscribe::<ParseRequest, _>(100, move |event, ctx| {
+                let result = state.with_mut::<Arc<SharedTreesitterManager>, _, _>(|manager| {
+                    let (language_id, has_parser) = manager.with(|m| {
+                        (m.buffer_language(event.buffer_id), m.has_parser(event.buffer_id))
+                    });
+
+                    if has_parser { language_id } else { None }
+                });
+
+                if let Some(Some(lang_id)) = result {
+                    ctx.emit(ParseCompleted {
+                        buffer_id: event.buffer_id,
+                        language_id: lang_id,
+                    });
+                }
+                EventResult::Handled
+            });
+        }
+
+        tracing::debug!("TreesitterPlugin: subscribed to events");
+    }
+}

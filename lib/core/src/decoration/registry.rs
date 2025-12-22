@@ -4,9 +4,7 @@
 
 use std::collections::HashMap;
 
-use crate::treesitter::LanguageId;
-
-use super::types::LanguageRenderer;
+use super::types::{LanguageId, LanguageRenderer};
 
 /// Registry for language-specific renderers
 ///

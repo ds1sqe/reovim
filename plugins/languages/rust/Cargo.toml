@@ -1,0 +1,12 @@
+[package]
+name = "reovim-lang-rust"
+version.workspace = true
+edition.workspace = true
+description = "Rust language support for reovim"
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+reovim-core = { path = "../../../lib/core" }
+reovim-plugin-treesitter = { path = "../../features/treesitter" }
+tree-sitter-rust = "0.24"

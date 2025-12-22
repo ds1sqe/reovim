@@ -1,0 +1,12 @@
+[package]
+name = "reovim-lang-toml"
+version.workspace = true
+edition.workspace = true
+description = "TOML language support for reovim"
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+reovim-core = { path = "../../../lib/core" }
+reovim-plugin-treesitter = { path = "../../features/treesitter" }
+tree-sitter-toml-ng = "0.7"

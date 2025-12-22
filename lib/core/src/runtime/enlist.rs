@@ -9,30 +9,8 @@
 
 use {
     super::Runtime,
-    crate::{
-        buffer::TextOps,
-        event::{InnerEvent, TelescopeEvent},
-        screen::Position,
-    },
+    crate::{buffer::TextOps, screen::Position},
 };
-
-/// Telescope focus input handler
-///
-/// Modifies telescope query and triggers async filtering via `UpdateQuery` event.
-pub fn handle_telescope_input(rt: &mut Runtime, char: Option<char>, delete: bool, _clear: bool) {
-    if let Some(c) = char {
-        rt.telescope_state.insert_char(c);
-    }
-    if delete {
-        rt.telescope_state.delete_char();
-    }
-    // Trigger async filtering
-    let query = rt.telescope_state.query.clone();
-    drop(
-        rt.tx
-            .try_send(InnerEvent::TelescopeEvent(TelescopeEvent::UpdateQuery { query })),
-    );
-}
 
 /// Editor focus input handler
 ///

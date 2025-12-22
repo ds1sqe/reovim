@@ -3,7 +3,6 @@
 use crate::{
     buffer::{Buffer, SelectionMode, SelectionOps},
     decoration::{Decoration, DecorationStore},
-    folding::FoldState,
     frame::FrameBuffer,
     highlight::{
         ColorMode, Highlight, HighlightGroup, HighlightStore, Span, Style, Theme,
@@ -11,6 +10,7 @@ use crate::{
     },
     indent::IndentAnalyzer,
     modd::EditMode,
+    visibility::{BufferVisibilitySource, VisibilityQuery},
 };
 
 use super::{
@@ -379,7 +379,7 @@ impl Window {
         highlight_store: &HighlightStore,
         color_mode: ColorMode,
         theme: &Theme,
-        fold_state: Option<&FoldState>,
+        visibility_source: &dyn BufferVisibilitySource,
         indent_analyzer: &IndentAnalyzer,
     ) -> Vec<String> {
         let mut lines: Vec<String> = Vec::new();
@@ -409,23 +409,22 @@ impl Window {
         while display_rows_rendered < self.height && (buffer_row as usize) < buf.contents.len() {
             let row = buffer_row;
 
-            // Check if this line is hidden inside a collapsed fold
-            if let Some(fs) = fold_state
-                && fs.is_line_hidden(u32::from(row))
-            {
+            // Check if this line is hidden (e.g., inside a collapsed fold)
+            if visibility_source.is_hidden(buf.id, VisibilityQuery::Line(u32::from(row))) {
                 buffer_row += 1;
                 continue;
             }
 
-            // Check if this line starts a collapsed fold
-            let fold_marker = fold_state.and_then(|fs| fs.get_fold_marker(u32::from(row)));
+            // Check if this line has a visibility marker (e.g., fold marker)
+            let visibility_marker =
+                visibility_source.get_marker(buf.id, VisibilityQuery::Line(u32::from(row)));
 
-            let line_out = if let Some((hidden_count, preview)) = fold_marker {
+            let line_out = if let Some(marker) = visibility_marker {
                 self.render_fold_marker_line(
                     row,
                     cursor_y,
-                    hidden_count,
-                    preview,
+                    marker.hidden_count,
+                    &marker.preview,
                     num_width,
                     theme,
                     color_mode,
@@ -940,7 +939,7 @@ impl Window {
         buf: &Buffer,
         highlight_store: &HighlightStore,
         theme: &Theme,
-        fold_state: Option<&FoldState>,
+        visibility_source: &dyn BufferVisibilitySource,
         indent_analyzer: &IndentAnalyzer,
         decoration_store: Option<&DecorationStore>,
         edit_mode: &EditMode,
@@ -967,20 +966,19 @@ impl Window {
         while display_row < self.height && (buffer_row as usize) < buf.contents.len() {
             let row = buffer_row;
 
-            // Check if this line is hidden inside a collapsed fold
-            if let Some(fs) = fold_state
-                && fs.is_line_hidden(u32::from(row))
-            {
+            // Check if this line is hidden (e.g., inside a collapsed fold)
+            if visibility_source.is_hidden(buf.id, VisibilityQuery::Line(u32::from(row))) {
                 buffer_row += 1;
                 continue;
             }
 
-            // Check if this line starts a collapsed fold
-            let fold_marker = fold_state.and_then(|fs| fs.get_fold_marker(u32::from(row)));
+            // Check if this line has a visibility marker (e.g., fold marker)
+            let visibility_marker =
+                visibility_source.get_marker(buf.id, VisibilityQuery::Line(u32::from(row)));
 
             let screen_y = self.anchor.y + display_row;
 
-            if fold_marker.is_some() {
+            if visibility_marker.is_some() {
                 // Render fold marker (simplified - just show fold indicator)
                 let gutter_width = self.render_line_number_to_buffer(
                     buffer,

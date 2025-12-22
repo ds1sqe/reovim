@@ -8,7 +8,6 @@
 //! - `popup`: Completion popup styles
 //! - `telescope`: Fuzzy finder styles
 //! - `whichkey`: Which-key panel styles
-//! - `leap`: Jump navigation styles
 //! - `fold`: Code folding styles
 //! - `indent`: Indentation guide styles
 //! - `scrollbar`: Scrollbar with diagnostic marks
@@ -86,7 +85,6 @@ pub struct StatusLineModeStyles {
     pub insert: Style,
     pub visual: Style,
     pub command: Style,
-    pub explorer: Style,
 }
 
 #[derive(Debug, Clone)]
@@ -97,29 +95,12 @@ pub struct PopupStyles {
 }
 
 #[derive(Debug, Clone)]
-pub struct TelescopeStyles {
-    pub border: Style,
-    pub normal: Style,
-    pub selected: Style,
-    pub preview: Style,
-    pub preview_highlight: Style,
-    pub prompt: Style,
-    pub input: Style,
-}
-
-#[derive(Debug, Clone)]
 pub struct WhichKeyStyles {
     pub background: Style,
     pub key: Style,
     pub description: Style,
     pub prefix: Style,
     pub border: Style,
-}
-
-#[derive(Debug, Clone)]
-pub struct LeapStyles {
-    pub label: Style,
-    pub match_highlight: Style,
 }
 
 #[derive(Debug, Clone)]
@@ -175,9 +156,7 @@ pub struct Theme {
     pub selection: SelectionStyles,
     pub statusline: StatusLineStyles,
     pub popup: PopupStyles,
-    pub telescope: TelescopeStyles,
     pub whichkey: WhichKeyStyles,
-    pub leap: LeapStyles,
     pub fold: FoldStyles,
     pub indent: IndentStyles,
     pub scrollbar: ScrollbarStyles,
@@ -284,7 +263,6 @@ impl Theme {
                     insert: Style::new().fg(bg_dark).bg(blue).bold(),
                     visual: Style::new().fg(bg_dark).bg(magenta).bold(),
                     command: Style::new().fg(bg_dark).bg(yellow).bold(),
-                    explorer: Style::new().fg(bg_dark).bg(cyan).bold(),
                 },
                 filename: Style::new().fg(fg).bg(bg_light),
                 modified: Style::new().fg(yellow).bg(bg_light),
@@ -296,25 +274,12 @@ impl Theme {
                 selected: Style::new().fg(bg_dark).bg(blue),
                 border: Style::new().fg(fg_dark).bg(bg_medium),
             },
-            telescope: TelescopeStyles {
-                border: Style::new().fg(blue),
-                normal: Style::new().fg(fg).bg(bg_medium),
-                selected: Style::new().fg(bg_dark).bg(blue),
-                preview: Style::new().fg(fg_dark).bg(bg_medium),
-                preview_highlight: Style::new().fg(yellow).bg(bg_light),
-                prompt: Style::new().fg(blue).bold(),
-                input: Style::new().fg(fg),
-            },
             whichkey: WhichKeyStyles {
                 background: Style::new().bg(bg_medium),
                 key: Style::new().fg(yellow).bg(bg_medium).bold(),
                 description: Style::new().fg(fg).bg(bg_medium),
                 prefix: Style::new().fg(cyan).bg(bg_medium).bold(),
                 border: Style::new().fg(fg_dark).bg(bg_medium),
-            },
-            leap: LeapStyles {
-                label: Style::new().fg(bg_dark).bg(yellow).bold(),
-                match_highlight: Style::new().fg(magenta).bold(),
             },
             fold: FoldStyles {
                 marker: Style::new().fg(fg_dark).italic(),
@@ -396,7 +361,6 @@ impl Theme {
                     insert: Style::new().fg(Color::White).bg(Color::DarkBlue).bold(),
                     visual: Style::new().fg(Color::White).bg(Color::DarkMagenta).bold(),
                     command: Style::new().fg(Color::Black).bg(Color::DarkYellow).bold(),
-                    explorer: Style::new().fg(Color::White).bg(Color::DarkCyan).bold(),
                 },
                 filename: Style::new().fg(fg_light),
                 modified: Style::new().fg(Color::DarkYellow),
@@ -408,25 +372,12 @@ impl Theme {
                 selected: Style::new().fg(Color::White).bg(Color::DarkBlue),
                 border: Style::new().fg(Color::Grey).bg(Color::AnsiValue(252)),
             },
-            telescope: TelescopeStyles {
-                border: Style::new().fg(Color::DarkBlue),
-                normal: Style::new().fg(fg_light).bg(Color::AnsiValue(254)),
-                selected: Style::new().fg(Color::White).bg(Color::DarkBlue),
-                preview: Style::new().fg(Color::DarkGrey).bg(Color::AnsiValue(255)),
-                preview_highlight: Style::new().fg(Color::DarkBlue).bg(Color::AnsiValue(250)),
-                prompt: Style::new().fg(Color::DarkBlue).bold(),
-                input: Style::new().fg(fg_light),
-            },
             whichkey: WhichKeyStyles {
                 background: Style::new().bg(bg_medium),
                 key: Style::new().fg(Color::DarkBlue).bg(bg_medium).bold(),
                 description: Style::new().fg(fg_light).bg(bg_medium),
                 prefix: Style::new().fg(Color::DarkCyan).bg(bg_medium).bold(),
                 border: Style::new().fg(Color::Grey).bg(bg_medium),
-            },
-            leap: LeapStyles {
-                label: Style::new().fg(Color::White).bg(Color::DarkYellow).bold(),
-                match_highlight: Style::new().fg(Color::DarkMagenta).bold(),
             },
             fold: FoldStyles {
                 marker: Style::new().fg(Color::Grey).italic(),
@@ -525,11 +476,6 @@ impl Theme {
             g: 162,
             b: 247,
         };
-        let purple = Color::Rgb {
-            r: 187,
-            g: 154,
-            b: 247,
-        };
         let green = Color::Rgb {
             r: 158,
             g: 206,
@@ -579,7 +525,6 @@ impl Theme {
                     insert: Style::new().fg(bg).bg(blue).bold(),
                     visual: Style::new().fg(bg).bg(magenta).bold(),
                     command: Style::new().fg(bg).bg(orange).bold(),
-                    explorer: Style::new().fg(bg).bg(cyan).bold(),
                 },
                 filename: Style::new().fg(fg),
                 modified: Style::new().fg(orange),
@@ -591,25 +536,12 @@ impl Theme {
                 selected: Style::new().fg(bg).bg(blue),
                 border: Style::new().fg(fg_dark).bg(bg_dark),
             },
-            telescope: TelescopeStyles {
-                border: Style::new().fg(bg_dark).bg(bg_dark),
-                normal: Style::new().fg(fg).bg(bg_dark),
-                selected: Style::new().fg(bg).bg(blue),
-                preview: Style::new().fg(comment).bg(bg_dark),
-                preview_highlight: Style::new().fg(orange).bg(bg_highlight),
-                prompt: Style::new().fg(orange).bold(),
-                input: Style::new().fg(fg),
-            },
             whichkey: WhichKeyStyles {
                 background: Style::new().bg(bg_dark),
                 key: Style::new().fg(orange).bg(bg_dark).bold(),
                 description: Style::new().fg(fg).bg(bg_dark),
                 prefix: Style::new().fg(cyan).bg(bg_dark).bold(),
                 border: Style::new().fg(fg_dark).bg(bg_dark),
-            },
-            leap: LeapStyles {
-                label: Style::new().fg(bg).bg(orange).bold(),
-                match_highlight: Style::new().fg(purple).bold(),
             },
             fold: FoldStyles {
                 marker: Style::new().fg(fg_dark).italic(),
@@ -694,7 +626,6 @@ mod tests {
         assert!(theme.statusline.mode.insert.bg.is_some());
         assert!(theme.statusline.mode.visual.bg.is_some());
         assert!(theme.statusline.mode.command.bg.is_some());
-        assert!(theme.statusline.mode.explorer.bg.is_some());
     }
 
     #[test]

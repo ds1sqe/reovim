@@ -1,0 +1,19 @@
+[package]
+name = "reovim-plugin-fold"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Code folding plugin for reovim"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-core = { path = "../../../lib/core" }
+tracing.workspace = true
+
+[dev-dependencies]

@@ -2,8 +2,6 @@
 //!
 //! Uses `ComponentId` for focus context and `EditMode`/`SubMode` for input handling.
 
-use crate::leap::LeapDirection;
-
 // Re-export ComponentId for convenience (replaces ComponentId)
 pub use crate::ui_component::ComponentId;
 
@@ -35,12 +33,15 @@ pub enum SubMode {
         operator: OperatorType,
         count: Option<usize>,
     },
-    /// Leap motion mode (s/S to jump to two-character sequence)
-    Leap {
-        direction: LeapDirection,
-        operator: Option<OperatorType>,
-        count: Option<usize>,
-    },
+    /// Generic interactor sub-mode for plugins
+    ///
+    /// This variant allows plugins to define their own sub-modes without
+    /// modifying the core `SubMode` enum. The `ComponentId` identifies the
+    /// plugin/feature that owns this sub-mode.
+    ///
+    /// Feature-specific state should be stored in the plugin's state
+    /// via `PluginStateRegistry`.
+    Interactor(ComponentId),
 }
 
 /// Insert mode variants
@@ -197,56 +198,6 @@ impl ModeState {
         }
     }
 
-    /// Explorer + Normal mode
-    #[must_use]
-    pub const fn explorer() -> Self {
-        Self {
-            interactor_id: ComponentId::EXPLORER,
-            edit_mode: EditMode::Normal,
-            sub_mode: SubMode::None,
-        }
-    }
-
-    /// Explorer + Insert mode (for input)
-    #[must_use]
-    pub const fn explorer_input() -> Self {
-        Self {
-            interactor_id: ComponentId::EXPLORER,
-            edit_mode: EditMode::Insert(InsertVariant::Standard),
-            sub_mode: SubMode::None,
-        }
-    }
-
-    /// Telescope + Insert mode (default for typing)
-    #[must_use]
-    pub const fn telescope() -> Self {
-        Self {
-            interactor_id: ComponentId::TELESCOPE,
-            edit_mode: EditMode::Insert(InsertVariant::Standard),
-            sub_mode: SubMode::None,
-        }
-    }
-
-    /// Telescope + Normal mode (for navigation)
-    #[must_use]
-    pub const fn telescope_normal() -> Self {
-        Self {
-            interactor_id: ComponentId::TELESCOPE,
-            edit_mode: EditMode::Normal,
-            sub_mode: SubMode::None,
-        }
-    }
-
-    /// Settings menu mode
-    #[must_use]
-    pub const fn settings_menu() -> Self {
-        Self {
-            interactor_id: ComponentId::SETTINGS,
-            edit_mode: EditMode::Normal,
-            sub_mode: SubMode::None,
-        }
-    }
-
     /// Operator-pending mode
     #[must_use]
     pub const fn operator_pending(operator: OperatorType, count: Option<usize>) -> Self {
@@ -257,31 +208,7 @@ impl ModeState {
         }
     }
 
-    /// Leap motion mode
-    #[must_use]
-    pub const fn leap(
-        direction: LeapDirection,
-        operator: Option<OperatorType>,
-        count: Option<usize>,
-    ) -> Self {
-        Self {
-            interactor_id: ComponentId::EDITOR,
-            edit_mode: EditMode::Normal,
-            sub_mode: SubMode::Leap {
-                direction,
-                operator,
-                count,
-            },
-        }
-    }
-
     // === State checks ===
-
-    /// Check if the current interactor matches the given interactor ID
-    #[must_use]
-    pub fn is_interactor(&self, id: ComponentId) -> bool {
-        self.interactor_id.0 == id.0
-    }
 
     /// Check if in command sub-mode
     #[must_use]
@@ -293,12 +220,6 @@ impl ModeState {
     #[must_use]
     pub const fn is_operator_pending(&self) -> bool {
         matches!(self.sub_mode, SubMode::OperatorPending { .. })
-    }
-
-    /// Check if in leap sub-mode
-    #[must_use]
-    pub const fn is_leap(&self) -> bool {
-        matches!(self.sub_mode, SubMode::Leap { .. })
     }
 
     /// Check if in normal edit mode (any focus)
@@ -322,19 +243,7 @@ impl ModeState {
     /// Check if focused on editor
     #[must_use]
     pub fn is_editor_focus(&self) -> bool {
-        self.is_interactor(ComponentId::EDITOR)
-    }
-
-    /// Check if focused on explorer
-    #[must_use]
-    pub fn is_explorer_focus(&self) -> bool {
-        self.is_interactor(ComponentId::EXPLORER)
-    }
-
-    /// Check if focused on telescope
-    #[must_use]
-    pub fn is_telescope_focus(&self) -> bool {
-        self.is_interactor(ComponentId::TELESCOPE)
+        self.interactor_id.0 == "editor"
     }
 
     /// Check if the mode accepts character input (insert mode or command mode)
@@ -345,22 +254,20 @@ impl ModeState {
 
     /// Get display string for status line (orthogonal format)
     ///
-    /// Format: ` INTERACTOR | EDIT_MODE ` or shows sub-mode when active
+    /// Format: ` EDIT_MODE ` - shows edit mode only.
+    /// For plugin-specific display, use `DisplayRegistry`.
     #[must_use]
     pub fn display_string(&self) -> &'static str {
         // Sub-mode display (if active)
         match &self.sub_mode {
             SubMode::Command => return " COMMAND ",
             SubMode::OperatorPending { .. } => return " OPERATOR ",
-            SubMode::Leap { .. } => return " LEAP ",
+            SubMode::Interactor(_) => return " INTERACTOR ",
             SubMode::None => {}
         }
 
-        // ComponentId × EditMode (orthogonal display)
-        let is_editor = self.interactor_id == ComponentId::EDITOR;
-        let is_explorer = self.interactor_id == ComponentId::EXPLORER;
-        let is_telescope = self.interactor_id == ComponentId::TELESCOPE;
-        let is_settings = self.interactor_id == ComponentId::SETTINGS;
+        // Edit mode display (generic, no plugin-specific knowledge)
+        let is_editor = self.interactor_id.0 == "editor";
 
         match &self.edit_mode {
             EditMode::Normal if is_editor => " NORMAL ",
@@ -368,22 +275,13 @@ impl ModeState {
             EditMode::Visual(VisualVariant::Char) if is_editor => " VISUAL ",
             EditMode::Visual(VisualVariant::Line) if is_editor => " V-LINE ",
             EditMode::Visual(VisualVariant::Block) if is_editor => " V-BLOCK ",
-            // Explorer
-            EditMode::Normal if is_explorer => " EXPLORER ",
-            EditMode::Insert(_) if is_explorer => " EXPLORER | INSERT ",
-            EditMode::Visual(_) if is_explorer => " EXPLORER | VISUAL ",
-            // Telescope
-            EditMode::Normal if is_telescope => " TELESCOPE ",
-            EditMode::Insert(_) if is_telescope => " TELESCOPE | INSERT ",
-            EditMode::Visual(_) if is_telescope => " TELESCOPE | VISUAL ",
-            // Settings
-            EditMode::Normal if is_settings => " SETTINGS ",
-            EditMode::Insert(_) if is_settings => " SETTINGS | INSERT ",
-            EditMode::Visual(_) if is_settings => " SETTINGS | VISUAL ",
-            // Fallback for custom interactor IDs
+            // Non-editor components: show edit mode only
+            // Plugin-specific display should use DisplayRegistry
             EditMode::Normal => " NORMAL ",
             EditMode::Insert(_) => " INSERT ",
-            EditMode::Visual(_) => " VISUAL ",
+            EditMode::Visual(VisualVariant::Char) => " VISUAL ",
+            EditMode::Visual(VisualVariant::Line) => " V-LINE ",
+            EditMode::Visual(VisualVariant::Block) => " V-BLOCK ",
         }
     }
 }

@@ -1,8 +1,10 @@
 //! Core plugin traits and types
 
-use std::any::TypeId;
+use std::{any::TypeId, sync::Arc};
 
-use super::PluginContext;
+use crate::event_bus::EventBus;
+
+use super::{PluginContext, PluginStateRegistry};
 
 /// Unique identifier for a plugin
 ///
@@ -110,5 +112,52 @@ pub trait Plugin: Send + Sync + 'static {
     /// Unlike dependencies, these are not required to be present.
     fn optional_dependencies(&self) -> Vec<TypeId> {
         vec![]
+    }
+
+    // =========================================================================
+    // NEW: Runtime Lifecycle Methods
+    // =========================================================================
+
+    /// Initialize plugin state
+    ///
+    /// Called after all plugins are built, before the event loop starts.
+    /// Plugins should register their state with the registry here.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// fn init_state(&self, registry: &PluginStateRegistry) {
+    ///     registry.register(MyPluginState::new());
+    /// }
+    /// ```
+    fn init_state(&self, _registry: &PluginStateRegistry) {
+        // Default: no state to initialize
+    }
+
+    /// Subscribe to events via the event bus
+    ///
+    /// Called after all plugins have initialized their state.
+    /// Plugins should register event handlers here.
+    ///
+    /// # Arguments
+    ///
+    /// * `bus` - The event bus to subscribe to
+    /// * `state` - Shared reference to the plugin state registry
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {
+    ///     let state_clone = state.clone();
+    ///     bus.subscribe::<MyEvent, _>(100, move |event, ctx| {
+    ///         state_clone.with_mut::<MyPluginState, _, _>(|s| {
+    ///             s.handle_event(event);
+    ///         });
+    ///         EventResult::Handled
+    ///     });
+    /// }
+    /// ```
+    fn subscribe(&self, _bus: &EventBus, _state: Arc<PluginStateRegistry>) {
+        // Default: no event subscriptions
     }
 }

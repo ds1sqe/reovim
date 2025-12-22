@@ -10,23 +10,20 @@ use {
         constants::RESET_STYLE,
         highlight::{ColorMode, Theme},
         modd::{EditMode, ModeState, SubMode},
-        ui_component::ComponentId,
     },
     reovim_sys::{cursor::MoveTo, queue, style::Print},
     std::io::Write,
 };
 
-/// Mode icons (Nerd Font)
+/// Mode icons (Nerd Font) - core modes only
+/// Plugin-specific icons are provided via `DisplayRegistry`
 mod icons {
     pub const NORMAL: &str = "󰆾 ";
     pub const INSERT: &str = "󰙏 ";
     pub const VISUAL: &str = "󰒉 ";
     pub const COMMAND: &str = "󰘳 ";
-    pub const EXPLORER: &str = "󰙅 ";
-    pub const LEAP: &str = "󱐋 ";
     pub const OPERATOR: &str = "󰦒 ";
-    pub const TELESCOPE: &str = "󰭎 ";
-    pub const SETTINGS: &str = "󰒓 ";
+    pub const INTERACTOR: &str = "󰆾 "; // Generic icon for plugin interactors
 }
 
 /// Trait for rendering status line and command line
@@ -50,24 +47,19 @@ pub trait StatusLineRenderer {
 }
 
 /// Get mode icon for the current mode state
+/// Returns core mode icons only - plugins provide their own via `DisplayRegistry`
 fn mode_icon(mode: &ModeState) -> &'static str {
     // Sub-modes take precedence
     match &mode.sub_mode {
         SubMode::Command => return icons::COMMAND,
         SubMode::OperatorPending { .. } => return icons::OPERATOR,
-        SubMode::Leap { .. } => return icons::LEAP,
+        SubMode::Interactor(_) => return icons::INTERACTOR,
         SubMode::None => {}
     }
 
-    // Then check interactor
-    if mode.interactor_id == ComponentId::TELESCOPE {
-        return icons::TELESCOPE;
-    }
-    if mode.interactor_id == ComponentId::EXPLORER {
-        return icons::EXPLORER;
-    }
-    if mode.interactor_id == ComponentId::SETTINGS {
-        return icons::SETTINGS;
+    // Non-editor interactors use generic icon
+    if mode.interactor_id.0 != "editor" {
+        return icons::INTERACTOR;
     }
 
     // Editor modes
@@ -79,22 +71,20 @@ fn mode_icon(mode: &ModeState) -> &'static str {
 }
 
 /// Get style for current mode
+/// Uses generic styles - plugins can override via theme customization
 fn get_mode_style<'t>(mode: &ModeState, theme: &'t Theme) -> &'t crate::highlight::Style {
     // Sub-modes
     match &mode.sub_mode {
         SubMode::Command => return &theme.statusline.mode.command,
-        SubMode::OperatorPending { .. } | SubMode::Leap { .. } => {
+        SubMode::OperatorPending { .. } | SubMode::Interactor(_) => {
             return &theme.statusline.mode.normal;
         }
         SubMode::None => {}
     }
 
-    // Interactor-specific styles
-    if mode.interactor_id == ComponentId::TELESCOPE || mode.interactor_id == ComponentId::SETTINGS {
-        return &theme.statusline.mode.command;
-    }
-    if mode.interactor_id == ComponentId::EXPLORER {
-        return &theme.statusline.mode.explorer;
+    // Non-editor interactors use normal style
+    if mode.interactor_id.0 != "editor" {
+        return &theme.statusline.mode.normal;
     }
 
     // Editor edit modes

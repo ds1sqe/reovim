@@ -3,25 +3,21 @@
 mod buffer;
 mod clipboard;
 mod command_line;
-mod completion;
 mod cursor;
-mod explorer;
-mod fold;
 mod history;
 mod jump;
-mod leap;
 mod mode;
 mod operator;
-mod settings_menu;
 mod system;
 mod tab;
-mod telescope;
 mod text;
 mod visual;
 mod window;
 
+// Note: Completion commands are now in reovim-plugin-completion crate
+// Note: Settings Menu commands are now in reovim-plugin-settings-menu crate
+
 pub use {
-    buffer::*, clipboard::*, command_line::*, completion::*, cursor::*, explorer::*, fold::*,
-    history::*, jump::*, leap::*, mode::*, operator::*, settings_menu::*, system::*, tab::*,
-    telescope::*, text::*, visual::*, window::*,
+    buffer::*, clipboard::*, command_line::*, cursor::*, history::*, jump::*, mode::*, operator::*,
+    system::*, tab::*, text::*, visual::*, window::*,
 };

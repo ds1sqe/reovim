@@ -5,27 +5,110 @@ The event system handles all input and internal communication in reovim.
 ## Overview
 
 ```
-lib/core/src/event/
-├── mod.rs          # Trait definitions, exports
-├── input.rs        # InputEventBroker
-├── key/
-│   └── mod.rs      # KeyEventBroker
-├── handler/
-│   ├── mod.rs      # TerminateHandler
-│   ├── command/    # CommandHandler
-│   │   ├── mod.rs
-│   │   ├── dispatcher.rs
-│   │   └── count_parser.rs
-│   └── completion.rs # CompletionHandler
-└── inner/
-    └── mod.rs      # InnerEvent enum
+lib/core/src/
+├── event_bus/          # Type-erased event system (NEW)
+│   ├── mod.rs          # Event trait, DynEvent, exports
+│   └── bus.rs          # EventBus implementation
+│
+├── event/              # Legacy event system
+│   ├── mod.rs          # Trait definitions, exports
+│   ├── input.rs        # InputEventBroker
+│   ├── key/
+│   │   └── mod.rs      # KeyEventBroker
+│   ├── handler/
+│   │   ├── mod.rs      # TerminateHandler
+│   │   ├── command/    # CommandHandler
+│   │   │   ├── mod.rs
+│   │   │   ├── dispatcher.rs
+│   │   │   └── count_parser.rs
+│   │   └── completion.rs # CompletionHandler
+│   └── inner/
+│       └── mod.rs      # InnerEvent enum
 ```
 
 ## Event Types
 
-### InnerEvent
+### Event Bus (Type-Erased Events)
 
-Internal events passed to the runtime via mpsc channel:
+The event bus provides a type-erased event system for plugin communication. Unlike `InnerEvent`, the event bus allows plugins to define their own event types without modifying core enums.
+
+**Location:** `lib/core/src/event_bus/`
+
+```rust
+// Event trait - implemented by all plugin events
+pub trait Event: Send + Sync + 'static {
+    fn priority(&self) -> u32 { 100 }  // Lower = higher priority
+}
+
+// EventBus - type-erased event dispatch
+pub struct EventBus {
+    handlers: RwLock<HashMap<TypeId, Vec<EventHandler>>>,
+}
+
+impl EventBus {
+    // Subscribe to events of type E
+    pub fn subscribe<E: Event, F>(&self, priority: u32, handler: F)
+    where
+        F: Fn(&E, &EventContext) -> EventResult + Send + Sync + 'static;
+
+    // Emit an event to all subscribers
+    pub fn emit<E: Event>(&self, event: E);
+}
+```
+
+**Event Result:**
+```rust
+pub enum EventResult {
+    Handled,      // Event was handled, stop propagation
+    Continue,     // Event was handled, continue propagation
+    NotHandled,   // Event was not handled
+}
+```
+
+**Example - Leap Events:**
+```rust
+// Define event
+#[derive(Debug, Clone)]
+pub struct LeapStartEvent {
+    pub direction: LeapDirection,
+    pub operator: Option<OperatorType>,
+    pub count: Option<usize>,
+}
+
+impl Event for LeapStartEvent {
+    fn priority(&self) -> u32 { 50 }  // High priority for mode changes
+}
+
+// Subscribe in plugin
+bus.subscribe::<LeapStartEvent, _>(100, |event, _ctx| {
+    tracing::trace!(direction = ?event.direction, "Leap started");
+    EventResult::Handled
+});
+
+// Emit from runtime
+event_bus.emit(LeapStartEvent {
+    direction: LeapDirection::Forward,
+    operator: None,
+    count: None,
+});
+```
+
+**Leap Events (via Event Bus):**
+| Event | Description |
+|-------|-------------|
+| `LeapStartEvent` | Leap mode activated |
+| `LeapFirstCharEvent` | First character entered |
+| `LeapSecondCharEvent` | Second character entered |
+| `LeapSelectLabelEvent` | Label selected for jump |
+| `LeapCancelEvent` | Leap mode cancelled |
+| `LeapJumpEvent` | Jump completed (from, to, direction) |
+| `LeapMatchesFoundEvent` | Matches found (count, pattern) |
+
+### InnerEvent (Legacy)
+
+Internal events passed to the runtime via mpsc channel.
+
+> **Note:** Features are being migrated to the Event Bus. New plugins should use `Event` trait and `EventBus` instead of adding variants to `InnerEvent`.
 
 ```rust
 pub enum InnerEvent {

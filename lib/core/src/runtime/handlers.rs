@@ -8,32 +8,33 @@ use crate::{
     command::{
         CommandTrait,
         traits::{
-            BufferAction, CommandLineAction, CommandResult, CompletionAction, DeferredAction,
-            ExecutionContext, ExplorerAction, FoldAction, LeapAction, OperatorMotionAction,
-            SettingsMenuAction, TabAction, TelescopeAction, WindowAction,
+            BufferAction, CommandLineAction, CommandResult, DeferredAction, ExecutionContext,
+            FileAction, OperatorMotionAction, TabAction, WindowAction,
         },
     },
     command_line::{ExCommand, SetOption},
     event::{CommandEvent, VisualTextObjectAction},
-    explorer::ExplorerState,
+    event_bus::BufferModification,
     highlight::Theme,
     modd::ModeState,
     screen::{NavigateDirection, Position, SplitDirection},
     textobject::SemanticTextObjectSpec,
-    treesitter::TreesitterTheme,
 };
 
 use super::Runtime;
 
 impl Runtime {
-    /// Schedule a treesitter reparse for the given buffer if it has a parser
-    pub(crate) fn schedule_treesitter_reparse(&mut self, buffer_id: usize) {
-        if self.treesitter.has_parser(buffer_id) {
-            self.treesitter.schedule_reparse(buffer_id);
-        }
+    /// Schedule a treesitter reparse for the given buffer
+    ///
+    /// Emits a `BufferModified` event so the treesitter plugin can handle the reparse.
+    pub(crate) fn schedule_treesitter_reparse(&self, buffer_id: usize) {
+        self.event_bus.emit(crate::event_bus::BufferModified {
+            buffer_id,
+            modification: BufferModification::FullReplace,
+        });
     }
 
-    /// Delete a semantic text object using treesitter
+    /// Delete a semantic text object using plugin state's text object source
     ///
     /// Returns the deleted text if successful, None if bounds couldn't be found.
     #[allow(clippy::cast_possible_truncation)]
@@ -48,12 +49,13 @@ impl Runtime {
             (buffer.content_to_string(), u32::from(buffer.cur.y), u32::from(buffer.cur.x))
         };
 
-        // Find text object bounds using treesitter
-        let bounds = self.treesitter.find_text_object_bounds(
-            buffer_id, &content, cursor_row, cursor_col, spec.kind, spec.scope,
-        )?;
+        // Find text object bounds using plugin state
+        let bounds = self
+            .plugin_state
+            .text_object_source()?
+            .find_bounds(buffer_id, &content, cursor_row, cursor_col, &spec)?;
 
-        // Convert treesitter Position to screen Position
+        // Convert to screen Position
         let start = Position {
             x: bounds.start.col as u16,
             y: bounds.start.row as u16,
@@ -68,12 +70,12 @@ impl Runtime {
         Some(buffer.delete_range(start, end))
     }
 
-    /// Yank a semantic text object using treesitter
+    /// Yank a semantic text object using plugin state's text object source
     ///
     /// Returns the yanked text if successful, None if bounds couldn't be found.
     #[allow(clippy::cast_possible_truncation)]
     pub(crate) fn yank_semantic_text_object(
-        &mut self,
+        &self,
         buffer_id: usize,
         spec: SemanticTextObjectSpec,
     ) -> Option<String> {
@@ -83,12 +85,13 @@ impl Runtime {
             (buffer.content_to_string(), u32::from(buffer.cur.y), u32::from(buffer.cur.x))
         };
 
-        // Find text object bounds using treesitter
-        let bounds = self.treesitter.find_text_object_bounds(
-            buffer_id, &content, cursor_row, cursor_col, spec.kind, spec.scope,
-        )?;
+        // Find text object bounds using plugin state
+        let bounds = self
+            .plugin_state
+            .text_object_source()?
+            .find_bounds(buffer_id, &content, cursor_row, cursor_col, &spec)?;
 
-        // Convert treesitter Position to screen Position
+        // Convert to screen Position
         let start = Position {
             x: bounds.start.col as u16,
             y: bounds.start.row as u16,
@@ -103,12 +106,12 @@ impl Runtime {
         Some(buffer.yank_range(start, end))
     }
 
-    /// Find the bounds of a semantic text object using treesitter
+    /// Find the bounds of a semantic text object using plugin state's text object source
     ///
     /// Returns (start, end) positions if bounds found, None otherwise.
     #[allow(clippy::cast_possible_truncation)]
     pub(crate) fn find_semantic_text_object_bounds(
-        &mut self,
+        &self,
         buffer_id: usize,
         spec: SemanticTextObjectSpec,
     ) -> Option<(Position, Position)> {
@@ -118,12 +121,13 @@ impl Runtime {
             (buffer.content_to_string(), u32::from(buffer.cur.y), u32::from(buffer.cur.x))
         };
 
-        // Find text object bounds using treesitter
-        let bounds = self.treesitter.find_text_object_bounds(
-            buffer_id, &content, cursor_row, cursor_col, spec.kind, spec.scope,
-        )?;
+        // Find text object bounds using plugin state
+        let bounds = self
+            .plugin_state
+            .text_object_source()?
+            .find_bounds(buffer_id, &content, cursor_row, cursor_col, &spec)?;
 
-        // Convert treesitter Position to screen Position
+        // Convert to screen Position
         let start = Position {
             x: bounds.start.col as u16,
             y: bounds.start.row as u16,
@@ -208,8 +212,7 @@ impl Runtime {
                             }
                             SetOption::ColorScheme(name) => {
                                 self.theme = Theme::from_name(name);
-                                self.treesitter
-                                    .set_theme(TreesitterTheme::from_theme_name(name));
+                                // Theme change triggers rehighlighting via event bus
                                 self.rehighlight_all_buffers();
                                 tracing::info!(theme = ?name, "Colorscheme changed");
                             }
@@ -224,8 +227,7 @@ impl Runtime {
                         },
                         ExCommand::Colorscheme { name } => {
                             self.theme = Theme::from_name(name);
-                            self.treesitter
-                                .set_theme(TreesitterTheme::from_theme_name(name));
+                            // Theme change triggers rehighlighting via event bus
                             self.rehighlight_all_buffers();
                             tracing::info!(theme = ?name, "Colorscheme changed");
                         }
@@ -275,18 +277,12 @@ impl Runtime {
                             }
                         }
                         ExCommand::ProfileList => {
-                            // Open telescope with profiles picker
-                            self.handle_profile_list();
+                            // Telescope handled by plugin via EventBus
+                            tracing::debug!("Profile list command - handled by telescope plugin");
                         }
                         ExCommand::Settings => {
-                            // Open settings menu via event
-                            use crate::event::{InnerEvent, SettingsMenuEvent};
-                            let tx = self.tx.clone();
-                            tokio::spawn(async move {
-                                let _ = tx
-                                    .send(InnerEvent::SettingsMenuEvent(SettingsMenuEvent::Open))
-                                    .await;
-                            });
+                            // Settings menu handled by plugin via EventBus
+                            tracing::debug!("Settings command - handled by settings-menu plugin");
                         }
                         ExCommand::Unknown(cmd) => {
                             tracing::warn!(command = %cmd, "Unknown ex-command");
@@ -396,20 +392,6 @@ impl Runtime {
                             self.request_render();
                             return should_quit;
                         }
-                        DeferredAction::Completion(comp_action) => {
-                            self.handle_completion_action(&comp_action, context.buffer_id);
-                        }
-                        DeferredAction::Explorer(explorer_action) => {
-                            self.handle_explorer_action(&explorer_action);
-                            self.request_render();
-                        }
-                        DeferredAction::Telescope(telescope_action) => {
-                            self.handle_telescope_action(&telescope_action);
-                        }
-                        DeferredAction::Fold(fold_action) => {
-                            self.handle_fold_action(&fold_action, buffer_id);
-                            self.request_render();
-                        }
                         DeferredAction::JumpOlder => {
                             if let Some(entry) = self.jump_list.jump_older() {
                                 let target_pos = entry.position;
@@ -433,9 +415,6 @@ impl Runtime {
                         DeferredAction::OperatorMotion(ref op_action) => {
                             self.handle_operator_motion(op_action);
                         }
-                        DeferredAction::Leap(ref leap_action) => {
-                            self.handle_leap_action(leap_action);
-                        }
                         DeferredAction::Window(ref action) => {
                             if self.handle_window_action(action) {
                                 return true;
@@ -450,266 +429,48 @@ impl Runtime {
                         DeferredAction::Buffer(ref action) => {
                             self.handle_buffer_action(action);
                         }
-                        DeferredAction::SettingsMenu(ref action) => {
-                            self.handle_settings_menu_action(action);
+                        DeferredAction::File(ref action) => {
+                            self.handle_file_action(action);
                         }
+                    }
+                }
+                CommandResult::EmitEvent(event) => {
+                    // Dispatch the event to the event bus for plugin handling
+                    let sender = self.event_bus.sender();
+                    let mut ctx = crate::event_bus::HandlerContext::new(&sender);
+                    let result = self.event_bus.dispatch(&event, &mut ctx);
+
+                    // Check if any handler requested render or quit
+                    if ctx.render_requested() {
+                        self.request_render();
+                    }
+                    if ctx.quit_requested() {
+                        // Emit quit - the event loop will handle it
+                        let tx = self.tx.clone();
+                        tokio::spawn(async move {
+                            let _ = tx.send(crate::event::InnerEvent::KillSignal).await;
+                        });
+                    }
+
+                    // Events should be handled by plugin EventBus subscriptions
+                    // If not handled, log for debugging during migration
+                    if matches!(result, crate::event_bus::EventResult::NotHandled) {
+                        tracing::trace!("Unhandled event: {:?}", event.type_name());
                     }
                 }
                 CommandResult::Error(msg) => {
                     tracing::warn!(error = %msg, "Command execution failed");
                 }
+                CommandResult::Deferred(handler) => {
+                    // Trait-based deferred action handler
+                    // The handler receives RuntimeContext and can perform any runtime operation
+                    handler.handle(self);
+                    self.request_render();
+                }
                 CommandResult::Success => {}
             }
         }
         false
-    }
-
-    /// Handle explorer actions
-    #[allow(clippy::cast_possible_wrap)]
-    #[allow(clippy::too_many_lines)]
-    #[allow(clippy::cognitive_complexity)]
-    pub(crate) fn handle_explorer_action(&mut self, action: &ExplorerAction) {
-        // Explorer actions require explorer_state which will be integrated in Phase 5
-        // For now, we handle the basic mode transitions
-        match action {
-            ExplorerAction::Toggle => {
-                // Toggle explorer visibility and mode
-                self.screen.toggle_explorer();
-                if self.screen.layout().is_explorer_visible() {
-                    self.set_mode(ModeState::explorer());
-                    // Initialize explorer state if needed
-                    if self.explorer_state.is_none()
-                        && let Ok(cwd) = std::env::current_dir()
-                    {
-                        self.explorer_state = ExplorerState::new(cwd).ok();
-                    }
-                } else {
-                    self.set_mode(ModeState::normal());
-                }
-            }
-            ExplorerAction::Close | ExplorerAction::FocusEditor => {
-                // Switch focus back to editor
-                self.screen.focus_editor();
-                self.set_mode(ModeState::normal());
-            }
-            ExplorerAction::CursorUp { count } => {
-                if let Some(ref mut state) = self.explorer_state {
-                    state.move_cursor(-(*count as isize));
-                    state.update_visual_selection();
-                }
-            }
-            ExplorerAction::CursorDown { count } => {
-                if let Some(ref mut state) = self.explorer_state {
-                    state.move_cursor(*count as isize);
-                    state.update_visual_selection();
-                }
-            }
-            ExplorerAction::PageUp => {
-                if let Some(ref mut state) = self.explorer_state {
-                    let height = self.screen.layout().explorer_height();
-                    state.move_page(height, false);
-                }
-            }
-            ExplorerAction::PageDown => {
-                if let Some(ref mut state) = self.explorer_state {
-                    let height = self.screen.layout().explorer_height();
-                    state.move_page(height, true);
-                }
-            }
-            ExplorerAction::GotoFirst => {
-                if let Some(ref mut state) = self.explorer_state {
-                    state.move_to_first();
-                }
-            }
-            ExplorerAction::GotoLast => {
-                if let Some(ref mut state) = self.explorer_state {
-                    state.move_to_last();
-                }
-            }
-            ExplorerAction::ToggleNode => {
-                if let Some(ref mut state) = self.explorer_state {
-                    let _ = state.toggle_current();
-                }
-            }
-            ExplorerAction::OpenNode => {
-                // Open file or toggle directory
-                // First extract info from current node without holding mutable borrow
-                let node_info = self
-                    .explorer_state
-                    .as_ref()
-                    .and_then(|state| state.current_node())
-                    .map(|node| {
-                        (node.is_dir(), node.is_file(), node.is_symlink(), node.path.clone())
-                    });
-
-                if let Some((is_dir, is_file, is_symlink, path)) = node_info {
-                    if is_dir {
-                        if let Some(ref mut state) = self.explorer_state {
-                            let _ = state.toggle_current();
-                        }
-                    } else if is_file || is_symlink {
-                        // Open file in a new buffer (symlinks are opened as target file)
-                        self.open_file(&path.to_string_lossy());
-                        // Update the editor window to show the new buffer
-                        self.screen.set_editor_buffer(self.active_buffer_id);
-                        // Switch focus to editor
-                        self.screen.focus_editor();
-                        self.set_mode(ModeState::normal());
-                    }
-                }
-            }
-            ExplorerAction::CloseParent => {
-                if let Some(ref mut state) = self.explorer_state {
-                    state.collapse_current();
-                }
-            }
-            ExplorerAction::GoToParent => {
-                if let Some(ref mut state) = self.explorer_state {
-                    state.go_to_parent();
-                }
-            }
-            ExplorerAction::Refresh => {
-                if let Some(ref mut state) = self.explorer_state {
-                    let _ = state.refresh();
-                }
-            }
-            ExplorerAction::ToggleHidden => {
-                if let Some(ref mut state) = self.explorer_state {
-                    state.toggle_hidden();
-                }
-            }
-            ExplorerAction::ToggleSizes => {
-                if let Some(ref mut state) = self.explorer_state {
-                    state.toggle_sizes();
-                }
-            }
-            ExplorerAction::Yank => {
-                if let Some(ref mut state) = self.explorer_state {
-                    state.yank_current();
-                }
-            }
-            ExplorerAction::Cut => {
-                if let Some(ref mut state) = self.explorer_state {
-                    state.cut_current();
-                }
-            }
-            ExplorerAction::Paste => {
-                if let Some(ref mut state) = self.explorer_state {
-                    let _ = state.paste();
-                }
-            }
-            ExplorerAction::VisualMode => {
-                if let Some(ref mut state) = self.explorer_state {
-                    state.enter_visual_mode();
-                }
-            }
-            ExplorerAction::ToggleSelect => {
-                if let Some(ref mut state) = self.explorer_state {
-                    state.toggle_select_current();
-                }
-            }
-            ExplorerAction::SelectAll => {
-                if let Some(ref mut state) = self.explorer_state {
-                    state.select_all();
-                }
-            }
-            ExplorerAction::ExitVisual => {
-                if let Some(ref mut state) = self.explorer_state {
-                    state.exit_visual_mode();
-                }
-            }
-            ExplorerAction::CreateFile => {
-                if let Some(ref mut state) = self.explorer_state {
-                    state.start_create_file();
-                    self.set_mode(ModeState::explorer_input());
-                }
-            }
-            ExplorerAction::CreateDir => {
-                if let Some(ref mut state) = self.explorer_state {
-                    state.start_create_dir();
-                    self.set_mode(ModeState::explorer_input());
-                }
-            }
-            ExplorerAction::Rename => {
-                if let Some(ref mut state) = self.explorer_state {
-                    state.start_rename();
-                    // Only switch mode if rename actually started (node exists)
-                    if state.is_input_mode() {
-                        self.set_mode(ModeState::explorer_input());
-                    }
-                }
-            }
-            ExplorerAction::Delete => {
-                if let Some(ref mut state) = self.explorer_state {
-                    state.start_delete();
-                    // Only switch mode if delete actually started (node exists)
-                    if state.is_input_mode() {
-                        self.set_mode(ModeState::explorer_input());
-                    }
-                }
-            }
-            ExplorerAction::StartFilter => {
-                if let Some(ref mut state) = self.explorer_state {
-                    state.start_filter();
-                    self.set_mode(ModeState::explorer_input());
-                }
-            }
-            ExplorerAction::ClearFilter => {
-                if let Some(ref mut state) = self.explorer_state {
-                    state.clear_filter();
-                }
-            }
-            ExplorerAction::ConfirmInput { input: _ } => {
-                if let Some(ref mut state) = self.explorer_state {
-                    let _ = state.confirm_input();
-                    self.set_mode(ModeState::explorer());
-                }
-            }
-            ExplorerAction::CancelInput => {
-                if let Some(ref mut state) = self.explorer_state {
-                    state.cancel_input();
-                    self.set_mode(ModeState::explorer());
-                }
-            }
-            ExplorerAction::InputChar { c } => {
-                if let Some(ref mut state) = self.explorer_state {
-                    state.input_char(*c);
-                }
-            }
-            ExplorerAction::InputBackspace => {
-                if let Some(ref mut state) = self.explorer_state {
-                    state.input_backspace();
-                }
-            }
-        }
-    }
-
-    /// Handle completion actions from keybindings
-    pub(crate) fn handle_completion_action(&mut self, action: &CompletionAction, buffer_id: usize) {
-        match action {
-            CompletionAction::Trigger => {
-                self.trigger_completion(buffer_id);
-            }
-            CompletionAction::SelectNext => {
-                self.completion_state.select_next();
-                self.request_render();
-            }
-            CompletionAction::SelectPrev => {
-                self.completion_state.select_prev();
-                self.request_render();
-            }
-            CompletionAction::Confirm => {
-                if let Some(item) = self.completion_state.selected_item().cloned() {
-                    self.insert_completion(&item);
-                }
-                self.completion_state.dismiss();
-                self.request_render();
-            }
-            CompletionAction::Dismiss => {
-                self.completion_state.dismiss();
-                self.request_render();
-            }
-        }
     }
 
     /// Handle operator + motion action (d/y/c + motion)
@@ -884,179 +645,33 @@ impl Runtime {
         self.request_render();
     }
 
-    /// Handle telescope actions from keybindings
-    pub(crate) fn handle_telescope_action(&mut self, action: &TelescopeAction) {
-        use crate::event::{InnerEvent, TelescopeEvent};
-
-        match action {
-            TelescopeAction::Open { picker } => {
-                // Send TelescopeEvent::Open to the event loop
-                let tx = self.tx.clone();
-                let picker_name = picker.clone();
-                tokio::spawn(async move {
-                    let _ = tx
-                        .send(InnerEvent::TelescopeEvent(TelescopeEvent::Open {
-                            picker: picker_name,
-                        }))
-                        .await;
-                });
-            }
-            TelescopeAction::InsertChar(c) => {
-                self.telescope_state.insert_char(*c);
-                // Trigger filtering via UpdateQuery event
-                let tx = self.tx.clone();
-                let query = self.telescope_state.query.clone();
-                tokio::spawn(async move {
-                    let _ = tx
-                        .send(InnerEvent::TelescopeEvent(TelescopeEvent::UpdateQuery { query }))
-                        .await;
-                });
-            }
-            TelescopeAction::Backspace => {
-                self.telescope_state.delete_char();
-                // Trigger filtering via UpdateQuery event
-                let tx = self.tx.clone();
-                let query = self.telescope_state.query.clone();
-                tokio::spawn(async move {
-                    let _ = tx
-                        .send(InnerEvent::TelescopeEvent(TelescopeEvent::UpdateQuery { query }))
-                        .await;
-                });
-            }
-            TelescopeAction::CursorLeft => {
-                self.telescope_state.cursor_left();
-                self.request_render();
-            }
-            TelescopeAction::CursorRight => {
-                self.telescope_state.cursor_right();
-                self.request_render();
-            }
-            TelescopeAction::SelectNext => {
-                self.telescope_state.select_next();
-                self.request_render();
-            }
-            TelescopeAction::SelectPrev => {
-                self.telescope_state.select_prev();
-                self.request_render();
-            }
-            TelescopeAction::PageDown => {
-                self.telescope_state.page_down();
-                self.request_render();
-            }
-            TelescopeAction::PageUp => {
-                self.telescope_state.page_up();
-                self.request_render();
-            }
-            TelescopeAction::GotoFirst => {
-                self.telescope_state.move_to_first();
-                self.request_render();
-            }
-            TelescopeAction::GotoLast => {
-                self.telescope_state.move_to_last();
-                self.request_render();
-            }
-            TelescopeAction::Confirm => {
-                // Send TelescopeEvent::Confirm to the event loop
-                let tx = self.tx.clone();
-                tokio::spawn(async move {
-                    let _ = tx
-                        .send(InnerEvent::TelescopeEvent(TelescopeEvent::Confirm))
-                        .await;
-                });
-            }
-            TelescopeAction::Close => {
-                // Close telescope and return to normal mode (synchronous)
-                use crate::modd::ModeState;
-                self.telescope_state.close();
-                self.set_mode(ModeState::normal());
-                self.render();
-            }
-            TelescopeAction::EnterInsert => {
-                // Switch telescope to insert mode (for typing query)
-                use crate::modd::ModeState;
-                let mode = ModeState::telescope();
-                self.mode_state = mode.clone();
-                let _ = self.mode_tx.send(mode);
-                self.request_render();
-            }
-            TelescopeAction::EnterNormal => {
-                // Switch telescope to normal mode (for j/k navigation)
-                use crate::modd::ModeState;
-                let mode = ModeState::telescope_normal();
-                self.mode_state = mode.clone();
-                let _ = self.mode_tx.send(mode);
-                self.request_render();
-            }
-        }
-    }
-
-    /// Handle leap motion actions
-    pub(crate) fn handle_leap_action(&mut self, action: &LeapAction) {
-        match action {
-            LeapAction::Start {
-                direction,
-                operator,
-                count,
-            } => {
-                // Activate leap state
-                if let Some(op) = operator {
-                    self.leap_state
-                        .activate_with_operator(*direction, *op, *count);
-                } else {
-                    self.leap_state.activate(*direction);
-                }
-
-                // Change to leap mode
-                self.set_mode(ModeState::leap(*direction, *operator, *count));
-                self.request_render();
-            }
-        }
-    }
-
-    /// Handle fold actions from keybindings
-    #[allow(clippy::cast_possible_truncation)]
-    pub(crate) fn handle_fold_action(&mut self, action: &FoldAction, buffer_id: usize) {
-        // Get the cursor line from the buffer
-        let cursor_line = self
-            .buffers
-            .get(&buffer_id)
-            .map_or(0, |buf| u32::from(buf.cur.y));
-
-        match action {
-            FoldAction::Toggle => {
-                self.fold_manager.toggle(buffer_id, cursor_line);
-            }
-            FoldAction::Open => {
-                self.fold_manager.open(buffer_id, cursor_line);
-            }
-            FoldAction::Close => {
-                self.fold_manager.close(buffer_id, cursor_line);
-            }
-            FoldAction::OpenAll => {
-                self.fold_manager.open_all(buffer_id);
-            }
-            FoldAction::CloseAll => {
-                self.fold_manager.close_all(buffer_id);
-            }
-        }
-    }
-
     // === Window Management Handlers ===
 
     /// Synchronize mode state with screen focus
     ///
-    /// The screen is the source of truth for focus (explorer vs editor).
+    /// The screen is the source of truth for focus (plugin vs editor).
     /// This method updates the mode state to match.
     pub(crate) fn sync_mode_with_screen_focus(&mut self) {
         use crate::ui_component::ComponentId;
 
-        let screen_has_explorer_focus = self.screen.is_explorer_focused();
-        let mode_has_explorer_focus = self.mode_state.interactor_id == ComponentId::EXPLORER;
+        // Check if any plugin window has focus
+        let focused_plugin = self.screen.focused_plugin();
+        let mode_interactor = self.mode_state.interactor_id;
 
-        if screen_has_explorer_focus && !mode_has_explorer_focus {
-            self.set_mode(ModeState::explorer());
-        } else if !screen_has_explorer_focus && mode_has_explorer_focus {
-            self.set_mode(ModeState::normal());
+        match (focused_plugin, mode_interactor) {
+            // Screen has plugin focus, but mode doesn't match
+            (Some(plugin_id), interactor_id) if interactor_id != plugin_id => {
+                self.set_mode(ModeState::with_interactor_id_and_mode(
+                    plugin_id,
+                    crate::modd::EditMode::Normal,
+                ));
+            }
+            // Screen has no plugin focus, but mode has non-editor focus
+            (None, interactor_id) if interactor_id != ComponentId::EDITOR => {
+                self.set_mode(ModeState::normal());
+            }
+            // Already in sync
+            _ => {}
         }
     }
 
@@ -1351,49 +966,68 @@ impl Runtime {
     }
 
     // ========================================================================
-    // Profile Management
+    // File Operations
     // ========================================================================
 
-    /// Handle :profile list command - opens telescope profiles picker
-    pub(crate) fn handle_profile_list(&self) {
-        use crate::event::{InnerEvent, TelescopeEvent};
-
-        // Open telescope with profiles picker
-        let tx = self.tx.clone();
-        tokio::spawn(async move {
-            let _ = tx
-                .send(InnerEvent::TelescopeEvent(TelescopeEvent::Open {
-                    picker: "profiles".to_string(),
-                }))
-                .await;
-        });
-    }
-
-    // ========================================================================
-    // Settings Menu Handlers
-    // ========================================================================
-
-    /// Handle settings menu actions from deferred commands
-    pub(crate) fn handle_settings_menu_action(&self, action: &SettingsMenuAction) {
-        use crate::event::{InnerEvent, SettingsMenuEvent};
-
-        let event = match *action {
-            SettingsMenuAction::Open => SettingsMenuEvent::Open,
-            SettingsMenuAction::Close => SettingsMenuEvent::Close,
-            SettingsMenuAction::SelectNext => SettingsMenuEvent::SelectNext,
-            SettingsMenuAction::SelectPrev => SettingsMenuEvent::SelectPrev,
-            SettingsMenuAction::Toggle => SettingsMenuEvent::Toggle,
-            SettingsMenuAction::CycleNext => SettingsMenuEvent::CycleNext,
-            SettingsMenuAction::CyclePrev => SettingsMenuEvent::CyclePrev,
-            SettingsMenuAction::QuickSelect(n) => SettingsMenuEvent::QuickSelect(n),
-            SettingsMenuAction::Increment => SettingsMenuEvent::Increment,
-            SettingsMenuAction::Decrement => SettingsMenuEvent::Decrement,
-            SettingsMenuAction::ExecuteAction => SettingsMenuEvent::ExecuteAction,
-        };
-
-        let tx = self.tx.clone();
-        tokio::spawn(async move {
-            let _ = tx.send(InnerEvent::SettingsMenuEvent(event)).await;
-        });
+    /// Handle file operations from plugins
+    ///
+    /// This provides a way for plugins to request file operations that need
+    /// Runtime access (e.g., opening files into buffers, creating files).
+    pub(crate) fn handle_file_action(&mut self, action: &FileAction) {
+        match action {
+            FileAction::Open { path } => {
+                self.open_file(path);
+                self.screen.set_editor_buffer(self.active_buffer_id);
+                // Switch focus to editor if a plugin has focus
+                if self.screen.has_plugin_focus() {
+                    self.screen.focus_editor();
+                    self.set_mode(ModeState::normal());
+                }
+            }
+            FileAction::Create { path, is_dir } => {
+                let result = if *is_dir {
+                    std::fs::create_dir_all(path)
+                } else {
+                    // Create parent directories if needed, then create file
+                    if let Some(parent) = std::path::Path::new(path).parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    std::fs::File::create(path).map(|_| ())
+                };
+                match result {
+                    Ok(()) => {
+                        tracing::info!(path = %path, is_dir = is_dir, "File/directory created");
+                    }
+                    Err(e) => {
+                        tracing::error!(path = %path, error = %e, "Failed to create file/directory");
+                    }
+                }
+            }
+            FileAction::Delete { path } => {
+                let path = std::path::Path::new(path);
+                let result = if path.is_dir() {
+                    std::fs::remove_dir_all(path)
+                } else {
+                    std::fs::remove_file(path)
+                };
+                match result {
+                    Ok(()) => {
+                        tracing::info!(path = %path.display(), "File/directory deleted");
+                    }
+                    Err(e) => {
+                        tracing::error!(path = %path.display(), error = %e, "Failed to delete");
+                    }
+                }
+            }
+            FileAction::Rename { from, to } => match std::fs::rename(from, to) {
+                Ok(()) => {
+                    tracing::info!(from = %from, to = %to, "File/directory renamed");
+                }
+                Err(e) => {
+                    tracing::error!(from = %from, to = %to, error = %e, "Failed to rename");
+                }
+            },
+        }
+        self.request_render();
     }
 }

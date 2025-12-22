@@ -13,17 +13,15 @@ use crate::{
     ui_component::{ComponentId, UIComponent},
 };
 
-/// Mode icons (Nerd Font)
+/// Mode icons (Nerd Font) - core modes only
+/// Plugin-specific icons are provided via `DisplayRegistry`
 mod icons {
     pub const NORMAL: &str = "󰆾 ";
     pub const INSERT: &str = "󰙏 ";
     pub const VISUAL: &str = "󰒉 ";
     pub const COMMAND: &str = "󰘳 ";
-    pub const EXPLORER: &str = "󰙅 ";
-    pub const LEAP: &str = "󱐋 ";
     pub const OPERATOR: &str = "󰦒 ";
-    pub const TELESCOPE: &str = "󰭎 ";
-    pub const SETTINGS: &str = "󰒓 ";
+    pub const INTERACTOR: &str = "󰆾 "; // Generic icon for plugin interactors
 }
 
 /// Status line display component
@@ -60,24 +58,19 @@ impl<'a> StatusLineComponent<'a> {
     }
 
     /// Get mode icon for the current mode state
+    /// Returns core mode icons only - plugins provide their own via `DisplayRegistry`
     fn mode_icon(&self) -> &'static str {
         // Sub-modes take precedence
         match &self.mode.sub_mode {
             SubMode::Command => return icons::COMMAND,
             SubMode::OperatorPending { .. } => return icons::OPERATOR,
-            SubMode::Leap { .. } => return icons::LEAP,
+            SubMode::Interactor(_) => return icons::INTERACTOR,
             SubMode::None => {}
         }
 
-        // Then check interactor
-        if self.mode.interactor_id == ComponentId::TELESCOPE {
-            return icons::TELESCOPE;
-        }
-        if self.mode.interactor_id == ComponentId::EXPLORER {
-            return icons::EXPLORER;
-        }
-        if self.mode.interactor_id == ComponentId::SETTINGS {
-            return icons::SETTINGS;
+        // Non-editor interactors use generic icon
+        if self.mode.interactor_id.0 != "editor" {
+            return icons::INTERACTOR;
         }
 
         // Editor modes
@@ -89,6 +82,7 @@ impl<'a> StatusLineComponent<'a> {
     }
 
     /// Get style for current mode
+    /// Uses generic styles - plugins can override via theme customization
     fn get_mode_style<'t>(
         &self,
         theme: &'t crate::highlight::Theme,
@@ -96,20 +90,15 @@ impl<'a> StatusLineComponent<'a> {
         // Sub-modes
         match &self.mode.sub_mode {
             SubMode::Command => return &theme.statusline.mode.command,
-            SubMode::OperatorPending { .. } | SubMode::Leap { .. } => {
+            SubMode::OperatorPending { .. } | SubMode::Interactor(_) => {
                 return &theme.statusline.mode.normal;
             }
             SubMode::None => {}
         }
 
-        // Interactor-specific styles
-        if self.mode.interactor_id == ComponentId::TELESCOPE
-            || self.mode.interactor_id == ComponentId::SETTINGS
-        {
-            return &theme.statusline.mode.command;
-        }
-        if self.mode.interactor_id == ComponentId::EXPLORER {
-            return &theme.statusline.mode.explorer;
+        // Non-editor interactors use normal style
+        if self.mode.interactor_id.0 != "editor" {
+            return &theme.statusline.mode.normal;
         }
 
         // Editor edit modes

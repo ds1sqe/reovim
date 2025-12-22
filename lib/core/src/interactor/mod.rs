@@ -218,185 +218,8 @@ impl UIComponent for Editor {
     }
 }
 
-/// Explorer component (file browser sidebar)
-///
-/// Handles filename input for create/rename operations.
-#[derive(Debug, Default)]
-pub struct Explorer {
-    /// Current input buffer for filename operations
-    pub input_buffer: String,
-    /// Whether input mode is active
-    pub input_active: bool,
-}
-
-impl UIComponent for Explorer {
-    fn id(&self) -> ComponentId {
-        ComponentId::EXPLORER
-    }
-
-    fn display_name(&self) -> &'static str {
-        "EXPLORER"
-    }
-
-    fn icon(&self) -> Option<&'static str> {
-        Some("")
-    }
-
-    fn z_order(&self) -> u8 {
-        z_order::EXPLORER
-    }
-
-    fn is_visible(&self, _ctx: &RenderContext<'_>) -> bool {
-        // Visibility controlled by layout manager
-        true
-    }
-
-    fn bounds(&self, ctx: &RenderContext<'_>) -> LayerBounds {
-        // Explorer sidebar bounds - actual size controlled by layout manager
-        LayerBounds {
-            x: 0,
-            y: ctx.tab_line_offset,
-            width: 30, // Default width, actual controlled by layout
-            height: ctx.screen_height.saturating_sub(ctx.tab_line_offset + 1),
-        }
-    }
-
-    fn render_to_frame(&self, _buffer: &mut FrameBuffer, _ctx: &RenderContext<'_>) {
-        // Rendering is delegated to ExplorerLayer which has access to Runtime state.
-    }
-
-    fn is_focusable(&self) -> bool {
-        true
-    }
-
-    fn handle_insert_char(&mut self, c: char, _mode_state: &ModeState) -> InputResult {
-        if self.input_active {
-            self.input_buffer.push(c);
-            InputResult::Handled
-        } else {
-            InputResult::NotHandled
-        }
-    }
-
-    fn handle_delete_backward(&mut self, _mode_state: &ModeState) -> InputResult {
-        if self.input_active {
-            self.input_buffer.pop();
-            InputResult::Handled
-        } else {
-            InputResult::NotHandled
-        }
-    }
-
-    fn captures_input(&self) -> bool {
-        self.input_active
-    }
-}
-
-/// Telescope component (fuzzy finder)
-///
-/// Marker struct - actual state is in `TelescopeState` on Runtime.
-#[derive(Debug, Default)]
-pub struct Telescope;
-
-impl UIComponent for Telescope {
-    fn id(&self) -> ComponentId {
-        ComponentId::TELESCOPE
-    }
-
-    fn display_name(&self) -> &'static str {
-        "TELESCOPE"
-    }
-
-    fn icon(&self) -> Option<&'static str> {
-        Some("")
-    }
-
-    fn z_order(&self) -> u8 {
-        z_order::TELESCOPE
-    }
-
-    fn is_visible(&self, _ctx: &RenderContext<'_>) -> bool {
-        // Visibility controlled by TelescopeState
-        true
-    }
-
-    fn bounds(&self, ctx: &RenderContext<'_>) -> LayerBounds {
-        // Telescope is a modal overlay - full screen
-        LayerBounds::full_screen(ctx.screen_width, ctx.screen_height)
-    }
-
-    fn render_to_frame(&self, _buffer: &mut FrameBuffer, _ctx: &RenderContext<'_>) {
-        // Rendering is delegated to TelescopeLayer which has access to Runtime state.
-    }
-
-    fn is_focusable(&self) -> bool {
-        true
-    }
-
-    fn handle_insert_char(&mut self, c: char, _mode_state: &ModeState) -> InputResult {
-        InputResult::SendEvent(InnerEvent::FocusInput {
-            char: Some(c),
-            delete: false,
-            clear_landing: false,
-        })
-    }
-
-    fn handle_delete_backward(&mut self, _mode_state: &ModeState) -> InputResult {
-        InputResult::SendEvent(InnerEvent::FocusInput {
-            char: None,
-            delete: true,
-            clear_landing: false,
-        })
-    }
-
-    fn captures_input(&self) -> bool {
-        true // Telescope captures all input when active
-    }
-}
-
-/// Settings menu component
-#[derive(Debug, Default)]
-pub struct Settings;
-
-impl UIComponent for Settings {
-    fn id(&self) -> ComponentId {
-        ComponentId::SETTINGS
-    }
-
-    fn display_name(&self) -> &'static str {
-        "SETTINGS"
-    }
-
-    fn icon(&self) -> Option<&'static str> {
-        Some("")
-    }
-
-    fn z_order(&self) -> u8 {
-        z_order::SETTINGS_MENU
-    }
-
-    fn is_visible(&self, _ctx: &RenderContext<'_>) -> bool {
-        // Visibility controlled by SettingsMenuState
-        true
-    }
-
-    fn bounds(&self, ctx: &RenderContext<'_>) -> LayerBounds {
-        // Settings is a modal overlay - full screen
-        LayerBounds::full_screen(ctx.screen_width, ctx.screen_height)
-    }
-
-    fn render_to_frame(&self, _buffer: &mut FrameBuffer, _ctx: &RenderContext<'_>) {
-        // Rendering is delegated to SettingsMenuLayer which has access to Runtime state.
-    }
-
-    fn is_focusable(&self) -> bool {
-        true
-    }
-
-    fn captures_input(&self) -> bool {
-        true // Settings menu captures all input when active
-    }
-}
+// Plugin UIComponents (Explorer, Telescope, Settings) are defined in their
+// respective plugin crates under plugins/features/
 
 /// Command line component (`:` command input)
 ///
@@ -473,7 +296,7 @@ mod tests {
     #[test]
     fn test_interactor_id_equality() {
         assert_eq!(ComponentId::EDITOR, ComponentId("editor"));
-        assert_ne!(ComponentId::EDITOR, ComponentId::EXPLORER);
+        assert_ne!(ComponentId::EDITOR, ComponentId("explorer"));
     }
 
     #[test]
@@ -490,15 +313,15 @@ mod tests {
     fn test_interactor_registry_active() {
         let mut registry = InteractorRegistry::new();
         registry.register(Box::new(Editor::default()));
-        registry.register(Box::new(Telescope));
+        registry.register(Box::new(CommandLineInt));
 
         assert_eq!(registry.active_id(), ComponentId::EDITOR);
 
-        assert!(registry.set_active(ComponentId::TELESCOPE));
-        assert_eq!(registry.active_id(), ComponentId::TELESCOPE);
+        assert!(registry.set_active(ComponentId::COMMAND_LINE));
+        assert_eq!(registry.active_id(), ComponentId::COMMAND_LINE);
 
         // Can't set to unregistered interactor
-        assert!(!registry.set_active(ComponentId::EXPLORER));
-        assert_eq!(registry.active_id(), ComponentId::TELESCOPE);
+        assert!(!registry.set_active(ComponentId("nonexistent")));
+        assert_eq!(registry.active_id(), ComponentId::COMMAND_LINE);
     }
 }

@@ -156,22 +156,13 @@ pub enum ComposableId {
     TabLine,
     /// Status line
     StatusLine,
-    /// Explorer sidebar
-    Explorer,
     /// Editor window by ID
     Window(usize),
     /// Floating window by ID
     FloatingWindow(usize),
-    /// Leap labels overlay
-    Leap,
-    /// Completion popup
-    Completion,
     /// Which-key panel
     WhichKey,
-    /// Telescope fuzzy finder
-    Telescope,
-    /// Settings menu
-    SettingsMenu,
+    // SettingsMenu is now handled by the settings-menu plugin
     /// Custom identifier
     Custom(&'static str),
 }
@@ -182,13 +173,9 @@ impl ComposableId {
     pub const fn default_group(&self) -> ZGroup {
         match self {
             Self::Base | Self::TabLine | Self::StatusLine => ZGroup::Base,
-            Self::Explorer => ZGroup::Sidebar,
             Self::Window(_) | Self::Custom(_) => ZGroup::Editor,
             Self::FloatingWindow(_) => ZGroup::Floating,
-            Self::Leap => ZGroup::Overlay,
-            Self::Completion => ZGroup::Popup,
             Self::WhichKey => ZGroup::Panel,
-            Self::Telescope | Self::SettingsMenu => ZGroup::Modal,
         }
     }
 }
@@ -562,13 +549,9 @@ mod tests {
     #[test]
     fn test_composable_id_default_group() {
         assert_eq!(ComposableId::Base.default_group(), ZGroup::Base);
-        assert_eq!(ComposableId::Explorer.default_group(), ZGroup::Sidebar);
         assert_eq!(ComposableId::Window(0).default_group(), ZGroup::Editor);
         assert_eq!(ComposableId::FloatingWindow(0).default_group(), ZGroup::Floating);
-        assert_eq!(ComposableId::Leap.default_group(), ZGroup::Overlay);
-        assert_eq!(ComposableId::Completion.default_group(), ZGroup::Popup);
         assert_eq!(ComposableId::WhichKey.default_group(), ZGroup::Panel);
-        assert_eq!(ComposableId::Telescope.default_group(), ZGroup::Modal);
     }
 
     #[test]

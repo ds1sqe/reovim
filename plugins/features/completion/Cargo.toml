@@ -1,0 +1,13 @@
+[package]
+name = "reovim-plugin-completion"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+reovim-core = { path = "../../../lib/core" }
+futures = "0.3"
+tokio = { version = "1", features = ["sync"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

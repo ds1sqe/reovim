@@ -26,7 +26,7 @@ cargo build
 # Build release
 cargo build --release
 
-# Run the main binary (default-members set to main/)
+# Run the main binary (default-members set to runner/)
 cargo run
 
 # Run tests
@@ -48,7 +48,7 @@ cargo clippy
 cargo run -p perf-report -- bench -v X.Y.Z
 
 # Run benchmarks only
-cargo bench -p reovim-core
+cargo bench -p reovim-bench
 
 # Generate report from existing benchmark data
 cargo run -p perf-report -- update -v X.Y.Z
@@ -76,11 +76,14 @@ Reovim is a Rust-based neovim-like text editor built with async tokio runtime an
 
 ### Workspace Structure
 
-- `main/` - Main binary crate that bootstraps the editor
+- `runner/` - Main binary crate that bootstraps the editor and loads plugins
 - `lib/core/` (reovim-core) - Core editor logic: runtime, buffers, events, screen rendering
 - `lib/sys/` (reovim-sys) - Re-exports crossterm for terminal abstraction
+- `plugins/features/` - Feature plugins (treesitter, fold, completion, explorer, telescope)
+- `plugins/languages/` - Language support plugins (rust, c, javascript, python, json, toml, markdown)
 - `tools/perf-report/` - Performance report generator CLI
 - `tools/reo-cli/` - CLI client for server mode
+- `tools/bench/` - Performance benchmarks (criterion)
 - `perf/` - Versioned performance reports (PERF-{version}.md)
 
 ### Core Architecture
@@ -131,6 +134,23 @@ Reovim is a Rust-based neovim-like text editor built with async tokio runtime an
 - `lib/core/src/explorer/` - File browser (Space e)
 - `lib/core/src/completion/` - Async completion (Ctrl-Space)
 - `lib/core/src/modd/` - Multi-dimensional mode state (Focus, EditMode, SubMode)
+
+**Plugin System** (`lib/core/src/plugin/`):
+- `Plugin` trait - Interface for all plugins
+- `PluginStateRegistry` - Shared state between plugins
+- `EventBus` - Publish/subscribe event system for plugin communication
+- Plugins are loaded by `runner/src/plugins.rs`
+
+**Treesitter Plugin** (`plugins/features/treesitter/`):
+- Syntax highlighting via tree-sitter parsing
+- Semantic text objects (functions, classes, parameters)
+- Language support via `LanguageSupport` trait
+- Languages register dynamically via `RegisterLanguage` event
+
+**Language Plugins** (`plugins/languages/{lang}/`):
+- Each language implements `LanguageSupport` trait
+- Provides tree-sitter grammar, highlight queries, decoration queries
+- Supported: Rust, C, JavaScript, Python, JSON, TOML, Markdown
 
 **RPC / Server Mode** (`lib/core/src/rpc/`):
 - `RpcServer` - Coordinates JSON-RPC 2.0 request handling

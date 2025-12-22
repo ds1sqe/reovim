@@ -244,7 +244,7 @@ mod tests {
         assert_eq!(registry.active_id(), ComponentId::EDITOR);
 
         // Cannot set active to unregistered component
-        assert!(!registry.set_active(ComponentId::TELESCOPE));
+        assert!(!registry.set_active(ComponentId("telescope")));
         assert_eq!(registry.active_id(), ComponentId::EDITOR);
     }
 

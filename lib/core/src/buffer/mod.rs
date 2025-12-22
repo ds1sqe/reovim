@@ -1,5 +1,6 @@
 //! Buffer module for text storage and manipulation
 
+mod access;
 mod cursor;
 mod history;
 mod selection;
@@ -9,6 +10,7 @@ mod text;
 mod tests;
 
 pub use {
+    access::{BufferRead, BufferSnapshot},
     cursor::{CursorOps, calculate_motion, calculate_motion_with_desired_col},
     history::{Change, UndoHistory},
     selection::{Selection, SelectionMode, SelectionOps},

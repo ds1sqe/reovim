@@ -1,0 +1,12 @@
+[package]
+name = "reovim-lang-javascript"
+version.workspace = true
+edition.workspace = true
+description = "JavaScript language support for reovim"
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+reovim-core = { path = "../../../lib/core" }
+reovim-plugin-treesitter = { path = "../../features/treesitter" }
+tree-sitter-javascript = "0.23"

@@ -78,14 +78,39 @@ Before committing:
 
 ```
 reovim/
-├── main/              # Binary crate - entry point
-├── lib/core/          # reovim-core - core editor logic
-│   └── benches/       # Performance benchmarks
-├── lib/sys/           # reovim-sys - terminal abstraction
-├── tools/perf-report/ # Performance report generator
-├── tools/reo-cli/     # CLI client for server mode
-└── perf/              # Versioned performance reports
+├── runner/                 # Binary crate - entry point, plugin configuration
+│   └── src/plugins.rs      # AllPlugins - combines DefaultPlugins + external plugins
+├── lib/
+│   ├── core/               # reovim-core - core editor logic, plugin system
+│   └── sys/                # reovim-sys - terminal abstraction
+├── plugins/
+│   ├── features/           # External feature plugins
+│   │   ├── fold/           # Code folding
+│   │   ├── settings-menu/  # In-editor settings
+│   │   ├── completion/     # Text completion
+│   │   ├── explorer/       # File browser
+│   │   ├── telescope/      # Fuzzy finder
+│   │   └── treesitter/     # Syntax highlighting infrastructure
+│   └── languages/          # Language plugins
+│       ├── rust/           # Rust support
+│       ├── c/              # C support
+│       ├── javascript/     # JavaScript support
+│       ├── python/         # Python support
+│       ├── json/           # JSON support
+│       ├── toml/           # TOML support
+│       └── markdown/       # Markdown support
+├── tools/
+│   ├── perf-report/        # Performance report generator
+│   ├── reo-cli/            # CLI client for server mode
+│   └── bench/              # Performance benchmarks (criterion)
+└── perf/                   # Versioned performance reports
 ```
+
+### Plugin Architecture
+
+- **DefaultPlugins** (in `lib/core`): Built-in plugins shipped with core
+- **AllPlugins** (in `runner`): Combines DefaultPlugins + external plugins
+- External plugins depend on `reovim-core` and register commands
 
 For detailed architecture, see [architecture.md](./architecture.md).
 
@@ -117,10 +142,10 @@ Reovim prioritizes **minimal latency**:
 
 ```bash
 # Run all benchmarks
-cargo bench -p reovim-core
+cargo bench -p reovim-bench
 
 # Run specific benchmark group
-cargo bench -p reovim-core -- window_render
+cargo bench -p reovim-bench -- window_render
 
 # Generate performance report
 cargo run -p perf-report -- update --version X.Y.Z

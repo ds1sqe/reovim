@@ -5,15 +5,14 @@ use tokio::sync::oneshot;
 use crate::{
     bind::CommandRef,
     command::{CommandContext, traits::OperatorMotionAction},
-    completion::CompletionItem,
+    event_bus::DynEvent,
     highlight::{Highlight, HighlightGroup},
-    leap::LeapDirection,
-    modd::{ModeState, OperatorType},
+    modd::ModeState,
+    plugin::PluginId,
     rpc::RpcResponse,
     screen::{NavigateDirection, SplitDirection},
-    telescope::{PreviewContent, TelescopeItem},
     textobject::{SemanticTextObjectSpec, TextObject, WordTextObject},
-    treesitter::BufferEdit,
+    ui_component::ComponentId,
 };
 
 pub enum InnerEvent {
@@ -23,18 +22,10 @@ pub enum InnerEvent {
     ModeChangeEvent(ModeState),
     PendingKeysEvent(String),
     HighlightEvent(HighlightEvent),
-    CompletionEvent(CompletionEvent),
-    ExplorerEvent(ExplorerEvent),
     /// Operator + motion action (d+motion, y+motion, c+motion)
     OperatorMotionEvent(OperatorMotionAction),
     /// Visual mode text object selection (viw, vi(, vif, etc.)
     VisualTextObjectEvent(VisualTextObjectAction),
-    TelescopeEvent(TelescopeEvent),
-    LeapEvent(LeapEvent),
-    /// Treesitter-related events for incremental parsing
-    TreesitterEvent(TreesitterEvent),
-    /// Settings menu events
-    SettingsMenuEvent(SettingsMenuEvent),
     RenderSignal,
     KillSignal,
     /// Terminal screen resize event
@@ -64,6 +55,17 @@ pub enum InnerEvent {
         /// Whether to clear landing page (editor-specific flag)
         clear_landing: bool,
     },
+    /// Plugin-defined event (type-erased)
+    ///
+    /// This variant enables plugins to define their own event types
+    /// that are dispatched through the event bus. During migration,
+    /// this runs alongside the existing hardcoded event handlers.
+    PluginEvent {
+        /// Plugin that sent this event (for routing)
+        plugin_id: PluginId,
+        /// Type-erased event payload
+        event: DynEvent,
+    },
 }
 
 /// Input events routed to the active focus target
@@ -91,11 +93,11 @@ pub enum BufferEvent {
 
 /// Window-related events
 pub enum WindowEvent {
-    // Explorer
-    ToggleExplorer,
-    FocusExplorer,
+    FocusPlugin {
+        id: ComponentId,
+    },
+    /// Return focus to the editor (unfocus any plugin)
     FocusEditor,
-
     // Splits
     SplitHorizontal {
         filename: Option<String>,
@@ -135,18 +137,6 @@ pub enum WindowEvent {
     },
 }
 
-/// Explorer-related events
-pub enum ExplorerEvent {
-    /// Toggle explorer visibility
-    Toggle,
-    /// Open a file from the explorer
-    OpenFile { path: PathBuf },
-    /// Refresh the explorer tree
-    Refresh,
-    /// Set the explorer root directory
-    SetRoot { path: PathBuf },
-}
-
 /// Highlight update events
 pub enum HighlightEvent {
     /// Add highlights to a buffer
@@ -169,81 +159,6 @@ pub struct CommandEvent {
     pub context: CommandContext,
 }
 
-/// Completion-related events
-pub enum CompletionEvent {
-    /// Request completion at current position
-    Trigger { buffer_id: usize },
-    /// Update completion items (from async completion fetch)
-    Update {
-        items: Vec<CompletionItem>,
-        prefix: String,
-        start_col: u16,
-        start_row: u16,
-    },
-    /// Select next completion item
-    SelectNext,
-    /// Select previous completion item
-    SelectPrev,
-    /// Confirm the selected completion
-    Confirm,
-    /// Dismiss the completion popup
-    Dismiss,
-    /// Update filter as user continues typing
-    UpdateFilter { new_prefix: String },
-}
-
-/// Telescope-related events
-pub enum TelescopeEvent {
-    /// Open telescope with a specific picker
-    Open { picker: String },
-    /// Update the search query
-    UpdateQuery { query: String },
-    /// Update items from async fetch
-    UpdateItems { items: Vec<TelescopeItem> },
-    /// Select next item
-    SelectNext,
-    /// Select previous item
-    SelectPrev,
-    /// Page down
-    PageDown,
-    /// Page up
-    PageUp,
-    /// Confirm selection
-    Confirm,
-    /// Close telescope
-    Close,
-    /// Update preview content
-    UpdatePreview { content: PreviewContent },
-}
-
-/// Leap motion events
-pub enum LeapEvent {
-    /// Start leap mode (from `s` or `S` in normal mode)
-    Start {
-        direction: LeapDirection,
-        operator: Option<OperatorType>,
-        count: Option<usize>,
-    },
-    /// First character entered
-    FirstChar { char: char },
-    /// Second character entered, find matches
-    SecondChar { char: char },
-    /// User pressed a label key to jump
-    SelectLabel { label: String },
-    /// Cancel leap mode (Escape)
-    Cancel,
-}
-
-/// Treesitter-related events for incremental parsing
-pub enum TreesitterEvent {
-    /// Schedule a buffer for reparsing after an edit
-    ScheduleReparse { buffer_id: usize },
-    /// Perform incremental parse with edit information
-    IncrementalParse { buffer_id: usize, edit: BufferEdit },
-    /// Force a full reparse of a buffer
-    FullReparse { buffer_id: usize },
-}
-
 /// Visual mode text object selection actions (viw, vi(, vif, etc.)
 #[derive(Debug)]
 pub enum VisualTextObjectAction {
@@ -253,39 +168,4 @@ pub enum VisualTextObjectAction {
     SelectWord { text_object: WordTextObject },
     /// Select semantic text object (vif, vac, etc.) - uses treesitter
     SelectSemantic { text_object: SemanticTextObjectSpec },
-}
-
-/// Settings menu events for the TUI settings panel
-#[derive(Debug, Clone)]
-pub enum SettingsMenuEvent {
-    /// Open the settings menu
-    Open,
-    /// Close the settings menu
-    Close,
-    /// Navigate to next item
-    SelectNext,
-    /// Navigate to previous item
-    SelectPrev,
-    /// Toggle boolean setting (Space key)
-    Toggle,
-    /// Cycle to next choice option (l key)
-    CycleNext,
-    /// Cycle to previous choice option (h key)
-    CyclePrev,
-    /// Quick select a choice by index (1-9 keys)
-    QuickSelect(u8),
-    /// Increment number value (+ key)
-    Increment,
-    /// Decrement number value (- key)
-    Decrement,
-    /// Execute action item (Enter key)
-    ExecuteAction,
-    /// Input a character in text input mode
-    InputChar(char),
-    /// Delete character in text input mode (Backspace)
-    InputBackspace,
-    /// Confirm text input
-    InputConfirm,
-    /// Cancel text input (Escape in input mode)
-    InputCancel,
 }

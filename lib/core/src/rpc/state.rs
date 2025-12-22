@@ -177,12 +177,8 @@ impl From<&crate::modd::ModeState> for ModeSnapshot {
             crate::modd::SubMode::OperatorPending { operator, count } => {
                 format!("OperatorPending({operator:?}, {count:?})")
             }
-            crate::modd::SubMode::Leap {
-                direction,
-                operator,
-                count,
-            } => {
-                format!("Leap({direction:?}, {operator:?}, {count:?})")
+            crate::modd::SubMode::Interactor(id) => {
+                format!("Interactor({})", id.0)
             }
         };
 
@@ -237,22 +233,7 @@ pub struct TelescopeSnapshot {
     pub selected_item: Option<String>,
 }
 
-impl From<&crate::telescope::TelescopeState> for TelescopeSnapshot {
-    fn from(state: &crate::telescope::TelescopeState) -> Self {
-        Self {
-            active: state.active,
-            query: state.query.clone(),
-            selected_index: state.selected_index,
-            item_count: state.items.len(),
-            picker_name: state.picker_name.clone(),
-            title: state.title.clone(),
-            selected_item: state
-                .items
-                .get(state.selected_index)
-                .map(|i| i.display.clone()),
-        }
-    }
-}
+// Note: TelescopeSnapshot is populated by the telescope plugin
 
 impl From<&crate::buffer::Selection> for SelectionSnapshot {
     fn from(sel: &crate::buffer::Selection) -> Self {

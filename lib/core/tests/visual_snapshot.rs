@@ -157,23 +157,7 @@ async fn test_layer_info_editor_visible() {
     );
 }
 
-/// Test that telescope layer is visible when opened
-#[tokio::test]
-async fn test_layer_info_telescope() {
-    let mut result = ServerTest::new()
-        .await
-        .with_size(80, 24)
-        .with_keys(" ff") // Space f f - telescope find files
-        .with_delay(100)
-        .run()
-        .await;
-
-    let layers = result.layer_info().await;
-    assert!(
-        layers.iter().any(|l| l.name == "telescope" && l.visible),
-        "Telescope layer should be visible when opened. Layers: {layers:?}"
-    );
-}
+// Note: Telescope layer test moved to telescope plugin
 
 // ============================================================================
 // Visual assertions tests

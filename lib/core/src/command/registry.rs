@@ -122,12 +122,7 @@ impl CommandRegistry {
             CommandLineBackspaceCommand,
             CommandLineCancelCommand,
             CommandLineExecuteCommand,
-            // Completion
-            CompletionConfirmCommand,
-            CompletionDismissCommand,
-            CompletionNextCommand,
-            CompletionPrevCommand,
-            CompletionTriggerCommand,
+            // Completion commands are now in reovim-plugin-completion crate
             // Cursor
             CursorDownCommand,
             CursorLeftCommand,
@@ -155,54 +150,13 @@ impl CommandRegistry {
             EnterVisualLineModeCommand,
             EnterVisualModeCommand,
             EnterYankOperatorCommand,
-            // Explorer
-            ExplorerCancelInputCommand,
-            ExplorerClearFilterCommand,
-            ExplorerCloseCommand,
-            ExplorerCloseParentCommand,
-            ExplorerConfirmInputCommand,
-            ExplorerCreateDirCommand,
-            ExplorerCreateFileCommand,
-            ExplorerCursorDownCommand,
-            ExplorerCursorUpCommand,
-            ExplorerCutCommand,
-            ExplorerDeleteCommand,
-            ExplorerExitVisualCommand,
-            ExplorerFilterCommand,
-            ExplorerFocusEditorCommand,
-            ExplorerGoToParentCommand,
-            ExplorerGotoFirstCommand,
-            ExplorerGotoLastCommand,
-            ExplorerInputBackspaceCommand,
-            ExplorerOpenNodeCommand,
-            ExplorerPageDownCommand,
-            ExplorerPageUpCommand,
-            ExplorerPasteCommand,
-            ExplorerRefreshCommand,
-            ExplorerRenameCommand,
-            ExplorerSelectAllCommand,
-            ExplorerToggleHiddenCommand,
-            ExplorerToggleNodeCommand,
-            ExplorerToggleSelectCommand,
-            ExplorerToggleSizesCommand,
-            ExplorerVisualModeCommand,
-            ExplorerYankCommand,
-            // Fold
-            FoldCloseAllCommand,
-            FoldCloseCommand,
-            FoldOpenAllCommand,
-            FoldOpenCommand,
-            FoldToggleCommand,
+            // Fold commands are now in reovim-plugin-fold crate
             GotoFirstLineCommand,
             GotoLastLineCommand,
             InsertNewlineCommand,
             // Jump
             JumpNewerCommand,
             JumpOlderCommand,
-            // Leap
-            LeapBackwardCommand,
-            LeapCancelCommand,
-            LeapForwardCommand,
             // System
             NoopCommand,
             OpenLineAboveCommand,
@@ -213,51 +167,12 @@ impl CommandRegistry {
             QuitCommand,
             // History (Undo/Redo)
             RedoCommand,
-            // Settings Menu
-            SettingsMenuCloseCommand,
-            SettingsMenuCycleNextCommand,
-            SettingsMenuCyclePrevCommand,
-            SettingsMenuDecrementCommand,
-            SettingsMenuExecuteCommand,
-            SettingsMenuIncrementCommand,
-            SettingsMenuNextCommand,
-            SettingsMenuOpenCommand,
-            SettingsMenuPrevCommand,
-            SettingsMenuQuick1Command,
-            SettingsMenuQuick2Command,
-            SettingsMenuQuick3Command,
-            SettingsMenuQuick4Command,
-            SettingsMenuQuick5Command,
-            SettingsMenuQuick6Command,
-            SettingsMenuQuick7Command,
-            SettingsMenuQuick8Command,
-            SettingsMenuQuick9Command,
-            SettingsMenuToggleCommand,
+            // Settings Menu commands are registered by the settings-menu plugin
             // Tab
             TabCloseCommand,
             TabNewCommand,
             TabNextCommand,
             TabPrevCommand,
-            // Telescope
-            TelescopeBackspaceCommand,
-            TelescopeCloseCommand,
-            TelescopeCommandsCommand,
-            TelescopeConfirmCommand,
-            TelescopeEnterInsertCommand,
-            TelescopeEnterNormalCommand,
-            TelescopeFindBuffersCommand,
-            TelescopeFindFilesCommand,
-            TelescopeGotoFirstCommand,
-            TelescopeGotoLastCommand,
-            TelescopeHelpTagsCommand,
-            TelescopeKeymapsCommand,
-            TelescopeLiveGrepCommand,
-            TelescopePageDownCommand,
-            TelescopePageUpCommand,
-            TelescopeRecentFilesCommand,
-            TelescopeSelectNextCommand,
-            TelescopeSelectPrevCommand,
-            TelescopeThemesCommand,
             UndoCommand,
             // Visual
             VisualDeleteCommand,
@@ -304,11 +219,6 @@ impl CommandRegistry {
         // Jump list commands
         let _ = self.register(JumpOlderCommand);
         let _ = self.register(JumpNewerCommand);
-
-        // Leap motion commands
-        let _ = self.register(LeapForwardCommand);
-        let _ = self.register(LeapBackwardCommand);
-        let _ = self.register(LeapCancelCommand);
 
         // History (Undo/Redo) commands
         let _ = self.register(UndoCommand);
@@ -361,73 +271,10 @@ impl CommandRegistry {
         let _ = self.register(QuitCommand);
         let _ = self.register(NoopCommand);
 
-        // Completion commands
-        let _ = self.register(CompletionTriggerCommand);
-        let _ = self.register(CompletionNextCommand);
-        let _ = self.register(CompletionPrevCommand);
-        let _ = self.register(CompletionConfirmCommand);
-        let _ = self.register(CompletionDismissCommand);
+        // Completion commands are registered by the completion plugin (reovim-plugin-completion)
 
-        // Explorer commands
-        let _ = self.register(ExplorerCursorUpCommand);
-        let _ = self.register(ExplorerCursorDownCommand);
-        let _ = self.register(ExplorerPageUpCommand);
-        let _ = self.register(ExplorerPageDownCommand);
-        let _ = self.register(ExplorerGotoFirstCommand);
-        let _ = self.register(ExplorerGotoLastCommand);
-        let _ = self.register(ExplorerToggleNodeCommand);
-        let _ = self.register(ExplorerOpenNodeCommand);
-        let _ = self.register(ExplorerCloseParentCommand);
-        let _ = self.register(ExplorerGoToParentCommand);
-        let _ = self.register(ExplorerRefreshCommand);
-        let _ = self.register(ExplorerToggleHiddenCommand);
-        let _ = self.register(ExplorerToggleSizesCommand);
-        let _ = self.register(ExplorerYankCommand);
-        let _ = self.register(ExplorerCutCommand);
-        let _ = self.register(ExplorerPasteCommand);
-        let _ = self.register(ExplorerVisualModeCommand);
-        let _ = self.register(ExplorerToggleSelectCommand);
-        let _ = self.register(ExplorerSelectAllCommand);
-        let _ = self.register(ExplorerExitVisualCommand);
-        let _ = self.register(ExplorerCloseCommand);
-        let _ = self.register(ExplorerFocusEditorCommand);
-        let _ = self.register(ExplorerCreateFileCommand);
-        let _ = self.register(ExplorerCreateDirCommand);
-        let _ = self.register(ExplorerRenameCommand);
-        let _ = self.register(ExplorerDeleteCommand);
-        let _ = self.register(ExplorerFilterCommand);
-        let _ = self.register(ExplorerClearFilterCommand);
-        let _ = self.register(ExplorerConfirmInputCommand);
-        let _ = self.register(ExplorerCancelInputCommand);
-        let _ = self.register(ExplorerInputBackspaceCommand);
-
-        // Telescope commands
-        let _ = self.register(TelescopeFindFilesCommand);
-        let _ = self.register(TelescopeFindBuffersCommand);
-        let _ = self.register(TelescopeLiveGrepCommand);
-        let _ = self.register(TelescopeRecentFilesCommand);
-        let _ = self.register(TelescopeCommandsCommand);
-        let _ = self.register(TelescopeHelpTagsCommand);
-        let _ = self.register(TelescopeKeymapsCommand);
-        let _ = self.register(TelescopeThemesCommand);
-        let _ = self.register(TelescopeSelectNextCommand);
-        let _ = self.register(TelescopeSelectPrevCommand);
-        let _ = self.register(TelescopePageDownCommand);
-        let _ = self.register(TelescopePageUpCommand);
-        let _ = self.register(TelescopeGotoFirstCommand);
-        let _ = self.register(TelescopeGotoLastCommand);
-        let _ = self.register(TelescopeConfirmCommand);
-        let _ = self.register(TelescopeCloseCommand);
-        let _ = self.register(TelescopeBackspaceCommand);
-        let _ = self.register(TelescopeEnterInsertCommand);
-        let _ = self.register(TelescopeEnterNormalCommand);
-
-        // Fold commands
-        let _ = self.register(FoldToggleCommand);
-        let _ = self.register(FoldOpenCommand);
-        let _ = self.register(FoldCloseCommand);
-        let _ = self.register(FoldOpenAllCommand);
-        let _ = self.register(FoldCloseAllCommand);
+        // Explorer commands are registered by the explorer plugin (reovim-plugin-explorer)
+        // Telescope commands are registered by the telescope plugin (reovim-plugin-telescope)
 
         // Window commands
         let _ = self.register(WindowFocusLeftCommand);
@@ -459,26 +306,7 @@ impl CommandRegistry {
         let _ = self.register(BufferNextCommand);
         let _ = self.register(BufferDeleteCommand);
 
-        // Settings menu commands
-        let _ = self.register(SettingsMenuOpenCommand);
-        let _ = self.register(SettingsMenuCloseCommand);
-        let _ = self.register(SettingsMenuNextCommand);
-        let _ = self.register(SettingsMenuPrevCommand);
-        let _ = self.register(SettingsMenuToggleCommand);
-        let _ = self.register(SettingsMenuCycleNextCommand);
-        let _ = self.register(SettingsMenuCyclePrevCommand);
-        let _ = self.register(SettingsMenuIncrementCommand);
-        let _ = self.register(SettingsMenuDecrementCommand);
-        let _ = self.register(SettingsMenuExecuteCommand);
-        let _ = self.register(SettingsMenuQuick1Command);
-        let _ = self.register(SettingsMenuQuick2Command);
-        let _ = self.register(SettingsMenuQuick3Command);
-        let _ = self.register(SettingsMenuQuick4Command);
-        let _ = self.register(SettingsMenuQuick5Command);
-        let _ = self.register(SettingsMenuQuick6Command);
-        let _ = self.register(SettingsMenuQuick7Command);
-        let _ = self.register(SettingsMenuQuick8Command);
-        let _ = self.register(SettingsMenuQuick9Command);
+        // Settings menu commands are registered by the settings-menu plugin
     }
 }
 

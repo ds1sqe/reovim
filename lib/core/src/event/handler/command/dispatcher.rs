@@ -86,8 +86,7 @@ impl Dispatcher {
             | "command_line_execute"
             | "command_line_cancel"
             | "visual_delete"
-            | "visual_yank"
-            | "telescope_close" => Some(ModeState::normal()),
+            | "visual_yank" => Some(ModeState::normal()),
             "enter_insert_mode"
             | "enter_insert_mode_after"
             | "enter_insert_mode_eol"
@@ -104,10 +103,7 @@ impl Dispatcher {
             "enter_change_operator" => {
                 Some(ModeState::operator_pending(OperatorType::Change, None))
             }
-            // Telescope mode transitions
-            "telescope_enter_normal" => Some(ModeState::telescope_normal()),
-            "telescope_enter_insert" => Some(ModeState::telescope()),
-            // Explorer mode transitions are handled in runtime via DeferredAction
+            // Plugin mode transitions (telescope, explorer) are handled via DeferredAction
             // toggle_explorer, explorer_close, explorer_focus_editor etc.
             _ => None,
         }
@@ -130,38 +126,6 @@ impl Dispatcher {
         let _ = self
             .inner_tx
             .send(InnerEvent::OperatorMotionEvent(action))
-            .await;
-    }
-
-    /// Send leap first character event
-    pub async fn send_leap_first_char(&self, c: char) {
-        let _ = self
-            .inner_tx
-            .send(InnerEvent::LeapEvent(crate::event::LeapEvent::FirstChar { char: c }))
-            .await;
-    }
-
-    /// Send leap second character event
-    pub async fn send_leap_second_char(&self, c: char) {
-        let _ = self
-            .inner_tx
-            .send(InnerEvent::LeapEvent(crate::event::LeapEvent::SecondChar { char: c }))
-            .await;
-    }
-
-    /// Send leap label selection event
-    pub async fn send_leap_select_label(&self, label: String) {
-        let _ = self
-            .inner_tx
-            .send(InnerEvent::LeapEvent(crate::event::LeapEvent::SelectLabel { label }))
-            .await;
-    }
-
-    /// Send leap cancel event
-    pub async fn send_leap_cancel(&self) {
-        let _ = self
-            .inner_tx
-            .send(InnerEvent::LeapEvent(crate::event::LeapEvent::Cancel))
             .await;
     }
 

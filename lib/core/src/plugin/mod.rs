@@ -30,16 +30,17 @@
 
 mod context;
 mod loader;
+mod runtime_context;
+mod state;
 mod traits;
 
 pub mod builtin;
 
 pub use {
-    builtin::{
-        CompletionPlugin, CorePlugin, DefaultPlugins, ExplorerPlugin, FoldPlugin, LeapPlugin,
-        PythonPlugin, SettingsPlugin, TelescopePlugin, WindowPlugin,
-    },
+    builtin::{CorePlugin, DefaultPlugins, PythonPlugin, WindowPlugin},
     context::PluginContext,
     loader::{PluginError, PluginLoader, PluginTuple},
+    runtime_context::{RuntimeContext, RuntimeContextBuilder},
+    state::PluginStateRegistry,
     traits::{Plugin, PluginId},
 };

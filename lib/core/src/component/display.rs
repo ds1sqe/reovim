@@ -5,29 +5,24 @@
 //!
 //! Also provides `RenderState` which bundles all runtime state needed for rendering.
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 use crate::{
     buffer::Buffer,
     command_line::CommandLine,
-    completion::CompletionState,
     decoration::{DecorationStore, LanguageRendererRegistry},
-    explorer::ExplorerState,
-    folding::FoldManager,
     highlight::{ColorMode, HighlightStore, Theme},
     indent::IndentAnalyzer,
-    leap::LeapState,
     modd::ModeState,
     modifier::{ModifierRegistry, StyleModifiers, WindowBehaviorState, WindowStyleState},
-    settings_menu::SettingsMenuState,
-    telescope::TelescopeState,
+    plugin::PluginStateRegistry,
+    visibility::BufferVisibilitySource,
 };
 
 /// Runtime state bundled for rendering
 ///
 /// This struct bundles all the runtime state needed by components during rendering,
 /// reducing the number of parameters passed through the rendering pipeline.
-#[derive(Debug)]
 pub struct RenderState<'a> {
     /// All open buffers
     pub buffers: &'a BTreeMap<usize, Buffer>,
@@ -45,26 +40,29 @@ pub struct RenderState<'a> {
     pub color_mode: ColorMode,
     /// Current theme
     pub theme: &'a Theme,
-    /// Explorer state (if explorer is enabled)
-    pub explorer: Option<&'a ExplorerState>,
-    /// Completion popup state
-    pub completion: &'a CompletionState,
-    /// Telescope fuzzy finder state
-    pub telescope: &'a TelescopeState,
-    /// Leap motion state
-    pub leap: &'a LeapState,
-    /// Fold manager for code folding
-    pub fold_manager: &'a FoldManager,
+    /// Plugin state registry for accessing plugin state
+    pub plugin_state: &'a Arc<PluginStateRegistry>,
+    /// Visibility source for fold/hide state (trait object for decoupling)
+    pub visibility_source: &'a dyn BufferVisibilitySource,
     /// Indent analyzer for guide rendering
     pub indent_analyzer: &'a IndentAnalyzer,
-    /// Settings menu state
-    pub settings_menu: &'a SettingsMenuState,
     /// Modifier registry for evaluating style/behavior modifiers
     pub modifier_registry: Option<&'a ModifierRegistry>,
     /// Decoration store for language-specific decorations
     pub decoration_store: Option<&'a DecorationStore>,
     /// Language renderer registry for decoration generation
     pub renderer_registry: Option<&'a LanguageRendererRegistry>,
+}
+
+impl std::fmt::Debug for RenderState<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RenderState")
+            .field("buffers", &self.buffers.len())
+            .field("mode", self.mode)
+            .field("color_mode", &self.color_mode)
+            .field("visibility_source", &"<dyn BufferVisibilitySource>")
+            .finish_non_exhaustive()
+    }
 }
 
 /// Context passed to UI components during rendering

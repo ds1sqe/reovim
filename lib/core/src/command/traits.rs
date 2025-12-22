@@ -3,8 +3,8 @@
 use {
     crate::{
         buffer::Buffer,
-        leap::LeapDirection,
-        modd::{ModeState, OperatorType},
+        event_bus::DynEvent,
+        modd::ModeState,
         screen::{NavigateDirection, SplitDirection},
     },
     std::{any::Any, fmt::Debug},
@@ -40,12 +40,64 @@ pub enum CommandResult {
         register: Option<char>,
     },
     /// Command needs Runtime access (deferred execution)
+    ///
+    /// DEPRECATED: Use `Deferred(Box<dyn DeferredActionHandler>)` for new code.
+    /// This variant is kept for backward compatibility during plugin migration.
     DeferToRuntime(DeferredAction),
+    /// Command needs Runtime access via trait-based handler
+    ///
+    /// This is the preferred way for plugins to defer actions to the runtime.
+    /// The handler receives a `RuntimeContext` and can perform any runtime operation.
+    Deferred(Box<dyn DeferredActionHandler>),
+    /// Command emits an event to the event bus
+    EmitEvent(DynEvent),
     /// Command failed with error message
     Error(String),
 }
 
+/// Trait for deferred action handlers
+///
+/// This trait allows plugins to define custom actions that require
+/// runtime access. Instead of adding variants to `DeferredAction`,
+/// plugins implement this trait.
+///
+/// # Example
+///
+/// ```ignore
+/// struct MyPluginAction { /* ... */ }
+///
+/// impl DeferredActionHandler for MyPluginAction {
+///     fn handle(&self, ctx: &mut dyn RuntimeContext) {
+///         // Access runtime via context
+///         ctx.with_state_mut::<MyState, _, _>(|state| {
+///             // Modify state
+///         });
+///     }
+///
+///     fn name(&self) -> &'static str {
+///         "my_plugin_action"
+///     }
+/// }
+/// ```
+pub trait DeferredActionHandler: Send + Sync {
+    /// Execute the deferred action with runtime context
+    fn handle(&self, ctx: &mut dyn crate::runtime::RuntimeContext);
+
+    /// Name of this action for debugging
+    fn name(&self) -> &'static str;
+}
+
+impl std::fmt::Debug for dyn DeferredActionHandler {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "DeferredActionHandler({})", self.name())
+    }
+}
+
 /// Actions that require Runtime-level access
+///
+/// For new features, prefer using:
+/// - `CommandResult::Deferred(Box<dyn DeferredActionHandler>)` for complex handlers
+/// - `CommandResult::EmitEvent(DynEvent)` for event-driven features
 #[derive(Debug)]
 pub enum DeferredAction {
     Paste {
@@ -53,45 +105,13 @@ pub enum DeferredAction {
         register: Option<char>,
     },
     CommandLine(CommandLineAction),
-    Completion(CompletionAction),
-    Explorer(ExplorerAction),
-    Telescope(TelescopeAction),
-    Fold(FoldAction),
     JumpOlder,
     JumpNewer,
     OperatorMotion(OperatorMotionAction),
-    Leap(LeapAction),
     Window(WindowAction),
     Tab(TabAction),
     Buffer(BufferAction),
-    SettingsMenu(SettingsMenuAction),
-}
-
-/// Settings menu actions
-#[derive(Debug)]
-pub enum SettingsMenuAction {
-    /// Open the settings menu
-    Open,
-    /// Close the settings menu
-    Close,
-    /// Navigate to next item
-    SelectNext,
-    /// Navigate to previous item
-    SelectPrev,
-    /// Toggle boolean value
-    Toggle,
-    /// Cycle to next choice
-    CycleNext,
-    /// Cycle to previous choice
-    CyclePrev,
-    /// Quick select by number
-    QuickSelect(u8),
-    /// Increment number value
-    Increment,
-    /// Decrement number value
-    Decrement,
-    /// Execute action item
-    ExecuteAction,
+    File(FileAction),
 }
 
 #[derive(Debug)]
@@ -144,151 +164,20 @@ pub enum BufferAction {
     Delete { force: bool },
 }
 
-/// Leap motion actions
+/// File operations that require Runtime access
+///
+/// Used by plugins (e.g., Explorer) to request file system operations
+/// that need Runtime access for buffer management.
 #[derive(Debug)]
-pub enum LeapAction {
-    /// Start leap mode (waiting for two characters)
-    Start {
-        direction: LeapDirection,
-        operator: Option<OperatorType>,
-        count: Option<usize>,
-    },
-}
-
-/// Code folding actions
-#[derive(Debug)]
-pub enum FoldAction {
-    /// Toggle fold at cursor line (za)
-    Toggle,
-    /// Open fold at cursor line (zo)
-    Open,
-    /// Close fold at cursor line (zc)
-    Close,
-    /// Open all folds in buffer (zR)
-    OpenAll,
-    /// Close all folds in buffer (zM)
-    CloseAll,
-}
-
-/// Telescope fuzzy finder actions
-#[derive(Debug)]
-pub enum TelescopeAction {
-    /// Open telescope with a specific picker
-    Open { picker: String },
-    /// Insert a character into the query
-    InsertChar(char),
-    /// Delete character from query (backspace)
-    Backspace,
-    /// Move cursor left in query
-    CursorLeft,
-    /// Move cursor right in query
-    CursorRight,
-    /// Select next item
-    SelectNext,
-    /// Select previous item
-    SelectPrev,
-    /// Page down
-    PageDown,
-    /// Page up
-    PageUp,
-    /// Go to first item
-    GotoFirst,
-    /// Go to last item
-    GotoLast,
-    /// Confirm selection
-    Confirm,
-    /// Close telescope
-    Close,
-    /// Enter insert mode (for typing query)
-    EnterInsert,
-    /// Enter normal mode (for j/k navigation)
-    EnterNormal,
-}
-
-/// Completion actions
-#[derive(Debug)]
-pub enum CompletionAction {
-    /// Trigger completion at cursor
-    Trigger,
-    /// Select next completion item
-    SelectNext,
-    /// Select previous completion item
-    SelectPrev,
-    /// Confirm selected completion
-    Confirm,
-    /// Dismiss completion popup
-    Dismiss,
-}
-
-/// Explorer mode actions that require runtime access
-#[derive(Debug)]
-pub enum ExplorerAction {
-    /// Move cursor up
-    CursorUp { count: usize },
-    /// Move cursor down
-    CursorDown { count: usize },
-    /// Page up
-    PageUp,
-    /// Page down
-    PageDown,
-    /// Go to first item
-    GotoFirst,
-    /// Go to last item
-    GotoLast,
-    /// Toggle expand/collapse on current node
-    ToggleNode,
-    /// Open file or toggle directory
-    OpenNode,
-    /// Close parent directory
-    CloseParent,
-    /// Go to parent directory
-    GoToParent,
-    /// Refresh tree from filesystem
-    Refresh,
-    /// Toggle showing hidden files
-    ToggleHidden,
-    /// Toggle showing file sizes
-    ToggleSizes,
-    /// Yank (copy) current item to clipboard
-    Yank,
-    /// Cut current item to clipboard
-    Cut,
-    /// Paste from clipboard
-    Paste,
-    /// Close explorer (switch to editor)
-    Close,
-    /// Focus editor window
-    FocusEditor,
-    /// Toggle explorer visibility
-    Toggle,
-    /// Start creating a new file (enters input mode)
-    CreateFile,
-    /// Start creating a new directory (enters input mode)
-    CreateDir,
-    /// Start renaming current item (enters input mode)
-    Rename,
-    /// Delete current item (with confirmation)
-    Delete,
-    /// Start filtering (enters filter input mode)
-    StartFilter,
-    /// Clear the current filter
-    ClearFilter,
-    /// Confirm pending operation (create/rename/delete)
-    ConfirmInput { input: String },
-    /// Cancel pending operation
-    CancelInput,
-    /// Handle character input during input mode
-    InputChar { c: char },
-    /// Handle backspace during input mode
-    InputBackspace,
-    /// Enter visual selection mode
-    VisualMode,
-    /// Toggle selection of current item
-    ToggleSelect,
-    /// Select all visible items
-    SelectAll,
-    /// Exit visual selection mode
-    ExitVisual,
+pub enum FileAction {
+    /// Open a file into a buffer
+    Open { path: String },
+    /// Create a new file or directory
+    Create { path: String, is_dir: bool },
+    /// Delete a file or directory
+    Delete { path: String },
+    /// Rename/move a file or directory
+    Rename { from: String, to: String },
 }
 
 /// Operator + motion action (e.g., dw, yj, c$)

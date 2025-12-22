@@ -1,14 +1,17 @@
 //! UI Components Plugin
 //!
-//! Registers the built-in UI components (Editor, Explorer, Telescope, Settings, `CommandLine`)
+//! Registers the built-in UI components (Editor, `CommandLine`)
 //! and their focus input handlers.
+//!
+//! Plugin-specific components (Explorer, Telescope, Settings) are registered
+//! by their respective plugins under plugins/features/.
 
 use std::any::TypeId;
 
 use crate::{
-    interactor::{CommandLineInt, Editor, Explorer, Settings, Telescope},
+    interactor::{CommandLineInt, Editor},
     plugin::{Plugin, PluginContext, PluginId},
-    runtime::{handle_command_line_input, handle_editor_input, handle_telescope_input},
+    runtime::{handle_command_line_input, handle_editor_input},
     ui_component::ComponentId,
 };
 
@@ -18,13 +21,10 @@ use super::CorePlugin;
 ///
 /// This plugin registers the core UI components that handle user input:
 /// - Editor: Main text editing area
-/// - Explorer: File browser sidebar
-/// - Telescope: Fuzzy finder
-/// - Settings: Settings menu
 /// - `CommandLine`: Command mode input
 ///
-/// It also registers focus input handlers for components that need
-/// runtime state access (Telescope, Editor, `CommandLine`).
+/// Plugin-specific components (Explorer, Telescope, Settings) are registered
+/// by their respective plugins under plugins/features/.
 pub struct UIComponentsPlugin;
 
 impl Plugin for UIComponentsPlugin {
@@ -43,26 +43,15 @@ impl Plugin for UIComponentsPlugin {
     fn build(&self, ctx: &mut PluginContext) {
         // Register UI components to InteractorRegistry (for input handling)
         ctx.register_interactor(Box::new(Editor::default()));
-        ctx.register_interactor(Box::new(Explorer::default()));
-        ctx.register_interactor(Box::new(Telescope));
-        ctx.register_interactor(Box::new(Settings));
         ctx.register_interactor(Box::new(CommandLineInt));
 
         // Also register to ComponentRegistry (for future unified rendering)
-        // Note: These are separate registrations as the two registries serve different purposes
-        // In v0.6.16+, these will be unified
         ctx.register_component(Box::new(Editor::default()));
-        ctx.register_component(Box::new(Explorer::default()));
-        ctx.register_component(Box::new(Telescope));
-        ctx.register_component(Box::new(Settings));
         ctx.register_component(Box::new(CommandLineInt));
 
         // Register focus input handlers
-        // These are called when the component is focused and receives input
-        ctx.register_focus_handler(ComponentId::TELESCOPE, handle_telescope_input);
         ctx.register_focus_handler(ComponentId::EDITOR, handle_editor_input);
         ctx.register_focus_handler(ComponentId::COMMAND_LINE, handle_command_line_input);
-        // Note: Explorer handles input internally via InputResult::Handled
     }
 
     fn dependencies(&self) -> Vec<TypeId> {

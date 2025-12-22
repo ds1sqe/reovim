@@ -1,0 +1,11 @@
+[package]
+name = "reovim-plugin-explorer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+reovim-core = { path = "../../../lib/core" }
+
+[dev-dependencies]
+tempfile = "3"

@@ -3,9 +3,12 @@
 use std::{
     any::TypeId,
     collections::{HashMap, VecDeque},
+    sync::Arc,
 };
 
-use super::{Plugin, PluginContext, PluginId};
+use crate::event_bus::EventBus;
+
+use super::{Plugin, PluginContext, PluginId, PluginStateRegistry};
 
 /// Error during plugin loading
 #[derive(Debug)]
@@ -126,6 +129,54 @@ impl PluginLoader {
         for idx in &order {
             let plugin = &self.plugins[*idx];
             plugin.finish(ctx);
+        }
+
+        Ok(())
+    }
+
+    /// Load all plugins with state registry and event bus integration
+    ///
+    /// This is the preferred method for loading plugins as it enables:
+    /// - Plugin state initialization via `init_state`
+    /// - Event bus subscription via `subscribe`
+    ///
+    /// # Errors
+    /// Returns error if dependencies are missing or circular.
+    pub fn load_with_state(
+        self,
+        ctx: &mut PluginContext,
+        state_registry: &Arc<PluginStateRegistry>,
+        event_bus: &Arc<EventBus>,
+    ) -> Result<(), PluginError> {
+        // Topological sort based on dependencies
+        let order = self.resolve_order()?;
+
+        // Build phase
+        for idx in &order {
+            let plugin = &self.plugins[*idx];
+            tracing::debug!(plugin = %plugin.id(), "Building plugin");
+            plugin.build(ctx);
+            ctx.mark_loaded_by_id(self.type_id_for_index(*idx));
+        }
+
+        // Init state phase - after build, before finish
+        for idx in &order {
+            let plugin = &self.plugins[*idx];
+            tracing::debug!(plugin = %plugin.id(), "Initializing plugin state");
+            plugin.init_state(state_registry);
+        }
+
+        // Finish phase
+        for idx in &order {
+            let plugin = &self.plugins[*idx];
+            plugin.finish(ctx);
+        }
+
+        // Subscribe phase - after finish, allows plugins to subscribe to events
+        for idx in &order {
+            let plugin = &self.plugins[*idx];
+            tracing::debug!(plugin = %plugin.id(), "Subscribing plugin to events");
+            plugin.subscribe(event_bus, Arc::clone(state_registry));
         }
 
         Ok(())

@@ -1,0 +1,16 @@
+[package]
+name = "reovim-bench"
+version.workspace = true
+edition.workspace = true
+description = "Performance benchmarks for reovim"
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+reovim-core = { path = "../../lib/core" }
+criterion = { version = "0.8", features = ["html_reports"] }
+tempfile = "3"
+
+[[bench]]
+name = "render"
+harness = false

@@ -23,19 +23,6 @@ use {
     tokio::sync::{broadcast::Receiver, mpsc::Sender, watch},
 };
 
-/// Keys that are handled differently when completion popup is visible
-const COMPLETION_KEYS: &[&str] = &["Tab", "C-n", "C-p", "C-e"];
-
-/// Leap mode phase tracking (local to `CommandHandler`)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-enum LeapPhase {
-    #[default]
-    Inactive,
-    WaitingFirstChar,
-    WaitingSecondChar,
-    ShowingLabels,
-}
-
 /// Handler that translates key events to commands based on current mode
 pub struct CommandHandler {
     key_event_rx: Option<Receiver<KeyEvent>>,
@@ -44,15 +31,9 @@ pub struct CommandHandler {
     mode_rx: watch::Receiver<ModeState>,
     /// Local mode state for immediate mode tracking (avoids race conditions)
     local_mode: ModeState,
-    /// Watch receiver for completion active state
-    completion_active_rx: watch::Receiver<bool>,
     pending_keys: KeySequence,
     count_parser: CountParser,
     dispatcher: Dispatcher,
-    /// Current leap mode phase
-    leap_phase: LeapPhase,
-    /// Accumulated leap label (for multi-char labels)
-    leap_label: String,
     /// Track when mode was locally changed (avoids race condition with `mode_rx` sync)
     mode_locally_changed: bool,
 }
@@ -65,23 +46,16 @@ impl Subscribe<KeyEvent> for CommandHandler {
 
 impl CommandHandler {
     #[must_use]
-    pub fn new(
-        tx: Sender<InnerEvent>,
-        mode_rx: watch::Receiver<ModeState>,
-        completion_active_rx: watch::Receiver<bool>,
-    ) -> Self {
+    pub fn new(tx: Sender<InnerEvent>, mode_rx: watch::Receiver<ModeState>) -> Self {
         let initial_mode = mode_rx.borrow().clone();
         Self {
             key_event_rx: None,
             keymap: KeyMap::with_defaults(),
             mode_rx,
             local_mode: initial_mode,
-            completion_active_rx,
             pending_keys: KeySequence::new(),
             count_parser: CountParser::new(),
             dispatcher: Dispatcher::new(tx, 0, 0),
-            leap_phase: LeapPhase::Inactive,
-            leap_label: String::new(),
             mode_locally_changed: false,
         }
     }
@@ -94,16 +68,6 @@ impl CommandHandler {
     /// Set local mode state immediately
     const fn set_local_mode(&mut self, mode_state: ModeState) {
         self.local_mode = mode_state;
-    }
-
-    /// Check if completion popup is currently active
-    fn is_completion_active(&self) -> bool {
-        *self.completion_active_rx.borrow()
-    }
-
-    /// Check if a key should use completion behavior when popup is visible
-    fn is_completion_key(key: &str) -> bool {
-        COMPLETION_KEYS.contains(&key)
     }
 
     fn get_keymap_for_mode(&self) -> &HashMap<KeySequence, KeyMapInner> {
@@ -326,18 +290,6 @@ impl CommandHandler {
         let mode = self.current_mode();
         tracing::debug!(?mode, key, pending = %self.pending_keys, "lookup_command_no_push");
 
-        let is_insert = mode.is_insert();
-        let completion_active = self.is_completion_active();
-
-        // In insert mode, completion keys should only trigger completion commands
-        // when the popup is visible. Otherwise, fall through to default behavior.
-        // Note: Tab insertion is now handled in run() via FocusInputEvent.
-        if is_insert && Self::is_completion_key(key) && !completion_active && key != "Tab" {
-            self.pending_keys.clear();
-            // C-n, C-p, C-e do nothing when completion is not active
-            return (None, true);
-        }
-
         let keymap = self.get_keymap_for_mode();
 
         // Check for exact match
@@ -384,18 +336,18 @@ impl CommandHandler {
 
     /// Check if mode is one where ESC should only clear pending state (not trigger keymap lookup)
     /// Visual mode is excluded because it has an Escape binding in the keymap to exit to Normal
-    /// Telescope mode is excluded because it has Escape bindings for mode switching and closing
+    /// Non-editor interactors handle their own Escape via keymap
     fn is_esc_clearable_mode(mode: &ModeState) -> bool {
-        // Editor Normal, Explorer focus, or OperatorPending
-        // Telescope has its own Escape handlers via keymap
-        (mode.is_normal() && !mode.is_telescope_focus())
-            || (mode.is_explorer_focus() && !mode.is_insert())
-            || mode.is_operator_pending()
+        let is_editor = mode.interactor_id.0 == "editor";
+        // Editor Normal mode or OperatorPending - ESC clears pending
+        // Non-editor interactors and visual mode have their own ESC handlers
+        (mode.is_normal() && is_editor) || mode.is_operator_pending()
     }
 
     /// Check if mode is one where Backspace should edit pending keys
-    fn is_backspace_editable_mode(mode: &ModeState) -> bool {
-        mode.is_normal() || mode.is_visual() || (mode.is_explorer_focus() && mode.is_normal())
+    const fn is_backspace_editable_mode(mode: &ModeState) -> bool {
+        // Normal or Visual mode in editor - Backspace edits pending keys
+        mode.is_normal() || mode.is_visual()
     }
 
     #[allow(clippy::while_let_loop)]
@@ -425,9 +377,9 @@ impl CommandHandler {
 
                                 // Sync local mode from Runtime's watch channel
                                 // This catches mode changes initiated by Runtime (e.g., explorer focus)
-                                // Don't overwrite if in a handler-initiated transient state (OperatorPending, Leap)
+                                // Don't overwrite if in a handler-initiated transient state (OperatorPending)
                                 // or if mode was locally changed and runtime hasn't caught up yet
-                                if !self.local_mode.is_operator_pending() && !self.local_mode.is_leap() {
+                                if !self.local_mode.is_operator_pending() {
                                     let runtime_mode = self.mode_rx.borrow().clone();
                                     if self.mode_locally_changed {
                                         // Check if runtime has caught up with our local change
@@ -492,73 +444,6 @@ impl CommandHandler {
                                         // In Normal/Visual/Explorer, ignore backspace (don't add to pending)
                                         continue;
                                     }
-                                }
-
-                                // Handle leap mode specially
-                                let mode = self.current_mode();
-                                if mode.is_leap() {
-                                    // Check for Escape to cancel
-                                    if key_str == "Escape" {
-                                        self.leap_phase = LeapPhase::Inactive;
-                                        self.leap_label.clear();
-                                        self.dispatcher.send_leap_cancel().await;
-                                        continue;
-                                    }
-
-                                    // Handle based on current leap phase
-                                    match self.leap_phase {
-                                        LeapPhase::Inactive => {
-                                            // Just entered leap mode, set phase
-                                            self.leap_phase = LeapPhase::WaitingFirstChar;
-                                            // The first char will be processed on next iteration
-                                            // Actually, let's send this char as first char
-                                            if key_str.len() == 1
-                                                && let Some(c) = key_str.chars().next()
-                                            {
-                                                self.leap_phase = LeapPhase::WaitingSecondChar;
-                                                self.dispatcher.send_leap_first_char(c).await;
-                                            }
-                                            continue;
-                                        }
-                                        LeapPhase::WaitingFirstChar => {
-                                            // Process first character
-                                            if key_str.len() == 1
-                                                && let Some(c) = key_str.chars().next()
-                                            {
-                                                self.leap_phase = LeapPhase::WaitingSecondChar;
-                                                self.dispatcher.send_leap_first_char(c).await;
-                                            }
-                                            continue;
-                                        }
-                                        LeapPhase::WaitingSecondChar => {
-                                            // Process second character
-                                            if key_str.len() == 1
-                                                && let Some(c) = key_str.chars().next()
-                                            {
-                                                self.leap_phase = LeapPhase::ShowingLabels;
-                                                self.dispatcher.send_leap_second_char(c).await;
-                                            }
-                                            continue;
-                                        }
-                                        LeapPhase::ShowingLabels => {
-                                            // Process label selection
-                                            // Accumulate label characters for multi-char labels
-                                            if key_str.len() == 1 {
-                                                self.leap_label.push_str(&key_str);
-                                                // Send the label (runtime will handle matching)
-                                                self.dispatcher
-                                                    .send_leap_select_label(self.leap_label.clone())
-                                                    .await;
-                                                self.leap_phase = LeapPhase::Inactive;
-                                                self.leap_label.clear();
-                                            }
-                                            continue;
-                                        }
-                                    }
-                                } else if self.leap_phase != LeapPhase::Inactive {
-                                    // Mode changed, reset leap state
-                                    self.leap_phase = LeapPhase::Inactive;
-                                    self.leap_label.clear();
                                 }
 
                                 // Handle operator-pending mode (d, y, c + motion or text object)
@@ -632,10 +517,10 @@ impl CommandHandler {
                                     }
                                 }
 
-                                // Handle single-character input in insert/command/telescope modes
+                                // Handle single-character input in modes that accept char input
                                 // Route via FocusInputEvent instead of creating inline commands
                                 let mode = self.current_mode();
-                                if (mode.is_insert() || mode.is_command() || mode.is_telescope_focus())
+                                if mode.accepts_char_input()
                                     && key_str.len() == 1
                                     && let Some(c) = key_str.chars().next()
                                 {
@@ -648,11 +533,10 @@ impl CommandHandler {
                                     continue;
                                 }
 
-                                // Handle Backspace in insert/command/telescope modes
+                                // Handle Backspace in modes that accept char input
                                 // Route via FocusInputEvent for focus-based handling
                                 let mode = self.current_mode();
-                                if (mode.is_insert() || mode.is_command() || mode.is_telescope_focus())
-                                    && key_str == "Backspace"
+                                if mode.accepts_char_input() && key_str == "Backspace"
                                 {
                                     self.pending_keys.clear();
                                     self.dispatcher.send_focus_delete_backward().await;
@@ -662,13 +546,9 @@ impl CommandHandler {
                                     continue;
                                 }
 
-                                // Handle Tab in insert mode when completion is not active
-                                // Tab inserts a tab character via FocusInputEvent
+                                // Handle Tab in insert mode - insert a tab character
                                 let mode = self.current_mode();
-                                if mode.is_insert()
-                                    && key_str == "Tab"
-                                    && !self.is_completion_active()
-                                {
+                                if mode.is_insert() && key_str == "Tab" {
                                     self.pending_keys.clear();
                                     self.dispatcher.send_focus_insert_char('\t').await;
                                     self.dispatcher

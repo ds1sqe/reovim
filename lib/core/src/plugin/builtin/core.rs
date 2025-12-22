@@ -71,7 +71,9 @@ use crate::{
         YankLineCommand,
         YankToEndCommand,
     },
+    display::{DisplayInfo, EditModeKey, SubModeKey},
     plugin::{Plugin, PluginContext, PluginId},
+    ui_component::ComponentId,
 };
 
 /// Core editor functionality plugin
@@ -113,6 +115,7 @@ impl Plugin for CorePlugin {
         self.register_jump_commands(ctx);
         self.register_buffer_commands(ctx);
         self.register_system_commands(ctx);
+        self.register_builtin_displays(ctx);
     }
 }
 
@@ -200,5 +203,48 @@ impl CorePlugin {
     fn register_system_commands(&self, ctx: &PluginContext) {
         let _ = ctx.register_command(QuitCommand);
         let _ = ctx.register_command(NoopCommand);
+    }
+
+    /// Register built-in display strings and icons for core modes
+    fn register_builtin_displays(&self, ctx: &mut PluginContext) {
+        // === Editor modes ===
+        ctx.register_component_mode_display(
+            ComponentId::EDITOR,
+            EditModeKey::Normal,
+            DisplayInfo::new(" NORMAL ", "󰆾 "),
+        );
+        ctx.register_component_mode_display(
+            ComponentId::EDITOR,
+            EditModeKey::Insert,
+            DisplayInfo::new(" INSERT ", "󰏫 "),
+        );
+        ctx.register_component_mode_display(
+            ComponentId::EDITOR,
+            EditModeKey::InsertReplace,
+            DisplayInfo::new(" REPLACE ", "󰏫 "),
+        );
+        ctx.register_component_mode_display(
+            ComponentId::EDITOR,
+            EditModeKey::VisualChar,
+            DisplayInfo::new(" VISUAL ", "󰒉 "),
+        );
+        ctx.register_component_mode_display(
+            ComponentId::EDITOR,
+            EditModeKey::VisualLine,
+            DisplayInfo::new(" V-LINE ", "󰒉 "),
+        );
+        ctx.register_component_mode_display(
+            ComponentId::EDITOR,
+            EditModeKey::VisualBlock,
+            DisplayInfo::new(" V-BLOCK ", "󰒉 "),
+        );
+
+        // === Sub-modes (core only) ===
+        ctx.register_sub_mode_display(SubModeKey::Command, DisplayInfo::new(" COMMAND ", " "));
+        ctx.register_sub_mode_display(
+            SubModeKey::OperatorPending,
+            DisplayInfo::new(" OPERATOR ", "󰆾 "),
+        );
+        // Note: Plugin sub-modes (Leap, etc.) are registered by their respective plugins
     }
 }

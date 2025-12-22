@@ -1,15 +1,21 @@
 //! Plugin context for component registration
 
-use std::{any::TypeId, collections::HashMap, sync::Arc};
+use std::{
+    any::TypeId,
+    collections::HashMap,
+    sync::{Arc, RwLock},
+};
 
 use crate::{
     bind::{CommandRef, KeyMap, KeymapScope},
     command::{CommandRegistry, CommandTrait},
+    display::{DisplayInfo, DisplayRegistry, EditModeKey, SubModeKey},
     interactor::InteractorRegistry,
     keystroke::KeySequence,
     modifier::ModifierRegistry,
+    overlay::{OverlayRegistry, OverlayRenderer},
+    rpc::{RpcHandler, RpcHandlerRegistry},
     runtime::FocusInputHandler,
-    telescope::picker::Picker,
     ui_component::{ComponentId, ComponentRegistry, UIComponent},
 };
 
@@ -30,9 +36,6 @@ pub struct PluginContext {
     /// Keymap for keybinding registration
     pub(crate) keymap: KeyMap,
 
-    /// Telescope pickers
-    pub(crate) pickers: HashMap<String, Arc<dyn Picker>>,
-
     /// Focus input handlers (enlist pattern)
     pub(crate) focus_handlers: HashMap<ComponentId, FocusInputHandler>,
 
@@ -41,6 +44,15 @@ pub struct PluginContext {
 
     /// Component registry for UI components
     pub(crate) components: ComponentRegistry,
+
+    /// Overlay registry for plugin-based overlays
+    pub(crate) overlays: OverlayRegistry,
+
+    /// RPC handler registry for plugin-registered RPC methods
+    pub(crate) rpc_handlers: RpcHandlerRegistry,
+
+    /// Display registry for plugin-provided mode display strings and icons
+    pub(crate) display_registry: DisplayRegistry,
 }
 
 impl Default for PluginContext {
@@ -58,10 +70,12 @@ impl PluginContext {
             interactors: InteractorRegistry::new(),
             modifiers: ModifierRegistry::new(),
             keymap: KeyMap::default(),
-            pickers: HashMap::new(),
             focus_handlers: HashMap::new(),
             loaded_plugins: std::collections::HashSet::new(),
             components: ComponentRegistry::new(),
+            overlays: OverlayRegistry::new(),
+            rpc_handlers: RpcHandlerRegistry::new(),
+            display_registry: DisplayRegistry::new(),
         }
     }
 
@@ -130,20 +144,6 @@ impl PluginContext {
         &mut self.keymap
     }
 
-    // === Picker Registration ===
-
-    /// Register a telescope picker
-    pub fn register_picker<P: Picker + 'static>(&mut self, picker: P) {
-        self.pickers
-            .insert(picker.name().to_string(), Arc::new(picker));
-    }
-
-    /// Get a picker by name
-    #[must_use]
-    pub fn get_picker(&self, name: &str) -> Option<Arc<dyn Picker>> {
-        self.pickers.get(name).cloned()
-    }
-
     // === Modifier Registration ===
 
     /// Get access to the modifier registry
@@ -198,6 +198,132 @@ impl PluginContext {
         &mut self.components
     }
 
+    // === Overlay Registration ===
+
+    /// Register an overlay renderer
+    ///
+    /// Overlays are rendered in z-order during screen updates.
+    /// Lower z-order overlays are drawn first (behind higher ones).
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// ctx.register_overlay(MyOverlay::new());
+    /// ```
+    pub fn register_overlay<O: OverlayRenderer + 'static>(&mut self, overlay: O) {
+        self.overlays.register(overlay);
+    }
+
+    /// Register an overlay from an Arc (for shared overlays)
+    pub fn register_overlay_arc(&mut self, overlay: Arc<RwLock<dyn OverlayRenderer>>) {
+        self.overlays.register_arc(overlay);
+    }
+
+    /// Get access to the overlay registry
+    #[must_use]
+    pub const fn overlay_registry(&self) -> &OverlayRegistry {
+        &self.overlays
+    }
+
+    /// Get mutable access to the overlay registry
+    #[must_use]
+    pub const fn overlay_registry_mut(&mut self) -> &mut OverlayRegistry {
+        &mut self.overlays
+    }
+
+    // === RPC Handler Registration ===
+
+    /// Register an RPC handler
+    ///
+    /// RPC handlers respond to JSON-RPC method calls when the editor
+    /// is running in server mode.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// ctx.register_rpc_handler(Arc::new(MyRpcHandler));
+    /// ```
+    pub fn register_rpc_handler(&mut self, handler: Arc<dyn RpcHandler>) {
+        self.rpc_handlers.register(handler);
+    }
+
+    /// Get access to the RPC handler registry
+    #[must_use]
+    pub const fn rpc_handler_registry(&self) -> &RpcHandlerRegistry {
+        &self.rpc_handlers
+    }
+
+    /// Get mutable access to the RPC handler registry
+    #[must_use]
+    pub const fn rpc_handler_registry_mut(&mut self) -> &mut RpcHandlerRegistry {
+        &mut self.rpc_handlers
+    }
+
+    // === Display Registration ===
+
+    /// Register display info for a component focus
+    ///
+    /// This sets the display string and icon shown when the component is focused.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// ctx.register_display(ComponentId("explorer"), DisplayInfo::new(" EXPLORER ", "󰙅 "));
+    /// ```
+    pub fn register_display(&mut self, id: ComponentId, info: DisplayInfo) {
+        self.display_registry.register_interactor(id, info);
+    }
+
+    /// Register display info for a component + edit mode combination
+    ///
+    /// This allows different display strings for the same component
+    /// depending on the edit mode (Normal, Insert, Visual, etc.).
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// ctx.register_component_mode_display(
+    ///     ComponentId::EDITOR,
+    ///     EditModeKey::Normal,
+    ///     DisplayInfo::new(" NORMAL ", "󰆾 "),
+    /// );
+    /// ```
+    pub fn register_component_mode_display(
+        &mut self,
+        id: ComponentId,
+        mode: EditModeKey,
+        info: DisplayInfo,
+    ) {
+        self.display_registry
+            .register_component_mode(id, mode, info);
+    }
+
+    /// Register display info for a sub-mode
+    ///
+    /// Sub-modes (Command, `OperatorPending`, Leap, etc.) take priority
+    /// over component/edit mode displays.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// ctx.register_sub_mode_display(SubModeKey::Command, DisplayInfo::new(" COMMAND ", " "));
+    /// ```
+    pub fn register_sub_mode_display(&mut self, key: SubModeKey, info: DisplayInfo) {
+        self.display_registry.register_sub_mode(key, info);
+    }
+
+    /// Get access to the display registry
+    #[must_use]
+    pub const fn display_registry(&self) -> &DisplayRegistry {
+        &self.display_registry
+    }
+
+    /// Get mutable access to the display registry
+    #[must_use]
+    pub const fn display_registry_mut(&mut self) -> &mut DisplayRegistry {
+        &mut self.display_registry
+    }
+
     // === Plugin Queries ===
 
     /// Check if a plugin has been loaded
@@ -231,18 +357,22 @@ impl PluginContext {
         InteractorRegistry,
         ModifierRegistry,
         KeyMap,
-        HashMap<String, Arc<dyn Picker>>,
         HashMap<ComponentId, FocusInputHandler>,
         ComponentRegistry,
+        OverlayRegistry,
+        RpcHandlerRegistry,
+        DisplayRegistry,
     ) {
         (
             self.commands,
             self.interactors,
             self.modifiers,
             self.keymap,
-            self.pickers,
             self.focus_handlers,
             self.components,
+            self.overlays,
+            self.rpc_handlers,
+            self.display_registry,
         )
     }
 }

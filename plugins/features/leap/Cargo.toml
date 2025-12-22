@@ -1,0 +1,10 @@
+[package]
+name = "reovim-plugin-leap"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+reovim-core = { path = "../../../lib/core" }
+reovim-sys = { path = "../../../lib/sys" }
+tracing = "0.1"

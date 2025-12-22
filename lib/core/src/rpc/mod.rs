@@ -8,12 +8,14 @@
 //! - Unix socket: JSON-RPC over Unix domain socket
 //! - TCP: JSON-RPC over TCP connection
 
+pub mod handler;
 pub mod server;
 pub mod state;
 pub mod transport;
 pub mod types;
 
 pub use {
+    handler::{RpcHandler, RpcHandlerContext, RpcHandlerRegistry, RpcResult},
     server::{RpcServer, ServerConfig},
     state::*,
     transport::{TransportClient, TransportConfig, TransportConnection, TransportListener},

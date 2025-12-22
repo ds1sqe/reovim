@@ -1,6 +1,6 @@
 [workspace]
-members = ["lib/*", "main/", "tools/*"]
-default-members = ["main/"]
+members = ["lib/*", "runner/", "tools/*", "plugins/features/*", "plugins/languages/*"]
+default-members = ["runner/"]
 resolver = "2"
 
 [workspace.package]
@@ -49,6 +49,24 @@ chrono = "0.4"
 # local libs
 reovim-core = { path = "./lib/core", version = "0.6.22" }
 reovim-sys = { path = "./lib/sys", version = "0.6.22" }
+
+# plugins
+reovim-plugin-fold = { path = "./plugins/features/fold", version = "0.6.22" }
+reovim-plugin-settings-menu = { path = "./plugins/features/settings-menu", version = "0.6.22" }
+reovim-plugin-completion = { path = "./plugins/features/completion", version = "0.6.22" }
+reovim-plugin-explorer = { path = "./plugins/features/explorer", version = "0.6.22" }
+reovim-plugin-telescope = { path = "./plugins/features/telescope", version = "0.6.22" }
+reovim-plugin-leap = { path = "./plugins/features/leap", version = "0.6.22" }
+reovim-plugin-treesitter = { path = "./plugins/features/treesitter", version = "0.6.22" }
+
+# language plugins
+reovim-lang-rust = { path = "./plugins/languages/rust", version = "0.6.22" }
+reovim-lang-c = { path = "./plugins/languages/c", version = "0.6.22" }
+reovim-lang-javascript = { path = "./plugins/languages/javascript", version = "0.6.22" }
+reovim-lang-python = { path = "./plugins/languages/python", version = "0.6.22" }
+reovim-lang-json = { path = "./plugins/languages/json", version = "0.6.22" }
+reovim-lang-toml = { path = "./plugins/languages/toml", version = "0.6.22" }
+reovim-lang-markdown = { path = "./plugins/languages/markdown", version = "0.6.22" }
 
 # CLI
 clap = { version = "4", features = ["derive"] }

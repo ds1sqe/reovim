@@ -20,26 +20,17 @@ use crate::{
 pub struct ComponentId(pub &'static str);
 
 impl ComponentId {
+    // === Core constants ===
+    // Plugins define their own IDs using ComponentId("plugin_name")
+
     /// Editor component (main text editing area)
     pub const EDITOR: Self = Self("editor");
-    /// Explorer component (file browser sidebar)
-    pub const EXPLORER: Self = Self("explorer");
-    /// Telescope component (fuzzy finder)
-    pub const TELESCOPE: Self = Self("telescope");
-    /// Settings menu component
-    pub const SETTINGS: Self = Self("settings");
     /// Command line component (`:` commands)
     pub const COMMAND_LINE: Self = Self("command_line");
     /// Status line component (bottom bar)
     pub const STATUS_LINE: Self = Self("status_line");
     /// Tab line component (top bar with tabs)
     pub const TAB_LINE: Self = Self("tab_line");
-    /// Completion popup overlay
-    pub const COMPLETION: Self = Self("completion");
-    /// Leap motion overlay (jump labels)
-    pub const LEAP: Self = Self("leap");
-    /// Which-key hint panel overlay
-    pub const WHICH_KEY: Self = Self("which_key");
 }
 
 impl std::fmt::Display for ComponentId {
@@ -198,7 +189,7 @@ mod tests {
     #[test]
     fn test_component_id_equality() {
         assert_eq!(ComponentId::EDITOR, ComponentId("editor"));
-        assert_ne!(ComponentId::EDITOR, ComponentId::EXPLORER);
+        assert_ne!(ComponentId::EDITOR, ComponentId("explorer"));
     }
 
     #[test]

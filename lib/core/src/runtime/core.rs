@@ -13,29 +13,21 @@ use {
         buffer::{Buffer, TextOps},
         command::CommandRegistry,
         command_line::CommandLine,
-        completion::{CompletionContext, CompletionEngine, CompletionItem, CompletionState},
         component::RenderState,
         config::{ProfileConfig, ProfileManager},
         constants::EVENT_CHANNEL_CAPACITY,
-        decoration::{
-            DecorationContext, DecorationGroup, DecorationStore, LanguageRendererRegistry,
-        },
-        event::{CompletionEvent, InnerEvent},
-        explorer::ExplorerState,
-        folding::FoldManager,
+        decoration::{DecorationStore, LanguageRendererRegistry},
+        event::InnerEvent,
+        event_bus::{BufferClosed, EventBus, EventSender, FileOpened},
         highlight::{ColorMode, HighlightStore, Theme},
         indent::IndentAnalyzer,
         interactor::InteractorRegistry,
         jumplist::JumpList,
-        leap::LeapState,
         modd::ModeState,
         modifier::{ModifierContext, ModifierRegistry},
-        plugin::{PluginContext, PluginLoader, PluginTuple},
+        plugin::{PluginContext, PluginLoader, PluginStateRegistry, PluginTuple},
         register::Registers,
         screen::Screen,
-        settings_menu::SettingsMenuState,
-        telescope::{TelescopeMatcher, TelescopeState, picker::Picker},
-        treesitter::{LanguageId, TreesitterManager},
         ui_component::ComponentRegistry,
     },
     tracing::debug,
@@ -69,40 +61,14 @@ pub struct Runtime {
     pub active_buffer_id: usize,
     /// Next buffer ID to assign
     next_buffer_id: usize,
-    /// File explorer state
-    pub explorer_state: Option<ExplorerState>,
     /// Jump list for Ctrl-O/Ctrl-I navigation
     pub jump_list: JumpList,
-    /// Completion engine
-    pub completion_engine: Arc<CompletionEngine>,
-    /// Current completion state
-    pub completion_state: CompletionState,
-    /// Cache of unfiltered completion items for re-filtering
-    pub(crate) completion_items_cache: Vec<CompletionItem>,
-    /// Watch channel sender for broadcasting completion active state
-    pub(crate) completion_active_tx: watch::Sender<bool>,
-    /// Watch channel receiver for completion active state
-    completion_active_rx: watch::Receiver<bool>,
-    /// Telescope fuzzy finder state
-    pub telescope_state: TelescopeState,
-    /// Telescope fuzzy matcher
-    pub telescope_matcher: TelescopeMatcher,
-    /// Telescope pickers registry
-    pub telescope_pickers: HashMap<String, Arc<dyn Picker>>,
-    /// Leap motion state
-    pub leap_state: LeapState,
-    /// Treesitter manager for syntax highlighting
-    pub treesitter: TreesitterManager,
-    /// Code folding manager
-    pub fold_manager: FoldManager,
     /// Indent guide analyzer
     pub indent_analyzer: IndentAnalyzer,
     /// Profile manager for config loading/saving
     pub profile_manager: ProfileManager,
     /// Name of the currently loaded profile
     pub current_profile_name: String,
-    /// Settings menu state
-    pub settings_menu: SettingsMenuState,
     /// Flag indicating render is needed (for coalescing)
     render_pending: bool,
     /// Interactor registry for extensible input handlers
@@ -117,6 +83,16 @@ pub struct Runtime {
     pub decoration_store: DecorationStore,
     /// Language renderer registry for decoration generation
     pub renderer_registry: LanguageRendererRegistry,
+    /// Event bus for type-erased plugin events
+    pub event_bus: Arc<EventBus>,
+    /// Plugin state registry for plugin-owned state
+    pub plugin_state: Arc<PluginStateRegistry>,
+    /// Overlay registry for plugin-based overlays
+    pub overlay_registry: crate::overlay::OverlayRegistry,
+    /// RPC handler registry for plugin-registered RPC methods
+    pub rpc_handler_registry: crate::rpc::RpcHandlerRegistry,
+    /// Display registry for plugin-provided mode display strings and icons
+    pub display_registry: crate::display::DisplayRegistry,
 }
 
 impl Default for Runtime {
@@ -162,17 +138,22 @@ impl Runtime {
     pub fn with_plugins<T: PluginTuple>(screen: Screen, plugins: T) -> Self {
         let (tx, rx) = mpsc::channel(EVENT_CHANNEL_CAPACITY);
         let (mode_tx, mode_rx) = watch::channel(ModeState::new());
-        let (completion_active_tx, completion_active_rx) = watch::channel(false);
+
+        // Initialize event bus and plugin state registry
+        let event_bus = Arc::new(EventBus::new(EVENT_CHANNEL_CAPACITY));
+        let plugin_state = Arc::new(PluginStateRegistry::new());
 
         // Initialize profile manager
         let profile_manager = ProfileManager::default();
         let default_profile_name = profile_manager.default_profile_name().to_string();
 
-        // Load plugins
+        // Load plugins with state registry and event bus integration
         let mut ctx = PluginContext::new();
         let mut loader = PluginLoader::new();
         loader.add_plugins(plugins);
-        loader.load(&mut ctx).expect("Plugin loading failed");
+        loader
+            .load_with_state(&mut ctx, &plugin_state, &event_bus)
+            .expect("Plugin loading failed");
 
         // Extract components from plugin context
         let (
@@ -180,9 +161,11 @@ impl Runtime {
             interactor_registry,
             modifier_registry,
             _keymap,
-            telescope_pickers,
             focus_handlers,
             component_registry,
+            overlay_registry,
+            rpc_handler_registry,
+            display_registry,
         ) = ctx.into_parts();
 
         let mut runtime = Self {
@@ -205,23 +188,10 @@ impl Runtime {
             command_registry: Arc::new(command_registry),
             active_buffer_id: 0,
             next_buffer_id: 0,
-            explorer_state: None,
             jump_list: JumpList::new(),
-            completion_engine: Arc::new(CompletionEngine::default()),
-            completion_state: CompletionState::new(),
-            completion_items_cache: Vec::new(),
-            completion_active_tx,
-            completion_active_rx,
-            telescope_state: TelescopeState::new(),
-            telescope_matcher: TelescopeMatcher::new(),
-            telescope_pickers,
-            leap_state: LeapState::new(),
-            treesitter: TreesitterManager::new(),
-            fold_manager: FoldManager::new(),
             indent_analyzer: IndentAnalyzer::default(),
             profile_manager,
             current_profile_name: default_profile_name,
-            settings_menu: SettingsMenuState::new(),
             render_pending: false,
             interactor_registry,
             modifier_registry,
@@ -229,12 +199,12 @@ impl Runtime {
             component_registry,
             decoration_store: DecorationStore::new(),
             renderer_registry: LanguageRendererRegistry::new(),
+            event_bus,
+            plugin_state,
+            overlay_registry,
+            rpc_handler_registry,
+            display_registry,
         };
-
-        // Register markdown renderer
-        runtime
-            .renderer_registry
-            .register(Box::new(crate::language::markdown::MarkdownRenderer::new()));
 
         // Enable diff-based rendering by default
         runtime.screen.enable_frame_renderer();
@@ -248,15 +218,16 @@ impl Runtime {
         self.mode_rx.clone()
     }
 
-    /// Subscribe to completion active state changes
+    /// Get an event sender for emitting events to the event bus
     #[must_use]
-    pub fn subscribe_completion_active(&self) -> watch::Receiver<bool> {
-        self.completion_active_rx.clone()
+    pub fn event_sender(&self) -> EventSender {
+        self.event_bus.sender()
     }
 
-    /// Broadcast completion active state change
-    pub(crate) fn set_completion_active(&self, active: bool) {
-        let _ = self.completion_active_tx.send(active);
+    /// Get a reference to the plugin state registry
+    #[must_use]
+    pub const fn plugin_state(&self) -> &Arc<PluginStateRegistry> {
+        &self.plugin_state
     }
 
     /// Broadcast a mode change
@@ -344,6 +315,8 @@ impl Runtime {
 
     /// Render the screen with current state
     pub(crate) fn render(&mut self) {
+        // Get visibility source from plugin state (fold plugin provides this)
+        let visibility_source = self.plugin_state.visibility_source();
         let state = RenderState {
             buffers: &self.buffers,
             highlight_store: &self.highlight_store,
@@ -353,13 +326,9 @@ impl Runtime {
             last_command: &self.last_command,
             color_mode: self.color_mode,
             theme: &self.theme,
-            explorer: self.explorer_state.as_ref(),
-            completion: &self.completion_state,
-            telescope: &self.telescope_state,
-            leap: &self.leap_state,
-            fold_manager: &self.fold_manager,
+            plugin_state: &self.plugin_state,
+            visibility_source: visibility_source.as_ref(),
             indent_analyzer: &self.indent_analyzer,
-            settings_menu: &self.settings_menu,
             modifier_registry: Some(&self.modifier_registry),
             decoration_store: Some(&self.decoration_store),
             renderer_registry: Some(&self.renderer_registry),
@@ -416,37 +385,14 @@ impl Runtime {
                 let mut buffer = Buffer::empty(id);
                 buffer.set_content(&content);
                 buffer.file_path = Some(path.to_string());
-                self.buffers.insert(id, buffer.clone());
+                self.buffers.insert(id, buffer);
 
-                // Initialize treesitter for this buffer
-                let language_id = self.treesitter.init_buffer(id, Some(path));
-                debug!(id, path, ?language_id, "create_buffer_from_file: treesitter initialized");
-
-                // Generate initial syntax highlights and fold ranges
-                #[allow(clippy::cast_possible_truncation)]
-                if self.treesitter.has_parser(id) {
-                    let line_count = buffer.contents.len() as u32;
-                    let highlights = self.treesitter.parse_and_highlight(
-                        id,
-                        &content,
-                        0,
-                        line_count.saturating_sub(1),
-                    );
-                    if !highlights.is_empty() {
-                        self.highlight_store.add(id, highlights);
-                        debug!(id, "create_buffer_from_file: syntax highlights added");
-                    }
-
-                    // Compute fold ranges
-                    let fold_ranges = self.treesitter.compute_fold_ranges(id, &content);
-                    if !fold_ranges.is_empty() {
-                        self.fold_manager.set_ranges(id, fold_ranges);
-                        debug!(id, "create_buffer_from_file: fold ranges computed");
-                    }
-
-                    // Generate language-specific decorations (e.g., markdown rendering)
-                    self.generate_decorations(id, &content, language_id);
-                }
+                // Emit FileOpened event for treesitter plugin to handle syntax highlighting
+                self.event_bus.emit(FileOpened {
+                    buffer_id: id,
+                    path: path.to_string(),
+                });
+                debug!(id, path, "create_buffer_from_file: emitted FileOpened event");
 
                 debug!(id, path, "create_buffer_from_file: success");
                 Some(id)
@@ -474,12 +420,11 @@ impl Runtime {
         }
 
         if self.buffers.remove(&buffer_id).is_some() {
-            // Clean up treesitter state
-            self.treesitter.remove_buffer(buffer_id);
             // Clean up highlights
             self.highlight_store.clear_all(buffer_id);
-            // Clean up fold state
-            self.fold_manager.remove_buffer(buffer_id);
+
+            // Emit BufferClosed event for plugins to clean up their state
+            self.event_bus.emit(BufferClosed { buffer_id });
 
             // If we closed the active buffer, switch to another one
             if self.active_buffer_id == buffer_id
@@ -555,115 +500,24 @@ impl Runtime {
         }
     }
 
-    /// Trigger completion at current cursor position
-    pub(crate) fn trigger_completion(&self, buffer_id: usize) {
-        let Some(buffer) = self.buffers.get(&buffer_id) else {
-            return;
-        };
-
-        // Build completion context
-        let ctx = Self::build_completion_context(buffer);
-
-        // Don't trigger if prefix is empty
-        if ctx.prefix.is_empty() {
-            return;
-        }
-
-        let content = buffer.contents.clone();
-        let engine = self.completion_engine.clone();
-        let tx = self.tx.clone();
-
-        // Spawn async completion fetch
-        tokio::spawn(async move {
-            let items = engine.complete(&ctx, &content).await;
-            if !items.is_empty() {
-                let _ = tx
-                    .send(InnerEvent::CompletionEvent(CompletionEvent::Update {
-                        items,
-                        prefix: ctx.prefix,
-                        start_col: ctx.word_start_col,
-                        start_row: ctx.position.y,
-                    }))
-                    .await;
-            }
-        });
-    }
-
-    /// Build completion context from buffer state
-    #[allow(clippy::cast_possible_truncation)]
-    fn build_completion_context(buffer: &Buffer) -> CompletionContext {
-        let position = buffer.cur;
-        let line = buffer
-            .contents
-            .get(position.y as usize)
-            .map(|l| l.inner.clone())
-            .unwrap_or_default();
-
-        // Find word start by walking backward
-        let chars: Vec<char> = line.chars().collect();
-        let mut word_start = position.x as usize;
-        while word_start > 0 {
-            let ch = chars.get(word_start - 1).copied().unwrap_or(' ');
-            if !ch.is_alphanumeric() && ch != '_' {
-                break;
-            }
-            word_start -= 1;
-        }
-
-        let prefix = if word_start < position.x as usize {
-            chars[word_start..position.x as usize].iter().collect()
-        } else {
-            String::new()
-        };
-
-        CompletionContext::new(buffer.id, position, line, word_start as u16, prefix)
-    }
-
-    /// Insert a completion item at current cursor position
-    pub(crate) fn insert_completion(&mut self, item: &CompletionItem) {
-        let Some(buffer) = self.buffers.get_mut(&0) else {
-            return;
-        };
-
-        // Delete the prefix (characters from start_col to cursor)
-        let prefix_len = self.completion_state.prefix.len();
-        for _ in 0..prefix_len {
-            buffer.delete_char_backward();
-        }
-
-        // Insert the completion text
-        for ch in item.insert_text.chars() {
-            buffer.insert_char(ch);
-        }
-    }
-
     /// Re-highlight all buffers after theme change
-    #[allow(clippy::cast_possible_truncation)]
+    ///
+    /// Emits parse requests for each buffer so the treesitter plugin can
+    /// regenerate highlights with the new theme.
     pub(crate) fn rehighlight_all_buffers(&mut self) {
-        let buffer_ids: Vec<usize> = self.buffers.keys().copied().collect();
-        for buffer_id in buffer_ids {
-            if self.treesitter.has_parser(buffer_id) {
-                let Some(buffer) = self.buffers.get(&buffer_id) else {
-                    continue;
-                };
-                let content: String = buffer
-                    .contents
-                    .iter()
-                    .map(|l| l.inner.as_str())
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                let line_count = buffer.contents.len() as u32;
-                let highlights = self.treesitter.parse_and_highlight(
-                    buffer_id,
-                    &content,
-                    0,
-                    line_count.saturating_sub(1),
-                );
-                self.highlight_store.clear_all(buffer_id);
-                if !highlights.is_empty() {
-                    self.highlight_store.add(buffer_id, highlights);
-                }
-            }
+        use crate::event_bus::BufferModification;
+
+        for (&buffer_id, buffer) in &self.buffers {
+            // Clear existing highlights
+            self.highlight_store.clear_all(buffer_id);
+
+            // Emit BufferModified event to trigger reparse by treesitter plugin
+            self.event_bus.emit(crate::event_bus::BufferModified {
+                buffer_id,
+                modification: BufferModification::FullReplace,
+            });
+            debug!(buffer_id, "rehighlight_all_buffers: requested reparse");
+            let _ = buffer; // Suppress unused warning
         }
     }
 
@@ -700,13 +554,12 @@ impl Runtime {
 
     /// Apply a profile configuration to the runtime
     pub fn apply_profile(&mut self, config: &ProfileConfig) {
-        use crate::{highlight::ThemeName, treesitter::TreesitterTheme};
+        use crate::highlight::ThemeName;
 
         // Apply theme
         if let Some(theme_name) = ThemeName::parse(&config.editor.theme) {
             self.theme = Theme::from_name(theme_name);
-            self.treesitter
-                .set_theme(TreesitterTheme::from_theme_name(theme_name));
+            // Theme change will trigger rehighlighting via event bus
             self.rehighlight_all_buffers();
             debug!(theme = %config.editor.theme, "Applied theme from profile");
         }
@@ -909,24 +762,17 @@ impl Runtime {
                 .map(|buf| crate::visual::CursorInfo {
                     x: buf.cur.x,
                     y: buf.cur.y,
-                    layer: if self.telescope_state.active {
-                        "telescope"
-                    } else if self.settings_menu.visible {
-                        "settings"
-                    } else {
-                        "editor"
-                    }
-                    .to_string(),
+                    layer: "editor".to_string(),
                 });
 
-        // Get layer info
-        let layers = self.screen.layer_info(
-            self.explorer_state.is_some(),
-            self.completion_state.active,
-            self.telescope_state.active,
-            self.leap_state.is_active(),
-            self.settings_menu.visible,
+        // Get layer info - dynamically query overlay registry
+        let ctx = crate::component::RenderContext::new(
+            self.screen.width(),
+            self.screen.height(),
+            &self.theme,
+            self.color_mode,
         );
+        let layers = self.screen.layer_info(&self.overlay_registry, &ctx);
 
         // Build plain text
         let plain_text = buffer.to_ascii();
@@ -940,76 +786,56 @@ impl Runtime {
             plain_text,
         })
     }
+}
 
-    /// Generate language-specific decorations for a buffer
-    ///
-    /// This is called when a buffer is opened and after significant content changes.
-    /// Uses the registered `LanguageRenderer` for the buffer's language to generate
-    /// visual decorations like heading icons, list bullets, code block backgrounds.
-    #[allow(clippy::cast_possible_truncation)]
-    fn generate_decorations(&mut self, buffer_id: usize, content: &str, language_id: LanguageId) {
-        // Check if renderer is registered and enabled
-        let renderer_enabled = self
-            .renderer_registry
-            .get(language_id)
-            .is_some_and(crate::decoration::LanguageRenderer::is_enabled);
+impl super::RuntimeContext for Runtime {
+    fn plugin_state(&self) -> &Arc<PluginStateRegistry> {
+        &self.plugin_state
+    }
 
-        if !renderer_enabled {
-            return;
+    fn event_bus(&self) -> &Arc<crate::event_bus::EventBus> {
+        &self.event_bus
+    }
+
+    fn buffer(&self, id: usize) -> Option<&Buffer> {
+        self.buffers.get(&id)
+    }
+
+    fn buffer_mut(&mut self, id: usize) -> Option<&mut Buffer> {
+        self.buffers.get_mut(&id)
+    }
+
+    fn active_buffer_id(&self) -> usize {
+        self.active_buffer_id
+    }
+
+    fn mode(&self) -> &ModeState {
+        &self.mode_state
+    }
+
+    fn set_mode(&mut self, mode: ModeState) {
+        // Inline the mode change logic here to avoid recursion with the inherent method
+        let was_insert = self.mode_state.is_insert();
+        let is_insert = mode.is_insert();
+
+        // Handle undo batching on insert mode transitions
+        if !was_insert && is_insert {
+            // Entering insert mode: begin batching
+            if let Some(buf) = self.buffers.get_mut(&self.active_buffer_id) {
+                buf.begin_batch();
+            }
+        } else if was_insert && !is_insert {
+            // Leaving insert mode: flush batch
+            if let Some(buf) = self.buffers.get_mut(&self.active_buffer_id) {
+                buf.flush_batch();
+            }
         }
 
-        // Get the decoration query for this language (requires mutable borrow)
-        // This must be done before getting the tree to avoid borrow conflicts
-        let query_exists = self.treesitter.get_decoration_query(language_id).is_some();
-        if !query_exists {
-            debug!(?language_id, "generate_decorations: no decoration query");
-            return;
-        }
+        self.mode_state = mode.clone();
+        let _ = self.mode_tx.send(mode);
+    }
 
-        // Now get immutable borrows for tree and renderer
-        let Some(tree) = self.treesitter.get_tree(buffer_id) else {
-            debug!(buffer_id, "generate_decorations: no tree available");
-            return;
-        };
-
-        let Some(renderer) = self.renderer_registry.get(language_id) else {
-            return;
-        };
-
-        // We need the query again - this time as immutable since it's cached
-        let query = self
-            .treesitter
-            .get_cached_decoration_query(language_id)
-            .expect("query was just checked to exist");
-
-        // Build decoration context
-        let cursor_line = self
-            .buffers
-            .get(&buffer_id)
-            .map_or(0, |b| u32::from(b.cur.y));
-
-        let ctx = DecorationContext::new(
-            content,
-            tree,
-            &self.mode_state.edit_mode,
-            cursor_line,
-            buffer_id,
-        );
-
-        // Generate decorations
-        let decorations = renderer.render(&ctx, query);
-
-        if !decorations.is_empty() {
-            debug!(
-                buffer_id,
-                count = decorations.len(),
-                "generate_decorations: generated decorations"
-            );
-            self.decoration_store.set_decorations(
-                buffer_id,
-                DecorationGroup::Language,
-                decorations,
-            );
-        }
+    fn screen_size(&self) -> (u16, u16) {
+        (self.screen.width(), self.screen.height())
     }
 }
