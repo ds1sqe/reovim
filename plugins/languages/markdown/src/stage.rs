@@ -52,9 +52,7 @@ impl RenderStage for MarkdownRenderStage {
                             style,
                         } if span.start_line == line_num => {
                             let kind = if replacement.is_empty() {
-                                DecorationKind::Conceal {
-                                    replacement: None,
-                                }
+                                DecorationKind::Conceal { replacement: None }
                             } else {
                                 DecorationKind::Conceal {
                                     replacement: Some(replacement.clone()),
@@ -73,9 +71,7 @@ impl RenderStage for MarkdownRenderStage {
                             Some(Decoration {
                                 start_col: span.start_col as usize,
                                 end_col: span.end_col as usize,
-                                kind: DecorationKind::Conceal {
-                                    replacement: None,
-                                },
+                                kind: DecorationKind::Conceal { replacement: None },
                             })
                         }
                         reovim_core::decoration::Decoration::InlineStyle { span, style }

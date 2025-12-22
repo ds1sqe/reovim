@@ -19,10 +19,10 @@ pub fn handle_editor_input(
     rt: &mut Runtime,
     char: Option<char>,
     delete: bool,
-    clear_landing: bool,
+    _clear_landing: bool, // Deprecated - now checks rt.showing_landing_page directly
 ) {
-    // Clear landing page if requested
-    if clear_landing && rt.showing_landing_page {
+    // Clear landing page when inserting first character
+    if rt.showing_landing_page && char.is_some() {
         if let Some(buffer) = rt.buffers.get_mut(&0) {
             buffer.contents.clear();
             buffer.cur = Position::default();

@@ -2,7 +2,6 @@
 
 use std::{
     any::TypeId,
-    collections::HashMap,
     sync::{Arc, RwLock},
 };
 
@@ -10,13 +9,11 @@ use crate::{
     bind::{CommandRef, KeyMap, KeymapScope},
     command::{CommandRegistry, CommandTrait},
     display::{DisplayInfo, DisplayRegistry, EditModeKey, SubModeKey},
-    interactor::InteractorRegistry,
     keystroke::KeySequence,
     modifier::ModifierRegistry,
     overlay::{OverlayRegistry, OverlayRenderer},
     render::{RenderStage, RenderStageRegistry},
     rpc::{RpcHandler, RpcHandlerRegistry},
-    runtime::FocusInputHandler,
     ui_component::{ComponentId, ComponentRegistry, UIComponent},
 };
 
@@ -28,17 +25,11 @@ pub struct PluginContext {
     /// Command registry for registering commands
     pub(crate) commands: CommandRegistry,
 
-    /// Interactor registry for UI component handlers
-    pub(crate) interactors: InteractorRegistry,
-
     /// Modifier registry for style/behavior modifiers
     pub(crate) modifiers: ModifierRegistry,
 
     /// Keymap for keybinding registration
     pub(crate) keymap: KeyMap,
-
-    /// Focus input handlers (enlist pattern)
-    pub(crate) focus_handlers: HashMap<ComponentId, FocusInputHandler>,
 
     /// Track which plugins have been loaded
     pub(crate) loaded_plugins: std::collections::HashSet<TypeId>,
@@ -71,10 +62,8 @@ impl PluginContext {
     pub fn new() -> Self {
         Self {
             commands: CommandRegistry::new(),
-            interactors: InteractorRegistry::new(),
             modifiers: ModifierRegistry::new(),
             keymap: KeyMap::default(),
-            focus_handlers: HashMap::new(),
             loaded_plugins: std::collections::HashSet::new(),
             components: ComponentRegistry::new(),
             overlays: OverlayRegistry::new(),
@@ -106,33 +95,6 @@ impl PluginContext {
     #[must_use]
     pub const fn command_registry(&self) -> &CommandRegistry {
         &self.commands
-    }
-
-    // === Interactor Registration ===
-
-    /// Register an interactor (UI component)
-    pub fn register_interactor(&mut self, interactor: Box<dyn UIComponent>) {
-        self.interactors.register(interactor);
-    }
-
-    /// Register a focus input handler for an interactor
-    ///
-    /// This uses the "enlist" pattern where handlers are function pointers
-    /// that receive the runtime and input data.
-    pub fn register_focus_handler(&mut self, id: ComponentId, handler: FocusInputHandler) {
-        self.focus_handlers.insert(id, handler);
-    }
-
-    /// Get access to the interactor registry
-    #[must_use]
-    pub const fn interactor_registry(&self) -> &InteractorRegistry {
-        &self.interactors
-    }
-
-    /// Get mutable access to the interactor registry
-    #[must_use]
-    pub const fn interactor_registry_mut(&mut self) -> &mut InteractorRegistry {
-        &mut self.interactors
     }
 
     // === Keybinding Registration ===
@@ -168,17 +130,7 @@ impl PluginContext {
     /// Register a UI component
     ///
     /// If a component with the same ID already exists, it will be replaced.
-    /// This also automatically registers any keybindings provided by the component
-    /// via `UIComponent::keybindings()`.
     pub fn register_component(&mut self, component: Box<dyn UIComponent>) {
-        let id = component.id();
-
-        // Register keybindings from the component
-        for (mode, binding) in component.keybindings() {
-            let scope = KeymapScope::Component { id, mode };
-            self.keymap.bind_with_metadata(scope, binding);
-        }
-
         // Register the component itself
         self.components.register(component);
     }
@@ -390,10 +342,8 @@ impl PluginContext {
         self,
     ) -> (
         CommandRegistry,
-        InteractorRegistry,
         ModifierRegistry,
         KeyMap,
-        HashMap<ComponentId, FocusInputHandler>,
         ComponentRegistry,
         OverlayRegistry,
         RpcHandlerRegistry,
@@ -402,10 +352,8 @@ impl PluginContext {
     ) {
         (
             self.commands,
-            self.interactors,
             self.modifiers,
             self.keymap,
-            self.focus_handlers,
             self.components,
             self.overlays,
             self.rpc_handlers,

@@ -1,16 +1,19 @@
 //! Explorer rendering
 
+#[cfg(test)]
 use {
     reovim_core::highlight::{ColorMode, Style, Theme},
     std::fmt::Write,
 };
 
+#[cfg(test)]
 use super::{
     node::{FileNode, format_size},
     state::{ExplorerInputMode, ExplorerState},
 };
 
 /// Render the explorer state to a vector of styled lines
+#[cfg(test)]
 #[must_use]
 pub fn render_explorer(
     state: &ExplorerState,
@@ -56,6 +59,7 @@ pub fn render_explorer(
 }
 
 /// Render the input prompt line
+#[cfg(test)]
 fn render_input_prompt(
     state: &ExplorerState,
     width: u16,
@@ -89,9 +93,11 @@ fn render_input_prompt(
 }
 
 /// Width reserved for size column (including trailing space)
+#[cfg(test)]
 const SIZE_COLUMN_WIDTH: usize = 6;
 
 /// Render a single node to a styled string
+#[cfg(test)]
 fn render_node(
     node: &FileNode,
     is_cursor: bool,
@@ -156,7 +162,9 @@ fn render_node(
 }
 
 /// Render the explorer header (shows current directory)
+#[cfg(test)]
 #[must_use]
+#[allow(dead_code)]
 pub fn render_header(
     state: &ExplorerState,
     width: u16,

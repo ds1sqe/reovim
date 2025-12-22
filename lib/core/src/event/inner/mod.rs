@@ -44,17 +44,8 @@ pub enum InnerEvent {
         /// Channel to send the response
         response_tx: oneshot::Sender<RpcResponse>,
     },
-    /// Focus-related input events (delegated to active focus target)
-    FocusInputEvent(FocusInputEvent),
-    /// Generic focus input - dispatched to registered handler via enlist pattern
-    FocusInput {
-        /// Character to insert (None for delete-only)
-        char: Option<char>,
-        /// Whether to delete backward
-        delete: bool,
-        /// Whether to clear landing page (editor-specific flag)
-        clear_landing: bool,
-    },
+    /// Text input events (delegated to text input target)
+    TextInputEvent(TextInputEvent),
     /// Plugin-defined event (type-erased)
     ///
     /// This variant enables plugins to define their own event types
@@ -75,7 +66,7 @@ pub enum InnerEvent {
 
 /// Input events routed to the active focus target
 #[derive(Debug, Clone, Copy)]
-pub enum FocusInputEvent {
+pub enum TextInputEvent {
     /// Insert a character at the cursor position
     InsertChar(char),
     /// Delete the character before the cursor

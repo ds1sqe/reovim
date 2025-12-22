@@ -11,8 +11,6 @@ use std::any::TypeId;
 use crate::{
     interactor::{CommandLineInt, Editor},
     plugin::{Plugin, PluginContext, PluginId},
-    runtime::{handle_command_line_input, handle_editor_input},
-    ui_component::ComponentId,
 };
 
 use super::CorePlugin;
@@ -41,17 +39,10 @@ impl Plugin for UIComponentsPlugin {
     }
 
     fn build(&self, ctx: &mut PluginContext) {
-        // Register UI components to InteractorRegistry (for input handling)
-        ctx.register_interactor(Box::new(Editor::default()));
-        ctx.register_interactor(Box::new(CommandLineInt));
-
-        // Also register to ComponentRegistry (for future unified rendering)
-        ctx.register_component(Box::new(Editor::default()));
+        // Register built-in UI components
+        // These components route to FocusInput events for Runtime access
+        ctx.register_component(Box::new(Editor));
         ctx.register_component(Box::new(CommandLineInt));
-
-        // Register focus input handlers
-        ctx.register_focus_handler(ComponentId::EDITOR, handle_editor_input);
-        ctx.register_focus_handler(ComponentId::COMMAND_LINE, handle_command_line_input);
     }
 
     fn dependencies(&self) -> Vec<TypeId> {

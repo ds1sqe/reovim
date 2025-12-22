@@ -3,8 +3,9 @@
 use {
     reovim_core::{
         buffer::{Buffer, TextOps},
+        content::WindowContentSource,
         screen::{
-            Position, WindowType,
+            Position,
             window::{Anchor, LineNumber, Window},
         },
     },
@@ -26,6 +27,7 @@ pub fn create_buffer(lines: usize) -> Buffer {
 }
 
 /// Create a large realistic buffer (source code-like content)
+#[allow(dead_code)]
 pub fn create_realistic_buffer(lines: usize) -> Buffer {
     let content = (0..lines)
         .map(|i| match i % 10 {
@@ -51,29 +53,33 @@ pub fn create_realistic_buffer(lines: usize) -> Buffer {
 pub fn create_window(height: u16) -> Window {
     Window {
         id: 0,
-        window_type: WindowType::Editor,
+        source: WindowContentSource::FileBuffer {
+            buffer_id: 0,
+            buffer_anchor: Anchor { x: 0, y: 0 },
+        },
         anchor: Anchor { x: 0, y: 0 },
         width: 120,
         height,
-        buffer_id: 0,
-        buffer_anchor: Anchor { x: 0, y: 0 },
-        line_number: LineNumber::default(),
-        scrollbar_enabled: false,
+        z_order: 0,
         is_active: true,
+        is_floating: false,
+        line_number: Some(LineNumber::default()),
+        scrollbar_enabled: false,
         cursor: Position { x: 0, y: 0 },
         desired_col: None,
         border_config: None,
-        is_floating: false,
     }
 }
 
 /// A mock writer that counts bytes written
+#[allow(dead_code)]
 pub struct MockWriter {
     pub bytes_written: usize,
 }
 
 impl MockWriter {
     #[must_use]
+    #[allow(dead_code)]
     pub const fn new() -> Self {
         Self { bytes_written: 0 }
     }
@@ -97,6 +103,7 @@ impl Write for MockWriter {
 }
 
 /// Create a buffer map from an existing buffer
+#[allow(dead_code)]
 pub fn buffer_to_map(buffer: Buffer) -> BTreeMap<usize, Buffer> {
     let mut map = BTreeMap::new();
     map.insert(0, buffer);

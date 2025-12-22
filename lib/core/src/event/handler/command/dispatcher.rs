@@ -141,7 +141,7 @@ impl Dispatcher {
     pub async fn send_focus_insert_char(&self, c: char) {
         let _ = self
             .inner_tx
-            .send(InnerEvent::FocusInputEvent(crate::event::FocusInputEvent::InsertChar(c)))
+            .send(InnerEvent::TextInputEvent(crate::event::TextInputEvent::InsertChar(c)))
             .await;
     }
 
@@ -149,7 +149,7 @@ impl Dispatcher {
     pub async fn send_focus_delete_backward(&self) {
         let _ = self
             .inner_tx
-            .send(InnerEvent::FocusInputEvent(crate::event::FocusInputEvent::DeleteCharBackward))
+            .send(InnerEvent::TextInputEvent(crate::event::TextInputEvent::DeleteCharBackward))
             .await;
     }
 }

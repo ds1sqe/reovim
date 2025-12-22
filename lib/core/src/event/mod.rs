@@ -9,7 +9,7 @@ mod input;
 pub use {
     handler::{CommandHandler, PrintEventHandler, TerminateHandler},
     inner::{
-        BufferEvent, CommandEvent, FocusInputEvent, HighlightEvent, InnerEvent,
+        BufferEvent, CommandEvent, TextInputEvent, HighlightEvent, InnerEvent,
         VisualTextObjectAction, WindowEvent,
     },
     input::*,

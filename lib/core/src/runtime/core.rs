@@ -1,9 +1,6 @@
 //! Core Runtime struct and initialization
 
-use std::{
-    collections::{BTreeMap, HashMap},
-    sync::Arc,
-};
+use std::{collections::BTreeMap, sync::Arc};
 
 /// Function pointer type for focus input handlers (enlist pattern)
 pub type FocusInputHandler = fn(&mut Runtime, Option<char>, bool, bool);
@@ -22,7 +19,6 @@ use {
         event_bus::{BufferClosed, EventBus, EventSender, FileOpened},
         highlight::{ColorMode, HighlightStore, Theme},
         indent::IndentAnalyzer,
-        interactor::InteractorRegistry,
         jumplist::JumpList,
         modd::ModeState,
         modifier::{ModifierContext, ModifierRegistry},
@@ -74,12 +70,8 @@ pub struct Runtime {
     pub current_profile_name: String,
     /// Flag indicating render is needed (for coalescing)
     render_pending: bool,
-    /// Interactor registry for extensible input handlers
-    pub interactor_registry: InteractorRegistry,
     /// Modifier registry for style and behavior modifiers
     pub modifier_registry: ModifierRegistry,
-    /// Registered focus input handlers per interactor (enlist pattern)
-    pub(crate) focus_input_handlers: HashMap<crate::ui_component::ComponentId, FocusInputHandler>,
     /// Component registry for unified UI components
     pub component_registry: ComponentRegistry,
     /// Decoration store for language-specific visual decorations
@@ -140,6 +132,7 @@ impl Runtime {
     /// Panics if plugin loading fails (e.g., missing dependencies or
     /// cyclic dependency detected).
     #[must_use]
+    #[allow(clippy::too_many_lines)]
     pub fn with_plugins<T: PluginTuple>(screen: Screen, plugins: T) -> Self {
         let (tx, rx) = mpsc::channel(EVENT_CHANNEL_CAPACITY);
         let (mode_tx, mode_rx) = watch::channel(ModeState::new());
@@ -163,10 +156,8 @@ impl Runtime {
         // Extract components from plugin context
         let (
             command_registry,
-            interactor_registry,
             modifier_registry,
             keymap,
-            focus_handlers,
             component_registry,
             overlay_registry,
             rpc_handler_registry,
@@ -205,9 +196,7 @@ impl Runtime {
             profile_manager,
             current_profile_name: default_profile_name,
             render_pending: false,
-            interactor_registry,
             modifier_registry,
-            focus_input_handlers: focus_handlers,
             component_registry,
             decoration_store: DecorationStore::new(),
             renderer_registry: LanguageRendererRegistry::new(),
@@ -221,7 +210,7 @@ impl Runtime {
 
         // Subscribe to focus change requests from plugins
         {
-            use crate::event_bus::{core_events::RequestFocusChange, EventResult};
+            use crate::event_bus::{EventResult, core_events::RequestFocusChange};
             let mode_tx = runtime.mode_tx.clone();
             let tx = runtime.tx.clone();
             runtime
@@ -231,14 +220,17 @@ impl Runtime {
                     let new_mode = current_mode.set_interactor_id(event.target);
                     // Send through event loop to properly update runtime.mode_state
                     let _ = tx.try_send(crate::event::InnerEvent::ModeChangeEvent(new_mode));
-                    tracing::info!("Runtime: Requesting focus change to component '{}'", event.target.0);
+                    tracing::info!(
+                        "Runtime: Requesting focus change to component '{}'",
+                        event.target.0
+                    );
                     EventResult::Handled
                 });
         }
 
         // Subscribe to mode change requests from plugins
         {
-            use crate::event_bus::{core_events::RequestModeChange, EventResult};
+            use crate::event_bus::{EventResult, core_events::RequestModeChange};
             let tx = runtime.tx.clone();
             runtime
                 .event_bus
@@ -257,7 +249,7 @@ impl Runtime {
 
         // Subscribe to file open requests from plugins
         {
-            use crate::event_bus::{core_events::RequestOpenFile, EventResult};
+            use crate::event_bus::{EventResult, core_events::RequestOpenFile};
             let tx = runtime.tx.clone();
             runtime
                 .event_bus
@@ -321,18 +313,6 @@ impl Runtime {
     #[must_use]
     pub const fn current_mode(&self) -> &ModeState {
         &self.mode_state
-    }
-
-    /// Register a focus input handler for an interactor (enlist pattern)
-    ///
-    /// This follows the Bevy/Zed pattern where handlers are registered at
-    /// initialization time, enabling fully generic dispatch at runtime.
-    pub fn enlist_focus_input_handler(
-        &mut self,
-        id: crate::ui_component::ComponentId,
-        handler: FocusInputHandler,
-    ) {
-        self.focus_input_handlers.insert(id, handler);
     }
 
     /// Build a modifier context for the given window

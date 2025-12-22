@@ -39,8 +39,7 @@ mod window;
 mod tests;
 
 // Re-export state, events, and provider
-pub use provider::ExplorerBufferProvider;
-pub use state::ExplorerState;
+pub use {provider::ExplorerBufferProvider, state::ExplorerState};
 
 /// Command IDs for explorer commands
 pub mod command_id {
@@ -143,44 +142,11 @@ impl Plugin for ExplorerPlugin {
         self.register_input_commands(ctx);
         self.register_keybindings(ctx);
 
-        // Register focus input handler for explorer
-        // This captures character input when explorer is in input mode (CreateFile, Rename, etc.)
-        let handler = |rt: &mut reovim_core::runtime::Runtime, char_opt: Option<char>, delete: bool, _clear: bool| {
-            use crate::state::{ExplorerState, ExplorerInputMode};
-
-            // Check if explorer is in input mode
-            let in_input_mode = rt.plugin_state.with::<ExplorerState, _, _>(|explorer| {
-                !matches!(explorer.input_mode, ExplorerInputMode::None)
-            }).unwrap_or(false);
-
-            if !in_input_mode {
-                return; // Not in input mode, don't handle
-            }
-
-            // Handle character input
-            if let Some(c) = char_opt {
-                tracing::info!("Explorer focus handler: adding char '{}' to input buffer", c);
-                rt.plugin_state.with_mut::<ExplorerState, _, _>(|explorer| {
-                    explorer.input_buffer.push(c);
-                });
-            }
-
-            // Handle backspace
-            if delete {
-                tracing::info!("Explorer focus handler: deleting char from input buffer");
-                rt.plugin_state.with_mut::<ExplorerState, _, _>(|explorer| {
-                    explorer.input_buffer.pop();
-                });
-            }
-        };
-
-        ctx.register_focus_handler(COMPONENT_ID, handler);
-        tracing::info!("ExplorerPlugin: registered focus input handler");
-
-        // Register UI component for input routing
+        // Register UI component for input handling
+        // Input is now handled directly in ExplorerComponent via UIComponent::handle_insert_char
         use crate::component::ExplorerComponent;
-        ctx.register_interactor(Box::new(ExplorerComponent));
-        tracing::info!("ExplorerPlugin: registered UIComponent for input routing");
+        ctx.register_component(Box::new(ExplorerComponent));
+        tracing::info!("ExplorerPlugin: registered UIComponent");
     }
 
     fn init_state(&self, registry: &PluginStateRegistry) {
@@ -201,11 +167,13 @@ impl Plugin for ExplorerPlugin {
     }
 
     fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {
-        use events::*;
-        use reovim_core::{
-            event_bus::core_events::{RequestFocusChange, RequestModeChange, RequestOpenFile},
-            modd::{EditMode, ModeState, SubMode},
-            ui_component::ComponentId,
+        use {
+            events::*,
+            reovim_core::{
+                event_bus::core_events::{RequestFocusChange, RequestModeChange, RequestOpenFile},
+                modd::{EditMode, ModeState, SubMode},
+                ui_component::ComponentId,
+            },
         };
 
         // Navigation events
@@ -496,9 +464,11 @@ impl Plugin for ExplorerPlugin {
         let state_clone = Arc::clone(&state);
         bus.subscribe::<ExplorerConfirmInputEvent, _>(100, move |_event, ctx| {
             // Check if in input mode
-            let in_input_mode = state_clone.with::<ExplorerState, _, _>(|s| {
-                !matches!(s.input_mode, crate::state::ExplorerInputMode::None)
-            }).unwrap_or(false);
+            let in_input_mode = state_clone
+                .with::<ExplorerState, _, _>(|s| {
+                    !matches!(s.input_mode, crate::state::ExplorerInputMode::None)
+                })
+                .unwrap_or(false);
 
             if in_input_mode {
                 // Confirm the input (create file, rename, etc.)
@@ -521,9 +491,11 @@ impl Plugin for ExplorerPlugin {
         let state_clone = Arc::clone(&state);
         bus.subscribe::<ExplorerCancelInputEvent, _>(100, move |_event, ctx| {
             // Check if in input mode
-            let in_input_mode = state_clone.with::<ExplorerState, _, _>(|s| {
-                !matches!(s.input_mode, crate::state::ExplorerInputMode::None)
-            }).unwrap_or(false);
+            let in_input_mode = state_clone
+                .with::<ExplorerState, _, _>(|s| {
+                    !matches!(s.input_mode, crate::state::ExplorerInputMode::None)
+                })
+                .unwrap_or(false);
 
             if in_input_mode {
                 // Cancel the input
@@ -921,7 +893,9 @@ impl ExplorerPlugin {
             CommandRef::Registered(command_id::INPUT_BACKSPACE),
         );
 
-        tracing::info!("ExplorerPlugin: registered keybinding Space+e, explorer navigation, and interactor input");
+        tracing::info!(
+            "ExplorerPlugin: registered keybinding Space+e, explorer navigation, and interactor input"
+        );
     }
 }
 
@@ -936,9 +910,8 @@ pub use {
         ExplorerInputBackspaceEvent, ExplorerInputCharEvent, ExplorerOpenNodeEvent,
         ExplorerPageDownEvent, ExplorerPageUpEvent, ExplorerPasteEvent, ExplorerRefreshEvent,
         ExplorerRenameEvent, ExplorerSelectAllEvent, ExplorerStartFilterEvent, ExplorerToggleEvent,
-        ExplorerToggleHiddenEvent,
-        ExplorerToggleNodeEvent, ExplorerToggleSelectEvent, ExplorerToggleSizesEvent,
-        ExplorerVisualModeEvent, ExplorerYankEvent,
+        ExplorerToggleHiddenEvent, ExplorerToggleNodeEvent, ExplorerToggleSelectEvent,
+        ExplorerToggleSizesEvent, ExplorerVisualModeEvent, ExplorerYankEvent,
     },
     node::FileNode,
     tree::FileTree,

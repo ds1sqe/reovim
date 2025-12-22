@@ -14,7 +14,10 @@ use crate::{
     visibility::{BufferVisibilitySource, VisibilityQuery},
 };
 
-use super::{Position, border::{BorderConfig, BorderInsets, WindowAdjacency}};
+use super::{
+    Position,
+    border::{BorderConfig, BorderInsets, WindowAdjacency},
+};
 
 /// Scrollbar rendering state
 #[derive(Debug, Clone, Copy)]
@@ -446,11 +449,12 @@ impl Window {
 
         // Calculate line number width for alignment
         let total_lines = buf.contents.len();
-        let num_width = if self.line_number.as_ref().is_some_and(LineNumber::is_shown) && total_lines > 0 {
-            (total_lines as f64).log10().floor() as usize + 1
-        } else {
-            1
-        };
+        let num_width =
+            if self.line_number.as_ref().is_some_and(LineNumber::is_shown) && total_lines > 0 {
+                (total_lines as f64).log10().floor() as usize + 1
+            } else {
+                1
+            };
 
         // Compute scrollbar state
         let scrollbar = self.compute_scrollbar_state(total_lines);
@@ -1009,11 +1013,12 @@ impl Window {
     ) {
         // Calculate line number width for alignment
         let total_lines = buf.contents.len();
-        let num_width = if self.line_number.as_ref().is_some_and(LineNumber::is_shown) && total_lines > 0 {
-            (total_lines as f64).log10().floor() as usize + 1
-        } else {
-            1
-        };
+        let num_width =
+            if self.line_number.as_ref().is_some_and(LineNumber::is_shown) && total_lines > 0 {
+                (total_lines as f64).log10().floor() as usize + 1
+            } else {
+                1
+            };
 
         // Build visual selection highlight
         let visual_highlight = Self::build_visual_highlight(buf, theme);
@@ -1064,8 +1069,13 @@ impl Window {
             } else {
                 // Render normal content line
                 if screen_y == self.anchor.y {
-                    tracing::info!("render line: window.id={}, anchor.x={}, anchor.y={}, screen_y={}",
-                        self.id, self.anchor.x, self.anchor.y, screen_y);
+                    tracing::info!(
+                        "render line: window.id={}, anchor.x={}, anchor.y={}, screen_y={}",
+                        self.id,
+                        self.anchor.x,
+                        self.anchor.y,
+                        screen_y
+                    );
                 }
                 self.render_content_line_to_buffer(
                     buffer,

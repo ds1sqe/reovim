@@ -17,7 +17,7 @@ pub struct FoldRenderStage {
 
 impl FoldRenderStage {
     /// Create new fold render stage
-    pub fn new(fold_manager: Arc<SharedFoldManager>) -> Self {
+    pub const fn new(fold_manager: Arc<SharedFoldManager>) -> Self {
         Self { fold_manager }
     }
 }
@@ -28,14 +28,22 @@ impl RenderStage for FoldRenderStage {
 
         // Update visibility for each line based on fold state
         for (line_idx, visibility) in input.visibility.iter_mut().enumerate() {
-            let line_num = line_idx as u32;
+            let Ok(line_num) = u32::try_from(line_idx) else {
+                continue;
+            };
 
             // Check if line is hidden by a fold
-            if self.fold_manager.is_hidden(buffer_id, VisibilityQuery::Line(line_num)) {
+            if self
+                .fold_manager
+                .is_hidden(buffer_id, VisibilityQuery::Line(line_num))
+            {
                 *visibility = LineVisibility::Hidden;
             }
             // Check if line is a fold marker
-            else if let Some(marker) = self.fold_manager.get_marker(buffer_id, VisibilityQuery::Line(line_num)) {
+            else if let Some(marker) = self
+                .fold_manager
+                .get_marker(buffer_id, VisibilityQuery::Line(line_num))
+            {
                 *visibility = LineVisibility::FoldMarker {
                     preview: marker.preview.clone(),
                     hidden_lines: marker.hidden_count,

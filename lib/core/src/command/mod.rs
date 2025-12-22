@@ -9,6 +9,7 @@ pub use context::CommandContext;
 // Trait-based command system
 pub mod builtin;
 pub mod id;
+pub mod macros;
 pub mod registry;
 pub mod traits;
 

@@ -144,10 +144,7 @@ impl InteractorRegistry {
 
 /// Editor component (main text editing area)
 #[derive(Debug, Default)]
-pub struct Editor {
-    /// Clear landing page on next input
-    pub clear_landing_on_input: bool,
-}
+pub struct Editor;
 
 impl UIComponent for Editor {
     fn id(&self) -> ComponentId {
@@ -188,29 +185,23 @@ impl UIComponent for Editor {
         true
     }
 
-    fn handle_insert_char(&mut self, c: char, mode_state: &ModeState) -> InputResult {
-        if mode_state.is_command() || mode_state.is_insert() {
-            let clear = std::mem::take(&mut self.clear_landing_on_input);
-            InputResult::SendEvent(InnerEvent::FocusInput {
-                char: Some(c),
-                delete: false,
-                clear_landing: clear,
-            })
-        } else {
-            InputResult::NotHandled
-        }
+    fn handle_insert_char(
+        &mut self,
+        _c: char,
+        _mode_state: &ModeState,
+        _state: &crate::plugin::PluginStateRegistry,
+    ) -> InputResult {
+        // Built-in components handled directly in Runtime via handle_interactor_input()
+        InputResult::NotHandled
     }
 
-    fn handle_delete_backward(&mut self, mode_state: &ModeState) -> InputResult {
-        if mode_state.is_command() || mode_state.is_insert() {
-            InputResult::SendEvent(InnerEvent::FocusInput {
-                char: None,
-                delete: true,
-                clear_landing: false,
-            })
-        } else {
-            InputResult::NotHandled
-        }
+    fn handle_delete_backward(
+        &mut self,
+        _mode_state: &ModeState,
+        _state: &crate::plugin::PluginStateRegistry,
+    ) -> InputResult {
+        // Built-in components handled directly in Runtime via handle_interactor_input()
+        InputResult::NotHandled
     }
 
     fn captures_input(&self) -> bool {
@@ -268,20 +259,23 @@ impl UIComponent for CommandLineInt {
         true
     }
 
-    fn handle_insert_char(&mut self, c: char, _mode_state: &ModeState) -> InputResult {
-        InputResult::SendEvent(InnerEvent::FocusInput {
-            char: Some(c),
-            delete: false,
-            clear_landing: false,
-        })
+    fn handle_insert_char(
+        &mut self,
+        _c: char,
+        _mode_state: &ModeState,
+        _state: &crate::plugin::PluginStateRegistry,
+    ) -> InputResult {
+        // Built-in components handled directly in Runtime via handle_interactor_input()
+        InputResult::NotHandled
     }
 
-    fn handle_delete_backward(&mut self, _mode_state: &ModeState) -> InputResult {
-        InputResult::SendEvent(InnerEvent::FocusInput {
-            char: None,
-            delete: true,
-            clear_landing: false,
-        })
+    fn handle_delete_backward(
+        &mut self,
+        _mode_state: &ModeState,
+        _state: &crate::plugin::PluginStateRegistry,
+    ) -> InputResult {
+        // Built-in components handled directly in Runtime via handle_interactor_input()
+        InputResult::NotHandled
     }
 
     fn captures_input(&self) -> bool {
@@ -304,7 +298,7 @@ mod tests {
         let mut registry = InteractorRegistry::new();
         assert!(registry.is_empty());
 
-        registry.register(Box::new(Editor::default()));
+        registry.register(Box::new(Editor));
         assert_eq!(registry.len(), 1);
         assert!(registry.contains(ComponentId::EDITOR));
     }
@@ -312,7 +306,7 @@ mod tests {
     #[test]
     fn test_interactor_registry_active() {
         let mut registry = InteractorRegistry::new();
-        registry.register(Box::new(Editor::default()));
+        registry.register(Box::new(Editor));
         registry.register(Box::new(CommandLineInt));
 
         assert_eq!(registry.active_id(), ComponentId::EDITOR);

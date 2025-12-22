@@ -437,26 +437,22 @@ impl Screen {
         _decoration_store: Option<&DecorationStore>,
         render_stages: &std::sync::Arc<std::sync::RwLock<crate::render::RenderStageRegistry>>,
     ) -> crate::render::RenderData {
-        use crate::render::RenderData;
-        use crate::component::RenderContext;
+        use crate::{component::RenderContext, render::RenderData};
 
         // Stage 1: Extract buffer content
         let mut data = RenderData::from_buffer(window, text_buffer);
         data.buffer_id = window.buffer_id().unwrap_or(0);
 
         // Create render context
-        let ctx = RenderContext::new(
-            self.size.width,
-            self.size.height,
-            theme,
-            color_mode,
-        );
+        let ctx = RenderContext::new(self.size.width, self.size.height, theme, color_mode);
 
         // Execute registered render stages in order
-        let stages_guard = render_stages.read().unwrap();
-        for stage in stages_guard.stages() {
-            tracing::trace!(stage_name = stage.name(), "Executing render stage");
-            data = stage.transform(data, &ctx);
+        {
+            let stages_guard = render_stages.read().unwrap();
+            for stage in stages_guard.stages() {
+                tracing::trace!(stage_name = stage.name(), "Executing render stage");
+                data = stage.transform(data, &ctx);
+            }
         }
 
         // TODO: Stage 5: Visual selection overlay
@@ -490,7 +486,12 @@ impl Screen {
         #[allow(clippy::cast_precision_loss)]
         #[allow(clippy::cast_possible_truncation)]
         #[allow(clippy::cast_sign_loss)]
-        let num_width = if window.line_number.as_ref().is_some_and(LineNumber::is_shown) && total_lines > 0 {
+        let num_width = if window
+            .line_number
+            .as_ref()
+            .is_some_and(LineNumber::is_shown)
+            && total_lines > 0
+        {
             (total_lines as f64).log10().floor() as usize + 1
         } else {
             1
@@ -506,7 +507,7 @@ impl Screen {
             // Check visibility
             let visibility = &render_data.visibility[line_idx];
             match visibility {
-                LineVisibility::Hidden => {},
+                LineVisibility::Hidden => {}
                 LineVisibility::FoldMarker { preview, .. } => {
                     let screen_y = window.anchor.y + display_row;
                     let gutter_width = self.render_line_number_to_buffer_simple(
@@ -583,6 +584,8 @@ impl Screen {
         theme: &Theme,
         window: &Window,
     ) -> u16 {
+        use crate::screen::window::LineNumberMode;
+
         let Some(line_number) = &window.line_number else {
             return 0;
         };
@@ -591,7 +594,6 @@ impl Screen {
         }
 
         // Calculate plain text line number (without ANSI codes for frame buffer)
-        use crate::screen::window::LineNumberMode;
         let is_current_line = row == cursor_y;
 
         let num_str = if window.is_active {
@@ -692,11 +694,10 @@ impl Screen {
         windows_to_render.sort_by_key(|w| w.z_order);
 
         // Render all windows
-        for i in 0..windows_to_render.len() {
-            let win = &windows_to_render[i];
-
+        for win in &windows_to_render {
             // Handle PluginBuffer windows differently
-            if let crate::content::WindowContentSource::PluginBuffer { provider, .. } = &win.source {
+            if let crate::content::WindowContentSource::PluginBuffer { provider, .. } = &win.source
+            {
                 // For plugin buffers, generate virtual content via provider
                 use crate::content::BufferContext;
                 let buffer_ctx = BufferContext {
@@ -779,7 +780,6 @@ impl Screen {
                 }
 
                 // Execute render pipeline with the window from windows_to_render
-                let win = &windows_to_render[i];
                 let render_data = self.execute_pipeline(
                     win,
                     buf,
@@ -799,7 +799,11 @@ impl Screen {
                 if win.is_active {
                     let gutter_width = win.line_number_width(buf.contents.len());
                     let cursor_x = win.anchor.x + gutter_width + buf.cur.x;
-                    let cursor_y = win.anchor.y + buf.cur.y.saturating_sub(win.buffer_anchor().map_or(0, |a| a.y));
+                    let cursor_y = win.anchor.y
+                        + buf
+                            .cur
+                            .y
+                            .saturating_sub(win.buffer_anchor().map_or(0, |a| a.y));
                     cursor_pos = Some((cursor_x, cursor_y));
                 }
             }

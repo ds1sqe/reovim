@@ -1,7 +1,6 @@
 //! Render pipeline stage trait
 
-use super::RenderData;
-use crate::component::RenderContext;
+use {super::RenderData, crate::component::RenderContext};
 
 /// Pipeline stage that transforms render data
 ///

@@ -104,6 +104,154 @@ event_bus.emit(LeapStartEvent {
 | `LeapJumpEvent` | Jump completed (from, to, direction) |
 | `LeapMatchesFoundEvent` | Matches found (count, pattern) |
 
+## Event Design Patterns
+
+When designing events for your plugin, choose the appropriate pattern based on your needs.
+
+### Zero-Sized Events
+
+Use zero-sized events for simple notifications where the handler has access to all needed state.
+
+```rust
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RefreshEvent;
+
+impl Event for RefreshEvent {}
+```
+
+**When to use:**
+- Handler has access to all needed state via `PluginStateRegistry`
+- No parameters required from command
+- Simple trigger/notification
+- State is managed elsewhere
+
+**Benefits:**
+- Minimal memory overhead (zero-sized type)
+- Implements `Copy` - cheap to clone
+- Simple to construct with `Default`
+
+**Example:**
+```rust
+// Define event
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ExplorerRefreshEvent;
+
+impl Event for ExplorerRefreshEvent {}
+
+// Handler accesses state directly
+bus.subscribe::<ExplorerRefreshEvent, _>(100, |_event, ctx| {
+    ctx.state.with_mut::<ExplorerState, _, _>(|state| {
+        state.refresh();
+        EventResult::Handled
+    }).unwrap_or(EventResult::NotHandled)
+});
+```
+
+### Data-Carrying Events
+
+Use data-carrying events when the handler needs specific context that isn't available in state.
+
+```rust
+#[derive(Debug, Clone)]
+pub struct MoveEvent {
+    pub count: usize,
+    pub direction: Direction,
+}
+
+impl MoveEvent {
+    pub fn new(count: usize, direction: Direction) -> Self {
+        Self { count, direction }
+    }
+}
+
+impl Event for MoveEvent {}
+```
+
+**When to use:**
+- Command receives parameters (count, direction, arguments)
+- Handler needs specific context not in state
+- Information passed from external source
+- Event carries data between different components
+
+**Benefits:**
+- Explicit context passing
+- Type-safe parameters
+- Self-documenting through fields
+
+**Example:**
+```rust
+// Define event with data
+#[derive(Debug, Clone)]
+pub struct CursorMoveEvent {
+    pub count: usize,
+    pub direction: Direction,
+}
+
+impl CursorMoveEvent {
+    pub fn new(count: usize, direction: Direction) -> Self {
+        Self { count, direction }
+    }
+}
+
+impl Event for CursorMoveEvent {}
+
+// Handler uses event data
+bus.subscribe::<CursorMoveEvent, _>(100, |event, ctx| {
+    for _ in 0..event.count {
+        ctx.state.move_cursor(event.direction);
+    }
+    EventResult::Handled
+});
+```
+
+### Decision Guidelines
+
+**Prefer zero-sized events when:**
+- ✅ State is in `PluginStateRegistry`
+- ✅ No parameters needed
+- ✅ Simple trigger action
+
+**Prefer data-carrying events when:**
+- ✅ Need count from command execution
+- ✅ Passing data between plugins
+- ✅ External context required
+- ✅ Handler can't access needed information from state
+
+### Common Patterns
+
+**Pattern 1: Simple Toggle**
+```rust
+// Zero-sized - state knows whether it's on/off
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ToggleEvent;
+```
+
+**Pattern 2: Counted Action**
+```rust
+// Data-carrying - count affects behavior
+#[derive(Debug, Clone)]
+pub struct RepeatEvent {
+    pub count: usize,
+}
+```
+
+**Pattern 3: Directional Movement**
+```rust
+// Data-carrying - direction is essential context
+#[derive(Debug, Clone)]
+pub struct MoveEvent {
+    pub direction: Direction,
+    pub count: usize,
+}
+```
+
+**Pattern 4: State Change Notification**
+```rust
+// Zero-sized - handler queries state
+#[derive(Debug, Clone, Copy, Default)]
+pub struct StateChangedEvent;
+```
+
 ### InnerEvent (Legacy)
 
 Internal events passed to the runtime via mpsc channel.
@@ -128,8 +276,8 @@ pub enum InnerEvent {
     TreesitterEvent(TreesitterEvent),
     OperatorMotionEvent(OperatorMotionAction),
 
-    // Focus input events (enlist pattern)
-    FocusInput { char: Option<char>, delete: bool, clear_landing: bool },
+    // Text input events (direct dispatch to components)
+    TextInputEvent(TextInputEvent),
     VisualTextObjectEvent(VisualTextObjectAction),
 
     // UI events
@@ -222,37 +370,58 @@ pub enum LeapEvent {
 }
 ```
 
-### FocusInput Event
+### TextInputEvent
 
-Generic focus input event using the enlist-based handler registration pattern. Dispatched to registered handlers based on active `InteractorId`:
+Character input event routed to the currently focused component. Uses a two-tier dispatch system: built-in components (Editor, CommandLine) are handled directly via fast path for synchronous Runtime access, while plugin components implement `UIComponent` trait methods.
 
 ```rust
-InnerEvent::FocusInput {
-    char: Option<char>,    // Character to insert (None for delete-only)
-    delete: bool,          // Whether to delete backward
-    clear_landing: bool,   // Whether to clear landing page (editor-specific)
+pub enum TextInputEvent {
+    InsertChar(char),       // Character to insert
+    DeleteCharBackward,     // Backspace/delete
 }
 ```
 
-**Enlist Pattern (Runtime Dispatch):**
+**Direct Dispatch (Runtime Fast Path):**
 ```rust
-// Fully generic - no match on InteractorId!
-InnerEvent::FocusInput { char, delete, clear_landing } => {
-    if let Some(&handler) = self.focus_input_handlers.get(&self.mode_state.interactor_id) {
-        handler(self, char, delete, clear_landing);
+fn handle_interactor_input(&mut self, event: TextInputEvent) {
+    let interactor_id = self.mode_state.interactor_id;
+
+    // Fast path: Built-in components with direct Runtime access
+    match interactor_id {
+        ComponentId::EDITOR => {
+            match event {
+                TextInputEvent::InsertChar(c) => {
+                    handle_editor_input(self, Some(c), false, false);
+                }
+                TextInputEvent::DeleteCharBackward => {
+                    handle_editor_input(self, None, true, false);
+                }
+            }
+            self.request_render();
+            return;
+        }
+        ComponentId::COMMAND_LINE => {
+            // Similar direct dispatch
+        }
+        _ => {
+            // Plugin component path via UIComponent trait
+            component.handle_insert_char(c, &mode_state, &plugin_state)
+        }
     }
 }
 ```
 
-**Registered Handlers (enlist.rs):**
-- `InteractorId::TELESCOPE` → Updates telescope query, triggers async filtering
-- `InteractorId::EDITOR` → Handles command line (command mode) or buffer editing (insert mode)
-- `InteractorId::EXPLORER` → Handles input internally via `InputResult::Handled`
+**Design Rationale:**
+- **Built-in components** (Editor, CommandLine) need direct Runtime access (buffers, command_line state)
+- **Plugin components** use `PluginStateRegistry` with interior mutability via `UIComponent` trait
+- **Synchronous execution** for built-ins eliminates async bounce and race conditions
+- **Clear separation** between core and plugin input handling
 
 **Emitted by:**
-- Interactor implementations via `InputResult::SendEvent(InnerEvent::FocusInput { ... })`
-- Single printable characters → `char: Some(c), delete: false`
-- Backspace key → `char: None, delete: true`
+- `CommandHandler` when processing single printable characters in insert/command mode
+- `CommandHandler` when processing Backspace key in input-accepting modes
+- Single printable characters → `TextInputEvent::InsertChar(c)`
+- Backspace key → `TextInputEvent::DeleteCharBackward`
 
 ### TreesitterEvent
 

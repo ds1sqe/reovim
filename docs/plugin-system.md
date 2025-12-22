@@ -96,17 +96,25 @@ Plugins go through four phases during initialization:
 
 ## PluginContext
 
-Used during `build()` and `finish()` to register commands and keybindings:
+Used during `build()` and `finish()` to register commands, components, and keybindings:
 
 ```rust
 pub struct PluginContext {
     pub command_registry: Arc<CommandRegistry>,
     pub keymap: Arc<KeyMap>,
+    component_registry: ComponentRegistry,
+    plugin_state: Arc<PluginStateRegistry>,
 }
 
 impl PluginContext {
+    /// Register a command
     pub fn register_command<C: CommandTrait + 'static>(&mut self, cmd: C) -> Result<(), PluginError>;
+
+    /// Register a keybinding
     pub fn register_keybinding(&mut self, mode: &str, keys: &str, command_id: CommandId);
+
+    /// Register a UI component for input handling and rendering
+    pub fn register_component(&mut self, component: Box<dyn UIComponent>);
 }
 ```
 
@@ -572,11 +580,11 @@ Plugins implement and register `UIComponent` for input handling:
 use reovim_core::{
     ui_component::{ComponentId, UIComponent},
     interactor::InputResult,
-    event::InnerEvent,
     modd::ModeState,
     component::RenderContext,
     frame::FrameBuffer,
     screen::{z_order, LayerBounds},
+    plugin::PluginStateRegistry,
 };
 
 #[derive(Debug)]
@@ -611,21 +619,37 @@ impl UIComponent for ExplorerComponent {
         true
     }
 
-    fn handle_insert_char(&mut self, c: char, _mode_state: &ModeState) -> InputResult {
-        // Route to focus handler
-        InputResult::SendEvent(InnerEvent::FocusInput {
-            char: Some(c),
-            delete: false,
-            clear_landing: false,
-        })
+    fn handle_insert_char(
+        &mut self,
+        c: char,
+        _mode_state: &ModeState,
+        state: &PluginStateRegistry,
+    ) -> InputResult {
+        // Plugin components access state directly via PluginStateRegistry
+        state.with_mut::<ExplorerState, _, _>(|explorer| {
+            if !explorer.input_buffer.is_empty() || explorer.message.is_some() {
+                explorer.input_buffer.push(c);
+                InputResult::Handled
+            } else {
+                InputResult::NotHandled
+            }
+        }).unwrap_or(InputResult::NotHandled)
     }
 
-    fn handle_delete_backward(&mut self, _mode_state: &ModeState) -> InputResult {
-        InputResult::SendEvent(InnerEvent::FocusInput {
-            char: None,
-            delete: true,
-            clear_landing: false,
-        })
+    fn handle_delete_backward(
+        &mut self,
+        _mode_state: &ModeState,
+        state: &PluginStateRegistry,
+    ) -> InputResult {
+        // Plugin components access state directly via PluginStateRegistry
+        state.with_mut::<ExplorerState, _, _>(|explorer| {
+            if !explorer.input_buffer.is_empty() {
+                explorer.input_buffer.pop();
+                InputResult::Handled
+            } else {
+                InputResult::NotHandled
+            }
+        }).unwrap_or(InputResult::NotHandled)
     }
 
     fn captures_input(&self) -> bool {
@@ -634,11 +658,84 @@ impl UIComponent for ExplorerComponent {
 }
 
 fn build(&self, ctx: &mut PluginContext) {
-    ctx.register_interactor(Box::new(ExplorerComponent));
+    ctx.register_component(Box::new(ExplorerComponent));
 }
 ```
 
-**Note**: UIComponents route input via `InputResult::SendEvent(InnerEvent::FocusInput{...})` which allows the component to delegate actual state management to focus handlers registered separately.
+**Input Handling Patterns:**
+
+Plugin components have two options for handling input:
+
+1. **Direct State Access (Recommended)**: Return `InputResult::Handled` and manipulate state via `PluginStateRegistry` directly
+   - Best for plugin components that own their state
+   - Synchronous, no event bounce
+   - Example: Explorer input handling shown above
+
+2. **Not Handled**: Return `InputResult::NotHandled` for input the component doesn't handle
+   - Input will be ignored or handled by other systems
+
+**Built-in vs Plugin Components:**
+
+- **Built-in components** (Editor, CommandLine): Handled via fast path in Runtime with direct access to Runtime state (buffers, command_line)
+- **Plugin components** (Explorer, Telescope): Handled via `UIComponent` trait methods with access to `PluginStateRegistry`
+
+This separation ensures built-in components can execute synchronously with full Runtime access while plugins maintain proper encapsulation through the state registry.
+
+## Rendering
+
+Reovim provides three rendering systems for different UI patterns:
+
+- **Overlays**: Temporary popups (completion, telescope)
+  - See [Rendering Guide](./plugin-rendering.md#overlays---temporary-popups)
+
+- **Window Providers**: Persistent panels (explorer, outline)
+  - See [Rendering Guide](./plugin-rendering.md#window-providers---persistent-panels)
+
+- **UIComponent**: Fixed UI elements (status line, tab line)
+  - See [Rendering Guide](./plugin-rendering.md#uicomponent-rendering---fixed-ui-elements)
+
+For detailed guidance on choosing the right rendering system, see the [Plugin Rendering Guide](./plugin-rendering.md).
+
+## State Management Patterns
+
+Reovim supports two state management patterns:
+
+### Registry-Owned State (Simple)
+
+For straightforward plugin state:
+
+```rust
+fn init_state(&self, registry: &PluginStateRegistry) {
+    registry.register(MyState::new());
+}
+```
+
+**Characteristics**:
+- State owned by PluginStateRegistry
+- Accessed via `state.with::<MyState, _, _>()`
+- Simple, no sharing needed
+
+### Plugin-Owned State (Shared)
+
+For state that implements multiple traits or is shared:
+
+```rust
+struct MyPlugin {
+    state: Arc<SharedState>,
+}
+
+fn init_state(&self, registry: &PluginStateRegistry) {
+    registry.register(Arc::clone(&self.state));
+    registry.set_visibility_source(
+        Arc::clone(&self.state) as Arc<dyn BufferVisibilitySource>
+    );
+}
+```
+
+**Use when**:
+- State implements BufferVisibilitySource, WindowProvider, etc.
+- State is shared with other systems
+- Need multiple trait registrations
 
 ## Creating External Plugins
 

@@ -4,12 +4,8 @@
 //! of `Interactor`, `DisplayComponent`, and `Layer` traits into a single interface.
 
 use crate::{
-    bind::{EditModeKind, KeyBinding},
-    component::RenderContext,
-    frame::FrameBuffer,
-    interactor::InputResult,
-    modd::ModeState,
-    screen::LayerBounds,
+    component::RenderContext, frame::FrameBuffer, interactor::InputResult, modd::ModeState,
+    plugin::PluginStateRegistry, screen::LayerBounds,
 };
 
 /// Unique identifier for UI components
@@ -129,19 +125,38 @@ pub trait UIComponent: std::fmt::Debug + Send + Sync {
         false
     }
 
-    /// Handle character input
+    /// Handle character input with access to plugin state
     ///
     /// Called when the component is focused and receives a character.
     /// Default implementation returns `NotHandled`.
-    fn handle_insert_char(&mut self, _c: char, _mode: &ModeState) -> InputResult {
+    ///
+    /// The `state` parameter provides access to plugin state registry,
+    /// allowing components to directly manipulate their state without
+    /// routing through focus handlers. `PluginStateRegistry` uses interior
+    /// mutability (`RwLock`) for thread-safe state access.
+    fn handle_insert_char(
+        &mut self,
+        _c: char,
+        _mode: &ModeState,
+        _state: &PluginStateRegistry,
+    ) -> InputResult {
         InputResult::NotHandled
     }
 
-    /// Handle backspace/delete backward
+    /// Handle backspace/delete backward with access to plugin state
     ///
     /// Called when the component is focused and receives a delete key.
     /// Default implementation returns `NotHandled`.
-    fn handle_delete_backward(&mut self, _mode: &ModeState) -> InputResult {
+    ///
+    /// The `state` parameter provides access to plugin state registry,
+    /// allowing components to directly manipulate their state without
+    /// routing through focus handlers. `PluginStateRegistry` uses interior
+    /// mutability (`RwLock`) for thread-safe state access.
+    fn handle_delete_backward(
+        &mut self,
+        _mode: &ModeState,
+        _state: &PluginStateRegistry,
+    ) -> InputResult {
         InputResult::NotHandled
     }
 
@@ -151,34 +166,6 @@ pub trait UIComponent: std::fmt::Debug + Send + Sync {
     /// not passed to other handlers.
     fn captures_input(&self) -> bool {
         false
-    }
-
-    // === Keybindings ===
-
-    /// Provide keybindings for this component
-    ///
-    /// Returns a list of `(EditModeKind, KeyBinding)` tuples that define the
-    /// keybindings for this component. These are registered automatically
-    /// when the component is registered with the plugin system.
-    ///
-    /// The default implementation returns an empty list.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// fn keybindings(&self) -> Vec<(EditModeKind, KeyBinding)> {
-    ///     vec![
-    ///         (EditModeKind::Normal, KeyBinding {
-    ///             keys: "h",
-    ///             command: CommandRef::Registered(builtin::CURSOR_LEFT),
-    ///             hint: Some("Move left"),
-    ///             group: Some("motion"),
-    ///         }),
-    ///     ]
-    /// }
-    /// ```
-    fn keybindings(&self) -> Vec<(EditModeKind, KeyBinding)> {
-        vec![]
     }
 }
 

@@ -255,6 +255,7 @@ impl CorePlugin {
     }
 
     /// Register default vim-style keybindings for the editor
+    #[allow(clippy::too_many_lines)]
     fn register_default_keybindings(&self, ctx: &mut PluginContext) {
         let editor_normal = KeymapScope::editor_normal();
         let editor_insert = KeymapScope::editor_insert();
@@ -262,77 +263,289 @@ impl CorePlugin {
         let command_mode = KeymapScope::SubMode(SubModeKind::Command);
 
         // === Normal mode movement ===
-        ctx.bind_key_scoped(editor_normal.clone(), keys!['h'], CommandRef::Registered(CommandId::new("cursor_left")));
-        ctx.bind_key_scoped(editor_normal.clone(), keys!['j'], CommandRef::Registered(CommandId::new("cursor_down")));
-        ctx.bind_key_scoped(editor_normal.clone(), keys!['k'], CommandRef::Registered(CommandId::new("cursor_up")));
-        ctx.bind_key_scoped(editor_normal.clone(), keys!['l'], CommandRef::Registered(CommandId::new("cursor_right")));
-        ctx.bind_key_scoped(editor_normal.clone(), keys!['w'], CommandRef::Registered(CommandId::new("cursor_word_forward")));
-        ctx.bind_key_scoped(editor_normal.clone(), keys!['b'], CommandRef::Registered(CommandId::new("cursor_word_backward")));
-        ctx.bind_key_scoped(editor_normal.clone(), keys!['e'], CommandRef::Registered(CommandId::new("cursor_word_end")));
-        ctx.bind_key_scoped(editor_normal.clone(), keys!['0'], CommandRef::Registered(CommandId::new("cursor_line_start")));
-        ctx.bind_key_scoped(editor_normal.clone(), keys!['$'], CommandRef::Registered(CommandId::new("cursor_line_end")));
-        ctx.bind_key_scoped(editor_normal.clone(), keys!['g' 'g'], CommandRef::Registered(CommandId::new("goto_first_line")));
-        ctx.bind_key_scoped(editor_normal.clone(), keys!['G'], CommandRef::Registered(CommandId::new("goto_last_line")));
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys!['h'],
+            CommandRef::Registered(CommandId::new("cursor_left")),
+        );
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys!['j'],
+            CommandRef::Registered(CommandId::new("cursor_down")),
+        );
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys!['k'],
+            CommandRef::Registered(CommandId::new("cursor_up")),
+        );
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys!['l'],
+            CommandRef::Registered(CommandId::new("cursor_right")),
+        );
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys!['w'],
+            CommandRef::Registered(CommandId::new("cursor_word_forward")),
+        );
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys!['b'],
+            CommandRef::Registered(CommandId::new("cursor_word_backward")),
+        );
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys!['e'],
+            CommandRef::Registered(CommandId::new("cursor_word_end")),
+        );
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys!['0'],
+            CommandRef::Registered(CommandId::new("cursor_line_start")),
+        );
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys!['$'],
+            CommandRef::Registered(CommandId::new("cursor_line_end")),
+        );
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys!['g' 'g'],
+            CommandRef::Registered(CommandId::new("goto_first_line")),
+        );
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys!['G'],
+            CommandRef::Registered(CommandId::new("goto_last_line")),
+        );
 
         // === Mode switching ===
-        ctx.bind_key_scoped(editor_normal.clone(), keys!['i'], CommandRef::Registered(CommandId::new("enter_insert_mode")));
-        ctx.bind_key_scoped(editor_normal.clone(), keys!['a'], CommandRef::Registered(CommandId::new("enter_insert_mode_after")));
-        ctx.bind_key_scoped(editor_normal.clone(), keys!['A'], CommandRef::Registered(CommandId::new("enter_insert_mode_eol")));
-        ctx.bind_key_scoped(editor_normal.clone(), keys!['o'], CommandRef::Registered(CommandId::new("open_line_below")));
-        ctx.bind_key_scoped(editor_normal.clone(), keys!['O'], CommandRef::Registered(CommandId::new("open_line_above")));
-        ctx.bind_key_scoped(editor_normal.clone(), keys!['v'], CommandRef::Registered(CommandId::new("enter_visual_mode")));
-        ctx.bind_key_scoped(editor_normal.clone(), keys!['V'], CommandRef::Registered(CommandId::new("enter_visual_line_mode")));
-        ctx.bind_key_scoped(editor_normal.clone(), keys![(Ctrl 'v')], CommandRef::Registered(CommandId::new("enter_visual_block_mode")));
-        ctx.bind_key_scoped(editor_normal.clone(), keys![':'], CommandRef::Registered(CommandId::new("enter_command_mode")));
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys!['i'],
+            CommandRef::Registered(CommandId::new("enter_insert_mode")),
+        );
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys!['a'],
+            CommandRef::Registered(CommandId::new("enter_insert_mode_after")),
+        );
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys!['A'],
+            CommandRef::Registered(CommandId::new("enter_insert_mode_eol")),
+        );
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys!['o'],
+            CommandRef::Registered(CommandId::new("open_line_below")),
+        );
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys!['O'],
+            CommandRef::Registered(CommandId::new("open_line_above")),
+        );
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys!['v'],
+            CommandRef::Registered(CommandId::new("enter_visual_mode")),
+        );
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys!['V'],
+            CommandRef::Registered(CommandId::new("enter_visual_line_mode")),
+        );
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys![(Ctrl 'v')],
+            CommandRef::Registered(CommandId::new("enter_visual_block_mode")),
+        );
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys![':'],
+            CommandRef::Registered(CommandId::new("enter_command_mode")),
+        );
 
         // === Operators ===
-        ctx.bind_key_scoped(editor_normal.clone(), keys!['d'], CommandRef::Registered(CommandId::new("enter_delete_operator")));
-        ctx.bind_key_scoped(editor_normal.clone(), keys!['y'], CommandRef::Registered(CommandId::new("enter_yank_operator")));
-        ctx.bind_key_scoped(editor_normal.clone(), keys!['c'], CommandRef::Registered(CommandId::new("enter_change_operator")));
-        ctx.bind_key_scoped(editor_normal.clone(), keys!['d' 'd'], CommandRef::Registered(CommandId::new("delete_line")));
-        ctx.bind_key_scoped(editor_normal.clone(), keys!['y' 'y'], CommandRef::Registered(CommandId::new("yank_line")));
-        ctx.bind_key_scoped(editor_normal.clone(), keys!['C'], CommandRef::Registered(CommandId::new("change_line")));
-        ctx.bind_key_scoped(editor_normal.clone(), keys!['x'], CommandRef::Registered(CommandId::new("delete_char_forward")));
-        ctx.bind_key_scoped(editor_normal.clone(), keys!['X'], CommandRef::Registered(CommandId::new("delete_char_backward")));
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys!['d'],
+            CommandRef::Registered(CommandId::new("enter_delete_operator")),
+        );
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys!['y'],
+            CommandRef::Registered(CommandId::new("enter_yank_operator")),
+        );
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys!['c'],
+            CommandRef::Registered(CommandId::new("enter_change_operator")),
+        );
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys!['d' 'd'],
+            CommandRef::Registered(CommandId::new("delete_line")),
+        );
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys!['y' 'y'],
+            CommandRef::Registered(CommandId::new("yank_line")),
+        );
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys!['C'],
+            CommandRef::Registered(CommandId::new("change_line")),
+        );
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys!['x'],
+            CommandRef::Registered(CommandId::new("delete_char_forward")),
+        );
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys!['X'],
+            CommandRef::Registered(CommandId::new("delete_char_backward")),
+        );
 
         // === Paste ===
-        ctx.bind_key_scoped(editor_normal.clone(), keys!['p'], CommandRef::Registered(CommandId::new("paste")));
-        ctx.bind_key_scoped(editor_normal.clone(), keys!['P'], CommandRef::Registered(CommandId::new("paste_before")));
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys!['p'],
+            CommandRef::Registered(CommandId::new("paste")),
+        );
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys!['P'],
+            CommandRef::Registered(CommandId::new("paste_before")),
+        );
 
         // === Undo/Redo ===
-        ctx.bind_key_scoped(editor_normal.clone(), keys!['u'], CommandRef::Registered(CommandId::new("undo")));
-        ctx.bind_key_scoped(editor_normal.clone(), keys![(Ctrl 'r')], CommandRef::Registered(CommandId::new("redo")));
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys!['u'],
+            CommandRef::Registered(CommandId::new("undo")),
+        );
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys![(Ctrl 'r')],
+            CommandRef::Registered(CommandId::new("redo")),
+        );
 
         // === Jump list ===
-        ctx.bind_key_scoped(editor_normal.clone(), keys![(Ctrl 'o')], CommandRef::Registered(CommandId::new("jump_older")));
-        ctx.bind_key_scoped(editor_normal.clone(), keys![(Ctrl 'i')], CommandRef::Registered(CommandId::new("jump_newer")));
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys![(Ctrl 'o')],
+            CommandRef::Registered(CommandId::new("jump_older")),
+        );
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys![(Ctrl 'i')],
+            CommandRef::Registered(CommandId::new("jump_newer")),
+        );
 
         // === Buffer navigation ===
-        ctx.bind_key_scoped(editor_normal.clone(), keys![':' 'b' 'n'], CommandRef::Registered(CommandId::new("buffer_next")));
-        ctx.bind_key_scoped(editor_normal.clone(), keys![':' 'b' 'p'], CommandRef::Registered(CommandId::new("buffer_prev")));
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys![':' 'b' 'n'],
+            CommandRef::Registered(CommandId::new("buffer_next")),
+        );
+        ctx.bind_key_scoped(
+            editor_normal,
+            keys![':' 'b' 'p'],
+            CommandRef::Registered(CommandId::new("buffer_prev")),
+        );
 
         // === Insert mode ===
-        ctx.bind_key_scoped(editor_insert.clone(), keys![Escape], CommandRef::Registered(CommandId::new("enter_normal_mode")));
-        ctx.bind_key_scoped(editor_insert.clone(), keys![(Ctrl 'c')], CommandRef::Registered(CommandId::new("enter_normal_mode")));
+        ctx.bind_key_scoped(
+            editor_insert.clone(),
+            keys![Escape],
+            CommandRef::Registered(CommandId::new("enter_normal_mode")),
+        );
+        ctx.bind_key_scoped(
+            editor_insert,
+            keys![(Ctrl 'c')],
+            CommandRef::Registered(CommandId::new("enter_normal_mode")),
+        );
 
         // === Visual mode ===
-        ctx.bind_key_scoped(editor_visual.clone(), keys!['j'], CommandRef::Registered(CommandId::new("visual_extend_down")));
-        ctx.bind_key_scoped(editor_visual.clone(), keys!['k'], CommandRef::Registered(CommandId::new("visual_extend_up")));
-        ctx.bind_key_scoped(editor_visual.clone(), keys!['h'], CommandRef::Registered(CommandId::new("visual_extend_left")));
-        ctx.bind_key_scoped(editor_visual.clone(), keys!['l'], CommandRef::Registered(CommandId::new("visual_extend_right")));
-        ctx.bind_key_scoped(editor_visual.clone(), keys!['d'], CommandRef::Registered(CommandId::new("visual_delete")));
-        ctx.bind_key_scoped(editor_visual.clone(), keys!['y'], CommandRef::Registered(CommandId::new("visual_yank")));
-        ctx.bind_key_scoped(editor_visual.clone(), keys![Escape], CommandRef::Registered(CommandId::new("enter_normal_mode")));
+        ctx.bind_key_scoped(
+            editor_visual.clone(),
+            keys!['j'],
+            CommandRef::Registered(CommandId::new("visual_extend_down")),
+        );
+        ctx.bind_key_scoped(
+            editor_visual.clone(),
+            keys!['k'],
+            CommandRef::Registered(CommandId::new("visual_extend_up")),
+        );
+        ctx.bind_key_scoped(
+            editor_visual.clone(),
+            keys!['h'],
+            CommandRef::Registered(CommandId::new("visual_extend_left")),
+        );
+        ctx.bind_key_scoped(
+            editor_visual.clone(),
+            keys!['l'],
+            CommandRef::Registered(CommandId::new("visual_extend_right")),
+        );
+        ctx.bind_key_scoped(
+            editor_visual.clone(),
+            keys!['d'],
+            CommandRef::Registered(CommandId::new("visual_delete")),
+        );
+        ctx.bind_key_scoped(
+            editor_visual.clone(),
+            keys!['y'],
+            CommandRef::Registered(CommandId::new("visual_yank")),
+        );
+        ctx.bind_key_scoped(
+            editor_visual.clone(),
+            keys![Escape],
+            CommandRef::Registered(CommandId::new("enter_normal_mode")),
+        );
 
-        ctx.bind_key_scoped(editor_visual.clone(), keys!['j'], CommandRef::Registered(CommandId::new("visual_extend_down")));
-        ctx.bind_key_scoped(editor_visual.clone(), keys!['k'], CommandRef::Registered(CommandId::new("visual_extend_up")));
-        ctx.bind_key_scoped(editor_visual.clone(), keys!['d'], CommandRef::Registered(CommandId::new("visual_delete")));
-        ctx.bind_key_scoped(editor_visual.clone(), keys!['y'], CommandRef::Registered(CommandId::new("visual_yank")));
-        ctx.bind_key_scoped(editor_visual.clone(), keys![Escape], CommandRef::Registered(CommandId::new("enter_normal_mode")));
+        ctx.bind_key_scoped(
+            editor_visual.clone(),
+            keys!['j'],
+            CommandRef::Registered(CommandId::new("visual_extend_down")),
+        );
+        ctx.bind_key_scoped(
+            editor_visual.clone(),
+            keys!['k'],
+            CommandRef::Registered(CommandId::new("visual_extend_up")),
+        );
+        ctx.bind_key_scoped(
+            editor_visual.clone(),
+            keys!['d'],
+            CommandRef::Registered(CommandId::new("visual_delete")),
+        );
+        ctx.bind_key_scoped(
+            editor_visual.clone(),
+            keys!['y'],
+            CommandRef::Registered(CommandId::new("visual_yank")),
+        );
+        ctx.bind_key_scoped(
+            editor_visual,
+            keys![Escape],
+            CommandRef::Registered(CommandId::new("enter_normal_mode")),
+        );
 
         // === Command mode ===
-        ctx.bind_key_scoped(command_mode.clone(), keys![Enter], CommandRef::Registered(CommandId::new("command_line_execute")));
-        ctx.bind_key_scoped(command_mode.clone(), keys![Escape], CommandRef::Registered(CommandId::new("command_line_cancel")));
-        ctx.bind_key_scoped(command_mode.clone(), keys![Backspace], CommandRef::Registered(CommandId::new("command_line_backspace")));
+        ctx.bind_key_scoped(
+            command_mode.clone(),
+            keys![Enter],
+            CommandRef::Registered(CommandId::new("command_line_execute")),
+        );
+        ctx.bind_key_scoped(
+            command_mode.clone(),
+            keys![Escape],
+            CommandRef::Registered(CommandId::new("command_line_cancel")),
+        );
+        ctx.bind_key_scoped(
+            command_mode,
+            keys![Backspace],
+            CommandRef::Registered(CommandId::new("command_line_backspace")),
+        );
     }
 }

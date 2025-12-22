@@ -46,7 +46,11 @@ impl Subscribe<KeyEvent> for CommandHandler {
 
 impl CommandHandler {
     #[must_use]
-    pub fn new(tx: Sender<InnerEvent>, mode_rx: watch::Receiver<ModeState>, keymap: KeyMap) -> Self {
+    pub fn new(
+        tx: Sender<InnerEvent>,
+        mode_rx: watch::Receiver<ModeState>,
+        keymap: KeyMap,
+    ) -> Self {
         let initial_mode = mode_rx.borrow().clone();
         Self {
             key_event_rx: None,
@@ -289,14 +293,23 @@ impl CommandHandler {
     fn lookup_command_no_push(&mut self, key: &str) -> (Option<CommandRef>, bool) {
         let mode = self.current_mode();
         tracing::debug!(?mode, key, pending = %self.pending_keys, "lookup_command_no_push");
-        tracing::info!("Key lookup: interactor_id={}, key={}, pending={}", self.local_mode.interactor_id.0, key, self.pending_keys);
+        tracing::info!(
+            "Key lookup: interactor_id={}, key={}, pending={}",
+            self.local_mode.interactor_id.0,
+            key,
+            self.pending_keys
+        );
 
         let keymap = self.get_keymap_for_mode();
         tracing::info!("Keymap has {} bindings for current scope", keymap.len());
 
         // Check for exact match
         if let Some(inner) = keymap.get(&self.pending_keys) {
-            tracing::info!("Found binding for key={}, has_command={}", &self.pending_keys, inner.command.is_some());
+            tracing::info!(
+                "Found binding for key={}, has_command={}",
+                &self.pending_keys,
+                inner.command.is_some()
+            );
             if inner.command.is_some() {
                 let cmd = inner.command.clone();
                 self.pending_keys.clear();
@@ -320,7 +333,7 @@ impl CommandHandler {
 
         // No match and not a valid prefix
         // Note: Single-character input in insert/command modes is now handled earlier
-        // in run() via FocusInputEvent, so this code path is only reached for special keys
+        // in run() via TextInputEvent, so this code path is only reached for special keys
         // or invalid sequences in those modes, or for any key in Normal/Visual/Explorer modes.
 
         // Invalid sequence - clear it to allow starting fresh with the next key
@@ -523,7 +536,7 @@ impl CommandHandler {
                                 }
 
                                 // Handle single-character input in modes that accept char input
-                                // Route via FocusInputEvent instead of creating inline commands
+                                // Route via TextInputEvent instead of creating inline commands
                                 let mode = self.current_mode();
                                 if mode.accepts_char_input()
                                     && key_str.len() == 1
@@ -539,7 +552,7 @@ impl CommandHandler {
                                 }
 
                                 // Handle Backspace in modes that accept char input
-                                // Route via FocusInputEvent for focus-based handling
+                                // Route via TextInputEvent for text input handling
                                 let mode = self.current_mode();
                                 if mode.accepts_char_input() && key_str == "Backspace"
                                 {

@@ -507,11 +507,11 @@ ModeState::telescope_normal()
 
 ### Changed
 
-- **Focus-based Input Routing** - Input events now routed via `FocusInputEvent`
-  - `FocusInputEvent::InsertChar(char)` for character insertion
-  - `FocusInputEvent::DeleteCharBackward` for backspace handling
-  - CommandHandler emits `FocusInputEvent` for insert/command/telescope modes
-  - Runtime routes events to Telescope, Explorer, or Editor based on `FocusId`
+- **Text Input Routing** - Input events now routed via `TextInputEvent`
+  - `TextInputEvent::InsertChar(char)` for character insertion
+  - `TextInputEvent::DeleteCharBackward` for backspace handling
+  - CommandHandler emits `TextInputEvent` for insert/command modes
+  - Runtime routes events via two-tier system: fast path for built-ins, UIComponent trait for plugins
 
 ### Files Added
 

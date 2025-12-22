@@ -28,8 +28,7 @@ use reovim_core::{
     plugin::{Plugin, PluginContext, PluginId, PluginStateRegistry},
 };
 
-use state::SharedFoldManager;
-use stage::FoldRenderStage;
+use {stage::FoldRenderStage, state::SharedFoldManager};
 
 use commands::{
     FoldCloseAllCommand, FoldCloseCommand, FoldOpenAllCommand, FoldOpenCommand, FoldToggleCommand,
@@ -55,6 +54,7 @@ impl Default for FoldPlugin {
 
 impl FoldPlugin {
     /// Create a new fold plugin
+    #[must_use]
     pub fn new() -> Self {
         Self {
             fold_manager: Arc::new(SharedFoldManager::new()),
@@ -98,9 +98,8 @@ impl Plugin for FoldPlugin {
     fn init_state(&self, registry: &PluginStateRegistry) {
         // Register shared fold manager as both type state and visibility source
         registry.register(Arc::clone(&self.fold_manager));
-        registry.set_visibility_source(
-            Arc::clone(&self.fold_manager) as Arc<dyn reovim_core::visibility::BufferVisibilitySource>
-        );
+        registry.set_visibility_source(Arc::clone(&self.fold_manager)
+            as Arc<dyn reovim_core::visibility::BufferVisibilitySource>);
 
         tracing::debug!("FoldPlugin: initialized SharedFoldManager");
     }

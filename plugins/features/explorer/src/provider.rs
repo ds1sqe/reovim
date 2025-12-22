@@ -16,8 +16,7 @@ pub struct ExplorerBufferProvider;
 impl PluginBufferProvider for ExplorerBufferProvider {
     fn get_lines(&self, ctx: &BufferContext) -> Vec<String> {
         // Get explorer state from plugin state registry
-        let lines = ctx
-            .state
+        ctx.state
             .with::<ExplorerState, _, _>(|explorer| {
                 if !explorer.visible {
                     return Vec::new();
@@ -69,15 +68,16 @@ impl PluginBufferProvider for ExplorerBufferProvider {
                         String::new()
                     };
 
-                    let line = format!(
-                        "{marker}{indent}{icon}{}{}",
-                        node.name, size_display
-                    );
+                    let line = format!("{marker}{indent}{icon}{}{}", node.name, size_display);
                     lines.push(line);
                 }
 
                 // Add message/input prompt at the bottom if present
-                tracing::debug!("ExplorerBufferProvider: message={:?}, input_buffer={:?}", explorer.message, explorer.input_buffer);
+                tracing::debug!(
+                    "ExplorerBufferProvider: message={:?}, input_buffer={:?}",
+                    explorer.message,
+                    explorer.input_buffer
+                );
                 if let Some(ref message) = explorer.message {
                     let input_display = if !explorer.input_buffer.is_empty() {
                         explorer.input_buffer.as_str()
@@ -96,19 +96,16 @@ impl PluginBufferProvider for ExplorerBufferProvider {
 
                 lines
             })
-            .unwrap_or_default();
-
-        lines
+            .unwrap_or_default()
     }
 
     fn on_cursor_move(&mut self, position: Position, ctx: &mut BufferContext) {
         // Update explorer cursor index when cursor moves
-        let _ = ctx.state
-            .with_mut::<ExplorerState, _, _>(|explorer| {
-                let new_index = (explorer.scroll_offset + position.y as usize)
-                    .min(explorer.visible_nodes().len().saturating_sub(1));
-                explorer.cursor_index = new_index;
-            });
+        let _ = ctx.state.with_mut::<ExplorerState, _, _>(|explorer| {
+            let new_index = (explorer.scroll_offset + position.y as usize)
+                .min(explorer.visible_nodes().len().saturating_sub(1));
+            explorer.cursor_index = new_index;
+        });
     }
 
     fn on_input(&mut self, key: KeyEvent, ctx: &mut BufferContext) -> InputResult {
@@ -117,7 +114,8 @@ impl PluginBufferProvider for ExplorerBufferProvider {
         tracing::info!("ExplorerBufferProvider::on_input called with key: {:?}", key);
 
         // Check if explorer is in input mode (create file, rename, etc.)
-        let in_input_mode = ctx.state
+        let in_input_mode = ctx
+            .state
             .with::<ExplorerState, _, _>(|explorer| {
                 !matches!(explorer.input_mode, ExplorerInputMode::None)
             })

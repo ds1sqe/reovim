@@ -35,11 +35,18 @@ pub struct RenderData {
 impl RenderData {
     /// Create render data from a buffer
     #[must_use]
-    pub fn from_buffer(window: &crate::screen::window::Window, buffer: &crate::buffer::Buffer) -> Self {
+    pub fn from_buffer(
+        window: &crate::screen::window::Window,
+        buffer: &crate::buffer::Buffer,
+    ) -> Self {
         let line_count = buffer.contents.len();
 
         Self {
-            lines: buffer.contents.iter().map(|line| line.inner.clone()).collect(),
+            lines: buffer
+                .contents
+                .iter()
+                .map(|line| line.inner.clone())
+                .collect(),
             visibility: vec![LineVisibility::Visible; line_count],
             highlights: vec![Vec::new(); line_count],
             decorations: vec![Vec::new(); line_count],

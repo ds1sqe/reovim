@@ -73,8 +73,10 @@ fn test_explorer_toggle() {
 
 #[test]
 fn test_explorer_buffer_provider_respects_visibility() {
-    use reovim_core::content::{BufferContext, PluginBufferProvider};
-    use crate::provider::ExplorerBufferProvider;
+    use {
+        crate::provider::ExplorerBufferProvider,
+        reovim_core::content::{BufferContext, PluginBufferProvider},
+    };
 
     let registry = Arc::new(PluginStateRegistry::new());
 

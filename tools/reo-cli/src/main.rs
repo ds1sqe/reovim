@@ -3,8 +3,10 @@
 //! Connects to an existing reovim server via Unix socket or TCP
 //! to control the editor programmatically.
 
-use clap::{Parser, Subcommand};
-use serde_json::Value;
+use {
+    clap::{Parser, Subcommand},
+    serde_json::Value,
+};
 
 mod client;
 mod commands;

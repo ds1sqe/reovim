@@ -1,23 +1,23 @@
 //! UIComponent implementation for Explorer
 //!
-//! This component handles input routing for the explorer plugin.
+//! This component handles input for the explorer plugin.
 //! Rendering is handled by the WindowProvider system.
 
 use reovim_core::{
     component::RenderContext,
-    event::InnerEvent,
     frame::FrameBuffer,
     interactor::InputResult,
     modd::ModeState,
-    screen::{z_order, LayerBounds},
+    plugin::PluginStateRegistry,
+    screen::{LayerBounds, z_order},
     ui_component::{ComponentId, UIComponent},
 };
 
-use super::COMPONENT_ID;
+use super::{COMPONENT_ID, state::ExplorerState};
 
 /// Explorer UI component
 ///
-/// This component routes input events to the explorer's focus handler.
+/// This component handles input directly by manipulating explorer state.
 /// Rendering is delegated to the ExplorerWindowProvider.
 #[derive(Debug)]
 pub struct ExplorerComponent;
@@ -62,24 +62,57 @@ impl UIComponent for ExplorerComponent {
         true
     }
 
-    fn handle_insert_char(&mut self, c: char, _mode_state: &ModeState) -> InputResult {
-        // Route character input through FocusInput event to the focus handler
-        tracing::debug!("ExplorerComponent: routing char '{}' to focus handler", c);
-        InputResult::SendEvent(InnerEvent::FocusInput {
-            char: Some(c),
-            delete: false,
-            clear_landing: false,
-        })
+    fn handle_insert_char(
+        &mut self,
+        c: char,
+        _mode_state: &ModeState,
+        state: &PluginStateRegistry,
+    ) -> InputResult {
+        // Directly manipulate explorer state for character input
+        tracing::debug!("ExplorerComponent: handling char '{}'", c);
+
+        state
+            .with_mut::<ExplorerState, _, _>(|explorer| {
+                if !explorer.input_buffer.is_empty() || explorer.message.is_some() {
+                    // In input mode - add character to buffer
+                    explorer.input_buffer.push(c);
+                    tracing::debug!(
+                        "ExplorerComponent: input_buffer now: '{}'",
+                        explorer.input_buffer
+                    );
+                    InputResult::Handled
+                } else {
+                    // Not in input mode - don't handle
+                    InputResult::NotHandled
+                }
+            })
+            .unwrap_or(InputResult::NotHandled)
     }
 
-    fn handle_delete_backward(&mut self, _mode_state: &ModeState) -> InputResult {
-        // Route backspace through FocusInput event to the focus handler
-        tracing::debug!("ExplorerComponent: routing backspace to focus handler");
-        InputResult::SendEvent(InnerEvent::FocusInput {
-            char: None,
-            delete: true,
-            clear_landing: false,
-        })
+    fn handle_delete_backward(
+        &mut self,
+        _mode_state: &ModeState,
+        state: &PluginStateRegistry,
+    ) -> InputResult {
+        // Directly manipulate explorer state for backspace
+        tracing::debug!("ExplorerComponent: handling backspace");
+
+        state
+            .with_mut::<ExplorerState, _, _>(|explorer| {
+                if !explorer.input_buffer.is_empty() {
+                    // In input mode - remove last character
+                    explorer.input_buffer.pop();
+                    tracing::debug!(
+                        "ExplorerComponent: input_buffer now: '{}'",
+                        explorer.input_buffer
+                    );
+                    InputResult::Handled
+                } else {
+                    // Not in input mode - don't handle
+                    InputResult::NotHandled
+                }
+            })
+            .unwrap_or(InputResult::NotHandled)
     }
 
     fn captures_input(&self) -> bool {

@@ -60,11 +60,13 @@ impl std::fmt::Debug for PluginStateRegistry {
         let has_visibility = self.visibility_source.read().is_ok_and(|s| s.is_some());
         let has_text_object = self.text_object_source.read().is_ok_and(|s| s.is_some());
         let has_render_stages = self.render_stages.read().is_ok_and(|s| s.is_some());
+        let window_providers_count = self.window_providers.read().map_or(0, |p| p.len());
         f.debug_struct("PluginStateRegistry")
             .field("state_count", &count)
             .field("has_visibility_source", &has_visibility)
             .field("has_text_object_source", &has_text_object)
             .field("has_render_stages", &has_render_stages)
+            .field("window_providers_count", &window_providers_count)
             .finish()
     }
 }

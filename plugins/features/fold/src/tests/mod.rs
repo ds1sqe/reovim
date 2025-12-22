@@ -142,7 +142,11 @@ fn test_fold_render_stage_no_folds() {
 
     // Create mock render data directly
     let render_data = RenderData {
-        lines: vec!["line 1".to_string(), "line 2".to_string(), "line 3".to_string()],
+        lines: vec![
+            "line 1".to_string(),
+            "line 2".to_string(),
+            "line 3".to_string(),
+        ],
         visibility: vec![LineVisibility::Visible; 3],
         highlights: vec![Vec::new(); 3],
         decorations: vec![Vec::new(); 3],
@@ -222,7 +226,10 @@ fn test_fold_render_stage_with_collapsed_fold() {
 
     // Line 1 should be fold marker
     match &result.visibility[1] {
-        LineVisibility::FoldMarker { preview, hidden_lines } => {
+        LineVisibility::FoldMarker {
+            preview,
+            hidden_lines,
+        } => {
             assert_eq!(preview, "fn test()");
             assert_eq!(*hidden_lines, 2); // Lines 2-3 are hidden
         }
@@ -258,7 +265,7 @@ fn test_fold_render_stage_multiple_folds() {
 
     // Create mock render data with 9 lines
     let render_data = RenderData {
-        lines: (0..9).map(|i| format!("line {}", i)).collect(),
+        lines: (0..9).map(|i| format!("line {i}")).collect(),
         visibility: vec![LineVisibility::Visible; 9],
         highlights: vec![Vec::new(); 9],
         decorations: vec![Vec::new(); 9],

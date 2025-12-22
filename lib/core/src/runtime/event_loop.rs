@@ -5,7 +5,7 @@ use std::sync::Arc;
 use crate::{
     buffer::{Buffer, SelectionOps, TextOps},
     event::{
-        BufferEvent, CommandHandler, FocusInputEvent, HighlightEvent, InnerEvent, InputEventBroker,
+        BufferEvent, CommandHandler, TextInputEvent, HighlightEvent, InnerEvent, InputEventBroker,
         TerminateHandler, WindowEvent,
     },
     interactor::InputResult,
@@ -127,7 +127,8 @@ impl Runtime {
 
         // Command handler for key-to-command translation
         let mode_rx = self.subscribe_mode();
-        let mut command_hdr = crate::event::CommandHandler::new(self.tx.clone(), mode_rx, self.keymap.clone());
+        let mut command_hdr =
+            crate::event::CommandHandler::new(self.tx.clone(), mode_rx, self.keymap.clone());
         let mut terminate_hdr = crate::event::TerminateHandler::new(self.tx.clone());
 
         input_broker.key_broker.enlist(&mut command_hdr);
@@ -313,21 +314,8 @@ impl Runtime {
                 let response = self.handle_rpc_request(id, &method, &params);
                 let _ = response_tx.send(response);
             }
-            InnerEvent::FocusInputEvent(focus_event) => {
+            InnerEvent::TextInputEvent(focus_event) => {
                 self.handle_interactor_input(focus_event);
-            }
-            // Generic focus input - dispatched to registered handler (enlist pattern)
-            InnerEvent::FocusInput {
-                char,
-                delete,
-                clear_landing,
-            } => {
-                let interactor_id = self.mode_state.interactor_id;
-                // Generic dispatch via registered handler - NO match on InteractorId!
-                if let Some(&handler) = self.focus_input_handlers.get(&interactor_id) {
-                    handler(self, char, delete, clear_landing);
-                }
-                self.request_render();
             }
             // Plugin-defined events - dispatched via event bus
             InnerEvent::PluginEvent { plugin_id, event } => {
@@ -604,7 +592,11 @@ impl Runtime {
     /// Handle mode change events
     #[allow(clippy::collapsible_if)]
     fn handle_mode_change(&mut self, new_mode: ModeState) {
-        tracing::info!("Mode changed: edit_mode={:?}, interactor={}", new_mode.edit_mode, new_mode.interactor_id.0);
+        tracing::info!(
+            "Mode changed: edit_mode={:?}, interactor={}",
+            new_mode.edit_mode,
+            new_mode.interactor_id.0
+        );
 
         // Handle insert mode
         if new_mode.is_insert() {
@@ -658,17 +650,50 @@ impl Runtime {
     }
 
     /// Handle interactor input events by routing to the active interactor
-    fn handle_interactor_input(&mut self, event: FocusInputEvent) {
+    fn handle_interactor_input(&mut self, event: TextInputEvent) {
+        use crate::ui_component::ComponentId;
         let interactor_id = self.mode_state.interactor_id;
 
-        // Get the result from the interactor
-        let result = if let Some(interactor) = self.interactor_registry.get_mut(interactor_id) {
-            match event {
-                FocusInputEvent::InsertChar(c) => {
-                    interactor.handle_insert_char(c, &self.mode_state)
+        // Fast path: Built-in components with direct Runtime access
+        if true {
+            match interactor_id {
+                ComponentId::EDITOR => {
+                    match event {
+                        TextInputEvent::InsertChar(c) => {
+                            crate::runtime::handle_editor_input(self, Some(c), false, false);
+                        }
+                        TextInputEvent::DeleteCharBackward => {
+                            crate::runtime::handle_editor_input(self, None, true, false);
+                        }
+                    }
+                    self.request_render();
+                    return;
                 }
-                FocusInputEvent::DeleteCharBackward => {
-                    interactor.handle_delete_backward(&self.mode_state)
+                ComponentId::COMMAND_LINE => {
+                    match event {
+                        TextInputEvent::InsertChar(c) => {
+                            crate::runtime::handle_command_line_input(self, Some(c), false, false);
+                        }
+                        TextInputEvent::DeleteCharBackward => {
+                            crate::runtime::handle_command_line_input(self, None, true, false);
+                        }
+                    }
+                    self.request_render();
+                    return;
+                }
+                _ => {} // Fall through to plugin path
+            }
+        }
+
+        // Plugin component path (existing code)
+        let result = if let Some(component) = self.component_registry.get_mut(interactor_id) {
+            // Pass plugin state reference (it has interior mutability via RwLock)
+            match event {
+                TextInputEvent::InsertChar(c) => {
+                    component.handle_insert_char(c, &self.mode_state, &self.plugin_state)
+                }
+                TextInputEvent::DeleteCharBackward => {
+                    component.handle_delete_backward(&self.mode_state, &self.plugin_state)
                 }
             }
         } else {
@@ -682,8 +707,12 @@ impl Runtime {
                 self.request_render();
             }
             InputResult::SendEvent(event) => {
-                // Send event to be handled by registered handler
-                let _ = self.tx.try_send(event);
+                // Deprecated path - plugins should use Handled instead
+                tracing::warn!("Plugin component {} returned SendEvent - should use Handled", interactor_id.0);
+                if let Err(e) = self.tx.try_send(event) {
+                    tracing::error!("Failed to send event: {}", e);
+                }
+                self.request_render(); // FIX: Always render after SendEvent too
             }
         }
     }

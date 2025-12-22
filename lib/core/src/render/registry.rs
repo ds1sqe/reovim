@@ -17,9 +17,7 @@ impl RenderStageRegistry {
     /// Create a new empty registry
     #[must_use]
     pub fn new() -> Self {
-        Self {
-            stages: Vec::new(),
-        }
+        Self { stages: Vec::new() }
     }
 
     /// Register a render stage

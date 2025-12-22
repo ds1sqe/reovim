@@ -6,8 +6,8 @@ use reovim_core::{
     content::WindowContentSource,
     plugin::{PluginStateRegistry, WindowProvider},
     screen::{
-        window::{Anchor, Window},
         Position,
+        window::{Anchor, Window},
     },
 };
 
@@ -47,7 +47,7 @@ impl WindowProvider for ExplorerWindowProvider {
             },
             anchor: Anchor { x: 0, y: 1 }, // Below tab line
             width,
-            height: 50, // Will be adjusted by layout (TODO: Get from screen height)
+            height: 50,   // Will be adjusted by layout (TODO: Get from screen height)
             z_order: 150, // Between editor windows (100-199) and overlays (200+)
             is_active: false,
             is_floating: true,

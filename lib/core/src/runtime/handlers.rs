@@ -444,7 +444,11 @@ impl Runtime {
                     let sender = self.event_bus.sender();
                     let mut ctx = crate::event_bus::HandlerContext::new(&sender);
                     let result = self.event_bus.dispatch(&event, &mut ctx);
-                    tracing::info!("Event dispatched: type={}, result={:?}", event.type_name(), result);
+                    tracing::info!(
+                        "Event dispatched: type={}, result={:?}",
+                        event.type_name(),
+                        result
+                    );
 
                     // Check if any handler requested render or quit
                     if ctx.render_requested() {

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use reovim_core::{
     component::RenderContext,
-    render::{ RenderData, RenderStage},
+    render::{RenderData, RenderStage},
 };
 
 use crate::state::SharedTreesitterManager;
