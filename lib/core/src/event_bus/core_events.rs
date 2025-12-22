@@ -229,6 +229,39 @@ impl Event for ScreenResized {
     }
 }
 
+/// Request to change the focused component
+///
+/// Plugins emit this event to request focus change. The runtime subscribes
+/// to this event and updates `ModeState.interactor_id` to route keybindings
+/// to the newly focused component.
+#[derive(Debug, Clone)]
+pub struct RequestFocusChange {
+    /// The component ID to focus
+    pub target: crate::ui_component::ComponentId,
+}
+
+impl Event for RequestFocusChange {
+    fn priority(&self) -> u32 {
+        priority::CORE
+    }
+}
+
+/// Request to open a file in the editor
+///
+/// Plugins emit this event to request opening a file. The runtime subscribes
+/// to this event and creates a new buffer with the file content.
+#[derive(Debug, Clone)]
+pub struct RequestOpenFile {
+    /// Path to the file to open
+    pub path: std::path::PathBuf,
+}
+
+impl Event for RequestOpenFile {
+    fn priority(&self) -> u32 {
+        priority::CORE
+    }
+}
+
 // =============================================================================
 // Lifecycle Events
 // =============================================================================

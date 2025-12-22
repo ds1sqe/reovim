@@ -14,6 +14,7 @@ use crate::{
     keystroke::KeySequence,
     modifier::ModifierRegistry,
     overlay::{OverlayRegistry, OverlayRenderer},
+    render::{RenderStage, RenderStageRegistry},
     rpc::{RpcHandler, RpcHandlerRegistry},
     runtime::FocusInputHandler,
     ui_component::{ComponentId, ComponentRegistry, UIComponent},
@@ -53,6 +54,9 @@ pub struct PluginContext {
 
     /// Display registry for plugin-provided mode display strings and icons
     pub(crate) display_registry: DisplayRegistry,
+
+    /// Render stage registry for pipeline stages
+    pub(crate) render_stages: RenderStageRegistry,
 }
 
 impl Default for PluginContext {
@@ -76,6 +80,7 @@ impl PluginContext {
             overlays: OverlayRegistry::new(),
             rpc_handlers: RpcHandlerRegistry::new(),
             display_registry: DisplayRegistry::new(),
+            render_stages: RenderStageRegistry::new(),
         }
     }
 
@@ -343,6 +348,37 @@ impl PluginContext {
         self.loaded_plugins.insert(type_id);
     }
 
+    // === Render Stage Registration ===
+
+    /// Register a render pipeline stage
+    ///
+    /// Render stages transform buffer content during rendering.
+    /// They are executed in registration order:
+    /// 1. Visibility (folding)
+    /// 2. Syntax highlighting
+    /// 3. Decorations (markdown conceals, etc.)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// ctx.register_render_stage(Arc::new(MyRenderStage::new()));
+    /// ```
+    pub fn register_render_stage(&mut self, stage: Arc<dyn RenderStage>) {
+        self.render_stages.register(stage);
+    }
+
+    /// Get access to the render stage registry
+    #[must_use]
+    pub const fn render_stage_registry(&self) -> &RenderStageRegistry {
+        &self.render_stages
+    }
+
+    /// Get mutable access to the render stage registry
+    #[must_use]
+    pub const fn render_stage_registry_mut(&mut self) -> &mut RenderStageRegistry {
+        &mut self.render_stages
+    }
+
     // === Consume Context ===
 
     /// Consume the context and return all components
@@ -362,6 +398,7 @@ impl PluginContext {
         OverlayRegistry,
         RpcHandlerRegistry,
         DisplayRegistry,
+        RenderStageRegistry,
     ) {
         (
             self.commands,
@@ -373,6 +410,7 @@ impl PluginContext {
             self.overlays,
             self.rpc_handlers,
             self.display_registry,
+            self.render_stages,
         )
     }
 }

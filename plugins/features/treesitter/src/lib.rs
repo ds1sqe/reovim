@@ -18,6 +18,7 @@ pub mod manager;
 pub mod parser;
 pub mod queries;
 pub mod registry;
+pub mod stage;
 pub mod state;
 pub mod text_objects;
 pub mod theme;
@@ -32,6 +33,7 @@ pub use {
     parser::BufferParser,
     queries::{QueryCache, QueryType},
     registry::{LanguageRegistry, LanguageSupport, RegisteredLanguage},
+    stage::TreesitterRenderStage,
     state::SharedTreesitterManager,
     theme::TreesitterTheme,
 };
@@ -44,7 +46,24 @@ pub use tree_sitter::Language;
 /// Manages tree-sitter parsing and highlighting for all buffers.
 /// Language support is provided dynamically by language plugins
 /// that emit `RegisterLanguage` events.
-pub struct TreesitterPlugin;
+pub struct TreesitterPlugin {
+    manager: Arc<SharedTreesitterManager>,
+}
+
+impl Default for TreesitterPlugin {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl TreesitterPlugin {
+    /// Create a new treesitter plugin
+    pub fn new() -> Self {
+        Self {
+            manager: Arc::new(SharedTreesitterManager::new()),
+        }
+    }
+}
 
 impl Plugin for TreesitterPlugin {
     fn id(&self) -> PluginId {
@@ -59,21 +78,22 @@ impl Plugin for TreesitterPlugin {
         "Syntax highlighting and semantic analysis via tree-sitter"
     }
 
-    fn build(&self, _ctx: &mut PluginContext) {
-        // No commands to register - treesitter works via events
+    fn build(&self, ctx: &mut PluginContext) {
+        // Register render stage for syntax highlighting
+        let stage = Arc::new(TreesitterRenderStage::new(Arc::clone(&self.manager)));
+        ctx.register_render_stage(stage);
+
+        tracing::debug!("TreesitterPlugin: registered render stage");
     }
 
     fn init_state(&self, registry: &PluginStateRegistry) {
-        // Create shared treesitter manager
-        let shared = Arc::new(SharedTreesitterManager::new());
-
         // Register as the semantic text object source
-        registry.set_text_object_source(Arc::clone(&shared) as _);
+        registry.set_text_object_source(Arc::clone(&self.manager) as _);
 
         // Store in plugin state registry for other plugins to access
-        registry.register(shared);
+        registry.register(Arc::clone(&self.manager));
 
-        tracing::debug!("TreesitterPlugin: initialized state in registry");
+        tracing::debug!("TreesitterPlugin: initialized state");
     }
 
     fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {

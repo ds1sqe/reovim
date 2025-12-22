@@ -36,14 +36,14 @@ impl PluginTuple for AllPlugins {
 
         // Add external plugin crates
         loader.add(LeapPlugin);
-        loader.add(FoldPlugin);
+        loader.add(FoldPlugin::new());
         loader.add(SettingsMenuPlugin);
         loader.add(CompletionPlugin);
         loader.add(ExplorerPlugin);
         loader.add(TelescopePlugin);
 
         // Treesitter infrastructure (must come before language plugins)
-        loader.add(TreesitterPlugin);
+        loader.add(TreesitterPlugin::new());
 
         // Language plugins
         loader.add(RustPlugin);
@@ -71,10 +71,10 @@ pub fn default_plugins() -> impl IntoIterator<Item = Box<dyn Plugin>> {
         Box::new(TelescopePlugin),
         Box::new(CompletionPlugin),
         Box::new(ExplorerPlugin),
-        Box::new(FoldPlugin),
+        Box::new(FoldPlugin::new()),
         Box::new(SettingsMenuPlugin),
         // Treesitter infrastructure (must come before language plugins)
-        Box::new(TreesitterPlugin),
+        Box::new(TreesitterPlugin::new()),
         // Language support
         Box::new(RustPlugin),
         Box::new(CPlugin),
@@ -102,13 +102,13 @@ pub fn create_plugin_loader() -> PluginLoader {
     loader.add_plugins(DefaultPlugins);
     // Add external plugin crates
     loader.add(LeapPlugin);
-    loader.add(FoldPlugin);
+    loader.add(FoldPlugin::new());
     loader.add(SettingsMenuPlugin);
     loader.add(CompletionPlugin);
     loader.add(ExplorerPlugin);
     loader.add(TelescopePlugin);
     // Treesitter infrastructure
-    loader.add(TreesitterPlugin);
+    loader.add(TreesitterPlugin::new());
     // Language plugins
     loader.add(RustPlugin);
     loader.add(CPlugin);

@@ -221,6 +221,7 @@ impl CommandTrait for ExplorerOpenNodeCommand {
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
+        tracing::info!("ExplorerOpenNodeCommand::execute() called");
         CommandResult::EmitEvent(DynEvent::new(ExplorerOpenNodeEvent))
     }
 
@@ -611,6 +612,7 @@ impl CommandTrait for ToggleExplorerCommand {
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
+        tracing::info!("ToggleExplorerCommand::execute() called");
         CommandResult::EmitEvent(DynEvent::new(ExplorerToggleEvent))
     }
 

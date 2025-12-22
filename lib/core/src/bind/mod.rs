@@ -155,6 +155,7 @@ pub enum CommandRef {
 }
 
 /// Node in the keymap trie
+#[derive(Clone)]
 pub struct KeyMapInner {
     /// If this is a terminal node, the command to execute
     pub command: Option<CommandRef>,
@@ -289,7 +290,7 @@ static EMPTY_MAP: std::sync::LazyLock<HashMap<KeySequence, KeyMapInner>> =
 /// Keymaps are organized by `KeymapScope`:
 /// - `Component { id, mode }` for component-specific keymaps
 /// - `SubMode` for global sub-mode keymaps (Command, `OperatorPending`, Leap)
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct KeyMap {
     /// All keymaps indexed by scope
     maps: HashMap<KeymapScope, HashMap<KeySequence, KeyMapInner>>,

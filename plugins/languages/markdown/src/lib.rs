@@ -1,5 +1,7 @@
 //! Markdown language support for reovim
 
+pub mod stage;
+
 #[cfg(test)]
 mod tests;
 

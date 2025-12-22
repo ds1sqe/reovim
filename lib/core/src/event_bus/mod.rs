@@ -35,7 +35,7 @@
 #![allow(clippy::missing_fields_in_debug)]
 
 mod bus;
-mod core_events;
+pub mod core_events;
 
 use std::{
     any::{Any, TypeId},

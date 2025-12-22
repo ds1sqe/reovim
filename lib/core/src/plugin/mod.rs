@@ -33,6 +33,7 @@ mod loader;
 mod runtime_context;
 mod state;
 mod traits;
+mod window_provider;
 
 pub mod builtin;
 
@@ -43,4 +44,5 @@ pub use {
     runtime_context::{RuntimeContext, RuntimeContextBuilder},
     state::PluginStateRegistry,
     traits::{Plugin, PluginId},
+    window_provider::WindowProvider,
 };

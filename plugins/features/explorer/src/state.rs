@@ -32,6 +32,8 @@ pub struct ExplorerState {
     pub clipboard: ExplorerClipboard,
     /// Multi-file selection state
     pub selection: ExplorerSelection,
+    /// Whether the explorer is currently visible
+    pub visible: bool,
 }
 
 /// Input mode for file operations
@@ -100,6 +102,7 @@ impl ExplorerState {
             message: None,
             clipboard: ExplorerClipboard::default(),
             selection: ExplorerSelection::default(),
+            visible: false,
         })
     }
 
@@ -107,6 +110,21 @@ impl ExplorerState {
     #[must_use]
     pub fn is_input_mode(&self) -> bool {
         self.input_mode != ExplorerInputMode::None
+    }
+
+    /// Toggle explorer visibility
+    pub fn toggle_visibility(&mut self) {
+        self.visible = !self.visible;
+    }
+
+    /// Show the explorer
+    pub fn show(&mut self) {
+        self.visible = true;
+    }
+
+    /// Hide the explorer
+    pub fn hide(&mut self) {
+        self.visible = false;
     }
 
     /// Start creating a new file

@@ -10,6 +10,7 @@ pub type FocusInputHandler = fn(&mut Runtime, Option<char>, bool, bool);
 
 use {
     crate::{
+        bind::KeyMap,
         buffer::{Buffer, TextOps},
         command::CommandRegistry,
         command_line::CommandLine,
@@ -57,6 +58,8 @@ pub struct Runtime {
     mode_rx: watch::Receiver<ModeState>,
     /// Command registry for trait-based command system
     pub command_registry: Arc<CommandRegistry>,
+    /// Keymap with all registered keybindings (built-in + plugins)
+    pub keymap: KeyMap,
     /// Currently active buffer ID
     pub active_buffer_id: usize,
     /// Next buffer ID to assign
@@ -93,6 +96,8 @@ pub struct Runtime {
     pub rpc_handler_registry: crate::rpc::RpcHandlerRegistry,
     /// Display registry for plugin-provided mode display strings and icons
     pub display_registry: crate::display::DisplayRegistry,
+    /// Render stage registry for pipeline transformations
+    pub render_stages: Arc<std::sync::RwLock<crate::render::RenderStageRegistry>>,
 }
 
 impl Default for Runtime {
@@ -160,15 +165,21 @@ impl Runtime {
             command_registry,
             interactor_registry,
             modifier_registry,
-            _keymap,
+            keymap,
             focus_handlers,
             component_registry,
             overlay_registry,
             rpc_handler_registry,
             display_registry,
+            render_stages,
         ) = ctx.into_parts();
 
-        let mut runtime = Self {
+        // Wrap render_stages in Arc<RwLock<>> and inject into plugin_state
+        // This allows plugins to register stages from init_state()
+        let render_stages = Arc::new(std::sync::RwLock::new(render_stages));
+        plugin_state.set_render_stages(Arc::clone(&render_stages));
+
+        let runtime = Self {
             buffers: BTreeMap::new(),
             screen,
             highlight_store: HighlightStore::new(),
@@ -186,6 +197,7 @@ impl Runtime {
             mode_tx,
             mode_rx,
             command_registry: Arc::new(command_registry),
+            keymap,
             active_buffer_id: 0,
             next_buffer_id: 0,
             jump_list: JumpList::new(),
@@ -204,10 +216,41 @@ impl Runtime {
             overlay_registry,
             rpc_handler_registry,
             display_registry,
+            render_stages,
         };
 
-        // Enable diff-based rendering by default
-        runtime.screen.enable_frame_renderer();
+        // Subscribe to focus change requests from plugins
+        {
+            use crate::event_bus::{core_events::RequestFocusChange, EventResult};
+            let mode_tx = runtime.mode_tx.clone();
+            let tx = runtime.tx.clone();
+            runtime
+                .event_bus
+                .subscribe::<RequestFocusChange, _>(100, move |event, _ctx| {
+                    let current_mode = mode_tx.borrow().clone();
+                    let new_mode = current_mode.set_interactor_id(event.target);
+                    // Send through event loop to properly update runtime.mode_state
+                    let _ = tx.try_send(crate::event::InnerEvent::ModeChangeEvent(new_mode));
+                    tracing::info!("Runtime: Requesting focus change to component '{}'", event.target.0);
+                    EventResult::Handled
+                });
+        }
+
+        // Subscribe to file open requests from plugins
+        {
+            use crate::event_bus::{core_events::RequestOpenFile, EventResult};
+            let tx = runtime.tx.clone();
+            runtime
+                .event_bus
+                .subscribe::<RequestOpenFile, _>(100, move |event, _ctx| {
+                    tracing::info!("Runtime: Requesting to open file: {:?}", event.path);
+                    // Send OpenFileRequest to the runtime event loop
+                    let _ = tx.try_send(InnerEvent::OpenFileRequest {
+                        path: event.path.clone(),
+                    });
+                    EventResult::Handled
+                });
+        }
 
         runtime
     }
@@ -332,6 +375,7 @@ impl Runtime {
             modifier_registry: Some(&self.modifier_registry),
             decoration_store: Some(&self.decoration_store),
             renderer_registry: Some(&self.renderer_registry),
+            render_stages: &self.render_stages,
         };
         self.screen
             .render_with_state(&state)
@@ -714,9 +758,9 @@ impl Runtime {
             .iter()
             .map(|w| crate::rpc::WindowSnapshot {
                 id: w.id,
-                buffer_id: w.buffer_id,
-                buffer_anchor_x: w.buffer_anchor.x,
-                buffer_anchor_y: w.buffer_anchor.y,
+                buffer_id: w.buffer_id().unwrap_or(0),
+                buffer_anchor_x: w.buffer_anchor().map_or(0, |a| a.x),
+                buffer_anchor_y: w.buffer_anchor().map_or(0, |a| a.y),
                 is_active: w.is_active,
                 cursor_x: w.cursor.x,
                 cursor_y: w.cursor.y,

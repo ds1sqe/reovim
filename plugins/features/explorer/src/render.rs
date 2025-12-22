@@ -1,7 +1,7 @@
 //! Explorer rendering
 
 use {
-    crate::highlight::{ColorMode, Style, Theme},
+    reovim_core::highlight::{ColorMode, Style, Theme},
     std::fmt::Write,
 };
 

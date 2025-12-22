@@ -1,5 +1,7 @@
 //! Main event loop for the editor
 
+use std::sync::Arc;
+
 use crate::{
     buffer::{Buffer, SelectionOps, TextOps},
     event::{
@@ -51,7 +53,7 @@ impl Runtime {
         // Command handler for key-to-command translation
         // Pass mode receiver so CommandHandler can read mode from Runtime (single source of truth)
         let mode_rx = self.subscribe_mode();
-        let mut command_hdr = CommandHandler::new(self.tx.clone(), mode_rx);
+        let mut command_hdr = CommandHandler::new(self.tx.clone(), mode_rx, self.keymap.clone());
         let mut terminate_hdr = TerminateHandler::new(self.tx.clone());
 
         input_broker.key_broker.enlist(&mut command_hdr);
@@ -60,6 +62,18 @@ impl Runtime {
         tokio::spawn(async move { command_hdr.run().await });
         tokio::spawn(async move { terminate_hdr.run().await });
         tokio::spawn(async move { input_broker.subscribe().await });
+
+        // Spawn EventBus event processor
+        if let Some(mut event_rx) = self.event_bus.take_receiver() {
+            let event_bus = Arc::clone(&self.event_bus);
+            tokio::spawn(async move {
+                while let Some(event) = event_rx.recv().await {
+                    let sender = event_bus.sender();
+                    let mut ctx = crate::event_bus::HandlerContext::new(&sender);
+                    let _ = event_bus.dispatch(&event, &mut ctx);
+                }
+            });
+        }
 
         // Initial render to show content immediately (use render directly, not coalesced)
         self.render();
@@ -113,7 +127,7 @@ impl Runtime {
 
         // Command handler for key-to-command translation
         let mode_rx = self.subscribe_mode();
-        let mut command_hdr = crate::event::CommandHandler::new(self.tx.clone(), mode_rx);
+        let mut command_hdr = crate::event::CommandHandler::new(self.tx.clone(), mode_rx, self.keymap.clone());
         let mut terminate_hdr = crate::event::TerminateHandler::new(self.tx.clone());
 
         input_broker.key_broker.enlist(&mut command_hdr);
@@ -122,6 +136,18 @@ impl Runtime {
         tokio::spawn(async move { command_hdr.run().await });
         tokio::spawn(async move { terminate_hdr.run().await });
         tokio::spawn(async move { input_broker.subscribe().await });
+
+        // Spawn EventBus event processor
+        if let Some(mut event_rx) = self.event_bus.take_receiver() {
+            let event_bus = Arc::clone(&self.event_bus);
+            tokio::spawn(async move {
+                while let Some(event) = event_rx.recv().await {
+                    let sender = event_bus.sender();
+                    let mut ctx = crate::event_bus::HandlerContext::new(&sender);
+                    let _ = event_bus.dispatch(&event, &mut ctx);
+                }
+            });
+        }
 
         // Initial render (use render directly, not coalesced)
         self.render();
@@ -316,6 +342,18 @@ impl Runtime {
                 let _ = self.event_bus.dispatch(&event, &mut ctx);
                 if ctx.render_requested() {
                     self.request_render();
+                }
+            }
+            // File open request (from explorer, etc.)
+            InnerEvent::OpenFileRequest { path } => {
+                tracing::info!("Runtime: Opening file from request: {:?}", path);
+                // Convert PathBuf to &str for open_file
+                if let Some(path_str) = path.to_str() {
+                    self.open_file(path_str);
+                    self.screen.set_editor_buffer(self.active_buffer_id);
+                    self.request_render();
+                } else {
+                    tracing::error!("Runtime: Invalid UTF-8 in file path: {:?}", path);
                 }
             }
         }
@@ -566,7 +604,7 @@ impl Runtime {
     /// Handle mode change events
     #[allow(clippy::collapsible_if)]
     fn handle_mode_change(&mut self, new_mode: ModeState) {
-        tracing::debug!(?new_mode, "Mode changed");
+        tracing::debug!("Mode changed: edit_mode={:?}, interactor={}", new_mode.edit_mode, new_mode.interactor_id.0);
 
         // Handle insert mode
         if new_mode.is_insert() {

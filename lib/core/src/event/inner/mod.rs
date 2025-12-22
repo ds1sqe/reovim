@@ -66,6 +66,11 @@ pub enum InnerEvent {
         /// Type-erased event payload
         event: DynEvent,
     },
+    /// Request to open a file (from explorer, commands, etc.)
+    OpenFileRequest {
+        /// Path to the file to open
+        path: PathBuf,
+    },
 }
 
 /// Input events routed to the active focus target

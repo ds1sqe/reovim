@@ -46,11 +46,11 @@ impl Subscribe<KeyEvent> for CommandHandler {
 
 impl CommandHandler {
     #[must_use]
-    pub fn new(tx: Sender<InnerEvent>, mode_rx: watch::Receiver<ModeState>) -> Self {
+    pub fn new(tx: Sender<InnerEvent>, mode_rx: watch::Receiver<ModeState>, keymap: KeyMap) -> Self {
         let initial_mode = mode_rx.borrow().clone();
         Self {
             key_event_rx: None,
-            keymap: KeyMap::with_defaults(),
+            keymap,
             mode_rx,
             local_mode: initial_mode,
             pending_keys: KeySequence::new(),

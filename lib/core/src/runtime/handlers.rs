@@ -813,7 +813,8 @@ impl Runtime {
 
         // Before navigation: save current buffer cursor to current window
         if let Some(window) = self.screen.active_window_mut()
-            && let Some(buffer) = self.buffers.get(&window.buffer_id)
+            && let Some(buffer_id) = window.buffer_id()
+            && let Some(buffer) = self.buffers.get(&buffer_id)
         {
             tracing::debug!(
                 window_id = window.id,
@@ -832,8 +833,9 @@ impl Runtime {
         tracing::debug!(?before_window_id, ?after_window_id, ?direction, "Window navigation");
 
         // After navigation: load new window's cursor into buffer and update active_buffer_id
-        if let Some(window) = self.screen.active_window() {
-            let new_buffer_id = window.buffer_id;
+        if let Some(window) = self.screen.active_window()
+            && let Some(new_buffer_id) = window.buffer_id()
+        {
             let window_cursor = window.cursor;
             let window_desired_col = window.desired_col;
 

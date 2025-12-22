@@ -70,8 +70,7 @@ pub async fn run_server(
         // Don't call initialize() in headless mode - no terminal to initialize
     };
 
-    // Enable frame renderer and capture for RPC (all formats: PlainText, RawAnsi, CellGrid)
-    screen.enable_frame_renderer();
+    // Enable frame buffer capture for RPC (all formats: PlainText, RawAnsi, CellGrid)
     let frame_handle = screen.enable_frame_capture();
 
     // Create channels for key injection

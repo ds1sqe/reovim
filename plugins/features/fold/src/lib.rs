@@ -15,6 +15,7 @@
 
 pub mod commands;
 pub mod events;
+pub mod stage;
 pub mod state;
 
 #[cfg(test)]
@@ -28,6 +29,7 @@ use reovim_core::{
 };
 
 use state::SharedFoldManager;
+use stage::FoldRenderStage;
 
 use commands::{
     FoldCloseAllCommand, FoldCloseCommand, FoldOpenAllCommand, FoldOpenCommand, FoldToggleCommand,
@@ -41,7 +43,24 @@ use commands::{
 /// - `zc` close fold
 /// - `zR` open all folds
 /// - `zM` close all folds
-pub struct FoldPlugin;
+pub struct FoldPlugin {
+    fold_manager: Arc<SharedFoldManager>,
+}
+
+impl Default for FoldPlugin {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl FoldPlugin {
+    /// Create a new fold plugin
+    pub fn new() -> Self {
+        Self {
+            fold_manager: Arc::new(SharedFoldManager::new()),
+        }
+    }
+}
 
 impl Plugin for FoldPlugin {
     fn id(&self) -> PluginId {
@@ -62,19 +81,28 @@ impl Plugin for FoldPlugin {
     }
 
     fn build(&self, ctx: &mut PluginContext) {
+        // Register commands
         let _ = ctx.register_command(FoldToggleCommand);
         let _ = ctx.register_command(FoldOpenCommand);
         let _ = ctx.register_command(FoldCloseCommand);
         let _ = ctx.register_command(FoldOpenAllCommand);
         let _ = ctx.register_command(FoldCloseAllCommand);
+
+        // Register render stage for fold visibility transformations
+        let stage = Arc::new(FoldRenderStage::new(Arc::clone(&self.fold_manager)));
+        ctx.register_render_stage(stage);
+
+        tracing::debug!("FoldPlugin: registered commands and render stage");
     }
 
     fn init_state(&self, registry: &PluginStateRegistry) {
-        // Create shared fold manager and register both as type state and visibility source
-        let shared = Arc::new(SharedFoldManager::new());
-        registry.register(Arc::clone(&shared));
-        registry.set_visibility_source(shared);
-        tracing::debug!("FoldPlugin: initialized SharedFoldManager in registry");
+        // Register shared fold manager as both type state and visibility source
+        registry.register(Arc::clone(&self.fold_manager));
+        registry.set_visibility_source(
+            Arc::clone(&self.fold_manager) as Arc<dyn reovim_core::visibility::BufferVisibilitySource>
+        );
+
+        tracing::debug!("FoldPlugin: initialized SharedFoldManager");
     }
 
     fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {

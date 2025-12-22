@@ -59,7 +59,7 @@ use {
         command::terminal::{Clear, ClearType},
         command_line::CommandLine,
         component::RenderState,
-        constants::RESET_STYLE,
+        content::WindowContentSource,
         decoration::DecorationStore,
         frame::{FrameBuffer, FrameRenderer},
         highlight::{ColorMode, HighlightStore, Theme},
@@ -73,7 +73,6 @@ use {
         cursor::{Hide, MoveTo, Show},
         event::{DisableMouseCapture, EnableMouseCapture},
         queue,
-        style::Print,
         terminal::size,
     },
     std::{
@@ -123,7 +122,7 @@ pub struct Screen {
     next_window_id: usize,
     /// Mapping from `window_id` to `buffer_id`
     window_buffers: std::collections::BTreeMap<usize, usize>,
-    /// Optional frame renderer for buffered rendering
+    /// Frame renderer for buffered rendering (always Some after initialization)
     frame_renderer: Option<FrameRenderer>,
 }
 
@@ -140,19 +139,21 @@ impl Default for Screen {
 
         windows.push(Window {
             id: initial_window_id,
-            window_type: WindowType::Editor,
+            source: WindowContentSource::FileBuffer {
+                buffer_id: 0,
+                buffer_anchor: Anchor { x: 0, y: 0 },
+            },
             anchor,
             width: columns,
             height: editor_height,
-            buffer_anchor: anchor,
-            buffer_id: 0,
-            line_number: LineNumber::default(),
-            scrollbar_enabled: false,
+            z_order: 100, // Editor windows are in 100-199 range
             is_active: true,
+            is_floating: false,
+            line_number: Some(LineNumber::default()),
+            scrollbar_enabled: false,
             cursor: Position { x: 0, y: 0 },
             desired_col: None,
             border_config: None,
-            is_floating: false,
         });
 
         let layout = LayoutManager::new(columns, editor_height);
@@ -176,7 +177,7 @@ impl Default for Screen {
             tab_manager,
             next_window_id: 1, // Next window will be ID 1
             window_buffers,
-            frame_renderer: None,
+            frame_renderer: Some(FrameRenderer::new(columns, rows)),
         }
     }
 }
@@ -192,19 +193,21 @@ impl Screen {
 
         let windows = vec![Window {
             id: initial_window_id,
-            window_type: WindowType::Editor,
+            source: WindowContentSource::FileBuffer {
+                buffer_id: 0,
+                buffer_anchor: Anchor { x: 0, y: 0 },
+            },
             anchor,
             width,
             height: editor_height,
-            buffer_anchor: anchor,
-            buffer_id: 0,
-            line_number: LineNumber::default(),
-            scrollbar_enabled: false,
+            z_order: 100, // Editor windows are in 100-199 range
             is_active: true,
+            is_floating: false,
+            line_number: Some(LineNumber::default()),
+            scrollbar_enabled: false,
             cursor: Position { x: 0, y: 0 },
             desired_col: None,
             border_config: None,
-            is_floating: false,
         }];
 
         let layout = LayoutManager::new(width, editor_height);
@@ -225,7 +228,7 @@ impl Screen {
             tab_manager,
             next_window_id: 1,
             window_buffers,
-            frame_renderer: None,
+            frame_renderer: Some(FrameRenderer::new(width, height)),
         }
     }
 
@@ -293,26 +296,10 @@ impl Screen {
             );
         }
 
-        // Resize frame renderer if enabled
+        // Resize frame renderer
         if let Some(ref mut renderer) = self.frame_renderer {
             renderer.resize(width, height);
         }
-    }
-
-    /// Enable frame-buffered rendering
-    ///
-    /// When enabled, rendering will use double-buffering and differential
-    /// updates instead of clearing the entire screen each frame.
-    ///
-    /// This is idempotent - if a frame renderer is already enabled, this does nothing.
-    /// This ensures any existing capture handles remain valid.
-    pub fn enable_frame_renderer(&mut self) {
-        if self.frame_renderer.is_some() {
-            return; // Already enabled, preserve existing capture handles
-        }
-        let renderer = FrameRenderer::new(self.size.width, self.size.height);
-        self.frame_renderer = Some(renderer);
-        tracing::info!("Frame renderer enabled");
     }
 
     /// Enable frame buffer capture and return a handle for external readers
@@ -320,8 +307,6 @@ impl Screen {
     /// This enables capture on the frame renderer and returns a handle that
     /// provides thread-safe access to the latest complete frame.
     /// Used by RPC server for `CellGrid` format.
-    ///
-    /// Returns `None` if frame renderer is not enabled.
     pub fn enable_frame_capture(&mut self) -> Option<crate::frame::FrameBufferHandle> {
         self.frame_renderer
             .as_mut()
@@ -334,12 +319,6 @@ impl Screen {
         self.frame_renderer
             .as_ref()
             .and_then(FrameRenderer::capture_handle)
-    }
-
-    /// Check if frame-buffered rendering is enabled
-    #[must_use]
-    pub const fn is_frame_renderer_enabled(&self) -> bool {
-        self.frame_renderer.is_some()
     }
 
     /// Get a read-only reference to the frame buffer (if enabled)
@@ -425,26 +404,8 @@ impl Screen {
         &mut self,
         state: &RenderState<'_>,
     ) -> std::result::Result<(), std::io::Error> {
-        // Delegate to the existing render_buffered with extracted fields
-        if self.frame_renderer.is_some() {
-            return self.render_buffered(
-                state.buffers,
-                state.highlight_store,
-                state.mode,
-                state.command_line,
-                state.pending_keys,
-                state.last_command,
-                state.color_mode,
-                state.theme,
-                state.visibility_source,
-                state.indent_analyzer,
-                state.modifier_registry,
-                state.decoration_store,
-            );
-        }
-
-        // Fallback: direct rendering (legacy path)
-        self.render_direct(
+        // Render using frame renderer
+        self.render_windows(
             state.buffers,
             state.highlight_store,
             state.mode,
@@ -455,14 +416,230 @@ impl Screen {
             state.theme,
             state.visibility_source,
             state.indent_analyzer,
+            state.modifier_registry,
+            state.decoration_store,
+            state.render_stages,
+            state.plugin_state,
         )
     }
 
-    /// Diff-based rendering using frame buffer
+    /// Execute the render pipeline for a window
+    #[allow(clippy::too_many_arguments)]
+    fn execute_pipeline(
+        &self,
+        window: &Window,
+        text_buffer: &Buffer,
+        _highlight_store: &HighlightStore,
+        theme: &Theme,
+        color_mode: ColorMode,
+        _visibility_source: &dyn BufferVisibilitySource,
+        _indent_analyzer: &IndentAnalyzer,
+        _decoration_store: Option<&DecorationStore>,
+        render_stages: &std::sync::Arc<std::sync::RwLock<crate::render::RenderStageRegistry>>,
+    ) -> crate::render::RenderData {
+        use crate::render::RenderData;
+        use crate::component::RenderContext;
+
+        // Stage 1: Extract buffer content
+        let mut data = RenderData::from_buffer(window, text_buffer);
+        data.buffer_id = window.buffer_id().unwrap_or(0);
+
+        // Create render context
+        let ctx = RenderContext::new(
+            self.size.width,
+            self.size.height,
+            theme,
+            color_mode,
+        );
+
+        // Execute registered render stages in order
+        let stages_guard = render_stages.read().unwrap();
+        for stage in stages_guard.stages() {
+            tracing::trace!(stage_name = stage.name(), "Executing render stage");
+            data = stage.transform(data, &ctx);
+        }
+
+        // TODO: Stage 5: Visual selection overlay
+        // TODO: Stage 6: Indent guides
+
+        data
+    }
+
+    /// Render pipeline data to frame buffer
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::cast_possible_truncation)]
+    fn render_data_to_framebuffer(
+        &self,
+        render_data: &crate::render::RenderData,
+        window: &Window,
+        frame_buffer: &mut FrameBuffer,
+        theme: &Theme,
+        buffer: &Buffer,
+    ) {
+        use crate::render::LineVisibility;
+
+        // Get effective cursor position (active window uses buffer cursor, inactive uses window cursor)
+        let cursor_y = if window.is_active {
+            buffer.cur.y
+        } else {
+            window.cursor.y
+        };
+
+        // Calculate line number width
+        let total_lines = render_data.lines.len();
+        #[allow(clippy::cast_precision_loss)]
+        #[allow(clippy::cast_possible_truncation)]
+        #[allow(clippy::cast_sign_loss)]
+        let num_width = if window.line_number.as_ref().is_some_and(LineNumber::is_shown) && total_lines > 0 {
+            (total_lines as f64).log10().floor() as usize + 1
+        } else {
+            1
+        };
+
+        // Render each visible line
+        let mut display_row = 0u16;
+        for (line_idx, line) in render_data.lines.iter().enumerate() {
+            if display_row >= window.height {
+                break;
+            }
+
+            // Check visibility
+            let visibility = &render_data.visibility[line_idx];
+            match visibility {
+                LineVisibility::Hidden => {},
+                LineVisibility::FoldMarker { preview, .. } => {
+                    let screen_y = window.anchor.y + display_row;
+                    let gutter_width = self.render_line_number_to_buffer_simple(
+                        frame_buffer,
+                        window.anchor.x,
+                        screen_y,
+                        line_idx as u16,
+                        cursor_y,
+                        num_width,
+                        theme,
+                        window,
+                    );
+
+                    // Render fold marker
+                    let fold_style = &theme.fold.marker;
+                    let mut col = window.anchor.x + gutter_width;
+                    for ch in preview.chars() {
+                        if col < frame_buffer.width() {
+                            frame_buffer.put_char(col, screen_y, ch, fold_style);
+                            col += 1;
+                        }
+                    }
+                    display_row += 1;
+                }
+                LineVisibility::Visible => {
+                    let screen_y = window.anchor.y + display_row;
+                    let gutter_width = self.render_line_number_to_buffer_simple(
+                        frame_buffer,
+                        window.anchor.x,
+                        screen_y,
+                        line_idx as u16,
+                        cursor_y,
+                        num_width,
+                        theme,
+                        window,
+                    );
+
+                    // Render line content
+                    // TODO: Apply highlights and decorations
+                    let mut col = window.anchor.x + gutter_width;
+                    for ch in line.chars() {
+                        if col >= window.anchor.x + window.width {
+                            break;
+                        }
+                        frame_buffer.put_char(col, screen_y, ch, &theme.base.default);
+                        col += 1;
+                    }
+                    display_row += 1;
+                }
+            }
+        }
+
+        // Fill remaining rows with tilde markers
+        let tilde_style = &theme.gutter.line_number;
+        while display_row < window.height {
+            let screen_y = window.anchor.y + display_row;
+            frame_buffer.put_char(window.anchor.x, screen_y, '~', tilde_style);
+            display_row += 1;
+        }
+    }
+
+    /// Simplified line number rendering for pipeline
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::unused_self)]
+    #[allow(clippy::cast_possible_truncation)]
+    fn render_line_number_to_buffer_simple(
+        &self,
+        buffer: &mut FrameBuffer,
+        x: u16,
+        y: u16,
+        row: u16,
+        cursor_y: u16,
+        num_width: usize,
+        theme: &Theme,
+        window: &Window,
+    ) -> u16 {
+        let Some(line_number) = &window.line_number else {
+            return 0;
+        };
+        if !line_number.is_shown() {
+            return 0;
+        }
+
+        // Calculate plain text line number (without ANSI codes for frame buffer)
+        use crate::screen::window::LineNumberMode;
+        let is_current_line = row == cursor_y;
+
+        let num_str = if window.is_active {
+            match line_number.mode() {
+                LineNumberMode::Absolute => format!("{}", row + 1),
+                LineNumberMode::Relative => {
+                    let rel = (i32::from(row) - i32::from(cursor_y)).abs();
+                    format!("{rel}")
+                }
+                LineNumberMode::Hybrid => {
+                    if is_current_line {
+                        format!("{}", row + 1)
+                    } else {
+                        let rel = (i32::from(row) - i32::from(cursor_y)).abs();
+                        format!("{rel}")
+                    }
+                }
+            }
+        } else {
+            format!("{}", row + 1)
+        };
+
+        // Format with padding and trailing space (plain text only)
+        let line_num_str = format!("{num_str:>num_width$} ");
+
+        // Render line number with style
+        let line_num_style = if !window.is_active {
+            &theme.gutter.inactive_line_number
+        } else if is_current_line {
+            &theme.gutter.current_line_number
+        } else {
+            &theme.gutter.line_number
+        };
+
+        let mut col = x;
+        for ch in line_num_str.chars() {
+            buffer.put_char(col, y, ch, line_num_style);
+            col += 1;
+        }
+
+        line_num_str.len() as u16
+    }
+
+    /// Unified rendering using frame buffer (Phase 2 implementation)
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::too_many_arguments)]
     #[allow(clippy::too_many_lines)]
-    fn render_buffered(
+    fn render_windows(
         &mut self,
         buffers: &BTreeMap<usize, Buffer>,
         highlight_store: &HighlightStore,
@@ -476,12 +653,14 @@ impl Screen {
         indent_analyzer: &IndentAnalyzer,
         modifier_registry: Option<&ModifierRegistry>,
         decoration_store: Option<&DecorationStore>,
+        render_stages: &std::sync::Arc<std::sync::RwLock<crate::render::RenderStageRegistry>>,
+        plugin_state: &std::sync::Arc<crate::plugin::PluginStateRegistry>,
     ) -> std::result::Result<(), std::io::Error> {
         // Take frame renderer out (borrow checker workaround)
         let mut renderer = self
             .frame_renderer
             .take()
-            .expect("render_buffered called without frame renderer");
+            .expect("frame renderer should always be initialized");
 
         // Set color mode for style conversion
         renderer.set_color_mode(color_mode);
@@ -497,13 +676,69 @@ impl Screen {
         // Render tab line if multiple tabs exist
         self.render_tab_line_to_buffer(buffer, color_mode, theme);
 
-        // Render editor windows
-        for win in &mut self.windows {
-            if let Some(buf) = buffers.get(&win.buffer_id) {
+        // Phase 2: Render editor windows
+        // Phase 3 will add overlay collection and unified z-order rendering
+
+        // Collect all windows (editor + plugin windows)
+        let mut windows_to_render = self.windows.clone();
+
+        // Collect windows from registered window providers
+        for provider in plugin_state.window_providers() {
+            let plugin_windows = provider.get_windows(plugin_state);
+            windows_to_render.extend(plugin_windows);
+        }
+
+        // Sort all windows by z-order
+        windows_to_render.sort_by_key(|w| w.z_order);
+
+        // Render all windows
+        for i in 0..windows_to_render.len() {
+            let win = &windows_to_render[i];
+
+            // Handle PluginBuffer windows differently
+            if let crate::content::WindowContentSource::PluginBuffer { provider, .. } = &win.source {
+                // For plugin buffers, generate virtual content via provider
+                use crate::content::BufferContext;
+                let buffer_ctx = BufferContext {
+                    buffer_id: 0,
+                    width: win.width,
+                    height: win.height,
+                    state: plugin_state,
+                };
+                let lines = provider.get_lines(&buffer_ctx);
+
+                // Render plugin buffer lines directly to frame buffer
+                for (line_idx, line) in lines.iter().enumerate() {
+                    let y = win.anchor.y + line_idx as u16;
+                    if y >= self.size.height {
+                        break;
+                    }
+                    let mut x = win.anchor.x;
+                    for ch in line.chars() {
+                        if x >= win.anchor.x + win.width {
+                            break;
+                        }
+                        buffer.put_char(x, y, ch, &theme.base.default);
+                        x += 1;
+                    }
+                }
+                continue; // Skip normal window rendering
+            }
+
+            // Normal FileBuffer windows
+            if let Some(buffer_id) = win.buffer_id()
+                && let Some(buf) = buffers.get(&buffer_id)
+            {
                 current_buffer = Some(buf);
 
-                // Evaluate modifiers for this window
-                if let Some(registry) = modifier_registry {
+                // Find the corresponding window in self.windows (for mutable access)
+                // Plugin windows won't have a match, so we skip modifier/scroll updates for them
+                let editor_win_idx = self.windows.iter().position(|w| w.id == win.id);
+
+                // Evaluate modifiers for this window (only for editor windows)
+                if let Some(editor_idx) = editor_win_idx
+                    && let Some(registry) = modifier_registry
+                {
                     let filetype = buf
                         .file_path
                         .as_ref()
@@ -513,7 +748,7 @@ impl Screen {
                         &mode.edit_mode,
                         &mode.sub_mode,
                         win.id,
-                        win.buffer_id,
+                        buffer_id,
                     )
                     .with_filetype(filetype)
                     .with_active(win.is_active)
@@ -522,44 +757,49 @@ impl Screen {
 
                     let style_state = registry.evaluate(&mod_ctx);
 
-                    // Apply window decorations from modifiers
+                    // Apply window decorations from modifiers (need mutable access)
+                    let win_mut = &mut self.windows[editor_idx];
                     if let Some(show_ln) = style_state.style.decorations.line_numbers {
-                        win.line_number.set_number(show_ln);
+                        win_mut.set_number(show_ln);
                     }
                     if let Some(relative) = style_state.style.decorations.relative_numbers {
-                        win.line_number.set_relative_number(relative);
+                        win_mut.set_relative_number(relative);
                     }
                     if let Some(scrollbar) = style_state.style.decorations.scrollbar {
-                        win.scrollbar_enabled = scrollbar;
+                        win_mut.scrollbar_enabled = scrollbar;
                     }
+
+                    // Update scroll to keep cursor visible
+                    let effective_cursor_y = if win.is_active {
+                        buf.cur.y
+                    } else {
+                        win.cursor.y
+                    };
+                    self.windows[editor_idx].update_scroll(effective_cursor_y);
                 }
 
-                // Update scroll to keep cursor visible
-                // Active window uses buffer's live cursor; inactive windows use saved cursor
-                let effective_cursor_y = if win.is_active {
-                    buf.cur.y
-                } else {
-                    win.cursor.y
-                };
-                win.update_scroll(effective_cursor_y);
-
-                // Render window content to buffer
-                win.render_to_buffer(
-                    buffer,
+                // Execute render pipeline with the window from windows_to_render
+                let win = &windows_to_render[i];
+                let render_data = self.execute_pipeline(
+                    win,
                     buf,
                     highlight_store,
                     theme,
+                    color_mode,
                     visibility_source,
                     indent_analyzer,
                     decoration_store,
-                    &mode.edit_mode,
+                    render_stages,
                 );
+
+                // Render pipeline data to frame buffer
+                self.render_data_to_framebuffer(&render_data, win, buffer, theme, buf);
 
                 // Calculate cursor position only for the ACTIVE window (and if editor is focused)
                 if win.is_active {
                     let gutter_width = win.line_number_width(buf.contents.len());
                     let cursor_x = win.anchor.x + gutter_width + buf.cur.x;
-                    let cursor_y = win.anchor.y + buf.cur.y.saturating_sub(win.buffer_anchor.y);
+                    let cursor_y = win.anchor.y + buf.cur.y.saturating_sub(win.buffer_anchor().map_or(0, |a| a.y));
                     cursor_pos = Some((cursor_x, cursor_y));
                 }
             }
@@ -593,113 +833,6 @@ impl Screen {
 
         // Position cursor
         if let Some((x, y)) = cursor_pos {
-            queue!(self.out_stream, MoveTo(x, y))?;
-        }
-
-        queue!(self.out_stream, Show)?;
-        self.out_stream.flush()
-    }
-
-    /// Direct rendering (legacy path without frame buffer)
-    #[allow(clippy::cast_possible_truncation)]
-    #[allow(clippy::too_many_arguments)]
-    #[allow(clippy::too_many_lines)]
-    fn render_direct(
-        &mut self,
-        buffers: &BTreeMap<usize, Buffer>,
-        highlight_store: &HighlightStore,
-        mode: &ModeState,
-        cmd_line: &CommandLine,
-        pending_keys: &str,
-        last_command: &str,
-        color_mode: ColorMode,
-        theme: &Theme,
-        visibility_source: &dyn BufferVisibilitySource,
-        indent_analyzer: &IndentAnalyzer,
-    ) -> std::result::Result<(), std::io::Error> {
-        // Reset all styling and hide cursor during render
-        queue!(self.out_stream, Print(RESET_STYLE))?;
-        queue!(self.out_stream, Hide)?;
-
-        // Render tab line if multiple tabs exist
-        self.render_tab_line(color_mode, theme)?;
-
-        // Track cursor position from main buffer
-        let mut cursor_pos: Option<(u16, u16)> = None;
-        let mut current_buffer: Option<&Buffer> = None;
-
-        // Render editor windows
-        for win in &mut self.windows {
-            if let Some(buf) = buffers.get(&win.buffer_id) {
-                current_buffer = Some(buf);
-
-                // Update scroll to keep cursor visible
-                // Active window uses buffer's live cursor; inactive windows use saved cursor
-                let effective_cursor_y = if win.is_active {
-                    buf.cur.y
-                } else {
-                    win.cursor.y
-                };
-                win.update_scroll(effective_cursor_y);
-
-                // Render each line with explicit cursor positioning
-                let lines = win.render(
-                    buf,
-                    highlight_store,
-                    color_mode,
-                    theme,
-                    visibility_source,
-                    indent_analyzer,
-                );
-                for (row_offset, line) in lines.iter().enumerate() {
-                    queue!(
-                        self.out_stream,
-                        MoveTo(win.anchor.x, win.anchor.y + row_offset as u16)
-                    )?;
-                    queue!(self.out_stream, Print(line))?;
-                }
-
-                // Calculate cursor position relative to window (only if editor is focused)
-                if !self.layout.has_plugin_focus() {
-                    // Account for line number gutter width
-                    let gutter_width = win.line_number_width(buf.contents.len());
-                    let cursor_x = win.anchor.x + gutter_width + buf.cur.x;
-                    // Account for scroll offset (buffer_anchor.y)
-                    let cursor_y = win.anchor.y + buf.cur.y.saturating_sub(win.buffer_anchor.y);
-                    cursor_pos = Some((cursor_x, cursor_y));
-                }
-            }
-        }
-
-        // Render window separators for split windows
-        self.render_window_separators(color_mode, theme)?;
-
-        // Completion popup rendering is handled by the completion plugin overlay
-
-        // Show command line in Command mode, status line otherwise
-        if mode.is_command() {
-            render_command_line_to(&mut self.out_stream, self.size.height, cmd_line)?;
-        } else {
-            render_status_line_to(
-                &mut self.out_stream,
-                self.size.width,
-                self.size.height,
-                mode,
-                current_buffer,
-                pending_keys,
-                last_command,
-                theme,
-                color_mode,
-            )?;
-        }
-
-        // Settings menu overlay is now rendered by the settings-menu plugin
-        // Telescope overlay is now rendered by the telescope plugin
-
-        // Position cursor at buffer cursor (not in command mode)
-        if !mode.is_command()
-            && let Some((x, y)) = cursor_pos
-        {
             queue!(self.out_stream, MoveTo(x, y))?;
         }
 
@@ -779,7 +912,7 @@ impl Screen {
             // Update the Window struct
             for win in &mut self.windows {
                 if win.id == window_id {
-                    win.buffer_id = buffer_id;
+                    win.set_buffer_id(buffer_id);
                     break;
                 }
             }
@@ -791,7 +924,7 @@ impl Screen {
         self.window_buffers.insert(window_id, buffer_id);
         for win in &mut self.windows {
             if win.id == window_id {
-                win.buffer_id = buffer_id;
+                win.set_buffer_id(buffer_id);
                 break;
             }
         }
@@ -838,6 +971,19 @@ impl Screen {
         &self.windows
     }
 
+    /// Collect all renderables as `Windows` (editor windows + overlays)
+    ///
+    /// Returns a vector of `Windows` sorted by z-order (lower values first).
+    /// Overlays are converted to temporary `Window` structs with `WindowContentSource::Overlay`.
+    ///
+    /// TODO Phase 3: Integrate `overlay_registry` to collect overlay windows
+    #[allow(dead_code)]
+    fn collect_all_windows(&self) -> Vec<Window> {
+        // Phase 2: Just return clones of editor windows
+        // Phase 3 will add overlay collection here
+        self.windows.clone()
+    }
+
     /// Update window layouts based on current layout manager state and split tree
     fn update_window_layouts(&mut self) {
         let editor_layout = self.layout.editor_layout();
@@ -882,22 +1028,24 @@ impl Screen {
 
                 self.windows.push(Window {
                     id: layout.window_id,
-                    window_type: WindowType::Editor,
+                    source: WindowContentSource::FileBuffer {
+                        buffer_id,
+                        buffer_anchor: Anchor { x: 0, y: 0 },
+                    },
                     anchor: Anchor {
                         x: layout.rect.x,
                         y: layout.rect.y,
                     },
                     width: layout.rect.width,
                     height: layout.rect.height,
-                    buffer_anchor: Anchor { x: 0, y: 0 },
-                    buffer_id,
-                    line_number: LineNumber::default(),
-                    scrollbar_enabled: false,
+                    z_order: 100, // Editor windows are in 100-199 range
                     is_active: layout.window_id == active_window_id,
+                    is_floating: false,
+                    line_number: Some(LineNumber::default()),
+                    scrollbar_enabled: false,
                     cursor,
                     desired_col,
                     border_config: None,
-                    is_floating: false,
                 });
             }
         }
@@ -1104,121 +1252,13 @@ impl Screen {
         &self.tab_manager
     }
 
-    /// Render the tab line at the top of the screen
-    #[allow(clippy::cast_possible_truncation)]
-    fn render_tab_line(
-        &mut self,
-        color_mode: ColorMode,
-        theme: &Theme,
-    ) -> std::result::Result<(), std::io::Error> {
-        use reovim_sys::style::{Attribute, SetAttribute};
-
-        let tabs = self.tab_manager.tab_info();
-        if tabs.len() <= 1 {
-            return Ok(());
-        }
-
-        queue!(self.out_stream, MoveTo(0, 0))?;
-
-        let mut x = 0u16;
-        for tab in &tabs {
-            let style = if tab.is_active {
-                &theme.tab.active
-            } else {
-                &theme.tab.inactive
-            };
-
-            let style_start = style.to_ansi_start(color_mode);
-            let label = format!(" {} ", tab.label);
-            let label_len = label.len() as u16;
-
-            // Check if we have room
-            if x + label_len > self.size.width {
-                break;
-            }
-
-            queue!(self.out_stream, Print(&style_start))?;
-            if tab.is_active {
-                queue!(self.out_stream, SetAttribute(Attribute::Bold))?;
-            }
-            queue!(self.out_stream, Print(&label))?;
-            queue!(self.out_stream, Print(RESET_STYLE))?;
-
-            x += label_len;
-        }
-
-        // Fill the rest of the line with tab line background
-        if x < self.size.width {
-            let fill_style = theme.tab.fill.to_ansi_start(color_mode);
-            let spaces = " ".repeat((self.size.width - x) as usize);
-            queue!(self.out_stream, Print(&fill_style))?;
-            queue!(self.out_stream, Print(&spaces))?;
-            queue!(self.out_stream, Print(RESET_STYLE))?;
-        }
-
-        Ok(())
-    }
-
     /// Get the Y offset for the editor area (1 if tabs are shown, 0 otherwise)
     #[must_use]
     fn tab_line_height(&self) -> u16 {
         u16::from(self.tab_manager.tab_count() > 1)
     }
 
-    /// Render window separators for split windows
-    #[allow(clippy::cast_possible_truncation)]
-    fn render_window_separators(
-        &mut self,
-        color_mode: ColorMode,
-        theme: &Theme,
-    ) -> std::result::Result<(), std::io::Error> {
-        if self.windows.len() <= 1 {
-            return Ok(());
-        }
-
-        let sep_style = theme.window.separator.to_ansi_start(color_mode);
-
-        // Find vertical separators (where windows meet side-by-side)
-        for i in 0..self.windows.len() {
-            for j in (i + 1)..self.windows.len() {
-                let win_a = &self.windows[i];
-                let win_b = &self.windows[j];
-
-                // Check if windows are adjacent horizontally (vertical separator)
-                if win_a.anchor.x + win_a.width == win_b.anchor.x {
-                    // Draw vertical separator at the boundary
-                    let sep_x = win_b.anchor.x.saturating_sub(1);
-                    let start_y = win_a.anchor.y.max(win_b.anchor.y);
-                    let end_y = (win_a.anchor.y + win_a.height).min(win_b.anchor.y + win_b.height);
-
-                    queue!(self.out_stream, Print(&sep_style))?;
-                    for y in start_y..end_y {
-                        queue!(self.out_stream, MoveTo(sep_x, y))?;
-                        queue!(self.out_stream, Print("│"))?;
-                    }
-                    queue!(self.out_stream, Print(RESET_STYLE))?;
-                }
-
-                // Check if windows are adjacent vertically (horizontal separator)
-                if win_a.anchor.y + win_a.height == win_b.anchor.y {
-                    // Draw horizontal separator at the boundary
-                    let sep_y = win_b.anchor.y.saturating_sub(1);
-                    let start_x = win_a.anchor.x.max(win_b.anchor.x);
-                    let end_x = (win_a.anchor.x + win_a.width).min(win_b.anchor.x + win_b.width);
-
-                    queue!(self.out_stream, Print(&sep_style))?;
-                    queue!(self.out_stream, MoveTo(start_x, sep_y))?;
-                    let sep_line = "─".repeat((end_x - start_x) as usize);
-                    queue!(self.out_stream, Print(&sep_line))?;
-                    queue!(self.out_stream, Print(RESET_STYLE))?;
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    // === Buffer Rendering Methods (for diff-based rendering) ===
+    // === Frame Buffer Rendering Methods ===
 
     /// Render tab line directly to frame buffer
     #[allow(clippy::cast_possible_truncation)]

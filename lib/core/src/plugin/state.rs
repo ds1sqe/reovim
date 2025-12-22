@@ -31,9 +31,12 @@ use std::{
 };
 
 use crate::{
+    render::{RenderStage, RenderStageRegistry},
     textobject::SharedSemanticTextObjectSource,
     visibility::{BufferVisibilitySource, NoOpBufferVisibility},
 };
+
+use super::WindowProvider;
 
 /// Type-erased plugin state container
 ///
@@ -45,6 +48,10 @@ pub struct PluginStateRegistry {
     visibility_source: RwLock<Option<Arc<dyn BufferVisibilitySource>>>,
     /// Semantic text object source (provided by treesitter plugin)
     text_object_source: RwLock<Option<SharedSemanticTextObjectSource>>,
+    /// Render stage registry for delayed stage registration from init_state()
+    render_stages: RwLock<Option<Arc<RwLock<RenderStageRegistry>>>>,
+    /// Window providers for plugins that want to create windows
+    window_providers: RwLock<Vec<Arc<dyn WindowProvider>>>,
 }
 
 impl std::fmt::Debug for PluginStateRegistry {
@@ -52,10 +59,12 @@ impl std::fmt::Debug for PluginStateRegistry {
         let count = self.states.read().map_or(0, |s| s.len());
         let has_visibility = self.visibility_source.read().is_ok_and(|s| s.is_some());
         let has_text_object = self.text_object_source.read().is_ok_and(|s| s.is_some());
+        let has_render_stages = self.render_stages.read().is_ok_and(|s| s.is_some());
         f.debug_struct("PluginStateRegistry")
             .field("state_count", &count)
             .field("has_visibility_source", &has_visibility)
             .field("has_text_object_source", &has_text_object)
+            .field("has_render_stages", &has_render_stages)
             .finish()
     }
 }
@@ -68,6 +77,8 @@ impl PluginStateRegistry {
             states: RwLock::new(HashMap::new()),
             visibility_source: RwLock::new(None),
             text_object_source: RwLock::new(None),
+            render_stages: RwLock::new(None),
+            window_providers: RwLock::new(Vec::new()),
         }
     }
 
@@ -105,6 +116,45 @@ impl PluginStateRegistry {
     #[must_use]
     pub fn text_object_source(&self) -> Option<SharedSemanticTextObjectSource> {
         self.text_object_source.read().unwrap().clone()
+    }
+
+    /// Set the render stage registry reference (called by Runtime)
+    ///
+    /// This allows plugins to register render stages from init_state()
+    /// where they have access to their state.
+    pub fn set_render_stages(&self, registry: Arc<RwLock<RenderStageRegistry>>) {
+        *self.render_stages.write().unwrap() = Some(registry);
+    }
+
+    /// Register a render stage (called by plugins from init_state())
+    ///
+    /// This allows plugins to register render stages after they have
+    /// initialized their state in init_state().
+    pub fn register_render_stage(&self, stage: Arc<dyn RenderStage>) {
+        if let Some(registry) = self.render_stages.read().unwrap().as_ref() {
+            registry.write().unwrap().register(stage);
+        } else {
+            tracing::warn!(
+                stage_name = stage.name(),
+                "Attempted to register render stage before registry was set"
+            );
+        }
+    }
+
+    /// Register a window provider
+    ///
+    /// Window providers allow plugins to create windows that will be rendered.
+    pub fn register_window_provider(&self, provider: Arc<dyn WindowProvider>) {
+        self.window_providers.write().unwrap().push(provider);
+        tracing::debug!("Registered window provider");
+    }
+
+    /// Get all registered window providers
+    ///
+    /// Returns a vector of all window providers that have been registered.
+    #[must_use]
+    pub fn window_providers(&self) -> Vec<Arc<dyn WindowProvider>> {
+        self.window_providers.read().unwrap().clone()
     }
 
     /// Register a new plugin state

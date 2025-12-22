@@ -68,7 +68,14 @@ cargo run -- --listen-tcp 9000
 # Run reo-cli client
 cargo run -p reo-cli -- mode
 cargo run -p reo-cli -- keys 'iHello<Esc>'
+
+# View logs
+tail -f ~/.local/share/reovim/reovim.log
 ```
+
+## Logs and Debugging
+
+Runtime logs are written to `~/.local/share/reovim/reovim.log` when running in server mode. Use `tail -f` to monitor logs in real-time during debugging.
 
 ## Architecture
 

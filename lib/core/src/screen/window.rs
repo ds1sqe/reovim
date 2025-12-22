@@ -2,6 +2,7 @@
 
 use crate::{
     buffer::{Buffer, SelectionMode, SelectionOps},
+    content::WindowContentSource,
     decoration::{Decoration, DecorationStore},
     frame::FrameBuffer,
     highlight::{
@@ -13,11 +14,7 @@ use crate::{
     visibility::{BufferVisibilitySource, VisibilityQuery},
 };
 
-use super::{
-    Position,
-    border::{BorderConfig, BorderInsets, WindowAdjacency},
-    layout::WindowType,
-};
+use super::{Position, border::{BorderConfig, BorderInsets, WindowAdjacency}};
 
 /// Scrollbar rendering state
 #[derive(Debug, Clone, Copy)]
@@ -37,33 +34,45 @@ pub struct Anchor {
     pub y: u16,
 }
 
-/// Window is an intermediate object between buffer and screen
+/// Window is a unified renderable element
+///
+/// All things that render to screen (editor windows, overlays, plugin UIs)
+/// are represented as Windows with different content sources.
+#[derive(Clone)]
 pub struct Window {
+    // Identity
     /// Unique identifier for this window
     pub id: usize,
-    /// Type of window (Editor, Explorer, etc.)
-    pub window_type: WindowType,
+    /// Source of content for this window
+    pub source: WindowContentSource,
+
+    // Layout
     /// Where this window's top left is positioned on the screen
     pub anchor: Anchor,
+    /// Window width
     pub width: u16,
+    /// Window height
     pub height: u16,
+    /// Z-order for layered rendering (higher = on top)
+    pub z_order: u16,
 
-    pub buffer_id: usize,
-    /// Where this buffer's top left is positioned
-    pub buffer_anchor: Anchor,
-    pub line_number: LineNumber,
-    /// Whether to show scrollbar
-    pub scrollbar_enabled: bool,
+    // State
     /// Whether this window is the active/focused window
     pub is_active: bool,
-    /// Per-window cursor position (independent of buffer cursor)
+    /// Whether this window is a floating window
+    pub is_floating: bool,
+
+    // Editor features (may be None for overlay windows)
+    /// Line number display configuration
+    pub line_number: Option<LineNumber>,
+    /// Whether to show scrollbar
+    pub scrollbar_enabled: bool,
+    /// Per-window cursor position
     pub cursor: Position,
     /// Track preferred column for vertical movement (j/k)
     pub desired_col: Option<u16>,
     /// Border configuration for this window
     pub border_config: Option<BorderConfig>,
-    /// Whether this window is a floating window (for `OnFloat` border mode)
-    pub is_floating: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -73,7 +82,7 @@ pub enum LineNumberMode {
     Hybrid,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LineNumber {
     show: bool,
     number: bool,          // :set number flag
@@ -115,11 +124,59 @@ impl LineNumber {
             _ => LineNumberMode::Absolute,
         }
     }
+
+    #[must_use]
+    pub const fn is_shown(&self) -> bool {
+        self.show
+    }
 }
 
 impl Window {
+    /// Get buffer ID from content source (if applicable)
+    #[must_use]
+    pub const fn buffer_id(&self) -> Option<usize> {
+        match &self.source {
+            WindowContentSource::FileBuffer { buffer_id, .. }
+            | WindowContentSource::PluginBuffer { buffer_id, .. } => Some(*buffer_id),
+            WindowContentSource::Overlay { .. } => None,
+        }
+    }
+
+    /// Get buffer anchor from content source (if applicable)
+    #[must_use]
+    pub const fn buffer_anchor(&self) -> Option<Anchor> {
+        match &self.source {
+            WindowContentSource::FileBuffer { buffer_anchor, .. }
+            | WindowContentSource::PluginBuffer { buffer_anchor, .. } => Some(*buffer_anchor),
+            WindowContentSource::Overlay { .. } => None,
+        }
+    }
+
+    /// Set buffer anchor in content source (if applicable)
+    pub const fn set_buffer_anchor(&mut self, new_anchor: Anchor) {
+        match &mut self.source {
+            WindowContentSource::FileBuffer { buffer_anchor, .. }
+            | WindowContentSource::PluginBuffer { buffer_anchor, .. } => {
+                *buffer_anchor = new_anchor;
+            }
+            WindowContentSource::Overlay { .. } => {}
+        }
+    }
+
+    /// Set buffer ID in content source (if applicable)
+    pub const fn set_buffer_id(&mut self, new_buffer_id: usize) {
+        match &mut self.source {
+            WindowContentSource::FileBuffer { buffer_id, .. }
+            | WindowContentSource::PluginBuffer { buffer_id, .. } => {
+                *buffer_id = new_buffer_id;
+            }
+            WindowContentSource::Overlay { .. } => {}
+        }
+    }
+
     /// Render line number for a row
-    fn render_line_number(
+    #[must_use]
+    pub fn render_line_number(
         &self,
         row: u16,
         cursor_y: u16,
@@ -127,7 +184,10 @@ impl Window {
         theme: &Theme,
         color_mode: ColorMode,
     ) -> String {
-        if !self.line_number.show {
+        let Some(line_number) = &self.line_number else {
+            return String::new();
+        };
+        if !line_number.show {
             return String::new();
         }
 
@@ -142,7 +202,7 @@ impl Window {
 
         // Active windows use configured mode, inactive always use absolute
         let num_str = if self.is_active {
-            match self.line_number.mode() {
+            match line_number.mode() {
                 LineNumberMode::Absolute => format!("{}", row + 1),
                 LineNumberMode::Relative => {
                     let rel = (i32::from(row) - i32::from(cursor_y)).abs();
@@ -386,7 +446,7 @@ impl Window {
 
         // Calculate line number width for alignment
         let total_lines = buf.contents.len();
-        let num_width = if self.line_number.show && total_lines > 0 {
+        let num_width = if self.line_number.as_ref().is_some_and(LineNumber::is_shown) && total_lines > 0 {
             (total_lines as f64).log10().floor() as usize + 1
         } else {
             1
@@ -403,7 +463,7 @@ impl Window {
         let is_block_mode = buf.selection.active && buf.selection_mode() == SelectionMode::Block;
 
         // Track buffer line position, accounting for folds
-        let mut buffer_row = self.buffer_anchor.y;
+        let mut buffer_row = self.buffer_anchor().map_or(0, |a| a.y);
         let mut display_rows_rendered = 0u16;
 
         while display_rows_rendered < self.height && (buffer_row as usize) < buf.contents.len() {
@@ -618,7 +678,10 @@ impl Window {
         num_width: usize,
         theme: &Theme,
     ) -> u16 {
-        if !self.line_number.show {
+        let Some(line_number) = &self.line_number else {
+            return 0;
+        };
+        if !line_number.show {
             return 0;
         }
 
@@ -633,7 +696,7 @@ impl Window {
 
         // Active windows use configured mode, inactive always use absolute
         let num_str = if self.is_active {
-            match self.line_number.mode() {
+            match line_number.mode() {
                 LineNumberMode::Absolute => format!("{}", row + 1),
                 LineNumberMode::Relative => {
                     let rel = (i32::from(row) - i32::from(cursor_y)).abs();
@@ -946,7 +1009,7 @@ impl Window {
     ) {
         // Calculate line number width for alignment
         let total_lines = buf.contents.len();
-        let num_width = if self.line_number.show && total_lines > 0 {
+        let num_width = if self.line_number.as_ref().is_some_and(LineNumber::is_shown) && total_lines > 0 {
             (total_lines as f64).log10().floor() as usize + 1
         } else {
             1
@@ -960,7 +1023,7 @@ impl Window {
         let cursor_y = self.effective_cursor_y(buf);
 
         // Track buffer line position, accounting for folds
-        let mut buffer_row = self.buffer_anchor.y;
+        let mut buffer_row = self.buffer_anchor().map_or(0, |a| a.y);
         let mut display_row = 0u16;
 
         while display_row < self.height && (buffer_row as usize) < buf.contents.len() {
@@ -1000,6 +1063,10 @@ impl Window {
                 }
             } else {
                 // Render normal content line
+                if screen_y == self.anchor.y {
+                    tracing::info!("render line: window.id={}, anchor.x={}, anchor.y={}, screen_y={}",
+                        self.id, self.anchor.x, self.anchor.y, screen_y);
+                }
                 self.render_content_line_to_buffer(
                     buffer,
                     self.anchor.x,
@@ -1032,11 +1099,15 @@ impl Window {
     }
 
     pub fn set_number(&mut self, enabled: bool) {
-        self.line_number.set_number(enabled);
+        if let Some(line_number) = &mut self.line_number {
+            line_number.set_number(enabled);
+        }
     }
 
     pub fn set_relative_number(&mut self, enabled: bool) {
-        self.line_number.set_relative_number(enabled);
+        if let Some(line_number) = &mut self.line_number {
+            line_number.set_relative_number(enabled);
+        }
     }
 
     /// Compute the content rectangle (area inside borders)
@@ -1066,15 +1137,20 @@ impl Window {
     /// Update `buffer_anchor` to keep cursor visible within the viewport
     pub const fn update_scroll(&mut self, cursor_y: u16) {
         let visible_height = self.height;
-        let scroll_offset = self.buffer_anchor.y;
+        let Some(mut buffer_anchor) = self.buffer_anchor() else {
+            return;
+        };
+        let scroll_offset = buffer_anchor.y;
 
         // Scroll up if cursor is above visible area
         if cursor_y < scroll_offset {
-            self.buffer_anchor.y = cursor_y;
+            buffer_anchor.y = cursor_y;
+            self.set_buffer_anchor(buffer_anchor);
         }
         // Scroll down if cursor is below visible area
         else if cursor_y >= scroll_offset + visible_height {
-            self.buffer_anchor.y = cursor_y.saturating_sub(visible_height) + 1;
+            buffer_anchor.y = cursor_y.saturating_sub(visible_height) + 1;
+            self.set_buffer_anchor(buffer_anchor);
         }
     }
 
@@ -1084,7 +1160,7 @@ impl Window {
     #[allow(clippy::cast_sign_loss)]
     #[allow(clippy::cast_precision_loss)]
     pub fn line_number_width(&self, total_lines: usize) -> u16 {
-        if self.line_number.show {
+        if self.line_number.as_ref().is_some_and(LineNumber::is_shown) {
             // Width of largest line number + 1 for space separator
             let digits = if total_lines == 0 {
                 1
@@ -1118,7 +1194,7 @@ impl Window {
 
         let viewport_height = f64::from(self.height);
         let total = total_lines as f64;
-        let scroll_offset = f64::from(self.buffer_anchor.y);
+        let scroll_offset = f64::from(self.buffer_anchor().map_or(0, |a| a.y));
 
         // Thumb size proportional to visible portion (minimum 1 row)
         let thumb_size = ((viewport_height / total) * viewport_height).max(1.0);
@@ -1168,24 +1244,26 @@ impl Window {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::screen::layout::WindowType};
+    use super::*;
 
     fn create_test_window(height: u16) -> Window {
         Window {
             id: 0,
-            window_type: WindowType::Editor,
+            source: WindowContentSource::FileBuffer {
+                buffer_id: 0,
+                buffer_anchor: Anchor { x: 0, y: 0 },
+            },
             anchor: Anchor { x: 0, y: 0 },
             width: 80,
             height,
-            buffer_id: 0,
-            buffer_anchor: Anchor { x: 0, y: 0 },
-            line_number: LineNumber::default(),
-            scrollbar_enabled: false,
+            z_order: 100, // Editor window z-order range
             is_active: true,
+            is_floating: false,
+            line_number: Some(LineNumber::default()),
+            scrollbar_enabled: false,
             cursor: Position { x: 0, y: 0 },
             desired_col: None,
             border_config: None,
-            is_floating: false,
         }
     }
 
@@ -1193,31 +1271,31 @@ mod tests {
     fn test_update_scroll_cursor_in_view() {
         let mut win = create_test_window(10);
         win.update_scroll(5); // cursor at line 5, viewport 0-9
-        assert_eq!(win.buffer_anchor.y, 0); // no scroll needed
+        assert_eq!(win.buffer_anchor().map_or(0, |a| a.y), 0); // no scroll needed
     }
 
     #[test]
     fn test_update_scroll_cursor_below_viewport() {
         let mut win = create_test_window(10);
         win.update_scroll(15); // cursor at line 15, viewport 0-9
-        assert_eq!(win.buffer_anchor.y, 6); // scroll to show cursor at bottom
+        assert_eq!(win.buffer_anchor().map_or(0, |a| a.y), 6); // scroll to show cursor at bottom
     }
 
     #[test]
     fn test_update_scroll_cursor_above_viewport() {
         let mut win = create_test_window(10);
-        win.buffer_anchor.y = 20; // viewport starts at line 20
+        win.set_buffer_anchor(Anchor { x: 0, y: 20 }); // viewport starts at line 20
         win.update_scroll(5); // cursor at line 5
-        assert_eq!(win.buffer_anchor.y, 5); // scroll up to cursor
+        assert_eq!(win.buffer_anchor().map_or(0, |a| a.y), 5); // scroll up to cursor
     }
 
     #[test]
     fn test_update_scroll_cursor_at_viewport_edge() {
         let mut win = create_test_window(10);
         win.update_scroll(9); // cursor at last visible line
-        assert_eq!(win.buffer_anchor.y, 0); // still in view
+        assert_eq!(win.buffer_anchor().map_or(0, |a| a.y), 0); // still in view
 
         win.update_scroll(10); // cursor just below viewport
-        assert_eq!(win.buffer_anchor.y, 1); // scroll by 1
+        assert_eq!(win.buffer_anchor().map_or(0, |a| a.y), 1); // scroll by 1
     }
 }
