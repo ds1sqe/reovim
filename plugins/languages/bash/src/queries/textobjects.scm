@@ -15,8 +15,6 @@
 
 (while_statement) @loop.outer
 
-(until_statement) @loop.outer
-
 ; Comments
 (comment) @comment.outer
 

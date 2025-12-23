@@ -96,11 +96,7 @@
   "readonly"
 ] @keyword
 
-; Return/exit
-[
-  "return"
-  "exit"
-] @keyword.return
+; Note: return/exit are handled as builtins, not keywords in tree-sitter-bash
 
 ; Brackets
 [

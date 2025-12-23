@@ -650,22 +650,6 @@ impl KeyMap {
         // Window management
         normal.insert(keys![Space 'w'], KeyMapInner::with_hint("+window").group("window"));
         normal.insert(
-            keys![Space 'w' 'h'],
-            KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_OR_SPLIT_LEFT).group("window"),
-        );
-        normal.insert(
-            keys![Space 'w' 'j'],
-            KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_OR_SPLIT_DOWN).group("window"),
-        );
-        normal.insert(
-            keys![Space 'w' 'k'],
-            KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_OR_SPLIT_UP).group("window"),
-        );
-        normal.insert(
-            keys![Space 'w' 'l'],
-            KeyMapInner::with_command_id(builtin::WINDOW_FOCUS_OR_SPLIT_RIGHT).group("window"),
-        );
-        normal.insert(
             keys![Space 'w' 'v'],
             KeyMapInner::with_command_id(builtin::WINDOW_SPLIT_VERTICAL).group("window"),
         );
@@ -902,10 +886,6 @@ mod tests {
 
         // Test window bindings exist
         let window_keys = [
-            (keys![Space 'w' 'h'], "focus or split left"),
-            (keys![Space 'w' 'j'], "focus or split down"),
-            (keys![Space 'w' 'k'], "focus or split up"),
-            (keys![Space 'w' 'l'], "focus or split right"),
             (keys![Space 'w' 'v'], "vertical split"),
             (keys![Space 'w' 's'], "horizontal split"),
             (keys![Space 'w' 'c'], "close window"),

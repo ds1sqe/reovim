@@ -882,6 +882,38 @@ impl SyntaxProvider for TreeSitterSyntax {
 - **Automatic cleanup**: Syntax dropped when buffer dropped
 - **Extensible**: Easy to add other backends (regex, LSP, etc.)
 
+### Background Saturator (Performance Optimization)
+
+To eliminate scroll lag caused by synchronous syntax highlighting, reovim uses a **per-buffer saturator** pattern. The saturator is a background tokio task that computes highlights/decorations asynchronously while render reads from a lock-free cache.
+
+**Problem Solved:**
+- Synchronous `syntax.highlight_range()` blocked render for ~46ms
+- Caused visible stuttering during markdown scrolling
+
+**Solution:**
+- Background task owns syntax/decoration providers
+- Computes highlights in parallel with render
+- Lock-free `ArcSwap` cache for instant reads (~6µs)
+- `RenderSignal` triggers re-render when cache updates
+
+```
+┌─────────────┐     ┌──────────────────┐     ┌─────────────┐
+│   Render    │────▶│ ArcSwap Cache    │◀────│  Saturator  │
+│  (instant)  │     │   (lock-free)    │     │ (background)│
+└─────────────┘     └──────────────────┘     └─────────────┘
+      │                                              │
+      │ ~6µs read                                    │ ~46ms compute
+      └──────────────────────────────────────────────┘
+                    Total: ~0.5ms render
+```
+
+**Key Design:**
+- `mpsc::channel(1)` with `try_send()` - only latest viewport matters
+- Cache stores `(hash, data)` per line for validation
+- `ArcSwap::store()` for atomic swap (no locks)
+
+See [Saturator Documentation](./saturator.md) for full details.
+
 ### Code Folding (`lib/core/src/folding.rs`)
 
 Code folding with treesitter-computed ranges.
@@ -1174,3 +1206,4 @@ CommandEvent         KillSignal
 
 - [Event System](./event-system.md) - Detailed event flow
 - [Command System](./commands.md) - Commands and execution
+- [Saturator](./saturator.md) - Background syntax highlighting architecture

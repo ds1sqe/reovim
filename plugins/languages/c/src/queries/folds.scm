@@ -15,8 +15,7 @@
 
 ; If statements
 (if_statement consequence: (compound_statement) @fold)
-(if_statement alternative: (compound_statement) @fold)
-(if_statement alternative: (else_clause (compound_statement) @fold))
+(else_clause (compound_statement) @fold)
 
 ; Switch statements
 (switch_statement body: (compound_statement) @fold)

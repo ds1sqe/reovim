@@ -139,13 +139,6 @@ pub mod builtin {
     pub const WINDOW_ONLY: CommandId = CommandId::new("window_only");
     pub const WINDOW_EQUALIZE: CommandId = CommandId::new("window_equalize");
 
-    // === Smart Window Focus/Create ===
-    pub const WINDOW_FOCUS_OR_SPLIT_LEFT: CommandId = CommandId::new("window_focus_or_split_left");
-    pub const WINDOW_FOCUS_OR_SPLIT_DOWN: CommandId = CommandId::new("window_focus_or_split_down");
-    pub const WINDOW_FOCUS_OR_SPLIT_UP: CommandId = CommandId::new("window_focus_or_split_up");
-    pub const WINDOW_FOCUS_OR_SPLIT_RIGHT: CommandId =
-        CommandId::new("window_focus_or_split_right");
-
     // === Window Mode (Ctrl-W) ===
     pub const ENTER_WINDOW_MODE: CommandId = CommandId::new("enter_window_mode");
     pub const WINDOW_MODE_FOCUS_LEFT: CommandId = CommandId::new("window_mode_focus_left");

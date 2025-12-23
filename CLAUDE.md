@@ -17,6 +17,18 @@ This project enforces a **zero-warning policy**. All code must compile without a
 
 No warnings are acceptable. Fix all warnings before committing.
 
+### Debugging Flaky Tests
+
+**Think Twice Before Assuming Race Conditions**: When tests pass/fail intermittently:
+
+1. **Don't immediately add delays** - This masks the real problem
+2. **Add debug logging** first to trace execution flow
+3. **Look for mode/state synchronization issues** - Often what appears to be a timing race is actually a missing state update
+
+**Example**: `<C-w>h` tests failed randomly because `mode_for_command()` didn't recognize `enter_window_mode`, so the local mode wasn't updated before the next key was looked up. This looked like a race condition but was actually a **missing match arm**.
+
+Use `REOVIM_LOG=debug` to enable debug logging in spawned server processes.
+
 ## Build Commands
 
 ```bash
@@ -68,6 +80,8 @@ cargo run -- --listen-tcp 9000
 # Run reo-cli client
 cargo run -p reo-cli -- mode
 cargo run -p reo-cli -- keys 'iHello<Esc>'
+# screen capture
+cargo run -p reo-cli -- capture
 
 # View logs (timestamped files)
 tail -f ~/.local/share/reovim/reovim-*.log

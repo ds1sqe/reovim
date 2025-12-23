@@ -56,8 +56,12 @@ impl ServerTestHarness {
     pub async fn spawn() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let port = next_test_port();
 
+        // Inherit REOVIM_LOG from test environment for debug tracing
+        let log_level = std::env::var("REOVIM_LOG").unwrap_or_else(|_| "info".to_string());
+
         let process = Command::new(binary_path())
             .args(["--server", "--test", "--listen-tcp", &port.to_string()])
+            .env("REOVIM_LOG", log_level)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()?;
@@ -78,6 +82,9 @@ impl ServerTestHarness {
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let port = next_test_port();
 
+        // Inherit REOVIM_LOG from test environment for debug tracing
+        let log_level = std::env::var("REOVIM_LOG").unwrap_or_else(|_| "info".to_string());
+
         let process = Command::new(binary_path())
             .args([
                 "--server",
@@ -86,6 +93,7 @@ impl ServerTestHarness {
                 &port.to_string(),
                 path,
             ])
+            .env("REOVIM_LOG", log_level)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()?;

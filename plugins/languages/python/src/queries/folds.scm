@@ -4,15 +4,13 @@
 ; Function bodies
 (function_definition body: (block) @fold)
 
-; Lambda expressions
-(lambda body: (block) @fold)
+; Note: lambda expressions have expression bodies, not blocks, so no fold here
 
 ; Class definitions
 (class_definition body: (block) @fold)
 
 ; If statements
 (if_statement consequence: (block) @fold)
-(if_statement alternative: (block) @fold)
 (elif_clause consequence: (block) @fold)
 (else_clause body: (block) @fold)
 

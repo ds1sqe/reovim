@@ -16,8 +16,7 @@
 ; While loops
 (while_statement) @fold
 
-; Until loops
-(until_statement) @fold
+; Note: until_statement doesn't exist in tree-sitter-bash
 
 ; Subshells
 (subshell) @fold

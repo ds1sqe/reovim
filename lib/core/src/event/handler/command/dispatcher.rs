@@ -8,7 +8,7 @@ use {
             InnerEvent,
             inner::{CommandEvent, VisualTextObjectAction},
         },
-        modd::{ModeState, OperatorType},
+        modd::{ComponentId, ModeState, OperatorType, SubMode},
     },
     tokio::sync::mpsc::Sender,
 };
@@ -47,6 +47,7 @@ impl Dispatcher {
 
     /// Dispatch a command with the given count
     pub async fn dispatch(&self, cmd: CommandRef, count: Option<usize>) {
+        let start = std::time::Instant::now();
         let ctx = CommandContext {
             buffer_id: self.current_buffer_id,
             window_id: self.current_window_id,
@@ -56,10 +57,18 @@ impl Dispatcher {
         let _ = self
             .inner_tx
             .send(InnerEvent::CommandEvent(CommandEvent {
-                command: cmd,
+                command: cmd.clone(),
                 context: ctx,
             }))
             .await;
+        tracing::debug!(
+            "[RTT] Dispatcher.dispatch: cmd={:?} send took {:?}",
+            match &cmd {
+                CommandRef::Registered(id) => id.as_str(),
+                CommandRef::Inline(c) => c.name(),
+            },
+            start.elapsed()
+        );
     }
 
     /// Send pending keys display update
@@ -103,6 +112,10 @@ impl Dispatcher {
             "enter_yank_operator" => Some(ModeState::operator_pending(OperatorType::Yank, None)),
             "enter_change_operator" => {
                 Some(ModeState::operator_pending(OperatorType::Change, None))
+            }
+            // Window mode (Ctrl-W)
+            "enter_window_mode" => {
+                Some(ModeState::new().with_sub(SubMode::Interactor(ComponentId::WINDOW)))
             }
             // Plugin mode transitions (telescope, explorer) are handled via DeferredAction
             // toggle_explorer, explorer_close, explorer_focus_editor etc.

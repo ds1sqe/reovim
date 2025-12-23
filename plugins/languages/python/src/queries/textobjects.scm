@@ -30,9 +30,6 @@
 (if_statement
   consequence: (block) @conditional.inner) @conditional.outer
 
-(if_statement
-  alternative: (block) @conditional.inner)
-
 (elif_clause
   consequence: (block) @conditional.inner) @conditional.outer
 

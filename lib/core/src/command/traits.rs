@@ -139,11 +139,6 @@ pub enum WindowAction {
         delta: i16,
     },
     Equalize,
-    /// Focus window or create split if none exists
-    FocusOrSplitLeft,
-    FocusOrSplitDown,
-    FocusOrSplitUp,
-    FocusOrSplitRight,
     /// Swap current window with window in the given direction
     SwapDirection {
         direction: NavigateDirection,

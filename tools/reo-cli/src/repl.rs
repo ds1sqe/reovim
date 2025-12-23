@@ -150,8 +150,8 @@ async fn execute_command(
             let buffer_id = parse_buffer_id_arg(args);
             Ok(commands::cmd_selection(client, buffer_id).await?)
         }
-        "screen" => Ok(commands::cmd_screen(client).await?),
-        "screen-content" => {
+        "screen_size" => Ok(commands::cmd_screen(client).await?),
+        "screen" | "capture" => {
             let format = args.first().copied().unwrap_or("plain_text");
             Ok(commands::cmd_screen_content(client, format).await?)
         }

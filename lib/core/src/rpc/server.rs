@@ -138,13 +138,21 @@ impl RpcServer {
                 // to allow mode changes to propagate before next key is processed.
                 // 1ms is enough for async task switching while keeping latency low.
                 let mut injected = 0;
+                let start = std::time::Instant::now();
+                tracing::debug!("[RPC] input/keys START: {:?}", keys_str);
                 for key_event in key_events {
                     if self.key_tx.send(key_event).await.is_ok() {
                         injected += 1;
+                        tracing::trace!("[RPC] sent key {:?} at {:?}", key_event, start.elapsed());
                         // Minimal delay for runtime to process mode changes
                         tokio::time::sleep(std::time::Duration::from_millis(1)).await;
                     }
                 }
+                tracing::debug!(
+                    "[RPC] input/keys END: injected={} elapsed={:?}",
+                    injected,
+                    start.elapsed()
+                );
 
                 Some(RpcResponse::success(id, serde_json::json!({ "injected": injected })))
             }

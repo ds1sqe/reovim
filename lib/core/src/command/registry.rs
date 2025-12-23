@@ -188,10 +188,6 @@ impl CommandRegistry {
             WindowEqualizeCommand,
             WindowFocusDownCommand,
             WindowFocusLeftCommand,
-            WindowFocusOrSplitDownCommand,
-            WindowFocusOrSplitLeftCommand,
-            WindowFocusOrSplitRightCommand,
-            WindowFocusOrSplitUpCommand,
             WindowFocusRightCommand,
             WindowFocusUpCommand,
             WindowModeCloseCommand,
@@ -309,10 +305,6 @@ impl CommandRegistry {
         let _ = self.register(WindowCloseCommand);
         let _ = self.register(WindowOnlyCommand);
         let _ = self.register(WindowEqualizeCommand);
-        let _ = self.register(WindowFocusOrSplitLeftCommand);
-        let _ = self.register(WindowFocusOrSplitDownCommand);
-        let _ = self.register(WindowFocusOrSplitUpCommand);
-        let _ = self.register(WindowFocusOrSplitRightCommand);
 
         // Window mode commands (Ctrl-W)
         let _ = self.register(EnterWindowModeCommand);

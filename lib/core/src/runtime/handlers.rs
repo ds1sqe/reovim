@@ -312,6 +312,7 @@ impl Runtime {
     #[allow(clippy::match_same_arms)]
     #[allow(clippy::too_many_lines)]
     pub(crate) fn handle_command(&mut self, cmd_event: CommandEvent) -> bool {
+        let start = std::time::Instant::now();
         let CommandEvent { command, context } = cmd_event;
 
         // Resolve the command reference to a trait object
@@ -321,7 +322,7 @@ impl Runtime {
             return false;
         };
 
-        tracing::info!("Command resolved successfully: name={}", cmd.name());
+        tracing::debug!("[CMD] handle_command START: name={} at {:?}", cmd.name(), start.elapsed());
 
         // Use active_buffer_id instead of context.buffer_id since the dispatcher
         // doesn't track buffer changes. In a single-window editor, active_buffer_id
@@ -343,7 +344,12 @@ impl Runtime {
             };
 
             let result = cmd.execute(&mut exec_ctx);
-            tracing::info!("Command executed: name={}, checking result type", cmd.name());
+            tracing::debug!(
+                "[CMD] executed: name={} result={:?} at {:?}",
+                cmd.name(),
+                std::mem::discriminant(&result),
+                start.elapsed()
+            );
 
             // Check if command is text-modifying for treesitter reparse
             let is_text_modifying = cmd.is_text_modifying();
@@ -486,6 +492,7 @@ impl Runtime {
                 }
                 CommandResult::Success => {}
             }
+            tracing::debug!("[CMD] handle_command DONE at {:?}", start.elapsed());
         }
         false
     }
@@ -722,18 +729,6 @@ impl Runtime {
             WindowAction::Equalize => {
                 self.handle_window_equalize();
             }
-            WindowAction::FocusOrSplitLeft => {
-                self.handle_focus_or_split(NavigateDirection::Left, SplitDirection::Vertical);
-            }
-            WindowAction::FocusOrSplitDown => {
-                self.handle_focus_or_split(NavigateDirection::Down, SplitDirection::Horizontal);
-            }
-            WindowAction::FocusOrSplitUp => {
-                self.handle_focus_or_split(NavigateDirection::Up, SplitDirection::Horizontal);
-            }
-            WindowAction::FocusOrSplitRight => {
-                self.handle_focus_or_split(NavigateDirection::Right, SplitDirection::Vertical);
-            }
             WindowAction::SwapDirection { direction } => {
                 self.screen.swap_window(*direction);
             }
@@ -784,6 +779,9 @@ impl Runtime {
     /// Saves the current window's cursor before splitting so the new window
     /// inherits the correct cursor position. See docs/window-buffer.md.
     pub(crate) fn handle_window_split(&mut self, vertical: bool, filename: Option<&String>) {
+        let start = std::time::Instant::now();
+        tracing::debug!("[SPLIT] handle_window_split START vertical={}", vertical);
+
         let direction = if vertical {
             SplitDirection::Vertical
         } else {
@@ -806,28 +804,30 @@ impl Runtime {
             && let Some(buffer) = self.buffers.get(&buffer_id)
         {
             tracing::debug!(
-                window_id = window.id,
-                "SPLIT: saving buffer.cur=({},{}) to window.cursor before split",
+                "[SPLIT] SAVE cursor: win={} buffer.cur=({},{}) -> window.cursor at {:?}",
+                window.id,
                 buffer.cur.x,
-                buffer.cur.y
+                buffer.cur.y,
+                start.elapsed()
             );
             window.cursor = buffer.cur;
             window.desired_col = buffer.desired_col;
         } else {
-            tracing::warn!("SPLIT: failed to get active window or buffer!");
+            tracing::warn!("[SPLIT] failed to get active window or buffer!");
         }
 
         // Split the window
         if let Some(new_window_id) = self.screen.split_window(direction) {
             // Set the buffer for the new window
             self.screen.set_window_buffer(new_window_id, buffer_id);
-            tracing::info!(
-                window_id = new_window_id,
-                buffer_id = buffer_id,
-                vertical = vertical,
-                "Window split created"
+            tracing::debug!(
+                "[SPLIT] created new_win={} buffer={} at {:?}",
+                new_window_id,
+                buffer_id,
+                start.elapsed()
             );
         }
+        tracing::debug!("[SPLIT] handle_window_split DONE at {:?}", start.elapsed());
     }
 
     /// Handle window close command. Returns true if editor should quit.
@@ -843,6 +843,7 @@ impl Runtime {
 
     /// Handle window navigation (focus direction)
     pub(crate) fn handle_window_navigate(&mut self, direction: NavigateDirection) {
+        let start = std::time::Instant::now();
         let before_window_id = self.screen.active_window_id();
 
         // Before navigation: save current buffer cursor to current window
@@ -851,10 +852,11 @@ impl Runtime {
             && let Some(buffer) = self.buffers.get(&buffer_id)
         {
             tracing::debug!(
-                window_id = window.id,
-                "SAVE cursor: buffer.cur=({},{}) -> window.cursor",
+                "[NAV] SAVE cursor: win={} buffer.cur=({},{}) -> window.cursor at {:?}",
+                window.id,
                 buffer.cur.x,
-                buffer.cur.y
+                buffer.cur.y,
+                start.elapsed()
             );
             window.cursor = buffer.cur;
             window.desired_col = buffer.desired_col;
@@ -864,7 +866,13 @@ impl Runtime {
         self.screen.navigate_window(direction);
 
         let after_window_id = self.screen.active_window_id();
-        tracing::debug!(?before_window_id, ?after_window_id, ?direction, "Window navigation");
+        tracing::debug!(
+            "[NAV] navigate {:?}: win {} -> win {:?} at {:?}",
+            direction,
+            before_window_id.unwrap_or(999),
+            after_window_id,
+            start.elapsed()
+        );
 
         // After navigation: load new window's cursor into buffer and update active_buffer_id
         if let Some(window) = self.screen.active_window()
@@ -874,10 +882,11 @@ impl Runtime {
             let window_desired_col = window.desired_col;
 
             tracing::debug!(
-                window_id = window.id,
-                "LOAD cursor: window.cursor=({},{}) -> buffer.cur",
+                "[NAV] LOAD cursor: win={} window.cursor=({},{}) -> buffer.cur at {:?}",
+                window.id,
                 window_cursor.x,
-                window_cursor.y
+                window_cursor.y,
+                start.elapsed()
             );
 
             // Update active_buffer_id to match the new window's buffer
@@ -889,48 +898,12 @@ impl Runtime {
                 buffer.desired_col = window_desired_col;
             }
         }
+        tracing::debug!("[NAV] handle_window_navigate DONE at {:?}", start.elapsed());
     }
 
     /// Handle window equalize
     pub(crate) fn handle_window_equalize(&mut self) {
         self.screen.equalize_windows();
-    }
-
-    /// Handle smart focus: focus existing window or create split if none exists
-    ///
-    /// Uses `handle_window_navigate` for proper cursor save/restore.
-    /// See docs/window-buffer.md for the window-buffer architecture.
-    pub(crate) fn handle_focus_or_split(
-        &mut self,
-        direction: NavigateDirection,
-        split_direction: SplitDirection,
-    ) {
-        // Get current window ID before navigation attempt
-        let before_id = self.screen.active_window_id();
-
-        // Try to navigate using the proper handler (with cursor save/restore)
-        self.handle_window_navigate(direction);
-
-        // Check if navigation succeeded by comparing window IDs
-        let after_id = self.screen.active_window_id();
-
-        // If window ID didn't change, no adjacent window exists - create a split
-        if before_id == after_id {
-            // Create a split with the current buffer
-            let buffer_id = self.active_buffer_id;
-            if let Some(new_window_id) = self.screen.split_window(split_direction) {
-                self.screen.set_window_buffer(new_window_id, buffer_id);
-                // Navigate to the new window (with cursor save/restore)
-                self.handle_window_navigate(direction);
-                tracing::info!(
-                    direction = ?direction,
-                    new_window_id = new_window_id,
-                    "Smart focus: created split"
-                );
-            }
-        } else {
-            tracing::info!(direction = ?direction, "Smart focus: navigated to existing window");
-        }
     }
 
     // === Tab Management Handlers ===

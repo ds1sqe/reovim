@@ -68,10 +68,10 @@ enum Commands {
     },
 
     /// Get screen dimensions
-    Screen,
+    ScreenSize,
 
-    /// Get rendered screen content
-    ScreenContent {
+    /// Get rendered screen capture
+    Capture {
         /// Output format: `plain_text`, `raw_ansi`
         #[arg(long, default_value = "plain_text")]
         format: String,
@@ -177,8 +177,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let command = cli.command.unwrap();
 
-    // Handle screen-content specially - print content directly, not as JSON
-    if let Commands::ScreenContent { ref format } = command {
+    // Handle screen-capture specially - print content directly, not as JSON
+    if let Commands::Capture { ref format } = command {
         let result = commands::cmd_screen_content(&mut client, format).await?;
 
         // Extract and print just the content field
@@ -203,7 +203,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Selection { buffer_id } => {
             commands::cmd_selection(&mut client, buffer_id).await?
         }
-        Commands::Screen => commands::cmd_screen(&mut client).await?,
+        Commands::ScreenSize => commands::cmd_screen(&mut client).await?,
         Commands::Buffer { command } => match command {
             BufferCommands::List => commands::cmd_buffer_list(&mut client).await?,
             BufferCommands::Content { buffer_id } => {
@@ -220,7 +220,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Quit => commands::cmd_quit(&mut client).await?,
         Commands::Kill => commands::cmd_kill(&mut client).await?,
         Commands::Raw { json } => commands::cmd_raw(&mut client, &json).await?,
-        Commands::ScreenContent { .. } => unreachable!("handled above"),
+        Commands::Capture { .. } => unreachable!("handled above"),
     };
 
     // Output result

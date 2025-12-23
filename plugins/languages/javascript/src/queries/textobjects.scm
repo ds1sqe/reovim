@@ -21,15 +21,9 @@
 (class_declaration
   body: (class_body) @class.inner) @class.outer
 
-(class_expression
-  body: (class_body) @class.inner) @class.outer
-
 ; Parameters/Arguments
 (formal_parameters
   (identifier) @parameter.inner) @parameter.outer
-
-(formal_parameters
-  (required_parameter) @parameter.inner)
 
 (arguments
   (_) @parameter.inner) @parameter.outer
@@ -38,8 +32,8 @@
 (if_statement
   consequence: (statement_block) @conditional.inner) @conditional.outer
 
-(if_statement
-  alternative: (statement_block) @conditional.inner)
+(else_clause
+  (statement_block) @conditional.inner) @conditional.outer
 
 (switch_statement
   body: (switch_body) @conditional.inner) @conditional.outer

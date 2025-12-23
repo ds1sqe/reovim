@@ -4,10 +4,15 @@
 //! The pipeline transforms buffer content through multiple stages:
 //! `Buffer` → `Visibility` → `Highlighting` → `Decorations` → `Visual` → `Indent` → `FrameBuffer`
 
+mod decoration_cache;
+mod highlight_cache;
 mod registry;
 mod stage;
 
-pub use {registry::RenderStageRegistry, stage::RenderStage};
+pub use {
+    decoration_cache::DecorationCache, highlight_cache::HighlightCache,
+    registry::RenderStageRegistry, stage::RenderStage,
+};
 
 use crate::highlight::Style;
 
@@ -42,151 +47,28 @@ impl RenderData {
         buffer: &crate::buffer::Buffer,
     ) -> Self {
         let line_count = buffer.contents.len();
-        let content: String = buffer
-            .contents
-            .iter()
-            .map(|line| line.inner.as_str())
-            .collect::<Vec<_>>()
-            .join("\n");
 
-        // Generate syntax highlights if syntax provider is attached
-        let mut highlights: Vec<Vec<LineHighlight>> = vec![Vec::new(); line_count];
-        if let Some(syntax) = buffer.syntax() {
-            let all_highlights = syntax.highlight_range(&content, 0, line_count as u32);
+        // READ ONLY: Get highlights from cache
+        // Saturator (update_highlights) has already computed and cached them
+        // If empty, just render without syntax - that's fine, still fast
+        let hl_start = std::time::Instant::now();
+        let highlights = buffer.highlight_cache.get_ready_highlights(line_count);
+        tracing::debug!(
+            "[RTT] from_buffer: highlight_cache_read={:?} lines={}",
+            hl_start.elapsed(),
+            line_count
+        );
 
-            // Group highlights by line
-            for hl in all_highlights {
-                let line_idx = hl.span.start_line as usize;
-                if line_idx < highlights.len() {
-                    // For single-line highlights
-                    if hl.span.start_line == hl.span.end_line {
-                        highlights[line_idx].push(LineHighlight {
-                            start_col: hl.span.start_col as usize,
-                            end_col: hl.span.end_col as usize,
-                            style: hl.style,
-                        });
-                    } else {
-                        // Multi-line highlight: split across lines
-                        let line_len = buffer.contents.get(line_idx).map_or(0, |l| l.inner.len());
-                        highlights[line_idx].push(LineHighlight {
-                            start_col: hl.span.start_col as usize,
-                            end_col: line_len,
-                            style: hl.style.clone(),
-                        });
-
-                        // Middle lines
-                        for mid_line in (hl.span.start_line + 1)..hl.span.end_line {
-                            let mid_idx = mid_line as usize;
-                            if mid_idx < highlights.len() {
-                                let mid_len =
-                                    buffer.contents.get(mid_idx).map_or(0, |l| l.inner.len());
-                                highlights[mid_idx].push(LineHighlight {
-                                    start_col: 0,
-                                    end_col: mid_len,
-                                    style: hl.style.clone(),
-                                });
-                            }
-                        }
-
-                        // End line
-                        let end_idx = hl.span.end_line as usize;
-                        if end_idx < highlights.len() {
-                            highlights[end_idx].push(LineHighlight {
-                                start_col: 0,
-                                end_col: hl.span.end_col as usize,
-                                style: hl.style,
-                            });
-                        }
-                    }
-                }
-            }
-
-            // Sort highlights by start column for each line
-            for line_hl in &mut highlights {
-                line_hl.sort_by_key(|h| h.start_col);
-            }
-        }
-
-        // Generate decorations if decoration provider is attached
-        let mut decorations: Vec<Vec<Decoration>> = vec![Vec::new(); line_count];
-        if let Some(decorator) = buffer.decoration_provider() {
-            let all_decorations = decorator.decoration_range(&content, 0, line_count as u32);
-
-            // Convert decoration::Decoration to render::Decoration and group by line
-            for deco in all_decorations {
-                match deco {
-                    crate::decoration::Decoration::Conceal {
-                        span,
-                        replacement,
-                        style,
-                    } => {
-                        let line_idx = span.start_line as usize;
-                        if line_idx < decorations.len() && span.start_line == span.end_line {
-                            decorations[line_idx].push(Decoration {
-                                start_col: span.start_col as usize,
-                                end_col: span.end_col as usize,
-                                kind: DecorationKind::Conceal {
-                                    replacement: Some(replacement),
-                                },
-                            });
-                            // If there's a style, also add it as a background decoration
-                            if let Some(style) = style {
-                                decorations[line_idx].push(Decoration {
-                                    start_col: span.start_col as usize,
-                                    end_col: span.end_col as usize,
-                                    kind: DecorationKind::Background { style },
-                                });
-                            }
-                        }
-                    }
-                    crate::decoration::Decoration::Hide { span } => {
-                        let line_idx = span.start_line as usize;
-                        if line_idx < decorations.len() && span.start_line == span.end_line {
-                            decorations[line_idx].push(Decoration {
-                                start_col: span.start_col as usize,
-                                end_col: span.end_col as usize,
-                                kind: DecorationKind::Conceal { replacement: None },
-                            });
-                        }
-                    }
-                    crate::decoration::Decoration::LineBackground {
-                        start_line,
-                        end_line,
-                        style,
-                    } => {
-                        for line in start_line..=end_line {
-                            let line_idx = line as usize;
-                            if line_idx < decorations.len() {
-                                let line_len =
-                                    buffer.contents.get(line_idx).map_or(0, |l| l.inner.len());
-                                decorations[line_idx].push(Decoration {
-                                    start_col: 0,
-                                    end_col: line_len,
-                                    kind: DecorationKind::Background {
-                                        style: style.clone(),
-                                    },
-                                });
-                            }
-                        }
-                    }
-                    crate::decoration::Decoration::InlineStyle { span, style } => {
-                        let line_idx = span.start_line as usize;
-                        if line_idx < decorations.len() && span.start_line == span.end_line {
-                            decorations[line_idx].push(Decoration {
-                                start_col: span.start_col as usize,
-                                end_col: span.end_col as usize,
-                                kind: DecorationKind::Background { style },
-                            });
-                        }
-                    }
-                }
-            }
-
-            // Sort decorations by start column for each line
-            for line_deco in &mut decorations {
-                line_deco.sort_by_key(|d| d.start_col);
-            }
-        }
+        // READ ONLY: Get decorations from cache
+        // Saturator (update_decorations) has already computed and cached them
+        // If empty, just render without decorations - that's fine, still fast
+        let deco_start = std::time::Instant::now();
+        let decorations = buffer.decoration_cache.get_ready_decorations(line_count);
+        tracing::debug!(
+            "[RTT] from_buffer: decoration_cache_read={:?} lines={}",
+            deco_start.elapsed(),
+            line_count
+        );
 
         Self {
             lines: buffer

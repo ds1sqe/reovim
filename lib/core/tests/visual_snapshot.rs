@@ -298,7 +298,7 @@ async fn test_vsplit_navigate_right() {
         .with_content("Hello World")
         .with_keys(":vs<CR>")
         .with_delay(50)
-        .with_keys(" wl") // Navigate to right window
+        .with_keys("<C-w>l") // Navigate to right window
         .with_delay(50)
         .run()
         .await;
@@ -318,7 +318,7 @@ async fn test_vsplit_cursor_movement_after_navigate() {
         .with_content("Line 1\nLine 2\nLine 3\nLine 4\nLine 5")
         .with_keys(":vs<CR>")
         .with_delay(50)
-        .with_keys(" wl") // Navigate to right window
+        .with_keys("<C-w>l") // Navigate to right window
         .with_delay(50)
         .with_keys("jj") // Move down 2 lines
         .run()
@@ -332,7 +332,7 @@ async fn test_vsplit_cursor_movement_after_navigate() {
     assert_eq!(cursor.y, 2, "Cursor should be on line 2 after jj, got line {}", cursor.y);
 }
 
-/// Test that <leader>wh navigates back to left window
+/// Test that Ctrl-W h navigates back to left window
 #[tokio::test]
 async fn test_vsplit_navigate_left() {
     let mut result = ServerTest::new()
@@ -341,9 +341,9 @@ async fn test_vsplit_navigate_left() {
         .with_content("Test content")
         .with_keys(":vs<CR>")
         .with_delay(50)
-        .with_keys(" wl") // Go right
+        .with_keys("<C-w>l") // Go right
         .with_delay(50)
-        .with_keys(" wh") // Go back left
+        .with_keys("<C-w>h") // Go back left
         .with_delay(50)
         .run()
         .await;
@@ -366,7 +366,7 @@ async fn test_vsplit_independent_cursors() {
         .with_delay(100)
         .with_keys("jj") // Move cursor down in RIGHT window (active after split) to line 2
         .with_delay(100)
-        .with_keys(" wh") // Navigate to LEFT window - cursor should be at 0
+        .with_keys("<C-w>h") // Navigate to LEFT window - cursor should be at 0
         .with_delay(100)
         .run()
         .await;
@@ -395,9 +395,9 @@ async fn test_vsplit_cursor_preserved_on_switch() {
         .with_delay(100)
         .with_keys("jjj") // Move to line 3 in RIGHT window (active after split)
         .with_delay(100)
-        .with_keys(" wh") // Go to left window
+        .with_keys("<C-w>h") // Go to left window
         .with_delay(100)
-        .with_keys(" wl") // Go back to right window
+        .with_keys("<C-w>l") // Go back to right window
         .with_delay(100)
         .run()
         .await;

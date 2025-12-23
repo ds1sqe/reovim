@@ -26,8 +26,8 @@
 (if_statement
   consequence: (compound_statement) @conditional.inner) @conditional.outer
 
-(if_statement
-  alternative: (compound_statement) @conditional.inner)
+(else_clause
+  (compound_statement) @conditional.inner) @conditional.outer
 
 (switch_statement
   body: (compound_statement) @conditional.inner) @conditional.outer

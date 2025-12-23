@@ -11,6 +11,12 @@ reovim-core = { path = "../../lib/core" }
 reovim-plugin-treesitter = { path = "../../plugins/features/treesitter" }
 reovim-lang-markdown = { path = "../../plugins/languages/markdown" }
 reovim-lang-rust = { path = "../../plugins/languages/rust" }
+reovim-lang-c = { path = "../../plugins/languages/c" }
+reovim-lang-javascript = { path = "../../plugins/languages/javascript" }
+reovim-lang-python = { path = "../../plugins/languages/python" }
+reovim-lang-json = { path = "../../plugins/languages/json" }
+reovim-lang-toml = { path = "../../plugins/languages/toml" }
+reovim-lang-bash = { path = "../../plugins/languages/bash" }
 criterion = { version = "0.8", features = ["html_reports"] }
 tempfile = "3"
 

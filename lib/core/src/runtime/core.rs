@@ -364,6 +364,9 @@ impl Runtime {
 
     /// Render the screen with current state
     pub(crate) fn render(&mut self) {
+        let render_start = std::time::Instant::now();
+
+        // PHASE 1: Instant render (reads from cache, never waits)
         // Get visibility source from plugin state (fold plugin provides this)
         let visibility_source = self.plugin_state.visibility_source();
         let state = RenderState {
@@ -383,10 +386,27 @@ impl Runtime {
             renderer_registry: Some(&self.renderer_registry),
             render_stages: &self.render_stages,
         };
+        let pre_render = render_start.elapsed();
         self.screen
             .render_with_state(&state)
             .expect("failed to render");
+        let post_render = render_start.elapsed();
         self.screen.flush().expect("failed to flush");
+        let flush_time = render_start.elapsed();
+
+        // PHASE 2: Cache update (blocking but after user sees response)
+        // This ensures next render has fresh data
+        self.update_visible_highlights();
+        let saturator_time = render_start.elapsed().saturating_sub(flush_time);
+
+        tracing::debug!(
+            "[RTT] render: state_build={:?} screen_render={:?} flush={:?} saturator={:?} total={:?}",
+            pre_render,
+            post_render.saturating_sub(pre_render),
+            flush_time.saturating_sub(post_render),
+            saturator_time,
+            render_start.elapsed()
+        );
     }
 
     /// Mark that a render is needed (doesn't render immediately)
@@ -406,6 +426,51 @@ impl Runtime {
         if self.render_pending {
             self.render();
             self.render_pending = false;
+        }
+    }
+
+    /// SATURATOR: Request highlight/decoration updates for visible buffers
+    ///
+    /// This is NON-BLOCKING - sends requests to background saturator tasks.
+    /// Render reads from cache immediately (may show stale data on first render).
+    /// Saturator sends `RenderSignal` when cache is updated.
+    #[allow(clippy::cast_possible_truncation)]
+    fn update_visible_highlights(&mut self) {
+        use crate::content::WindowContentSource;
+
+        const HIGHLIGHT_PADDING: u16 = 10;
+
+        // Collect (buffer_id, viewport_start, viewport_end) for all visible windows
+        let viewports: Vec<(usize, u16, u16)> = self
+            .screen
+            .windows()
+            .iter()
+            .filter_map(|win| {
+                if let WindowContentSource::FileBuffer { buffer_anchor, .. } = &win.source {
+                    let buffer_id = win.buffer_id()?;
+                    let line_count = self.buffers.get(&buffer_id)?.contents.len() as u16;
+                    let viewport_start = buffer_anchor.y.saturating_sub(HIGHLIGHT_PADDING);
+                    let viewport_end =
+                        (buffer_anchor.y + win.height + HIGHLIGHT_PADDING).min(line_count);
+                    Some((buffer_id, viewport_start, viewport_end))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Request saturator updates (non-blocking) or fall back to sync for buffers without saturator
+        for (buffer_id, viewport_start, viewport_end) in viewports {
+            if let Some(buffer) = self.buffers.get_mut(&buffer_id) {
+                if buffer.has_saturator() {
+                    // Non-blocking: send request to background task
+                    buffer.request_saturator_update(viewport_start, viewport_end);
+                } else {
+                    // Fallback: sync update for buffers without saturator
+                    buffer.update_highlights(viewport_start, viewport_end);
+                    buffer.update_decorations(viewport_start, viewport_end);
+                }
+            }
         }
     }
 
@@ -454,6 +519,12 @@ impl Runtime {
                     decorator.refresh(&content);
                     buffer.attach_decoration_provider(decorator);
                     debug!(id, path, "create_buffer_from_file: attached decoration provider");
+                }
+
+                // Start background saturator if syntax/decoration providers exist
+                if buffer.has_syntax() || buffer.has_decoration_provider() {
+                    buffer.start_saturator(self.tx.clone());
+                    debug!(id, path, "create_buffer_from_file: started saturator");
                 }
 
                 self.buffers.insert(id, buffer);

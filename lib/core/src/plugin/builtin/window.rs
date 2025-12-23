@@ -6,11 +6,9 @@ use crate::{
     command::builtin::{
         TabCloseCommand, TabNewCommand, TabNextCommand, TabPrevCommand, WindowCloseCommand,
         WindowEqualizeCommand, WindowFocusDownCommand, WindowFocusLeftCommand,
-        WindowFocusOrSplitDownCommand, WindowFocusOrSplitLeftCommand,
-        WindowFocusOrSplitRightCommand, WindowFocusOrSplitUpCommand, WindowFocusRightCommand,
-        WindowFocusUpCommand, WindowMoveDownCommand, WindowMoveLeftCommand, WindowMoveRightCommand,
-        WindowMoveUpCommand, WindowOnlyCommand, WindowSplitHorizontalCommand,
-        WindowSplitVerticalCommand,
+        WindowFocusRightCommand, WindowFocusUpCommand, WindowMoveDownCommand,
+        WindowMoveLeftCommand, WindowMoveRightCommand, WindowMoveUpCommand, WindowOnlyCommand,
+        WindowSplitHorizontalCommand, WindowSplitVerticalCommand,
     },
     plugin::{Plugin, PluginContext, PluginId},
 };
@@ -58,10 +56,6 @@ impl WindowPlugin {
         let _ = ctx.register_command(WindowFocusDownCommand);
         let _ = ctx.register_command(WindowFocusUpCommand);
         let _ = ctx.register_command(WindowFocusRightCommand);
-        let _ = ctx.register_command(WindowFocusOrSplitLeftCommand);
-        let _ = ctx.register_command(WindowFocusOrSplitDownCommand);
-        let _ = ctx.register_command(WindowFocusOrSplitUpCommand);
-        let _ = ctx.register_command(WindowFocusOrSplitRightCommand);
     }
 
     fn register_split_commands(&self, ctx: &PluginContext) {

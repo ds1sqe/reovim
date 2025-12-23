@@ -391,9 +391,12 @@ impl Screen {
     ) -> crate::render::RenderData {
         use crate::{component::RenderContext, render::RenderData};
 
+        let pipeline_start = std::time::Instant::now();
+
         // Stage 1: Extract buffer content
         let mut data = RenderData::from_buffer(window, text_buffer);
         data.buffer_id = window.buffer_id().unwrap_or(0);
+        let from_buffer_time = pipeline_start.elapsed();
 
         // Create render context
         let ctx = RenderContext::new(self.size.width, self.size.height, theme, color_mode);
@@ -402,10 +405,22 @@ impl Screen {
         {
             let stages_guard = render_stages.read().unwrap();
             for stage in stages_guard.stages() {
-                tracing::trace!(stage_name = stage.name(), "Executing render stage");
+                let stage_start = std::time::Instant::now();
                 data = stage.transform(data, &ctx);
+                tracing::debug!(
+                    "[RTT] stage '{}' took {:?}",
+                    stage.name(),
+                    stage_start.elapsed()
+                );
             }
         }
+
+        tracing::debug!(
+            "[RTT] execute_pipeline: from_buffer={:?} stages={:?} total={:?}",
+            from_buffer_time,
+            pipeline_start.elapsed().saturating_sub(from_buffer_time),
+            pipeline_start.elapsed()
+        );
 
         // TODO: Stage 5: Visual selection overlay
         // TODO: Stage 6: Indent guides
@@ -801,6 +816,7 @@ impl Screen {
         render_stages: &std::sync::Arc<std::sync::RwLock<crate::render::RenderStageRegistry>>,
         plugin_state: &std::sync::Arc<crate::plugin::PluginStateRegistry>,
     ) -> std::result::Result<(), std::io::Error> {
+        let rw_start = std::time::Instant::now();
         // Take frame renderer out (borrow checker workaround)
         let mut renderer = self
             .frame_renderer
@@ -949,6 +965,7 @@ impl Screen {
                 }
 
                 // Execute render pipeline with the window from windows_to_render
+                let pipeline_start = std::time::Instant::now();
                 let render_data = self.execute_pipeline(
                     win,
                     buf,
@@ -960,9 +977,16 @@ impl Screen {
                     decoration_store,
                     render_stages,
                 );
+                let pipeline_time = pipeline_start.elapsed();
 
                 // Render pipeline data to frame buffer
+                let fb_start = std::time::Instant::now();
                 self.render_data_to_framebuffer(&render_data, win, buffer, theme, buf);
+                tracing::debug!(
+                    "[RTT] window render: pipeline={:?} framebuffer={:?}",
+                    pipeline_time,
+                    fb_start.elapsed()
+                );
 
                 // Calculate cursor position only for the ACTIVE window (and if editor is focused)
                 if win.is_active {
@@ -1003,10 +1027,12 @@ impl Screen {
         // Settings menu overlay is now rendered by the settings-menu plugin
 
         // Put renderer back and flush
+        let pre_flush = rw_start.elapsed();
         self.frame_renderer = Some(renderer);
         let renderer = self.frame_renderer.as_mut().unwrap();
         queue!(self.out_stream, Hide)?;
         renderer.flush(&mut self.out_stream)?;
+        let post_renderer_flush = rw_start.elapsed();
 
         // Position cursor
         if let Some((x, y)) = cursor_pos {
@@ -1014,7 +1040,15 @@ impl Screen {
         }
 
         queue!(self.out_stream, Show)?;
-        self.out_stream.flush()
+        let result = self.out_stream.flush();
+        tracing::debug!(
+            "[RTT] render_windows: pre_flush={:?} renderer.flush={:?} stream.flush={:?} total={:?}",
+            pre_flush,
+            post_renderer_flush.saturating_sub(pre_flush),
+            rw_start.elapsed().saturating_sub(post_renderer_flush),
+            rw_start.elapsed()
+        );
+        result
     }
 
     pub fn set_number(&mut self, enabled: bool) {
@@ -1225,11 +1259,14 @@ impl Screen {
             let layouts = tab.calculate_layouts(editor_rect);
             let active_window_id = tab.active_window_id;
 
-            // Preserve cursor positions before rebuilding
-            let old_cursors: std::collections::HashMap<usize, (Position, Option<u16>)> = self
+            // Preserve window state before rebuilding
+            let old_state: std::collections::HashMap<
+                usize,
+                (Position, Option<u16>, Option<Anchor>),
+            > = self
                 .windows
                 .iter()
-                .map(|w| (w.id, (w.cursor, w.desired_col)))
+                .map(|w| (w.id, (w.cursor, w.desired_col, w.buffer_anchor())))
                 .collect();
 
             // Rebuild the windows vec from split tree layouts
@@ -1241,17 +1278,18 @@ impl Screen {
                     .copied()
                     .unwrap_or(0);
 
-                // Try to preserve cursor from previous window, otherwise default to (0,0)
-                let (cursor, desired_col) = old_cursors
-                    .get(&layout.window_id)
-                    .copied()
-                    .unwrap_or((Position { x: 0, y: 0 }, None));
+                // Try to preserve state from previous window, otherwise use defaults
+                let (cursor, desired_col, buffer_anchor) =
+                    old_state.get(&layout.window_id).copied().map_or(
+                        (Position { x: 0, y: 0 }, None, Anchor { x: 0, y: 0 }),
+                        |(c, d, a)| (c, d, a.unwrap_or(Anchor { x: 0, y: 0 })),
+                    );
 
                 self.windows.push(Window {
                     id: layout.window_id,
                     source: WindowContentSource::FileBuffer {
                         buffer_id,
-                        buffer_anchor: Anchor { x: 0, y: 0 },
+                        buffer_anchor,
                     },
                     anchor: Anchor {
                         x: layout.rect.x,

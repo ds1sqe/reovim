@@ -321,6 +321,41 @@ impl InjectionManager {
         }
     }
 
+    /// Eagerly saturate the injection system
+    ///
+    /// Pre-computes all injection regions and pre-creates all needed layers.
+    /// Call this during parse() to avoid lazy initialization during highlight_range().
+    /// This reduces lock contention by doing all mutation work upfront.
+    pub fn saturate(&mut self, tree: &Tree, content: &str, manager: &SharedTreesitterManager) {
+        if !self.has_detector() {
+            return;
+        }
+
+        // Detect regions if dirty
+        if self.regions_dirty {
+            if let Some(detector) = &self.detector {
+                self.regions = manager.with(|m| detector.detect(tree, content, m.registry()));
+            } else {
+                self.regions.clear();
+            }
+            self.regions_dirty = false;
+        }
+
+        // Pre-create layers for all detected languages
+        let language_ids: Vec<String> = self
+            .regions
+            .iter()
+            .map(|r| r.language_id.clone())
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+
+        for language_id in language_ids {
+            // This creates the layer if it doesn't exist
+            let _ = self.get_or_create_layer(&language_id, manager);
+        }
+    }
+
     /// Get or create an injection layer for a language
     fn get_or_create_layer(
         &mut self,

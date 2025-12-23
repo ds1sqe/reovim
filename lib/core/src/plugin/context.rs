@@ -53,7 +53,7 @@ impl PluginContext {
         Self {
             commands: CommandRegistry::new(),
             modifiers: ModifierRegistry::new(),
-            keymap: KeyMap::default(),
+            keymap: KeyMap::with_defaults(),
             loaded_plugins: std::collections::HashSet::new(),
             rpc_handlers: RpcHandlerRegistry::new(),
             display_registry: DisplayRegistry::new(),

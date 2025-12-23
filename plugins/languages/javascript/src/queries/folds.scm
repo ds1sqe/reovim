@@ -10,12 +10,10 @@
 
 ; Class definitions
 (class_declaration body: (class_body) @fold)
-(class_expression body: (class_body) @fold)
 
 ; If statements
 (if_statement consequence: (statement_block) @fold)
-(if_statement alternative: (statement_block) @fold)
-(if_statement alternative: (else_clause (statement_block) @fold))
+(else_clause (statement_block) @fold)
 
 ; Switch statements
 (switch_statement body: (switch_body) @fold)

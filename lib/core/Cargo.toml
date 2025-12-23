@@ -19,6 +19,7 @@ futures-timer.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 arboard = "3"
+arc-swap = "1.8"
 
 # Config system
 toml = "0.8"

@@ -167,13 +167,17 @@ impl Runtime {
         loop {
             // Check for incoming events
             if let Some(ev) = self.rx.recv().await {
+                let loop_start = std::time::Instant::now();
+                let ev_name = format!("{:?}", std::mem::discriminant(&ev));
                 if self.handle_event(ev) {
                     break;
                 }
                 // Drain all pending events before rendering
                 // This coalesces renders across multiple related events
                 // (e.g., PendingKeysEvent + CommandEvent + ModeChangeEvent from one key)
+                let mut drained = 0;
                 while let Ok(ev) = self.rx.try_recv() {
+                    drained += 1;
                     if self.handle_event(ev) {
                         // Flush before breaking on quit
                         self.flush_render();
@@ -181,7 +185,12 @@ impl Runtime {
                     }
                 }
                 // Flush render once after all pending events processed
+                let pre_render = loop_start.elapsed();
                 self.flush_render();
+                tracing::debug!(
+                    "[RTT] event_loop: first_ev={} drained={} pre_render={:?} total={:?}",
+                    ev_name, drained, pre_render, loop_start.elapsed()
+                );
             } else {
                 self.tx
                     .send(InnerEvent::KillSignal)
@@ -293,7 +302,11 @@ impl Runtime {
                     SyntaxEvent::Attach { buffer_id, syntax } => {
                         if let Some(buffer) = self.buffers.get_mut(&buffer_id) {
                             buffer.attach_syntax(syntax);
-                            tracing::debug!(buffer_id, "Attached syntax provider");
+                            // Start saturator for background cache computation
+                            if !buffer.has_saturator() {
+                                buffer.start_saturator(self.tx.clone());
+                            }
+                            tracing::debug!(buffer_id, "Attached syntax provider and started saturator");
                             self.request_render();
                         }
                     }

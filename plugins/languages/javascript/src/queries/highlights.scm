@@ -46,8 +46,7 @@
 ["for" "while" "do"] @keyword.repeat
 ["import" "export" "from"] @keyword.import
 
-; Types (JSDoc and TypeScript-style)
-(type_identifier) @type
+; Note: type_identifier is TypeScript-specific, not in base JavaScript grammar
 
 ; Functions
 (function_declaration name: (identifier) @function)
@@ -130,8 +129,9 @@
   "??="
   "=>"
   "..."
-  "?."
 ] @operator
+
+; Note: optional chaining "?." not a separate token in tree-sitter-javascript
 
 ; Punctuation
 ["(" ")" "[" "]" "{" "}"] @punctuation.bracket

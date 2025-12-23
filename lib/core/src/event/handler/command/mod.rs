@@ -384,6 +384,7 @@ impl CommandHandler {
                     result = rx.recv() => {
                         match result {
                             Ok(event) => {
+                                let key_start = std::time::Instant::now();
                                 let key_str = key_to_string(&event);
                                 if key_str.is_empty() {
                                     continue;
@@ -391,7 +392,7 @@ impl CommandHandler {
                                 // Convert KeyEvent to Keystroke for pending_keys
                                 let keystroke = Keystroke::from(&event);
 
-                                tracing::trace!(key = %key_str, "Key pressed");
+                                tracing::debug!("[RTT] CommandHandler: key={} received at {:?}", key_str, key_start);
 
                                 // Sync local mode from Runtime's watch channel
                                 // This catches mode changes initiated by Runtime (e.g., explorer focus)
@@ -590,6 +591,11 @@ impl CommandHandler {
                                     // Check for mode change commands and update local mode immediately
                                     // This avoids race conditions with the Runtime's watch channel
                                     if let Some(new_mode) = Dispatcher::mode_for_command(cmd) {
+                                        tracing::debug!(
+                                            "[MODE] Immediate mode update: {:?} -> {:?}",
+                                            self.current_mode().sub_mode,
+                                            new_mode.sub_mode
+                                        );
                                         self.set_local_mode(new_mode.clone());
                                         self.mode_locally_changed = true;
                                         self.dispatcher.update_mode(new_mode).await;
