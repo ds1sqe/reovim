@@ -1,9 +1,6 @@
 //! Plugin context for component registration
 
-use std::{
-    any::TypeId,
-    sync::{Arc, RwLock},
-};
+use std::{any::TypeId, sync::Arc};
 
 use crate::{
     bind::{CommandRef, KeyMap, KeymapScope},
@@ -11,7 +8,6 @@ use crate::{
     display::{DisplayInfo, DisplayRegistry, EditModeKey, SubModeKey},
     keystroke::KeySequence,
     modifier::ModifierRegistry,
-    overlay::{OverlayRegistry, OverlayRenderer},
     render::{RenderStage, RenderStageRegistry},
     rpc::{RpcHandler, RpcHandlerRegistry},
     ui_component::{ComponentId, ComponentRegistry, UIComponent},
@@ -36,9 +32,6 @@ pub struct PluginContext {
 
     /// Component registry for UI components
     pub(crate) components: ComponentRegistry,
-
-    /// Overlay registry for plugin-based overlays
-    pub(crate) overlays: OverlayRegistry,
 
     /// RPC handler registry for plugin-registered RPC methods
     pub(crate) rpc_handlers: RpcHandlerRegistry,
@@ -66,7 +59,6 @@ impl PluginContext {
             keymap: KeyMap::default(),
             loaded_plugins: std::collections::HashSet::new(),
             components: ComponentRegistry::new(),
-            overlays: OverlayRegistry::new(),
             rpc_handlers: RpcHandlerRegistry::new(),
             display_registry: DisplayRegistry::new(),
             render_stages: RenderStageRegistry::new(),
@@ -153,39 +145,6 @@ impl PluginContext {
     #[must_use]
     pub const fn component_registry_mut(&mut self) -> &mut ComponentRegistry {
         &mut self.components
-    }
-
-    // === Overlay Registration ===
-
-    /// Register an overlay renderer
-    ///
-    /// Overlays are rendered in z-order during screen updates.
-    /// Lower z-order overlays are drawn first (behind higher ones).
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// ctx.register_overlay(MyOverlay::new());
-    /// ```
-    pub fn register_overlay<O: OverlayRenderer + 'static>(&mut self, overlay: O) {
-        self.overlays.register(overlay);
-    }
-
-    /// Register an overlay from an Arc (for shared overlays)
-    pub fn register_overlay_arc(&mut self, overlay: Arc<RwLock<dyn OverlayRenderer>>) {
-        self.overlays.register_arc(overlay);
-    }
-
-    /// Get access to the overlay registry
-    #[must_use]
-    pub const fn overlay_registry(&self) -> &OverlayRegistry {
-        &self.overlays
-    }
-
-    /// Get mutable access to the overlay registry
-    #[must_use]
-    pub const fn overlay_registry_mut(&mut self) -> &mut OverlayRegistry {
-        &mut self.overlays
     }
 
     // === RPC Handler Registration ===
@@ -363,7 +322,6 @@ impl PluginContext {
         ModifierRegistry,
         KeyMap,
         ComponentRegistry,
-        OverlayRegistry,
         RpcHandlerRegistry,
         DisplayRegistry,
         RenderStageRegistry,
@@ -373,7 +331,6 @@ impl PluginContext {
             self.modifiers,
             self.keymap,
             self.components,
-            self.overlays,
             self.rpc_handlers,
             self.display_registry,
             self.render_stages,

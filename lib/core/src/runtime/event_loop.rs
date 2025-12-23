@@ -344,6 +344,11 @@ impl Runtime {
                     tracing::error!("Runtime: Invalid UTF-8 in file path: {:?}", path);
                 }
             }
+            // Set register content (from plugins)
+            InnerEvent::SetRegister { register, text } => {
+                tracing::debug!("Runtime: Setting register {:?} with text length {}", register, text.len());
+                self.registers.set_by_name(register, text);
+            }
         }
         false
     }
@@ -477,14 +482,32 @@ impl Runtime {
                 )
             }
             methods::STATE_LAYER_INFO => {
-                // Return layer visibility information - dynamically query overlay registry
-                let ctx = crate::component::RenderContext::new(
-                    self.screen.width(),
-                    self.screen.height(),
-                    &self.theme,
-                    self.color_mode,
-                );
-                let layers = self.screen.layer_info(&self.overlay_registry, &ctx);
+                // Return layer visibility information
+                // Plugin windows provide their own z-order during rendering
+                let layers = vec![
+                    crate::visual::LayerInfo {
+                        name: "base".to_string(),
+                        z_order: 0,
+                        visible: true,
+                        bounds: crate::visual::BoundsInfo::new(
+                            0,
+                            0,
+                            self.screen.width(),
+                            self.screen.height(),
+                        ),
+                    },
+                    crate::visual::LayerInfo {
+                        name: "editor".to_string(),
+                        z_order: 2,
+                        visible: true,
+                        bounds: crate::visual::BoundsInfo::new(
+                            0,
+                            1,
+                            self.screen.width(),
+                            self.screen.height().saturating_sub(2),
+                        ),
+                    },
+                ];
                 RpcResponse::success(id, serde_json::to_value(layers).unwrap())
             }
             methods::INPUT_KEYS => {

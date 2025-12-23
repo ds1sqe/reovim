@@ -30,6 +30,8 @@ pub enum NodeType {
     File {
         /// File size in bytes
         size: u64,
+        /// Creation time
+        created: Option<SystemTime>,
         /// Last modified time
         modified: Option<SystemTime>,
     },
@@ -72,6 +74,7 @@ impl FileNode {
         } else {
             NodeType::File {
                 size: metadata.len(),
+                created: metadata.created().ok(),
                 modified: metadata.modified().ok(),
             }
         };
@@ -181,6 +184,24 @@ impl FileNode {
         }
     }
 
+    /// Get creation time (for files only)
+    #[must_use]
+    pub const fn created(&self) -> Option<SystemTime> {
+        match &self.node_type {
+            NodeType::File { created, .. } => *created,
+            _ => None,
+        }
+    }
+
+    /// Get modification time (for files only)
+    #[must_use]
+    pub const fn modified(&self) -> Option<SystemTime> {
+        match &self.node_type {
+            NodeType::File { modified, .. } => *modified,
+            _ => None,
+        }
+    }
+
     /// Get an icon/prefix for the node type
     #[must_use]
     pub const fn icon(&self) -> &'static str {
@@ -219,6 +240,69 @@ pub fn format_size(bytes: u64) -> String {
     } else {
         format!("{bytes}B")
     }
+}
+
+/// Format a `SystemTime` to human-readable format: "YYYY-MM-DD HH:MM AM/PM"
+#[must_use]
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+pub fn format_datetime(time: SystemTime) -> String {
+    use std::time::UNIX_EPOCH;
+
+    let duration = time.duration_since(UNIX_EPOCH).unwrap_or_default();
+    let secs = duration.as_secs() as i64;
+
+    // Convert to local time components (simplified calculation)
+    // Note: This is a basic implementation without timezone library
+    let days_since_epoch = secs / 86400;
+    let time_of_day = secs % 86400;
+
+    // Calculate year, month, day (simplified - doesn't handle all edge cases perfectly)
+    let mut year = 1970i32;
+    let mut remaining_days = days_since_epoch;
+
+    loop {
+        let days_in_year = if is_leap_year(year) { 366 } else { 365 };
+        if remaining_days < days_in_year {
+            break;
+        }
+        remaining_days -= days_in_year;
+        year += 1;
+    }
+
+    let days_in_months: [i64; 12] = if is_leap_year(year) {
+        [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    } else {
+        [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    };
+
+    let mut month = 1u32;
+    for days in days_in_months {
+        if remaining_days < days {
+            break;
+        }
+        remaining_days -= days;
+        month += 1;
+    }
+    let day = remaining_days + 1;
+
+    // Calculate time components
+    let mut hour = (time_of_day / 3600) as u32;
+    let minute = ((time_of_day % 3600) / 60) as u32;
+
+    // Convert to 12-hour format
+    let am_pm = if hour < 12 { "AM" } else { "PM" };
+    if hour == 0 {
+        hour = 12;
+    } else if hour > 12 {
+        hour -= 12;
+    }
+
+    format!("{year}-{month:02}-{day:02} {hour:02}:{minute:02} {am_pm}")
+}
+
+/// Check if a year is a leap year
+const fn is_leap_year(year: i32) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
 }
 
 #[cfg(test)]

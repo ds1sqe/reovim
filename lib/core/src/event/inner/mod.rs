@@ -62,6 +62,13 @@ pub enum InnerEvent {
         /// Path to the file to open
         path: PathBuf,
     },
+    /// Request to set a register's content
+    SetRegister {
+        /// Register name: None for unnamed, '+' for system clipboard, 'a'-'z' for named
+        register: Option<char>,
+        /// Text content to set
+        text: String,
+    },
 }
 
 /// Input events routed to the active focus target

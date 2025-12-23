@@ -10,13 +10,13 @@
 //! This plugin is fully self-contained:
 //! - Defines its own command IDs
 //! - Manages its own state via `PluginStateRegistry`
-//! - Renders via `OverlayRenderer` trait
+//! - Renders via `PluginWindow` trait
 //! - Communicates via `EventBus` events
 
 mod commands;
 mod completion;
 
-use std::any::TypeId;
+use std::{any::TypeId, sync::Arc};
 
 // Import unified command-event types
 pub use commands::{
@@ -29,11 +29,13 @@ use {
     reovim_core::{
         bind::CommandRef,
         command::id::CommandId,
-        component::RenderContext,
         frame::FrameBuffer,
+        highlight::Theme,
         keys,
-        overlay::{OverlayBounds, OverlayRenderer},
-        plugin::{Plugin, PluginContext, PluginId},
+        plugin::{
+            EditorContext, Plugin, PluginContext, PluginId, PluginStateRegistry, PluginWindow,
+            Rect, WindowConfig,
+        },
     },
 };
 
@@ -51,62 +53,67 @@ pub mod command_id {
     pub const COMPLETION_DISMISS: CommandId = CommandId::new("completion_dismiss");
 }
 
-/// Completion popup overlay
-///
-/// Stateless overlay that accesses `CompletionState` through `RenderContext`.
-pub struct CompletionOverlay;
+/// Plugin window for completion
+pub struct CompletionPluginWindow;
 
-impl OverlayRenderer for CompletionOverlay {
-    fn id(&self) -> &'static str {
-        "completion"
-    }
+impl PluginWindow for CompletionPluginWindow {
+    #[allow(clippy::cast_possible_truncation)]
+    fn window_config(
+        &self,
+        state: &Arc<PluginStateRegistry>,
+        ctx: &EditorContext,
+    ) -> Option<WindowConfig> {
+        state.with::<CompletionState, _, _>(|completion| {
+            if !completion.active || completion.items.is_empty() {
+                return None;
+            }
 
-    fn z_order(&self) -> u16 {
-        200
-    }
+            let cursor_x = completion.start_col;
+            let cursor_y = completion.start_row;
+            let max_items = 10.min(completion.items.len());
+            let popup_width = completion
+                .items
+                .iter()
+                .take(max_items)
+                .map(|i| i.label.len())
+                .max()
+                .map_or(12, |w| (w + 2).min(40)) as u16;
+            let prefix_len = completion.prefix.len() as u16;
+            let popup_x = cursor_x
+                .saturating_sub(prefix_len)
+                .min(ctx.screen_width.saturating_sub(popup_width));
+            let popup_y = cursor_y + 1;
 
-    fn is_visible(&self, ctx: &RenderContext<'_>) -> bool {
-        ctx.state()
-            .and_then(|s| {
-                s.plugin_state
-                    .with::<CompletionState, _, _>(|cs| cs.active && !cs.items.is_empty())
+            Some(WindowConfig {
+                bounds: Rect::new(popup_x, popup_y, popup_width, max_items as u16),
+                z_order: 200, // Completion dropdown
+                visible: true,
             })
-            .unwrap_or(false)
+        })?
     }
 
     #[allow(clippy::cast_possible_truncation)]
-    fn render(&self, buffer: &mut FrameBuffer, ctx: &RenderContext<'_>) {
-        let Some(state) = ctx.state() else { return };
-        let Some(completion) = state
-            .plugin_state
-            .with::<CompletionState, _, _>(Clone::clone)
-        else {
+    fn render(
+        &self,
+        state: &Arc<PluginStateRegistry>,
+        ctx: &EditorContext,
+        buffer: &mut FrameBuffer,
+        bounds: Rect,
+        theme: &Theme,
+    ) {
+        let Some(completion) = state.with::<CompletionState, _, _>(Clone::clone) else {
             return;
         };
-        let theme = ctx.theme;
 
         let items = &completion.items;
         if items.is_empty() {
             return;
         }
 
-        let cursor_x = completion.start_col;
-        let cursor_y = completion.start_row;
-
-        let max_items = 10.min(items.len());
-        let max_label_width = items
-            .iter()
-            .take(max_items)
-            .map(|i| i.label.len())
-            .max()
-            .unwrap_or(10);
-        let popup_width = (max_label_width + 2).min(40) as u16;
-
-        let prefix_len = completion.prefix.len() as u16;
-        let popup_x = cursor_x
-            .saturating_sub(prefix_len)
-            .min(ctx.screen_width.saturating_sub(popup_width));
-        let popup_y = cursor_y + 1;
+        let popup_x = bounds.x;
+        let popup_y = bounds.y;
+        let popup_width = bounds.width;
+        let max_items = bounds.height as usize;
 
         for (idx, item) in items.iter().take(max_items).enumerate() {
             let is_selected = idx == completion.selected_index;
@@ -135,40 +142,6 @@ impl OverlayRenderer for CompletionOverlay {
             }
             buffer.put_char(popup_x + popup_width - 1, row, ' ', style);
         }
-    }
-
-    #[allow(clippy::cast_possible_truncation)]
-    fn bounds(&self, ctx: &RenderContext<'_>) -> OverlayBounds {
-        ctx.state()
-            .and_then(|s| {
-                s.plugin_state.with::<CompletionState, _, _>(|completion| {
-                    if completion.items.is_empty() {
-                        return OverlayBounds::default();
-                    }
-
-                    let cursor_x = completion.start_col;
-                    let cursor_y = completion.start_row;
-                    let max_items = 10.min(completion.items.len());
-                    let popup_width = completion
-                        .items
-                        .iter()
-                        .take(max_items)
-                        .map(|i| i.label.len())
-                        .max()
-                        .map_or(12, |w| (w + 2).min(40))
-                        as u16;
-                    let prefix_len = completion.prefix.len() as u16;
-                    let popup_x = cursor_x.saturating_sub(prefix_len);
-                    let popup_y = cursor_y + 1;
-
-                    OverlayBounds::new(popup_x, popup_y, popup_width, max_items as u16)
-                })
-            })
-            .unwrap_or_default()
-    }
-
-    fn captures_input(&self, _ctx: &RenderContext<'_>) -> bool {
-        false
     }
 }
 
@@ -205,9 +178,6 @@ impl Plugin for CompletionPlugin {
         let _ = ctx.register_command(CompletionConfirm);
         let _ = ctx.register_command(CompletionDismiss);
 
-        // Register overlay
-        ctx.register_overlay(CompletionOverlay);
-
         // Register keybindings
         // Ctrl-Space to trigger completion in insert mode
         use reovim_core::bind::KeymapScope;
@@ -222,5 +192,10 @@ impl Plugin for CompletionPlugin {
         // Completion navigation keybindings (when completion is active)
         // Note: These are typically handled contextually when completion is visible
         // The runtime checks if completion is active before dispatching these commands
+    }
+
+    fn init_state(&self, registry: &PluginStateRegistry) {
+        // Register the plugin window
+        registry.register_plugin_window(Arc::new(CompletionPluginWindow));
     }
 }

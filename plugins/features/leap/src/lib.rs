@@ -16,14 +16,15 @@ use std::{any::TypeId, sync::Arc};
 
 use reovim_core::{
     bind::{CommandRef, KeymapScope},
-    component::RenderContext,
     display::{DisplayInfo, SubModeKey},
     event_bus::{EventBus, EventResult},
     frame::FrameBuffer,
-    highlight::Style,
+    highlight::{Style, Theme},
     keys,
-    overlay::{OverlayBounds, OverlayRenderer},
-    plugin::{Plugin, PluginContext, PluginId, PluginStateRegistry},
+    plugin::{
+        EditorContext, Plugin, PluginContext, PluginId, PluginStateRegistry, PluginWindow, Rect,
+        WindowConfig,
+    },
     ui_component::ComponentId,
 };
 
@@ -60,38 +61,45 @@ impl Default for LeapStyles {
     }
 }
 
-/// Leap labels overlay
-///
-/// Stateless overlay that accesses `LeapState` through `RenderContext`.
-pub struct LeapOverlay;
+/// Plugin window for leap labels
+pub struct LeapPluginWindow;
 
-impl OverlayRenderer for LeapOverlay {
-    fn id(&self) -> &'static str {
-        "leap"
-    }
+impl PluginWindow for LeapPluginWindow {
+    fn window_config(
+        &self,
+        state: &Arc<PluginStateRegistry>,
+        ctx: &EditorContext,
+    ) -> Option<WindowConfig> {
+        let is_showing = state
+            .with::<LeapState, _, _>(|leap| leap.is_showing_labels())
+            .unwrap_or(false);
 
-    fn z_order(&self) -> u16 {
-        100
-    }
+        if !is_showing {
+            return None;
+        }
 
-    fn is_visible(&self, ctx: &RenderContext<'_>) -> bool {
-        ctx.state
-            .and_then(|s| {
-                s.plugin_state
-                    .with::<LeapState, _, _>(|leap| leap.is_showing_labels())
-            })
-            .unwrap_or(false)
+        // Leap renders labels across the entire screen
+        Some(WindowConfig {
+            bounds: Rect::new(0, 0, ctx.screen_width, ctx.screen_height),
+            z_order: 100, // Same level as editor windows
+            visible: true,
+        })
     }
 
     #[allow(clippy::cast_possible_truncation)]
-    fn render(&self, buffer: &mut FrameBuffer, ctx: &RenderContext<'_>) {
-        let Some(state) = ctx.state else { return };
-
+    fn render(
+        &self,
+        state: &Arc<PluginStateRegistry>,
+        ctx: &EditorContext,
+        buffer: &mut FrameBuffer,
+        _bounds: Rect,
+        _theme: &Theme,
+    ) {
         // Use plugin's own leap styles
         let styles = LeapStyles::default();
         let label_style = &styles.label;
 
-        state.plugin_state.with::<LeapState, _, _>(|leap| {
+        state.with::<LeapState, _, _>(|leap| {
             for m in &leap.matches {
                 let screen_x = m.col;
                 let screen_y = m.line;
@@ -108,14 +116,6 @@ impl OverlayRenderer for LeapOverlay {
                 }
             }
         });
-    }
-
-    fn bounds(&self, _ctx: &RenderContext<'_>) -> OverlayBounds {
-        OverlayBounds::default()
-    }
-
-    fn captures_input(&self, _ctx: &RenderContext<'_>) -> bool {
-        true
     }
 }
 
@@ -169,13 +169,12 @@ impl Plugin for LeapPlugin {
             keys!['S'],
             CommandRef::Registered(LEAP_BACKWARD),
         );
-
-        // Register overlay
-        ctx.register_overlay(LeapOverlay);
     }
 
     fn init_state(&self, registry: &PluginStateRegistry) {
         registry.register(LeapState::new());
+        // Register the plugin window
+        registry.register_plugin_window(Arc::new(LeapPluginWindow));
         tracing::debug!("LeapPlugin: initialized state in registry");
     }
 

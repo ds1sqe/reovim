@@ -349,53 +349,6 @@ impl Screen {
         })
     }
 
-    /// Get layer visibility information for visual debugging
-    ///
-    /// Dynamically queries the overlay registry for visible overlays.
-    /// Core knows only about base and editor layers; plugins provide their own.
-    #[must_use]
-    #[allow(clippy::cast_possible_truncation)]
-    pub fn layer_info(
-        &self,
-        overlay_registry: &crate::overlay::OverlayRegistry,
-        ctx: &crate::component::RenderContext<'_>,
-    ) -> Vec<crate::visual::LayerInfo> {
-        use crate::visual::{BoundsInfo, LayerInfo};
-
-        let mut layers = Vec::new();
-
-        // Base layer (tab line, status line)
-        layers.push(LayerInfo {
-            name: "base".to_string(),
-            z_order: z_order::BASE,
-            visible: true,
-            bounds: BoundsInfo::new(0, 0, self.size.width, self.size.height),
-        });
-
-        // Editor layer
-        layers.push(LayerInfo {
-            name: "editor".to_string(),
-            z_order: z_order::EDITOR,
-            visible: true,
-            bounds: BoundsInfo::new(0, 1, self.size.width, self.size.height.saturating_sub(2)),
-        });
-
-        // Query overlay registry for visible overlays
-        for overlay in overlay_registry.visible_overlays_sorted(ctx) {
-            if let Ok(o) = overlay.read() {
-                let bounds = o.bounds(ctx);
-                layers.push(LayerInfo {
-                    name: o.id().to_string(),
-                    z_order: o.z_order() as u8,
-                    visible: true,
-                    bounds: BoundsInfo::new(bounds.x, bounds.y, bounds.width, bounds.height),
-                });
-            }
-        }
-
-        layers
-    }
-
     /// Render with bundled state
     ///
     /// This is the preferred rendering method that takes all runtime state as a single
@@ -767,6 +720,18 @@ impl Screen {
         // Phase 2: Render editor windows
         // Phase 3 will add overlay collection and unified z-order rendering
 
+        // Query panel offsets from plugin state and update layout manager if changed
+        let left_offset = plugin_state.left_panel_width();
+        let right_offset = plugin_state.right_panel_width();
+        let offsets_changed =
+            left_offset != self.layout.left_offset() || right_offset != self.layout.right_offset();
+
+        if offsets_changed {
+            self.layout.set_left_offset(left_offset);
+            self.layout.set_right_offset(right_offset);
+            self.update_window_layouts();
+        }
+
         // Update scroll positions BEFORE cloning windows
         for win in &mut self.windows {
             if let Some(buffer_id) = win.buffer_id()
@@ -784,11 +749,18 @@ impl Screen {
         // Collect all windows (editor + plugin windows)
         let mut windows_to_render = self.windows.clone();
 
-        // Collect windows from registered window providers
-        for provider in plugin_state.window_providers() {
-            let plugin_windows = provider.get_windows(plugin_state);
-            windows_to_render.extend(plugin_windows);
-        }
+        // Build editor context for window providers
+        let editor_ctx = crate::plugin::EditorContext::new(
+            self.size.width,
+            self.size.height,
+            mode.edit_mode.clone(),
+            mode.sub_mode.clone(),
+            mode.interactor_id,
+            self.active_buffer_id().unwrap_or(0),
+            buffers.len(),
+            color_mode,
+        )
+        .with_left_offset(left_offset);
 
         // Sort all windows by z-order
         windows_to_render.sort_by_key(|w| w.z_order);
@@ -901,6 +873,10 @@ impl Screen {
                 }
             }
         }
+
+        // Render plugin windows (new unified system)
+        // These are sorted by z_order and rendered on top of editor windows
+        self.render_plugin_windows(buffer, plugin_state, &editor_ctx, theme);
 
         // Render window separators
         self.render_window_separators_to_buffer(buffer, theme);
@@ -1079,6 +1055,50 @@ impl Screen {
         // Phase 2: Just return clones of editor windows
         // Phase 3 will add overlay collection here
         self.windows.clone()
+    }
+
+    /// Render all registered plugin windows
+    ///
+    /// Plugin windows are sorted by `z_order` and rendered on top of editor windows.
+    /// Each plugin window implements the `PluginWindow` trait which provides
+    /// both configuration (position, visibility) and rendering.
+    #[allow(clippy::unused_self)]
+    fn render_plugin_windows(
+        &self,
+        buffer: &mut FrameBuffer,
+        plugin_state: &std::sync::Arc<crate::plugin::PluginStateRegistry>,
+        ctx: &crate::plugin::EditorContext,
+        theme: &Theme,
+    ) {
+        use crate::plugin::Rect;
+
+        // Collect windows with their configs
+        let mut windows_with_config: Vec<_> = plugin_state
+            .plugin_windows()
+            .into_iter()
+            .filter_map(|window| {
+                window
+                    .window_config(plugin_state, ctx)
+                    .filter(|config| config.visible)
+                    .map(|config| (window, config))
+            })
+            .collect();
+
+        // Sort by z_order (lower first, so they render below higher ones)
+        windows_with_config.sort_by_key(|(_, config)| config.z_order);
+
+        // Render each visible plugin window
+        for (window, config) in windows_with_config {
+            let bounds = Rect::new(
+                config.bounds.x,
+                config.bounds.y,
+                config.bounds.width,
+                config.bounds.height,
+            );
+
+            // Render the window content
+            window.render(plugin_state, ctx, buffer, bounds, theme);
+        }
     }
 
     /// Update window layouts based on current layout manager state and split tree

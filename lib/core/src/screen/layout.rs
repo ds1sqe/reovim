@@ -70,6 +70,10 @@ pub struct LayoutManager {
     active_window_id: usize,
     /// Currently focused plugin window (if any)
     focused_plugin: Option<ComponentId>,
+    /// Left panel offset (e.g., explorer width when visible)
+    left_offset: u16,
+    /// Right panel offset (e.g., outline width when visible)
+    right_offset: u16,
 }
 
 impl LayoutManager {
@@ -81,6 +85,8 @@ impl LayoutManager {
             screen_height,
             active_window_id: 0,
             focused_plugin: None,
+            left_offset: 0,
+            right_offset: 0,
         }
     }
 
@@ -88,6 +94,28 @@ impl LayoutManager {
     pub const fn set_screen_size(&mut self, width: u16, height: u16) {
         self.screen_width = width;
         self.screen_height = height;
+    }
+
+    /// Set the left panel offset (e.g., explorer width when visible)
+    pub const fn set_left_offset(&mut self, offset: u16) {
+        self.left_offset = offset;
+    }
+
+    /// Set the right panel offset (e.g., outline width when visible)
+    pub const fn set_right_offset(&mut self, offset: u16) {
+        self.right_offset = offset;
+    }
+
+    /// Get the left panel offset
+    #[must_use]
+    pub const fn left_offset(&self) -> u16 {
+        self.left_offset
+    }
+
+    /// Get the right panel offset
+    #[must_use]
+    pub const fn right_offset(&self) -> u16 {
+        self.right_offset
     }
 
     /// Get the active window ID
@@ -136,12 +164,22 @@ impl LayoutManager {
         self.focused_plugin = None;
     }
 
-    /// Get the editor area layout (full screen minus status line)
+    /// Get the editor area layout (accounting for side panels)
+    ///
+    /// The editor area is offset by left/right panel widths (e.g., explorer, outline).
     #[must_use]
     pub const fn editor_layout(&self) -> WindowLayout {
+        let available_width = self
+            .screen_width
+            .saturating_sub(self.left_offset)
+            .saturating_sub(self.right_offset);
+
         WindowLayout {
-            anchor: Anchor { x: 0, y: 0 },
-            width: self.screen_width,
+            anchor: Anchor {
+                x: self.left_offset,
+                y: 0,
+            },
+            width: available_width,
             // Subtract 1 for status line
             height: self.screen_height.saturating_sub(1),
         }

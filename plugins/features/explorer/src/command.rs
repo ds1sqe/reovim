@@ -224,6 +224,18 @@ declare_event_command! {
     description: "Show file/directory info",
 }
 
+declare_event_command! {
+    ExplorerClosePopup,
+    id: "explorer_close_popup",
+    description: "Close file details popup",
+}
+
+declare_event_command! {
+    ExplorerCopyPath,
+    id: "explorer_copy_path",
+    description: "Copy file path to clipboard",
+}
+
 // === Input mode commands ===
 
 declare_event_command! {

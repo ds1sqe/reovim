@@ -141,7 +141,6 @@ impl Window {
         match &self.source {
             WindowContentSource::FileBuffer { buffer_id, .. }
             | WindowContentSource::PluginBuffer { buffer_id, .. } => Some(*buffer_id),
-            WindowContentSource::Overlay { .. } => None,
         }
     }
 
@@ -151,7 +150,6 @@ impl Window {
         match &self.source {
             WindowContentSource::FileBuffer { buffer_anchor, .. }
             | WindowContentSource::PluginBuffer { buffer_anchor, .. } => Some(*buffer_anchor),
-            WindowContentSource::Overlay { .. } => None,
         }
     }
 
@@ -163,7 +161,6 @@ impl Window {
             | WindowContentSource::PluginBuffer { buffer_anchor, .. } => {
                 *buffer_anchor = new_anchor;
             }
-            WindowContentSource::Overlay { .. } => {}
         }
     }
 
@@ -174,7 +171,6 @@ impl Window {
             | WindowContentSource::PluginBuffer { buffer_id, .. } => {
                 *buffer_id = new_buffer_id;
             }
-            WindowContentSource::Overlay { .. } => {}
         }
     }
 

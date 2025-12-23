@@ -2,14 +2,33 @@
 
 use std::sync::Arc;
 
-use reovim_core::plugin::{PluginStateRegistry, WindowProvider};
+use reovim_core::plugin::{EditorContext, PluginStateRegistry, PluginWindow};
 
-use crate::{state::ExplorerState, window::ExplorerWindowProvider};
+use crate::{state::ExplorerState, window::ExplorerPluginWindow};
+
+/// Create a mock EditorContext for testing
+fn mock_editor_context() -> EditorContext {
+    EditorContext {
+        screen_width: 120,
+        screen_height: 40,
+        tab_line_height: 0,
+        status_line_height: 1,
+        left_offset: 0,
+        right_offset: 0,
+        edit_mode: reovim_core::modd::EditMode::Normal,
+        sub_mode: reovim_core::modd::SubMode::None,
+        focused_component: reovim_core::ui_component::ComponentId::EDITOR,
+        active_buffer_id: 0,
+        buffer_count: 1,
+        color_mode: reovim_core::highlight::ColorMode::TrueColor,
+    }
+}
 
 #[test]
 fn test_explorer_toggle() {
     // Create state registry and register explorer state
     let registry = Arc::new(PluginStateRegistry::new());
+    let ctx = mock_editor_context();
 
     if let Ok(cwd) = std::env::current_dir()
         && let Ok(state) = ExplorerState::new(cwd)
@@ -25,10 +44,10 @@ fn test_explorer_toggle() {
         .unwrap();
     assert!(!is_visible, "Explorer should initially be hidden");
 
-    // Window provider should return no windows
-    let provider = ExplorerWindowProvider;
-    let windows = provider.get_windows(&registry);
-    assert_eq!(windows.len(), 0, "Should have no windows when hidden");
+    // Plugin window should return None when hidden
+    let window = ExplorerPluginWindow;
+    let config = window.window_config(&registry, &ctx);
+    assert!(config.is_none(), "Should return None when hidden");
 
     // Toggle visibility to show
     registry
@@ -43,15 +62,14 @@ fn test_explorer_toggle() {
         .unwrap();
     assert!(is_visible, "Explorer should be visible after toggle");
 
-    // Window provider should return 1 window
-    let windows = provider.get_windows(&registry);
-    assert_eq!(windows.len(), 1, "Should have 1 window when visible");
+    // Plugin window should return Some config when visible
+    let config = window.window_config(&registry, &ctx);
+    assert!(config.is_some(), "Should return Some config when visible");
 
     // Verify window properties
-    let window = &windows[0];
-    assert_eq!(window.z_order, 150, "Explorer z-order should be 150");
-    assert!(window.is_floating, "Explorer window should be floating");
-    assert!(window.line_number.is_none(), "Explorer should have no line numbers");
+    let config = config.unwrap();
+    assert_eq!(config.z_order, 150, "Explorer z-order should be 150");
+    assert!(config.visible, "Explorer should be visible");
 
     // Toggle again to hide
     registry
@@ -66,9 +84,9 @@ fn test_explorer_toggle() {
         .unwrap();
     assert!(!is_visible, "Explorer should be hidden after second toggle");
 
-    // Window provider should return no windows again
-    let windows = provider.get_windows(&registry);
-    assert_eq!(windows.len(), 0, "Should have no windows when hidden again");
+    // Plugin window should return None again
+    let config = window.window_config(&registry, &ctx);
+    assert!(config.is_none(), "Should return None when hidden again");
 }
 
 #[test]

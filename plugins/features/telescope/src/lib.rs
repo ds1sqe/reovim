@@ -13,21 +13,23 @@
 //!
 //! Commands emit `EventBus` events that are handled by the runtime.
 //! State is managed via `PluginStateRegistry`.
-//! Rendering is done via the `OverlayRenderer` trait.
+//! Rendering is done via the `PluginWindow` trait.
 
 pub mod commands;
 pub mod telescope;
 
-use std::any::TypeId;
+use std::{any::TypeId, sync::Arc};
 
 use reovim_core::{
     bind::{CommandRef, KeymapScope},
-    component::RenderContext,
     display::{DisplayInfo, EditModeKey},
     frame::FrameBuffer,
+    highlight::Theme,
     keys,
-    overlay::{OverlayBounds, OverlayRenderer},
-    plugin::{Plugin, PluginContext, PluginId},
+    plugin::{
+        EditorContext, Plugin, PluginContext, PluginId, PluginStateRegistry, PluginWindow, Rect,
+        WindowConfig,
+    },
     ui_component::ComponentId,
 };
 
@@ -43,42 +45,46 @@ pub use commands::{
 // Re-export telescope types (non-command/event)
 pub use telescope::{TelescopeItem, TelescopeMatcher, TelescopeState};
 
-/// Telescope overlay
-///
-/// Stateless overlay that accesses `TelescopeState` through `RenderContext`.
-pub struct TelescopeOverlay;
+/// Plugin window for telescope
+pub struct TelescopePluginWindow;
 
-impl OverlayRenderer for TelescopeOverlay {
-    fn id(&self) -> &'static str {
-        "telescope"
-    }
+impl PluginWindow for TelescopePluginWindow {
+    fn window_config(
+        &self,
+        state: &Arc<PluginStateRegistry>,
+        _ctx: &EditorContext,
+    ) -> Option<WindowConfig> {
+        state.with::<TelescopeState, _, _>(|telescope| {
+            if !telescope.active {
+                return None;
+            }
 
-    fn z_order(&self) -> u16 {
-        300
-    }
-
-    fn is_visible(&self, ctx: &RenderContext<'_>) -> bool {
-        ctx.state
-            .and_then(|s| s.plugin_state.with::<TelescopeState, _, _>(|t| t.active))
-            .unwrap_or(false)
+            let layout = &telescope.layout;
+            Some(WindowConfig {
+                bounds: Rect::new(layout.x, layout.y, layout.width, layout.height),
+                z_order: 300, // Floating picker
+                visible: true,
+            })
+        })?
     }
 
     #[allow(clippy::cast_possible_truncation)]
-    fn render(&self, buffer: &mut FrameBuffer, ctx: &RenderContext<'_>) {
-        let Some(state) = ctx.state else { return };
-        let Some(telescope) = state
-            .plugin_state
-            .with::<TelescopeState, _, _>(Clone::clone)
-        else {
+    fn render(
+        &self,
+        state: &Arc<PluginStateRegistry>,
+        _ctx: &EditorContext,
+        buffer: &mut FrameBuffer,
+        bounds: Rect,
+        theme: &Theme,
+    ) {
+        let Some(telescope) = state.with::<TelescopeState, _, _>(Clone::clone) else {
             return;
         };
-        let theme = ctx.theme;
 
-        let layout = &telescope.layout;
-        let x = layout.x;
-        let y = layout.y;
-        let width = layout.width;
-        let height = layout.height;
+        let x = bounds.x;
+        let y = bounds.y;
+        let width = bounds.width;
+        let height = bounds.height;
 
         let border_style = &theme.popup.border;
         let normal_style = &theme.popup.normal;
@@ -173,35 +179,6 @@ impl OverlayRenderer for TelescopeOverlay {
             buffer.put_char(cx, bottom_y, '─', border_style);
         }
         buffer.put_char(x + width - 1, bottom_y, '╯', border_style);
-    }
-
-    fn bounds(&self, ctx: &RenderContext<'_>) -> OverlayBounds {
-        ctx.state
-            .and_then(|s| {
-                s.plugin_state.with::<TelescopeState, _, _>(|t| {
-                    let layout = &t.layout;
-                    OverlayBounds::new(layout.x, layout.y, layout.width, layout.height)
-                })
-            })
-            .unwrap_or_default()
-    }
-
-    fn cursor_position(&self, ctx: &RenderContext<'_>) -> Option<(u16, u16)> {
-        ctx.state.and_then(|s| {
-            s.plugin_state
-                .with::<TelescopeState, _, _>(|telescope| {
-                    if telescope.active {
-                        let layout = &telescope.layout;
-                        #[allow(clippy::cast_possible_truncation)]
-                        let cursor_x = layout.x + 3 + telescope.cursor_pos as u16;
-                        let cursor_y = layout.y + 1;
-                        Some((cursor_x, cursor_y))
-                    } else {
-                        None
-                    }
-                })
-                .flatten()
-        })
     }
 }
 
@@ -335,8 +312,10 @@ impl Plugin for TelescopePlugin {
             keys![Space 'f' 'k'],
             CommandRef::Registered(command_id::TELESCOPE_KEYMAPS),
         );
+    }
 
-        // Register overlay
-        ctx.register_overlay(TelescopeOverlay);
+    fn init_state(&self, registry: &PluginStateRegistry) {
+        // Register the plugin window
+        registry.register_plugin_window(Arc::new(TelescopePluginWindow));
     }
 }

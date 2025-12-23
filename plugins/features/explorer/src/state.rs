@@ -22,6 +22,8 @@ pub struct ExplorerState {
     pub width: u16,
     /// Scroll offset for the view
     pub scroll_offset: usize,
+    /// Visible height of the explorer window (set during render)
+    pub visible_height: u16,
     /// Current input mode
     pub input_mode: ExplorerInputMode,
     /// Current input buffer (for create/rename/filter)
@@ -34,6 +36,8 @@ pub struct ExplorerState {
     pub selection: ExplorerSelection,
     /// Whether the explorer is currently visible
     pub visible: bool,
+    /// File details popup state
+    pub popup: FileDetailsPopup,
 }
 
 /// Input mode for file operations
@@ -84,6 +88,25 @@ pub struct ExplorerSelection {
     pub anchor_index: Option<usize>,
 }
 
+/// File details popup state
+#[derive(Clone, Debug, Default)]
+pub struct FileDetailsPopup {
+    /// Whether the popup is visible
+    pub visible: bool,
+    /// File/directory name
+    pub name: String,
+    /// Full path
+    pub path: String,
+    /// Type: "file", "directory", "symlink"
+    pub file_type: String,
+    /// Formatted size (for files)
+    pub size: Option<String>,
+    /// Formatted creation time
+    pub created: Option<String>,
+    /// Formatted modification time
+    pub modified: Option<String>,
+}
+
 impl ExplorerState {
     /// Create a new explorer state from a root path
     pub fn new(root_path: PathBuf) -> io::Result<Self> {
@@ -97,12 +120,14 @@ impl ExplorerState {
             filter_text: String::new(),
             width: 30,
             scroll_offset: 0,
+            visible_height: 20, // Default height, updated on render
             input_mode: ExplorerInputMode::None,
             input_buffer: String::new(),
             message: None,
             clipboard: ExplorerClipboard::default(),
             selection: ExplorerSelection::default(),
             visible: false,
+            popup: FileDetailsPopup::default(),
         })
     }
 
@@ -472,15 +497,84 @@ impl ExplorerState {
         Ok(())
     }
 
+    /// Set visible height (called from render)
+    pub const fn set_visible_height(&mut self, height: u16) {
+        self.visible_height = height;
+    }
+
     /// Update scroll offset to keep cursor visible
-    pub const fn update_scroll(&mut self, visible_height: u16) {
-        let height = visible_height as usize;
+    pub const fn update_scroll(&mut self) {
+        let height = self.visible_height as usize;
+        if height == 0 {
+            return;
+        }
 
         // Ensure cursor is visible
         if self.cursor_index < self.scroll_offset {
             self.scroll_offset = self.cursor_index;
         } else if self.cursor_index >= self.scroll_offset + height {
             self.scroll_offset = self.cursor_index.saturating_sub(height) + 1;
+        }
+    }
+
+    /// Show file details popup for the current node
+    pub fn show_file_details(&mut self) {
+        use super::node::{format_datetime, format_size};
+
+        // Extract node data first to avoid borrow conflict
+        let node_info = self.current_node().map(|node| {
+            (
+                node.name.clone(),
+                node.path.display().to_string(),
+                node.is_file(),
+                node.is_dir(),
+                node.is_symlink(),
+                node.size(),
+                node.created(),
+                node.modified(),
+            )
+        });
+
+        if let Some((name, path, is_file, is_dir, is_symlink, size, created, modified)) = node_info
+        {
+            self.popup.visible = true;
+            self.popup.name = name;
+            self.popup.path = path;
+
+            if is_file {
+                self.popup.file_type = "file".to_string();
+                self.popup.size = size.map(format_size);
+                self.popup.created = created.map(format_datetime);
+                self.popup.modified = modified.map(format_datetime);
+            } else if is_dir {
+                self.popup.file_type = "directory".to_string();
+                self.popup.size = None;
+                self.popup.created = None;
+                self.popup.modified = None;
+            } else if is_symlink {
+                self.popup.file_type = "symlink".to_string();
+                self.popup.size = None;
+                self.popup.created = None;
+                self.popup.modified = None;
+            }
+        }
+    }
+
+    /// Close the file details popup
+    pub fn close_popup(&mut self) {
+        self.popup.visible = false;
+    }
+
+    /// Check if popup is visible
+    #[must_use]
+    pub const fn is_popup_visible(&self) -> bool {
+        self.popup.visible
+    }
+
+    /// Sync popup with current cursor position (update content if visible)
+    pub fn sync_popup(&mut self) {
+        if self.popup.visible {
+            self.show_file_details();
         }
     }
 

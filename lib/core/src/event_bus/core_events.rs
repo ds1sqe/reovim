@@ -279,6 +279,24 @@ impl Event for RequestOpenFile {
     }
 }
 
+/// Request to set a register's content
+///
+/// Plugins emit this event to set text into a register. The runtime subscribes
+/// to this event and updates the register (including system clipboard for + register).
+#[derive(Debug, Clone)]
+pub struct RequestSetRegister {
+    /// Register name: None for unnamed, '+' for system clipboard, 'a'-'z' for named
+    pub register: Option<char>,
+    /// Text content to set
+    pub text: String,
+}
+
+impl Event for RequestSetRegister {
+    fn priority(&self) -> u32 {
+        priority::CORE
+    }
+}
+
 // =============================================================================
 // Lifecycle Events
 // =============================================================================

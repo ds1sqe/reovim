@@ -1,27 +1,19 @@
 //! Trait-based overlay system for unified overlay window handling
 //!
-//! This module provides shared traits for overlay windows (completion, telescope,
-//! settings menu, which-key) while allowing each feature to own its positioning
-//! and sizing heuristics.
+//! This module provides shared traits for overlay windows while allowing
+//! each feature to own its positioning and sizing heuristics.
 //!
-//! ## Plugin-Based Overlays
-//!
-//! For plugin-based overlays, use the [`OverlayRenderer`] trait and [`OverlayRegistry`]:
-//! - [`OverlayRenderer`]: Renders directly to `FrameBuffer` for diff-based rendering
-//! - [`OverlayRegistry`]: Stores registered overlays, sorted by z-order
-//!
-//! Plugins register overlays via `PluginContext::register_overlay()`.
+//! Note: Plugin-based overlays now use the unified `PluginWindow` trait
+//! instead of the legacy `OverlayRenderer` system.
 
 mod compositor;
 mod geometry;
-mod registry;
 mod render;
 mod selectable;
 
 pub use {
     compositor::OverlayCompositor,
     geometry::{OverlayBounds, OverlayGeometry},
-    registry::{OverlayRegistry, OverlayRenderer},
     render::OverlayRender,
     selectable::{Scrollable, Selectable},
 };

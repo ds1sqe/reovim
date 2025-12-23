@@ -36,7 +36,7 @@ use crate::{
     visibility::{BufferVisibilitySource, NoOpBufferVisibility},
 };
 
-use super::WindowProvider;
+use super::PluginWindow;
 
 /// Type-erased plugin state container
 ///
@@ -50,8 +50,12 @@ pub struct PluginStateRegistry {
     text_object_source: RwLock<Option<SharedSemanticTextObjectSource>>,
     /// Render stage registry for delayed stage registration from init_state()
     render_stages: RwLock<Option<Arc<RwLock<RenderStageRegistry>>>>,
-    /// Window providers for plugins that want to create windows
-    window_providers: RwLock<Vec<Arc<dyn WindowProvider>>>,
+    /// Plugin windows for unified rendering
+    plugin_windows: RwLock<Vec<Arc<dyn PluginWindow>>>,
+    /// Left panel width (set by left-side plugins like explorer)
+    left_panel_width: RwLock<u16>,
+    /// Right panel width (set by right-side plugins like outline)
+    right_panel_width: RwLock<u16>,
 }
 
 impl std::fmt::Debug for PluginStateRegistry {
@@ -60,13 +64,17 @@ impl std::fmt::Debug for PluginStateRegistry {
         let has_visibility = self.visibility_source.read().is_ok_and(|s| s.is_some());
         let has_text_object = self.text_object_source.read().is_ok_and(|s| s.is_some());
         let has_render_stages = self.render_stages.read().is_ok_and(|s| s.is_some());
-        let window_providers_count = self.window_providers.read().map_or(0, |p| p.len());
+        let plugin_windows_count = self.plugin_windows.read().map_or(0, |p| p.len());
+        let left_panel = self.left_panel_width.read().map_or(0, |w| *w);
+        let right_panel = self.right_panel_width.read().map_or(0, |w| *w);
         f.debug_struct("PluginStateRegistry")
             .field("state_count", &count)
             .field("has_visibility_source", &has_visibility)
             .field("has_text_object_source", &has_text_object)
             .field("has_render_stages", &has_render_stages)
-            .field("window_providers_count", &window_providers_count)
+            .field("plugin_windows_count", &plugin_windows_count)
+            .field("left_panel_width", &left_panel)
+            .field("right_panel_width", &right_panel)
             .finish()
     }
 }
@@ -80,7 +88,9 @@ impl PluginStateRegistry {
             visibility_source: RwLock::new(None),
             text_object_source: RwLock::new(None),
             render_stages: RwLock::new(None),
-            window_providers: RwLock::new(Vec::new()),
+            plugin_windows: RwLock::new(Vec::new()),
+            left_panel_width: RwLock::new(0),
+            right_panel_width: RwLock::new(0),
         }
     }
 
@@ -143,20 +153,53 @@ impl PluginStateRegistry {
         }
     }
 
-    /// Register a window provider
+    /// Register a plugin window
     ///
-    /// Window providers allow plugins to create windows that will be rendered.
-    pub fn register_window_provider(&self, provider: Arc<dyn WindowProvider>) {
-        self.window_providers.write().unwrap().push(provider);
-        tracing::debug!("Registered window provider");
+    /// Plugin windows provide both window configuration and rendering
+    /// through a single unified trait.
+    pub fn register_plugin_window(&self, window: Arc<dyn PluginWindow>) {
+        self.plugin_windows.write().unwrap().push(window);
+        tracing::debug!("Registered plugin window");
     }
 
-    /// Get all registered window providers
+    /// Get all registered plugin windows
     ///
-    /// Returns a vector of all window providers that have been registered.
+    /// Returns a vector of all plugin windows that have been registered.
     #[must_use]
-    pub fn window_providers(&self) -> Vec<Arc<dyn WindowProvider>> {
-        self.window_providers.read().unwrap().clone()
+    pub fn plugin_windows(&self) -> Vec<Arc<dyn PluginWindow>> {
+        self.plugin_windows.read().unwrap().clone()
+    }
+
+    /// Set the left panel width (used by left-side plugins like explorer)
+    ///
+    /// This allows plugins to reserve horizontal space on the left side
+    /// of the editor area. The editor windows will be offset accordingly.
+    pub fn set_left_panel_width(&self, width: u16) {
+        *self.left_panel_width.write().unwrap() = width;
+    }
+
+    /// Get the left panel width
+    ///
+    /// Returns the width reserved by left-side panels (e.g., explorer).
+    #[must_use]
+    pub fn left_panel_width(&self) -> u16 {
+        *self.left_panel_width.read().unwrap()
+    }
+
+    /// Set the right panel width (used by right-side plugins like outline)
+    ///
+    /// This allows plugins to reserve horizontal space on the right side
+    /// of the editor area. The editor windows will be offset accordingly.
+    pub fn set_right_panel_width(&self, width: u16) {
+        *self.right_panel_width.write().unwrap() = width;
+    }
+
+    /// Get the right panel width
+    ///
+    /// Returns the width reserved by right-side panels (e.g., outline).
+    #[must_use]
+    pub fn right_panel_width(&self) -> u16 {
+        *self.right_panel_width.read().unwrap()
     }
 
     /// Register a new plugin state

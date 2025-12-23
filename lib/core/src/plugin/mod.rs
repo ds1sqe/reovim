@@ -29,20 +29,22 @@
 //! ```
 
 mod context;
+mod editor_context;
 mod loader;
 mod runtime_context;
 mod state;
 mod traits;
-mod window_provider;
+mod window;
 
 pub mod builtin;
 
 pub use {
     builtin::{CorePlugin, DefaultPlugins, PythonPlugin, WindowPlugin},
     context::PluginContext,
+    editor_context::{EditorContext, PanelPosition},
     loader::{PluginError, PluginLoader, PluginTuple},
     runtime_context::{RuntimeContext, RuntimeContextBuilder},
     state::PluginStateRegistry,
     traits::{Plugin, PluginId},
-    window_provider::WindowProvider,
+    window::{PluginWindow, Rect, WindowConfig},
 };

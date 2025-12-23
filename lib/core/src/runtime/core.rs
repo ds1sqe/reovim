@@ -82,8 +82,6 @@ pub struct Runtime {
     pub event_bus: Arc<EventBus>,
     /// Plugin state registry for plugin-owned state
     pub plugin_state: Arc<PluginStateRegistry>,
-    /// Overlay registry for plugin-based overlays
-    pub overlay_registry: crate::overlay::OverlayRegistry,
     /// RPC handler registry for plugin-registered RPC methods
     pub rpc_handler_registry: crate::rpc::RpcHandlerRegistry,
     /// Display registry for plugin-provided mode display strings and icons
@@ -159,7 +157,6 @@ impl Runtime {
             modifier_registry,
             keymap,
             component_registry,
-            overlay_registry,
             rpc_handler_registry,
             display_registry,
             render_stages,
@@ -202,7 +199,6 @@ impl Runtime {
             renderer_registry: LanguageRendererRegistry::new(),
             event_bus,
             plugin_state,
-            overlay_registry,
             rpc_handler_registry,
             display_registry,
             render_stages,
@@ -258,6 +254,22 @@ impl Runtime {
                     // Send OpenFileRequest to the runtime event loop
                     let _ = tx.try_send(InnerEvent::OpenFileRequest {
                         path: event.path.clone(),
+                    });
+                    EventResult::Handled
+                });
+        }
+
+        // Subscribe to register set requests from plugins
+        {
+            use crate::event_bus::{EventResult, core_events::RequestSetRegister};
+            let tx = runtime.tx.clone();
+            runtime
+                .event_bus
+                .subscribe::<RequestSetRegister, _>(100, move |event, _ctx| {
+                    tracing::debug!("Runtime: Requesting to set register {:?}", event.register);
+                    let _ = tx.try_send(InnerEvent::SetRegister {
+                        register: event.register,
+                        text: event.text.clone(),
                     });
                     EventResult::Handled
                 });
@@ -808,14 +820,27 @@ impl Runtime {
                     layer: "editor".to_string(),
                 });
 
-        // Get layer info - dynamically query overlay registry
-        let ctx = crate::component::RenderContext::new(
-            self.screen.width(),
-            self.screen.height(),
-            &self.theme,
-            self.color_mode,
-        );
-        let layers = self.screen.layer_info(&self.overlay_registry, &ctx);
+        // Get layer info - just base layers for now
+        // Plugin windows provide their own z-order during rendering
+        let layers = vec![
+            crate::visual::LayerInfo {
+                name: "base".to_string(),
+                z_order: 0,
+                visible: true,
+                bounds: crate::visual::BoundsInfo::new(0, 0, buffer.width(), buffer.height()),
+            },
+            crate::visual::LayerInfo {
+                name: "editor".to_string(),
+                z_order: 2,
+                visible: true,
+                bounds: crate::visual::BoundsInfo::new(
+                    0,
+                    1,
+                    buffer.width(),
+                    buffer.height().saturating_sub(2),
+                ),
+            },
+        ];
 
         // Build plain text
         let plain_text = buffer.to_ascii();

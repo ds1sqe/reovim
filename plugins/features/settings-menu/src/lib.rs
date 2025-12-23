@@ -13,13 +13,13 @@
 //! This plugin is fully self-contained:
 //! - Defines its own command IDs
 //! - Manages its own state via `PluginStateRegistry`
-//! - Renders via `OverlayRenderer` trait
+//! - Renders via `PluginWindow` trait
 //! - Communicates via `EventBus` events
 
 mod commands;
 mod settings_menu;
 
-use std::any::TypeId;
+use std::{any::TypeId, sync::Arc};
 
 // Import unified command-event types
 pub use commands::{
@@ -33,12 +33,14 @@ pub use commands::{
 use reovim_core::{
     bind::{CommandRef, KeymapScope},
     command::id::CommandId,
-    component::RenderContext,
     display::{DisplayInfo, EditModeKey},
     frame::FrameBuffer,
+    highlight::Theme,
     keys,
-    overlay::{OverlayBounds, OverlayRenderer},
-    plugin::{Plugin, PluginContext, PluginId},
+    plugin::{
+        EditorContext, Plugin, PluginContext, PluginId, PluginStateRegistry, PluginWindow, Rect,
+        WindowConfig,
+    },
     ui_component::ComponentId,
 };
 
@@ -73,58 +75,59 @@ pub mod command_id {
     pub const SETTINGS_MENU_QUICK_9: CommandId = CommandId::new("settings_menu_quick_9");
 }
 
-/// Settings menu overlay
-///
-/// Stateless overlay that accesses `SettingsMenuState` through `RenderContext`.
-pub struct SettingsOverlay;
+/// Plugin window for settings menu
+pub struct SettingsPluginWindow;
 
-impl OverlayRenderer for SettingsOverlay {
-    fn id(&self) -> &'static str {
-        "settings"
-    }
+impl PluginWindow for SettingsPluginWindow {
+    fn window_config(
+        &self,
+        state: &Arc<PluginStateRegistry>,
+        _ctx: &EditorContext,
+    ) -> Option<WindowConfig> {
+        state.with::<SettingsMenuState, _, _>(|settings| {
+            if !settings.visible {
+                return None;
+            }
 
-    fn z_order(&self) -> u16 {
-        400
-    }
-
-    fn is_visible(&self, ctx: &RenderContext<'_>) -> bool {
-        ctx.state()
-            .and_then(|s| {
-                s.plugin_state
-                    .with::<SettingsMenuState, _, _>(|m| m.visible)
+            let layout = &settings.layout;
+            Some(WindowConfig {
+                bounds: Rect::new(layout.x, layout.y, layout.width, layout.height),
+                z_order: 400, // Modal settings
+                visible: true,
             })
-            .unwrap_or(false)
+        })?
     }
 
     #[allow(clippy::cast_possible_truncation)]
-    fn render(&self, buffer: &mut FrameBuffer, ctx: &RenderContext<'_>) {
-        let Some(state) = ctx.state() else { return };
-        let Some(settings) = state
-            .plugin_state
-            .with::<SettingsMenuState, _, _>(Clone::clone)
-        else {
+    fn render(
+        &self,
+        state: &Arc<PluginStateRegistry>,
+        _ctx: &EditorContext,
+        buffer: &mut FrameBuffer,
+        bounds: Rect,
+        theme: &Theme,
+    ) {
+        let Some(settings) = state.with::<SettingsMenuState, _, _>(Clone::clone) else {
             return;
         };
-        let theme = ctx.theme;
 
-        let layout = &settings.layout;
         let border_style = &theme.popup.border;
 
         // Top border with title
-        buffer.put_char(layout.x, layout.y, '╭', border_style);
+        buffer.put_char(bounds.x, bounds.y, '╭', border_style);
         let title = " Settings ";
         for (i, ch) in title.chars().enumerate() {
-            buffer.put_char(layout.x + 1 + i as u16, layout.y, ch, border_style);
+            buffer.put_char(bounds.x + 1 + i as u16, bounds.y, ch, border_style);
         }
-        for x in (layout.x + 1 + title.len() as u16)..(layout.x + layout.width - 1) {
-            buffer.put_char(x, layout.y, '─', border_style);
+        for x in (bounds.x + 1 + title.len() as u16)..(bounds.x + bounds.width - 1) {
+            buffer.put_char(x, bounds.y, '─', border_style);
         }
-        buffer.put_char(layout.x + layout.width - 1, layout.y, '╮', border_style);
+        buffer.put_char(bounds.x + bounds.width - 1, bounds.y, '╮', border_style);
 
         // Menu items
         for (row, item) in settings.flat_items.iter().enumerate() {
-            let y = layout.y + 1 + row as u16;
-            if y >= layout.y + layout.height - 1 {
+            let y = bounds.y + 1 + row as u16;
+            if y >= bounds.y + bounds.height - 1 {
                 break;
             }
 
@@ -135,7 +138,7 @@ impl OverlayRenderer for SettingsOverlay {
                 &theme.popup.normal
             };
 
-            buffer.put_char(layout.x, y, '│', border_style);
+            buffer.put_char(bounds.x, y, '│', border_style);
 
             let item_text = match item {
                 FlatItem::SectionHeader(name) => format!(" [{name}] "),
@@ -154,37 +157,26 @@ impl OverlayRenderer for SettingsOverlay {
             };
 
             for (i, ch) in item_text.chars().enumerate() {
-                let x = layout.x + 1 + i as u16;
-                if x < layout.x + layout.width - 1 {
+                let x = bounds.x + 1 + i as u16;
+                if x < bounds.x + bounds.width - 1 {
                     buffer.put_char(x, y, ch, style);
                 }
             }
 
-            for x in (layout.x + 1 + item_text.len() as u16)..(layout.x + layout.width - 1) {
+            for x in (bounds.x + 1 + item_text.len() as u16)..(bounds.x + bounds.width - 1) {
                 buffer.put_char(x, y, ' ', style);
             }
 
-            buffer.put_char(layout.x + layout.width - 1, y, '│', border_style);
+            buffer.put_char(bounds.x + bounds.width - 1, y, '│', border_style);
         }
 
         // Bottom border
-        let bottom_y = layout.y + layout.height - 1;
-        buffer.put_char(layout.x, bottom_y, '╰', border_style);
-        for x in (layout.x + 1)..(layout.x + layout.width - 1) {
+        let bottom_y = bounds.y + bounds.height - 1;
+        buffer.put_char(bounds.x, bottom_y, '╰', border_style);
+        for x in (bounds.x + 1)..(bounds.x + bounds.width - 1) {
             buffer.put_char(x, bottom_y, '─', border_style);
         }
-        buffer.put_char(layout.x + layout.width - 1, bottom_y, '╯', border_style);
-    }
-
-    fn bounds(&self, ctx: &RenderContext<'_>) -> OverlayBounds {
-        ctx.state()
-            .and_then(|s| {
-                s.plugin_state.with::<SettingsMenuState, _, _>(|m| {
-                    let layout = &m.layout;
-                    OverlayBounds::new(layout.x, layout.y, layout.width, layout.height)
-                })
-            })
-            .unwrap_or_default()
+        buffer.put_char(bounds.x + bounds.width - 1, bottom_y, '╯', border_style);
     }
 }
 
@@ -251,9 +243,6 @@ impl Plugin for SettingsMenuPlugin {
         let _ = ctx.register_command(SettingsMenuQuick8);
         let _ = ctx.register_command(SettingsMenuQuick9);
 
-        // Register overlay
-        ctx.register_overlay(SettingsOverlay);
-
         // Register keybindings
         let editor_normal = KeymapScope::editor_normal();
 
@@ -263,5 +252,10 @@ impl Plugin for SettingsMenuPlugin {
             keys![Space 's'],
             CommandRef::Registered(command_id::SETTINGS_MENU_OPEN),
         );
+    }
+
+    fn init_state(&self, registry: &PluginStateRegistry) {
+        // Register the plugin window
+        registry.register_plugin_window(Arc::new(SettingsPluginWindow));
     }
 }

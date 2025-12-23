@@ -1,15 +1,15 @@
 //! Window content source types
 //!
-//! Defines how windows get their content - from file buffers,
-//! plugin-provided buffers, or direct overlay rendering.
+//! Defines how windows get their content - from file buffers
+//! or plugin-provided buffers.
 
 mod provider;
 
 pub use provider::{BufferContext, InputResult, PluginBufferProvider};
 
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
-use crate::{overlay::OverlayRenderer, screen::window::Anchor};
+use crate::screen::window::Anchor;
 
 /// Source of content for a window
 #[derive(Clone)]
@@ -25,12 +25,6 @@ pub enum WindowContentSource {
         buffer_id: usize,
         buffer_anchor: Anchor,
         provider: Arc<dyn PluginBufferProvider>,
-    },
-
-    /// Direct overlay rendering (lightweight UI like completion popup)
-    Overlay {
-        overlay_id: &'static str,
-        renderer: Arc<RwLock<dyn OverlayRenderer>>,
     },
 }
 
@@ -53,10 +47,6 @@ impl std::fmt::Debug for WindowContentSource {
                 .debug_struct("PluginBuffer")
                 .field("buffer_id", buffer_id)
                 .field("buffer_anchor", buffer_anchor)
-                .finish(),
-            Self::Overlay { overlay_id, .. } => f
-                .debug_struct("Overlay")
-                .field("overlay_id", overlay_id)
                 .finish(),
         }
     }

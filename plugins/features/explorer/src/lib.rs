@@ -88,18 +88,24 @@ pub mod command_id {
     pub const CONFIRM_INPUT: CommandId = CommandId::new("explorer_confirm_input");
     pub const CANCEL_INPUT: CommandId = CommandId::new("explorer_cancel_input");
     pub const INPUT_BACKSPACE: CommandId = CommandId::new("explorer_input_backspace");
+
+    // File info popup
+    pub const SHOW_INFO: CommandId = CommandId::new("explorer_show_info");
+    pub const CLOSE_POPUP: CommandId = CommandId::new("explorer_close_popup");
+    pub const COPY_PATH: CommandId = CommandId::new("explorer_copy_path");
 }
 
 // Plugin unified command-event types
 pub use command::{
     ExplorerCancelInput, ExplorerClearFilter, ExplorerClose, ExplorerCloseParent,
-    ExplorerConfirmInput, ExplorerCreateDir, ExplorerCreateFile, ExplorerCursorDown,
-    ExplorerCursorUp, ExplorerCut, ExplorerDelete, ExplorerExitVisual, ExplorerFocusEditor,
-    ExplorerGoToParent, ExplorerGotoFirst, ExplorerGotoLast, ExplorerInputBackspace,
-    ExplorerInputChar, ExplorerOpenNode, ExplorerPageDown, ExplorerPageUp, ExplorerPaste,
-    ExplorerRefresh, ExplorerRename, ExplorerSelectAll, ExplorerStartFilter, ExplorerToggle,
-    ExplorerToggleHidden, ExplorerToggleNode, ExplorerToggleSelect, ExplorerToggleSizes,
-    ExplorerVisualMode, ExplorerYank,
+    ExplorerClosePopup, ExplorerConfirmInput, ExplorerCopyPath, ExplorerCreateDir,
+    ExplorerCreateFile, ExplorerCursorDown, ExplorerCursorUp, ExplorerCut, ExplorerDelete,
+    ExplorerExitVisual, ExplorerFocusEditor, ExplorerGoToParent, ExplorerGotoFirst,
+    ExplorerGotoLast, ExplorerInputBackspace, ExplorerInputChar, ExplorerOpenNode,
+    ExplorerPageDown, ExplorerPageUp, ExplorerPaste, ExplorerRefresh, ExplorerRename,
+    ExplorerSelectAll, ExplorerShowInfo, ExplorerStartFilter, ExplorerToggle, ExplorerToggleHidden,
+    ExplorerToggleNode, ExplorerToggleSelect, ExplorerToggleSizes, ExplorerVisualMode,
+    ExplorerYank,
 };
 
 /// File explorer plugin
@@ -158,9 +164,10 @@ impl Plugin for ExplorerPlugin {
             tracing::error!("ExplorerPlugin: failed to create ExplorerState");
         }
 
-        // Register window provider so the explorer can create its window
-        registry.register_window_provider(Arc::new(window::ExplorerWindowProvider));
-        tracing::info!("ExplorerPlugin: registered window provider");
+        // Register plugin windows
+        registry.register_plugin_window(Arc::new(window::ExplorerPluginWindow));
+        registry.register_plugin_window(Arc::new(window::FileDetailsPluginWindow));
+        tracing::info!("ExplorerPlugin: registered plugin windows");
     }
 
     fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {
@@ -170,11 +177,13 @@ impl Plugin for ExplorerPlugin {
             ui_component::ComponentId,
         };
 
-        // Navigation events
+        // Navigation events (sync popup with cursor if visible)
         let state_clone = Arc::clone(&state);
         bus.subscribe::<ExplorerCursorUp, _>(100, move |event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.move_cursor(-(event.count as isize));
+                s.update_scroll();
+                s.sync_popup();
             });
             ctx.request_render();
             EventResult::Handled
@@ -184,6 +193,8 @@ impl Plugin for ExplorerPlugin {
         bus.subscribe::<ExplorerCursorDown, _>(100, move |event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.move_cursor(event.count as isize);
+                s.update_scroll();
+                s.sync_popup();
             });
             ctx.request_render();
             EventResult::Handled
@@ -192,7 +203,9 @@ impl Plugin for ExplorerPlugin {
         let state_clone = Arc::clone(&state);
         bus.subscribe::<ExplorerPageUp, _>(100, move |_event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                s.move_page(20, false); // TODO: get actual height
+                s.move_page(s.visible_height, false);
+                s.update_scroll();
+                s.sync_popup();
             });
             ctx.request_render();
             EventResult::Handled
@@ -201,7 +214,9 @@ impl Plugin for ExplorerPlugin {
         let state_clone = Arc::clone(&state);
         bus.subscribe::<ExplorerPageDown, _>(100, move |_event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                s.move_page(20, true); // TODO: get actual height
+                s.move_page(s.visible_height, true);
+                s.update_scroll();
+                s.sync_popup();
             });
             ctx.request_render();
             EventResult::Handled
@@ -211,6 +226,8 @@ impl Plugin for ExplorerPlugin {
         bus.subscribe::<ExplorerGotoFirst, _>(100, move |_event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.move_to_first();
+                s.update_scroll();
+                s.sync_popup();
             });
             ctx.request_render();
             EventResult::Handled
@@ -220,6 +237,8 @@ impl Plugin for ExplorerPlugin {
         bus.subscribe::<ExplorerGotoLast, _>(100, move |_event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.move_to_last();
+                s.update_scroll();
+                s.sync_popup();
             });
             ctx.request_render();
             EventResult::Handled
@@ -229,6 +248,8 @@ impl Plugin for ExplorerPlugin {
         bus.subscribe::<ExplorerGoToParent, _>(100, move |_event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.go_to_parent();
+                s.update_scroll();
+                s.sync_popup();
             });
             ctx.request_render();
             EventResult::Handled
@@ -457,6 +478,20 @@ impl Plugin for ExplorerPlugin {
         // Input events
         let state_clone = Arc::clone(&state);
         bus.subscribe::<ExplorerConfirmInput, _>(100, move |_event, ctx| {
+            // Check if popup is visible
+            let popup_visible = state_clone
+                .with::<ExplorerState, _, _>(|s| s.is_popup_visible())
+                .unwrap_or(false);
+
+            if popup_visible {
+                // Close the popup
+                state_clone.with_mut::<ExplorerState, _, _>(|s| {
+                    s.close_popup();
+                });
+                ctx.request_render();
+                return EventResult::Handled;
+            }
+
             // Check if in input mode
             let in_input_mode = state_clone
                 .with::<ExplorerState, _, _>(|s| {
@@ -484,6 +519,20 @@ impl Plugin for ExplorerPlugin {
 
         let state_clone = Arc::clone(&state);
         bus.subscribe::<ExplorerCancelInput, _>(100, move |_event, ctx| {
+            // Check if popup is visible
+            let popup_visible = state_clone
+                .with::<ExplorerState, _, _>(|s| s.is_popup_visible())
+                .unwrap_or(false);
+
+            if popup_visible {
+                // Close the popup
+                state_clone.with_mut::<ExplorerState, _, _>(|s| {
+                    s.close_popup();
+                });
+                ctx.request_render();
+                return EventResult::Handled;
+            }
+
             // Check if in input mode
             let in_input_mode = state_clone
                 .with::<ExplorerState, _, _>(|s| {
@@ -577,11 +626,18 @@ impl Plugin for ExplorerPlugin {
                 explorer.toggle_visibility();
             });
 
-            let new_visible = state_clone
-                .with::<ExplorerState, _, _>(|e| e.visible)
-                .unwrap_or(false);
+            let (new_visible, width) = state_clone
+                .with::<ExplorerState, _, _>(|e| (e.visible, e.width))
+                .unwrap_or((false, 0));
 
             tracing::info!("ExplorerPlugin: Explorer toggled: {} -> {}", old_visible, new_visible);
+
+            // Update left panel width for blocking layout
+            if new_visible {
+                state_clone.set_left_panel_width(width);
+            } else {
+                state_clone.set_left_panel_width(0);
+            }
 
             // Change focus based on visibility
             if new_visible {
@@ -612,6 +668,9 @@ impl Plugin for ExplorerPlugin {
                 explorer.visible = false;
             });
 
+            // Clear left panel width since explorer is hidden
+            state_clone.set_left_panel_width(0);
+
             ctx.emit(RequestFocusChange {
                 target: ComponentId::EDITOR,
             });
@@ -630,6 +689,59 @@ impl Plugin for ExplorerPlugin {
                 target: ComponentId::EDITOR,
             });
             tracing::info!("ExplorerPlugin: Requesting focus change to editor");
+
+            ctx.request_render();
+            EventResult::Handled
+        });
+
+        // Show file details popup
+        let state_clone = Arc::clone(&state);
+        bus.subscribe::<ExplorerShowInfo, _>(100, move |_event, ctx| {
+            state_clone.with_mut::<ExplorerState, _, _>(|s| {
+                s.show_file_details();
+            });
+            ctx.request_render();
+            EventResult::Handled
+        });
+
+        // Close file details popup
+        let state_clone = Arc::clone(&state);
+        bus.subscribe::<ExplorerClosePopup, _>(100, move |_event, ctx| {
+            state_clone.with_mut::<ExplorerState, _, _>(|s| {
+                s.close_popup();
+            });
+            ctx.request_render();
+            EventResult::Handled
+        });
+
+        // Copy path to clipboard
+        let state_clone = Arc::clone(&state);
+        bus.subscribe::<ExplorerCopyPath, _>(100, move |_event, ctx| {
+            use reovim_core::event_bus::core_events::RequestSetRegister;
+
+            let path = state_clone
+                .with::<ExplorerState, _, _>(|s| {
+                    s.current_node()
+                        .map(|n| n.path.to_string_lossy().to_string())
+                })
+                .flatten();
+
+            if let Some(path) = path {
+                // Set both unnamed register and system clipboard
+                ctx.emit(RequestSetRegister {
+                    register: None, // Unnamed register for 'p' paste
+                    text: path.clone(),
+                });
+                ctx.emit(RequestSetRegister {
+                    register: Some('+'), // System clipboard
+                    text: path,
+                });
+
+                state_clone.with_mut::<ExplorerState, _, _>(|s| {
+                    s.close_popup();
+                    s.message = Some("Path copied to clipboard".to_string());
+                });
+            }
 
             ctx.request_render();
             EventResult::Handled
@@ -670,6 +782,9 @@ impl ExplorerPlugin {
         let _ = ctx.register_command(ExplorerToggleSizes);
         let _ = ctx.register_command(ExplorerClose);
         let _ = ctx.register_command(ExplorerFocusEditor);
+        let _ = ctx.register_command(ExplorerShowInfo);
+        let _ = ctx.register_command(ExplorerClosePopup);
+        let _ = ctx.register_command(ExplorerCopyPath);
     }
 
     fn register_file_commands(&self, ctx: &PluginContext) {
@@ -791,7 +906,12 @@ impl ExplorerPlugin {
         ctx.bind_key_scoped(
             explorer_normal.clone(),
             keys!['s'],
-            CommandRef::Registered(command_id::TOGGLE_SIZES),
+            CommandRef::Registered(command_id::SHOW_INFO),
+        );
+        ctx.bind_key_scoped(
+            explorer_normal.clone(),
+            keys!['t'],
+            CommandRef::Registered(command_id::COPY_PATH),
         );
         ctx.bind_key_scoped(
             explorer_normal.clone(),
