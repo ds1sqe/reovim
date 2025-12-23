@@ -90,6 +90,7 @@ impl KeymapsPicker {
                 // Generic interactor handling - plugins register their own display names
                 SubModeKind::Interactor(_) => "Interactor",
             },
+            KeymapScope::DefaultNormal => "Default (Normal)",
         }
     }
 

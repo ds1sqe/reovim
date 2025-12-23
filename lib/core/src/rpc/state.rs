@@ -186,7 +186,7 @@ impl From<&crate::modd::ModeState> for ModeSnapshot {
             focus: focus.to_string(),
             edit_mode,
             sub_mode,
-            display: mode.display_string().to_string(),
+            display: mode.hierarchical_display(),
         }
     }
 }

@@ -123,6 +123,63 @@ This prevents the cursor highlight from appearing in the wrong window when multi
 - `lib/core/src/runtime/handlers.rs` - `handle_window_navigate()` for cursor handoff
 - `lib/core/src/screen/mod.rs` - Screen with window collection
 
+## Window Mode (Ctrl-W)
+
+Window mode is a vim-style sub-mode for window operations. Enter it with `Ctrl-W` from any component in Normal mode.
+
+### Entering Window Mode
+
+Press `Ctrl-W` from:
+- Editor (Normal mode)
+- Explorer (Normal mode)
+- Any plugin window (via `DefaultNormal` fallback)
+
+The status line will show: `Editor | Normal | Window`
+
+### Window Mode Keybindings
+
+| Key | Action | Description |
+|-----|--------|-------------|
+| `h/j/k/l` | Focus | Navigate to adjacent window |
+| `H/J/K/L` | Move | Relocate current window |
+| `x` + `h/j/k/l` | Swap | Exchange with adjacent window |
+| `s` | Split horizontal | Create horizontal split |
+| `v` | Split vertical | Create vertical split |
+| `c` | Close | Close current window |
+| `o` | Only | Close all other windows |
+| `=` | Equalize | Balance window sizes |
+| `Escape` | Cancel | Exit window mode |
+
+### Auto-Exit Behavior
+
+Window mode automatically exits back to Normal mode after executing any command. This follows vim's behavior where `Ctrl-W h` (focus left) is a complete action.
+
+### DefaultNormal Fallback
+
+The `Ctrl-W` binding is registered in the `DefaultNormal` keymap scope, which acts as a fallback for all components in Normal mode. This allows window operations to work from any plugin window without each plugin needing to register the binding.
+
+**Lookup order:**
+1. Component-specific scope (e.g., `explorer_normal`)
+2. `DefaultNormal` scope (fallback)
+
+### Implementation Details
+
+Window mode uses `SubMode::Interactor(ComponentId::WINDOW)` pattern:
+
+```rust
+// Enter window mode
+CommandResult::ModeChange(
+    ModeState::new().with_sub(SubMode::Interactor(ComponentId::WINDOW))
+)
+
+// Window mode commands return DeferToRuntime and auto-exit
+CommandResult::DeferToRuntime(DeferredAction::Window(
+    WindowAction::FocusDirection { direction }
+))
+```
+
+The runtime handles window actions and exits window mode after execution.
+
 ## See Also
 
 - tmux pane/window model

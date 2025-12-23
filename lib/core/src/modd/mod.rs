@@ -21,6 +21,8 @@ impl ComponentId {
     pub const STATUS_LINE: Self = Self("status_line");
     /// Tab line component (top bar with tabs)
     pub const TAB_LINE: Self = Self("tab_line");
+    /// Window mode (Ctrl-W)
+    pub const WINDOW: Self = Self("window");
 }
 
 impl std::fmt::Display for ComponentId {
@@ -277,41 +279,64 @@ impl ModeState {
     }
 
     /// Check if the mode accepts character input (insert mode or command mode)
+    ///
+    /// Note: Window mode (`SubMode::Interactor(ComponentId::WINDOW)`) does NOT accept char input -
+    /// it uses the keymap for commands like h/j/k/l to navigate windows.
     #[must_use]
-    pub const fn accepts_char_input(&self) -> bool {
-        self.is_insert() || self.is_command() || matches!(self.sub_mode, SubMode::Interactor(_))
+    pub fn accepts_char_input(&self) -> bool {
+        // Insert mode or Command mode accept char input
+        if self.is_insert() || self.is_command() {
+            return true;
+        }
+
+        // Some Interactor sub-modes accept char input (e.g., Leap for search chars)
+        // but Window mode does NOT - it uses keymap commands
+        matches!(self.sub_mode, SubMode::Interactor(id) if id != ComponentId::WINDOW)
     }
 
-    /// Get display string for status line (orthogonal format)
+    /// Build hierarchical mode display: "Kind | Mode | `SubMode`"
     ///
-    /// Format: ` EDIT_MODE ` - shows edit mode only.
-    /// For plugin-specific display, use `DisplayRegistry`.
+    /// Format: ` Kind | Mode ` or ` Kind | Mode | SubMode `
+    /// Examples: `Editor | Normal`, `Editor | Normal | Window`, `Explorer | Insert`
     #[must_use]
-    pub fn display_string(&self) -> &'static str {
-        // Sub-mode display (if active)
-        match &self.sub_mode {
-            SubMode::Command => return " COMMAND ",
-            SubMode::OperatorPending { .. } => return " OPERATOR ",
-            SubMode::Interactor(_) => return " INTERACTOR ",
-            SubMode::None => {}
+    pub fn hierarchical_display(&self) -> String {
+        let mut parts = Vec::with_capacity(3);
+
+        // Part 1: Kind (interactor)
+        let kind = match self.interactor_id.0 {
+            "editor" => "Editor",
+            "command_line" => "Cmd",
+            "explorer" => "Explorer",
+            "telescope" => "Telescope",
+            other => other,
+        };
+        parts.push(kind);
+
+        // Part 2: Edit mode
+        let edit = match &self.edit_mode {
+            EditMode::Normal => "Normal",
+            EditMode::Insert(_) => "Insert",
+            EditMode::Visual(VisualVariant::Char) => "Visual",
+            EditMode::Visual(VisualVariant::Line) => "V-Line",
+            EditMode::Visual(VisualVariant::Block) => "V-Block",
+        };
+        parts.push(edit);
+
+        // Part 3: Sub-mode (if active)
+        let sub = match &self.sub_mode {
+            SubMode::None => None,
+            SubMode::Command => Some("Command"),
+            SubMode::OperatorPending { .. } => Some("Operator"),
+            SubMode::Interactor(id) => Some(match id.0 {
+                "window" => "Window",
+                "leap" => "Leap",
+                other => other,
+            }),
+        };
+        if let Some(s) = sub {
+            parts.push(s);
         }
 
-        // Edit mode display (generic, no plugin-specific knowledge)
-        let is_editor = self.interactor_id.0 == "editor";
-
-        match &self.edit_mode {
-            EditMode::Normal if is_editor => " NORMAL ",
-            EditMode::Insert(_) if is_editor => " INSERT ",
-            EditMode::Visual(VisualVariant::Char) if is_editor => " VISUAL ",
-            EditMode::Visual(VisualVariant::Line) if is_editor => " V-LINE ",
-            EditMode::Visual(VisualVariant::Block) if is_editor => " V-BLOCK ",
-            // Non-editor components: show edit mode only
-            // Plugin-specific display should use DisplayRegistry
-            EditMode::Normal => " NORMAL ",
-            EditMode::Insert(_) => " INSERT ",
-            EditMode::Visual(VisualVariant::Char) => " VISUAL ",
-            EditMode::Visual(VisualVariant::Line) => " V-LINE ",
-            EditMode::Visual(VisualVariant::Block) => " V-BLOCK ",
-        }
+        parts.join(" | ")
     }
 }

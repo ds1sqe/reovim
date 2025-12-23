@@ -44,6 +44,25 @@ use crate::{
             EnterVisualLineModeCommand,
             EnterVisualModeCommand,
             EnterYankOperatorCommand,
+            // Window Mode
+            EnterWindowModeCommand,
+            WindowModeCloseCommand,
+            WindowModeEqualizeCommand,
+            WindowModeFocusDownCommand,
+            WindowModeFocusLeftCommand,
+            WindowModeFocusRightCommand,
+            WindowModeFocusUpCommand,
+            WindowModeMoveDownCommand,
+            WindowModeMoveLeftCommand,
+            WindowModeMoveRightCommand,
+            WindowModeMoveUpCommand,
+            WindowModeOnlyCommand,
+            WindowModeSplitHCommand,
+            WindowModeSplitVCommand,
+            WindowModeSwapDownCommand,
+            WindowModeSwapLeftCommand,
+            WindowModeSwapRightCommand,
+            WindowModeSwapUpCommand,
             // Navigation
             GotoFirstLineCommand,
             GotoLastLineCommand,
@@ -120,6 +139,7 @@ impl Plugin for CorePlugin {
         self.register_jump_commands(ctx);
         self.register_buffer_commands(ctx);
         self.register_system_commands(ctx);
+        self.register_window_mode_commands(ctx);
         self.register_builtin_displays(ctx);
         self.register_default_keybindings(ctx);
     }
@@ -209,6 +229,36 @@ impl CorePlugin {
     fn register_system_commands(&self, ctx: &PluginContext) {
         let _ = ctx.register_command(QuitCommand);
         let _ = ctx.register_command(NoopCommand);
+    }
+
+    fn register_window_mode_commands(&self, ctx: &PluginContext) {
+        // Window mode entry
+        let _ = ctx.register_command(EnterWindowModeCommand);
+
+        // Window mode navigation (exit after)
+        let _ = ctx.register_command(WindowModeFocusLeftCommand);
+        let _ = ctx.register_command(WindowModeFocusDownCommand);
+        let _ = ctx.register_command(WindowModeFocusUpCommand);
+        let _ = ctx.register_command(WindowModeFocusRightCommand);
+
+        // Window mode move (exit after)
+        let _ = ctx.register_command(WindowModeMoveLeftCommand);
+        let _ = ctx.register_command(WindowModeMoveDownCommand);
+        let _ = ctx.register_command(WindowModeMoveUpCommand);
+        let _ = ctx.register_command(WindowModeMoveRightCommand);
+
+        // Window mode swap (exit after)
+        let _ = ctx.register_command(WindowModeSwapLeftCommand);
+        let _ = ctx.register_command(WindowModeSwapDownCommand);
+        let _ = ctx.register_command(WindowModeSwapUpCommand);
+        let _ = ctx.register_command(WindowModeSwapRightCommand);
+
+        // Window mode split/close (exit after)
+        let _ = ctx.register_command(WindowModeSplitHCommand);
+        let _ = ctx.register_command(WindowModeSplitVCommand);
+        let _ = ctx.register_command(WindowModeCloseCommand);
+        let _ = ctx.register_command(WindowModeOnlyCommand);
+        let _ = ctx.register_command(WindowModeEqualizeCommand);
     }
 
     /// Register built-in display strings and icons for core modes
@@ -530,6 +580,117 @@ impl CorePlugin {
             command_mode,
             keys![Backspace],
             CommandRef::Registered(CommandId::new("command_line_backspace")),
+        );
+
+        // === Default Normal bindings (fallback for all components) ===
+        let default_normal = KeymapScope::DefaultNormal;
+        ctx.bind_key_scoped(
+            default_normal,
+            keys![(Ctrl 'w')],
+            CommandRef::Registered(CommandId::new("enter_window_mode")),
+        );
+
+        // === Window mode keybindings ===
+        let window_mode = KeymapScope::SubMode(SubModeKind::Interactor(ComponentId::WINDOW));
+
+        // Navigation (h/j/k/l)
+        ctx.bind_key_scoped(
+            window_mode.clone(),
+            keys!['h'],
+            CommandRef::Registered(CommandId::new("window_mode_focus_left")),
+        );
+        ctx.bind_key_scoped(
+            window_mode.clone(),
+            keys!['j'],
+            CommandRef::Registered(CommandId::new("window_mode_focus_down")),
+        );
+        ctx.bind_key_scoped(
+            window_mode.clone(),
+            keys!['k'],
+            CommandRef::Registered(CommandId::new("window_mode_focus_up")),
+        );
+        ctx.bind_key_scoped(
+            window_mode.clone(),
+            keys!['l'],
+            CommandRef::Registered(CommandId::new("window_mode_focus_right")),
+        );
+
+        // Move window (H/J/K/L)
+        ctx.bind_key_scoped(
+            window_mode.clone(),
+            keys!['H'],
+            CommandRef::Registered(CommandId::new("window_mode_move_left")),
+        );
+        ctx.bind_key_scoped(
+            window_mode.clone(),
+            keys!['J'],
+            CommandRef::Registered(CommandId::new("window_mode_move_down")),
+        );
+        ctx.bind_key_scoped(
+            window_mode.clone(),
+            keys!['K'],
+            CommandRef::Registered(CommandId::new("window_mode_move_up")),
+        );
+        ctx.bind_key_scoped(
+            window_mode.clone(),
+            keys!['L'],
+            CommandRef::Registered(CommandId::new("window_mode_move_right")),
+        );
+
+        // Swap (x + direction)
+        ctx.bind_key_scoped(
+            window_mode.clone(),
+            keys!['x' 'h'],
+            CommandRef::Registered(CommandId::new("window_mode_swap_left")),
+        );
+        ctx.bind_key_scoped(
+            window_mode.clone(),
+            keys!['x' 'j'],
+            CommandRef::Registered(CommandId::new("window_mode_swap_down")),
+        );
+        ctx.bind_key_scoped(
+            window_mode.clone(),
+            keys!['x' 'k'],
+            CommandRef::Registered(CommandId::new("window_mode_swap_up")),
+        );
+        ctx.bind_key_scoped(
+            window_mode.clone(),
+            keys!['x' 'l'],
+            CommandRef::Registered(CommandId::new("window_mode_swap_right")),
+        );
+
+        // Split/Close/Other
+        ctx.bind_key_scoped(
+            window_mode.clone(),
+            keys!['s'],
+            CommandRef::Registered(CommandId::new("window_mode_split_h")),
+        );
+        ctx.bind_key_scoped(
+            window_mode.clone(),
+            keys!['v'],
+            CommandRef::Registered(CommandId::new("window_mode_split_v")),
+        );
+        ctx.bind_key_scoped(
+            window_mode.clone(),
+            keys!['c'],
+            CommandRef::Registered(CommandId::new("window_mode_close")),
+        );
+        ctx.bind_key_scoped(
+            window_mode.clone(),
+            keys!['o'],
+            CommandRef::Registered(CommandId::new("window_mode_only")),
+        );
+        ctx.bind_key_scoped(
+            window_mode.clone(),
+            keys!['='],
+            CommandRef::Registered(CommandId::new("window_mode_equalize")),
+        );
+
+        // Cancel - exit window mode
+        ctx.bind_key_scoped(
+            window_mode,
+            keys![Escape],
+            CommandRef::Registered(CommandId::new("enter_normal_mode")),
         );
     }
 }

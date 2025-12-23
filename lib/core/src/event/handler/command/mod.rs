@@ -19,7 +19,7 @@ use {
             WordTextObject, WordType,
         },
     },
-    std::{collections::HashMap, time::Duration},
+    std::time::Duration,
     tokio::sync::{broadcast::Receiver, mpsc::Sender, watch},
 };
 
@@ -74,8 +74,14 @@ impl CommandHandler {
         self.local_mode = mode_state;
     }
 
-    fn get_keymap_for_mode(&self) -> &HashMap<KeySequence, KeyMapInner> {
-        self.keymap.get_keymap_for_mode(&self.local_mode)
+    /// Lookup a binding with fallback support
+    fn lookup_binding(&self, keys: &KeySequence) -> Option<&KeyMapInner> {
+        self.keymap.lookup_binding(&self.local_mode, keys)
+    }
+
+    /// Check if keys are a valid prefix (with fallback support)
+    fn is_valid_prefix(&self, keys: &KeySequence) -> bool {
+        self.keymap.is_valid_prefix(&self.local_mode, keys)
     }
 
     /// Handle operator-pending mode specially
@@ -300,11 +306,8 @@ impl CommandHandler {
             self.pending_keys
         );
 
-        let keymap = self.get_keymap_for_mode();
-        tracing::info!("Keymap has {} bindings for current scope", keymap.len());
-
-        // Check for exact match
-        if let Some(inner) = keymap.get(&self.pending_keys) {
+        // Check for exact match (with fallback to DefaultNormal for plugin windows)
+        if let Some(inner) = self.lookup_binding(&self.pending_keys.clone()) {
             tracing::info!(
                 "Found binding for key={}, has_command={}",
                 &self.pending_keys,
@@ -322,11 +325,8 @@ impl CommandHandler {
         tracing::info!("No exact binding found for key={}", &self.pending_keys);
 
         // Check if current pending_keys is a valid prefix for any binding
-        let is_valid_prefix = keymap
-            .keys()
-            .any(|k| k.starts_with(&self.pending_keys) && k != &self.pending_keys);
-
-        if is_valid_prefix {
+        // (with fallback to DefaultNormal for plugin windows)
+        if self.is_valid_prefix(&self.pending_keys.clone()) {
             // Valid prefix, wait for more keys (which-key will trigger on timeout)
             return (None, true);
         }

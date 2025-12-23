@@ -166,11 +166,11 @@ impl DisplayRegistry {
         self.interactors.get(&mode.interactor_id)
     }
 
-    /// Get display string for a mode, with fallback
+    /// Get display string for a mode, with fallback to hierarchical display
     #[must_use]
-    pub fn display_string(&self, mode: &ModeState) -> &'static str {
+    pub fn display_string(&self, mode: &ModeState) -> String {
         self.get_display(mode)
-            .map_or_else(|| mode.display_string(), |info| info.display_string)
+            .map_or_else(|| mode.hierarchical_display(), |info| info.display_string.to_string())
     }
 
     /// Get icon for a mode, with fallback
@@ -283,11 +283,11 @@ mod tests {
 
         // Sub-mode takes priority
         let command_mode = ModeState::command();
-        assert_eq!(registry.display_string(&command_mode), " COMMAND ");
+        assert_eq!(registry.display_string(&command_mode).as_str(), " COMMAND ");
 
         // Component + mode is second priority
         let normal_mode = ModeState::normal();
-        assert_eq!(registry.display_string(&normal_mode), " NORMAL ");
+        assert_eq!(registry.display_string(&normal_mode).as_str(), " NORMAL ");
     }
 
     #[test]
@@ -297,15 +297,15 @@ mod tests {
 
         // Check editor normal mode
         let normal = ModeState::normal();
-        assert_eq!(registry.display_string(&normal), " NORMAL ");
+        assert_eq!(registry.display_string(&normal).as_str(), " NORMAL ");
         assert_eq!(registry.icon(&normal), "󰆾 ");
 
         // Check command mode
         let command = ModeState::command();
-        assert_eq!(registry.display_string(&command), " COMMAND ");
+        assert_eq!(registry.display_string(&command).as_str(), " COMMAND ");
 
         // Check operator pending mode
         let op = ModeState::operator_pending(crate::modd::OperatorType::Delete, None);
-        assert_eq!(registry.display_string(&op), " OPERATOR ");
+        assert_eq!(registry.display_string(&op).as_str(), " OPERATOR ");
     }
 }

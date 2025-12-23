@@ -48,6 +48,9 @@ pub enum KeymapScope {
     Component { id: ComponentId, mode: EditModeKind },
     /// Global sub-mode scope (applies across components)
     SubMode(SubModeKind),
+    /// Default fallback for any component in Normal mode
+    /// Used for bindings like Ctrl-W that should work in all plugin windows
+    DefaultNormal,
 }
 
 impl KeymapScope {
@@ -309,6 +312,7 @@ impl KeyMap {
         let mut km = Self::new();
         km.setup_editor_keybindings();
         km.setup_submode_keybindings();
+        km.setup_default_normal_keybindings();
         km
     }
 
@@ -375,6 +379,57 @@ impl KeyMap {
     pub fn get_keymap_for_mode(&self, mode: &ModeState) -> &HashMap<KeySequence, KeyMapInner> {
         let scope = Self::mode_to_scope(mode);
         self.maps.get(&scope).unwrap_or(&EMPTY_MAP)
+    }
+
+    /// Lookup a binding with fallback to `DefaultNormal` scope
+    ///
+    /// For Component scopes in Normal mode, this checks:
+    /// 1. The specific component scope first
+    /// 2. Falls back to `DefaultNormal` if not found
+    ///
+    /// This allows bindings like Ctrl-W to work in all plugin windows.
+    #[must_use]
+    pub fn lookup_binding(&self, mode: &ModeState, keys: &KeySequence) -> Option<&KeyMapInner> {
+        let scope = Self::mode_to_scope(mode);
+
+        // First check the primary scope
+        if let Some(keymap) = self.maps.get(&scope)
+            && let Some(inner) = keymap.get(keys)
+        {
+            return Some(inner);
+        }
+
+        // For Component + Normal mode, fallback to DefaultNormal
+        if let KeymapScope::Component { mode: EditModeKind::Normal, .. } = scope
+            && let Some(default_map) = self.maps.get(&KeymapScope::DefaultNormal)
+        {
+            return default_map.get(keys);
+        }
+
+        None
+    }
+
+    /// Check if keys are a valid prefix in primary or fallback scope
+    #[must_use]
+    pub fn is_valid_prefix(&self, mode: &ModeState, keys: &KeySequence) -> bool {
+        let scope = Self::mode_to_scope(mode);
+
+        // Check primary scope
+        if let Some(keymap) = self.maps.get(&scope)
+            && keymap.keys().any(|k| k.starts_with(keys) && k != keys)
+        {
+            return true;
+        }
+
+        // For Component + Normal mode, also check DefaultNormal
+        if let KeymapScope::Component { mode: EditModeKind::Normal, .. } = scope
+            && let Some(default_map) = self.maps.get(&KeymapScope::DefaultNormal)
+            && default_map.keys().any(|k| k.starts_with(keys) && k != keys)
+        {
+            return true;
+        }
+
+        false
     }
 
     /// Convert `ModeState` to `KeymapScope`
@@ -625,6 +680,12 @@ impl KeyMap {
             KeyMapInner::with_command_id(builtin::WINDOW_EQUALIZE).group("window"),
         );
 
+        // Window mode (Ctrl-W)
+        normal.insert(
+            keys![(Ctrl 'w')],
+            KeyMapInner::with_command_id(builtin::ENTER_WINDOW_MODE).group("window"),
+        );
+
         // Editor Insert mode
         let insert = self.get_scope_mut(KeymapScope::editor_insert());
         insert.insert(keys![Escape], KeyMapInner::with_command_id(builtin::ENTER_NORMAL_MODE));
@@ -671,6 +732,100 @@ impl KeyMap {
         op.insert(keys!['g' 'g'], KeyMapInner::with_hint("start of file").group("motion"));
         op.insert(keys!['i'], KeyMapInner::with_hint("inner text object").group("textobj"));
         op.insert(keys!['a'], KeyMapInner::with_hint("around text object").group("textobj"));
+
+        // Window mode (Ctrl-W sub-mode)
+        let window = self.get_scope_mut(KeymapScope::SubMode(SubModeKind::Interactor(
+            ComponentId::WINDOW,
+        )));
+        // Cancel
+        window.insert(keys![Escape], KeyMapInner::with_command_id(builtin::ENTER_NORMAL_MODE));
+        // Focus navigation (exit after)
+        window.insert(
+            keys!['h'],
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_FOCUS_LEFT).group("focus"),
+        );
+        window.insert(
+            keys!['j'],
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_FOCUS_DOWN).group("focus"),
+        );
+        window.insert(
+            keys!['k'],
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_FOCUS_UP).group("focus"),
+        );
+        window.insert(
+            keys!['l'],
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_FOCUS_RIGHT).group("focus"),
+        );
+        // Move window (H/J/K/L)
+        window.insert(
+            keys!['H'],
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_MOVE_LEFT).group("move"),
+        );
+        window.insert(
+            keys!['J'],
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_MOVE_DOWN).group("move"),
+        );
+        window.insert(
+            keys!['K'],
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_MOVE_UP).group("move"),
+        );
+        window.insert(
+            keys!['L'],
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_MOVE_RIGHT).group("move"),
+        );
+        // Swap (x + direction)
+        window.insert(keys!['x'], KeyMapInner::with_hint("+swap").group("swap"));
+        window.insert(
+            keys!['x' 'h'],
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_SWAP_LEFT).group("swap"),
+        );
+        window.insert(
+            keys!['x' 'j'],
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_SWAP_DOWN).group("swap"),
+        );
+        window.insert(
+            keys!['x' 'k'],
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_SWAP_UP).group("swap"),
+        );
+        window.insert(
+            keys!['x' 'l'],
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_SWAP_RIGHT).group("swap"),
+        );
+        // Split/close
+        window.insert(
+            keys!['s'],
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_SPLIT_H).group("split"),
+        );
+        window.insert(
+            keys!['v'],
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_SPLIT_V).group("split"),
+        );
+        window.insert(
+            keys!['c'],
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_CLOSE).group("manage"),
+        );
+        window.insert(
+            keys!['o'],
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_ONLY).group("manage"),
+        );
+        window.insert(
+            keys!['='],
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_EQUALIZE).group("manage"),
+        );
+    }
+
+    /// Setup default keybindings that apply to all components in Normal mode
+    ///
+    /// These serve as fallbacks when a component doesn't have its own binding.
+    /// Plugins can override these by registering their own bindings.
+    fn setup_default_normal_keybindings(&mut self) {
+        let default = self.get_scope_mut(KeymapScope::DefaultNormal);
+
+        // Window mode (Ctrl-W) - works in all plugin windows
+        default.insert(
+            keys![(Ctrl 'w')],
+            KeyMapInner::with_command_id(builtin::ENTER_WINDOW_MODE).group("window"),
+        );
     }
 }
 
@@ -768,6 +923,49 @@ mod tests {
         assert_eq!(builtin::BUFFER_PREV.as_str(), "buffer_prev");
         assert_eq!(builtin::BUFFER_NEXT.as_str(), "buffer_next");
         assert_eq!(builtin::BUFFER_DELETE.as_str(), "buffer_delete");
+    }
+
+    #[test]
+    fn test_ctrl_w_binding_exists() {
+        let keymap = KeyMap::with_defaults();
+        let normal = get_normal_keymap(&keymap);
+
+        // Test Ctrl-W binding exists in editor_normal
+        let ctrl_w = keys![(Ctrl 'w')];
+        let binding = normal.get(&ctrl_w);
+        assert!(binding.is_some(), "Ctrl-W should be bound in editor normal mode");
+        let inner = binding.unwrap();
+        assert!(inner.command.is_some(), "Ctrl-W should have a command");
+    }
+
+    #[test]
+    fn test_lookup_binding_finds_ctrl_w() {
+        use crate::modd::ModeState;
+
+        let keymap = KeyMap::with_defaults();
+        let mode = ModeState::normal();
+        let ctrl_w = keys![(Ctrl 'w')];
+
+        // lookup_binding should find Ctrl-W in editor normal mode
+        let binding = keymap.lookup_binding(&mode, &ctrl_w);
+        assert!(binding.is_some(), "lookup_binding should find Ctrl-W");
+        let inner = binding.unwrap();
+        assert!(inner.command.is_some(), "Ctrl-W binding should have a command");
+    }
+
+    #[test]
+    fn test_default_normal_fallback() {
+        use crate::modd::{ComponentId, ModeState};
+
+        let keymap = KeyMap::with_defaults();
+
+        // Create a mode for a hypothetical plugin component
+        let plugin_mode = ModeState::new().set_interactor_id(ComponentId("my_plugin"));
+        let ctrl_w = keys![(Ctrl 'w')];
+
+        // lookup_binding should fallback to DefaultNormal and find Ctrl-W
+        let binding = keymap.lookup_binding(&plugin_mode, &ctrl_w);
+        assert!(binding.is_some(), "lookup_binding should fallback to DefaultNormal for Ctrl-W");
     }
 
     #[test]

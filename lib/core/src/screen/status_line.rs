@@ -139,7 +139,7 @@ pub fn render_status_line_to<W: Write>(
     theme: &Theme,
     color_mode: ColorMode,
 ) -> std::result::Result<(), std::io::Error> {
-    let mode_str = mode.display_string();
+    let mode_str = format!(" {} ", mode.hierarchical_display());
     let icon = mode_icon(mode);
 
     // Get mode-specific style

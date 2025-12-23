@@ -142,7 +142,7 @@ impl StatusLineComponent<'_> {
     /// Render the status line to the frame buffer
     #[allow(clippy::cast_possible_truncation)]
     pub fn render_to_frame(&self, frame: &mut FrameBuffer, ctx: &RenderContext<'_>) {
-        let mode_str = self.mode.display_string();
+        let mode_str = self.mode.hierarchical_display();
         let icon = self.mode_icon();
         let theme = ctx.theme;
         let status_row = ctx.status_line_row();
