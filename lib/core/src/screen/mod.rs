@@ -536,11 +536,14 @@ impl Screen {
                         window,
                     );
 
-                    // Render line content
-                    // TODO: Apply highlights and decorations
+                    // Render line content with syntax highlights
                     let mut col = window.anchor.x + gutter_width;
                     #[allow(clippy::cast_possible_truncation)]
                     let buffer_line_y = line_idx as u16;
+
+                    // Get syntax highlights for this line
+                    let line_highlights = render_data.highlights.get(line_idx);
+                    let mut current_hl_idx = 0usize;
 
                     for (char_idx, ch) in line.chars().enumerate() {
                         if col >= window.anchor.x + window.width {
@@ -583,9 +586,24 @@ impl Screen {
                             false
                         };
 
-                        // Apply appropriate style
+                        // Apply appropriate style (selection > syntax > default)
                         let style = if is_selected {
                             &theme.selection.visual
+                        } else if let Some(highlights) = line_highlights {
+                            // Advance past highlights that end before current position
+                            while current_hl_idx < highlights.len()
+                                && highlights[current_hl_idx].end_col <= char_idx
+                            {
+                                current_hl_idx += 1;
+                            }
+                            // Check if current position is within a highlight
+                            if current_hl_idx < highlights.len()
+                                && highlights[current_hl_idx].start_col <= char_idx
+                            {
+                                &highlights[current_hl_idx].style
+                            } else {
+                                &theme.base.default
+                            }
                         } else {
                             &theme.base.default
                         };

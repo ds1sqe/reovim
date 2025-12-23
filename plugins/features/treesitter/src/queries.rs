@@ -2,7 +2,7 @@
 //!
 //! Queries are provided by language plugins via the LanguageSupport trait.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use tree_sitter::Query;
 
@@ -29,8 +29,9 @@ struct QueryKey {
 /// Cache for compiled queries
 ///
 /// Queries are compiled on-demand from the source provided by language plugins.
+/// Uses Arc<Query> to allow cheap cloning for syntax providers.
 pub struct QueryCache {
-    queries: HashMap<QueryKey, Query>,
+    queries: HashMap<QueryKey, Arc<Query>>,
 }
 
 impl Default for QueryCache {
@@ -49,33 +50,35 @@ impl QueryCache {
     }
 
     /// Get a cached query (does not compile if not cached)
+    ///
+    /// Returns an Arc clone for cheap sharing with syntax providers.
     #[must_use]
-    pub fn get(&self, language_id: &str, query_type: QueryType) -> Option<&Query> {
+    pub fn get(&self, language_id: &str, query_type: QueryType) -> Option<Arc<Query>> {
         let key = QueryKey {
             language_id: language_id.to_string(),
             query_type,
         };
-        self.queries.get(&key)
+        self.queries.get(&key).cloned()
     }
 
     /// Compile and cache a query from source
     ///
-    /// Returns the compiled query, or None if compilation fails.
+    /// Returns an Arc clone of the compiled query, or None if compilation fails.
     pub fn compile_and_cache(
         &mut self,
         language_id: &str,
         query_type: QueryType,
         ts_language: &tree_sitter::Language,
         source: &str,
-    ) -> Option<&Query> {
+    ) -> Option<Arc<Query>> {
         let key = QueryKey {
             language_id: language_id.to_string(),
             query_type,
         };
 
         // Return cached query if available
-        if self.queries.contains_key(&key) {
-            return self.queries.get(&key);
+        if let Some(query) = self.queries.get(&key) {
+            return Some(Arc::clone(query));
         }
 
         // Compile the query
@@ -92,8 +95,9 @@ impl QueryCache {
             }
         };
 
-        self.queries.insert(key.clone(), query);
-        self.queries.get(&key)
+        let arc_query = Arc::new(query);
+        self.queries.insert(key.clone(), Arc::clone(&arc_query));
+        Some(arc_query)
     }
 
     /// Check if a query is cached

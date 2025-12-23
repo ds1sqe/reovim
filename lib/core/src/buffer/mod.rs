@@ -19,6 +19,7 @@ pub use {
 
 use crate::{
     motion::Motion,
+    syntax::SyntaxProvider,
     textobject::{TextObject, TextObjectScope},
 };
 
@@ -37,7 +38,9 @@ impl From<&str> for Line {
     }
 }
 
-#[derive(Clone, Debug)]
+/// Buffer for text storage and manipulation
+///
+/// Each buffer owns its syntax state (if a language was detected).
 pub struct Buffer {
     pub id: usize,
     pub cur: Position,
@@ -55,6 +58,45 @@ pub struct Buffer {
     pending_batch: Vec<Change>,
     /// Whether batching is active (during insert mode)
     batching: bool,
+    /// Syntax provider for highlighting (None if no language detected)
+    syntax: Option<Box<dyn SyntaxProvider>>,
+}
+
+impl Clone for Buffer {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id,
+            cur: self.cur,
+            desired_col: self.desired_col,
+            contents: self.contents.clone(),
+            selection: self.selection,
+            file_path: self.file_path.clone(),
+            modified: self.modified,
+            history: self.history.clone(),
+            pending_batch: self.pending_batch.clone(),
+            batching: self.batching,
+            // Syntax state is not cloned - it can be reattached if needed
+            syntax: None,
+        }
+    }
+}
+
+impl std::fmt::Debug for Buffer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Buffer")
+            .field("id", &self.id)
+            .field("cur", &self.cur)
+            .field("desired_col", &self.desired_col)
+            .field("contents", &self.contents)
+            .field("selection", &self.selection)
+            .field("file_path", &self.file_path)
+            .field("modified", &self.modified)
+            .field("history", &self.history)
+            .field("pending_batch", &self.pending_batch)
+            .field("batching", &self.batching)
+            .field("syntax", &self.syntax.as_ref().map(|s| s.language_id()))
+            .finish()
+    }
 }
 
 impl Buffer {
@@ -71,7 +113,39 @@ impl Buffer {
             history: UndoHistory::new(),
             pending_batch: Vec::new(),
             batching: false,
+            syntax: None,
         }
+    }
+
+    /// Attach a syntax provider for this buffer
+    ///
+    /// The syntax provider is used for highlighting and other syntax-aware features.
+    pub fn attach_syntax(&mut self, syntax: Box<dyn SyntaxProvider>) {
+        self.syntax = Some(syntax);
+    }
+
+    /// Detach and return the syntax provider
+    ///
+    /// Returns None if no syntax was attached.
+    pub fn detach_syntax(&mut self) -> Option<Box<dyn SyntaxProvider>> {
+        self.syntax.take()
+    }
+
+    /// Get a reference to the syntax provider if available
+    #[must_use]
+    pub fn syntax(&self) -> Option<&dyn SyntaxProvider> {
+        self.syntax.as_deref()
+    }
+
+    /// Get a mutable reference to the syntax provider
+    pub fn syntax_mut(&mut self) -> Option<&mut (dyn SyntaxProvider + 'static)> {
+        self.syntax.as_deref_mut()
+    }
+
+    /// Check if buffer has syntax highlighting enabled
+    #[must_use]
+    pub fn has_syntax(&self) -> bool {
+        self.syntax.is_some()
     }
 
     /// Convert a position to a byte offset in the buffer content

@@ -11,6 +11,7 @@ use crate::{
     plugin::PluginId,
     rpc::RpcResponse,
     screen::{NavigateDirection, SplitDirection},
+    syntax::SyntaxProvider,
     textobject::{SemanticTextObjectSpec, TextObject, WordTextObject},
 };
 
@@ -21,6 +22,7 @@ pub enum InnerEvent {
     ModeChangeEvent(ModeState),
     PendingKeysEvent(String),
     HighlightEvent(HighlightEvent),
+    SyntaxEvent(SyntaxEvent),
     /// Operator + motion action (d+motion, y+motion, c+motion)
     OperatorMotionEvent(OperatorMotionAction),
     /// Visual mode text object selection (viw, vi(, vif, etc.)
@@ -153,6 +155,19 @@ pub enum HighlightEvent {
     },
     /// Clear all highlights from a buffer
     ClearAll { buffer_id: usize },
+}
+
+/// Syntax provider events
+pub enum SyntaxEvent {
+    /// Attach a syntax provider to a buffer
+    Attach {
+        buffer_id: usize,
+        syntax: Box<dyn SyntaxProvider>,
+    },
+    /// Detach syntax provider from a buffer
+    Detach { buffer_id: usize },
+    /// Request a reparse (after buffer modification)
+    Reparse { buffer_id: usize },
 }
 
 /// Command event to be processed by runtime

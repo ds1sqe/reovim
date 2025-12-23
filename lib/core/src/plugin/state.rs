@@ -32,6 +32,7 @@ use std::{
 
 use crate::{
     render::{RenderStage, RenderStageRegistry},
+    syntax::SharedSyntaxFactory,
     textobject::SharedSemanticTextObjectSource,
     visibility::{BufferVisibilitySource, NoOpBufferVisibility},
 };
@@ -48,6 +49,8 @@ pub struct PluginStateRegistry {
     visibility_source: RwLock<Option<Arc<dyn BufferVisibilitySource>>>,
     /// Semantic text object source (provided by treesitter plugin)
     text_object_source: RwLock<Option<SharedSemanticTextObjectSource>>,
+    /// Syntax factory for creating syntax providers (provided by treesitter plugin)
+    syntax_factory: RwLock<Option<SharedSyntaxFactory>>,
     /// Render stage registry for delayed stage registration from init_state()
     render_stages: RwLock<Option<Arc<RwLock<RenderStageRegistry>>>>,
     /// Plugin windows for unified rendering
@@ -63,6 +66,7 @@ impl std::fmt::Debug for PluginStateRegistry {
         let count = self.states.read().map_or(0, |s| s.len());
         let has_visibility = self.visibility_source.read().is_ok_and(|s| s.is_some());
         let has_text_object = self.text_object_source.read().is_ok_and(|s| s.is_some());
+        let has_syntax_factory = self.syntax_factory.read().is_ok_and(|s| s.is_some());
         let has_render_stages = self.render_stages.read().is_ok_and(|s| s.is_some());
         let plugin_windows_count = self.plugin_windows.read().map_or(0, |p| p.len());
         let left_panel = self.left_panel_width.read().map_or(0, |w| *w);
@@ -71,6 +75,7 @@ impl std::fmt::Debug for PluginStateRegistry {
             .field("state_count", &count)
             .field("has_visibility_source", &has_visibility)
             .field("has_text_object_source", &has_text_object)
+            .field("has_syntax_factory", &has_syntax_factory)
             .field("has_render_stages", &has_render_stages)
             .field("plugin_windows_count", &plugin_windows_count)
             .field("left_panel_width", &left_panel)
@@ -87,6 +92,7 @@ impl PluginStateRegistry {
             states: RwLock::new(HashMap::new()),
             visibility_source: RwLock::new(None),
             text_object_source: RwLock::new(None),
+            syntax_factory: RwLock::new(None),
             render_stages: RwLock::new(None),
             plugin_windows: RwLock::new(Vec::new()),
             left_panel_width: RwLock::new(0),
@@ -128,6 +134,22 @@ impl PluginStateRegistry {
     #[must_use]
     pub fn text_object_source(&self) -> Option<SharedSemanticTextObjectSource> {
         self.text_object_source.read().unwrap().clone()
+    }
+
+    /// Set the syntax factory (used by treesitter plugin)
+    ///
+    /// This allows the treesitter plugin to provide syntax highlighting
+    /// for files without the runtime needing to know about treesitter.
+    pub fn set_syntax_factory(&self, factory: SharedSyntaxFactory) {
+        *self.syntax_factory.write().unwrap() = Some(factory);
+    }
+
+    /// Get the syntax factory
+    ///
+    /// Returns the registered syntax factory, or None if none is registered.
+    #[must_use]
+    pub fn syntax_factory(&self) -> Option<SharedSyntaxFactory> {
+        self.syntax_factory.read().unwrap().clone()
     }
 
     /// Set the render stage registry reference (called by Runtime)

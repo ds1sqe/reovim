@@ -435,9 +435,20 @@ impl Runtime {
                 let mut buffer = Buffer::empty(id);
                 buffer.set_content(&content);
                 buffer.file_path = Some(path.to_string());
+
+                // Try to create syntax provider from factory (if available)
+                if let Some(factory) = self.plugin_state.syntax_factory()
+                    && let Some(mut syntax) = factory.create_syntax(path, &content)
+                {
+                    // Do initial parse
+                    syntax.parse(&content);
+                    buffer.attach_syntax(syntax);
+                    debug!(id, path, "create_buffer_from_file: attached syntax provider");
+                }
+
                 self.buffers.insert(id, buffer);
 
-                // Emit FileOpened event for treesitter plugin to handle syntax highlighting
+                // Emit FileOpened event for plugins that need to know about new files
                 self.event_bus.emit(FileOpened {
                     buffer_id: id,
                     path: path.to_string(),

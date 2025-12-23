@@ -36,6 +36,7 @@ pub mod screen;
 pub mod settings;
 // settings_menu is now a standalone plugin: reovim-plugin-settings-menu
 pub mod style;
+pub mod syntax;
 pub mod testing;
 pub mod textobject;
 pub mod types;

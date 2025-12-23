@@ -287,6 +287,41 @@ impl Runtime {
                     self.request_render();
                 }
             },
+            InnerEvent::SyntaxEvent(syntax_event) => {
+                use crate::event::SyntaxEvent;
+                match syntax_event {
+                    SyntaxEvent::Attach { buffer_id, syntax } => {
+                        if let Some(buffer) = self.buffers.get_mut(&buffer_id) {
+                            buffer.attach_syntax(syntax);
+                            tracing::debug!(buffer_id, "Attached syntax provider");
+                            self.request_render();
+                        }
+                    }
+                    SyntaxEvent::Detach { buffer_id } => {
+                        if let Some(buffer) = self.buffers.get_mut(&buffer_id) {
+                            buffer.detach_syntax();
+                            tracing::debug!(buffer_id, "Detached syntax provider");
+                            self.request_render();
+                        }
+                    }
+                    SyntaxEvent::Reparse { buffer_id } => {
+                        if let Some(buffer) = self.buffers.get_mut(&buffer_id) {
+                            // Get content first before borrowing syntax mutably
+                            let content: String = buffer
+                                .contents
+                                .iter()
+                                .map(|l| l.inner.as_str())
+                                .collect::<Vec<_>>()
+                                .join("\n");
+                            if let Some(syntax) = buffer.syntax_mut() {
+                                syntax.parse(&content);
+                                tracing::debug!(buffer_id, "Reparsed syntax");
+                            }
+                            self.request_render();
+                        }
+                    }
+                }
+            }
             InnerEvent::RenderSignal => {
                 self.request_render();
             }

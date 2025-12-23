@@ -327,13 +327,41 @@ Fuzzy finder:
 
 ### TreesitterPlugin (`reovim-plugin-treesitter`)
 
-Syntax highlighting infrastructure:
-- `TreesitterPlugin` - Main plugin, handles events and lifecycle
-- `SharedTreesitterManager` - Shared state for all buffers
+Syntax highlighting infrastructure using buffer-centric architecture (Helix-inspired):
+
+**Plugin Components:**
+- `TreesitterPlugin` - Main plugin, registers SyntaxFactory
+- `TreesitterSyntaxFactory` - Creates TreeSitterSyntax for buffers
+- `TreeSitterSyntax` - Per-buffer syntax provider (implements `SyntaxProvider`)
+- `SharedTreesitterManager` - Shared state for language registry and queries
 - `LanguageRegistry` - Dynamic language registration
 - `BufferParser` - Per-buffer incremental parser
 - `Highlighter` - Query execution and highlight generation
 - `TextObjectResolver` - Semantic text object bounds
+
+**Architecture:**
+```
+Buffer -> syntax: Option<Box<dyn SyntaxProvider>>
+                              │
+                              ▼
+                    TreeSitterSyntax (plugin)
+                    ├── parser: Parser
+                    ├── tree: Option<Tree>
+                    ├── query: Arc<Query>  (pre-compiled)
+                    └── highlighter: Highlighter
+```
+
+**SyntaxFactory Registration:**
+```rust
+fn init_state(&self, registry: &PluginStateRegistry) {
+    let manager = Arc::new(SharedTreesitterManager::new());
+    registry.register(Arc::clone(&manager));
+
+    // Register factory for runtime to use
+    let factory = TreesitterSyntaxFactory::new(Arc::clone(&manager));
+    registry.set_syntax_factory(Arc::new(factory));
+}
+```
 
 **LanguageSupport Trait:**
 ```rust
@@ -347,6 +375,13 @@ pub trait LanguageSupport: Send + Sync + 'static {
     fn decorations_query(&self) -> Option<&'static str> { None }
 }
 ```
+
+**Data Flow:**
+1. **File Open**: Runtime calls `syntax_factory.create_syntax(path, content)`
+2. **Attach**: Runtime calls `buffer.attach_syntax(syntax)`
+3. **Parse**: `syntax.parse(content)` builds initial tree
+4. **Render**: `RenderData::from_buffer()` calls `syntax.highlight_range()`
+5. **Display**: Highlights applied to framebuffer during render
 
 ## Language Plugins (in plugins/languages/)
 

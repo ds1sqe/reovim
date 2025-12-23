@@ -150,7 +150,7 @@ impl TreesitterManager {
 
         // Generate highlights
         self.highlighter
-            .highlight_range(tree, query, content, start_line, end_line)
+            .highlight_range(tree, &query, content, start_line, end_line)
     }
 
     /// Schedule a buffer for reparsing (with debounce)
@@ -225,7 +225,7 @@ impl TreesitterManager {
     /// Returns None if the query is not cached. Queries are pre-compiled
     /// when languages are registered.
     #[must_use]
-    pub fn get_cached_query(&self, language_id: &str, query_type: QueryType) -> Option<&Query> {
+    pub fn get_cached_query(&self, language_id: &str, query_type: QueryType) -> Option<Arc<Query>> {
         self.queries.get(language_id, query_type)
     }
 
@@ -233,6 +233,12 @@ impl TreesitterManager {
     #[must_use]
     pub fn registry(&self) -> &LanguageRegistry {
         &self.registry
+    }
+
+    /// Get the query cache
+    #[must_use]
+    pub fn query_cache(&self) -> &QueryCache {
+        &self.queries
     }
 
     /// Get a registered language
@@ -266,7 +272,7 @@ impl TreesitterManager {
 
         let mut ranges = Vec::new();
         let mut cursor = tree_sitter::QueryCursor::new();
-        let mut matches = cursor.matches(query, tree.root_node(), content.as_bytes());
+        let mut matches = cursor.matches(&query, tree.root_node(), content.as_bytes());
 
         #[allow(clippy::cast_possible_truncation)]
         while let Some(match_) = matches.next() {
@@ -327,6 +333,6 @@ impl TreesitterManager {
 
         // Generate highlights
         self.highlighter
-            .highlight_range(tree, query, content, start_line, end_line)
+            .highlight_range(tree, &query, content, start_line, end_line)
     }
 }

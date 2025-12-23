@@ -13,6 +13,7 @@ use reovim_core::{
 
 pub mod edit;
 pub mod events;
+pub mod factory;
 pub mod highlighter;
 pub mod manager;
 pub mod parser;
@@ -20,6 +21,7 @@ pub mod queries;
 pub mod registry;
 pub mod stage;
 pub mod state;
+pub mod syntax;
 pub mod text_objects;
 pub mod theme;
 
@@ -93,7 +95,13 @@ impl Plugin for TreesitterPlugin {
         // Store in plugin state registry for other plugins to access
         registry.register(Arc::clone(&self.manager));
 
-        tracing::debug!("TreesitterPlugin: initialized state");
+        // Register the syntax factory for buffer-centric highlighting
+        let factory = Arc::new(crate::factory::TreesitterSyntaxFactory::new(Arc::clone(
+            &self.manager,
+        )));
+        registry.set_syntax_factory(factory);
+
+        tracing::debug!("TreesitterPlugin: initialized state with syntax factory");
     }
 
     fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {

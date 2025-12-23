@@ -70,7 +70,7 @@ impl SemanticTextObjectSource for SharedTreesitterManager {
             let query = manager.get_cached_query(&language_id, QueryType::TextObjects)?;
 
             // Resolve the text object bounds
-            TextObjectResolver::find_bounds(tree, query, content, cursor_row, cursor_col, spec)
+            TextObjectResolver::find_bounds(tree, &query, content, cursor_row, cursor_col, spec)
         })
     }
 }
