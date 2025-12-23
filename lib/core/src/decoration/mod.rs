@@ -20,11 +20,13 @@
 //! and register with the registry. The runtime queries the registry to get
 //! the appropriate renderer for each buffer.
 
+mod provider;
 mod registry;
 mod store;
 mod types;
 
 pub use {
+    provider::{DecorationFactory, DecorationProvider, SharedDecorationFactory},
     registry::LanguageRendererRegistry,
     store::{BufferDecorations, DecorationRef, DecorationStore},
     types::{Decoration, DecorationContext, DecorationGroup, LanguageId, LanguageRenderer},

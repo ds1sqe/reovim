@@ -67,6 +67,7 @@ reovim-lang-python = { path = "./plugins/languages/python", version = "0.6.22" }
 reovim-lang-json = { path = "./plugins/languages/json", version = "0.6.22" }
 reovim-lang-toml = { path = "./plugins/languages/toml", version = "0.6.22" }
 reovim-lang-markdown = { path = "./plugins/languages/markdown", version = "0.6.22" }
+reovim-lang-bash = { path = "./plugins/languages/bash", version = "0.6.22" }
 
 # CLI
 clap = { version = "4", features = ["derive"] }

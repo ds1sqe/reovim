@@ -97,11 +97,7 @@ pub trait SyntaxFactory: Send + Sync {
     /// # Returns
     /// Some(syntax) if a language was detected and a provider was created,
     /// None if the file type is not supported.
-    fn create_syntax(
-        &self,
-        file_path: &str,
-        content: &str,
-    ) -> Option<Box<dyn SyntaxProvider>>;
+    fn create_syntax(&self, file_path: &str, content: &str) -> Option<Box<dyn SyntaxProvider>>;
 
     /// Check if this factory supports the given file
     fn supports_file(&self, file_path: &str) -> bool;

@@ -446,6 +446,16 @@ impl Runtime {
                     debug!(id, path, "create_buffer_from_file: attached syntax provider");
                 }
 
+                // Try to create decoration provider from factory (if available)
+                if let Some(factory) = self.plugin_state.decoration_factory()
+                    && let Some(mut decorator) = factory.create_provider(path, &content)
+                {
+                    // Initial refresh to parse content
+                    decorator.refresh(&content);
+                    buffer.attach_decoration_provider(decorator);
+                    debug!(id, path, "create_buffer_from_file: attached decoration provider");
+                }
+
                 self.buffers.insert(id, buffer);
 
                 // Emit FileOpened event for plugins that need to know about new files

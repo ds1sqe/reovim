@@ -146,6 +146,26 @@ pub mod builtin {
     pub const WINDOW_FOCUS_OR_SPLIT_RIGHT: CommandId =
         CommandId::new("window_focus_or_split_right");
 
+    // === Window Mode (Ctrl-W) ===
+    pub const ENTER_WINDOW_MODE: CommandId = CommandId::new("enter_window_mode");
+    pub const WINDOW_MODE_FOCUS_LEFT: CommandId = CommandId::new("window_mode_focus_left");
+    pub const WINDOW_MODE_FOCUS_DOWN: CommandId = CommandId::new("window_mode_focus_down");
+    pub const WINDOW_MODE_FOCUS_UP: CommandId = CommandId::new("window_mode_focus_up");
+    pub const WINDOW_MODE_FOCUS_RIGHT: CommandId = CommandId::new("window_mode_focus_right");
+    pub const WINDOW_MODE_MOVE_LEFT: CommandId = CommandId::new("window_mode_move_left");
+    pub const WINDOW_MODE_MOVE_DOWN: CommandId = CommandId::new("window_mode_move_down");
+    pub const WINDOW_MODE_MOVE_UP: CommandId = CommandId::new("window_mode_move_up");
+    pub const WINDOW_MODE_MOVE_RIGHT: CommandId = CommandId::new("window_mode_move_right");
+    pub const WINDOW_MODE_SWAP_LEFT: CommandId = CommandId::new("window_mode_swap_left");
+    pub const WINDOW_MODE_SWAP_DOWN: CommandId = CommandId::new("window_mode_swap_down");
+    pub const WINDOW_MODE_SWAP_UP: CommandId = CommandId::new("window_mode_swap_up");
+    pub const WINDOW_MODE_SWAP_RIGHT: CommandId = CommandId::new("window_mode_swap_right");
+    pub const WINDOW_MODE_SPLIT_H: CommandId = CommandId::new("window_mode_split_h");
+    pub const WINDOW_MODE_SPLIT_V: CommandId = CommandId::new("window_mode_split_v");
+    pub const WINDOW_MODE_CLOSE: CommandId = CommandId::new("window_mode_close");
+    pub const WINDOW_MODE_ONLY: CommandId = CommandId::new("window_mode_only");
+    pub const WINDOW_MODE_EQUALIZE: CommandId = CommandId::new("window_mode_equalize");
+
     // === Tab Management ===
     pub const TAB_NEW: CommandId = CommandId::new("tab_new");
     pub const TAB_CLOSE: CommandId = CommandId::new("tab_close");

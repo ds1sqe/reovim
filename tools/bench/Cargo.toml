@@ -8,6 +8,9 @@ repository.workspace = true
 
 [dependencies]
 reovim-core = { path = "../../lib/core" }
+reovim-plugin-treesitter = { path = "../../plugins/features/treesitter" }
+reovim-lang-markdown = { path = "../../plugins/languages/markdown" }
+reovim-lang-rust = { path = "../../plugins/languages/rust" }
 criterion = { version = "0.8", features = ["html_reports"] }
 tempfile = "3"
 

@@ -144,6 +144,10 @@ pub enum WindowAction {
     FocusOrSplitDown,
     FocusOrSplitUp,
     FocusOrSplitRight,
+    /// Swap current window with window in the given direction
+    SwapDirection {
+        direction: NavigateDirection,
+    },
 }
 
 #[derive(Debug)]

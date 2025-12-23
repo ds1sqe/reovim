@@ -31,6 +31,7 @@ use std::{
 };
 
 use crate::{
+    decoration::SharedDecorationFactory,
     render::{RenderStage, RenderStageRegistry},
     syntax::SharedSyntaxFactory,
     textobject::SharedSemanticTextObjectSource,
@@ -51,6 +52,8 @@ pub struct PluginStateRegistry {
     text_object_source: RwLock<Option<SharedSemanticTextObjectSource>>,
     /// Syntax factory for creating syntax providers (provided by treesitter plugin)
     syntax_factory: RwLock<Option<SharedSyntaxFactory>>,
+    /// Decoration factory for creating decoration providers (provided by language plugins)
+    decoration_factory: RwLock<Option<SharedDecorationFactory>>,
     /// Render stage registry for delayed stage registration from init_state()
     render_stages: RwLock<Option<Arc<RwLock<RenderStageRegistry>>>>,
     /// Plugin windows for unified rendering
@@ -67,6 +70,7 @@ impl std::fmt::Debug for PluginStateRegistry {
         let has_visibility = self.visibility_source.read().is_ok_and(|s| s.is_some());
         let has_text_object = self.text_object_source.read().is_ok_and(|s| s.is_some());
         let has_syntax_factory = self.syntax_factory.read().is_ok_and(|s| s.is_some());
+        let has_decoration_factory = self.decoration_factory.read().is_ok_and(|s| s.is_some());
         let has_render_stages = self.render_stages.read().is_ok_and(|s| s.is_some());
         let plugin_windows_count = self.plugin_windows.read().map_or(0, |p| p.len());
         let left_panel = self.left_panel_width.read().map_or(0, |w| *w);
@@ -76,6 +80,7 @@ impl std::fmt::Debug for PluginStateRegistry {
             .field("has_visibility_source", &has_visibility)
             .field("has_text_object_source", &has_text_object)
             .field("has_syntax_factory", &has_syntax_factory)
+            .field("has_decoration_factory", &has_decoration_factory)
             .field("has_render_stages", &has_render_stages)
             .field("plugin_windows_count", &plugin_windows_count)
             .field("left_panel_width", &left_panel)
@@ -93,6 +98,7 @@ impl PluginStateRegistry {
             visibility_source: RwLock::new(None),
             text_object_source: RwLock::new(None),
             syntax_factory: RwLock::new(None),
+            decoration_factory: RwLock::new(None),
             render_stages: RwLock::new(None),
             plugin_windows: RwLock::new(Vec::new()),
             left_panel_width: RwLock::new(0),
@@ -150,6 +156,22 @@ impl PluginStateRegistry {
     #[must_use]
     pub fn syntax_factory(&self) -> Option<SharedSyntaxFactory> {
         self.syntax_factory.read().unwrap().clone()
+    }
+
+    /// Set the decoration factory (used by language plugins like markdown)
+    ///
+    /// This allows language plugins to provide visual decorations (conceals,
+    /// backgrounds, inline styles) without the runtime needing to know specifics.
+    pub fn set_decoration_factory(&self, factory: SharedDecorationFactory) {
+        *self.decoration_factory.write().unwrap() = Some(factory);
+    }
+
+    /// Get the decoration factory
+    ///
+    /// Returns the registered decoration factory, or None if none is registered.
+    #[must_use]
+    pub fn decoration_factory(&self) -> Option<SharedDecorationFactory> {
+        self.decoration_factory.read().unwrap().clone()
     }
 
     /// Set the render stage registry reference (called by Runtime)

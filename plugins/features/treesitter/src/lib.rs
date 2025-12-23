@@ -15,6 +15,7 @@ pub mod edit;
 pub mod events;
 pub mod factory;
 pub mod highlighter;
+pub mod injection;
 pub mod manager;
 pub mod parser;
 pub mod queries;
@@ -31,6 +32,7 @@ pub use {
         HighlightsReady, ParseCompleted, ParseRequest, RegisterLanguage, TreesitterFoldRanges,
     },
     highlighter::Highlighter,
+    injection::{InjectionDetector, InjectionLayer, InjectionManager, InjectionRegion},
     manager::TreesitterManager,
     parser::BufferParser,
     queries::{QueryCache, QueryType},
@@ -96,9 +98,8 @@ impl Plugin for TreesitterPlugin {
         registry.register(Arc::clone(&self.manager));
 
         // Register the syntax factory for buffer-centric highlighting
-        let factory = Arc::new(crate::factory::TreesitterSyntaxFactory::new(Arc::clone(
-            &self.manager,
-        )));
+        let factory =
+            Arc::new(crate::factory::TreesitterSyntaxFactory::new(Arc::clone(&self.manager)));
         registry.set_syntax_factory(factory);
 
         tracing::debug!("TreesitterPlugin: initialized state with syntax factory");

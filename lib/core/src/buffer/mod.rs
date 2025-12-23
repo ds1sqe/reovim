@@ -18,6 +18,7 @@ pub use {
 };
 
 use crate::{
+    decoration::DecorationProvider,
     motion::Motion,
     syntax::SyntaxProvider,
     textobject::{TextObject, TextObjectScope},
@@ -60,6 +61,8 @@ pub struct Buffer {
     batching: bool,
     /// Syntax provider for highlighting (None if no language detected)
     syntax: Option<Box<dyn SyntaxProvider>>,
+    /// Decoration provider for visual decorations (None if no language-specific decorations)
+    decoration_provider: Option<Box<dyn DecorationProvider>>,
 }
 
 impl Clone for Buffer {
@@ -77,6 +80,8 @@ impl Clone for Buffer {
             batching: self.batching,
             // Syntax state is not cloned - it can be reattached if needed
             syntax: None,
+            // Decoration provider is not cloned - it can be reattached if needed
+            decoration_provider: None,
         }
     }
 }
@@ -95,6 +100,10 @@ impl std::fmt::Debug for Buffer {
             .field("pending_batch", &self.pending_batch)
             .field("batching", &self.batching)
             .field("syntax", &self.syntax.as_ref().map(|s| s.language_id()))
+            .field(
+                "decoration_provider",
+                &self.decoration_provider.as_ref().map(|d| d.language_id()),
+            )
             .finish()
     }
 }
@@ -114,6 +123,7 @@ impl Buffer {
             pending_batch: Vec::new(),
             batching: false,
             syntax: None,
+            decoration_provider: None,
         }
     }
 
@@ -146,6 +156,38 @@ impl Buffer {
     #[must_use]
     pub fn has_syntax(&self) -> bool {
         self.syntax.is_some()
+    }
+
+    /// Attach a decoration provider for this buffer
+    ///
+    /// The decoration provider is used for language-specific visual decorations
+    /// like conceals, backgrounds, and inline styles.
+    pub fn attach_decoration_provider(&mut self, provider: Box<dyn DecorationProvider>) {
+        self.decoration_provider = Some(provider);
+    }
+
+    /// Detach and return the decoration provider
+    ///
+    /// Returns None if no decoration provider was attached.
+    pub fn detach_decoration_provider(&mut self) -> Option<Box<dyn DecorationProvider>> {
+        self.decoration_provider.take()
+    }
+
+    /// Get a reference to the decoration provider if available
+    #[must_use]
+    pub fn decoration_provider(&self) -> Option<&dyn DecorationProvider> {
+        self.decoration_provider.as_deref()
+    }
+
+    /// Get a mutable reference to the decoration provider
+    pub fn decoration_provider_mut(&mut self) -> Option<&mut (dyn DecorationProvider + 'static)> {
+        self.decoration_provider.as_deref_mut()
+    }
+
+    /// Check if buffer has decoration provider enabled
+    #[must_use]
+    pub fn has_decoration_provider(&self) -> bool {
+        self.decoration_provider.is_some()
     }
 
     /// Convert a position to a byte offset in the buffer content

@@ -35,6 +35,7 @@ reovim-lang-python.workspace = true
 reovim-lang-json.workspace = true
 reovim-lang-toml.workspace = true
 reovim-lang-markdown.workspace = true
+reovim-lang-bash.workspace = true
 
 # Logging
 tracing.workspace = true

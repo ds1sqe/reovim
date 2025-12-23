@@ -400,7 +400,10 @@ impl KeyMap {
         }
 
         // For Component + Normal mode, fallback to DefaultNormal
-        if let KeymapScope::Component { mode: EditModeKind::Normal, .. } = scope
+        if let KeymapScope::Component {
+            mode: EditModeKind::Normal,
+            ..
+        } = scope
             && let Some(default_map) = self.maps.get(&KeymapScope::DefaultNormal)
         {
             return default_map.get(keys);
@@ -422,7 +425,10 @@ impl KeyMap {
         }
 
         // For Component + Normal mode, also check DefaultNormal
-        if let KeymapScope::Component { mode: EditModeKind::Normal, .. } = scope
+        if let KeymapScope::Component {
+            mode: EditModeKind::Normal,
+            ..
+        } = scope
             && let Some(default_map) = self.maps.get(&KeymapScope::DefaultNormal)
             && default_map.keys().any(|k| k.starts_with(keys) && k != keys)
         {
@@ -734,9 +740,8 @@ impl KeyMap {
         op.insert(keys!['a'], KeyMapInner::with_hint("around text object").group("textobj"));
 
         // Window mode (Ctrl-W sub-mode)
-        let window = self.get_scope_mut(KeymapScope::SubMode(SubModeKind::Interactor(
-            ComponentId::WINDOW,
-        )));
+        let window =
+            self.get_scope_mut(KeymapScope::SubMode(SubModeKind::Interactor(ComponentId::WINDOW)));
         // Cancel
         window.insert(keys![Escape], KeyMapInner::with_command_id(builtin::ENTER_NORMAL_MODE));
         // Focus navigation (exit after)

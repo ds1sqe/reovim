@@ -19,9 +19,9 @@ use {
 
 // Language plugins
 use {
-    reovim_lang_c::CPlugin, reovim_lang_javascript::JavaScriptPlugin, reovim_lang_json::JsonPlugin,
-    reovim_lang_markdown::MarkdownPlugin, reovim_lang_python::PythonPlugin,
-    reovim_lang_rust::RustPlugin, reovim_lang_toml::TomlPlugin,
+    reovim_lang_bash::BashPlugin, reovim_lang_c::CPlugin, reovim_lang_javascript::JavaScriptPlugin,
+    reovim_lang_json::JsonPlugin, reovim_lang_markdown::MarkdownPlugin,
+    reovim_lang_python::PythonPlugin, reovim_lang_rust::RustPlugin, reovim_lang_toml::TomlPlugin,
 };
 
 /// All plugins including both built-in (`DefaultPlugins`) and external plugin crates
@@ -53,6 +53,7 @@ impl PluginTuple for AllPlugins {
         loader.add(JsonPlugin);
         loader.add(TomlPlugin);
         loader.add(MarkdownPlugin);
+        loader.add(BashPlugin);
     }
 }
 
@@ -83,6 +84,7 @@ pub fn default_plugins() -> impl IntoIterator<Item = Box<dyn Plugin>> {
         Box::new(JsonPlugin),
         Box::new(TomlPlugin),
         Box::new(MarkdownPlugin),
+        Box::new(BashPlugin),
     ]
 }
 
@@ -117,6 +119,7 @@ pub fn create_plugin_loader() -> PluginLoader {
     loader.add(JsonPlugin);
     loader.add(TomlPlugin);
     loader.add(MarkdownPlugin);
+    loader.add(BashPlugin);
     loader
 }
 

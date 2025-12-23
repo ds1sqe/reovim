@@ -99,6 +99,11 @@ impl RegisteredLanguage {
     pub fn decorations_query(&self) -> Option<&'static str> {
         self.support.decorations_query()
     }
+
+    /// Get injections query
+    pub fn injections_query(&self) -> Option<&'static str> {
+        self.support.injections_query()
+    }
 }
 
 /// Registry for dynamically registered languages

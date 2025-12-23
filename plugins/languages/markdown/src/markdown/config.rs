@@ -1,6 +1,6 @@
 //! Markdown renderer configuration
 
-use {crate::highlight::Style, reovim_sys::style::Color};
+use reovim_core::{highlight::Style, sys::style::Color};
 
 /// Configuration for heading rendering
 #[derive(Debug, Clone)]

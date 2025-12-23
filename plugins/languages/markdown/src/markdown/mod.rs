@@ -8,17 +8,19 @@ use std::any::Any;
 
 use tree_sitter::{Language, Parser, Query, StreamingIterator, Tree};
 
-pub use config::{
-    CodeBlockConfig, HeadingConfig, InlineConfig, ListConfig, MarkdownConfig, TableConfig,
-};
+pub use config::MarkdownConfig;
 
-use crate::{
+use reovim_core::{
     decoration::{Decoration, DecorationContext, LanguageId, LanguageRenderer},
     highlight::Span,
     modd::EditMode,
 };
 
 /// Markdown renderer implementing the `LanguageRenderer` trait
+///
+/// Note: Currently unused - replaced by `MarkdownDecorator` which implements
+/// the buffer-centric `DecorationProvider` trait. Kept for reference and tests.
+#[allow(dead_code)]
 pub struct MarkdownRenderer {
     config: MarkdownConfig,
     /// Cached inline decoration query (compiled once)
@@ -34,6 +36,7 @@ impl Default for MarkdownRenderer {
 }
 
 /// Inline decorations query source
+#[allow(dead_code)]
 const INLINE_DECORATIONS_QUERY: &str = r"
 ; Markdown inline decoration captures
 ; Used for concealing markers while preserving styled content
@@ -90,6 +93,7 @@ const BLOCK_DECORATIONS_QUERY: &str = r"
 (pipe_table_delimiter_row) @decoration.table.delimiter
 ";
 
+#[allow(dead_code)]
 impl MarkdownRenderer {
     /// Create a new markdown renderer with default configuration
     #[must_use]
@@ -559,7 +563,7 @@ impl LanguageRenderer for MarkdownRenderer {
 mod tests {
     use {
         super::*,
-        crate::{decoration::DecorationContext, modd::EditMode},
+        reovim_core::{decoration::DecorationContext, modd::EditMode},
     };
 
     #[test]

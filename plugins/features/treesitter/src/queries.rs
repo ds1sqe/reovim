@@ -17,6 +17,8 @@ pub enum QueryType {
     Folds,
     /// Visual decorations (concealment, icons, backgrounds)
     Decorations,
+    /// Language injections (embedded code in markdown, etc.)
+    Injections,
 }
 
 /// Cache key for compiled queries

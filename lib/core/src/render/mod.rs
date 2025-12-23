@@ -36,6 +36,7 @@ impl RenderData {
     /// Create render data from a buffer
     #[must_use]
     #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::too_many_lines)]
     pub fn from_buffer(
         window: &crate::screen::window::Window,
         buffer: &crate::buffer::Buffer,
@@ -66,10 +67,7 @@ impl RenderData {
                         });
                     } else {
                         // Multi-line highlight: split across lines
-                        let line_len = buffer
-                            .contents
-                            .get(line_idx)
-                            .map_or(0, |l| l.inner.len());
+                        let line_len = buffer.contents.get(line_idx).map_or(0, |l| l.inner.len());
                         highlights[line_idx].push(LineHighlight {
                             start_col: hl.span.start_col as usize,
                             end_col: line_len,
@@ -80,10 +78,8 @@ impl RenderData {
                         for mid_line in (hl.span.start_line + 1)..hl.span.end_line {
                             let mid_idx = mid_line as usize;
                             if mid_idx < highlights.len() {
-                                let mid_len = buffer
-                                    .contents
-                                    .get(mid_idx)
-                                    .map_or(0, |l| l.inner.len());
+                                let mid_len =
+                                    buffer.contents.get(mid_idx).map_or(0, |l| l.inner.len());
                                 highlights[mid_idx].push(LineHighlight {
                                     start_col: 0,
                                     end_col: mid_len,
@@ -111,6 +107,87 @@ impl RenderData {
             }
         }
 
+        // Generate decorations if decoration provider is attached
+        let mut decorations: Vec<Vec<Decoration>> = vec![Vec::new(); line_count];
+        if let Some(decorator) = buffer.decoration_provider() {
+            let all_decorations = decorator.decoration_range(&content, 0, line_count as u32);
+
+            // Convert decoration::Decoration to render::Decoration and group by line
+            for deco in all_decorations {
+                match deco {
+                    crate::decoration::Decoration::Conceal {
+                        span,
+                        replacement,
+                        style,
+                    } => {
+                        let line_idx = span.start_line as usize;
+                        if line_idx < decorations.len() && span.start_line == span.end_line {
+                            decorations[line_idx].push(Decoration {
+                                start_col: span.start_col as usize,
+                                end_col: span.end_col as usize,
+                                kind: DecorationKind::Conceal {
+                                    replacement: Some(replacement),
+                                },
+                            });
+                            // If there's a style, also add it as a background decoration
+                            if let Some(style) = style {
+                                decorations[line_idx].push(Decoration {
+                                    start_col: span.start_col as usize,
+                                    end_col: span.end_col as usize,
+                                    kind: DecorationKind::Background { style },
+                                });
+                            }
+                        }
+                    }
+                    crate::decoration::Decoration::Hide { span } => {
+                        let line_idx = span.start_line as usize;
+                        if line_idx < decorations.len() && span.start_line == span.end_line {
+                            decorations[line_idx].push(Decoration {
+                                start_col: span.start_col as usize,
+                                end_col: span.end_col as usize,
+                                kind: DecorationKind::Conceal { replacement: None },
+                            });
+                        }
+                    }
+                    crate::decoration::Decoration::LineBackground {
+                        start_line,
+                        end_line,
+                        style,
+                    } => {
+                        for line in start_line..=end_line {
+                            let line_idx = line as usize;
+                            if line_idx < decorations.len() {
+                                let line_len =
+                                    buffer.contents.get(line_idx).map_or(0, |l| l.inner.len());
+                                decorations[line_idx].push(Decoration {
+                                    start_col: 0,
+                                    end_col: line_len,
+                                    kind: DecorationKind::Background {
+                                        style: style.clone(),
+                                    },
+                                });
+                            }
+                        }
+                    }
+                    crate::decoration::Decoration::InlineStyle { span, style } => {
+                        let line_idx = span.start_line as usize;
+                        if line_idx < decorations.len() && span.start_line == span.end_line {
+                            decorations[line_idx].push(Decoration {
+                                start_col: span.start_col as usize,
+                                end_col: span.end_col as usize,
+                                kind: DecorationKind::Background { style },
+                            });
+                        }
+                    }
+                }
+            }
+
+            // Sort decorations by start column for each line
+            for line_deco in &mut decorations {
+                line_deco.sort_by_key(|d| d.start_col);
+            }
+        }
+
         Self {
             lines: buffer
                 .contents
@@ -119,7 +196,7 @@ impl RenderData {
                 .collect(),
             visibility: vec![LineVisibility::Visible; line_count],
             highlights,
-            decorations: vec![Vec::new(); line_count],
+            decorations,
             buffer_id: buffer.id,
             window_id: window.id,
             window_bounds: Bounds {

@@ -246,6 +246,30 @@ impl SplitNode {
             second.equalize();
         }
     }
+
+    /// Swap two windows in the split tree by exchanging their IDs
+    pub fn swap_windows(&mut self, id_a: usize, id_b: usize) -> bool {
+        // First pass: replace id_a with a temporary sentinel
+        const SENTINEL: usize = usize::MAX;
+        let found_a = self.replace_window_id(id_a, SENTINEL);
+        let found_b = self.replace_window_id(id_b, id_a);
+        let finished = self.replace_window_id(SENTINEL, id_b);
+        found_a && found_b && finished
+    }
+
+    /// Replace a window ID with another (helper for swap)
+    fn replace_window_id(&mut self, from: usize, to: usize) -> bool {
+        match self {
+            Self::Leaf { window_id } if *window_id == from => {
+                *window_id = to;
+                true
+            }
+            Self::Leaf { .. } => false,
+            Self::Split { first, second, .. } => {
+                first.replace_window_id(from, to) || second.replace_window_id(from, to)
+            }
+        }
+    }
 }
 
 use super::border::WindowAdjacency;

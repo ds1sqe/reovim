@@ -1,13 +1,12 @@
 [package]
-name = "reovim-lang-markdown"
+name = "reovim-lang-bash"
 version.workspace = true
 edition.workspace = true
-description = "Markdown language support for reovim"
+description = "Bash language support for reovim"
 license.workspace = true
 repository.workspace = true
 
 [dependencies]
 reovim-core = { path = "../../../lib/core" }
 reovim-plugin-treesitter = { path = "../../features/treesitter" }
-tree-sitter = "0.26"
-tree-sitter-md = "0.5"
+tree-sitter-bash = "0.23"

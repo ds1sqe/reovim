@@ -149,6 +149,8 @@ impl CommandRegistry {
             EnterVisualBlockModeCommand,
             EnterVisualLineModeCommand,
             EnterVisualModeCommand,
+            // Window Mode (Ctrl-W)
+            EnterWindowModeCommand,
             EnterYankOperatorCommand,
             // Fold commands are now in reovim-plugin-fold crate
             GotoFirstLineCommand,
@@ -192,6 +194,23 @@ impl CommandRegistry {
             WindowFocusOrSplitUpCommand,
             WindowFocusRightCommand,
             WindowFocusUpCommand,
+            WindowModeCloseCommand,
+            WindowModeEqualizeCommand,
+            WindowModeFocusDownCommand,
+            WindowModeFocusLeftCommand,
+            WindowModeFocusRightCommand,
+            WindowModeFocusUpCommand,
+            WindowModeMoveDownCommand,
+            WindowModeMoveLeftCommand,
+            WindowModeMoveRightCommand,
+            WindowModeMoveUpCommand,
+            WindowModeOnlyCommand,
+            WindowModeSplitHCommand,
+            WindowModeSplitVCommand,
+            WindowModeSwapDownCommand,
+            WindowModeSwapLeftCommand,
+            WindowModeSwapRightCommand,
+            WindowModeSwapUpCommand,
             WindowMoveDownCommand,
             WindowMoveLeftCommand,
             WindowMoveRightCommand,
@@ -294,6 +313,26 @@ impl CommandRegistry {
         let _ = self.register(WindowFocusOrSplitDownCommand);
         let _ = self.register(WindowFocusOrSplitUpCommand);
         let _ = self.register(WindowFocusOrSplitRightCommand);
+
+        // Window mode commands (Ctrl-W)
+        let _ = self.register(EnterWindowModeCommand);
+        let _ = self.register(WindowModeFocusLeftCommand);
+        let _ = self.register(WindowModeFocusDownCommand);
+        let _ = self.register(WindowModeFocusUpCommand);
+        let _ = self.register(WindowModeFocusRightCommand);
+        let _ = self.register(WindowModeMoveLeftCommand);
+        let _ = self.register(WindowModeMoveDownCommand);
+        let _ = self.register(WindowModeMoveUpCommand);
+        let _ = self.register(WindowModeMoveRightCommand);
+        let _ = self.register(WindowModeSwapLeftCommand);
+        let _ = self.register(WindowModeSwapDownCommand);
+        let _ = self.register(WindowModeSwapUpCommand);
+        let _ = self.register(WindowModeSwapRightCommand);
+        let _ = self.register(WindowModeSplitHCommand);
+        let _ = self.register(WindowModeSplitVCommand);
+        let _ = self.register(WindowModeCloseCommand);
+        let _ = self.register(WindowModeOnlyCommand);
+        let _ = self.register(WindowModeEqualizeCommand);
 
         // Tab commands
         let _ = self.register(TabNewCommand);

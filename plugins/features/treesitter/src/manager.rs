@@ -97,6 +97,20 @@ impl TreesitterManager {
                     source,
                 );
             }
+            // Pre-compile injection query if available
+            if let Some(source) = registered.injections_query()
+                && self
+                    .queries
+                    .compile_and_cache(
+                        &lang_id,
+                        QueryType::Injections,
+                        registered.language(),
+                        source,
+                    )
+                    .is_some()
+            {
+                tracing::debug!(language_id = %lang_id, "Compiled injection query");
+            }
         }
     }
 

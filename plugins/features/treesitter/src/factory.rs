@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use reovim_core::syntax::{SyntaxFactory, SyntaxProvider};
 
-use crate::{queries::QueryType, syntax::TreeSitterSyntax, SharedTreesitterManager};
+use crate::{SharedTreesitterManager, queries::QueryType, syntax::TreeSitterSyntax};
 
 /// Factory for creating tree-sitter based syntax providers
 ///
@@ -34,10 +34,27 @@ impl SyntaxFactory for TreesitterSyntaxFactory {
             let registered = manager.registry().get(&language_id)?;
 
             // Get the pre-compiled highlights query
-            let query = manager.query_cache().get(&language_id, QueryType::Highlights)?;
+            let query = manager
+                .query_cache()
+                .get(&language_id, QueryType::Highlights)?;
 
-            // Create the syntax provider
-            let syntax = TreeSitterSyntax::new(registered.language(), &language_id, query)?;
+            // Check for injection query
+            let injection_query = manager
+                .query_cache()
+                .get(&language_id, QueryType::Injections);
+
+            // Create syntax provider - use injection-aware version if available
+            let syntax = if injection_query.is_some() {
+                TreeSitterSyntax::with_injections(
+                    registered.language(),
+                    &language_id,
+                    query,
+                    injection_query,
+                    Arc::clone(&self.manager),
+                )?
+            } else {
+                TreeSitterSyntax::new(registered.language(), &language_id, query)?
+            };
 
             Some(Box::new(syntax) as Box<dyn SyntaxProvider>)
         })

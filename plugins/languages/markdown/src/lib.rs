@@ -1,5 +1,9 @@
 //! Markdown language support for reovim
 
+mod markdown;
+
+pub mod decorator;
+pub mod factory;
 pub mod stage;
 
 #[cfg(test)]
@@ -14,6 +18,8 @@ use {
     },
     reovim_plugin_treesitter::{LanguageSupport, RegisterLanguage, TreesitterPlugin},
 };
+
+use factory::MarkdownDecorationFactory;
 
 /// Markdown language support
 pub struct MarkdownLanguage;
@@ -37,6 +43,10 @@ impl LanguageSupport for MarkdownLanguage {
 
     fn decorations_query(&self) -> Option<&'static str> {
         Some(include_str!("queries/decorations.scm"))
+    }
+
+    fn injections_query(&self) -> Option<&'static str> {
+        Some(include_str!("queries/injections.scm"))
     }
 }
 
@@ -88,6 +98,11 @@ impl Plugin for MarkdownPlugin {
 
     fn build(&self, _ctx: &mut PluginContext) {
         // No commands to register
+    }
+
+    fn init_state(&self, registry: &PluginStateRegistry) {
+        // Register the decoration factory for markdown files
+        registry.set_decoration_factory(MarkdownDecorationFactory::shared());
     }
 
     fn subscribe(&self, bus: &EventBus, _state: Arc<PluginStateRegistry>) {

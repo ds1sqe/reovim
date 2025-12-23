@@ -16,7 +16,7 @@ use crate::{
     event::{CommandEvent, VisualTextObjectAction},
     event_bus::BufferModification,
     highlight::Theme,
-    modd::ModeState,
+    modd::{ComponentId, ModeState, SubMode},
     screen::{NavigateDirection, Position, SplitDirection},
     textobject::SemanticTextObjectSpec,
 };
@@ -734,8 +734,25 @@ impl Runtime {
             WindowAction::FocusOrSplitRight => {
                 self.handle_focus_or_split(NavigateDirection::Right, SplitDirection::Vertical);
             }
+            WindowAction::SwapDirection { direction } => {
+                self.screen.swap_window(*direction);
+            }
         }
+
+        // Exit window mode if we're in it
+        self.exit_window_mode_if_active();
+
         false
+    }
+
+    /// Exit window mode if currently active
+    fn exit_window_mode_if_active(&mut self) {
+        if matches!(
+            self.mode_state.sub_mode,
+            SubMode::Interactor(id) if id == ComponentId::WINDOW
+        ) {
+            self.handle_mode_change(ModeState::normal());
+        }
     }
 
     /// Handle tab-related deferred actions. Returns true if editor should quit.

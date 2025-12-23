@@ -536,19 +536,82 @@ impl Screen {
                         window,
                     );
 
-                    // Render line content with syntax highlights
+                    // Render line content with syntax highlights and decorations
                     let mut col = window.anchor.x + gutter_width;
                     #[allow(clippy::cast_possible_truncation)]
                     let buffer_line_y = line_idx as u16;
 
-                    // Get syntax highlights for this line
+                    // Get syntax highlights and decorations for this line
                     let line_highlights = render_data.highlights.get(line_idx);
+                    let line_decorations = render_data.decorations.get(line_idx);
                     let mut current_hl_idx = 0usize;
+                    let mut current_deco_idx = 0usize;
+                    let mut char_idx = 0usize;
+                    let chars: Vec<char> = line.chars().collect();
 
-                    for (char_idx, ch) in line.chars().enumerate() {
+                    while char_idx < chars.len() {
                         if col >= window.anchor.x + window.width {
                             break;
                         }
+
+                        // Check for decorations at current position
+                        #[allow(clippy::option_if_let_else)]
+                        let decoration = if let Some(decorations) = line_decorations {
+                            // Advance past decorations that end before current position
+                            while current_deco_idx < decorations.len()
+                                && decorations[current_deco_idx].end_col <= char_idx
+                            {
+                                current_deco_idx += 1;
+                            }
+                            // Check if current position is within a decoration
+                            if current_deco_idx < decorations.len()
+                                && decorations[current_deco_idx].start_col <= char_idx
+                            {
+                                Some(&decorations[current_deco_idx])
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
+
+                        // Handle conceal/hide decorations
+                        if let Some(deco) = decoration {
+                            use crate::render::DecorationKind;
+                            match &deco.kind {
+                                DecorationKind::Conceal { replacement } => {
+                                    // Only output replacement at start of decoration span
+                                    if char_idx == deco.start_col
+                                        && let Some(repl) = replacement
+                                    {
+                                        // Output replacement text
+                                        for repl_ch in repl.chars() {
+                                            if col >= window.anchor.x + window.width {
+                                                break;
+                                            }
+                                            frame_buffer.put_char(
+                                                col,
+                                                screen_y,
+                                                repl_ch,
+                                                &theme.base.default,
+                                            );
+                                            col += 1;
+                                        }
+                                    }
+                                    // Hide decorations (replacement=None) output nothing
+                                    // Skip the concealed character
+                                    char_idx += 1;
+                                    continue;
+                                }
+                                DecorationKind::Background { .. }
+                                | DecorationKind::VirtualText { .. } => {
+                                    // These don't affect character output, just style
+                                    // Fall through to normal rendering
+                                }
+                            }
+                        }
+
+                        let ch = chars[char_idx];
 
                         // Check if this character is within the selection
                         #[allow(clippy::cast_possible_truncation)]
@@ -586,9 +649,32 @@ impl Screen {
                             false
                         };
 
-                        // Apply appropriate style (selection > syntax > default)
+                        // Apply appropriate style (selection > decoration background > syntax > default)
                         let style = if is_selected {
                             &theme.selection.visual
+                        } else if let Some(deco) = decoration {
+                            // Check for background decoration
+                            if let crate::render::DecorationKind::Background { style } = &deco.kind
+                            {
+                                style
+                            } else if let Some(highlights) = line_highlights {
+                                // Advance past highlights that end before current position
+                                while current_hl_idx < highlights.len()
+                                    && highlights[current_hl_idx].end_col <= char_idx
+                                {
+                                    current_hl_idx += 1;
+                                }
+                                // Check if current position is within a highlight
+                                if current_hl_idx < highlights.len()
+                                    && highlights[current_hl_idx].start_col <= char_idx
+                                {
+                                    &highlights[current_hl_idx].style
+                                } else {
+                                    &theme.base.default
+                                }
+                            } else {
+                                &theme.base.default
+                            }
                         } else if let Some(highlights) = line_highlights {
                             // Advance past highlights that end before current position
                             while current_hl_idx < highlights.len()
@@ -610,6 +696,7 @@ impl Screen {
 
                         frame_buffer.put_char(col, screen_y, ch, style);
                         col += 1;
+                        char_idx += 1;
                     }
                     display_row += 1;
                 }
@@ -1316,6 +1403,49 @@ impl Screen {
         }
     }
 
+    /// Swap the active window with the window in the given direction
+    ///
+    /// Returns true if a swap occurred
+    pub fn swap_window(&mut self, direction: NavigateDirection) -> bool {
+        let Some(tab) = self.tab_manager.active_tab() else {
+            return false;
+        };
+
+        // Calculate layouts for navigation
+        let editor_layout = self.layout.editor_layout();
+        let editor_rect = WindowRect::new(
+            editor_layout.anchor.x,
+            editor_layout.anchor.y,
+            editor_layout.width,
+            editor_layout.height,
+        );
+        let layouts = tab.calculate_layouts(editor_rect);
+        let current_id = tab.active_window_id;
+
+        // Find adjacent window
+        let Some(target_id) = split::find_adjacent_window(current_id, direction, &layouts) else {
+            return false;
+        };
+
+        // Swap window IDs in the split tree
+        if let Some(tab_mut) = self.tab_manager.active_tab_mut()
+            && tab_mut.root.swap_windows(current_id, target_id)
+        {
+            // Also swap buffer assignments
+            let buf_a = self.window_buffers.get(&current_id).copied();
+            let buf_b = self.window_buffers.get(&target_id).copied();
+            if let Some(buf_a) = buf_a {
+                self.window_buffers.insert(target_id, buf_a);
+            }
+            if let Some(buf_b) = buf_b {
+                self.window_buffers.insert(current_id, buf_b);
+            }
+            self.update_window_layouts();
+            return true;
+        }
+        false
+    }
+
     // === Tab Operations ===
 
     /// Create a new tab
@@ -1515,8 +1645,8 @@ impl Screen {
     ) {
         let y = self.size.height.saturating_sub(1);
 
-        // Mode indicator
-        let mode_display = mode.display_string();
+        // Mode indicator (hierarchical: Kind | Mode | SubMode)
+        let mode_display = mode.hierarchical_display();
         let mode_text = format!(" {mode_display} ");
         let mode_style = &theme.statusline.mode.normal;
         let mut x = 0u16;

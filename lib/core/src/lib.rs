@@ -10,6 +10,9 @@ pub mod rpc;
 pub mod visibility;
 pub mod visual;
 
+/// Re-export `reovim_sys` for plugin access to low-level types (Color, etc.)
+pub use reovim_sys as sys;
+
 pub mod command;
 pub mod command_line;
 pub mod compositor;
