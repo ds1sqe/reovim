@@ -113,9 +113,7 @@ fn test_popup_window_config_when_visible() {
     assert_eq!(config.bounds.height, 8, "Popup height should be 8");
 
     // Verify popup is positioned to the right of explorer (explorer width + 1)
-    let explorer_width = registry
-        .with::<ExplorerState, _, _>(|s| s.width)
-        .unwrap();
+    let explorer_width = registry.with::<ExplorerState, _, _>(|s| s.width).unwrap();
     assert_eq!(
         config.bounds.x,
         explorer_width + 1,
@@ -491,10 +489,7 @@ fn test_popup_syncs_on_cursor_move() {
     assert!(is_visible, "Popup should remain visible after cursor move");
 
     // Popup content should have changed (different file)
-    assert_ne!(
-        initial_name, new_name,
-        "Popup should update to show new file after cursor move"
-    );
+    assert_ne!(initial_name, new_name, "Popup should update to show new file after cursor move");
 }
 
 #[test]
@@ -520,10 +515,7 @@ fn test_sync_popup_does_nothing_when_closed() {
     let is_visible = registry
         .with::<ExplorerState, _, _>(|s| s.is_popup_visible())
         .unwrap();
-    assert!(
-        !is_visible,
-        "Popup should remain closed when sync_popup called on closed popup"
-    );
+    assert!(!is_visible, "Popup should remain closed when sync_popup called on closed popup");
 }
 
 #[test]
@@ -662,10 +654,7 @@ fn test_copy_path_with_popup_open_and_navigate() {
         .unwrap();
 
     // They should be different (we navigated)
-    assert_ne!(
-        initial_name, new_name,
-        "Popup should show different file after navigation"
-    );
+    assert_ne!(initial_name, new_name, "Popup should show different file after navigation");
 
     // Get the path that would be copied (should be for the NEW file)
     let copy_path = registry

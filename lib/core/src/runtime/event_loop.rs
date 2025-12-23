@@ -346,7 +346,11 @@ impl Runtime {
             }
             // Set register content (from plugins)
             InnerEvent::SetRegister { register, text } => {
-                tracing::debug!("Runtime: Setting register {:?} with text length {}", register, text.len());
+                tracing::debug!(
+                    "Runtime: Setting register {:?} with text length {}",
+                    register,
+                    text.len()
+                );
                 self.registers.set_by_name(register, text);
             }
         }

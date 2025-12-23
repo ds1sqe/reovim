@@ -203,16 +203,24 @@ impl FileNode {
     }
 
     /// Get an icon/prefix for the node type
+    ///
+    /// Uses the global icon registry to get the appropriate icon based on:
+    /// - File extension for files
+    /// - Expanded state for directories
+    /// - Broken state for symlinks
     #[must_use]
-    pub const fn icon(&self) -> &'static str {
+    pub fn icon(&self) -> &'static str {
+        use reovim_core::style::icons::{file_icons::symlink_icon, registry};
+
+        let reg = registry().read().unwrap();
         match &self.node_type {
-            NodeType::Directory { expanded: true, .. } => "v ",
-            NodeType::Directory {
-                expanded: false, ..
-            } => "> ",
-            NodeType::Symlink { broken: true, .. } => "! ",
-            NodeType::Symlink { broken: false, .. } => "@ ",
-            NodeType::File { .. } => "  ",
+            NodeType::Directory { expanded, .. } => reg.dir_icon(*expanded),
+            NodeType::Symlink { broken, .. } => symlink_icon(*broken, reg.icon_set()),
+            NodeType::File { .. } => {
+                // Get file extension
+                let ext = self.path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                reg.file_icon(ext)
+            }
         }
     }
 }
@@ -312,6 +320,56 @@ mod tests {
         std::fs::{self, File},
         tempfile::tempdir,
     };
+
+    #[test]
+    fn test_file_icon_by_extension() {
+        let dir = tempdir().unwrap();
+
+        // Create test files with various extensions (including realistic filenames)
+        let test_cases = [
+            ("main.rs", " "),       // Rust icon
+            ("lib.rs", " "),        // Rust icon
+            ("Cargo.toml", " "),    // TOML icon
+            ("config.toml", " "),   // TOML icon
+            ("README.md", " "),     // Markdown icon
+            ("CHANGELOG.md", " "),  // Markdown icon
+            ("package.json", " "),  // JSON icon
+            ("tsconfig.json", " "), // JSON icon
+            ("script.py", " "),     // Python icon
+            ("Cargo.lock", " "),    // Lock icon
+            ("unknown.xyz", " "),   // Unknown -> default icon
+            ("LICENSE", " "),       // No extension -> default icon
+        ];
+
+        for (filename, expected_icon) in test_cases {
+            let file_path = dir.path().join(filename);
+            File::create(&file_path).unwrap();
+
+            let node = FileNode::from_path(&file_path, 0).unwrap();
+            let icon = node.icon();
+            assert_eq!(
+                icon, expected_icon,
+                "File '{}' should have icon '{}' but got '{}'",
+                filename, expected_icon, icon
+            );
+        }
+    }
+
+    #[test]
+    fn test_directory_icon() {
+        let dir = tempdir().unwrap();
+        let subdir = dir.path().join("testdir");
+        fs::create_dir(&subdir).unwrap();
+
+        let mut node = FileNode::from_path(&subdir, 0).unwrap();
+
+        // Collapsed directory
+        assert_eq!(node.icon(), "󰉋 ", "Collapsed dir should have closed folder icon");
+
+        // Expanded directory
+        node.set_expanded(true);
+        assert_eq!(node.icon(), "󰝰 ", "Expanded dir should have open folder icon");
+    }
 
     #[test]
     fn test_file_node_from_path() {

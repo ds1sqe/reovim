@@ -96,11 +96,7 @@ impl PluginWindow for ExplorerPluginWindow {
 
                 // Build line content
                 let indent = "  ".repeat(node.depth);
-                let icon = if node.is_dir() {
-                    if node.is_expanded() { "▾ " } else { "▸ " }
-                } else {
-                    "  "
-                };
+                let icon = node.icon(); // Uses IconRegistry for file/dir icons
 
                 let marker = if is_marked {
                     "* "
@@ -204,9 +200,7 @@ impl PluginWindow for FileDetailsPluginWindow {
         let (is_visible, cursor_screen_y, explorer_width) = state
             .with::<ExplorerState, _, _>(|explorer| {
                 // Calculate cursor's screen Y position
-                let cursor_y = explorer
-                    .cursor_index
-                    .saturating_sub(explorer.scroll_offset) as u16;
+                let cursor_y = explorer.cursor_index.saturating_sub(explorer.scroll_offset) as u16;
                 (explorer.popup.visible, cursor_y, explorer.width)
             })
             .unwrap_or((false, 0, 30));
@@ -227,7 +221,9 @@ impl PluginWindow for FileDetailsPluginWindow {
         let popup_y = cursor_absolute_y + 1; // One line below cursor
 
         // Ensure popup doesn't go off the bottom of the screen
-        let max_y = ctx.screen_height.saturating_sub(height + ctx.status_line_height);
+        let max_y = ctx
+            .screen_height
+            .saturating_sub(height + ctx.status_line_height);
         let y = popup_y.min(max_y);
 
         // If popup would go off screen to the right, position it at the right edge

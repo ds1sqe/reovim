@@ -301,6 +301,24 @@ File browser sidebar:
 - Toggle (`Space e`)
 - ~30 commands for navigation, tree ops, file ops
 - Clipboard operations (copy/cut/paste)
+- File details popup (`s`) - shows name, path, type, size, created/modified dates
+- Copy path to clipboard (`t` in popup, or `y` in visual selection)
+
+**File Details Popup:**
+
+Press `s` on any file/directory to show a centered popup with details:
+```
++-- File Details ---------------------------------+
+|     Name: example.rs                           |
+|     Path: /home/user/proj/src/example.rs       |
+|     Type: file                                 |
+|     Size: 12.26 KB                             |
+|  Created: 2025-12-22 04:44 PM                  |
+| Modified: 2025-12-22 04:44 PM                  |
++-- <T>: copy path / <Esc/Enter> Close ----------+
+```
+
+The popup syncs with cursor movement - navigate with `j`/`k` while popup is open to view details of different files. Press `t` to copy the path to both system clipboard and editor registers (pasteable with `p`).
 
 ### TelescopePlugin (`reovim-plugin-telescope`)
 

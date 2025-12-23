@@ -104,6 +104,37 @@ event_bus.emit(LeapStartEvent {
 | `LeapJumpEvent` | Jump completed (from, to, direction) |
 | `LeapMatchesFoundEvent` | Matches found (count, pattern) |
 
+**Core Events (via Event Bus):**
+
+Core events are defined in `lib/core/src/event_bus/core_events.rs` and allow plugins to request runtime actions.
+
+| Event | Description |
+|-------|-------------|
+| `RequestSetRegister` | Set register content (unnamed or named) |
+
+**RequestSetRegister:**
+
+Allows plugins to set register content, enabling features like copy-to-clipboard:
+
+```rust
+use reovim_core::event_bus::core_events::RequestSetRegister;
+
+// Copy path to both unnamed register (for 'p' paste) and system clipboard
+ctx.emit(RequestSetRegister {
+    register: None,      // Unnamed register - used by 'p' paste
+    text: path.clone(),
+});
+ctx.emit(RequestSetRegister {
+    register: Some('+'), // System clipboard register
+    text: path,
+});
+```
+
+Register names:
+- `None` - Unnamed register (default for yank/paste)
+- `Some('+')` - System clipboard
+- `Some('a')` to `Some('z')` - Named registers
+
 ## Event Design Patterns
 
 When designing events for your plugin, choose the appropriate pattern based on your needs.
