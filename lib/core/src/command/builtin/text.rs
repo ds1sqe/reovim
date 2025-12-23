@@ -164,6 +164,7 @@ impl CommandTrait for DeleteLineCommand {
             CommandResult::ClipboardWrite {
                 text: deleted,
                 register: None,
+                mode_change: None,
             }
         }
     }
@@ -206,6 +207,7 @@ impl CommandTrait for YankLineCommand {
         CommandResult::ClipboardWrite {
             text,
             register: None,
+            mode_change: None,
         }
     }
 
@@ -250,6 +252,7 @@ impl CommandTrait for YankToEndCommand {
         CommandResult::ClipboardWrite {
             text,
             register: None,
+            mode_change: None,
         }
     }
 

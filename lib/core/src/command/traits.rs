@@ -35,9 +35,11 @@ pub enum CommandResult {
     Quit,
     /// Command produced text for clipboard (e.g., yank, delete)
     /// `register` is the target register: None for unnamed, Some('a'-'z') for named, '+' for system
+    /// `mode_change` optionally specifies a mode to transition to after writing to clipboard
     ClipboardWrite {
         text: String,
         register: Option<char>,
+        mode_change: Option<ModeState>,
     },
     /// Command needs Runtime access (deferred execution)
     ///

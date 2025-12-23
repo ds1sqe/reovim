@@ -4,6 +4,7 @@ use {
     crate::{
         buffer::SelectionOps,
         command::traits::{CommandResult, CommandTrait, ExecutionContext},
+        modd::ModeState,
     },
     std::any::Any,
 };
@@ -146,6 +147,7 @@ impl CommandTrait for VisualDeleteCommand {
         CommandResult::ClipboardWrite {
             text,
             register: None,
+            mode_change: Some(ModeState::normal()),
         }
     }
 
@@ -173,10 +175,11 @@ impl CommandTrait for VisualYankCommand {
 
     fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
         let text = ctx.buffer.get_selected_text();
-        ctx.buffer.clear_selection();
+        // Note: clear_selection is called by handle_mode_change when mode changes to Normal
         CommandResult::ClipboardWrite {
             text,
             register: None,
+            mode_change: Some(ModeState::normal()),
         }
     }
 

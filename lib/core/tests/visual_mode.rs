@@ -136,9 +136,9 @@ async fn test_big_v_enters_visual_line_mode() {
     result.assert_visual_mode();
 }
 
-/// Documents that visual delete with l extend may not work
+/// Visual delete with l extend deletes selected text
 #[tokio::test]
-async fn test_doc_visual_delete_chars_actual() {
+async fn test_visual_delete_chars() {
     let result = ServerTest::new()
         .await
         .with_content("hello world")
@@ -146,14 +146,14 @@ async fn test_doc_visual_delete_chars_actual() {
         .run()
         .await;
 
-    // Expected vim behavior: delete "hell", leave "o world"
-    // Actual behavior: buffer unchanged (selection/delete issue)
-    result.assert_buffer_eq("hello world");
+    // v enters visual at 'h', lll extends to 'l' (selecting "hell"), d deletes
+    result.assert_buffer_eq("o world");
+    result.assert_normal_mode();
 }
 
-/// Documents $ then vd behavior
+/// Visual delete at end of line deletes the character
 #[tokio::test]
-async fn test_doc_visual_at_eol_actual() {
+async fn test_visual_delete_at_eol() {
     let result = ServerTest::new()
         .await
         .with_content("hello")
@@ -161,7 +161,7 @@ async fn test_doc_visual_at_eol_actual() {
         .run()
         .await;
 
-    // Expected vim behavior: delete 'o', leave "hell"
-    // Actual behavior: buffer unchanged
-    result.assert_buffer_eq("hello");
+    // $ moves to 'o', v enters visual, d deletes the 'o'
+    result.assert_buffer_eq("hell");
+    result.assert_normal_mode();
 }

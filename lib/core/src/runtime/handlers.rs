@@ -368,8 +368,15 @@ impl Runtime {
                 CommandResult::Quit => {
                     return true;
                 }
-                CommandResult::ClipboardWrite { text, register } => {
+                CommandResult::ClipboardWrite {
+                    text,
+                    register,
+                    mode_change,
+                } => {
                     self.registers.set_by_name(register, text);
+                    if let Some(new_mode) = mode_change {
+                        self.handle_mode_change(new_mode);
+                    }
                     self.request_render();
                 }
                 CommandResult::DeferToRuntime(action) => {

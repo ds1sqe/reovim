@@ -82,11 +82,12 @@ impl Dispatcher {
 
         match name {
             // Commands that return to Normal mode (Editor focus)
-            "enter_normal_mode"
-            | "command_line_execute"
-            | "command_line_cancel"
-            | "visual_delete"
-            | "visual_yank" => Some(ModeState::normal()),
+            // NOTE: visual_delete and visual_yank are NOT here because they need
+            // to read the selection BEFORE mode changes to Normal (which clears selection).
+            // They handle mode transition via CommandResult::ClipboardWrite.
+            "enter_normal_mode" | "command_line_execute" | "command_line_cancel" => {
+                Some(ModeState::normal())
+            }
             "enter_insert_mode"
             | "enter_insert_mode_after"
             | "enter_insert_mode_eol"

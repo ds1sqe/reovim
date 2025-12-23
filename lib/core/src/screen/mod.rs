@@ -537,12 +537,7 @@ impl Screen {
         // Render each visible line, starting from scroll offset
         let mut display_row = 0u16;
         let start_line = scroll_offset as usize;
-        for (idx, line) in render_data
-            .lines
-            .iter()
-            .enumerate()
-            .skip(start_line)
-        {
+        for (idx, line) in render_data.lines.iter().enumerate().skip(start_line) {
             let line_idx = idx;
             if display_row >= window.height {
                 break;

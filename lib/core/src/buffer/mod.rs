@@ -415,28 +415,24 @@ impl Buffer {
 
 // === Selection Operations ===
 impl SelectionOps for Buffer {
-    #[allow(clippy::missing_const_for_fn)]
     fn start_selection(&mut self) {
         self.selection.anchor = self.cur;
         self.selection.active = true;
         self.selection.mode = SelectionMode::Character;
     }
 
-    #[allow(clippy::missing_const_for_fn)]
     fn start_block_selection(&mut self) {
         self.selection.anchor = self.cur;
         self.selection.active = true;
         self.selection.mode = SelectionMode::Block;
     }
 
-    #[allow(clippy::missing_const_for_fn)]
     fn start_line_selection(&mut self) {
         self.selection.anchor = self.cur;
         self.selection.active = true;
         self.selection.mode = SelectionMode::Line;
     }
 
-    #[allow(clippy::missing_const_for_fn)]
     fn clear_selection(&mut self) {
         self.selection.active = false;
     }
