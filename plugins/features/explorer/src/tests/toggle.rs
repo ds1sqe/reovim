@@ -17,7 +17,7 @@ fn mock_editor_context() -> EditorContext {
         right_offset: 0,
         edit_mode: reovim_core::modd::EditMode::Normal,
         sub_mode: reovim_core::modd::SubMode::None,
-        focused_component: reovim_core::ui_component::ComponentId::EDITOR,
+        focused_component: reovim_core::modd::ComponentId::EDITOR,
         active_buffer_id: 0,
         buffer_count: 1,
         color_mode: reovim_core::highlight::ColorMode::TrueColor,

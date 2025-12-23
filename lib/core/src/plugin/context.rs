@@ -7,10 +7,10 @@ use crate::{
     command::{CommandRegistry, CommandTrait},
     display::{DisplayInfo, DisplayRegistry, EditModeKey, SubModeKey},
     keystroke::KeySequence,
+    modd::ComponentId,
     modifier::ModifierRegistry,
     render::{RenderStage, RenderStageRegistry},
     rpc::{RpcHandler, RpcHandlerRegistry},
-    ui_component::{ComponentId, ComponentRegistry, UIComponent},
 };
 
 /// Context passed to plugins during the build phase
@@ -29,9 +29,6 @@ pub struct PluginContext {
 
     /// Track which plugins have been loaded
     pub(crate) loaded_plugins: std::collections::HashSet<TypeId>,
-
-    /// Component registry for UI components
-    pub(crate) components: ComponentRegistry,
 
     /// RPC handler registry for plugin-registered RPC methods
     pub(crate) rpc_handlers: RpcHandlerRegistry,
@@ -58,7 +55,6 @@ impl PluginContext {
             modifiers: ModifierRegistry::new(),
             keymap: KeyMap::default(),
             loaded_plugins: std::collections::HashSet::new(),
-            components: ComponentRegistry::new(),
             rpc_handlers: RpcHandlerRegistry::new(),
             display_registry: DisplayRegistry::new(),
             render_stages: RenderStageRegistry::new(),
@@ -117,34 +113,12 @@ impl PluginContext {
         &mut self.modifiers
     }
 
-    // === Component Registration ===
-
-    /// Register a UI component
-    ///
-    /// If a component with the same ID already exists, it will be replaced.
-    pub fn register_component(&mut self, component: Box<dyn UIComponent>) {
-        // Register the component itself
-        self.components.register(component);
-    }
-
     /// Bind a key sequence to a command with a specific scope
     ///
     /// This allows direct scope-based keybinding registration without
     /// going through the legacy mode string API.
     pub fn bind_key_scoped(&mut self, scope: KeymapScope, keys: KeySequence, cmd: CommandRef) {
         self.keymap.bind_scoped(scope, keys, cmd);
-    }
-
-    /// Get access to the component registry
-    #[must_use]
-    pub const fn component_registry(&self) -> &ComponentRegistry {
-        &self.components
-    }
-
-    /// Get mutable access to the component registry
-    #[must_use]
-    pub const fn component_registry_mut(&mut self) -> &mut ComponentRegistry {
-        &mut self.components
     }
 
     // === RPC Handler Registration ===
@@ -321,7 +295,6 @@ impl PluginContext {
         CommandRegistry,
         ModifierRegistry,
         KeyMap,
-        ComponentRegistry,
         RpcHandlerRegistry,
         DisplayRegistry,
         RenderStageRegistry,
@@ -330,7 +303,6 @@ impl PluginContext {
             self.commands,
             self.modifiers,
             self.keymap,
-            self.components,
             self.rpc_handlers,
             self.display_registry,
             self.render_stages,

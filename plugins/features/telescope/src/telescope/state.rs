@@ -1,9 +1,6 @@
 //! Telescope state management
 
-use {
-    super::item::TelescopeItem,
-    reovim_core::overlay::{OverlayBounds, OverlayGeometry, Scrollable, Selectable},
-};
+use super::item::TelescopeItem;
 
 /// Preview content for the selected item
 #[derive(Debug, Clone, Default)]
@@ -333,53 +330,6 @@ impl TelescopeState {
                 visible_items: usize::from(height.saturating_sub(4)),
             };
         }
-    }
-}
-
-// === Overlay Trait Implementations ===
-
-impl Selectable for TelescopeState {
-    fn item_count(&self) -> usize {
-        self.items.len()
-    }
-
-    fn selected_index(&self) -> usize {
-        self.selected_index
-    }
-
-    fn set_selected_index(&mut self, index: usize) {
-        self.selected_index = index.min(self.items.len().saturating_sub(1));
-    }
-}
-
-impl Scrollable for TelescopeState {
-    fn scroll_offset(&self) -> usize {
-        self.scroll_offset
-    }
-
-    fn set_scroll_offset(&mut self, offset: usize) {
-        self.scroll_offset = offset;
-    }
-
-    fn visible_item_count(&self) -> usize {
-        self.layout.visible_items.max(1)
-    }
-}
-
-impl OverlayGeometry for TelescopeState {
-    /// Compute bounds for the telescope overlay
-    ///
-    /// Uses 80% width and 70% height, centered on screen.
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    fn compute_bounds(&self, screen_width: u16, screen_height: u16) -> OverlayBounds {
-        // 80% width, 70% height
-        let total_width = (f32::from(screen_width) * 0.8) as u16;
-        let height = (f32::from(screen_height) * 0.7) as u16;
-
-        let x = (screen_width - total_width) / 2;
-        let y = (screen_height - height) / 2;
-
-        OverlayBounds::new(x, y, total_width, height)
     }
 }
 

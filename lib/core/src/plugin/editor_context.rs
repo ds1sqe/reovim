@@ -18,8 +18,7 @@
 
 use crate::{
     highlight::ColorMode,
-    modd::{EditMode, SubMode},
-    ui_component::ComponentId,
+    modd::{ComponentId, EditMode, SubMode},
 };
 
 /// Position for side panels and docked windows

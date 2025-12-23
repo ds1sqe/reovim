@@ -2,8 +2,38 @@
 //!
 //! Uses `ComponentId` for focus context and `EditMode`/`SubMode` for input handling.
 
-// Re-export ComponentId for convenience (replaces ComponentId)
-pub use crate::ui_component::ComponentId;
+/// Unique identifier for UI components
+///
+/// This is the unified identifier for the component system.
+/// Components are identified by a static string name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ComponentId(pub &'static str);
+
+impl ComponentId {
+    // === Core constants ===
+    // Plugins define their own IDs using ComponentId("plugin_name")
+
+    /// Editor component (main text editing area)
+    pub const EDITOR: Self = Self("editor");
+    /// Command line component (`:` commands)
+    pub const COMMAND_LINE: Self = Self("command_line");
+    /// Status line component (bottom bar)
+    pub const STATUS_LINE: Self = Self("status_line");
+    /// Tab line component (top bar with tabs)
+    pub const TAB_LINE: Self = Self("tab_line");
+}
+
+impl std::fmt::Display for ComponentId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl Default for ComponentId {
+    fn default() -> Self {
+        Self::EDITOR
+    }
+}
 
 /// Operator type for operator-pending mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

@@ -8,7 +8,6 @@ use crate::{
         BufferEvent, CommandHandler, HighlightEvent, InnerEvent, InputEventBroker,
         TerminateHandler, TextInputEvent, WindowEvent,
     },
-    interactor::InputResult,
     modd::{ModeState, SubMode},
 };
 
@@ -667,7 +666,14 @@ impl Runtime {
 
     /// Handle interactor input events by routing to the active interactor
     fn handle_interactor_input(&mut self, event: TextInputEvent) {
-        use crate::ui_component::ComponentId;
+        use crate::{
+            event_bus::{
+                DynEvent,
+                core_events::{PluginBackspace, PluginTextInput},
+            },
+            modd::ComponentId,
+        };
+
         let interactor_id = self.mode_state.interactor_id;
 
         // Fast path: Built-in components with direct Runtime access
@@ -701,38 +707,24 @@ impl Runtime {
             }
         }
 
-        // Plugin component path (existing code)
-        let result = if let Some(component) = self.component_registry.get_mut(interactor_id) {
-            // Pass plugin state reference (it has interior mutability via RwLock)
-            match event {
-                TextInputEvent::InsertChar(c) => {
-                    component.handle_insert_char(c, &self.mode_state, &self.plugin_state)
-                }
-                TextInputEvent::DeleteCharBackward => {
-                    component.handle_delete_backward(&self.mode_state, &self.plugin_state)
-                }
-            }
-        } else {
-            InputResult::NotHandled
+        // Plugin path: Emit events via EventBus for plugins to handle
+
+        let dyn_event = match event {
+            TextInputEvent::InsertChar(c) => DynEvent::new(PluginTextInput {
+                target: interactor_id,
+                c,
+            }),
+            TextInputEvent::DeleteCharBackward => DynEvent::new(PluginBackspace {
+                target: interactor_id,
+            }),
         };
 
-        // Dispatch based on result (enlist pattern)
-        match result {
-            InputResult::NotHandled => {}
-            InputResult::Handled => {
-                self.request_render();
-            }
-            InputResult::SendEvent(event) => {
-                // Deprecated path - plugins should use Handled instead
-                tracing::warn!(
-                    "Plugin component {} returned SendEvent - should use Handled",
-                    interactor_id.0
-                );
-                if let Err(e) = self.tx.try_send(event) {
-                    tracing::error!("Failed to send event: {}", e);
-                }
-                self.request_render(); // FIX: Always render after SendEvent too
-            }
+        // Dispatch via event bus
+        let sender = self.event_bus.sender();
+        let mut ctx = crate::event_bus::HandlerContext::new(&sender);
+        let _ = self.event_bus.dispatch(&dyn_event, &mut ctx);
+        if ctx.render_requested() {
+            self.request_render();
         }
     }
 }

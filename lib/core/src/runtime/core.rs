@@ -25,7 +25,6 @@ use {
         plugin::{PluginContext, PluginLoader, PluginStateRegistry, PluginTuple},
         register::Registers,
         screen::Screen,
-        ui_component::ComponentRegistry,
     },
     tracing::debug,
 };
@@ -72,8 +71,6 @@ pub struct Runtime {
     render_pending: bool,
     /// Modifier registry for style and behavior modifiers
     pub modifier_registry: ModifierRegistry,
-    /// Component registry for unified UI components
-    pub component_registry: ComponentRegistry,
     /// Decoration store for language-specific visual decorations
     pub decoration_store: DecorationStore,
     /// Language renderer registry for decoration generation
@@ -156,7 +153,6 @@ impl Runtime {
             command_registry,
             modifier_registry,
             keymap,
-            component_registry,
             rpc_handler_registry,
             display_registry,
             render_stages,
@@ -194,7 +190,6 @@ impl Runtime {
             current_profile_name: default_profile_name,
             render_pending: false,
             modifier_registry,
-            component_registry,
             decoration_store: DecorationStore::new(),
             renderer_registry: LanguageRendererRegistry::new(),
             event_bus,

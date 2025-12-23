@@ -292,10 +292,7 @@ impl Modifier for VisualModeModifier {
 mod tests {
     use {
         super::*,
-        crate::{
-            modd::{EditMode, InsertVariant, SubMode},
-            ui_component::ComponentId,
-        },
+        crate::modd::{ComponentId, EditMode, InsertVariant, SubMode},
     };
 
     #[test]

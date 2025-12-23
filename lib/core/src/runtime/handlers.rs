@@ -669,7 +669,7 @@ impl Runtime {
     /// The screen is the source of truth for focus (plugin vs editor).
     /// This method updates the mode state to match.
     pub(crate) fn sync_mode_with_screen_focus(&mut self) {
-        use crate::ui_component::ComponentId;
+        use crate::modd::ComponentId;
 
         // Check if any plugin window has focus
         let focused_plugin = self.screen.focused_plugin();

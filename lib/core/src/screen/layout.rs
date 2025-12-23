@@ -1,6 +1,6 @@
 //! Window layout management for split views
 
-use {super::window::Anchor, crate::ui_component::ComponentId};
+use {super::window::Anchor, crate::modd::ComponentId};
 
 /// Type of window content
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

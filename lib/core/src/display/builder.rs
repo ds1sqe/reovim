@@ -4,9 +4,8 @@
 
 use crate::{
     display::{DisplayInfo, EditModeKey, SubModeKey},
-    modd::{EditMode, SubMode},
+    modd::{ComponentId, EditMode, SubMode},
     plugin::PluginContext,
-    ui_component::ComponentId,
 };
 
 /// Builder for registering display information with a fluent API

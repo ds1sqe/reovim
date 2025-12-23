@@ -20,13 +20,11 @@ use reovim_core::{
     bind::{CommandRef, EditModeKind, KeymapScope},
     event_bus::{EventBus, EventResult},
     keys,
-    modd::{EditMode, InsertVariant, VisualVariant},
+    modd::{ComponentId, EditMode, InsertVariant, VisualVariant},
     plugin::{Plugin, PluginContext, PluginId, PluginStateRegistry},
-    ui_component::ComponentId,
 };
 
 mod command;
-mod component;
 mod node;
 mod provider;
 mod render;
@@ -144,12 +142,7 @@ impl Plugin for ExplorerPlugin {
         self.register_visual_commands(ctx);
         self.register_input_commands(ctx);
         self.register_keybindings(ctx);
-
-        // Register UI component for input handling
-        // Input is now handled directly in ExplorerComponent via UIComponent::handle_insert_char
-        use crate::component::ExplorerComponent;
-        ctx.register_component(Box::new(ExplorerComponent));
-        tracing::info!("ExplorerPlugin: registered UIComponent");
+        // Input handling is done via PluginTextInput/PluginBackspace event subscriptions
     }
 
     fn init_state(&self, registry: &PluginStateRegistry) {
@@ -172,10 +165,42 @@ impl Plugin for ExplorerPlugin {
 
     fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {
         use reovim_core::{
-            event_bus::core_events::{RequestFocusChange, RequestModeChange, RequestOpenFile},
+            event_bus::core_events::{
+                PluginBackspace, PluginTextInput, RequestFocusChange, RequestModeChange,
+                RequestOpenFile,
+            },
             modd::{EditMode, ModeState, SubMode},
-            ui_component::ComponentId,
         };
+
+        // Handle text input from runtime (PluginTextInput event)
+        let state_clone = Arc::clone(&state);
+        bus.subscribe::<PluginTextInput, _>(100, move |event, ctx| {
+            // Only handle if we're the target
+            if event.target != COMPONENT_ID {
+                return EventResult::NotHandled;
+            }
+
+            state_clone.with_mut::<ExplorerState, _, _>(|s| {
+                s.input_char(event.c);
+            });
+            ctx.request_render();
+            EventResult::Handled
+        });
+
+        // Handle backspace from runtime (PluginBackspace event)
+        let state_clone = Arc::clone(&state);
+        bus.subscribe::<PluginBackspace, _>(100, move |event, ctx| {
+            // Only handle if we're the target
+            if event.target != COMPONENT_ID {
+                return EventResult::NotHandled;
+            }
+
+            state_clone.with_mut::<ExplorerState, _, _>(|s| {
+                s.input_backspace();
+            });
+            ctx.request_render();
+            EventResult::Handled
+        });
 
         // Navigation events (sync popup with cursor if visible)
         let state_clone = Arc::clone(&state);

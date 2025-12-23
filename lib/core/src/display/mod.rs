@@ -10,10 +10,7 @@ pub use builder::DisplayInfoBuilder;
 
 use std::collections::HashMap;
 
-use crate::{
-    modd::{EditMode, InsertVariant, ModeState, SubMode, VisualVariant},
-    ui_component::ComponentId,
-};
+use crate::modd::{ComponentId, EditMode, InsertVariant, ModeState, SubMode, VisualVariant};
 
 /// Display information for a mode/component
 #[derive(Debug, Clone)]

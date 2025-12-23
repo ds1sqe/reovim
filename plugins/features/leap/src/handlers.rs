@@ -6,9 +6,8 @@
 
 use reovim_core::{
     command::{CommandResult, DeferredActionHandler},
-    modd::{ModeState, OperatorType, SubMode},
+    modd::{ComponentId, ModeState, OperatorType, SubMode},
     runtime::{RuntimeContext, RuntimeContextExt},
-    ui_component::ComponentId,
 };
 
 use super::{

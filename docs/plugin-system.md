@@ -102,7 +102,6 @@ Used during `build()` and `finish()` to register commands, components, and keybi
 pub struct PluginContext {
     pub command_registry: Arc<CommandRegistry>,
     pub keymap: Arc<KeyMap>,
-    component_registry: ComponentRegistry,
     plugin_state: Arc<PluginStateRegistry>,
 }
 
@@ -112,9 +111,6 @@ impl PluginContext {
 
     /// Register a keybinding
     pub fn register_keybinding(&mut self, mode: &str, keys: &str, command_id: CommandId);
-
-    /// Register a UI component for input handling and rendering
-    pub fn register_component(&mut self, component: Box<dyn UIComponent>);
 }
 ```
 
@@ -501,8 +497,6 @@ pub struct DefaultPlugins;
 impl PluginTuple for DefaultPlugins {
     fn add_to(self, loader: &mut PluginLoader) {
         loader.add(CorePlugin);
-        loader.add(UIComponentsPlugin);
-        loader.add(LeapPlugin);
         loader.add(WindowPlugin);
     }
 }
@@ -634,7 +628,7 @@ Each plugin defines its own `ComponentId` constant:
 
 ```rust
 // In plugins/features/explorer/src/lib.rs
-use reovim_core::ui_component::ComponentId;
+use reovim_core::modd::ComponentId;
 
 pub const COMPONENT_ID: ComponentId = ComponentId("explorer");
 ```
@@ -659,20 +653,9 @@ fn build(&self, ctx: &mut PluginContext) {
 
 The `DisplayRegistry` provides fallback for unregistered components.
 
-### Z-Order (Overlay Rendering)
+### Z-Order
 
-Plugins define their z-order via `OverlayRenderer::z_order()`:
-
-```rust
-use reovim_core::overlay::OverlayRenderer;
-
-impl OverlayRenderer for TelescopeOverlay {
-    fn z_order(&self) -> u16 { 300 }  // Plugin controls its own z-order
-    fn render_to_buffer(&self, buffer: &mut FrameBuffer, theme: &Theme) { ... }
-}
-```
-
-Core only defines `z_order::BASE` (0) and `z_order::EDITOR` (2). Typical plugin z-orders:
+Plugin windows control their z-order via the `PluginWindow::z_order()` method. Core only defines `z_order::BASE` (0) and `z_order::EDITOR` (2). Typical plugin z-orders:
 - Leap: 100
 - Completion: 200
 - Telescope: 300
@@ -695,129 +678,56 @@ fn build(&self, ctx: &mut PluginContext) {
 }
 ```
 
-### UIComponent
+### Plugin Input Handling
 
-Plugins implement and register `UIComponent` for input handling:
+Plugin input is handled via event subscriptions. When a plugin component has focus, the runtime emits `PluginTextInput` and `PluginBackspace` events that plugins can subscribe to:
 
 ```rust
-use reovim_core::{
-    ui_component::{ComponentId, UIComponent},
-    interactor::InputResult,
-    modd::ModeState,
-    component::RenderContext,
-    frame::FrameBuffer,
-    screen::{z_order, LayerBounds},
-    plugin::PluginStateRegistry,
-};
+use reovim_core::event_bus::core_events::{PluginTextInput, PluginBackspace};
 
-#[derive(Debug)]
-pub struct ExplorerComponent;
+fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {
+    let state_clone = Arc::clone(&state);
+    bus.subscribe::<PluginTextInput, _>(100, move |event, ctx| {
+        if event.target != COMPONENT_ID {
+            return EventResult::NotHandled;
+        }
+        state_clone.with_mut::<ExplorerState, _, _>(|s| {
+            s.input_char(event.c);
+        });
+        ctx.request_render();
+        EventResult::Handled
+    });
 
-impl UIComponent for ExplorerComponent {
-    fn id(&self) -> ComponentId {
-        ComponentId("explorer")
-    }
-
-    fn display_name(&self) -> &'static str {
-        "EXPLORER"
-    }
-
-    fn z_order(&self) -> u8 {
-        z_order::BASE
-    }
-
-    fn is_visible(&self, _ctx: &RenderContext<'_>) -> bool {
-        true
-    }
-
-    fn bounds(&self, _ctx: &RenderContext<'_>) -> LayerBounds {
-        LayerBounds { x: 0, y: 0, width: 0, height: 0 }
-    }
-
-    fn render_to_frame(&self, _buffer: &mut FrameBuffer, _ctx: &RenderContext<'_>) {
-        // Rendering handled by WindowProvider
-    }
-
-    fn is_focusable(&self) -> bool {
-        true
-    }
-
-    fn handle_insert_char(
-        &mut self,
-        c: char,
-        _mode_state: &ModeState,
-        state: &PluginStateRegistry,
-    ) -> InputResult {
-        // Plugin components access state directly via PluginStateRegistry
-        state.with_mut::<ExplorerState, _, _>(|explorer| {
-            if !explorer.input_buffer.is_empty() || explorer.message.is_some() {
-                explorer.input_buffer.push(c);
-                InputResult::Handled
-            } else {
-                InputResult::NotHandled
-            }
-        }).unwrap_or(InputResult::NotHandled)
-    }
-
-    fn handle_delete_backward(
-        &mut self,
-        _mode_state: &ModeState,
-        state: &PluginStateRegistry,
-    ) -> InputResult {
-        // Plugin components access state directly via PluginStateRegistry
-        state.with_mut::<ExplorerState, _, _>(|explorer| {
-            if !explorer.input_buffer.is_empty() {
-                explorer.input_buffer.pop();
-                InputResult::Handled
-            } else {
-                InputResult::NotHandled
-            }
-        }).unwrap_or(InputResult::NotHandled)
-    }
-
-    fn captures_input(&self) -> bool {
-        true
-    }
-}
-
-fn build(&self, ctx: &mut PluginContext) {
-    ctx.register_component(Box::new(ExplorerComponent));
+    let state_clone = Arc::clone(&state);
+    bus.subscribe::<PluginBackspace, _>(100, move |event, ctx| {
+        if event.target != COMPONENT_ID {
+            return EventResult::NotHandled;
+        }
+        state_clone.with_mut::<ExplorerState, _, _>(|s| {
+            s.input_backspace();
+        });
+        ctx.request_render();
+        EventResult::Handled
+    });
 }
 ```
-
-**Input Handling Patterns:**
-
-Plugin components have two options for handling input:
-
-1. **Direct State Access (Recommended)**: Return `InputResult::Handled` and manipulate state via `PluginStateRegistry` directly
-   - Best for plugin components that own their state
-   - Synchronous, no event bounce
-   - Example: Explorer input handling shown above
-
-2. **Not Handled**: Return `InputResult::NotHandled` for input the component doesn't handle
-   - Input will be ignored or handled by other systems
 
 **Built-in vs Plugin Components:**
 
 - **Built-in components** (Editor, CommandLine): Handled via fast path in Runtime with direct access to Runtime state (buffers, command_line)
-- **Plugin components** (Explorer, Telescope): Handled via `UIComponent` trait methods with access to `PluginStateRegistry`
+- **Plugin components** (Explorer, Telescope): Receive input via `PluginTextInput` and `PluginBackspace` events
 
-This separation ensures built-in components can execute synchronously with full Runtime access while plugins maintain proper encapsulation through the state registry.
+This separation ensures built-in components can execute synchronously with full Runtime access while plugins maintain proper encapsulation through the event bus and state registry.
 
 ## Rendering
 
-Reovim provides three rendering systems for different UI patterns:
+Reovim uses the `PluginWindow` trait for plugin UI rendering:
 
-- **Overlays**: Temporary popups (completion, telescope)
-  - See [Rendering Guide](./plugin-rendering.md#overlays---temporary-popups)
+- **PluginWindow**: Plugin panels and windows (explorer, telescope, settings)
+  - Implement `PluginWindow` trait for visibility, bounds, and rendering
+  - See [Plugin Rendering Guide](./plugin-rendering.md) for details
 
-- **Window Providers**: Persistent panels (explorer, outline)
-  - See [Rendering Guide](./plugin-rendering.md#window-providers---persistent-panels)
-
-- **UIComponent**: Fixed UI elements (status line, tab line)
-  - See [Rendering Guide](./plugin-rendering.md#uicomponent-rendering---fixed-ui-elements)
-
-For detailed guidance on choosing the right rendering system, see the [Plugin Rendering Guide](./plugin-rendering.md).
+For built-in components (status line, tab line), rendering is handled directly by dedicated component modules.
 
 ## State Management Patterns
 
@@ -949,10 +859,11 @@ reovim-plugin-my-plugin.workspace = true
 │  │  │  (from core)    │  │    (separate crates)            │││
 │  │  │                 │  │                                 │││
 │  │  │  • CorePlugin   │  │  • FoldPlugin                   │││
-│  │  │  • LeapPlugin   │  │  • SettingsMenuPlugin           │││
-│  │  │  • WindowPlugin │  │  • CompletionPlugin             │││
-│  │  │  • UIComponents │  │  • ExplorerPlugin               │││
+│  │  │  • WindowPlugin │  │  • SettingsMenuPlugin           │││
+│  │  │                 │  │  • CompletionPlugin             │││
+│  │  │                 │  │  • ExplorerPlugin               │││
 │  │  │                 │  │  • TelescopePlugin              │││
+│  │  │                 │  │  • LeapPlugin                   │││
 │  │  │                 │  │  • TreesitterPlugin             │││
 │  │  │                 │  │  • Language plugins...          │││
 │  │  └─────────────────┘  └─────────────────────────────────┘││

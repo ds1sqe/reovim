@@ -237,7 +237,7 @@ impl Event for ScreenResized {
 #[derive(Debug, Clone)]
 pub struct RequestFocusChange {
     /// The component ID to focus
-    pub target: crate::ui_component::ComponentId,
+    pub target: crate::modd::ComponentId,
 }
 
 impl Event for RequestFocusChange {
@@ -292,6 +292,45 @@ pub struct RequestSetRegister {
 }
 
 impl Event for RequestSetRegister {
+    fn priority(&self) -> u32 {
+        priority::CORE
+    }
+}
+
+// =============================================================================
+// Text Input Events
+// =============================================================================
+
+/// Text input received by a plugin component
+///
+/// Emitted when a character is typed while a plugin component has focus.
+/// Plugins subscribe to this event to handle text input (e.g., filter input,
+/// file rename input, etc.).
+#[derive(Debug, Clone)]
+pub struct PluginTextInput {
+    /// The component ID that received the input
+    pub target: crate::modd::ComponentId,
+    /// The character that was typed
+    pub c: char,
+}
+
+impl Event for PluginTextInput {
+    fn priority(&self) -> u32 {
+        priority::CORE
+    }
+}
+
+/// Backspace received by a plugin component
+///
+/// Emitted when backspace is pressed while a plugin component has focus.
+/// Plugins subscribe to this event to handle text deletion.
+#[derive(Debug, Clone)]
+pub struct PluginBackspace {
+    /// The component ID that received the input
+    pub target: crate::modd::ComponentId,
+}
+
+impl Event for PluginBackspace {
     fn priority(&self) -> u32 {
         priority::CORE
     }

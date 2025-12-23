@@ -201,9 +201,8 @@ mod tests {
     use {
         super::*,
         crate::{
-            modd::{EditMode, SubMode},
+            modd::{ComponentId, EditMode, SubMode},
             modifier::traits::{ActiveWindowModifier, FiletypeModifier, InsertModeModifier},
-            ui_component::ComponentId,
         },
         reovim_sys::style::Color,
     };

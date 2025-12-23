@@ -2,10 +2,7 @@
 
 use {
     super::item::{ActionType, FlatItem, SettingItem, SettingSection, SettingValue},
-    reovim_core::{
-        config::ProfileConfig,
-        overlay::{OverlayBounds, OverlayGeometry, Scrollable, Selectable},
-    },
+    reovim_core::config::ProfileConfig,
 };
 
 /// Input mode for the settings menu
@@ -607,56 +604,6 @@ impl SettingsMenuState {
     /// Take the pending action (consumes it)
     pub const fn take_pending_action(&mut self) -> Option<ActionType> {
         self.pending_action.take()
-    }
-}
-
-// === Overlay Trait Implementations ===
-
-impl Selectable for SettingsMenuState {
-    fn item_count(&self) -> usize {
-        self.flat_items.len()
-    }
-
-    fn selected_index(&self) -> usize {
-        self.selected_index
-    }
-
-    fn set_selected_index(&mut self, index: usize) {
-        self.selected_index = index.min(self.flat_items.len().saturating_sub(1));
-    }
-
-    // Note: select_next/prev are overridden by inherent impl methods
-    // to skip section headers. Use the inherent methods for header-skipping behavior.
-}
-
-impl Scrollable for SettingsMenuState {
-    fn scroll_offset(&self) -> usize {
-        self.scroll_offset
-    }
-
-    fn set_scroll_offset(&mut self, offset: usize) {
-        self.scroll_offset = offset;
-    }
-
-    fn visible_item_count(&self) -> usize {
-        self.layout.visible_items.max(1)
-    }
-}
-
-impl OverlayGeometry for SettingsMenuState {
-    /// Compute bounds for the settings menu overlay
-    ///
-    /// Uses 60% width (clamped 50-80) and 80% height, centered on screen.
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    fn compute_bounds(&self, screen_width: u16, screen_height: u16) -> OverlayBounds {
-        // 60% width (clamped), 80% height - centered
-        let width = ((f32::from(screen_width) * 0.6) as u16).clamp(50, 80);
-        let height = ((f32::from(screen_height) * 0.8) as u16).max(15);
-
-        let x = (screen_width.saturating_sub(width)) / 2;
-        let y = (screen_height.saturating_sub(height)) / 2;
-
-        OverlayBounds::new(x, y, width, height)
     }
 }
 

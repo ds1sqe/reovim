@@ -7,7 +7,6 @@ pub mod event_bus;
 pub mod frame;
 pub mod keystroke;
 pub mod rpc;
-pub mod ui_component;
 pub mod visibility;
 pub mod visual;
 
@@ -29,7 +28,6 @@ pub mod landing;
 pub mod modd;
 pub mod modifier;
 pub mod motion;
-pub mod overlay;
 pub mod plugin;
 pub mod register;
 pub mod render;

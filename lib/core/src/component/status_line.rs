@@ -9,8 +9,6 @@ use crate::{
     component::RenderContext,
     frame::FrameBuffer,
     modd::{EditMode, ModeState, SubMode},
-    screen::{LayerBounds, z_order},
-    ui_component::{ComponentId, UIComponent},
 };
 
 /// Mode icons (Nerd Font) - core modes only
@@ -140,34 +138,10 @@ fn filetype_from_path(path: &str) -> &'static str {
     }
 }
 
-impl UIComponent for StatusLineComponent<'_> {
-    fn id(&self) -> ComponentId {
-        ComponentId::STATUS_LINE
-    }
-
-    fn display_name(&self) -> &'static str {
-        "STATUS"
-    }
-
-    fn z_order(&self) -> u8 {
-        z_order::BASE
-    }
-
-    fn is_visible(&self, _ctx: &RenderContext<'_>) -> bool {
-        true // Status line is always visible
-    }
-
-    fn bounds(&self, ctx: &RenderContext<'_>) -> LayerBounds {
-        LayerBounds {
-            x: 0,
-            y: ctx.status_line_row(),
-            width: ctx.screen_width,
-            height: 1,
-        }
-    }
-
+impl StatusLineComponent<'_> {
+    /// Render the status line to the frame buffer
     #[allow(clippy::cast_possible_truncation)]
-    fn render_to_frame(&self, frame: &mut FrameBuffer, ctx: &RenderContext<'_>) {
+    pub fn render_to_frame(&self, frame: &mut FrameBuffer, ctx: &RenderContext<'_>) {
         let mode_str = self.mode.display_string();
         let icon = self.mode_icon();
         let theme = ctx.theme;
@@ -215,9 +189,5 @@ impl UIComponent for StatusLineComponent<'_> {
 
         // Render right side content
         frame.write_str(right_start, status_row, &right_content, &theme.statusline.background);
-    }
-
-    fn is_focusable(&self) -> bool {
-        false // Status line does not receive focus
     }
 }

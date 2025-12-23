@@ -5,8 +5,7 @@ use {
         command::{CommandId, CommandTrait, id::builtin, registry::CommandRegistry},
         keys,
         keystroke::KeySequence,
-        modd::{EditMode, ModeState, SubMode},
-        ui_component::ComponentId,
+        modd::{ComponentId, EditMode, ModeState, SubMode},
     },
     std::{collections::HashMap, sync::Arc},
 };

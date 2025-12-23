@@ -2,12 +2,7 @@
 //!
 //! Renders the tab bar at the top of the screen when multiple tabs are open.
 
-use crate::{
-    component::RenderContext,
-    frame::FrameBuffer,
-    screen::{LayerBounds, tab::TabInfo, z_order},
-    ui_component::{ComponentId, UIComponent},
-};
+use crate::{component::RenderContext, frame::FrameBuffer, screen::tab::TabInfo};
 
 /// Tab line display component
 ///
@@ -29,39 +24,16 @@ impl<'a> TabLineComponent<'a> {
     }
 }
 
-impl UIComponent for TabLineComponent<'_> {
-    fn id(&self) -> ComponentId {
-        ComponentId::TAB_LINE
-    }
-
-    fn display_name(&self) -> &'static str {
-        "TABS"
-    }
-
-    fn z_order(&self) -> u8 {
-        z_order::BASE
-    }
-
-    fn is_visible(&self, _ctx: &RenderContext<'_>) -> bool {
-        // Only visible when there are multiple tabs
+impl TabLineComponent<'_> {
+    /// Check if the tab line should be visible
+    #[must_use]
+    pub const fn is_visible(&self) -> bool {
         self.tabs.len() > 1
     }
 
-    fn bounds(&self, ctx: &RenderContext<'_>) -> LayerBounds {
-        if self.tabs.len() > 1 {
-            LayerBounds {
-                x: 0,
-                y: 0,
-                width: ctx.screen_width,
-                height: 1,
-            }
-        } else {
-            LayerBounds::default()
-        }
-    }
-
+    /// Render the tab line to the frame buffer
     #[allow(clippy::cast_possible_truncation)]
-    fn render_to_frame(&self, frame: &mut FrameBuffer, ctx: &RenderContext<'_>) {
+    pub fn render_to_frame(&self, frame: &mut FrameBuffer, ctx: &RenderContext<'_>) {
         if self.tabs.len() <= 1 {
             return;
         }
@@ -87,9 +59,5 @@ impl UIComponent for TabLineComponent<'_> {
         for col in x..ctx.screen_width {
             frame.put_char(col, 0, ' ', &fill_style);
         }
-    }
-
-    fn is_focusable(&self) -> bool {
-        false // Tab line does not receive focus
     }
 }

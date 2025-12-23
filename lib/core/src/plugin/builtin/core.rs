@@ -77,8 +77,8 @@ use crate::{
     },
     display::{DisplayInfo, EditModeKey, SubModeKey},
     keys,
+    modd::ComponentId,
     plugin::{Plugin, PluginContext, PluginId},
-    ui_component::ComponentId,
 };
 
 /// Core editor functionality plugin

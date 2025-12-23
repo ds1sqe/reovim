@@ -37,11 +37,11 @@ use reovim_core::{
     frame::FrameBuffer,
     highlight::Theme,
     keys,
+    modd::ComponentId,
     plugin::{
         EditorContext, Plugin, PluginContext, PluginId, PluginStateRegistry, PluginWindow, Rect,
         WindowConfig,
     },
-    ui_component::ComponentId,
 };
 
 // Re-export key types for external use (non-command/event types)

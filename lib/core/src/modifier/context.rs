@@ -1,9 +1,6 @@
 //! Modifier evaluation context
 
-use crate::{
-    modd::{EditMode, SubMode},
-    ui_component::ComponentId,
-};
+use crate::modd::{ComponentId, EditMode, SubMode};
 
 /// Context for evaluating modifiers
 ///

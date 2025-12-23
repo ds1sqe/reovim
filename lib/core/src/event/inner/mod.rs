@@ -7,12 +7,11 @@ use crate::{
     command::{CommandContext, traits::OperatorMotionAction},
     event_bus::DynEvent,
     highlight::{Highlight, HighlightGroup},
-    modd::ModeState,
+    modd::{ComponentId, ModeState},
     plugin::PluginId,
     rpc::RpcResponse,
     screen::{NavigateDirection, SplitDirection},
     textobject::{SemanticTextObjectSpec, TextObject, WordTextObject},
-    ui_component::ComponentId,
 };
 
 pub enum InnerEvent {

@@ -64,9 +64,8 @@ use {
         frame::{FrameBuffer, FrameRenderer},
         highlight::{ColorMode, HighlightStore, Theme},
         indent::IndentAnalyzer,
-        modd::ModeState,
+        modd::{ComponentId, ModeState},
         modifier::{ModifierContext, ModifierRegistry},
-        ui_component::ComponentId,
         visibility::BufferVisibilitySource,
     },
     reovim_sys::{
