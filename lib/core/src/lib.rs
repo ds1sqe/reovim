@@ -1,3 +1,4 @@
+pub mod animation;
 pub mod bind;
 pub mod buffer;
 pub mod component;

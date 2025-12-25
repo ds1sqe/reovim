@@ -31,12 +31,15 @@ use std::{
 };
 
 use crate::{
+    animation::{AnimationHandle, AnimationState},
     decoration::SharedDecorationFactory,
     render::{RenderStage, RenderStageRegistry},
     syntax::SharedSyntaxFactory,
     textobject::SharedSemanticTextObjectSource,
     visibility::{BufferVisibilitySource, NoOpBufferVisibility},
 };
+
+use tokio::sync::RwLock as TokioRwLock;
 
 use super::PluginWindow;
 
@@ -62,6 +65,10 @@ pub struct PluginStateRegistry {
     left_panel_width: RwLock<u16>,
     /// Right panel width (set by right-side plugins like outline)
     right_panel_width: RwLock<u16>,
+    /// Animation handle for starting/stopping effects
+    animation_handle: RwLock<Option<AnimationHandle>>,
+    /// Shared animation state for querying active effects during render
+    animation_state: RwLock<Option<Arc<TokioRwLock<AnimationState>>>>,
 }
 
 impl std::fmt::Debug for PluginStateRegistry {
@@ -72,6 +79,8 @@ impl std::fmt::Debug for PluginStateRegistry {
         let has_syntax_factory = self.syntax_factory.read().is_ok_and(|s| s.is_some());
         let has_decoration_factory = self.decoration_factory.read().is_ok_and(|s| s.is_some());
         let has_render_stages = self.render_stages.read().is_ok_and(|s| s.is_some());
+        let has_animation = self.animation_handle.read().is_ok_and(|s| s.is_some());
+        let has_animation_state = self.animation_state.read().is_ok_and(|s| s.is_some());
         let plugin_windows_count = self.plugin_windows.read().map_or(0, |p| p.len());
         let left_panel = self.left_panel_width.read().map_or(0, |w| *w);
         let right_panel = self.right_panel_width.read().map_or(0, |w| *w);
@@ -82,6 +91,8 @@ impl std::fmt::Debug for PluginStateRegistry {
             .field("has_syntax_factory", &has_syntax_factory)
             .field("has_decoration_factory", &has_decoration_factory)
             .field("has_render_stages", &has_render_stages)
+            .field("has_animation_handle", &has_animation)
+            .field("has_animation_state", &has_animation_state)
             .field("plugin_windows_count", &plugin_windows_count)
             .field("left_panel_width", &left_panel)
             .field("right_panel_width", &right_panel)
@@ -103,6 +114,8 @@ impl PluginStateRegistry {
             plugin_windows: RwLock::new(Vec::new()),
             left_panel_width: RwLock::new(0),
             right_panel_width: RwLock::new(0),
+            animation_handle: RwLock::new(None),
+            animation_state: RwLock::new(None),
         }
     }
 
@@ -244,6 +257,38 @@ impl PluginStateRegistry {
     #[must_use]
     pub fn right_panel_width(&self) -> u16 {
         *self.right_panel_width.read().unwrap()
+    }
+
+    /// Set the animation handle (used by Runtime during initialization)
+    ///
+    /// This allows the animation system to be accessed from mode change handlers
+    /// and other runtime components.
+    pub fn set_animation_handle(&self, handle: AnimationHandle) {
+        *self.animation_handle.write().unwrap() = Some(handle);
+    }
+
+    /// Get the animation handle
+    ///
+    /// Returns the animation handle for starting/stopping effects.
+    #[must_use]
+    pub fn animation_handle(&self) -> Option<AnimationHandle> {
+        self.animation_handle.read().unwrap().clone()
+    }
+
+    /// Set the animation state (used by Runtime during initialization)
+    ///
+    /// This allows the animation state to be queried during rendering
+    /// to check for active effects.
+    pub fn set_animation_state(&self, state: Arc<TokioRwLock<AnimationState>>) {
+        *self.animation_state.write().unwrap() = Some(state);
+    }
+
+    /// Get the animation state for querying active effects
+    ///
+    /// Returns the shared animation state.
+    #[must_use]
+    pub fn animation_state(&self) -> Option<Arc<TokioRwLock<AnimationState>>> {
+        self.animation_state.read().unwrap().clone()
     }
 
     /// Register a new plugin state

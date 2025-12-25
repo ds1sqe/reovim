@@ -379,6 +379,16 @@ impl Runtime {
                     register,
                     mode_change,
                 } => {
+                    // Trigger yank animation for visual mode selections
+                    // Must capture selection bounds BEFORE mode change clears the selection
+                    if let Some(buf) = self.buffers.get(&buffer_id)
+                        && buf.selection.active
+                    {
+                        use crate::buffer::SelectionOps;
+                        let (start, end) = buf.selection_bounds();
+                        self.trigger_yank_range_animation(buffer_id, start, end);
+                    }
+
                     self.registers.set_by_name(register, text);
                     if let Some(new_mode) = mode_change {
                         self.handle_mode_change(new_mode);
@@ -514,8 +524,18 @@ impl Runtime {
                     }
                 }
                 OperatorMotionAction::Yank { motion, count } => {
+                    // Calculate range before yanking to trigger visual feedback
+                    let start_pos = buffer.cur;
                     let yanked = buffer.yank_to_motion(motion, count);
                     if !yanked.is_empty() {
+                        // Get line count before moving yanked
+                        let line_count = yanked.lines().count();
+
+                        // Trigger yank blink animation
+                        self.trigger_yank_animation(
+                            buffer_id, start_pos, motion, count, line_count,
+                        );
+
                         // Store in unnamed register
                         self.registers.set(yanked);
                     }
@@ -539,8 +559,16 @@ impl Runtime {
                     }
                 }
                 OperatorMotionAction::YankTextObject { text_object } => {
+                    // Get range for visual feedback
+                    let range = buffer.find_text_object_bounds(text_object);
                     let yanked = buffer.yank_text_object(text_object);
                     if !yanked.is_empty() {
+                        // Trigger yank blink animation on text object range
+                        if let Some((start, end)) = range {
+                            self.trigger_yank_range_animation(buffer_id, start, end);
+                        }
+
+                        // Store in register after animation trigger
                         self.registers.set(yanked);
                     }
                     // Yank doesn't modify text

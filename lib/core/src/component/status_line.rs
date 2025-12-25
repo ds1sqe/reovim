@@ -2,12 +2,14 @@
 //!
 //! Renders mode indicator, pending keys, filename, filetype, and cursor position.
 //!
-//! Format: `[MODE_ICON MODE] [pending/cmd] ... [FILENAME][+] [FILETYPE] Ln X, Col Y`
+//! Format with powerline separators:
+//! `[MODE_ICON MODE] [pending/cmd] ... [FILENAME][+] [FILETYPE] Ln X, Col Y`
 
 use crate::{
     buffer::Buffer,
     component::RenderContext,
     frame::FrameBuffer,
+    highlight::Style,
     modd::{EditMode, ModeState, SubMode},
 };
 
@@ -19,6 +21,8 @@ mod icons {
     pub const VISUAL: &str = "󰒉 ";
     pub const COMMAND: &str = "󰘳 ";
     pub const OPERATOR: &str = "󰦒 ";
+    #[allow(dead_code)] // Will be used when Replace mode is implemented
+    pub const REPLACE: &str = "󰛔 ";
     pub const INTERACTOR: &str = "󰆾 "; // Generic icon for plugin interactors
 }
 
@@ -88,9 +92,8 @@ impl<'a> StatusLineComponent<'a> {
         // Sub-modes
         match &self.mode.sub_mode {
             SubMode::Command => return &theme.statusline.mode.command,
-            SubMode::OperatorPending { .. } | SubMode::Interactor(_) => {
-                return &theme.statusline.mode.normal;
-            }
+            SubMode::OperatorPending { .. } => return &theme.statusline.mode.operator_pending,
+            SubMode::Interactor(_) => return &theme.statusline.mode.normal,
             SubMode::None => {}
         }
 
@@ -106,10 +109,27 @@ impl<'a> StatusLineComponent<'a> {
             EditMode::Visual(_) => &theme.statusline.mode.visual,
         }
     }
+
+    /// Get the short mode name for display
+    const fn mode_name(&self) -> &'static str {
+        // Sub-modes take precedence
+        match &self.mode.sub_mode {
+            SubMode::Command => return "COMMAND",
+            SubMode::OperatorPending { .. } => return "OPERATOR",
+            SubMode::Interactor(_) => return "INTERACTOR",
+            SubMode::None => {}
+        }
+
+        // Editor modes
+        match &self.mode.edit_mode {
+            EditMode::Normal => "NORMAL",
+            EditMode::Insert(_) => "INSERT",
+            EditMode::Visual(_) => "VISUAL",
+        }
+    }
 }
 
 /// Get filetype from file path extension
-#[allow(dead_code)] // Will be used in future enhanced status line
 fn filetype_from_path(path: &str) -> &'static str {
     let ext = path.rsplit('.').next().unwrap_or("");
 
@@ -142,52 +162,141 @@ impl StatusLineComponent<'_> {
     /// Render the status line to the frame buffer
     #[allow(clippy::cast_possible_truncation)]
     pub fn render_to_frame(&self, frame: &mut FrameBuffer, ctx: &RenderContext<'_>) {
-        let mode_str = self.mode.hierarchical_display();
-        let icon = self.mode_icon();
         let theme = ctx.theme;
         let status_row = ctx.status_line_row();
+        let width = ctx.screen_width as usize;
 
-        // Get mode-specific style
+        // Get styles
         let mode_style = self.get_mode_style(theme);
+        let bg_style = &theme.statusline.background;
+        let separator = &theme.statusline.separator;
+
+        // Get mode info
+        let mode_icon = self.mode_icon();
+        let mode_name = self.mode_name();
 
         // Get buffer info
-        let buffer_name = self
-            .buffer
-            .and_then(|b| b.file_path.as_ref())
-            .map_or("[No Name]", String::as_str);
-        let is_modified = self.buffer.is_some_and(|b| b.modified);
-        let (cursor_line, cursor_col) = self.buffer.map_or((1, 1), |b| (b.cur.y + 1, b.cur.x + 1));
+        let (filename, is_modified, cursor_line, cursor_col, filetype) =
+            self.buffer
+                .map_or(("[No Name]", false, 1, 1, ""), |buffer| {
+                    let path = buffer
+                        .file_path
+                        .as_ref()
+                        .map_or("[No Name]", String::as_str);
+                    let ft = filetype_from_path(path);
+                    (path, buffer.modified, buffer.cur.y + 1, buffer.cur.x + 1, ft)
+                });
 
-        // Format pending keys section
-        let cmd_section = if self.pending_keys.is_empty() {
-            String::from(" ")
+        // Build sections
+        let mode_text = format!(" {mode_icon}{mode_name} ");
+        let pending_text = if self.pending_keys.is_empty() {
+            String::new()
         } else {
             format!(" {} ", self.pending_keys)
         };
 
-        // Build right side content
-        let right_content = format!(
-            "{buffer_name}{} Ln {cursor_line}, Col {cursor_col} ",
-            if is_modified { "[+]" } else { "" }
-        );
+        // Right side sections
+        let modified_indicator = if is_modified { " [+]" } else { "" };
+        let filename_text = format!(" {filename}{modified_indicator} ");
+        let filetype_text = if filetype.is_empty() {
+            String::new()
+        } else {
+            format!(" {filetype} ")
+        };
+        let position_text = format!(" Ln {cursor_line}, Col {cursor_col} ");
 
-        // Render mode indicator
-        let mode_text = format!(" {icon}{mode_str} ");
-        let mut x = frame.write_str(0, status_row, &mode_text, mode_style);
+        // Calculate right side widths for positioning
+        let position_width = unicode_width(&position_text);
+        let filetype_width = unicode_width(&filetype_text);
+        let filename_width = unicode_width(&filename_text);
+        let sep_right_width = unicode_width(separator.right);
+        let section_sep_width = if filetype.is_empty() {
+            0
+        } else {
+            unicode_width(separator.section)
+        };
 
-        // Render pending keys
-        x += frame.write_str(x, status_row, &cmd_section, &theme.statusline.background);
+        // Calculate right side total
+        let right_total =
+            position_width + filetype_width + filename_width + sep_right_width + section_sep_width;
 
-        // Calculate fill space
-        let right_start = ctx.screen_width.saturating_sub(right_content.len() as u16);
-        let fill_style = theme.statusline.background.clone();
+        // Render left side
+        let mut x: u16 = 0;
 
-        // Fill middle
-        for col in x..right_start {
-            frame.put_char(col, status_row, ' ', &fill_style);
+        // Mode section with background
+        x += frame.write_str(x, status_row, &mode_text, mode_style);
+
+        // Left separator (powerline style: mode bg -> statusline bg)
+        let sep_style = Self::create_separator_style(mode_style, bg_style);
+        x += frame.write_str(x, status_row, separator.left, &sep_style);
+
+        // Pending keys
+        if !pending_text.is_empty() {
+            x += frame.write_str(x, status_row, &pending_text, bg_style);
         }
 
-        // Render right side content
-        frame.write_str(right_start, status_row, &right_content, &theme.statusline.background);
+        // Calculate where right side starts
+        #[allow(clippy::cast_possible_truncation)]
+        let right_start = width.saturating_sub(right_total) as u16;
+
+        // Fill middle with background
+        for col in x..right_start {
+            frame.put_char(col, status_row, ' ', bg_style);
+        }
+        x = right_start;
+
+        // Right separator (statusline bg -> filename section)
+        x += frame.write_str(x, status_row, separator.right, &sep_style);
+
+        // Filename section
+        x += frame.write_str(x, status_row, &filename_text, &theme.statusline.filename);
+
+        // Filetype section
+        if !filetype_text.is_empty() {
+            x += frame.write_str(x, status_row, separator.section, &separator.style);
+            x += frame.write_str(x, status_row, &filetype_text, &theme.statusline.filetype);
+        }
+
+        // Position section
+        frame.write_str(x, status_row, &position_text, &theme.statusline.position);
+    }
+
+    /// Create a separator style that transitions between two backgrounds
+    fn create_separator_style(from: &Style, to: &Style) -> Style {
+        // For powerline separators, fg is the "from" background, bg is the "to" background
+        Style::new().fg_opt(from.bg).bg_opt(to.bg)
+    }
+}
+
+/// Calculate the display width of a string (accounting for unicode)
+fn unicode_width(s: &str) -> usize {
+    // Simple approximation - each char is 1 width, except some emoji/icons are 2
+    s.chars()
+        .map(|c| {
+            if c.is_ascii() {
+                1
+            } else {
+                // Most Nerd Font icons and CJK chars are 2 wide
+                2
+            }
+        })
+        .sum()
+}
+
+/// Extension trait for Style to allow optional color setting
+trait StyleExt {
+    fn fg_opt(self, color: Option<reovim_sys::style::Color>) -> Self;
+    fn bg_opt(self, color: Option<reovim_sys::style::Color>) -> Self;
+}
+
+impl StyleExt for Style {
+    fn fg_opt(mut self, color: Option<reovim_sys::style::Color>) -> Self {
+        self.fg = color;
+        self
+    }
+
+    fn bg_opt(mut self, color: Option<reovim_sys::style::Color>) -> Self {
+        self.bg = color;
+        self
     }
 }

@@ -7,6 +7,7 @@ pub type FocusInputHandler = fn(&mut Runtime, Option<char>, bool, bool);
 
 use {
     crate::{
+        animation::AnimationSystem,
         bind::KeyMap,
         buffer::{Buffer, TextOps},
         command::CommandRegistry,
@@ -87,6 +88,10 @@ pub struct Runtime {
     pub render_stages: Arc<std::sync::RwLock<crate::render::RenderStageRegistry>>,
     /// Loaded plugins for boot phase execution
     pub(crate) plugins: Vec<Box<dyn Plugin>>,
+    /// Timestamp of last user input (for idle detection)
+    pub(crate) last_input_at: std::time::Instant,
+    /// Whether the idle shimmer effect is currently active
+    pub(crate) idle_shimmer_active: bool,
 }
 
 impl Default for Runtime {
@@ -165,6 +170,17 @@ impl Runtime {
         let render_stages = Arc::new(std::sync::RwLock::new(render_stages));
         plugin_state.set_render_stages(Arc::clone(&render_stages));
 
+        // Initialize animation system
+        // Frame rate of 30 fps provides smooth transitions without excessive CPU usage
+        let animation_system = AnimationSystem::spawn(tx.clone(), 30);
+        plugin_state.set_animation_handle(animation_system.handle().clone());
+        plugin_state.set_animation_state(animation_system.state());
+        // Register the animation render stage
+        render_stages
+            .write()
+            .unwrap()
+            .register(std::sync::Arc::new(animation_system.render_stage()));
+
         let runtime = Self {
             buffers: BTreeMap::new(),
             screen,
@@ -200,6 +216,8 @@ impl Runtime {
             display_registry,
             render_stages,
             plugins: loaded_plugins,
+            last_input_at: std::time::Instant::now(),
+            idle_shimmer_active: false,
         };
 
         // Subscribe to focus change requests from plugins

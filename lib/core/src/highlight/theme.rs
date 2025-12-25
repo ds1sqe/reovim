@@ -14,6 +14,11 @@
 //! - `search`: Search highlight styles
 //! - `tab`: Tab line styles
 //! - `window`: Window separator styles
+//! - `diagnostic`: Enhanced diagnostic styles with underline colors
+//! - `cursor`: Cursor effects (glow, pulse)
+//! - `semantic`: Language-specific semantic token styles
+//! - `leap`: Leap navigation label styles
+//! - `animation`: Animation configuration
 
 use {crate::highlight::Style, reovim_sys::style::Color};
 
@@ -72,11 +77,14 @@ pub struct SelectionStyles {
 #[derive(Debug, Clone)]
 pub struct StatusLineStyles {
     pub background: Style,
+    /// Style for interactor/component name (e.g., "Editor", "Explorer", "Telescope")
+    pub interactor: Style,
     pub mode: StatusLineModeStyles,
     pub filename: Style,
     pub modified: Style,
     pub position: Style,
     pub filetype: Style,
+    pub separator: StatusLineSeparator,
 }
 
 #[derive(Debug, Clone)]
@@ -85,6 +93,21 @@ pub struct StatusLineModeStyles {
     pub insert: Style,
     pub visual: Style,
     pub command: Style,
+    pub replace: Style,
+    pub operator_pending: Style,
+}
+
+/// Separator configuration for status line sections
+#[derive(Debug, Clone)]
+pub struct StatusLineSeparator {
+    /// Left separator character (e.g., "", "")
+    pub left: &'static str,
+    /// Right separator character (e.g., "", "")
+    pub right: &'static str,
+    /// Separator between sections (e.g., "|", "│")
+    pub section: &'static str,
+    /// Style for separator characters
+    pub style: Style,
 }
 
 #[derive(Debug, Clone)]
@@ -155,6 +178,101 @@ pub struct BracketStyles {
     pub unmatched: Style,
 }
 
+/// Enhanced diagnostic styles with colored underlines
+#[derive(Debug, Clone)]
+pub struct DiagnosticStyles {
+    /// Hint diagnostic (lowest severity) - curly underline, cyan
+    pub hint: Style,
+    /// Info diagnostic - curly underline, blue
+    pub info: Style,
+    /// Warning diagnostic - curly underline, yellow
+    pub warn: Style,
+    /// Error diagnostic (highest severity) - curly underline, red
+    pub error: Style,
+    /// Deprecated code - strikethrough + dim
+    pub deprecated: Style,
+    /// Unnecessary/unused code - dimmed
+    pub unnecessary: Style,
+}
+
+/// Cursor-related styles and effect configurations
+#[derive(Debug, Clone)]
+pub struct CursorStyles {
+    /// Cursor line background
+    pub line: Style,
+    /// Cursor column background (if enabled)
+    pub column: Style,
+    /// Cursor glow effect configuration
+    pub glow: Option<EffectConfig>,
+    /// Cursor pulse effect configuration
+    pub pulse: Option<EffectConfig>,
+}
+
+/// Configuration for visual effects
+#[derive(Debug, Clone)]
+pub struct EffectConfig {
+    /// Base style for the effect
+    pub style: Style,
+    /// Effect radius in cells (for glow)
+    pub radius: u8,
+    /// Animation speed in ms per frame (0 = no animation)
+    pub animation_ms: u16,
+}
+
+/// Semantic token styles for language-specific highlighting
+#[derive(Debug, Clone)]
+pub struct SemanticStyles {
+    /// Lifetime annotations ('a, 'static)
+    pub lifetime: Style,
+    /// Trait bounds (: Trait, where T: Bound)
+    pub trait_bound: Style,
+    /// async keyword
+    pub async_keyword: Style,
+    /// await keyword
+    pub await_keyword: Style,
+    /// unsafe keyword and blocks
+    pub unsafe_keyword: Style,
+    /// Macro invocations
+    pub macro_invocation: Style,
+    /// Attribute annotations (#[...])
+    pub attribute: Style,
+    /// Mutable variables (typically underlined)
+    pub mutable: Style,
+    /// Constant values
+    pub constant: Style,
+    /// Static variables
+    pub static_var: Style,
+}
+
+/// Leap navigation label styles
+#[derive(Debug, Clone)]
+pub struct LeapStyles {
+    /// Primary label (first character)
+    pub label_primary: Style,
+    /// Secondary label (second character)
+    pub label_secondary: Style,
+    /// Dimmed background text during leap
+    pub dimmed: Style,
+}
+
+/// Animation configuration
+#[derive(Debug, Clone)]
+pub struct AnimationConfig {
+    /// Enable animations globally
+    pub enabled: bool,
+    /// Animation frame rate (fps, default 30)
+    pub frame_rate: u8,
+}
+
+impl Default for AnimationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            frame_rate: 30,
+        }
+    }
+}
+
 // ============================================================================
 // Main Theme Struct
 // ============================================================================
@@ -174,6 +292,12 @@ pub struct Theme {
     pub tab: TabStyles,
     pub window: WindowStyles,
     pub brackets: BracketStyles,
+    // Extended style categories
+    pub diagnostic: DiagnosticStyles,
+    pub cursor: CursorStyles,
+    pub semantic: SemanticStyles,
+    pub leap: LeapStyles,
+    pub animation: AnimationConfig,
 }
 
 impl Default for Theme {
@@ -269,16 +393,26 @@ impl Theme {
             },
             statusline: StatusLineStyles {
                 background: Style::new().fg(fg).bg(bg_light),
+                // Interactor section (e.g., "Editor") - distinct purple/violet color
+                interactor: Style::new().fg(fg).bg(Color::AnsiValue(61)).bold(), // Purple/violet
                 mode: StatusLineModeStyles {
                     normal: Style::new().fg(bg_dark).bg(green).bold(),
                     insert: Style::new().fg(bg_dark).bg(blue).bold(),
                     visual: Style::new().fg(bg_dark).bg(magenta).bold(),
                     command: Style::new().fg(bg_dark).bg(yellow).bold(),
+                    replace: Style::new().fg(bg_dark).bg(red).bold(),
+                    operator_pending: Style::new().fg(bg_dark).bg(cyan).bold(),
                 },
                 filename: Style::new().fg(fg).bg(bg_light),
                 modified: Style::new().fg(yellow).bg(bg_light),
                 position: Style::new().fg(fg_dark).bg(bg_light),
                 filetype: Style::new().fg(cyan).bg(bg_light),
+                separator: StatusLineSeparator {
+                    left: "",
+                    right: "",
+                    section: " │ ",
+                    style: Style::new().fg(fg_dark),
+                },
             },
             popup: PopupStyles {
                 normal: Style::new().fg(fg).bg(bg_medium),
@@ -338,6 +472,48 @@ impl Theme {
                 matched: Style::new().bold().underline(),
                 unmatched: Style::new().fg(red).underline(),
             },
+            // Extended style categories
+            diagnostic: DiagnosticStyles {
+                hint: Style::new()
+                    .fg(cyan)
+                    .curly_underline()
+                    .underline_color(cyan),
+                info: Style::new()
+                    .fg(blue)
+                    .curly_underline()
+                    .underline_color(blue),
+                warn: Style::new()
+                    .fg(yellow)
+                    .curly_underline()
+                    .underline_color(yellow),
+                error: Style::new().fg(red).curly_underline().underline_color(red),
+                deprecated: Style::new().strikethrough().dim(),
+                unnecessary: Style::new().dim(),
+            },
+            cursor: CursorStyles {
+                line: Style::new().bg(bg_light),
+                column: Style::new().bg(bg_light),
+                glow: None, // No animation by default
+                pulse: None,
+            },
+            semantic: SemanticStyles {
+                lifetime: Style::new().fg(magenta).italic(),
+                trait_bound: Style::new().fg(yellow).italic(),
+                async_keyword: Style::new().fg(magenta).bold().italic(),
+                await_keyword: Style::new().fg(magenta).bold().italic(),
+                unsafe_keyword: Style::new().fg(red).bold(),
+                macro_invocation: Style::new().fg(cyan).bold(),
+                attribute: Style::new().fg(yellow),
+                mutable: Style::new().underline(),
+                constant: Style::new().fg(cyan).bold(),
+                static_var: Style::new().fg(cyan),
+            },
+            leap: LeapStyles {
+                label_primary: Style::new().fg(bg_dark).bg(magenta).bold(),
+                label_secondary: Style::new().fg(bg_dark).bg(yellow).bold(),
+                dimmed: Style::new().dim(),
+            },
+            animation: AnimationConfig::default(),
         }
     }
 
@@ -379,16 +555,29 @@ impl Theme {
             },
             statusline: StatusLineStyles {
                 background: Style::new().fg(fg_light).bg(bg_medium),
+                // Interactor section - distinct purple color for light theme
+                interactor: Style::new()
+                    .fg(Color::White)
+                    .bg(Color::AnsiValue(61))
+                    .bold(),
                 mode: StatusLineModeStyles {
                     normal: Style::new().fg(Color::White).bg(Color::DarkGreen).bold(),
                     insert: Style::new().fg(Color::White).bg(Color::DarkBlue).bold(),
                     visual: Style::new().fg(Color::White).bg(Color::DarkMagenta).bold(),
                     command: Style::new().fg(Color::Black).bg(Color::DarkYellow).bold(),
+                    replace: Style::new().fg(Color::White).bg(Color::DarkRed).bold(),
+                    operator_pending: Style::new().fg(Color::White).bg(Color::DarkCyan).bold(),
                 },
                 filename: Style::new().fg(fg_light),
                 modified: Style::new().fg(Color::DarkYellow),
                 position: Style::new().fg(Color::Grey),
                 filetype: Style::new().fg(Color::DarkCyan),
+                separator: StatusLineSeparator {
+                    left: "",
+                    right: "",
+                    section: " │ ",
+                    style: Style::new().fg(Color::Grey),
+                },
             },
             popup: PopupStyles {
                 normal: Style::new().fg(fg_light).bg(Color::AnsiValue(252)),
@@ -448,6 +637,51 @@ impl Theme {
                 matched: Style::new().bold().underline(),
                 unmatched: Style::new().fg(Color::DarkRed).underline(),
             },
+            // Extended style categories
+            diagnostic: DiagnosticStyles {
+                hint: Style::new()
+                    .fg(Color::DarkCyan)
+                    .curly_underline()
+                    .underline_color(Color::DarkCyan),
+                info: Style::new()
+                    .fg(Color::DarkBlue)
+                    .curly_underline()
+                    .underline_color(Color::DarkBlue),
+                warn: Style::new()
+                    .fg(Color::DarkYellow)
+                    .curly_underline()
+                    .underline_color(Color::DarkYellow),
+                error: Style::new()
+                    .fg(Color::DarkRed)
+                    .curly_underline()
+                    .underline_color(Color::DarkRed),
+                deprecated: Style::new().strikethrough().dim(),
+                unnecessary: Style::new().dim(),
+            },
+            cursor: CursorStyles {
+                line: Style::new().bg(bg_highlight),
+                column: Style::new().bg(bg_highlight),
+                glow: None,
+                pulse: None,
+            },
+            semantic: SemanticStyles {
+                lifetime: Style::new().fg(Color::DarkMagenta).italic(),
+                trait_bound: Style::new().fg(Color::DarkYellow).italic(),
+                async_keyword: Style::new().fg(Color::DarkMagenta).bold().italic(),
+                await_keyword: Style::new().fg(Color::DarkMagenta).bold().italic(),
+                unsafe_keyword: Style::new().fg(Color::DarkRed).bold(),
+                macro_invocation: Style::new().fg(Color::DarkCyan).bold(),
+                attribute: Style::new().fg(Color::DarkYellow),
+                mutable: Style::new().underline(),
+                constant: Style::new().fg(Color::DarkCyan).bold(),
+                static_var: Style::new().fg(Color::DarkCyan),
+            },
+            leap: LeapStyles {
+                label_primary: Style::new().fg(Color::White).bg(Color::DarkMagenta).bold(),
+                label_secondary: Style::new().fg(Color::Black).bg(Color::Yellow).bold(),
+                dimmed: Style::new().dim(),
+            },
+            animation: AnimationConfig::default(),
         }
     }
 
@@ -555,16 +789,33 @@ impl Theme {
             },
             statusline: StatusLineStyles {
                 background: Style::new().fg(fg).bg(bg_dark),
+                // Interactor section - purple/violet for tokyo night theme
+                interactor: Style::new()
+                    .fg(fg)
+                    .bg(Color::Rgb {
+                        r: 122,
+                        g: 112,
+                        b: 183,
+                    })
+                    .bold(), // Soft purple
                 mode: StatusLineModeStyles {
                     normal: Style::new().fg(bg).bg(green).bold(),
                     insert: Style::new().fg(bg).bg(blue).bold(),
                     visual: Style::new().fg(bg).bg(magenta).bold(),
                     command: Style::new().fg(bg).bg(orange).bold(),
+                    replace: Style::new().fg(bg).bg(red).bold(),
+                    operator_pending: Style::new().fg(bg).bg(cyan).bold(),
                 },
                 filename: Style::new().fg(fg),
                 modified: Style::new().fg(orange),
                 position: Style::new().fg(fg_dark),
                 filetype: Style::new().fg(cyan),
+                separator: StatusLineSeparator {
+                    left: "",
+                    right: "",
+                    section: " │ ",
+                    style: Style::new().fg(fg_dark),
+                },
             },
             popup: PopupStyles {
                 normal: Style::new().fg(fg).bg(bg_dark),
@@ -625,6 +876,48 @@ impl Theme {
                 matched: Style::new().bold().underline(),
                 unmatched: Style::new().fg(red).underline(),
             },
+            // Extended style categories
+            diagnostic: DiagnosticStyles {
+                hint: Style::new()
+                    .fg(cyan)
+                    .curly_underline()
+                    .underline_color(cyan),
+                info: Style::new()
+                    .fg(blue)
+                    .curly_underline()
+                    .underline_color(blue),
+                warn: Style::new()
+                    .fg(yellow)
+                    .curly_underline()
+                    .underline_color(yellow),
+                error: Style::new().fg(red).curly_underline().underline_color(red),
+                deprecated: Style::new().strikethrough().dim(),
+                unnecessary: Style::new().dim(),
+            },
+            cursor: CursorStyles {
+                line: Style::new().bg(bg_highlight),
+                column: Style::new().bg(bg_highlight),
+                glow: None,
+                pulse: None,
+            },
+            semantic: SemanticStyles {
+                lifetime: Style::new().fg(magenta).italic(),
+                trait_bound: Style::new().fg(yellow).italic(),
+                async_keyword: Style::new().fg(magenta).bold().italic(),
+                await_keyword: Style::new().fg(magenta).bold().italic(),
+                unsafe_keyword: Style::new().fg(red).bold(),
+                macro_invocation: Style::new().fg(cyan).bold(),
+                attribute: Style::new().fg(yellow),
+                mutable: Style::new().underline(),
+                constant: Style::new().fg(cyan).bold(),
+                static_var: Style::new().fg(cyan),
+            },
+            leap: LeapStyles {
+                label_primary: Style::new().fg(bg).bg(magenta).bold(),
+                label_secondary: Style::new().fg(bg).bg(orange).bold(),
+                dimmed: Style::new().dim(),
+            },
+            animation: AnimationConfig::default(),
         }
     }
 }

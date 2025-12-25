@@ -4,6 +4,17 @@ All notable changes to Reovim will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Animation system** - Visual effects framework for UI feedback
+  - Status line flash on mode change (smooth color transition)
+  - Idle shimmer effect on status line after 3 seconds of inactivity
+  - Yank blink effect - brief flash on yanked text (both operator motions and visual mode)
+  - `AnimatedColor` types: pulse, shimmer, transition with easing functions
+  - `SweepConfig` for position-based glow effects (glowing reflection)
+  - Background animation controller at 30 FPS (only ticks when effects active)
+  - `AnimationRenderStage` for applying effects in render pipeline
+
 ## [0.7.0] - 2025-12-25
 
 ### Added

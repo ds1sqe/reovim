@@ -181,6 +181,14 @@ impl Default for Screen {
     }
 }
 
+/// Result of querying status line animation effects
+struct StatusLineAnimationInfo {
+    /// Resolved style from the animation (if bg/fg transition active)
+    style: Option<crate::highlight::Style>,
+    /// Sweep configuration for position-based glow (if sweep active)
+    sweep: Option<crate::animation::SweepConfig>,
+}
+
 impl Screen {
     /// Create a new Screen with a custom writer (useful for testing/benchmarking)
     #[must_use]
@@ -1039,6 +1047,7 @@ impl Screen {
                 last_command,
                 theme,
                 color_mode,
+                plugin_state,
             );
         }
 
@@ -1689,6 +1698,7 @@ impl Screen {
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::too_many_arguments)]
     #[allow(clippy::similar_names)]
+    #[allow(clippy::too_many_lines)]
     fn render_status_line_to_buffer(
         &self,
         buffer: &mut FrameBuffer,
@@ -1698,18 +1708,73 @@ impl Screen {
         _last_command: &str,
         theme: &Theme,
         _color_mode: ColorMode,
+        plugin_state: &std::sync::Arc<crate::plugin::PluginStateRegistry>,
     ) {
         let y = self.size.height.saturating_sub(1);
-
-        // Mode indicator (hierarchical: Kind | Mode | SubMode)
-        let mode_display = mode.hierarchical_display();
-        let mode_text = format!(" {mode_display} ");
-        let mode_style = &theme.statusline.mode.normal;
         let mut x = 0u16;
+        let status_line_width = self.size.width;
 
+        // Get base styles
+        let interactor_style = &theme.statusline.interactor;
+        let base_mode_style = Self::get_mode_style(mode, theme);
+        let separator = &theme.statusline.separator;
+
+        // Check for animation effects on the status line
+        let anim_info = Self::get_animation_info(plugin_state);
+
+        // Use animated style if present (for mode flash), otherwise use base
+        let mode_style = anim_info.style.as_ref().unwrap_or(base_mode_style);
+
+        // Helper to apply sweep effect at current position
+        let apply_sweep =
+            |style: &crate::highlight::Style, pos_x: u16| -> crate::highlight::Style {
+                anim_info.sweep.as_ref().map_or_else(
+                    || style.clone(),
+                    |sweep| {
+                        let position = f32::from(pos_x) / f32::from(status_line_width.max(1));
+                        Self::apply_sweep_to_style(style, sweep, position)
+                    },
+                )
+            };
+
+        // === Section 1: Interactor (e.g., "Editor", "Explorer") ===
+        let interactor_text = format!(" {} ", mode.interactor_id.0);
+        for ch in interactor_text.chars() {
+            if x < buffer.width() {
+                let style = apply_sweep(interactor_style, x);
+                buffer.put_char(x, y, ch, &style);
+                x += 1;
+            }
+        }
+
+        // Powerline separator: interactor -> mode
+        let sep_style = Self::create_separator_style(interactor_style, mode_style);
+        for ch in separator.left.chars() {
+            if x < buffer.width() {
+                let style = apply_sweep(&sep_style, x);
+                buffer.put_char(x, y, ch, &style);
+                x += 1;
+            }
+        }
+
+        // === Section 2: Mode (e.g., "Normal", "Insert", "Visual") ===
+        let mode_name = Self::get_mode_name(mode);
+        let mode_text = format!(" {mode_name} ");
         for ch in mode_text.chars() {
             if x < buffer.width() {
-                buffer.put_char(x, y, ch, mode_style);
+                let style = apply_sweep(mode_style, x);
+                buffer.put_char(x, y, ch, &style);
+                x += 1;
+            }
+        }
+
+        // Powerline separator: mode -> background
+        let bg_style = &theme.statusline.background;
+        let sep_style2 = Self::create_separator_style(mode_style, bg_style);
+        for ch in separator.left.chars() {
+            if x < buffer.width() {
+                let style = apply_sweep(&sep_style2, x);
+                buffer.put_char(x, y, ch, &style);
                 x += 1;
             }
         }
@@ -1721,7 +1786,8 @@ impl Screen {
             let file_text = format!(" {file_name} ");
             for ch in file_text.chars() {
                 if x < buffer.width() {
-                    buffer.put_char(x, y, ch, file_style);
+                    let style = apply_sweep(file_style, x);
+                    buffer.put_char(x, y, ch, &style);
                     x += 1;
                 }
             }
@@ -1729,11 +1795,14 @@ impl Screen {
             // Modified indicator
             if buf.modified {
                 let modified_style = &theme.statusline.modified;
-                buffer.put_char(x, y, '[', modified_style);
+                let style = apply_sweep(modified_style, x);
+                buffer.put_char(x, y, '[', &style);
                 x += 1;
-                buffer.put_char(x, y, '+', modified_style);
+                let style = apply_sweep(modified_style, x);
+                buffer.put_char(x, y, '+', &style);
                 x += 1;
-                buffer.put_char(x, y, ']', modified_style);
+                let style = apply_sweep(modified_style, x);
+                buffer.put_char(x, y, ']', &style);
                 x += 1;
             }
         }
@@ -1745,7 +1814,8 @@ impl Screen {
             .saturating_sub(pending_keys.len() as u16 + 10);
         let bg_style = &theme.statusline.background;
         while x < fill_end {
-            buffer.put_char(x, y, ' ', bg_style);
+            let style = apply_sweep(bg_style, x);
+            buffer.put_char(x, y, ' ', &style);
             x += 1;
         }
 
@@ -1762,7 +1832,8 @@ impl Screen {
             for (i, ch) in pos_text.chars().enumerate() {
                 let px = pos_start + i as u16;
                 if px < buffer.width() {
-                    buffer.put_char(px, y, ch, pos_style);
+                    let style = apply_sweep(pos_style, px);
+                    buffer.put_char(px, y, ch, &style);
                 }
             }
         }
@@ -1774,7 +1845,8 @@ impl Screen {
             for (i, ch) in pending_keys.chars().enumerate() {
                 let px = keys_start + i as u16;
                 if px < buffer.width() {
-                    buffer.put_char(px, y, ch, keys_style);
+                    let style = apply_sweep(keys_style, px);
+                    buffer.put_char(px, y, ch, &style);
                 }
             }
         }
@@ -1782,6 +1854,240 @@ impl Screen {
 
     // Settings menu rendering is now handled by the settings-menu plugin
     // Telescope buffer rendering is now handled by the telescope plugin
+
+    /// Get the appropriate mode style based on current mode state
+    fn get_mode_style<'t>(mode: &ModeState, theme: &'t Theme) -> &'t crate::highlight::Style {
+        use crate::modd::{EditMode, SubMode};
+
+        // Sub-modes take precedence
+        match &mode.sub_mode {
+            SubMode::Command => return &theme.statusline.mode.command,
+            SubMode::OperatorPending { .. } => return &theme.statusline.mode.operator_pending,
+            SubMode::Interactor(_) => return &theme.statusline.mode.normal,
+            SubMode::None => {}
+        }
+
+        // Non-editor interactors use normal style
+        if mode.interactor_id.0 != "editor" {
+            return &theme.statusline.mode.normal;
+        }
+
+        // Editor edit modes
+        match &mode.edit_mode {
+            EditMode::Normal => &theme.statusline.mode.normal,
+            EditMode::Insert(_) => &theme.statusline.mode.insert,
+            EditMode::Visual(_) => &theme.statusline.mode.visual,
+        }
+    }
+
+    /// Get the mode name as a string
+    fn get_mode_name(mode: &ModeState) -> &'static str {
+        use crate::modd::{EditMode, SubMode};
+
+        // Sub-modes take precedence
+        match &mode.sub_mode {
+            SubMode::Command => return "Command",
+            SubMode::OperatorPending { .. } => return "Operator",
+            SubMode::Interactor(component_id) => return Self::interactor_mode_name(component_id.0),
+            SubMode::None => {}
+        }
+
+        // Editor edit modes
+        match &mode.edit_mode {
+            EditMode::Normal => "Normal",
+            EditMode::Insert(_) => "Insert",
+            EditMode::Visual(_) => "Visual",
+        }
+    }
+
+    /// Get display name for interactor sub-mode
+    fn interactor_mode_name(name: &str) -> &'static str {
+        match name {
+            "filter" => "Filter",
+            "input" => "Input",
+            "search" => "Search",
+            "prompt" => "Prompt",
+            "window" => "Window",
+            _ => "Active",
+        }
+    }
+
+    /// Create a separator style that transitions between two backgrounds
+    fn create_separator_style(
+        from: &crate::highlight::Style,
+        to: &crate::highlight::Style,
+    ) -> crate::highlight::Style {
+        // For powerline separators, fg is the "from" background, bg is the "to" background
+        crate::highlight::Style::new().fg_opt(from.bg).bg_opt(to.bg)
+    }
+
+    /// Get animated style and sweep info from active `StatusLine` effects
+    ///
+    /// Queries the animation state for active effects targeting `UiElement::StatusLine`
+    /// and returns both the resolved style and sweep configuration if present.
+    /// Uses non-blocking `try_read()` to avoid blocking the render loop.
+    fn get_animation_info(
+        plugin_state: &std::sync::Arc<crate::plugin::PluginStateRegistry>,
+    ) -> StatusLineAnimationInfo {
+        use crate::animation::{EffectTarget, UiElementId};
+
+        let default = StatusLineAnimationInfo {
+            style: None,
+            sweep: None,
+        };
+
+        // Get the shared animation state
+        let Some(animation_state) = plugin_state.animation_state() else {
+            return default;
+        };
+
+        // Try non-blocking read - if locked, skip animation for this frame
+        let Ok(state_guard) = animation_state.try_read() else {
+            return default;
+        };
+
+        // Look for StatusLine effects
+        let target = EffectTarget::UiElement(UiElementId::StatusLine);
+        let Some(effects) = state_guard.get_effects(&target) else {
+            return default;
+        };
+
+        // Get the highest priority effect
+        let Some(effect) = effects.iter().max_by_key(|e| e.priority) else {
+            return default;
+        };
+
+        // Extract style and sweep info
+        let style = if effect.style.fg.is_some() || effect.style.bg.is_some() {
+            Some(effect.resolve_style())
+        } else {
+            None
+        };
+        let sweep = effect.sweep;
+
+        drop(state_guard);
+        StatusLineAnimationInfo { style, sweep }
+    }
+
+    /// Brighten a color for sweep glow effect
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    fn brighten_color_for_sweep(
+        color: reovim_sys::style::Color,
+        intensity: f32,
+    ) -> reovim_sys::style::Color {
+        use reovim_sys::style::Color;
+
+        // Extract RGB components
+        let (r, g, b) = match color {
+            Color::Rgb { r, g, b } => (r, g, b),
+            Color::AnsiValue(n) => Self::sweep_ansi_to_rgb(n),
+            Color::Black => (0, 0, 0),
+            Color::DarkGrey | Color::Reset => (128, 128, 128),
+            Color::Red => (255, 0, 0),
+            Color::DarkRed => (139, 0, 0),
+            Color::Green => (0, 255, 0),
+            Color::DarkGreen => (0, 100, 0),
+            Color::Yellow => (255, 255, 0),
+            Color::DarkYellow => (128, 128, 0),
+            Color::Blue => (0, 0, 255),
+            Color::DarkBlue => (0, 0, 139),
+            Color::Magenta => (255, 0, 255),
+            Color::DarkMagenta => (139, 0, 139),
+            Color::Cyan => (0, 255, 255),
+            Color::DarkCyan => (0, 139, 139),
+            Color::White => (255, 255, 255),
+            Color::Grey => (192, 192, 192),
+        };
+
+        // Blend towards white using mul_add for better precision
+        let blend = |c: u8| -> u8 {
+            let f = f32::from(c) / 255.0;
+            let brightened = (1.0 - f).mul_add(intensity, f);
+            (brightened.min(1.0) * 255.0) as u8
+        };
+
+        Color::Rgb {
+            r: blend(r),
+            g: blend(g),
+            b: blend(b),
+        }
+    }
+
+    /// Convert ANSI 256 color to RGB (for sweep effect)
+    const fn sweep_ansi_to_rgb(n: u8) -> (u8, u8, u8) {
+        match n {
+            0 => (0, 0, 0),
+            1 => (128, 0, 0),
+            2 => (0, 128, 0),
+            3 => (128, 128, 0),
+            4 => (0, 0, 128),
+            5 => (128, 0, 128),
+            6 => (0, 128, 128),
+            7 => (192, 192, 192),
+            8 => (128, 128, 128),
+            9 => (255, 0, 0),
+            10 => (0, 255, 0),
+            11 => (255, 255, 0),
+            12 => (0, 0, 255),
+            13 => (255, 0, 255),
+            14 => (0, 255, 255),
+            15 => (255, 255, 255),
+            16..=231 => {
+                let idx = n - 16;
+                let r = (idx / 36) % 6;
+                let g = (idx / 6) % 6;
+                let b = idx % 6;
+                let r_val = if r == 0 { 0 } else { 55 + r * 40 };
+                let g_val = if g == 0 { 0 } else { 55 + g * 40 };
+                let b_val = if b == 0 { 0 } else { 55 + b * 40 };
+                (r_val, g_val, b_val)
+            }
+            232..=255 => {
+                let gray = 8 + (n - 232) * 10;
+                (gray, gray, gray)
+            }
+        }
+    }
+
+    /// Apply sweep glow to a style at a given position
+    fn apply_sweep_to_style(
+        base_style: &crate::highlight::Style,
+        sweep: &crate::animation::SweepConfig,
+        position: f32,
+    ) -> crate::highlight::Style {
+        let brightness = sweep.brightness_at(position);
+        if brightness <= 0.0 {
+            return base_style.clone();
+        }
+
+        let mut style = base_style.clone();
+        if let Some(bg) = style.bg {
+            style.bg = Some(Self::brighten_color_for_sweep(bg, brightness));
+        }
+        if let Some(fg) = style.fg {
+            // Slightly brighten fg too for glow effect
+            style.fg = Some(Self::brighten_color_for_sweep(fg, brightness * 0.3));
+        }
+        style
+    }
+}
+
+/// Extension trait for Style to allow optional color setting (used in screen rendering)
+trait StyleExt {
+    fn fg_opt(self, color: Option<reovim_sys::style::Color>) -> Self;
+    fn bg_opt(self, color: Option<reovim_sys::style::Color>) -> Self;
+}
+
+impl StyleExt for crate::highlight::Style {
+    fn fg_opt(mut self, color: Option<reovim_sys::style::Color>) -> Self {
+        self.fg = color;
+        self
+    }
+
+    fn bg_opt(mut self, color: Option<reovim_sys::style::Color>) -> Self {
+        self.bg = color;
+        self
+    }
 }
 
 // Implement StatusLineRenderer trait for Screen

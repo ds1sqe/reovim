@@ -162,6 +162,13 @@ lib/core/src/
 │   └── inner/      # InnerEvent types
 ├── motion/         # Cursor movement logic
 ├── highlight/      # Syntax highlighting types
+├── animation/      # Animation system for visual effects
+│   ├── mod.rs      # AnimationSystem, public API
+│   ├── color.rs    # AnimatedColor (pulse, shimmer, transition)
+│   ├── effect.rs   # Effect, EffectTarget, SweepConfig
+│   ├── controller.rs # AnimationController (background task)
+│   ├── easing.rs   # EasingFn (linear, ease-in/out, sine)
+│   └── stage.rs    # AnimationRenderStage
 ├── syntax/         # Abstract syntax provider traits
 │   └── mod.rs      # SyntaxProvider, SyntaxFactory, EditInfo
 ├── modd/           # Editor modes (ModeState, EditMode, SubMode)
