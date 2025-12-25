@@ -75,21 +75,13 @@ pub fn spawn_saturator(
 
             // Update highlights if syntax provider exists
             if let Some(ref mut syn) = syntax {
-                let updated = update_highlights(
-                    syn.as_mut(),
-                    &request,
-                    &highlight_cache,
-                );
+                let updated = update_highlights(syn.as_mut(), &request, &highlight_cache);
                 cache_updated |= updated;
             }
 
             // Update decorations if decoration provider exists
             if let Some(ref decorator) = decoration {
-                let updated = update_decorations(
-                    decorator.as_ref(),
-                    &request,
-                    &decoration_cache,
-                );
+                let updated = update_decorations(decorator.as_ref(), &request, &decoration_cache);
                 cache_updated |= updated;
             }
 
@@ -108,7 +100,7 @@ pub fn spawn_saturator(
 /// Returns true if cache was updated.
 #[allow(clippy::too_many_lines)]
 fn update_highlights(
-    syntax: &dyn SyntaxProvider,
+    syntax: &mut dyn SyntaxProvider,
     request: &SaturatorRequest,
     cache: &Arc<HighlightCache>,
 ) -> bool {
@@ -125,7 +117,17 @@ fn update_highlights(
         return false; // All cached, nothing to do
     }
 
-    // Compute highlights (SLOW - ~46ms)
+    // Parse content to update tree and detect injection regions
+    // This is critical for language injections (e.g., code blocks in markdown)
+    syntax.parse(&request.content);
+
+    // Eagerly saturate injection regions for embedded language highlighting
+    // This ensures code blocks in markdown (and doc comments in Rust, etc.)
+    // get proper syntax highlighting by pre-computing all injection layers
+    syntax.saturate_injections(&request.content);
+
+    // Compute highlights (SLOW - ~46ms for complex grammars)
+    // Now includes injection highlights from embedded languages
     let all_highlights = syntax.highlight_range(
         &request.content,
         u32::from(request.viewport_start),
@@ -194,10 +196,8 @@ fn update_highlights(
     // Insert new highlights for viewport lines
     for line_idx in start..end {
         let hash = request.line_hashes.get(line_idx).copied().unwrap_or(0);
-        new_entries.insert(
-            line_idx,
-            (hash, line_highlights.get(line_idx).cloned().unwrap_or_default()),
-        );
+        new_entries
+            .insert(line_idx, (hash, line_highlights.get(line_idx).cloned().unwrap_or_default()));
     }
 
     // Atomic store (lock-free swap)
@@ -309,9 +309,23 @@ fn update_decorations(
         }
     }
 
-    // Sort decorations by start column for each line
+    // Sort decorations by start column, with Conceal before Background at same position
+    // This ensures concealment takes priority over styling
     for line_deco in &mut line_decorations {
-        line_deco.sort_by_key(|d| d.start_col);
+        line_deco.sort_by(|a, b| {
+            // Primary sort: by start column
+            a.start_col.cmp(&b.start_col).then_with(|| {
+                // Secondary sort: Conceal before Background (lower = higher priority)
+                let kind_priority = |k: &DecorationKind| -> u8 {
+                    match k {
+                        DecorationKind::Conceal { .. } => 0,
+                        DecorationKind::VirtualText { .. } => 1,
+                        DecorationKind::Background { .. } => 2,
+                    }
+                };
+                kind_priority(&a.kind).cmp(&kind_priority(&b.kind))
+            })
+        });
     }
 
     // Clone current cache entries to preserve cached lines outside viewport
@@ -320,10 +334,8 @@ fn update_decorations(
     // Insert new decorations for viewport lines
     for line_idx in start..end {
         let hash = request.line_hashes.get(line_idx).copied().unwrap_or(0);
-        new_entries.insert(
-            line_idx,
-            (hash, line_decorations.get(line_idx).cloned().unwrap_or_default()),
-        );
+        new_entries
+            .insert(line_idx, (hash, line_decorations.get(line_idx).cloned().unwrap_or_default()));
     }
 
     // Atomic store (lock-free swap)

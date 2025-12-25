@@ -283,9 +283,9 @@ mod tests {
         };
 
         // All known extensions should return specific icons, not the default
-        assert_eq!(rs_icon, " ", "rs should return Rust icon");
-        assert_eq!(toml_icon, " ", "toml should return toml icon");
-        assert_eq!(md_icon, " ", "md should return markdown icon");
+        assert_eq!(rs_icon, " ", "rs should return Rust icon");
+        assert_eq!(toml_icon, " ", "toml should return toml icon");
+        assert_eq!(md_icon, " ", "md should return markdown icon");
 
         // Unknown extensions should return the default
         assert_eq!(unknown_icon, " ", "unknown should return default icon");

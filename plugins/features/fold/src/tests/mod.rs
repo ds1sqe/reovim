@@ -158,6 +158,7 @@ fn test_fold_render_stage_no_folds() {
             width: 80,
             height: 24,
         },
+        cursor: (0, 0),
     };
 
     // Create render context
@@ -213,6 +214,7 @@ fn test_fold_render_stage_with_collapsed_fold() {
             width: 80,
             height: 24,
         },
+        cursor: (0, 0),
     };
 
     let theme = Theme::default();
@@ -277,6 +279,7 @@ fn test_fold_render_stage_multiple_folds() {
             width: 80,
             height: 24,
         },
+        cursor: (0, 0),
     };
 
     let theme = Theme::default();

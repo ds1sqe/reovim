@@ -224,7 +224,10 @@ impl Buffer {
     ///
     /// # Arguments
     /// * `event_tx` - Channel to send `RenderSignal` when cache is updated
-    pub fn start_saturator(&mut self, event_tx: tokio::sync::mpsc::Sender<crate::event::InnerEvent>) {
+    pub fn start_saturator(
+        &mut self,
+        event_tx: tokio::sync::mpsc::Sender<crate::event::InnerEvent>,
+    ) {
         // Only start if we have something to compute
         if self.syntax.is_none() && self.decoration_provider.is_none() {
             return;
@@ -493,8 +496,7 @@ impl Buffer {
                     for line in start_line..=end_line {
                         let line_idx = line as usize;
                         if line_idx < line_decorations.len() {
-                            let line_len =
-                                self.contents.get(line_idx).map_or(0, |l| l.inner.len());
+                            let line_len = self.contents.get(line_idx).map_or(0, |l| l.inner.len());
                             line_decorations[line_idx].push(Decoration {
                                 start_col: 0,
                                 end_col: line_len,

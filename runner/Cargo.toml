@@ -26,6 +26,7 @@ reovim-plugin-explorer.workspace = true
 reovim-plugin-telescope.workspace = true
 reovim-plugin-leap.workspace = true
 reovim-plugin-treesitter.workspace = true
+reovim-plugin-pair.workspace = true
 
 # Language plugins
 reovim-lang-rust.workspace = true

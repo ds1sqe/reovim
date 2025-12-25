@@ -145,6 +145,16 @@ pub struct WindowStyles {
     pub separator: Style,
 }
 
+#[derive(Debug, Clone)]
+pub struct BracketStyles {
+    /// Rainbow bracket colors (6 colors cycling by depth)
+    pub rainbow: [Style; 6],
+    /// Matched pair highlight (when cursor is on bracket)
+    pub matched: Style,
+    /// Unmatched bracket (error highlighting)
+    pub unmatched: Style,
+}
+
 // ============================================================================
 // Main Theme Struct
 // ============================================================================
@@ -163,6 +173,7 @@ pub struct Theme {
     pub search: SearchStyles,
     pub tab: TabStyles,
     pub window: WindowStyles,
+    pub brackets: BracketStyles,
 }
 
 impl Default for Theme {
@@ -315,6 +326,18 @@ impl Theme {
             window: WindowStyles {
                 separator: Style::new().fg(fg_dark),
             },
+            brackets: BracketStyles {
+                rainbow: [
+                    Style::new().fg(red),     // Depth 0: Red
+                    Style::new().fg(yellow),  // Depth 1: Yellow
+                    Style::new().fg(green),   // Depth 2: Green
+                    Style::new().fg(cyan),    // Depth 3: Cyan
+                    Style::new().fg(blue),    // Depth 4: Blue
+                    Style::new().fg(magenta), // Depth 5: Magenta
+                ],
+                matched: Style::new().bold().underline(),
+                unmatched: Style::new().fg(red).underline(),
+            },
         }
     }
 
@@ -412,6 +435,18 @@ impl Theme {
             },
             window: WindowStyles {
                 separator: Style::new().fg(Color::Grey),
+            },
+            brackets: BracketStyles {
+                rainbow: [
+                    Style::new().fg(Color::DarkRed),     // Depth 0: Red
+                    Style::new().fg(Color::DarkYellow),  // Depth 1: Yellow
+                    Style::new().fg(Color::DarkGreen),   // Depth 2: Green
+                    Style::new().fg(Color::DarkCyan),    // Depth 3: Cyan
+                    Style::new().fg(Color::DarkBlue),    // Depth 4: Blue
+                    Style::new().fg(Color::DarkMagenta), // Depth 5: Magenta
+                ],
+                matched: Style::new().bold().underline(),
+                unmatched: Style::new().fg(Color::DarkRed).underline(),
             },
         }
     }
@@ -572,6 +607,23 @@ impl Theme {
             },
             window: WindowStyles {
                 separator: Style::new().fg(fg_dark),
+            },
+            brackets: BracketStyles {
+                rainbow: [
+                    Style::new().fg(red),    // Depth 0: Red/Pink #f7768e
+                    Style::new().fg(orange), // Depth 1: Orange #ff9e64
+                    Style::new().fg(yellow), // Depth 2: Yellow #e0af68
+                    Style::new().fg(green),  // Depth 3: Green #9ece6a
+                    Style::new().fg(cyan),   // Depth 4: Cyan #7dcfff
+                    Style::new().fg(Color::Rgb {
+                        // Depth 5: Purple #bb9af7
+                        r: 187,
+                        g: 154,
+                        b: 247,
+                    }),
+                ],
+                matched: Style::new().bold().underline(),
+                unmatched: Style::new().fg(red).underline(),
             },
         }
     }

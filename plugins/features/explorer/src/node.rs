@@ -327,18 +327,18 @@ mod tests {
 
         // Create test files with various extensions (including realistic filenames)
         let test_cases = [
-            ("main.rs", " "),       // Rust icon
-            ("lib.rs", " "),        // Rust icon
-            ("Cargo.toml", " "),    // TOML icon
-            ("config.toml", " "),   // TOML icon
-            ("README.md", " "),     // Markdown icon
-            ("CHANGELOG.md", " "),  // Markdown icon
-            ("package.json", " "),  // JSON icon
-            ("tsconfig.json", " "), // JSON icon
-            ("script.py", " "),     // Python icon
-            ("Cargo.lock", " "),    // Lock icon
-            ("unknown.xyz", " "),   // Unknown -> default icon
-            ("LICENSE", " "),       // No extension -> default icon
+            ("main.rs", " "),       // Rust icon
+            ("lib.rs", " "),        // Rust icon
+            ("Cargo.toml", " "),    // TOML icon
+            ("config.toml", " "),   // TOML icon
+            ("README.md", " "),     // Markdown icon
+            ("CHANGELOG.md", " "),  // Markdown icon
+            ("package.json", " "),  // JSON icon
+            ("tsconfig.json", " "), // JSON icon
+            ("script.py", " "),     // Python icon
+            ("Cargo.lock", " "),     // Lock icon
+            ("unknown.xyz", " "),    // Unknown -> default icon
+            ("LICENSE", " "),        // No extension -> default icon
         ];
 
         for (filename, expected_icon) in test_cases {

@@ -15,6 +15,39 @@ use {
 
 use crate::markdown::MarkdownConfig;
 
+/// Map language name (from code fence) to file extension for icon lookup
+///
+/// The icon registry uses file extensions, so we need to convert
+/// language names like "rust" to extensions like "rs".
+fn lang_to_extension(lang: &str) -> String {
+    let lower = lang.to_lowercase();
+    match lower.as_str() {
+        "rust" => "rs".to_string(),
+        "python" => "py".to_string(),
+        "javascript" => "js".to_string(),
+        "typescript" => "ts".to_string(),
+        "golang" => "go".to_string(),
+        "c++" => "cpp".to_string(),
+        "shell" | "zsh" => "sh".to_string(),
+        "dockerfile" => "docker".to_string(),
+        "makefile" | "make" => "mk".to_string(),
+        "csharp" => "cs".to_string(),
+        "fsharp" => "fs".to_string(),
+        _ => lower,
+    }
+}
+
+/// Get icon for a language using the global icon registry
+fn language_icon(lang: &str) -> String {
+    use reovim_core::style::icons::registry;
+
+    let ext = lang_to_extension(lang);
+    let registry = registry().read().unwrap();
+
+    // file_icon() returns &'static str with built-in fallback
+    registry.file_icon(&ext).to_string()
+}
+
 /// Block decorations query for markdown
 const BLOCK_DECORATIONS_QUERY: &str = r#"
 ; Markdown decoration queries for visual rendering
@@ -42,6 +75,12 @@ const BLOCK_DECORATIONS_QUERY: &str = r#"
 ; Code blocks for background styling
 (fenced_code_block) @decoration.code_block
 (indented_code_block) @decoration.code_block
+
+; Fenced code block language icon - capture opening fence and language
+(fenced_code_block
+  (fenced_code_block_delimiter) @decoration.code_fence_open
+  (info_string
+    (language) @decoration.code_lang))
 
 ; Tables (pipe tables)
 (pipe_table) @decoration.table
@@ -253,30 +292,88 @@ impl MarkdownDecorator {
     #[allow(clippy::cast_possible_truncation)]
     fn render_code_blocks(&self, tree: &Tree, content: &str) -> Vec<Decoration> {
         let mut decorations = Vec::new();
-
-        if self.config.code_blocks.background.is_none() {
-            return decorations;
-        }
-
         let mut cursor = tree_sitter::QueryCursor::new();
         let mut matches = cursor.matches(&self.block_query, tree.root_node(), content.as_bytes());
 
+        // Track fence/lang pairs to combine them
+        let mut pending_fence: Option<(u32, u32, u32, u32)> = None; // (row, start_col, end_col, row)
+
         while let Some(match_) = matches.next() {
+            // Process captures in order for this match
+            let mut fence_span: Option<(u32, u32, u32, u32)> = None;
+            let mut lang_info: Option<(u32, u32, u32, u32, String)> = None;
+
             for capture in match_.captures {
                 let capture_name = &self.block_query.capture_names()[capture.index as usize];
+                let node = capture.node;
 
-                if *capture_name == "decoration.code_block" {
-                    let node = capture.node;
-                    let start_line = node.start_position().row as u32;
-                    let end_line = node.end_position().row as u32;
+                match *capture_name {
+                    "decoration.code_block" => {
+                        let start_line = node.start_position().row as u32;
+                        let end_line = node.end_position().row as u32;
 
-                    if let Some(bg_style) = &self.config.code_blocks.background {
-                        decorations.push(Decoration::line_background(
-                            start_line,
-                            end_line,
-                            bg_style.clone(),
+                        if let Some(bg_style) = &self.config.code_blocks.background {
+                            decorations.push(Decoration::line_background(
+                                start_line,
+                                end_line,
+                                bg_style.clone(),
+                            ));
+                        }
+                    }
+                    "decoration.code_fence_open" => {
+                        let start = node.start_position();
+                        let end = node.end_position();
+                        fence_span = Some((
+                            start.row as u32,
+                            start.column as u32,
+                            end.column as u32,
+                            end.row as u32,
+                        ));
+                        pending_fence = Some((
+                            start.row as u32,
+                            start.column as u32,
+                            end.column as u32,
+                            end.row as u32,
                         ));
                     }
+                    "decoration.code_lang" => {
+                        let start = node.start_position();
+                        let end = node.end_position();
+                        let lang_text =
+                            node.utf8_text(content.as_bytes()).unwrap_or("").to_string();
+                        lang_info = Some((
+                            start.row as u32,
+                            start.column as u32,
+                            end.column as u32,
+                            end.row as u32,
+                            lang_text,
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+
+            // If we have both fence and lang in this match, generate icon decoration
+            if self.config.code_blocks.show_language_icon
+                && let Some((lang_row, lang_start, lang_end, _, lang_text)) = lang_info
+            {
+                // Use fence from same match, or pending fence from previous match
+                let fence_to_use = fence_span.or_else(|| pending_fence.take());
+
+                if let Some(fence) = fence_to_use {
+                    let icon = language_icon(&lang_text);
+
+                    // Hide the opening fence (```)
+                    decorations.push(Decoration::Hide {
+                        span: Span::new(fence.0, fence.1, fence.3, fence.2),
+                    });
+
+                    // Replace language name with icon + language
+                    decorations.push(Decoration::Conceal {
+                        span: Span::new(lang_row, lang_start, lang_row, lang_end),
+                        replacement: format!("{icon}{lang_text}"),
+                        style: Some(self.config.code_blocks.lang_style.clone()),
+                    });
                 }
             }
         }

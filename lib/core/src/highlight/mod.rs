@@ -9,7 +9,7 @@ pub use {
     span::Span,
     store::{BufferHighlights, HighlightStore, LineHighlight},
     style::{Attributes, Style},
-    theme::{StatusLineModeStyles, Theme, ThemeName},
+    theme::{BracketStyles, StatusLineModeStyles, Theme, ThemeName},
 };
 
 /// Identifies the source/type of highlight for layering and management
@@ -18,6 +18,8 @@ pub use {
 pub enum HighlightGroup {
     /// Base syntax highlighting (lowest priority)
     Syntax = 0,
+    /// Rainbow bracket coloring (just above syntax)
+    RainbowBracket = 5,
     /// Search matches
     Search = 10,
     /// Incremental search (current match)
@@ -31,6 +33,8 @@ pub enum HighlightGroup {
     DiagnosticError = 33,
     /// Cursor line highlight
     CursorLine = 40,
+    /// Matched bracket pair (high priority, visible over cursor line)
+    MatchedBracket = 45,
     /// Custom user highlights (highest priority)
     Custom = 100,
 }

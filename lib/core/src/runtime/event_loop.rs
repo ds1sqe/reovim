@@ -24,7 +24,47 @@ impl Runtime {
     pub async fn init(mut self) {
         tracing::info!("Runtime initializing");
 
-        // Load file if provided, otherwise show landing page
+        // STEP 1: Set up input handlers FIRST (before file loading)
+        let input_broker = InputEventBroker::with_event_sender(self.tx.clone());
+
+        // Command handler for key-to-command translation
+        // Pass mode receiver so CommandHandler can read mode from Runtime (single source of truth)
+        let mode_rx = self.subscribe_mode();
+        let mut command_hdr = CommandHandler::new(self.tx.clone(), mode_rx, self.keymap.clone());
+        let mut terminate_hdr = TerminateHandler::new(self.tx.clone());
+
+        input_broker.key_broker.enlist(&mut command_hdr);
+        input_broker.key_broker.enlist(&mut terminate_hdr);
+
+        tokio::spawn(async move { command_hdr.run().await });
+        tokio::spawn(async move { terminate_hdr.run().await });
+        tokio::spawn(async move { input_broker.subscribe().await });
+
+        // STEP 2: Spawn EventBus event processor
+        // This starts processing queued events (like RegisterLanguage from subscribe phase)
+        if let Some(mut event_rx) = self.event_bus.take_receiver() {
+            let event_bus = Arc::clone(&self.event_bus);
+            tokio::spawn(async move {
+                while let Some(event) = event_rx.recv().await {
+                    let sender = event_bus.sender();
+                    let mut ctx = crate::event_bus::HandlerContext::new(&sender);
+                    let _ = event_bus.dispatch(&event, &mut ctx);
+                }
+            });
+        }
+
+        // STEP 3: Let queued events process (RegisterLanguage events from subscribe phase)
+        tokio::task::yield_now().await;
+
+        // STEP 4: Boot phase - plugins can do post-EventBus initialization
+        // Languages are now registered, syntax providers can be created
+        for plugin in &self.plugins {
+            let plugin_id = plugin.id();
+            tracing::debug!(plugin = %plugin_id, "Booting plugin");
+            plugin.boot(&self.event_bus, Arc::clone(&self.plugin_state));
+        }
+
+        // STEP 5: Load file AFTER languages are registered
         if let Some(path) = self.initial_file.clone() {
             // Use create_buffer_from_file which handles treesitter parsing and decorations
             if let Some(buffer_id) = self.create_buffer_from_file(&path) {
@@ -47,34 +87,8 @@ impl Runtime {
             self.showing_landing_page = true;
             self.buffers.insert(0, buffer);
         }
-        let input_broker = InputEventBroker::with_event_sender(self.tx.clone());
 
-        // Command handler for key-to-command translation
-        // Pass mode receiver so CommandHandler can read mode from Runtime (single source of truth)
-        let mode_rx = self.subscribe_mode();
-        let mut command_hdr = CommandHandler::new(self.tx.clone(), mode_rx, self.keymap.clone());
-        let mut terminate_hdr = TerminateHandler::new(self.tx.clone());
-
-        input_broker.key_broker.enlist(&mut command_hdr);
-        input_broker.key_broker.enlist(&mut terminate_hdr);
-
-        tokio::spawn(async move { command_hdr.run().await });
-        tokio::spawn(async move { terminate_hdr.run().await });
-        tokio::spawn(async move { input_broker.subscribe().await });
-
-        // Spawn EventBus event processor
-        if let Some(mut event_rx) = self.event_bus.take_receiver() {
-            let event_bus = Arc::clone(&self.event_bus);
-            tokio::spawn(async move {
-                while let Some(event) = event_rx.recv().await {
-                    let sender = event_bus.sender();
-                    let mut ctx = crate::event_bus::HandlerContext::new(&sender);
-                    let _ = event_bus.dispatch(&event, &mut ctx);
-                }
-            });
-        }
-
-        // Initial render to show content immediately (use render directly, not coalesced)
+        // STEP 6: Initial render to show content immediately
         self.render();
 
         tracing::debug!("Entering event loop");
@@ -97,7 +111,47 @@ impl Runtime {
     ) {
         tracing::info!("Runtime initializing (server mode)");
 
-        // Load file if provided, otherwise show landing page
+        // STEP 1: Set up input handlers FIRST (before file loading)
+        let input_broker = crate::event::InputEventBroker::with_key_source(key_source);
+
+        // Command handler for key-to-command translation
+        let mode_rx = self.subscribe_mode();
+        let mut command_hdr =
+            crate::event::CommandHandler::new(self.tx.clone(), mode_rx, self.keymap.clone());
+        let mut terminate_hdr = crate::event::TerminateHandler::new(self.tx.clone());
+
+        input_broker.key_broker.enlist(&mut command_hdr);
+        input_broker.key_broker.enlist(&mut terminate_hdr);
+
+        tokio::spawn(async move { command_hdr.run().await });
+        tokio::spawn(async move { terminate_hdr.run().await });
+        tokio::spawn(async move { input_broker.subscribe().await });
+
+        // STEP 2: Spawn EventBus event processor
+        // This starts processing queued events (like RegisterLanguage from subscribe phase)
+        if let Some(mut event_rx) = self.event_bus.take_receiver() {
+            let event_bus = Arc::clone(&self.event_bus);
+            tokio::spawn(async move {
+                while let Some(event) = event_rx.recv().await {
+                    let sender = event_bus.sender();
+                    let mut ctx = crate::event_bus::HandlerContext::new(&sender);
+                    let _ = event_bus.dispatch(&event, &mut ctx);
+                }
+            });
+        }
+
+        // STEP 3: Let queued events process (RegisterLanguage events from subscribe phase)
+        tokio::task::yield_now().await;
+
+        // STEP 4: Boot phase - plugins can do post-EventBus initialization
+        // Languages are now registered, syntax providers can be created
+        for plugin in &self.plugins {
+            let plugin_id = plugin.id();
+            tracing::debug!(plugin = %plugin_id, "Booting plugin");
+            plugin.boot(&self.event_bus, Arc::clone(&self.plugin_state));
+        }
+
+        // STEP 5: Load file AFTER languages are registered
         if let Some(path) = self.initial_file.clone() {
             // Use create_buffer_from_file which handles treesitter parsing and decorations
             if let Some(buffer_id) = self.create_buffer_from_file(&path) {
@@ -121,35 +175,7 @@ impl Runtime {
             self.buffers.insert(0, buffer);
         }
 
-        // Use custom key source for server mode
-        let input_broker = crate::event::InputEventBroker::with_key_source(key_source);
-
-        // Command handler for key-to-command translation
-        let mode_rx = self.subscribe_mode();
-        let mut command_hdr =
-            crate::event::CommandHandler::new(self.tx.clone(), mode_rx, self.keymap.clone());
-        let mut terminate_hdr = crate::event::TerminateHandler::new(self.tx.clone());
-
-        input_broker.key_broker.enlist(&mut command_hdr);
-        input_broker.key_broker.enlist(&mut terminate_hdr);
-
-        tokio::spawn(async move { command_hdr.run().await });
-        tokio::spawn(async move { terminate_hdr.run().await });
-        tokio::spawn(async move { input_broker.subscribe().await });
-
-        // Spawn EventBus event processor
-        if let Some(mut event_rx) = self.event_bus.take_receiver() {
-            let event_bus = Arc::clone(&self.event_bus);
-            tokio::spawn(async move {
-                while let Some(event) = event_rx.recv().await {
-                    let sender = event_bus.sender();
-                    let mut ctx = crate::event_bus::HandlerContext::new(&sender);
-                    let _ = event_bus.dispatch(&event, &mut ctx);
-                }
-            });
-        }
-
-        // Initial render (use render directly, not coalesced)
+        // STEP 6: Initial render
         self.render();
 
         tracing::debug!("Entering event loop (server mode)");
@@ -189,7 +215,10 @@ impl Runtime {
                 self.flush_render();
                 tracing::debug!(
                     "[RTT] event_loop: first_ev={} drained={} pre_render={:?} total={:?}",
-                    ev_name, drained, pre_render, loop_start.elapsed()
+                    ev_name,
+                    drained,
+                    pre_render,
+                    loop_start.elapsed()
                 );
             } else {
                 self.tx
@@ -306,7 +335,10 @@ impl Runtime {
                             if !buffer.has_saturator() {
                                 buffer.start_saturator(self.tx.clone());
                             }
-                            tracing::debug!(buffer_id, "Attached syntax provider and started saturator");
+                            tracing::debug!(
+                                buffer_id,
+                                "Attached syntax provider and started saturator"
+                            );
                             self.request_render();
                         }
                     }

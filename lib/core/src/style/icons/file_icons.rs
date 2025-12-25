@@ -13,24 +13,24 @@ impl IconProvider for BuiltinFileIconProvider {
         let icon = match ext {
             // Rust
             "rs" => match set {
-                IconSet::Nerd => " ",
+                IconSet::Nerd => " ",
                 IconSet::Unicode => "🦀 ",
                 IconSet::Ascii => "rs ",
             },
             // Python
             "py" | "pyi" | "pyc" | "pyd" | "pyw" => match set {
-                IconSet::Nerd => " ",
+                IconSet::Nerd => " ",
                 IconSet::Unicode => "🐍 ",
                 IconSet::Ascii => "py ",
             },
             // JavaScript / TypeScript
             "js" | "mjs" | "cjs" => match set {
-                IconSet::Nerd => " ",
+                IconSet::Nerd => " ",
                 IconSet::Unicode => "JS ",
                 IconSet::Ascii => "js ",
             },
             "ts" | "mts" | "cts" => match set {
-                IconSet::Nerd => " ",
+                IconSet::Nerd => " ",
                 IconSet::Unicode => "TS ",
                 IconSet::Ascii => "ts ",
             },
@@ -102,23 +102,23 @@ impl IconProvider for BuiltinFileIconProvider {
             },
             // Shell
             "sh" | "bash" | "zsh" | "fish" => match set {
-                IconSet::Nerd => " ",
+                IconSet::Nerd => " ",
                 IconSet::Unicode => "$ ",
                 IconSet::Ascii => "sh ",
             },
             // Config files
             "json" => match set {
-                IconSet::Nerd => " ",
+                IconSet::Nerd => " ",
                 IconSet::Unicode => "{} ",
                 IconSet::Ascii => "jsn",
             },
             "toml" => match set {
-                IconSet::Nerd => " ",
+                IconSet::Nerd => " ",
                 IconSet::Unicode => "[T] ",
                 IconSet::Ascii => "tml",
             },
             "yaml" | "yml" => match set {
-                IconSet::Nerd => " ",
+                IconSet::Nerd => " ",
                 IconSet::Unicode => "⚙ ",
                 IconSet::Ascii => "yml",
             },
@@ -134,7 +134,7 @@ impl IconProvider for BuiltinFileIconProvider {
             },
             // Markdown / Documentation
             "md" | "markdown" => match set {
-                IconSet::Nerd => " ",
+                IconSet::Nerd => " ",
                 IconSet::Unicode => "📝 ",
                 IconSet::Ascii => "md ",
             },
@@ -320,7 +320,7 @@ mod tests {
         let provider = BuiltinFileIconProvider;
         let icon = provider.file_icon("toml", IconSet::Nerd);
         assert!(icon.is_some(), "toml should have an icon");
-        assert_eq!(icon.unwrap(), " ", "toml Nerd icon should be ");
+        assert_eq!(icon.unwrap(), " ", "toml Nerd icon should be ");
     }
 
     #[test]
@@ -328,7 +328,7 @@ mod tests {
         let provider = BuiltinFileIconProvider;
         let icon = provider.file_icon("md", IconSet::Nerd);
         assert!(icon.is_some(), "md should have an icon");
-        assert_eq!(icon.unwrap(), " ", "md Nerd icon should be ");
+        assert_eq!(icon.unwrap(), " ", "md Nerd icon should be ");
     }
 
     #[test]
@@ -336,6 +336,6 @@ mod tests {
         let provider = BuiltinFileIconProvider;
         let icon = provider.file_icon("json", IconSet::Nerd);
         assert!(icon.is_some(), "json should have an icon");
-        assert_eq!(icon.unwrap(), " ", "json Nerd icon should be ");
+        assert_eq!(icon.unwrap(), " ", "json Nerd icon should be ");
     }
 }

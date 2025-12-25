@@ -12,7 +12,7 @@ use reovim_core::plugin::{
 // External plugin crates
 use {
     reovim_plugin_completion::CompletionPlugin, reovim_plugin_explorer::ExplorerPlugin,
-    reovim_plugin_fold::FoldPlugin, reovim_plugin_leap::LeapPlugin,
+    reovim_plugin_fold::FoldPlugin, reovim_plugin_leap::LeapPlugin, reovim_plugin_pair::PairPlugin,
     reovim_plugin_settings_menu::SettingsMenuPlugin, reovim_plugin_telescope::TelescopePlugin,
     reovim_plugin_treesitter::TreesitterPlugin,
 };
@@ -37,6 +37,7 @@ impl PluginTuple for AllPlugins {
         // Add external plugin crates
         loader.add(LeapPlugin);
         loader.add(FoldPlugin::new());
+        loader.add(PairPlugin::new());
         loader.add(SettingsMenuPlugin);
         loader.add(CompletionPlugin);
         loader.add(ExplorerPlugin);
@@ -73,6 +74,7 @@ pub fn default_plugins() -> impl IntoIterator<Item = Box<dyn Plugin>> {
         Box::new(CompletionPlugin),
         Box::new(ExplorerPlugin),
         Box::new(FoldPlugin::new()),
+        Box::new(PairPlugin::new()),
         Box::new(SettingsMenuPlugin),
         // Treesitter infrastructure (must come before language plugins)
         Box::new(TreesitterPlugin::new()),
@@ -105,6 +107,7 @@ pub fn create_plugin_loader() -> PluginLoader {
     // Add external plugin crates
     loader.add(LeapPlugin);
     loader.add(FoldPlugin::new());
+    loader.add(PairPlugin::new());
     loader.add(SettingsMenuPlugin);
     loader.add(CompletionPlugin);
     loader.add(ExplorerPlugin);

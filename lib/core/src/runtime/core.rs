@@ -22,7 +22,7 @@ use {
         jumplist::JumpList,
         modd::ModeState,
         modifier::{ModifierContext, ModifierRegistry},
-        plugin::{PluginContext, PluginLoader, PluginStateRegistry, PluginTuple},
+        plugin::{Plugin, PluginContext, PluginLoader, PluginStateRegistry, PluginTuple},
         register::Registers,
         screen::Screen,
     },
@@ -85,6 +85,8 @@ pub struct Runtime {
     pub display_registry: crate::display::DisplayRegistry,
     /// Render stage registry for pipeline transformations
     pub render_stages: Arc<std::sync::RwLock<crate::render::RenderStageRegistry>>,
+    /// Loaded plugins for boot phase execution
+    pub(crate) plugins: Vec<Box<dyn Plugin>>,
 }
 
 impl Default for Runtime {
@@ -144,7 +146,7 @@ impl Runtime {
         let mut ctx = PluginContext::new();
         let mut loader = PluginLoader::new();
         loader.add_plugins(plugins);
-        loader
+        let loaded_plugins = loader
             .load_with_state(&mut ctx, &plugin_state, &event_bus)
             .expect("Plugin loading failed");
 
@@ -197,6 +199,7 @@ impl Runtime {
             rpc_handler_registry,
             display_registry,
             render_stages,
+            plugins: loaded_plugins,
         };
 
         // Subscribe to focus change requests from plugins
@@ -266,6 +269,38 @@ impl Runtime {
                         register: event.register,
                         text: event.text.clone(),
                     });
+                    EventResult::Handled
+                });
+        }
+
+        // Subscribe to text insert requests from plugins (for auto-pair insertion)
+        {
+            use crate::{
+                bind::CommandRef,
+                command::{CommandContext, id::builtin},
+                event::{CommandEvent, TextInputEvent},
+                event_bus::{EventResult, core_events::RequestInsertText},
+            };
+            let tx = runtime.tx.clone();
+            runtime
+                .event_bus
+                .subscribe::<RequestInsertText, _>(100, move |event, _ctx| {
+                    tracing::trace!("Runtime: Inserting text via plugin request: {:?}", event.text);
+
+                    // Insert each character
+                    for c in event.text.chars() {
+                        let _ =
+                            tx.try_send(InnerEvent::TextInputEvent(TextInputEvent::InsertChar(c)));
+                    }
+
+                    // If requested, move cursor left after insertion
+                    if event.move_cursor_left {
+                        let _ = tx.try_send(InnerEvent::CommandEvent(CommandEvent {
+                            command: CommandRef::Registered(builtin::CURSOR_LEFT),
+                            context: CommandContext::default(),
+                        }));
+                    }
+
                     EventResult::Handled
                 });
         }

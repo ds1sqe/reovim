@@ -148,12 +148,28 @@ impl HighlightCache {
 2. Buffer sends SaturatorRequest (non-blocking try_send)
 3. Saturator receives request:
    - Check cache for misses (hash comparison)
-   - If miss: compute highlights via syntax.highlight_range()
-   - Store results via cache.store() (atomic swap)
+   - If miss:
+     a. Parse content via syntax.parse()
+     b. Saturate injections via syntax.saturate_injections()  ← NEW
+     c. Compute highlights via syntax.highlight_range()
+     d. Store results via cache.store() (atomic swap)
    - Send RenderSignal
 4. Runtime receives RenderSignal → triggers re-render
 5. Next render picks up new cache data
 ```
+
+### Language Injection Support
+
+The saturator supports **language injections** - embedded languages within a host language:
+- Markdown fenced code blocks (` ```rust `) → inject the specified language
+- Rust doc comments (`///`, `//!`) → inject markdown
+
+**Key method**: `syntax.saturate_injections(content)` eagerly pre-computes injection regions and creates language layers before `highlight_range()` is called. This ensures embedded code gets proper syntax highlighting.
+
+**Style merging**: When rendering, if a position has both a Background decoration (e.g., code block grey tint) and a syntax highlight (e.g., keyword color), they are **merged** using `Style::merge()`:
+- Decoration provides: background color
+- Syntax highlight provides: foreground color
+- Result: both colors are visible
 
 ## Cache Validation
 
@@ -198,6 +214,9 @@ The saturator uses `mpsc::channel(1)`:
 | `lib/core/src/render/decoration_cache.rs` | Lock-free decoration cache |
 | `lib/core/src/buffer/mod.rs` | Buffer integration (start_saturator, request_update) |
 | `lib/core/src/runtime/core.rs` | Runtime integration (spawn on file open) |
+| `lib/core/src/syntax/mod.rs` | `SyntaxProvider` trait with `saturate_injections()` |
+| `lib/core/src/screen/mod.rs` | Style merging for decoration + highlight |
+| `plugins/features/treesitter/src/injection.rs` | Injection region detection and layer management |
 
 ## Usage
 

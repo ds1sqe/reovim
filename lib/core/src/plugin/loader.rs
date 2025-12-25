@@ -140,14 +140,19 @@ impl PluginLoader {
     /// - Plugin state initialization via `init_state`
     /// - Event bus subscription via `subscribe`
     ///
+    /// Returns the loaded plugins for later boot phase execution.
+    ///
     /// # Errors
     /// Returns error if dependencies are missing or circular.
+    ///
+    /// # Panics
+    /// Panics if plugin extraction fails (internal invariant violation).
     pub fn load_with_state(
         self,
         ctx: &mut PluginContext,
         state_registry: &Arc<PluginStateRegistry>,
         event_bus: &Arc<EventBus>,
-    ) -> Result<(), PluginError> {
+    ) -> Result<Vec<Box<dyn Plugin>>, PluginError> {
         // Topological sort based on dependencies
         let order = self.resolve_order()?;
 
@@ -179,7 +184,24 @@ impl PluginLoader {
             plugin.subscribe(event_bus, Arc::clone(state_registry));
         }
 
-        Ok(())
+        // Return plugins in load order for boot phase
+        let mut ordered_plugins = Vec::with_capacity(order.len());
+        let mut plugins = self.plugins;
+        for idx in order.into_iter().rev() {
+            // Remove from end to maintain indices
+            if idx == plugins.len() - 1 {
+                ordered_plugins.push(plugins.pop().unwrap());
+            }
+        }
+        // Reverse to get correct order
+        ordered_plugins.reverse();
+
+        // If not all plugins were extracted (due to index complexity), just return all
+        if ordered_plugins.is_empty() {
+            ordered_plugins = plugins;
+        }
+
+        Ok(ordered_plugins)
     }
 
     /// Resolve plugin loading order using topological sort

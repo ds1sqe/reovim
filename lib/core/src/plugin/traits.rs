@@ -160,4 +160,22 @@ pub trait Plugin: Send + Sync + 'static {
     fn subscribe(&self, _bus: &EventBus, _state: Arc<PluginStateRegistry>) {
         // Default: no event subscriptions
     }
+
+    /// Boot phase: Called after `EventBus` is active and initial events processed
+    ///
+    /// This is the final initialization phase, guaranteed to run after:
+    /// - All plugins have subscribed to events
+    /// - `EventBus` processor is running
+    /// - Initial events (like `RegisterLanguage`) have been dispatched
+    ///
+    /// Use this for initialization that requires the event bus to be live
+    /// and all plugins to be fully initialized.
+    ///
+    /// # Arguments
+    ///
+    /// * `bus` - The event bus (now active and processing events)
+    /// * `state` - Shared reference to the plugin state registry
+    fn boot(&self, _bus: &EventBus, _state: Arc<PluginStateRegistry>) {
+        // Default: no boot-time initialization
+    }
 }

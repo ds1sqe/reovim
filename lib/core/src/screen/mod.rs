@@ -407,11 +407,7 @@ impl Screen {
             for stage in stages_guard.stages() {
                 let stage_start = std::time::Instant::now();
                 data = stage.transform(data, &ctx);
-                tracing::debug!(
-                    "[RTT] stage '{}' took {:?}",
-                    stage.name(),
-                    stage_start.elapsed()
-                );
+                tracing::debug!("[RTT] stage '{}' took {:?}", stage.name(), stage_start.elapsed());
             }
         }
 
@@ -539,6 +535,33 @@ impl Screen {
                     display_row += 1;
                 }
                 LineVisibility::Visible => {
+                    // Overlay search limit: 3x screen cells (covers worst-case bracket density)
+                    let overlay_limit = (window.width as usize) * 3;
+
+                    // Helper function: find highlight covering a position
+                    // Checks last N highlights first (render stage additions), then falls back to
+                    // sequential search for syntax highlights from cache
+                    #[allow(clippy::items_after_statements)]
+                    fn find_highlight_at(
+                        highlights: &[crate::render::LineHighlight],
+                        pos: usize,
+                        overlay_limit: usize,
+                    ) -> Option<&crate::render::LineHighlight> {
+                        // First check recent highlights (render stage overlays) from end
+                        let overlay_start = highlights.len().saturating_sub(overlay_limit);
+                        if let Some(h) = highlights[overlay_start..]
+                            .iter()
+                            .rev()
+                            .find(|h| h.start_col <= pos && pos < h.end_col)
+                        {
+                            return Some(h);
+                        }
+                        // Fall back to syntax highlights (sorted by position, sequential scan OK)
+                        highlights[..overlay_start]
+                            .iter()
+                            .find(|h| h.start_col <= pos && pos < h.end_col)
+                    }
+
                     let screen_y = window.anchor.y + display_row;
                     let gutter_width = self.render_line_number_to_buffer_simple(
                         frame_buffer,
@@ -559,7 +582,6 @@ impl Screen {
                     // Get syntax highlights and decorations for this line
                     let line_highlights = render_data.highlights.get(line_idx);
                     let line_decorations = render_data.decorations.get(line_idx);
-                    let mut current_hl_idx = 0usize;
                     let mut current_deco_idx = 0usize;
                     let mut char_idx = 0usize;
                     let chars: Vec<char> = line.chars().collect();
@@ -664,47 +686,43 @@ impl Screen {
                             false
                         };
 
-                        // Apply appropriate style (selection > decoration background > syntax > default)
+                        // Apply appropriate style (selection > decoration background + syntax > syntax > default)
+                        // We may need to merge decoration background with syntax highlight
+                        #[allow(unused_assignments)]
+                        let mut merged_style: Option<
+                            crate::highlight::Style,
+                        > = None;
+
                         let style = if is_selected {
                             &theme.selection.visual
                         } else if let Some(deco) = decoration {
                             // Check for background decoration
-                            if let crate::render::DecorationKind::Background { style } = &deco.kind
+                            #[allow(clippy::option_if_let_else)]
+                            if let crate::render::DecorationKind::Background { style: deco_style } =
+                                &deco.kind
                             {
-                                style
-                            } else if let Some(highlights) = line_highlights {
-                                // Advance past highlights that end before current position
-                                while current_hl_idx < highlights.len()
-                                    && highlights[current_hl_idx].end_col <= char_idx
+                                // Merge decoration background with syntax highlight foreground
+                                // This allows code blocks to have both background tint AND syntax colors
+                                if let Some(hl) = line_highlights
+                                    .and_then(|h| find_highlight_at(h, char_idx, overlay_limit))
                                 {
-                                    current_hl_idx += 1;
-                                }
-                                // Check if current position is within a highlight
-                                if current_hl_idx < highlights.len()
-                                    && highlights[current_hl_idx].start_col <= char_idx
-                                {
-                                    &highlights[current_hl_idx].style
+                                    // Syntax highlight provides fg, decoration provides bg
+                                    merged_style = Some(hl.style.merge(deco_style));
+                                    merged_style.as_ref().unwrap()
                                 } else {
-                                    &theme.base.default
+                                    deco_style
                                 }
+                            } else if let Some(highlights) = line_highlights {
+                                // Find highlight at current position (later ones override)
+                                find_highlight_at(highlights, char_idx, overlay_limit)
+                                    .map_or(&theme.base.default, |h| &h.style)
                             } else {
                                 &theme.base.default
                             }
                         } else if let Some(highlights) = line_highlights {
-                            // Advance past highlights that end before current position
-                            while current_hl_idx < highlights.len()
-                                && highlights[current_hl_idx].end_col <= char_idx
-                            {
-                                current_hl_idx += 1;
-                            }
-                            // Check if current position is within a highlight
-                            if current_hl_idx < highlights.len()
-                                && highlights[current_hl_idx].start_col <= char_idx
-                            {
-                                &highlights[current_hl_idx].style
-                            } else {
-                                &theme.base.default
-                            }
+                            // Find highlight at current position (later ones override)
+                            find_highlight_at(highlights, char_idx, overlay_limit)
+                                .map_or(&theme.base.default, |h| &h.style)
                         } else {
                             &theme.base.default
                         };

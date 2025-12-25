@@ -181,8 +181,7 @@ impl DecorationCache {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::render::DecorationKind;
+    use {super::*, crate::render::DecorationKind};
 
     fn make_decoration(start: usize, end: usize) -> Decoration {
         Decoration {

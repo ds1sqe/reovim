@@ -109,7 +109,7 @@ impl Plugin for TreesitterPlugin {
         // Handle language registration from language plugins
         {
             let state = Arc::clone(&state);
-            bus.subscribe::<RegisterLanguage, _>(100, move |event, _ctx| {
+            bus.subscribe::<RegisterLanguage, _>(100, move |event, ctx| {
                 state.with_mut::<Arc<SharedTreesitterManager>, _, _>(|manager| {
                     manager.with_mut(|m| {
                         m.register_language(Arc::clone(&event.language));
@@ -119,6 +119,8 @@ impl Plugin for TreesitterPlugin {
                         "Registered language with treesitter"
                     );
                 });
+                // Trigger re-render so injection system can create layers for this language
+                ctx.request_render();
                 EventResult::Handled
             });
         }

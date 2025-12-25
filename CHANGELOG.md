@@ -4,20 +4,70 @@ All notable changes to Reovim will be documented in this file.
 
 ## [Unreleased]
 
+## [0.7.0] - 2025-12-25
+
+### Added
+
+- **Window mode (Ctrl-W)** - Hierarchical status line display for window navigation
+  - `<C-w>h/j/k/l` for directional window navigation
+  - `<C-w>v` for vertical split, `<C-w>s` for horizontal split
+  - `<C-w>c` to close window, `<C-w>o` for only window
+  - Status line shows current mode context
+
+- **Pair plugin** - Comprehensive bracket matching and highlighting
+  - Rainbow bracket coloring based on nesting depth (6-color cycle)
+  - Matched pair highlighting when cursor is inside brackets
+  - **Bold + underline** when cursor is directly ON a bracket
+  - Unmatched bracket warning with red underline
+  - Auto-pair insertion: typing `(`, `[`, or `{` automatically inserts closing bracket
+  - Cursor positioned between brackets after auto-insertion
+
+- **Language injection highlighting** - Embedded code blocks now have proper syntax highlighting
+  - Markdown fenced code blocks (` ```rust `, ` ```python `, etc.) display with language-specific colors
+  - Rust doc comments (`///`, `//!`, `/** */`) inject markdown for rich rendering
+  - Added `saturate_injections()` to `SyntaxProvider` trait for eager injection computation
+  - Injection highlights merge with decoration backgrounds (code blocks have both syntax colors AND grey tint)
+
+- **Per-buffer saturator** - Non-blocking syntax highlighting architecture
+  - Each buffer has its own saturator for independent highlighting
+  - Prevents blocking on large files
+
+- **Icon system** - Improved file and UI icons
+
+### Architecture
+
+- **Buffer-centric syntax highlighting** - Syntax highlighting is now buffer-centric
+  - Highlights computed per-buffer, not per-window
+  - Better separation of concerns
+
+- **Plugin system decoupling** - Complete separation of plugins from core
+  - Plugins communicate via events only
+  - No direct core dependencies in plugin code
+
+- **Render system refactor** - Improved rendering pipeline
+  - Cleaner separation of rendering stages
+  - Better performance characteristics
+
+- **Remove UIComponent and Overlay systems** - Simplified component architecture
+  - Replaced with more focused abstractions
+
 ### Fixed
 
+- **Visual selection yank/delete** - Fixed yank and delete operations in visual mode
+
+- **Scroll issues** - Fixed various scrolling edge cases
+
 - **Explorer file operations** - Fixed character input not working in explorer file operations
-  - Explorer now implements `UIComponent` trait for proper input routing
   - Character input (create file, rename, etc.) now correctly captures typed characters
   - Backspace works correctly in input mode
-  - Fixed architecture mismatch between focus handlers and interactor registry
+
+- **Render issues** - Fixed various rendering edge cases
 
 ### Improved
 
-- **reo-cli screen-content** - Simplified output format
-  - `screen-content` command now prints raw screen content directly
+- **reo-cli capture** - Simplified screen capture command
+  - `capture` command prints raw screen content directly
   - Removed JSON wrapper for better usability and piping
-  - Maintains JSON format for other commands
 
 ## [0.6.22] - 2025-12-20
 
@@ -49,10 +99,6 @@ All notable changes to Reovim will be documented in this file.
   - Decorations disabled in insert mode for accurate cursor positioning
   - Raw `#`, `*`, `**`, `[]()` markers visible during editing
   - Returns to concealed view on mode exit
-
-### Known Limitations
-
-- Code block language injection not yet implemented (fenced code blocks don't have syntax highlighting for inner content)
 
 ## [0.6.21] - 2025-12-20
 

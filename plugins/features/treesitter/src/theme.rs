@@ -31,23 +31,37 @@ impl TreesitterTheme {
         captures.insert("keyword.import", Style::new().fg(Color::Magenta));
         captures.insert("keyword.conditional", Style::new().fg(Color::Magenta).bold());
         captures.insert("keyword.repeat", Style::new().fg(Color::Magenta).bold());
+        captures.insert("keyword.storage", Style::new().fg(Color::Magenta)); // let, const, static
+        captures.insert("keyword.type", Style::new().fg(Color::Magenta).bold()); // type, typedef
+        captures.insert("keyword.struct", Style::new().fg(Color::Magenta).bold()); // struct, class, trait
+        captures.insert("keyword.enum", Style::new().fg(Color::Magenta).bold()); // enum
+        captures.insert("keyword.exception", Style::new().fg(Color::Red).bold()); // try, catch, throw
 
         // Types
         captures.insert("type", Style::new().fg(Color::Yellow));
         captures.insert("type.builtin", Style::new().fg(Color::Yellow).italic());
         captures.insert("type.qualifier", Style::new().fg(Color::Magenta));
+        captures.insert("type.class", Style::new().fg(Color::Yellow)); // class types
+        captures.insert("type.interface", Style::new().fg(Color::Yellow).italic()); // trait/interface
+        captures.insert("type.enum", Style::new().fg(Color::Yellow)); // enum types
+        captures.insert("type.parameter", Style::new().fg(Color::Yellow).italic()); // generic <T>
 
         // Functions
         captures.insert("function", Style::new().fg(Color::Blue));
         captures.insert("function.method", Style::new().fg(Color::Blue));
         captures.insert("function.builtin", Style::new().fg(Color::Cyan));
         captures.insert("function.macro", Style::new().fg(Color::Cyan).bold());
+        captures.insert("function.definition", Style::new().fg(Color::Blue).bold()); // fn name at def
+        captures.insert("function.call", Style::new().fg(Color::Blue)); // fn name at call
+        captures.insert("function.special", Style::new().fg(Color::Blue).italic()); // __init__, main
 
         // Variables
         captures.insert("variable", Style::new());
         captures.insert("variable.parameter", Style::new().fg(Color::Red).italic());
         captures.insert("variable.builtin", Style::new().fg(Color::Red));
         captures.insert("variable.member", Style::new().fg(Color::Red));
+        captures.insert("variable.definition", Style::new()); // var at definition
+        captures.insert("variable.field", Style::new().fg(Color::Red)); // struct fields
 
         // Constants
         captures.insert("constant", Style::new().fg(Color::Cyan));
@@ -68,6 +82,9 @@ impl TreesitterTheme {
         // Comments
         captures.insert("comment", Style::new().fg(Color::DarkGrey).italic());
         captures.insert("comment.documentation", Style::new().fg(Color::DarkGrey).italic());
+        captures.insert("comment.line", Style::new().fg(Color::DarkGrey).italic()); // single-line //
+        captures.insert("comment.block", Style::new().fg(Color::DarkGrey).italic()); // block /* */
+        captures.insert("comment.todo", Style::new().fg(Color::Yellow).bold()); // TODO/FIXME
 
         // Operators
         captures.insert("operator", Style::new().fg(Color::White));
@@ -77,6 +94,11 @@ impl TreesitterTheme {
         captures.insert("punctuation.bracket", Style::new().fg(Color::White));
         captures.insert("punctuation.delimiter", Style::new().fg(Color::White));
         captures.insert("punctuation.special", Style::new().fg(Color::Cyan));
+        // Specific bracket types (base colors, can be overridden by rainbow)
+        captures.insert("punctuation.bracket.round", Style::new().fg(Color::White)); // ()
+        captures.insert("punctuation.bracket.square", Style::new().fg(Color::White)); // []
+        captures.insert("punctuation.bracket.curly", Style::new().fg(Color::White)); // {}
+        captures.insert("punctuation.bracket.angle", Style::new().fg(Color::White)); // <>
 
         // Labels and tags
         captures.insert("label", Style::new().fg(Color::Yellow));
@@ -175,23 +197,37 @@ impl TreesitterTheme {
         captures.insert("keyword.import", Style::new().fg(purple).italic());
         captures.insert("keyword.conditional", Style::new().fg(purple).bold().italic());
         captures.insert("keyword.repeat", Style::new().fg(purple).bold().italic());
+        captures.insert("keyword.storage", Style::new().fg(purple).italic()); // let, const, static
+        captures.insert("keyword.type", Style::new().fg(purple).bold().italic()); // type, typedef
+        captures.insert("keyword.struct", Style::new().fg(purple).bold().italic()); // struct, class, trait
+        captures.insert("keyword.enum", Style::new().fg(purple).bold().italic()); // enum
+        captures.insert("keyword.exception", Style::new().fg(red).bold()); // try, catch, throw
 
         // Types - cyan
         captures.insert("type", Style::new().fg(cyan));
         captures.insert("type.builtin", Style::new().fg(cyan).italic());
         captures.insert("type.qualifier", Style::new().fg(purple));
+        captures.insert("type.class", Style::new().fg(cyan)); // class types
+        captures.insert("type.interface", Style::new().fg(cyan).italic()); // trait/interface
+        captures.insert("type.enum", Style::new().fg(cyan)); // enum types
+        captures.insert("type.parameter", Style::new().fg(cyan).italic()); // generic <T>
 
         // Functions - blue
         captures.insert("function", Style::new().fg(blue));
         captures.insert("function.method", Style::new().fg(blue));
         captures.insert("function.builtin", Style::new().fg(cyan));
         captures.insert("function.macro", Style::new().fg(cyan).bold());
+        captures.insert("function.definition", Style::new().fg(blue).bold()); // fn name at def
+        captures.insert("function.call", Style::new().fg(blue)); // fn name at call
+        captures.insert("function.special", Style::new().fg(blue).italic()); // __init__, main
 
         // Variables - foreground, with special colors for parameters
         captures.insert("variable", Style::new().fg(fg));
         captures.insert("variable.parameter", Style::new().fg(orange).italic());
         captures.insert("variable.builtin", Style::new().fg(red));
         captures.insert("variable.member", Style::new().fg(blue));
+        captures.insert("variable.definition", Style::new().fg(fg)); // var at definition
+        captures.insert("variable.field", Style::new().fg(blue)); // struct fields
 
         // Constants - orange (accent color!)
         captures.insert("constant", Style::new().fg(orange));
@@ -212,6 +248,9 @@ impl TreesitterTheme {
         // Comments - light gray, italic
         captures.insert("comment", Style::new().fg(comment).italic());
         captures.insert("comment.documentation", Style::new().fg(comment).italic());
+        captures.insert("comment.line", Style::new().fg(comment).italic()); // single-line //
+        captures.insert("comment.block", Style::new().fg(comment).italic()); // block /* */
+        captures.insert("comment.todo", Style::new().fg(yellow).bold()); // TODO/FIXME
 
         // Operators - foreground
         captures.insert("operator", Style::new().fg(cyan));
@@ -221,6 +260,11 @@ impl TreesitterTheme {
         captures.insert("punctuation.bracket", Style::new().fg(fg));
         captures.insert("punctuation.delimiter", Style::new().fg(fg));
         captures.insert("punctuation.special", Style::new().fg(cyan));
+        // Specific bracket types (base colors, can be overridden by rainbow)
+        captures.insert("punctuation.bracket.round", Style::new().fg(fg)); // ()
+        captures.insert("punctuation.bracket.square", Style::new().fg(fg)); // []
+        captures.insert("punctuation.bracket.curly", Style::new().fg(fg)); // {}
+        captures.insert("punctuation.bracket.angle", Style::new().fg(fg)); // <>
 
         // Labels and tags
         captures.insert("label", Style::new().fg(yellow));

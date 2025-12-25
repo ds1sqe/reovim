@@ -9,7 +9,11 @@
 
 use {
     super::Runtime,
-    crate::{buffer::TextOps, screen::Position},
+    crate::{
+        buffer::TextOps,
+        event_bus::{BufferModification, BufferModified},
+        screen::Position,
+    },
 };
 
 /// Editor focus input handler
@@ -40,9 +44,21 @@ pub fn handle_editor_input(
         }
     } else if rt.mode_state.is_insert() {
         // Buffer input
-        if let Some(buffer) = rt.buffers.get_mut(&rt.active_buffer_id) {
+        let buffer_id = rt.active_buffer_id;
+        if let Some(buffer) = rt.buffers.get_mut(&buffer_id) {
             if let Some(c) = char {
+                // Get position before insertion for event
+                let start = (buffer.cur.y as usize, buffer.cur.x as usize);
                 buffer.insert_char(c);
+
+                // Emit BufferModified event so plugins can react (e.g., auto-pair)
+                rt.event_bus.emit(BufferModified {
+                    buffer_id,
+                    modification: BufferModification::Insert {
+                        start,
+                        text: c.to_string(),
+                    },
+                });
             }
             if delete {
                 buffer.delete_char_backward();

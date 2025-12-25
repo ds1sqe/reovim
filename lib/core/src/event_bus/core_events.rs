@@ -297,6 +297,25 @@ impl Event for RequestSetRegister {
     }
 }
 
+/// Request to insert text at the current cursor position
+///
+/// Plugins emit this event to programmatically insert text into the active buffer.
+/// The runtime subscribes to this event and inserts the text as if the user typed it.
+/// This is used for features like auto-pair insertion.
+#[derive(Debug, Clone)]
+pub struct RequestInsertText {
+    /// Text to insert
+    pub text: String,
+    /// If true, move cursor left after insertion (for auto-pair: insert `)` then move left)
+    pub move_cursor_left: bool,
+}
+
+impl Event for RequestInsertText {
+    fn priority(&self) -> u32 {
+        priority::CORE
+    }
+}
+
 // =============================================================================
 // Text Input Events
 // =============================================================================

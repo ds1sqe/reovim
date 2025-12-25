@@ -17,10 +17,7 @@ use {
     tree_sitter::{Parser, Query, QueryCursor, StreamingIterator, Tree},
 };
 
-use crate::{
-    highlighter::Highlighter, queries::QueryType, registry::LanguageRegistry,
-    state::SharedTreesitterManager,
-};
+use crate::{highlighter::Highlighter, queries::QueryType, state::SharedTreesitterManager};
 
 /// Describes a region where a different language should be highlighted
 #[derive(Debug, Clone)]
@@ -90,25 +87,26 @@ impl InjectionDetector {
 
     /// Detect injection regions from a parse tree
     ///
-    /// # Arguments
-    /// * `tree` - The parent language's parse tree
-    /// * `content` - The source content
-    /// * `registry` - Language registry to validate language IDs
-    ///
-    /// # Returns
-    /// A vector of injection regions, sorted by start position
+    /// Returns ALL detected regions regardless of whether the language is registered.
+    /// Unregistered languages will be skipped during highlighting (layer creation fails gracefully).
+    /// When the language registers later, a re-render will retry layer creation.
     #[allow(clippy::cast_possible_truncation)]
-    pub fn detect(
-        &self,
-        tree: &Tree,
-        content: &str,
-        registry: &LanguageRegistry,
-    ) -> Vec<InjectionRegion> {
+    pub fn detect(&self, tree: &Tree, content: &str) -> Vec<InjectionRegion> {
         let mut regions = Vec::new();
         let mut cursor = QueryCursor::new();
         let mut matches = cursor.matches(&self.query, tree.root_node(), content.as_bytes());
 
+        tracing::debug!(
+            "InjectionDetector::detect: starting, content_capture_idx={}, language_capture_idx={:?}",
+            self.content_capture_idx,
+            self.language_capture_idx
+        );
+
         while let Some(match_) = matches.next() {
+            tracing::debug!(
+                "InjectionDetector::detect: found match with {} captures",
+                match_.captures.len()
+            );
             let mut content_node = None;
             let mut language_id: Option<String> = None;
 
@@ -142,33 +140,27 @@ impl InjectionDetector {
             }
 
             // If we have both content and a valid language, create a region
+            // NOTE: We don't filter by registry here - unregistered languages are stored
+            // and will be skipped during highlighting (get_or_create_layer returns None)
             if let (Some(node), Some(lang)) = (content_node, language_id) {
-                // Validate the language is registered
-                if registry.is_registered(&lang) {
-                    let start = node.start_position();
-                    let end = node.end_position();
+                let start = node.start_position();
+                let end = node.end_position();
 
-                    tracing::debug!(
-                        language = %lang,
-                        start_row = start.row,
-                        end_row = end.row,
-                        "Detected injection region"
-                    );
+                tracing::debug!(
+                    language = %lang,
+                    start_row = start.row,
+                    end_row = end.row,
+                    "Detected injection region"
+                );
 
-                    regions.push(InjectionRegion {
-                        language_id: lang,
-                        byte_range: node.start_byte()..node.end_byte(),
-                        start_row: start.row as u32,
-                        end_row: end.row as u32,
-                        start_col: start.column as u32,
-                        end_col: end.column as u32,
-                    });
-                } else {
-                    tracing::debug!(
-                        language = %lang,
-                        "Skipped injection: language not registered"
-                    );
-                }
+                regions.push(InjectionRegion {
+                    language_id: lang,
+                    byte_range: node.start_byte()..node.end_byte(),
+                    start_row: start.row as u32,
+                    end_row: end.row as u32,
+                    start_col: start.column as u32,
+                    end_col: end.column as u32,
+                });
             }
         }
 
@@ -334,7 +326,7 @@ impl InjectionManager {
         // Detect regions if dirty
         if self.regions_dirty {
             if let Some(detector) = &self.detector {
-                self.regions = manager.with(|m| detector.detect(tree, content, m.registry()));
+                self.regions = detector.detect(tree, content);
             } else {
                 self.regions.clear();
             }
@@ -409,10 +401,22 @@ impl InjectionManager {
         manager: &SharedTreesitterManager,
         highlighter: &Highlighter,
     ) -> Vec<Highlight> {
+        tracing::debug!(
+            "InjectionManager::highlight_injections: dirty={}, has_detector={}, start_line={}, end_line={}",
+            self.regions_dirty,
+            self.detector.is_some(),
+            start_line,
+            end_line
+        );
+
         // Update regions if dirty (need registry access)
         if self.regions_dirty {
             if let Some(detector) = &self.detector {
-                self.regions = manager.with(|m| detector.detect(tree, content, m.registry()));
+                self.regions = detector.detect(tree, content);
+                tracing::debug!(
+                    "InjectionManager::highlight_injections: detected {} regions",
+                    self.regions.len()
+                );
             } else {
                 self.regions.clear();
             }

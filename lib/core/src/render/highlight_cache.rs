@@ -181,8 +181,7 @@ impl HighlightCache {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::highlight::Style;
+    use {super::*, crate::highlight::Style};
 
     fn make_highlight(start: usize, end: usize) -> LineHighlight {
         LineHighlight {

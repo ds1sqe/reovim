@@ -35,6 +35,9 @@ pub struct RenderData {
     pub buffer_id: usize,
     pub window_id: usize,
     pub window_bounds: Bounds,
+
+    /// Cursor position (line, column) for bracket matching etc.
+    pub cursor: (usize, usize),
 }
 
 impl RenderData {
@@ -87,6 +90,7 @@ impl RenderData {
                 width: window.width,
                 height: window.height,
             },
+            cursor: (buffer.cur.y as usize, buffer.cur.x as usize),
         }
     }
 }

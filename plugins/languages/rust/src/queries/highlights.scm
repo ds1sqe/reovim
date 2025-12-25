@@ -66,21 +66,21 @@
 (line_comment (doc_comment)) @comment.documentation
 (block_comment (doc_comment)) @comment.documentation
 
-; Punctuation
+; Punctuation - specific bracket types
 
-"(" @punctuation.bracket
-")" @punctuation.bracket
-"[" @punctuation.bracket
-"]" @punctuation.bracket
-"{" @punctuation.bracket
-"}" @punctuation.bracket
+"(" @punctuation.bracket.round
+")" @punctuation.bracket.round
+"[" @punctuation.bracket.square
+"]" @punctuation.bracket.square
+"{" @punctuation.bracket.curly
+"}" @punctuation.bracket.curly
 
 (type_arguments
-  "<" @punctuation.bracket
-  ">" @punctuation.bracket)
+  "<" @punctuation.bracket.angle
+  ">" @punctuation.bracket.angle)
 (type_parameters
-  "<" @punctuation.bracket
-  ">" @punctuation.bracket)
+  "<" @punctuation.bracket.angle
+  ">" @punctuation.bracket.angle)
 
 "::" @punctuation.delimiter
 ":" @punctuation.delimiter
@@ -103,39 +103,41 @@
 "async" @keyword
 "await" @keyword
 "break" @keyword
-"const" @keyword
 "continue" @keyword
 "default" @keyword
 "dyn" @keyword
-"else" @keyword
-"enum" @keyword
+"else" @keyword.conditional
 "extern" @keyword
-"fn" @keyword
-"for" @keyword
+"fn" @keyword.function
+"for" @keyword.repeat
 "gen" @keyword
-"if" @keyword
-"impl" @keyword
+"if" @keyword.conditional
 "in" @keyword
-"let" @keyword
-"loop" @keyword
+"loop" @keyword.repeat
 "macro_rules!" @keyword
-"match" @keyword
+"match" @keyword.conditional
 "mod" @keyword
 "move" @keyword
 "pub" @keyword
 "raw" @keyword
 "ref" @keyword
-"return" @keyword
-"static" @keyword
-"struct" @keyword
-"trait" @keyword
-"type" @keyword
-"union" @keyword
+"return" @keyword.return
 "unsafe" @keyword
-"use" @keyword
+"use" @keyword.import
 "where" @keyword
-"while" @keyword
+"while" @keyword.repeat
 "yield" @keyword
+
+; Declaration keywords
+"let" @keyword.storage
+"const" @keyword.storage
+"static" @keyword.storage
+"type" @keyword.type
+"struct" @keyword.struct
+"enum" @keyword.enum
+"trait" @keyword.struct
+"impl" @keyword.struct
+"union" @keyword.struct
 
 ; Named keyword nodes
 (crate) @keyword

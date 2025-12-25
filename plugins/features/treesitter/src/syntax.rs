@@ -122,8 +122,16 @@ impl SyntaxProvider for TreeSitterSyntax {
 
     fn highlight_range(&self, content: &str, start_line: u32, end_line: u32) -> Vec<Highlight> {
         let Some(tree) = &self.tree else {
+            tracing::debug!(language_id = %self.language_id, "highlight_range: no tree");
             return Vec::new();
         };
+
+        tracing::debug!(
+            language_id = %self.language_id,
+            has_manager = self.manager.is_some(),
+            supports_injections = self.supports_injections(),
+            "highlight_range: starting"
+        );
 
         // Get parent language highlights
         let mut highlights =
@@ -184,5 +192,14 @@ impl SyntaxProvider for TreeSitterSyntax {
 
     fn is_parsed(&self) -> bool {
         self.tree.is_some()
+    }
+
+    fn saturate_injections(&mut self, content: &str) {
+        if let (Some(tree), Some(manager)) = (&self.tree, &self.manager) {
+            self.injection_manager
+                .write()
+                .unwrap()
+                .saturate(tree, content, manager);
+        }
     }
 }

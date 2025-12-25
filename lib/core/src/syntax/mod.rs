@@ -80,6 +80,17 @@ pub trait SyntaxProvider: Send + Sync {
     /// Returns true if the provider has successfully parsed content
     /// and can provide highlights.
     fn is_parsed(&self) -> bool;
+
+    /// Eagerly saturate injection regions after parse
+    ///
+    /// For syntax providers with language injection support (e.g., markdown with code blocks),
+    /// this pre-computes injection regions and creates language layers.
+    /// Call after `parse()` in contexts where immediate highlighting is needed.
+    ///
+    /// Default implementation does nothing (no injections).
+    fn saturate_injections(&mut self, _content: &str) {
+        // Default: no-op for syntax providers without injection support
+    }
 }
 
 /// Factory for creating syntax providers
