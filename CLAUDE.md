@@ -92,9 +92,42 @@ tail -f $(ls -t ~/.local/share/reovim/reovim-*.log | head -1)
 
 ## Logs and Debugging
 
-Runtime logs are written to timestamped files in `~/.local/share/reovim/` when running in server mode (e.g., `reovim-2025-12-22-15-36-20.log`). Each server instance creates a new log file with format `reovim-YYYY-MM-DD-HH-MM-SS.log`.
+Runtime logs are written to timestamped files in `~/.local/share/reovim/` by default (e.g., `reovim-2025-12-22-15-36-20.log`). Each instance creates a new log file with format `reovim-YYYY-MM-DD-HH-MM-SS.log`.
 
-To monitor the latest log in real-time:
+### Log Output Options
+
+```bash
+# Default: timestamped file in ~/.local/share/reovim/
+reovim myfile.txt
+
+# Custom log file path
+reovim --log=/path/to/custom.log myfile.txt
+
+# Log to stderr (useful for debugging)
+reovim --log=- myfile.txt
+reovim --log=stderr myfile.txt
+
+# Disable logging entirely
+reovim --log=none myfile.txt
+reovim --log=off myfile.txt
+
+# Server mode with stderr logging (for debugging)
+cargo run -- --server --log=-
+
+# Server mode with custom log file
+cargo run -- --server --log=/tmp/reovim-server.log
+```
+
+### Log Level
+
+Control log verbosity via `REOVIM_LOG` environment variable:
+
+```bash
+REOVIM_LOG=debug reovim myfile.txt
+REOVIM_LOG=trace reovim --log=- myfile.txt  # Debug to stderr
+```
+
+To monitor the latest default log in real-time:
 ```bash
 tail -f $(ls -t ~/.local/share/reovim/reovim-*.log | head -1)
 ```
@@ -256,11 +289,13 @@ This script:
 
 ### Git Commits
 
-**IMPORTANT**: Claude should NOT handle git commits. The user will manage all git operations.
+**IMPORTANT**: Claude should NEVER handle git commits. The user will manage ALL git operations. Claude must not have any "opinion" about when or how to commit - only create proposals and let the user decide.
 
-For releases, Claude should create a proposal file at `tmp/<version>-commit.md` with:
+**Changelog Convention**: Every feature, fix, or notable change MUST include an update to `CHANGELOG.md` under the `[Unreleased]` section before proposing a commit.
+
+For any changes, Claude should create a proposal file at `tmp/<feature-name>-commit.md` with:
 - Proposed commit message
-- List of files changed
+- List of files changed (including `CHANGELOG.md`)
 - Verification checklist
 - Git commands for user to run
 

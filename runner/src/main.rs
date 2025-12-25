@@ -52,14 +52,21 @@ struct Cli {
     /// Host for TCP (default: 127.0.0.1)
     #[arg(long, value_name = "HOST", default_value = "127.0.0.1")]
     listen_host: String,
+
+    /// Custom log file path (default: ~/.local/share/reovim/reovim-<timestamp>.log)
+    /// Special values: '-' or 'stderr' for stderr, 'none' or 'off' to disable
+    #[arg(long, value_name = "PATH")]
+    log: Option<String>,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), io::Error> {
-    // Initialize logging FIRST, before any terminal manipulation
-    let _log_guard = logging::init();
-
+    // Parse CLI first to get log target
     let cli = Cli::parse();
+
+    // Initialize logging BEFORE any terminal manipulation
+    let log_target = logging::parse_log_target(cli.log.as_deref());
+    let _log_guard = logging::init(&log_target);
 
     tracing::info!("reovim {} starting", env!("CARGO_PKG_VERSION"));
 

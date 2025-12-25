@@ -6,6 +6,12 @@ All notable changes to Reovim will be documented in this file.
 
 ### Added
 
+- **`--log` CLI option** - Configurable log output destination
+  - Custom file path: `--log=/path/to/file.log`
+  - Stderr output: `--log=-` or `--log=stderr` (with ANSI colors)
+  - Disable logging: `--log=none` or `--log=off`
+  - Default behavior unchanged when not specified
+
 - **Animation system** - Visual effects framework for UI feedback
   - Status line flash on mode change (smooth color transition)
   - Idle shimmer effect on status line after 3 seconds of inactivity
