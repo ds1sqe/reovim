@@ -2,9 +2,19 @@
 
 All notable changes to Reovim will be documented in this file.
 
-## [Unreleased]
+## [0.7.2] - 2025-12-26
 
 ### Added
+
+- **Extensible option system** - Plugin-extensible settings with full validation
+  - Plugins can register their own options via `PluginContext::option()` builder API
+  - Type-safe `OptionValue` variants: `Bool`, `Integer`, `String`, `Choice`
+  - Constraint validation: min/max ranges, string length limits
+  - Dynamic `:set` commands: `:set plugin.treesitter.timeout=200`
+  - Query options: `:set optionname?`, reset to default: `:set optionname&`
+  - TOML persistence in profiles under `[plugin.{plugin_name}]` sections
+  - `RegisterOption` and `OptionChanged` events for plugin communication
+  - Thread-safe `OptionRegistry` with alias support (short names)
 
 - **`--log` CLI option** - Configurable log output destination
   - Custom file path: `--log=/path/to/file.log`

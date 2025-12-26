@@ -224,6 +224,22 @@ impl Runtime {
                                 self.screen.set_scrollbar(enabled);
                                 tracing::info!(enabled, "Scrollbar toggled");
                             }
+                            // Dynamic options from OptionRegistry
+                            SetOption::DynamicEnable(name) => {
+                                self.handle_dynamic_option_enable(&name);
+                            }
+                            SetOption::DynamicDisable(name) => {
+                                self.handle_dynamic_option_disable(&name);
+                            }
+                            SetOption::DynamicSet { name, value } => {
+                                self.handle_dynamic_option_set(&name, &value);
+                            }
+                            SetOption::DynamicQuery(name) => {
+                                self.handle_dynamic_option_query(&name);
+                            }
+                            SetOption::DynamicReset(name) => {
+                                self.handle_dynamic_option_reset(&name);
+                            }
                         },
                         ExCommand::Colorscheme { name } => {
                             self.theme = Theme::from_name(name);
@@ -1066,5 +1082,175 @@ impl Runtime {
             },
         }
         self.request_render();
+    }
+
+    // === Dynamic Option Handlers ===
+
+    /// Handle dynamic option enable (`:set optionname`)
+    fn handle_dynamic_option_enable(&self, name: &str) {
+        use crate::option::{ChangeSource, OptionChanged, OptionValue};
+
+        if let Some(old_value) = self.option_registry.get(name) {
+            let new_value = OptionValue::Bool(true);
+            match self.option_registry.set(name, new_value.clone()) {
+                Ok(_) => {
+                    tracing::info!(option = %name, "Option enabled");
+                    // Emit change event
+                    self.event_bus.emit(OptionChanged::new(
+                        name,
+                        old_value,
+                        new_value,
+                        ChangeSource::UserCommand,
+                    ));
+                }
+                Err(e) => {
+                    tracing::warn!(option = %name, error = %e, "Failed to enable option");
+                }
+            }
+        } else {
+            tracing::warn!(option = %name, "E518: Unknown option");
+        }
+    }
+
+    /// Handle dynamic option disable (`:set nooptionname`)
+    fn handle_dynamic_option_disable(&self, name: &str) {
+        use crate::option::{ChangeSource, OptionChanged, OptionValue};
+
+        if let Some(old_value) = self.option_registry.get(name) {
+            let new_value = OptionValue::Bool(false);
+            match self.option_registry.set(name, new_value.clone()) {
+                Ok(_) => {
+                    tracing::info!(option = %name, "Option disabled");
+                    // Emit change event
+                    self.event_bus.emit(OptionChanged::new(
+                        name,
+                        old_value,
+                        new_value,
+                        ChangeSource::UserCommand,
+                    ));
+                }
+                Err(e) => {
+                    tracing::warn!(option = %name, error = %e, "Failed to disable option");
+                }
+            }
+        } else {
+            tracing::warn!(option = %name, "E518: Unknown option");
+        }
+    }
+
+    /// Handle dynamic option set (`:set optionname=value`)
+    fn handle_dynamic_option_set(&self, name: &str, value_str: &str) {
+        use crate::option::{ChangeSource, OptionChanged, OptionValue};
+
+        // Get the spec to determine the expected type
+        let Some(spec) = self.option_registry.get_spec(name) else {
+            tracing::warn!(option = %name, "E518: Unknown option");
+            return;
+        };
+
+        // Parse value based on expected type
+        let new_value = match &spec.default {
+            OptionValue::Bool(_) => {
+                // For booleans, accept "true"/"false", "1"/"0", "yes"/"no"
+                match value_str.to_lowercase().as_str() {
+                    "true" | "1" | "yes" | "on" => OptionValue::Bool(true),
+                    "false" | "0" | "no" | "off" => OptionValue::Bool(false),
+                    _ => {
+                        tracing::warn!(option = %name, value = %value_str, "E474: Invalid boolean argument");
+                        return;
+                    }
+                }
+            }
+            OptionValue::Integer(_) => {
+                if let Ok(i) = value_str.parse::<i64>() {
+                    OptionValue::Integer(i)
+                } else {
+                    tracing::warn!(option = %name, value = %value_str, "E521: Number required");
+                    return;
+                }
+            }
+            OptionValue::String(_) => OptionValue::String(value_str.to_string()),
+            OptionValue::Choice { choices, .. } => {
+                if choices.contains(&value_str.to_string()) {
+                    OptionValue::Choice {
+                        value: value_str.to_string(),
+                        choices: choices.clone(),
+                    }
+                } else {
+                    tracing::warn!(
+                        option = %name,
+                        value = %value_str,
+                        valid = %choices.join(", "),
+                        "E474: Invalid choice"
+                    );
+                    return;
+                }
+            }
+        };
+
+        // Get old value for change event
+        let old_value = self
+            .option_registry
+            .get(name)
+            .unwrap_or_else(|| spec.default.clone());
+
+        // Set the value
+        match self.option_registry.set(name, new_value.clone()) {
+            Ok(_) => {
+                tracing::info!(option = %name, value = %value_str, "Option set");
+                // Emit change event
+                self.event_bus.emit(OptionChanged::new(
+                    name,
+                    old_value,
+                    new_value,
+                    ChangeSource::UserCommand,
+                ));
+            }
+            Err(e) => {
+                tracing::warn!(option = %name, value = %value_str, error = %e, "E474: Invalid value");
+            }
+        }
+    }
+
+    /// Handle dynamic option query (`:set optionname?`)
+    fn handle_dynamic_option_query(&self, name: &str) {
+        if let Some(value) = self.option_registry.get(name) {
+            tracing::info!(option = %name, value = %value, "Option value: {name}={value}");
+        } else {
+            tracing::warn!(option = %name, "E518: Unknown option");
+        }
+    }
+
+    /// Handle dynamic option reset (`:set optionname&`)
+    fn handle_dynamic_option_reset(&self, name: &str) {
+        use crate::option::{ChangeSource, OptionChanged};
+
+        // Get the spec to find the default value
+        let Some(spec) = self.option_registry.get_spec(name) else {
+            tracing::warn!(option = %name, "E518: Unknown option");
+            return;
+        };
+
+        let old_value = self
+            .option_registry
+            .get(name)
+            .unwrap_or_else(|| spec.default.clone());
+        let default_value = spec.default;
+
+        match self.option_registry.reset(name) {
+            Ok(_) => {
+                tracing::info!(option = %name, "Option reset to default");
+                // Emit change event
+                self.event_bus.emit(OptionChanged::new(
+                    name,
+                    old_value,
+                    default_value,
+                    ChangeSource::UserCommand,
+                ));
+            }
+            Err(e) => {
+                tracing::warn!(option = %name, error = %e, "Failed to reset option");
+            }
+        }
     }
 }

@@ -1,6 +1,6 @@
 //! Plugin context for component registration
 
-use std::{any::TypeId, sync::Arc};
+use std::{any::TypeId, borrow::Cow, sync::Arc};
 
 use crate::{
     bind::{CommandRef, KeyMap, KeymapScope},
@@ -9,6 +9,7 @@ use crate::{
     keystroke::KeySequence,
     modd::ComponentId,
     modifier::ModifierRegistry,
+    option::{OptionCategory, OptionConstraint, OptionError, OptionScope, OptionSpec, OptionValue},
     render::{RenderStage, RenderStageRegistry},
     rpc::{RpcHandler, RpcHandlerRegistry},
 };
@@ -38,6 +39,12 @@ pub struct PluginContext {
 
     /// Render stage registry for pipeline stages
     pub(crate) render_stages: RenderStageRegistry,
+
+    /// Pending option specifications to be registered
+    pub(crate) option_specs: Vec<OptionSpec>,
+
+    /// Current plugin ID for namespacing options
+    pub(crate) current_plugin_id: Option<String>,
 }
 
 impl Default for PluginContext {
@@ -58,6 +65,8 @@ impl PluginContext {
             rpc_handlers: RpcHandlerRegistry::new(),
             display_registry: DisplayRegistry::new(),
             render_stages: RenderStageRegistry::new(),
+            option_specs: Vec::new(),
+            current_plugin_id: None,
         }
     }
 
@@ -282,6 +291,64 @@ impl PluginContext {
         &mut self.render_stages
     }
 
+    // === Option Registration ===
+
+    /// Set the current plugin ID for option namespacing
+    ///
+    /// This is called by the plugin loader before building each plugin.
+    /// Options registered via `option()` will be namespaced under this ID.
+    pub fn set_current_plugin(&mut self, plugin_id: impl Into<String>) {
+        self.current_plugin_id = Some(plugin_id.into());
+    }
+
+    /// Clear the current plugin ID
+    pub fn clear_current_plugin(&mut self) {
+        self.current_plugin_id = None;
+    }
+
+    /// Create an option builder for registering a plugin option
+    ///
+    /// Options are automatically namespaced under `plugin.{plugin_id}.{name}`.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// impl Plugin for MyPlugin {
+    ///     fn build(&self, ctx: &mut PluginContext) {
+    ///         ctx.option("highlight_timeout_ms")
+    ///             .description("Timeout for highlighting in milliseconds")
+    ///             .default_int(100)
+    ///             .min(10)
+    ///             .max(1000)
+    ///             .register()?;
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// Panics if called outside of plugin build phase (no current plugin ID set).
+    #[must_use]
+    pub fn option(&mut self, name: &'static str) -> PluginOptionBuilder<'_> {
+        let plugin_id = self
+            .current_plugin_id
+            .clone()
+            .expect("option() called outside plugin build phase");
+        PluginOptionBuilder::new(self, name, plugin_id)
+    }
+
+    /// Get the pending option specifications
+    #[must_use]
+    pub fn option_specs(&self) -> &[OptionSpec] {
+        &self.option_specs
+    }
+
+    /// Take the pending option specifications (consumes them)
+    #[must_use]
+    pub fn take_option_specs(&mut self) -> Vec<OptionSpec> {
+        std::mem::take(&mut self.option_specs)
+    }
+
     // === Consume Context ===
 
     /// Consume the context and return all components
@@ -298,6 +365,7 @@ impl PluginContext {
         RpcHandlerRegistry,
         DisplayRegistry,
         RenderStageRegistry,
+        Vec<OptionSpec>,
     ) {
         (
             self.commands,
@@ -306,6 +374,139 @@ impl PluginContext {
             self.rpc_handlers,
             self.display_registry,
             self.render_stages,
+            self.option_specs,
         )
+    }
+}
+
+/// Builder for registering plugin options with a fluent API.
+///
+/// Created via [`PluginContext::option()`].
+pub struct PluginOptionBuilder<'a> {
+    ctx: &'a mut PluginContext,
+    name: &'static str,
+    plugin_id: String,
+    short: Option<Cow<'static, str>>,
+    description: Cow<'static, str>,
+    default: OptionValue,
+    constraint: OptionConstraint,
+    scope: OptionScope,
+}
+
+impl<'a> PluginOptionBuilder<'a> {
+    const fn new(ctx: &'a mut PluginContext, name: &'static str, plugin_id: String) -> Self {
+        Self {
+            ctx,
+            name,
+            plugin_id,
+            short: None,
+            description: Cow::Borrowed(""),
+            default: OptionValue::Bool(false),
+            constraint: OptionConstraint::none(),
+            scope: OptionScope::Global,
+        }
+    }
+
+    /// Set a short alias for the option.
+    #[must_use]
+    pub fn short(mut self, alias: impl Into<Cow<'static, str>>) -> Self {
+        self.short = Some(alias.into());
+        self
+    }
+
+    /// Set the description for the option.
+    #[must_use]
+    pub fn description(mut self, desc: impl Into<Cow<'static, str>>) -> Self {
+        self.description = desc.into();
+        self
+    }
+
+    /// Set the default value to a boolean.
+    #[must_use]
+    pub fn default_bool(mut self, value: bool) -> Self {
+        self.default = OptionValue::Bool(value);
+        self
+    }
+
+    /// Set the default value to an integer.
+    #[must_use]
+    pub fn default_int(mut self, value: i64) -> Self {
+        self.default = OptionValue::Integer(value);
+        self
+    }
+
+    /// Set the default value to a string.
+    #[must_use]
+    pub fn default_string(mut self, value: impl Into<String>) -> Self {
+        self.default = OptionValue::String(value.into());
+        self
+    }
+
+    /// Set the default value to a choice from predefined values.
+    #[must_use]
+    pub fn default_choice(mut self, value: impl Into<String>, choices: &[&str]) -> Self {
+        self.default = OptionValue::Choice {
+            value: value.into(),
+            choices: choices.iter().map(|s| (*s).to_string()).collect(),
+        };
+        self
+    }
+
+    /// Set a minimum value constraint (for integer options).
+    #[must_use]
+    pub const fn min(mut self, value: i64) -> Self {
+        self.constraint.min = Some(value);
+        self
+    }
+
+    /// Set a maximum value constraint (for integer options).
+    #[must_use]
+    pub const fn max(mut self, value: i64) -> Self {
+        self.constraint.max = Some(value);
+        self
+    }
+
+    /// Set both min and max constraints (for integer options).
+    #[must_use]
+    pub const fn range(mut self, min: i64, max: i64) -> Self {
+        self.constraint.min = Some(min);
+        self.constraint.max = Some(max);
+        self
+    }
+
+    /// Set the scope for this option.
+    #[must_use]
+    pub const fn scope(mut self, scope: OptionScope) -> Self {
+        self.scope = scope;
+        self
+    }
+
+    /// Register the option.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if an option with the same name already exists.
+    pub fn register(self) -> Result<(), OptionError> {
+        let full_name: Cow<'static, str> =
+            format!("plugin.{}.{}", self.plugin_id, self.name).into();
+
+        let spec = OptionSpec {
+            name: full_name,
+            short: self.short,
+            description: self.description,
+            category: OptionCategory::Plugin(self.plugin_id.into()),
+            default: self.default,
+            constraint: self.constraint,
+            depends_on: Vec::new(),
+            scope: self.scope,
+        };
+
+        // Check for duplicates
+        if self.ctx.option_specs.iter().any(|s| s.name == spec.name) {
+            return Err(OptionError::AlreadyExists(spec.name.to_string()));
+        }
+
+        self.ctx.option_specs.push(spec);
+        Ok(())
     }
 }

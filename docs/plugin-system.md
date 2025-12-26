@@ -111,7 +111,114 @@ impl PluginContext {
 
     /// Register a keybinding
     pub fn register_keybinding(&mut self, mode: &str, keys: &str, command_id: CommandId);
+
+    /// Create an option builder for registering plugin options
+    pub fn option(&mut self, name: &'static str) -> PluginOptionBuilder<'_>;
 }
+```
+
+## Plugin Options
+
+Plugins can register their own configurable options using the fluent builder API:
+
+```rust
+fn build(&self, ctx: &mut PluginContext) {
+    // Register a boolean option
+    ctx.option("enabled")
+        .description("Enable this feature")
+        .default_bool(true)
+        .register()?;
+
+    // Register an integer option with constraints
+    ctx.option("timeout_ms")
+        .short("to")  // Short alias for :set to=200
+        .description("Timeout in milliseconds")
+        .default_int(100)
+        .min(10)
+        .max(5000)
+        .register()?;
+
+    // Register a choice option
+    ctx.option("mode")
+        .description("Operating mode")
+        .default_choice("auto", &["auto", "manual", "disabled"])
+        .register()?;
+}
+```
+
+### Option Types
+
+| Type | Builder Method | Example |
+|------|----------------|---------|
+| Boolean | `.default_bool(true)` | `:set plugin.myplugin.enabled` |
+| Integer | `.default_int(100)` | `:set plugin.myplugin.timeout=200` |
+| String | `.default_string("value")` | `:set plugin.myplugin.path=/tmp` |
+| Choice | `.default_choice("a", &["a", "b"])` | `:set plugin.myplugin.mode=manual` |
+
+### Constraints
+
+```rust
+ctx.option("count")
+    .default_int(5)
+    .min(1)          // Minimum value
+    .max(100)        // Maximum value
+    .register()?;
+
+ctx.option("count")
+    .default_int(5)
+    .range(1, 100)   // Shorthand for min + max
+    .register()?;
+```
+
+### User Commands
+
+Users can interact with plugin options via `:set`:
+
+| Command | Action |
+|---------|--------|
+| `:set plugin.myplugin.enabled` | Enable boolean option |
+| `:set noplugin.myplugin.enabled` | Disable boolean option |
+| `:set plugin.myplugin.timeout=200` | Set value |
+| `:set plugin.myplugin.timeout?` | Query current value |
+| `:set plugin.myplugin.timeout&` | Reset to default |
+
+### Reacting to Option Changes
+
+Subscribe to `OptionChanged` events to react when options are modified:
+
+```rust
+use reovim_core::option::{OptionChanged, ChangeSource};
+
+fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {
+    let state_clone = Arc::clone(&state);
+    bus.subscribe::<OptionChanged, _>(100, move |event, ctx| {
+        if event.name.starts_with("plugin.myplugin.") {
+            // React to setting change
+            if let Some(timeout) = event.as_int() {
+                state_clone.with_mut::<MyState, _, _>(|s| {
+                    s.set_timeout(timeout as u64);
+                });
+            }
+            ctx.request_render();
+        }
+        EventResult::Continue
+    });
+}
+```
+
+### Profile Persistence
+
+Plugin options are automatically saved to profiles under nested TOML sections:
+
+```toml
+# ~/.config/reovim/profiles/default.toml
+[plugin.treesitter]
+highlight_timeout_ms = 100
+incremental_parse = true
+
+[plugin.completion]
+auto_trigger = true
+min_prefix = 2
 ```
 
 ## PluginStateRegistry

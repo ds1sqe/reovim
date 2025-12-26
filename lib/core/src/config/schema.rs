@@ -47,6 +47,22 @@ pub struct ProfileConfig {
     /// Window settings
     #[serde(default)]
     pub window: WindowConfig,
+
+    /// Plugin-specific options
+    ///
+    /// Structure: `{ "plugin_id": { "option_name": value, ... }, ... }`
+    ///
+    /// Example TOML:
+    /// ```toml
+    /// [plugin.treesitter]
+    /// highlight_timeout_ms = 100
+    /// incremental_parse = true
+    ///
+    /// [plugin.completion]
+    /// auto_trigger = true
+    /// ```
+    #[serde(default)]
+    pub plugin: HashMap<String, toml::Value>,
 }
 
 /// Profile metadata

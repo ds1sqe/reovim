@@ -3,12 +3,32 @@ use crate::highlight::{ColorMode, ThemeName};
 /// Set command options
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SetOption {
+    // === Core options (fast path) ===
     Number(bool),           // :set nu / :set nonu
     RelativeNumber(bool),   // :set rnu / :set nornu
     ColorMode(ColorMode),   // :set colormode=ansi|256|truecolor
     ColorScheme(ThemeName), // :colorscheme dark|light|tokyonight
     IndentGuide(bool),      // :set indentguide / :set noindentguide
     Scrollbar(bool),        // :set scrollbar / :set noscrollbar
+
+    // === Dynamic options (from OptionRegistry) ===
+    /// Enable a boolean option: `:set optionname`
+    DynamicEnable(String),
+
+    /// Disable a boolean option: `:set nooptionname`
+    DynamicDisable(String),
+
+    /// Set option to a value: `:set optionname=value`
+    DynamicSet {
+        name: String,
+        value: String,
+    },
+
+    /// Query option value: `:set optionname?`
+    DynamicQuery(String),
+
+    /// Reset to default: `:set optionname&`
+    DynamicReset(String),
 }
 
 /// Parsed ex-commands (colon commands)
@@ -134,6 +154,10 @@ impl ExCommand {
                     option: SetOption::ColorMode(mode),
                 })
             }
+
+            // Dynamic :set commands (plugin options, etc.)
+            s if s.starts_with("set ") => Self::parse_dynamic_set(&s[4..]),
+
             // :colorscheme name
             s if s.starts_with("colorscheme ") || s.starts_with("colo ") => {
                 let name_start = if s.starts_with("colorscheme ") { 12 } else { 5 };
@@ -199,5 +223,61 @@ impl ExCommand {
 
             _ => Some(Self::Unknown(trimmed.to_string())),
         }
+    }
+
+    /// Parse dynamic :set commands for plugin options
+    ///
+    /// Handles formats:
+    /// - `:set optionname` - enable boolean
+    /// - `:set nooptionname` - disable boolean
+    /// - `:set optionname=value` - set value
+    /// - `:set optionname?` - query value
+    /// - `:set optionname&` - reset to default
+    fn parse_dynamic_set(option_str: &str) -> Option<Self> {
+        let option_str = option_str.trim();
+        if option_str.is_empty() {
+            return None;
+        }
+
+        // Query: :set option?
+        if let Some(name) = option_str.strip_suffix('?') {
+            return Some(Self::Set {
+                option: SetOption::DynamicQuery(name.to_string()),
+            });
+        }
+
+        // Reset: :set option&
+        if let Some(name) = option_str.strip_suffix('&') {
+            return Some(Self::Set {
+                option: SetOption::DynamicReset(name.to_string()),
+            });
+        }
+
+        // Set value: :set option=value
+        if let Some(eq_pos) = option_str.find('=') {
+            let name = option_str[..eq_pos].trim();
+            let value = option_str[eq_pos + 1..].trim();
+            return Some(Self::Set {
+                option: SetOption::DynamicSet {
+                    name: name.to_string(),
+                    value: value.to_string(),
+                },
+            });
+        }
+
+        // Disable: :set nooption
+        if let Some(name) = option_str.strip_prefix("no") {
+            // Avoid matching things like "normal" - require at least 2 chars after "no"
+            if name.len() >= 2 {
+                return Some(Self::Set {
+                    option: SetOption::DynamicDisable(name.to_string()),
+                });
+            }
+        }
+
+        // Enable: :set option (boolean enable)
+        Some(Self::Set {
+            option: SetOption::DynamicEnable(option_str.to_string()),
+        })
     }
 }

@@ -310,6 +310,7 @@ async fn test_vsplit_navigate_right() {
 }
 
 /// Test that cursor movement works after switching windows
+/// After :vs, focus is on the NEW (right) window. Navigate to left, then move cursor.
 #[tokio::test]
 async fn test_vsplit_cursor_movement_after_navigate() {
     let mut result = ServerTest::new()
@@ -317,9 +318,9 @@ async fn test_vsplit_cursor_movement_after_navigate() {
         .with_size(80, 24)
         .with_content("Line 1\nLine 2\nLine 3\nLine 4\nLine 5")
         .with_keys(":vs<CR>")
-        .with_delay(50)
-        .with_keys("<C-w>l") // Navigate to right window
-        .with_delay(50)
+        .with_delay(100)
+        .with_keys("<C-w>h") // Navigate to left window (we start in right after :vs)
+        .with_delay(100)
         .with_keys("jj") // Move down 2 lines
         .run()
         .await;

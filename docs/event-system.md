@@ -112,6 +112,49 @@ Core events are defined in `lib/core/src/event_bus/core_events.rs` and allow plu
 |-------|-------------|
 | `RequestSetRegister` | Set register content (unnamed or named) |
 
+**Option Events (via Event Bus):**
+
+Option events are defined in `lib/core/src/option/events.rs` for the extensible settings system.
+
+| Event | Description |
+|-------|-------------|
+| `RegisterOption` | Plugin registers an option specification |
+| `OptionChanged` | Option value was modified |
+| `QueryOption` | Request to query an option value |
+| `ResetOption` | Request to reset option to default |
+
+**OptionChanged:**
+
+Emitted when any option value changes, allowing plugins to react:
+
+```rust
+use reovim_core::option::{OptionChanged, ChangeSource};
+
+bus.subscribe::<OptionChanged, _>(100, move |event, ctx| {
+    if event.name == "plugin.treesitter.highlight_timeout_ms" {
+        if let Some(timeout) = event.as_int() {
+            // Update internal timeout setting
+        }
+        ctx.request_render();
+    }
+    EventResult::Continue
+});
+```
+
+Fields:
+- `name: String` - Full option name (e.g., `"plugin.treesitter.timeout"`)
+- `old_value: OptionValue` - Previous value
+- `new_value: OptionValue` - New value
+- `source: ChangeSource` - How the change was triggered
+
+`ChangeSource` variants:
+- `UserCommand` - User typed a `:set` command
+- `ProfileLoad` - Loaded from a profile file
+- `Plugin` - Changed programmatically by a plugin
+- `SettingsMenu` - Changed via the settings menu UI
+- `Rpc` - Changed via RPC (server mode)
+- `Default` - Default value applied during initialization
+
 **RequestSetRegister:**
 
 Allows plugins to set register content, enabling features like copy-to-clipboard:

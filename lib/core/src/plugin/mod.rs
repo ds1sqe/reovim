@@ -40,7 +40,7 @@ pub mod builtin;
 
 pub use {
     builtin::{CorePlugin, DefaultPlugins, PythonPlugin, WindowPlugin},
-    context::PluginContext,
+    context::{PluginContext, PluginOptionBuilder},
     editor_context::{EditorContext, PanelPosition},
     loader::{PluginError, PluginLoader, PluginTuple},
     runtime_context::{RuntimeContext, RuntimeContextBuilder},

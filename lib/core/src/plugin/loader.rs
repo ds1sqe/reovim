@@ -120,8 +120,11 @@ impl PluginLoader {
         // Build phase
         for idx in &order {
             let plugin = &self.plugins[*idx];
-            tracing::debug!(plugin = %plugin.id(), "Building plugin");
+            let plugin_id = plugin.id();
+            tracing::debug!(plugin = %plugin_id, "Building plugin");
+            ctx.set_current_plugin(plugin_id.to_string());
             plugin.build(ctx);
+            ctx.clear_current_plugin();
             ctx.mark_loaded_by_id(self.type_id_for_index(*idx));
         }
 
@@ -159,8 +162,11 @@ impl PluginLoader {
         // Build phase
         for idx in &order {
             let plugin = &self.plugins[*idx];
-            tracing::debug!(plugin = %plugin.id(), "Building plugin");
+            let plugin_id = plugin.id();
+            tracing::debug!(plugin = %plugin_id, "Building plugin");
+            ctx.set_current_plugin(plugin_id.to_string());
             plugin.build(ctx);
+            ctx.clear_current_plugin();
             ctx.mark_loaded_by_id(self.type_id_for_index(*idx));
         }
 

@@ -23,6 +23,7 @@ use {
         jumplist::JumpList,
         modd::ModeState,
         modifier::{ModifierContext, ModifierRegistry},
+        option::OptionRegistry,
         plugin::{Plugin, PluginContext, PluginLoader, PluginStateRegistry, PluginTuple},
         register::Registers,
         screen::Screen,
@@ -86,6 +87,8 @@ pub struct Runtime {
     pub display_registry: crate::display::DisplayRegistry,
     /// Render stage registry for pipeline transformations
     pub render_stages: Arc<std::sync::RwLock<crate::render::RenderStageRegistry>>,
+    /// Option registry for extensible settings
+    pub option_registry: Arc<OptionRegistry>,
     /// Loaded plugins for boot phase execution
     pub(crate) plugins: Vec<Box<dyn Plugin>>,
     /// Timestamp of last user input (for idle detection)
@@ -163,7 +166,16 @@ impl Runtime {
             rpc_handler_registry,
             display_registry,
             render_stages,
+            option_specs,
         ) = ctx.into_parts();
+
+        // Initialize option registry and register plugin options
+        let option_registry = Arc::new(OptionRegistry::new());
+        for spec in option_specs {
+            if let Err(e) = option_registry.register(spec) {
+                tracing::warn!("Failed to register option: {e}");
+            }
+        }
 
         // Wrap render_stages in Arc<RwLock<>> and inject into plugin_state
         // This allows plugins to register stages from init_state()
@@ -215,6 +227,7 @@ impl Runtime {
             rpc_handler_registry,
             display_registry,
             render_stages,
+            option_registry,
             plugins: loaded_plugins,
             last_input_at: std::time::Instant::now(),
             idle_shimmer_active: false,

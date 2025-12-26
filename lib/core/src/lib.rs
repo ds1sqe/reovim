@@ -32,6 +32,7 @@ pub mod landing;
 pub mod modd;
 pub mod modifier;
 pub mod motion;
+pub mod option;
 pub mod plugin;
 pub mod register;
 pub mod render;
