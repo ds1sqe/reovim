@@ -275,6 +275,28 @@ impl Runtime {
                 });
         }
 
+        // Subscribe to file open at position requests from plugins (LSP navigation)
+        {
+            use crate::event_bus::{EventResult, core_events::RequestOpenFileAtPosition};
+            let tx = runtime.tx.clone();
+            runtime
+                .event_bus
+                .subscribe::<RequestOpenFileAtPosition, _>(100, move |event, _ctx| {
+                    tracing::info!(
+                        "Runtime: Requesting to open file at position: {:?}:{}:{}",
+                        event.path,
+                        event.line,
+                        event.column
+                    );
+                    let _ = tx.try_send(InnerEvent::OpenFileAtPositionRequest {
+                        path: event.path.clone(),
+                        line: event.line,
+                        column: event.column,
+                    });
+                    EventResult::Handled
+                });
+        }
+
         // Subscribe to register set requests from plugins
         {
             use crate::event_bus::{EventResult, core_events::RequestSetRegister};

@@ -63,6 +63,15 @@ pub enum InnerEvent {
         /// Path to the file to open
         path: PathBuf,
     },
+    /// Request to open a file at a specific position (for LSP navigation)
+    OpenFileAtPositionRequest {
+        /// Path to the file to open
+        path: PathBuf,
+        /// Line number (0-indexed)
+        line: usize,
+        /// Column number (0-indexed)
+        column: usize,
+    },
     /// Request to set a register's content
     SetRegister {
         /// Register name: None for unnamed, '+' for system clipboard, 'a'-'z' for named

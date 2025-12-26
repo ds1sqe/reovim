@@ -49,6 +49,7 @@ chrono = "0.4"
 # local libs
 reovim-core = { path = "./lib/core", version = "0.7.1" }
 reovim-sys = { path = "./lib/sys", version = "0.7.1" }
+reovim-lsp = { path = "./lib/lsp", version = "0.7.1" }
 
 # plugins
 reovim-plugin-fold = { path = "./plugins/features/fold", version = "0.7.0" }
@@ -59,6 +60,7 @@ reovim-plugin-telescope = { path = "./plugins/features/telescope", version = "0.
 reovim-plugin-leap = { path = "./plugins/features/leap", version = "0.7.0" }
 reovim-plugin-treesitter = { path = "./plugins/features/treesitter", version = "0.7.0" }
 reovim-plugin-pair = { path = "./plugins/features/pair", version = "0.7.0" }
+reovim-plugin-lsp = { path = "./plugins/features/lsp", version = "0.7.0" }
 
 # language plugins
 reovim-lang-rust = { path = "./plugins/languages/rust", version = "0.7.0" }

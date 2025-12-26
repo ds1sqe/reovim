@@ -279,6 +279,26 @@ impl Event for RequestOpenFile {
     }
 }
 
+/// Request to open a file at a specific position
+///
+/// Plugins emit this event to open a file and jump to a specific line/column.
+/// Used by LSP goto definition, goto references, etc.
+#[derive(Debug, Clone)]
+pub struct RequestOpenFileAtPosition {
+    /// Path to the file to open
+    pub path: std::path::PathBuf,
+    /// Line number (0-indexed)
+    pub line: usize,
+    /// Column number (0-indexed)
+    pub column: usize,
+}
+
+impl Event for RequestOpenFileAtPosition {
+    fn priority(&self) -> u32 {
+        priority::CORE
+    }
+}
+
 /// Request to set a register's content
 ///
 /// Plugins emit this event to set text into a register. The runtime subscribes
