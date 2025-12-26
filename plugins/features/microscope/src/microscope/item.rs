@@ -1,12 +1,12 @@
-//! Telescope item types
+//! Microscope item types
 
 use std::path::PathBuf;
 
 use reovim_core::{command::CommandId, highlight::ThemeName};
 
-/// Data associated with a telescope item, determining the action on selection
+/// Data associated with a microscope item, determining the action on selection
 #[derive(Debug, Clone)]
-pub enum TelescopeData {
+pub enum MicroscopeData {
     /// A file path to open
     FilePath(PathBuf),
     /// A buffer ID to switch to
@@ -33,9 +33,9 @@ pub enum TelescopeData {
     Profile(String),
 }
 
-/// Represents a single item in the telescope results list
+/// Represents a single item in the microscope results list
 #[derive(Debug, Clone)]
-pub struct TelescopeItem {
+pub struct MicroscopeItem {
     /// Unique identifier for this item
     pub id: String,
     /// Primary display text
@@ -43,7 +43,7 @@ pub struct TelescopeItem {
     /// Secondary detail text (optional, shown grayed out)
     pub detail: Option<String>,
     /// Data for determining action on selection
-    pub data: TelescopeData,
+    pub data: MicroscopeData,
     /// Fuzzy match score (higher = better match)
     pub score: Option<u32>,
     /// Icon/indicator character
@@ -52,13 +52,13 @@ pub struct TelescopeItem {
     pub source: &'static str,
 }
 
-impl TelescopeItem {
-    /// Create a new telescope item
+impl MicroscopeItem {
+    /// Create a new microscope item
     #[must_use]
     pub fn new(
         id: impl Into<String>,
         display: impl Into<String>,
-        data: TelescopeData,
+        data: MicroscopeData,
         source: &'static str,
     ) -> Self {
         Self {
@@ -106,10 +106,10 @@ mod tests {
 
     #[test]
     fn test_new_item() {
-        let item = TelescopeItem::new(
+        let item = MicroscopeItem::new(
             "file1",
             "src/main.rs",
-            TelescopeData::FilePath(PathBuf::from("src/main.rs")),
+            MicroscopeData::FilePath(PathBuf::from("src/main.rs")),
             "files",
         );
 
@@ -123,7 +123,7 @@ mod tests {
 
     #[test]
     fn test_builder_methods() {
-        let item = TelescopeItem::new("buf1", "buffer.rs", TelescopeData::BufferId(1), "buffers")
+        let item = MicroscopeItem::new("buf1", "buffer.rs", MicroscopeData::BufferId(1), "buffers")
             .with_detail("modified")
             .with_score(100)
             .with_icon('*');

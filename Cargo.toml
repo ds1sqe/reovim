@@ -56,7 +56,8 @@ reovim-plugin-fold = { path = "./plugins/features/fold", version = "0.7.0" }
 reovim-plugin-settings-menu = { path = "./plugins/features/settings-menu", version = "0.7.0" }
 reovim-plugin-completion = { path = "./plugins/features/completion", version = "0.7.0" }
 reovim-plugin-explorer = { path = "./plugins/features/explorer", version = "0.7.0" }
-reovim-plugin-telescope = { path = "./plugins/features/telescope", version = "0.7.0" }
+reovim-plugin-microscope = { path = "./plugins/features/microscope", version = "0.7.0" }
+reovim-plugin-pickers = { path = "./plugins/features/pickers", version = "0.7.0" }
 reovim-plugin-leap = { path = "./plugins/features/leap", version = "0.7.0" }
 reovim-plugin-treesitter = { path = "./plugins/features/treesitter", version = "0.7.0" }
 reovim-plugin-pair = { path = "./plugins/features/pair", version = "0.7.0" }

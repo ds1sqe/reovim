@@ -31,6 +31,17 @@ All notable changes to Reovim will be documented in this file.
   - Background animation controller at 30 FPS (only ticks when effects active)
   - `AnimationRenderStage` for applying effects in render pipeline
 
+- **Microscope RPC support** - JSON-RPC endpoint for fuzzy finder state
+  - `state/microscope` RPC method returns picker state (active, query, items, selection)
+  - Integration test infrastructure for microscope plugin
+  - Test port range changed to 17000-17099 for parallel test execution
+
+### Fixed
+
+- **Microscope preview** - Preview panel now displays file content
+  - Preview loads on picker open and updates on navigation (j/k)
+  - Files picker shows file content preview for selected item
+
 ## [0.7.0] - 2025-12-25
 
 ### Added

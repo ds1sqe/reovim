@@ -644,6 +644,21 @@ impl Runtime {
                 });
                 RpcResponse::success(id, response)
             }
+            methods::STATE_MICROSCOPE => {
+                // Microscope is a plugin - state query is handled by the plugin
+                // Return inactive state as the base response
+                let response = serde_json::json!({
+                    "active": false,
+                    "query": "",
+                    "selected_index": 0,
+                    "item_count": 0,
+                    "picker_name": "",
+                    "title": "",
+                    "selected_item": null,
+                    "prompt_mode": "Insert",
+                });
+                RpcResponse::success(id, response)
+            }
             methods::STATE_WINDOWS => {
                 let snapshot = self.windows_snapshot();
                 RpcResponse::success(id, serde_json::to_value(snapshot).unwrap())

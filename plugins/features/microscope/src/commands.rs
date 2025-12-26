@@ -1,4 +1,4 @@
-//! Telescope fuzzy finder commands (unified command-event types)
+//! Microscope fuzzy finder commands (unified command-event types)
 
 use reovim_core::{
     command::traits::*,
@@ -8,13 +8,13 @@ use reovim_core::{
 
 // === Core Events (unified types) ===
 
-/// Open telescope with a specific picker
+/// Open microscope with a specific picker
 #[derive(Debug, Clone)]
-pub struct TelescopeOpen {
+pub struct MicroscopeOpen {
     pub picker: String,
 }
 
-impl TelescopeOpen {
+impl MicroscopeOpen {
     /// Create event for a specific picker
     #[must_use]
     pub fn new(picker: impl Into<String>) -> Self {
@@ -24,7 +24,7 @@ impl TelescopeOpen {
     }
 }
 
-impl Event for TelescopeOpen {
+impl Event for MicroscopeOpen {
     fn priority(&self) -> u32 {
         100
     }
@@ -32,11 +32,11 @@ impl Event for TelescopeOpen {
 
 /// Insert a character into the query
 #[derive(Debug, Clone, Copy)]
-pub struct TelescopeInsertChar {
+pub struct MicroscopeInsertChar {
     pub c: char,
 }
 
-impl TelescopeInsertChar {
+impl MicroscopeInsertChar {
     /// Create event for specific character
     #[must_use]
     pub const fn new(c: char) -> Self {
@@ -44,7 +44,7 @@ impl TelescopeInsertChar {
     }
 }
 
-impl Event for TelescopeInsertChar {
+impl Event for MicroscopeInsertChar {
     fn priority(&self) -> u32 {
         100
     }
@@ -53,93 +53,131 @@ impl Event for TelescopeInsertChar {
 // === Navigation & Control (using macro) ===
 
 declare_event_command! {
-    TelescopeBackspace,
-    id: "telescope_backspace",
+    MicroscopeBackspace,
+    id: "microscope_backspace",
     description: "Delete character from query (backspace)",
 }
 
 declare_event_command! {
-    TelescopeCursorLeft,
-    id: "telescope_cursor_left",
+    MicroscopeCursorLeft,
+    id: "microscope_cursor_left",
     description: "Move cursor left in query",
 }
 
 declare_event_command! {
-    TelescopeCursorRight,
-    id: "telescope_cursor_right",
+    MicroscopeCursorRight,
+    id: "microscope_cursor_right",
     description: "Move cursor right in query",
 }
 
 declare_event_command! {
-    TelescopeSelectNext,
-    id: "telescope_select_next",
+    MicroscopeSelectNext,
+    id: "microscope_select_next",
     description: "Select next item",
 }
 
 declare_event_command! {
-    TelescopeSelectPrev,
-    id: "telescope_select_prev",
+    MicroscopeSelectPrev,
+    id: "microscope_select_prev",
     description: "Select previous item",
 }
 
 declare_event_command! {
-    TelescopePageDown,
-    id: "telescope_page_down",
+    MicroscopePageDown,
+    id: "microscope_page_down",
     description: "Page down",
 }
 
 declare_event_command! {
-    TelescopePageUp,
-    id: "telescope_page_up",
+    MicroscopePageUp,
+    id: "microscope_page_up",
     description: "Page up",
 }
 
 declare_event_command! {
-    TelescopeGotoFirst,
-    id: "telescope_goto_first",
+    MicroscopeGotoFirst,
+    id: "microscope_goto_first",
     description: "Go to first item",
 }
 
 declare_event_command! {
-    TelescopeGotoLast,
-    id: "telescope_goto_last",
+    MicroscopeGotoLast,
+    id: "microscope_goto_last",
     description: "Go to last item",
 }
 
 declare_event_command! {
-    TelescopeConfirm,
-    id: "telescope_confirm",
+    MicroscopeConfirm,
+    id: "microscope_confirm",
     description: "Confirm selection",
 }
 
 declare_event_command! {
-    TelescopeClose,
-    id: "telescope_close",
-    description: "Close telescope",
+    MicroscopeClose,
+    id: "microscope_close",
+    description: "Close microscope",
 }
 
 declare_event_command! {
-    TelescopeEnterInsert,
-    id: "telescope_enter_insert",
+    MicroscopeEnterInsert,
+    id: "microscope_enter_insert",
     description: "Enter insert mode (for typing query)",
 }
 
 declare_event_command! {
-    TelescopeEnterNormal,
-    id: "telescope_enter_normal",
+    MicroscopeEnterNormal,
+    id: "microscope_enter_normal",
     description: "Enter normal mode (for j/k navigation)",
 }
 
+// === Normal Mode Prompt Commands ===
+
+declare_event_command! {
+    MicroscopeWordForward,
+    id: "microscope_word_forward",
+    description: "Move cursor forward one word in query",
+}
+
+declare_event_command! {
+    MicroscopeWordBackward,
+    id: "microscope_word_backward",
+    description: "Move cursor backward one word in query",
+}
+
+declare_event_command! {
+    MicroscopeCursorStart,
+    id: "microscope_cursor_start",
+    description: "Move cursor to start of query",
+}
+
+declare_event_command! {
+    MicroscopeCursorEnd,
+    id: "microscope_cursor_end",
+    description: "Move cursor to end of query",
+}
+
+declare_event_command! {
+    MicroscopeClearQuery,
+    id: "microscope_clear_query",
+    description: "Clear the search query",
+}
+
+declare_event_command! {
+    MicroscopeDeleteWord,
+    id: "microscope_delete_word",
+    description: "Delete word before cursor",
+}
+
 // === Picker Commands ===
-// These are separate command types that emit TelescopeOpen with different picker names
+// These are separate command types that emit MicroscopeOpen with different picker names
 
-/// Open telescope find files picker
+/// Open microscope find files picker
 #[derive(Debug, Clone, Copy)]
-pub struct TelescopeFindFiles;
+pub struct MicroscopeFindFiles;
 
-impl CommandTrait for TelescopeFindFiles {
+impl CommandTrait for MicroscopeFindFiles {
     fn name(&self) -> &'static str {
-        "telescope_find_files"
+        "microscope_find_files"
     }
 
     fn description(&self) -> &'static str {
@@ -147,7 +185,7 @@ impl CommandTrait for TelescopeFindFiles {
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(TelescopeOpen::new("files")))
+        CommandResult::EmitEvent(DynEvent::new(MicroscopeOpen::new("files")))
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
@@ -159,13 +197,13 @@ impl CommandTrait for TelescopeFindFiles {
     }
 }
 
-/// Open telescope buffers picker
+/// Open microscope buffers picker
 #[derive(Debug, Clone, Copy)]
-pub struct TelescopeFindBuffers;
+pub struct MicroscopeFindBuffers;
 
-impl CommandTrait for TelescopeFindBuffers {
+impl CommandTrait for MicroscopeFindBuffers {
     fn name(&self) -> &'static str {
-        "telescope_find_buffers"
+        "microscope_find_buffers"
     }
 
     fn description(&self) -> &'static str {
@@ -173,7 +211,7 @@ impl CommandTrait for TelescopeFindBuffers {
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(TelescopeOpen::new("buffers")))
+        CommandResult::EmitEvent(DynEvent::new(MicroscopeOpen::new("buffers")))
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
@@ -185,13 +223,13 @@ impl CommandTrait for TelescopeFindBuffers {
     }
 }
 
-/// Open telescope live grep picker
+/// Open microscope live grep picker
 #[derive(Debug, Clone, Copy)]
-pub struct TelescopeLiveGrep;
+pub struct MicroscopeLiveGrep;
 
-impl CommandTrait for TelescopeLiveGrep {
+impl CommandTrait for MicroscopeLiveGrep {
     fn name(&self) -> &'static str {
-        "telescope_live_grep"
+        "microscope_live_grep"
     }
 
     fn description(&self) -> &'static str {
@@ -199,7 +237,7 @@ impl CommandTrait for TelescopeLiveGrep {
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(TelescopeOpen::new("grep")))
+        CommandResult::EmitEvent(DynEvent::new(MicroscopeOpen::new("grep")))
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
@@ -211,13 +249,13 @@ impl CommandTrait for TelescopeLiveGrep {
     }
 }
 
-/// Open telescope recent files picker
+/// Open microscope recent files picker
 #[derive(Debug, Clone, Copy)]
-pub struct TelescopeFindRecent;
+pub struct MicroscopeFindRecent;
 
-impl CommandTrait for TelescopeFindRecent {
+impl CommandTrait for MicroscopeFindRecent {
     fn name(&self) -> &'static str {
-        "telescope_find_recent"
+        "microscope_find_recent"
     }
 
     fn description(&self) -> &'static str {
@@ -225,7 +263,7 @@ impl CommandTrait for TelescopeFindRecent {
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(TelescopeOpen::new("recent")))
+        CommandResult::EmitEvent(DynEvent::new(MicroscopeOpen::new("recent")))
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
@@ -237,13 +275,13 @@ impl CommandTrait for TelescopeFindRecent {
     }
 }
 
-/// Open telescope help picker
+/// Open microscope help picker
 #[derive(Debug, Clone, Copy)]
-pub struct TelescopeHelp;
+pub struct MicroscopeHelp;
 
-impl CommandTrait for TelescopeHelp {
+impl CommandTrait for MicroscopeHelp {
     fn name(&self) -> &'static str {
-        "telescope_help"
+        "microscope_help"
     }
 
     fn description(&self) -> &'static str {
@@ -251,7 +289,7 @@ impl CommandTrait for TelescopeHelp {
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(TelescopeOpen::new("help")))
+        CommandResult::EmitEvent(DynEvent::new(MicroscopeOpen::new("help")))
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
@@ -263,13 +301,13 @@ impl CommandTrait for TelescopeHelp {
     }
 }
 
-/// Open telescope commands picker
+/// Open microscope commands picker
 #[derive(Debug, Clone, Copy)]
-pub struct TelescopeCommands;
+pub struct MicroscopeCommands;
 
-impl CommandTrait for TelescopeCommands {
+impl CommandTrait for MicroscopeCommands {
     fn name(&self) -> &'static str {
-        "telescope_commands"
+        "microscope_commands"
     }
 
     fn description(&self) -> &'static str {
@@ -277,7 +315,7 @@ impl CommandTrait for TelescopeCommands {
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(TelescopeOpen::new("commands")))
+        CommandResult::EmitEvent(DynEvent::new(MicroscopeOpen::new("commands")))
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
@@ -289,13 +327,13 @@ impl CommandTrait for TelescopeCommands {
     }
 }
 
-/// Open telescope keymaps picker
+/// Open microscope keymaps picker
 #[derive(Debug, Clone, Copy)]
-pub struct TelescopeKeymaps;
+pub struct MicroscopeKeymaps;
 
-impl CommandTrait for TelescopeKeymaps {
+impl CommandTrait for MicroscopeKeymaps {
     fn name(&self) -> &'static str {
-        "telescope_keymaps"
+        "microscope_keymaps"
     }
 
     fn description(&self) -> &'static str {
@@ -303,7 +341,7 @@ impl CommandTrait for TelescopeKeymaps {
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(TelescopeOpen::new("keymaps")))
+        CommandResult::EmitEvent(DynEvent::new(MicroscopeOpen::new("keymaps")))
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
@@ -315,13 +353,13 @@ impl CommandTrait for TelescopeKeymaps {
     }
 }
 
-/// Open telescope themes picker
+/// Open microscope themes picker
 #[derive(Debug, Clone, Copy)]
-pub struct TelescopeThemes;
+pub struct MicroscopeThemes;
 
-impl CommandTrait for TelescopeThemes {
+impl CommandTrait for MicroscopeThemes {
     fn name(&self) -> &'static str {
-        "telescope_themes"
+        "microscope_themes"
     }
 
     fn description(&self) -> &'static str {
@@ -329,7 +367,7 @@ impl CommandTrait for TelescopeThemes {
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(TelescopeOpen::new("themes")))
+        CommandResult::EmitEvent(DynEvent::new(MicroscopeOpen::new("themes")))
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {
@@ -341,13 +379,13 @@ impl CommandTrait for TelescopeThemes {
     }
 }
 
-/// Open telescope profiles picker  
+/// Open microscope profiles picker  
 #[derive(Debug, Clone, Copy)]
-pub struct TelescopeProfiles;
+pub struct MicroscopeProfiles;
 
-impl CommandTrait for TelescopeProfiles {
+impl CommandTrait for MicroscopeProfiles {
     fn name(&self) -> &'static str {
-        "telescope_profiles"
+        "microscope_profiles"
     }
 
     fn description(&self) -> &'static str {
@@ -355,7 +393,7 @@ impl CommandTrait for TelescopeProfiles {
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(TelescopeOpen::new("profiles")))
+        CommandResult::EmitEvent(DynEvent::new(MicroscopeOpen::new("profiles")))
     }
 
     fn clone_box(&self) -> Box<dyn CommandTrait> {

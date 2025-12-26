@@ -2,12 +2,9 @@
 
 use std::{future::Future, path::PathBuf, pin::Pin};
 
-use super::super::{
-    item::{TelescopeData, TelescopeItem},
-    state::PreviewContent,
+use reovim_plugin_microscope::{
+    MicroscopeAction, MicroscopeData, MicroscopeItem, Picker, PickerContext, PreviewContent,
 };
-
-use super::{Picker, PickerContext, TelescopeAction};
 
 /// Picker for recently opened files
 pub struct RecentPicker {
@@ -62,7 +59,7 @@ impl Picker for RecentPicker {
     fn fetch(
         &self,
         ctx: &PickerContext,
-    ) -> Pin<Box<dyn Future<Output = Vec<TelescopeItem>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Vec<MicroscopeItem>> + Send + '_>> {
         let cwd = ctx.cwd.clone();
 
         Box::pin(async move {
@@ -76,10 +73,10 @@ impl Picker for RecentPicker {
                         .to_string_lossy()
                         .to_string();
 
-                    TelescopeItem::new(
+                    MicroscopeItem::new(
                         &display,
                         &display,
-                        TelescopeData::FilePath(path.clone()),
+                        MicroscopeData::FilePath(path.clone()),
                         "recent",
                     )
                 })
@@ -87,22 +84,23 @@ impl Picker for RecentPicker {
         })
     }
 
-    fn on_select(&self, item: &TelescopeItem) -> TelescopeAction {
+    fn on_select(&self, item: &MicroscopeItem) -> MicroscopeAction {
         match &item.data {
-            TelescopeData::FilePath(path) => TelescopeAction::OpenFile(path.clone()),
-            _ => TelescopeAction::Nothing,
+            MicroscopeData::FilePath(path) => MicroscopeAction::OpenFile(path.clone()),
+            _ => MicroscopeAction::Nothing,
         }
     }
 
     fn preview(
         &self,
-        item: &TelescopeItem,
+        item: &MicroscopeItem,
     ) -> Pin<Box<dyn Future<Output = Option<PreviewContent>> + Send + '_>> {
         let path = match &item.data {
-            TelescopeData::FilePath(p) => p.clone(),
+            MicroscopeData::FilePath(p) => p.clone(),
             _ => return Box::pin(async { None }),
         };
 
+        let file_name = path.file_name().and_then(|n| n.to_str()).map(String::from);
         Box::pin(async move {
             tokio::fs::read_to_string(&path).await.ok().map(|content| {
                 let lines: Vec<String> = content.lines().map(String::from).collect();
@@ -111,6 +109,7 @@ impl Picker for RecentPicker {
                     lines,
                     highlight_line: None,
                     syntax,
+                    title: file_name,
                 }
             })
         })

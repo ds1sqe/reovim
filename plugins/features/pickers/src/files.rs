@@ -2,14 +2,12 @@
 
 use std::{future::Future, pin::Pin};
 
-use ignore::WalkBuilder;
-
-use super::super::{
-    item::{TelescopeData, TelescopeItem},
-    state::PreviewContent,
+use {
+    ignore::WalkBuilder,
+    reovim_plugin_microscope::{
+        MicroscopeAction, MicroscopeData, MicroscopeItem, Picker, PickerContext, PreviewContent,
+    },
 };
-
-use super::{Picker, PickerContext, TelescopeAction};
 
 /// Picker for finding files in the project
 pub struct FilesPicker {
@@ -59,7 +57,7 @@ impl Picker for FilesPicker {
     fn fetch(
         &self,
         ctx: &PickerContext,
-    ) -> Pin<Box<dyn Future<Output = Vec<TelescopeItem>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Vec<MicroscopeItem>> + Send + '_>> {
         let cwd = ctx.cwd.clone();
         let max_items = ctx.max_items;
         let ignore_patterns = self.ignore_patterns.clone();
@@ -110,10 +108,10 @@ impl Picker for FilesPicker {
                 };
 
                 items.push(
-                    TelescopeItem::new(
+                    MicroscopeItem::new(
                         &display,
                         &display,
-                        TelescopeData::FilePath(path.to_path_buf()),
+                        MicroscopeData::FilePath(path.to_path_buf()),
                         "files",
                     )
                     .with_icon(icon),
@@ -124,22 +122,23 @@ impl Picker for FilesPicker {
         })
     }
 
-    fn on_select(&self, item: &TelescopeItem) -> TelescopeAction {
+    fn on_select(&self, item: &MicroscopeItem) -> MicroscopeAction {
         match &item.data {
-            TelescopeData::FilePath(path) => TelescopeAction::OpenFile(path.clone()),
-            _ => TelescopeAction::Nothing,
+            MicroscopeData::FilePath(path) => MicroscopeAction::OpenFile(path.clone()),
+            _ => MicroscopeAction::Nothing,
         }
     }
 
     fn preview(
         &self,
-        item: &TelescopeItem,
+        item: &MicroscopeItem,
     ) -> Pin<Box<dyn Future<Output = Option<PreviewContent>> + Send + '_>> {
         let path = match &item.data {
-            TelescopeData::FilePath(p) => p.clone(),
+            MicroscopeData::FilePath(p) => p.clone(),
             _ => return Box::pin(async { None }),
         };
 
+        let file_name = path.file_name().and_then(|n| n.to_str()).map(String::from);
         Box::pin(async move {
             // Read file content for preview
             tokio::fs::read_to_string(&path).await.ok().map(|content| {
@@ -149,6 +148,7 @@ impl Picker for FilesPicker {
                     lines,
                     highlight_line: None,
                     syntax,
+                    title: file_name,
                 }
             })
         })

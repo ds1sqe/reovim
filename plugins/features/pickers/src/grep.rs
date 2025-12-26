@@ -2,17 +2,15 @@
 
 use std::{future::Future, pin::Pin, process::Stdio};
 
-use tokio::{
-    io::{AsyncBufReadExt, BufReader},
-    process::Command,
+use {
+    reovim_plugin_microscope::{
+        MicroscopeAction, MicroscopeData, MicroscopeItem, Picker, PickerContext, PreviewContent,
+    },
+    tokio::{
+        io::{AsyncBufReadExt, BufReader},
+        process::Command,
+    },
 };
-
-use super::super::{
-    item::{TelescopeData, TelescopeItem},
-    state::PreviewContent,
-};
-
-use super::{Picker, PickerContext, TelescopeAction};
 
 /// Picker for live grep search using ripgrep
 pub struct GrepPicker {
@@ -59,7 +57,7 @@ impl Picker for GrepPicker {
     fn fetch(
         &self,
         ctx: &PickerContext,
-    ) -> Pin<Box<dyn Future<Output = Vec<TelescopeItem>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Vec<MicroscopeItem>> + Send + '_>> {
         let query = ctx.query.clone();
         let cwd = ctx.cwd.clone();
         let max_items = ctx.max_items;
@@ -125,10 +123,10 @@ impl Picker for GrepPicker {
                         let path = cwd.join(file);
 
                         items.push(
-                            TelescopeItem::new(
+                            MicroscopeItem::new(
                                 format!("{file}:{line_num}:{col}"),
                                 display,
-                                TelescopeData::GrepMatch {
+                                MicroscopeData::GrepMatch {
                                     path,
                                     line: line_num,
                                     col,
@@ -146,23 +144,23 @@ impl Picker for GrepPicker {
         })
     }
 
-    fn on_select(&self, item: &TelescopeItem) -> TelescopeAction {
+    fn on_select(&self, item: &MicroscopeItem) -> MicroscopeAction {
         match &item.data {
-            TelescopeData::GrepMatch { path, line, col } => TelescopeAction::GotoLocation {
+            MicroscopeData::GrepMatch { path, line, col } => MicroscopeAction::GotoLocation {
                 path: path.clone(),
                 line: *line,
                 col: *col,
             },
-            _ => TelescopeAction::Nothing,
+            _ => MicroscopeAction::Nothing,
         }
     }
 
     fn preview(
         &self,
-        item: &TelescopeItem,
+        item: &MicroscopeItem,
     ) -> Pin<Box<dyn Future<Output = Option<PreviewContent>> + Send + '_>> {
         let (path, highlight_line) = match &item.data {
-            TelescopeData::GrepMatch { path, line, .. } => (path.clone(), *line),
+            MicroscopeData::GrepMatch { path, line, .. } => (path.clone(), *line),
             _ => return Box::pin(async { None }),
         };
 

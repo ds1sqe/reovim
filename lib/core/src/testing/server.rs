@@ -13,16 +13,16 @@ use tokio::time::sleep;
 
 use super::client::TestClient;
 
-/// Port range for tests: 12600-12699
-static TEST_PORT: AtomicU16 = AtomicU16::new(12600);
+/// Port range for tests: 17000-17099
+static TEST_PORT: AtomicU16 = AtomicU16::new(17000);
 
 /// Get the next available test port
 fn next_test_port() -> u16 {
     let port = TEST_PORT.fetch_add(1, Ordering::SeqCst);
     // Wrap around if we exceed the range
-    if port > 12699 {
-        TEST_PORT.store(12600, Ordering::SeqCst);
-        12600
+    if port > 17099 {
+        TEST_PORT.store(17000, Ordering::SeqCst);
+        17000
     } else {
         port
     }
@@ -146,7 +146,7 @@ mod tests {
         let port1 = next_test_port();
         let port2 = next_test_port();
         assert_ne!(port1, port2);
-        assert!((12600..=12699).contains(&port1));
-        assert!((12600..=12699).contains(&port2));
+        assert!((17000..=17099).contains(&port1));
+        assert!((17000..=17099).contains(&port2));
     }
 }

@@ -2,25 +2,9 @@
 
 use std::{future::Future, pin::Pin};
 
-use super::super::{
-    item::{TelescopeData, TelescopeItem},
-    state::PreviewContent,
+use reovim_plugin_microscope::{
+    MicroscopeAction, MicroscopeData, MicroscopeItem, Picker, PickerContext, PreviewContent,
 };
-
-use super::{Picker, PickerContext, TelescopeAction};
-
-/// Buffer info passed from runtime
-#[derive(Debug, Clone)]
-pub struct BufferInfo {
-    /// Buffer ID
-    pub id: usize,
-    /// Buffer name/path
-    pub name: String,
-    /// Whether the buffer is modified
-    pub modified: bool,
-    /// Preview lines
-    pub preview_lines: Vec<String>,
-}
 
 /// Picker for switching between open buffers
 pub struct BuffersPicker;
@@ -55,17 +39,17 @@ impl Picker for BuffersPicker {
     fn fetch(
         &self,
         ctx: &PickerContext,
-    ) -> Pin<Box<dyn Future<Output = Vec<TelescopeItem>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Vec<MicroscopeItem>> + Send + '_>> {
         let buffers = ctx.buffers.clone();
         Box::pin(async move {
             buffers
                 .iter()
                 .map(|buf| {
                     let icon = if buf.modified { '*' } else { ' ' };
-                    TelescopeItem::new(
+                    MicroscopeItem::new(
                         buf.id.to_string(),
                         &buf.name,
-                        TelescopeData::BufferId(buf.id),
+                        MicroscopeData::BufferId(buf.id),
                         "buffers",
                     )
                     .with_icon(icon)
@@ -75,16 +59,16 @@ impl Picker for BuffersPicker {
         })
     }
 
-    fn on_select(&self, item: &TelescopeItem) -> TelescopeAction {
+    fn on_select(&self, item: &MicroscopeItem) -> MicroscopeAction {
         match &item.data {
-            TelescopeData::BufferId(id) => TelescopeAction::SwitchBuffer(*id),
-            _ => TelescopeAction::Nothing,
+            MicroscopeData::BufferId(id) => MicroscopeAction::SwitchBuffer(*id),
+            _ => MicroscopeAction::Nothing,
         }
     }
 
     fn preview(
         &self,
-        _item: &TelescopeItem,
+        _item: &MicroscopeItem,
     ) -> Pin<Box<dyn Future<Output = Option<PreviewContent>> + Send + '_>> {
         // Preview would require buffer content which isn't available in this context
         // For now, just return None

@@ -228,6 +228,7 @@ pub mod methods {
     pub const STATE_SCREEN_CONTENT: &str = "state/screen_content";
     pub const STATE_WHICHKEY: &str = "state/whichkey";
     pub const STATE_TELESCOPE: &str = "state/telescope";
+    pub const STATE_MICROSCOPE: &str = "state/microscope";
     pub const STATE_WINDOWS: &str = "state/windows";
 
     // Visual methods (for debugging and AI understanding)

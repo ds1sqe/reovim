@@ -1,6 +1,59 @@
-//! Telescope state management
+//! Microscope state management
 
-use super::item::TelescopeItem;
+use super::{
+    item::MicroscopeItem,
+    layout::{LayoutBounds, LayoutConfig, calculate_layout, visible_item_count},
+};
+
+/// Mode for the prompt input (vim-style)
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum PromptMode {
+    /// Insert mode - typing adds characters to query
+    #[default]
+    Insert,
+    /// Normal mode - j/k navigation, vim motions in prompt
+    Normal,
+}
+
+impl PromptMode {
+    /// Get display string for mode
+    #[must_use]
+    pub const fn display(&self) -> &'static str {
+        match self {
+            Self::Insert => "[I]",
+            Self::Normal => "[N]",
+        }
+    }
+}
+
+/// Loading state for async operations
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum LoadingState {
+    /// Not loading
+    #[default]
+    Idle,
+    /// Loading items (show spinner)
+    Loading,
+    /// Matching in progress
+    Matching,
+}
+
+impl LoadingState {
+    /// Get spinner character for current state
+    #[must_use]
+    pub const fn spinner(&self) -> Option<char> {
+        match self {
+            Self::Idle => None,
+            Self::Loading | Self::Matching => Some('⟳'),
+        }
+    }
+
+    /// Check if currently loading
+    #[must_use]
+    pub const fn is_loading(&self) -> bool {
+        !matches!(self, Self::Idle)
+    }
+}
 
 /// Preview content for the selected item
 #[derive(Debug, Clone, Default)]
@@ -11,6 +64,8 @@ pub struct PreviewContent {
     pub highlight_line: Option<usize>,
     /// File extension for syntax highlighting
     pub syntax: Option<String>,
+    /// Title for the preview panel
+    pub title: Option<String>,
 }
 
 impl PreviewContent {
@@ -21,6 +76,7 @@ impl PreviewContent {
             lines,
             highlight_line: None,
             syntax: None,
+            title: None,
         }
     }
 
@@ -37,11 +93,18 @@ impl PreviewContent {
         self.syntax = Some(syntax.into());
         self
     }
+
+    /// Set the preview title
+    #[must_use]
+    pub fn with_title(mut self, title: impl Into<String>) -> Self {
+        self.title = Some(title.into());
+        self
+    }
 }
 
-/// Layout information for telescope UI
+/// Legacy layout - kept for compatibility during transition
 #[derive(Debug, Clone, Default)]
-pub struct TelescopeLayout {
+pub struct MicroscopeLayout {
     /// X position of the panel
     pub x: u16,
     /// Y position of the panel
@@ -56,19 +119,19 @@ pub struct TelescopeLayout {
     pub visible_items: usize,
 }
 
-/// State of the telescope fuzzy finder
+/// State of the microscope fuzzy finder
 #[derive(Debug, Clone, Default)]
-pub struct TelescopeState {
-    /// Whether telescope is currently active/visible
+pub struct MicroscopeState {
+    /// Whether microscope is currently active/visible
     pub active: bool,
     /// Current search query
     pub query: String,
     /// Cursor position in the query
     pub cursor_pos: usize,
     /// All items from the picker (unfiltered)
-    pub all_items: Vec<TelescopeItem>,
+    pub all_items: Vec<MicroscopeItem>,
     /// Current list of items (filtered/sorted)
-    pub items: Vec<TelescopeItem>,
+    pub items: Vec<MicroscopeItem>,
     /// Currently selected item index
     pub selected_index: usize,
     /// Scroll offset for long lists
@@ -81,14 +144,26 @@ pub struct TelescopeState {
     pub prompt: String,
     /// Preview content (if available)
     pub preview: Option<PreviewContent>,
-    /// Layout configuration
-    pub layout: TelescopeLayout,
+    /// Legacy layout configuration (for compatibility)
+    pub layout: MicroscopeLayout,
     /// Whether preview is enabled
     pub preview_enabled: bool,
+    /// Prompt mode (Insert/Normal)
+    pub prompt_mode: PromptMode,
+    /// Loading state
+    pub loading_state: LoadingState,
+    /// Helix-style layout bounds
+    pub bounds: LayoutBounds,
+    /// Layout configuration
+    pub layout_config: LayoutConfig,
+    /// Total item count (from matcher)
+    pub total_count: u32,
+    /// Matched item count (from matcher)
+    pub matched_count: u32,
 }
 
-impl TelescopeState {
-    /// Create a new empty telescope state
+impl MicroscopeState {
+    /// Create a new empty microscope state
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -103,12 +178,20 @@ impl TelescopeState {
             title: String::new(),
             prompt: "> ".to_string(),
             preview: None,
-            layout: TelescopeLayout::default(),
+            layout: MicroscopeLayout::default(),
             preview_enabled: true,
+            prompt_mode: PromptMode::Insert,
+            loading_state: LoadingState::Idle,
+            bounds: LayoutBounds::default(),
+            layout_config: LayoutConfig::default(),
+            total_count: 0,
+            matched_count: 0,
         }
     }
 
-    /// Open telescope with a picker
+    /// Open microscope with a picker
+    ///
+    /// Starts in Normal mode for j/k navigation. Press 'i' to enter Insert mode.
     pub fn open(&mut self, picker_name: &str, title: &str, prompt: &str) {
         self.active = true;
         self.query.clear();
@@ -121,9 +204,13 @@ impl TelescopeState {
         self.title = title.to_string();
         self.prompt = prompt.to_string();
         self.preview = None;
+        self.prompt_mode = PromptMode::Normal; // Start in Normal mode
+        self.loading_state = LoadingState::Loading;
+        self.total_count = 0;
+        self.matched_count = 0;
     }
 
-    /// Close telescope
+    /// Close microscope
     pub fn close(&mut self) {
         self.active = false;
         self.query.clear();
@@ -134,10 +221,66 @@ impl TelescopeState {
         self.scroll_offset = 0;
         self.picker_name.clear();
         self.preview = None;
+        self.prompt_mode = PromptMode::Insert;
+        self.loading_state = LoadingState::Idle;
+    }
+
+    /// Enter insert mode
+    pub fn enter_insert(&mut self) {
+        self.prompt_mode = PromptMode::Insert;
+    }
+
+    /// Enter normal mode
+    pub fn enter_normal(&mut self) {
+        self.prompt_mode = PromptMode::Normal;
+    }
+
+    /// Toggle between insert and normal mode
+    pub fn toggle_mode(&mut self) {
+        self.prompt_mode = match self.prompt_mode {
+            PromptMode::Insert => PromptMode::Normal,
+            PromptMode::Normal => PromptMode::Insert,
+        };
+    }
+
+    /// Set loading state
+    pub fn set_loading(&mut self, state: LoadingState) {
+        self.loading_state = state;
+    }
+
+    /// Update bounds from screen dimensions
+    pub fn update_bounds(&mut self, screen_width: u16, screen_height: u16) {
+        self.bounds = calculate_layout(screen_width, screen_height, &self.layout_config);
+        // Also update legacy layout for compatibility
+        self.layout.x = self.bounds.results.x;
+        self.layout.y = self.bounds.results.y;
+        self.layout.width = self.bounds.results.width;
+        self.layout.height = self.bounds.results.height;
+        self.layout.preview_width = self.bounds.preview.map(|p| p.width);
+        self.layout.visible_items = visible_item_count(&self.bounds.results);
+    }
+
+    /// Get status line text
+    #[must_use]
+    pub fn status_text(&self) -> String {
+        let count_text = if self.total_count == 0 {
+            "No items".to_string()
+        } else if self.matched_count == self.total_count {
+            format!("{} items", self.total_count)
+        } else {
+            format!("{}/{} matched", self.matched_count, self.total_count)
+        };
+
+        let spinner = self
+            .loading_state
+            .spinner()
+            .map_or(String::new(), |s| format!(" {s}"));
+
+        format!("{count_text}{spinner}")
     }
 
     /// Update items from search results (initial load - stores in both `all_items` and items)
-    pub fn update_items(&mut self, items: Vec<TelescopeItem>) {
+    pub fn update_items(&mut self, items: Vec<MicroscopeItem>) {
         self.all_items = items.clone();
         self.items = items;
         self.selected_index = 0;
@@ -146,7 +289,7 @@ impl TelescopeState {
     }
 
     /// Update filtered items only (for filtering - keeps `all_items` unchanged)
-    pub fn update_filtered_items(&mut self, items: Vec<TelescopeItem>) {
+    pub fn update_filtered_items(&mut self, items: Vec<MicroscopeItem>) {
         self.items = items;
         self.selected_index = 0;
         self.scroll_offset = 0;
@@ -157,6 +300,7 @@ impl TelescopeState {
     pub fn insert_char(&mut self, c: char) {
         self.query.insert(self.cursor_pos, c);
         self.cursor_pos += c.len_utf8();
+        self.apply_filter();
     }
 
     /// Delete character before cursor
@@ -169,7 +313,32 @@ impl TelescopeState {
                 .map_or(0, |(i, _)| i);
             self.query.remove(prev_pos);
             self.cursor_pos = prev_pos;
+            self.apply_filter();
         }
+    }
+
+    /// Apply query filter to items
+    ///
+    /// Simple substring filter. For fuzzy matching, use `MicroscopeMatcher`.
+    fn apply_filter(&mut self) {
+        if self.query.is_empty() {
+            // Show all items when query is empty
+            self.items = self.all_items.clone();
+        } else {
+            // Simple case-insensitive substring filter
+            let query_lower = self.query.to_lowercase();
+            self.items = self
+                .all_items
+                .iter()
+                .filter(|item| item.match_text().to_lowercase().contains(&query_lower))
+                .cloned()
+                .collect();
+        }
+        self.selected_index = 0;
+        self.scroll_offset = 0;
+        self.matched_count = self.items.len() as u32;
+        self.total_count = self.all_items.len() as u32;
+        self.ensure_selected_visible();
     }
 
     /// Move cursor left
@@ -202,6 +371,98 @@ impl TelescopeState {
     #[allow(clippy::missing_const_for_fn)] // String::len is not const-stable
     pub fn cursor_end(&mut self) {
         self.cursor_pos = self.query.len();
+    }
+
+    /// Move cursor forward one word
+    pub fn word_forward(&mut self) {
+        if self.cursor_pos >= self.query.len() {
+            return;
+        }
+
+        let chars: Vec<char> = self.query.chars().collect();
+        let mut pos = 0;
+        let mut idx = 0;
+
+        // Find current character index
+        for (i, c) in self.query.char_indices() {
+            if i >= self.cursor_pos {
+                idx = pos;
+                break;
+            }
+            pos += 1;
+            if i + c.len_utf8() > self.cursor_pos {
+                idx = pos;
+                break;
+            }
+        }
+
+        // Skip current word (non-whitespace)
+        while idx < chars.len() && !chars[idx].is_whitespace() {
+            idx += 1;
+        }
+        // Skip whitespace
+        while idx < chars.len() && chars[idx].is_whitespace() {
+            idx += 1;
+        }
+
+        // Convert back to byte position
+        self.cursor_pos = chars[..idx].iter().map(|c| c.len_utf8()).sum();
+    }
+
+    /// Move cursor backward one word
+    pub fn word_backward(&mut self) {
+        if self.cursor_pos == 0 {
+            return;
+        }
+
+        let chars: Vec<char> = self.query.chars().collect();
+
+        // Find current character index
+        let mut idx: usize = 0;
+        let mut byte_pos = 0;
+        for c in &chars {
+            if byte_pos >= self.cursor_pos {
+                break;
+            }
+            byte_pos += c.len_utf8();
+            idx += 1;
+        }
+
+        idx = idx.saturating_sub(1);
+
+        // Skip whitespace backward
+        while idx > 0 && chars[idx].is_whitespace() {
+            idx -= 1;
+        }
+        // Skip current word backward (non-whitespace)
+        while idx > 0 && !chars[idx - 1].is_whitespace() {
+            idx -= 1;
+        }
+
+        // Convert back to byte position
+        self.cursor_pos = chars[..idx].iter().map(|c| c.len_utf8()).sum();
+    }
+
+    /// Clear the query
+    pub fn clear_query(&mut self) {
+        self.query.clear();
+        self.cursor_pos = 0;
+        self.apply_filter();
+    }
+
+    /// Delete word before cursor
+    pub fn delete_word(&mut self) {
+        if self.cursor_pos == 0 {
+            return;
+        }
+
+        let old_pos = self.cursor_pos;
+        self.word_backward();
+        let new_pos = self.cursor_pos;
+
+        // Delete characters between new_pos and old_pos
+        self.query.drain(new_pos..old_pos);
+        self.apply_filter();
     }
 
     /// Select next item
@@ -259,11 +520,11 @@ impl TelescopeState {
 
     /// Get currently selected item
     #[must_use]
-    pub fn selected_item(&self) -> Option<&TelescopeItem> {
+    pub fn selected_item(&self) -> Option<&MicroscopeItem> {
         self.items.get(self.selected_index)
     }
 
-    /// Check if telescope is active and visible
+    /// Check if microscope is active and visible
     #[must_use]
     pub const fn is_visible(&self) -> bool {
         self.active
@@ -286,7 +547,7 @@ impl TelescopeState {
 
     /// Get visible items slice
     #[must_use]
-    pub fn visible_items(&self) -> &[TelescopeItem] {
+    pub fn visible_items(&self) -> &[MicroscopeItem] {
         let start = self.scroll_offset;
         let end = (start + self.layout.visible_items).min(self.items.len());
         &self.items[start..end]
@@ -312,7 +573,7 @@ impl TelescopeState {
             let results_width = (f32::from(total_width) * 0.4) as u16;
             let preview_width = total_width - results_width - 1; // -1 for separator
 
-            self.layout = TelescopeLayout {
+            self.layout = MicroscopeLayout {
                 x,
                 y,
                 width: results_width,
@@ -321,7 +582,7 @@ impl TelescopeState {
                 visible_items: usize::from(height.saturating_sub(4)), // -4 for borders and prompt
             };
         } else {
-            self.layout = TelescopeLayout {
+            self.layout = MicroscopeLayout {
                 x,
                 y,
                 width: total_width,
@@ -335,26 +596,26 @@ impl TelescopeState {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::telescope::item::TelescopeData, std::path::PathBuf};
+    use {super::*, crate::microscope::item::MicroscopeData, std::path::PathBuf};
 
-    fn sample_items() -> Vec<TelescopeItem> {
+    fn sample_items() -> Vec<MicroscopeItem> {
         vec![
-            TelescopeItem::new(
+            MicroscopeItem::new(
                 "1",
                 "file1.rs",
-                TelescopeData::FilePath(PathBuf::from("file1.rs")),
+                MicroscopeData::FilePath(PathBuf::from("file1.rs")),
                 "files",
             ),
-            TelescopeItem::new(
+            MicroscopeItem::new(
                 "2",
                 "file2.rs",
-                TelescopeData::FilePath(PathBuf::from("file2.rs")),
+                MicroscopeData::FilePath(PathBuf::from("file2.rs")),
                 "files",
             ),
-            TelescopeItem::new(
+            MicroscopeItem::new(
                 "3",
                 "file3.rs",
-                TelescopeData::FilePath(PathBuf::from("file3.rs")),
+                MicroscopeData::FilePath(PathBuf::from("file3.rs")),
                 "files",
             ),
         ]
@@ -362,7 +623,7 @@ mod tests {
 
     #[test]
     fn test_new_state() {
-        let state = TelescopeState::new();
+        let state = MicroscopeState::new();
         assert!(!state.active);
         assert!(state.query.is_empty());
         assert_eq!(state.cursor_pos, 0);
@@ -371,7 +632,7 @@ mod tests {
 
     #[test]
     fn test_open_close() {
-        let mut state = TelescopeState::new();
+        let mut state = MicroscopeState::new();
         state.open("files", "Find Files", "Files> ");
 
         assert!(state.active);
@@ -386,7 +647,7 @@ mod tests {
 
     #[test]
     fn test_insert_delete() {
-        let mut state = TelescopeState::new();
+        let mut state = MicroscopeState::new();
         state.open("files", "Test", "> ");
 
         state.insert_char('h');
@@ -405,7 +666,7 @@ mod tests {
 
     #[test]
     fn test_cursor_movement() {
-        let mut state = TelescopeState::new();
+        let mut state = MicroscopeState::new();
         state.open("files", "Test", "> ");
         state.query = "hello".to_string();
         state.cursor_pos = 3;
@@ -425,7 +686,7 @@ mod tests {
 
     #[test]
     fn test_selection() {
-        let mut state = TelescopeState::new();
+        let mut state = MicroscopeState::new();
         state.open("files", "Test", "> ");
         state.layout.visible_items = 10;
         state.update_items(sample_items());

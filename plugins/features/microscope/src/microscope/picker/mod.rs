@@ -1,33 +1,35 @@
-//! Picker trait and implementations
+//! Picker trait and infrastructure
 //!
-//! Pickers are responsible for:
-//! - Fetching items (files, buffers, commands, etc.)
-//! - Determining actions when an item is selected
-//! - Optionally providing preview content
+//! This module provides the core picker infrastructure:
+//! - `Picker` trait for implementing custom pickers
+//! - `PickerContext` for picker operations
+//! - `MicroscopeAction` for actions on selection
+//! - `PickerRegistry` for dynamic picker registration
+//!
+//! Actual picker implementations are in the separate `reovim-plugin-pickers` crate.
 
-pub mod buffers;
-pub mod commands;
-pub mod files;
-pub mod grep;
-pub mod help;
-pub mod keymaps;
-pub mod profiles;
-pub mod recent;
-pub mod themes;
+pub mod registry;
 
-pub use {
-    buffers::BuffersPicker, commands::CommandsPicker, files::FilesPicker, grep::GrepPicker,
-    help::HelpPicker, keymaps::KeymapsPicker, profiles::ProfilesPicker, recent::RecentPicker,
-    themes::ThemesPicker,
-};
+pub use registry::PickerRegistry;
 
 use std::{future::Future, path::PathBuf, pin::Pin};
 
 use reovim_core::{command::CommandId, highlight::ThemeName};
 
-use super::{item::TelescopeItem, state::PreviewContent};
+use super::{item::MicroscopeItem, state::PreviewContent};
 
-pub use buffers::BufferInfo;
+/// Buffer info passed from runtime for buffer picker
+#[derive(Debug, Clone)]
+pub struct BufferInfo {
+    /// Buffer ID
+    pub id: usize,
+    /// Buffer name/path
+    pub name: String,
+    /// Whether the buffer is modified
+    pub modified: bool,
+    /// Preview lines
+    pub preview_lines: Vec<String>,
+}
 
 /// Context for picker operations
 #[derive(Debug, Clone)]
@@ -55,7 +57,7 @@ impl Default for PickerContext {
 
 /// Action to perform when an item is selected
 #[derive(Debug, Clone)]
-pub enum TelescopeAction {
+pub enum MicroscopeAction {
     /// Open a file
     OpenFile(PathBuf),
     /// Switch to a buffer
@@ -74,13 +76,39 @@ pub enum TelescopeAction {
     ApplyTheme(ThemeName),
     /// Switch to a configuration profile
     SwitchProfile(String),
-    /// Close telescope without action
+    /// Close microscope without action
     Close,
     /// Do nothing
     Nothing,
 }
 
-/// Trait for implementing telescope pickers
+/// Trait for implementing microscope pickers
+///
+/// Pickers are responsible for:
+/// - Fetching items (files, buffers, commands, etc.)
+/// - Determining actions when an item is selected
+/// - Optionally providing preview content
+///
+/// # Example
+///
+/// ```ignore
+/// use reovim_plugin_microscope::{Picker, PickerContext, MicroscopeAction, MicroscopeItem};
+///
+/// pub struct MyPicker;
+///
+/// impl Picker for MyPicker {
+///     fn name(&self) -> &'static str { "my_picker" }
+///     fn title(&self) -> &'static str { "My Picker" }
+///
+///     fn fetch(&self, ctx: &PickerContext) -> Pin<Box<dyn Future<Output = Vec<MicroscopeItem>> + Send + '_>> {
+///         Box::pin(async { vec![] })
+///     }
+///
+///     fn on_select(&self, item: &MicroscopeItem) -> MicroscopeAction {
+///         MicroscopeAction::Nothing
+///     }
+/// }
+/// ```
 pub trait Picker: Send + Sync {
     /// Unique identifier for this picker
     fn name(&self) -> &'static str;
@@ -97,15 +125,15 @@ pub trait Picker: Send + Sync {
     fn fetch(
         &self,
         ctx: &PickerContext,
-    ) -> Pin<Box<dyn Future<Output = Vec<TelescopeItem>> + Send + '_>>;
+    ) -> Pin<Box<dyn Future<Output = Vec<MicroscopeItem>> + Send + '_>>;
 
     /// Handle selection of an item
-    fn on_select(&self, item: &TelescopeItem) -> TelescopeAction;
+    fn on_select(&self, item: &MicroscopeItem) -> MicroscopeAction;
 
     /// Optional: preview content for the selected item
     fn preview(
         &self,
-        _item: &TelescopeItem,
+        _item: &MicroscopeItem,
     ) -> Pin<Box<dyn Future<Output = Option<PreviewContent>> + Send + '_>> {
         Box::pin(async { None })
     }

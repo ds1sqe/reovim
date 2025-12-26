@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use {
     super::{
-        client::{ModeInfo, ScreenInfo, TelescopeInfo, TestClient, WindowInfo},
+        client::{MicroscopeInfo, ModeInfo, ScreenInfo, TelescopeInfo, TestClient, WindowInfo},
         server::ServerTestHarness,
     },
     crate::visual::{LayerInfo, VisualSnapshot},
@@ -130,6 +130,7 @@ impl ServerTest {
         let cursor = client.cursor().await.ok();
         let buffer_content = client.buffer_content().await.unwrap_or_default();
         let telescope = client.telescope().await.ok();
+        let microscope = client.microscope().await.ok();
         let screen_content = client.screen_content_raw().await.unwrap_or_default();
         let screen = client.screen().await.ok();
 
@@ -138,6 +139,7 @@ impl ServerTest {
             cursor,
             buffer_content,
             telescope,
+            microscope,
             screen_content,
             screen,
             client,                 // Keep client for visual methods
@@ -156,6 +158,8 @@ pub struct ServerTestResult {
     pub buffer_content: String,
     /// Telescope state
     pub telescope: Option<TelescopeInfo>,
+    /// Microscope state
+    pub microscope: Option<MicroscopeInfo>,
     /// Raw screen content with ANSI escape codes
     pub screen_content: String,
     /// Screen state (dimensions and active buffer)
@@ -313,6 +317,107 @@ impl ServerTestResult {
             .as_ref()
             .expect("Telescope state not available");
         assert_eq!(ts.query, expected, "Telescope query mismatch");
+    }
+
+    // === Microscope Assertions ===
+
+    /// Assert that microscope is active/visible
+    ///
+    /// # Panics
+    ///
+    /// Panics if microscope is not active.
+    pub fn assert_microscope_active(&self) {
+        let ms = self
+            .microscope
+            .as_ref()
+            .expect("Microscope state not available");
+        assert!(ms.active, "Expected microscope to be active");
+    }
+
+    /// Assert that microscope is inactive/hidden
+    ///
+    /// # Panics
+    ///
+    /// Panics if microscope is active.
+    pub fn assert_microscope_inactive(&self) {
+        let ms = self
+            .microscope
+            .as_ref()
+            .expect("Microscope state not available");
+        assert!(!ms.active, "Expected microscope to be inactive");
+    }
+
+    /// Assert that microscope has the specified picker
+    ///
+    /// # Panics
+    ///
+    /// Panics if the picker name doesn't match.
+    pub fn assert_microscope_picker(&self, expected: &str) {
+        let ms = self
+            .microscope
+            .as_ref()
+            .expect("Microscope state not available");
+        assert_eq!(ms.picker_name, expected, "Microscope picker mismatch");
+    }
+
+    /// Assert that microscope has items
+    ///
+    /// # Panics
+    ///
+    /// Panics if microscope has no items.
+    pub fn assert_microscope_has_items(&self) {
+        let ms = self
+            .microscope
+            .as_ref()
+            .expect("Microscope state not available");
+        assert!(ms.item_count > 0, "Expected microscope to have items, but got 0");
+    }
+
+    /// Assert that microscope query matches
+    ///
+    /// # Panics
+    ///
+    /// Panics if the query doesn't match.
+    pub fn assert_microscope_query(&self, expected: &str) {
+        let ms = self
+            .microscope
+            .as_ref()
+            .expect("Microscope state not available");
+        assert_eq!(ms.query, expected, "Microscope query mismatch");
+    }
+
+    /// Assert that microscope is in insert mode
+    ///
+    /// # Panics
+    ///
+    /// Panics if not in insert mode.
+    pub fn assert_microscope_insert_mode(&self) {
+        let ms = self
+            .microscope
+            .as_ref()
+            .expect("Microscope state not available");
+        assert_eq!(
+            ms.prompt_mode, "Insert",
+            "Expected microscope insert mode, got {}",
+            ms.prompt_mode
+        );
+    }
+
+    /// Assert that microscope is in normal mode
+    ///
+    /// # Panics
+    ///
+    /// Panics if not in normal mode.
+    pub fn assert_microscope_normal_mode(&self) {
+        let ms = self
+            .microscope
+            .as_ref()
+            .expect("Microscope state not available");
+        assert_eq!(
+            ms.prompt_mode, "Normal",
+            "Expected microscope normal mode, got {}",
+            ms.prompt_mode
+        );
     }
 
     /// Assert that the active buffer ID matches

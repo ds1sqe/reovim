@@ -2,14 +2,12 @@
 
 use std::{future::Future, pin::Pin};
 
-use reovim_core::bind::{CommandRef, KeyMap, KeymapScope};
-
-use super::super::{
-    item::{TelescopeData, TelescopeItem},
-    state::PreviewContent,
+use {
+    reovim_core::bind::{CommandRef, KeyMap, KeymapScope},
+    reovim_plugin_microscope::{
+        MicroscopeAction, MicroscopeData, MicroscopeItem, Picker, PickerContext, PreviewContent,
+    },
 };
-
-use super::{Picker, PickerContext, TelescopeAction};
 
 /// Keymap entry for display
 #[derive(Debug, Clone)]
@@ -122,16 +120,16 @@ impl Picker for KeymapsPicker {
     fn fetch(
         &self,
         _ctx: &PickerContext,
-    ) -> Pin<Box<dyn Future<Output = Vec<TelescopeItem>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Vec<MicroscopeItem>> + Send + '_>> {
         Box::pin(async move {
             self.keymaps
                 .iter()
                 .map(|km| {
                     let display = format!("[{}] {} -> {}", km.mode, km.key, km.command);
-                    TelescopeItem::new(
+                    MicroscopeItem::new(
                         &display,
                         &display,
-                        TelescopeData::Keymap {
+                        MicroscopeData::Keymap {
                             mode: km.mode.clone(),
                             key: km.key.clone(),
                             command: km.command.clone(),
@@ -144,20 +142,20 @@ impl Picker for KeymapsPicker {
         })
     }
 
-    fn on_select(&self, _item: &TelescopeItem) -> TelescopeAction {
+    fn on_select(&self, _item: &MicroscopeItem) -> MicroscopeAction {
         // Keymaps are informational, just close on select
-        TelescopeAction::Close
+        MicroscopeAction::Close
     }
 
     fn preview(
         &self,
-        item: &TelescopeItem,
+        item: &MicroscopeItem,
     ) -> Pin<Box<dyn Future<Output = Option<PreviewContent>> + Send + '_>> {
         let data = item.data.clone();
         let description = item.detail.clone();
 
         Box::pin(async move {
-            if let TelescopeData::Keymap { mode, key, command } = data {
+            if let MicroscopeData::Keymap { mode, key, command } = data {
                 let mut lines = vec![
                     "Keymap Details".to_string(),
                     "==============".to_string(),

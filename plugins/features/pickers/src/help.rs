@@ -2,12 +2,9 @@
 
 use std::{future::Future, pin::Pin};
 
-use super::super::{
-    item::{TelescopeData, TelescopeItem},
-    state::PreviewContent,
+use reovim_plugin_microscope::{
+    MicroscopeAction, MicroscopeData, MicroscopeItem, Picker, PickerContext, PreviewContent,
 };
-
-use super::{Picker, PickerContext, TelescopeAction};
 
 /// Help entry
 #[derive(Debug, Clone)]
@@ -93,13 +90,13 @@ fn default_help_entries() -> Vec<HelpEntry> {
             ],
         },
         HelpEntry {
-            tag: "telescope".to_string(),
-            description: "Telescope fuzzy finder".to_string(),
+            tag: "microscope".to_string(),
+            description: "Microscope fuzzy finder".to_string(),
             content: vec![
-                "TELESCOPE".to_string(),
+                "MICROSCOPE".to_string(),
                 "=========".to_string(),
                 String::new(),
-                "Open Telescope:".to_string(),
+                "Open Microscope:".to_string(),
                 "  <Space>ff    - Find files".to_string(),
                 "  <Space>fb    - Find buffers".to_string(),
                 "  <Space>fg    - Live grep".to_string(),
@@ -159,15 +156,15 @@ impl Picker for HelpPicker {
     fn fetch(
         &self,
         _ctx: &PickerContext,
-    ) -> Pin<Box<dyn Future<Output = Vec<TelescopeItem>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Vec<MicroscopeItem>> + Send + '_>> {
         Box::pin(async move {
             self.entries
                 .iter()
                 .map(|entry| {
-                    TelescopeItem::new(
+                    MicroscopeItem::new(
                         &entry.tag,
                         &entry.tag,
-                        TelescopeData::HelpTag(entry.tag.clone()),
+                        MicroscopeData::HelpTag(entry.tag.clone()),
                         "help",
                     )
                     .with_detail(&entry.description)
@@ -177,19 +174,19 @@ impl Picker for HelpPicker {
         })
     }
 
-    fn on_select(&self, item: &TelescopeItem) -> TelescopeAction {
+    fn on_select(&self, item: &MicroscopeItem) -> MicroscopeAction {
         match &item.data {
-            TelescopeData::HelpTag(tag) => TelescopeAction::ShowHelp(tag.clone()),
-            _ => TelescopeAction::Nothing,
+            MicroscopeData::HelpTag(tag) => MicroscopeAction::ShowHelp(tag.clone()),
+            _ => MicroscopeAction::Nothing,
         }
     }
 
     fn preview(
         &self,
-        item: &TelescopeItem,
+        item: &MicroscopeItem,
     ) -> Pin<Box<dyn Future<Output = Option<PreviewContent>> + Send + '_>> {
         let tag = match &item.data {
-            TelescopeData::HelpTag(t) => t.clone(),
+            MicroscopeData::HelpTag(t) => t.clone(),
             _ => return Box::pin(async { None }),
         };
 

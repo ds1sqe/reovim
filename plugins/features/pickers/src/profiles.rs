@@ -2,14 +2,12 @@
 
 use std::{future::Future, pin::Pin};
 
-use reovim_core::config::ProfileManager;
-
-use super::super::{
-    item::{TelescopeData, TelescopeItem},
-    state::PreviewContent,
+use {
+    reovim_core::config::ProfileManager,
+    reovim_plugin_microscope::{
+        MicroscopeAction, MicroscopeData, MicroscopeItem, Picker, PickerContext, PreviewContent,
+    },
 };
-
-use super::{Picker, PickerContext, TelescopeAction};
 
 /// Picker for selecting configuration profiles
 pub struct ProfilesPicker;
@@ -44,7 +42,7 @@ impl Picker for ProfilesPicker {
     fn fetch(
         &self,
         _ctx: &PickerContext,
-    ) -> Pin<Box<dyn Future<Output = Vec<TelescopeItem>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Vec<MicroscopeItem>> + Send + '_>> {
         Box::pin(async move {
             // Get profile list from ProfileManager
             let manager = ProfileManager::default();
@@ -60,10 +58,10 @@ impl Picker for ProfilesPicker {
                         .map(|config| config.profile.description)
                         .filter(|d| !d.is_empty());
 
-                    let mut item = TelescopeItem::new(
+                    let mut item = MicroscopeItem::new(
                         name.clone(),
                         name.clone(),
-                        TelescopeData::Profile(name),
+                        MicroscopeData::Profile(name),
                         "profiles",
                     )
                     .with_icon('\u{f013}'); // Gear icon
@@ -78,16 +76,16 @@ impl Picker for ProfilesPicker {
         })
     }
 
-    fn on_select(&self, item: &TelescopeItem) -> TelescopeAction {
+    fn on_select(&self, item: &MicroscopeItem) -> MicroscopeAction {
         match &item.data {
-            TelescopeData::Profile(name) => TelescopeAction::SwitchProfile(name.clone()),
-            _ => TelescopeAction::Nothing,
+            MicroscopeData::Profile(name) => MicroscopeAction::SwitchProfile(name.clone()),
+            _ => MicroscopeAction::Nothing,
         }
     }
 
     fn preview(
         &self,
-        item: &TelescopeItem,
+        item: &MicroscopeItem,
     ) -> Pin<Box<dyn Future<Output = Option<PreviewContent>> + Send + '_>> {
         let name = item.display.clone();
 

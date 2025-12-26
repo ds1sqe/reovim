@@ -2,14 +2,12 @@
 
 use std::{future::Future, pin::Pin};
 
-use reovim_core::command::CommandId;
-
-use super::super::{
-    item::{TelescopeData, TelescopeItem},
-    state::PreviewContent,
+use {
+    reovim_core::command::CommandId,
+    reovim_plugin_microscope::{
+        MicroscopeAction, MicroscopeData, MicroscopeItem, Picker, PickerContext, PreviewContent,
+    },
 };
-
-use super::{Picker, PickerContext, TelescopeAction};
 
 /// Command info for the command palette
 #[derive(Debug, Clone)]
@@ -63,15 +61,15 @@ impl Picker for CommandsPicker {
     fn fetch(
         &self,
         _ctx: &PickerContext,
-    ) -> Pin<Box<dyn Future<Output = Vec<TelescopeItem>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Vec<MicroscopeItem>> + Send + '_>> {
         Box::pin(async move {
             self.commands
                 .iter()
                 .map(|cmd| {
-                    TelescopeItem::new(
+                    MicroscopeItem::new(
                         cmd.id.as_str(),
                         cmd.id.as_str(),
-                        TelescopeData::Command(cmd.id.clone()),
+                        MicroscopeData::Command(cmd.id.clone()),
                         "commands",
                     )
                     .with_detail(&cmd.description)
@@ -80,16 +78,16 @@ impl Picker for CommandsPicker {
         })
     }
 
-    fn on_select(&self, item: &TelescopeItem) -> TelescopeAction {
+    fn on_select(&self, item: &MicroscopeItem) -> MicroscopeAction {
         match &item.data {
-            TelescopeData::Command(id) => TelescopeAction::ExecuteCommand(id.clone()),
-            _ => TelescopeAction::Nothing,
+            MicroscopeData::Command(id) => MicroscopeAction::ExecuteCommand(id.clone()),
+            _ => MicroscopeAction::Nothing,
         }
     }
 
     fn preview(
         &self,
-        item: &TelescopeItem,
+        item: &MicroscopeItem,
     ) -> Pin<Box<dyn Future<Output = Option<PreviewContent>> + Send + '_>> {
         let description = item.detail.clone();
         let display = item.display.clone();

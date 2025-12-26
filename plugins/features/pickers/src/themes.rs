@@ -2,14 +2,12 @@
 
 use std::{future::Future, pin::Pin};
 
-use reovim_core::highlight::ThemeName;
-
-use super::super::{
-    item::{TelescopeData, TelescopeItem},
-    state::PreviewContent,
+use {
+    reovim_core::highlight::ThemeName,
+    reovim_plugin_microscope::{
+        MicroscopeAction, MicroscopeData, MicroscopeItem, Picker, PickerContext, PreviewContent,
+    },
 };
-
-use super::{Picker, PickerContext, TelescopeAction};
 
 /// Picker for selecting colorschemes/themes
 pub struct ThemesPicker;
@@ -57,29 +55,29 @@ impl Picker for ThemesPicker {
     fn fetch(
         &self,
         _ctx: &PickerContext,
-    ) -> Pin<Box<dyn Future<Output = Vec<TelescopeItem>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Vec<MicroscopeItem>> + Send + '_>> {
         Box::pin(async move {
             Self::available_themes()
                 .into_iter()
                 .map(|(name, display, description)| {
-                    TelescopeItem::new(display, display, TelescopeData::Theme(name), "themes")
+                    MicroscopeItem::new(display, display, MicroscopeData::Theme(name), "themes")
                         .with_detail(description)
-                        .with_icon('🎨')
+                        .with_icon('\u{1f3a8}')
                 })
                 .collect()
         })
     }
 
-    fn on_select(&self, item: &TelescopeItem) -> TelescopeAction {
+    fn on_select(&self, item: &MicroscopeItem) -> MicroscopeAction {
         match &item.data {
-            TelescopeData::Theme(name) => TelescopeAction::ApplyTheme(*name),
-            _ => TelescopeAction::Nothing,
+            MicroscopeData::Theme(name) => MicroscopeAction::ApplyTheme(*name),
+            _ => MicroscopeAction::Nothing,
         }
     }
 
     fn preview(
         &self,
-        item: &TelescopeItem,
+        item: &MicroscopeItem,
     ) -> Pin<Box<dyn Future<Output = Option<PreviewContent>> + Send + '_>> {
         let display = item.display.clone();
         let description = item.detail.clone();

@@ -1,11 +1,11 @@
 [package]
-name = "reovim-plugin-telescope"
+name = "reovim-plugin-pickers"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
 reovim-core = { path = "../../../lib/core" }
-nucleo = "0.5"
+reovim-plugin-microscope = { path = "../microscope" }
+tokio = { version = "1", features = ["fs", "process", "io-util"] }
 ignore = "0.4"
-tokio = { version = "1", features = ["sync", "process", "io-util"] }

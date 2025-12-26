@@ -67,6 +67,19 @@ pub struct TelescopeInfo {
     pub selected_item: Option<String>,
 }
 
+/// Microscope state information returned by the server
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MicroscopeInfo {
+    pub active: bool,
+    pub query: String,
+    pub selected_index: usize,
+    pub item_count: usize,
+    pub picker_name: String,
+    pub title: String,
+    pub selected_item: Option<String>,
+    pub prompt_mode: String,
+}
+
 /// Screen state information returned by the server
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScreenInfo {
@@ -282,6 +295,16 @@ impl TestClient {
     /// Returns an error if the request fails.
     pub async fn telescope(&mut self) -> Result<TelescopeInfo, ClientError> {
         let result = self.send("state/telescope", json!({})).await?;
+        serde_json::from_value(result).map_err(ClientError::ParseFailed)
+    }
+
+    /// Get microscope state
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails.
+    pub async fn microscope(&mut self) -> Result<MicroscopeInfo, ClientError> {
+        let result = self.send("state/microscope", json!({})).await?;
         serde_json::from_value(result).map_err(ClientError::ParseFailed)
     }
 
