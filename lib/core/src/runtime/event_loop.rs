@@ -514,6 +514,39 @@ impl Runtime {
                     tracing::error!("Runtime: Invalid UTF-8 in file path: {:?}", path);
                 }
             }
+            // File open at position request (from LSP navigation)
+            InnerEvent::OpenFileAtPositionRequest { path, line, column } => {
+                tracing::info!("Runtime: Opening file at position: {:?}:{}:{}", path, line, column);
+                if let Some(path_str) = path.to_str() {
+                    self.open_file(path_str);
+                    self.screen.set_editor_buffer(self.active_buffer_id);
+                    // Set cursor position in the opened buffer
+                    if let Some(buffer) = self.buffers.get_mut(&self.active_buffer_id) {
+                        // Ensure line is within bounds
+                        let max_line = buffer.contents.len().saturating_sub(1);
+                        let target_line = line.min(max_line);
+                        // Ensure column is within bounds for the target line
+                        let line_len = buffer
+                            .contents
+                            .get(target_line)
+                            .map_or(0, |l| l.inner.len());
+                        let target_col = column.min(line_len.saturating_sub(1).max(0));
+                        #[allow(clippy::cast_possible_truncation)]
+                        {
+                            buffer.cur.y = target_line as u16;
+                            buffer.cur.x = target_col as u16;
+                        }
+                        tracing::debug!(
+                            "Runtime: Cursor set to line={}, col={}",
+                            target_line,
+                            target_col
+                        );
+                    }
+                    self.request_render();
+                } else {
+                    tracing::error!("Runtime: Invalid UTF-8 in file path: {:?}", path);
+                }
+            }
             // Set register content (from plugins)
             InnerEvent::SetRegister { register, text } => {
                 tracing::debug!(

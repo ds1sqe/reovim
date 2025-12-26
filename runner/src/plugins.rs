@@ -12,9 +12,9 @@ use reovim_core::plugin::{
 // External plugin crates
 use {
     reovim_plugin_completion::CompletionPlugin, reovim_plugin_explorer::ExplorerPlugin,
-    reovim_plugin_fold::FoldPlugin, reovim_plugin_leap::LeapPlugin, reovim_plugin_pair::PairPlugin,
-    reovim_plugin_settings_menu::SettingsMenuPlugin, reovim_plugin_telescope::TelescopePlugin,
-    reovim_plugin_treesitter::TreesitterPlugin,
+    reovim_plugin_fold::FoldPlugin, reovim_plugin_leap::LeapPlugin, reovim_plugin_lsp::LspPlugin,
+    reovim_plugin_pair::PairPlugin, reovim_plugin_settings_menu::SettingsMenuPlugin,
+    reovim_plugin_telescope::TelescopePlugin, reovim_plugin_treesitter::TreesitterPlugin,
 };
 
 // Language plugins
@@ -55,6 +55,9 @@ impl PluginTuple for AllPlugins {
         loader.add(TomlPlugin);
         loader.add(MarkdownPlugin);
         loader.add(BashPlugin);
+
+        // LSP integration (after language plugins)
+        loader.add(LspPlugin::new());
     }
 }
 
@@ -87,6 +90,8 @@ pub fn default_plugins() -> impl IntoIterator<Item = Box<dyn Plugin>> {
         Box::new(TomlPlugin),
         Box::new(MarkdownPlugin),
         Box::new(BashPlugin),
+        // LSP integration
+        Box::new(LspPlugin::new()),
     ]
 }
 
@@ -123,6 +128,8 @@ pub fn create_plugin_loader() -> PluginLoader {
     loader.add(TomlPlugin);
     loader.add(MarkdownPlugin);
     loader.add(BashPlugin);
+    // LSP integration
+    loader.add(LspPlugin::new());
     loader
 }
 
