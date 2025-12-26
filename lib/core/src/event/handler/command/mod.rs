@@ -566,6 +566,7 @@ impl CommandHandler {
                                 }
 
                                 // Handle Tab in insert mode - insert a tab character
+                                // (Note: plugins can bind keys that override this via keybindings)
                                 let mode = self.current_mode();
                                 if mode.is_insert() && key_str == "Tab" {
                                     self.pending_keys.clear();

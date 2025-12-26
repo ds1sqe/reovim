@@ -61,6 +61,8 @@ impl Runtime {
 
         // STEP 4: Boot phase - plugins can do post-EventBus initialization
         // Languages are now registered, syntax providers can be created
+        // Make inner_event_tx available to plugins for background tasks (e.g., completion saturator)
+        self.plugin_state.set_inner_event_tx(self.tx.clone());
         for plugin in &self.plugins {
             let plugin_id = plugin.id();
             tracing::debug!(plugin = %plugin_id, "Booting plugin");
@@ -148,6 +150,8 @@ impl Runtime {
 
         // STEP 4: Boot phase - plugins can do post-EventBus initialization
         // Languages are now registered, syntax providers can be created
+        // Make inner_event_tx available to plugins for background tasks (e.g., completion saturator)
+        self.plugin_state.set_inner_event_tx(self.tx.clone());
         for plugin in &self.plugins {
             let plugin_id = plugin.id();
             tracing::debug!(plugin = %plugin_id, "Booting plugin");

@@ -180,7 +180,7 @@ lib/core/src/
 │   ├── style.rs    # StyleModifiers
 │   └── behavior.rs # BehaviorModifiers
 ├── bind/           # Key bindings
-├── completion/     # Text completion engine
+├── completion/     # Completion core types (CompletionContext, CompletionItem)
 ├── telescope/      # Fuzzy finder
 ├── explorer/       # File browser
 ├── leap/           # Two-character motion
@@ -748,16 +748,81 @@ Tree-view file browser with file operations.
 
 **Keybinding:** `Space e` to toggle
 
-### Completion (`lib/core/src/completion/`)
+### Completion Plugin (`plugins/features/completion/`)
 
-Async word completion with popup menu.
+Auto-completion with background processing, following the treesitter decoupling pattern.
 
-**Components:**
-- `CompletionEngine` - Async item fetcher
-- `CompletionState` - Active completion session
-- Word-based completion from buffer content
+**Plugin Structure:**
+```
+plugins/features/completion/src/
+├── lib.rs          # CompletionPlugin only
+├── state.rs        # SharedCompletionManager
+├── window.rs       # CompletionPluginWindow
+├── cache.rs        # CompletionCache (ArcSwap)
+├── saturator.rs    # Background completion task
+├── registry.rs     # SourceRegistry, SourceSupport
+├── events.rs       # RegisterSource event
+├── commands.rs     # Unified command-event types
+└── source/
+    └── buffer.rs   # BufferWordsSource
+```
 
-**Keybindings:** `Ctrl-Space` to trigger, `Ctrl-n/p` to navigate, `Tab` to confirm
+**Core Traits (in `lib/core/src/completion/`):**
+```rust
+pub struct CompletionContext {
+    pub buffer_id: usize,
+    pub cursor_row: u32,
+    pub cursor_col: u32,
+    pub line: String,
+    pub prefix: String,
+    pub word_start_col: u32,
+}
+
+pub struct CompletionItem {
+    pub label: String,
+    pub source_id: String,
+    pub kind: CompletionKind,
+    pub insert_text: Option<String>,
+    pub detail: Option<String>,
+}
+```
+
+**Plugin Architecture:**
+- `SharedCompletionManager` - Thread-safe wrapper holding registry, cache, saturator
+- `CompletionCache` - ArcSwap-based lock-free cache for render access
+- `CompletionSaturator` - Background tokio task for non-blocking completion
+- `SourceRegistry` - Dynamic source registration with priority ordering
+- `SourceSupport` trait - Interface for completion sources to implement
+
+**Data Flow:**
+```
+┌─────────────────┐     ┌───────────────────────┐     ┌─────────────────┐
+│  Trigger Event  │────▶│ CompletionSaturator   │────▶│ CompletionCache │
+│   (Alt-Space)   │     │     (background)      │     │    (ArcSwap)    │
+└─────────────────┘     └───────────────────────┘     └─────────────────┘
+                                                              │
+                                                              ▼
+                                                  ┌────────────────────────┐
+                                                  │ CompletionPluginWindow │
+                                                  │    (lock-free read)    │
+                                                  └────────────────────────┘
+```
+
+**Source Registration:**
+External plugins register completion sources via `RegisterSource` event:
+```rust
+bus.emit(RegisterSource {
+    source: Arc::new(LspCompletionSource::new(client)),
+});
+```
+
+**Built-in Source:** `BufferWordsSource` - Extracts words from current buffer
+
+**Keybindings:**
+- `Alt-Space` (insert mode) - Trigger completion
+- `Ctrl-n`/`Ctrl-p` - Navigate suggestions
+- `Enter`/`Tab` - Confirm selection
+- `Escape` - Dismiss popup
 
 ### Leap (`lib/core/src/leap/`)
 

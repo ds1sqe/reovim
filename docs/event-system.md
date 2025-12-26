@@ -926,7 +926,7 @@ pub struct KeyMap {
 | Escape | Normal mode |
 | Backspace | Delete backward |
 | Enter | Newline |
-| Ctrl-Space | Trigger completion |
+| Alt-Space | Trigger completion |
 | Ctrl-n/Ctrl-p | Next/prev completion |
 | Tab | Confirm completion |
 | Ctrl-e | Dismiss completion |

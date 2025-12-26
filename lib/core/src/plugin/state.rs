@@ -30,9 +30,13 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use tokio::sync::mpsc;
+
 use crate::{
     animation::{AnimationHandle, AnimationState},
+    completion::SharedCompletionFactory,
     decoration::SharedDecorationFactory,
+    event::InnerEvent,
     render::{RenderStage, RenderStageRegistry},
     syntax::SharedSyntaxFactory,
     textobject::SharedSemanticTextObjectSource,
@@ -57,6 +61,8 @@ pub struct PluginStateRegistry {
     syntax_factory: RwLock<Option<SharedSyntaxFactory>>,
     /// Decoration factory for creating decoration providers (provided by language plugins)
     decoration_factory: RwLock<Option<SharedDecorationFactory>>,
+    /// Completion factory for providing auto-completion (provided by completion plugin)
+    completion_factory: RwLock<Option<SharedCompletionFactory>>,
     /// Render stage registry for delayed stage registration from init_state()
     render_stages: RwLock<Option<Arc<RwLock<RenderStageRegistry>>>>,
     /// Plugin windows for unified rendering
@@ -69,6 +75,8 @@ pub struct PluginStateRegistry {
     animation_handle: RwLock<Option<AnimationHandle>>,
     /// Shared animation state for querying active effects during render
     animation_state: RwLock<Option<Arc<TokioRwLock<AnimationState>>>>,
+    /// Inner event sender for plugins that need to send InnerEvent (e.g., completion saturator)
+    inner_event_tx: RwLock<Option<mpsc::Sender<InnerEvent>>>,
 }
 
 impl std::fmt::Debug for PluginStateRegistry {
@@ -78,24 +86,28 @@ impl std::fmt::Debug for PluginStateRegistry {
         let has_text_object = self.text_object_source.read().is_ok_and(|s| s.is_some());
         let has_syntax_factory = self.syntax_factory.read().is_ok_and(|s| s.is_some());
         let has_decoration_factory = self.decoration_factory.read().is_ok_and(|s| s.is_some());
+        let has_completion_factory = self.completion_factory.read().is_ok_and(|s| s.is_some());
         let has_render_stages = self.render_stages.read().is_ok_and(|s| s.is_some());
         let has_animation = self.animation_handle.read().is_ok_and(|s| s.is_some());
         let has_animation_state = self.animation_state.read().is_ok_and(|s| s.is_some());
         let plugin_windows_count = self.plugin_windows.read().map_or(0, |p| p.len());
         let left_panel = self.left_panel_width.read().map_or(0, |w| *w);
         let right_panel = self.right_panel_width.read().map_or(0, |w| *w);
+        let has_inner_event_tx = self.inner_event_tx.read().is_ok_and(|s| s.is_some());
         f.debug_struct("PluginStateRegistry")
             .field("state_count", &count)
             .field("has_visibility_source", &has_visibility)
             .field("has_text_object_source", &has_text_object)
             .field("has_syntax_factory", &has_syntax_factory)
             .field("has_decoration_factory", &has_decoration_factory)
+            .field("has_completion_factory", &has_completion_factory)
             .field("has_render_stages", &has_render_stages)
             .field("has_animation_handle", &has_animation)
             .field("has_animation_state", &has_animation_state)
             .field("plugin_windows_count", &plugin_windows_count)
             .field("left_panel_width", &left_panel)
             .field("right_panel_width", &right_panel)
+            .field("has_inner_event_tx", &has_inner_event_tx)
             .finish()
     }
 }
@@ -110,12 +122,14 @@ impl PluginStateRegistry {
             text_object_source: RwLock::new(None),
             syntax_factory: RwLock::new(None),
             decoration_factory: RwLock::new(None),
+            completion_factory: RwLock::new(None),
             render_stages: RwLock::new(None),
             plugin_windows: RwLock::new(Vec::new()),
             left_panel_width: RwLock::new(0),
             right_panel_width: RwLock::new(0),
             animation_handle: RwLock::new(None),
             animation_state: RwLock::new(None),
+            inner_event_tx: RwLock::new(None),
         }
     }
 
@@ -185,6 +199,39 @@ impl PluginStateRegistry {
     #[must_use]
     pub fn decoration_factory(&self) -> Option<SharedDecorationFactory> {
         self.decoration_factory.read().unwrap().clone()
+    }
+
+    /// Set the completion factory (used by completion plugin)
+    ///
+    /// This allows the completion plugin to provide auto-completion
+    /// without the runtime needing to know about completion internals.
+    pub fn set_completion_factory(&self, factory: SharedCompletionFactory) {
+        *self.completion_factory.write().unwrap() = Some(factory);
+    }
+
+    /// Get the completion factory
+    ///
+    /// Returns the registered completion factory, or None if none is registered.
+    #[must_use]
+    pub fn completion_factory(&self) -> Option<SharedCompletionFactory> {
+        self.completion_factory.read().unwrap().clone()
+    }
+
+    /// Set the inner event sender (called by Runtime during startup)
+    ///
+    /// This allows plugins like completion to spawn background tasks that
+    /// can send InnerEvent (e.g., RenderSignal) back to the runtime.
+    pub fn set_inner_event_tx(&self, tx: mpsc::Sender<InnerEvent>) {
+        *self.inner_event_tx.write().unwrap() = Some(tx);
+    }
+
+    /// Get the inner event sender
+    ///
+    /// Returns the inner event sender for plugins that need to send InnerEvent
+    /// from background tasks (e.g., completion saturator sending RenderSignal).
+    #[must_use]
+    pub fn inner_event_tx(&self) -> Option<mpsc::Sender<InnerEvent>> {
+        self.inner_event_tx.read().unwrap().clone()
     }
 
     /// Set the render stage registry reference (called by Runtime)

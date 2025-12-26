@@ -7,40 +7,48 @@
 //!
 //! # Architecture
 //!
-//! This plugin is fully self-contained:
-//! - Defines its own command IDs
-//! - Manages its own state via `PluginStateRegistry`
-//! - Renders via `PluginWindow` trait
+//! This plugin follows the treesitter decoupling pattern:
+//! - Defines `SourceSupport` trait for external sources to implement
+//! - Uses background saturator for non-blocking completion
+//! - Uses ArcSwap cache for lock-free render access
 //! - Communicates via `EventBus` events
 
+mod cache;
 mod commands;
-mod completion;
+mod events;
+mod registry;
+mod saturator;
+mod source;
+mod state;
+mod window;
 
 use std::{any::TypeId, sync::Arc};
 
-// Import unified command-event types
-pub use commands::{
-    CompletionConfirm, CompletionDismiss, CompletionSelectNext, CompletionSelectPrev,
-    CompletionTrigger,
-};
-
-use {
-    completion::CompletionState,
-    reovim_core::{
-        bind::CommandRef,
-        command::id::CommandId,
-        frame::FrameBuffer,
-        highlight::Theme,
-        keys,
-        plugin::{
-            EditorContext, Plugin, PluginContext, PluginId, PluginStateRegistry, PluginWindow,
-            Rect, WindowConfig,
-        },
+// Re-export public API
+pub use {
+    cache::{CompletionCache, CompletionSnapshot},
+    commands::{
+        CompletionConfirm, CompletionDismiss, CompletionSelectNext, CompletionSelectPrev,
+        CompletionTrigger, CompletionTriggered,
     },
+    events::{CompletionDismissed, CompletionReady, RegisterSource},
+    registry::{SourceRegistry, SourceSupport},
+    saturator::{CompletionRequest, CompletionSaturatorHandle, spawn_completion_saturator},
+    source::BufferWordsSource,
+    state::SharedCompletionManager,
+    window::CompletionPluginWindow,
 };
 
-// Re-export key types for external use (non-command/event types)
-pub use completion::{CompletionEngine, CompletionItem, CompletionSource};
+// Re-export from core for convenience
+pub use reovim_core::completion::{CompletionContext, CompletionItem, CompletionKind};
+
+use reovim_core::{
+    bind::CommandRef,
+    command::id::CommandId,
+    event_bus::{EventBus, EventResult, core_events::RequestInsertText},
+    keys,
+    plugin::{Plugin, PluginContext, PluginId, PluginStateRegistry},
+};
 
 /// Plugin-local command IDs
 pub mod command_id {
@@ -53,105 +61,31 @@ pub mod command_id {
     pub const COMPLETION_DISMISS: CommandId = CommandId::new("completion_dismiss");
 }
 
-/// Plugin window for completion
-pub struct CompletionPluginWindow;
+/// Code completion plugin
+///
+/// Provides auto-completion with:
+/// - Background saturator for non-blocking computation
+/// - Lock-free cache for responsive UI
+/// - Extensible source system via `SourceSupport` trait
+pub struct CompletionPlugin {
+    manager: Arc<SharedCompletionManager>,
+}
 
-impl PluginWindow for CompletionPluginWindow {
-    #[allow(clippy::cast_possible_truncation)]
-    fn window_config(
-        &self,
-        state: &Arc<PluginStateRegistry>,
-        ctx: &EditorContext,
-    ) -> Option<WindowConfig> {
-        state.with::<CompletionState, _, _>(|completion| {
-            if !completion.active || completion.items.is_empty() {
-                return None;
-            }
-
-            let cursor_x = completion.start_col;
-            let cursor_y = completion.start_row;
-            let max_items = 10.min(completion.items.len());
-            let popup_width = completion
-                .items
-                .iter()
-                .take(max_items)
-                .map(|i| i.label.len())
-                .max()
-                .map_or(12, |w| (w + 2).min(40)) as u16;
-            let prefix_len = completion.prefix.len() as u16;
-            let popup_x = cursor_x
-                .saturating_sub(prefix_len)
-                .min(ctx.screen_width.saturating_sub(popup_width));
-            let popup_y = cursor_y + 1;
-
-            Some(WindowConfig {
-                bounds: Rect::new(popup_x, popup_y, popup_width, max_items as u16),
-                z_order: 200, // Completion dropdown
-                visible: true,
-            })
-        })?
-    }
-
-    #[allow(clippy::cast_possible_truncation)]
-    fn render(
-        &self,
-        state: &Arc<PluginStateRegistry>,
-        ctx: &EditorContext,
-        buffer: &mut FrameBuffer,
-        bounds: Rect,
-        theme: &Theme,
-    ) {
-        let Some(completion) = state.with::<CompletionState, _, _>(Clone::clone) else {
-            return;
-        };
-
-        let items = &completion.items;
-        if items.is_empty() {
-            return;
-        }
-
-        let popup_x = bounds.x;
-        let popup_y = bounds.y;
-        let popup_width = bounds.width;
-        let max_items = bounds.height as usize;
-
-        for (idx, item) in items.iter().take(max_items).enumerate() {
-            let is_selected = idx == completion.selected_index;
-            let style = if is_selected {
-                &theme.popup.selected
-            } else {
-                &theme.popup.normal
-            };
-
-            let row = popup_y + idx as u16;
-            if row >= ctx.screen_height.saturating_sub(1) {
-                break;
-            }
-
-            buffer.put_char(popup_x, row, ' ', style);
-            let label_chars: Vec<char> = item.label.chars().collect();
-            for (i, &ch) in label_chars
-                .iter()
-                .take(popup_width as usize - 2)
-                .enumerate()
-            {
-                buffer.put_char(popup_x + 1 + i as u16, row, ch, style);
-            }
-            for i in label_chars.len().min(popup_width as usize - 2)..popup_width as usize - 1 {
-                buffer.put_char(popup_x + 1 + i as u16, row, ' ', style);
-            }
-            buffer.put_char(popup_x + popup_width - 1, row, ' ', style);
+impl CompletionPlugin {
+    /// Create a new completion plugin
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            manager: Arc::new(SharedCompletionManager::new()),
         }
     }
 }
 
-/// Code completion plugin
-///
-/// Provides auto-completion:
-/// - Trigger completion popup
-/// - Navigate suggestions
-/// - Confirm/dismiss
-pub struct CompletionPlugin;
+impl Default for CompletionPlugin {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl Plugin for CompletionPlugin {
     fn id(&self) -> PluginId {
@@ -163,7 +97,7 @@ impl Plugin for CompletionPlugin {
     }
 
     fn description(&self) -> &'static str {
-        "Auto-completion popup"
+        "Auto-completion with background processing"
     }
 
     fn dependencies(&self) -> Vec<TypeId> {
@@ -179,23 +113,188 @@ impl Plugin for CompletionPlugin {
         let _ = ctx.register_command(CompletionDismiss);
 
         // Register keybindings
-        // Ctrl-Space to trigger completion in insert mode
         use reovim_core::bind::KeymapScope;
         let insert_mode = KeymapScope::editor_insert();
 
+        // Alt-Space to trigger completion in insert mode
         ctx.bind_key_scoped(
             insert_mode.clone(),
-            keys![(Ctrl Space)],
+            keys![(Alt Space)],
             CommandRef::Registered(command_id::COMPLETION_TRIGGER),
         );
 
-        // Completion navigation keybindings (when completion is active)
-        // Note: These are typically handled contextually when completion is visible
-        // The runtime checks if completion is active before dispatching these commands
+        // Navigation keybindings when completion is active
+        ctx.bind_key_scoped(
+            insert_mode.clone(),
+            keys![(Ctrl 'n')],
+            CommandRef::Registered(command_id::COMPLETION_NEXT),
+        );
+
+        ctx.bind_key_scoped(
+            insert_mode.clone(),
+            keys![(Ctrl 'p')],
+            CommandRef::Registered(command_id::COMPLETION_PREV),
+        );
+
+        // Ctrl+y to confirm completion selection (vim convention)
+        ctx.bind_key_scoped(
+            insert_mode.clone(),
+            keys![(Ctrl 'y')],
+            CommandRef::Registered(command_id::COMPLETION_CONFIRM),
+        );
     }
 
     fn init_state(&self, registry: &PluginStateRegistry) {
+        // Register the shared manager for cross-plugin access
+        registry.register(Arc::clone(&self.manager));
+
         // Register the plugin window
-        registry.register_plugin_window(Arc::new(CompletionPluginWindow));
+        registry.register_plugin_window(Arc::new(CompletionPluginWindow::new(Arc::clone(
+            &self.manager,
+        ))));
+    }
+
+    fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {
+        // Subscribe to CompletionTriggered events (from CompletionTrigger command)
+        let manager = Arc::clone(&self.manager);
+        bus.subscribe::<CompletionTriggered, _>(100, move |event, ctx| {
+            tracing::info!("CompletionTriggered event received, prefix={}", event.request.prefix);
+            manager.request_completion(event.request.clone());
+            ctx.request_render();
+            EventResult::Handled
+        });
+
+        // Subscribe to RegisterSource events from external plugins
+        let manager = Arc::clone(&self.manager);
+        bus.subscribe::<RegisterSource, _>(100, move |event, _ctx| {
+            manager.register_source(Arc::clone(&event.source));
+            EventResult::Handled
+        });
+
+        // Subscribe to CompletionSelectNext command
+        let manager = Arc::clone(&self.manager);
+        bus.subscribe::<CompletionSelectNext, _>(100, move |_event, ctx| {
+            if manager.is_active() {
+                manager.select_next();
+                ctx.request_render();
+                EventResult::Handled
+            } else {
+                EventResult::NotHandled
+            }
+        });
+
+        // Subscribe to CompletionSelectPrev command
+        let manager = Arc::clone(&self.manager);
+        bus.subscribe::<CompletionSelectPrev, _>(100, move |_event, ctx| {
+            if manager.is_active() {
+                manager.select_prev();
+                ctx.request_render();
+                EventResult::Handled
+            } else {
+                EventResult::NotHandled
+            }
+        });
+
+        // Subscribe to CompletionDismiss command
+        let manager = Arc::clone(&self.manager);
+        bus.subscribe::<CompletionDismiss, _>(100, move |_event, ctx| {
+            if manager.is_active() {
+                manager.dismiss();
+                ctx.request_render();
+                EventResult::Handled
+            } else {
+                EventResult::NotHandled
+            }
+        });
+
+        // Subscribe to CompletionConfirm command
+        let manager = Arc::clone(&self.manager);
+        bus.subscribe::<CompletionConfirm, _>(100, move |_event, ctx| {
+            if !manager.is_active() {
+                return EventResult::NotHandled;
+            }
+
+            let snapshot = manager.snapshot();
+            let Some(item) = snapshot.selected_item() else {
+                return EventResult::NotHandled;
+            };
+
+            // Calculate text to insert (remaining part after prefix)
+            let insert_text = if item.insert_text.starts_with(&snapshot.prefix) {
+                item.insert_text[snapshot.prefix.len()..].to_string()
+            } else {
+                item.insert_text.clone()
+            };
+
+            if !insert_text.is_empty() {
+                ctx.emit(RequestInsertText {
+                    text: insert_text,
+                    move_cursor_left: false,
+                });
+            }
+
+            manager.dismiss();
+            ctx.request_render();
+            EventResult::Handled
+        });
+
+        // Subscribe to ModeChanged to dismiss completion when leaving insert
+        let manager = Arc::clone(&self.manager);
+        bus.subscribe::<reovim_core::event_bus::core_events::ModeChanged, _>(
+            100,
+            move |event, ctx| {
+                // Dismiss if leaving insert mode
+                if !event.to.contains("Insert") && manager.is_active() {
+                    manager.dismiss();
+                    ctx.request_render();
+                }
+                EventResult::Handled
+            },
+        );
+
+        let _ = state; // Suppress unused warning
+    }
+
+    fn boot(&self, _bus: &EventBus, state: Arc<PluginStateRegistry>) {
+        // Get inner_event_tx from state registry for the saturator
+        let Some(event_tx) = state.inner_event_tx() else {
+            tracing::warn!("Completion plugin boot: inner_event_tx not available");
+            return;
+        };
+
+        // Spawn the completion saturator
+        let sources = self.manager.sources();
+        let cache = Arc::clone(&self.manager.cache);
+
+        let handle = spawn_completion_saturator(sources, cache, event_tx, 50);
+
+        self.manager.set_saturator(handle);
+
+        tracing::info!("Completion plugin booted with saturator");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_completion_plugin_new() {
+        let plugin = CompletionPlugin::new();
+        assert_eq!(plugin.id().as_str(), "reovim:completion");
+        assert_eq!(plugin.name(), "Completion");
+    }
+
+    #[test]
+    fn test_completion_plugin_default() {
+        let plugin = CompletionPlugin::default();
+        assert_eq!(plugin.name(), "Completion");
+    }
+
+    #[test]
+    fn test_completion_plugin_dependencies() {
+        let plugin = CompletionPlugin::new();
+        let deps = plugin.dependencies();
+        assert!(deps.is_empty());
     }
 }

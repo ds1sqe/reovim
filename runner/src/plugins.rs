@@ -39,7 +39,7 @@ impl PluginTuple for AllPlugins {
         loader.add(FoldPlugin::new());
         loader.add(PairPlugin::new());
         loader.add(SettingsMenuPlugin);
-        loader.add(CompletionPlugin);
+        loader.add(CompletionPlugin::new());
         loader.add(ExplorerPlugin);
         loader.add(TelescopePlugin);
 
@@ -71,7 +71,7 @@ pub fn default_plugins() -> impl IntoIterator<Item = Box<dyn Plugin>> {
         Box::new(WindowPlugin),
         Box::new(LeapPlugin),
         Box::new(TelescopePlugin),
-        Box::new(CompletionPlugin),
+        Box::new(CompletionPlugin::new()),
         Box::new(ExplorerPlugin),
         Box::new(FoldPlugin::new()),
         Box::new(PairPlugin::new()),
@@ -109,7 +109,7 @@ pub fn create_plugin_loader() -> PluginLoader {
     loader.add(FoldPlugin::new());
     loader.add(PairPlugin::new());
     loader.add(SettingsMenuPlugin);
-    loader.add(CompletionPlugin);
+    loader.add(CompletionPlugin::new());
     loader.add(ExplorerPlugin);
     loader.add(TelescopePlugin);
     // Treesitter infrastructure

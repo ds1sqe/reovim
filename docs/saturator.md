@@ -252,8 +252,66 @@ if buffer.has_saturator() {
 }
 ```
 
+## Completion Saturator
+
+The completion plugin uses the same saturator pattern for non-blocking completion:
+
+```
+┌─────────────────┐     ┌───────────────────────┐     ┌─────────────────┐
+│  Trigger Event  │────▶│ CompletionSaturator   │────▶│ CompletionCache │
+│   (Alt-Space)   │     │     (background)      │     │    (ArcSwap)    │
+└─────────────────┘     └───────────────────────┘     └─────────────────┘
+                                                              │
+                                                              ▼
+                                                  ┌────────────────────────┐
+                                                  │ CompletionPluginWindow │
+                                                  │    (lock-free read)    │
+                                                  └────────────────────────┘
+```
+
+**Key Components:**
+
+| Component | Purpose |
+|-----------|---------|
+| `CompletionRequest` | Request with buffer content, cursor position, prefix |
+| `CompletionSaturatorHandle` | Handle for non-blocking `try_send()` |
+| `CompletionCache` | ArcSwap-based cache for lock-free render reads |
+| `CompletionSnapshot` | Immutable snapshot with items, selection, position |
+
+**Request Structure:**
+```rust
+pub struct CompletionRequest {
+    pub buffer_id: usize,
+    pub content: String,
+    pub cursor_row: u32,
+    pub cursor_col: u32,
+    pub line: String,
+    pub prefix: String,
+    pub word_start_col: u32,
+    pub trigger_char: Option<char>,
+}
+```
+
+**Saturator Flow:**
+1. User triggers completion (Alt-Space in insert mode)
+2. `CompletionTrigger` command sends `CompletionRequest` via `try_send()`
+3. Saturator queries all registered `SourceSupport` implementations
+4. Results merged by priority and stored in cache via `ArcSwap::store()`
+5. `RenderSignal` triggers UI update
+6. `CompletionPluginWindow` reads from cache (lock-free)
+
+**Files:**
+
+| File | Purpose |
+|------|---------|
+| `plugins/features/completion/src/saturator.rs` | Saturator spawn and logic |
+| `plugins/features/completion/src/cache.rs` | Lock-free completion cache |
+| `plugins/features/completion/src/state.rs` | SharedCompletionManager (holds cache + saturator) |
+| `plugins/features/completion/src/window.rs` | Plugin window (reads from cache) |
+
 ## Related
 
 - [Architecture Overview](./architecture.md) - Core editor architecture
 - [Syntax System](./architecture.md#syntax-system-libcoresrcsyntax) - Buffer-centric syntax design
 - [Background Saturator](./architecture.md#background-saturator-performance-optimization) - Summary in architecture doc
+- [Completion Plugin](./architecture.md#completion-plugin-pluginsfeaturescompletion) - Completion architecture

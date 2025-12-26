@@ -1,6 +1,8 @@
 pub mod animation;
 pub mod bind;
 pub mod buffer;
+pub mod command;
+pub mod completion;
 pub mod component;
 pub mod decoration;
 pub mod display;
@@ -13,8 +15,6 @@ pub mod visual;
 
 /// Re-export `reovim_sys` for plugin access to low-level types (Color, etc.)
 pub use reovim_sys as sys;
-
-pub mod command;
 pub mod command_line;
 pub mod compositor;
 pub mod config;

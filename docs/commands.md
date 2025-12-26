@@ -229,7 +229,7 @@ Folds are computed from treesitter queries when a buffer is opened.
 ### Completion (5)
 | Command | Key | Description |
 |---------|-----|-------------|
-| `completion_trigger` | Ctrl-Space | Show completion menu |
+| `completion_trigger` | Alt-Space | Show completion menu |
 | `completion_next` | Ctrl-n | Select next completion item |
 | `completion_prev` | Ctrl-p | Select previous completion item |
 | `completion_confirm` | Tab | Insert selected completion |

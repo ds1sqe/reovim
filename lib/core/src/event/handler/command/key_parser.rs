@@ -10,6 +10,7 @@ use {
 pub fn key_to_string(event: &KeyEvent) -> String {
     let has_ctrl = event.modifiers.contains(KeyModifiers::CONTROL);
     let has_shift = event.modifiers.contains(KeyModifiers::SHIFT);
+    let has_alt = event.modifiers.contains(KeyModifiers::ALT);
 
     // Handle Ctrl+Shift combinations (e.g., C-S-H for window movement)
     if has_ctrl
@@ -24,6 +25,17 @@ pub fn key_to_string(event: &KeyEvent) -> String {
         match event.code {
             KeyCode::Char(c) => return format!("<C-{c}>"),
             KeyCode::Tab => return String::from("<C-Tab>"),
+            _ => {}
+        }
+    }
+
+    // Handle Alt combinations
+    if has_alt {
+        match event.code {
+            KeyCode::Char(' ') => return String::from("<A-Space>"),
+            KeyCode::Char(c) => return format!("<A-{c}>"),
+            KeyCode::Enter => return String::from("<A-Enter>"),
+            KeyCode::Tab => return String::from("<A-Tab>"),
             _ => {}
         }
     }

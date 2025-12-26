@@ -94,19 +94,50 @@ pub fn keys_from_str(s: &str) -> Vec<KeyEvent> {
     events
 }
 
+/// Parse a named key (without modifiers) and return its `KeyCode`.
+/// Used for modifier + named key combinations like `<A-Space>`, `<C-Enter>`.
+fn parse_named_key(s: &str) -> Option<KeyCode> {
+    match s {
+        "ESC" | "ESCAPE" => Some(KeyCode::Esc),
+        "CR" | "ENTER" | "RETURN" => Some(KeyCode::Enter),
+        "TAB" => Some(KeyCode::Tab),
+        "BS" | "BACKSPACE" => Some(KeyCode::Backspace),
+        "SPACE" | "SPC" => Some(KeyCode::Char(' ')),
+        "UP" => Some(KeyCode::Up),
+        "DOWN" => Some(KeyCode::Down),
+        "LEFT" => Some(KeyCode::Left),
+        "RIGHT" => Some(KeyCode::Right),
+        "HOME" => Some(KeyCode::Home),
+        "END" => Some(KeyCode::End),
+        "PAGEUP" | "PGUP" => Some(KeyCode::PageUp),
+        "PAGEDOWN" | "PGDN" => Some(KeyCode::PageDown),
+        "INSERT" | "INS" => Some(KeyCode::Insert),
+        "DELETE" | "DEL" => Some(KeyCode::Delete),
+        _ => None,
+    }
+}
+
 /// Parse a special key notation string.
 fn parse_special_key(s: &str) -> Option<KeyEvent> {
     let upper = s.to_uppercase();
 
     // Check for modifier prefixes
     if let Some(rest) = upper.strip_prefix("C-") {
-        // Ctrl combination
+        // Ctrl combination - check if rest is a named key first
+        if let Some(named_key) = parse_named_key(rest) {
+            return Some(key_mod(named_key, KeyModifiers::CONTROL));
+        }
+        // Single character
         let c = rest.chars().next()?;
         return Some(ctrl(c.to_ascii_lowercase()));
     }
 
     if let Some(rest) = upper.strip_prefix("S-") {
-        // Shift combination
+        // Shift combination - check if rest is a named key first
+        if let Some(named_key) = parse_named_key(rest) {
+            return Some(key_mod(named_key, KeyModifiers::SHIFT));
+        }
+        // Single character
         let c = rest.chars().next()?;
         return Some(key_mod(KeyCode::Char(c), KeyModifiers::SHIFT));
     }
@@ -115,7 +146,11 @@ fn parse_special_key(s: &str) -> Option<KeyEvent> {
         .strip_prefix("A-")
         .or_else(|| upper.strip_prefix("M-"))
     {
-        // Alt/Meta combination
+        // Alt/Meta combination - check if rest is a named key first
+        if let Some(named_key) = parse_named_key(rest) {
+            return Some(key_mod(named_key, KeyModifiers::ALT));
+        }
+        // Single character
         let c = rest.chars().next()?;
         return Some(key_mod(KeyCode::Char(c.to_ascii_lowercase()), KeyModifiers::ALT));
     }
@@ -229,5 +264,32 @@ mod tests {
         assert_eq!(events[3].code, KeyCode::Char('q'));
         assert_eq!(events[4].code, KeyCode::Char('!'));
         assert_eq!(events[5].code, KeyCode::Enter);
+    }
+
+    #[test]
+    fn test_keys_from_str_alt_space() {
+        // Alt+Space should produce KeyCode::Char(' ') with ALT modifier
+        let events = keys_from_str("<A-Space>");
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].code, KeyCode::Char(' '));
+        assert!(events[0].modifiers.contains(KeyModifiers::ALT));
+    }
+
+    #[test]
+    fn test_keys_from_str_ctrl_enter() {
+        // Ctrl+Enter should produce KeyCode::Enter with CONTROL modifier
+        let events = keys_from_str("<C-Enter>");
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].code, KeyCode::Enter);
+        assert!(events[0].modifiers.contains(KeyModifiers::CONTROL));
+    }
+
+    #[test]
+    fn test_keys_from_str_shift_tab() {
+        // Shift+Tab should produce KeyCode::Tab with SHIFT modifier
+        let events = keys_from_str("<S-Tab>");
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].code, KeyCode::Tab);
+        assert!(events[0].modifiers.contains(KeyModifiers::SHIFT));
     }
 }

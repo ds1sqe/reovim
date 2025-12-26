@@ -392,11 +392,74 @@ In-editor settings configuration:
 
 ### CompletionPlugin (`reovim-plugin-completion`)
 
-Text completion with popup menu:
-- Trigger (`Ctrl-Space`)
-- Navigate (`Ctrl-n`/`Ctrl-p`)
-- Confirm (`Tab`)
-- Dismiss (`Esc`)
+Text completion with popup menu and background processing (treesitter-like pattern):
+
+**Features:**
+- Popup menu with completion suggestions
+- Ghost text preview (remaining text shown inline in dim grey)
+- Background saturator for non-blocking completion
+- Lock-free cache for responsive UI
+
+**Keybindings:**
+- `Alt-Space` (insert mode) - Trigger completion
+- `Ctrl-n`/`Ctrl-p` - Navigate suggestions
+- `Tab` - Confirm selection
+- `Escape` - Dismiss popup
+
+**Plugin Structure:**
+```
+plugins/features/completion/src/
+├── lib.rs          # CompletionPlugin only (clean)
+├── state.rs        # SharedCompletionManager (RwLock wrapper)
+├── window.rs       # CompletionPluginWindow
+├── cache.rs        # CompletionCache (ArcSwap, lock-free)
+├── saturator.rs    # Background completion task
+├── registry.rs     # SourceRegistry, SourceSupport trait
+├── events.rs       # RegisterSource, CompletionReady events
+├── commands.rs     # Unified command-event types
+└── source/
+    ├── mod.rs
+    └── buffer.rs   # BufferWordsSource
+```
+
+**Architecture (follows treesitter pattern):**
+- `CompletionPlugin` - Main plugin, registers commands and keybindings
+- `SharedCompletionManager` - Thread-safe wrapper for cross-plugin access
+- `CompletionPluginWindow` - PluginWindow for popup rendering
+- `CompletionSaturator` - Background task for non-blocking completion
+- `CompletionCache` - ArcSwap cache for lock-free render access
+- `SourceRegistry` - Dynamic source registration
+- `SourceSupport` trait - Interface for completion sources
+
+**Source Registration:**
+```rust
+// External plugins register sources via events
+bus.emit(RegisterSource {
+    source: Arc::new(MyCompletionSource::new()),
+});
+
+// Completion plugin receives and registers
+bus.subscribe::<RegisterSource, _>(100, move |event, ctx| {
+    manager.register_source(Arc::clone(&event.source));
+    EventResult::Handled
+});
+```
+
+**SourceSupport Trait:**
+```rust
+pub trait SourceSupport: Send + Sync + 'static {
+    fn source_id(&self) -> &'static str;
+    fn priority(&self) -> u32 { 100 }
+    fn complete<'a>(
+        &'a self,
+        ctx: &'a CompletionContext,
+        content: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Vec<CompletionItem>> + Send + 'a>>;
+}
+```
+
+**Built-in Sources:**
+- `BufferWordsSource` - Completes words from current buffer
 
 ### ExplorerPlugin (`reovim-plugin-explorer`)
 
