@@ -8,9 +8,7 @@ use {
             InnerEvent,
             inner::{CommandEvent, VisualTextObjectAction},
         },
-        event_bus::{DynEvent, Event},
         modd::{ComponentId, ModeState, OperatorType, SubMode},
-        plugin::PluginId,
     },
     tokio::sync::mpsc::Sender,
 };
@@ -167,32 +165,5 @@ impl Dispatcher {
             .inner_tx
             .send(InnerEvent::TextInputEvent(crate::event::TextInputEvent::DeleteCharBackward))
             .await;
-    }
-
-    /// Send a plugin event to be dispatched via the event bus
-    ///
-    /// This allows the `CommandHandler` to dispatch plugin-defined events
-    /// (e.g., `WhichKeyOpen` with prefix data) without going through the
-    /// registered command system.
-    pub async fn send_plugin_event<E: Event + Clone + 'static>(
-        &self,
-        plugin_id: PluginId,
-        event: E,
-    ) {
-        tracing::debug!(
-            "send_plugin_event: dispatching to plugin_id={:?}, event_type={}",
-            plugin_id,
-            std::any::type_name::<E>()
-        );
-        let result = self
-            .inner_tx
-            .send(InnerEvent::PluginEvent {
-                plugin_id,
-                event: DynEvent::new(event),
-            })
-            .await;
-        if let Err(e) = result {
-            tracing::error!("send_plugin_event: failed to send event: {}", e);
-        }
     }
 }

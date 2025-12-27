@@ -21,8 +21,6 @@ pub enum KeyBindingAction {
 pub struct FeatureFlags {
     /// Disable completion popup
     pub disable_completion: Option<bool>,
-    /// Disable which-key popup
-    pub disable_which_key: Option<bool>,
     /// Disable auto-indent
     pub disable_auto_indent: Option<bool>,
     /// Disable syntax highlighting
@@ -46,7 +44,6 @@ impl FeatureFlags {
 
         Self {
             disable_completion: other.disable_completion.or(self.disable_completion),
-            disable_which_key: other.disable_which_key.or(self.disable_which_key),
             disable_auto_indent: other.disable_auto_indent.or(self.disable_auto_indent),
             disable_syntax: other.disable_syntax.or(self.disable_syntax),
             custom,
@@ -57,12 +54,6 @@ impl FeatureFlags {
     #[must_use]
     pub fn is_completion_disabled(&self) -> bool {
         self.disable_completion.unwrap_or(false)
-    }
-
-    /// Check if which-key is disabled
-    #[must_use]
-    pub fn is_which_key_disabled(&self) -> bool {
-        self.disable_which_key.unwrap_or(false)
     }
 }
 
@@ -93,7 +84,6 @@ impl BehaviorModifiers {
         self.keybinding_overrides.is_empty()
             && self.disabled_commands.is_empty()
             && self.features.disable_completion.is_none()
-            && self.features.disable_which_key.is_none()
             && self.features.disable_auto_indent.is_none()
             && self.features.disable_syntax.is_none()
             && self.features.custom.is_empty()
@@ -133,13 +123,6 @@ impl BehaviorModifiers {
     #[must_use]
     pub const fn with_completion_disabled(mut self, disabled: bool) -> Self {
         self.features.disable_completion = Some(disabled);
-        self
-    }
-
-    /// Disable which-key
-    #[must_use]
-    pub const fn with_which_key_disabled(mut self, disabled: bool) -> Self {
-        self.features.disable_which_key = Some(disabled);
         self
     }
 }
@@ -205,19 +188,19 @@ mod tests {
     fn test_feature_flags_merge() {
         let base = FeatureFlags {
             disable_completion: Some(true),
-            disable_which_key: None,
+            disable_auto_indent: None,
             ..Default::default()
         };
 
         let overlay = FeatureFlags {
             disable_completion: None,
-            disable_which_key: Some(true),
+            disable_auto_indent: Some(true),
             ..Default::default()
         };
 
         let merged = base.merge(&overlay);
 
         assert_eq!(merged.disable_completion, Some(true)); // From base
-        assert_eq!(merged.disable_which_key, Some(true)); // From overlay
+        assert_eq!(merged.disable_auto_indent, Some(true)); // From overlay
     }
 }

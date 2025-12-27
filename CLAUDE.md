@@ -29,6 +29,25 @@ No warnings are acceptable. Fix all warnings before committing.
 
 Use `REOVIM_LOG=debug` to enable debug logging in spawned server processes.
 
+### Plugin Decoupling Policy
+
+**NEVER add plugin-specific code to reovim-core.** Core must remain plugin-agnostic.
+
+**If the current API doesn't support your plugin's needs:**
+1. **Propose an API extension** - Design a general-purpose API that solves the problem
+2. **Document the proposal** in `tmp/<plugin>-api-proposal.md`
+3. **Get approval** before implementing
+
+**Examples of violations (DON'T DO):**
+- Adding `WhichKeyOpen` event in core
+- Adding `disable_which_key` behavior flag
+- Adding `ComposableId::WhichKey` enum variant
+
+**Correct approach:**
+- Plugin defines its own events in plugin code
+- Use generic APIs: `ComposableId::Custom("my_plugin")`
+- Extend core APIs only when multiple plugins would benefit
+
 ## Build Commands
 
 ```bash

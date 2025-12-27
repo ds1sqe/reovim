@@ -8,7 +8,7 @@ mod filter;
 mod saturator;
 mod state;
 
-pub use commands::{WhichKeyBackspace, WhichKeyClose, WhichKeyOpen};
+pub use commands::{WhichKeyBackspace, WhichKeyClose, WhichKeyOpen, WhichKeyTrigger};
 
 use std::sync::Arc;
 
@@ -58,10 +58,43 @@ impl Plugin for WhichKeyPlugin {
 
     fn build(&self, ctx: &mut PluginContext) {
         // Register commands
-        // Note: WhichKeyOpen is NOT registered as a command - it's dispatched directly
-        // from CommandHandler with prefix data when user presses '?'
         let _ = ctx.register_command(WhichKeyClose);
         let _ = ctx.register_command(WhichKeyBackspace);
+
+        // Register ? keybindings for common prefixes in editor normal mode
+        // Each binding triggers which-key with the appropriate prefix
+        let editor_normal = KeymapScope::editor_normal();
+
+        // Standalone ? (shows all bindings)
+        ctx.keymap_mut().bind_scoped(
+            editor_normal.clone(),
+            keys!['?'],
+            CommandRef::Inline(WhichKeyTrigger::arc(keys![])),
+        );
+
+        // Common prefix + ? bindings
+        // These allow g?, z?, Space?, d?, y?, c? to show context-specific bindings
+        let common_prefixes = [
+            keys!['g'],       // g-prefix commands
+            keys!['z'],       // fold commands
+            keys![Space],     // leader key
+            keys![Space 'f'], // find prefix
+            keys![Space 'b'], // buffer prefix
+            keys![Space 'w'], // window prefix
+            keys!['d'],       // delete operator
+            keys!['y'],       // yank operator
+            keys!['c'],       // change operator
+        ];
+
+        for prefix in common_prefixes {
+            let mut full_keys = prefix.clone();
+            full_keys.push(Keystroke::char('?'));
+            ctx.keymap_mut().bind_scoped(
+                editor_normal.clone(),
+                full_keys,
+                CommandRef::Inline(WhichKeyTrigger::arc(prefix)),
+            );
+        }
 
         // Define which-key interactor scope for keybindings
         let which_key_interactor = KeymapScope::SubMode(SubModeKind::Interactor(COMPONENT_ID));

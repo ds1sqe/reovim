@@ -53,7 +53,7 @@ impl KeymapsPicker {
                         mode: mode_name.to_string(),
                         key: key.to_string(),
                         command,
-                        description: inner.hint.clone(),
+                        description: inner.description.clone(),
                     });
                 }
             }

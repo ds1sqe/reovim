@@ -160,10 +160,7 @@ pub enum ComposableId {
     Window(usize),
     /// Floating window by ID
     FloatingWindow(usize),
-    /// Which-key panel
-    WhichKey,
-    // SettingsMenu is now handled by the settings-menu plugin
-    /// Custom identifier
+    /// Custom identifier (for plugins)
     Custom(&'static str),
 }
 
@@ -175,7 +172,6 @@ impl ComposableId {
             Self::Base | Self::TabLine | Self::StatusLine => ZGroup::Base,
             Self::Window(_) | Self::Custom(_) => ZGroup::Editor,
             Self::FloatingWindow(_) => ZGroup::Floating,
-            Self::WhichKey => ZGroup::Panel,
         }
     }
 }
@@ -551,7 +547,7 @@ mod tests {
         assert_eq!(ComposableId::Base.default_group(), ZGroup::Base);
         assert_eq!(ComposableId::Window(0).default_group(), ZGroup::Editor);
         assert_eq!(ComposableId::FloatingWindow(0).default_group(), ZGroup::Floating);
-        assert_eq!(ComposableId::WhichKey.default_group(), ZGroup::Panel);
+        assert_eq!(ComposableId::Custom("test").default_group(), ZGroup::Editor);
     }
 
     #[test]

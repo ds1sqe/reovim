@@ -74,6 +74,12 @@ Before committing:
 - Prefer clarity over cleverness
 - Avoid unnecessary abstractions
 
+### Plugin Decoupling
+
+- Never add plugin-specific code to core
+- If API is insufficient, propose an extension (see [plugin-system.md](./plugin-system.md))
+- Plugins must be fully self-contained
+
 ## Project Structure
 
 ```

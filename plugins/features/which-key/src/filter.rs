@@ -50,14 +50,14 @@ pub fn filter_bindings(
             entries.push(BindingEntry {
                 suffix,
                 description,
-                group: inner.group,
+                category: inner.category,
             });
         }
     }
 
-    // Sort by group, then by key
+    // Sort by category, then by key
     entries.sort_by(|a, b| {
-        match (a.group, b.group) {
+        match (a.category, b.category) {
             (Some(ga), Some(gb)) => ga.cmp(gb),
             (Some(_), None) => std::cmp::Ordering::Less,
             (None, Some(_)) => std::cmp::Ordering::Greater,
