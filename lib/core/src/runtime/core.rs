@@ -17,7 +17,10 @@ use {
         constants::EVENT_CHANNEL_CAPACITY,
         decoration::{DecorationStore, LanguageRendererRegistry},
         event::InnerEvent,
-        event_bus::{BufferClosed, EventBus, EventSender, FileOpened},
+        event_bus::{
+            BufferClosed, DynEvent, EventBus, EventSender, FileOpened, HandlerContext,
+            core_events::ModeChanged,
+        },
         highlight::{ColorMode, HighlightStore, Theme},
         indent::IndentAnalyzer,
         jumplist::JumpList,
@@ -348,6 +351,13 @@ impl Runtime {
                 .subscribe::<RequestInsertText, _>(100, move |event, _ctx| {
                     tracing::trace!("Runtime: Inserting text via plugin request: {:?}", event.text);
 
+                    // Delete prefix first (for completion: replace typed prefix with full word)
+                    for _ in 0..event.delete_prefix_len {
+                        let _ = tx.try_send(InnerEvent::TextInputEvent(
+                            TextInputEvent::DeleteCharBackward,
+                        ));
+                    }
+
                     // Insert each character
                     for c in event.text.chars() {
                         let _ =
@@ -395,6 +405,10 @@ impl Runtime {
         let was_insert = self.mode_state.is_insert();
         let is_insert = mode_state.is_insert();
 
+        // Capture old mode description for ModeChanged event
+        let from_mode = format!("{:?}", self.mode_state.edit_mode);
+        let to_mode = format!("{:?}", mode_state.edit_mode);
+
         // Handle undo batching on insert mode transitions
         if !was_insert && is_insert {
             // Entering insert mode: begin batching
@@ -410,6 +424,15 @@ impl Runtime {
 
         self.mode_state = mode_state.clone();
         let _ = self.mode_tx.send(mode_state);
+
+        // Dispatch ModeChanged event to event bus for plugin subscriptions
+        let dyn_event = DynEvent::new(ModeChanged {
+            from: from_mode,
+            to: to_mode,
+        });
+        let sender = self.event_bus.sender();
+        let mut ctx = HandlerContext::new(&sender);
+        let _ = self.event_bus.dispatch(&dyn_event, &mut ctx);
     }
 
     /// Get current mode state

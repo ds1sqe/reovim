@@ -145,6 +145,7 @@ impl Plugin for PairPlugin {
                     ctx.emit(RequestInsertText {
                         text: closing.to_string(),
                         move_cursor_left: true,
+                        delete_prefix_len: 0,
                     });
                 }
             }

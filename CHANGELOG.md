@@ -6,6 +6,26 @@ All notable changes to Reovim will be documented in this file.
 
 ### Added
 
+- **Completion fuzzy filtering** - Nucleo-based fuzzy matching with score threshold
+  - Filters items based on typed prefix using `nucleo` crate
+  - Minimum score threshold (`prefix.len() * 10`) prevents irrelevant matches
+  - Sets `CompletionItem::score` and `match_indices` for highlighting
+
+- **Completion match highlighting** - Per-character styling for matched characters
+  - Added `match_indices: Vec<u32>` field to `CompletionItem`
+  - Added `match_fg` style to `PopupStyles` (yellow/bold)
+  - Matched characters rendered with highlight color
+
+- **Completion UI columns** - Kind and source indicators in popup
+  - Kind column (left): Colored abbreviation (`fn`, `mod`, `st`, `var`, etc.)
+  - Source column (right): Dimmed source name (`buffer_words`, `lsp`, etc.)
+  - Format: `[kind] [label] [source]`
+
+- **RequestInsertText prefix deletion** - Replace typed prefix on completion confirm
+  - Added `delete_prefix_len: usize` field to `RequestInsertText` event
+  - Runtime deletes prefix before inserting completion text
+  - Fixes `pkg` → `CARGO_PKG` instead of `pkgCARGO_PKG`
+
 - **Completion auto-popup** - Automatic completion after 300ms debounce
   - Triggers on text insertion in insert mode
   - Uses generation counter for proper debounce cancellation
@@ -29,16 +49,18 @@ All notable changes to Reovim will be documented in this file.
   - Added `is_word_boundary()` function with programming delimiters
   - Correctly extracts prefix for cases like `foo.bar.hel` -> `hel`
 
+- **Completion live update** - Popup updates as user types
+  - Re-triggers completion immediately when active (no debounce delay)
+  - Dismisses on whitespace, mode change, or empty prefix
+
+- **Completion dismiss behavior** - Proper cleanup on various events
+  - Dismisses when leaving insert mode (via `ModeChanged`)
+  - Dismisses when typing whitespace (space/enter)
+  - Validates cursor position when completion re-triggers
+
 - **Microscope backspace** - Backspace now works in microscope interactor mode
   - Added `PluginBackspace` subscription to microscope plugin
   - Previously, backspace events were silently dropped in microscope query input
-
-### Documentation
-
-- **Completion known issues** - Added `docs/issues/cmp.md`
-  - Issue #1: Missing filtering logic (items not filtered by prefix)
-  - Issue #2: No dismiss on cursor movement
-  - Issue #3: No highlight on matching characters
 
 ### Changed
 

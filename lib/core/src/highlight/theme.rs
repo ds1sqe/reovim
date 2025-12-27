@@ -115,6 +115,8 @@ pub struct PopupStyles {
     pub normal: Style,
     pub selected: Style,
     pub border: Style,
+    /// Foreground color for matched characters in fuzzy completion
+    pub match_fg: Style,
 }
 
 #[derive(Debug, Clone)]
@@ -418,6 +420,7 @@ impl Theme {
                 normal: Style::new().fg(fg).bg(bg_medium),
                 selected: Style::new().fg(bg_dark).bg(blue),
                 border: Style::new().fg(fg_dark).bg(bg_medium),
+                match_fg: Style::new().fg(yellow).bold(),
             },
             whichkey: WhichKeyStyles {
                 background: Style::new().bg(bg_medium),
@@ -583,6 +586,7 @@ impl Theme {
                 normal: Style::new().fg(fg_light).bg(Color::AnsiValue(252)),
                 selected: Style::new().fg(Color::White).bg(Color::DarkBlue),
                 border: Style::new().fg(Color::Grey).bg(Color::AnsiValue(252)),
+                match_fg: Style::new().fg(Color::DarkYellow).bold(),
             },
             whichkey: WhichKeyStyles {
                 background: Style::new().bg(bg_medium),
@@ -821,6 +825,7 @@ impl Theme {
                 normal: Style::new().fg(fg).bg(bg_dark),
                 selected: Style::new().fg(bg).bg(blue),
                 border: Style::new().fg(fg_dark).bg(bg_dark),
+                match_fg: Style::new().fg(orange).bold(),
             },
             whichkey: WhichKeyStyles {
                 background: Style::new().bg(bg_dark),

@@ -8,6 +8,11 @@ use std::sync::Arc;
 
 use {futures::future::join_all, tokio::sync::mpsc};
 
+use nucleo::{
+    Matcher, Utf32Str,
+    pattern::{AtomKind, CaseMatching, Normalization, Pattern},
+};
+
 use reovim_core::{
     completion::{CompletionContext, CompletionItem},
     event::InnerEvent,
@@ -133,10 +138,46 @@ pub fn spawn_completion_saturator(
 
             let results: Vec<Vec<CompletionItem>> = join_all(futures).await;
 
-            // Merge and sort results
+            // Merge results
             let mut items: Vec<CompletionItem> = results.into_iter().flatten().collect();
 
-            // Sort by priority then score
+            // Filter and score using nucleo fuzzy matching if prefix is non-empty
+            let prefix = &request.prefix;
+            if !prefix.is_empty() {
+                let mut matcher = Matcher::new(nucleo::Config::DEFAULT);
+                let pattern = Pattern::new(
+                    prefix,
+                    CaseMatching::Smart,
+                    Normalization::Smart,
+                    AtomKind::Fuzzy,
+                );
+
+                // Minimum score threshold: require reasonable match quality
+                // Score roughly scales with match quality - require at least
+                // some portion of the prefix to match well
+                let min_score = (prefix.len() as u32).saturating_mul(10);
+
+                items = items
+                    .into_iter()
+                    .filter_map(|mut item| {
+                        let filter_text = item.filter_text();
+                        let mut buf = Vec::new();
+                        let haystack = Utf32Str::new(filter_text, &mut buf);
+                        let mut indices = Vec::new();
+
+                        pattern
+                            .indices(haystack, &mut matcher, &mut indices)
+                            .filter(|&score| score >= min_score)
+                            .map(|score| {
+                                item.score = score;
+                                item.match_indices = indices.to_vec();
+                                item
+                            })
+                    })
+                    .collect();
+            }
+
+            // Sort by priority, then score (descending), then label
             items.sort_by(|a, b| {
                 a.sort_priority
                     .cmp(&b.sort_priority)
@@ -279,7 +320,8 @@ mod tests {
         let handle =
             spawn_completion_saturator(Arc::clone(&sources), Arc::clone(&cache), event_tx, 100);
 
-        handle.request_completion(make_request("t"));
+        // Empty prefix shows all items (no filtering)
+        handle.request_completion(make_request(""));
 
         // Wait for render signal
         let event = tokio::time::timeout(std::time::Duration::from_millis(100), event_rx.recv())

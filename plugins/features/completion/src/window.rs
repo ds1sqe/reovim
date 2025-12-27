@@ -4,9 +4,10 @@
 //! Reads from the lock-free cache for non-blocking rendering.
 //! Also renders ghost text inline at cursor position.
 
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use reovim_core::{
+    completion::CompletionKind,
     frame::FrameBuffer,
     highlight::{Style, Theme},
     plugin::{EditorContext, PluginStateRegistry, PluginWindow, Rect, WindowConfig},
@@ -14,6 +15,53 @@ use reovim_core::{
 };
 
 use crate::state::SharedCompletionManager;
+
+/// Get short abbreviation for completion kind (2-3 chars)
+fn kind_abbrev(kind: CompletionKind) -> &'static str {
+    match kind {
+        CompletionKind::Text => "txt",
+        CompletionKind::Method => "fn",
+        CompletionKind::Function => "fn",
+        CompletionKind::Constructor => "new",
+        CompletionKind::Field => "fld",
+        CompletionKind::Variable => "var",
+        CompletionKind::Class => "cls",
+        CompletionKind::Interface => "int",
+        CompletionKind::Module => "mod",
+        CompletionKind::Property => "prp",
+        CompletionKind::Unit => "unt",
+        CompletionKind::Value => "val",
+        CompletionKind::Enum => "enm",
+        CompletionKind::Keyword => "kw",
+        CompletionKind::Snippet => "snp",
+        CompletionKind::Color => "clr",
+        CompletionKind::File => "fil",
+        CompletionKind::Reference => "ref",
+        CompletionKind::Folder => "dir",
+        CompletionKind::EnumMember => "enm",
+        CompletionKind::Constant => "cst",
+        CompletionKind::Struct => "st",
+        CompletionKind::Event => "evt",
+        CompletionKind::Operator => "op",
+        CompletionKind::TypeParameter => "typ",
+    }
+}
+
+/// Get color for completion kind
+fn kind_color(kind: CompletionKind) -> Color {
+    match kind {
+        CompletionKind::Function | CompletionKind::Method | CompletionKind::Constructor => {
+            Color::Magenta
+        }
+        CompletionKind::Variable | CompletionKind::Field | CompletionKind::Property => Color::Cyan,
+        CompletionKind::Module | CompletionKind::Class | CompletionKind::Interface => Color::Yellow,
+        CompletionKind::Struct | CompletionKind::Enum | CompletionKind::EnumMember => Color::Green,
+        CompletionKind::Keyword => Color::Blue,
+        CompletionKind::Snippet => Color::Red,
+        CompletionKind::Constant => Color::Cyan,
+        _ => Color::White,
+    }
+}
 
 /// Plugin window for completion popup
 ///
@@ -53,13 +101,29 @@ impl PluginWindow for CompletionPluginWindow {
             .saturating_add(snapshot.word_start_col as u16);
 
         let max_items = 10.min(snapshot.items.len());
-        let popup_width = snapshot
+
+        // Calculate widths for each column
+        // Format: " [kind] label    [source] "
+        let kind_width = 4_usize; // "fn " or "mod" + space
+        let max_label_width = snapshot
             .items
             .iter()
             .take(max_items)
             .map(|i| i.label.len())
             .max()
-            .map_or(12, |w| (w + 2).min(40)) as u16;
+            .unwrap_or(8);
+        let max_source_width = snapshot
+            .items
+            .iter()
+            .take(max_items)
+            .map(|i| i.source.len())
+            .max()
+            .unwrap_or(6);
+
+        // Total: space + kind + label + gap + source + space
+        let popup_width =
+            (1 + kind_width + max_label_width.min(30) + 1 + max_source_width.min(12) + 1).min(60)
+                as u16;
 
         // Use EditorContext::dropdown() for proper bounds clamping
         let (popup_x, popup_y, _, popup_height) =
@@ -92,10 +156,27 @@ impl PluginWindow for CompletionPluginWindow {
         let popup_width = bounds.width;
         let max_items = bounds.height as usize;
 
+        // Calculate column widths for rendering
+        let kind_col_width = 4_u16; // "fn " + space
+        let source_col_width = snapshot
+            .items
+            .iter()
+            .take(max_items)
+            .map(|i| i.source.len())
+            .max()
+            .unwrap_or(6)
+            .min(12) as u16;
+        let label_col_width = popup_width
+            .saturating_sub(1) // left padding
+            .saturating_sub(kind_col_width)
+            .saturating_sub(1) // gap before source
+            .saturating_sub(source_col_width)
+            .saturating_sub(1); // right padding
+
         // Render the popup menu
         for (idx, item) in snapshot.items.iter().take(max_items).enumerate() {
             let is_selected = idx == snapshot.selected_index;
-            let style = if is_selected {
+            let base_style = if is_selected {
                 &theme.popup.selected
             } else {
                 &theme.popup.normal
@@ -106,19 +187,84 @@ impl PluginWindow for CompletionPluginWindow {
                 break;
             }
 
-            buffer.put_char(popup_x, row, ' ', style);
+            let mut col = popup_x;
+
+            // Left padding
+            buffer.put_char(col, row, ' ', base_style);
+            col += 1;
+
+            // Kind abbreviation (colored)
+            let kind_abbr = kind_abbrev(item.kind);
+            let kind_fg = kind_color(item.kind);
+            let kind_style = if is_selected {
+                base_style.clone().fg(kind_fg)
+            } else {
+                Style::new()
+                    .fg(kind_fg)
+                    .bg(base_style.bg.unwrap_or(Color::Black))
+            };
+            for ch in kind_abbr.chars() {
+                buffer.put_char(col, row, ch, &kind_style);
+                col += 1;
+            }
+            // Pad kind column
+            for _ in kind_abbr.len()..kind_col_width as usize {
+                buffer.put_char(col, row, ' ', base_style);
+                col += 1;
+            }
+
+            // Label with match highlighting
+            let matched_set: HashSet<u32> = item.match_indices.iter().copied().collect();
             let label_chars: Vec<char> = item.label.chars().collect();
             for (i, &ch) in label_chars
                 .iter()
-                .take(popup_width as usize - 2)
+                .take(label_col_width as usize)
                 .enumerate()
             {
-                buffer.put_char(popup_x + 1 + i as u16, row, ch, style);
+                let char_style = if matched_set.contains(&(i as u32)) {
+                    let match_fg_color = theme.popup.match_fg.fg.unwrap_or(Color::Yellow);
+                    if is_selected {
+                        base_style.clone().fg(match_fg_color)
+                    } else {
+                        let bg_color = base_style.bg.unwrap_or(Color::Black);
+                        theme.popup.match_fg.clone().bg(bg_color)
+                    }
+                } else {
+                    base_style.clone()
+                };
+                buffer.put_char(col, row, ch, &char_style);
+                col += 1;
             }
-            for i in label_chars.len().min(popup_width as usize - 2)..popup_width as usize - 1 {
-                buffer.put_char(popup_x + 1 + i as u16, row, ' ', style);
+            // Pad label column
+            for _ in label_chars.len().min(label_col_width as usize)..label_col_width as usize {
+                buffer.put_char(col, row, ' ', base_style);
+                col += 1;
             }
-            buffer.put_char(popup_x + popup_width - 1, row, ' ', style);
+
+            // Gap before source
+            buffer.put_char(col, row, ' ', base_style);
+            col += 1;
+
+            // Source (dimmed)
+            let source_style = if is_selected {
+                base_style.clone().dim()
+            } else {
+                Style::new()
+                    .fg(Color::DarkGrey)
+                    .bg(base_style.bg.unwrap_or(Color::Black))
+            };
+            for ch in item.source.chars().take(source_col_width as usize) {
+                buffer.put_char(col, row, ch, &source_style);
+                col += 1;
+            }
+            // Pad source column
+            for _ in item.source.len().min(source_col_width as usize)..source_col_width as usize {
+                buffer.put_char(col, row, ' ', base_style);
+                col += 1;
+            }
+
+            // Right padding
+            buffer.put_char(col, row, ' ', base_style);
         }
 
         // Render ghost text inline at cursor position

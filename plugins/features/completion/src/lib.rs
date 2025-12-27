@@ -168,6 +168,36 @@ impl Plugin for CompletionPlugin {
         // Subscribe to CompletionTriggered events (from CompletionTrigger command)
         let manager = Arc::clone(&self.manager);
         bus.subscribe::<CompletionTriggered, _>(100, move |event, ctx| {
+            // If completion is already active, check if cursor moved outside valid range
+            if manager.is_active() {
+                let snapshot = manager.snapshot();
+                let req = &event.request;
+
+                // Dismiss if cursor moved to different line
+                if req.cursor_row != snapshot.cursor_row {
+                    tracing::debug!("Completion dismissed: line changed");
+                    manager.dismiss();
+                    ctx.request_render();
+                    return EventResult::Handled;
+                }
+
+                // Dismiss if cursor moved before word start
+                if req.cursor_col < snapshot.word_start_col {
+                    tracing::debug!("Completion dismissed: cursor before word start");
+                    manager.dismiss();
+                    ctx.request_render();
+                    return EventResult::Handled;
+                }
+
+                // Dismiss if prefix is empty (deleted all characters)
+                if req.prefix.is_empty() {
+                    tracing::debug!("Completion dismissed: empty prefix");
+                    manager.dismiss();
+                    ctx.request_render();
+                    return EventResult::Handled;
+                }
+            }
+
             tracing::info!("CompletionTriggered event received, prefix={}", event.request.prefix);
             manager.request_completion(event.request.clone());
             ctx.request_render();
@@ -229,17 +259,16 @@ impl Plugin for CompletionPlugin {
                 return EventResult::NotHandled;
             };
 
-            // Calculate text to insert (remaining part after prefix)
-            let insert_text = if item.insert_text.starts_with(&snapshot.prefix) {
-                item.insert_text[snapshot.prefix.len()..].to_string()
-            } else {
-                item.insert_text.clone()
-            };
+            // Delete the typed prefix and insert the full completion text
+            // This replaces "pkg" with "CARGO_PKG" instead of appending
+            let prefix_len = snapshot.prefix.len();
+            let insert_text = item.insert_text.clone();
 
-            if !insert_text.is_empty() {
+            if !insert_text.is_empty() || prefix_len > 0 {
                 ctx.emit(RequestInsertText {
                     text: insert_text,
                     move_cursor_left: false,
+                    delete_prefix_len: prefix_len,
                 });
             }
 
@@ -262,60 +291,72 @@ impl Plugin for CompletionPlugin {
             },
         );
 
-        // Subscribe to BufferModified for auto-popup (debounced 300ms)
+        // Note: CursorMoved events are not emitted by the runtime, so cursor position
+        // checks are handled in the CompletionTriggered handler when completion re-triggers.
+
+        // Subscribe to BufferModified for auto-popup and live update
         let manager = Arc::clone(&self.manager);
         bus.subscribe::<BufferModified, _>(100, move |event, _ctx| {
-            // Only trigger on text insertion
-            let BufferModification::Insert { text, .. } = &event.modification else {
-                return EventResult::NotHandled;
-            };
+            let is_active = manager.is_active();
 
-            // Ignore whitespace-only insertions
-            if text.chars().all(|c| c.is_whitespace()) {
-                return EventResult::NotHandled;
+            match &event.modification {
+                BufferModification::Insert { text, .. } => {
+                    // Ignore whitespace-only insertions for auto-popup
+                    if text.chars().all(|c| c.is_whitespace()) {
+                        if is_active {
+                            // Dismiss on whitespace (space/enter ends word)
+                            manager.dismiss();
+                        }
+                        return EventResult::NotHandled;
+                    }
+                }
+                BufferModification::Delete { .. } => {
+                    // On delete (backspace), re-trigger if active to update filter
+                    if !is_active {
+                        return EventResult::NotHandled;
+                    }
+                }
+                BufferModification::Replace { .. } | BufferModification::FullReplace => {
+                    // On replace operations, dismiss completion
+                    if is_active {
+                        manager.dismiss();
+                    }
+                    return EventResult::NotHandled;
+                }
             }
 
-            // Don't auto-popup if already active
-            if manager.is_active() {
-                return EventResult::NotHandled;
-            }
-
-            // Get next debounce generation
             let generation = manager.next_debounce_generation();
             let manager = Arc::clone(&manager);
             let buffer_id = event.buffer_id;
 
-            // Spawn debounced auto-popup task
+            // Spawn task to trigger/update completion
             tokio::spawn(async move {
-                // Wait for debounce delay
-                tokio::time::sleep(std::time::Duration::from_millis(
-                    crate::state::AUTO_POPUP_DELAY_MS,
-                ))
-                .await;
+                if !is_active {
+                    // Completion not active: use debounce delay for auto-popup
+                    tokio::time::sleep(std::time::Duration::from_millis(
+                        crate::state::AUTO_POPUP_DELAY_MS,
+                    ))
+                    .await;
 
-                // Check if this generation is still current (no new keystrokes)
-                if manager.current_debounce_generation() != generation {
-                    return; // Newer keystroke came in, abort
+                    // Check if this generation is still current
+                    if manager.current_debounce_generation() != generation {
+                        return;
+                    }
                 }
-
-                // Don't trigger if completion is already active (user triggered manually)
-                if manager.is_active() {
-                    return;
-                }
+                // When active: trigger immediately (no delay) for live filtering
 
                 // Send CommandEvent to trigger completion with proper buffer context
-                // The CompletionTrigger command will extract line/prefix from buffer
                 manager.send_command_event(CommandEvent {
                     command: CommandRef::Registered(command_id::COMPLETION_TRIGGER),
                     context: CommandContext {
                         buffer_id,
-                        window_id: 0, // Will use active window
+                        window_id: 0,
                         count: None,
                     },
                 });
             });
 
-            EventResult::NotHandled // Allow other handlers to process
+            EventResult::NotHandled
         });
 
         let _ = state; // Suppress unused warning

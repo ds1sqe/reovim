@@ -57,6 +57,8 @@ pub struct CompletionItem {
     pub filter_text: Option<String>,
     /// Score from fuzzy matching (set by completion engine)
     pub score: u32,
+    /// Indices of matched characters in `filter_text` (for highlighting)
+    pub match_indices: Vec<u32>,
 }
 
 impl CompletionItem {
@@ -74,6 +76,7 @@ impl CompletionItem {
             sort_priority: 100,
             filter_text: None,
             score: 0,
+            match_indices: Vec::new(),
         }
     }
 
