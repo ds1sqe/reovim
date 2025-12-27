@@ -29,42 +29,17 @@ Auto-completion system with background processing and extensible source architec
 
 **Workaround**: Ensure you're in insert mode with editor focus when confirming.
 
-### 2. Ghost Text Position (Visual)
+### 2. Tab Key Not Available for Confirm
 
-Ghost text (inline preview) renders at incorrect position:
-- Does not account for line number column width
-- Does not account for left panel offset (e.g., explorer)
-- Buffer scroll position not considered
+Tab cannot be used for completion confirm due to architectural limitations in the keybinding system. The system doesn't support "fallback" behavior when a command returns `NotHandled` - once a keybinding is found, the key is consumed even if the handler doesn't process it.
 
-The ghost text may overlay existing text instead of appearing after the cursor.
+**Current behavior**: Tab always inserts `\t` in insert mode (when no keybinding overrides it).
 
-### 3. Prefix Extraction (Functional)
-
-Word prefix extraction has issues:
-- May include preceding word if no space separator (e.g., "barhel" instead of "hel")
-- Does not handle all word boundary characters correctly
-
-### 4. Tab Key Not Available for Confirm
-
-Tab in insert mode is hardcoded to insert `\t` character before keybinding lookup. This prevents using Tab for completion confirm without breaking normal tab insertion.
-
-### 5. Popup Position (Visual)
-
-Popup window position uses buffer coordinates directly without:
-- Line number column offset
-- Window anchor/scroll offset
-- Left panel (explorer) offset
-
-May render at wrong position when these offsets apply.
-
-### 6. No Fallback for Unhandled Confirm
-
-When `CompletionConfirm` is triggered but completion is not active, the event is consumed but nothing happens. Should fall back to default behavior (e.g., insert newline for Enter, insert tab for Tab).
+**Workaround**: Use `Ctrl+y` to confirm completion.
 
 ## Future Improvements
 
 - [ ] LSP completion source integration
 - [ ] Snippet support
 - [ ] Fuzzy matching improvements
-- [ ] Fix ghost text coordinate calculation with line number offset
-- [ ] Smart Tab handling (confirm when completion active, insert tab otherwise)
+- [ ] Keybinding fallback system (for smart Tab handling)

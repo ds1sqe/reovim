@@ -50,11 +50,12 @@ impl CommandTrait for CompletionTrigger {
             .unwrap_or_default();
 
         // Find word start by scanning backwards from cursor
+        // Stop at word boundary characters (common programming delimiters)
         let line_chars: Vec<char> = line.chars().collect();
         let mut word_start_col = cursor_col;
         while word_start_col > 0 {
             let ch = line_chars.get(word_start_col - 1).copied().unwrap_or(' ');
-            if !ch.is_alphanumeric() && ch != '_' {
+            if is_word_boundary(ch) {
                 break;
             }
             word_start_col -= 1;
@@ -126,4 +127,48 @@ declare_event_command! {
     CompletionDismiss,
     id: "completion_dismiss",
     description: "Dismiss completion popup",
+}
+
+/// Check if a character is a word boundary for completion prefix extraction
+///
+/// Word boundaries include whitespace and common programming delimiters.
+/// This allows proper prefix extraction for cases like `foo.bar.hel` -> prefix = "hel"
+#[must_use]
+const fn is_word_boundary(c: char) -> bool {
+    matches!(
+        c,
+        ' ' | '\t'
+            | '\n'
+            | '\r'
+            | '.'
+            | ':'
+            | '('
+            | ')'
+            | '['
+            | ']'
+            | '{'
+            | '}'
+            | '<'
+            | '>'
+            | ','
+            | ';'
+            | '+'
+            | '-'
+            | '*'
+            | '/'
+            | '='
+            | '!'
+            | '@'
+            | '#'
+            | '$'
+            | '%'
+            | '^'
+            | '&'
+            | '|'
+            | '~'
+            | '`'
+            | '"'
+            | '\''
+            | '\\'
+    )
 }

@@ -161,10 +161,13 @@ impl RpcServer {
                     start.elapsed()
                 );
 
-                Some(RpcResponse::success(id, serde_json::json!({
-                    "injected": injected,
-                    "keys": keys_list
-                })))
+                Some(RpcResponse::success(
+                    id,
+                    serde_json::json!({
+                        "injected": injected,
+                        "keys": keys_list
+                    }),
+                ))
             }
             methods::STATE_SCREEN_CONTENT => {
                 // Return captured screen content

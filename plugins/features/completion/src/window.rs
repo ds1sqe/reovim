@@ -43,8 +43,15 @@ impl PluginWindow for CompletionPluginWindow {
             return None;
         }
 
-        let cursor_x = snapshot.word_start_col as u16;
-        let cursor_y = snapshot.cursor_row as u16;
+        // Transform buffer coordinates to screen coordinates
+        // Account for: window anchor, line number gutter, and scroll offset
+        let display_row = (snapshot.cursor_row as u16).saturating_sub(ctx.active_window_scroll_y);
+        let screen_y = ctx.active_window_anchor_y + display_row;
+        let screen_x = ctx
+            .active_window_anchor_x
+            .saturating_add(ctx.active_window_gutter_width)
+            .saturating_add(snapshot.word_start_col as u16);
+
         let max_items = 10.min(snapshot.items.len());
         let popup_width = snapshot
             .items
@@ -53,11 +60,13 @@ impl PluginWindow for CompletionPluginWindow {
             .map(|i| i.label.len())
             .max()
             .map_or(12, |w| (w + 2).min(40)) as u16;
-        let popup_x = cursor_x.min(ctx.screen_width.saturating_sub(popup_width));
-        let popup_y = cursor_y + 1;
+
+        // Use EditorContext::dropdown() for proper bounds clamping
+        let (popup_x, popup_y, _, popup_height) =
+            ctx.dropdown(screen_x, screen_y, popup_width, max_items as u16);
 
         Some(WindowConfig {
-            bounds: Rect::new(popup_x, popup_y, popup_width, max_items as u16),
+            bounds: Rect::new(popup_x, popup_y, popup_width, popup_height),
             z_order: 200, // Completion dropdown
             visible: true,
         })
@@ -125,7 +134,7 @@ impl CompletionPluginWindow {
         snapshot: &crate::cache::CompletionSnapshot,
         ctx: &EditorContext,
         buffer: &mut FrameBuffer,
-        bounds: Rect,
+        _bounds: Rect,
     ) {
         // Get the selected item
         let Some(item) = snapshot.selected_item() else {
@@ -157,11 +166,10 @@ impl CompletionPluginWindow {
         // Ghost text style: dim grey
         let ghost_style = Style::new().fg(Color::DarkGrey).dim();
 
-        // Calculate screen coordinates from popup bounds:
-        // - Popup is at bounds.y (cursor row + 1), so cursor row = bounds.y - 1
-        // - Ghost text starts after prefix: bounds.x + prefix.len()
-        let ghost_y = bounds.y.saturating_sub(1);
-        let ghost_x = bounds.x + snapshot.prefix.len() as u16;
+        // Calculate screen coordinates using EditorContext
+        // Ghost text renders at cursor position (after the typed prefix)
+        let ghost_y = ctx.cursor_screen_y();
+        let ghost_x = ctx.cursor_screen_x();
 
         // Don't render past screen width
         let max_width = ctx.screen_width.saturating_sub(ghost_x);

@@ -4,11 +4,41 @@ All notable changes to Reovim will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Completion auto-popup** - Automatic completion after 300ms debounce
+  - Triggers on text insertion in insert mode
+  - Uses generation counter for proper debounce cancellation
+  - Sends `CommandEvent` to trigger completion with buffer context
+
+- **EditorContext active window fields** - Window context for popup positioning
+  - `active_window_anchor_x/y`, `active_window_gutter_width`, `active_window_scroll_y`
+  - `cursor_screen_x()` and `cursor_screen_y()` helper methods
+  - Enables accurate screen coordinate calculation for plugin windows
+
 ### Fixed
+
+- **Completion popup position** - Now correctly positioned relative to cursor
+  - Uses EditorContext to transform buffer coordinates to screen coordinates
+  - Accounts for window anchor, line number gutter, and scroll offset
+
+- **Completion ghost text position** - Inline preview now at correct cursor location
+  - Uses `cursor_screen_x/y()` helpers for accurate positioning
+
+- **Completion prefix extraction** - Proper word boundary detection
+  - Added `is_word_boundary()` function with programming delimiters
+  - Correctly extracts prefix for cases like `foo.bar.hel` -> `hel`
 
 - **Microscope backspace** - Backspace now works in microscope interactor mode
   - Added `PluginBackspace` subscription to microscope plugin
   - Previously, backspace events were silently dropped in microscope query input
+
+### Documentation
+
+- **Completion known issues** - Added `docs/issues/cmp.md`
+  - Issue #1: Missing filtering logic (items not filtered by prefix)
+  - Issue #2: No dismiss on cursor movement
+  - Issue #3: No highlight on matching characters
 
 ### Changed
 

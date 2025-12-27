@@ -895,6 +895,27 @@ impl Screen {
         // Collect all windows (editor + plugin windows)
         let mut windows_to_render = self.windows.clone();
 
+        // Extract active window info for EditorContext
+        let (
+            active_anchor_x,
+            active_anchor_y,
+            active_gutter_width,
+            active_scroll_y,
+            cursor_col,
+            cursor_row,
+        ) = self
+            .windows
+            .iter()
+            .find(|w| w.is_active)
+            .and_then(|win| {
+                let buffer_id = win.buffer_id()?;
+                let buf = buffers.get(&buffer_id)?;
+                let gutter_width = win.line_number_width(buf.contents.len());
+                let scroll_y = win.buffer_anchor().map_or(0, |a| a.y);
+                Some((win.anchor.x, win.anchor.y, gutter_width, scroll_y, buf.cur.x, buf.cur.y))
+            })
+            .unwrap_or((0, 0, 0, 0, 0, 0));
+
         // Build editor context for window providers
         let editor_ctx = crate::plugin::EditorContext::new(
             self.size.width,
@@ -907,7 +928,9 @@ impl Screen {
             color_mode,
         )
         .with_left_offset(left_offset)
-        .with_pending_keys(pending_keys);
+        .with_pending_keys(pending_keys)
+        .with_active_window(active_anchor_x, active_anchor_y, active_gutter_width, active_scroll_y)
+        .with_cursor(cursor_col, cursor_row);
 
         // Sort all windows by z-order
         windows_to_render.sort_by_key(|w| w.z_order);

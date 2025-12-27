@@ -68,6 +68,20 @@ pub struct EditorContext {
     /// Total number of open buffers
     pub buffer_count: usize,
 
+    // === Active Window Info (for cursor-relative popups) ===
+    /// Active window's screen X anchor position
+    pub active_window_anchor_x: u16,
+    /// Active window's screen Y anchor position
+    pub active_window_anchor_y: u16,
+    /// Active window's line number gutter width
+    pub active_window_gutter_width: u16,
+    /// Active window's vertical scroll offset (first visible line)
+    pub active_window_scroll_y: u16,
+    /// Active buffer's cursor column position
+    pub cursor_col: u16,
+    /// Active buffer's cursor row position
+    pub cursor_row: u16,
+
     // === Theme/Display ===
     /// Current color mode (`TrueColor`, `Color256`, `Color16`)
     pub color_mode: ColorMode,
@@ -104,6 +118,12 @@ impl EditorContext {
             focused_component,
             active_buffer_id,
             buffer_count,
+            active_window_anchor_x: 0,
+            active_window_anchor_y: 0,
+            active_window_gutter_width: 0,
+            active_window_scroll_y: 0,
+            cursor_col: 0,
+            cursor_row: 0,
             color_mode,
             pending_keys: String::new(),
         }
@@ -128,6 +148,51 @@ impl EditorContext {
     pub fn with_pending_keys(mut self, keys: impl Into<String>) -> Self {
         self.pending_keys = keys.into();
         self
+    }
+
+    /// Set active window info (builder pattern)
+    #[must_use]
+    pub const fn with_active_window(
+        mut self,
+        anchor_x: u16,
+        anchor_y: u16,
+        gutter_width: u16,
+        scroll_y: u16,
+    ) -> Self {
+        self.active_window_anchor_x = anchor_x;
+        self.active_window_anchor_y = anchor_y;
+        self.active_window_gutter_width = gutter_width;
+        self.active_window_scroll_y = scroll_y;
+        self
+    }
+
+    /// Set cursor position (builder pattern)
+    #[must_use]
+    pub const fn with_cursor(mut self, col: u16, row: u16) -> Self {
+        self.cursor_col = col;
+        self.cursor_row = row;
+        self
+    }
+
+    /// Calculate cursor's screen X position
+    ///
+    /// Transforms buffer column to screen column accounting for
+    /// window anchor and line number gutter.
+    #[must_use]
+    pub const fn cursor_screen_x(&self) -> u16 {
+        self.active_window_anchor_x
+            .saturating_add(self.active_window_gutter_width)
+            .saturating_add(self.cursor_col)
+    }
+
+    /// Calculate cursor's screen Y position
+    ///
+    /// Transforms buffer row to screen row accounting for
+    /// window anchor and scroll offset.
+    #[must_use]
+    pub const fn cursor_screen_y(&self) -> u16 {
+        self.active_window_anchor_y
+            .saturating_add(self.cursor_row.saturating_sub(self.active_window_scroll_y))
     }
 
     /// Height available for sidebars (full height minus tab/status lines)

@@ -44,8 +44,12 @@ pub use reovim_core::completion::{CompletionContext, CompletionItem, CompletionK
 
 use reovim_core::{
     bind::CommandRef,
-    command::id::CommandId,
-    event_bus::{EventBus, EventResult, core_events::RequestInsertText},
+    command::{CommandContext, id::CommandId},
+    event::CommandEvent,
+    event_bus::{
+        EventBus, EventResult,
+        core_events::{BufferModification, BufferModified, RequestInsertText},
+    },
     keys,
     plugin::{Plugin, PluginContext, PluginId, PluginStateRegistry},
 };
@@ -142,6 +146,12 @@ impl Plugin for CompletionPlugin {
             keys![(Ctrl 'y')],
             CommandRef::Registered(command_id::COMPLETION_CONFIRM),
         );
+
+        // Note: Tab for confirm is NOT supported due to architectural limitations.
+        // When a keybinding is found, the Tab fallback (insert '\t') is skipped.
+        // The keybinding system doesn't support "fallback" when a command returns NotHandled.
+        // See Issue #4 in docs/cmp.md for details.
+        // Users should use Ctrl+y to confirm completion.
     }
 
     fn init_state(&self, registry: &PluginStateRegistry) {
@@ -252,6 +262,62 @@ impl Plugin for CompletionPlugin {
             },
         );
 
+        // Subscribe to BufferModified for auto-popup (debounced 300ms)
+        let manager = Arc::clone(&self.manager);
+        bus.subscribe::<BufferModified, _>(100, move |event, _ctx| {
+            // Only trigger on text insertion
+            let BufferModification::Insert { text, .. } = &event.modification else {
+                return EventResult::NotHandled;
+            };
+
+            // Ignore whitespace-only insertions
+            if text.chars().all(|c| c.is_whitespace()) {
+                return EventResult::NotHandled;
+            }
+
+            // Don't auto-popup if already active
+            if manager.is_active() {
+                return EventResult::NotHandled;
+            }
+
+            // Get next debounce generation
+            let generation = manager.next_debounce_generation();
+            let manager = Arc::clone(&manager);
+            let buffer_id = event.buffer_id;
+
+            // Spawn debounced auto-popup task
+            tokio::spawn(async move {
+                // Wait for debounce delay
+                tokio::time::sleep(std::time::Duration::from_millis(
+                    crate::state::AUTO_POPUP_DELAY_MS,
+                ))
+                .await;
+
+                // Check if this generation is still current (no new keystrokes)
+                if manager.current_debounce_generation() != generation {
+                    return; // Newer keystroke came in, abort
+                }
+
+                // Don't trigger if completion is already active (user triggered manually)
+                if manager.is_active() {
+                    return;
+                }
+
+                // Send CommandEvent to trigger completion with proper buffer context
+                // The CompletionTrigger command will extract line/prefix from buffer
+                manager.send_command_event(CommandEvent {
+                    command: CommandRef::Registered(command_id::COMPLETION_TRIGGER),
+                    context: CommandContext {
+                        buffer_id,
+                        window_id: 0, // Will use active window
+                        count: None,
+                    },
+                });
+            });
+
+            EventResult::NotHandled // Allow other handlers to process
+        });
+
         let _ = state; // Suppress unused warning
     }
 
@@ -266,6 +332,9 @@ impl Plugin for CompletionPlugin {
             tracing::warn!("Completion plugin boot: event_tx not available");
             return;
         };
+
+        // Store event_tx for auto-popup debounce (to send CommandEvent)
+        self.manager.set_inner_event_tx(event_tx.clone());
 
         // Spawn the completion saturator
         let sources = self.manager.sources();

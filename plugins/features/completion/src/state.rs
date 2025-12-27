@@ -3,12 +3,18 @@
 //! Provides thread-safe access to the completion manager.
 //! Following the treesitter pattern for cross-plugin access.
 
-use std::sync::{Arc, RwLock};
+use std::sync::{
+    Arc, RwLock,
+    atomic::{AtomicU64, Ordering},
+};
 
 use crate::{
     CompletionCache, CompletionRequest, CompletionSaturatorHandle, SourceRegistry,
     cache::CompletionSnapshot, registry::SourceSupport, source::BufferWordsSource,
 };
+
+/// Auto-popup debounce delay in milliseconds
+pub const AUTO_POPUP_DELAY_MS: u64 = 300;
 
 /// Shared completion manager state
 ///
@@ -21,6 +27,11 @@ pub struct SharedCompletionManager {
     pub cache: Arc<CompletionCache>,
     /// Saturator handle (set after boot)
     pub saturator: RwLock<Option<CompletionSaturatorHandle>>,
+    /// Debounce generation counter for auto-popup
+    /// Each keystroke increments this; the timer checks if it's still current
+    pub debounce_generation: AtomicU64,
+    /// Inner event sender for sending CommandEvent after debounce
+    pub inner_event_tx: RwLock<Option<tokio::sync::mpsc::Sender<reovim_core::event::InnerEvent>>>,
 }
 
 impl SharedCompletionManager {
@@ -35,6 +46,46 @@ impl SharedCompletionManager {
             registry: RwLock::new(registry),
             cache: Arc::new(CompletionCache::new()),
             saturator: RwLock::new(None),
+            debounce_generation: AtomicU64::new(0),
+            inner_event_tx: RwLock::new(None),
+        }
+    }
+
+    /// Set the inner event sender (called during boot)
+    pub fn set_inner_event_tx(
+        &self,
+        tx: tokio::sync::mpsc::Sender<reovim_core::event::InnerEvent>,
+    ) {
+        *self.inner_event_tx.write().unwrap() = Some(tx);
+    }
+
+    /// Increment debounce generation and return the new value
+    ///
+    /// Called when user types; the returned generation is used to check
+    /// if the debounce timer is still valid.
+    pub fn next_debounce_generation(&self) -> u64 {
+        self.debounce_generation.fetch_add(1, Ordering::SeqCst) + 1
+    }
+
+    /// Get current debounce generation
+    pub fn current_debounce_generation(&self) -> u64 {
+        self.debounce_generation.load(Ordering::SeqCst)
+    }
+
+    /// Request a render signal (used after debounce timeout)
+    pub fn request_render(&self) {
+        if let Some(tx) = self.inner_event_tx.read().unwrap().as_ref() {
+            let _ = tx.try_send(reovim_core::event::InnerEvent::RenderSignal);
+        }
+    }
+
+    /// Send a command event to trigger completion
+    ///
+    /// Used by auto-popup to trigger CompletionTrigger command after debounce.
+    /// The command will execute with proper buffer context.
+    pub fn send_command_event(&self, event: reovim_core::event::CommandEvent) {
+        if let Some(tx) = self.inner_event_tx.read().unwrap().as_ref() {
+            let _ = tx.try_send(reovim_core::event::InnerEvent::CommandEvent(event));
         }
     }
 

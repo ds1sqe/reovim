@@ -610,18 +610,6 @@ impl CommandHandler {
                                     continue;
                                 }
 
-                                // Handle Tab in insert mode - insert a tab character
-                                // (Note: plugins can bind keys that override this via keybindings)
-                                let mode = self.current_mode();
-                                if mode.is_insert() && key_str == "Tab" {
-                                    self.pending_keys.clear();
-                                    self.dispatcher.send_focus_insert_char('\t').await;
-                                    self.dispatcher
-                                        .send_pending_keys(self.pending_display())
-                                        .await;
-                                    continue;
-                                }
-
                                 // Show the key being pressed (before lookup clears it)
                                 self.pending_keys.push(keystroke);
                                 self.dispatcher
@@ -655,6 +643,16 @@ impl CommandHandler {
                                     self.dispatcher
                                         .send_pending_keys(self.pending_display())
                                         .await;
+                                } else {
+                                    // No keybinding found - handle Tab fallback in insert mode
+                                    let mode = self.current_mode();
+                                    if mode.is_insert() && key_str == "Tab" {
+                                        self.pending_keys.clear();
+                                        self.dispatcher.send_focus_insert_char('\t').await;
+                                        self.dispatcher
+                                            .send_pending_keys(self.pending_display())
+                                            .await;
+                                    }
                                 }
                             }
                             Err(e) => {

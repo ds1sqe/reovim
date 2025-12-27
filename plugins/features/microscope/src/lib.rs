@@ -853,7 +853,9 @@ impl Plugin for MicroscopePlugin {
         use reovim_core::{
             event_bus::{
                 EventResult,
-                core_events::{PluginBackspace, PluginTextInput, RequestFocusChange, RequestModeChange},
+                core_events::{
+                    PluginBackspace, PluginTextInput, RequestFocusChange, RequestModeChange,
+                },
             },
             modd::{EditMode, ModeState, SubMode},
         };
