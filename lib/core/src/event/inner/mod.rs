@@ -79,6 +79,29 @@ pub enum InnerEvent {
         /// Text content to set
         text: String,
     },
+    // =========================================================================
+    // Settings/Option capability events
+    // =========================================================================
+    /// Set line number visibility
+    SetLineNumbers {
+        enabled: bool,
+    },
+    /// Set relative line number visibility
+    SetRelativeLineNumbers {
+        enabled: bool,
+    },
+    /// Set color theme
+    SetTheme {
+        name: String,
+    },
+    /// Set scrollbar visibility
+    SetScrollbar {
+        enabled: bool,
+    },
+    /// Set indent guide visibility
+    SetIndentGuide {
+        enabled: bool,
+    },
 }
 
 /// Input events routed to the active focus target

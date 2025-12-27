@@ -537,6 +537,9 @@ where
                 constraint: super::spec::OptionConstraint::none(),
                 depends_on: Vec::new(),
                 scope: super::spec::OptionScope::Global,
+                section: None,
+                display_order: 100,
+                show_in_menu: true,
             },
             register_fn,
         }

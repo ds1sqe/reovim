@@ -2,15 +2,32 @@
 
 All notable changes to Reovim will be documented in this file.
 
-## [Unreleased]
+## [0.7.8] - 2025-12-27
 
 ### Fixed
+
+- **Settings menu border rendering** - Now uses the plugin window system's border utilities
+  - Replaced manual box-drawing character rendering with `render_border_to_buffer()`
+  - Uses `BorderConfig::new(BorderStyle::Rounded).with_title("Settings")`
+  - Consistent with other plugin windows (explorer, telescope)
+
+- **Settings menu changes not applying** - Settings now apply immediately to the editor
+  - Added decoupled event flow: `OptionChanged` → `Request*` events → runtime capabilities
+  - CorePlugin maps option names ("number", "theme", etc.) to capability requests
+  - Runtime subscribes to `RequestSetLineNumbers`, `RequestSetTheme`, etc.
+  - Avoids tight coupling between runtime and option names
 
 - **LSP hover popup not dismissing on cursor movement** - Core runtime now emits `CursorMoved` events when commands change cursor position, enabling hover dismissal and cursor-aware plugin features
 
 - **LSP commands (gd/gr/K) not working** - Fixed saturator deadlock by spawning tokio tasks instead of blocking await in select! loop
 
 ### Added
+
+- **Settings capability request events** - New core events for runtime capabilities
+  - `RequestSetLineNumbers` / `RequestSetRelativeLineNumbers`
+  - `RequestSetTheme` / `RequestSetScrollbar` / `RequestSetIndentGuide`
+  - Corresponding `InnerEvent` variants for runtime handling
+  - Enables plugins to change settings without knowing runtime internals
 
 - **LSP progress notifications** - Display rust-analyzer indexing progress in notification popup and statusline
 

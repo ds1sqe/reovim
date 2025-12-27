@@ -1,8 +1,11 @@
 //! Events for the extensible option system.
 //!
 //! These events enable plugins to:
+//! - Register settings sections via `RegisterSettingSection`
 //! - Register their own options via `RegisterOption`
 //! - React to option changes via `OptionChanged`
+
+use std::borrow::Cow;
 
 use crate::event_bus::Event;
 
@@ -43,6 +46,79 @@ impl Event for RegisterOption {
     fn priority(&self) -> u32 {
         // High priority - run early during plugin initialization
         50
+    }
+}
+
+/// Event emitted by plugins to register a settings section with UI metadata.
+///
+/// Plugins emit this event before `RegisterOption` to define section metadata
+/// (display name, description, order). If a section is not registered,
+/// options will be grouped under a section derived from their category.
+///
+/// # Example
+///
+/// ```ignore
+/// bus.emit(RegisterSettingSection {
+///     id: "treesitter".into(),
+///     display_name: "Treesitter".into(),
+///     description: Some("Syntax highlighting settings".into()),
+///     order: 100,
+/// });
+/// ```
+#[derive(Debug, Clone)]
+pub struct RegisterSettingSection {
+    /// Section identifier (e.g., "treesitter", "completion")
+    ///
+    /// This should match the `section` field in `OptionSpec` for options
+    /// that belong to this section.
+    pub id: Cow<'static, str>,
+
+    /// Display name for the section header in the settings menu
+    pub display_name: Cow<'static, str>,
+
+    /// Optional description for the section
+    pub description: Option<Cow<'static, str>>,
+
+    /// Display order (lower = earlier, default 100)
+    ///
+    /// Core sections use low values (0-50), plugin sections use 100+.
+    pub order: u32,
+}
+
+impl RegisterSettingSection {
+    /// Create a new `RegisterSettingSection` event.
+    #[must_use]
+    pub fn new(
+        id: impl Into<Cow<'static, str>>,
+        display_name: impl Into<Cow<'static, str>>,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            display_name: display_name.into(),
+            description: None,
+            order: 100,
+        }
+    }
+
+    /// Set the description.
+    #[must_use]
+    pub fn with_description(mut self, description: impl Into<Cow<'static, str>>) -> Self {
+        self.description = Some(description.into());
+        self
+    }
+
+    /// Set the display order.
+    #[must_use]
+    pub const fn with_order(mut self, order: u32) -> Self {
+        self.order = order;
+        self
+    }
+}
+
+impl Event for RegisterSettingSection {
+    fn priority(&self) -> u32 {
+        // Run before RegisterOption (50) so sections exist first
+        40
     }
 }
 

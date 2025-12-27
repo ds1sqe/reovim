@@ -1,5 +1,7 @@
 //! Settings menu item types
 
+use reovim_core::option::{OptionConstraint, OptionSpec, OptionValue};
+
 /// A section grouping related settings
 #[derive(Debug, Clone)]
 pub struct SettingSection {
@@ -12,8 +14,10 @@ pub struct SettingSection {
 /// A single setting item
 #[derive(Debug, Clone)]
 pub struct SettingItem {
-    /// Internal key (e.g., "editor.theme")
-    pub key: &'static str,
+    /// Internal key (e.g., "editor.theme", "plugin.treesitter.timeout")
+    ///
+    /// Changed from `&'static str` to `String` to support dynamic registration.
+    pub key: String,
     /// Display label
     pub label: String,
     /// Help text (optional)
@@ -184,5 +188,83 @@ impl FlatItem {
     #[must_use]
     pub const fn is_setting(&self) -> bool {
         matches!(self, Self::Setting { .. })
+    }
+}
+
+// --- Conversions between OptionValue (core) and SettingValue (plugin) ---
+
+impl From<&OptionValue> for SettingValue {
+    /// Convert an `OptionValue` to a `SettingValue` without constraint information.
+    ///
+    /// For integers, uses unbounded min/max. Use `SettingValue::from_option_with_constraint`
+    /// for proper bounds.
+    fn from(opt: &OptionValue) -> Self {
+        match opt {
+            OptionValue::Bool(b) => Self::Bool(*b),
+            OptionValue::Integer(i) => Self::Number {
+                value: *i as i32,
+                min: i32::MIN,
+                max: i32::MAX,
+                step: 1,
+            },
+            OptionValue::String(s) => Self::Display(s.clone()),
+            OptionValue::Choice { value, choices } => Self::Choice {
+                options: choices.clone(),
+                selected: choices.iter().position(|c| c == value).unwrap_or(0),
+            },
+        }
+    }
+}
+
+impl SettingValue {
+    /// Create a `SettingValue` from an `OptionValue` with constraint information.
+    ///
+    /// Uses the constraint's min/max for integer bounds.
+    #[must_use]
+    pub fn from_option_with_constraint(opt: &OptionValue, constraint: &OptionConstraint) -> Self {
+        match opt {
+            OptionValue::Bool(b) => Self::Bool(*b),
+            OptionValue::Integer(i) => Self::Number {
+                value: *i as i32,
+                min: constraint.min.map(|v| v as i32).unwrap_or(i32::MIN),
+                max: constraint.max.map(|v| v as i32).unwrap_or(i32::MAX),
+                step: 1,
+            },
+            OptionValue::String(s) => Self::Display(s.clone()),
+            OptionValue::Choice { value, choices } => Self::Choice {
+                options: choices.clone(),
+                selected: choices.iter().position(|c| c == value).unwrap_or(0),
+            },
+        }
+    }
+
+    /// Create a `SettingItem` from an `OptionSpec` with its current value.
+    #[must_use]
+    pub fn item_from_spec(spec: &OptionSpec, value: &OptionValue) -> SettingItem {
+        SettingItem {
+            key: spec.name.to_string(),
+            label: spec.description.to_string(),
+            description: Some(spec.description.to_string()),
+            value: Self::from_option_with_constraint(value, &spec.constraint),
+        }
+    }
+
+    /// Convert this `SettingValue` back to an `OptionValue`.
+    ///
+    /// Note: `Display` and `Action` variants cannot be converted and return `None`.
+    #[must_use]
+    pub fn to_option_value(&self) -> Option<OptionValue> {
+        match self {
+            Self::Bool(b) => Some(OptionValue::Bool(*b)),
+            Self::Number { value, .. } => Some(OptionValue::Integer(i64::from(*value))),
+            Self::Choice { options, selected } => {
+                let value = options.get(*selected).cloned().unwrap_or_default();
+                Some(OptionValue::Choice {
+                    value,
+                    choices: options.clone(),
+                })
+            }
+            Self::Display(_) | Self::Action(_) => None,
+        }
     }
 }

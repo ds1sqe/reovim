@@ -428,3 +428,30 @@ impl Event for MyInputChar {
 ```
 
 See `plugins/features/explorer/src/command.rs` for a complete example with all three patterns.
+
+### Registering Plugin Settings (Extensible Settings System)
+
+Plugins can register settings to appear in the settings menu using `RegisterSettingSection` and `RegisterOption` events:
+
+```rust
+use reovim_core::option::{
+    RegisterSettingSection, RegisterOption, OptionSpec, OptionValue,
+    OptionCategory, OptionConstraint,
+};
+
+fn subscribe(&self, bus: &EventBus, _state: Arc<PluginStateRegistry>) {
+    // Register a settings section (optional - auto-created from category if omitted)
+    bus.emit(RegisterSettingSection::new("my_plugin", "My Plugin")
+        .with_description("Plugin settings")
+        .with_order(100));  // Core sections use 0-50
+
+    // Register options
+    bus.emit(RegisterOption::new(
+        OptionSpec::new("enabled", "Enable feature", OptionValue::Bool(true))
+            .with_section("My Plugin")
+            .with_display_order(10),
+    ));
+}
+```
+
+See `lib/core/src/plugin/builtin/core.rs` for a complete example of registering core settings.

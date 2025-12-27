@@ -339,6 +339,86 @@ impl Event for RequestInsertText {
 }
 
 // =============================================================================
+// Settings/Option Request Events
+// =============================================================================
+
+/// Request to set line number visibility
+///
+/// Emitted by plugins (e.g., settings menu) when the line number option changes.
+/// The runtime subscribes to apply the change to the screen.
+#[derive(Debug, Clone, Copy)]
+pub struct RequestSetLineNumbers {
+    /// Whether line numbers should be visible
+    pub enabled: bool,
+}
+
+impl Event for RequestSetLineNumbers {
+    fn priority(&self) -> u32 {
+        priority::CORE
+    }
+}
+
+/// Request to set relative line number visibility
+///
+/// Emitted by plugins when the relative line number option changes.
+#[derive(Debug, Clone, Copy)]
+pub struct RequestSetRelativeLineNumbers {
+    /// Whether relative line numbers should be visible
+    pub enabled: bool,
+}
+
+impl Event for RequestSetRelativeLineNumbers {
+    fn priority(&self) -> u32 {
+        priority::CORE
+    }
+}
+
+/// Request to change the color theme
+///
+/// Emitted by plugins when the theme option changes.
+#[derive(Debug, Clone)]
+pub struct RequestSetTheme {
+    /// Name of the theme to apply
+    pub name: String,
+}
+
+impl Event for RequestSetTheme {
+    fn priority(&self) -> u32 {
+        priority::CORE
+    }
+}
+
+/// Request to set scrollbar visibility
+///
+/// Emitted by plugins when the scrollbar option changes.
+#[derive(Debug, Clone, Copy)]
+pub struct RequestSetScrollbar {
+    /// Whether scrollbar should be visible
+    pub enabled: bool,
+}
+
+impl Event for RequestSetScrollbar {
+    fn priority(&self) -> u32 {
+        priority::CORE
+    }
+}
+
+/// Request to set indent guide visibility
+///
+/// Emitted by plugins when the indent guide option changes.
+#[derive(Debug, Clone, Copy)]
+pub struct RequestSetIndentGuide {
+    /// Whether indent guides should be visible
+    pub enabled: bool,
+}
+
+impl Event for RequestSetIndentGuide {
+    fn priority(&self) -> u32 {
+        priority::CORE
+    }
+}
+
+// =============================================================================
 // Text Input Events
 // =============================================================================
 

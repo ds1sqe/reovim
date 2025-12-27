@@ -47,11 +47,16 @@ impl Runtime {
         // This starts processing queued events (like RegisterLanguage from subscribe phase)
         if let Some(mut event_rx) = self.event_bus.take_receiver() {
             let event_bus = Arc::clone(&self.event_bus);
+            let inner_tx = self.tx.clone();
             tokio::spawn(async move {
                 while let Some(event) = event_rx.recv().await {
                     let sender = event_bus.sender();
                     let mut ctx = crate::event_bus::HandlerContext::new(&sender);
                     let _ = event_bus.dispatch(&event, &mut ctx);
+                    // If any handler requested a render, send RenderSignal to main loop
+                    if ctx.render_requested() {
+                        let _ = inner_tx.try_send(InnerEvent::RenderSignal);
+                    }
                 }
             });
         }
@@ -138,11 +143,16 @@ impl Runtime {
         // This starts processing queued events (like RegisterLanguage from subscribe phase)
         if let Some(mut event_rx) = self.event_bus.take_receiver() {
             let event_bus = Arc::clone(&self.event_bus);
+            let inner_tx = self.tx.clone();
             tokio::spawn(async move {
                 while let Some(event) = event_rx.recv().await {
                     let sender = event_bus.sender();
                     let mut ctx = crate::event_bus::HandlerContext::new(&sender);
                     let _ = event_bus.dispatch(&event, &mut ctx);
+                    // If any handler requested a render, send RenderSignal to main loop
+                    if ctx.render_requested() {
+                        let _ = inner_tx.try_send(InnerEvent::RenderSignal);
+                    }
                 }
             });
         }
@@ -561,6 +571,34 @@ impl Runtime {
                     text.len()
                 );
                 self.registers.set_by_name(register, text);
+            }
+            // Settings/Option capability events
+            InnerEvent::SetLineNumbers { enabled } => {
+                tracing::info!("Runtime: Setting line numbers: {}", enabled);
+                self.screen.set_number(enabled);
+            }
+            InnerEvent::SetRelativeLineNumbers { enabled } => {
+                tracing::info!("Runtime: Setting relative line numbers: {}", enabled);
+                self.screen.set_relative_number(enabled);
+            }
+            InnerEvent::SetTheme { name } => {
+                tracing::info!("Runtime: Setting theme: {}", name);
+                if let Some(theme_name) = crate::highlight::ThemeName::parse(&name) {
+                    self.theme = crate::highlight::Theme::from_name(theme_name);
+                    self.rehighlight_all_buffers();
+                    // Request a render to apply the new theme immediately
+                    self.request_render();
+                } else {
+                    tracing::warn!("Runtime: Unknown theme name: {}", name);
+                }
+            }
+            InnerEvent::SetScrollbar { enabled } => {
+                tracing::info!("Runtime: Setting scrollbar: {}", enabled);
+                self.screen.set_scrollbar(enabled);
+            }
+            InnerEvent::SetIndentGuide { enabled } => {
+                tracing::info!("Runtime: Setting indent guide: {}", enabled);
+                self.indent_analyzer.set_enabled(enabled);
             }
         }
         false

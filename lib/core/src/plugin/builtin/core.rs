@@ -3,6 +3,8 @@
 //! Provides fundamental editor commands: cursor movement, mode switching,
 //! basic text operations, and the Editor interactor.
 
+use std::sync::Arc;
+
 use crate::{
     bind::{CommandRef, KeymapScope, SubModeKind},
     command::{
@@ -95,9 +97,20 @@ use crate::{
         id::CommandId,
     },
     display::{DisplayInfo, EditModeKey, SubModeKey},
+    event_bus::{
+        EventBus, EventResult,
+        core_events::{
+            RequestSetIndentGuide, RequestSetLineNumbers, RequestSetRelativeLineNumbers,
+            RequestSetScrollbar, RequestSetTheme,
+        },
+    },
     keys,
     modd::ComponentId,
-    plugin::{Plugin, PluginContext, PluginId},
+    option::{
+        ChangeSource, OptionCategory, OptionChanged, OptionConstraint, OptionScope, OptionSpec,
+        OptionValue, RegisterOption, RegisterSettingSection,
+    },
+    plugin::{Plugin, PluginContext, PluginId, PluginStateRegistry},
 };
 
 /// Core editor functionality plugin
@@ -142,6 +155,71 @@ impl Plugin for CorePlugin {
         self.register_window_mode_commands(ctx);
         self.register_builtin_displays(ctx);
         self.register_default_keybindings(ctx);
+    }
+
+    fn subscribe(&self, bus: &EventBus, _state: Arc<PluginStateRegistry>) {
+        self.register_core_options(bus);
+        self.subscribe_option_changes(bus);
+    }
+}
+
+impl CorePlugin {
+    /// Subscribe to `OptionChanged` events and map option names to runtime capability requests.
+    ///
+    /// This bridges the gap between the option system and runtime capabilities.
+    /// When an option changes (e.g., from the settings menu), we emit the appropriate
+    /// `Request*` event that the runtime subscribes to.
+    #[allow(clippy::unused_self)]
+    fn subscribe_option_changes(&self, bus: &EventBus) {
+        bus.subscribe::<OptionChanged, _>(100, move |event, ctx| {
+            // Skip if from UserCommand - the :set handler already applies these directly
+            if event.source == ChangeSource::UserCommand {
+                return EventResult::Handled;
+            }
+
+            // Map option names to runtime capability requests
+            let mut needs_render = false;
+            match event.name.as_str() {
+                "number" => {
+                    if let OptionValue::Bool(enabled) = &event.new_value {
+                        ctx.emit(RequestSetLineNumbers { enabled: *enabled });
+                        needs_render = true;
+                    }
+                }
+                "relativenumber" => {
+                    if let OptionValue::Bool(enabled) = &event.new_value {
+                        ctx.emit(RequestSetRelativeLineNumbers { enabled: *enabled });
+                        needs_render = true;
+                    }
+                }
+                "theme" => {
+                    if let OptionValue::Choice { value, .. } = &event.new_value {
+                        ctx.emit(RequestSetTheme {
+                            name: value.clone(),
+                        });
+                        needs_render = true;
+                    }
+                }
+                "scrollbar" => {
+                    if let OptionValue::Bool(enabled) = &event.new_value {
+                        ctx.emit(RequestSetScrollbar { enabled: *enabled });
+                        needs_render = true;
+                    }
+                }
+                "indentguide" => {
+                    if let OptionValue::Bool(enabled) = &event.new_value {
+                        ctx.emit(RequestSetIndentGuide { enabled: *enabled });
+                        needs_render = true;
+                    }
+                }
+                // Other options don't have runtime effects yet
+                _ => {}
+            }
+            if needs_render {
+                ctx.request_render();
+            }
+            EventResult::Handled
+        });
     }
 }
 
@@ -692,5 +770,166 @@ impl CorePlugin {
             keys![Escape],
             CommandRef::Registered(CommandId::new("enter_normal_mode")),
         );
+    }
+
+    /// Register core editor options via the extensible settings system.
+    ///
+    /// These options are dynamically registered and will appear in the settings menu.
+    #[allow(clippy::too_many_lines)]
+    fn register_core_options(&self, bus: &EventBus) {
+        // === Register Settings Sections ===
+
+        // Editor section
+        bus.emit(RegisterSettingSection::new("Editor", "Editor").with_order(0));
+
+        // Display section
+        bus.emit(
+            RegisterSettingSection::new("Display", "Display")
+                .with_description("Display and rendering settings")
+                .with_order(10),
+        );
+
+        // Window section
+        bus.emit(
+            RegisterSettingSection::new("Window", "Window")
+                .with_description("Window and split settings")
+                .with_order(20),
+        );
+
+        // === Register Editor Options ===
+
+        // Line numbers
+        bus.emit(RegisterOption::new(
+            OptionSpec::new("number", "Show line numbers", OptionValue::Bool(true))
+                .with_short("nu")
+                .with_category(OptionCategory::Editor)
+                .with_section("Editor")
+                .with_scope(OptionScope::Window)
+                .with_display_order(10),
+        ));
+
+        // Relative line numbers
+        bus.emit(RegisterOption::new(
+            OptionSpec::new(
+                "relativenumber",
+                "Show relative line numbers",
+                OptionValue::Bool(false),
+            )
+            .with_short("rnu")
+            .with_category(OptionCategory::Editor)
+            .with_section("Editor")
+            .with_scope(OptionScope::Window)
+            .with_display_order(11),
+        ));
+
+        // Tab width
+        bus.emit(RegisterOption::new(
+            OptionSpec::new("tabwidth", "Spaces per tab", OptionValue::Integer(4))
+                .with_short("tw")
+                .with_category(OptionCategory::Editor)
+                .with_section("Editor")
+                .with_scope(OptionScope::Buffer)
+                .with_constraint(OptionConstraint::range(1, 8))
+                .with_display_order(20),
+        ));
+
+        // Expand tab
+        bus.emit(RegisterOption::new(
+            OptionSpec::new("expandtab", "Use spaces instead of tabs", OptionValue::Bool(true))
+                .with_short("et")
+                .with_category(OptionCategory::Editor)
+                .with_section("Editor")
+                .with_scope(OptionScope::Buffer)
+                .with_display_order(21),
+        ));
+
+        // Indent guides
+        bus.emit(RegisterOption::new(
+            OptionSpec::new("indentguide", "Show indentation guides", OptionValue::Bool(true))
+                .with_category(OptionCategory::Editor)
+                .with_section("Editor")
+                .with_display_order(30),
+        ));
+
+        // Scrollbar
+        bus.emit(RegisterOption::new(
+            OptionSpec::new("scrollbar", "Show scrollbar", OptionValue::Bool(true))
+                .with_category(OptionCategory::Editor)
+                .with_section("Editor")
+                .with_display_order(31),
+        ));
+
+        // Scroll offset
+        bus.emit(RegisterOption::new(
+            OptionSpec::new(
+                "scrolloff",
+                "Lines to keep visible above/below cursor",
+                OptionValue::Integer(5),
+            )
+            .with_short("so")
+            .with_category(OptionCategory::Editor)
+            .with_section("Editor")
+            .with_constraint(OptionConstraint::min(0))
+            .with_display_order(32),
+        ));
+
+        // === Register Display Options ===
+
+        // Theme
+        bus.emit(RegisterOption::new(
+            OptionSpec::new(
+                "theme",
+                "Color theme",
+                OptionValue::choice(
+                    "dark",
+                    vec!["dark".into(), "light".into(), "tokyonight".into()],
+                ),
+            )
+            .with_category(OptionCategory::Display)
+            .with_section("Display")
+            .with_display_order(10),
+        ));
+
+        // Color mode
+        bus.emit(RegisterOption::new(
+            OptionSpec::new(
+                "colormode",
+                "Terminal color support",
+                OptionValue::choice(
+                    "truecolor",
+                    vec!["ansi".into(), "256".into(), "truecolor".into()],
+                ),
+            )
+            .with_category(OptionCategory::Display)
+            .with_section("Display")
+            .with_display_order(11),
+        ));
+
+        // === Register Window Options ===
+
+        // Default split direction
+        bus.emit(RegisterOption::new(
+            OptionSpec::new(
+                "splitbelow",
+                "New horizontal splits below current",
+                OptionValue::Bool(true),
+            )
+            .with_short("sb")
+            .with_category(OptionCategory::Window)
+            .with_section("Window")
+            .with_display_order(10),
+        ));
+
+        bus.emit(RegisterOption::new(
+            OptionSpec::new(
+                "splitright",
+                "New vertical splits to the right",
+                OptionValue::Bool(true),
+            )
+            .with_short("spr")
+            .with_category(OptionCategory::Window)
+            .with_section("Window")
+            .with_display_order(11),
+        ));
     }
 }

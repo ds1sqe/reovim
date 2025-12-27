@@ -183,7 +183,10 @@ impl PluginWindow for HoverPluginWindow {
         // Get hover snapshot from manager
         let snapshot = self.manager.with(|m| {
             let snap = m.hover_cache.load();
-            debug!("window_config: cache.load() returned {}", if snap.is_some() { "Some" } else { "None" });
+            debug!(
+                "window_config: cache.load() returned {}",
+                if snap.is_some() { "Some" } else { "None" }
+            );
             snap
         })?;
 

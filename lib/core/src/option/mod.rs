@@ -57,7 +57,10 @@ mod registry;
 mod spec;
 
 pub use {
-    events::{ChangeSource, OptionChanged, QueryOption, RegisterOption, ResetOption},
+    events::{
+        ChangeSource, OptionChanged, QueryOption, RegisterOption, RegisterSettingSection,
+        ResetOption,
+    },
     registry::{OptionBuilder, OptionError, OptionRegistry},
     spec::{
         DependencyKind, OptionCategory, OptionConstraint, OptionDependency, OptionScope,

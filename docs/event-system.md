@@ -116,12 +116,31 @@ Core events are defined in `lib/core/src/event_bus/core_events.rs` and allow plu
 
 Option events are defined in `lib/core/src/option/events.rs` for the extensible settings system.
 
-| Event | Description |
-|-------|-------------|
-| `RegisterOption` | Plugin registers an option specification |
-| `OptionChanged` | Option value was modified |
-| `QueryOption` | Request to query an option value |
-| `ResetOption` | Request to reset option to default |
+| Event | Priority | Description |
+|-------|----------|-------------|
+| `RegisterSettingSection` | 40 | Plugin registers a settings section with UI metadata |
+| `RegisterOption` | 50 | Plugin registers an option specification |
+| `OptionChanged` | 100 | Option value was modified |
+| `QueryOption` | 100 | Request to query an option value |
+| `ResetOption` | 100 | Request to reset option to default |
+
+**RegisterSettingSection:**
+
+Emitted by plugins to register a settings section for the settings menu:
+
+```rust
+use reovim_core::option::RegisterSettingSection;
+
+bus.emit(RegisterSettingSection::new("my_plugin", "My Plugin")
+    .with_description("Plugin-specific settings")
+    .with_order(100));  // Core sections use 0-50
+```
+
+Fields:
+- `id: Cow<str>` - Section identifier (must match `OptionSpec.section`)
+- `display_name: Cow<str>` - Display name for the section header
+- `description: Option<Cow<str>>` - Optional description
+- `order: u32` - Display order (lower = earlier)
 
 **OptionChanged:**
 

@@ -74,7 +74,8 @@ async fn test_connect_to_rust_analyzer() {
 
     // Start the saturator with a 30-second timeout
     let result =
-        timeout(Duration::from_secs(30), async { LspSaturator::start(config, None, None).await }).await;
+        timeout(Duration::from_secs(30), async { LspSaturator::start(config, None, None).await })
+            .await;
 
     match result {
         Ok(Ok((handle, cache))) => {
@@ -122,7 +123,8 @@ async fn test_diagnostics_with_errors() {
 
     // Start the saturator
     let result =
-        timeout(Duration::from_secs(30), async { LspSaturator::start(config, None, None).await }).await;
+        timeout(Duration::from_secs(30), async { LspSaturator::start(config, None, None).await })
+            .await;
 
     let (handle, cache) = match result {
         Ok(Ok((h, c))) => (h, c),

@@ -462,9 +462,7 @@ impl Client {
                 show_message: Some(lsp_types::ShowMessageRequestClientCapabilities {
                     message_action_item: None,
                 }),
-                show_document: Some(lsp_types::ShowDocumentClientCapabilities {
-                    support: true,
-                }),
+                show_document: Some(lsp_types::ShowDocumentClientCapabilities { support: true }),
             }),
             ..Default::default()
         }

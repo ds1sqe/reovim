@@ -8,6 +8,7 @@ repository.workspace = true
 
 [dependencies]
 reovim-core.workspace = true
+tracing.workspace = true
 
 [features]
 default = []

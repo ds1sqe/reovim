@@ -424,6 +424,22 @@ pub struct OptionSpec {
 
     /// Scope (global, buffer-local, window-local)
     pub scope: OptionScope,
+
+    // --- UI Metadata for Settings Menu ---
+    /// Section name for settings menu (overrides `category.display_name()`)
+    ///
+    /// If `None`, falls back to `category.display_name()`.
+    pub section: Option<Cow<'static, str>>,
+
+    /// Display order within section (lower = earlier, default 100)
+    ///
+    /// Options are sorted by this value within their section.
+    pub display_order: u32,
+
+    /// Whether to show this option in the settings menu (default true)
+    ///
+    /// Some options may be `:set`-only and not shown in the menu.
+    pub show_in_menu: bool,
 }
 
 impl OptionSpec {
@@ -443,6 +459,9 @@ impl OptionSpec {
             constraint: OptionConstraint::default(),
             depends_on: Vec::new(),
             scope: OptionScope::default(),
+            section: None,
+            display_order: 100,
+            show_in_menu: true,
         }
     }
 
@@ -479,6 +498,43 @@ impl OptionSpec {
     pub fn with_dependency(mut self, dependency: OptionDependency) -> Self {
         self.depends_on.push(dependency);
         self
+    }
+
+    /// Set the section name for the settings menu.
+    ///
+    /// This overrides the default section derived from `category.display_name()`.
+    #[must_use]
+    pub fn with_section(mut self, section: impl Into<Cow<'static, str>>) -> Self {
+        self.section = Some(section.into());
+        self
+    }
+
+    /// Set the display order within the section.
+    ///
+    /// Lower values appear first. Default is 100.
+    #[must_use]
+    pub const fn with_display_order(mut self, order: u32) -> Self {
+        self.display_order = order;
+        self
+    }
+
+    /// Set whether to show this option in the settings menu.
+    ///
+    /// If `false`, the option is still accessible via `:set` command.
+    #[must_use]
+    pub const fn with_show_in_menu(mut self, show: bool) -> Self {
+        self.show_in_menu = show;
+        self
+    }
+
+    /// Get the effective section name for the settings menu.
+    ///
+    /// Returns `section` if set, otherwise falls back to `category.display_name()`.
+    #[must_use]
+    pub fn effective_section(&self) -> &str {
+        self.section
+            .as_deref()
+            .unwrap_or_else(|| self.category.display_name())
     }
 
     /// Validate a value against this option's constraints.

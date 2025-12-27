@@ -5,7 +5,7 @@ resolver = "2"
 
 [workspace.package]
 rust-version = "1.92"
-version = "0.7.7"
+version = "0.7.8"
 edition = "2024"
 authors = ["ds1sqe(dukim) <ds1sqe@mensakorea.org>"]
 license = "MIT"
@@ -47,8 +47,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "time"]
 tracing-appender = "0.2"
 chrono = "0.4"
 # local libs
-reovim-core = { path = "./lib/core", version = "0.7.7" }
-reovim-sys = { path = "./lib/sys", version = "0.7.7" }
+reovim-core = { path = "./lib/core", version = "0.7.8" }
+reovim-sys = { path = "./lib/sys", version = "0.7.8" }
 reovim-lsp = { path = "./lib/lsp", version = "0.7.2" }
 
 # plugins

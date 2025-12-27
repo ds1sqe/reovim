@@ -376,6 +376,68 @@ impl Runtime {
                 });
         }
 
+        // Subscribe to settings/option capability requests
+        {
+            use crate::event_bus::{EventResult, core_events::RequestSetLineNumbers};
+            let tx = runtime.tx.clone();
+            runtime
+                .event_bus
+                .subscribe::<RequestSetLineNumbers, _>(100, move |event, _ctx| {
+                    let _ = tx.try_send(InnerEvent::SetLineNumbers {
+                        enabled: event.enabled,
+                    });
+                    EventResult::Handled
+                });
+        }
+        {
+            use crate::event_bus::{EventResult, core_events::RequestSetRelativeLineNumbers};
+            let tx = runtime.tx.clone();
+            runtime
+                .event_bus
+                .subscribe::<RequestSetRelativeLineNumbers, _>(100, move |event, _ctx| {
+                    let _ = tx.try_send(InnerEvent::SetRelativeLineNumbers {
+                        enabled: event.enabled,
+                    });
+                    EventResult::Handled
+                });
+        }
+        {
+            use crate::event_bus::{EventResult, core_events::RequestSetTheme};
+            let tx = runtime.tx.clone();
+            runtime
+                .event_bus
+                .subscribe::<RequestSetTheme, _>(100, move |event, _ctx| {
+                    let _ = tx.try_send(InnerEvent::SetTheme {
+                        name: event.name.clone(),
+                    });
+                    EventResult::Handled
+                });
+        }
+        {
+            use crate::event_bus::{EventResult, core_events::RequestSetScrollbar};
+            let tx = runtime.tx.clone();
+            runtime
+                .event_bus
+                .subscribe::<RequestSetScrollbar, _>(100, move |event, _ctx| {
+                    let _ = tx.try_send(InnerEvent::SetScrollbar {
+                        enabled: event.enabled,
+                    });
+                    EventResult::Handled
+                });
+        }
+        {
+            use crate::event_bus::{EventResult, core_events::RequestSetIndentGuide};
+            let tx = runtime.tx.clone();
+            runtime
+                .event_bus
+                .subscribe::<RequestSetIndentGuide, _>(100, move |event, _ctx| {
+                    let _ = tx.try_send(InnerEvent::SetIndentGuide {
+                        enabled: event.enabled,
+                    });
+                    EventResult::Handled
+                });
+        }
+
         runtime
     }
 

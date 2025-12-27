@@ -499,6 +499,9 @@ impl<'a> PluginOptionBuilder<'a> {
             constraint: self.constraint,
             depends_on: Vec::new(),
             scope: self.scope,
+            section: None,
+            display_order: 100,
+            show_in_menu: true,
         };
 
         // Check for duplicates

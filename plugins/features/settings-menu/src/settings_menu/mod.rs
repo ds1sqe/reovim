@@ -14,5 +14,8 @@ pub mod state;
 
 pub use {
     item::{ActionType, FlatItem, SettingItem, SettingSection, SettingValue},
-    state::{MenuLayout, MessageKind, SettingsInputMode, SettingsMenuState},
+    state::{
+        MenuLayout, MessageKind, RegisteredOption, SectionMeta, SettingChange, SettingsInputMode,
+        SettingsMenuState,
+    },
 };

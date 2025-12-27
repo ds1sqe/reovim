@@ -1,9 +1,26 @@
 //! Settings menu state management
 
+use std::collections::HashMap;
+
 use {
     super::item::{ActionType, FlatItem, SettingItem, SettingSection, SettingValue},
-    reovim_core::config::ProfileConfig,
+    reovim_core::{
+        config::ProfileConfig,
+        option::{OptionSpec, OptionValue},
+    },
+    tracing::error,
 };
+
+/// Information about a setting change, used to emit `OptionChanged` events.
+#[derive(Debug, Clone)]
+pub struct SettingChange {
+    /// The setting key (e.g., "editor.theme")
+    pub key: String,
+    /// The value before the change
+    pub old_value: OptionValue,
+    /// The value after the change
+    pub new_value: OptionValue,
+}
 
 /// Input mode for the settings menu
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -35,12 +52,34 @@ pub struct MenuLayout {
     pub visible_items: usize,
 }
 
+/// Metadata for a registered settings section
+#[derive(Debug, Clone)]
+pub struct SectionMeta {
+    /// Display name for the section header
+    pub display_name: String,
+    /// Display order (lower = earlier)
+    pub order: u32,
+    /// Optional description
+    pub description: Option<String>,
+}
+
+/// A registered option with its current value
+#[derive(Debug, Clone)]
+pub struct RegisteredOption {
+    /// The option specification
+    pub spec: OptionSpec,
+    /// Current value
+    pub value: OptionValue,
+    /// Display order within section
+    pub display_order: u32,
+}
+
 /// Settings menu state
 #[derive(Debug, Clone, Default)]
 pub struct SettingsMenuState {
     /// Whether the menu is visible
     pub visible: bool,
-    /// Setting sections
+    /// Setting sections (built from registered options)
     pub sections: Vec<SettingSection>,
     /// Flattened items for navigation
     pub flat_items: Vec<FlatItem>,
@@ -60,6 +99,14 @@ pub struct SettingsMenuState {
     pub pending_action: Option<ActionType>,
     /// Status message to display
     pub message: Option<(String, MessageKind)>,
+
+    // --- Dynamic Registration ---
+    /// Registered sections (section_id -> metadata)
+    pub registered_sections: HashMap<String, SectionMeta>,
+    /// Registered options by section (section_id -> options)
+    pub registered_options: HashMap<String, Vec<RegisteredOption>>,
+    /// Set of registered option keys (for duplicate detection)
+    registered_option_keys: std::collections::HashSet<String>,
 }
 
 impl SettingsMenuState {
@@ -69,8 +116,105 @@ impl SettingsMenuState {
         Self::default()
     }
 
+    // --- Dynamic Registration Methods ---
+
+    /// Register a settings section.
+    ///
+    /// # Errors
+    ///
+    /// Logs an error if a section with the same ID already exists (first wins).
+    pub fn register_section(&mut self, id: String, meta: SectionMeta) {
+        if self.registered_sections.contains_key(&id) {
+            error!("Duplicate settings section registration: '{}'. First registration wins.", id);
+            return;
+        }
+        self.registered_sections.insert(id, meta);
+    }
+
+    /// Register an option from a `RegisterOption` event.
+    ///
+    /// # Errors
+    ///
+    /// Logs an error if an option with the same key already exists (first wins).
+    pub fn register_option(&mut self, spec: &OptionSpec, value: &OptionValue) {
+        // Skip options not meant for settings menu
+        if !spec.show_in_menu {
+            return;
+        }
+
+        let key = spec.name.to_string();
+        if self.registered_option_keys.contains(&key) {
+            error!("Duplicate option registration: '{}'. First registration wins.", key);
+            return;
+        }
+        self.registered_option_keys.insert(key);
+
+        // Determine section ID
+        let section_id = spec.effective_section().to_string();
+
+        // Create or get section entry
+        let options = self.registered_options.entry(section_id).or_default();
+
+        options.push(RegisteredOption {
+            spec: spec.clone(),
+            value: value.clone(),
+            display_order: spec.display_order,
+        });
+    }
+
+    /// Rebuild sections from registered options.
+    ///
+    /// This method is called when opening the settings menu to build
+    /// the `sections` and `flat_items` from the dynamically registered
+    /// sections and options.
+    pub fn rebuild_from_registered(&mut self) {
+        self.sections.clear();
+
+        // Collect sections with their order
+        let mut section_entries: Vec<(String, u32, String)> = self
+            .registered_sections
+            .iter()
+            .map(|(id, meta)| (id.clone(), meta.order, meta.display_name.clone()))
+            .collect();
+
+        // Add sections for options that don't have explicit section registration
+        for section_id in self.registered_options.keys() {
+            if !self.registered_sections.contains_key(section_id) {
+                // Auto-create section with default order
+                section_entries.push((section_id.clone(), 100, section_id.clone()));
+            }
+        }
+
+        // Sort sections by order
+        section_entries.sort_by_key(|(_, order, _)| *order);
+
+        // Build sections
+        for (section_id, _, display_name) in section_entries {
+            let mut items = Vec::new();
+
+            if let Some(options) = self.registered_options.get(&section_id) {
+                // Sort options by display_order
+                let mut sorted_options: Vec<_> = options.iter().collect();
+                sorted_options.sort_by_key(|opt| opt.display_order);
+
+                for opt in sorted_options {
+                    items.push(SettingValue::item_from_spec(&opt.spec, &opt.value));
+                }
+            }
+
+            if !items.is_empty() {
+                self.sections.push(SettingSection {
+                    name: display_name,
+                    items,
+                });
+            }
+        }
+
+        self.rebuild_flat_items();
+    }
+
     /// Open the settings menu with current profile settings
-    pub fn open(&mut self, profile: &ProfileConfig, profile_name: &str) {
+    pub fn open(&mut self, _profile: &ProfileConfig, profile_name: &str) {
         self.visible = true;
         self.scroll_offset = 0;
         self.input_mode = SettingsInputMode::Normal;
@@ -78,7 +222,14 @@ impl SettingsMenuState {
         self.input_prompt.clear();
         self.pending_action = None;
         self.message = None;
-        self.populate_from_profile(profile, profile_name);
+
+        // Build sections from dynamically registered options
+        self.rebuild_from_registered();
+
+        // Add profile management section (special case - not a registered option)
+        self.sections
+            .push(Self::build_profile_section(profile_name));
+        self.rebuild_flat_items();
 
         // Select first actual setting (skip section headers)
         self.selected_index = 0;
@@ -100,138 +251,40 @@ impl SettingsMenuState {
         self.message = None;
     }
 
-    /// Populate settings from a profile config
-    fn populate_from_profile(&mut self, profile: &ProfileConfig, profile_name: &str) {
-        self.sections.clear();
-        self.sections.push(Self::build_editor_section(profile));
-        self.sections.push(Self::build_cursor_section());
-        self.sections.push(Self::build_window_section(profile));
-        self.sections
-            .push(Self::build_profile_section(profile_name));
-        self.rebuild_flat_items();
-    }
-
-    /// Build the editor settings section
-    fn build_editor_section(profile: &ProfileConfig) -> SettingSection {
-        let editor = &profile.editor;
-        SettingSection {
-            name: "Editor".to_string(),
-            items: vec![
-                SettingItem {
-                    key: "editor.theme",
-                    label: "Theme".to_string(),
-                    description: Some("Color theme".to_string()),
-                    value: SettingValue::Choice {
-                        options: vec![
-                            "dark".to_string(),
-                            "light".to_string(),
-                            "tokyonight".to_string(),
-                        ],
-                        selected: match editor.theme.as_str() {
-                            "light" => 1,
-                            "tokyonight" => 2,
-                            _ => 0,
-                        },
-                    },
-                },
-                SettingItem {
-                    key: "editor.colormode",
-                    label: "Color Mode".to_string(),
-                    description: Some("Terminal color support".to_string()),
-                    value: SettingValue::Choice {
-                        options: vec![
-                            "ansi".to_string(),
-                            "256".to_string(),
-                            "truecolor".to_string(),
-                        ],
-                        selected: match editor.colormode.as_str() {
-                            "ansi" => 0,
-                            "256" => 1,
-                            _ => 2,
-                        },
-                    },
-                },
-                SettingItem {
-                    key: "editor.number",
-                    label: "Line Numbers".to_string(),
-                    description: Some("Show line numbers".to_string()),
-                    value: SettingValue::Bool(editor.number),
-                },
-                SettingItem {
-                    key: "editor.relativenumber",
-                    label: "Relative Numbers".to_string(),
-                    description: Some("Show relative line numbers".to_string()),
-                    value: SettingValue::Bool(editor.relativenumber),
-                },
-                SettingItem {
-                    key: "editor.indentguide",
-                    label: "Indent Guides".to_string(),
-                    description: Some("Show indentation guides".to_string()),
-                    value: SettingValue::Bool(editor.indentguide),
-                },
-                SettingItem {
-                    key: "editor.scrollbar",
-                    label: "Scrollbar".to_string(),
-                    description: Some("Show scrollbar".to_string()),
-                    value: SettingValue::Bool(editor.scrollbar),
-                },
-                SettingItem {
-                    key: "editor.tabwidth",
-                    label: "Tab Width".to_string(),
-                    description: Some("Spaces per tab".to_string()),
-                    value: SettingValue::Number {
-                        value: i32::from(editor.tabwidth),
-                        min: 1,
-                        max: 8,
-                        step: 1,
-                    },
-                },
-            ],
+    /// Update a registered option value when receiving OptionChanged events.
+    ///
+    /// This method updates both the registered_options storage and any
+    /// currently displayed sections.
+    pub fn update_option_value(&mut self, key: &str, value: &OptionValue) {
+        // Update in registered_options
+        for options in self.registered_options.values_mut() {
+            for opt in options {
+                if opt.spec.name == key {
+                    opt.value = value.clone();
+                    break;
+                }
+            }
         }
-    }
 
-    /// Build the cursor settings section (placeholder for future schema additions)
-    fn build_cursor_section() -> SettingSection {
-        SettingSection {
-            name: "Cursor".to_string(),
-            items: vec![
-                SettingItem {
-                    key: "cursor.style",
-                    label: "Style".to_string(),
-                    description: Some("Cursor shape".to_string()),
-                    value: SettingValue::Choice {
-                        options: vec![
-                            "block".to_string(),
-                            "line".to_string(),
-                            "underline".to_string(),
-                        ],
-                        selected: 0,
-                    },
-                },
-                SettingItem {
-                    key: "cursor.blink",
-                    label: "Blink".to_string(),
-                    description: Some("Cursor blinking".to_string()),
-                    value: SettingValue::Bool(false),
-                },
-            ],
-        }
-    }
-
-    /// Build the window settings section
-    fn build_window_section(profile: &ProfileConfig) -> SettingSection {
-        let window = &profile.window;
-        SettingSection {
-            name: "Window".to_string(),
-            items: vec![SettingItem {
-                key: "window.default_split",
-                label: "Default Split".to_string(),
-                description: Some("Direction for new splits".to_string()),
-                value: SettingValue::Choice {
-                    options: vec!["vertical".to_string(), "horizontal".to_string()],
-                    selected: usize::from(window.default_split == "horizontal"),
-                },
-            }],
+        // Update in displayed sections (if menu is open)
+        if self.visible {
+            for section in &mut self.sections {
+                for item in &mut section.items {
+                    if item.key == key {
+                        item.value = SettingValue::from_option_with_constraint(
+                            value,
+                            &self
+                                .registered_options
+                                .values()
+                                .flatten()
+                                .find(|o| o.spec.name == key)
+                                .map(|o| o.spec.constraint.clone())
+                                .unwrap_or_default(),
+                        );
+                        return;
+                    }
+                }
+            }
         }
     }
 
@@ -241,19 +294,19 @@ impl SettingsMenuState {
             name: "Profile".to_string(),
             items: vec![
                 SettingItem {
-                    key: "profile.current",
+                    key: "profile.current".to_string(),
                     label: "Current".to_string(),
                     description: Some("Active profile".to_string()),
                     value: SettingValue::Display(profile_name.to_string()),
                 },
                 SettingItem {
-                    key: "profile.save",
+                    key: "profile.save".to_string(),
                     label: "Save as...".to_string(),
                     description: Some("Save current settings to profile".to_string()),
                     value: SettingValue::Action(ActionType::SaveProfile),
                 },
                 SettingItem {
-                    key: "profile.load",
+                    key: "profile.load".to_string(),
                     label: "Load...".to_string(),
                     description: Some("Load a different profile".to_string()),
                     value: SettingValue::Action(ActionType::LoadProfile),
@@ -277,18 +330,26 @@ impl SettingsMenuState {
         }
     }
 
-    /// Calculate layout based on screen dimensions
+    /// Calculate layout based on screen dimensions and content
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     pub fn calculate_layout(&mut self, screen_width: u16, screen_height: u16) {
-        // 60% width, 80% height - centered
-        let width = ((f32::from(screen_width) * 0.6) as u16).clamp(50, 80);
-        let height = ((f32::from(screen_height) * 0.8) as u16).max(15);
+        // Width: 50% of screen, clamped between 40 and 60
+        let width = ((f32::from(screen_width) * 0.5) as u16).clamp(40, 60);
 
+        // Height: based on content + borders (2 for top/bottom)
+        let content_items = self.flat_items.len();
+        let content_height = (content_items + 2) as u16; // items + top/bottom border
+
+        // Clamp height to reasonable bounds (min 10, max 80% of screen)
+        let max_height = ((f32::from(screen_height) * 0.8) as u16).max(10);
+        let height = content_height.clamp(10, max_height);
+
+        // Center on screen
         let x = (screen_width.saturating_sub(width)) / 2;
         let y = (screen_height.saturating_sub(height)) / 2;
 
-        // Reserve 4 lines for border (2) + header (1) + footer (1)
-        let visible_items = (height.saturating_sub(4)) as usize;
+        // Visible items = height - 2 (borders)
+        let visible_items = (height.saturating_sub(2)) as usize;
 
         self.layout = MenuLayout {
             x,
@@ -396,90 +457,248 @@ impl SettingsMenuState {
         }
     }
 
-    /// Toggle the selected boolean setting. Returns true if toggled.
-    pub fn toggle_selected(&mut self) -> bool {
-        if let Some(item) = self.selected_item_mut()
-            && item.value.is_bool()
-        {
-            item.value.toggle();
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Cycle to next value for selected setting. Returns true if changed.
-    pub fn cycle_next_selected(&mut self) -> bool {
-        if let Some(item) = self.selected_item_mut() {
-            match &item.value {
-                SettingValue::Choice { .. } => {
-                    item.value.cycle_next();
-                    true
+    /// Toggle the selected boolean setting. Returns change info if toggled.
+    pub fn toggle_selected(&mut self) -> Option<SettingChange> {
+        // Get the key and check if it's a boolean
+        let (key, section_idx, item_idx) = {
+            let flat_item = self.flat_items.get(self.selected_index)?;
+            if let FlatItem::Setting {
+                section_idx,
+                item_idx,
+            } = flat_item
+            {
+                let item = self.sections.get(*section_idx)?.items.get(*item_idx)?;
+                if !item.value.is_bool() {
+                    return None;
                 }
-                SettingValue::Number { .. } => {
-                    item.value.increment();
-                    true
-                }
-                _ => false,
+                (item.key.clone(), *section_idx, *item_idx)
+            } else {
+                return None;
             }
-        } else {
-            false
-        }
-    }
+        };
 
-    /// Cycle to previous value for selected setting. Returns true if changed.
-    pub fn cycle_prev_selected(&mut self) -> bool {
-        if let Some(item) = self.selected_item_mut() {
-            match &item.value {
-                SettingValue::Choice { .. } => {
-                    item.value.cycle_prev();
-                    true
+        // Toggle the value in sections
+        let item = self
+            .sections
+            .get_mut(section_idx)?
+            .items
+            .get_mut(item_idx)?;
+        let old_value = item.value.to_option_value()?;
+        item.value.toggle();
+        let new_value = item.value.to_option_value()?;
+
+        // Also update registered_options
+        for options in self.registered_options.values_mut() {
+            for opt in options.iter_mut() {
+                if opt.spec.name == key {
+                    opt.value = new_value.clone();
+                    break;
                 }
-                SettingValue::Number { .. } => {
-                    item.value.decrement();
-                    true
-                }
-                _ => false,
             }
-        } else {
-            false
+        }
+
+        Some(SettingChange {
+            key,
+            old_value,
+            new_value,
+        })
+    }
+
+    /// Helper to sync a value change to registered_options
+    fn sync_to_registered(&mut self, key: &str, new_value: &OptionValue) {
+        for options in self.registered_options.values_mut() {
+            for opt in options.iter_mut() {
+                if opt.spec.name == key {
+                    opt.value = new_value.clone();
+                    return;
+                }
+            }
         }
     }
 
-    /// Quick select for the selected setting. Returns true if changed.
-    pub fn quick_select(&mut self, index: u8) -> bool {
-        if let Some(item) = self.selected_item_mut()
-            && item.value.is_choice()
-        {
-            item.value.quick_select(index);
-            true
-        } else {
-            false
+    /// Cycle to next value for selected setting. Returns change info if changed.
+    pub fn cycle_next_selected(&mut self) -> Option<SettingChange> {
+        let (key, section_idx, item_idx) = {
+            let flat_item = self.flat_items.get(self.selected_index)?;
+            if let FlatItem::Setting {
+                section_idx,
+                item_idx,
+            } = flat_item
+            {
+                let item = self.sections.get(*section_idx)?.items.get(*item_idx)?;
+                match &item.value {
+                    SettingValue::Choice { .. } | SettingValue::Number { .. } => {}
+                    _ => return None,
+                }
+                (item.key.clone(), *section_idx, *item_idx)
+            } else {
+                return None;
+            }
+        };
+
+        let item = self
+            .sections
+            .get_mut(section_idx)?
+            .items
+            .get_mut(item_idx)?;
+        let old_value = item.value.to_option_value()?;
+        match &item.value {
+            SettingValue::Choice { .. } => item.value.cycle_next(),
+            SettingValue::Number { .. } => item.value.increment(),
+            _ => return None,
         }
+        let new_value = item.value.to_option_value()?;
+        self.sync_to_registered(&key, &new_value);
+        Some(SettingChange {
+            key,
+            old_value,
+            new_value,
+        })
     }
 
-    /// Increment the selected number setting. Returns true if changed.
-    pub fn increment_selected(&mut self) -> bool {
-        if let Some(item) = self.selected_item_mut()
-            && item.value.is_number()
-        {
-            item.value.increment();
-            true
-        } else {
-            false
+    /// Cycle to previous value for selected setting. Returns change info if changed.
+    pub fn cycle_prev_selected(&mut self) -> Option<SettingChange> {
+        let (key, section_idx, item_idx) = {
+            let flat_item = self.flat_items.get(self.selected_index)?;
+            if let FlatItem::Setting {
+                section_idx,
+                item_idx,
+            } = flat_item
+            {
+                let item = self.sections.get(*section_idx)?.items.get(*item_idx)?;
+                match &item.value {
+                    SettingValue::Choice { .. } | SettingValue::Number { .. } => {}
+                    _ => return None,
+                }
+                (item.key.clone(), *section_idx, *item_idx)
+            } else {
+                return None;
+            }
+        };
+
+        let item = self
+            .sections
+            .get_mut(section_idx)?
+            .items
+            .get_mut(item_idx)?;
+        let old_value = item.value.to_option_value()?;
+        match &item.value {
+            SettingValue::Choice { .. } => item.value.cycle_prev(),
+            SettingValue::Number { .. } => item.value.decrement(),
+            _ => return None,
         }
+        let new_value = item.value.to_option_value()?;
+        self.sync_to_registered(&key, &new_value);
+        Some(SettingChange {
+            key,
+            old_value,
+            new_value,
+        })
     }
 
-    /// Decrement the selected number setting. Returns true if changed.
-    pub fn decrement_selected(&mut self) -> bool {
-        if let Some(item) = self.selected_item_mut()
-            && item.value.is_number()
-        {
-            item.value.decrement();
-            true
-        } else {
-            false
-        }
+    /// Quick select for the selected setting. Returns change info if changed.
+    pub fn quick_select(&mut self, index: u8) -> Option<SettingChange> {
+        let (key, section_idx, item_idx) = {
+            let flat_item = self.flat_items.get(self.selected_index)?;
+            if let FlatItem::Setting {
+                section_idx,
+                item_idx,
+            } = flat_item
+            {
+                let item = self.sections.get(*section_idx)?.items.get(*item_idx)?;
+                if !item.value.is_choice() {
+                    return None;
+                }
+                (item.key.clone(), *section_idx, *item_idx)
+            } else {
+                return None;
+            }
+        };
+
+        let item = self
+            .sections
+            .get_mut(section_idx)?
+            .items
+            .get_mut(item_idx)?;
+        let old_value = item.value.to_option_value()?;
+        item.value.quick_select(index);
+        let new_value = item.value.to_option_value()?;
+        self.sync_to_registered(&key, &new_value);
+        Some(SettingChange {
+            key,
+            old_value,
+            new_value,
+        })
+    }
+
+    /// Increment the selected number setting. Returns change info if changed.
+    pub fn increment_selected(&mut self) -> Option<SettingChange> {
+        let (key, section_idx, item_idx) = {
+            let flat_item = self.flat_items.get(self.selected_index)?;
+            if let FlatItem::Setting {
+                section_idx,
+                item_idx,
+            } = flat_item
+            {
+                let item = self.sections.get(*section_idx)?.items.get(*item_idx)?;
+                if !item.value.is_number() {
+                    return None;
+                }
+                (item.key.clone(), *section_idx, *item_idx)
+            } else {
+                return None;
+            }
+        };
+
+        let item = self
+            .sections
+            .get_mut(section_idx)?
+            .items
+            .get_mut(item_idx)?;
+        let old_value = item.value.to_option_value()?;
+        item.value.increment();
+        let new_value = item.value.to_option_value()?;
+        self.sync_to_registered(&key, &new_value);
+        Some(SettingChange {
+            key,
+            old_value,
+            new_value,
+        })
+    }
+
+    /// Decrement the selected number setting. Returns change info if changed.
+    pub fn decrement_selected(&mut self) -> Option<SettingChange> {
+        let (key, section_idx, item_idx) = {
+            let flat_item = self.flat_items.get(self.selected_index)?;
+            if let FlatItem::Setting {
+                section_idx,
+                item_idx,
+            } = flat_item
+            {
+                let item = self.sections.get(*section_idx)?.items.get(*item_idx)?;
+                if !item.value.is_number() {
+                    return None;
+                }
+                (item.key.clone(), *section_idx, *item_idx)
+            } else {
+                return None;
+            }
+        };
+
+        let item = self
+            .sections
+            .get_mut(section_idx)?
+            .items
+            .get_mut(item_idx)?;
+        let old_value = item.value.to_option_value()?;
+        item.value.decrement();
+        let new_value = item.value.to_option_value()?;
+        self.sync_to_registered(&key, &new_value);
+        Some(SettingChange {
+            key,
+            old_value,
+            new_value,
+        })
     }
 
     /// Get the action type if the selected item is an action
@@ -503,48 +722,81 @@ impl SettingsMenuState {
         self.message = None;
     }
 
-    /// Get the current profile config from settings state
+    /// Get the current profile config from settings state.
+    ///
+    /// This iterates over registered options and maps them to profile fields.
+    /// Note: The proper flow is for OptionChanged events to update OptionRegistry,
+    /// which then persists to profile. This method provides backwards compatibility.
     #[must_use]
     #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
     pub fn to_profile_config(&self) -> ProfileConfig {
         let mut config = ProfileConfig::default();
 
-        for section in &self.sections {
-            for item in &section.items {
-                match item.key {
-                    "editor.theme" => {
-                        config.editor.theme = item.value.display_value();
-                    }
-                    "editor.colormode" => {
-                        config.editor.colormode = item.value.display_value();
-                    }
-                    "editor.number" => {
-                        if let SettingValue::Bool(b) = &item.value {
+        // Iterate over all registered options
+        for options in self.registered_options.values() {
+            for opt in options {
+                let key = opt.spec.name.as_ref();
+                match key {
+                    "number" => {
+                        if let OptionValue::Bool(b) = &opt.value {
                             config.editor.number = *b;
                         }
                     }
-                    "editor.relativenumber" => {
-                        if let SettingValue::Bool(b) = &item.value {
+                    "relativenumber" => {
+                        if let OptionValue::Bool(b) = &opt.value {
                             config.editor.relativenumber = *b;
                         }
                     }
-                    "editor.indentguide" => {
-                        if let SettingValue::Bool(b) = &item.value {
+                    "tabwidth" => {
+                        if let OptionValue::Integer(i) = &opt.value {
+                            config.editor.tabwidth = (*i).clamp(1, 8) as u8;
+                        }
+                    }
+                    "expandtab" => {
+                        if let OptionValue::Bool(b) = &opt.value {
+                            config.editor.expandtab = *b;
+                        }
+                    }
+                    "indentguide" => {
+                        if let OptionValue::Bool(b) = &opt.value {
                             config.editor.indentguide = *b;
                         }
                     }
-                    "editor.scrollbar" => {
-                        if let SettingValue::Bool(b) = &item.value {
+                    "scrollbar" => {
+                        if let OptionValue::Bool(b) = &opt.value {
                             config.editor.scrollbar = *b;
                         }
                     }
-                    "editor.tabwidth" => {
-                        if let SettingValue::Number { value, .. } = &item.value {
-                            config.editor.tabwidth = value.clamp(&1, &8).unsigned_abs() as u8;
+                    "scrolloff" => {
+                        if let OptionValue::Integer(i) = &opt.value {
+                            config.editor.scrolloff = (*i).max(0) as u16;
                         }
                     }
-                    "window.default_split" => {
-                        config.window.default_split = item.value.display_value();
+                    "theme" => {
+                        if let OptionValue::Choice { value, .. } = &opt.value {
+                            config.editor.theme = value.clone();
+                        }
+                    }
+                    "colormode" => {
+                        if let OptionValue::Choice { value, .. } = &opt.value {
+                            config.editor.colormode = value.clone();
+                        }
+                    }
+                    "splitbelow" => {
+                        if let OptionValue::Bool(b) = &opt.value {
+                            // If splitbelow is true, default_split should be "horizontal"
+                            if *b {
+                                config.window.default_split = "horizontal".to_string();
+                            }
+                        }
+                    }
+                    "splitright" => {
+                        if let OptionValue::Bool(b) = &opt.value {
+                            // If splitright is true, default_split should be "vertical"
+                            if *b {
+                                config.window.default_split = "vertical".to_string();
+                            }
+                        }
                     }
                     _ => {}
                 }
@@ -611,10 +863,51 @@ impl SettingsMenuState {
 mod tests {
     use super::*;
 
+    /// Helper to register test options for settings menu tests
+    fn register_test_options(state: &mut SettingsMenuState) {
+        // Register a test section
+        state.register_section(
+            "Test".to_string(),
+            SectionMeta {
+                display_name: "Test".to_string(),
+                order: 0,
+                description: None,
+            },
+        );
+
+        // Register a boolean option
+        let bool_spec = OptionSpec::new("test_bool", "Test boolean", OptionValue::Bool(true))
+            .with_section("Test")
+            .with_display_order(10);
+        state.register_option(&bool_spec, &OptionValue::Bool(true));
+
+        // Register a choice option
+        let choice_spec = OptionSpec::new(
+            "test_choice",
+            "Test choice",
+            OptionValue::Choice {
+                value: "a".to_string(),
+                choices: vec!["a".to_string(), "b".to_string(), "c".to_string()],
+            },
+        )
+        .with_section("Test")
+        .with_display_order(20);
+        state.register_option(
+            &choice_spec,
+            &OptionValue::Choice {
+                value: "a".to_string(),
+                choices: vec!["a".to_string(), "b".to_string(), "c".to_string()],
+            },
+        );
+    }
+
     #[test]
     fn test_settings_menu_open_close() {
         let mut state = SettingsMenuState::new();
         assert!(!state.visible);
+
+        // Register options before opening
+        register_test_options(&mut state);
 
         let profile = ProfileConfig::default();
         state.open(&profile, "default");
@@ -629,6 +922,10 @@ mod tests {
     #[test]
     fn test_navigation() {
         let mut state = SettingsMenuState::new();
+
+        // Register options before opening
+        register_test_options(&mut state);
+
         let profile = ProfileConfig::default();
         state.open(&profile, "default");
         state.calculate_layout(120, 40);
@@ -649,18 +946,26 @@ mod tests {
     #[test]
     fn test_toggle() {
         let mut state = SettingsMenuState::new();
+
+        // Register options before opening
+        register_test_options(&mut state);
+
         let profile = ProfileConfig::default();
         state.open(&profile, "default");
 
         // Find a boolean setting
-        while state.selected_item().is_some() {
+        let mut found_bool = false;
+        for _ in 0..state.flat_items.len() {
             if let Some(item) = state.selected_item()
                 && item.value.is_bool()
             {
+                found_bool = true;
                 break;
             }
             state.select_next();
         }
+
+        assert!(found_bool, "Should find at least one boolean setting");
 
         if let Some(item) = state.selected_item()
             && let SettingValue::Bool(initial) = item.value
@@ -672,5 +977,163 @@ mod tests {
                 assert_ne!(initial, after);
             }
         }
+    }
+
+    /// Test the line number toggle scenario
+    ///
+    /// This simulates what happens when a user:
+    /// 1. Opens settings menu (<SPC>s)
+    /// 2. Navigates to "Show line numbers" option
+    /// 3. Toggles it with Space
+    /// 4. Views the rendered output
+    #[test]
+    fn test_line_number_toggle_scenario() {
+        use {crate::settings_menu::item::SettingValue, reovim_core::option::OptionCategory};
+
+        let mut state = SettingsMenuState::new();
+
+        // Register the Editor section (like CorePlugin does)
+        state.register_section(
+            "Editor".to_string(),
+            SectionMeta {
+                display_name: "Editor".to_string(),
+                order: 0,
+                description: Some("Core editor settings".into()),
+            },
+        );
+
+        // Register the "number" option (line numbers) like CorePlugin does
+        let number_spec = OptionSpec::new("number", "Show line numbers", OptionValue::Bool(true))
+            .with_short("nu")
+            .with_category(OptionCategory::Editor)
+            .with_section("Editor")
+            .with_display_order(10);
+        state.register_option(&number_spec, &OptionValue::Bool(true));
+
+        // Open the menu
+        let profile = ProfileConfig::default();
+        state.open(&profile, "default");
+        state.calculate_layout(120, 40);
+
+        // Find the "number" setting
+        let mut found_number = false;
+        for _ in 0..state.flat_items.len() {
+            if let Some(item) = state.selected_item()
+                && item.key == "number"
+            {
+                found_number = true;
+                break;
+            }
+            state.select_next();
+        }
+
+        assert!(found_number, "Should find the 'number' setting");
+
+        // Verify initial value is true
+        let item = state.selected_item().expect("Should have selected item");
+        assert_eq!(item.key, "number");
+        match &item.value {
+            SettingValue::Bool(b) => assert!(*b, "Initial value should be true"),
+            _ => panic!("number should be a Bool type"),
+        }
+
+        // Toggle the setting
+        let change = state.toggle_selected();
+        assert!(change.is_some(), "Toggle should return a SettingChange");
+
+        let change = change.unwrap();
+        assert_eq!(change.key, "number");
+        assert_eq!(change.old_value, OptionValue::Bool(true));
+        assert_eq!(change.new_value, OptionValue::Bool(false));
+
+        // Verify sections are updated (what render reads)
+        let item_after = state
+            .selected_item()
+            .expect("Should still have selected item");
+        assert_eq!(item_after.key, "number");
+        match &item_after.value {
+            SettingValue::Bool(b) => assert!(!*b, "Value after toggle should be false"),
+            _ => panic!("number should still be a Bool type"),
+        }
+
+        // Verify registered_options are synced
+        let registered = state
+            .registered_options
+            .get("Editor")
+            .expect("Should have Editor section in registered_options");
+        let number_opt = registered
+            .iter()
+            .find(|o| o.spec.name == "number")
+            .expect("Should find number in registered_options");
+        assert_eq!(
+            number_opt.value,
+            OptionValue::Bool(false),
+            "registered_options should have updated value"
+        );
+
+        // Test toggling back
+        let change2 = state.toggle_selected();
+        assert!(change2.is_some(), "Second toggle should return a SettingChange");
+
+        let item_final = state.selected_item().expect("Should have selected item");
+        match &item_final.value {
+            SettingValue::Bool(b) => assert!(*b, "Value after second toggle should be true"),
+            _ => panic!("number should still be a Bool type"),
+        }
+    }
+
+    /// Test that the value displayed in render reflects toggle changes
+    #[test]
+    fn test_render_reflects_toggle() {
+        use reovim_core::option::OptionCategory;
+
+        let mut state = SettingsMenuState::new();
+
+        // Register section and option
+        state.register_section(
+            "Editor".to_string(),
+            SectionMeta {
+                display_name: "Editor".to_string(),
+                order: 0,
+                description: None,
+            },
+        );
+
+        let number_spec = OptionSpec::new("number", "Show line numbers", OptionValue::Bool(true))
+            .with_category(OptionCategory::Editor)
+            .with_section("Editor")
+            .with_display_order(10);
+        state.register_option(&number_spec, &OptionValue::Bool(true));
+
+        // Open menu
+        state.open(&ProfileConfig::default(), "default");
+        state.calculate_layout(120, 40);
+
+        // Navigate to number setting
+        for _ in 0..state.flat_items.len() {
+            if let Some(item) = state.selected_item()
+                && item.key == "number"
+            {
+                break;
+            }
+            state.select_next();
+        }
+
+        // Get display value BEFORE toggle
+        let before = state.selected_item().unwrap().value.display_value();
+        assert_eq!(before, "on", "Display should be 'on' initially");
+
+        // Toggle
+        state.toggle_selected();
+
+        // Get display value AFTER toggle (simulates what render reads)
+        let after = state.selected_item().unwrap().value.display_value();
+        assert_eq!(after, "off", "Display should be 'off' after toggle");
+
+        // Simulate re-reading state (like render does with Clone::clone)
+        let cloned_state = state.clone();
+        let cloned_item = cloned_state.selected_item().unwrap();
+        let cloned_display = cloned_item.value.display_value();
+        assert_eq!(cloned_display, "off", "Cloned state should also show 'off'");
     }
 }

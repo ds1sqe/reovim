@@ -229,6 +229,105 @@ auto_trigger = true
 min_prefix = 2
 ```
 
+## Extensible Settings Menu
+
+Plugins can register their settings to appear in the in-editor settings menu. This is done via the `RegisterSettingSection` and `RegisterOption` events during the `subscribe()` phase.
+
+### Registering Settings Sections
+
+Define sections with custom display name, description, and ordering:
+
+```rust
+use reovim_core::option::RegisterSettingSection;
+
+fn subscribe(&self, bus: &EventBus, _state: Arc<PluginStateRegistry>) {
+    // Register a settings section
+    bus.emit(RegisterSettingSection::new("treesitter", "Treesitter")
+        .with_description("Syntax highlighting settings")
+        .with_order(100));  // Core sections use 0-50, plugins use 100+
+}
+```
+
+### Registering Settings Options
+
+Register individual options with full metadata for the settings menu:
+
+```rust
+use reovim_core::option::{
+    RegisterOption, OptionSpec, OptionValue, OptionCategory, OptionConstraint,
+};
+
+fn subscribe(&self, bus: &EventBus, _state: Arc<PluginStateRegistry>) {
+    // Boolean option
+    bus.emit(RegisterOption::new(
+        OptionSpec::new("enabled", "Enable feature", OptionValue::Bool(true))
+            .with_category(OptionCategory::Plugin("myplugin".into()))
+            .with_section("My Plugin")  // Section name (creates if doesn't exist)
+            .with_display_order(10),    // Order within section
+    ));
+
+    // Integer option with constraints
+    bus.emit(RegisterOption::new(
+        OptionSpec::new("timeout_ms", "Timeout in ms", OptionValue::Integer(100))
+            .with_category(OptionCategory::Plugin("myplugin".into()))
+            .with_section("My Plugin")
+            .with_constraint(OptionConstraint::range(10, 5000))
+            .with_display_order(20),
+    ));
+
+    // Choice option
+    bus.emit(RegisterOption::new(
+        OptionSpec::new(
+            "mode",
+            "Operating mode",
+            OptionValue::choice("auto", vec!["auto".into(), "manual".into()]),
+        )
+        .with_category(OptionCategory::Plugin("myplugin".into()))
+        .with_section("My Plugin")
+        .with_display_order(30),
+    ));
+}
+```
+
+### OptionSpec UI Metadata
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `section` | `Option<Cow<str>>` | Section name (falls back to category) |
+| `display_order` | `u32` | Order within section (lower = earlier) |
+| `show_in_menu` | `bool` | Whether to show in settings menu (default: true) |
+
+### Built-in Sections
+
+Core registers these sections with low order values:
+- `Editor` (order: 0) - Line numbers, tabs, indent guides
+- `Display` (order: 10) - Theme, color mode
+- `Window` (order: 20) - Split behavior
+
+Plugins should use order values >= 100 to appear after core sections.
+
+### Listening to Option Changes
+
+Subscribe to `OptionChanged` events to react when settings are modified:
+
+```rust
+use reovim_core::option::{OptionChanged, ChangeSource};
+
+fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {
+    let state_clone = Arc::clone(&state);
+    bus.subscribe::<OptionChanged, _>(100, move |event, ctx| {
+        // React to settings menu changes
+        if event.source == ChangeSource::SettingsMenu
+            && event.name.starts_with("plugin.myplugin.")
+        {
+            // Update plugin state
+            ctx.request_render();
+        }
+        EventResult::Handled
+    });
+}
+```
+
 ## PluginStateRegistry
 
 Type-erased state storage accessible by any component:
@@ -393,10 +492,11 @@ Code folding with treesitter integration:
 
 ### SettingsMenuPlugin (`reovim-plugin-settings-menu`)
 
-In-editor settings configuration:
+In-editor settings configuration with extensible settings registration:
 - 19 commands for navigation and editing
 - Live preview of setting changes
 - Profile management
+- **Dynamic section/option registration** via events (see below)
 
 ### CompletionPlugin (`reovim-plugin-completion`)
 
