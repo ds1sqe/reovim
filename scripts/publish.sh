@@ -36,9 +36,85 @@ echo ""
 echo "=== Running clippy ==="
 cargo clippy --quiet
 
-# Publish order: sys -> core -> main (dependencies first)
-CRATES=("lib/sys" "lib/core" "main")
-NAMES=("reovim-sys" "reovim-core" "reovim")
+# Publish order (dependencies first):
+# 1. Base libs (sys, lsp)
+# 2. Core
+# 3. Feature plugins (microscope & treesitter first, then others, then lsp/pickers which depend on microscope)
+# 4. Language plugins (all depend on treesitter)
+# 5. Main binary
+CRATES=(
+    # Base libraries
+    "lib/sys"
+    "lib/lsp"
+
+    # Core
+    "lib/core"
+
+    # Feature plugins - tier 1 (no inter-plugin deps)
+    "plugins/features/microscope"
+    "plugins/features/treesitter"
+    "plugins/features/fold"
+    "plugins/features/settings-menu"
+    "plugins/features/completion"
+    "plugins/features/explorer"
+    "plugins/features/leap"
+    "plugins/features/pair"
+    "plugins/features/which-key"
+
+    # Feature plugins - tier 2 (depend on microscope)
+    "plugins/features/pickers"
+    "plugins/features/lsp"
+
+    # Language plugins (all depend on treesitter)
+    "plugins/languages/rust"
+    "plugins/languages/c"
+    "plugins/languages/javascript"
+    "plugins/languages/python"
+    "plugins/languages/json"
+    "plugins/languages/toml"
+    "plugins/languages/markdown"
+    "plugins/languages/bash"
+
+    # Main binary
+    "runner"
+)
+
+NAMES=(
+    # Base libraries
+    "reovim-sys"
+    "reovim-lsp"
+
+    # Core
+    "reovim-core"
+
+    # Feature plugins - tier 1
+    "reovim-plugin-microscope"
+    "reovim-plugin-treesitter"
+    "reovim-plugin-fold"
+    "reovim-plugin-settings-menu"
+    "reovim-plugin-completion"
+    "reovim-plugin-explorer"
+    "reovim-plugin-leap"
+    "reovim-plugin-pair"
+    "reovim-plugin-which-key"
+
+    # Feature plugins - tier 2
+    "reovim-plugin-pickers"
+    "reovim-plugin-lsp"
+
+    # Language plugins
+    "reovim-lang-rust"
+    "reovim-lang-c"
+    "reovim-lang-javascript"
+    "reovim-lang-python"
+    "reovim-lang-json"
+    "reovim-lang-toml"
+    "reovim-lang-markdown"
+    "reovim-lang-bash"
+
+    # Main binary
+    "reovim"
+)
 
 for i in "${!CRATES[@]}"; do
     CRATE_PATH="${CRATES[$i]}"
@@ -49,15 +125,22 @@ for i in "${!CRATES[@]}"; do
 
     cd "$CRATE_PATH"
 
-    if [ -n "$DRY_RUN" ]; then
-        cargo publish --dry-run --allow-dirty
-    else
-        cargo publish
+    # Check if this version already exists on crates.io
+    PUBLISHED_VERSION=$(cargo search "$CRATE_NAME" --limit 1 2>/dev/null | grep -E "^$CRATE_NAME = " | sed 's/.*"\(.*\)".*/\1/' || echo "")
 
-        # Wait for crates.io to index (except for last crate)
-        if [ $i -lt $((${#CRATES[@]} - 1)) ]; then
-            echo "Waiting for crates.io to index $CRATE_NAME..."
-            sleep 30
+    if [ "$PUBLISHED_VERSION" = "$VERSION" ]; then
+        echo "⏭️  Skipping $CRATE_NAME@$VERSION (already published)"
+    else
+        if [ -n "$DRY_RUN" ]; then
+            cargo publish --dry-run --allow-dirty
+        else
+            cargo publish
+
+            # Wait for crates.io to index (except for last crate)
+            if [ $i -lt $((${#CRATES[@]} - 1)) ]; then
+                echo "Waiting for crates.io to index $CRATE_NAME..."
+                sleep 30
+            fi
         fi
     fi
 

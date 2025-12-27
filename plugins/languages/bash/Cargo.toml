@@ -7,6 +7,6 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-reovim-core = { path = "../../../lib/core" }
-reovim-plugin-treesitter = { path = "../../features/treesitter" }
+reovim-core.workspace = true
+reovim-plugin-treesitter.workspace = true
 tree-sitter-bash = "0.23"

@@ -2,11 +2,13 @@
 name = "reovim-plugin-explorer"
 version.workspace = true
 edition.workspace = true
+description = "File explorer plugin for reovim"
 license.workspace = true
+repository.workspace = true
 
 [dependencies]
-reovim-core = { path = "../../../lib/core" }
-reovim-sys = { path = "../../../lib/sys" }
+reovim-core.workspace = true
+reovim-sys.workspace = true
 tracing = "0.1"
 
 [dev-dependencies]

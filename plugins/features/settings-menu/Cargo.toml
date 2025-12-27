@@ -2,10 +2,12 @@
 name = "reovim-plugin-settings-menu"
 version.workspace = true
 edition.workspace = true
+description = "Settings menu plugin for reovim"
 license.workspace = true
+repository.workspace = true
 
 [dependencies]
-reovim-core = { path = "../../../lib/core" }
+reovim-core.workspace = true
 
 [features]
 default = []

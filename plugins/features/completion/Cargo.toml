@@ -2,10 +2,12 @@
 name = "reovim-plugin-completion"
 version.workspace = true
 edition.workspace = true
+description = "Asynchronous completion plugin for reovim"
 license.workspace = true
+repository.workspace = true
 
 [dependencies]
-reovim-core = { path = "../../../lib/core" }
+reovim-core.workspace = true
 futures = "0.3"
 tokio = { version = "1", features = ["sync"] }
 arc-swap = "1"

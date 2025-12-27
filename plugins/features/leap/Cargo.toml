@@ -2,9 +2,11 @@
 name = "reovim-plugin-leap"
 version.workspace = true
 edition.workspace = true
+description = "Two-character jump navigation plugin for reovim"
 license.workspace = true
+repository.workspace = true
 
 [dependencies]
-reovim-core = { path = "../../../lib/core" }
-reovim-sys = { path = "../../../lib/sys" }
+reovim-core.workspace = true
+reovim-sys.workspace = true
 tracing = "0.1"
