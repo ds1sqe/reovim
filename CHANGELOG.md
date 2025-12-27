@@ -4,6 +4,39 @@ All notable changes to Reovim will be documented in this file.
 
 ## [0.7.6] - 2025-12-27
 
+## [0.7.7] - 2025-12-27
+
+### Changed
+
+- **Which-key decoupled from core** - Complete removal of plugin-specific code from reovim-core
+  - Deleted `lib/core/src/which_key.rs` - event now defined in plugin
+  - Removed hard-coded `?` key dispatch from command handler
+  - Removed `ComposableId::WhichKey` enum variant (use `Custom("which_key")`)
+  - Removed `disable_which_key` behavior modifier
+  - Removed `STATE_WHICHKEY` RPC constant
+  - Plugin now registers all keybindings via `build()` method
+
+- **Renamed `hint`/`group` to `description`/`category`** - General-purpose keybinding metadata
+  - `KeyBinding.hint` → `KeyBinding.description`
+  - `KeyBinding.group` → `KeyBinding.category`
+  - `KeyMapInner::with_hint()` → `KeyMapInner::with_description()`
+  - `KeyMapInner::group()` → `KeyMapInner::with_category()`
+
+### Added
+
+- **Plugin Decoupling Policy** - Documented architectural principle
+  - Added policy to CLAUDE.md: "Never add plugin-specific code to core"
+  - Added "Plugin Decoupling Principles" section to docs/plugin-system.md
+  - Added decoupling note to docs/DEVELOPMENT.md
+  - If API is insufficient, propose extension rather than adding coupling
+
+- **`WhichKeyTrigger` inline command** - Plugin-owned keybinding trigger
+  - Carries prefix for context-specific bindings (e.g., `g?`, `<Space>?`)
+  - Uses `CommandRef::Inline(Arc<dyn CommandTrait>)` pattern
+  - Emits `WhichKeyOpen` event via `CommandResult::EmitEvent`
+
+## [0.7.6] - 2025-12-27
+
 ### Added
 
 - **Completion fuzzy filtering** - Nucleo-based fuzzy matching with score threshold

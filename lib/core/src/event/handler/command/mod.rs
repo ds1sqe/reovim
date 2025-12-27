@@ -476,40 +476,6 @@ impl CommandHandler {
                                     }
                                 }
 
-                                // Handle '?' key for which-key popup
-                                // When '?' is pressed in Normal mode, trigger WhichKeyOpen with current prefix
-                                if key_str == "?" {
-                                    let mode = self.current_mode();
-                                    tracing::debug!(
-                                        "? key detected: edit_mode={:?}, sub_mode={:?}, is_normal={}",
-                                        mode.edit_mode,
-                                        mode.sub_mode,
-                                        mode.is_normal()
-                                    );
-                                    if mode.is_normal() {
-                                        // Capture the current pending keys as prefix (before adding '?')
-                                        let prefix = self.pending_keys.clone();
-                                        tracing::info!(
-                                            "Which-key triggered with prefix: {:?}",
-                                            prefix
-                                        );
-                                        // Clear pending keys
-                                        self.pending_keys.clear();
-                                        self.dispatcher
-                                            .send_pending_keys(self.pending_display())
-                                            .await;
-                                        // Dispatch WhichKeyOpen with the prefix using core's shared type
-                                        self.dispatcher
-                                            .send_plugin_event(
-                                                crate::plugin::PluginId::new("reovim:which-key"),
-                                                crate::which_key::WhichKeyOpen::new(prefix),
-                                            )
-                                            .await;
-                                        continue;
-                                    }
-                                    tracing::debug!("? key ignored: mode is not normal");
-                                }
-
                                 // Handle operator-pending mode (d, y, c + motion or text object)
                                 let mode = self.current_mode();
                                 if mode.is_operator_pending() {

@@ -590,7 +590,7 @@ impl Plugin for MicroscopePlugin {
         // Register Space+f prefix for multi-key sequences
         ctx.keymap_mut()
             .get_scope_mut(editor_normal.clone())
-            .insert(keys![Space 'f'], KeyMapInner::with_hint("+find").group("find"));
+            .insert(keys![Space 'f'], KeyMapInner::with_description("+find").with_category("find"));
 
         ctx.bind_key_scoped(
             editor_normal.clone(),

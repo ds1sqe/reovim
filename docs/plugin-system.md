@@ -1090,6 +1090,46 @@ reovim-plugin-my-plugin.workspace = true
 └─────────────────────────────────────────────────────────────┘
 ```
 
+## Plugin Decoupling Principles
+
+Reovim follows strict plugin decoupling. Core must never contain plugin-specific code.
+
+### Core Must Not Know About Plugins
+
+Core provides general-purpose infrastructure:
+- Event bus for type-erased events
+- PluginStateRegistry for type-erased state
+- PluginWindow trait for UI rendering
+- Generic compositor IDs (`ComposableId::Custom("name")`)
+
+Core must NOT contain:
+- Plugin-specific event types
+- Plugin-specific enum variants
+- Plugin-specific feature flags
+- Plugin-specific keybinding handlers
+
+### Proposing API Extensions
+
+When the current API is insufficient:
+
+1. **Identify the gap** - What can't your plugin do?
+2. **Design a general solution** - Would other plugins benefit?
+3. **Create a proposal** - Document in `tmp/<name>-api-proposal.md`
+4. **Discuss** - Get feedback before implementation
+5. **Implement** - Add to core only if it's truly general-purpose
+
+### Example: Which-Key Decoupling
+
+**Before (wrong):**
+- `lib/core/src/which_key.rs` - Event in core
+- `ComposableId::WhichKey` - Plugin-specific enum variant
+- Hard-coded `?` key dispatch in command handler
+
+**After (correct):**
+- Event defined in `plugins/features/which-key/src/commands.rs`
+- Uses `ComposableId::Custom("which_key")`
+- Plugin registers `?` keybinding via `build()`
+
 ## Related Documentation
 
 - [Architecture](./architecture.md) - System design overview

@@ -89,10 +89,10 @@ pub struct KeyBinding {
     pub keys: KeySequence,
     /// Command to execute
     pub command: CommandRef,
-    /// Optional hint for which-key display (overrides command description)
-    pub hint: Option<&'static str>,
-    /// Group for which-key categorization (e.g., "motion", "operator")
-    pub group: Option<&'static str>,
+    /// Optional description for help display (overrides command description)
+    pub description: Option<&'static str>,
+    /// Category for help system grouping (e.g., "motion", "operator")
+    pub category: Option<&'static str>,
 }
 
 impl KeyBinding {
@@ -103,32 +103,36 @@ impl KeyBinding {
         Self {
             keys,
             command: CommandRef::Registered(id),
-            hint: None,
-            group: None,
+            description: None,
+            category: None,
         }
     }
 
-    /// Create a binding with a command ID and group
+    /// Create a binding with a command ID and category
     #[must_use]
     #[allow(clippy::missing_const_for_fn)] // KeySequence contains Vec which can't be const
-    pub fn id_group(keys: KeySequence, id: CommandId, group: &'static str) -> Self {
+    pub fn id_category(keys: KeySequence, id: CommandId, category: &'static str) -> Self {
         Self {
             keys,
             command: CommandRef::Registered(id),
-            hint: None,
-            group: Some(group),
+            description: None,
+            category: Some(category),
         }
     }
 
-    /// Create a hint-only binding (prefix node for which-key)
+    /// Create a description-only binding (prefix node for help display)
     #[must_use]
     #[allow(clippy::missing_const_for_fn)] // KeySequence contains Vec which can't be const
-    pub fn hint(keys: KeySequence, hint: &'static str, group: &'static str) -> Self {
+    pub fn with_description(
+        keys: KeySequence,
+        description: &'static str,
+        category: &'static str,
+    ) -> Self {
         Self {
             keys,
             command: CommandRef::Registered(CommandId::new("")),
-            hint: Some(hint),
-            group: Some(group),
+            description: Some(description),
+            category: Some(category),
         }
     }
 }
@@ -137,8 +141,8 @@ impl std::fmt::Debug for KeyBinding {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("KeyBinding")
             .field("keys", &self.keys)
-            .field("hint", &self.hint)
-            .field("group", &self.group)
+            .field("description", &self.description)
+            .field("category", &self.category)
             .finish_non_exhaustive()
     }
 }
@@ -161,11 +165,11 @@ pub enum CommandRef {
 pub struct KeyMapInner {
     /// If this is a terminal node, the command to execute
     pub command: Option<CommandRef>,
-    /// Optional description hint for which-key (overrides command description)
+    /// Optional description for help display (overrides command description)
     /// Used for dynamically-handled keys like operator motions
-    pub hint: Option<String>,
-    /// Group for which-key categorization (e.g., "motion", "operator", "mode")
-    pub group: Option<&'static str>,
+    pub description: Option<String>,
+    /// Category for help system grouping (e.g., "motion", "operator", "mode")
+    pub category: Option<&'static str>,
     /// Children for multi-key sequences (e.g., "dd", "gg")
     #[allow(dead_code)] // Infrastructure for proper trie-based lookup
     pub next: HashMap<KeySequence, Self>,
@@ -176,8 +180,8 @@ impl KeyMapInner {
     pub fn new() -> Self {
         Self {
             command: None,
-            hint: None,
-            group: None,
+            description: None,
+            category: None,
             next: HashMap::new(),
         }
     }
@@ -187,8 +191,8 @@ impl KeyMapInner {
     pub fn with_command_ref(cmd: CommandRef) -> Self {
         Self {
             command: Some(cmd),
-            hint: None,
-            group: None,
+            description: None,
+            category: None,
             next: HashMap::new(),
         }
     }
@@ -198,8 +202,8 @@ impl KeyMapInner {
     pub fn with_command_id(id: CommandId) -> Self {
         Self {
             command: Some(CommandRef::Registered(id)),
-            hint: None,
-            group: None,
+            description: None,
+            category: None,
             next: HashMap::new(),
         }
     }
@@ -209,46 +213,46 @@ impl KeyMapInner {
     pub fn with_inline_command(cmd: Arc<dyn CommandTrait>) -> Self {
         Self {
             command: Some(CommandRef::Inline(cmd)),
-            hint: None,
-            group: None,
+            description: None,
+            category: None,
             next: HashMap::new(),
         }
     }
 
-    /// Create a hint-only node for which-key display (no command)
+    /// Create a description-only node for help display (no command)
     /// Used for dynamically-handled keys like operator motions
     #[must_use]
-    pub fn with_hint(description: impl Into<String>) -> Self {
+    pub fn with_description(text: impl Into<String>) -> Self {
         Self {
             command: None,
-            hint: Some(description.into()),
-            group: None,
+            description: Some(text.into()),
+            category: None,
             next: HashMap::new(),
         }
     }
 
-    /// Set the group for this binding (builder pattern)
+    /// Set the category for this binding (builder pattern)
     #[must_use]
-    pub const fn group(mut self, group: &'static str) -> Self {
-        self.group = Some(group);
+    pub const fn with_category(mut self, category: &'static str) -> Self {
+        self.category = Some(category);
         self
     }
 
-    /// Set the group if Some (builder pattern)
+    /// Set the category if Some (builder pattern)
     #[must_use]
-    pub const fn with_group_opt(mut self, group: Option<&'static str>) -> Self {
-        self.group = group;
+    pub const fn with_category_opt(mut self, category: Option<&'static str>) -> Self {
+        self.category = category;
         self
     }
 
     /// Get the description for this binding
     ///
-    /// Priority: hint > command description > prefix indicator
+    /// Priority: description > command description > prefix indicator
     #[must_use]
     pub fn get_description(&self, registry: &CommandRegistry) -> String {
-        // Hint overrides everything
-        if let Some(hint) = &self.hint {
-            return hint.clone();
+        // Explicit description overrides everything
+        if let Some(desc) = &self.description {
+            return desc.clone();
         }
         match &self.command {
             Some(CommandRef::Registered(id)) => registry
@@ -259,10 +263,10 @@ impl KeyMapInner {
         }
     }
 
-    /// Check if this is a prefix node (has no command and no hint)
+    /// Check if this is a prefix node (has no command and no description)
     #[must_use]
     pub const fn is_prefix(&self) -> bool {
-        self.command.is_none() && self.hint.is_none()
+        self.command.is_none() && self.description.is_none()
     }
 }
 
@@ -276,8 +280,8 @@ impl std::fmt::Debug for KeyMapInner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("KeyMapInner")
             .field("command", &self.command)
-            .field("hint", &self.hint)
-            .field("group", &self.group)
+            .field("description", &self.description)
+            .field("category", &self.category)
             .field("next_keys", &self.next.keys().collect::<Vec<_>>())
             .finish()
     }
@@ -328,12 +332,13 @@ impl KeyMap {
             .insert(keys, KeyMapInner::with_command_ref(cmd));
     }
 
-    /// Bind with full metadata (hint, group)
+    /// Bind with full metadata (description, category)
     pub fn bind_with_metadata(&mut self, scope: KeymapScope, binding: KeyBinding) {
-        let inner = if binding.hint.is_some() {
-            KeyMapInner::with_hint(binding.hint.unwrap_or_default()).with_group_opt(binding.group)
+        let inner = if binding.description.is_some() {
+            KeyMapInner::with_description(binding.description.unwrap_or_default())
+                .with_category_opt(binding.category)
         } else {
-            KeyMapInner::with_command_ref(binding.command).with_group_opt(binding.group)
+            KeyMapInner::with_command_ref(binding.command).with_category_opt(binding.category)
         };
         self.maps
             .entry(scope)
@@ -470,144 +475,158 @@ impl KeyMap {
         let normal = self.get_scope_mut(KeymapScope::editor_normal());
 
         // Movement
-        normal
-            .insert(keys!['h'], KeyMapInner::with_command_id(builtin::CURSOR_LEFT).group("motion"));
-        normal
-            .insert(keys!['j'], KeyMapInner::with_command_id(builtin::CURSOR_DOWN).group("motion"));
-        normal.insert(keys!['k'], KeyMapInner::with_command_id(builtin::CURSOR_UP).group("motion"));
+        normal.insert(
+            keys!['h'],
+            KeyMapInner::with_command_id(builtin::CURSOR_LEFT).with_category("motion"),
+        );
+        normal.insert(
+            keys!['j'],
+            KeyMapInner::with_command_id(builtin::CURSOR_DOWN).with_category("motion"),
+        );
+        normal.insert(
+            keys!['k'],
+            KeyMapInner::with_command_id(builtin::CURSOR_UP).with_category("motion"),
+        );
         normal.insert(
             keys!['l'],
-            KeyMapInner::with_command_id(builtin::CURSOR_RIGHT).group("motion"),
+            KeyMapInner::with_command_id(builtin::CURSOR_RIGHT).with_category("motion"),
         );
         normal.insert(
             keys!['0'],
-            KeyMapInner::with_command_id(builtin::CURSOR_LINE_START).group("motion"),
+            KeyMapInner::with_command_id(builtin::CURSOR_LINE_START).with_category("motion"),
         );
         normal.insert(
             keys!['$'],
-            KeyMapInner::with_command_id(builtin::CURSOR_LINE_END).group("motion"),
+            KeyMapInner::with_command_id(builtin::CURSOR_LINE_END).with_category("motion"),
         );
         normal.insert(
             keys!['w'],
-            KeyMapInner::with_command_id(builtin::CURSOR_WORD_FORWARD).group("motion"),
+            KeyMapInner::with_command_id(builtin::CURSOR_WORD_FORWARD).with_category("motion"),
         );
         normal.insert(
             keys!['b'],
-            KeyMapInner::with_command_id(builtin::CURSOR_WORD_BACKWARD).group("motion"),
+            KeyMapInner::with_command_id(builtin::CURSOR_WORD_BACKWARD).with_category("motion"),
         );
         normal.insert(
             keys!['e'],
-            KeyMapInner::with_command_id(builtin::CURSOR_WORD_END).group("motion"),
+            KeyMapInner::with_command_id(builtin::CURSOR_WORD_END).with_category("motion"),
         );
 
         // Mode switching
         normal.insert(
             keys!['i'],
-            KeyMapInner::with_command_id(builtin::ENTER_INSERT_MODE).group("mode"),
+            KeyMapInner::with_command_id(builtin::ENTER_INSERT_MODE).with_category("mode"),
         );
         normal.insert(
             keys!['a'],
-            KeyMapInner::with_command_id(builtin::ENTER_INSERT_MODE_AFTER).group("mode"),
+            KeyMapInner::with_command_id(builtin::ENTER_INSERT_MODE_AFTER).with_category("mode"),
         );
         normal.insert(
             keys!['A'],
-            KeyMapInner::with_command_id(builtin::ENTER_INSERT_MODE_EOL).group("mode"),
+            KeyMapInner::with_command_id(builtin::ENTER_INSERT_MODE_EOL).with_category("mode"),
         );
         normal.insert(
             keys!['o'],
-            KeyMapInner::with_command_id(builtin::OPEN_LINE_BELOW).group("edit"),
+            KeyMapInner::with_command_id(builtin::OPEN_LINE_BELOW).with_category("edit"),
         );
         normal.insert(
             keys!['O'],
-            KeyMapInner::with_command_id(builtin::OPEN_LINE_ABOVE).group("edit"),
+            KeyMapInner::with_command_id(builtin::OPEN_LINE_ABOVE).with_category("edit"),
         );
         normal.insert(
             keys!['v'],
-            KeyMapInner::with_command_id(builtin::ENTER_VISUAL_MODE).group("mode"),
+            KeyMapInner::with_command_id(builtin::ENTER_VISUAL_MODE).with_category("mode"),
         );
         normal.insert(
             keys!['V'],
-            KeyMapInner::with_command_id(builtin::ENTER_VISUAL_LINE_MODE).group("mode"),
+            KeyMapInner::with_command_id(builtin::ENTER_VISUAL_LINE_MODE).with_category("mode"),
         );
         normal.insert(
             keys![(Ctrl 'v')],
-            KeyMapInner::with_command_id(builtin::ENTER_VISUAL_BLOCK_MODE).group("mode"),
+            KeyMapInner::with_command_id(builtin::ENTER_VISUAL_BLOCK_MODE).with_category("mode"),
         );
         normal.insert(
             keys![':'],
-            KeyMapInner::with_command_id(builtin::ENTER_COMMAND_MODE).group("mode"),
+            KeyMapInner::with_command_id(builtin::ENTER_COMMAND_MODE).with_category("mode"),
         );
 
         // Editing
         normal.insert(
             keys!['x'],
-            KeyMapInner::with_command_id(builtin::DELETE_CHAR_FORWARD).group("edit"),
+            KeyMapInner::with_command_id(builtin::DELETE_CHAR_FORWARD).with_category("edit"),
         );
-        normal.insert(keys!['p'], KeyMapInner::with_command_id(builtin::PASTE).group("edit"));
         normal
-            .insert(keys!['P'], KeyMapInner::with_command_id(builtin::PASTE_BEFORE).group("edit"));
+            .insert(keys!['p'], KeyMapInner::with_command_id(builtin::PASTE).with_category("edit"));
+        normal.insert(
+            keys!['P'],
+            KeyMapInner::with_command_id(builtin::PASTE_BEFORE).with_category("edit"),
+        );
 
         // g-prefix bindings
         normal.insert(keys!['g'], KeyMapInner::new());
         normal.insert(
             keys!['g' 'g'],
-            KeyMapInner::with_command_id(builtin::GOTO_FIRST_LINE).group("jump"),
+            KeyMapInner::with_command_id(builtin::GOTO_FIRST_LINE).with_category("jump"),
         );
         normal.insert(
             keys!['G'],
-            KeyMapInner::with_command_id(builtin::GOTO_LAST_LINE).group("jump"),
+            KeyMapInner::with_command_id(builtin::GOTO_LAST_LINE).with_category("jump"),
         );
         normal.insert(
             keys!['g' 't'],
-            KeyMapInner::with_command_id(builtin::TAB_NEXT).group("window"),
+            KeyMapInner::with_command_id(builtin::TAB_NEXT).with_category("window"),
         );
         normal.insert(
             keys!['g' 'T'],
-            KeyMapInner::with_command_id(builtin::TAB_PREV).group("window"),
+            KeyMapInner::with_command_id(builtin::TAB_PREV).with_category("window"),
         );
 
         // Jump list
         normal.insert(
             keys![(Ctrl 'o')],
-            KeyMapInner::with_command_id(builtin::JUMP_OLDER).group("jump"),
+            KeyMapInner::with_command_id(builtin::JUMP_OLDER).with_category("jump"),
         );
         normal.insert(
             keys![(Ctrl 'i')],
-            KeyMapInner::with_command_id(builtin::JUMP_NEWER).group("jump"),
+            KeyMapInner::with_command_id(builtin::JUMP_NEWER).with_category("jump"),
         );
 
         // Undo/Redo
-        normal.insert(keys!['u'], KeyMapInner::with_command_id(builtin::UNDO).group("edit"));
-        normal.insert(keys![(Ctrl 'r')], KeyMapInner::with_command_id(builtin::REDO).group("edit"));
+        normal
+            .insert(keys!['u'], KeyMapInner::with_command_id(builtin::UNDO).with_category("edit"));
+        normal.insert(
+            keys![(Ctrl 'r')],
+            KeyMapInner::with_command_id(builtin::REDO).with_category("edit"),
+        );
 
         // Operators
         normal.insert(
             keys!['d'],
-            KeyMapInner::with_command_id(builtin::ENTER_DELETE_OPERATOR).group("operator"),
+            KeyMapInner::with_command_id(builtin::ENTER_DELETE_OPERATOR).with_category("operator"),
         );
         normal.insert(
             keys!['d' 'd'],
-            KeyMapInner::with_command_id(builtin::DELETE_LINE).group("operator"),
+            KeyMapInner::with_command_id(builtin::DELETE_LINE).with_category("operator"),
         );
         normal.insert(
             keys!['y'],
-            KeyMapInner::with_command_id(builtin::ENTER_YANK_OPERATOR).group("operator"),
+            KeyMapInner::with_command_id(builtin::ENTER_YANK_OPERATOR).with_category("operator"),
         );
         normal.insert(
             keys!['y' 'y'],
-            KeyMapInner::with_command_id(builtin::YANK_LINE).group("operator"),
+            KeyMapInner::with_command_id(builtin::YANK_LINE).with_category("operator"),
         );
         normal.insert(
             keys!['Y'],
-            KeyMapInner::with_command_id(builtin::YANK_TO_END).group("operator"),
+            KeyMapInner::with_command_id(builtin::YANK_TO_END).with_category("operator"),
         );
         normal.insert(
             keys!['c'],
-            KeyMapInner::with_command_id(builtin::ENTER_CHANGE_OPERATOR).group("operator"),
+            KeyMapInner::with_command_id(builtin::ENTER_CHANGE_OPERATOR).with_category("operator"),
         );
         normal.insert(
             keys!['c' 'c'],
-            KeyMapInner::with_command_id(builtin::CHANGE_LINE).group("operator"),
+            KeyMapInner::with_command_id(builtin::CHANGE_LINE).with_category("operator"),
         );
 
         // Leader bindings
@@ -619,61 +638,73 @@ impl KeyMap {
         normal.insert(keys!['z'], KeyMapInner::new());
         normal.insert(
             keys!['z' 'a'],
-            KeyMapInner::with_command_id(builtin::FOLD_TOGGLE).group("fold"),
+            KeyMapInner::with_command_id(builtin::FOLD_TOGGLE).with_category("fold"),
         );
-        normal
-            .insert(keys!['z' 'o'], KeyMapInner::with_command_id(builtin::FOLD_OPEN).group("fold"));
+        normal.insert(
+            keys!['z' 'o'],
+            KeyMapInner::with_command_id(builtin::FOLD_OPEN).with_category("fold"),
+        );
         normal.insert(
             keys!['z' 'c'],
-            KeyMapInner::with_command_id(builtin::FOLD_CLOSE).group("fold"),
+            KeyMapInner::with_command_id(builtin::FOLD_CLOSE).with_category("fold"),
         );
         normal.insert(
             keys!['z' 'R'],
-            KeyMapInner::with_command_id(builtin::FOLD_OPEN_ALL).group("fold"),
+            KeyMapInner::with_command_id(builtin::FOLD_OPEN_ALL).with_category("fold"),
         );
         normal.insert(
             keys!['z' 'M'],
-            KeyMapInner::with_command_id(builtin::FOLD_CLOSE_ALL).group("fold"),
+            KeyMapInner::with_command_id(builtin::FOLD_CLOSE_ALL).with_category("fold"),
         );
 
         // Buffer navigation
-        normal
-            .insert(keys!['H'], KeyMapInner::with_command_id(builtin::BUFFER_PREV).group("buffer"));
-        normal
-            .insert(keys!['L'], KeyMapInner::with_command_id(builtin::BUFFER_NEXT).group("buffer"));
-        normal.insert(keys![Space 'b'], KeyMapInner::with_hint("+buffer").group("buffer"));
+        normal.insert(
+            keys!['H'],
+            KeyMapInner::with_command_id(builtin::BUFFER_PREV).with_category("buffer"),
+        );
+        normal.insert(
+            keys!['L'],
+            KeyMapInner::with_command_id(builtin::BUFFER_NEXT).with_category("buffer"),
+        );
+        normal.insert(
+            keys![Space 'b'],
+            KeyMapInner::with_description("+buffer").with_category("buffer"),
+        );
         normal.insert(
             keys![Space 'b' 'd'],
-            KeyMapInner::with_command_id(builtin::BUFFER_DELETE).group("buffer"),
+            KeyMapInner::with_command_id(builtin::BUFFER_DELETE).with_category("buffer"),
         );
 
         // Window management
-        normal.insert(keys![Space 'w'], KeyMapInner::with_hint("+window").group("window"));
+        normal.insert(
+            keys![Space 'w'],
+            KeyMapInner::with_description("+window").with_category("window"),
+        );
         normal.insert(
             keys![Space 'w' 'v'],
-            KeyMapInner::with_command_id(builtin::WINDOW_SPLIT_VERTICAL).group("window"),
+            KeyMapInner::with_command_id(builtin::WINDOW_SPLIT_VERTICAL).with_category("window"),
         );
         normal.insert(
             keys![Space 'w' 's'],
-            KeyMapInner::with_command_id(builtin::WINDOW_SPLIT_HORIZONTAL).group("window"),
+            KeyMapInner::with_command_id(builtin::WINDOW_SPLIT_HORIZONTAL).with_category("window"),
         );
         normal.insert(
             keys![Space 'w' 'c'],
-            KeyMapInner::with_command_id(builtin::WINDOW_CLOSE).group("window"),
+            KeyMapInner::with_command_id(builtin::WINDOW_CLOSE).with_category("window"),
         );
         normal.insert(
             keys![Space 'w' 'o'],
-            KeyMapInner::with_command_id(builtin::WINDOW_ONLY).group("window"),
+            KeyMapInner::with_command_id(builtin::WINDOW_ONLY).with_category("window"),
         );
         normal.insert(
             keys![Space 'w' '='],
-            KeyMapInner::with_command_id(builtin::WINDOW_EQUALIZE).group("window"),
+            KeyMapInner::with_command_id(builtin::WINDOW_EQUALIZE).with_category("window"),
         );
 
         // Window mode (Ctrl-W)
         normal.insert(
             keys![(Ctrl 'w')],
-            KeyMapInner::with_command_id(builtin::ENTER_WINDOW_MODE).group("window"),
+            KeyMapInner::with_command_id(builtin::ENTER_WINDOW_MODE).with_category("window"),
         );
 
         // Editor Insert mode
@@ -696,6 +727,7 @@ impl KeyMap {
         visual.insert(keys![':'], KeyMapInner::with_command_id(builtin::ENTER_COMMAND_MODE));
     }
 
+    #[allow(clippy::too_many_lines)]
     fn setup_submode_keybindings(&mut self) {
         // Command mode
         let cmd = self.get_scope_mut(KeymapScope::SubMode(SubModeKind::Command));
@@ -706,22 +738,52 @@ impl KeyMap {
         // Operator-pending mode
         let op = self.get_scope_mut(KeymapScope::SubMode(SubModeKind::OperatorPending));
         op.insert(keys![Escape], KeyMapInner::with_command_id(builtin::ENTER_NORMAL_MODE));
-        op.insert(keys!['d'], KeyMapInner::with_hint("delete line (dd)").group("operator"));
-        op.insert(keys!['y'], KeyMapInner::with_hint("yank line (yy)").group("operator"));
-        op.insert(keys!['c'], KeyMapInner::with_hint("change line (cc)").group("operator"));
-        op.insert(keys!['w'], KeyMapInner::with_hint("word forward").group("motion"));
-        op.insert(keys!['b'], KeyMapInner::with_hint("word backward").group("motion"));
-        op.insert(keys!['e'], KeyMapInner::with_hint("word end").group("motion"));
-        op.insert(keys!['$'], KeyMapInner::with_hint("end of line").group("motion"));
-        op.insert(keys!['0'], KeyMapInner::with_hint("start of line").group("motion"));
-        op.insert(keys!['^'], KeyMapInner::with_hint("first non-blank").group("motion"));
-        op.insert(keys!['j'], KeyMapInner::with_hint("line down").group("motion"));
-        op.insert(keys!['k'], KeyMapInner::with_hint("line up").group("motion"));
-        op.insert(keys!['G'], KeyMapInner::with_hint("end of file").group("motion"));
+        op.insert(
+            keys!['d'],
+            KeyMapInner::with_description("delete line (dd)").with_category("operator"),
+        );
+        op.insert(
+            keys!['y'],
+            KeyMapInner::with_description("yank line (yy)").with_category("operator"),
+        );
+        op.insert(
+            keys!['c'],
+            KeyMapInner::with_description("change line (cc)").with_category("operator"),
+        );
+        op.insert(
+            keys!['w'],
+            KeyMapInner::with_description("word forward").with_category("motion"),
+        );
+        op.insert(
+            keys!['b'],
+            KeyMapInner::with_description("word backward").with_category("motion"),
+        );
+        op.insert(keys!['e'], KeyMapInner::with_description("word end").with_category("motion"));
+        op.insert(keys!['$'], KeyMapInner::with_description("end of line").with_category("motion"));
+        op.insert(
+            keys!['0'],
+            KeyMapInner::with_description("start of line").with_category("motion"),
+        );
+        op.insert(
+            keys!['^'],
+            KeyMapInner::with_description("first non-blank").with_category("motion"),
+        );
+        op.insert(keys!['j'], KeyMapInner::with_description("line down").with_category("motion"));
+        op.insert(keys!['k'], KeyMapInner::with_description("line up").with_category("motion"));
+        op.insert(keys!['G'], KeyMapInner::with_description("end of file").with_category("motion"));
         op.insert(keys!['g'], KeyMapInner::new());
-        op.insert(keys!['g' 'g'], KeyMapInner::with_hint("start of file").group("motion"));
-        op.insert(keys!['i'], KeyMapInner::with_hint("inner text object").group("textobj"));
-        op.insert(keys!['a'], KeyMapInner::with_hint("around text object").group("textobj"));
+        op.insert(
+            keys!['g' 'g'],
+            KeyMapInner::with_description("start of file").with_category("motion"),
+        );
+        op.insert(
+            keys!['i'],
+            KeyMapInner::with_description("inner text object").with_category("textobj"),
+        );
+        op.insert(
+            keys!['a'],
+            KeyMapInner::with_description("around text object").with_category("textobj"),
+        );
 
         // Window mode (Ctrl-W sub-mode)
         let window =
@@ -731,75 +793,75 @@ impl KeyMap {
         // Focus navigation (exit after)
         window.insert(
             keys!['h'],
-            KeyMapInner::with_command_id(builtin::WINDOW_MODE_FOCUS_LEFT).group("focus"),
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_FOCUS_LEFT).with_category("focus"),
         );
         window.insert(
             keys!['j'],
-            KeyMapInner::with_command_id(builtin::WINDOW_MODE_FOCUS_DOWN).group("focus"),
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_FOCUS_DOWN).with_category("focus"),
         );
         window.insert(
             keys!['k'],
-            KeyMapInner::with_command_id(builtin::WINDOW_MODE_FOCUS_UP).group("focus"),
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_FOCUS_UP).with_category("focus"),
         );
         window.insert(
             keys!['l'],
-            KeyMapInner::with_command_id(builtin::WINDOW_MODE_FOCUS_RIGHT).group("focus"),
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_FOCUS_RIGHT).with_category("focus"),
         );
         // Move window (H/J/K/L)
         window.insert(
             keys!['H'],
-            KeyMapInner::with_command_id(builtin::WINDOW_MODE_MOVE_LEFT).group("move"),
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_MOVE_LEFT).with_category("move"),
         );
         window.insert(
             keys!['J'],
-            KeyMapInner::with_command_id(builtin::WINDOW_MODE_MOVE_DOWN).group("move"),
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_MOVE_DOWN).with_category("move"),
         );
         window.insert(
             keys!['K'],
-            KeyMapInner::with_command_id(builtin::WINDOW_MODE_MOVE_UP).group("move"),
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_MOVE_UP).with_category("move"),
         );
         window.insert(
             keys!['L'],
-            KeyMapInner::with_command_id(builtin::WINDOW_MODE_MOVE_RIGHT).group("move"),
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_MOVE_RIGHT).with_category("move"),
         );
         // Swap (x + direction)
-        window.insert(keys!['x'], KeyMapInner::with_hint("+swap").group("swap"));
+        window.insert(keys!['x'], KeyMapInner::with_description("+swap").with_category("swap"));
         window.insert(
             keys!['x' 'h'],
-            KeyMapInner::with_command_id(builtin::WINDOW_MODE_SWAP_LEFT).group("swap"),
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_SWAP_LEFT).with_category("swap"),
         );
         window.insert(
             keys!['x' 'j'],
-            KeyMapInner::with_command_id(builtin::WINDOW_MODE_SWAP_DOWN).group("swap"),
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_SWAP_DOWN).with_category("swap"),
         );
         window.insert(
             keys!['x' 'k'],
-            KeyMapInner::with_command_id(builtin::WINDOW_MODE_SWAP_UP).group("swap"),
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_SWAP_UP).with_category("swap"),
         );
         window.insert(
             keys!['x' 'l'],
-            KeyMapInner::with_command_id(builtin::WINDOW_MODE_SWAP_RIGHT).group("swap"),
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_SWAP_RIGHT).with_category("swap"),
         );
         // Split/close
         window.insert(
             keys!['s'],
-            KeyMapInner::with_command_id(builtin::WINDOW_MODE_SPLIT_H).group("split"),
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_SPLIT_H).with_category("split"),
         );
         window.insert(
             keys!['v'],
-            KeyMapInner::with_command_id(builtin::WINDOW_MODE_SPLIT_V).group("split"),
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_SPLIT_V).with_category("split"),
         );
         window.insert(
             keys!['c'],
-            KeyMapInner::with_command_id(builtin::WINDOW_MODE_CLOSE).group("manage"),
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_CLOSE).with_category("manage"),
         );
         window.insert(
             keys!['o'],
-            KeyMapInner::with_command_id(builtin::WINDOW_MODE_ONLY).group("manage"),
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_ONLY).with_category("manage"),
         );
         window.insert(
             keys!['='],
-            KeyMapInner::with_command_id(builtin::WINDOW_MODE_EQUALIZE).group("manage"),
+            KeyMapInner::with_command_id(builtin::WINDOW_MODE_EQUALIZE).with_category("manage"),
         );
     }
 
@@ -813,7 +875,7 @@ impl KeyMap {
         // Window mode (Ctrl-W) - works in all plugin windows
         default.insert(
             keys![(Ctrl 'w')],
-            KeyMapInner::with_command_id(builtin::ENTER_WINDOW_MODE).group("window"),
+            KeyMapInner::with_command_id(builtin::ENTER_WINDOW_MODE).with_category("window"),
         );
     }
 }
@@ -836,14 +898,14 @@ mod tests {
         assert!(h_binding.is_some(), "H key should be bound in normal mode");
         let h_inner = h_binding.unwrap();
         assert!(h_inner.command.is_some(), "H should have a command");
-        assert_eq!(h_inner.group, Some("buffer"));
+        assert_eq!(h_inner.category, Some("buffer"));
 
         // Test L (next buffer) key exists
         let l_binding = normal.get(&keys!['L']);
         assert!(l_binding.is_some(), "L key should be bound in normal mode");
         let l_inner = l_binding.unwrap();
         assert!(l_inner.command.is_some(), "L should have a command");
-        assert_eq!(l_inner.group, Some("buffer"));
+        assert_eq!(l_inner.category, Some("buffer"));
     }
 
     #[test]
@@ -855,15 +917,15 @@ mod tests {
         let b_prefix = normal.get(&keys![Space 'b']);
         assert!(b_prefix.is_some(), "<leader>b prefix should be bound in normal mode");
         let b_inner = b_prefix.unwrap();
-        assert_eq!(b_inner.hint, Some("+buffer".to_string()));
-        assert_eq!(b_inner.group, Some("buffer"));
+        assert_eq!(b_inner.description, Some("+buffer".to_string()));
+        assert_eq!(b_inner.category, Some("buffer"));
 
         // Test <leader>bd exists
         let delete_binding = normal.get(&keys![Space 'b' 'd']);
         assert!(delete_binding.is_some(), "<leader>bd should be bound in normal mode");
         let delete_inner = delete_binding.unwrap();
         assert!(delete_inner.command.is_some(), "<leader>bd should have a command");
-        assert_eq!(delete_inner.group, Some("buffer"));
+        assert_eq!(delete_inner.category, Some("buffer"));
     }
 
     #[test]
@@ -875,8 +937,8 @@ mod tests {
         let w_prefix = normal.get(&keys![Space 'w']);
         assert!(w_prefix.is_some(), "<leader>w prefix should be bound in normal mode");
         let w_inner = w_prefix.unwrap();
-        assert_eq!(w_inner.hint, Some("+window".to_string()));
-        assert_eq!(w_inner.group, Some("window"));
+        assert_eq!(w_inner.description, Some("+window".to_string()));
+        assert_eq!(w_inner.category, Some("window"));
     }
 
     #[test]
@@ -898,7 +960,7 @@ mod tests {
             assert!(binding.is_some(), "{desc} should be bound in normal mode");
             let inner = binding.unwrap();
             assert!(inner.command.is_some(), "{desc} should have a command");
-            assert_eq!(inner.group, Some("window"), "{desc} should be in window group");
+            assert_eq!(inner.category, Some("window"), "{desc} should be in window group");
         }
     }
 

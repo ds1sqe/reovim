@@ -90,9 +90,9 @@ impl WhichKeyCache {
 pub struct BindingEntry {
     /// The key(s) to press after the pending prefix
     pub suffix: KeySequence,
-    /// Display text (from hint or command description)
+    /// Display text (from description or command description)
     pub description: String,
-    /// Group name for categorization
+    /// Category for grouping in help display
     #[allow(dead_code)] // Will be used for grouping display
-    pub group: Option<&'static str>,
+    pub category: Option<&'static str>,
 }
