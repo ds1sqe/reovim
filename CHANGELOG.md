@@ -2,7 +2,35 @@
 
 All notable changes to Reovim will be documented in this file.
 
-## [0.7.6] - 2025-12-27
+## [Unreleased]
+
+### Fixed
+
+- **LSP document registration race condition** - Documents now registered synchronously
+  - Added `ensure_document_registered()` in `LspRenderStage::transform()`
+  - Handles race condition where `FileOpened` event processed after user interaction
+  - Documents registered during first render cycle, before user can press keys
+
+- **LSP mark_opened() called unconditionally** - Fixed premature document marking
+  - `mark_opened()` was called even when `didOpen` wasn't sent (handle was None)
+  - Moved `mark_opened()` inside the else block after `did_open()` call
+  - Prevents version mismatch between editor and language server
+
+- **LSP server startup timing** - Improved pending document handling
+  - Simplified `FileOpened` handler to register and schedule sync
+  - Added logic in `boot()` to send `didOpen` for pending documents after server ready
+
+### Changed
+
+- **LSP channel logging** - Improved visibility for debugging
+  - Changed "channel full" logging from debug to info level
+  - Helps diagnose request drops due to backpressure
+
+### Added
+
+- **LSP issues documentation** - Added `docs/issues/lsp-commands-not-working.md`
+  - Documents root causes of LSP keybinding failures
+  - Includes investigation notes and verification steps
 
 ## [0.7.7] - 2025-12-27
 

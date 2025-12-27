@@ -6,7 +6,7 @@
 //! - Sends didOpen/didChange to the LSP saturator
 //! - Applies diagnostic highlights (underlines) to rendered lines
 
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use {
     reovim_core::{
@@ -15,7 +15,7 @@ use {
         render::{LineHighlight, RenderData, RenderStage},
     },
     reovim_lsp::DiagnosticSeverity,
-    tracing::debug,
+    tracing::{debug, info},
 };
 
 use crate::SharedLspManager;
@@ -32,6 +32,37 @@ impl LspRenderStage {
     /// Create a new LSP render stage.
     pub const fn new(manager: Arc<SharedLspManager>) -> Self {
         Self { manager }
+    }
+
+    /// Ensure document is registered for LSP tracking.
+    ///
+    /// Called during render to handle race condition where `FileOpened` event
+    /// may not have been processed yet by the async `EventBus`. This provides
+    /// a synchronous fallback to register documents before user interaction.
+    fn ensure_document_registered(&self, buffer_id: usize, ctx: &RenderContext<'_>) {
+        // Skip if already registered
+        if self.manager.with(|m| m.documents.has_document(buffer_id)) {
+            return;
+        }
+
+        // Get buffer info from render context
+        let Some(state) = ctx.state else { return };
+        let Some(buffer) = state.buffers.get(&buffer_id) else {
+            return;
+        };
+        let Some(ref path_str) = buffer.file_path else {
+            return;
+        };
+
+        let path = PathBuf::from(path_str);
+
+        self.manager.with_mut(|m| {
+            if let Some(_doc) = m.documents.open_document(buffer_id, path) {
+                // Schedule immediate sync - render stage will send didOpen
+                m.documents.schedule_immediate_sync(buffer_id);
+                info!(buffer_id, "LSP stage: registered document synchronously");
+            }
+        });
     }
 
     /// Process pending syncs and send to LSP server.
@@ -132,12 +163,9 @@ impl LspRenderStage {
                     "LSP: sending didOpen"
                 );
                 handle.did_open(uri, language_id, version, content);
+                // Mark as opened only after successfully sending didOpen
+                m.documents.mark_opened(buffer_id);
             }
-        });
-
-        // Mark as opened after sending
-        self.manager.with_mut(|m| {
-            m.documents.mark_opened(buffer_id);
         });
     }
 
@@ -242,6 +270,11 @@ fn severity_to_style(
 
 impl RenderStage for LspRenderStage {
     fn transform(&self, mut input: RenderData, ctx: &RenderContext<'_>) -> RenderData {
+        let buffer_id = input.buffer_id;
+
+        // Ensure document is registered (handles async event race condition)
+        self.ensure_document_registered(buffer_id, ctx);
+
         // Check for pending syncs and send to LSP
         self.process_syncs(ctx);
 

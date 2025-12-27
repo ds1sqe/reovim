@@ -174,7 +174,9 @@ impl Plugin for LspPlugin {
 
     #[allow(clippy::too_many_lines)]
     fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {
-        // Handle file open - register document and send didOpen immediately
+        // Handle file open - register document and schedule sync for render stage
+        // Note: We don't send didOpen here directly. The render stage handles it
+        // via schedule_immediate_sync() to avoid version synchronization bugs.
         {
             let state = Arc::clone(&state);
             bus.subscribe::<FileOpened, _>(100, move |event, _ctx| {
@@ -186,49 +188,14 @@ impl Plugin for LspPlugin {
                 state.with_mut::<Arc<SharedLspManager>, _, _>(|manager| {
                     manager.with_mut(|m| {
                         let path = PathBuf::from(&event.path);
-                        if let Some(doc) = m.documents.open_document(event.buffer_id, path.clone())
-                        {
+                        if let Some(doc) = m.documents.open_document(event.buffer_id, path) {
                             info!(
                                 buffer_id = event.buffer_id,
                                 language_id = %doc.language_id,
-                                path = %event.path,
-                                "LSP: opened document"
+                                "LSP: opened document, scheduling sync for render stage"
                             );
-
-                            // Try to send didOpen immediately, or queue for later
-                            if let Some(handle) = &m.handle {
-                                let uri = doc.uri.clone();
-                                let language_id = doc.language_id.clone();
-                                let version = 1; // Initial version
-
-                                // Read file content from disk
-                                match std::fs::read_to_string(&path) {
-                                    Ok(content) => {
-                                        info!(
-                                            buffer_id = event.buffer_id,
-                                            uri = %uri.as_str(),
-                                            "LSP: sending didOpen immediately"
-                                        );
-                                        handle.did_open(uri, language_id, version, content);
-                                        m.documents.mark_opened(event.buffer_id);
-                                    }
-                                    Err(e) => {
-                                        warn!(
-                                            buffer_id = event.buffer_id,
-                                            error = %e,
-                                            "LSP: failed to read file for didOpen"
-                                        );
-                                    }
-                                }
-                            } else {
-                                // Handle not ready yet - schedule immediate sync
-                                // so render stage will send didOpen when handle is available
-                                info!(
-                                    buffer_id = event.buffer_id,
-                                    "LSP: handle not ready, scheduling sync for render stage"
-                                );
-                                m.documents.schedule_immediate_sync(event.buffer_id);
-                            }
+                            // Let render stage handle didOpen to ensure version consistency
+                            m.documents.schedule_immediate_sync(event.buffer_id);
                         }
                     });
                 });
@@ -500,6 +467,8 @@ impl Plugin for LspPlugin {
                                                     content, line, column, buffer_id,
                                                 );
                                                 m.hover_cache.store(snapshot);
+                                                // Trigger re-render to show popup
+                                                m.send_render_signal();
                                             });
                                         },
                                     );
@@ -517,7 +486,7 @@ impl Plugin for LspPlugin {
                         }
                     });
                 } else {
-                    debug!(buffer_id, "LSP: hover - no document or handle");
+                    info!(buffer_id, ?request_info, "LSP: hover - no document or handle");
                 }
 
                 EventResult::Handled
@@ -588,8 +557,17 @@ impl Plugin for LspPlugin {
         &self,
         _bus: &EventBus,
         state: Arc<PluginStateRegistry>,
-        _event_tx: Option<tokio::sync::mpsc::Sender<reovim_core::event::InnerEvent>>,
+        event_tx: Option<tokio::sync::mpsc::Sender<reovim_core::event::InnerEvent>>,
     ) {
+        // Store event_tx in manager for triggering re-renders
+        if let Some(tx) = event_tx {
+            state.with_mut::<Arc<SharedLspManager>, _, _>(|manager| {
+                manager.with_mut(|m| {
+                    m.set_event_tx(tx);
+                });
+            });
+        }
+
         // Start the LSP server in a background task
         let state_clone = Arc::clone(&state);
 
@@ -614,9 +592,50 @@ impl Plugin for LspPlugin {
                 Ok((handle, cache)) => {
                     info!("LSP: rust-analyzer started successfully");
 
+                    // Set connection and send didOpen for pending documents
                     state_clone.with_mut::<Arc<SharedLspManager>, _, _>(|manager| {
                         manager.with_mut(|m| {
                             m.set_connection(handle, cache);
+
+                            // Send didOpen for all documents that aren't opened yet
+                            // This handles documents opened before the server was ready
+                            let buffer_ids: Vec<usize> = m.documents.buffer_ids();
+                            info!(
+                                count = buffer_ids.len(),
+                                ?buffer_ids,
+                                "LSP: checking pending documents on server ready"
+                            );
+                            for buffer_id in buffer_ids {
+                                info!(buffer_id, "LSP: processing buffer_id");
+                                let Some(doc) = m.documents.get(buffer_id) else {
+                                    warn!(buffer_id, "LSP: document not found for buffer_id");
+                                    continue;
+                                };
+                                info!(
+                                    buffer_id,
+                                    opened = doc.opened,
+                                    has_handle = m.handle.is_some(),
+                                    "LSP: checking doc state"
+                                );
+                                if let (false, Some(handle)) = (doc.opened, &m.handle) {
+                                    // Read content from disk
+                                    let path = doc.path.clone();
+                                    let uri = doc.uri.clone();
+                                    let version = doc.version;
+                                    let language_id = doc.language_id.clone();
+
+                                    if let Ok(content) = std::fs::read_to_string(&path) {
+                                        info!(
+                                            buffer_id,
+                                            version,
+                                            uri = %uri.as_str(),
+                                            "LSP: sending didOpen on server ready"
+                                        );
+                                        handle.did_open(uri, language_id, version, content);
+                                        m.documents.mark_opened(buffer_id);
+                                    }
+                                }
+                            }
                         });
                     });
                 }
@@ -682,6 +701,119 @@ fn marked_string_to_text(marked: &MarkedString) -> String {
         MarkedString::LanguageString(ls) => {
             // Format as code block header + value
             format!("```{}\n{}\n```", ls.language, ls.value)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        reovim_core::{
+            bind::CommandRef,
+            keys,
+            modd::ModeState,
+            plugin::{Plugin, PluginContext},
+        },
+    };
+
+    #[test]
+    fn test_lsp_keybindings_registered() {
+        let plugin = LspPlugin::new();
+        let mut ctx = PluginContext::new();
+
+        // Build the plugin (registers commands and keybindings)
+        plugin.build(&mut ctx);
+
+        // Get the keymap and bindings for editor normal scope
+        let keymap = ctx.keymap();
+        let scope = KeymapScope::editor_normal();
+        let bindings = keymap.get_scope(&scope);
+
+        // gd, gr, K should all be bound
+        assert!(
+            bindings.get(&keys!['g' 'd']).is_some(),
+            "gd keybinding should be registered. Bindings in scope: {:?}",
+            bindings.keys().collect::<Vec<_>>()
+        );
+        assert!(bindings.get(&keys!['g' 'r']).is_some(), "gr keybinding should be registered");
+        assert!(bindings.get(&keys!['K']).is_some(), "K keybinding should be registered");
+    }
+
+    #[test]
+    fn test_lsp_keybindings_lookup_with_mode() {
+        let plugin = LspPlugin::new();
+        let mut ctx = PluginContext::new();
+
+        // Build the plugin
+        plugin.build(&mut ctx);
+
+        // Get the keymap
+        let keymap = ctx.keymap();
+
+        // Create a default mode state (editor + normal)
+        let mode = ModeState::new();
+
+        // Test lookup for gd
+        let goto_def_binding = keymap.lookup_binding(&mode, &keys!['g' 'd']);
+        assert!(
+            goto_def_binding.is_some(),
+            "lookup_binding should find gd. mode.interactor_id={:?}, mode.edit_mode={:?}",
+            mode.interactor_id,
+            mode.edit_mode
+        );
+        assert!(goto_def_binding.unwrap().command.is_some(), "gd binding should have a command");
+
+        // Test lookup for K
+        let hover_binding = keymap.lookup_binding(&mode, &keys!['K']);
+        assert!(hover_binding.is_some(), "lookup_binding should find K");
+        assert!(hover_binding.unwrap().command.is_some(), "K binding should have a command");
+    }
+
+    #[test]
+    fn test_lsp_commands_registered_and_resolvable() {
+        let plugin = LspPlugin::new();
+        let mut ctx = PluginContext::new();
+
+        // Build the plugin
+        plugin.build(&mut ctx);
+
+        // Get the command registry
+        let cmd_registry = ctx.command_registry();
+
+        // Test that gd command is registered
+        let goto_def_cmd = cmd_registry.get(&command_id::GOTO_DEFINITION);
+        assert!(
+            goto_def_cmd.is_some(),
+            "lsp_goto_definition command should be registered. ID = {:?}",
+            command_id::GOTO_DEFINITION
+        );
+        assert_eq!(goto_def_cmd.unwrap().name(), "lsp_goto_definition");
+
+        // Test that K command is registered
+        let show_hover_cmd = cmd_registry.get(&command_id::SHOW_HOVER);
+        assert!(show_hover_cmd.is_some(), "lsp_show_hover command should be registered");
+        assert_eq!(show_hover_cmd.unwrap().name(), "lsp_show_hover");
+
+        // Test that the keybinding points to the right command
+        let keymap = ctx.keymap();
+        let mode = ModeState::new();
+        let binding = keymap.lookup_binding(&mode, &keys!['g' 'd']).unwrap();
+
+        match binding.command.as_ref().unwrap() {
+            CommandRef::Registered(id) => {
+                assert_eq!(
+                    id.as_str(),
+                    "lsp_goto_definition",
+                    "gd keybinding should point to lsp_goto_definition"
+                );
+                // Verify the command can be resolved
+                assert!(
+                    cmd_registry.get(id).is_some(),
+                    "Command {id} should be resolvable from registry"
+                );
+            }
+            CommandRef::Inline(_) => panic!("gd keybinding should be a Registered command ref"),
         }
     }
 }

@@ -159,13 +159,16 @@ impl LspSaturatorHandle {
     /// If the channel is full, the request is dropped (backpressure).
     pub fn send(&self, request: LspRequest) -> bool {
         match self.tx.try_send(request) {
-            Ok(()) => true,
-            Err(mpsc::error::TrySendError::Full(_)) => {
-                debug!("LSP request channel full, dropping request");
+            Ok(()) => {
+                debug!("LSP request sent successfully");
+                true
+            }
+            Err(mpsc::error::TrySendError::Full(req)) => {
+                info!(?req, "LSP request channel full, dropping request");
                 false
             }
-            Err(mpsc::error::TrySendError::Closed(_)) => {
-                warn!("LSP request channel closed");
+            Err(mpsc::error::TrySendError::Closed(req)) => {
+                warn!(?req, "LSP request channel closed");
                 false
             }
         }

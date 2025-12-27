@@ -4,7 +4,11 @@
 
 use std::sync::{Arc, RwLock};
 
-use reovim_lsp::{DiagnosticCache, LspSaturatorHandle};
+use {
+    reovim_core::event::InnerEvent,
+    reovim_lsp::{DiagnosticCache, LspSaturatorHandle},
+    tokio::sync::mpsc,
+};
 
 use crate::{document::DocumentManager, hover::HoverCache};
 
@@ -67,6 +71,8 @@ pub struct LspManager {
     pub cache: Option<Arc<DiagnosticCache>>,
     /// Hover cache for lock-free reads.
     pub hover_cache: HoverCache,
+    /// Event sender for triggering re-renders.
+    pub event_tx: Option<mpsc::Sender<InnerEvent>>,
     /// Whether the LSP server is running.
     pub running: bool,
 }
@@ -80,7 +86,20 @@ impl LspManager {
             handle: None,
             cache: None,
             hover_cache: HoverCache::new(),
+            event_tx: None,
             running: false,
+        }
+    }
+
+    /// Set the event sender for triggering re-renders.
+    pub fn set_event_tx(&mut self, event_tx: mpsc::Sender<InnerEvent>) {
+        self.event_tx = Some(event_tx);
+    }
+
+    /// Send a render signal to trigger a re-render.
+    pub fn send_render_signal(&self) {
+        if let Some(tx) = &self.event_tx {
+            let _ = tx.try_send(InnerEvent::RenderSignal);
         }
     }
 
