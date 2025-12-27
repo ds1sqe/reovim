@@ -45,6 +45,8 @@ use crate::{
     visibility::{BufferVisibilitySource, NoOpBufferVisibility},
 };
 
+use super::statusline::SharedStatuslineSectionProvider;
+
 use tokio::sync::RwLock as TokioRwLock;
 
 use super::PluginWindow;
@@ -85,6 +87,8 @@ pub struct PluginStateRegistry {
     command_registry: RwLock<Option<Arc<CommandRegistry>>>,
     /// Current pending keys display string (updated by runtime on PendingKeysEvent)
     pending_keys: RwLock<String>,
+    /// Statusline section provider (used by statusline plugin)
+    statusline_provider: RwLock<Option<SharedStatuslineSectionProvider>>,
 }
 
 impl std::fmt::Debug for PluginStateRegistry {
@@ -105,6 +109,7 @@ impl std::fmt::Debug for PluginStateRegistry {
         let has_keymap = self.keymap.read().is_ok_and(|k| k.is_some());
         let has_command_registry = self.command_registry.read().is_ok_and(|r| r.is_some());
         let pending_keys_len = self.pending_keys.read().map_or(0, |k| k.len());
+        let has_statusline_provider = self.statusline_provider.read().is_ok_and(|p| p.is_some());
         f.debug_struct("PluginStateRegistry")
             .field("state_count", &count)
             .field("has_visibility_source", &has_visibility)
@@ -122,6 +127,7 @@ impl std::fmt::Debug for PluginStateRegistry {
             .field("has_keymap", &has_keymap)
             .field("has_command_registry", &has_command_registry)
             .field("pending_keys_len", &pending_keys_len)
+            .field("has_statusline_provider", &has_statusline_provider)
             .finish()
     }
 }
@@ -147,6 +153,7 @@ impl PluginStateRegistry {
             keymap: RwLock::new(None),
             command_registry: RwLock::new(None),
             pending_keys: RwLock::new(String::new()),
+            statusline_provider: RwLock::new(None),
         }
     }
 
@@ -366,6 +373,22 @@ impl PluginStateRegistry {
     #[must_use]
     pub fn pending_keys(&self) -> String {
         self.pending_keys.read().unwrap().clone()
+    }
+
+    /// Set the statusline section provider (used by statusline plugin)
+    ///
+    /// This allows plugins to contribute sections to the status line
+    /// without core needing to know about specific plugin implementations.
+    pub fn set_statusline_provider(&self, provider: SharedStatuslineSectionProvider) {
+        *self.statusline_provider.write().unwrap() = Some(provider);
+    }
+
+    /// Get the statusline section provider
+    ///
+    /// Returns the registered statusline provider, or None if none is registered.
+    #[must_use]
+    pub fn statusline_provider(&self) -> Option<SharedStatuslineSectionProvider> {
+        self.statusline_provider.read().unwrap().clone()
     }
 
     /// Set the animation handle (used by Runtime during initialization)

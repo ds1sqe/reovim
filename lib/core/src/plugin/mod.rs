@@ -33,6 +33,7 @@ mod editor_context;
 mod loader;
 mod runtime_context;
 mod state;
+mod statusline;
 mod traits;
 mod window;
 
@@ -45,6 +46,10 @@ pub use {
     loader::{PluginError, PluginLoader, PluginTuple},
     runtime_context::{RuntimeContext, RuntimeContextBuilder},
     state::PluginStateRegistry,
+    statusline::{
+        RenderedSection, SectionAlignment, SharedStatuslineSectionProvider,
+        StatuslineRenderContext, StatuslineSectionProvider,
+    },
     traits::{Plugin, PluginId},
     window::{PluginWindow, Rect, WindowConfig},
 };

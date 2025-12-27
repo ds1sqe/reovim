@@ -110,6 +110,35 @@ pub struct BufferListItem {
     pub modified: bool,
 }
 
+/// Individual notification information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NotificationItem {
+    pub id: String,
+    pub message: String,
+    pub level: String,
+    pub source: Option<String>,
+}
+
+/// Individual progress information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProgressItem {
+    pub id: String,
+    pub title: String,
+    pub source: String,
+    pub progress: Option<u8>,
+    pub detail: Option<String>,
+}
+
+/// Notification plugin state information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NotificationInfo {
+    pub notification_count: usize,
+    pub progress_count: usize,
+    pub has_visible: bool,
+    pub notifications: Vec<NotificationItem>,
+    pub progress: Vec<ProgressItem>,
+}
+
 /// Test client for server-based integration tests
 pub struct TestClient {
     reader: BufReader<tokio::net::tcp::OwnedReadHalf>,
@@ -404,5 +433,81 @@ impl TestClient {
     pub async fn layer_info(&mut self) -> Result<Vec<crate::visual::LayerInfo>, ClientError> {
         let result = self.send("state/layer_info", json!({})).await?;
         serde_json::from_value(result).map_err(ClientError::ParseFailed)
+    }
+
+    // === Notification methods ===
+
+    /// Get notification plugin state
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails.
+    pub async fn notification(&mut self) -> Result<NotificationInfo, ClientError> {
+        let result = self.send("state/notification", json!({})).await?;
+        serde_json::from_value(result).map_err(ClientError::ParseFailed)
+    }
+
+    /// Show a test notification
+    ///
+    /// # Arguments
+    ///
+    /// * `message` - The notification message
+    /// * `level` - The notification level ("info", "success", "warning", "error")
+    /// * `duration_ms` - Optional duration in milliseconds
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails.
+    pub async fn show_notification(
+        &mut self,
+        message: &str,
+        level: &str,
+        duration_ms: Option<u64>,
+    ) -> Result<(), ClientError> {
+        let mut params = json!({
+            "message": message,
+            "level": level,
+        });
+        if let Some(duration) = duration_ms {
+            params["duration_ms"] = json!(duration);
+        }
+        self.send("notification/show", params).await?;
+        Ok(())
+    }
+
+    /// Update a progress notification
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The progress ID
+    /// * `title` - The progress title
+    /// * `source` - The source name
+    /// * `progress` - Optional progress percentage (0-100)
+    /// * `detail` - Optional detail text
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails.
+    pub async fn update_progress(
+        &mut self,
+        id: &str,
+        title: &str,
+        source: &str,
+        progress: Option<u8>,
+        detail: Option<&str>,
+    ) -> Result<(), ClientError> {
+        let mut params = json!({
+            "id": id,
+            "title": title,
+            "source": source,
+        });
+        if let Some(pct) = progress {
+            params["progress"] = json!(pct);
+        }
+        if let Some(det) = detail {
+            params["detail"] = json!(det);
+        }
+        self.send("notification/progress", params).await?;
+        Ok(())
     }
 }

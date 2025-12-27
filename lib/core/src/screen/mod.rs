@@ -66,6 +66,7 @@ use {
         indent::IndentAnalyzer,
         modd::{ComponentId, ModeState},
         modifier::{ModifierContext, ModifierRegistry},
+        plugin::{SectionAlignment, StatuslineRenderContext},
         visibility::BufferVisibilitySource,
     },
     reovim_sys::{
@@ -1831,16 +1832,78 @@ impl Screen {
             }
         }
 
-        // Fill middle with background style
+        // === Plugin sections ===
+        // Get sections from provider (if any)
+        let plugin_sections = plugin_state.statusline_provider().map(|provider| {
+            let ctx = StatuslineRenderContext {
+                plugin_state,
+                screen_width: self.size.width,
+                status_row: y,
+            };
+            let mut sections = provider.render_sections(&ctx);
+
+            // Sort by alignment and priority
+            sections.sort_by(|a, b| {
+                a.alignment
+                    .cmp(&b.alignment)
+                    .then_with(|| a.priority.cmp(&b.priority))
+            });
+            sections
+        });
+
+        // Render left-aligned sections
+        if let Some(ref sections) = plugin_sections {
+            for section in sections
+                .iter()
+                .filter(|s| s.alignment == SectionAlignment::Left)
+            {
+                let section_style = section.style.as_ref().unwrap_or(bg_style);
+                for ch in section.text.chars() {
+                    if x < buffer.width() {
+                        let style = apply_sweep(section_style, x);
+                        buffer.put_char(x, y, ch, &style);
+                        x += 1;
+                    }
+                }
+            }
+        }
+
+        // Calculate right section total width
+        let right_section_width: u16 = plugin_sections.as_ref().map_or(0, |sections| {
+            sections
+                .iter()
+                .filter(|s| s.alignment == SectionAlignment::Right)
+                .map(|s| s.text.chars().count() as u16)
+                .sum()
+        });
+
+        // Fill middle with background style (account for right sections)
         let fill_end = self
             .size
             .width
-            .saturating_sub(pending_keys.len() as u16 + 10);
+            .saturating_sub(pending_keys.len() as u16 + 10 + right_section_width);
         let bg_style = &theme.statusline.background;
         while x < fill_end {
             let style = apply_sweep(bg_style, x);
             buffer.put_char(x, y, ' ', &style);
             x += 1;
+        }
+
+        // Render right-aligned sections (before position info)
+        if let Some(ref sections) = plugin_sections {
+            for section in sections
+                .iter()
+                .filter(|s| s.alignment == SectionAlignment::Right)
+            {
+                let section_style = section.style.as_ref().unwrap_or(bg_style);
+                for ch in section.text.chars() {
+                    if x < buffer.width() {
+                        let style = apply_sweep(section_style, x);
+                        buffer.put_char(x, y, ch, &style);
+                        x += 1;
+                    }
+                }
+            }
         }
 
         // Position info (right side)

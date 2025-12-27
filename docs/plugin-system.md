@@ -13,6 +13,7 @@ reovim/
 │   │   ├── context.rs          # PluginContext for registration
 │   │   ├── loader.rs           # PluginLoader with dependency resolution
 │   │   ├── state.rs            # PluginStateRegistry
+│   │   ├── statusline.rs       # StatuslineSectionProvider trait
 │   │   ├── runtime_context.rs  # RuntimeContext for plugins
 │   │   └── builtin/            # Built-in plugins (shipped with core)
 │   │       ├── core.rs         # CorePlugin - essential commands
@@ -24,12 +25,19 @@ reovim/
 │       └── bus.rs              # EventBus implementation
 │
 ├── plugins/features/           # External feature plugins
-│   ├── fold/                   # Code folding
-│   ├── settings-menu/          # In-editor settings
 │   ├── completion/             # Text completion
 │   ├── explorer/               # File browser
-│   ├── telescope/              # Fuzzy finder
-│   └── treesitter/             # Syntax highlighting infrastructure
+│   ├── fold/                   # Code folding
+│   ├── leap/                   # Two-char motion
+│   ├── lsp/                    # LSP integration
+│   ├── microscope/             # Fuzzy finder
+│   ├── notification/           # Toast notifications and progress bars
+│   ├── pair/                   # Auto-pair brackets
+│   ├── pickers/                # Picker UI components
+│   ├── settings-menu/          # In-editor settings
+│   ├── statusline/             # Statusline extension API
+│   ├── treesitter/             # Syntax highlighting infrastructure
+│   └── which-key/              # Keybinding hints
 │
 ├── plugins/languages/          # Language plugins
 │   ├── rust/                   # Rust support
@@ -566,6 +574,89 @@ Language plugins provide language-specific support:
 | JSON | `reovim-lang-json` | `.json` |
 | TOML | `reovim-lang-toml` | `.toml` |
 | Markdown | `reovim-lang-markdown` | `.md` |
+
+### StatuslinePlugin (`reovim-plugin-statusline`)
+
+Section-based API for statusline extensions. Other plugins can register dynamic sections.
+
+**Plugin Components:**
+- `StatuslinePlugin` - Main plugin, registers provider with core
+- `StatuslineSection` - Section definition with id, priority, alignment, render callback
+- `SharedStatuslineManager` - Thread-safe section registry implementing `StatuslineSectionProvider`
+- Events: `StatuslineSectionRegister`, `StatuslineSectionUnregister`, `StatuslineRefresh`
+
+**Core API (Generic Trait):**
+```rust
+// In lib/core/src/plugin/statusline.rs
+pub trait StatuslineSectionProvider: Send + Sync + 'static {
+    fn render_sections(&self, ctx: &StatuslineRenderContext) -> Vec<RenderedSection>;
+}
+
+pub struct RenderedSection {
+    pub text: String,
+    pub style: Option<Style>,
+    pub alignment: SectionAlignment,  // Left, Center, Right
+    pub priority: u32,
+}
+```
+
+**Usage (Other Plugins Registering Sections):**
+```rust
+// In another plugin's subscribe()
+bus.emit(StatuslineSectionRegister {
+    section: StatuslineSection {
+        id: "lsp_status",
+        priority: 100,
+        alignment: SectionAlignment::Right,
+        render: Arc::new(|_ctx| SectionContent {
+            text: " LSP ".into(),
+            style: None,
+            visible: true,
+        }),
+    },
+});
+```
+
+### NotificationPlugin (`reovim-plugin-notification`)
+
+Toast notifications and progress bars for non-blocking user feedback.
+
+**Plugin Components:**
+- `NotificationPlugin` - Main plugin, registers commands and window
+- `Notification` - Toast notification with level (Info, Success, Warning, Error)
+- `ProgressNotification` - Progress bar with percentage or indeterminate spinner
+- `SharedNotificationManager` - Thread-safe notification state
+- `NotificationPluginWindow` - PluginWindow implementation (z-order 500)
+- `NotificationStyles` - Plugin-local styles (not in core Theme)
+
+**Events:**
+```rust
+// Show a notification
+bus.emit(NotificationShow {
+    level: NotificationLevel::Success,
+    message: "File saved".into(),
+    duration_ms: Some(2000),
+    source: None,
+});
+
+// Show progress
+bus.emit(ProgressUpdate {
+    id: "build".into(),
+    title: "Building".into(),
+    source: "cargo".into(),
+    progress: Some(45),  // 0-100 or None for spinner
+    detail: Some("4/250 (core)".into()),
+});
+
+// Complete progress
+bus.emit(ProgressComplete {
+    id: "build".into(),
+    message: Some("Build complete".into()),
+});
+```
+
+**Position Options:**
+- `TopRight` (default), `TopLeft`, `BottomRight`, `BottomLeft`, `TopCenter`, `BottomCenter`
 
 ## Unified Command-Event Pattern (Recommended)
 

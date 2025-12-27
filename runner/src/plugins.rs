@@ -13,8 +13,9 @@ use reovim_core::plugin::{
 use {
     reovim_plugin_completion::CompletionPlugin, reovim_plugin_explorer::ExplorerPlugin,
     reovim_plugin_fold::FoldPlugin, reovim_plugin_leap::LeapPlugin, reovim_plugin_lsp::LspPlugin,
-    reovim_plugin_microscope::MicroscopePlugin, reovim_plugin_pair::PairPlugin,
-    reovim_plugin_pickers::PickersPlugin, reovim_plugin_settings_menu::SettingsMenuPlugin,
+    reovim_plugin_microscope::MicroscopePlugin, reovim_plugin_notification::NotificationPlugin,
+    reovim_plugin_pair::PairPlugin, reovim_plugin_pickers::PickersPlugin,
+    reovim_plugin_settings_menu::SettingsMenuPlugin, reovim_plugin_statusline::StatuslinePlugin,
     reovim_plugin_treesitter::TreesitterPlugin, reovim_plugin_which_key::WhichKeyPlugin,
 };
 
@@ -34,6 +35,11 @@ impl PluginTuple for AllPlugins {
     fn add_to(self, loader: &mut PluginLoader) {
         // Add built-in plugins (CorePlugin, UIComponentsPlugin, WindowPlugin)
         loader.add_plugins(DefaultPlugins);
+
+        // Statusline extension (load early so other plugins can register sections)
+        loader.add(StatuslinePlugin::new());
+        // Notification system
+        loader.add(NotificationPlugin::new());
 
         // Add external plugin crates
         loader.add(LeapPlugin);
@@ -75,6 +81,10 @@ pub fn default_plugins() -> impl IntoIterator<Item = Box<dyn Plugin>> {
         Box::new(CorePlugin) as Box<dyn Plugin>,
         // Editor features
         Box::new(WindowPlugin),
+        // Statusline extension (load early so other plugins can register sections)
+        Box::new(StatuslinePlugin::new()),
+        // Notification system
+        Box::new(NotificationPlugin::new()),
         Box::new(LeapPlugin),
         Box::new(MicroscopePlugin),
         Box::new(PickersPlugin), // Must come after MicroscopePlugin
@@ -114,6 +124,10 @@ pub fn minimal_plugins() -> impl IntoIterator<Item = Box<dyn Plugin>> {
 pub fn create_plugin_loader() -> PluginLoader {
     let mut loader = PluginLoader::new();
     loader.add_plugins(DefaultPlugins);
+    // Statusline extension (load early so other plugins can register sections)
+    loader.add(StatuslinePlugin::new());
+    // Notification system
+    loader.add(NotificationPlugin::new());
     // Add external plugin crates
     loader.add(LeapPlugin);
     loader.add(FoldPlugin::new());

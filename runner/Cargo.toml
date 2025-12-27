@@ -30,6 +30,8 @@ reovim-plugin-treesitter.workspace = true
 reovim-plugin-pair.workspace = true
 reovim-plugin-lsp.workspace = true
 reovim-plugin-which-key.workspace = true
+reovim-plugin-statusline.workspace = true
+reovim-plugin-notification.workspace = true
 
 # Language plugins
 reovim-lang-rust.workspace = true

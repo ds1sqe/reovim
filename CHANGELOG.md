@@ -32,6 +32,29 @@ All notable changes to Reovim will be documented in this file.
   - Documents root causes of LSP keybinding failures
   - Includes investigation notes and verification steps
 
+- **Statusline Plugin** (`reovim-plugin-statusline`) - Section-based API for statusline extensions
+  - `StatuslineSection` type with id, priority, alignment, and render callback
+  - `SharedStatuslineManager` with thread-safe section registration
+  - Implements core's generic `StatuslineSectionProvider` trait
+  - Events: `StatuslineSectionRegister`, `StatuslineSectionUnregister`, `StatuslineRefresh`
+  - Other plugins can register dynamic sections (e.g., LSP status, diagnostics count)
+
+- **Notification Plugin** (`reovim-plugin-notification`) - Toast notifications and progress bars
+  - `NotificationLevel` variants: Info, Success, Warning, Error with colored icons
+  - `ProgressNotification` with percentage bar or indeterminate spinner
+  - `SharedNotificationManager` for state management
+  - Plugin-local `NotificationStyles` (not in core Theme)
+  - Events: `NotificationShow`, `NotificationDismiss`, `ProgressUpdate`, `ProgressComplete`
+  - `NotificationPluginWindow` with z-order 500 (above most UI)
+  - Configurable position: TopRight, TopLeft, BottomRight, BottomLeft, TopCenter, BottomCenter
+
+- **`StatuslineSectionProvider` trait** - Generic core API for statusline extensions
+  - Added to `lib/core/src/plugin/statusline.rs`
+  - `StatuslineRenderContext` with plugin state and screen dimensions
+  - `RenderedSection` output type with text, style, alignment, priority
+  - Provider hook in `render_status_line_to_buffer()` for generic section rendering
+  - Follows same pattern as `SyntaxFactory` - core is plugin-agnostic
+
 ## [0.7.7] - 2025-12-27
 
 ### Changed

@@ -6,7 +6,10 @@ use std::time::Duration;
 
 use {
     super::{
-        client::{MicroscopeInfo, ModeInfo, ScreenInfo, TelescopeInfo, TestClient, WindowInfo},
+        client::{
+            MicroscopeInfo, ModeInfo, NotificationInfo, ScreenInfo, TelescopeInfo, TestClient,
+            WindowInfo,
+        },
         server::ServerTestHarness,
     },
     crate::visual::{LayerInfo, VisualSnapshot},
@@ -131,6 +134,7 @@ impl ServerTest {
         let buffer_content = client.buffer_content().await.unwrap_or_default();
         let telescope = client.telescope().await.ok();
         let microscope = client.microscope().await.ok();
+        let notification = client.notification().await.ok();
         let screen_content = client.screen_content_raw().await.unwrap_or_default();
         let screen = client.screen().await.ok();
 
@@ -140,6 +144,7 @@ impl ServerTest {
             buffer_content,
             telescope,
             microscope,
+            notification,
             screen_content,
             screen,
             client,                 // Keep client for visual methods
@@ -160,6 +165,8 @@ pub struct ServerTestResult {
     pub telescope: Option<TelescopeInfo>,
     /// Microscope state
     pub microscope: Option<MicroscopeInfo>,
+    /// Notification plugin state
+    pub notification: Option<NotificationInfo>,
     /// Raw screen content with ANSI escape codes
     pub screen_content: String,
     /// Screen state (dimensions and active buffer)
@@ -575,5 +582,196 @@ impl ServerTestResult {
     #[must_use]
     pub fn find_window_by_id(windows: &[WindowInfo], id: usize) -> Option<&WindowInfo> {
         windows.iter().find(|w| w.id == id)
+    }
+
+    // === Notification Assertions ===
+
+    /// Assert that notifications are visible
+    ///
+    /// # Panics
+    ///
+    /// Panics if no notifications are visible.
+    pub fn assert_notification_visible(&self) {
+        let info = self
+            .notification
+            .as_ref()
+            .expect("Notification state not available");
+        assert!(info.has_visible, "Expected notifications to be visible, but none are visible");
+    }
+
+    /// Assert that no notifications are visible
+    ///
+    /// # Panics
+    ///
+    /// Panics if notifications are visible.
+    pub fn assert_notification_hidden(&self) {
+        let info = self
+            .notification
+            .as_ref()
+            .expect("Notification state not available");
+        assert!(
+            !info.has_visible,
+            "Expected no notifications to be visible, but {} notifications and {} progress items are visible",
+            info.notification_count, info.progress_count
+        );
+    }
+
+    /// Assert that there are exactly `count` notifications
+    ///
+    /// # Panics
+    ///
+    /// Panics if the notification count doesn't match.
+    pub fn assert_notification_count(&self, expected: usize) {
+        let info = self
+            .notification
+            .as_ref()
+            .expect("Notification state not available");
+        assert_eq!(
+            info.notification_count, expected,
+            "Notification count mismatch: expected {}, got {}",
+            expected, info.notification_count
+        );
+    }
+
+    /// Assert that there are exactly `count` progress items
+    ///
+    /// # Panics
+    ///
+    /// Panics if the progress count doesn't match.
+    pub fn assert_progress_count(&self, expected: usize) {
+        let info = self
+            .notification
+            .as_ref()
+            .expect("Notification state not available");
+        assert_eq!(
+            info.progress_count, expected,
+            "Progress count mismatch: expected {}, got {}",
+            expected, info.progress_count
+        );
+    }
+
+    /// Assert that a notification with the given message exists
+    ///
+    /// # Panics
+    ///
+    /// Panics if no notification with the message is found.
+    pub fn assert_notification_message(&self, expected: &str) {
+        let info = self
+            .notification
+            .as_ref()
+            .expect("Notification state not available");
+        let found = info
+            .notifications
+            .iter()
+            .any(|n| n.message.contains(expected));
+        assert!(
+            found,
+            "No notification with message containing '{}' found. Notifications: {:?}",
+            expected,
+            info.notifications
+                .iter()
+                .map(|n| &n.message)
+                .collect::<Vec<_>>()
+        );
+    }
+
+    /// Assert that a notification with the given level exists
+    ///
+    /// # Panics
+    ///
+    /// Panics if no notification with the level is found.
+    pub fn assert_notification_level(&self, expected: &str) {
+        let info = self
+            .notification
+            .as_ref()
+            .expect("Notification state not available");
+        let found = info.notifications.iter().any(|n| n.level == expected);
+        assert!(
+            found,
+            "No notification with level '{}' found. Notifications: {:?}",
+            expected,
+            info.notifications
+                .iter()
+                .map(|n| &n.level)
+                .collect::<Vec<_>>()
+        );
+    }
+
+    /// Assert that a progress item with the given title exists
+    ///
+    /// # Panics
+    ///
+    /// Panics if no progress item with the title is found.
+    pub fn assert_progress_title(&self, expected: &str) {
+        let info = self
+            .notification
+            .as_ref()
+            .expect("Notification state not available");
+        let found = info.progress.iter().any(|p| p.title.contains(expected));
+        assert!(
+            found,
+            "No progress item with title containing '{}' found. Progress: {:?}",
+            expected,
+            info.progress.iter().map(|p| &p.title).collect::<Vec<_>>()
+        );
+    }
+
+    // === Notification methods (async) ===
+
+    /// Show a test notification via RPC
+    ///
+    /// # Panics
+    ///
+    /// Panics if the request fails.
+    pub async fn show_notification(&mut self, message: &str, level: &str) {
+        self.client
+            .show_notification(message, level, None)
+            .await
+            .expect("Failed to show notification");
+    }
+
+    /// Update a progress notification via RPC
+    ///
+    /// # Panics
+    ///
+    /// Panics if the request fails.
+    pub async fn update_progress(
+        &mut self,
+        id: &str,
+        title: &str,
+        source: &str,
+        progress: Option<u8>,
+    ) {
+        self.client
+            .update_progress(id, title, source, progress, None)
+            .await
+            .expect("Failed to update progress");
+    }
+
+    /// Refresh notification state from server
+    ///
+    /// # Panics
+    ///
+    /// Panics if the request fails.
+    pub async fn refresh_notification(&mut self) {
+        self.notification = self.client.notification().await.ok();
+    }
+
+    /// Trigger a screen render by injecting a harmless key
+    ///
+    /// This is useful after RPC calls that update state but don't trigger
+    /// a render (like notification/show). Injects `<Esc>` which is harmless
+    /// in normal mode and triggers a render cycle.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the key injection fails.
+    pub async fn trigger_render(&mut self) {
+        self.client
+            .keys("<Esc>")
+            .await
+            .expect("Failed to inject key for render");
+        // Small delay to allow render to complete
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
 }
