@@ -15,6 +15,8 @@
 mod cache;
 mod client;
 mod jsonrpc;
+mod progress;
+mod progress_event;
 mod saturator;
 mod transport;
 
@@ -22,6 +24,11 @@ pub use {
     cache::{BufferDiagnostics, DiagnosticCache},
     client::{Client, ClientConfig, ClientError, uri_from_path},
     jsonrpc::{Error as JsonRpcError, Id, Message, Notification, Request, Response},
+    progress::{
+        ProgressParams, ProgressToken, WorkDoneProgressBegin, WorkDoneProgressEnd,
+        WorkDoneProgressReport, WorkDoneProgressValue,
+    },
+    progress_event::{LspProgressBegin, LspProgressEnd, LspProgressReport},
     saturator::{LspRequest, LspSaturator, LspSaturatorHandle},
     transport::Transport,
 };

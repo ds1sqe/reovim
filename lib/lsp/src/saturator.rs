@@ -321,6 +321,7 @@ impl LspSaturator {
     ///
     /// * `config` - Client configuration
     /// * `render_signal` - Optional channel to signal render thread when diagnostics update
+    /// * `event_bus_tx` - Optional event bus sender for progress notifications
     ///
     /// # Errors
     ///
@@ -328,6 +329,7 @@ impl LspSaturator {
     pub async fn start(
         config: ClientConfig,
         render_signal: Option<mpsc::Sender<()>>,
+        event_bus_tx: Option<mpsc::UnboundedSender<Box<dyn std::any::Any + Send>>>,
     ) -> Result<(LspSaturatorHandle, Arc<DiagnosticCache>), ClientError> {
         // Create diagnostic cache
         let cache = Arc::new(DiagnosticCache::new());
@@ -354,6 +356,7 @@ impl LspSaturator {
             cache_clone,
             open_docs_clone,
             render_signal,
+            event_bus_tx,
         ));
 
         // Spawn stderr reader if available
@@ -377,6 +380,7 @@ impl LspSaturator {
         cache: Arc<DiagnosticCache>,
         open_docs: Arc<Mutex<OpenDocuments>>,
         render_signal: Option<mpsc::Sender<()>>,
+        event_bus_tx: Option<mpsc::UnboundedSender<Box<dyn std::any::Any + Send>>>,
     ) {
         info!("LSP saturator started");
 
@@ -391,6 +395,7 @@ impl LspSaturator {
                                 &cache,
                                 &open_docs,
                                 render_signal.as_ref(),
+                                event_bus_tx.as_ref(),
                                 message
                             ).await;
                         }
@@ -414,16 +419,40 @@ impl LspSaturator {
                             Self::handle_did_close(&client, &cache, &open_docs, &uri);
                         }
                         LspRequest::GotoDefinition { uri, position, response_tx } => {
-                            let result = client.goto_definition(uri, position).await;
-                            let _ = response_tx.send(result);
+                            debug!(uri = %uri.as_str(), position = ?position, "Spawning goto_definition task");
+                            let client = Arc::clone(&client);
+                            tokio::spawn(async move {
+                                debug!("goto_definition task started");
+                                let result = client.goto_definition(uri, position).await;
+                                debug!(success = result.is_ok(), "goto_definition completed");
+                                if response_tx.send(result).is_err() {
+                                    warn!("goto_definition response receiver dropped");
+                                }
+                            });
                         }
                         LspRequest::References { uri, position, include_declaration, response_tx } => {
-                            let result = client.references(uri, position, include_declaration).await;
-                            let _ = response_tx.send(result);
+                            debug!(uri = %uri.as_str(), position = ?position, "Spawning references task");
+                            let client = Arc::clone(&client);
+                            tokio::spawn(async move {
+                                debug!("references task started");
+                                let result = client.references(uri, position, include_declaration).await;
+                                debug!(success = result.is_ok(), "references completed");
+                                if response_tx.send(result).is_err() {
+                                    warn!("references response receiver dropped");
+                                }
+                            });
                         }
                         LspRequest::Hover { uri, position, response_tx } => {
-                            let result = client.hover(uri, position).await;
-                            let _ = response_tx.send(result);
+                            debug!(uri = %uri.as_str(), position = ?position, "Spawning hover task");
+                            let client = Arc::clone(&client);
+                            tokio::spawn(async move {
+                                debug!("hover task started");
+                                let result = client.hover(uri, position).await;
+                                debug!(success = result.is_ok(), "hover completed");
+                                if response_tx.send(result).is_err() {
+                                    warn!("hover response receiver dropped");
+                                }
+                            });
                         }
                         LspRequest::Shutdown => {
                             info!("Shutdown requested");
@@ -448,10 +477,12 @@ impl LspSaturator {
         cache: &Arc<DiagnosticCache>,
         open_docs: &Arc<Mutex<OpenDocuments>>,
         render_signal: Option<&mpsc::Sender<()>>,
+        event_bus_tx: Option<&mpsc::UnboundedSender<Box<dyn std::any::Any + Send>>>,
         message: Message,
     ) {
         match message {
             Message::Response(response) => {
+                debug!(id = ?response.id, has_error = response.error.is_some(), "Received response from server");
                 client.handle_response(response).await;
             }
             Message::Notification(notification) => {
@@ -461,6 +492,10 @@ impl LspSaturator {
                             serde_json::from_value::<PublishDiagnosticsParams>(params)
                     {
                         Self::handle_diagnostics(cache, render_signal, diag_params);
+                    }
+                } else if notification.method == "$/progress" {
+                    if let Some(params) = notification.params {
+                        Self::handle_progress_notification(params, event_bus_tx);
                     }
                 } else {
                     debug!(method = %notification.method, "Unhandled notification");
@@ -493,6 +528,89 @@ impl LspSaturator {
         // Signal render thread if channel provided
         if let Some(tx) = render_signal {
             let _ = tx.try_send(());
+        }
+    }
+
+    /// Handle $/progress notification from server.
+    fn handle_progress_notification(
+        params: serde_json::Value,
+        event_bus_tx: Option<&mpsc::UnboundedSender<Box<dyn std::any::Any + Send>>>,
+    ) {
+        use crate::{
+            progress::{ProgressParams, ProgressToken, WorkDoneProgressValue},
+            progress_event::{LspProgressBegin, LspProgressEnd, LspProgressReport},
+        };
+
+        let Ok(progress) = serde_json::from_value::<ProgressParams>(params) else {
+            warn!("Failed to parse $/progress notification");
+            return;
+        };
+
+        // Generate unique ID from token
+        let progress_id = match &progress.token {
+            ProgressToken::String(s) => s.clone(),
+            ProgressToken::Number(n) => format!("lsp_{n}"),
+        };
+
+        // Extract title from token (e.g., "rust-analyzer/Indexing" -> "Indexing")
+        let title = match &progress.token {
+            ProgressToken::String(s) => s.split('/').next_back().unwrap_or(s).to_string(),
+            ProgressToken::Number(_) => "LSP".to_string(),
+        };
+
+        match &progress.value {
+            WorkDoneProgressValue::Begin(begin) => {
+                info!(
+                    id = %progress_id,
+                    title = %begin.title,
+                    message = ?begin.message,
+                    percentage = ?begin.percentage,
+                    "LSP progress begin"
+                );
+
+                if let Some(tx) = event_bus_tx {
+                    let event = LspProgressBegin {
+                        id: progress_id,
+                        title: begin.title.clone(),
+                        message: begin.message.clone(),
+                        percentage: begin.percentage.map(|p| p.min(100) as u8),
+                    };
+                    let _ = tx.send(Box::new(event));
+                }
+            }
+            WorkDoneProgressValue::Report(report) => {
+                info!(
+                    id = %progress_id,
+                    message = ?report.message,
+                    percentage = ?report.percentage,
+                    "LSP progress report"
+                );
+
+                if let Some(tx) = event_bus_tx {
+                    let event = LspProgressReport {
+                        id: progress_id,
+                        title,
+                        message: report.message.clone(),
+                        percentage: report.percentage.map(|p| p.min(100) as u8),
+                    };
+                    let _ = tx.send(Box::new(event));
+                }
+            }
+            WorkDoneProgressValue::End(end) => {
+                info!(
+                    id = %progress_id,
+                    message = ?end.message,
+                    "LSP progress end"
+                );
+
+                if let Some(tx) = event_bus_tx {
+                    let event = LspProgressEnd {
+                        id: progress_id,
+                        message: end.message.clone(),
+                    };
+                    let _ = tx.send(Box::new(event));
+                }
+            }
         }
     }
 

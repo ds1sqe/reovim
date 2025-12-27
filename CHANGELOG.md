@@ -6,54 +6,17 @@ All notable changes to Reovim will be documented in this file.
 
 ### Fixed
 
-- **LSP document registration race condition** - Documents now registered synchronously
-  - Added `ensure_document_registered()` in `LspRenderStage::transform()`
-  - Handles race condition where `FileOpened` event processed after user interaction
-  - Documents registered during first render cycle, before user can press keys
+- **LSP hover popup not dismissing on cursor movement** - Core runtime now emits `CursorMoved` events when commands change cursor position, enabling hover dismissal and cursor-aware plugin features
 
-- **LSP mark_opened() called unconditionally** - Fixed premature document marking
-  - `mark_opened()` was called even when `didOpen` wasn't sent (handle was None)
-  - Moved `mark_opened()` inside the else block after `did_open()` call
-  - Prevents version mismatch between editor and language server
-
-- **LSP server startup timing** - Improved pending document handling
-  - Simplified `FileOpened` handler to register and schedule sync
-  - Added logic in `boot()` to send `didOpen` for pending documents after server ready
-
-- **LSP hover popup coordinate calculation** - Fixed buffer-to-screen coordinate transformation
-  - Was using buffer coordinates directly instead of screen coordinates
-  - Now accounts for: window anchor position, line number gutter width, scroll offset
-  - Popup positioning ready for when hover responses are received
-  - **Note**: Core LSP response handling still broken (see docs/issues/lsp-commands-not-working.md)
-
-- **LSP request channel buffer size** - Increased from 1 to 32 to prevent request drops
-  - Buffer of 1 caused "channel full" errors during request bursts (hover, definition, etc.)
-  - Larger buffer allows for bursts while still providing backpressure
-
-### Changed
-
-- **LSP channel logging** - Improved visibility for debugging
-  - Changed "channel full" logging from debug to info level
-  - Helps diagnose request drops due to backpressure
+- **LSP commands (gd/gr/K) not working** - Fixed saturator deadlock by spawning tokio tasks instead of blocking await in select! loop
 
 ### Added
 
-- **LSP issues documentation** - Added `docs/issues/lsp-commands-not-working.md`
-  - Documents root causes of LSP keybinding failures
-  - Includes investigation notes and verification steps
+- **LSP progress notifications** - Display rust-analyzer indexing progress in notification popup and statusline
 
-- **LSP hover markdown rendering** - Syntax highlighting in hover popups (UI ready)
-  - Added `MarkdownDecorator::parse_decorations()` for one-shot markdown parsing
-  - Hover popup renders code blocks, inline code, and emphasis with proper styling
-  - Reuses existing markdown language support infrastructure
-  - **Note**: Awaiting core LSP response fix to function
+- **LSP hover with markdown rendering** - Hover popups render formatted markdown (bold, italic, code blocks)
 
-- **LSP multiple definition picker** - User selection when `gd` returns multiple locations (UI ready)
-  - Added `LspDefinitionsPicker` for displaying multiple definitions
-  - If single definition: navigates directly (unchanged behavior)
-  - If multiple definitions: opens picker for user selection
-  - Consistent UX with `gr` (goto references) picker
-  - **Note**: Awaiting core LSP response fix to function
+- **LSP multiple definition picker** - When `gd` returns multiple locations, show picker for user selection
 
 - **Statusline Plugin** (`reovim-plugin-statusline`) - Section-based API for statusline extensions
   - `StatuslineSection` type with id, priority, alignment, and render callback

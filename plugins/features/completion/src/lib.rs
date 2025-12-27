@@ -291,8 +291,8 @@ impl Plugin for CompletionPlugin {
             },
         );
 
-        // Note: CursorMoved events are not emitted by the runtime, so cursor position
-        // checks are handled in the CompletionTriggered handler when completion re-triggers.
+        // Cursor position tracking is handled via CursorMoved events (emitted by runtime).
+        // Additional checks are in CompletionTriggered handler for completion re-triggers.
 
         // Subscribe to BufferModified for auto-popup and live update
         let manager = Arc::clone(&self.manager);

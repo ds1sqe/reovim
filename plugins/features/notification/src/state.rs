@@ -17,11 +17,11 @@ use crate::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum NotificationPosition {
     /// Top-right corner
-    #[default]
     TopRight,
     /// Top-left corner
     TopLeft,
-    /// Bottom-right corner
+    /// Bottom-right corner (default - less intrusive for coding)
+    #[default]
     BottomRight,
     /// Bottom-left corner
     BottomLeft,
@@ -49,7 +49,7 @@ impl Default for NotificationConfig {
         Self {
             default_duration_ms: 3000,
             max_notifications: 5,
-            position: NotificationPosition::TopRight,
+            position: NotificationPosition::BottomRight,
             progress_bar: ProgressBarConfig::default(),
         }
     }

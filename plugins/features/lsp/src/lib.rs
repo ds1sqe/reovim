@@ -550,14 +550,26 @@ impl Plugin for LspPlugin {
         {
             let state = Arc::clone(&state);
             bus.subscribe::<CursorMoved, _>(200, move |_event, _ctx| {
-                state.with_mut::<Arc<SharedLspManager>, _, _>(|manager| {
+                let was_active = state.with_mut::<Arc<SharedLspManager>, _, bool>(|manager| {
                     manager.with_mut(|m| {
-                        if m.hover_cache.is_active() {
+                        let is_active = m.hover_cache.is_active();
+                        if is_active {
+                            debug!("CursorMoved: clearing active hover");
                             m.hover_cache.clear();
+                            true
+                        } else {
+                            false
                         }
-                    });
-                });
-                EventResult::Handled
+                    })
+                }).unwrap_or(false);
+
+                // Request render to dismiss the hover window
+                if was_active {
+                    debug!("CursorMoved: returning NeedsRender to dismiss hover");
+                    EventResult::NeedsRender
+                } else {
+                    EventResult::Handled
+                }
             });
         }
 
@@ -565,21 +577,34 @@ impl Plugin for LspPlugin {
         {
             let state = Arc::clone(&state);
             bus.subscribe::<ModeChanged, _>(200, move |_event, _ctx| {
-                state.with_mut::<Arc<SharedLspManager>, _, _>(|manager| {
+                let was_active = state.with_mut::<Arc<SharedLspManager>, _, bool>(|manager| {
                     manager.with_mut(|m| {
-                        if m.hover_cache.is_active() {
+                        let is_active = m.hover_cache.is_active();
+                        if is_active {
+                            debug!("ModeChanged: clearing active hover");
                             m.hover_cache.clear();
+                            true
+                        } else {
+                            false
                         }
-                    });
-                });
-                EventResult::Handled
+                    })
+                }).unwrap_or(false);
+
+                // Request render to dismiss the hover window
+                if was_active {
+                    debug!("ModeChanged: returning NeedsRender to dismiss hover");
+                    EventResult::NeedsRender
+                } else {
+                    EventResult::Handled
+                }
             });
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn boot(
         &self,
-        _bus: &EventBus,
+        bus: &EventBus,
         state: Arc<PluginStateRegistry>,
         event_tx: Option<tokio::sync::mpsc::Sender<reovim_core::event::InnerEvent>>,
     ) {
@@ -591,6 +616,54 @@ impl Plugin for LspPlugin {
                 });
             });
         }
+
+        // Create channel for LSP progress events
+        let (progress_tx, mut progress_rx) = mpsc::unbounded_channel::<Box<dyn std::any::Any + Send>>();
+
+        // Spawn task to forward LSP progress events to notification plugin
+        // This converts LSP progress events to notification plugin events
+        let bus_sender = bus.sender();
+        tokio::spawn(async move {
+            use reovim_lsp::{LspProgressBegin, LspProgressReport, LspProgressEnd};
+            use reovim_plugin_notification::{ProgressUpdate, ProgressComplete};
+
+            while let Some(event) = progress_rx.recv().await {
+                // Try to downcast to LSP progress event types
+                if let Some(begin) = event.downcast_ref::<LspProgressBegin>() {
+                    let mut progress = ProgressUpdate::new(
+                        begin.id.clone(),
+                        begin.title.clone(),
+                        "LSP"
+                    );
+                    if let Some(pct) = begin.percentage {
+                        progress = progress.with_progress(pct);
+                    }
+                    if let Some(msg) = &begin.message {
+                        progress = progress.with_detail(msg.clone());
+                    }
+                    bus_sender.try_send(progress);
+                } else if let Some(report) = event.downcast_ref::<LspProgressReport>() {
+                    let mut progress = ProgressUpdate::new(
+                        report.id.clone(),
+                        report.title.clone(),
+                        "LSP"
+                    );
+                    if let Some(pct) = report.percentage {
+                        progress = progress.with_progress(pct);
+                    }
+                    if let Some(msg) = &report.message {
+                        progress = progress.with_detail(msg.clone());
+                    }
+                    bus_sender.try_send(progress);
+                } else if let Some(end) = event.downcast_ref::<LspProgressEnd>() {
+                    let mut complete = ProgressComplete::new(end.id.clone());
+                    if let Some(msg) = &end.message {
+                        complete = complete.with_message(msg.clone());
+                    }
+                    bus_sender.try_send(complete);
+                }
+            }
+        });
 
         // Start the LSP server in a background task
         let state_clone = Arc::clone(&state);
@@ -612,7 +685,7 @@ impl Plugin for LspPlugin {
             // Create a render signal channel (not used yet, but allows triggering re-renders)
             let (render_tx, _render_rx) = mpsc::channel::<()>(1);
 
-            match LspSaturator::start(config, Some(render_tx)).await {
+            match LspSaturator::start(config, Some(render_tx), Some(progress_tx)).await {
                 Ok((handle, cache)) => {
                     info!("LSP: rust-analyzer started successfully");
 

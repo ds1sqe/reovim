@@ -32,17 +32,17 @@ use reovim_core::{
 };
 
 use {
-    command::{
-        NotificationDismiss, NotificationDismissAll, NotificationShow, ProgressComplete,
-        ProgressUpdate,
-    },
+    command::{NotificationDismiss, NotificationDismissAll, NotificationShow},
     state::SharedNotificationManager,
     window::NotificationPluginWindow,
 };
 
 // Re-export for external use
 pub use {
-    command::{NotificationDismissAll as DismissAll, NotificationShow as Show},
+    command::{
+        NotificationDismissAll as DismissAll, NotificationShow as Show, ProgressComplete,
+        ProgressUpdate,
+    },
     notification::{Notification, NotificationLevel},
     progress::{ProgressBarConfig, ProgressNotification},
     state::{NotificationConfig, NotificationManagerHandle, NotificationPosition},

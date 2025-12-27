@@ -347,7 +347,9 @@ impl Client {
             };
 
             if tx.send(result).is_err() {
-                warn!(id = ?response.id, "Response receiver dropped");
+                warn!(id = ?response.id, "Response receiver dropped - request handler may have timed out");
+            } else {
+                debug!(id = ?response.id, "Response sent to receiver");
             }
         } else {
             warn!(id = ?response.id, "No pending request for response");
@@ -453,6 +455,16 @@ impl Client {
                     link_support: Some(true),
                 }),
                 ..Default::default()
+            }),
+            // Enable work done progress support (required for progress notifications)
+            window: Some(lsp_types::WindowClientCapabilities {
+                work_done_progress: Some(true),
+                show_message: Some(lsp_types::ShowMessageRequestClientCapabilities {
+                    message_action_item: None,
+                }),
+                show_document: Some(lsp_types::ShowDocumentClientCapabilities {
+                    support: true,
+                }),
             }),
             ..Default::default()
         }

@@ -352,6 +352,9 @@ impl Runtime {
                 self.jump_list.push(buffer_id, buffer.cur);
             }
 
+            // Capture cursor position BEFORE command execution for CursorMoved event
+            let cursor_before = buffer.cur;
+
             let mut exec_ctx = ExecutionContext {
                 buffer,
                 count: context.count,
@@ -366,6 +369,16 @@ impl Runtime {
                 std::mem::discriminant(&result),
                 start.elapsed()
             );
+
+            // Check if cursor moved and emit event
+            let cursor_after = exec_ctx.buffer.cur;
+            if cursor_before != cursor_after {
+                self.event_bus.emit(crate::event_bus::CursorMoved {
+                    buffer_id,
+                    from: (cursor_before.y as usize, cursor_before.x as usize),
+                    to: (cursor_after.y as usize, cursor_after.x as usize),
+                });
+            }
 
             // Check if command is text-modifying for treesitter reparse
             let is_text_modifying = cmd.is_text_modifying();

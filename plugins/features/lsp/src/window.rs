@@ -178,15 +178,23 @@ impl PluginWindow for HoverPluginWindow {
         _state: &Arc<PluginStateRegistry>,
         ctx: &EditorContext,
     ) -> Option<WindowConfig> {
+        use tracing::debug;
+
         // Get hover snapshot from manager
-        let snapshot = self.manager.with(|m| m.hover_cache.load())?;
+        let snapshot = self.manager.with(|m| {
+            let snap = m.hover_cache.load();
+            debug!("window_config: cache.load() returned {}", if snap.is_some() { "Some" } else { "None" });
+            snap
+        })?;
 
         // Only show if we have content
         if snapshot.content.is_empty() {
+            debug!("window_config: snapshot has empty content, returning None");
             return None;
         }
 
         let bounds = self.calculate_bounds(&snapshot, ctx);
+        debug!("window_config: returning Some(WindowConfig) with bounds {:?}", bounds);
 
         Some(WindowConfig {
             bounds,
