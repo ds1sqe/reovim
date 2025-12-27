@@ -209,8 +209,9 @@ impl From<&KeyEvent> for Keystroke {
     fn from(event: &KeyEvent) -> Self {
         let key = match event.code {
             KeyCode::Char(' ') => Key::Space,
+            // Handle raw escape byte (some terminals send '\x1b' as Char instead of Esc)
+            KeyCode::Char('\x1b') | KeyCode::Esc => Key::Escape,
             KeyCode::Char(c) => Key::Char(c),
-            KeyCode::Esc => Key::Escape,
             KeyCode::Enter => Key::Enter,
             KeyCode::Tab | KeyCode::BackTab => Key::Tab, // BackTab has shift modifier
             KeyCode::Backspace => Key::Backspace,

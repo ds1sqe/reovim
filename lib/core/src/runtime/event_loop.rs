@@ -63,11 +63,13 @@ impl Runtime {
         // Languages are now registered, syntax providers can be created
         // Make inner_event_tx available to plugins for background tasks (e.g., completion saturator)
         self.plugin_state.set_inner_event_tx(self.tx.clone());
+        tracing::debug!("Boot phase starting with {} plugins", self.plugins.len());
         for plugin in &self.plugins {
             let plugin_id = plugin.id();
             tracing::debug!(plugin = %plugin_id, "Booting plugin");
-            plugin.boot(&self.event_bus, Arc::clone(&self.plugin_state));
+            plugin.boot(&self.event_bus, Arc::clone(&self.plugin_state), Some(self.tx.clone()));
         }
+        tracing::debug!("Boot phase complete");
 
         // STEP 5: Load file AFTER languages are registered
         if let Some(path) = self.initial_file.clone() {
@@ -152,11 +154,13 @@ impl Runtime {
         // Languages are now registered, syntax providers can be created
         // Make inner_event_tx available to plugins for background tasks (e.g., completion saturator)
         self.plugin_state.set_inner_event_tx(self.tx.clone());
+        tracing::debug!("Boot phase starting with {} plugins", self.plugins.len());
         for plugin in &self.plugins {
             let plugin_id = plugin.id();
             tracing::debug!(plugin = %plugin_id, "Booting plugin");
-            plugin.boot(&self.event_bus, Arc::clone(&self.plugin_state));
+            plugin.boot(&self.event_bus, Arc::clone(&self.plugin_state), Some(self.tx.clone()));
         }
+        tracing::debug!("Boot phase complete");
 
         // STEP 5: Load file AFTER languages are registered
         if let Some(path) = self.initial_file.clone() {
@@ -368,8 +372,10 @@ impl Runtime {
             InnerEvent::PendingKeysEvent(keys) => {
                 // If pending_keys is being cleared and had content, save as last_command
                 if keys.is_empty() && !self.pending_keys.is_empty() {
-                    self.last_command = self.pending_keys.clone();
+                    self.last_command.clone_from(&self.pending_keys);
                 }
+                // Update plugin state so which-key and other plugins can access pending keys
+                self.plugin_state.set_pending_keys(keys.clone());
                 self.pending_keys = keys;
                 self.request_render();
             }
@@ -490,7 +496,7 @@ impl Runtime {
             // Plugin-defined events - dispatched via event bus
             InnerEvent::PluginEvent { plugin_id, event } => {
                 tracing::debug!(
-                    "Dispatching plugin event from {}: {:?}",
+                    "Runtime: Dispatching plugin event from {}: {:?}",
                     plugin_id,
                     event.type_name()
                 );
@@ -1045,40 +1051,67 @@ impl Runtime {
                 DynEvent,
                 core_events::{PluginBackspace, PluginTextInput},
             },
-            modd::ComponentId,
+            modd::{ComponentId, SubMode},
         };
 
         let interactor_id = self.mode_state.interactor_id;
 
-        // Fast path: Built-in components with direct Runtime access
-        if true {
-            match interactor_id {
-                ComponentId::EDITOR => {
-                    match event {
-                        TextInputEvent::InsertChar(c) => {
-                            crate::runtime::handle_editor_input(self, Some(c), false, false);
-                        }
-                        TextInputEvent::DeleteCharBackward => {
-                            crate::runtime::handle_editor_input(self, None, true, false);
-                        }
-                    }
-                    self.request_render();
-                    return;
+        // Check if there's an Interactor sub-mode that should receive input instead
+        // This allows plugins like which-key to receive text input while
+        // keeping the main interactor as EDITOR
+        let sub_mode_interactor = match &self.mode_state.sub_mode {
+            SubMode::Interactor(id) => Some(*id),
+            _ => None,
+        };
+
+        // If there's a sub-mode interactor, route input to it via plugin path
+        if let Some(target_id) = sub_mode_interactor {
+            let dyn_event = match event {
+                TextInputEvent::InsertChar(c) => DynEvent::new(PluginTextInput {
+                    target: target_id,
+                    c,
+                }),
+                TextInputEvent::DeleteCharBackward => {
+                    DynEvent::new(PluginBackspace { target: target_id })
                 }
-                ComponentId::COMMAND_LINE => {
-                    match event {
-                        TextInputEvent::InsertChar(c) => {
-                            crate::runtime::handle_command_line_input(self, Some(c), false, false);
-                        }
-                        TextInputEvent::DeleteCharBackward => {
-                            crate::runtime::handle_command_line_input(self, None, true, false);
-                        }
-                    }
-                    self.request_render();
-                    return;
-                }
-                _ => {} // Fall through to plugin path
+            };
+
+            let sender = self.event_bus.sender();
+            let mut ctx = crate::event_bus::HandlerContext::new(&sender);
+            let _ = self.event_bus.dispatch(&dyn_event, &mut ctx);
+            if ctx.render_requested() {
+                self.request_render();
             }
+            return;
+        }
+
+        // Fast path: Built-in components with direct Runtime access
+        match interactor_id {
+            ComponentId::EDITOR => {
+                match event {
+                    TextInputEvent::InsertChar(c) => {
+                        crate::runtime::handle_editor_input(self, Some(c), false, false);
+                    }
+                    TextInputEvent::DeleteCharBackward => {
+                        crate::runtime::handle_editor_input(self, None, true, false);
+                    }
+                }
+                self.request_render();
+                return;
+            }
+            ComponentId::COMMAND_LINE => {
+                match event {
+                    TextInputEvent::InsertChar(c) => {
+                        crate::runtime::handle_command_line_input(self, Some(c), false, false);
+                    }
+                    TextInputEvent::DeleteCharBackward => {
+                        crate::runtime::handle_command_line_input(self, None, true, false);
+                    }
+                }
+                self.request_render();
+                return;
+            }
+            _ => {} // Fall through to plugin path
         }
 
         // Plugin path: Emit events via EventBus for plugins to handle

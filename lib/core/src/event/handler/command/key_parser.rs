@@ -46,8 +46,9 @@ pub fn key_to_string(event: &KeyEvent) -> String {
     }
 
     match event.code {
+        // Handle raw escape byte (some terminals send '\x1b' as Char instead of Esc)
+        KeyCode::Char('\x1b') | KeyCode::Esc => String::from("Escape"),
         KeyCode::Char(c) => c.to_string(),
-        KeyCode::Esc => String::from("Escape"),
         KeyCode::Enter => String::from("Enter"),
         KeyCode::Backspace => String::from("Backspace"),
         KeyCode::Tab => String::from("Tab"),

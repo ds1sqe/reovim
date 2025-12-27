@@ -255,10 +255,15 @@ impl Plugin for CompletionPlugin {
         let _ = state; // Suppress unused warning
     }
 
-    fn boot(&self, _bus: &EventBus, state: Arc<PluginStateRegistry>) {
-        // Get inner_event_tx from state registry for the saturator
-        let Some(event_tx) = state.inner_event_tx() else {
-            tracing::warn!("Completion plugin boot: inner_event_tx not available");
+    fn boot(
+        &self,
+        _bus: &EventBus,
+        state: Arc<PluginStateRegistry>,
+        event_tx: Option<tokio::sync::mpsc::Sender<reovim_core::event::InnerEvent>>,
+    ) {
+        // Get event_tx from parameter or fall back to state registry
+        let Some(event_tx) = event_tx.or_else(|| state.inner_event_tx()) else {
+            tracing::warn!("Completion plugin boot: event_tx not available");
             return;
         };
 

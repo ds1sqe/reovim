@@ -71,13 +71,18 @@ pub struct EditorContext {
     // === Theme/Display ===
     /// Current color mode (`TrueColor`, `Color256`, `Color16`)
     pub color_mode: ColorMode,
+
+    // === Key State ===
+    /// Current pending key sequence (e.g., "g", "z", "<Space>")
+    pub pending_keys: String,
 }
 
 impl EditorContext {
     /// Create a new editor context with all fields
     #[must_use]
     #[allow(clippy::too_many_arguments)]
-    pub const fn new(
+    #[allow(clippy::missing_const_for_fn)] // String::new() is not const
+    pub fn new(
         screen_width: u16,
         screen_height: u16,
         edit_mode: EditMode,
@@ -100,6 +105,7 @@ impl EditorContext {
             active_buffer_id,
             buffer_count,
             color_mode,
+            pending_keys: String::new(),
         }
     }
 
@@ -114,6 +120,13 @@ impl EditorContext {
     #[must_use]
     pub const fn with_right_offset(mut self, offset: u16) -> Self {
         self.right_offset = offset;
+        self
+    }
+
+    /// Set the pending keys (builder pattern)
+    #[must_use]
+    pub fn with_pending_keys(mut self, keys: impl Into<String>) -> Self {
+        self.pending_keys = keys.into();
         self
     }
 

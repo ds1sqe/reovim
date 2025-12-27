@@ -45,3 +45,4 @@ pub mod syntax;
 pub mod testing;
 pub mod textobject;
 pub mod types;
+pub mod which_key;

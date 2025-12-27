@@ -191,20 +191,15 @@ impl PluginLoader {
         }
 
         // Return plugins in load order for boot phase
+        // Convert Vec to array of Options for O(1) extraction by index
+        let mut plugins: Vec<Option<Box<dyn Plugin>>> =
+            self.plugins.into_iter().map(Some).collect();
         let mut ordered_plugins = Vec::with_capacity(order.len());
-        let mut plugins = self.plugins;
-        for idx in order.into_iter().rev() {
-            // Remove from end to maintain indices
-            if idx == plugins.len() - 1 {
-                ordered_plugins.push(plugins.pop().unwrap());
-            }
-        }
-        // Reverse to get correct order
-        ordered_plugins.reverse();
 
-        // If not all plugins were extracted (due to index complexity), just return all
-        if ordered_plugins.is_empty() {
-            ordered_plugins = plugins;
+        for idx in order {
+            if let Some(plugin) = plugins[idx].take() {
+                ordered_plugins.push(plugin);
+            }
         }
 
         Ok(ordered_plugins)

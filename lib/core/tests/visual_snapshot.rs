@@ -322,6 +322,7 @@ async fn test_vsplit_cursor_movement_after_navigate() {
         .with_keys("<C-w>h") // Navigate to left window (we start in right after :vs)
         .with_delay(100)
         .with_keys("jj") // Move down 2 lines
+        .with_delay(50) // Wait for cursor movement to complete
         .run()
         .await;
 

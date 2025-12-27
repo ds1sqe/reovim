@@ -15,7 +15,7 @@ use {
     reovim_plugin_fold::FoldPlugin, reovim_plugin_leap::LeapPlugin, reovim_plugin_lsp::LspPlugin,
     reovim_plugin_microscope::MicroscopePlugin, reovim_plugin_pair::PairPlugin,
     reovim_plugin_pickers::PickersPlugin, reovim_plugin_settings_menu::SettingsMenuPlugin,
-    reovim_plugin_treesitter::TreesitterPlugin,
+    reovim_plugin_treesitter::TreesitterPlugin, reovim_plugin_which_key::WhichKeyPlugin,
 };
 
 // Language plugins
@@ -44,6 +44,7 @@ impl PluginTuple for AllPlugins {
         loader.add(ExplorerPlugin);
         loader.add(MicroscopePlugin);
         loader.add(PickersPlugin); // Must come after MicroscopePlugin
+        loader.add(WhichKeyPlugin);
 
         // Treesitter infrastructure (must come before language plugins)
         loader.add(TreesitterPlugin::new());
@@ -82,6 +83,7 @@ pub fn default_plugins() -> impl IntoIterator<Item = Box<dyn Plugin>> {
         Box::new(FoldPlugin::new()),
         Box::new(PairPlugin::new()),
         Box::new(SettingsMenuPlugin),
+        Box::new(WhichKeyPlugin),
         // Treesitter infrastructure (must come before language plugins)
         Box::new(TreesitterPlugin::new()),
         // Language support
@@ -121,6 +123,7 @@ pub fn create_plugin_loader() -> PluginLoader {
     loader.add(ExplorerPlugin);
     loader.add(MicroscopePlugin);
     loader.add(PickersPlugin); // Must come after MicroscopePlugin
+    loader.add(WhichKeyPlugin);
     // Treesitter infrastructure
     loader.add(TreesitterPlugin::new());
     // Language plugins

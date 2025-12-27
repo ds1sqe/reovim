@@ -906,7 +906,8 @@ impl Screen {
             buffers.len(),
             color_mode,
         )
-        .with_left_offset(left_offset);
+        .with_left_offset(left_offset)
+        .with_pending_keys(pending_keys);
 
         // Sort all windows by z-order
         windows_to_render.sort_by_key(|w| w.z_order);

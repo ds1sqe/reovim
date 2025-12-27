@@ -2,6 +2,27 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.7.4] - 2025-12-27
+
+### Added
+
+- **Which-key plugin** - Shows available keybindings in a popup panel
+  - Press `?` after any prefix key (e.g., `g?`, `<Space>?`, `<C-w>?`) to see available bindings
+  - Displays key sequences with descriptions from command registry
+  - Type additional characters to filter the binding list
+  - Backspace to remove filter, Escape to close
+  - Background saturator for non-blocking UI updates
+  - Integrated with `PluginStateRegistry` for keymap/command access
+
+### Fixed
+
+- **Plugin loader extraction bug** - All plugins now boot correctly
+  - Fixed algorithm that caused only 1 plugin to have `boot()` called
+  - Plugins with background saturators (completion, which-key) now work properly
+
+- **Flaky test timing** - Fixed intermittent test failure
+  - `test_vsplit_cursor_movement_after_navigate` now waits for cursor movement
+
 ## [0.7.2] - 2025-12-26
 
 ### Added

@@ -24,6 +24,7 @@ fn mock_editor_context() -> EditorContext {
         active_buffer_id: 0,
         buffer_count: 1,
         color_mode: reovim_core::highlight::ColorMode::TrueColor,
+        pending_keys: String::new(),
     }
 }
 
@@ -300,6 +301,7 @@ fn test_popup_positioned_below_cursor() {
             active_buffer_id: 0,
             buffer_count: 1,
             color_mode: reovim_core::highlight::ColorMode::TrueColor,
+            pending_keys: String::new(),
         };
 
         let config = window.window_config(&registry, &ctx).unwrap();
@@ -342,6 +344,7 @@ fn test_popup_does_not_exceed_screen_width() {
         active_buffer_id: 0,
         buffer_count: 1,
         color_mode: reovim_core::highlight::ColorMode::TrueColor,
+        pending_keys: String::new(),
     };
 
     let config = window.window_config(&registry, &ctx).unwrap();
@@ -388,6 +391,7 @@ fn test_popup_clamped_when_cursor_near_bottom() {
         active_buffer_id: 0,
         buffer_count: 1,
         color_mode: reovim_core::highlight::ColorMode::TrueColor,
+        pending_keys: String::new(),
     };
 
     let config = window.window_config(&registry, &ctx).unwrap();
@@ -432,6 +436,7 @@ fn test_popup_x_position_next_to_explorer() {
             active_buffer_id: 0,
             buffer_count: 1,
             color_mode: reovim_core::highlight::ColorMode::TrueColor,
+            pending_keys: String::new(),
         };
 
         let config = window.window_config(&registry, &ctx).unwrap();

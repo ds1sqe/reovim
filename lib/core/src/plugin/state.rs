@@ -34,6 +34,8 @@ use tokio::sync::mpsc;
 
 use crate::{
     animation::{AnimationHandle, AnimationState},
+    bind::KeyMap,
+    command::CommandRegistry,
     completion::SharedCompletionFactory,
     decoration::SharedDecorationFactory,
     event::InnerEvent,
@@ -77,6 +79,12 @@ pub struct PluginStateRegistry {
     animation_state: RwLock<Option<Arc<TokioRwLock<AnimationState>>>>,
     /// Inner event sender for plugins that need to send InnerEvent (e.g., completion saturator)
     inner_event_tx: RwLock<Option<mpsc::Sender<InnerEvent>>>,
+    /// Keymap reference for plugins that need to access keybindings
+    keymap: RwLock<Option<Arc<KeyMap>>>,
+    /// Command registry reference for plugins that need command metadata
+    command_registry: RwLock<Option<Arc<CommandRegistry>>>,
+    /// Current pending keys display string (updated by runtime on PendingKeysEvent)
+    pending_keys: RwLock<String>,
 }
 
 impl std::fmt::Debug for PluginStateRegistry {
@@ -94,6 +102,9 @@ impl std::fmt::Debug for PluginStateRegistry {
         let left_panel = self.left_panel_width.read().map_or(0, |w| *w);
         let right_panel = self.right_panel_width.read().map_or(0, |w| *w);
         let has_inner_event_tx = self.inner_event_tx.read().is_ok_and(|s| s.is_some());
+        let has_keymap = self.keymap.read().is_ok_and(|k| k.is_some());
+        let has_command_registry = self.command_registry.read().is_ok_and(|r| r.is_some());
+        let pending_keys_len = self.pending_keys.read().map_or(0, |k| k.len());
         f.debug_struct("PluginStateRegistry")
             .field("state_count", &count)
             .field("has_visibility_source", &has_visibility)
@@ -108,6 +119,9 @@ impl std::fmt::Debug for PluginStateRegistry {
             .field("left_panel_width", &left_panel)
             .field("right_panel_width", &right_panel)
             .field("has_inner_event_tx", &has_inner_event_tx)
+            .field("has_keymap", &has_keymap)
+            .field("has_command_registry", &has_command_registry)
+            .field("pending_keys_len", &pending_keys_len)
             .finish()
     }
 }
@@ -130,6 +144,9 @@ impl PluginStateRegistry {
             animation_handle: RwLock::new(None),
             animation_state: RwLock::new(None),
             inner_event_tx: RwLock::new(None),
+            keymap: RwLock::new(None),
+            command_registry: RwLock::new(None),
+            pending_keys: RwLock::new(String::new()),
         }
     }
 
@@ -304,6 +321,51 @@ impl PluginStateRegistry {
     #[must_use]
     pub fn right_panel_width(&self) -> u16 {
         *self.right_panel_width.read().unwrap()
+    }
+
+    /// Set the keymap reference (called by Runtime after plugin loading)
+    ///
+    /// This allows plugins to access the full keymap for features like which-key.
+    pub fn set_keymap(&self, keymap: Arc<KeyMap>) {
+        *self.keymap.write().unwrap() = Some(keymap);
+    }
+
+    /// Get the keymap reference
+    ///
+    /// Returns the keymap for plugins that need to query keybindings.
+    #[must_use]
+    pub fn keymap(&self) -> Option<Arc<KeyMap>> {
+        self.keymap.read().unwrap().clone()
+    }
+
+    /// Set the command registry reference (called by Runtime after plugin loading)
+    ///
+    /// This allows plugins to access command metadata (descriptions, etc.).
+    pub fn set_command_registry(&self, registry: Arc<CommandRegistry>) {
+        *self.command_registry.write().unwrap() = Some(registry);
+    }
+
+    /// Get the command registry reference
+    ///
+    /// Returns the command registry for plugins that need command metadata.
+    #[must_use]
+    pub fn command_registry(&self) -> Option<Arc<CommandRegistry>> {
+        self.command_registry.read().unwrap().clone()
+    }
+
+    /// Set the current pending keys display string
+    ///
+    /// Called by Runtime when pending keys change (on `PendingKeysEvent`).
+    pub fn set_pending_keys(&self, keys: String) {
+        *self.pending_keys.write().unwrap() = keys;
+    }
+
+    /// Get the current pending keys display string
+    ///
+    /// Returns the current pending keys for plugins that need to track key sequences.
+    #[must_use]
+    pub fn pending_keys(&self) -> String {
+        self.pending_keys.read().unwrap().clone()
     }
 
     /// Set the animation handle (used by Runtime during initialization)

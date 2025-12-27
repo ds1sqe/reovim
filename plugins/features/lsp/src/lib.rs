@@ -506,7 +506,12 @@ impl Plugin for LspPlugin {
         }
     }
 
-    fn boot(&self, _bus: &EventBus, state: Arc<PluginStateRegistry>) {
+    fn boot(
+        &self,
+        _bus: &EventBus,
+        state: Arc<PluginStateRegistry>,
+        _event_tx: Option<tokio::sync::mpsc::Sender<reovim_core::event::InnerEvent>>,
+    ) {
         // Start the LSP server in a background task
         let state_clone = Arc::clone(&state);
 

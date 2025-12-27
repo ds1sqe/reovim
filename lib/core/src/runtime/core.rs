@@ -233,6 +233,14 @@ impl Runtime {
             idle_shimmer_active: false,
         };
 
+        // Make keymap and command registry accessible to plugins (e.g., which-key)
+        runtime
+            .plugin_state
+            .set_keymap(Arc::new(runtime.keymap.clone()));
+        runtime
+            .plugin_state
+            .set_command_registry(Arc::clone(&runtime.command_registry));
+
         // Subscribe to focus change requests from plugins
         {
             use crate::event_bus::{EventResult, core_events::RequestFocusChange};

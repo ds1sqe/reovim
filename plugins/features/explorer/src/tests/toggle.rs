@@ -21,6 +21,7 @@ fn mock_editor_context() -> EditorContext {
         active_buffer_id: 0,
         buffer_count: 1,
         color_mode: reovim_core::highlight::ColorMode::TrueColor,
+        pending_keys: String::new(),
     }
 }
 

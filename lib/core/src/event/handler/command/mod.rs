@@ -423,29 +423,40 @@ impl CommandHandler {
                                 }
 
                                 // Handle Escape in Normal/Visual/Explorer/OperatorPending modes:
-                                // - Clear pending keys and count
+                                // - First check if there's a keymap binding for Escape
+                                // - If yes, let normal key handling process it
+                                // - If no, clear pending keys and count
                                 // - In OperatorPending: cancel operator and return to Normal
                                 if key_str == "Escape" {
                                     let mode = self.current_mode().clone();
                                     if Self::is_esc_clearable_mode(&mode) {
-                                        // Clear pending state
-                                        if !self.pending_keys.is_empty()
-                                            || self.count_parser.peek().is_some()
-                                        {
-                                            self.pending_keys.clear();
-                                            self.count_parser.clear();
-                                            self.dispatcher
-                                                .send_pending_keys(self.pending_display())
-                                                .await;
+                                        // Check if there's a binding for just Escape (e.g., which-key close)
+                                        let escape_seq = KeySequence::from_vec(vec![keystroke.clone()]);
+                                        let has_escape_binding = self.lookup_binding(&escape_seq)
+                                            .is_some_and(|inner| inner.command.is_some());
+
+                                        // If no Escape binding, do the special handling
+                                        if !has_escape_binding {
+                                            // Clear pending state
+                                            if !self.pending_keys.is_empty()
+                                                || self.count_parser.peek().is_some()
+                                            {
+                                                self.pending_keys.clear();
+                                                self.count_parser.clear();
+                                                self.dispatcher
+                                                    .send_pending_keys(self.pending_display())
+                                                    .await;
+                                            }
+                                            // If in OperatorPending, cancel and return to Normal
+                                            if mode.is_operator_pending() {
+                                                let normal = ModeState::normal();
+                                                self.set_local_mode(normal.clone());
+                                                self.mode_locally_changed = true;
+                                                self.dispatcher.update_mode(normal).await;
+                                            }
+                                            continue;
                                         }
-                                        // If in OperatorPending, cancel and return to Normal
-                                        if mode.is_operator_pending() {
-                                            let normal = ModeState::normal();
-                                            self.set_local_mode(normal.clone());
-                                            self.mode_locally_changed = true;
-                                            self.dispatcher.update_mode(normal).await;
-                                        }
-                                        continue;
+                                        // If there IS a binding, fall through to normal key handling
                                     }
                                 }
 
@@ -463,6 +474,40 @@ impl CommandHandler {
                                         // In Normal/Visual/Explorer, ignore backspace (don't add to pending)
                                         continue;
                                     }
+                                }
+
+                                // Handle '?' key for which-key popup
+                                // When '?' is pressed in Normal mode, trigger WhichKeyOpen with current prefix
+                                if key_str == "?" {
+                                    let mode = self.current_mode();
+                                    tracing::debug!(
+                                        "? key detected: edit_mode={:?}, sub_mode={:?}, is_normal={}",
+                                        mode.edit_mode,
+                                        mode.sub_mode,
+                                        mode.is_normal()
+                                    );
+                                    if mode.is_normal() {
+                                        // Capture the current pending keys as prefix (before adding '?')
+                                        let prefix = self.pending_keys.clone();
+                                        tracing::info!(
+                                            "Which-key triggered with prefix: {:?}",
+                                            prefix
+                                        );
+                                        // Clear pending keys
+                                        self.pending_keys.clear();
+                                        self.dispatcher
+                                            .send_pending_keys(self.pending_display())
+                                            .await;
+                                        // Dispatch WhichKeyOpen with the prefix using core's shared type
+                                        self.dispatcher
+                                            .send_plugin_event(
+                                                crate::plugin::PluginId::new("reovim:which-key"),
+                                                crate::which_key::WhichKeyOpen::new(prefix),
+                                            )
+                                            .await;
+                                        continue;
+                                    }
+                                    tracing::debug!("? key ignored: mode is not normal");
                                 }
 
                                 // Handle operator-pending mode (d, y, c + motion or text object)
