@@ -853,7 +853,7 @@ impl Plugin for MicroscopePlugin {
         use reovim_core::{
             event_bus::{
                 EventResult,
-                core_events::{PluginTextInput, RequestFocusChange, RequestModeChange},
+                core_events::{PluginBackspace, PluginTextInput, RequestFocusChange, RequestModeChange},
             },
             modd::{EditMode, ModeState, SubMode},
         };
@@ -944,6 +944,29 @@ impl Plugin for MicroscopePlugin {
             if is_active {
                 state_clone.with_mut::<MicroscopeState, _, _>(|s| {
                     s.insert_char(event.c);
+                });
+                ctx.request_render();
+                EventResult::Handled
+            } else {
+                EventResult::NotHandled
+            }
+        });
+
+        // Handle backspace from runtime (PluginBackspace event)
+        let state_clone = Arc::clone(&state);
+        bus.subscribe::<PluginBackspace, _>(100, move |event, ctx| {
+            // Only handle if we're the target
+            if event.target != COMPONENT_ID {
+                return EventResult::NotHandled;
+            }
+
+            let is_active = state_clone
+                .with::<MicroscopeState, _, _>(|s| s.active)
+                .unwrap_or(false);
+
+            if is_active {
+                state_clone.with_mut::<MicroscopeState, _, _>(|s| {
+                    s.delete_char();
                 });
                 ctx.request_render();
                 EventResult::Handled

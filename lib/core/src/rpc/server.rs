@@ -20,6 +20,7 @@ use {
         event::InnerEvent,
         frame::FrameBufferHandle,
         highlight::ColorMode,
+        keystroke::Keystroke,
         rpc::{
             CellSnapshot, RpcError, RpcNotification, RpcRequest, RpcResponse,
             ScreenContentSnapshot, ScreenFormat, keys_from_str, methods,
@@ -134,6 +135,12 @@ impl RpcServer {
                     ));
                 }
 
+                // Build keys list for feedback (before consuming key_events)
+                let keys_list: Vec<String> = key_events
+                    .iter()
+                    .map(|ke| Keystroke::from(ke).to_string())
+                    .collect();
+
                 // Inject keys via channel with minimal delay between each
                 // to allow mode changes to propagate before next key is processed.
                 // 1ms is enough for async task switching while keeping latency low.
@@ -154,7 +161,10 @@ impl RpcServer {
                     start.elapsed()
                 );
 
-                Some(RpcResponse::success(id, serde_json::json!({ "injected": injected })))
+                Some(RpcResponse::success(id, serde_json::json!({
+                    "injected": injected,
+                    "keys": keys_list
+                })))
             }
             methods::STATE_SCREEN_CONTENT => {
                 // Return captured screen content

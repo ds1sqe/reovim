@@ -2,6 +2,20 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- **Microscope backspace** - Backspace now works in microscope interactor mode
+  - Added `PluginBackspace` subscription to microscope plugin
+  - Previously, backspace events were silently dropped in microscope query input
+
+### Changed
+
+- **reo-cli keys response** - Enhanced feedback with parsed keys list
+  - Response now includes `"keys": ["i", "H", "e", "l", "l", "o", "<Esc>"]`
+  - Helps debugging key parsing issues
+
 ## [0.7.5] - 2025-12-27
 
 ### Added
