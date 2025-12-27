@@ -13,8 +13,8 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
-reovim-core = { path = "../../../lib/core" }
-reovim-sys = { path = "../../../lib/sys" }
+reovim-core.workspace = true
+reovim-sys.workspace = true
 tracing.workspace = true
 serde_json = "1.0"
 

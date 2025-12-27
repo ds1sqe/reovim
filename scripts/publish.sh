@@ -58,12 +58,10 @@ CRATES=(
     "plugins/features/completion"
     "plugins/features/explorer"
     "plugins/features/leap"
+    "plugins/features/notification"
     "plugins/features/pair"
+    "plugins/features/statusline"
     "plugins/features/which-key"
-
-    # Feature plugins - tier 2 (depend on microscope)
-    "plugins/features/pickers"
-    "plugins/features/lsp"
 
     # Language plugins (all depend on treesitter)
     "plugins/languages/rust"
@@ -74,6 +72,10 @@ CRATES=(
     "plugins/languages/toml"
     "plugins/languages/markdown"
     "plugins/languages/bash"
+
+    # Feature plugins - tier 2 (depend on microscope + language plugins)
+    "plugins/features/pickers"
+    "plugins/features/lsp"
 
     # Main binary
     "runner"
@@ -95,12 +97,10 @@ NAMES=(
     "reovim-plugin-completion"
     "reovim-plugin-explorer"
     "reovim-plugin-leap"
+    "reovim-plugin-notification"
     "reovim-plugin-pair"
+    "reovim-plugin-statusline"
     "reovim-plugin-which-key"
-
-    # Feature plugins - tier 2
-    "reovim-plugin-pickers"
-    "reovim-plugin-lsp"
 
     # Language plugins
     "reovim-lang-rust"
@@ -111,6 +111,10 @@ NAMES=(
     "reovim-lang-toml"
     "reovim-lang-markdown"
     "reovim-lang-bash"
+
+    # Feature plugins - tier 2
+    "reovim-plugin-pickers"
+    "reovim-plugin-lsp"
 
     # Main binary
     "reovim"
