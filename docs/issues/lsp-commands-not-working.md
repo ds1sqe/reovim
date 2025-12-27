@@ -1,10 +1,15 @@
 # LSP Commands Not Working
 
-## Status: In Progress
+## Status: NOT FIXED
 
 ## Problem
 
-LSP keybindings (gd, gr, K) don't work on real Rust files. Commands execute but fail silently or log errors like:
+LSP keybindings (gd, gr, K) don't work on real Rust files. Despite multiple fixes and enhancements, the core functionality remains broken:
+- `gd` (goto definition) - Never navigates to definition
+- `gr` (goto references) - Never shows references picker
+- `K` (hover) - Never shows hover popup
+
+Commands execute but fail silently or log errors like:
 ```
 LSP: hover - no document or handle buffer_id=0
 ```
@@ -93,24 +98,60 @@ If requests come in faster than they can be processed, `try_send()` returns `Ful
 | `plugins/features/lsp/src/lib.rs` | Simplified FileOpened handler, added boot() logic for pending documents |
 | `lib/lsp/src/saturator.rs` | Improved channel error logging |
 
-## Remaining Issues
+## Enhancements Made (UI Ready, But Core Broken)
 
-### Hover Response Not Displayed
+The following improvements were made assuming the LSP responses would arrive:
 
-The hover request is sent successfully but the popup doesn't appear. Investigation shows:
-- Request is sent: `LSP: hover request sent buffer_id=0 line=49 column=4`
-- No follow-up log about hover content received
+### Hover Popup Improvements
+- **Coordinate calculation fixed** - Properly transforms buffer to screen coordinates
+- **Markdown rendering added** - Uses `MarkdownDecorator::parse_decorations()` for syntax highlighting
+- **Channel buffer increased** - From 1 to 32 to prevent request drops
 
-Possible causes:
-1. Response arrives after client disconnects (in test mode)
-2. Popup rendering not triggered properly
-3. `send_render_signal()` not working as expected
+### Multiple Definition Picker
+- **LspDefinitionsPicker added** - Shows picker when `gd` returns multiple locations
+- Matches `gr` (references) picker UX
 
-### Investigation Notes
+**However, none of these improvements matter because the LSP responses never arrive.**
 
-- The `handle.hover()` returns `None` when the channel is full or closed
-- rust-analyzer may take time to provide hover information for complex types
-- The test disconnects client very quickly after sending keys
+## Remaining Issues (CRITICAL)
+
+### Core Problem: LSP Responses Never Received
+
+All three commands (gd, gr, K) share the same failure mode:
+1. Request is sent to rust-analyzer (logged)
+2. No response is ever received
+3. UI improvements are never triggered
+
+Possible root causes to investigate:
+
+1. **Response channel disconnected** - The `oneshot::Receiver` may be dropped before response arrives
+2. **Response handler not polling** - The spawned async task may not be running properly
+3. **rust-analyzer never responds** - Server may be stuck or not processing requests
+4. **Event loop blocked** - Runtime may not be processing async responses
+
+### Investigation Required
+
+```rust
+// In lib.rs, the response handling spawns a task:
+tokio::spawn(async move {
+    match rx.await {  // <-- Does this ever complete?
+        Ok(Ok(Some(response))) => { ... }
+        ...
+    }
+});
+```
+
+Questions to answer:
+1. Does the `rx.await` ever resolve?
+2. Is the tokio runtime properly processing the spawned task?
+3. Is the oneshot sender dropped prematurely?
+
+### Debug Steps Needed
+
+1. Add logging INSIDE the spawned task (before `rx.await`)
+2. Add logging for oneshot channel creation/drop
+3. Check if rust-analyzer stdout is being read
+4. Verify the response parsing in saturator works
 
 ## Verification Steps
 
@@ -120,10 +161,11 @@ Possible causes:
 4. Send keys: `cargo run -p reo-cli -- keys 'gg49jwK'`
 5. Wait for response: `sleep 5`
 6. Capture screen: `cargo run -p reo-cli -- capture`
-7. Check logs: `grep -E "(hover|didOpen)" /tmp/lsp.log`
+7. Check logs: `grep -E "(hover|didOpen|definition|references)" /tmp/lsp.log`
 
 ## Related Files
 
 - `plugins/features/lsp/src/document.rs` - DocumentState and DocumentManager
+- `plugins/features/lsp/src/lib.rs` - Event handlers and async response tasks
 - `lib/lsp/src/client.rs` - LSP client implementation
-- `lib/lsp/src/saturator.rs` - Request handling and channel management
+- `lib/lsp/src/saturator.rs` - Request handling, channel management, response routing

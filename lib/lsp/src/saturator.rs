@@ -335,8 +335,9 @@ impl LspSaturator {
         // Create open documents tracker (shared for pull diagnostics)
         let open_docs = Arc::new(Mutex::new(OpenDocuments::default()));
 
-        // Create request channel (buffer=1 for backpressure)
-        let (request_tx, request_rx) = mpsc::channel::<LspRequest>(1);
+        // Create request channel with reasonable buffer to prevent request drops
+        // Buffer of 32 allows for request bursts while still providing backpressure
+        let (request_tx, request_rx) = mpsc::channel::<LspRequest>(32);
 
         // Spawn the client
         let (client, _incoming_rx, stdout_reader, stderr) = Client::spawn(config)?;

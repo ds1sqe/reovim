@@ -20,6 +20,16 @@ All notable changes to Reovim will be documented in this file.
   - Simplified `FileOpened` handler to register and schedule sync
   - Added logic in `boot()` to send `didOpen` for pending documents after server ready
 
+- **LSP hover popup coordinate calculation** - Fixed buffer-to-screen coordinate transformation
+  - Was using buffer coordinates directly instead of screen coordinates
+  - Now accounts for: window anchor position, line number gutter width, scroll offset
+  - Popup positioning ready for when hover responses are received
+  - **Note**: Core LSP response handling still broken (see docs/issues/lsp-commands-not-working.md)
+
+- **LSP request channel buffer size** - Increased from 1 to 32 to prevent request drops
+  - Buffer of 1 caused "channel full" errors during request bursts (hover, definition, etc.)
+  - Larger buffer allows for bursts while still providing backpressure
+
 ### Changed
 
 - **LSP channel logging** - Improved visibility for debugging
@@ -31,6 +41,19 @@ All notable changes to Reovim will be documented in this file.
 - **LSP issues documentation** - Added `docs/issues/lsp-commands-not-working.md`
   - Documents root causes of LSP keybinding failures
   - Includes investigation notes and verification steps
+
+- **LSP hover markdown rendering** - Syntax highlighting in hover popups (UI ready)
+  - Added `MarkdownDecorator::parse_decorations()` for one-shot markdown parsing
+  - Hover popup renders code blocks, inline code, and emphasis with proper styling
+  - Reuses existing markdown language support infrastructure
+  - **Note**: Awaiting core LSP response fix to function
+
+- **LSP multiple definition picker** - User selection when `gd` returns multiple locations (UI ready)
+  - Added `LspDefinitionsPicker` for displaying multiple definitions
+  - If single definition: navigates directly (unchanged behavior)
+  - If multiple definitions: opens picker for user selection
+  - Consistent UX with `gr` (goto references) picker
+  - **Note**: Awaiting core LSP response fix to function
 
 - **Statusline Plugin** (`reovim-plugin-statusline`) - Section-based API for statusline extensions
   - `StatuslineSection` type with id, priority, alignment, and render callback

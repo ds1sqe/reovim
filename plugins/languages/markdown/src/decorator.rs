@@ -583,6 +583,22 @@ impl Default for MarkdownDecorator {
     }
 }
 
+impl MarkdownDecorator {
+    /// Parse content and return decorations in one call (stateless).
+    ///
+    /// Convenience method for one-shot markdown parsing, useful for
+    /// hover popups and other contexts where caching isn't needed.
+    #[must_use]
+    pub fn parse_decorations(content: &str) -> Vec<Decoration> {
+        let Some(mut decorator) = Self::new() else {
+            return Vec::new();
+        };
+        decorator.refresh(content);
+        #[allow(clippy::cast_possible_truncation)]
+        decorator.decoration_range(content, 0, content.lines().count() as u32)
+    }
+}
+
 impl DecorationProvider for MarkdownDecorator {
     fn language_id(&self) -> &str {
         "markdown"

@@ -12,6 +12,7 @@ workspace = true
 [dependencies]
 reovim-core.workspace = true
 reovim-lsp.workspace = true
+reovim-lang-markdown.workspace = true
 reovim-plugin-microscope.workspace = true
 arc-swap = "1.8"
 tracing.workspace = true

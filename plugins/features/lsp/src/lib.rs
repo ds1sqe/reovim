@@ -162,11 +162,16 @@ impl Plugin for LspPlugin {
             &self.manager,
         ))));
 
-        // Register LSP references picker with microscope
+        // Register LSP pickers with microscope
         let references_picker = Arc::new(picker::LspReferencesPicker::new());
         registry.register(Arc::clone(&references_picker));
+
+        let definitions_picker = Arc::new(picker::LspDefinitionsPicker::new());
+        registry.register(Arc::clone(&definitions_picker));
+
         registry.with_mut::<PickerRegistry, _, _>(|picker_registry| {
             picker_registry.register(references_picker);
+            picker_registry.register(definitions_picker);
         });
 
         debug!("LspPlugin: initialized state");
@@ -290,19 +295,27 @@ impl Plugin for LspPlugin {
 
                     // Spawn async task to handle response
                     let sender = event_sender.clone();
+                    let state_clone = Arc::clone(&state);
                     tokio::spawn(async move {
                         match rx.await {
                             Ok(Ok(Some(response))) => {
-                                // Extract location from response
-                                let location = extract_first_location(&response);
-                                if let Some(loc) = location {
+                                // Extract all locations from response
+                                let locations = extract_all_locations(&response);
+
+                                if locations.is_empty() {
+                                    info!("LSP: no definition location in response");
+                                    return;
+                                }
+
+                                if locations.len() == 1 {
+                                    // Single definition - navigate directly
+                                    let loc = &locations[0];
                                     info!(
                                         uri = %loc.uri.as_str(),
                                         line = loc.range.start.line,
                                         col = loc.range.start.character,
                                         "LSP: navigating to definition"
                                     );
-                                    // Convert file:// URI to path and emit navigation event
                                     if let Some(path) = uri_to_path(&loc.uri) {
                                         sender.try_send(RequestOpenFileAtPosition {
                                             path,
@@ -313,7 +326,18 @@ impl Plugin for LspPlugin {
                                         warn!(uri = %loc.uri.as_str(), "LSP: cannot convert URI to file path");
                                     }
                                 } else {
-                                    info!("LSP: no definition location in response");
+                                    // Multiple definitions - show picker
+                                    info!(count = locations.len(), "LSP: multiple definitions found, opening picker");
+
+                                    // Store definitions in picker
+                                    state_clone.with::<Arc<picker::LspDefinitionsPicker>, _, _>(
+                                        |definitions_picker| {
+                                            definitions_picker.set_definitions(locations);
+                                        },
+                                    );
+
+                                    // Open microscope with definitions picker
+                                    sender.try_send(MicroscopeOpen::new("lsp_definitions"));
                                 }
                             }
                             Ok(Ok(None)) => {
@@ -657,17 +681,20 @@ fn rust_analyzer_available() -> bool {
         .is_ok_and(|s| s.success())
 }
 
-/// Extract the first location from a `GotoDefinitionResponse`.
+/// Extract all locations from a `GotoDefinitionResponse`.
 ///
 /// Handles all three variants: Scalar, Array, and Link.
-fn extract_first_location(response: &GotoDefinitionResponse) -> Option<Location> {
+fn extract_all_locations(response: &GotoDefinitionResponse) -> Vec<Location> {
     match response {
-        GotoDefinitionResponse::Scalar(loc) => Some(loc.clone()),
-        GotoDefinitionResponse::Array(locs) => locs.first().cloned(),
-        GotoDefinitionResponse::Link(links) => links.first().map(|link| Location {
-            uri: link.target_uri.clone(),
-            range: link.target_selection_range,
-        }),
+        GotoDefinitionResponse::Scalar(loc) => vec![loc.clone()],
+        GotoDefinitionResponse::Array(locs) => locs.clone(),
+        GotoDefinitionResponse::Link(links) => links
+            .iter()
+            .map(|link| Location {
+                uri: link.target_uri.clone(),
+                range: link.target_selection_range,
+            })
+            .collect(),
     }
 }
 

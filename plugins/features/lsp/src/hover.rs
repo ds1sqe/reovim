@@ -9,7 +9,7 @@ use arc_swap::ArcSwap;
 /// Snapshot of hover content for rendering.
 #[derive(Debug, Clone)]
 pub struct HoverSnapshot {
-    /// The hover content text (may contain markdown).
+    /// The raw hover content text (may contain markdown).
     pub content: String,
     /// Anchor row (0-indexed) where hover was triggered.
     pub anchor_row: usize,
