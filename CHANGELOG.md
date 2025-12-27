@@ -42,6 +42,18 @@ All notable changes to Reovim will be documented in this file.
   - Preview loads on picker open and updates on navigation (j/k)
   - Files picker shows file content preview for selected item
 
+- **Microscope event handlers** - Add missing command handlers
+  - Confirm (Enter), ClearQuery, DeleteWord, cursor movement, page navigation
+  - MicroscopeConfirm opens selected file and closes picker
+
+- **Microscope UI cleanup** - Cleaner status display
+  - Remove [N]/[I] mode indicator from title bar
+  - Status line shows "Editor | Normal" instead of "microscope"
+
+- **Preview highlighting infrastructure** - Prepare for syntax highlighting
+  - Add StyledSpan type and styled_lines field to PreviewContent
+  - render_preview_panel supports highlight_line and per-character styles
+
 ## [0.7.0] - 2025-12-25
 
 ### Added

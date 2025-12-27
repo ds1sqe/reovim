@@ -37,5 +37,7 @@ pub use {
     layout::{LayoutBounds, LayoutConfig, PanelBounds, calculate_layout, visible_item_count},
     matcher::{MatcherItem, MatcherStatus, MicroscopeMatcher, push_item, push_items},
     picker::{BufferInfo, MicroscopeAction, Picker, PickerContext, PickerRegistry},
-    state::{LoadingState, MicroscopeLayout, MicroscopeState, PreviewContent, PromptMode},
+    state::{
+        LoadingState, MicroscopeLayout, MicroscopeState, PreviewContent, PromptMode, StyledSpan,
+    },
 };

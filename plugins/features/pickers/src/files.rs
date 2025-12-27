@@ -149,6 +149,7 @@ impl Picker for FilesPicker {
                     highlight_line: None,
                     syntax,
                     title: file_name,
+                    styled_lines: None,
                 }
             })
         })

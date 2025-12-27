@@ -304,10 +304,9 @@ impl ModeState {
 
         // Part 1: Kind (interactor)
         let kind = match self.interactor_id.0 {
-            "editor" => "Editor",
+            "editor" | "microscope" => "Editor", // microscope is an overlay on editor
             "command_line" => "Cmd",
             "explorer" => "Explorer",
-            "telescope" => "Telescope",
             other => other,
         };
         parts.push(kind);

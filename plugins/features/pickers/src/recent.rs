@@ -110,6 +110,7 @@ impl Picker for RecentPicker {
                     highlight_line: None,
                     syntax,
                     title: file_name,
+                    styled_lines: None,
                 }
             })
         })

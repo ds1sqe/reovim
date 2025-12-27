@@ -126,6 +126,7 @@ impl PluginWindow for MicroscopePluginWindow {
                 &preview_bounds,
                 border_style,
                 normal_style,
+                selected_style, // Use selected style for highlight_line
             );
         }
 
@@ -161,15 +162,6 @@ impl MicroscopePluginWindow {
         }
         for cx in (x + 1 + title.len() as u16)..(x + width - 1) {
             buffer.put_char(cx, y, '─', border_style);
-        }
-        // Mode indicator at end of title bar
-        let mode_str = microscope.prompt_mode.display();
-        let mode_start = x + width - 1 - mode_str.len() as u16 - 1;
-        for (i, ch) in mode_str.chars().enumerate() {
-            let cx = mode_start + i as u16;
-            if cx > x + title.len() as u16 && cx < x + width - 1 {
-                buffer.put_char(cx, y, ch, border_style);
-            }
         }
         buffer.put_char(x + width - 1, y, '╮', border_style);
 
@@ -276,6 +268,7 @@ impl MicroscopePluginWindow {
         bounds: &PanelBounds,
         border_style: &reovim_core::highlight::Style,
         normal_style: &reovim_core::highlight::Style,
+        highlight_style: &reovim_core::highlight::Style,
     ) {
         let x = bounds.x;
         let y = bounds.y;
@@ -306,20 +299,49 @@ impl MicroscopePluginWindow {
         let max_lines = height.saturating_sub(2) as usize;
 
         if let Some(preview) = &microscope.preview {
+            // Check if we have styled_lines for syntax highlighting
+            let styled_lines = preview.styled_lines.as_ref();
+
             for (idx, line) in preview.lines.iter().take(max_lines).enumerate() {
                 let ry = content_start + idx as u16;
                 buffer.put_char(x, ry, '│', border_style);
 
+                // Check if this line should be highlighted
+                let is_highlight_line = preview.highlight_line == Some(idx);
+                let base_style = if is_highlight_line {
+                    highlight_style
+                } else {
+                    normal_style
+                };
+
+                // Get styled spans for this line if available
+                let line_spans = styled_lines.and_then(|lines| lines.get(idx));
+
+                // Render each character with appropriate style
+                let mut byte_offset = 0;
                 for (i, ch) in line.chars().enumerate() {
                     let cx = x + 1 + i as u16;
                     if cx < x + width - 1 {
-                        buffer.put_char(cx, ry, ch, normal_style);
+                        // Find style for this character position
+                        let char_style = if let Some(spans) = line_spans {
+                            // Look for a span that covers this byte offset
+                            spans
+                                .iter()
+                                .find(|span| byte_offset >= span.start && byte_offset < span.end)
+                                .map(|span| &span.style)
+                                .unwrap_or(base_style)
+                        } else {
+                            base_style
+                        };
+                        buffer.put_char(cx, ry, ch, char_style);
                     }
+                    byte_offset += ch.len_utf8();
                 }
 
-                let line_end = x + 1 + line.len().min((width - 2) as usize) as u16;
+                // Fill remaining space
+                let line_end = x + 1 + line.chars().count().min((width - 2) as usize) as u16;
                 for cx in line_end..(x + width - 1) {
-                    buffer.put_char(cx, ry, ' ', normal_style);
+                    buffer.put_char(cx, ry, ' ', base_style);
                 }
 
                 buffer.put_char(x + width - 1, ry, '│', border_style);
@@ -989,6 +1011,183 @@ impl Plugin for MicroscopePlugin {
             state_clone.with_mut::<MicroscopeState, _, _>(|s| {
                 s.delete_char();
             });
+            ctx.request_render();
+            EventResult::Handled
+        });
+
+        // Handle MicroscopeConfirm event - open selected file
+        let state_clone = Arc::clone(&state);
+        bus.subscribe::<commands::MicroscopeConfirm, _>(100, move |_event, ctx| {
+            let selected = state_clone
+                .with::<MicroscopeState, _, _>(|s| s.selected_item().cloned())
+                .flatten();
+
+            if let Some(item) = selected {
+                // Close microscope first
+                state_clone.with_mut::<MicroscopeState, _, _>(|s| {
+                    s.close();
+                });
+
+                // Return focus and mode to editor
+                ctx.emit(RequestFocusChange {
+                    target: reovim_core::modd::ComponentId::EDITOR,
+                });
+                let mode = ModeState::with_interactor_id_and_mode(
+                    reovim_core::modd::ComponentId::EDITOR,
+                    EditMode::Normal,
+                );
+                ctx.emit(RequestModeChange { mode });
+
+                // Open the file
+                ctx.emit(reovim_core::event_bus::core_events::RequestOpenFile {
+                    path: std::path::PathBuf::from(&item.id),
+                });
+
+                ctx.request_render();
+            }
+            EventResult::Handled
+        });
+
+        // Handle MicroscopeClearQuery event
+        let state_clone = Arc::clone(&state);
+        bus.subscribe::<commands::MicroscopeClearQuery, _>(100, move |_event, ctx| {
+            state_clone.with_mut::<MicroscopeState, _, _>(|s| {
+                s.clear_query();
+            });
+            ctx.request_render();
+            EventResult::Handled
+        });
+
+        // Handle MicroscopeDeleteWord event
+        let state_clone = Arc::clone(&state);
+        bus.subscribe::<commands::MicroscopeDeleteWord, _>(100, move |_event, ctx| {
+            state_clone.with_mut::<MicroscopeState, _, _>(|s| {
+                s.delete_word();
+            });
+            ctx.request_render();
+            EventResult::Handled
+        });
+
+        // Handle MicroscopeCursorLeft event
+        let state_clone = Arc::clone(&state);
+        bus.subscribe::<commands::MicroscopeCursorLeft, _>(100, move |_event, ctx| {
+            state_clone.with_mut::<MicroscopeState, _, _>(|s| {
+                s.cursor_left();
+            });
+            ctx.request_render();
+            EventResult::Handled
+        });
+
+        // Handle MicroscopeCursorRight event
+        let state_clone = Arc::clone(&state);
+        bus.subscribe::<commands::MicroscopeCursorRight, _>(100, move |_event, ctx| {
+            state_clone.with_mut::<MicroscopeState, _, _>(|s| {
+                s.cursor_right();
+            });
+            ctx.request_render();
+            EventResult::Handled
+        });
+
+        // Handle MicroscopeCursorStart event
+        let state_clone = Arc::clone(&state);
+        bus.subscribe::<commands::MicroscopeCursorStart, _>(100, move |_event, ctx| {
+            state_clone.with_mut::<MicroscopeState, _, _>(|s| {
+                s.cursor_home();
+            });
+            ctx.request_render();
+            EventResult::Handled
+        });
+
+        // Handle MicroscopeCursorEnd event
+        let state_clone = Arc::clone(&state);
+        bus.subscribe::<commands::MicroscopeCursorEnd, _>(100, move |_event, ctx| {
+            state_clone.with_mut::<MicroscopeState, _, _>(|s| {
+                s.cursor_end();
+            });
+            ctx.request_render();
+            EventResult::Handled
+        });
+
+        // Handle MicroscopeWordForward event
+        let state_clone = Arc::clone(&state);
+        bus.subscribe::<commands::MicroscopeWordForward, _>(100, move |_event, ctx| {
+            state_clone.with_mut::<MicroscopeState, _, _>(|s| {
+                s.word_forward();
+            });
+            ctx.request_render();
+            EventResult::Handled
+        });
+
+        // Handle MicroscopeWordBackward event
+        let state_clone = Arc::clone(&state);
+        bus.subscribe::<commands::MicroscopeWordBackward, _>(100, move |_event, ctx| {
+            state_clone.with_mut::<MicroscopeState, _, _>(|s| {
+                s.word_backward();
+            });
+            ctx.request_render();
+            EventResult::Handled
+        });
+
+        // Handle MicroscopePageDown event
+        let state_clone = Arc::clone(&state);
+        bus.subscribe::<commands::MicroscopePageDown, _>(100, move |_event, ctx| {
+            let picker_name = state_clone
+                .with::<MicroscopeState, _, _>(|s| s.picker_name.clone())
+                .unwrap_or_default();
+
+            state_clone.with_mut::<MicroscopeState, _, _>(|s| {
+                s.page_down();
+            });
+
+            load_preview(&state_clone, &picker_name);
+            ctx.request_render();
+            EventResult::Handled
+        });
+
+        // Handle MicroscopePageUp event
+        let state_clone = Arc::clone(&state);
+        bus.subscribe::<commands::MicroscopePageUp, _>(100, move |_event, ctx| {
+            let picker_name = state_clone
+                .with::<MicroscopeState, _, _>(|s| s.picker_name.clone())
+                .unwrap_or_default();
+
+            state_clone.with_mut::<MicroscopeState, _, _>(|s| {
+                s.page_up();
+            });
+
+            load_preview(&state_clone, &picker_name);
+            ctx.request_render();
+            EventResult::Handled
+        });
+
+        // Handle MicroscopeGotoFirst event
+        let state_clone = Arc::clone(&state);
+        bus.subscribe::<commands::MicroscopeGotoFirst, _>(100, move |_event, ctx| {
+            let picker_name = state_clone
+                .with::<MicroscopeState, _, _>(|s| s.picker_name.clone())
+                .unwrap_or_default();
+
+            state_clone.with_mut::<MicroscopeState, _, _>(|s| {
+                s.move_to_first();
+            });
+
+            load_preview(&state_clone, &picker_name);
+            ctx.request_render();
+            EventResult::Handled
+        });
+
+        // Handle MicroscopeGotoLast event
+        let state_clone = Arc::clone(&state);
+        bus.subscribe::<commands::MicroscopeGotoLast, _>(100, move |_event, ctx| {
+            let picker_name = state_clone
+                .with::<MicroscopeState, _, _>(|s| s.picker_name.clone())
+                .unwrap_or_default();
+
+            state_clone.with_mut::<MicroscopeState, _, _>(|s| {
+                s.move_to_last();
+            });
+
+            load_preview(&state_clone, &picker_name);
             ctx.request_render();
             EventResult::Handled
         });

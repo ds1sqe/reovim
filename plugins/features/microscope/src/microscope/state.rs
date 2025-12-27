@@ -1,8 +1,11 @@
 //! Microscope state management
 
-use super::{
-    item::MicroscopeItem,
-    layout::{LayoutBounds, LayoutConfig, calculate_layout, visible_item_count},
+use {
+    super::{
+        item::MicroscopeItem,
+        layout::{LayoutBounds, LayoutConfig, calculate_layout, visible_item_count},
+    },
+    reovim_core::highlight::Style,
 };
 
 /// Mode for the prompt input (vim-style)
@@ -55,6 +58,25 @@ impl LoadingState {
     }
 }
 
+/// A styled span within a line (for syntax highlighting)
+#[derive(Debug, Clone)]
+pub struct StyledSpan {
+    /// Start column (0-indexed, byte offset)
+    pub start: usize,
+    /// End column (exclusive, byte offset)
+    pub end: usize,
+    /// Style to apply
+    pub style: Style,
+}
+
+impl StyledSpan {
+    /// Create a new styled span
+    #[must_use]
+    pub const fn new(start: usize, end: usize, style: Style) -> Self {
+        Self { start, end, style }
+    }
+}
+
 /// Preview content for the selected item
 #[derive(Debug, Clone, Default)]
 pub struct PreviewContent {
@@ -66,6 +88,9 @@ pub struct PreviewContent {
     pub syntax: Option<String>,
     /// Title for the preview panel
     pub title: Option<String>,
+    /// Styled spans per line (for syntax highlighting)
+    /// Each inner Vec contains spans for one line, sorted by start position
+    pub styled_lines: Option<Vec<Vec<StyledSpan>>>,
 }
 
 impl PreviewContent {
@@ -77,7 +102,15 @@ impl PreviewContent {
             highlight_line: None,
             syntax: None,
             title: None,
+            styled_lines: None,
         }
+    }
+
+    /// Set styled lines for syntax highlighting
+    #[must_use]
+    pub fn with_styled_lines(mut self, styled_lines: Vec<Vec<StyledSpan>>) -> Self {
+        self.styled_lines = Some(styled_lines);
+        self
     }
 
     /// Set the line to highlight
