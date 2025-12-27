@@ -2,6 +2,20 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [0.7.5] - 2025-12-27
+
+### Added
+
+- **LSP hover popup** - Floating documentation window on `K` keypress
+  - Lock-free `HoverCache` using `ArcSwap` for non-blocking render
+  - `HoverPluginWindow` with bordered popup (z-order 300)
+  - Auto-dismiss on cursor move or mode change
+
+- **LSP references picker** - Show references in microscope picker on `gr`
+  - `LspReferencesPicker` implementing `Picker` trait
+  - File preview with context around reference location
+  - Navigation via `MicroscopeAction::GotoLocation`
+
 ## [0.7.4] - 2025-12-27
 
 ### Added

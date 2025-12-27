@@ -14,8 +14,11 @@
 
 mod command;
 mod document;
+mod hover;
 mod manager;
+mod picker;
 mod stage;
+mod window;
 
 use std::{path::PathBuf, sync::Arc};
 
@@ -23,8 +26,8 @@ use {
     reovim_core::{
         bind::{CommandRef, KeymapScope},
         event_bus::{
-            BufferClosed, BufferModified, EventBus, EventResult, FileOpened,
-            RequestOpenFileAtPosition, ShutdownEvent,
+            BufferClosed, BufferModified, CursorMoved, EventBus, EventResult, FileOpened,
+            ModeChanged, RequestOpenFileAtPosition, ShutdownEvent,
         },
         keys,
         plugin::{Plugin, PluginContext, PluginId, PluginStateRegistry},
@@ -32,6 +35,7 @@ use {
     reovim_lsp::{
         ClientConfig, GotoDefinitionResponse, HoverContents, Location, LspSaturator, MarkedString,
     },
+    reovim_plugin_microscope::{MicroscopeOpen, PickerRegistry},
     tokio::sync::mpsc,
     tracing::{debug, error, info, warn},
 };
@@ -54,7 +58,7 @@ pub use {
 // Re-export events and commands for external use
 pub use command::{
     LspGotoDefinition, LspGotoDefinitionCommand, LspGotoReferences, LspGotoReferencesCommand,
-    LspShowHover, LspShowHoverCommand,
+    LspHoverDismiss, LspShowHover, LspShowHoverCommand,
 };
 
 /// LSP integration plugin.
@@ -152,6 +156,18 @@ impl Plugin for LspPlugin {
     fn init_state(&self, registry: &PluginStateRegistry) {
         // Store in plugin state registry for other plugins to access
         registry.register(Arc::clone(&self.manager));
+
+        // Register hover plugin window
+        registry.register_plugin_window(Arc::new(window::HoverPluginWindow::new(Arc::clone(
+            &self.manager,
+        ))));
+
+        // Register LSP references picker with microscope
+        let references_picker = Arc::new(picker::LspReferencesPicker::new());
+        registry.register(Arc::clone(&references_picker));
+        registry.with_mut::<PickerRegistry, _, _>(|picker_registry| {
+            picker_registry.register(references_picker);
+        });
 
         debug!("LspPlugin: initialized state");
     }
@@ -355,6 +371,7 @@ impl Plugin for LspPlugin {
         // Handle goto references command
         {
             let state = Arc::clone(&state);
+            let event_sender = bus.sender();
             bus.subscribe::<LspGotoReferences, _>(100, move |event, _ctx| {
                 let buffer_id = event.buffer_id;
                 let line = event.line;
@@ -386,11 +403,27 @@ impl Plugin for LspPlugin {
                     );
 
                     // Spawn async task to handle response
+                    let state_clone = Arc::clone(&state);
+                    let sender = event_sender.clone();
                     tokio::spawn(async move {
                         match rx.await {
                             Ok(Ok(Some(locations))) => {
                                 info!(count = locations.len(), "LSP: references found");
-                                // TODO: Show references in picker (telescope-style)
+
+                                if locations.is_empty() {
+                                    info!("LSP: no references to display");
+                                    return;
+                                }
+
+                                // Store references in picker
+                                state_clone.with::<Arc<picker::LspReferencesPicker>, _, _>(
+                                    |picker| {
+                                        picker.set_references(locations);
+                                    },
+                                );
+
+                                // Open microscope with references picker
+                                sender.try_send(MicroscopeOpen::new("lsp_references"));
                             }
                             Ok(Ok(None)) => {
                                 info!("LSP: no references found");
@@ -445,6 +478,7 @@ impl Plugin for LspPlugin {
                     );
 
                     // Spawn async task to handle response
+                    let state_clone = Arc::clone(&state);
                     tokio::spawn(async move {
                         match rx.await {
                             Ok(Ok(Some(hover))) => {
@@ -453,21 +487,22 @@ impl Plugin for LspPlugin {
                                 if content.is_empty() {
                                     info!("LSP: hover response is empty");
                                 } else {
-                                    // Log hover content (TODO: display in popup)
                                     info!(
                                         content_lines = content.lines().count(),
                                         "LSP: hover content received"
                                     );
-                                    // For now, log first few lines
-                                    for (i, line) in content.lines().take(5).enumerate() {
-                                        debug!(line_num = i, line, "LSP: hover");
-                                    }
-                                    if content.lines().count() > 5 {
-                                        debug!(
-                                            "LSP: hover ... ({} more lines)",
-                                            content.lines().count() - 5
-                                        );
-                                    }
+
+                                    // Store hover content in cache for popup display
+                                    state_clone.with_mut::<Arc<SharedLspManager>, _, _>(
+                                        |manager| {
+                                            manager.with_mut(|m| {
+                                                let snapshot = hover::HoverSnapshot::new(
+                                                    content, line, column, buffer_id,
+                                                );
+                                                m.hover_cache.store(snapshot);
+                                            });
+                                        },
+                                    );
                                 }
                             }
                             Ok(Ok(None)) => {
@@ -498,6 +533,49 @@ impl Plugin for LspPlugin {
                         if m.is_running() {
                             info!("LSP: shutting down language server");
                             m.shutdown();
+                        }
+                    });
+                });
+                EventResult::Handled
+            });
+        }
+
+        // Handle explicit hover dismiss
+        {
+            let state = Arc::clone(&state);
+            bus.subscribe::<command::LspHoverDismiss, _>(100, move |_event, _ctx| {
+                state.with_mut::<Arc<SharedLspManager>, _, _>(|manager| {
+                    manager.with_mut(|m| {
+                        m.hover_cache.clear();
+                    });
+                });
+                EventResult::Handled
+            });
+        }
+
+        // Dismiss hover on cursor movement
+        {
+            let state = Arc::clone(&state);
+            bus.subscribe::<CursorMoved, _>(200, move |_event, _ctx| {
+                state.with_mut::<Arc<SharedLspManager>, _, _>(|manager| {
+                    manager.with_mut(|m| {
+                        if m.hover_cache.is_active() {
+                            m.hover_cache.clear();
+                        }
+                    });
+                });
+                EventResult::Handled
+            });
+        }
+
+        // Dismiss hover on mode change
+        {
+            let state = Arc::clone(&state);
+            bus.subscribe::<ModeChanged, _>(200, move |_event, _ctx| {
+                state.with_mut::<Arc<SharedLspManager>, _, _>(|manager| {
+                    manager.with_mut(|m| {
+                        if m.hover_cache.is_active() {
+                            m.hover_cache.clear();
                         }
                     });
                 });

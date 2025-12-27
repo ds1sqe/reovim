@@ -12,6 +12,8 @@ workspace = true
 [dependencies]
 reovim-core = { path = "../../../lib/core" }
 reovim-lsp = { path = "../../../lib/lsp" }
+reovim-plugin-microscope = { path = "../microscope" }
+arc-swap = "1.8"
 tracing.workspace = true
 tokio.workspace = true
 

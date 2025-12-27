@@ -6,7 +6,7 @@ use std::sync::{Arc, RwLock};
 
 use reovim_lsp::{DiagnosticCache, LspSaturatorHandle};
 
-use crate::document::DocumentManager;
+use crate::{document::DocumentManager, hover::HoverCache};
 
 /// Thread-safe wrapper for LSP state.
 ///
@@ -65,6 +65,8 @@ pub struct LspManager {
     pub handle: Option<LspSaturatorHandle>,
     /// Diagnostic cache for lock-free reads.
     pub cache: Option<Arc<DiagnosticCache>>,
+    /// Hover cache for lock-free reads.
+    pub hover_cache: HoverCache,
     /// Whether the LSP server is running.
     pub running: bool,
 }
@@ -77,6 +79,7 @@ impl LspManager {
             documents: DocumentManager::new(),
             handle: None,
             cache: None,
+            hover_cache: HoverCache::new(),
             running: false,
         }
     }

@@ -60,6 +60,16 @@ impl Event for LspShowHover {
     }
 }
 
+/// Event emitted to dismiss hover popup
+#[derive(Debug, Clone, Copy)]
+pub struct LspHoverDismiss;
+
+impl Event for LspHoverDismiss {
+    fn priority(&self) -> u32 {
+        100
+    }
+}
+
 // =============================================================================
 // Commands (extract context from ExecutionContext, emit events)
 // =============================================================================
