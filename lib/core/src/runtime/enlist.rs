@@ -32,6 +32,7 @@ pub fn handle_editor_input(
             buffer.cur = Position::default();
         }
         rt.showing_landing_page = false;
+        rt.landing_state = None;
     }
 
     if rt.mode_state.is_command() {

@@ -91,11 +91,16 @@ impl Runtime {
         } else {
             // Show landing page when no file is opened
             let mut buffer = Buffer::empty(0);
-            let landing_content = crate::landing::generate(
+            let landing_state = crate::landing::LandingState::new(
                 self.screen.width(),
                 self.screen.height().saturating_sub(1), // Reserve status line
             );
+            let landing_content = landing_state.generate(
+                self.screen.width(),
+                self.screen.height().saturating_sub(1),
+            );
             buffer.set_content(&landing_content);
+            self.landing_state = Some(landing_state);
             self.showing_landing_page = true;
             self.buffers.insert(0, buffer);
         }
@@ -187,11 +192,16 @@ impl Runtime {
         } else {
             // Show landing page when no file is opened (unified with regular mode)
             let mut buffer = Buffer::empty(0);
-            let landing_content = crate::landing::generate(
+            let landing_state = crate::landing::LandingState::new(
                 self.screen.width(),
                 self.screen.height().saturating_sub(1), // Reserve status line
             );
+            let landing_content = landing_state.generate(
+                self.screen.width(),
+                self.screen.height().saturating_sub(1),
+            );
             buffer.set_content(&landing_content);
+            self.landing_state = Some(landing_state);
             self.showing_landing_page = true;
             self.buffers.insert(0, buffer);
         }
@@ -217,9 +227,14 @@ impl Runtime {
         const IDLE_TIMEOUT: Duration = Duration::from_secs(3);
         // Check interval for idle detection
         const IDLE_CHECK_INTERVAL: Duration = Duration::from_millis(500);
+        // Landing page animation interval (250ms = large lion roar frame duration)
+        const LANDING_ANIM_INTERVAL: Duration = Duration::from_millis(250);
 
         let mut idle_check_interval = tokio::time::interval(IDLE_CHECK_INTERVAL);
         idle_check_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+        let mut landing_anim_interval = tokio::time::interval(LANDING_ANIM_INTERVAL);
+        landing_anim_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         loop {
             tokio::select! {
@@ -272,6 +287,24 @@ impl Runtime {
                     if elapsed >= IDLE_TIMEOUT && !self.idle_shimmer_active {
                         // Start idle shimmer effect
                         self.start_idle_shimmer();
+                    }
+                }
+                // Landing page animation tick (only when showing landing page)
+                _ = landing_anim_interval.tick(), if self.showing_landing_page => {
+                    if let Some(ref mut state) = self.landing_state {
+                        // Tick returns true if frame changed (250ms matches the interval constant)
+                        if state.tick(250.0) {
+                            // Update buffer with new frame
+                            let content = state.generate(
+                                self.screen.width(),
+                                self.screen.height().saturating_sub(1),
+                            );
+                            if let Some(buffer) = self.buffers.get_mut(&self.active_buffer_id) {
+                                buffer.set_content(&content);
+                            }
+                            self.request_render();
+                            self.flush_render();
+                        }
                     }
                 }
             }
@@ -827,6 +860,7 @@ impl Runtime {
                         buffer.set_content(content);
                         // Clear landing page flag when buffer content is set via RPC
                         self.showing_landing_page = false;
+                        self.landing_state = None;
                         self.request_render();
                         RpcResponse::ok(id)
                     }
@@ -900,6 +934,7 @@ impl Runtime {
                     buffer.cur.y = 0;
                 }
                 self.showing_landing_page = false;
+                self.landing_state = None;
             }
         }
 

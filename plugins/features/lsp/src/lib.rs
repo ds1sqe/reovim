@@ -746,7 +746,15 @@ impl Plugin for LspPlugin {
 }
 
 /// Check if rust-analyzer is available in PATH.
+///
+/// Returns `false` in test environments (when `REOVIM_TEST` is set) to prevent
+/// LSP progress notifications from interfering with tests.
 fn rust_analyzer_available() -> bool {
+    // Skip LSP auto-start in test environments
+    if std::env::var("REOVIM_TEST").is_ok() {
+        return false;
+    }
+
     std::process::Command::new("rust-analyzer")
         .arg("--version")
         .stdout(std::process::Stdio::null())

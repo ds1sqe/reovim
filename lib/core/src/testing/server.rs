@@ -62,6 +62,7 @@ impl ServerTestHarness {
         let process = Command::new(binary_path())
             .args(["--server", "--test", "--listen-tcp", &port.to_string()])
             .env("REOVIM_LOG", log_level)
+            .env("REOVIM_TEST", "1") // Disable LSP auto-start in tests
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()?;
@@ -94,6 +95,7 @@ impl ServerTestHarness {
                 path,
             ])
             .env("REOVIM_LOG", log_level)
+            .env("REOVIM_TEST", "1") // Disable LSP auto-start in tests
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()?;

@@ -98,6 +98,8 @@ pub struct Runtime {
     pub(crate) last_input_at: std::time::Instant,
     /// Whether the idle shimmer effect is currently active
     pub(crate) idle_shimmer_active: bool,
+    /// Landing page animation state (when showing landing page)
+    pub(crate) landing_state: Option<crate::landing::LandingState>,
 }
 
 impl Default for Runtime {
@@ -234,6 +236,7 @@ impl Runtime {
             plugins: loaded_plugins,
             last_input_at: std::time::Instant::now(),
             idle_shimmer_active: false,
+            landing_state: None,
         };
 
         // Make keymap and command registry accessible to plugins (e.g., which-key)
@@ -818,6 +821,7 @@ impl Runtime {
             debug!(id, path, "open_file: created new buffer");
             self.active_buffer_id = id;
             self.showing_landing_page = false;
+            self.landing_state = None;
         } else {
             debug!(path, "open_file: failed to create buffer");
         }

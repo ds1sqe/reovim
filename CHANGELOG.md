@@ -6,11 +6,23 @@ All notable changes to Reovim will be documented in this file.
 
 ### Added
 
+- **Landing page animation (WIP)** - Animated ASCII lion on startup dashboard
+  - Three size variants: Large (roar), Medium (sleep), Small (breathing)
+  - Responsive size selection based on terminal dimensions
+  - Animation controller with Loop, PingPong, Once modes
+  - This is the initial implementation; more dashboard enhancements planned
+
 - **Reo color system** - 45-color HSL-organized palette (Tokyo Night + Catppuccin + One Dark)
 - **Extended Rust highlighting** - Pattern types, operator expressions, async/unsafe, type syntax captures
 - **Documentation** - `docs/color-system.md`, `docs/syntax-highlighting.md`
 
 ### Fixed
+
+- **Landing page animation alignment** - All frame lines now have consistent widths to prevent horizontal shifting during animation
+
+- **Landing page size thresholds** - Adjusted thresholds so "Large" requires actually large terminals (50×24+), "Medium" for normal windows (35×16+)
+
+- **Notification tests failing locally** - LSP plugin now skips auto-start when `REOVIM_TEST` env var is set, preventing progress notifications from polluting test state
 
 - **Tree-sitter Rust query errors** - Fixed invalid node types (`rest_pattern`, `type_bound_list`, etc.)
 
