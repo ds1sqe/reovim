@@ -2,6 +2,18 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **Reo color system** - 45-color HSL-organized palette (Tokyo Night + Catppuccin + One Dark)
+- **Extended Rust highlighting** - Pattern types, operator expressions, async/unsafe, type syntax captures
+- **Documentation** - `docs/color-system.md`, `docs/syntax-highlighting.md`
+
+### Fixed
+
+- **Tree-sitter Rust query errors** - Fixed invalid node types (`rest_pattern`, `type_bound_list`, etc.)
+
 ## [0.7.8] - 2025-12-27
 
 ### Fixed

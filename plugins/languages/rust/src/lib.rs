@@ -74,3 +74,28 @@ impl Plugin for RustPlugin {
         });
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use reovim_plugin_treesitter::LanguageSupport;
+
+    #[test]
+    fn test_highlights_query_compiles() {
+        let lang = RustLanguage;
+        let ts_lang = lang.tree_sitter_language();
+        let query_src = lang.highlights_query();
+
+        let query = tree_sitter::Query::new(&ts_lang, query_src);
+        assert!(query.is_ok(), "Rust highlights query should compile: {:?}", query.err());
+        
+        let q = query.unwrap();
+        println!("Capture count: {}", q.capture_names().len());
+        println!("Pattern count: {}", q.pattern_count());
+        
+        // Print all captures
+        for name in q.capture_names() {
+            println!("Capture: {}", name);
+        }
+    }
+}
