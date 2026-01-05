@@ -872,8 +872,16 @@ impl Plugin for MicroscopePlugin {
                     .flatten();
 
                 if let Some(item) = selected_item {
+                    // Create picker context with syntax and decoration factories
+                    let picker_ctx = PickerContext {
+                        syntax_factory: state.syntax_factory(),
+                        decoration_factory: state.decoration_factory(),
+                        ..PickerContext::default()
+                    };
+
                     let preview = tokio::task::block_in_place(|| {
-                        tokio::runtime::Handle::current().block_on(picker.preview(&item))
+                        tokio::runtime::Handle::current()
+                            .block_on(picker.preview(&item, &picker_ctx))
                     });
                     state.with_mut::<MicroscopeState, _, _>(|s| {
                         s.set_preview(preview);

@@ -21,6 +21,7 @@ mod help;
 mod keymaps;
 mod profiles;
 mod recent;
+mod syntax_helper;
 mod themes;
 
 use std::{any::TypeId, sync::Arc};

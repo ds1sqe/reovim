@@ -158,19 +158,37 @@ impl Picker for GrepPicker {
     fn preview(
         &self,
         item: &MicroscopeItem,
+        ctx: &PickerContext,
     ) -> Pin<Box<dyn Future<Output = Option<PreviewContent>> + Send + '_>> {
         let (path, highlight_line) = match &item.data {
             MicroscopeData::GrepMatch { path, line, .. } => (path.clone(), *line),
             _ => return Box::pin(async { None }),
         };
 
+        let syntax_factory = ctx.syntax_factory.clone();
+
         Box::pin(async move {
             tokio::fs::read_to_string(&path).await.ok().map(|content| {
                 let lines: Vec<String> = content.lines().map(String::from).collect();
-                let syntax = path.extension().and_then(|e| e.to_str()).map(String::from);
+                let syntax_ext = path.extension().and_then(|e| e.to_str()).map(String::from);
+
+                // Compute highlights if factory available
+                let styled_lines = if let Some(factory) = syntax_factory {
+                    let file_path = path.to_string_lossy().to_string();
+                    crate::syntax_helper::compute_styled_lines(
+                        factory.as_ref(),
+                        &file_path,
+                        &content,
+                        &lines,
+                    )
+                } else {
+                    None
+                };
+
                 PreviewContent::new(lines)
                     .with_highlight_line(highlight_line.saturating_sub(1))
-                    .with_syntax(syntax.unwrap_or_default())
+                    .with_syntax(syntax_ext.unwrap_or_default())
+                    .with_styled_lines(styled_lines.unwrap_or_default())
             })
         })
     }

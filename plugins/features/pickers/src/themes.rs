@@ -78,6 +78,7 @@ impl Picker for ThemesPicker {
     fn preview(
         &self,
         item: &MicroscopeItem,
+        _ctx: &PickerContext,
     ) -> Pin<Box<dyn Future<Output = Option<PreviewContent>> + Send + '_>> {
         let display = item.display.clone();
         let description = item.detail.clone();
