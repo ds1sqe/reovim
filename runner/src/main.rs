@@ -1,6 +1,9 @@
 use {
     clap::Parser,
-    reovim_core::{self, rpc::TransportConfig, runtime::Runtime, screen::Screen},
+    reovim_core::{
+        self, command::terminal::TerminalGuard, rpc::TransportConfig, runtime::Runtime,
+        screen::Screen,
+    },
     std::io::{self, IsTerminal},
 };
 
@@ -111,9 +114,9 @@ async fn main() -> Result<(), io::Error> {
         return server::run_server(cli.file, terminal_output, transport_config, cli.test).await;
     }
 
-    // Normal interactive mode
-    reovim_core::command::terminal::enable_raw_mode()?;
-    tracing::debug!("Raw mode enabled");
+    // Normal interactive mode - guard ensures cleanup on panic/error
+    let _term_guard = TerminalGuard::new_interactive()?;
+    tracing::debug!("Terminal initialized with alternate screen");
 
     let mut screen = Screen::default();
     screen.initialize()?;
@@ -129,5 +132,6 @@ async fn main() -> Result<(), io::Error> {
     runtime.init().await;
 
     tracing::info!("reovim shutting down");
-    reovim_core::command::terminal::disable_raw_mode()
+    // Guard automatically cleans up here (Drop)
+    Ok(())
 }

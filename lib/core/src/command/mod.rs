@@ -1,6 +1,4 @@
-pub mod terminal {
-    pub use reovim_sys::terminal::{Clear, ClearType, disable_raw_mode, enable_raw_mode};
-}
+pub mod terminal;
 
 mod context;
 

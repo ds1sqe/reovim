@@ -48,6 +48,13 @@ All notable changes to Reovim will be documented in this file.
   - All 26 operator tests pass with correct yank/paste behavior
 
 - **Yank animations** - Added visual feedback for `Y` and `yy` commands
+
+- **Terminal cleanup on exit** - Fixed afterimage and "%" marker issues when closing reovim
+  - Implemented RAII `TerminalGuard` to guarantee cleanup even on panic
+  - Now uses alternate screen mode to isolate editor UI from shell
+  - Cursor is properly restored and final newline printed on exit
+  - Terminal state is always restored, preventing broken terminal after crashes
+  - Added `lib/core/src/command/terminal/terminal_guard.rs` with Drop trait implementation
   - `Y` (yank to end) now highlights from cursor to end of line
   - `yy` (yank line) now highlights entire current line
   - Extended `CommandResult::ClipboardWrite` with `yank_range` field for animation support
