@@ -460,6 +460,9 @@ impl Runtime {
                             {
                                 match content.yank_type {
                                     YankType::Characterwise => {
+                                        // Track start position for animation
+                                        let start_pos = buf.cur;
+
                                         // For characterwise paste:
                                         // p (before=false): paste AFTER cursor (move right by 1 first)
                                         // P (before=true): paste BEFORE cursor (at current position)
@@ -473,10 +476,43 @@ impl Runtime {
                                                 }
                                             }
                                         }
+
                                         buf.insert_text(&content.text);
+
+                                        // Track end position and trigger animation
+                                        let end_pos = buf.cur;
+                                        self.trigger_paste_animation(paste_buffer_id, start_pos, end_pos);
                                     }
                                     YankType::Linewise => {
+                                        // Calculate line range for animation
+                                        let start_line = if before { buf.cur.y } else { buf.cur.y + 1 };
+
                                         buf.insert_linewise(&content.text, before);
+
+                                        // Calculate end position
+                                        #[allow(clippy::cast_possible_truncation)]
+                                        let line_count = content.text.lines().count() as u16;
+                                        let end_line = start_line + line_count.saturating_sub(1);
+
+                                        // Get line lengths for column bounds
+                                        let start_col = 0;
+                                        #[allow(clippy::cast_possible_truncation)]
+                                        let end_col = buf
+                                            .contents
+                                            .get(end_line as usize)
+                                            .map_or(0, |line| line.inner.len() as u16);
+
+                                        self.trigger_paste_animation(
+                                            paste_buffer_id,
+                                            crate::screen::Position {
+                                                x: start_col,
+                                                y: start_line,
+                                            },
+                                            crate::screen::Position {
+                                                x: end_col,
+                                                y: end_line,
+                                            },
+                                        );
                                     }
                                 }
                             }

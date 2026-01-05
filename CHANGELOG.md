@@ -4,6 +4,21 @@ All notable changes to Reovim will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Paste animation** - Visual pulse animation feedback for paste operations
+  - Cyan pulsing glow (600ms, 2 cycles) when pasting with `p` or `P`
+  - Distinct from yank's gold fade animation
+  - Works with both characterwise and linewise paste
+  - Helps locate pasted content in large files
+
+### Fixed
+
+- **Yank animation for linewise motions** - `yj` and `yk` now correctly highlight entire lines
+  - Previously only highlighted partial lines (current line for `yj`, upper line for `yk`)
+  - Now properly animates all yanked lines from start to end
+  - Affects all linewise motions: `j`, `k`, `gg`, `G`
+
 ## [0.7.9]
 
 ### Added
