@@ -5,7 +5,7 @@ use std::{any::TypeId, borrow::Cow, sync::Arc};
 use crate::{
     bind::{CommandRef, KeyMap, KeymapScope},
     command::{CommandRegistry, CommandTrait},
-    display::{DisplayInfo, DisplayRegistry, EditModeKey, SubModeKey},
+    display::{DisplayInfo, DisplayRegistry},
     keystroke::KeySequence,
     modd::ComponentId,
     modifier::ModifierRegistry,
@@ -171,44 +171,6 @@ impl PluginContext {
     /// ```
     pub fn register_display(&mut self, id: ComponentId, info: DisplayInfo) {
         self.display_registry.register_interactor(id, info);
-    }
-
-    /// Register display info for a component + edit mode combination
-    ///
-    /// This allows different display strings for the same component
-    /// depending on the edit mode (Normal, Insert, Visual, etc.).
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// ctx.register_component_mode_display(
-    ///     ComponentId::EDITOR,
-    ///     EditModeKey::Normal,
-    ///     DisplayInfo::new(" NORMAL ", "󰆾 "),
-    /// );
-    /// ```
-    pub fn register_component_mode_display(
-        &mut self,
-        id: ComponentId,
-        mode: EditModeKey,
-        info: DisplayInfo,
-    ) {
-        self.display_registry
-            .register_component_mode(id, mode, info);
-    }
-
-    /// Register display info for a sub-mode
-    ///
-    /// Sub-modes (Command, `OperatorPending`, Leap, etc.) take priority
-    /// over component/edit mode displays.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// ctx.register_sub_mode_display(SubModeKey::Command, DisplayInfo::new(" COMMAND ", " "));
-    /// ```
-    pub fn register_sub_mode_display(&mut self, key: SubModeKey, info: DisplayInfo) {
-        self.display_registry.register_sub_mode(key, info);
     }
 
     /// Get access to the display registry

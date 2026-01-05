@@ -381,6 +381,7 @@ impl Screen {
             state.decoration_store,
             state.render_stages,
             state.plugin_state,
+            state.display_registry,
         )
     }
 
@@ -843,6 +844,7 @@ impl Screen {
         decoration_store: Option<&DecorationStore>,
         render_stages: &std::sync::Arc<std::sync::RwLock<crate::render::RenderStageRegistry>>,
         plugin_state: &std::sync::Arc<crate::plugin::PluginStateRegistry>,
+        display_registry: &crate::display::DisplayRegistry,
     ) -> std::result::Result<(), std::io::Error> {
         let rw_start = std::time::Instant::now();
         // Take frame renderer out (borrow checker workaround)
@@ -1075,6 +1077,7 @@ impl Screen {
                 theme,
                 color_mode,
                 plugin_state,
+                display_registry,
             );
         }
 
@@ -1736,6 +1739,7 @@ impl Screen {
         theme: &Theme,
         _color_mode: ColorMode,
         plugin_state: &std::sync::Arc<crate::plugin::PluginStateRegistry>,
+        display_registry: &crate::display::DisplayRegistry,
     ) {
         let y = self.size.height.saturating_sub(1);
         let mut x = 0u16;
@@ -1765,17 +1769,47 @@ impl Screen {
             };
 
         // === Section 1: Interactor (e.g., "Editor", "Explorer") ===
-        let interactor_text = format!(" {} ", mode.interactor_id.0);
+        // Query DisplayRegistry for plugin-provided display info
+        let (interactor_text, interactor_icon, actual_interactor_style) =
+            display_registry.get_display(mode).map_or_else(
+                || {
+                    // Fallback for unregistered components
+                    (
+                        format!(" {} ", mode.interactor_id.0),
+                        "",  // No icon fallback
+                        interactor_style,  // theme.statusline.interactor
+                    )
+                },
+                |info| {
+                    // Use plugin-provided info
+                    (
+                        info.display_string.to_string(),
+                        info.icon,
+                        &info.style,
+                    )
+                },
+            );
+
+        // Render icon if present
+        for ch in interactor_icon.chars() {
+            if x < buffer.width() {
+                let style = apply_sweep(actual_interactor_style, x);
+                buffer.put_char(x, y, ch, &style);
+                x += 1;
+            }
+        }
+
+        // Render text
         for ch in interactor_text.chars() {
             if x < buffer.width() {
-                let style = apply_sweep(interactor_style, x);
+                let style = apply_sweep(actual_interactor_style, x);
                 buffer.put_char(x, y, ch, &style);
                 x += 1;
             }
         }
 
         // Powerline separator: interactor -> mode
-        let sep_style = Self::create_separator_style(interactor_style, mode_style);
+        let sep_style = Self::create_separator_style(actual_interactor_style, mode_style);
         for ch in separator.left.chars() {
             if x < buffer.width() {
                 let style = apply_sweep(&sep_style, x);

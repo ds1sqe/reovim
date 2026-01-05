@@ -27,8 +27,21 @@ All notable changes to Reovim will be documented in this file.
   - `RegisterHealthCheck` event for plugins to register custom health checks
   - Built-in checks for runtime, plugin system, event bus, terminal, and keybindings
   - Plugin-decoupled architecture - zero core modifications using v0.7.9+ ex-command registry
+- **Plugin-specific status line styling** - Plugins can now provide custom colors for status line
+  - Each plugin defines its own `Style` with custom fg/bg colors
+  - Visual identity: Explorer (orange), Microscope (blue), Settings (gray), Leap (green), Health (teal)
+  - Status line shows `[INTERACTOR][MODE]` as separate colored sections
+  - `Color` type exported from `reovim_core::highlight` for plugin use
 
 ### Changed
+
+- **DisplayInfo API (BREAKING)** - Simplified and made styling mandatory
+  - `DisplayInfo::new()` now requires `style: Style` parameter
+  - Removed `EditModeKey`, `SubModeKey` enums (mode-specific displays removed)
+  - Removed `DisplayInfoBuilder::when_mode()` and `when_sub_mode()` methods
+  - `DisplayRegistry` simplified to single HashMap lookup
+  - `register_builtins()` now requires `theme` parameter
+  - Plugins must update to provide styles when registering display info
 
 - **Ex-command architecture refactored** - Full decoupling of core from plugin-specific commands (Issue #13)
   - Removed `Settings`, `ProfileLoad`, `ProfileSave`, `ProfileList` variants from `ExCommand` enum

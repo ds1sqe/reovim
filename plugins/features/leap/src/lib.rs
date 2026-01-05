@@ -16,7 +16,7 @@ use std::{any::TypeId, sync::Arc};
 
 use reovim_core::{
     bind::{CommandRef, KeymapScope},
-    display::{DisplayInfo, SubModeKey},
+    display::DisplayInfo,
     event_bus::{EventBus, EventResult},
     frame::FrameBuffer,
     highlight::{Style, Theme},
@@ -147,11 +147,23 @@ impl Plugin for LeapPlugin {
     }
 
     fn build(&self, ctx: &mut PluginContext) {
-        // Register sub-mode display info
-        ctx.register_sub_mode_display(
-            SubModeKey::Interactor(COMPONENT_ID),
-            DisplayInfo::new(" LEAP ", "\u{f0168} "),
-        );
+        // Register display info
+        use reovim_core::highlight::{Color, Style};
+
+        // Bright green for leap mode (like a "jump" or "go")
+        let green = Color::Rgb {
+            r: 76,
+            g: 175,
+            b: 80,
+        };
+        let fg = Color::Rgb {
+            r: 33,
+            g: 37,
+            b: 43,
+        };
+        let style = Style::new().fg(fg).bg(green).bold();
+
+        ctx.register_display(COMPONENT_ID, DisplayInfo::new(" LEAP ", "\u{f0168} ", style));
 
         // Register commands
         let _ = ctx.register_command(LeapForwardCommand);

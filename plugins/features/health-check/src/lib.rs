@@ -89,7 +89,22 @@ impl Plugin for HealthCheckPlugin {
 
     fn build(&self, ctx: &mut PluginContext) {
         // Register display info for status line
-        ctx.register_display(COMPONENT_ID, DisplayInfo::new(" HEALTH ", " "));
+        use reovim_core::highlight::{Color, Style};
+
+        // Teal/cyan for health diagnostics (medical theme)
+        let teal = Color::Rgb {
+            r: 38,
+            g: 198,
+            b: 218,
+        };
+        let fg = Color::Rgb {
+            r: 33,
+            g: 37,
+            b: 43,
+        };
+        let style = Style::new().fg(fg).bg(teal).bold();
+
+        ctx.register_display(COMPONENT_ID, DisplayInfo::new(" HEALTH ", " ", style));
 
         // Register commands
         let _ = ctx.register_command(HealthCheckOpen);

@@ -10,7 +10,7 @@ pub use builder::DisplayInfoBuilder;
 
 use std::collections::HashMap;
 
-use crate::modd::{ComponentId, EditMode, InsertVariant, ModeState, SubMode, VisualVariant};
+use crate::modd::{ComponentId, ModeState};
 
 /// Display information for a mode/component
 #[derive(Debug, Clone)]
@@ -19,90 +19,40 @@ pub struct DisplayInfo {
     pub display_string: &'static str,
     /// Icon for compact display (e.g., "󰆾 ", "󰙅 ")
     pub icon: &'static str,
+    /// Style for this component's status line appearance
+    pub style: crate::highlight::Style,
 }
 
 impl DisplayInfo {
-    /// Create new display info with both display string and icon
+    /// Create new display info with display string, icon, and style
     #[must_use]
-    pub const fn new(display_string: &'static str, icon: &'static str) -> Self {
+    pub const fn new(
+        display_string: &'static str,
+        icon: &'static str,
+        style: crate::highlight::Style,
+    ) -> Self {
         Self {
             display_string,
             icon,
+            style,
         }
     }
 }
 
-/// Key for edit mode display lookup
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum EditModeKey {
-    Normal,
-    Insert,
-    InsertReplace,
-    VisualChar,
-    VisualLine,
-    VisualBlock,
-}
+// Removed EditModeKey and SubModeKey enums - no longer needed
+// since status line shows [INTERACTOR][MODE] as separate sections
 
-impl From<&EditMode> for EditModeKey {
-    fn from(mode: &EditMode) -> Self {
-        match mode {
-            EditMode::Normal => Self::Normal,
-            EditMode::Insert(InsertVariant::Standard) => Self::Insert,
-            EditMode::Insert(InsertVariant::Replace) => Self::InsertReplace,
-            EditMode::Visual(VisualVariant::Char) => Self::VisualChar,
-            EditMode::Visual(VisualVariant::Line) => Self::VisualLine,
-            EditMode::Visual(VisualVariant::Block) => Self::VisualBlock,
-        }
-    }
-}
-
-/// Key for sub-mode display lookup
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum SubModeKey {
-    /// No sub-mode active
-    None,
-    /// Command line mode
-    Command,
-    /// Operator pending mode (d, y, c waiting for motion)
-    OperatorPending,
-    /// Plugin-provided interactor (identified by `ComponentId`)
-    Interactor(ComponentId),
-}
-
-impl From<&SubMode> for SubModeKey {
-    fn from(mode: &SubMode) -> Self {
-        match mode {
-            SubMode::None => Self::None,
-            SubMode::Command => Self::Command,
-            SubMode::OperatorPending { .. } => Self::OperatorPending,
-            SubMode::Interactor(id) => Self::Interactor(*id),
-        }
-    }
-}
-
-/// Registry for plugin-provided display strings and icons
+/// Registry for plugin-provided display information
 ///
-/// This registry allows plugins to register custom display information for:
-/// - Component focus (e.g., Explorer shows " EXPLORER ")
-/// - Edit modes within a component (e.g., Editor + Normal shows " NORMAL ")
-/// - Sub-modes (e.g., Command shows " COMMAND ")
+/// This registry allows plugins to register custom display information
+/// for their components (e.g., Explorer shows " EXPLORER " with orange color).
 ///
-/// Lookups are prioritized:
-/// 1. Sub-mode (if not None) - highest priority
-/// 2. Component + `EditMode` combination
-/// 3. Component only (default for that focus)
-/// 4. Fallback to hardcoded defaults
+/// The status line displays: [INTERACTOR][MODE] as two separate sections,
+/// so each component only needs one display registration.
 #[derive(Debug, Default)]
 pub struct DisplayRegistry {
-    /// Display info for component focus (`ComponentId` -> `DisplayInfo`)
+    /// Display info for each component (`ComponentId` -> `DisplayInfo`)
     interactors: HashMap<ComponentId, DisplayInfo>,
-
-    /// Display info for component + edit mode combination
-    /// Key: (`ComponentId`, `EditModeKey`)
-    component_modes: HashMap<(ComponentId, EditModeKey), DisplayInfo>,
-
-    /// Display info for sub-modes
-    sub_modes: HashMap<SubModeKey, DisplayInfo>,
 }
 
 impl DisplayRegistry {
@@ -112,57 +62,19 @@ impl DisplayRegistry {
         Self::default()
     }
 
-    /// Register display info for a component focus
+    /// Register display info for a component
     ///
-    /// This is used when the component is focused but no specific edit mode
-    /// display is registered.
+    /// This is shown in the INTERACTOR section of the status line.
+    /// The MODE section will separately show the edit mode (Normal/Insert/Visual).
     pub fn register_interactor(&mut self, id: ComponentId, info: DisplayInfo) {
         self.interactors.insert(id, info);
     }
 
-    /// Register display info for a component + edit mode combination
+    /// Get display info for a component
     ///
-    /// For example, Editor + Normal = " NORMAL ", Editor + Insert = " INSERT "
-    pub fn register_component_mode(
-        &mut self,
-        id: ComponentId,
-        mode: EditModeKey,
-        info: DisplayInfo,
-    ) {
-        self.component_modes.insert((id, mode), info);
-    }
-
-    /// Register display info for a sub-mode
-    ///
-    /// Sub-modes take priority over component/edit mode displays
-    pub fn register_sub_mode(&mut self, key: SubModeKey, info: DisplayInfo) {
-        self.sub_modes.insert(key, info);
-    }
-
-    /// Get display info for a mode state
-    ///
-    /// Returns the most specific display info available:
-    /// 1. Sub-mode (if not None)
-    /// 2. Component + edit mode
-    /// 3. Component only
-    /// 4. None (use fallback)
+    /// Simply looks up the component in the interactors map.
     #[must_use]
     pub fn get_display(&self, mode: &ModeState) -> Option<&DisplayInfo> {
-        // Priority 1: Sub-mode
-        let sub_key = SubModeKey::from(&mode.sub_mode);
-        if sub_key != SubModeKey::None
-            && let Some(info) = self.sub_modes.get(&sub_key)
-        {
-            return Some(info);
-        }
-
-        // Priority 2: Component + edit mode
-        let edit_key = EditModeKey::from(&mode.edit_mode);
-        if let Some(info) = self.component_modes.get(&(mode.interactor_id, edit_key)) {
-            return Some(info);
-        }
-
-        // Priority 3: Component only
         self.interactors.get(&mode.interactor_id)
     }
 
@@ -181,131 +93,86 @@ impl DisplayRegistry {
 
     /// Register all built-in display info
     ///
-    /// This registers the default display strings and icons for core components.
+    /// This registers the default display info for the core editor component.
     /// Plugins should register their own display info via `PluginContext`.
-    pub fn register_builtins(&mut self) {
-        // === Editor modes (core) ===
-        self.register_component_mode(
+    ///
+    /// Note: Editor modes (Normal/Insert/Visual) are shown in the MODE section
+    /// of the status line, not in the interactor section, so they don't need
+    /// to be registered here.
+    pub fn register_builtins(&mut self, theme: &crate::highlight::Theme) {
+        // Editor component
+        // Mode (Normal/Insert/Visual) will be shown separately in MODE section
+        self.register_interactor(
             ComponentId::EDITOR,
-            EditModeKey::Normal,
-            DisplayInfo::new(" NORMAL ", "󰆾 "),
+            DisplayInfo::new(" EDITOR ", "󰈸 ", theme.statusline.interactor.clone()),
         );
-        self.register_component_mode(
-            ComponentId::EDITOR,
-            EditModeKey::Insert,
-            DisplayInfo::new(" INSERT ", "󰏫 "),
-        );
-        self.register_component_mode(
-            ComponentId::EDITOR,
-            EditModeKey::InsertReplace,
-            DisplayInfo::new(" REPLACE ", "󰏫 "),
-        );
-        self.register_component_mode(
-            ComponentId::EDITOR,
-            EditModeKey::VisualChar,
-            DisplayInfo::new(" VISUAL ", "󰒉 "),
-        );
-        self.register_component_mode(
-            ComponentId::EDITOR,
-            EditModeKey::VisualLine,
-            DisplayInfo::new(" V-LINE ", "󰒉 "),
-        );
-        self.register_component_mode(
-            ComponentId::EDITOR,
-            EditModeKey::VisualBlock,
-            DisplayInfo::new(" V-BLOCK ", "󰒉 "),
-        );
-
-        // === Core sub-modes ===
-        self.register_sub_mode(SubModeKey::Command, DisplayInfo::new(" COMMAND ", " "));
-        self.register_sub_mode(SubModeKey::OperatorPending, DisplayInfo::new(" OPERATOR ", "󰆾 "));
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::modd::OperatorType};
+    use super::*;
 
     #[test]
     fn test_display_info_new() {
-        let info = DisplayInfo::new(" TEST ", "󰆾 ");
+        let style = crate::highlight::Style::new();
+        let info = DisplayInfo::new(" TEST ", "󰆾 ", style);
         assert_eq!(info.display_string, " TEST ");
         assert_eq!(info.icon, "󰆾 ");
     }
 
     #[test]
-    fn test_edit_mode_key_conversion() {
-        assert_eq!(EditModeKey::from(&EditMode::Normal), EditModeKey::Normal);
-        assert_eq!(
-            EditModeKey::from(&EditMode::Insert(InsertVariant::Standard)),
-            EditModeKey::Insert
-        );
-        assert_eq!(
-            EditModeKey::from(&EditMode::Insert(InsertVariant::Replace)),
-            EditModeKey::InsertReplace
-        );
-        assert_eq!(
-            EditModeKey::from(&EditMode::Visual(VisualVariant::Char)),
-            EditModeKey::VisualChar
-        );
-    }
-
-    #[test]
-    fn test_sub_mode_key_conversion() {
-        assert_eq!(SubModeKey::from(&SubMode::None), SubModeKey::None);
-        assert_eq!(SubModeKey::from(&SubMode::Command), SubModeKey::Command);
-        assert_eq!(
-            SubModeKey::from(&SubMode::OperatorPending {
-                operator: OperatorType::Delete,
-                count: None
-            }),
-            SubModeKey::OperatorPending
-        );
-        assert_eq!(
-            SubModeKey::from(&SubMode::Interactor(ComponentId("leap"))),
-            SubModeKey::Interactor(ComponentId("leap"))
-        );
-    }
-
-    #[test]
-    fn test_registry_lookup_priority() {
+    fn test_registry_lookup() {
         let mut registry = DisplayRegistry::new();
+        let style = crate::highlight::Style::new();
 
-        // Register component, component+mode, and sub-mode
-        registry
-            .register_interactor(ComponentId::EDITOR, DisplayInfo::new(" EDITOR DEFAULT ", "E"));
-        registry.register_component_mode(
+        // Register a component
+        registry.register_interactor(
             ComponentId::EDITOR,
-            EditModeKey::Normal,
-            DisplayInfo::new(" NORMAL ", "N"),
+            DisplayInfo::new(" EDITOR ", "󰈸 ", style),
         );
-        registry.register_sub_mode(SubModeKey::Command, DisplayInfo::new(" COMMAND ", "C"));
 
-        // Sub-mode takes priority
-        let command_mode = ModeState::command();
-        assert_eq!(registry.display_string(&command_mode).as_str(), " COMMAND ");
-
-        // Component + mode is second priority
-        let normal_mode = ModeState::normal();
-        assert_eq!(registry.display_string(&normal_mode).as_str(), " NORMAL ");
+        // Check that we can retrieve it
+        let mode = ModeState::normal();
+        let display = registry.get_display(&mode);
+        assert!(display.is_some());
+        assert_eq!(display.unwrap().display_string, " EDITOR ");
+        assert_eq!(display.unwrap().icon, "󰈸 ");
     }
 
     #[test]
     fn test_builtins_registration() {
         let mut registry = DisplayRegistry::new();
-        registry.register_builtins();
+        let theme = crate::highlight::Theme::default();
+        registry.register_builtins(&theme);
 
-        // Check editor normal mode
+        // Check that editor component is registered
         let normal = ModeState::normal();
-        assert_eq!(registry.display_string(&normal).as_str(), " NORMAL ");
-        assert_eq!(registry.icon(&normal), "󰆾 ");
+        let display = registry.get_display(&normal);
+        assert!(display.is_some());
+        assert_eq!(display.unwrap().display_string, " EDITOR ");
+        assert_eq!(display.unwrap().icon, "󰈸 ");
 
-        // Check command mode
-        let command = ModeState::command();
-        assert_eq!(registry.display_string(&command).as_str(), " COMMAND ");
+        // Display string should use plugin-provided text
+        assert_eq!(registry.display_string(&normal).as_str(), " EDITOR ");
+        assert_eq!(registry.icon(&normal), "󰈸 ");
+    }
 
-        // Check operator pending mode
-        let op = ModeState::operator_pending(crate::modd::OperatorType::Delete, None);
-        assert_eq!(registry.display_string(&op).as_str(), " OPERATOR ");
+    #[test]
+    fn test_fallback_for_unregistered() {
+        let registry = DisplayRegistry::new();
+
+        // Unregistered component should return None
+        let mode = ModeState::normal();
+        assert!(registry.get_display(&mode).is_none());
+
+        // display_string should fall back to hierarchical display
+        let display_str = registry.display_string(&mode);
+        // hierarchical_display() format is "component" or "component.submode"
+        assert!(!display_str.is_empty());
+        assert!(display_str.to_lowercase().contains("editor") || display_str.contains("editor"));
+
+        // icon should return default
+        assert_eq!(registry.icon(&mode), " ");
     }
 }

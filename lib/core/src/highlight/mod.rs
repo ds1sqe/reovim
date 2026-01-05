@@ -15,6 +15,9 @@ pub use {
     },
 };
 
+// Re-export Color from reovim_sys for plugin use
+pub use reovim_sys::style::Color;
+
 /// Identifies the source/type of highlight for layering and management
 /// Lower values have lower priority (get overridden by higher values)
 ///

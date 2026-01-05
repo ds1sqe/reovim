@@ -20,7 +20,7 @@ use reovim_core::{
     bind::{CommandRef, EditModeKind, KeymapScope},
     event_bus::{EventBus, EventResult},
     keys,
-    modd::{ComponentId, EditMode, InsertVariant, VisualVariant},
+    modd::ComponentId,
     plugin::{Plugin, PluginContext, PluginId, PluginStateRegistry},
 };
 
@@ -780,10 +780,23 @@ pub const COMPONENT_ID: ComponentId = ComponentId("explorer");
 #[allow(clippy::unused_self)]
 impl ExplorerPlugin {
     fn register_display_info(&self, ctx: &mut PluginContext) {
+        use reovim_core::highlight::{Color, Style};
+
+        // Orange background for file explorer
+        let orange = Color::Rgb {
+            r: 255,
+            g: 153,
+            b: 51,
+        };
+        let fg = Color::Rgb {
+            r: 33,
+            g: 37,
+            b: 43,
+        };
+        let style = Style::new().fg(fg).bg(orange).bold();
+
         ctx.display_info(COMPONENT_ID)
-            .default(" EXPLORER ", "󰙅 ")
-            .when_mode(&EditMode::Insert(InsertVariant::Standard), " EXPLORER | INSERT ", "󰙅 ")
-            .when_mode(&EditMode::Visual(VisualVariant::Char), " EXPLORER | VISUAL ", "󰙅 ")
+            .default(" EXPLORER ", "󰙅 ", style)
             .register();
     }
 
