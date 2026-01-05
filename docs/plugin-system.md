@@ -328,6 +328,563 @@ fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {
 }
 ```
 
+## Registering Ex-Commands
+
+Plugins can register custom ex-commands (`:command`) that users can invoke from the command line. The ex-command registry supports three patterns: zero-arg, single-arg, and subcommand.
+
+### Ex-Command Handler Types
+
+```rust
+pub enum ExCommandHandler {
+    /// Zero-arg command: `:name`
+    ZeroArg {
+        event_constructor: fn() -> DynEvent,
+        description: &'static str,
+    },
+
+    /// Single string arg: `:name arg`
+    SingleArg {
+        event_constructor: fn(String) -> DynEvent,
+        description: &'static str,
+    },
+
+    /// Subcommand: `:name subcommand [arg]`
+    Subcommand {
+        subcommands: HashMap<String, Box<Self>>,
+        description: &'static str,
+    },
+}
+```
+
+### Registering Commands
+
+Commands are registered by emitting a `RegisterExCommand` event during the plugin's `subscribe()` phase:
+
+```rust
+use reovim_core::{
+    command_line::ExCommandHandler,
+    event_bus::{core_events::RegisterExCommand, DynEvent},
+};
+
+impl Plugin for MyPlugin {
+    fn subscribe(&self, bus: &EventBus, _state: Arc<PluginStateRegistry>) {
+        // Register a zero-arg command: :myplugin
+        bus.emit(RegisterExCommand::new(
+            "myplugin",
+            ExCommandHandler::ZeroArg {
+                event_constructor: || DynEvent::new(MyPluginOpen),
+                description: "Open my plugin",
+            },
+        ));
+    }
+}
+```
+
+### Zero-Arg Commands
+
+Simple commands with no arguments:
+
+```rust
+// Register :settings command
+bus.emit(RegisterExCommand::new(
+    "settings",
+    ExCommandHandler::ZeroArg {
+        event_constructor: || DynEvent::new(SettingsMenuOpen),
+        description: "Open the settings menu",
+    },
+));
+```
+
+When the user types `:settings`, the runtime:
+1. Looks up the command in the registry
+2. Calls the `event_constructor()` to create a `SettingsMenuOpen` event
+3. Dispatches the event through the event bus
+4. The plugin's event handler receives it and opens the settings menu
+
+### Single-Arg Commands
+
+Commands that take one string argument:
+
+```rust
+// Register :loadconfig <name> command
+bus.emit(RegisterExCommand::new(
+    "loadconfig",
+    ExCommandHandler::SingleArg {
+        event_constructor: |name| DynEvent::new(LoadConfigEvent { name }),
+        description: "Load a configuration by name",
+    },
+));
+```
+
+When the user types `:loadconfig myconfig`, the runtime:
+1. Parses the command name (`loadconfig`) and argument (`myconfig`)
+2. Calls `event_constructor("myconfig")` to create the event
+3. Dispatches the event with the provided name
+
+### Subcommand Pattern
+
+Commands with multiple subcommands (like `:profile list`, `:profile load`, `:profile save`):
+
+```rust
+use std::collections::HashMap;
+
+// Build subcommand map
+let mut subcommands = HashMap::new();
+
+// :profile list - zero-arg subcommand
+subcommands.insert(
+    "list".to_string(),
+    Box::new(ExCommandHandler::ZeroArg {
+        event_constructor: || DynEvent::new(ProfileListEvent),
+        description: "List all available profiles",
+    })
+);
+
+// :profile load <name> - single-arg subcommand
+subcommands.insert(
+    "load".to_string(),
+    Box::new(ExCommandHandler::SingleArg {
+        event_constructor: |name| DynEvent::new(ProfileLoadEvent { name }),
+        description: "Load a profile by name",
+    })
+);
+
+// :profile save <name> - single-arg subcommand
+subcommands.insert(
+    "save".to_string(),
+    Box::new(ExCommandHandler::SingleArg {
+        event_constructor: |name| DynEvent::new(ProfileSaveEvent { name }),
+        description: "Save current settings as a profile",
+    })
+);
+
+// Register the main command with subcommands
+bus.emit(RegisterExCommand::new(
+    "profile",
+    ExCommandHandler::Subcommand {
+        subcommands,
+        description: "Manage configuration profiles",
+    },
+));
+```
+
+### Complete Example
+
+Here's a complete plugin that registers ex-commands:
+
+```rust
+use std::{collections::HashMap, sync::Arc};
+use reovim_core::{
+    command_line::ExCommandHandler,
+    event_bus::{
+        core_events::RegisterExCommand,
+        DynEvent, Event, EventBus, EventResult,
+    },
+    plugin::{Plugin, PluginContext, PluginId, PluginStateRegistry},
+};
+
+// Define events
+#[derive(Debug, Clone, Copy)]
+pub struct MyPluginOpen;
+
+impl Event for MyPluginOpen {
+    fn priority(&self) -> u32 { 100 }
+}
+
+#[derive(Debug, Clone)]
+pub struct MyPluginLoad {
+    pub name: String,
+}
+
+impl Event for MyPluginLoad {
+    fn priority(&self) -> u32 { 100 }
+}
+
+// Plugin implementation
+pub struct MyPlugin;
+
+impl Plugin for MyPlugin {
+    fn id(&self) -> PluginId {
+        PluginId::new("my_plugin")
+    }
+
+    fn build(&self, _ctx: &mut PluginContext) {
+        // Commands are registered in subscribe(), not build()
+    }
+
+    fn subscribe(&self, bus: &EventBus, _state: Arc<PluginStateRegistry>) {
+        // Register ex-commands
+        bus.emit(RegisterExCommand::new(
+            "myplugin",
+            ExCommandHandler::ZeroArg {
+                event_constructor: || DynEvent::new(MyPluginOpen),
+                description: "Open my plugin",
+            },
+        ));
+
+        bus.emit(RegisterExCommand::new(
+            "loadmyplugin",
+            ExCommandHandler::SingleArg {
+                event_constructor: |name| DynEvent::new(MyPluginLoad { name }),
+                description: "Load my plugin configuration",
+            },
+        ));
+
+        // Subscribe to events
+        bus.subscribe::<MyPluginOpen, _>(100, |_event, ctx| {
+            tracing::info!("My plugin opened!");
+            ctx.request_render();
+            EventResult::Handled
+        });
+
+        bus.subscribe::<MyPluginLoad, _>(100, |event, ctx| {
+            tracing::info!("Loading configuration: {}", event.name);
+            ctx.request_render();
+            EventResult::Handled
+        });
+    }
+}
+```
+
+### Best Practices
+
+1. **Use descriptive command names** - Clear, concise names like `:settings`, `:profile`, `:reload`
+2. **Provide descriptions** - Always include descriptions for help/completion systems
+3. **Register in subscribe()** - Ex-commands are registered during the `subscribe()` phase, not `build()`
+4. **Use subcommands for related operations** - Group related commands under a single prefix (`:profile load/save/list`)
+5. **Emit events, don't execute directly** - The handler should create and emit an event that your plugin handles
+6. **Handle errors gracefully** - If the command fails, log a warning but don't crash
+
+### Event Flow
+
+```
+User types :mycommand arg
+    ↓
+Runtime parses ex-command
+    ↓
+ExCommand::Plugin { command: "mycommand arg" }
+    ↓
+Runtime handler calls ex_command_registry.dispatch("mycommand arg")
+    ↓
+Registry finds "mycommand" handler
+    ↓
+Calls event_constructor("arg") → creates DynEvent
+    ↓
+EventBus.dispatch(&event)
+    ↓
+Plugin's event handler receives it
+    ↓
+Plugin executes the action
+```
+
+### Migration from Hardcoded Commands
+
+Before the ex-command registry, plugins had hardcoded `ExCommand` variants:
+
+```rust
+// OLD (deprecated)
+ExCommand::Settings => {
+    // Hardcoded in core - BAD!
+}
+```
+
+Now, plugins register their own commands:
+
+```rust
+// NEW (correct)
+bus.emit(RegisterExCommand::new(
+    "settings",
+    ExCommandHandler::ZeroArg {
+        event_constructor: || DynEvent::new(SettingsMenuOpen),
+        description: "Open the settings menu",
+    },
+));
+```
+
+This decouples core from plugin-specific commands and allows any plugin to register custom ex-commands.
+
+## Profile System
+
+Plugins can register configurable components that participate in profile save/load operations. This allows plugins to persist their settings and restore them when profiles are loaded.
+
+### Configurable Trait
+
+The `Configurable` trait defines how a component serializes/deserializes its configuration:
+
+```rust
+pub trait Configurable {
+    /// Get the configuration section name (e.g., "core", "treesitter", "completion")
+    fn config_section(&self) -> &'static str;
+
+    /// Serialize current state to configuration data
+    fn to_config(&self) -> HashMap<String, toml::Value>;
+
+    /// Load state from configuration data
+    fn from_config(&mut self, data: &HashMap<String, toml::Value>);
+
+    /// Get default configuration values for this section
+    fn default_config(&self) -> HashMap<String, toml::Value> {
+        HashMap::new()
+    }
+}
+```
+
+### Registering Configurable Components
+
+Components are registered by emitting a `RegisterConfigurable` event during the `subscribe()` phase:
+
+```rust
+use reovim_core::{
+    config::Configurable,
+    event_bus::core_events::RegisterConfigurable,
+};
+use std::{collections::HashMap, sync::{Arc, RwLock}};
+
+// Define a configurable component
+struct MyPluginConfig {
+    enabled: bool,
+    timeout_ms: u64,
+    theme: String,
+}
+
+impl Configurable for MyPluginConfig {
+    fn config_section(&self) -> &'static str {
+        "my_plugin"
+    }
+
+    fn to_config(&self) -> HashMap<String, toml::Value> {
+        let mut data = HashMap::new();
+        data.insert("enabled".to_string(), toml::Value::Boolean(self.enabled));
+        data.insert("timeout_ms".to_string(), toml::Value::Integer(self.timeout_ms as i64));
+        data.insert("theme".to_string(), toml::Value::String(self.theme.clone()));
+        data
+    }
+
+    fn from_config(&mut self, data: &HashMap<String, toml::Value>) {
+        if let Some(enabled) = data.get("enabled").and_then(toml::Value::as_bool) {
+            self.enabled = enabled;
+        }
+        if let Some(timeout) = data.get("timeout_ms").and_then(toml::Value::as_integer) {
+            self.timeout_ms = timeout as u64;
+        }
+        if let Some(theme) = data.get("theme").and_then(toml::Value::as_str) {
+            self.theme = theme.to_string();
+        }
+    }
+
+    fn default_config(&self) -> HashMap<String, toml::Value> {
+        let mut data = HashMap::new();
+        data.insert("enabled".to_string(), toml::Value::Boolean(true));
+        data.insert("timeout_ms".to_string(), toml::Value::Integer(1000));
+        data.insert("theme".to_string(), toml::Value::String("default".to_string()));
+        data
+    }
+}
+
+// In plugin subscribe()
+impl Plugin for MyPlugin {
+    fn subscribe(&self, bus: &EventBus, _state: Arc<PluginStateRegistry>) {
+        // Create configurable component wrapped in Arc<RwLock<>>
+        let config: Arc<RwLock<dyn Configurable + Send + Sync>> =
+            Arc::new(RwLock::new(MyPluginConfig {
+                enabled: true,
+                timeout_ms: 1000,
+                theme: "default".to_string(),
+            }));
+
+        // Register with profile system
+        bus.emit(RegisterConfigurable::new(config));
+    }
+}
+```
+
+### Profile Events
+
+The profile system uses three events:
+
+```rust
+// List all available profiles (opens picker)
+#[derive(Debug, Clone, Copy)]
+pub struct ProfileListEvent;
+
+// Load a specific profile
+#[derive(Debug, Clone)]
+pub struct ProfileLoadEvent {
+    pub name: String,
+}
+
+// Save current settings to a profile
+#[derive(Debug, Clone)]
+pub struct ProfileSaveEvent {
+    pub name: String,
+}
+```
+
+Plugins can emit these events to trigger profile operations:
+
+```rust
+// User action triggers profile load
+bus.emit(ProfileLoadEvent { name: "dark-theme".to_string() });
+
+// User action triggers profile save
+bus.emit(ProfileSaveEvent { name: "my-custom-setup".to_string() });
+```
+
+### How Profiles Work
+
+When a profile is saved:
+1. Runtime calls `profile_registry.save_all()`
+2. Registry iterates all registered `Configurable` components
+3. Each component's `to_config()` is called
+4. Data is serialized to TOML under the component's section name
+5. TOML file is written to `~/.config/reovim/profiles/<name>.toml`
+
+When a profile is loaded:
+1. TOML file is read from `~/.config/reovim/profiles/<name>.toml`
+2. Runtime calls `profile_registry.load_all(config)`
+3. Registry iterates the config data
+4. For each section, finds the corresponding component
+5. Calls component's `from_config(data)` to restore state
+
+### Complete Example
+
+```rust
+use std::{collections::HashMap, sync::{Arc, RwLock}};
+use reovim_core::{
+    config::Configurable,
+    event_bus::{
+        core_events::{RegisterConfigurable, ProfileLoadEvent, ProfileSaveEvent},
+        EventBus, EventResult,
+    },
+    plugin::{Plugin, PluginContext, PluginId, PluginStateRegistry},
+};
+
+// Plugin configuration state
+struct MyPluginState {
+    enabled: bool,
+    font_size: u32,
+}
+
+impl Configurable for MyPluginState {
+    fn config_section(&self) -> &'static str {
+        "my_plugin"
+    }
+
+    fn to_config(&self) -> HashMap<String, toml::Value> {
+        let mut data = HashMap::new();
+        data.insert("enabled".to_string(), toml::Value::Boolean(self.enabled));
+        data.insert("font_size".to_string(), toml::Value::Integer(self.font_size as i64));
+        data
+    }
+
+    fn from_config(&mut self, data: &HashMap<String, toml::Value>) {
+        if let Some(enabled) = data.get("enabled").and_then(toml::Value::as_bool) {
+            self.enabled = enabled;
+            tracing::info!("My plugin enabled state loaded: {}", enabled);
+        }
+        if let Some(size) = data.get("font_size").and_then(toml::Value::as_integer) {
+            self.font_size = size as u32;
+            tracing::info!("My plugin font size loaded: {}", size);
+        }
+    }
+}
+
+pub struct MyPlugin {
+    state: Arc<RwLock<MyPluginState>>,
+}
+
+impl MyPlugin {
+    pub fn new() -> Self {
+        Self {
+            state: Arc::new(RwLock::new(MyPluginState {
+                enabled: true,
+                font_size: 14,
+            })),
+        }
+    }
+}
+
+impl Plugin for MyPlugin {
+    fn id(&self) -> PluginId {
+        PluginId::new("my_plugin")
+    }
+
+    fn build(&self, _ctx: &mut PluginContext) {}
+
+    fn subscribe(&self, bus: &EventBus, _state: Arc<PluginStateRegistry>) {
+        // Register configurable component
+        let config: Arc<RwLock<dyn Configurable + Send + Sync>> = self.state.clone();
+        bus.emit(RegisterConfigurable::new(config));
+
+        // Optionally listen to profile events for custom behavior
+        let state = Arc::clone(&self.state);
+        bus.subscribe::<ProfileLoadEvent, _>(100, move |event, ctx| {
+            tracing::info!("Profile '{}' loaded, my plugin state updated", event.name);
+            // State is automatically updated by ProfileRegistry
+            // You can perform additional actions here if needed
+            ctx.request_render();
+            EventResult::Handled
+        });
+    }
+}
+```
+
+### Profile File Structure
+
+Profile TOML files are organized by section:
+
+```toml
+# ~/.config/reovim/profiles/dark-theme.toml
+
+[profile]
+name = "dark-theme"
+description = "Dark theme with custom settings"
+
+[core]
+theme = "tokyonight"
+colormode = "truecolor"
+indentguide = true
+
+[my_plugin]
+enabled = true
+font_size = 14
+
+[treesitter]
+enabled = true
+timeout_ms = 500
+```
+
+Each plugin's `config_section()` maps to a TOML section. The `ProfileRegistry` coordinates saving/loading across all sections.
+
+### Best Practices
+
+1. **Use descriptive section names** - Match your plugin ID for consistency
+2. **Handle missing values gracefully** - Don't crash if a setting is missing from the profile
+3. **Provide defaults** - Implement `default_config()` for new profile creation
+4. **Use appropriate TOML types** - Boolean, Integer, String, Array, Table
+5. **Keep state in Arc<RwLock<>>** - Required for thread-safe access from profile system
+6. **Log configuration changes** - Help users debug profile loading issues
+7. **Don't store sensitive data** - Profiles are plain text files
+
+### Thread Safety
+
+The `Configurable` component must be wrapped in `Arc<RwLock<>>` because:
+- The profile registry stores `Arc<RwLock<dyn Configurable + Send + Sync>>`
+- Multiple systems may need to access configuration simultaneously
+- `from_config()` requires `&mut self` for updates
+- `to_config()` requires `&self` for reads
+
+```rust
+// CORRECT
+let config: Arc<RwLock<dyn Configurable + Send + Sync>> =
+    Arc::new(RwLock::new(MyPluginState { ... }));
+bus.emit(RegisterConfigurable::new(config));
+
+// INCORRECT (won't compile)
+let config = MyPluginState { ... };
+bus.emit(RegisterConfigurable::new(config)); // Type mismatch
+```
+
 ## PluginStateRegistry
 
 Type-erased state storage accessible by any component:

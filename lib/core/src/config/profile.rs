@@ -249,6 +249,74 @@ impl Default for ProfileManager {
     }
 }
 
+/// Trait for components that can save/load configuration to profiles
+///
+/// This trait allows both core runtime and plugins to register their
+/// configurable state with the profile system. When a profile is saved,
+/// all registered components are serialized. When loaded, they are
+/// deserialized and applied.
+///
+/// # Example
+///
+/// ```
+/// use reovim_core::config::Configurable;
+/// use std::collections::HashMap;
+///
+/// struct MyComponent {
+///     enabled: bool,
+///     timeout_ms: u64,
+/// }
+///
+/// impl Configurable for MyComponent {
+///     fn config_section(&self) -> &'static str {
+///         "my_component"
+///     }
+///
+///     fn to_config(&self) -> HashMap<String, toml::Value> {
+///         let mut data = HashMap::new();
+///         data.insert("enabled".to_string(), toml::Value::Boolean(self.enabled));
+///         data.insert("timeout_ms".to_string(), toml::Value::Integer(self.timeout_ms as i64));
+///         data
+///     }
+///
+///     fn from_config(&mut self, data: &HashMap<String, toml::Value>) {
+///         if let Some(enabled) = data.get("enabled").and_then(|v| v.as_bool()) {
+///             self.enabled = enabled;
+///         }
+///         if let Some(timeout) = data.get("timeout_ms").and_then(|v| v.as_integer()) {
+///             self.timeout_ms = timeout as u64;
+///         }
+///     }
+/// }
+/// ```
+pub trait Configurable {
+    /// Get the configuration section name (e.g., "core", "treesitter", "completion")
+    ///
+    /// This will be used as the top-level key in the profile TOML file.
+    fn config_section(&self) -> &'static str;
+
+    /// Serialize current state to configuration data
+    ///
+    /// Returns a map of setting names to TOML values. This will be saved
+    /// under the section returned by `config_section()`.
+    fn to_config(&self) -> std::collections::HashMap<String, toml::Value>;
+
+    /// Load state from configuration data
+    ///
+    /// Applies settings from the provided data map. Implementations should
+    /// gracefully handle missing or invalid values by keeping current state.
+    #[allow(clippy::wrong_self_convention)]
+    fn from_config(&mut self, data: &std::collections::HashMap<String, toml::Value>);
+
+    /// Get default configuration values for this section
+    ///
+    /// Returns defaults that will be used when creating new profiles or
+    /// when settings are missing from loaded profiles.
+    fn default_config(&self) -> std::collections::HashMap<String, toml::Value> {
+        std::collections::HashMap::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

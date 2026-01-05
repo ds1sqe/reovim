@@ -92,6 +92,10 @@ pub struct Runtime {
     pub render_stages: Arc<std::sync::RwLock<crate::render::RenderStageRegistry>>,
     /// Option registry for extensible settings
     pub option_registry: Arc<OptionRegistry>,
+    /// Ex-command registry for plugin-registered ex-commands
+    pub ex_command_registry: Arc<crate::command_line::ExCommandRegistry>,
+    /// Profile registry for configurable components
+    pub profile_registry: Arc<crate::config::ProfileRegistry>,
     /// Loaded plugins for boot phase execution
     pub(crate) plugins: Vec<Box<dyn Plugin>>,
     /// Timestamp of last user input (for idle detection)
@@ -182,6 +186,12 @@ impl Runtime {
             }
         }
 
+        // Initialize ex-command registry for plugin-registered commands
+        let ex_command_registry = Arc::new(crate::command_line::ExCommandRegistry::new());
+
+        // Initialize profile registry for configurable components
+        let profile_registry = Arc::new(crate::config::ProfileRegistry::new());
+
         // Wrap render_stages in Arc<RwLock<>> and inject into plugin_state
         // This allows plugins to register stages from init_state()
         let render_stages = Arc::new(std::sync::RwLock::new(render_stages));
@@ -233,6 +243,8 @@ impl Runtime {
             display_registry,
             render_stages,
             option_registry,
+            ex_command_registry,
+            profile_registry,
             plugins: loaded_plugins,
             last_input_at: std::time::Instant::now(),
             idle_shimmer_active: false,
@@ -336,6 +348,59 @@ impl Runtime {
                         register: event.register,
                         text: event.text.clone(),
                     });
+                    EventResult::Handled
+                });
+        }
+
+        // Subscribe to ex-command registration from plugins
+        {
+            use crate::event_bus::{EventResult, core_events::RegisterExCommand};
+            let registry = Arc::clone(&runtime.ex_command_registry);
+            runtime
+                .event_bus
+                .subscribe::<RegisterExCommand, _>(50, move |event, _ctx| {
+                    registry.register(event.name.to_string(), event.handler.clone());
+                    tracing::debug!("Runtime: Registered ex-command '{}'", event.name);
+                    EventResult::Handled
+                });
+        }
+
+        // Subscribe to configurable component registration from plugins
+        {
+            use crate::event_bus::{EventResult, core_events::RegisterConfigurable};
+            let registry = Arc::clone(&runtime.profile_registry);
+            runtime
+                .event_bus
+                .subscribe::<RegisterConfigurable, _>(40, move |event, _ctx| {
+                    registry.register(event.component.clone());
+                    EventResult::Handled
+                });
+        }
+
+        // Subscribe to profile load events
+        {
+            use crate::event_bus::{EventResult, core_events::ProfileLoadEvent};
+            runtime
+                .event_bus
+                .subscribe::<ProfileLoadEvent, _>(100, move |event, ctx| {
+                    // Request render after profile load
+                    ctx.request_render();
+                    tracing::info!(profile = %event.name, "Profile load requested (full implementation pending)");
+                    // TODO: Actually load the profile using profile_registry and profile_manager
+                    // This requires Runtime to be mutable, which needs architectural changes
+                    EventResult::Handled
+                });
+        }
+
+        // Subscribe to profile save events
+        {
+            use crate::event_bus::{EventResult, core_events::ProfileSaveEvent};
+            runtime
+                .event_bus
+                .subscribe::<ProfileSaveEvent, _>(100, move |event, _ctx| {
+                    tracing::info!(profile = %event.name, "Profile save requested (full implementation pending)");
+                    // TODO: Actually save the profile using profile_registry and profile_manager
+                    // This requires Runtime to be mutable, which needs architectural changes
                     EventResult::Handled
                 });
         }

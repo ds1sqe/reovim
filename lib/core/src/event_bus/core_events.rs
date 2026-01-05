@@ -550,3 +550,189 @@ impl Event for FoldRangesComputed {
         priority::NORMAL
     }
 }
+
+// =============================================================================
+// Ex-Command Events
+// =============================================================================
+
+/// Event emitted by plugins to register ex-command handlers
+///
+/// Plugins emit this event during the `subscribe()` phase to register
+/// their custom ex-commands (e.g., `:settings`, `:profile`).
+///
+/// # Example
+///
+/// ```ignore
+/// use reovim_core::{
+///     command_line::ExCommandHandler,
+///     event_bus::core_events::RegisterExCommand,
+/// };
+///
+/// bus.emit(RegisterExCommand::new(
+///     "settings",
+///     ExCommandHandler::ZeroArg {
+///         event_constructor: || DynEvent::new(SettingsMenuOpen),
+///         description: "Open the settings menu",
+///     },
+/// ));
+/// ```
+#[derive(Clone)]
+pub struct RegisterExCommand {
+    /// Command name (e.g., "settings", "profile")
+    pub name: std::borrow::Cow<'static, str>,
+
+    /// Handler for the command
+    pub handler: crate::command_line::ExCommandHandler,
+}
+
+impl RegisterExCommand {
+    /// Create a new ex-command registration
+    #[must_use]
+    pub fn new(
+        name: impl Into<std::borrow::Cow<'static, str>>,
+        handler: crate::command_line::ExCommandHandler,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            handler,
+        }
+    }
+}
+
+impl Event for RegisterExCommand {
+    fn priority(&self) -> u32 {
+        // High priority - run during plugin initialization
+        priority::NORMAL
+    }
+}
+
+impl std::fmt::Debug for RegisterExCommand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RegisterExCommand")
+            .field("name", &self.name)
+            .field("handler", &self.handler)
+            .finish()
+    }
+}
+
+// =============================================================================
+// Profile Events
+// =============================================================================
+
+/// Event emitted to list available profiles
+///
+/// Plugins emit this event to open a profile picker/list UI.
+/// The profiles plugin subscribes to this event and opens the picker.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ProfileListEvent;
+
+impl Event for ProfileListEvent {
+    fn priority(&self) -> u32 {
+        priority::PLUGIN
+    }
+}
+
+/// Event emitted to load a profile by name
+///
+/// Plugins emit this event to trigger profile loading.
+/// The runtime subscribes to this event and coordinates the actual load
+/// across all registered Configurable components.
+#[derive(Debug, Clone)]
+pub struct ProfileLoadEvent {
+    /// Name of the profile to load
+    pub name: String,
+}
+
+impl Event for ProfileLoadEvent {
+    fn priority(&self) -> u32 {
+        priority::PLUGIN
+    }
+}
+
+/// Event emitted to save current settings as a profile
+///
+/// Plugins emit this event to trigger profile saving.
+/// The runtime subscribes to this event and coordinates the actual save
+/// across all registered Configurable components.
+#[derive(Debug, Clone)]
+pub struct ProfileSaveEvent {
+    /// Name of the profile to save
+    pub name: String,
+}
+
+impl Event for ProfileSaveEvent {
+    fn priority(&self) -> u32 {
+        priority::PLUGIN
+    }
+}
+
+// === Configurable Component Registration ===
+
+/// Event emitted by plugins to register configurable components
+///
+/// Plugins emit this event during their `subscribe()` phase to register
+/// components that participate in profile save/load. The runtime subscribes
+/// to this event and registers the component with the `ProfileRegistry`.
+///
+/// # Example
+///
+/// ```ignore
+/// use reovim_core::{
+///     config::Configurable,
+///     event_bus::core_events::RegisterConfigurable,
+/// };
+/// use std::sync::{Arc, RwLock};
+///
+/// struct MyConfig {
+///     enabled: bool,
+/// }
+///
+/// impl Configurable for MyConfig {
+///     fn config_section(&self) -> &'static str { "my_plugin" }
+///     fn to_config(&self) -> std::collections::HashMap<String, toml::Value> {
+///         // ...
+///         std::collections::HashMap::new()
+///     }
+///     fn from_config(&mut self, _data: &std::collections::HashMap<String, toml::Value>) {
+///         // ...
+///     }
+/// }
+///
+/// // In plugin subscribe():
+/// let config = Arc::new(RwLock::new(MyConfig { enabled: true }));
+/// bus.emit(RegisterConfigurable::new(config));
+/// ```
+pub struct RegisterConfigurable {
+    /// The configurable component to register
+    pub component: std::sync::Arc<std::sync::RwLock<dyn crate::config::Configurable + Send + Sync>>,
+}
+
+impl RegisterConfigurable {
+    /// Create a new registration event for a configurable component
+    #[must_use]
+    pub fn new(
+        component: std::sync::Arc<std::sync::RwLock<dyn crate::config::Configurable + Send + Sync>>,
+    ) -> Self {
+        Self { component }
+    }
+}
+
+impl std::fmt::Debug for RegisterConfigurable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let section = self
+            .component
+            .read()
+            .map(|c| c.config_section())
+            .unwrap_or("<locked>");
+
+        f.debug_struct("RegisterConfigurable")
+            .field("section", &section)
+            .finish()
+    }
+}
+
+impl Event for RegisterConfigurable {
+    fn priority(&self) -> u32 {
+        priority::CORE // High priority, register early
+    }
+}

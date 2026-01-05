@@ -6,6 +6,29 @@ All notable changes to Reovim will be documented in this file.
 
 ### Added
 
+- **Ex-command registry system** - Plugins can now register custom ex-commands dynamically
+  - `ExCommandRegistry` for thread-safe command registration and dispatch
+  - `RegisterExCommand` event for plugin-based command registration
+  - Support for three command patterns: zero-arg, single-arg, and subcommand
+  - All handlers include descriptions for help/completion systems
+- **Profile trait system** - Framework for extensible configuration profiles
+  - `Configurable` trait for components that participate in profile save/load
+  - `ProfileRegistry` for coordinating serialization across all registered components
+  - `RegisterConfigurable` event for plugin components to register for profile management
+  - Profile events: `ProfileLoadEvent`, `ProfileSaveEvent`, `ProfileListEvent`
+- **ProfilesPlugin** - New plugin for profile command handling
+  - `:profile list` - Open profile picker
+  - `:profile load <name>` - Load a profile by name
+  - `:profile save <name>` - Save current settings as a profile
+
+### Changed
+
+- **Ex-command architecture refactored** - Full decoupling of core from plugin-specific commands (Issue #13)
+  - Removed `Settings`, `ProfileLoad`, `ProfileSave`, `ProfileList` variants from `ExCommand` enum
+  - Added generic `Plugin { command: String }` variant for all plugin-registered commands
+  - Settings menu now registers `:settings` command via `RegisterExCommand` event
+  - Profile commands now handled by dedicated ProfilesPlugin
+  - Core handlers dispatch to registry instead of hardcoded match arms
 - **Paste animation** - Visual pulse animation feedback for paste operations
   - Cyan pulsing glow (600ms, 2 cycles) when pasting with `p` or `P`
   - Distinct from yank's gold fade animation

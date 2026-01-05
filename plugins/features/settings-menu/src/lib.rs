@@ -429,6 +429,25 @@ impl Plugin for SettingsMenuPlugin {
     }
 
     fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {
+        // Register :settings ex-command
+        {
+            use {
+                crate::SettingsMenuOpen,
+                reovim_core::{
+                    command_line::ExCommandHandler,
+                    event_bus::{DynEvent, core_events::RegisterExCommand},
+                },
+            };
+
+            bus.emit(RegisterExCommand::new(
+                "settings",
+                ExCommandHandler::ZeroArg {
+                    event_constructor: || DynEvent::new(SettingsMenuOpen),
+                    description: "Open the settings menu",
+                },
+            ));
+        }
+
         // Handle RegisterSettingSection events
         {
             let state = Arc::clone(&state);

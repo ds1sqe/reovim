@@ -16,11 +16,13 @@
 
 mod loader;
 mod profile;
+mod profile_registry;
 mod schema;
 
 pub use {
     loader::{ConfigError, get_config_dir, load_toml, save_toml},
-    profile::ProfileManager,
+    profile::{Configurable, ProfileManager},
+    profile_registry::ProfileRegistry,
     schema::{
         CompletionConfig, EditorConfig, GlobalConfig, KeybindingValue, KeybindingsConfig,
         ProfileConfig, ProfileMeta, WindowConfig,
