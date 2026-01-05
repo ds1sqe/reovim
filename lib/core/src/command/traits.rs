@@ -36,10 +36,14 @@ pub enum CommandResult {
     /// Command produced text for clipboard (e.g., yank, delete)
     /// `register` is the target register: None for unnamed, Some('a'-'z') for named, '+' for system
     /// `mode_change` optionally specifies a mode to transition to after writing to clipboard
+    /// `yank_type` specifies whether this is a linewise or characterwise yank (defaults to characterwise if None)
+    /// `yank_range` optionally specifies the visual range to animate (start, end positions)
     ClipboardWrite {
         text: String,
         register: Option<char>,
         mode_change: Option<ModeState>,
+        yank_type: Option<crate::register::YankType>,
+        yank_range: Option<(crate::screen::Position, crate::screen::Position)>,
     },
     /// Command needs Runtime access (deferred execution)
     ///

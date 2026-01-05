@@ -143,11 +143,15 @@ impl CommandTrait for VisualDeleteCommand {
     }
 
     fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
+        // Visual mode delete defaults to characterwise
+        // (linewise visual mode would need separate handling)
         let text = ctx.buffer.delete_selection();
         CommandResult::ClipboardWrite {
             text,
             register: None,
             mode_change: Some(ModeState::normal()),
+            yank_type: None,  // Default to characterwise
+            yank_range: None, // Visual mode uses selection bounds for animation
         }
     }
 
@@ -174,12 +178,16 @@ impl CommandTrait for VisualYankCommand {
     }
 
     fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
+        // Visual mode yank defaults to characterwise
+        // (linewise visual mode would need separate handling)
         let text = ctx.buffer.get_selected_text();
         // Note: clear_selection is called by handle_mode_change when mode changes to Normal
         CommandResult::ClipboardWrite {
             text,
             register: None,
             mode_change: Some(ModeState::normal()),
+            yank_type: None,  // Default to characterwise
+            yank_range: None, // Visual mode uses selection bounds for animation
         }
     }
 

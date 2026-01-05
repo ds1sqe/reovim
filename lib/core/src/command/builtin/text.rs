@@ -161,10 +161,13 @@ impl CommandTrait for DeleteLineCommand {
         if deleted.is_empty() {
             CommandResult::NeedsRender
         } else {
+            use crate::register::YankType;
             CommandResult::ClipboardWrite {
                 text: deleted,
                 register: None,
                 mode_change: None,
+                yank_type: Some(YankType::Linewise),
+                yank_range: None, // Delete doesn't need animation
             }
         }
     }
@@ -197,17 +200,37 @@ impl CommandTrait for YankLineCommand {
 
     #[allow(clippy::cast_possible_truncation)]
     fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
-        let y = ctx.buffer.cur.y as usize;
+        use crate::{register::YankType, screen::Position};
+
+        let y = ctx.buffer.cur.y;
+        let y_usize = y as usize;
         let text = ctx
             .buffer
             .contents
-            .get(y)
+            .get(y_usize)
             .map(|line| line.inner.clone() + "\n")
             .unwrap_or_default();
+
+        // Calculate range for yank animation (entire line)
+        let line_len = ctx
+            .buffer
+            .contents
+            .get(y_usize)
+            .map_or(0, |line| line.inner.len());
+        let yank_range = Some((
+            Position { x: 0, y },
+            Position {
+                x: line_len as u16,
+                y,
+            },
+        ));
+
         CommandResult::ClipboardWrite {
             text,
             register: None,
             mode_change: None,
+            yank_type: Some(YankType::Linewise),
+            yank_range,
         }
     }
 
@@ -235,8 +258,12 @@ impl CommandTrait for YankToEndCommand {
 
     #[allow(clippy::cast_possible_truncation)]
     fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
-        let y = ctx.buffer.cur.y as usize;
-        let x = ctx.buffer.cur.x as usize;
+        use crate::{register::YankType, screen::Position};
+
+        let y_u16 = ctx.buffer.cur.y;
+        let x_u16 = ctx.buffer.cur.x;
+        let y = y_u16 as usize;
+        let x = x_u16 as usize;
         let text = ctx
             .buffer
             .contents
@@ -249,10 +276,39 @@ impl CommandTrait for YankToEndCommand {
                 }
             })
             .unwrap_or_default();
+
+        // Calculate range for yank animation (cursor to end of line)
+        // For Y command, animate from cursor to end of line
+        let line_len = ctx
+            .buffer
+            .contents
+            .get(y)
+            .map_or(0, |line| line.inner.len());
+
+        let yank_range = if !text.is_empty() && x < line_len {
+            // Start animation from cursor position + 1 to avoid highlighting extra left char
+            // The yanked text is still correct (line.inner[x..]), but the animation
+            // visual feedback is adjusted based on how the rendering system interprets positions
+            Some((
+                Position {
+                    x: x_u16.saturating_add(1),
+                    y: y_u16,
+                },
+                Position {
+                    x: line_len as u16,
+                    y: y_u16,
+                },
+            ))
+        } else {
+            None
+        };
+
         CommandResult::ClipboardWrite {
             text,
             register: None,
             mode_change: None,
+            yank_type: Some(YankType::Characterwise),
+            yank_range,
         }
     }
 
