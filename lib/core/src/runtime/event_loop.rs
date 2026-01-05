@@ -1250,13 +1250,12 @@ impl Runtime {
             );
         } else {
             // For characterwise motions, use position-based range
-            let (start, end) = if start_pos.y < target.y
-                || (start_pos.y == target.y && start_pos.x <= target.x)
-            {
-                (start_pos, target)
-            } else {
-                (target, start_pos)
-            };
+            let (start, end) =
+                if start_pos.y < target.y || (start_pos.y == target.y && start_pos.x <= target.x) {
+                    (start_pos, target)
+                } else {
+                    (target, start_pos)
+                };
 
             // Adjust end for inclusive motions
             let end = if motion.is_inclusive() {

@@ -48,6 +48,7 @@ impl RenderData {
     pub fn from_buffer(
         window: &crate::screen::window::Window,
         buffer: &crate::buffer::Buffer,
+        mode: &crate::modd::ModeState,
     ) -> Self {
         let line_count = buffer.contents.len();
 
@@ -66,11 +67,21 @@ impl RenderData {
         // Saturator (update_decorations) has already computed and cached them
         // If empty, just render without decorations - that's fine, still fast
         let deco_start = std::time::Instant::now();
-        let decorations = buffer.decoration_cache.get_ready_decorations(line_count);
+        let mut decorations = buffer.decoration_cache.get_ready_decorations(line_count);
+
+        // In insert mode, disable decorations on cursor line to show raw syntax
+        if mode.is_insert() {
+            let cursor_line = buffer.cur.y as usize;
+            if cursor_line < decorations.len() {
+                decorations[cursor_line].clear();
+            }
+        }
+
         tracing::debug!(
-            "[RTT] from_buffer: decoration_cache_read={:?} lines={}",
+            "[RTT] from_buffer: decoration_cache_read={:?} lines={} insert_mode={}",
             deco_start.elapsed(),
-            line_count
+            line_count,
+            mode.is_insert()
         );
 
         Self {

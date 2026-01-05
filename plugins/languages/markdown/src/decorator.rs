@@ -13,7 +13,7 @@ use {
     tree_sitter::{Language, Parser, Query, StreamingIterator, Tree},
 };
 
-use crate::markdown::MarkdownConfig;
+use crate::config::MarkdownConfig;
 
 /// Map language name (from code fence) to file extension for icon lookup
 ///
@@ -49,64 +49,10 @@ fn language_icon(lang: &str) -> String {
 }
 
 /// Block decorations query for markdown
-const BLOCK_DECORATIONS_QUERY: &str = r#"
-; Markdown decoration queries for visual rendering
-
-; Heading markers for concealment (# ## ### etc.)
-(atx_heading (atx_h1_marker) @decoration.heading.1.marker)
-(atx_heading (atx_h2_marker) @decoration.heading.2.marker)
-(atx_heading (atx_h3_marker) @decoration.heading.3.marker)
-(atx_heading (atx_h4_marker) @decoration.heading.4.marker)
-(atx_heading (atx_h5_marker) @decoration.heading.5.marker)
-(atx_heading (atx_h6_marker) @decoration.heading.6.marker)
-
-; Full heading lines for background styling
-(atx_heading) @decoration.heading.line
-
-; List bullet markers for replacement (- + *)
-(list_marker_minus) @decoration.list.bullet
-(list_marker_plus) @decoration.list.bullet
-(list_marker_star) @decoration.list.bullet
-
-; Checkboxes for replacement
-(task_list_marker_unchecked) @decoration.checkbox.unchecked
-(task_list_marker_checked) @decoration.checkbox.checked
-
-; Code blocks for background styling
-(fenced_code_block) @decoration.code_block
-(indented_code_block) @decoration.code_block
-
-; Fenced code block language icon - capture opening fence and language
-(fenced_code_block
-  (fenced_code_block_delimiter) @decoration.code_fence_open
-  (info_string
-    (language) @decoration.code_lang))
-
-; Tables (pipe tables)
-(pipe_table) @decoration.table
-(pipe_table_header) @decoration.table.header
-(pipe_table_delimiter_row) @decoration.table.delimiter
-"#;
+const BLOCK_DECORATIONS_QUERY: &str = include_str!("queries/decorations.scm");
 
 /// Inline decorations query for markdown (emphasis, links, etc.)
-const INLINE_DECORATIONS_QUERY: &str = r#"
-; Markdown inline decoration captures
-
-; Emphasis (italic) - conceal the * markers
-(emphasis) @decoration.emphasis
-
-; Strong emphasis (bold) - conceal the ** markers
-(strong_emphasis) @decoration.strong
-
-; Inline links - conceal brackets and URL
-(inline_link) @decoration.link
-
-; Code spans - for potential styling
-(code_span) @decoration.code_span
-
-; Strikethrough - conceal ~~ markers
-(strikethrough) @decoration.strikethrough
-"#;
+const INLINE_DECORATIONS_QUERY: &str = include_str!("queries_inline/decorations.scm");
 
 /// Markdown decoration provider implementing `DecorationProvider` trait
 ///
