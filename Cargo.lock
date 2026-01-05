@@ -1487,6 +1487,7 @@ dependencies = [
  "reovim-plugin-completion",
  "reovim-plugin-explorer",
  "reovim-plugin-fold",
+ "reovim-plugin-health-check",
  "reovim-plugin-leap",
  "reovim-plugin-lsp",
  "reovim-plugin-microscope",
@@ -1670,6 +1671,15 @@ name = "reovim-plugin-fold"
 version = "0.7.9"
 dependencies = [
  "reovim-core",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-plugin-health-check"
+version = "0.7.9"
+dependencies = [
+ "reovim-core",
+ "reovim-sys",
  "tracing",
 ]
 
