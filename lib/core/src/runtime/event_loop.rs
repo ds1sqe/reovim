@@ -1225,25 +1225,51 @@ impl Runtime {
         // Calculate the target position
         let target = calculate_motion(&buffer.contents, start_pos, motion, count);
 
-        // Determine the range
-        let (start, end) =
-            if start_pos.y < target.y || (start_pos.y == target.y && start_pos.x <= target.x) {
+        // For linewise motions, animate entire lines
+        if motion.is_linewise() {
+            let start_line = start_pos.y.min(target.y);
+            let end_line = start_pos.y.max(target.y);
+
+            // Get the length of the last line for end column
+            #[allow(clippy::cast_possible_truncation)]
+            let end_col = buffer
+                .contents
+                .get(end_line as usize)
+                .map_or(0, |line| line.inner.len() as u16);
+
+            self.trigger_yank_range_animation(
+                buffer_id,
+                crate::screen::Position {
+                    x: 0,
+                    y: start_line,
+                },
+                crate::screen::Position {
+                    x: end_col,
+                    y: end_line,
+                },
+            );
+        } else {
+            // For characterwise motions, use position-based range
+            let (start, end) = if start_pos.y < target.y
+                || (start_pos.y == target.y && start_pos.x <= target.x)
+            {
                 (start_pos, target)
             } else {
                 (target, start_pos)
             };
 
-        // Adjust end for inclusive motions
-        let end = if motion.is_inclusive() {
-            crate::screen::Position {
-                x: end.x.saturating_add(1),
-                y: end.y,
-            }
-        } else {
-            end
-        };
+            // Adjust end for inclusive motions
+            let end = if motion.is_inclusive() {
+                crate::screen::Position {
+                    x: end.x.saturating_add(1),
+                    y: end.y,
+                }
+            } else {
+                end
+            };
 
-        self.trigger_yank_range_animation(buffer_id, start, end);
+            self.trigger_yank_range_animation(buffer_id, start, end);
+        }
     }
 
     /// Trigger yank blink animation for a specific range
@@ -1289,6 +1315,66 @@ impl Runtime {
         if let Some(id) = handle.start(yank_effect) {
             tracing::debug!(
                 "Started yank blink animation with effect id {:?} for range {:?}-{:?}",
+                id,
+                start,
+                end
+            );
+        }
+    }
+
+    /// Trigger a paste animation to highlight the pasted region
+    ///
+    /// Creates a pulsing cyan effect that oscillates between bright and dark cyan
+    /// over 600ms (2 complete pulse cycles). This provides visual feedback when
+    /// text is pasted, similar to the yank animation but with a different color
+    /// and animation type.
+    ///
+    /// # Arguments
+    /// * `buffer_id` - The buffer where paste occurred
+    /// * `start` - Starting position of the pasted region
+    /// * `end` - Ending position of the pasted region
+    #[allow(clippy::cast_possible_truncation)]
+    pub(crate) fn trigger_paste_animation(
+        &self,
+        buffer_id: usize,
+        start: crate::screen::Position,
+        end: crate::screen::Position,
+    ) {
+        let Some(handle) = self.plugin_state.animation_handle() else {
+            return;
+        };
+
+        // Bright cyan for paste highlight
+        let paste_bright = reovim_sys::style::Color::Rgb {
+            r: 100,
+            g: 220,
+            b: 255,
+        };
+        // Darker cyan for pulse low point
+        let paste_dark = reovim_sys::style::Color::Rgb {
+            r: 50,
+            g: 110,
+            b: 150,
+        };
+
+        // Create pulse effect (cyan oscillation, 300ms period)
+        let paste_effect = Effect::new(
+            EffectId::new(0),
+            EffectTarget::CellRegion {
+                buffer_id,
+                start_line: u32::from(start.y),
+                start_col: u32::from(start.x),
+                end_line: u32::from(end.y),
+                end_col: u32::from(end.x),
+            },
+            AnimatedStyle::pulse_bg(paste_bright, paste_dark, 300),
+        )
+        .with_duration(Duration::from_millis(600)) // 2 full pulse cycles
+        .with_priority(100); // High priority for paste feedback
+
+        if let Some(id) = handle.start(paste_effect) {
+            tracing::debug!(
+                "Started paste pulse animation with effect id {:?} for range {:?}-{:?}",
                 id,
                 start,
                 end
