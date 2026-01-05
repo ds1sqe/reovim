@@ -4,6 +4,8 @@ All notable changes to Reovim will be documented in this file.
 
 ## [Unreleased]
 
+## [0.7.9]
+
 ### Added
 
 - **Microscope syntax highlighting** - Preview panels now show syntax-highlighted code
