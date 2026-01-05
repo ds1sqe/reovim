@@ -239,12 +239,8 @@ pub const SMALL_FRAME_3: &[&str] = &[
 ];
 
 /// All small lion frames for breathing animation
-pub static SMALL_BREATHING_FRAMES: &[&[&str]] = &[
-    SMALL_FRAME_0,
-    SMALL_FRAME_1,
-    SMALL_FRAME_2,
-    SMALL_FRAME_3,
-];
+pub static SMALL_BREATHING_FRAMES: &[&[&str]] =
+    &[SMALL_FRAME_0, SMALL_FRAME_1, SMALL_FRAME_2, SMALL_FRAME_3];
 
 // =============================================================================
 // SIZE SELECTION

@@ -15,9 +15,7 @@ pub use registry::PickerRegistry;
 use std::{future::Future, path::PathBuf, pin::Pin};
 
 use reovim_core::{
-    command::CommandId,
-    decoration::SharedDecorationFactory,
-    highlight::ThemeName,
+    command::CommandId, decoration::SharedDecorationFactory, highlight::ThemeName,
     syntax::SharedSyntaxFactory,
 };
 

@@ -34,15 +34,18 @@ impl JumpList {
     /// Record a new position in the jump list
     ///
     /// This truncates any "future" entries if we're not at the end.
-    pub fn push(&mut self, buffer_id: usize, position: Position) {
+    /// Returns `true` if the entry was added, `false` if it was a duplicate.
+    pub fn push(&mut self, buffer_id: usize, position: Position) -> bool {
         let entry = JumpEntry {
             buffer_id,
             position,
         };
 
         // Don't add duplicate if same as last entry
+        // But DO update current_index to point past it
         if self.entries.last() == Some(&entry) {
-            return;
+            self.current_index = self.entries.len();
+            return false;
         }
 
         // Truncate any entries after current position
@@ -58,6 +61,7 @@ impl JumpList {
 
         // Update index to point to end
         self.current_index = self.entries.len();
+        true
     }
 
     /// Jump to older position (Ctrl-O)
@@ -89,6 +93,41 @@ impl JumpList {
     #[must_use]
     pub const fn current_index(&self) -> usize {
         self.current_index
+    }
+
+    /// Push a jump entry representing the current position (no truncation)
+    ///
+    /// Used when recording where you ARE (e.g., INSERT LEAVE), not where you're jumping FROM.
+    /// Unlike `push()`, this doesn't truncate history - it only appends.
+    /// Sets `current_index` to point at the new entry (not past it).
+    pub fn push_current(&mut self, buffer_id: usize, position: Position) -> bool {
+        let entry = JumpEntry {
+            buffer_id,
+            position,
+        };
+
+        // Don't add duplicate if same as last entry
+        if self.entries.last() == Some(&entry) {
+            // Point at the last entry (not past it)
+            if !self.entries.is_empty() {
+                self.current_index = self.entries.len() - 1;
+            }
+            return false;
+        }
+
+        // DON'T truncate - just append to preserve history
+        self.entries.push(entry);
+
+        // Enforce max size
+        if self.entries.len() > MAX_JUMP_LIST_SIZE {
+            self.entries.remove(0);
+        }
+
+        // Point PAST the current entry so first Ctrl+O goes to previous
+        // This matches the semantics of regular jumps - you're at the last position,
+        // and Ctrl+O takes you to the position before it
+        self.current_index = self.entries.len();
+        true
     }
 
     /// Get total entries for debugging/display

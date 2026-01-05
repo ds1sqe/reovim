@@ -9,8 +9,10 @@
 
 use std::collections::HashMap;
 
-use reovim_core::highlight::{Style, ThemeName};
-use reovim_sys::style::Color;
+use {
+    reovim_core::highlight::{Style, ThemeName},
+    reovim_sys::style::Color,
+};
 
 // =============================================================================
 // REO COLOR PALETTE
@@ -26,109 +28,277 @@ mod palette {
     // -------------------------------------------------------------------------
 
     /// #f38ba8 - HSL(343°, 81%, 75%) - Danger, mut, unsafe
-    pub const RED: Color = Color::Rgb { r: 243, g: 139, b: 168 };
+    pub const RED: Color = Color::Rgb {
+        r: 243,
+        g: 139,
+        b: 168,
+    };
     /// #ff6b6b - HSL(0°, 100%, 71%) - Errors, critical
-    pub const RED_BRIGHT: Color = Color::Rgb { r: 255, g: 107, b: 107 };
+    pub const RED_BRIGHT: Color = Color::Rgb {
+        r: 255,
+        g: 107,
+        b: 107,
+    };
     /// #eba0ac - HSL(350°, 65%, 77%) - Alt red, warnings
-    pub const MAROON: Color = Color::Rgb { r: 235, g: 160, b: 172 };
+    pub const MAROON: Color = Color::Rgb {
+        r: 235,
+        g: 160,
+        b: 172,
+    };
     /// #ff8a80 - HSL(5°, 100%, 75%) - HTML tags
-    pub const CORAL: Color = Color::Rgb { r: 255, g: 138, b: 128 };
+    pub const CORAL: Color = Color::Rgb {
+        r: 255,
+        g: 138,
+        b: 128,
+    };
     /// #fab387 - HSL(23°, 92%, 75%) - Constants, numbers
-    pub const ORANGE: Color = Color::Rgb { r: 250, g: 179, b: 135 };
+    pub const ORANGE: Color = Color::Rgb {
+        r: 250,
+        g: 179,
+        b: 135,
+    };
     /// #ffb86c - HSL(27°, 100%, 71%) - Float numbers
-    pub const PEACH: Color = Color::Rgb { r: 255, g: 184, b: 108 };
+    pub const PEACH: Color = Color::Rgb {
+        r: 255,
+        g: 184,
+        b: 108,
+    };
     /// #f9e2af - HSL(41°, 86%, 83%) - Integers, booleans
-    pub const GOLD: Color = Color::Rgb { r: 249, g: 226, b: 175 };
+    pub const GOLD: Color = Color::Rgb {
+        r: 249,
+        g: 226,
+        b: 175,
+    };
     /// #e5c07b - HSL(39°, 67%, 69%) - Parameters, type params
-    pub const YELLOW: Color = Color::Rgb { r: 229, g: 192, b: 123 };
+    pub const YELLOW: Color = Color::Rgb {
+        r: 229,
+        g: 192,
+        b: 123,
+    };
     /// #f0d9a0 - HSL(42°, 71%, 78%) - Patterns
-    pub const YELLOW_SOFT: Color = Color::Rgb { r: 240, g: 217, b: 160 };
+    pub const YELLOW_SOFT: Color = Color::Rgb {
+        r: 240,
+        g: 217,
+        b: 160,
+    };
 
     // -------------------------------------------------------------------------
     // GREEN CLUSTER (90-150° Hue) - Strings, properties, success
     // -------------------------------------------------------------------------
 
     /// #98c379 - HSL(95°, 38%, 62%) - Strings
-    pub const GREEN: Color = Color::Rgb { r: 152, g: 195, b: 121 };
+    pub const GREEN: Color = Color::Rgb {
+        r: 152,
+        g: 195,
+        b: 121,
+    };
     /// #a6e3a1 - HSL(115°, 54%, 76%) - Success, diff add
-    pub const GREEN_BRIGHT: Color = Color::Rgb { r: 166, g: 227, b: 161 };
+    pub const GREEN_BRIGHT: Color = Color::Rgb {
+        r: 166,
+        g: 227,
+        b: 161,
+    };
     /// #c3e88d - HSL(82°, 68%, 73%) - String interpolation
-    pub const LIME: Color = Color::Rgb { r: 195, g: 232, b: 141 };
+    pub const LIME: Color = Color::Rgb {
+        r: 195,
+        g: 232,
+        b: 141,
+    };
     /// #56b6c2 - HSL(187°, 47%, 55%) - Properties, fields
-    pub const TEAL: Color = Color::Rgb { r: 86, g: 182, b: 194 };
+    pub const TEAL: Color = Color::Rgb {
+        r: 86,
+        g: 182,
+        b: 194,
+    };
     /// #1abc9c - HSL(168°, 76%, 42%) - Lifetimes, hints
-    pub const TEAL_DARK: Color = Color::Rgb { r: 26, g: 188, b: 156 };
+    pub const TEAL_DARK: Color = Color::Rgb {
+        r: 26,
+        g: 188,
+        b: 156,
+    };
     /// #94e2d5 - HSL(170°, 57%, 73%) - Character literals
-    pub const MINT: Color = Color::Rgb { r: 148, g: 226, b: 213 };
+    pub const MINT: Color = Color::Rgb {
+        r: 148,
+        g: 226,
+        b: 213,
+    };
 
     // -------------------------------------------------------------------------
     // COOL CLUSTER (170-240° Hue) - Types, functions, imports
     // -------------------------------------------------------------------------
 
     /// #7dcfff - HSL(197°, 100%, 74%) - Attributes, imports
-    pub const CYAN: Color = Color::Rgb { r: 125, g: 207, b: 255 };
+    pub const CYAN: Color = Color::Rgb {
+        r: 125,
+        g: 207,
+        b: 255,
+    };
     /// #89dceb - HSL(189°, 71%, 73%) - Constructors
-    pub const CYAN_BRIGHT: Color = Color::Rgb { r: 137, g: 220, b: 235 };
+    pub const CYAN_BRIGHT: Color = Color::Rgb {
+        r: 137,
+        g: 220,
+        b: 235,
+    };
     /// #74c7ec - HSL(199°, 76%, 69%) - Info
-    pub const SKY: Color = Color::Rgb { r: 116, g: 199, b: 236 };
+    pub const SKY: Color = Color::Rgb {
+        r: 116,
+        g: 199,
+        b: 236,
+    };
     /// #2ac3de - HSL(189°, 71%, 52%) - Types (custom)
-    pub const AQUA: Color = Color::Rgb { r: 42, g: 195, b: 222 };
+    pub const AQUA: Color = Color::Rgb {
+        r: 42,
+        g: 195,
+        b: 222,
+    };
     /// #89ddff - HSL(191°, 100%, 77%) - Operators
-    pub const TURQUOISE: Color = Color::Rgb { r: 137, g: 221, b: 255 };
+    pub const TURQUOISE: Color = Color::Rgb {
+        r: 137,
+        g: 221,
+        b: 255,
+    };
     /// #7aa2f7 - HSL(220°, 89%, 72%) - Functions
-    pub const BLUE: Color = Color::Rgb { r: 122, g: 162, b: 247 };
+    pub const BLUE: Color = Color::Rgb {
+        r: 122,
+        g: 162,
+        b: 247,
+    };
     /// #89b4fa - HSL(217°, 92%, 76%) - Function definitions
-    pub const BLUE_BRIGHT: Color = Color::Rgb { r: 137, g: 180, b: 250 };
+    pub const BLUE_BRIGHT: Color = Color::Rgb {
+        r: 137,
+        g: 180,
+        b: 250,
+    };
     /// #3d59a1 - HSL(222°, 45%, 44%) - Modules, muted blue
-    pub const BLUE_DARK: Color = Color::Rgb { r: 61, g: 89, b: 161 };
+    pub const BLUE_DARK: Color = Color::Rgb {
+        r: 61,
+        g: 89,
+        b: 161,
+    };
     /// #6366f1 - HSL(239°, 84%, 67%) - Deep functions
-    pub const INDIGO: Color = Color::Rgb { r: 99, g: 102, b: 241 };
+    pub const INDIGO: Color = Color::Rgb {
+        r: 99,
+        g: 102,
+        b: 241,
+    };
 
     // -------------------------------------------------------------------------
     // PURPLE CLUSTER (260-320° Hue) - Keywords, control flow, macros
     // -------------------------------------------------------------------------
 
     /// #9d7cd8 - HSL(267°, 53%, 67%) - Keywords
-    pub const PURPLE: Color = Color::Rgb { r: 157, g: 124, b: 216 };
+    pub const PURPLE: Color = Color::Rgb {
+        r: 157,
+        g: 124,
+        b: 216,
+    };
     /// #bb9af7 - HSL(267°, 84%, 79%) - Control flow
-    pub const PURPLE_BRIGHT: Color = Color::Rgb { r: 187, g: 154, b: 247 };
+    pub const PURPLE_BRIGHT: Color = Color::Rgb {
+        r: 187,
+        g: 154,
+        b: 247,
+    };
     /// #c7b0fa - HSL(259°, 88%, 84%) - Type keywords
-    pub const LAVENDER: Color = Color::Rgb { r: 199, g: 176, b: 250 };
+    pub const LAVENDER: Color = Color::Rgb {
+        r: 199,
+        g: 176,
+        b: 250,
+    };
     /// #cba6f7 - HSL(267°, 84%, 81%) - Alt keywords
-    pub const MAUVE: Color = Color::Rgb { r: 203, g: 166, b: 247 };
+    pub const MAUVE: Color = Color::Rgb {
+        r: 203,
+        g: 166,
+        b: 247,
+    };
     /// #f5c2e7 - HSL(316°, 72%, 86%) - Macros
-    pub const MAGENTA: Color = Color::Rgb { r: 245, g: 194, b: 231 };
+    pub const MAGENTA: Color = Color::Rgb {
+        r: 245,
+        g: 194,
+        b: 231,
+    };
     /// #ff79c6 - HSL(326°, 100%, 74%) - Async/loops
-    pub const PINK: Color = Color::Rgb { r: 255, g: 121, b: 198 };
+    pub const PINK: Color = Color::Rgb {
+        r: 255,
+        g: 121,
+        b: 198,
+    };
     /// #f2cdcd - HSL(0°, 59%, 88%) - Decorators
-    pub const FLAMINGO: Color = Color::Rgb { r: 242, g: 205, b: 205 };
+    pub const FLAMINGO: Color = Color::Rgb {
+        r: 242,
+        g: 205,
+        b: 205,
+    };
     /// #f5e0dc - HSL(10°, 56%, 91%) - Special strings
-    pub const ROSEWATER: Color = Color::Rgb { r: 245, g: 224, b: 220 };
+    pub const ROSEWATER: Color = Color::Rgb {
+        r: 245,
+        g: 224,
+        b: 220,
+    };
 
     // -------------------------------------------------------------------------
     // NEUTRAL CLUSTER (Desaturated) - Text, backgrounds, UI
     // -------------------------------------------------------------------------
 
     /// #c0caf5 - HSL(227°, 70%, 85%) - Default text
-    pub const FG: Color = Color::Rgb { r: 192, g: 202, b: 245 };
+    pub const FG: Color = Color::Rgb {
+        r: 192,
+        g: 202,
+        b: 245,
+    };
     /// #a9b1d6 - HSL(227°, 36%, 75%) - Secondary text
-    pub const FG_DIM: Color = Color::Rgb { r: 169, g: 177, b: 214 };
+    pub const FG_DIM: Color = Color::Rgb {
+        r: 169,
+        g: 177,
+        b: 214,
+    };
     /// #9399b2 - HSL(227°, 20%, 65%) - Tertiary text
-    pub const FG_MUTED: Color = Color::Rgb { r: 147, g: 153, b: 178 };
+    pub const FG_MUTED: Color = Color::Rgb {
+        r: 147,
+        g: 153,
+        b: 178,
+    };
     /// #565f89 - HSL(225°, 23%, 44%) - Comments
-    pub const COMMENT: Color = Color::Rgb { r: 86, g: 95, b: 137 };
+    pub const COMMENT: Color = Color::Rgb {
+        r: 86,
+        g: 95,
+        b: 137,
+    };
     /// #6c7086 - HSL(227°, 12%, 47%) - Muted elements
-    pub const OVERLAY: Color = Color::Rgb { r: 108, g: 112, b: 134 };
+    pub const OVERLAY: Color = Color::Rgb {
+        r: 108,
+        g: 112,
+        b: 134,
+    };
     /// #3b4261 - HSL(224°, 25%, 30%) - Line numbers
-    pub const GUTTER: Color = Color::Rgb { r: 59, g: 66, b: 97 };
+    pub const GUTTER: Color = Color::Rgb {
+        r: 59,
+        g: 66,
+        b: 97,
+    };
     /// #45475a - HSL(225°, 13%, 31%) - Elevated surfaces
-    pub const SURFACE2: Color = Color::Rgb { r: 69, g: 71, b: 90 };
+    pub const SURFACE2: Color = Color::Rgb {
+        r: 69,
+        g: 71,
+        b: 90,
+    };
     /// #313244 - HSL(231°, 16%, 23%) - UI backgrounds
-    pub const SURFACE1: Color = Color::Rgb { r: 49, g: 50, b: 68 };
+    pub const SURFACE1: Color = Color::Rgb {
+        r: 49,
+        g: 50,
+        b: 68,
+    };
     /// #1e1e2e - HSL(240°, 23%, 15%) - Base background
-    pub const SURFACE0: Color = Color::Rgb { r: 30, g: 30, b: 46 };
+    pub const SURFACE0: Color = Color::Rgb {
+        r: 30,
+        g: 30,
+        b: 46,
+    };
     /// #181825 - HSL(240°, 21%, 12%) - Deepest background
-    pub const BLACK: Color = Color::Rgb { r: 24, g: 24, b: 37 };
+    pub const BLACK: Color = Color::Rgb {
+        r: 24,
+        g: 24,
+        b: 37,
+    };
 
     // -------------------------------------------------------------------------
     // SEMANTIC STATUS - Errors, warnings, diffs
@@ -535,8 +705,16 @@ mod tests {
         let theme = TreesitterTheme::reo();
 
         assert!(theme.style_for_capture("keyword").is_some());
-        assert!(theme.style_for_capture("keyword.control.conditional").is_some());
-        assert!(theme.style_for_capture("keyword.control.conditional.if").is_some());
+        assert!(
+            theme
+                .style_for_capture("keyword.control.conditional")
+                .is_some()
+        );
+        assert!(
+            theme
+                .style_for_capture("keyword.control.conditional.if")
+                .is_some()
+        );
     }
 
     #[test]
@@ -544,10 +722,38 @@ mod tests {
         use palette::*;
 
         // Verify key colors from each cluster
-        assert!(matches!(RED, Color::Rgb { r: 243, g: 139, b: 168 }));
-        assert!(matches!(GREEN, Color::Rgb { r: 152, g: 195, b: 121 }));
-        assert!(matches!(BLUE, Color::Rgb { r: 122, g: 162, b: 247 }));
-        assert!(matches!(PURPLE, Color::Rgb { r: 157, g: 124, b: 216 }));
+        assert!(matches!(
+            RED,
+            Color::Rgb {
+                r: 243,
+                g: 139,
+                b: 168
+            }
+        ));
+        assert!(matches!(
+            GREEN,
+            Color::Rgb {
+                r: 152,
+                g: 195,
+                b: 121
+            }
+        ));
+        assert!(matches!(
+            BLUE,
+            Color::Rgb {
+                r: 122,
+                g: 162,
+                b: 247
+            }
+        ));
+        assert!(matches!(
+            PURPLE,
+            Color::Rgb {
+                r: 157,
+                g: 124,
+                b: 216
+            }
+        ));
     }
 
     #[test]

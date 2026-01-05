@@ -1,7 +1,9 @@
 //! Syntax highlighting helper for microscope previews
 
-use reovim_core::{highlight::Highlight, syntax::SyntaxFactory};
-use reovim_plugin_microscope::microscope::StyledSpan;
+use {
+    reovim_core::{highlight::Highlight, syntax::SyntaxFactory},
+    reovim_plugin_microscope::microscope::StyledSpan,
+};
 
 /// Compute styled lines for preview content
 ///
@@ -93,8 +95,10 @@ fn convert_highlights_to_spans(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use reovim_core::highlight::{Span, Style};
+    use {
+        super::*,
+        reovim_core::highlight::{HighlightGroup, Span, Style},
+    };
 
     #[test]
     fn test_single_line_highlight() {
@@ -107,6 +111,7 @@ mod tests {
                 end_col: 2,
             },
             style: Style::default(),
+            group: HighlightGroup::Syntax,
         }];
 
         let spans = convert_highlights_to_spans(highlights, &lines);
@@ -131,6 +136,7 @@ mod tests {
                 end_col: 10,
             },
             style: Style::default(),
+            group: HighlightGroup::Syntax,
         }];
 
         let spans = convert_highlights_to_spans(highlights, &lines);

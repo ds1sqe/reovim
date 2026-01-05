@@ -441,6 +441,28 @@ impl Runtime {
                 });
         }
 
+        // Enable keyboard enhancement protocol if supported
+        // This allows terminals (kitty, WezTerm, foot) to disambiguate Ctrl+I from Tab
+        if reovim_sys::terminal::supports_keyboard_enhancement().unwrap_or(false) {
+            use reovim_sys::{
+                ExecutableCommand,
+                event::{KeyboardEnhancementFlags, PushKeyboardEnhancementFlags},
+            };
+
+            match std::io::stdout().execute(PushKeyboardEnhancementFlags(
+                KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES,
+            )) {
+                Ok(_) => {
+                    tracing::info!("Keyboard enhancement protocol enabled");
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to enable keyboard enhancement: {}", e);
+                }
+            }
+        } else {
+            tracing::debug!("Keyboard enhancement not supported by terminal");
+        }
+
         runtime
     }
 
@@ -481,9 +503,13 @@ impl Runtime {
                 buf.begin_batch();
             }
         } else if was_insert && !is_insert {
-            // Leaving insert mode: flush batch
+            // Leaving insert mode: flush batch and record jump position
             if let Some(buf) = self.buffers.get_mut(&self.active_buffer_id) {
                 buf.flush_batch();
+                // Record current position as a jump point when leaving insert mode
+                // This allows navigating back to where editing was completed
+                // Use push_current() which doesn't truncate (preserves jump history)
+                self.jump_list.push_current(self.active_buffer_id, buf.cur);
             }
         }
 
@@ -1165,9 +1191,13 @@ impl super::RuntimeContext for Runtime {
                 buf.begin_batch();
             }
         } else if was_insert && !is_insert {
-            // Leaving insert mode: flush batch
+            // Leaving insert mode: flush batch and record jump position
             if let Some(buf) = self.buffers.get_mut(&self.active_buffer_id) {
                 buf.flush_batch();
+                // Record current position as a jump point when leaving insert mode
+                // This allows navigating back to where editing was completed
+                // Use push_current() which doesn't truncate (preserves jump history)
+                self.jump_list.push_current(self.active_buffer_id, buf.cur);
             }
         }
 
@@ -1177,5 +1207,14 @@ impl super::RuntimeContext for Runtime {
 
     fn screen_size(&self) -> (u16, u16) {
         (self.screen.width(), self.screen.height())
+    }
+}
+
+impl Drop for Runtime {
+    fn drop(&mut self) {
+        // Clean up keyboard enhancement protocol
+        use reovim_sys::{ExecutableCommand, event::PopKeyboardEnhancementFlags};
+
+        let _ = std::io::stdout().execute(PopKeyboardEnhancementFlags);
     }
 }

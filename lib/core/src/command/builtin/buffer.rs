@@ -31,6 +31,10 @@ impl CommandTrait for BufferPrevCommand {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn is_jump(&self) -> bool {
+        true
+    }
 }
 
 /// Switch to next buffer (L or ]b)
@@ -56,6 +60,10 @@ impl CommandTrait for BufferNextCommand {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn is_jump(&self) -> bool {
+        true
     }
 }
 

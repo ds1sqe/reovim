@@ -40,6 +40,10 @@ impl CommandTrait for LeapForwardCommand {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn is_jump(&self) -> bool {
+        true
+    }
 }
 
 /// Leap backward command - starts leap mode searching backward
@@ -65,6 +69,10 @@ impl CommandTrait for LeapBackwardCommand {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn is_jump(&self) -> bool {
+        true
     }
 }
 

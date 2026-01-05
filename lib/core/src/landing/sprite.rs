@@ -136,10 +136,7 @@ impl AsciiSprite {
     /// Get current frame content
     #[must_use]
     pub fn current_frame(&self) -> &'static [&'static str] {
-        self.frames
-            .get(self.current_frame)
-            .copied()
-            .unwrap_or(&[])
+        self.frames.get(self.current_frame).copied().unwrap_or(&[])
     }
 
     /// Get current frame index

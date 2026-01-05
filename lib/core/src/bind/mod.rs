@@ -590,6 +590,13 @@ impl KeyMap {
             keys![(Ctrl 'i')],
             KeyMapInner::with_command_id(builtin::JUMP_NEWER).with_category("jump"),
         );
+        // Tab fallback: In terminals without keyboard enhancement protocol,
+        // Ctrl+I is indistinguishable from Tab. Since Tab has no other use
+        // in normal mode, we bind it to jump-newer as a vim-compatible fallback.
+        normal.insert(
+            keys![Tab],
+            KeyMapInner::with_command_id(builtin::JUMP_NEWER).with_category("jump"),
+        );
 
         // Undo/Redo
         normal
@@ -713,6 +720,19 @@ impl KeyMap {
         insert
             .insert(keys![Backspace], KeyMapInner::with_command_id(builtin::DELETE_CHAR_BACKWARD));
         insert.insert(keys![Enter], KeyMapInner::with_command_id(builtin::INSERT_NEWLINE));
+        // Jump list navigation (works in insert mode too)
+        insert.insert(
+            keys![(Ctrl 'o')],
+            KeyMapInner::with_command_id(builtin::JUMP_OLDER).with_category("jump"),
+        );
+        insert.insert(
+            keys![(Ctrl 'i')],
+            KeyMapInner::with_command_id(builtin::JUMP_NEWER).with_category("jump"),
+        );
+        insert.insert(
+            keys![Tab],
+            KeyMapInner::with_command_id(builtin::JUMP_NEWER).with_category("jump"),
+        );
         // Completion keybindings are registered by the completion plugin
 
         // Editor Visual mode
