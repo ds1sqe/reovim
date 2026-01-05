@@ -703,6 +703,54 @@ impl Buffer {
         });
     }
 
+    /// Insert text linewise (paste complete lines below/above current line)
+    ///
+    /// This is used for linewise yank/paste operations (yy, yj, yk).
+    /// Unlike `insert_text` which inserts at cursor position, this inserts
+    /// complete lines below (p) or above (P) the current line.
+    ///
+    /// # Arguments
+    /// * `text` - The text to insert (should end with newline for linewise yanks)
+    /// * `before` - If true, insert above current line (P), otherwise below (p)
+    #[allow(clippy::cast_possible_truncation)]
+    pub fn insert_linewise(&mut self, text: &str, before: bool) {
+        if text.is_empty() {
+            return;
+        }
+
+        let pos = self.cur;
+        let current_line = pos.y as usize;
+
+        // Split the yanked text into lines (removing trailing newline if present)
+        let yanked_lines: Vec<&str> = text.trim_end_matches('\n').split('\n').collect();
+
+        if before {
+            // P: Insert lines ABOVE current line
+            for (i, line_text) in yanked_lines.iter().enumerate() {
+                self.contents
+                    .insert(current_line + i, Line::from(*line_text));
+            }
+            // Cursor moves to start of first inserted line
+            self.cur.y = current_line as u16;
+        } else {
+            // p: Insert lines BELOW current line
+            let insert_pos = current_line + 1;
+            for (i, line_text) in yanked_lines.iter().enumerate() {
+                self.contents.insert(insert_pos + i, Line::from(*line_text));
+            }
+            // Cursor moves to start of first inserted line
+            self.cur.y = insert_pos as u16;
+        }
+        // Cursor always moves to column 0 for linewise paste
+        self.cur.x = 0;
+
+        // Record as a single change for undo
+        self.record_change(Change::Insert {
+            pos,
+            text: text.to_string(),
+        });
+    }
+
     /// Insert text at current cursor position (for undo/redo, no history)
     #[allow(clippy::cast_possible_truncation)]
     fn insert_text_at_cursor(&mut self, text: &str) {

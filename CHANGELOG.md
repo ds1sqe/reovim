@@ -28,6 +28,32 @@ All notable changes to Reovim will be documented in this file.
 
 ### Fixed
 
+- **Characterwise paste positioning** - Fixed `p` command to paste AFTER cursor for characterwise yanks
+  - `Y` (yank to end of line) followed by `p` now correctly pastes after cursor position
+  - Previously pasted at cursor position instead of after it (breaking Vim compatibility)
+  - Added cursor movement logic (`buf.cur.x += 1`) before characterwise paste when `before=false`
+  - All yank operations now properly track yank type (linewise vs characterwise)
+
+- **Linewise paste behavior** - Fixed `dd`/`yy` paste to use proper linewise semantics
+  - `p` now pastes BELOW current line (Vim behavior)
+  - `P` now pastes ABOVE current line (Vim behavior)
+  - Previously pasted at cursor position, corrupting text for linewise operations
+  - Added `insert_linewise()` method to buffer for proper linewise paste handling
+
+- **Yank type tracking** - Extended yank/delete operators to track linewise vs characterwise
+  - Added `YankType` enum and `RegisterContent` struct to register system
+  - Updated `Delete` operator to detect linewise motions (`dj`, `dk`, `dd`)
+  - Updated `Change` operator to detect linewise motions (`cj`, `ck`, `cc`)
+  - Extended `CommandResult::ClipboardWrite` with `yank_type` field
+  - All 26 operator tests pass with correct yank/paste behavior
+
+- **Yank animations** - Added visual feedback for `Y` and `yy` commands
+  - `Y` (yank to end) now highlights from cursor to end of line
+  - `yy` (yank line) now highlights entire current line
+  - Extended `CommandResult::ClipboardWrite` with `yank_range` field for animation support
+  - Animation start position adjusted (`x+1`) to avoid highlighting extra character on left
+  - Visual feedback matches Vim's yank highlight feature
+
 - **Jump list navigation (Ctrl+O/Ctrl+I)** - Fixed non-functional jump navigation (#4)
   - Added Tab as fallback keybinding for jump-newer (works in all terminals)
   - Enabled Kitty keyboard enhancement protocol for modern terminals (kitty, WezTerm, foot)

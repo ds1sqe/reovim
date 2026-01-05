@@ -183,6 +183,71 @@ async fn test_dk_delete_two_lines() {
 }
 
 // ============================================================================
+// yj/yk (yank lines with motion) tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_yj_yank_two_lines() {
+    let result = ServerTest::new()
+        .await
+        .with_content("line 1\nline 2\nline 3")
+        .with_keys("yjp")
+        .run()
+        .await;
+
+    // yj should yank current line + next line (2 lines total)
+    // p should paste those 2 lines below current line
+    result.assert_buffer_eq("line 1\nline 1\nline 2\nline 2\nline 3");
+}
+
+#[tokio::test]
+async fn test_yk_yank_two_lines() {
+    let result = ServerTest::new()
+        .await
+        .with_content("line 1\nline 2\nline 3")
+        .with_keys("jykp")
+        .run()
+        .await;
+
+    // Move to line 2, yk should yank line 1 + line 2 (2 lines total)
+    // p should paste those 2 lines below current line
+    result.assert_buffer_eq("line 1\nline 2\nline 1\nline 2\nline 3");
+}
+
+// ============================================================================
+// Y (yank to end of line) tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_big_y_paste_after() {
+    let result = ServerTest::new()
+        .await
+        .with_content("abc")
+        .with_keys("Yp") // Y to yank "abc", p to paste
+        .run()
+        .await;
+
+    // Y yanks "abc" (from cursor to end, characterwise)
+    // p pastes AFTER cursor (at position 0, 'a')
+    // Result: 'a' + 'abc' + 'bc' = "aabcbc"
+    result.assert_buffer_eq("aabcbc");
+}
+
+#[tokio::test]
+async fn test_big_y_paste_before() {
+    let result = ServerTest::new()
+        .await
+        .with_content("abc")
+        .with_keys("YP") // Y to yank "abc", P to paste BEFORE
+        .run()
+        .await;
+
+    // Y yanks "abc" (from start to end, characterwise)
+    // P pastes BEFORE cursor (which is at 'a')
+    result.assert_buffer_eq("abcabc");
+}
+
+// ============================================================================
 // Escape cancels operator - WORKING
 // ============================================================================
 
@@ -301,12 +366,7 @@ async fn test_db_deletes_backward() {
 // dd + p (delete then paste)
 // ============================================================================
 
-/// dd populates register - p inserts at cursor (not vim-style linewise paste)
-///
-/// Note: In vim, `p` after linewise delete pastes BELOW current line.
-/// Our implementation inserts at cursor position, which for linewise deletes
-/// restores the text at the same location. This test verifies the register
-/// is populated (text can be pasted) even if placement differs from vim.
+/// dd populates register - p pastes below current line (Vim-compatible)
 #[tokio::test]
 async fn test_dd_p_register_populated() {
     let result = ServerTest::new()
@@ -316,10 +376,10 @@ async fn test_dd_p_register_populated() {
         .run()
         .await;
 
-    // dd deletes "line 1", cursor at start of "line 2"
-    // p inserts "line 1\n" at cursor, restoring original appearance
-    // The register IS populated (proven by text being inserted)
-    result.assert_buffer_eq("line 1\nline 2\nline 3");
+    // dd deletes "line 1\n", buffer becomes "line 2\nline 3", cursor at line 0
+    // p pastes "line 1\n" BELOW current line (Vim behavior)
+    // Result: "line 2\nline 1\nline 3"
+    result.assert_buffer_eq("line 2\nline 1\nline 3");
 }
 
 /// Verify dd actually populates register by pasting twice

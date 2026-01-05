@@ -407,18 +407,41 @@ impl Runtime {
                     text,
                     register,
                     mode_change,
+                    yank_type,
+                    yank_range,
                 } => {
-                    // Trigger yank animation for visual mode selections
-                    // Must capture selection bounds BEFORE mode change clears the selection
-                    if let Some(buf) = self.buffers.get(&buffer_id)
+                    use crate::register::YankType;
+
+                    // Trigger yank animation
+                    // Priority: yank_range > visual mode selection
+                    if let Some((start, end)) = yank_range {
+                        // Command provided explicit range for animation (e.g., Y, yy)
+                        self.trigger_yank_range_animation(buffer_id, start, end);
+                    } else if let Some(buf) = self.buffers.get(&buffer_id)
                         && buf.selection.active
                     {
+                        // Visual mode selection - capture bounds BEFORE mode change clears selection
                         use crate::buffer::SelectionOps;
                         let (start, end) = buf.selection_bounds();
                         self.trigger_yank_range_animation(buffer_id, start, end);
                     }
 
-                    self.registers.set_by_name(register, text);
+                    // Use yank type if specified, otherwise default to characterwise
+                    let final_yank_type = yank_type.unwrap_or(YankType::Characterwise);
+
+                    // Handle named registers
+                    match register {
+                        None | Some('"') => {
+                            // Unnamed register
+                            self.registers.set_with_type(text, final_yank_type);
+                        }
+                        Some(reg) => {
+                            // Named registers don't support yank type yet
+                            // TODO: Extend named registers to support yank type
+                            self.registers.set_by_name(Some(reg), text);
+                        }
+                    }
+
                     if let Some(new_mode) = mode_change {
                         self.handle_mode_change(new_mode);
                     }
@@ -426,18 +449,36 @@ impl Runtime {
                 }
                 CommandResult::DeferToRuntime(action) => {
                     match action {
-                        DeferredAction::Paste {
-                            before: _before,
-                            register,
-                        } => {
+                        DeferredAction::Paste { before, register } => {
+                            use crate::register::YankType;
+
                             // Handle paste from specified register
-                            // TODO: implement proper PasteBefore (paste at cursor vs before cursor)
                             // Use active_buffer_id, not context.buffer_id (which is hardcoded to 0 in dispatcher)
                             let paste_buffer_id = self.active_buffer_id;
-                            if let Some(text) = self.registers.get_by_name(register)
+                            if let Some(content) = self.registers.get_by_name(register)
                                 && let Some(buf) = self.buffers.get_mut(&paste_buffer_id)
                             {
-                                buf.insert_text(&text);
+                                match content.yank_type {
+                                    YankType::Characterwise => {
+                                        // For characterwise paste:
+                                        // p (before=false): paste AFTER cursor (move right by 1 first)
+                                        // P (before=true): paste BEFORE cursor (at current position)
+                                        if !before {
+                                            // Move cursor right by 1 to paste after current character
+                                            let y = buf.cur.y as usize;
+                                            if let Some(line) = buf.contents.get(y) {
+                                                let max_x = line.inner.len();
+                                                if (buf.cur.x as usize) < max_x {
+                                                    buf.cur.x += 1;
+                                                }
+                                            }
+                                        }
+                                        buf.insert_text(&content.text);
+                                    }
+                                    YankType::Linewise => {
+                                        buf.insert_linewise(&content.text, before);
+                                    }
+                                }
                             }
                             // Schedule treesitter reparse after paste
                             self.schedule_treesitter_reparse(paste_buffer_id);
@@ -607,14 +648,23 @@ impl Runtime {
         if let Some(buffer) = self.buffers.get_mut(&buffer_id) {
             match *action {
                 OperatorMotionAction::Delete { motion, count } => {
+                    use crate::register::YankType;
+
                     let deleted = buffer.delete_to_motion(motion, count);
                     if !deleted.is_empty() {
-                        // Store in unnamed register
-                        self.registers.set(deleted);
+                        // Store in unnamed register with correct yank type
+                        let yank_type = if motion.is_linewise() {
+                            YankType::Linewise
+                        } else {
+                            YankType::Characterwise
+                        };
+                        self.registers.set_with_type(deleted, yank_type);
                         text_modified = true;
                     }
                 }
                 OperatorMotionAction::Yank { motion, count } => {
+                    use crate::register::YankType;
+
                     // Calculate range before yanking to trigger visual feedback
                     let start_pos = buffer.cur;
                     let yanked = buffer.yank_to_motion(motion, count);
@@ -627,16 +677,28 @@ impl Runtime {
                             buffer_id, start_pos, motion, count, line_count,
                         );
 
-                        // Store in unnamed register
-                        self.registers.set(yanked);
+                        // Store in unnamed register with correct yank type
+                        let yank_type = if motion.is_linewise() {
+                            YankType::Linewise
+                        } else {
+                            YankType::Characterwise
+                        };
+                        self.registers.set_with_type(yanked, yank_type);
                     }
                     // Yank doesn't modify text
                 }
                 OperatorMotionAction::Change { motion, count } => {
+                    use crate::register::YankType;
+
                     let deleted = buffer.delete_to_motion(motion, count);
                     if !deleted.is_empty() {
-                        // Store in unnamed register
-                        self.registers.set(deleted);
+                        // Store in unnamed register with correct yank type
+                        let yank_type = if motion.is_linewise() {
+                            YankType::Linewise
+                        } else {
+                            YankType::Characterwise
+                        };
+                        self.registers.set_with_type(deleted, yank_type);
                         text_modified = true;
                     }
                     // Enter insert mode after change

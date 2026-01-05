@@ -2,10 +2,46 @@
 
 use {arboard::Clipboard, std::collections::HashMap};
 
+/// Type of yank operation (affects how paste behaves)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum YankType {
+    /// Characterwise yank - paste at cursor position (e.g., yw, y$)
+    Characterwise,
+    /// Linewise yank - paste below/above current line (e.g., yy, yj, yk)
+    Linewise,
+}
+
+/// Register content with yank type information
+#[derive(Debug, Clone)]
+pub struct RegisterContent {
+    pub text: String,
+    pub yank_type: YankType,
+}
+
+impl RegisterContent {
+    /// Create new register content with specified yank type
+    #[must_use]
+    pub const fn new(text: String, yank_type: YankType) -> Self {
+        Self { text, yank_type }
+    }
+
+    /// Create characterwise register content
+    #[must_use]
+    pub const fn characterwise(text: String) -> Self {
+        Self::new(text, YankType::Characterwise)
+    }
+
+    /// Create linewise register content
+    #[must_use]
+    pub const fn linewise(text: String) -> Self {
+        Self::new(text, YankType::Linewise)
+    }
+}
+
 /// Vim-style register storage with system clipboard integration
 pub struct Registers {
     /// Unnamed register ("") - used by default for yank/delete/paste
-    unnamed: String,
+    unnamed: RegisterContent,
     /// Named registers ("a-"z)
     named: HashMap<char, String>,
     /// System clipboard handle
@@ -24,21 +60,26 @@ impl Registers {
     pub fn new() -> Self {
         let system_clipboard = Clipboard::new().ok();
         Self {
-            unnamed: String::new(),
+            unnamed: RegisterContent::characterwise(String::new()),
             named: HashMap::new(),
             system_clipboard,
         }
     }
 
-    /// Get the unnamed register content
+    /// Get the unnamed register content (returns `RegisterContent` with yank type)
     #[must_use]
-    pub fn get(&self) -> &str {
+    pub const fn get(&self) -> &RegisterContent {
         &self.unnamed
     }
 
-    /// Set the unnamed register content
+    /// Set the unnamed register content with yank type
+    pub fn set_with_type(&mut self, text: String, yank_type: YankType) {
+        self.unnamed = RegisterContent::new(text, yank_type);
+    }
+
+    /// Set the unnamed register content (defaults to characterwise for backward compatibility)
     pub fn set(&mut self, text: String) {
-        self.unnamed = text;
+        self.unnamed = RegisterContent::characterwise(text);
     }
 
     /// Get a named register content ("a-"z)
@@ -95,24 +136,26 @@ impl Registers {
     /// - 'a'-'z' -> named register
     /// - '+' -> system clipboard
     /// - '*' -> selection (same as system on Linux/Windows)
-    pub fn get_by_name(&mut self, name: Option<char>) -> Option<String> {
+    pub fn get_by_name(&mut self, name: Option<char>) -> Option<RegisterContent> {
         match name {
             None | Some('"') => Some(self.unnamed.clone()),
-            Some('+') => self.get_system(),
-            Some('*') => self.get_selection(),
-            Some(c) if c.is_ascii_lowercase() => self.get_named(c).map(String::from),
+            Some('+') => self.get_system().map(RegisterContent::characterwise),
+            Some('*') => self.get_selection().map(RegisterContent::characterwise),
+            Some(c) if c.is_ascii_lowercase() => self
+                .get_named(c)
+                .map(|s| RegisterContent::characterwise(s.to_string())),
             _ => None,
         }
     }
 
-    /// Set content to a register by name
+    /// Set content to a register by name (defaults to characterwise for unnamed)
     /// - None or '"' -> unnamed register
     /// - 'a'-'z' -> named register
     /// - '+' -> system clipboard
     /// - '*' -> selection (same as system on Linux/Windows)
     pub fn set_by_name(&mut self, name: Option<char>, text: String) {
         match name {
-            None | Some('"') => self.unnamed = text,
+            None | Some('"') => self.unnamed = RegisterContent::characterwise(text),
             Some('+') => self.set_system(&text),
             Some('*') => self.set_selection(&text),
             Some(c) if c.is_ascii_lowercase() => {
