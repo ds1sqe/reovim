@@ -95,10 +95,8 @@ impl Runtime {
                 self.screen.width(),
                 self.screen.height().saturating_sub(1), // Reserve status line
             );
-            let landing_content = landing_state.generate(
-                self.screen.width(),
-                self.screen.height().saturating_sub(1),
-            );
+            let landing_content =
+                landing_state.generate(self.screen.width(), self.screen.height().saturating_sub(1));
             buffer.set_content(&landing_content);
             self.landing_state = Some(landing_state);
             self.showing_landing_page = true;
@@ -196,10 +194,8 @@ impl Runtime {
                 self.screen.width(),
                 self.screen.height().saturating_sub(1), // Reserve status line
             );
-            let landing_content = landing_state.generate(
-                self.screen.width(),
-                self.screen.height().saturating_sub(1),
-            );
+            let landing_content =
+                landing_state.generate(self.screen.width(), self.screen.height().saturating_sub(1));
             buffer.set_content(&landing_content);
             self.landing_state = Some(landing_state);
             self.showing_landing_page = true;

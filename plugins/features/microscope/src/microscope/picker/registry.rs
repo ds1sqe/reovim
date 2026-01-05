@@ -125,6 +125,7 @@ mod tests {
         fn preview(
             &self,
             _item: &MicroscopeItem,
+            _ctx: &super::super::PickerContext,
         ) -> Pin<Box<dyn Future<Output = Option<PreviewContent>> + Send + '_>> {
             Box::pin(async { None })
         }

@@ -8,8 +8,10 @@
 mod frames;
 mod sprite;
 
-pub use frames::LogoSize;
-pub use sprite::{AnimationMode, AsciiSprite};
+pub use {
+    frames::LogoSize,
+    sprite::{AnimationMode, AsciiSprite},
+};
 
 use frames::{LARGE_ROAR_FRAMES, MEDIUM_SLEEP_FRAMES, SMALL_BREATHING_FRAMES};
 
@@ -32,12 +34,8 @@ impl LandingState {
             LogoSize::Small => (SMALL_BREATHING_FRAMES, AnimationMode::Loop),
         };
 
-        let sprite = AsciiSprite::new(
-            frames,
-            size.frame_duration_ms(),
-            size.pause_duration_ms(),
-            mode,
-        );
+        let sprite =
+            AsciiSprite::new(frames, size.frame_duration_ms(), size.pause_duration_ms(), mode);
 
         Self { sprite, size }
     }

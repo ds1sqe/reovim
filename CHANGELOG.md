@@ -28,6 +28,21 @@ All notable changes to Reovim will be documented in this file.
 
 ### Fixed
 
+- **Jump list navigation (Ctrl+O/Ctrl+I)** - Fixed non-functional jump navigation (#4)
+  - Added Tab as fallback keybinding for jump-newer (works in all terminals)
+  - Enabled Kitty keyboard enhancement protocol for modern terminals (kitty, WezTerm, foot)
+  - Added Ctrl+O/Ctrl+I/Tab bindings to insert mode (jump navigation works during editing)
+  - Jump points recorded when **leaving** insert mode (records where editing finished, not started)
+  - Fixed `current_index` calculation bug where first Ctrl+O did nothing
+  - Fixed duplicate detection causing `current_index` to become invalid
+  - Fixed duplicate detection truncating jump history (entries were lost on subsequent pushes)
+  - Fixed INSERT LEAVE truncating all previous jump entries (now preserves full history)
+  - Fixed Ctrl+O requiring double press (now automatically skips current position)
+  - Marked LSP goto definition/references commands as jumps (gd, gr)
+  - Marked leap and buffer navigation commands as jump-recording actions (s/S, H/L)
+  - Root cause: Ctrl+I was indistinguishable from Tab in traditional terminals
+  - UX improvement: Jump back to where you **finished** editing, not where you started
+
 - **Landing page animation alignment** - All frame lines now have consistent widths to prevent horizontal shifting during animation
 
 - **Landing page size thresholds** - Adjusted thresholds so "Large" requires actually large terminals (50×24+), "Medium" for normal windows (35×16+)

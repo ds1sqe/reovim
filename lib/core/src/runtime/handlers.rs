@@ -449,22 +449,84 @@ impl Runtime {
                             return should_quit;
                         }
                         DeferredAction::JumpOlder => {
-                            if let Some(entry) = self.jump_list.jump_older() {
+                            tracing::debug!(
+                                "JumpOlder: current_index={}, list_len={}",
+                                self.jump_list.current_index(),
+                                self.jump_list.len()
+                            );
+
+                            // Get current position to skip if jump returns the same position
+                            let current_buf_id = self.active_buffer_id;
+                            let current_pos = self.buffers.get(&current_buf_id).map(|b| b.cur);
+
+                            // Try to jump older, skipping current position if needed
+                            let mut found_different = false;
+                            while let Some(entry) = self.jump_list.jump_older() {
+                                let is_current = entry.buffer_id == current_buf_id
+                                    && current_pos == Some(entry.position);
+
+                                if is_current {
+                                    tracing::debug!("JumpOlder: skipping current position");
+                                    continue;
+                                }
+
+                                // Found a different position, jump to it
+                                tracing::debug!(
+                                    "JumpOlder: jumping to buffer={}, pos=({}, {})",
+                                    entry.buffer_id,
+                                    entry.position.y,
+                                    entry.position.x
+                                );
                                 let target_pos = entry.position;
                                 let target_buf_id = entry.buffer_id;
                                 if let Some(buf) = self.buffers.get_mut(&target_buf_id) {
                                     buf.cur = target_pos;
+                                    found_different = true;
+                                    break;
                                 }
+                                tracing::warn!("JumpOlder: buffer {} not found", target_buf_id);
+                            }
+
+                            if !found_different {
+                                tracing::debug!("JumpOlder: no different position found");
                             }
                             self.request_render();
                         }
                         DeferredAction::JumpNewer => {
-                            if let Some(entry) = self.jump_list.jump_newer() {
+                            // Get current position to skip if jump returns the same position
+                            let current_buf_id = self.active_buffer_id;
+                            let current_pos = self.buffers.get(&current_buf_id).map(|b| b.cur);
+
+                            // Try to jump newer, skipping current position if needed
+                            let mut found_different = false;
+                            while let Some(entry) = self.jump_list.jump_newer() {
+                                let is_current = entry.buffer_id == current_buf_id
+                                    && current_pos == Some(entry.position);
+
+                                if is_current {
+                                    tracing::debug!("JumpNewer: skipping current position");
+                                    continue;
+                                }
+
+                                // Found a different position, jump to it
+                                tracing::debug!(
+                                    "JumpNewer: jumping to buffer={}, pos=({}, {})",
+                                    entry.buffer_id,
+                                    entry.position.y,
+                                    entry.position.x
+                                );
                                 let target_pos = entry.position;
                                 let target_buf_id = entry.buffer_id;
                                 if let Some(buf) = self.buffers.get_mut(&target_buf_id) {
                                     buf.cur = target_pos;
+                                    found_different = true;
+                                    break;
                                 }
+                                tracing::warn!("JumpNewer: buffer {} not found", target_buf_id);
+                            }
+
+                            if !found_different {
+                                tracing::debug!("JumpNewer: no different position found");
                             }
                             self.request_render();
                         }

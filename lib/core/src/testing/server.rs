@@ -67,8 +67,8 @@ impl ServerTestHarness {
             .stderr(Stdio::null())
             .spawn()?;
 
-        // Wait for server to be ready
-        sleep(Duration::from_millis(100)).await;
+        // Wait for server to be ready (longer on slower machines)
+        sleep(Duration::from_millis(200)).await;
 
         Ok(Self { process, port })
     }
@@ -100,8 +100,8 @@ impl ServerTestHarness {
             .stderr(Stdio::null())
             .spawn()?;
 
-        // Wait for server to be ready
-        sleep(Duration::from_millis(100)).await;
+        // Wait for server to be ready (longer on slower machines)
+        sleep(Duration::from_millis(200)).await;
 
         Ok(Self { process, port })
     }
@@ -112,12 +112,15 @@ impl ServerTestHarness {
     ///
     /// Returns an error if the connection fails.
     pub async fn client(&self) -> Result<TestClient, Box<dyn std::error::Error + Send + Sync>> {
-        // Retry connection a few times in case server isn't ready yet
-        for _ in 0..10 {
-            match TestClient::connect("127.0.0.1", self.port).await {
-                Ok(client) => return Ok(client),
-                Err(_) => sleep(Duration::from_millis(50)).await,
+        // Retry connection with exponential backoff in case server isn't ready yet
+        // This is more resilient on slower machines or under system load
+        for attempt in 0..20 {
+            if let Ok(client) = TestClient::connect("127.0.0.1", self.port).await {
+                return Ok(client);
             }
+            // Exponential backoff: 50ms, 100ms, 150ms, ..., up to 200ms
+            let delay = std::cmp::min(50 + attempt * 50, 200);
+            sleep(Duration::from_millis(delay)).await;
         }
         TestClient::connect("127.0.0.1", self.port)
             .await

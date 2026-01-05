@@ -105,6 +105,10 @@ impl CommandTrait for LspGotoDefinitionCommand {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
+
+    fn is_jump(&self) -> bool {
+        true
+    }
 }
 
 /// Command: Find all references to symbol under cursor
@@ -137,6 +141,10 @@ impl CommandTrait for LspGotoReferencesCommand {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+
+    fn is_jump(&self) -> bool {
+        true
     }
 }
 
