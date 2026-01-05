@@ -397,13 +397,14 @@ impl Screen {
         _indent_analyzer: &IndentAnalyzer,
         _decoration_store: Option<&DecorationStore>,
         render_stages: &std::sync::Arc<std::sync::RwLock<crate::render::RenderStageRegistry>>,
+        mode: &crate::modd::ModeState,
     ) -> crate::render::RenderData {
         use crate::{component::RenderContext, render::RenderData};
 
         let pipeline_start = std::time::Instant::now();
 
         // Stage 1: Extract buffer content
-        let mut data = RenderData::from_buffer(window, text_buffer);
+        let mut data = RenderData::from_buffer(window, text_buffer, mode);
         data.buffer_id = window.buffer_id().unwrap_or(0);
         let from_buffer_time = pipeline_start.elapsed();
 
@@ -1027,6 +1028,7 @@ impl Screen {
                     indent_analyzer,
                     decoration_store,
                     render_stages,
+                    mode,
                 );
                 let pipeline_time = pipeline_start.elapsed();
 

@@ -12,6 +12,7 @@ use {
         content::WindowContentSource,
         frame::FrameRenderer,
         highlight::Style,
+        modd::ModeState,
         render::RenderData,
         screen::{
             Position,
@@ -132,7 +133,9 @@ pub fn bench_render_data_markdown(c: &mut Criterion) {
             &(&window, &buffer),
             |b, (window, buffer)| {
                 b.iter(|| {
-                    let render_data = RenderData::from_buffer(black_box(window), black_box(buffer));
+                    let mode = ModeState::normal();
+                    let render_data =
+                        RenderData::from_buffer(black_box(window), black_box(buffer), &mode);
                     black_box(render_data)
                 });
             },
@@ -182,7 +185,9 @@ pub fn bench_render_data_changelog(c: &mut Criterion) {
             &(&window, &buffer),
             |b, (window, buffer)| {
                 b.iter(|| {
-                    let render_data = RenderData::from_buffer(black_box(window), black_box(buffer));
+                    let mode = ModeState::normal();
+                    let render_data =
+                        RenderData::from_buffer(black_box(window), black_box(buffer), &mode);
                     black_box(render_data)
                 });
             },
@@ -219,7 +224,9 @@ pub fn bench_render_data_jjjjj(c: &mut Criterion) {
         b.iter(|| {
             for scroll_pos in 0..20u16 {
                 let window = create_window_at_scroll(50, scroll_pos);
-                let render_data = RenderData::from_buffer(black_box(&window), black_box(&buffer));
+                let mode = ModeState::normal();
+                let render_data =
+                    RenderData::from_buffer(black_box(&window), black_box(&buffer), &mode);
                 black_box(render_data);
             }
         });
@@ -230,7 +237,9 @@ pub fn bench_render_data_jjjjj(c: &mut Criterion) {
         b.iter(|| {
             for scroll_pos in 0..50u16 {
                 let window = create_window_at_scroll(50, scroll_pos);
-                let render_data = RenderData::from_buffer(black_box(&window), black_box(&buffer));
+                let mode = ModeState::normal();
+                let render_data =
+                    RenderData::from_buffer(black_box(&window), black_box(&buffer), &mode);
                 black_box(render_data);
             }
         });
@@ -270,16 +279,18 @@ pub fn bench_render_data_syntax_overhead(c: &mut Criterion) {
 
     group.bench_function("without_syntax", |b| {
         b.iter(|| {
+            let mode = ModeState::normal();
             let render_data =
-                RenderData::from_buffer(black_box(&window), black_box(&buffer_no_syntax));
+                RenderData::from_buffer(black_box(&window), black_box(&buffer_no_syntax), &mode);
             black_box(render_data)
         });
     });
 
     group.bench_function("with_syntax", |b| {
         b.iter(|| {
+            let mode = ModeState::normal();
             let render_data =
-                RenderData::from_buffer(black_box(&window), black_box(&buffer_with_syntax));
+                RenderData::from_buffer(black_box(&window), black_box(&buffer_with_syntax), &mode);
             black_box(render_data)
         });
     });
@@ -401,7 +412,9 @@ pub fn bench_large_file(c: &mut Criterion) {
 
     group.bench_function("5000_lines_render_data", |b| {
         b.iter(|| {
-            let render_data = RenderData::from_buffer(black_box(&window), black_box(&buffer));
+            let mode = ModeState::normal();
+            let render_data =
+                RenderData::from_buffer(black_box(&window), black_box(&buffer), &mode);
             black_box(render_data)
         });
     });
@@ -411,7 +424,9 @@ pub fn bench_large_file(c: &mut Criterion) {
         b.iter(|| {
             for scroll_pos in 0..20u16 {
                 let window = create_window_at_scroll(50, scroll_pos);
-                let render_data = RenderData::from_buffer(black_box(&window), black_box(&buffer));
+                let mode = ModeState::normal();
+                let render_data =
+                    RenderData::from_buffer(black_box(&window), black_box(&buffer), &mode);
                 black_box(render_data);
             }
         });
@@ -454,7 +469,8 @@ pub fn bench_complete_cycle(c: &mut Criterion) {
         b.iter(|| {
             // Phase 1: Create RenderData (syntax highlighting)
             let window = create_window_at_scroll(50, scroll_pos);
-            let render_data = RenderData::from_buffer(&window, &buffer);
+            let mode = ModeState::normal();
+            let render_data = RenderData::from_buffer(&window, &buffer, &mode);
 
             // Phase 2: Write to FrameBuffer (simulated)
             renderer.clear();

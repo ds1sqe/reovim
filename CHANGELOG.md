@@ -18,6 +18,22 @@ All notable changes to Reovim will be documented in this file.
   - Previously only highlighted partial lines (current line for `yj`, upper line for `yk`)
   - Now properly animates all yanked lines from start to end
   - Affects all linewise motions: `j`, `k`, `gg`, `G`
+- **Markdown decorations update immediately on insert/change** - Fixed stale cache bug in saturator
+  - Saturator now calls `decorator.refresh()` before `decoration_range()` to update cached parse tree
+  - Mirrors the pattern from syntax highlighting (`update_highlights()`)
+  - Heading icons, bullets, checkboxes, and emphasis concealment now update in real-time
+- **Decorations disabled on cursor line in insert mode** - Show raw markdown syntax while typing
+  - When in insert mode, decorations are filtered out on the current line
+  - Allows seeing raw markers (`# Heading`, `**bold**`, etc.) while editing
+  - Decorations reappear when returning to normal mode
+
+### Changed
+
+- **Code cleanup in markdown plugin** - Removed dead code and streamlined query loading
+  - Deleted `markdown/mod.rs` (685 lines of dead code, obsolete LanguageRenderer implementation)
+  - Converted embedded query constants to `.scm` files via `include_str!()` (57 lines → 2 lines)
+  - Queries now editable in `.scm` files with syntax highlighting support
+  - Total reduction: ~740 lines
 
 ## [0.7.9]
 

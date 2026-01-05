@@ -68,7 +68,7 @@ pub fn spawn_saturator(
 
     tokio::spawn(async move {
         let mut syntax = syntax;
-        let decoration = decoration;
+        let mut decoration = decoration;
 
         while let Some(request) = rx.recv().await {
             let mut cache_updated = false;
@@ -80,8 +80,8 @@ pub fn spawn_saturator(
             }
 
             // Update decorations if decoration provider exists
-            if let Some(ref decorator) = decoration {
-                let updated = update_decorations(decorator.as_ref(), &request, &decoration_cache);
+            if let Some(ref mut decorator) = decoration {
+                let updated = update_decorations(decorator.as_mut(), &request, &decoration_cache);
                 cache_updated |= updated;
             }
 
@@ -211,7 +211,7 @@ fn update_highlights(
 /// Returns true if cache was updated.
 #[allow(clippy::too_many_lines)]
 fn update_decorations(
-    decorator: &dyn DecorationProvider,
+    decorator: &mut dyn DecorationProvider,
     request: &SaturatorRequest,
     cache: &Arc<DecorationCache>,
 ) -> bool {
@@ -227,6 +227,10 @@ fn update_decorations(
     if !has_cache_miss {
         return false; // All cached, nothing to do
     }
+
+    // Re-parse content to update cached tree
+    // This matches the pattern from update_highlights() line 122
+    decorator.refresh(&request.content);
 
     // Compute decorations (SLOW - ~46ms)
     let all_decorations = decorator.decoration_range(

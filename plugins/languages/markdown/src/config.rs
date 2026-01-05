@@ -131,7 +131,7 @@ pub struct CodeBlockConfig {
     pub background: Option<Style>,
     /// Whether to show language icons
     pub show_language_icon: bool,
-    /// Style for language label (icon + name)
+    /// Style for language name/icon
     pub lang_style: Style,
 }
 
@@ -145,9 +145,9 @@ impl Default for CodeBlockConfig {
             })),
             show_language_icon: true,
             lang_style: Style::new().fg(Color::Rgb {
-                r: 150,
-                g: 150,
-                b: 150,
+                r: 125,
+                g: 207,
+                b: 255,
             }),
         }
     }

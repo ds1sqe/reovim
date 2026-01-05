@@ -1,6 +1,8 @@
 //! Markdown language support for reovim
 
-mod markdown;
+// markdown/mod.rs removed - dead code (obsolete LanguageRenderer implementation)
+
+mod config;
 
 pub mod decorator;
 pub mod factory;
@@ -10,6 +12,8 @@ pub mod stage;
 mod tests;
 
 use std::{any::TypeId, sync::Arc};
+
+pub use config::MarkdownConfig;
 
 use {
     reovim_core::{

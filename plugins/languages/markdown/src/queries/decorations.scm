@@ -25,6 +25,12 @@
 (fenced_code_block) @decoration.code_block
 (indented_code_block) @decoration.code_block
 
+; Fenced code block language icon - capture opening fence and language
+(fenced_code_block
+  (fenced_code_block_delimiter) @decoration.code_fence_open
+  (info_string
+    (language) @decoration.code_lang))
+
 ; Tables (pipe tables)
 (pipe_table) @decoration.table
 (pipe_table_header) @decoration.table.header

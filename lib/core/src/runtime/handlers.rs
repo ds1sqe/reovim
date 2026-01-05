@@ -481,11 +481,16 @@ impl Runtime {
 
                                         // Track end position and trigger animation
                                         let end_pos = buf.cur;
-                                        self.trigger_paste_animation(paste_buffer_id, start_pos, end_pos);
+                                        self.trigger_paste_animation(
+                                            paste_buffer_id,
+                                            start_pos,
+                                            end_pos,
+                                        );
                                     }
                                     YankType::Linewise => {
                                         // Calculate line range for animation
-                                        let start_line = if before { buf.cur.y } else { buf.cur.y + 1 };
+                                        let start_line =
+                                            if before { buf.cur.y } else { buf.cur.y + 1 };
 
                                         buf.insert_linewise(&content.text, before);
 
