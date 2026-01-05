@@ -34,7 +34,7 @@ use reovim_core::{
     bind::{CommandRef, EditModeKind, KeymapScope},
     command::id::CommandId,
     config::ProfileConfig,
-    display::{DisplayInfo, EditModeKey},
+    display::DisplayInfo,
     event_bus::{EventBus, EventResult, core_events::RequestFocusChange},
     frame::FrameBuffer,
     highlight::Theme,
@@ -246,12 +246,22 @@ impl Plugin for SettingsMenuPlugin {
 
     fn build(&self, ctx: &mut PluginContext) {
         // Register display info for status line
-        ctx.register_display(COMPONENT_ID, DisplayInfo::new(" SETTINGS ", " "));
-        ctx.register_component_mode_display(
-            COMPONENT_ID,
-            EditModeKey::Insert,
-            DisplayInfo::new(" SETTINGS | INSERT ", " "),
-        );
+        use reovim_core::highlight::{Color, Style};
+
+        // Gray background for settings/configuration
+        let gray = Color::Rgb {
+            r: 92,
+            g: 99,
+            b: 112,
+        };
+        let fg = Color::Rgb {
+            r: 171,
+            g: 178,
+            b: 191,
+        };
+        let style = Style::new().fg(fg).bg(gray).bold();
+
+        ctx.register_display(COMPONENT_ID, DisplayInfo::new(" SETTINGS ", " ", style));
 
         // Register navigation commands (unified types)
         let _ = ctx.register_command(SettingsMenuOpen);

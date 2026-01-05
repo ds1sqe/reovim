@@ -22,7 +22,7 @@ use std::{any::TypeId, sync::Arc};
 
 use reovim_core::{
     bind::{CommandRef, EditModeKind, KeyMapInner, KeymapScope, SubModeKind},
-    display::{DisplayInfo, EditModeKey},
+    display::DisplayInfo,
     frame::FrameBuffer,
     highlight::Theme,
     keys,
@@ -534,17 +534,22 @@ impl Plugin for MicroscopePlugin {
 
     fn build(&self, ctx: &mut PluginContext) {
         // Register display info for status line
-        ctx.register_display(COMPONENT_ID, DisplayInfo::new(" MICROSCOPE ", "󰍉 "));
-        ctx.register_component_mode_display(
-            COMPONENT_ID,
-            EditModeKey::Normal,
-            DisplayInfo::new(" MICROSCOPE ", "󰍉 "),
-        );
-        ctx.register_component_mode_display(
-            COMPONENT_ID,
-            EditModeKey::Insert,
-            DisplayInfo::new(" MICROSCOPE | INSERT ", "󰍉 "),
-        );
+        use reovim_core::highlight::{Color, Style};
+
+        // Blue background for search/picker
+        let blue = Color::Rgb {
+            r: 97,
+            g: 175,
+            b: 239,
+        };
+        let fg = Color::Rgb {
+            r: 33,
+            g: 37,
+            b: 43,
+        };
+        let style = Style::new().fg(fg).bg(blue).bold();
+
+        ctx.register_display(COMPONENT_ID, DisplayInfo::new(" MICROSCOPE ", "󰍉 ", style));
 
         // Register picker opening commands
         let _ = ctx.register_command(MicroscopeFindFiles);

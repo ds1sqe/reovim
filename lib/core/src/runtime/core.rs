@@ -208,7 +208,7 @@ impl Runtime {
             .unwrap()
             .register(std::sync::Arc::new(animation_system.render_stage()));
 
-        let runtime = Self {
+        let mut runtime = Self {
             buffers: BTreeMap::new(),
             screen,
             highlight_store: HighlightStore::new(),
@@ -258,6 +258,9 @@ impl Runtime {
         runtime
             .plugin_state
             .set_command_registry(Arc::clone(&runtime.command_registry));
+
+        // Register built-in display info for status line
+        runtime.display_registry.register_builtins(&runtime.theme);
 
         // Subscribe to focus change requests from plugins
         {
@@ -660,6 +663,7 @@ impl Runtime {
             decoration_store: Some(&self.decoration_store),
             renderer_registry: Some(&self.renderer_registry),
             render_stages: &self.render_stages,
+            display_registry: &self.display_registry,
         };
         let pre_render = render_start.elapsed();
         self.screen

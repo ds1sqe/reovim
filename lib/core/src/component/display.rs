@@ -54,6 +54,8 @@ pub struct RenderState<'a> {
     pub renderer_registry: Option<&'a LanguageRendererRegistry>,
     /// Render stage registry for pipeline transformations
     pub render_stages: &'a std::sync::Arc<std::sync::RwLock<crate::render::RenderStageRegistry>>,
+    /// Display registry for plugin-provided display information
+    pub display_registry: &'a crate::display::DisplayRegistry,
 }
 
 impl std::fmt::Debug for RenderState<'_> {
