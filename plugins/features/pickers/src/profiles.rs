@@ -86,6 +86,7 @@ impl Picker for ProfilesPicker {
     fn preview(
         &self,
         item: &MicroscopeItem,
+        _ctx: &PickerContext,
     ) -> Pin<Box<dyn Future<Output = Option<PreviewContent>> + Send + '_>> {
         let name = item.display.clone();
 

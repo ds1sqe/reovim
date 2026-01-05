@@ -69,6 +69,7 @@ impl Picker for BuffersPicker {
     fn preview(
         &self,
         _item: &MicroscopeItem,
+        _ctx: &PickerContext,
     ) -> Pin<Box<dyn Future<Output = Option<PreviewContent>> + Send + '_>> {
         // Preview would require buffer content which isn't available in this context
         // For now, just return None

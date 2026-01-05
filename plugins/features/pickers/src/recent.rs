@@ -94,6 +94,7 @@ impl Picker for RecentPicker {
     fn preview(
         &self,
         item: &MicroscopeItem,
+        ctx: &PickerContext,
     ) -> Pin<Box<dyn Future<Output = Option<PreviewContent>> + Send + '_>> {
         let path = match &item.data {
             MicroscopeData::FilePath(p) => p.clone(),
@@ -101,16 +102,32 @@ impl Picker for RecentPicker {
         };
 
         let file_name = path.file_name().and_then(|n| n.to_str()).map(String::from);
+        let syntax_factory = ctx.syntax_factory.clone();
+
         Box::pin(async move {
             tokio::fs::read_to_string(&path).await.ok().map(|content| {
                 let lines: Vec<String> = content.lines().map(String::from).collect();
-                let syntax = path.extension().and_then(|e| e.to_str()).map(String::from);
+                let syntax_ext = path.extension().and_then(|e| e.to_str()).map(String::from);
+
+                // Compute highlights if factory available
+                let styled_lines = if let Some(factory) = syntax_factory {
+                    let file_path = path.to_string_lossy().to_string();
+                    crate::syntax_helper::compute_styled_lines(
+                        factory.as_ref(),
+                        &file_path,
+                        &content,
+                        &lines,
+                    )
+                } else {
+                    None
+                };
+
                 PreviewContent {
                     lines,
                     highlight_line: None,
-                    syntax,
+                    syntax: syntax_ext,
                     title: file_name,
-                    styled_lines: None,
+                    styled_lines,
                 }
             })
         })

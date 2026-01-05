@@ -6,6 +6,16 @@ All notable changes to Reovim will be documented in this file.
 
 ### Added
 
+- **Microscope syntax highlighting** - Preview panels now show syntax-highlighted code
+  - File picker (`Space f f`) previews display full syntax highlighting
+  - Grep picker (`Space f g`) shows highlighted matches with context
+  - Recent files picker (`Space f r`) includes syntax highlighting
+  - Language injection support (markdown code blocks, etc.)
+  - On-demand highlighting via `SyntaxFactory` integration (no background tasks)
+  - Graceful degradation when treesitter unavailable (plain text fallback)
+  - New `syntax_helper` module in pickers crate for highlight computation
+  - Updated `Picker::preview()` trait to accept `PickerContext` with factories
+
 - **Landing page animation (WIP)** - Animated ASCII lion on startup dashboard
   - Three size variants: Large (roar), Medium (sleep), Small (breathing)
   - Responsive size selection based on terminal dimensions

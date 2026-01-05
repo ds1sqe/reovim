@@ -88,6 +88,7 @@ impl Picker for CommandsPicker {
     fn preview(
         &self,
         item: &MicroscopeItem,
+        _ctx: &PickerContext,
     ) -> Pin<Box<dyn Future<Output = Option<PreviewContent>> + Send + '_>> {
         let description = item.detail.clone();
         let display = item.display.clone();

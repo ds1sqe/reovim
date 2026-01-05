@@ -14,7 +14,12 @@ pub use registry::PickerRegistry;
 
 use std::{future::Future, path::PathBuf, pin::Pin};
 
-use reovim_core::{command::CommandId, highlight::ThemeName};
+use reovim_core::{
+    command::CommandId,
+    decoration::SharedDecorationFactory,
+    highlight::ThemeName,
+    syntax::SharedSyntaxFactory,
+};
 
 use super::{item::MicroscopeItem, state::PreviewContent};
 
@@ -32,7 +37,7 @@ pub struct BufferInfo {
 }
 
 /// Context for picker operations
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct PickerContext {
     /// Current search query
     pub query: String,
@@ -42,6 +47,10 @@ pub struct PickerContext {
     pub max_items: usize,
     /// Available buffers (for buffers picker)
     pub buffers: Vec<BufferInfo>,
+    /// Syntax factory for preview highlighting (optional)
+    pub syntax_factory: Option<SharedSyntaxFactory>,
+    /// Decoration factory for preview decorations (optional)
+    pub decoration_factory: Option<SharedDecorationFactory>,
 }
 
 impl Default for PickerContext {
@@ -51,6 +60,8 @@ impl Default for PickerContext {
             cwd: std::env::current_dir().unwrap_or_default(),
             max_items: 1000,
             buffers: Vec::new(),
+            syntax_factory: None,
+            decoration_factory: None,
         }
     }
 }
@@ -134,6 +145,7 @@ pub trait Picker: Send + Sync {
     fn preview(
         &self,
         _item: &MicroscopeItem,
+        _ctx: &PickerContext,
     ) -> Pin<Box<dyn Future<Output = Option<PreviewContent>> + Send + '_>> {
         Box::pin(async { None })
     }
