@@ -20,6 +20,13 @@ All notable changes to Reovim will be documented in this file.
   - `:profile list` - Open profile picker
   - `:profile load <name>` - Load a profile by name
   - `:profile save <name>` - Save current settings as a profile
+- **Health check system** - Diagnostic system for verifying core and plugin status
+  - `:health` and `:checkhealth` commands to open health check modal
+  - Modal UI (z-order 700) with category grouping and navigation (j/k, r, q/Esc)
+  - Expandable details view - press Space/Enter to toggle full details for selected check
+  - `RegisterHealthCheck` event for plugins to register custom health checks
+  - Built-in checks for runtime, plugin system, event bus, terminal, and keybindings
+  - Plugin-decoupled architecture - zero core modifications using v0.7.9+ ex-command registry
 
 ### Changed
 

@@ -66,6 +66,7 @@ reovim-plugin-which-key = { path = "./plugins/features/which-key", version = "0.
 reovim-plugin-statusline = { path = "./plugins/features/statusline", version = "0.7.9" }
 reovim-plugin-notification = { path = "./plugins/features/notification", version = "0.7.9" }
 reovim-plugin-profiles = { path = "./plugins/features/profiles", version = "0.7.9" }
+reovim-plugin-health-check = { path = "./plugins/features/health-check", version = "0.7.9" }
 
 # language plugins
 reovim-lang-rust = { path = "./plugins/languages/rust", version = "0.7.9" }

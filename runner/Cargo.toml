@@ -33,6 +33,7 @@ reovim-plugin-lsp.workspace = true
 reovim-plugin-which-key.workspace = true
 reovim-plugin-statusline.workspace = true
 reovim-plugin-notification.workspace = true
+reovim-plugin-health-check.workspace = true
 
 # Language plugins
 reovim-lang-rust.workspace = true

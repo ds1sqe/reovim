@@ -12,7 +12,8 @@ use reovim_core::plugin::{
 // External plugin crates
 use {
     reovim_plugin_completion::CompletionPlugin, reovim_plugin_explorer::ExplorerPlugin,
-    reovim_plugin_fold::FoldPlugin, reovim_plugin_leap::LeapPlugin, reovim_plugin_lsp::LspPlugin,
+    reovim_plugin_fold::FoldPlugin, reovim_plugin_health_check::HealthCheckPlugin,
+    reovim_plugin_leap::LeapPlugin, reovim_plugin_lsp::LspPlugin,
     reovim_plugin_microscope::MicroscopePlugin, reovim_plugin_notification::NotificationPlugin,
     reovim_plugin_pair::PairPlugin, reovim_plugin_pickers::PickersPlugin,
     reovim_plugin_profiles::ProfilesPlugin, reovim_plugin_settings_menu::SettingsMenuPlugin,
@@ -48,6 +49,7 @@ impl PluginTuple for AllPlugins {
         loader.add(PairPlugin::new());
         loader.add(SettingsMenuPlugin);
         loader.add(ProfilesPlugin);
+        loader.add(HealthCheckPlugin::new());
         loader.add(CompletionPlugin::new());
         loader.add(ExplorerPlugin);
         loader.add(MicroscopePlugin);
@@ -96,6 +98,7 @@ pub fn default_plugins() -> impl IntoIterator<Item = Box<dyn Plugin>> {
         Box::new(PairPlugin::new()),
         Box::new(SettingsMenuPlugin),
         Box::new(ProfilesPlugin),
+        Box::new(HealthCheckPlugin::new()),
         Box::new(WhichKeyPlugin),
         // Treesitter infrastructure (must come before language plugins)
         Box::new(TreesitterPlugin::new()),
@@ -137,6 +140,7 @@ pub fn create_plugin_loader() -> PluginLoader {
     loader.add(PairPlugin::new());
     loader.add(SettingsMenuPlugin);
     loader.add(ProfilesPlugin);
+    loader.add(HealthCheckPlugin::new());
     loader.add(CompletionPlugin::new());
     loader.add(ExplorerPlugin);
     loader.add(MicroscopePlugin);

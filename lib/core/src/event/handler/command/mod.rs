@@ -400,7 +400,25 @@ impl CommandHandler {
                                 // or if mode was locally changed and runtime hasn't caught up yet
                                 if !self.local_mode.is_operator_pending() {
                                     let runtime_mode = self.mode_rx.borrow().clone();
-                                    if self.mode_locally_changed {
+                                    tracing::debug!(
+                                        "Mode sync: runtime_mode interactor={}, local_mode interactor={}, mode_locally_changed={}",
+                                        runtime_mode.interactor_id.0,
+                                        self.local_mode.interactor_id.0,
+                                        self.mode_locally_changed
+                                    );
+
+                                    // If interactor changed, always sync (focus change initiated by runtime)
+                                    let interactor_changed = runtime_mode.interactor_id != self.local_mode.interactor_id;
+
+                                    if interactor_changed {
+                                        // Focus change - always sync and clear mode_locally_changed flag
+                                        self.local_mode = runtime_mode;
+                                        self.mode_locally_changed = false;
+                                        tracing::info!(
+                                            "Focus changed: interactor={}",
+                                            self.local_mode.interactor_id.0
+                                        );
+                                    } else if self.mode_locally_changed {
                                         // Check if runtime has caught up with our local change
                                         if runtime_mode == self.local_mode {
                                             self.mode_locally_changed = false;
