@@ -281,24 +281,25 @@ impl Runtime {
                         ExCommand::TabPrev => {
                             self.handle_tab_prev();
                         }
-                        // Profile management
-                        ExCommand::ProfileLoad { name } => {
-                            if self.load_profile(&name) {
-                                tracing::info!(profile = %name, "Profile loaded");
+                        // Plugin-registered ex-commands
+                        ExCommand::Plugin { command } => {
+                            if let Some(event) = self.ex_command_registry.dispatch(&command) {
+                                let sender = self.event_bus.sender();
+                                let mut ctx = crate::event_bus::HandlerContext::new(&sender);
+                                self.event_bus.dispatch(&event, &mut ctx);
+
+                                tracing::debug!(command = %command, "Ex-command dispatched via registry");
+
+                                if ctx.render_requested() {
+                                    self.request_render();
+                                }
+                                if ctx.quit_requested() {
+                                    self.command_line.clear();
+                                    return true;
+                                }
+                            } else {
+                                tracing::warn!(command = %command, "Unknown or unregistered ex-command");
                             }
-                        }
-                        ExCommand::ProfileSave { name } => {
-                            if self.save_current_as_profile(&name) {
-                                tracing::info!(profile = %name, "Profile saved");
-                            }
-                        }
-                        ExCommand::ProfileList => {
-                            // Telescope handled by plugin via EventBus
-                            tracing::debug!("Profile list command - handled by telescope plugin");
-                        }
-                        ExCommand::Settings => {
-                            // Settings menu handled by plugin via EventBus
-                            tracing::debug!("Settings command - handled by settings-menu plugin");
                         }
                         ExCommand::Unknown(cmd) => {
                             tracing::warn!(command = %cmd, "Unknown ex-command");

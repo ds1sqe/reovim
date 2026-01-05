@@ -1493,6 +1493,7 @@ dependencies = [
  "reovim-plugin-notification",
  "reovim-plugin-pair",
  "reovim-plugin-pickers",
+ "reovim-plugin-profiles",
  "reovim-plugin-settings-menu",
  "reovim-plugin-statusline",
  "reovim-plugin-treesitter",
@@ -1734,6 +1735,14 @@ dependencies = [
  "reovim-core",
  "reovim-plugin-microscope",
  "tokio",
+]
+
+[[package]]
+name = "reovim-plugin-profiles"
+version = "0.7.9"
+dependencies = [
+ "reovim-core",
+ "tracing",
 ]
 
 [[package]]

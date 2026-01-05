@@ -21,6 +21,7 @@ reovim-sys.workspace = true
 # Plugins
 reovim-plugin-fold.workspace = true
 reovim-plugin-settings-menu.workspace = true
+reovim-plugin-profiles.workspace = true
 reovim-plugin-completion.workspace = true
 reovim-plugin-explorer.workspace = true
 reovim-plugin-microscope.workspace = true

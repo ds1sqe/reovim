@@ -335,7 +335,7 @@ pub enum ExCommand {
     WriteQuit,                          // :wq
     Edit { filename: String },          // :e file or :edit
     Set { option: SetOption },          // :set option
-    Unknown(String),
+    Plugin { command: String },         // Plugin-registered commands
 }
 
 pub enum SetOption {
@@ -343,6 +343,39 @@ pub enum SetOption {
     RelativeNumber(bool),  // :set relativenumber / :set norelativenumber
     ColorMode(ColorMode),  // :set colormode=ansi|256|truecolor
 }
+```
+
+### Plugin-Registered Ex-Commands
+
+Plugins can register custom ex-commands dynamically using the `ExCommandRegistry`. When a command is not recognized as a built-in command, it's dispatched via the registry.
+
+**Example plugin commands:**
+- `:settings` - Opens the settings menu (registered by settings-menu plugin)
+- `:profile list` - Lists available profiles (registered by profiles plugin)
+- `:profile load <name>` - Loads a profile (registered by profiles plugin)
+- `:profile save <name>` - Saves current settings (registered by profiles plugin)
+
+**For plugin authors:**
+
+See [Plugin System - Registering Ex-Commands](./plugin-system.md#registering-ex-commands) for complete documentation on:
+- Zero-arg commands (`:mycommand`)
+- Single-arg commands (`:mycommand arg`)
+- Subcommand pattern (`:mycommand subcommand [arg]`)
+- Event-based dispatch
+- Best practices
+
+**Command flow for plugin ex-commands:**
+
+```
+User types :settings
+    ↓
+ExCommand::parse() → ExCommand::Plugin { command: "settings" }
+    ↓
+Runtime handler → ex_command_registry.dispatch("settings")
+    ↓
+Returns DynEvent (SettingsMenuOpen)
+    ↓
+EventBus.dispatch() → Settings plugin opens
 ```
 
 ## Command Flow

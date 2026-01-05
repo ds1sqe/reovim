@@ -1,6 +1,10 @@
 mod ex_command;
+pub mod registry;
 
-pub use ex_command::{ExCommand, SetOption};
+pub use {
+    ex_command::{ExCommand, SetOption},
+    registry::{ExCommandHandler, ExCommandRegistry},
+};
 
 /// State for command-line mode input
 #[derive(Clone, Debug, Default)]
