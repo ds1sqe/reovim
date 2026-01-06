@@ -89,7 +89,7 @@ impl Runtime {
             // Use create_buffer_from_file which handles treesitter parsing and decorations
             if let Some(buffer_id) = self.create_buffer_from_file(&path) {
                 // Update active buffer to the newly created one
-                self.active_buffer_id = buffer_id;
+                self.screen.set_editor_buffer(buffer_id);
             } else {
                 // File failed to load, create empty buffer
                 let mut buffer = Buffer::empty(0);
@@ -195,7 +195,7 @@ impl Runtime {
             // Use create_buffer_from_file which handles treesitter parsing and decorations
             if let Some(buffer_id) = self.create_buffer_from_file(&path) {
                 // Update active buffer to the newly created one
-                self.active_buffer_id = buffer_id;
+                self.screen.set_editor_buffer(buffer_id);
             } else {
                 // File failed to load, create empty buffer with path
                 let mut buffer = Buffer::empty(0);
@@ -310,7 +310,7 @@ impl Runtime {
                                 self.screen.width(),
                                 self.screen.height().saturating_sub(1),
                             );
-                            if let Some(buffer) = self.buffers.get_mut(&self.active_buffer_id) {
+                            if let Some(buffer) = self.buffers.get_mut(&self.active_buffer_id()) {
                                 buffer.set_content(&content);
                             }
                             self.request_render();
@@ -568,7 +568,7 @@ impl Runtime {
                 // Convert PathBuf to &str for open_file
                 if let Some(path_str) = path.to_str() {
                     self.open_file(path_str);
-                    self.screen.set_editor_buffer(self.active_buffer_id);
+                    self.screen.set_editor_buffer(self.active_buffer_id());
                     self.request_render();
                 } else {
                     tracing::error!("Runtime: Invalid UTF-8 in file path: {:?}", path);
@@ -579,9 +579,9 @@ impl Runtime {
                 tracing::info!("Runtime: Opening file at position: {:?}:{}:{}", path, line, column);
                 if let Some(path_str) = path.to_str() {
                     self.open_file(path_str);
-                    self.screen.set_editor_buffer(self.active_buffer_id);
+                    self.screen.set_editor_buffer(self.active_buffer_id());
                     // Set cursor position in the opened buffer
-                    if let Some(buffer) = self.buffers.get_mut(&self.active_buffer_id) {
+                    if let Some(buffer) = self.buffers.get_mut(&self.active_buffer_id()) {
                         // Ensure line is within bounds
                         let max_line = buffer.contents.len().saturating_sub(1);
                         let target_line = line.min(max_line);
@@ -709,7 +709,7 @@ impl Runtime {
         let rpc_ctx = crate::rpc::RpcHandlerContext::new(
             &self.plugin_state,
             &self.mode_state,
-            self.active_buffer_id,
+            self.active_buffer_id(),
         );
         if let Some(result) = self.rpc_handler_registry.dispatch(method, params, &rpc_ctx) {
             return match result {
@@ -727,14 +727,14 @@ impl Runtime {
                 RpcResponse::success(id, serde_json::to_value(snapshot).unwrap())
             }
             methods::STATE_CURSOR => {
-                let buffer_id = get_buffer_id(params, self.active_buffer_id);
+                let buffer_id = get_buffer_id(params, self.active_buffer_id());
                 self.cursor_snapshot(buffer_id).map_or_else(
                     || RpcResponse::error(id, RpcError::buffer_not_found(buffer_id)),
                     |snapshot| RpcResponse::success(id, serde_json::to_value(snapshot).unwrap()),
                 )
             }
             methods::STATE_SELECTION => {
-                let buffer_id = get_buffer_id(params, self.active_buffer_id);
+                let buffer_id = get_buffer_id(params, self.active_buffer_id());
                 self.selection_snapshot(buffer_id).map_or_else(
                     || RpcResponse::error(id, RpcError::buffer_not_found(buffer_id)),
                     |snapshot| RpcResponse::success(id, serde_json::to_value(snapshot).unwrap()),
@@ -809,7 +809,7 @@ impl Runtime {
 
                 let cursor_pos = self
                     .buffers
-                    .get(&self.active_buffer_id)
+                    .get(&self.active_buffer_id())
                     .map(|b| (b.cur.x, b.cur.y));
 
                 let content = if annotated {
@@ -893,14 +893,14 @@ impl Runtime {
                 RpcResponse::success(id, serde_json::to_value(snapshots).unwrap())
             }
             methods::BUFFER_GET_CONTENT => {
-                let buffer_id = get_buffer_id(params, self.active_buffer_id);
+                let buffer_id = get_buffer_id(params, self.active_buffer_id());
                 self.buffer_content(buffer_id).map_or_else(
                     || RpcResponse::error(id, RpcError::buffer_not_found(buffer_id)),
                     |content| RpcResponse::success(id, serde_json::json!({ "content": content })),
                 )
             }
             methods::BUFFER_SET_CONTENT => {
-                let buffer_id = get_buffer_id(params, self.active_buffer_id);
+                let buffer_id = get_buffer_id(params, self.active_buffer_id());
                 let content = params.get("content").and_then(serde_json::Value::as_str);
 
                 match (self.buffers.get_mut(&buffer_id), content) {
@@ -927,7 +927,7 @@ impl Runtime {
                         self.request_render();
                         RpcResponse::success(
                             id,
-                            serde_json::json!({ "buffer_id": self.active_buffer_id }),
+                            serde_json::json!({ "buffer_id": self.active_buffer_id() }),
                         )
                     },
                 )
@@ -989,7 +989,7 @@ impl Runtime {
         // Handle normal mode
         if new_mode.is_normal() && matches!(new_mode.sub_mode, SubMode::None) {
             // Clear selection when returning to normal mode
-            if let Some(buffer) = self.buffers.get_mut(&self.active_buffer_id) {
+            if let Some(buffer) = self.buffers.get_mut(&self.active_buffer_id()) {
                 buffer.clear_selection();
             }
             // Note: command line is cleared in handle_command_line_command

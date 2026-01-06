@@ -45,7 +45,7 @@ pub fn handle_editor_input(
         }
     } else if rt.mode_state.is_insert() {
         // Buffer input
-        let buffer_id = rt.active_buffer_id;
+        let buffer_id = rt.active_buffer_id();
         if let Some(buffer) = rt.buffers.get_mut(&buffer_id) {
             if let Some(c) = char {
                 // Get position before insertion for event

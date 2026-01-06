@@ -61,8 +61,6 @@ pub struct Runtime {
     pub command_registry: Arc<CommandRegistry>,
     /// Keymap with all registered keybindings (built-in + plugins)
     pub keymap: KeyMap,
-    /// Currently active buffer ID
-    pub active_buffer_id: usize,
     /// Next buffer ID to assign
     next_buffer_id: usize,
     /// Jump list for Ctrl-O/Ctrl-I navigation
@@ -249,7 +247,6 @@ impl Runtime {
             mode_rx,
             command_registry: Arc::new(command_registry),
             keymap,
-            active_buffer_id: 0,
             next_buffer_id: 0,
             jump_list: JumpList::new(),
             indent_analyzer: IndentAnalyzer::default(),
@@ -694,19 +691,20 @@ impl Runtime {
         let to_mode = format!("{:?}", mode_state.edit_mode);
 
         // Handle undo batching on insert mode transitions
+        let active_buf_id = self.active_buffer_id();
         if !was_insert && is_insert {
             // Entering insert mode: begin batching
-            if let Some(buf) = self.buffers.get_mut(&self.active_buffer_id) {
+            if let Some(buf) = self.buffers.get_mut(&active_buf_id) {
                 buf.begin_batch();
             }
         } else if was_insert && !is_insert {
             // Leaving insert mode: flush batch and record jump position
-            if let Some(buf) = self.buffers.get_mut(&self.active_buffer_id) {
+            if let Some(buf) = self.buffers.get_mut(&active_buf_id) {
                 buf.flush_batch();
                 // Record current position as a jump point when leaving insert mode
                 // This allows navigating back to where editing was completed
                 // Use push_current() which doesn't truncate (preserves jump history)
-                self.jump_list.push_current(self.active_buffer_id, buf.cur);
+                self.jump_list.push_current(active_buf_id, buf.cur);
             }
         }
 
@@ -957,7 +955,7 @@ impl Runtime {
     /// Switch to a different buffer by ID
     pub fn switch_buffer(&mut self, buffer_id: usize) {
         if self.buffers.contains_key(&buffer_id) {
-            self.active_buffer_id = buffer_id;
+            self.screen.set_editor_buffer(buffer_id);
         }
     }
 
@@ -977,10 +975,10 @@ impl Runtime {
             self.event_bus.emit(BufferClosed { buffer_id });
 
             // If we closed the active buffer, switch to another one
-            if self.active_buffer_id == buffer_id
+            if self.active_buffer_id() == buffer_id
                 && let Some(&new_id) = self.buffers.keys().next()
             {
-                self.active_buffer_id = new_id;
+                self.screen.set_editor_buffer(new_id);
             }
             true
         } else {
@@ -995,7 +993,7 @@ impl Runtime {
         if ids.len() <= 1 {
             return None;
         }
-        let current_pos = ids.iter().position(|&id| id == self.active_buffer_id)?;
+        let current_pos = ids.iter().position(|&id| id == self.active_buffer_id())?;
         let prev_pos = if current_pos == 0 {
             ids.len() - 1
         } else {
@@ -1011,20 +1009,29 @@ impl Runtime {
         if ids.len() <= 1 {
             return None;
         }
-        let current_pos = ids.iter().position(|&id| id == self.active_buffer_id)?;
+        let current_pos = ids.iter().position(|&id| id == self.active_buffer_id())?;
         let next_pos = (current_pos + 1) % ids.len();
         Some(ids[next_pos])
+    }
+
+    /// Get the currently active buffer ID (derived from active window)
+    ///
+    /// This is the single source of truth for the active buffer, derived from
+    /// the screen's active window. Returns 0 if no active window exists.
+    #[must_use]
+    pub fn active_buffer_id(&self) -> usize {
+        self.screen.active_buffer_id().unwrap_or(0)
     }
 
     /// Get the currently active buffer
     #[must_use]
     pub fn active_buffer(&self) -> Option<&Buffer> {
-        self.buffers.get(&self.active_buffer_id)
+        self.buffers.get(&self.active_buffer_id())
     }
 
     /// Get the currently active buffer mutably
     pub fn active_buffer_mut(&mut self) -> Option<&mut Buffer> {
-        self.buffers.get_mut(&self.active_buffer_id)
+        self.buffers.get_mut(&self.active_buffer_id())
     }
 
     /// Open a file, creating a new buffer or switching to existing one
@@ -1035,7 +1042,7 @@ impl Runtime {
         for (id, buf) in &self.buffers {
             if buf.file_path.as_deref() == Some(path) {
                 debug!(id, path, "open_file: file already open, switching buffer");
-                self.active_buffer_id = *id;
+                self.screen.set_editor_buffer(*id);
                 return;
             }
         }
@@ -1043,7 +1050,7 @@ impl Runtime {
         // Create new buffer from file
         if let Some(id) = self.create_buffer_from_file(path) {
             debug!(id, path, "open_file: created new buffer");
-            self.active_buffer_id = id;
+            self.screen.set_editor_buffer(id);
             self.showing_landing_page = false;
             self.landing_state = None;
         } else {
@@ -1251,7 +1258,7 @@ impl Runtime {
         crate::rpc::ScreenSnapshot {
             width: self.screen.width(),
             height: self.screen.height(),
-            active_buffer_id: self.active_buffer_id,
+            active_buffer_id: self.active_buffer_id(),
             active_window_id: self.screen.active_window_id(),
             window_count: self.screen.window_count(),
         }
@@ -1309,7 +1316,7 @@ impl Runtime {
         // Get cursor info
         let cursor =
             self.buffers
-                .get(&self.active_buffer_id)
+                .get(&self.active_buffer_id())
                 .map(|buf| crate::visual::CursorInfo {
                     x: buf.cur.x,
                     y: buf.cur.y,
@@ -1370,7 +1377,7 @@ impl super::RuntimeContext for Runtime {
     }
 
     fn active_buffer_id(&self) -> usize {
-        self.active_buffer_id
+        Self::active_buffer_id(self)
     }
 
     fn mode(&self) -> &ModeState {
@@ -1383,19 +1390,20 @@ impl super::RuntimeContext for Runtime {
         let is_insert = mode.is_insert();
 
         // Handle undo batching on insert mode transitions
+        let active_buf_id = self.active_buffer_id();
         if !was_insert && is_insert {
             // Entering insert mode: begin batching
-            if let Some(buf) = self.buffers.get_mut(&self.active_buffer_id) {
+            if let Some(buf) = self.buffers.get_mut(&active_buf_id) {
                 buf.begin_batch();
             }
         } else if was_insert && !is_insert {
             // Leaving insert mode: flush batch and record jump position
-            if let Some(buf) = self.buffers.get_mut(&self.active_buffer_id) {
+            if let Some(buf) = self.buffers.get_mut(&active_buf_id) {
                 buf.flush_batch();
                 // Record current position as a jump point when leaving insert mode
                 // This allows navigating back to where editing was completed
                 // Use push_current() which doesn't truncate (preserves jump history)
-                self.jump_list.push_current(self.active_buffer_id, buf.cur);
+                self.jump_list.push_current(active_buf_id, buf.cur);
             }
         }
 
