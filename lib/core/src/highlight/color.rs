@@ -1,4 +1,9 @@
 //! Terminal color capability detection and conversion
+//!
+//! This module provides:
+//! - Color mode detection (ANSI 16, 256, `TrueColor`)
+//! - Color conversion between modes
+//! - Color string parsing for theme overrides
 
 use std::sync::LazyLock;
 
@@ -210,6 +215,109 @@ pub fn downgrade_color(color: Color, mode: ColorMode) -> Color {
     }
 }
 
+// ============================================================================
+// Color String Parsing
+// ============================================================================
+
+/// Parse a color string to Color
+///
+/// Supported formats:
+/// - Hex: `#ff0000`, `#f00` (shorthand), `#ff0000ff` (with alpha, alpha ignored)
+/// - RGB function: `rgb(255, 0, 0)` or `rgb(255,0,0)`
+/// - ANSI 256: `ansi:196` or `256:196`
+/// - Named colors: `red`, `darkblue`, `black`, etc.
+///
+/// # Examples
+/// ```
+/// use reovim_core::highlight::parse_color;
+/// use reovim_sys::style::Color;
+///
+/// assert_eq!(parse_color("#ff0000"), Some(Color::Rgb { r: 255, g: 0, b: 0 }));
+/// assert_eq!(parse_color("rgb(255, 0, 0)"), Some(Color::Rgb { r: 255, g: 0, b: 0 }));
+/// assert_eq!(parse_color("ansi:196"), Some(Color::AnsiValue(196)));
+/// assert_eq!(parse_color("red"), Some(Color::Red));
+/// ```
+#[must_use]
+pub fn parse_color(s: &str) -> Option<Color> {
+    let s = s.trim();
+
+    // Hex format: #rgb, #rrggbb, #rrggbbaa
+    if let Some(hex) = s.strip_prefix('#') {
+        return parse_hex_color(hex);
+    }
+
+    // RGB function: rgb(r, g, b)
+    if let Some(inner) = s.strip_prefix("rgb(").and_then(|s| s.strip_suffix(')')) {
+        return parse_rgb_function(inner);
+    }
+
+    // ANSI 256: ansi:N or 256:N
+    if let Some(n) = s.strip_prefix("ansi:").or_else(|| s.strip_prefix("256:")) {
+        return n.trim().parse::<u8>().ok().map(Color::AnsiValue);
+    }
+
+    // Named colors
+    parse_named_color(s)
+}
+
+/// Parse hex color string (without # prefix)
+fn parse_hex_color(hex: &str) -> Option<Color> {
+    match hex.len() {
+        3 => {
+            // #rgb -> expand each digit to double
+            let r = u8::from_str_radix(&hex[0..1], 16).ok()? * 17;
+            let g = u8::from_str_radix(&hex[1..2], 16).ok()? * 17;
+            let b = u8::from_str_radix(&hex[2..3], 16).ok()? * 17;
+            Some(Color::Rgb { r, g, b })
+        }
+        6 | 8 => {
+            // #rrggbb or #rrggbbaa (ignore alpha)
+            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+            Some(Color::Rgb { r, g, b })
+        }
+        _ => None,
+    }
+}
+
+/// Parse rgb(r, g, b) function content
+fn parse_rgb_function(inner: &str) -> Option<Color> {
+    let parts: Vec<&str> = inner.split(',').map(str::trim).collect();
+    if parts.len() != 3 {
+        return None;
+    }
+
+    let r = parts[0].parse::<u8>().ok()?;
+    let g = parts[1].parse::<u8>().ok()?;
+    let b = parts[2].parse::<u8>().ok()?;
+    Some(Color::Rgb { r, g, b })
+}
+
+/// Parse named color string
+fn parse_named_color(s: &str) -> Option<Color> {
+    match s.to_lowercase().replace(['-', '_'], "").as_str() {
+        "black" => Some(Color::Black),
+        "red" => Some(Color::Red),
+        "darkred" => Some(Color::DarkRed),
+        "green" => Some(Color::Green),
+        "darkgreen" => Some(Color::DarkGreen),
+        "yellow" => Some(Color::Yellow),
+        "darkyellow" => Some(Color::DarkYellow),
+        "blue" => Some(Color::Blue),
+        "darkblue" => Some(Color::DarkBlue),
+        "magenta" => Some(Color::Magenta),
+        "darkmagenta" => Some(Color::DarkMagenta),
+        "cyan" => Some(Color::Cyan),
+        "darkcyan" => Some(Color::DarkCyan),
+        "white" => Some(Color::White),
+        "grey" | "gray" => Some(Color::Grey),
+        "darkgrey" | "darkgray" => Some(Color::DarkGrey),
+        "reset" | "none" | "default" => Some(Color::Reset),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -328,5 +436,113 @@ mod tests {
         // Access the lookup table to ensure it initializes without panic
         let _ = ANSI256_TO_16[0];
         let _ = ANSI256_TO_16[255];
+    }
+
+    // ========== parse_color tests ==========
+
+    #[test]
+    fn test_parse_color_hex_6digit() {
+        assert_eq!(
+            parse_color("#ff0000"),
+            Some(Color::Rgb { r: 255, g: 0, b: 0 })
+        );
+        assert_eq!(
+            parse_color("#00ff00"),
+            Some(Color::Rgb { r: 0, g: 255, b: 0 })
+        );
+        assert_eq!(
+            parse_color("#1a1b26"),
+            Some(Color::Rgb {
+                r: 26,
+                g: 27,
+                b: 38
+            })
+        );
+    }
+
+    #[test]
+    fn test_parse_color_hex_3digit() {
+        // #f00 -> #ff0000
+        assert_eq!(
+            parse_color("#f00"),
+            Some(Color::Rgb { r: 255, g: 0, b: 0 })
+        );
+        // #abc -> #aabbcc
+        assert_eq!(
+            parse_color("#abc"),
+            Some(Color::Rgb {
+                r: 170,
+                g: 187,
+                b: 204
+            })
+        );
+    }
+
+    #[test]
+    fn test_parse_color_hex_8digit() {
+        // Alpha is ignored
+        assert_eq!(
+            parse_color("#ff0000ff"),
+            Some(Color::Rgb { r: 255, g: 0, b: 0 })
+        );
+    }
+
+    #[test]
+    fn test_parse_color_rgb_function() {
+        assert_eq!(
+            parse_color("rgb(255, 0, 0)"),
+            Some(Color::Rgb { r: 255, g: 0, b: 0 })
+        );
+        assert_eq!(
+            parse_color("rgb(255,0,0)"),
+            Some(Color::Rgb { r: 255, g: 0, b: 0 })
+        );
+        assert_eq!(
+            parse_color("rgb( 128 , 64 , 32 )"),
+            Some(Color::Rgb {
+                r: 128,
+                g: 64,
+                b: 32
+            })
+        );
+    }
+
+    #[test]
+    fn test_parse_color_ansi() {
+        assert_eq!(parse_color("ansi:196"), Some(Color::AnsiValue(196)));
+        assert_eq!(parse_color("256:42"), Some(Color::AnsiValue(42)));
+        assert_eq!(parse_color("ansi: 100"), Some(Color::AnsiValue(100)));
+    }
+
+    #[test]
+    fn test_parse_color_named() {
+        assert_eq!(parse_color("red"), Some(Color::Red));
+        assert_eq!(parse_color("RED"), Some(Color::Red));
+        assert_eq!(parse_color("darkblue"), Some(Color::DarkBlue));
+        assert_eq!(parse_color("dark-blue"), Some(Color::DarkBlue));
+        assert_eq!(parse_color("dark_blue"), Some(Color::DarkBlue));
+        assert_eq!(parse_color("DarkBlue"), Some(Color::DarkBlue));
+        assert_eq!(parse_color("grey"), Some(Color::Grey));
+        assert_eq!(parse_color("gray"), Some(Color::Grey));
+        assert_eq!(parse_color("reset"), Some(Color::Reset));
+        assert_eq!(parse_color("none"), Some(Color::Reset));
+    }
+
+    #[test]
+    fn test_parse_color_invalid() {
+        assert_eq!(parse_color("invalid"), None);
+        assert_eq!(parse_color("#gg0000"), None);
+        assert_eq!(parse_color("#12345"), None); // Wrong length
+        assert_eq!(parse_color("rgb(256, 0, 0)"), None); // Out of range
+        assert_eq!(parse_color("ansi:abc"), None); // Not a number
+    }
+
+    #[test]
+    fn test_parse_color_whitespace() {
+        assert_eq!(
+            parse_color("  #ff0000  "),
+            Some(Color::Rgb { r: 255, g: 0, b: 0 })
+        );
+        assert_eq!(parse_color("  red  "), Some(Color::Red));
     }
 }

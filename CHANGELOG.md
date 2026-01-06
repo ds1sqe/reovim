@@ -32,6 +32,20 @@ All notable changes to Reovim will be documented in this file.
   - Coordinate translation: Screen position to buffer position with gutter and scrollbar awareness
   - Server mode support: Mouse events forwarded in dual-output mode
 
+- **Theme customization/override system** (Issue #55) - Allow users to override individual colors/styles in TOML config
+  - `ThemeOverrides` struct for storing style path -> override mappings
+  - `StyleOverride` struct with fg, bg, underline_color, and attribute options
+  - `parse_color()` function supporting hex, rgb(), ansi:N, and named color formats
+  - `Theme::from_name_with_overrides()` and `Theme::apply_overrides()` methods
+  - `editor.theme_overrides` field in profile config schema
+  - Example config:
+    ```toml
+    [editor.theme_overrides]
+    "statusline.background" = { bg = "#1a1b26" }
+    "gutter.line_number" = { fg = "#565f89" }
+    "statusline.mode.normal" = { fg = "#1a1b26", bg = "#7aa2f7", bold = true }
+    ```
+
 - **Metadata-driven interactor input behavior** (Issue #46) - Refactored `accepts_char_input()` to use registry instead of hardcoded checks
   - `InteractorConfig` struct for configuring input behavior per interactor
   - `InteractorRegistry` for storing and querying interactor configurations
