@@ -356,11 +356,22 @@ impl Runtime {
             // Capture cursor position BEFORE command execution for CursorMoved event
             let cursor_before = buffer.cur;
 
+            // Extract operator context if in OperatorPending mode
+            let operator_context =
+                if let crate::modd::SubMode::OperatorPending { operator, count } =
+                    self.mode_state.sub_mode
+                {
+                    Some(crate::command::traits::OperatorContext { operator, count })
+                } else {
+                    None
+                };
+
             let mut exec_ctx = ExecutionContext {
                 buffer,
                 count: context.count,
                 buffer_id,
                 window_id: context.window_id,
+                operator_context,
             };
 
             let result = cmd.execute(&mut exec_ctx);
@@ -703,6 +714,8 @@ impl Runtime {
                         self.registers.set_with_type(deleted, yank_type);
                         text_modified = true;
                     }
+                    // Return to normal mode after delete
+                    self.set_mode(ModeState::normal());
                 }
                 OperatorMotionAction::Yank { motion, count } => {
                     use crate::register::YankType;
@@ -728,6 +741,8 @@ impl Runtime {
                         self.registers.set_with_type(yanked, yank_type);
                     }
                     // Yank doesn't modify text
+                    // Return to normal mode after yank
+                    self.set_mode(ModeState::normal());
                 }
                 OperatorMotionAction::Change { motion, count } => {
                     use crate::register::YankType;
@@ -752,6 +767,8 @@ impl Runtime {
                         self.registers.set(deleted);
                         text_modified = true;
                     }
+                    // Return to normal mode after delete
+                    self.set_mode(ModeState::normal());
                 }
                 OperatorMotionAction::YankTextObject { text_object } => {
                     // Get range for visual feedback
@@ -767,6 +784,8 @@ impl Runtime {
                         self.registers.set(yanked);
                     }
                     // Yank doesn't modify text
+                    // Return to normal mode after yank
+                    self.set_mode(ModeState::normal());
                 }
                 OperatorMotionAction::ChangeTextObject { text_object } => {
                     let deleted = buffer.delete_text_object(text_object);
@@ -784,6 +803,8 @@ impl Runtime {
                         self.registers.set(deleted);
                         text_modified = true;
                     }
+                    // Return to normal mode after delete
+                    self.set_mode(ModeState::normal());
                 }
                 OperatorMotionAction::YankSemanticTextObject { text_object } => {
                     if let Some(yanked) = self.yank_semantic_text_object(buffer_id, text_object)
@@ -791,6 +812,8 @@ impl Runtime {
                     {
                         self.registers.set(yanked);
                     }
+                    // Return to normal mode after yank
+                    self.set_mode(ModeState::normal());
                 }
                 OperatorMotionAction::ChangeSemanticTextObject { text_object } => {
                     if let Some(deleted) = self.delete_semantic_text_object(buffer_id, text_object)
@@ -808,6 +831,8 @@ impl Runtime {
                         self.registers.set(deleted);
                         text_modified = true;
                     }
+                    // Return to normal mode after delete
+                    self.set_mode(ModeState::normal());
                 }
                 OperatorMotionAction::YankWordTextObject { text_object } => {
                     let yanked = buffer.yank_word_text_object(text_object);
@@ -815,6 +840,8 @@ impl Runtime {
                         self.registers.set(yanked);
                     }
                     // Yank doesn't modify text
+                    // Return to normal mode after yank
+                    self.set_mode(ModeState::normal());
                 }
                 OperatorMotionAction::ChangeWordTextObject { text_object } => {
                     let deleted = buffer.delete_word_text_object(text_object);

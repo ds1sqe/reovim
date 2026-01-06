@@ -392,14 +392,16 @@ impl CommandHandler {
                                 // Convert KeyEvent to Keystroke for pending_keys
                                 let keystroke = Keystroke::from(&event);
 
-                                tracing::debug!("[RTT] CommandHandler: key={} received at {:?}", key_str, key_start);
+                                tracing::trace!("[RTT] CommandHandler: key={} received at {:?}", key_str, key_start);
 
                                 // Sync local mode from Runtime's watch channel
-                                // This catches mode changes initiated by Runtime (e.g., explorer focus)
-                                // Don't overwrite if in a handler-initiated transient state (OperatorPending)
-                                // or if mode was locally changed and runtime hasn't caught up yet
-                                if !self.local_mode.is_operator_pending() {
-                                    let runtime_mode = self.mode_rx.borrow().clone();
+                                // This catches mode changes initiated by Runtime (e.g., explorer focus, plugin mode changes)
+                                // Allow syncing even from OperatorPending if runtime mode is different
+                                // (e.g., when plugin changes from OperatorPending to Interactor)
+                                let runtime_mode = self.mode_rx.borrow().clone();
+                                let should_sync = runtime_mode != self.local_mode;
+
+                                if should_sync {
                                     tracing::debug!(
                                         "Mode sync: runtime_mode interactor={}, local_mode interactor={}, mode_locally_changed={}",
                                         runtime_mode.interactor_id.0,
@@ -495,47 +497,57 @@ impl CommandHandler {
                                 }
 
                                 // Handle operator-pending mode (d, y, c + motion or text object)
+                                // BUT: First check if there's a registered command for this key
+                                // This allows plugin commands (like jump) to override built-in motions
                                 let mode = self.current_mode();
                                 if mode.is_operator_pending() {
-                                    let count = self.count_parser.peek();
-                                    let (action, should_wait) = self.handle_operator_pending(
-                                        &key_str,
-                                        count,
-                                        &self.pending_keys,
-                                    );
-                                    if let Some(action) = action {
-                                        tracing::debug!(?action, "Operator-pending action detected");
-                                        self.pending_keys.clear();
-                                        self.count_parser.take(); // Consume count
-                                        // Change actions enter Insert mode, others return to Normal
-                                        let is_change_action = matches!(
-                                            &action,
-                                            OperatorMotionAction::Change { .. }
-                                                | OperatorMotionAction::ChangeTextObject { .. }
-                                                | OperatorMotionAction::ChangeWordTextObject { .. }
-                                                | OperatorMotionAction::ChangeSemanticTextObject { .. }
+                                    // Peek at command binding to see if a plugin command is registered
+                                    let (cmd_peek, _) = self.lookup_command_no_push(&key_str);
+                                    let has_registered_command = cmd_peek.is_some();
+
+                                    // Only use built-in motion handling if NO plugin command is registered
+                                    if !has_registered_command {
+                                        let count = self.count_parser.peek();
+                                        let (action, should_wait) = self.handle_operator_pending(
+                                            &key_str,
+                                            count,
+                                            &self.pending_keys,
                                         );
-                                        let new_mode = if is_change_action {
-                                            ModeState::insert()
-                                        } else {
-                                            ModeState::normal()
-                                        };
-                                        self.set_local_mode(new_mode);
-                                        self.mode_locally_changed = true;
-                                        self.dispatcher.send_operator_motion(action).await;
-                                        self.dispatcher
-                                            .send_pending_keys(self.pending_display())
-                                            .await;
-                                        continue;
+                                        if let Some(action) = action {
+                                            tracing::debug!(?action, "Operator-pending action detected");
+                                            self.pending_keys.clear();
+                                            self.count_parser.take(); // Consume count
+                                            // Change actions enter Insert mode, others return to Normal
+                                            let is_change_action = matches!(
+                                                &action,
+                                                OperatorMotionAction::Change { .. }
+                                                    | OperatorMotionAction::ChangeTextObject { .. }
+                                                    | OperatorMotionAction::ChangeWordTextObject { .. }
+                                                    | OperatorMotionAction::ChangeSemanticTextObject { .. }
+                                            );
+                                            let new_mode = if is_change_action {
+                                                ModeState::insert()
+                                            } else {
+                                                ModeState::normal()
+                                            };
+                                            self.set_local_mode(new_mode);
+                                            self.mode_locally_changed = true;
+                                            self.dispatcher.send_operator_motion(action).await;
+                                            self.dispatcher
+                                                .send_pending_keys(self.pending_display())
+                                                .await;
+                                            continue;
+                                        }
+                                        if should_wait {
+                                            // Waiting for text object delimiter (i/a pressed)
+                                            self.pending_keys.push(keystroke.clone());
+                                            self.dispatcher
+                                                .send_pending_keys(self.pending_display())
+                                                .await;
+                                            continue;
+                                        }
                                     }
-                                    if should_wait {
-                                        // Waiting for text object delimiter (i/a pressed)
-                                        self.pending_keys.push(keystroke.clone());
-                                        self.dispatcher
-                                            .send_pending_keys(self.pending_display())
-                                            .await;
-                                        continue;
-                                    }
+                                    // If has_registered_command, fall through to normal command dispatch
                                 }
 
                                 // Handle visual mode text object selection (viw, vi(, vif)

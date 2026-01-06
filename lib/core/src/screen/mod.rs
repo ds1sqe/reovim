@@ -420,11 +420,11 @@ impl Screen {
             for stage in stages_guard.stages() {
                 let stage_start = std::time::Instant::now();
                 data = stage.transform(data, &ctx);
-                tracing::debug!("[RTT] stage '{}' took {:?}", stage.name(), stage_start.elapsed());
+                tracing::trace!("[RTT] stage '{}' took {:?}", stage.name(), stage_start.elapsed());
             }
         }
 
-        tracing::debug!(
+        tracing::trace!(
             "[RTT] execute_pipeline: from_buffer={:?} stages={:?} total={:?}",
             from_buffer_time,
             pipeline_start.elapsed().saturating_sub(from_buffer_time),
@@ -1101,7 +1101,7 @@ impl Screen {
                 // Render pipeline data to frame buffer
                 let fb_start = std::time::Instant::now();
                 self.render_data_to_framebuffer(&render_data, win, buffer, theme, buf);
-                tracing::debug!(
+                tracing::trace!(
                     "[RTT] window render: pipeline={:?} framebuffer={:?}",
                     pipeline_time,
                     fb_start.elapsed()
@@ -1163,7 +1163,7 @@ impl Screen {
 
         queue!(self.out_stream, Show)?;
         let result = self.out_stream.flush();
-        tracing::debug!(
+        tracing::trace!(
             "[RTT] render_windows: pre_flush={:?} renderer.flush={:?} stream.flush={:?} total={:?}",
             pre_flush,
             post_renderer_flush.saturating_sub(pre_flush),
@@ -1355,6 +1355,7 @@ impl Screen {
 
         // Render each visible plugin window
         for (window, config) in windows_with_config {
+            tracing::info!("==> Rendering plugin window at z_order={}", config.z_order);
             let bounds = Rect::new(
                 config.bounds.x,
                 config.bounds.y,
@@ -1363,8 +1364,11 @@ impl Screen {
             );
 
             // Render the window content
+            tracing::info!("==> Calling window.render()");
             window.render(plugin_state, ctx, buffer, bounds, theme);
+            tracing::info!("==> Window rendered successfully");
         }
+        tracing::info!("==> All plugin windows rendered");
     }
 
     /// Update window layouts based on current layout manager state and split tree

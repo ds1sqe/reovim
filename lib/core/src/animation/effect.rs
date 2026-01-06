@@ -303,18 +303,41 @@ impl Effect {
     ///   (but sweep effects never expire based on style alone)
     #[must_use]
     pub fn is_expired(&self) -> bool {
-        self.duration.map_or_else(
+        let result = self.duration.map_or_else(
             || {
                 // Effects with a sweep should NOT expire based on style completion
                 // They are meant to run indefinitely until explicitly stopped
                 if self.sweep.is_some() {
+                    tracing::debug!(
+                        "==> Effect {:?} is_expired: has sweep, never expires",
+                        self.id
+                    );
                     false
                 } else {
-                    self.style.is_complete()
+                    let complete = self.style.is_complete();
+                    tracing::debug!(
+                        "==> Effect {:?} is_expired: no duration, style.is_complete={}",
+                        self.id,
+                        complete
+                    );
+                    complete
                 }
             },
-            |duration| self.started_at.elapsed() >= duration,
-        )
+            |duration| {
+                let elapsed = self.started_at.elapsed();
+                let expired = elapsed >= duration;
+                tracing::debug!(
+                    "==> Effect {:?} is_expired: elapsed={:?}, duration={:?}, expired={}",
+                    self.id,
+                    elapsed,
+                    duration,
+                    expired
+                );
+                expired
+            },
+        );
+        tracing::info!("==> Effect {:?} is_expired() = {}", self.id, result);
+        result
     }
 
     /// Advance the effect by the given delta time

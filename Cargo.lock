@@ -1486,15 +1486,14 @@ dependencies = [
  "reovim-lang-toml",
  "reovim-plugin-completion",
  "reovim-plugin-explorer",
- "reovim-plugin-fold",
  "reovim-plugin-health-check",
- "reovim-plugin-leap",
  "reovim-plugin-lsp",
  "reovim-plugin-microscope",
  "reovim-plugin-notification",
  "reovim-plugin-pair",
  "reovim-plugin-pickers",
  "reovim-plugin-profiles",
+ "reovim-plugin-range-finder",
  "reovim-plugin-settings-menu",
  "reovim-plugin-statusline",
  "reovim-plugin-treesitter",
@@ -1667,24 +1666,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "reovim-plugin-fold"
-version = "0.7.9"
-dependencies = [
- "reovim-core",
- "tracing",
-]
-
-[[package]]
 name = "reovim-plugin-health-check"
-version = "0.7.9"
-dependencies = [
- "reovim-core",
- "reovim-sys",
- "tracing",
-]
-
-[[package]]
-name = "reovim-plugin-leap"
 version = "0.7.9"
 dependencies = [
  "reovim-core",
@@ -1750,6 +1732,14 @@ dependencies = [
 
 [[package]]
 name = "reovim-plugin-profiles"
+version = "0.7.9"
+dependencies = [
+ "reovim-core",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-plugin-range-finder"
 version = "0.7.9"
 dependencies = [
  "reovim-core",

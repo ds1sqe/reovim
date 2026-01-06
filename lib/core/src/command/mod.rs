@@ -16,6 +16,6 @@ pub use {
     registry::{CommandRegistry, RegistryError},
     traits::{
         CommandLineAction, CommandResult, CommandTrait, DeferredAction, DeferredActionHandler,
-        ExecutionContext, FileAction,
+        ExecutionContext, FileAction, OperatorContext,
     },
 };

@@ -8,7 +8,7 @@ use reovim_core::{
     visibility::{BufferVisibilitySource, VisibilityQuery},
 };
 
-use crate::state::SharedFoldManager;
+use super::state::SharedFoldManager;
 
 /// Fold render stage - sets line visibility for folded ranges
 pub struct FoldRenderStage {

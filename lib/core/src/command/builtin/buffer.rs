@@ -103,6 +103,7 @@ mod tests {
             count: None,
             buffer_id: 0,
             window_id: 0,
+            operator_context: None,
         }
     }
 

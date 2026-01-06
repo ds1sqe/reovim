@@ -17,7 +17,6 @@ reovim/
 │   │   ├── runtime_context.rs  # RuntimeContext for plugins
 │   │   └── builtin/            # Built-in plugins (shipped with core)
 │   │       ├── core.rs         # CorePlugin - essential commands
-│   │       ├── leap.rs         # LeapPlugin - two-char motion
 │   │       └── window.rs       # WindowPlugin - window management
 │   │
 │   └── event_bus/              # Type-erased event system
@@ -27,13 +26,12 @@ reovim/
 ├── plugins/features/           # External feature plugins
 │   ├── completion/             # Text completion
 │   ├── explorer/               # File browser
-│   ├── fold/                   # Code folding
-│   ├── leap/                   # Two-char motion
 │   ├── lsp/                    # LSP integration
 │   ├── microscope/             # Fuzzy finder
 │   ├── notification/           # Toast notifications and progress bars
 │   ├── pair/                   # Auto-pair brackets
 │   ├── pickers/                # Picker UI components
+│   ├── range-finder/           # Jump navigation and code folding
 │   ├── settings-menu/          # In-editor settings
 │   ├── statusline/             # Statusline extension API
 │   ├── treesitter/             # Syntax highlighting infrastructure
@@ -915,11 +913,11 @@ impl PluginStateRegistry {
 **Example:**
 ```rust
 // In init_state()
-registry.register(LeapState::new());
+registry.register(MyPluginState::new());
 
 // Later, access state
-registry.with_mut::<LeapState, _, _>(|state| {
-    state.start(direction, operator, count);
+registry.with_mut::<MyPluginState, _, _>(|state| {
+    state.do_something();
 });
 ```
 
@@ -993,41 +991,6 @@ impl Plugin for CorePlugin {
 }
 ```
 
-### LeapPlugin
-
-Two-character jump navigation (s/S):
-
-```rust
-pub struct LeapPlugin;
-
-impl Plugin for LeapPlugin {
-    fn id(&self) -> PluginId { PluginId::new("reovim:leap") }
-    fn name(&self) -> &'static str { "Leap" }
-    fn dependencies(&self) -> Vec<TypeId> { vec![TypeId::of::<CorePlugin>()] }
-
-    fn build(&self, ctx: &mut PluginContext) {
-        // Register unified command-event types
-        ctx.register_command(LeapForward);
-        ctx.register_command(LeapBackward);
-        ctx.register_command(LeapCancel);
-    }
-
-    fn init_state(&self, registry: &PluginStateRegistry) {
-        registry.register(LeapState::new());
-    }
-
-    fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {
-        let state_clone = Arc::clone(&state);
-        // Subscribe using the same unified type (no "Event" suffix)
-        bus.subscribe::<LeapStart, _>(100, move |event, _ctx| {
-            state_clone.with_mut::<LeapState, _, _>(|leap_state| {
-                leap_state.start(event.direction, event.operator, event.count);
-            });
-            EventResult::Handled
-        });
-    }
-}
-```
 
 ### WindowPlugin
 
@@ -1040,12 +1003,22 @@ Window management (splits, navigation):
 
 External plugins are separate crates that depend on `reovim-core`. They register commands from core's command modules.
 
-### FoldPlugin (`reovim-plugin-fold`)
+### RangeFinderPlugin (`reovim-plugin-range-finder`)
 
-Code folding with treesitter integration:
+Unified jump navigation and code folding:
+
+**Jump Navigation:**
+- Multi-char search (`s`) - 2-character pattern + labels
+- Enhanced single-char find (`f`/`F`) - Find with labels
+- Enhanced single-char till (`t`/`T`) - Till with labels
+- Smart auto-jump (1 match → instant, 2-676 → labels)
+- Operator integration (`d`/`y`/`c` + jump motion)
+
+**Code Folding:**
 - Toggle fold (`za`)
 - Open/close fold (`zo`/`zc`)
 - Open/close all (`zR`/`zM`)
+- Treesitter integration for semantic folds
 
 ### SettingsMenuPlugin (`reovim-plugin-settings-menu`)
 
@@ -1414,22 +1387,20 @@ bus.subscribe::<ExplorerInputChar, _>(100, |event, ctx| {
 
 // Separate event type
 #[derive(Debug, Clone)]
-pub struct LeapStartEvent {
-    pub direction: LeapDirection,
-    pub operator: Option<OperatorType>,
-    pub count: Option<usize>,
+pub struct MyActionEvent {
+    pub data: String,
 }
 
-impl Event for LeapStartEvent {
-    fn priority(&self) -> u32 { 50 }
+impl Event for MyActionEvent {
+    fn priority(&self) -> u32 { 100 }
 }
 
 // Separate command type
-pub struct LeapStartCommand;
+pub struct MyActionCommand;
 
-impl CommandTrait for LeapStartCommand {
+impl CommandTrait for MyActionCommand {
     fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::EmitEvent(DynEvent::new(LeapStartEvent { ... }))
+        CommandResult::EmitEvent(DynEvent::new(MyActionEvent { ... }))
     }
     // ... 15 more lines of boilerplate
 }
@@ -1465,7 +1436,7 @@ impl PluginTuple for AllPlugins {
         loader.add_plugins(DefaultPlugins);
 
         // External feature plugins
-        loader.add(FoldPlugin);
+        loader.add(RangeFinderPlugin);
         loader.add(SettingsMenuPlugin);
         loader.add(CompletionPlugin);
         loader.add(ExplorerPlugin);
@@ -1525,19 +1496,14 @@ pub struct Runtime {
 Plugins can emit events that the runtime handles:
 
 ```rust
-// In event_loop.rs
-fn handle_leap_event(&mut self, event: LeapEvent) {
+// In event_loop.rs (if runtime needs to handle plugin events)
+fn handle_plugin_event(&mut self, event: MyPluginEvent) {
     match event {
-        LeapEvent::Start { direction, operator, count } => {
-            // Update local state
-            self.leap_state.start(direction, operator, count);
+        MyPluginEvent::Action { data } => {
+            // Update local state if needed
 
-            // Emit to event bus for plugin consumption
-            self.event_bus.emit(LeapStartEvent {
-                direction,
-                operator,
-                count,
-            });
+            // Emit to event bus for other plugins
+            self.event_bus.emit(MyActionEvent { data });
         }
         // ...
     }
@@ -1552,7 +1518,7 @@ Features are being migrated from hardcoded `InnerEvent` variants to the event bu
 ```rust
 // In event/inner/mod.rs - requires modifying core enum
 pub enum InnerEvent {
-    LeapEvent(LeapEvent),
+    MyPluginEvent(MyPluginEvent),
     // ... many variants
 }
 ```
@@ -1561,11 +1527,11 @@ pub enum InnerEvent {
 ```rust
 // In plugin - no core changes needed
 #[derive(Debug, Clone)]
-pub struct LeapStartEvent { ... }
-impl Event for LeapStartEvent {}
+pub struct MyActionEvent { ... }
+impl Event for MyActionEvent {}
 
 // Subscribe in plugin
-bus.subscribe::<LeapStartEvent, _>(100, |event, _ctx| {
+bus.subscribe::<MyActionEvent, _>(100, |event, _ctx| {
     // Handle event
     EventResult::Handled
 });
@@ -1609,7 +1575,7 @@ The `DisplayRegistry` provides fallback for unregistered components.
 ### Z-Order
 
 Plugin windows control their z-order via the `PluginWindow::z_order()` method. Core only defines `z_order::BASE` (0) and `z_order::EDITOR` (2). Typical plugin z-orders:
-- Leap: 100
+- Range-Finder (jump labels): 110
 - Completion: 200
 - Telescope: 300
 - Settings: 400
@@ -1811,12 +1777,11 @@ reovim-plugin-my-plugin.workspace = true
 │  │  │  DefaultPlugins │  │    External Plugins             │││
 │  │  │  (from core)    │  │    (separate crates)            │││
 │  │  │                 │  │                                 │││
-│  │  │  • CorePlugin   │  │  • FoldPlugin                   │││
+│  │  │  • CorePlugin   │  │  • RangeFinderPlugin            │││
 │  │  │  • WindowPlugin │  │  • SettingsMenuPlugin           │││
 │  │  │                 │  │  • CompletionPlugin             │││
 │  │  │                 │  │  • ExplorerPlugin               │││
 │  │  │                 │  │  • TelescopePlugin              │││
-│  │  │                 │  │  • LeapPlugin                   │││
 │  │  │                 │  │  • TreesitterPlugin             │││
 │  │  │                 │  │  • Language plugins...          │││
 │  │  └─────────────────┘  └─────────────────────────────────┘││
@@ -1832,7 +1797,7 @@ reovim-plugin-my-plugin.workspace = true
 │  └─────────────┘  └─────────────┘  └─────────────────────┘  │
 │  ┌─────────────────────────────────────────────────────────┐│
 │  │                    Feature Modules                      ││
-│  │  completion/ explorer/ telescope/ settings_menu/ fold/  ││
+│  │  completion/ explorer/ telescope/ settings_menu/        ││
 │  │         (types and commands for external plugins)       ││
 │  └─────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────┘

@@ -78,6 +78,31 @@ async fn main() -> Result<(), io::Error> {
     let lsp_log_target = logging::parse_lsp_log_target(cli.lsp_log.as_deref());
     let _log_guards = logging::init_with_lsp(&log_target, &lsp_log_target);
 
+    // Set panic hook to log panics (since terminal cleanup hides them)
+    std::panic::set_hook(Box::new(|panic_info| {
+        let payload = panic_info.payload();
+        let msg = payload
+            .downcast_ref::<&str>()
+            .copied()
+            .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+            .unwrap_or("Unknown panic payload");
+
+        let location = panic_info.location().map_or_else(
+            || "unknown location".to_string(),
+            |loc| format!("{}:{}:{}", loc.file(), loc.line(), loc.column()),
+        );
+
+        tracing::error!("!!!! PANIC !!!!");
+        tracing::error!("Message: {}", msg);
+        tracing::error!("Location: {}", location);
+        tracing::error!("!!!! PANIC END !!!!");
+
+        // Also try to write to stderr in case terminal is still readable
+        eprintln!("\n!!!! PANIC !!!!");
+        eprintln!("Message: {msg}");
+        eprintln!("Location: {location}");
+    }));
+
     tracing::info!("reovim {} starting", env!("CARGO_PKG_VERSION"));
 
     if let Some(ref profile) = cli.profile {
@@ -122,23 +147,27 @@ async fn main() -> Result<(), io::Error> {
     }
 
     // Normal interactive mode - guard ensures cleanup on panic/error
+    tracing::info!("==> Creating terminal guard");
     let _term_guard = TerminalGuard::new_interactive()?;
-    tracing::debug!("Terminal initialized with alternate screen");
+    tracing::info!("==> Terminal guard created, initializing screen");
 
     let mut screen = Screen::default();
     screen.initialize()?;
-    tracing::debug!(width = screen.width(), height = screen.height(), "Screen initialized");
+    tracing::info!("==> Screen initialized: width={}, height={}", screen.width(), screen.height());
 
+    tracing::info!("==> Creating runtime with plugins");
     let mut runtime = Runtime::with_plugins(screen, AllPlugins)
         .with_file(cli.file)
         .with_profile(cli.profile);
 
     // Initialize profile system (creates default profile if needed)
+    tracing::info!("==> Initializing profile system");
     runtime.init_profiles();
 
+    tracing::info!("==> Starting runtime event loop");
     runtime.init().await;
 
-    tracing::info!("reovim shutting down");
+    tracing::info!("==> Runtime event loop exited, shutting down");
     // Guard automatically cleans up here (Drop)
     Ok(())
 }

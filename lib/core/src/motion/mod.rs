@@ -24,6 +24,13 @@ pub enum Motion {
     // Document motions
     DocumentStart,
     DocumentEnd,
+
+    // Jump motions (for plugins like range-finder, LSP goto definition, etc.)
+    /// Jump to specific line and column
+    JumpTo {
+        line: u32,
+        column: u32,
+    },
 }
 
 impl Motion {

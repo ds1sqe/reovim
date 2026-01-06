@@ -4,11 +4,20 @@ use {
     crate::{
         buffer::Buffer,
         event_bus::DynEvent,
-        modd::ModeState,
+        modd::{ModeState, OperatorType},
         screen::{NavigateDirection, SplitDirection},
     },
     std::{any::Any, fmt::Debug},
 };
+
+/// Operator context for commands executed in operator-pending mode
+#[derive(Debug, Clone, Copy)]
+pub struct OperatorContext {
+    /// The operator type (Delete, Yank, Change)
+    pub operator: OperatorType,
+    /// Optional repeat count
+    pub count: Option<usize>,
+}
 
 /// Execution context passed to commands
 pub struct ExecutionContext<'a> {
@@ -20,6 +29,8 @@ pub struct ExecutionContext<'a> {
     pub buffer_id: usize,
     /// ID of the window containing the buffer
     pub window_id: usize,
+    /// Operator context (if command is being executed in operator-pending mode)
+    pub operator_context: Option<OperatorContext>,
 }
 
 /// Result of command execution

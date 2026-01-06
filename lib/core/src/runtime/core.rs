@@ -447,6 +447,87 @@ impl Runtime {
                 });
         }
 
+        // Subscribe to RequestCursorMove (for plugin-driven jumps)
+        {
+            use crate::{
+                command::traits::OperatorMotionAction,
+                event_bus::{EventResult, core_events::RequestCursorMove},
+                modd::{OperatorType, SubMode},
+                motion::Motion,
+            };
+            let tx = runtime.tx.clone();
+            let mode_tx = runtime.mode_tx.clone();
+            runtime
+                .event_bus
+                .subscribe::<RequestCursorMove, _>(100, move |event, _ctx| {
+                    tracing::trace!(
+                        "Runtime: RequestCursorMove to line={}, col={} in buffer={}",
+                        event.line,
+                        event.column,
+                        event.buffer_id
+                    );
+
+                    // Check for operator from motion_context first, then fallback to mode
+                    let operator_info = event.motion_context.as_ref().map_or_else(
+                        || {
+                            // Fallback: check if we're in operator-pending mode
+                            let current_mode = mode_tx.borrow().clone();
+                            match current_mode.sub_mode {
+                                SubMode::OperatorPending { operator, count } => {
+                                    Some((operator, count))
+                                }
+                                _ => None,
+                            }
+                        },
+                        |motion_ctx| motion_ctx.operator.map(|op| (op, motion_ctx.count)),
+                    );
+
+                    match operator_info {
+                        Some((operator, op_count)) => {
+                            // Create operator motion action for jump
+                            tracing::debug!(
+                                "Runtime: Jump with operator {:?}, op_count={:?}",
+                                operator,
+                                op_count
+                            );
+
+                            let motion = Motion::JumpTo {
+                                line: event.line,
+                                column: event.column,
+                            };
+
+                            let action = match operator {
+                                OperatorType::Delete => OperatorMotionAction::Delete {
+                                    motion,
+                                    count: op_count.unwrap_or(1),
+                                },
+                                OperatorType::Yank => OperatorMotionAction::Yank {
+                                    motion,
+                                    count: op_count.unwrap_or(1),
+                                },
+                                OperatorType::Change => OperatorMotionAction::Change {
+                                    motion,
+                                    count: op_count.unwrap_or(1),
+                                },
+                            };
+
+                            // Send operator motion event (runtime will handle mode change)
+                            let _ = tx.try_send(InnerEvent::OperatorMotionEvent(action));
+                        }
+                        None => {
+                            // Normal cursor move (no operator)
+                            let _ = tx.try_send(InnerEvent::MoveCursor {
+                                buffer_id: event.buffer_id,
+                                line: event.line,
+                                column: event.column,
+                            });
+                        }
+                    }
+
+                    EventResult::Handled
+                });
+        }
+
         // Subscribe to settings/option capability requests
         {
             use crate::event_bus::{EventResult, core_events::RequestSetLineNumbers};
@@ -688,7 +769,7 @@ impl Runtime {
         self.update_visible_highlights();
         let saturator_time = render_start.elapsed().saturating_sub(flush_time);
 
-        tracing::debug!(
+        tracing::trace!(
             "[RTT] render: state_build={:?} screen_render={:?} flush={:?} saturator={:?} total={:?}",
             pre_render,
             post_render.saturating_sub(pre_render),

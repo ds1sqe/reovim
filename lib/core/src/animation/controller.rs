@@ -147,14 +147,32 @@ impl AnimationController {
 
     fn tick(&mut self, delta_ms: f32) {
         // Tick all effects and remove expired ones
-        for effects in self.effects.values_mut() {
+        tracing::debug!("==> controller.tick() starting with {} targets", self.effects.len());
+        for (target, effects) in &mut self.effects {
+            let before_count = effects.len();
+            tracing::debug!("==> Target {:?} has {} effects before tick", target, before_count);
             for effect in effects.iter_mut() {
+                tracing::debug!("==> Ticking effect {:?}", effect.id);
                 effect.tick(delta_ms);
             }
-            effects.retain(|e| !e.is_expired());
+            tracing::debug!("==> Checking expiration for {} effects", effects.len());
+            effects.retain(|e| {
+                let expired = e.is_expired();
+                if expired {
+                    tracing::info!("==> Removing expired effect {:?}", e.id);
+                }
+                !expired
+            });
+            let after_count = effects.len();
+            tracing::debug!(
+                "==> Target {:?} has {} effects after expiration check",
+                target,
+                after_count
+            );
         }
         // Remove empty entries
         self.effects.retain(|_, v| !v.is_empty());
+        tracing::debug!("==> controller.tick() finished with {} targets", self.effects.len());
     }
 
     fn export_state(&self) -> AnimationState {
@@ -199,23 +217,39 @@ pub fn spawn_animation_controller(
                     controller.handle_command(cmd);
 
                     // Update shared state
+                    tracing::debug!("==> Waiting for state write lock (command handler)...");
                     let mut state_guard = state.write().await;
+                    tracing::debug!("==> Got state write lock, exporting state");
                     *state_guard = controller.export_state();
+                    drop(state_guard);
+                    tracing::debug!("==> Releasing state write lock");
                 }
                 // Tick animations
                 _ = interval.tick() => {
+                    tracing::debug!("==> Animation interval tick (has_active={}, count={})",
+                        controller.has_active_effects(),
+                        controller.effects.len());
                     if controller.has_active_effects() {
+                        tracing::info!("==> Animation tick: {} active effects", controller.effects.len());
                         let delta_ms = 1000.0 / f32::from(controller.frame_rate);
+                        tracing::debug!("==> Calling controller.tick(delta_ms={:.2})", delta_ms);
                         controller.tick(delta_ms);
+                        tracing::debug!("==> After tick: {} active effects", controller.effects.len());
 
                         // Update shared state
                         {
+                            tracing::debug!("==> Waiting for state write lock (tick handler)...");
                             let mut state_guard = state.write().await;
+                            tracing::debug!("==> Got state write lock, exporting state");
                             *state_guard = controller.export_state();
+                            drop(state_guard);
+                            tracing::debug!("==> Releasing state write lock");
                         }
 
                         // Request re-render
+                        tracing::debug!("==> Sending RenderSignal");
                         let _ = event_tx.try_send(InnerEvent::RenderSignal);
+                        tracing::debug!("==> RenderSignal sent");
                     }
                 }
             }

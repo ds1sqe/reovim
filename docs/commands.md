@@ -21,7 +21,6 @@ lib/core/src/command/
 │   ├── completion.rs
 │   ├── explorer.rs
 │   ├── telescope.rs
-│   ├── leap.rs
 │   ├── operator.rs
 │   ├── jump.rs
 │   └── history.rs
@@ -115,7 +114,6 @@ pub enum DeferredAction {
     JumpOlder,
     JumpNewer,
     OperatorMotion(OperatorMotionAction),
-    Leap(LeapAction),
 }
 ```
 
@@ -206,14 +204,23 @@ impl CommandId {
 
 Operators combine with motions: `d` + `w` = delete word, `y` + `$` = yank to end of line.
 
-### Leap (3)
+### Range-Finder (Jump + Folding)
+
+**Jump Navigation:**
 | Command | Key | Description |
 |---------|-----|-------------|
-| `leap_forward` | s | Start forward leap (2-char jump) |
-| `leap_backward` | S | Start backward leap |
-| `leap_cancel` | Esc | Cancel active leap |
+| `jump_search` | s | Multi-char search (2 chars + label) |
+| `jump_find_char` | f | Enhanced find char (with labels) |
+| `jump_find_char_back` | F | Enhanced find char backward |
+| `jump_till_char` | t | Enhanced till char (with labels) |
+| `jump_till_char_back` | T | Enhanced till char backward |
 
-### Folding (5)
+Jump features:
+- Smart auto-jump: 1 match → instant, 2-676 → labels
+- Works with operators: `d` + `s` + pattern + label = delete range
+- Label priority: home row keys (s, f, n, j, k...)
+
+**Folding:**
 | Command | Key | Description |
 |---------|-----|-------------|
 | `fold_toggle` | za | Toggle fold at cursor line |
@@ -412,8 +419,7 @@ EventBus.dispatch() → Settings plugin opens
            ├── Explorer → explorer navigation/operations
            ├── Telescope → fuzzy finder operations
            ├── JumpOlder/Newer → jump list navigation
-           ├── OperatorMotion → execute operator+motion
-           └── Leap → leap motion execution
+           └── OperatorMotion → execute operator+motion
 ```
 
 ## Adding New Commands
