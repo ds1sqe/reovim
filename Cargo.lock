@@ -1609,6 +1609,7 @@ dependencies = [
  "tree-sitter-python 0.25.0",
  "tree-sitter-rust",
  "tree-sitter-toml-ng",
+ "unicode-width",
  "walkdir",
 ]
 
