@@ -7,18 +7,16 @@ mod common;
 
 use common::ServerTest;
 
-/// Helper: get cell at content position (accounting for line number gutter)
-/// Gutter format is "N " where N is line number (variable width) + 1 space
+/// Helper: get cell at content position (accounting for sign column + line number gutter)
+/// Gutter format is: `sign_column` (2 chars) + "N " where N is line number + 1 space
 fn get_content_cell(
     snap: &reovim_core::visual::VisualSnapshot,
     content_col: usize,
     row: usize,
 ) -> Option<&reovim_core::rpc::state::CellSnapshot> {
-    // Find gutter width by looking for first non-digit, non-space after digits
-    // For single-digit lines: "1 " = 2 chars
-    // For double-digit lines: "10 " = 3 chars
-    // Simpler: assume line numbers up to 99 = max 3 chars, but typically "N " = 2 for single digit
-    let gutter_width = 2; // "1 " format for single-digit line numbers
+    // Gutter = sign column (2) + line number (1 digit) + space (1) = 4 chars
+    // For single-digit lines with sign column: "  1 " = 4 chars
+    let gutter_width = 4; // sign_column (2) + "N " (2) for single-digit line numbers
     snap.cells
         .get(row)
         .and_then(|r| r.get(gutter_width + content_col))

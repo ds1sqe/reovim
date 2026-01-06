@@ -418,6 +418,21 @@ impl Event for RequestSetIndentGuide {
     }
 }
 
+/// Request to set sign column configuration
+///
+/// Emitted by plugins when the signcolumn option changes.
+#[derive(Debug, Clone, Copy)]
+pub struct RequestSetSignColumn {
+    /// Sign column width (None = disabled, Some(width) = enabled)
+    pub width: Option<u16>,
+}
+
+impl Event for RequestSetSignColumn {
+    fn priority(&self) -> u32 {
+        priority::CORE
+    }
+}
+
 // =============================================================================
 // Text Input Events
 // =============================================================================

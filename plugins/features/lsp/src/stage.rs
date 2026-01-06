@@ -211,6 +211,39 @@ impl LspRenderStage {
             // Get style based on severity
             let style = severity_to_style(diagnostic.severity, diag_styles);
 
+            // Create sign for the diagnostic (only on start line)
+            if start_line < input.signs.len() {
+                tracing::debug!(
+                    "LSP: Creating sign for line {} (severity: {:?})",
+                    start_line,
+                    diagnostic.severity
+                );
+                let (icon, priority) = match diagnostic.severity {
+                    Some(DiagnosticSeverity::ERROR) => ("●", 304),
+                    Some(DiagnosticSeverity::WARNING) => ("◐", 303),
+                    Some(DiagnosticSeverity::INFORMATION) => ("ⓘ", 302),
+                    Some(DiagnosticSeverity::HINT) => ("·", 301),
+                    Some(_) | None => ("ⓘ", 300),
+                };
+
+                let sign = reovim_core::sign::Sign {
+                    icon: icon.to_string(),
+                    style: style.clone(),
+                    priority,
+                };
+
+                // Set sign only if none exists or we have higher priority
+                match &input.signs[start_line] {
+                    Some(existing) if existing.priority >= sign.priority => {
+                        // Keep existing higher-priority sign
+                    }
+                    _ => {
+                        // Replace with new sign
+                        input.signs[start_line] = Some(sign);
+                    }
+                }
+            }
+
             // Handle single-line and multi-line diagnostics
             if start_line == end_line {
                 // Single-line diagnostic
@@ -250,7 +283,13 @@ impl LspRenderStage {
             }
         }
 
-        debug!(buffer_id, count = diagnostics.len(), "LSP: applied diagnostic highlights");
+        let sign_count = input.signs.iter().filter(|s| s.is_some()).count();
+        debug!(
+            buffer_id,
+            count = diagnostics.len(),
+            signs_created = sign_count,
+            "LSP: applied diagnostic highlights and signs"
+        );
     }
 }
 

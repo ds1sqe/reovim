@@ -151,6 +151,7 @@ impl Default for Screen {
             is_floating: false,
             line_number: Some(LineNumber::default()),
             scrollbar_enabled: false,
+            sign_column_width: Some(2),
             cursor: Position { x: 0, y: 0 },
             desired_col: None,
             border_config: None,
@@ -213,6 +214,7 @@ impl Screen {
             is_floating: false,
             line_number: Some(LineNumber::default()),
             scrollbar_enabled: false,
+            sign_column_width: Some(2),
             cursor: Position { x: 0, y: 0 },
             desired_col: None,
             border_config: None,
@@ -523,9 +525,39 @@ impl Screen {
                 LineVisibility::Hidden => {}
                 LineVisibility::FoldMarker { preview, .. } => {
                     let screen_y = window.anchor.y + display_row;
-                    let gutter_width = self.render_line_number_to_buffer_simple(
+                    let mut gutter_width = 0u16;
+
+                    // Render sign column FIRST (if enabled) - leftmost gutter element
+                    if let Some(sign_width) = window.sign_column_width {
+                        let sign = render_data.signs.get(line_idx).and_then(|s| s.as_ref());
+                        let sign_x = window.anchor.x + gutter_width;
+                        if line_idx == 0 {
+                            tracing::info!(
+                                "SIGN_COLUMN: x={} y={} width={} sign_present={}",
+                                sign_x,
+                                screen_y,
+                                sign_width,
+                                sign.is_some()
+                            );
+                        }
+                        gutter_width += Window::render_sign_to_buffer(
+                            frame_buffer,
+                            sign_x,
+                            screen_y,
+                            sign,
+                            sign_width,
+                            theme,
+                        );
+                    }
+
+                    // Render line numbers AFTER sign column
+                    let line_num_x = window.anchor.x + gutter_width;
+                    if line_idx == 0 {
+                        tracing::info!("LINE_NUM: x={} gutter_width={}", line_num_x, gutter_width);
+                    }
+                    gutter_width += self.render_line_number_to_buffer_simple(
                         frame_buffer,
-                        window.anchor.x,
+                        window.anchor.x + gutter_width,
                         screen_y,
                         line_idx as u16,
                         cursor_y,
@@ -574,9 +606,39 @@ impl Screen {
                     }
 
                     let screen_y = window.anchor.y + display_row;
-                    let gutter_width = self.render_line_number_to_buffer_simple(
+                    let mut gutter_width = 0u16;
+
+                    // Render sign column FIRST (if enabled) - leftmost gutter element
+                    if let Some(sign_width) = window.sign_column_width {
+                        let sign = render_data.signs.get(line_idx).and_then(|s| s.as_ref());
+                        let sign_x = window.anchor.x + gutter_width;
+                        if line_idx == 0 {
+                            tracing::info!(
+                                "SIGN_COLUMN: x={} y={} width={} sign_present={}",
+                                sign_x,
+                                screen_y,
+                                sign_width,
+                                sign.is_some()
+                            );
+                        }
+                        gutter_width += Window::render_sign_to_buffer(
+                            frame_buffer,
+                            sign_x,
+                            screen_y,
+                            sign,
+                            sign_width,
+                            theme,
+                        );
+                    }
+
+                    // Render line numbers AFTER sign column
+                    let line_num_x = window.anchor.x + gutter_width;
+                    if line_idx == 0 {
+                        tracing::info!("LINE_NUM: x={} gutter_width={}", line_num_x, gutter_width);
+                    }
+                    gutter_width += self.render_line_number_to_buffer_simple(
                         frame_buffer,
-                        window.anchor.x,
+                        window.anchor.x + gutter_width,
                         screen_y,
                         line_idx as u16,
                         cursor_y,
@@ -914,7 +976,9 @@ impl Screen {
             .and_then(|win| {
                 let buffer_id = win.buffer_id()?;
                 let buf = buffers.get(&buffer_id)?;
-                let gutter_width = win.line_number_width(buf.contents.len());
+                let line_num_width = win.line_number_width(buf.contents.len());
+                let sign_width = win.sign_column_width.unwrap_or(0);
+                let gutter_width = sign_width + line_num_width;
                 let scroll_y = win.buffer_anchor().map_or(0, |a| a.y);
                 Some((win.anchor.x, win.anchor.y, gutter_width, scroll_y, buf.cur.x, buf.cur.y))
             })
@@ -1045,8 +1109,9 @@ impl Screen {
 
                 // Calculate cursor position only for the ACTIVE window (and if editor is focused)
                 if win.is_active {
-                    let gutter_width = win.line_number_width(buf.contents.len());
-                    let cursor_x = win.anchor.x + gutter_width + buf.cur.x;
+                    let line_num_width = win.line_number_width(buf.contents.len());
+                    let sign_width = win.sign_column_width.unwrap_or(0);
+                    let cursor_x = win.anchor.x + sign_width + line_num_width + buf.cur.x;
                     let cursor_y = win.anchor.y
                         + buf
                             .cur
@@ -1117,6 +1182,12 @@ impl Screen {
     pub fn set_relative_number(&mut self, enabled: bool) {
         for window in &mut self.windows {
             window.set_relative_number(enabled);
+        }
+    }
+
+    pub fn set_sign_column_width(&mut self, width: Option<u16>) {
+        for window in &mut self.windows {
+            window.sign_column_width = width;
         }
     }
 
@@ -1359,6 +1430,7 @@ impl Screen {
                     is_floating: false,
                     line_number: Some(LineNumber::default()),
                     scrollbar_enabled: false,
+                    sign_column_width: Some(2),
                     cursor,
                     desired_col,
                     border_config: None,

@@ -508,6 +508,16 @@ impl Runtime {
                     EventResult::Handled
                 });
         }
+        {
+            use crate::event_bus::{EventResult, core_events::RequestSetSignColumn};
+            let tx = runtime.tx.clone();
+            runtime
+                .event_bus
+                .subscribe::<RequestSetSignColumn, _>(100, move |event, _ctx| {
+                    let _ = tx.try_send(InnerEvent::SetSignColumn { width: event.width });
+                    EventResult::Handled
+                });
+        }
 
         // Enable keyboard enhancement protocol if supported
         // This allows terminals (kitty, WezTerm, foot) to disambiguate Ctrl+I from Tab

@@ -83,6 +83,7 @@ fn create_window_at_scroll(height: u16, scroll_y: u16) -> Window {
         is_active: true,
         is_floating: false,
         line_number: Some(LineNumber::default()),
+        sign_column_width: None,
         scrollbar_enabled: false,
         cursor: Position { x: 0, y: scroll_y },
         desired_col: None,

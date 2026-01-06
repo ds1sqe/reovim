@@ -146,6 +146,7 @@ mod tests {
             ],
             highlights: vec![vec![], vec![]],
             decorations: vec![vec![], vec![]],
+            signs: vec![None, None],
             buffer_id: 1,
             window_id: 1,
             window_bounds: Bounds {

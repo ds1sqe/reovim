@@ -14,7 +14,7 @@ pub use {
     registry::RenderStageRegistry, stage::RenderStage,
 };
 
-use crate::highlight::Style;
+use crate::{highlight::Style, sign::LineSign};
 
 /// Data flowing through the render pipeline
 #[derive(Debug, Clone)]
@@ -30,6 +30,10 @@ pub struct RenderData {
 
     /// Per-line decorations (conceals, backgrounds)
     pub decorations: Vec<Vec<Decoration>>,
+
+    /// Per-line signs for gutter (same length as lines)
+    /// Populated by plugins via `RenderStage` transforms
+    pub signs: Vec<LineSign>,
 
     /// Metadata
     pub buffer_id: usize,
@@ -93,6 +97,7 @@ impl RenderData {
             visibility: vec![LineVisibility::Visible; line_count],
             highlights,
             decorations,
+            signs: vec![None; line_count],
             buffer_id: buffer.id,
             window_id: window.id,
             window_bounds: Bounds {
@@ -162,4 +167,55 @@ pub struct Bounds {
     pub y: u16,
     pub width: u16,
     pub height: u16,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_render_data_signs_initialization() {
+        // Create minimal test data
+        use crate::{buffer::Buffer, modd::ModeState};
+
+        let buffer = Buffer::empty(0);
+        let mode = ModeState::default();
+        let window = crate::screen::window::tests::create_test_window(10);
+
+        let render_data = RenderData::from_buffer(&window, &buffer, &mode);
+
+        // Signs should be initialized as empty vector with correct length
+        assert_eq!(render_data.signs.len(), buffer.contents.len());
+        assert!(render_data.signs.iter().all(Option::is_none));
+    }
+
+    #[test]
+    fn test_render_data_signs_can_be_modified() {
+        use crate::{
+            buffer::{Buffer, Line},
+            highlight::Style,
+            modd::ModeState,
+            sign::Sign,
+        };
+
+        let mut buffer = Buffer::empty(0);
+        // Add some lines to the buffer so we can test sign modification
+        buffer.contents.push(Line::from("line 1"));
+        buffer.contents.push(Line::from("line 2"));
+        buffer.contents.push(Line::from("line 3"));
+
+        let mode = ModeState::default();
+        let window = crate::screen::window::tests::create_test_window(10);
+
+        let mut render_data = RenderData::from_buffer(&window, &buffer, &mode);
+
+        // Add a sign to line 0
+        let sign = Sign::new("●".to_string(), Style::new(), 304);
+        render_data.signs[0] = Some(sign);
+
+        // Verify it was set
+        assert!(render_data.signs[0].is_some());
+        assert_eq!(render_data.signs[0].as_ref().unwrap().icon, "●");
+        assert_eq!(render_data.signs[0].as_ref().unwrap().priority, 304);
+    }
 }
