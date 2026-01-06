@@ -6,6 +6,7 @@ use crate::{
     bind::{CommandRef, KeyMap, KeymapScope},
     command::{CommandRegistry, CommandTrait},
     display::{DisplayInfo, DisplayRegistry},
+    interactor::{InteractorConfig, InteractorRegistry},
     keystroke::KeySequence,
     modd::ComponentId,
     modifier::ModifierRegistry,
@@ -45,6 +46,9 @@ pub struct PluginContext {
 
     /// Current plugin ID for namespacing options
     pub(crate) current_plugin_id: Option<String>,
+
+    /// Interactor registry for input behavior configuration
+    pub(crate) interactor_registry: InteractorRegistry,
 }
 
 impl Default for PluginContext {
@@ -67,6 +71,7 @@ impl PluginContext {
             render_stages: RenderStageRegistry::new(),
             option_specs: Vec::new(),
             current_plugin_id: None,
+            interactor_registry: InteractorRegistry::new(),
         }
     }
 
@@ -203,6 +208,40 @@ impl PluginContext {
         crate::display::DisplayInfoBuilder::new(self, id)
     }
 
+    // === Interactor Registration ===
+
+    /// Register an interactor's input behavior configuration
+    ///
+    /// This configures how an interactor handles character input. By default,
+    /// interactors accept character input (like Explorer's filter mode).
+    /// Use [`InteractorConfig::using_keymap()`] for interactors that should
+    /// look up characters in the keymap (like Window mode).
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Register an interactor that uses keymap for input
+    /// ctx.register_interactor(
+    ///     ComponentId("my_nav_mode"),
+    ///     InteractorConfig::using_keymap()
+    /// );
+    /// ```
+    pub fn register_interactor(&mut self, id: ComponentId, config: InteractorConfig) {
+        self.interactor_registry.register(id, config);
+    }
+
+    /// Get access to the interactor registry
+    #[must_use]
+    pub const fn interactor_registry(&self) -> &InteractorRegistry {
+        &self.interactor_registry
+    }
+
+    /// Get mutable access to the interactor registry
+    #[must_use]
+    pub const fn interactor_registry_mut(&mut self) -> &mut InteractorRegistry {
+        &mut self.interactor_registry
+    }
+
     // === Plugin Queries ===
 
     /// Check if a plugin has been loaded
@@ -328,6 +367,7 @@ impl PluginContext {
         DisplayRegistry,
         RenderStageRegistry,
         Vec<OptionSpec>,
+        InteractorRegistry,
     ) {
         (
             self.commands,
@@ -337,6 +377,7 @@ impl PluginContext {
             self.display_registry,
             self.render_stages,
             self.option_specs,
+            self.interactor_registry,
         )
     }
 }

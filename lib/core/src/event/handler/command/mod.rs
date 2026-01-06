@@ -11,6 +11,7 @@ use {
         bind::{CommandRef, KeyMap, KeyMapInner},
         command::{CommandRegistry, traits::OperatorMotionAction},
         event::{InnerEvent, KeyEvent, Subscribe, VisualTextObjectAction},
+        interactor::InteractorRegistry,
         keystroke::{KeyNotationFormat, KeySequence, Keystroke},
         modd::{ModeState, OperatorType, SubMode},
         motion::Motion,
@@ -36,6 +37,8 @@ pub struct CommandHandler {
     dispatcher: Dispatcher,
     /// Track when mode was locally changed (avoids race condition with `mode_rx` sync)
     mode_locally_changed: bool,
+    /// Interactor registry for input behavior lookup
+    interactor_registry: Arc<InteractorRegistry>,
 }
 
 impl Subscribe<KeyEvent> for CommandHandler {
@@ -51,6 +54,7 @@ impl CommandHandler {
         mode_rx: watch::Receiver<ModeState>,
         keymap: KeyMap,
         command_registry: Arc<CommandRegistry>,
+        interactor_registry: Arc<InteractorRegistry>,
     ) -> Self {
         let initial_mode = mode_rx.borrow().clone();
         Self {
@@ -62,6 +66,7 @@ impl CommandHandler {
             count_parser: CountParser::new(),
             dispatcher: Dispatcher::new(tx, 0, 0, command_registry),
             mode_locally_changed: false,
+            interactor_registry,
         }
     }
 
@@ -575,7 +580,7 @@ impl CommandHandler {
                                 // Handle single-character input in modes that accept char input
                                 // Route via TextInputEvent instead of creating inline commands
                                 let mode = self.current_mode();
-                                if mode.accepts_char_input()
+                                if mode.accepts_char_input_with(&self.interactor_registry)
                                     && key_str.len() == 1
                                     && let Some(c) = key_str.chars().next()
                                 {
@@ -591,7 +596,8 @@ impl CommandHandler {
                                 // Handle Backspace in modes that accept char input
                                 // Route via TextInputEvent for text input handling
                                 let mode = self.current_mode();
-                                if mode.accepts_char_input() && key_str == "Backspace"
+                                if mode.accepts_char_input_with(&self.interactor_registry)
+                                    && key_str == "Backspace"
                                 {
                                     self.pending_keys.clear();
                                     self.dispatcher.send_focus_delete_backward().await;

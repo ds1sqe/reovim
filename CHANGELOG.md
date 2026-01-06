@@ -15,6 +15,14 @@ All notable changes to Reovim will be documented in this file.
 
 ### Added
 
+- **Metadata-driven interactor input behavior** (Issue #46) - Refactored `accepts_char_input()` to use registry instead of hardcoded checks
+  - `InteractorConfig` struct for configuring input behavior per interactor
+  - `InteractorRegistry` for storing and querying interactor configurations
+  - `accepts_char_input_with(registry)` method on `ModeState` for registry-based lookup
+  - `PluginContext::register_interactor()` for plugins to register their input behavior
+  - Window mode registered via `InteractorConfig::using_keymap()` instead of hardcoded exclusion
+  - Default behavior: unregistered interactors accept character input (safe default)
+
 - **HandlerContext mode change helpers** (Issue #44) - Reduce mode change boilerplate
   - `enter_interactor_mode(component_id)` - Enter interactor sub-mode for text input
   - `exit_to_normal()` - Return to normal editor mode

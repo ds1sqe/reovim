@@ -37,7 +37,8 @@ impl Runtime {
             self.tx.clone(),
             mode_rx,
             self.keymap.clone(),
-            self.command_registry.clone(),
+            Arc::clone(&self.command_registry),
+            Arc::clone(&self.interactor_registry),
         );
         let mut terminate_hdr = TerminateHandler::new(self.tx.clone());
 
@@ -142,7 +143,8 @@ impl Runtime {
             self.tx.clone(),
             mode_rx,
             self.keymap.clone(),
-            self.command_registry.clone(),
+            Arc::clone(&self.command_registry),
+            Arc::clone(&self.interactor_registry),
         );
         let mut terminate_hdr = crate::event::TerminateHandler::new(self.tx.clone());
 

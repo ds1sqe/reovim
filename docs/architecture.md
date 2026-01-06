@@ -558,7 +558,8 @@ impl ComponentId {
 - `is_command()`, `is_operator_pending()` - Sub-mode checks
 - `is_interactor(id)` - Check if current interactor matches given ID
 - `is_editor_focus()` - Check if focused on editor
-- `accepts_char_input()` - Check if mode accepts character input (excludes Window mode)
+- `accepts_char_input_with(registry)` - Check if mode accepts character input (queries `InteractorRegistry`)
+- `accepts_char_input()` - Deprecated: uses hardcoded fallbacks instead of registry
 
 **Hierarchical Display:**
 
@@ -1099,6 +1100,8 @@ Manages input-receiving components (UIComponents) that can receive focus and han
 - `UIComponent` trait - Interface for input-receiving components
 - `UIComponentRegistry` - Manages registered UI components and tracks active focus
 - `InputResult` - Result enum: `NotHandled`, `Handled`, `SendEvent(InnerEvent)`
+- `InteractorConfig` - Configuration for interactor input behavior (accepts char input vs keymap)
+- `InteractorRegistry` - Registry for interactor configurations, queried by `ModeState.accepts_char_input_with()`
 
 **Core ComponentIds:**
 | ComponentId | Component |
@@ -1132,9 +1135,26 @@ fn handle_focus_input(&mut self, input: InputEvent) {
 }
 ```
 
+**Input Behavior Configuration:**
+```rust
+// Plugins can configure how their interactor handles input
+// Default: accepts character input (like Explorer filter mode)
+// using_keymap(): uses keymap for commands (like Window mode)
+fn build(&self, ctx: &mut PluginContext) {
+    // Window mode doesn't accept char input - uses keymap for h/j/k/l
+    ctx.register_interactor(
+        ComponentId::WINDOW,
+        InteractorConfig::using_keymap()
+    );
+
+    // Most plugins default to accepting_input() - no registration needed
+}
+```
+
 **Benefits:**
 - Core has no knowledge of specific plugins
 - Plugins self-register their UIComponents
+- Input behavior is metadata-driven via `InteractorRegistry`
 - Runtime dispatch is fully generic via ComponentId lookup
 
 ### Modifier System (`lib/core/src/modifier/`)
