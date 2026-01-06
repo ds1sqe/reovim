@@ -2,7 +2,7 @@
 
 All notable changes to Reovim will be documented in this file.
 
-## [Unreleased]
+## [0.7.10] - 2026-01-06
 
 ### Fixed
 

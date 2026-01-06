@@ -3,6 +3,7 @@
 //! Spawns a reovim server process and provides a client for testing.
 
 use std::{
+    net::TcpListener,
     path::PathBuf,
     process::{Child, Command, Stdio},
     sync::atomic::{AtomicU16, Ordering},
@@ -13,19 +14,37 @@ use tokio::time::sleep;
 
 use super::client::TestClient;
 
-/// Port range for tests: 17000-17099
+/// Port range for tests: 17000-17999 (1000 ports)
 static TEST_PORT: AtomicU16 = AtomicU16::new(17000);
 
 /// Get the next available test port
+///
+/// Uses atomic increment with wrap-around, then verifies the port is actually available.
 fn next_test_port() -> u16 {
-    let port = TEST_PORT.fetch_add(1, Ordering::SeqCst);
-    // Wrap around if we exceed the range
-    if port > 17099 {
-        TEST_PORT.store(17000, Ordering::SeqCst);
-        17000
-    } else {
-        port
+    // Try up to 100 times to find an available port
+    for _ in 0..100 {
+        let port = TEST_PORT.fetch_add(1, Ordering::SeqCst);
+        // Wrap around if we exceed the range
+        let port = if port > 17999 {
+            TEST_PORT.store(17000, Ordering::SeqCst);
+            17000
+        } else {
+            port
+        };
+
+        // Check if port is actually available
+        if is_port_available(port) {
+            return port;
+        }
     }
+
+    // Fallback: let the OS assign a port (shouldn't normally happen)
+    panic!("Could not find available port in range 17000-17999 after 100 attempts");
+}
+
+/// Check if a port is available for binding
+fn is_port_available(port: u16) -> bool {
+    TcpListener::bind(("127.0.0.1", port)).is_ok()
 }
 
 /// Get the path to the reovim binary
@@ -151,7 +170,17 @@ mod tests {
         let port1 = next_test_port();
         let port2 = next_test_port();
         assert_ne!(port1, port2);
-        assert!((17000..=17099).contains(&port1));
-        assert!((17000..=17099).contains(&port2));
+        assert!((17000..=17999).contains(&port1));
+        assert!((17000..=17999).contains(&port2));
+    }
+
+    #[test]
+    fn test_is_port_available() {
+        // Bind a port, then check it's not available
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let bound_port = listener.local_addr().unwrap().port();
+        assert!(!is_port_available(bound_port));
+        drop(listener);
+        // After dropping, it should be available again (though may take a moment)
     }
 }
