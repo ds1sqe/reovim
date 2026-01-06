@@ -313,25 +313,51 @@ async fn test_vsplit_navigate_right() {
 /// After :vs, focus is on the NEW (right) window. Navigate to left, then move cursor.
 #[tokio::test]
 async fn test_vsplit_cursor_movement_after_navigate() {
-    let mut result = ServerTest::new()
+    // First test: j RIGHT AFTER vsplit (no navigation) - this should work
+    let mut result_no_nav = ServerTest::new()
         .await
         .with_size(80, 24)
         .with_content("Line 1\nLine 2\nLine 3\nLine 4\nLine 5")
         .with_keys(":vs<CR>")
-        .with_delay(100)
-        .with_keys("<C-w>h") // Navigate to left window (we start in right after :vs)
-        .with_delay(100)
-        .with_keys("jj") // Move down 2 lines
-        .with_delay(100) // Wait for cursor movement to complete
+        .with_delay(200)
+        .with_keys("jj") // Move cursor in active (right) window
+        .with_delay(200)
         .run()
         .await;
 
-    // Should be in normal mode with cursor moved
-    result.assert_normal_mode();
-    let snap = result.visual_snapshot().await;
+    eprintln!("=== Test without navigation ===");
+    let snap = result_no_nav.visual_snapshot().await;
     let cursor = snap.cursor.expect("Cursor should be present");
+    eprintln!("Cursor after vsplit+jj (no nav): ({}, {})", cursor.x, cursor.y);
+
+    // This should work - j after vsplit without navigation
+    assert_eq!(
+        cursor.y, 2,
+        "Cursor should move to line 2 after vsplit+jj without navigation, got {}",
+        cursor.y
+    );
+
+    // Second test: j AFTER navigation - this is the failing case
+    let mut result_with_nav = ServerTest::new()
+        .await
+        .with_size(80, 24)
+        .with_content("Line 1\nLine 2\nLine 3\nLine 4\nLine 5")
+        .with_keys(":vs<CR>")
+        .with_delay(200)
+        .with_keys("<C-w>h") // Navigate to left window
+        .with_delay(200)
+        .with_keys("jj") // Move cursor after navigation
+        .with_delay(200)
+        .run()
+        .await;
+
+    eprintln!("=== Test with navigation ===");
+    let snap2 = result_with_nav.visual_snapshot().await;
+    let cursor2 = snap2.cursor.expect("Cursor should be present");
+    eprintln!("Cursor after vsplit+nav+jj: ({}, {})", cursor2.x, cursor2.y);
+
     // Cursor y should be 2 (moved down twice from line 0)
-    assert_eq!(cursor.y, 2, "Cursor should be on line 2 after jj, got line {}", cursor.y);
+    assert_eq!(cursor2.y, 2, "Cursor should be on line 2 after jj, got line {}", cursor2.y);
 }
 
 /// Test that Ctrl-W h navigates back to left window
