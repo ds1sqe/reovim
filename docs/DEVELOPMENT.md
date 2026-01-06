@@ -36,8 +36,8 @@ cargo run -p reovim -- --stdio
 cargo run -p reovim -- --listen-socket /tmp/reovim.sock
 
 # Run reo-cli client
-cargo run -p reo-cli -- mode
-cargo run -p reo-cli -- keys 'iHello<Esc>'
+cargo run -p reo-cli -- list              # List running servers
+cargo run -p reo-cli -- keys 'iHello<Esc>'  # Inject keys, show status
 
 # Check code without building
 cargo check

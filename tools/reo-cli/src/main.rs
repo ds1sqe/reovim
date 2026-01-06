@@ -10,6 +10,7 @@ use {
 
 mod client;
 mod commands;
+mod discovery;
 mod repl;
 
 use client::ConnectionConfig;
@@ -20,7 +21,7 @@ const DEFAULT_PORT: u16 = 12521; // 'r'×100 + 'e'×10 + 'o' = 11400 + 1010 + 11
 /// CLI client for reovim server mode
 #[derive(Parser)]
 #[command(name = "reo-cli")]
-#[command(about = "Control reovim via JSON-RPC")]
+#[command(about = "Control reovim via JSON-RPC. Shows screen/mode/cursor by default.")]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -44,20 +45,13 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// List running reovim server instances
+    List,
+
     /// Inject key sequence (vim notation)
     Keys {
         /// Key sequence (e.g., "iHello<Esc>")
         keys: String,
-    },
-
-    /// Get current mode
-    Mode,
-
-    /// Get cursor position
-    Cursor {
-        /// Buffer ID (default: active buffer)
-        #[arg(long)]
-        buffer_id: Option<u64>,
     },
 
     /// Get selection state
@@ -69,13 +63,6 @@ enum Commands {
 
     /// Get screen dimensions
     ScreenSize,
-
-    /// Get rendered screen capture
-    Capture {
-        /// Output format: `plain_text`, `raw_ansi`
-        #[arg(long, default_value = "plain_text")]
-        format: String,
-    },
 
     /// Buffer operations
     Buffer {
@@ -152,11 +139,35 @@ fn get_connection_config(cli: &Cli) -> Result<ConnectionConfig, String> {
             Ok(ConnectionConfig::Tcp { host, port })
         }
         (Some(_), Some(_)) => Err("Cannot specify both --socket and --tcp".to_string()),
-        // Default to TCP on DEFAULT_HOST:DEFAULT_PORT
-        (None, None) => Ok(ConnectionConfig::Tcp {
-            host: DEFAULT_HOST.to_string(),
-            port: DEFAULT_PORT,
-        }),
+        // Auto-discover running servers
+        (None, None) => {
+            let servers = discovery::list_servers();
+            match servers.len() {
+                0 => {
+                    // No servers found - fall back to default port (will fail with clear error)
+                    Ok(ConnectionConfig::Tcp {
+                        host: DEFAULT_HOST.to_string(),
+                        port: DEFAULT_PORT,
+                    })
+                }
+                1 => {
+                    // Single server - auto-connect
+                    Ok(ConnectionConfig::Tcp {
+                        host: DEFAULT_HOST.to_string(),
+                        port: servers[0].port,
+                    })
+                }
+                _ => {
+                    // Multiple servers - require explicit selection
+                    let server_list = servers
+                        .iter()
+                        .map(|s| format!("  --tcp {DEFAULT_HOST}:{} (PID {})", s.port, s.pid))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    Err(format!("Multiple servers running. Use --tcp to specify:\n{server_list}"))
+                }
+            }
+        }
     }
 }
 
@@ -164,42 +175,41 @@ fn get_connection_config(cli: &Cli) -> Result<ConnectionConfig, String> {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
-    // Get connection config
-    let config = get_connection_config(&cli)?;
-
-    // Interactive mode
-    if cli.interactive || cli.command.is_none() {
-        return repl::run_repl(&config).await;
-    }
-
-    // One-shot mode
-    let mut client = client::ReoClient::connect(&config).await?;
-
-    let command = cli.command.unwrap();
-
-    // Handle screen-capture specially - print content directly, not as JSON
-    if let Commands::Capture { ref format } = command {
-        let result = commands::cmd_screen_content(&mut client, format).await?;
-
-        // Extract and print just the content field
-        if let Some(content) = result.get("content").and_then(Value::as_str) {
-            println!("{content}");
+    // Handle List command specially (doesn't need a connection)
+    if matches!(cli.command, Some(Commands::List)) {
+        let servers = discovery::list_servers();
+        if servers.is_empty() {
+            println!("No running reovim servers found");
         } else {
-            // Fallback to JSON if content field is missing
-            if cli.json {
-                println!("{}", serde_json::to_string(&result)?);
-            } else {
-                println!("{}", serde_json::to_string_pretty(&result)?);
+            println!("{:<10} {:<8}", "PID", "PORT");
+            for server in servers {
+                println!("{:<10} {:<8}", server.pid, server.port);
             }
         }
         return Ok(());
     }
 
+    // Get connection config
+    let config = get_connection_config(&cli)?;
+
+    // Interactive mode (explicit -i flag or no command)
+    if cli.interactive || cli.command.is_none() {
+        return repl::run_repl(&config).await;
+    }
+
+    // Connect to server
+    let mut client = client::ReoClient::connect(&config).await?;
+
+    let command = cli.command.unwrap();
+
+    // Keys command: inject keys then show status
+    if let Commands::Keys { ref keys } = command {
+        commands::cmd_keys(&mut client, keys).await?;
+        return show_status(&mut client).await;
+    }
+
     // All other commands - return JSON
     let result = match command {
-        Commands::Keys { keys } => commands::cmd_keys(&mut client, &keys).await?,
-        Commands::Mode => commands::cmd_mode(&mut client).await?,
-        Commands::Cursor { buffer_id } => commands::cmd_cursor(&mut client, buffer_id).await?,
         Commands::Selection { buffer_id } => {
             commands::cmd_selection(&mut client, buffer_id).await?
         }
@@ -220,7 +230,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Quit => commands::cmd_quit(&mut client).await?,
         Commands::Kill => commands::cmd_kill(&mut client).await?,
         Commands::Raw { json } => commands::cmd_raw(&mut client, &json).await?,
-        Commands::Capture { .. } => unreachable!("handled above"),
+        Commands::Keys { .. } | Commands::List => {
+            unreachable!("handled above")
+        }
     };
 
     // Output result
@@ -228,6 +240,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("{}", serde_json::to_string(&result)?);
     } else {
         println!("{}", serde_json::to_string_pretty(&result)?);
+    }
+
+    Ok(())
+}
+
+/// Show default status: screen capture, mode, and cursor
+async fn show_status(client: &mut client::ReoClient) -> Result<(), Box<dyn std::error::Error>> {
+    // Get screen capture
+    let capture = commands::cmd_screen_content(client, "plain_text").await?;
+    if let Some(content) = capture.get("content").and_then(Value::as_str) {
+        println!("{content}");
+    }
+
+    // Get mode and cursor
+    let mode = commands::cmd_mode(client).await?;
+    let cursor = commands::cmd_cursor(client, None).await?;
+
+    // Print status line
+    println!("---");
+    if let Some(display) = mode.get("display").and_then(Value::as_str) {
+        println!("Mode: {display}");
+    }
+    if let (Some(x), Some(y)) =
+        (cursor.get("x").and_then(Value::as_u64), cursor.get("y").and_then(Value::as_u64))
+    {
+        println!("Cursor: ({x}, {y})");
     }
 
     Ok(())

@@ -176,6 +176,48 @@ pub enum TransportListener {
 }
 
 impl TransportListener {
+    /// Bind to TCP with port fallback
+    ///
+    /// Tries ports starting from `start_port` up to `start_port + max_attempts - 1`.
+    /// Returns the listener and the actual port that was bound.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if all ports in the range are unavailable or if binding fails
+    /// for a reason other than "address in use".
+    pub async fn bind_tcp_with_fallback(
+        host: &str,
+        start_port: u16,
+        max_attempts: u16,
+    ) -> io::Result<(Self, u16)> {
+        for offset in 0..max_attempts {
+            let port = start_port.saturating_add(offset);
+            let addr = format!("{host}:{port}");
+            match TcpListener::bind(&addr).await {
+                Ok(listener) => {
+                    if offset > 0 {
+                        tracing::info!("Port {} in use, bound to {} instead", start_port, port);
+                    } else {
+                        tracing::info!("Listening on TCP: {}", addr);
+                    }
+                    return Ok((Self::Tcp { listener }, port));
+                }
+                Err(e) if e.kind() == io::ErrorKind::AddrInUse => {
+                    tracing::debug!("Port {} in use, trying next", port);
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        Err(io::Error::new(
+            io::ErrorKind::AddrInUse,
+            format!(
+                "No available port in range {}-{}",
+                start_port,
+                start_port.saturating_add(max_attempts - 1)
+            ),
+        ))
+    }
+
     /// Bind to the given transport configuration
     ///
     /// Returns `None` for stdio (no listener needed).

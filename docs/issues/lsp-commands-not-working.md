@@ -160,7 +160,7 @@ Questions to answer:
 3. Wait for rust-analyzer to initialize (check log for "Language server ready")
 4. Send keys: `cargo run -p reo-cli -- keys 'gg49jwK'`
 5. Wait for response: `sleep 5`
-6. Capture screen: `cargo run -p reo-cli -- capture`
+6. Check screen: `cargo run -p reo-cli -- keys ''`  # Empty keys to just show status
 7. Check logs: `grep -E "(hover|didOpen|definition|references)" /tmp/lsp.log`
 
 ## Related Files
