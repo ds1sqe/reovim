@@ -88,8 +88,16 @@ impl FrameBuffer {
     /// Write a character at position with style
     pub fn put_char(&mut self, x: u16, y: u16, ch: char, style: &Style) {
         if x < self.width && y < self.height {
+            let cell = Cell::new(ch, style.clone());
+            let width = cell.width;
             let idx = self.index(x, y);
-            self.cells[idx] = Cell::new(ch, style.clone());
+            self.cells[idx] = cell;
+
+            // Write continuation cell for wide characters
+            if width == 2 && x + 1 < self.width {
+                let cont_idx = self.index(x + 1, y);
+                self.cells[cont_idx] = Cell::continuation(style.clone());
+            }
         }
     }
 
@@ -103,6 +111,12 @@ impl FrameBuffer {
             let cell = Cell::new(ch, style.clone());
             let width = cell.width;
             self.set(col, y, cell);
+
+            // Write continuation cell for wide characters
+            if width == 2 && col + 1 < self.width {
+                self.set(col + 1, y, Cell::continuation(style.clone()));
+            }
+
             col += u16::from(width);
         }
         col.saturating_sub(x)

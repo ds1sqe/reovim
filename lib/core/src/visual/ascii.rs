@@ -83,6 +83,7 @@ impl FrameBuffer {
     /// Get the frame buffer as plain text (characters only, no formatting)
     ///
     /// Returns a string with newline-separated rows, trailing whitespace trimmed.
+    /// Skips continuation cells (virtual placeholders for wide characters).
     #[must_use]
     pub fn to_plain_text(&self) -> String {
         let mut result = String::new();
@@ -92,7 +93,11 @@ impl FrameBuffer {
                 result.push('\n');
             }
             if let Some(row) = self.row(y) {
-                let row_str: String = row.iter().map(|c| c.char).collect();
+                let row_str: String = row
+                    .iter()
+                    .filter(|c| !c.is_continuation)
+                    .map(|c| c.char)
+                    .collect();
                 result.push_str(row_str.trim_end());
             }
         }
@@ -123,6 +128,11 @@ impl FrameBuffer {
 
             if let Some(row) = self.row(y) {
                 for cell in row {
+                    // Skip continuation cells (virtual placeholders for wide characters)
+                    if cell.is_continuation {
+                        continue;
+                    }
+
                     let style_str = cell.style.to_ansi_start(color_mode);
 
                     // Only emit style change if different from last
