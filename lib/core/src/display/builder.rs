@@ -2,7 +2,13 @@
 //!
 //! Provides a fluent API for registering display info across multiple scopes.
 
-use crate::{display::DisplayInfo, modd::ComponentId, plugin::PluginContext};
+use std::sync::Arc;
+
+use crate::{
+    display::{DisplayContext, DisplayInfo},
+    modd::ComponentId,
+    plugin::PluginContext,
+};
 
 /// Builder for registering display information with a fluent API
 ///
@@ -14,6 +20,16 @@ use crate::{display::DisplayInfo, modd::ComponentId, plugin::PluginContext};
 /// let style = Style::new().fg(fg_color).bg(bg_color).bold();
 /// ctx.display_info(COMPONENT_ID)
 ///     .default(" EXPLORER ", "󰙅 ", style)
+///     .register();
+///
+/// // Register with dynamic display callback
+/// ctx.display_info(COMPONENT_ID)
+///     .default(" EXPLORER ", "󰙅 ", style)
+///     .dynamic(|ctx| {
+///         ctx.plugin_state.with::<ExplorerState, _, _>(|state| {
+///             format!(" EXPLORER ({}) ", state.file_count)
+///         }).unwrap_or_else(|| " EXPLORER ".to_string())
+///     })
 ///     .register();
 /// ```
 pub struct DisplayInfoBuilder<'a> {
@@ -38,13 +54,31 @@ impl<'a> DisplayInfoBuilder<'a> {
     /// This is shown when the component is focused.
     /// The MODE section will separately show the edit mode (Normal/Insert/Visual).
     #[must_use]
-    pub const fn default(
+    pub fn default(
         mut self,
         name: &'static str,
         icon: &'static str,
         style: crate::highlight::Style,
     ) -> Self {
         self.default_info = Some(DisplayInfo::new(name, icon, style));
+        self
+    }
+
+    /// Add a dynamic display callback
+    ///
+    /// When set, this callback is invoked during rendering to generate the display string.
+    /// The callback takes precedence over the static `display_string` set via `.default()`.
+    ///
+    /// Note: This method must be called after `.default()` since it modifies the existing
+    /// display info.
+    #[must_use]
+    pub fn dynamic<F>(mut self, f: F) -> Self
+    where
+        F: Fn(&DisplayContext<'_>) -> String + Send + Sync + 'static,
+    {
+        if let Some(ref mut info) = self.default_info {
+            info.dynamic_display = Some(Arc::new(f));
+        }
         self
     }
 

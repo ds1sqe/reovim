@@ -9,15 +9,29 @@ pub mod icons;
 
 pub use builder::DisplayInfoBuilder;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use crate::{
     highlight::{Style, Theme},
     modd::{ComponentId, EditMode, ModeState, SubMode, VisualVariant},
+    plugin::PluginStateRegistry,
 };
 
+/// Context for rendering dynamic display strings
+///
+/// Provides access to plugin state registry for querying dynamic information.
+pub struct DisplayContext<'a> {
+    /// Plugin state registry for accessing plugin state
+    pub plugin_state: &'a PluginStateRegistry,
+}
+
+/// Function type for dynamic display string generation
+///
+/// This callback is invoked during rendering to generate dynamic display text.
+/// It receives a `DisplayContext` with access to the `PluginStateRegistry`.
+pub type DynamicDisplayFn = Arc<dyn Fn(&DisplayContext<'_>) -> String + Send + Sync>;
+
 /// Display information for a mode/component
-#[derive(Debug, Clone)]
 pub struct DisplayInfo {
     /// Display string shown in status line (e.g., " NORMAL ", " INSERT ")
     pub display_string: &'static str,
@@ -25,10 +39,36 @@ pub struct DisplayInfo {
     pub icon: &'static str,
     /// Style for this component's status line appearance
     pub style: crate::highlight::Style,
+    /// Optional dynamic display callback - if Some, takes precedence over `display_string`
+    pub dynamic_display: Option<DynamicDisplayFn>,
+}
+
+impl std::fmt::Debug for DisplayInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DisplayInfo")
+            .field("display_string", &self.display_string)
+            .field("icon", &self.icon)
+            .field("style", &self.style)
+            .field("dynamic_display", &self.dynamic_display.is_some())
+            .finish()
+    }
+}
+
+impl Clone for DisplayInfo {
+    fn clone(&self) -> Self {
+        Self {
+            display_string: self.display_string,
+            icon: self.icon,
+            style: self.style.clone(),
+            dynamic_display: self.dynamic_display.as_ref().map(Arc::clone),
+        }
+    }
 }
 
 impl DisplayInfo {
     /// Create new display info with display string, icon, and style
+    ///
+    /// Creates a static display info with no dynamic callback.
     #[must_use]
     pub const fn new(
         display_string: &'static str,
@@ -39,7 +79,32 @@ impl DisplayInfo {
             display_string,
             icon,
             style,
+            dynamic_display: None,
         }
+    }
+
+    /// Add a dynamic display callback
+    ///
+    /// When set, this callback is invoked during rendering to generate the display string.
+    /// The callback takes precedence over the static `display_string`.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// DisplayInfo::new(" EXPLORER ", "󰙅 ", style)
+    ///     .with_dynamic(|ctx| {
+    ///         ctx.plugin_state.with::<ExplorerState, _, _>(|state| {
+    ///             format!(" EXPLORER ({}) ", state.file_count)
+    ///         }).unwrap_or_else(|| " EXPLORER ".to_string())
+    ///     })
+    /// ```
+    #[must_use]
+    pub fn with_dynamic<F>(mut self, f: F) -> Self
+    where
+        F: Fn(&DisplayContext<'_>) -> String + Send + Sync + 'static,
+    {
+        self.dynamic_display = Some(Arc::new(f));
+        self
     }
 }
 
@@ -83,10 +148,23 @@ impl DisplayRegistry {
     }
 
     /// Get display string for a mode, with fallback to hierarchical display
+    ///
+    /// If the `DisplayInfo` has a dynamic callback, it is invoked with the
+    /// provided `plugin_state` to generate the display string.
     #[must_use]
-    pub fn display_string(&self, mode: &ModeState) -> String {
-        self.get_display(mode)
-            .map_or_else(|| self.hierarchical_display(mode), |info| info.display_string.to_string())
+    pub fn display_string(&self, mode: &ModeState, plugin_state: &PluginStateRegistry) -> String {
+        self.get_display(mode).map_or_else(
+            || self.hierarchical_display(mode),
+            |info| {
+                info.dynamic_display.as_ref().map_or_else(
+                    || info.display_string.to_string(),
+                    |dynamic| {
+                        let ctx = DisplayContext { plugin_state };
+                        dynamic(&ctx)
+                    },
+                )
+            },
+        )
     }
 
     /// Get icon for interactor, with fallback to `mode_icon`
@@ -316,6 +394,8 @@ mod tests {
         let theme = crate::highlight::Theme::default();
         registry.register_builtins(&theme);
 
+        let plugin_state = PluginStateRegistry::new();
+
         // Check that editor component is registered
         let normal = ModeState::normal();
         let display = registry.get_display(&normal);
@@ -324,20 +404,21 @@ mod tests {
         assert_eq!(display.unwrap().icon, "󰈸 ");
 
         // Display string should use plugin-provided text
-        assert_eq!(registry.display_string(&normal).as_str(), " EDITOR ");
+        assert_eq!(registry.display_string(&normal, &plugin_state).as_str(), " EDITOR ");
         assert_eq!(registry.icon(&normal), "󰈸 ");
     }
 
     #[test]
     fn test_fallback_for_unregistered() {
         let registry = DisplayRegistry::new();
+        let plugin_state = PluginStateRegistry::new();
 
         // Unregistered component should return None
         let mode = ModeState::normal();
         assert!(registry.get_display(&mode).is_none());
 
         // display_string should fall back to hierarchical display
-        let display_str = registry.display_string(&mode);
+        let display_str = registry.display_string(&mode, &plugin_state);
         assert!(!display_str.is_empty());
         assert!(display_str.contains("Editor") || display_str.contains("Normal"));
 
@@ -436,5 +517,28 @@ mod tests {
         let command = ModeState::command();
         let display = registry.hierarchical_display(&command);
         assert!(display.contains("Command"));
+    }
+
+    #[test]
+    fn test_dynamic_display() {
+        let mut registry = DisplayRegistry::new();
+        let style = crate::highlight::Style::new();
+        let plugin_state = PluginStateRegistry::new();
+
+        // Register with dynamic display
+        let info = DisplayInfo::new(" STATIC ", "󰙅 ", style).with_dynamic(|_ctx| {
+            // Return dynamic content
+            " DYNAMIC (42) ".to_string()
+        });
+        registry.register_interactor(ComponentId::EDITOR, info);
+
+        let mode = ModeState::normal();
+
+        // display_string should use dynamic callback
+        assert_eq!(registry.display_string(&mode, &plugin_state), " DYNAMIC (42) ");
+
+        // static display_string field is still available
+        let display = registry.get_display(&mode).unwrap();
+        assert_eq!(display.display_string, " STATIC ");
     }
 }
