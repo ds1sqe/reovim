@@ -165,16 +165,26 @@ impl Plugin for ExplorerPlugin {
     }
 
     fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {
-        use reovim_core::{
-            event_bus::core_events::{
-                PluginBackspace, PluginTextInput, RequestFocusChange, RequestModeChange,
-                RequestOpenFile,
-            },
-            modd::{EditMode, ModeState, SubMode},
-        };
+        self.subscribe_raw_input(bus, &state);
+        self.subscribe_navigation(bus, &state);
+        self.subscribe_tree_operations(bus, &state);
+        self.subscribe_clipboard(bus, &state);
+        self.subscribe_file_operations(bus, &state);
+        self.subscribe_input_handling(bus, &state);
+        self.subscribe_visual_mode(bus, &state);
+        self.subscribe_focus_visibility(bus, &state);
+        self.subscribe_popup(bus, &state);
+    }
+}
+
+// Event subscription sub-methods
+impl ExplorerPlugin {
+    /// Subscribe to raw text input events (PluginTextInput, PluginBackspace)
+    fn subscribe_raw_input(&self, bus: &EventBus, state: &Arc<PluginStateRegistry>) {
+        use reovim_core::event_bus::core_events::{PluginBackspace, PluginTextInput};
 
         // Handle text input from runtime (PluginTextInput event)
-        let state_clone = Arc::clone(&state);
+        let state_clone = Arc::clone(state);
         bus.subscribe_targeted::<PluginTextInput, _>(COMPONENT_ID, 100, move |event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.input_char(event.c);
@@ -184,7 +194,7 @@ impl Plugin for ExplorerPlugin {
         });
 
         // Handle backspace from runtime (PluginBackspace event)
-        let state_clone = Arc::clone(&state);
+        let state_clone = Arc::clone(state);
         bus.subscribe_targeted::<PluginBackspace, _>(COMPONENT_ID, 100, move |_event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.input_backspace();
@@ -192,8 +202,10 @@ impl Plugin for ExplorerPlugin {
             ctx.request_render();
             EventResult::Handled
         });
+    }
 
-        // Navigation events (sync popup with cursor if visible)
+    /// Subscribe to navigation events (cursor movement, page up/down, goto)
+    fn subscribe_navigation(&self, bus: &EventBus, state: &Arc<PluginStateRegistry>) {
         subscribe_state!(bus, state, ExplorerCursorUp, ExplorerState, |s, e| {
             s.move_cursor(-(e.count as isize));
             s.update_scroll();
@@ -235,9 +247,14 @@ impl Plugin for ExplorerPlugin {
             s.update_scroll();
             s.sync_popup();
         });
+    }
+
+    /// Subscribe to tree operation events (open, toggle, refresh, etc.)
+    fn subscribe_tree_operations(&self, bus: &EventBus, state: &Arc<PluginStateRegistry>) {
+        use reovim_core::event_bus::core_events::{RequestFocusChange, RequestOpenFile};
 
         // Open file or toggle directory
-        let state_clone = Arc::clone(&state);
+        let state_clone = Arc::clone(state);
         bus.subscribe::<ExplorerOpenNode, _>(100, move |_event, ctx| {
             tracing::info!("ExplorerPlugin: ExplorerOpenNode received");
 
@@ -297,8 +314,10 @@ impl Plugin for ExplorerPlugin {
         subscribe_state!(bus, state, ExplorerToggleSizes, ExplorerState, |s| {
             s.toggle_sizes();
         });
+    }
 
-        // Clipboard events
+    /// Subscribe to clipboard events (yank, cut, paste, copy path)
+    fn subscribe_clipboard(&self, bus: &EventBus, state: &Arc<PluginStateRegistry>) {
         subscribe_state!(bus, state, ExplorerYank, ExplorerState, |s| {
             s.yank_current();
         });
@@ -311,56 +330,140 @@ impl Plugin for ExplorerPlugin {
             let _ = s.paste();
         });
 
-        // File operation events (enter Interactor sub-mode for input)
+        // Copy path to clipboard
+        let state_clone = Arc::clone(state);
+        bus.subscribe::<ExplorerCopyPath, _>(100, move |_event, ctx| {
+            use reovim_core::event_bus::core_events::RequestSetRegister;
+
+            let path = state_clone
+                .with::<ExplorerState, _, _>(|s| {
+                    s.current_node()
+                        .map(|n| n.path.to_string_lossy().to_string())
+                })
+                .flatten();
+
+            if let Some(path) = path {
+                // Set both unnamed register and system clipboard
+                ctx.emit(RequestSetRegister {
+                    register: None, // Unnamed register for 'p' paste
+                    text: path.clone(),
+                });
+                ctx.emit(RequestSetRegister {
+                    register: Some('+'), // System clipboard
+                    text: path,
+                });
+
+                state_clone.with_mut::<ExplorerState, _, _>(|s| {
+                    s.close_popup();
+                    s.message = Some("Path copied to clipboard".to_string());
+                });
+            }
+
+            ctx.request_render();
+            EventResult::Handled
+        });
+    }
+
+    /// Subscribe to file operation events (create, rename, delete, filter)
+    fn subscribe_file_operations(&self, bus: &EventBus, state: &Arc<PluginStateRegistry>) {
+        use reovim_core::modd::{EditMode, ModeState, SubMode};
+
         subscribe_state_mode!(
-            bus, state, ExplorerCreateFile, ExplorerState,
-            |s| { s.start_create_file(); },
+            bus,
+            state,
+            ExplorerCreateFile,
+            ExplorerState,
+            |s| {
+                s.start_create_file();
+            },
             ModeState::with_interactor_id_sub_mode(
-                COMPONENT_ID, EditMode::Normal, SubMode::Interactor(COMPONENT_ID)
+                COMPONENT_ID,
+                EditMode::Normal,
+                SubMode::Interactor(COMPONENT_ID)
             )
         );
 
         subscribe_state_mode!(
-            bus, state, ExplorerCreateDir, ExplorerState,
-            |s| { s.start_create_dir(); },
+            bus,
+            state,
+            ExplorerCreateDir,
+            ExplorerState,
+            |s| {
+                s.start_create_dir();
+            },
             ModeState::with_interactor_id_sub_mode(
-                COMPONENT_ID, EditMode::Normal, SubMode::Interactor(COMPONENT_ID)
+                COMPONENT_ID,
+                EditMode::Normal,
+                SubMode::Interactor(COMPONENT_ID)
             )
         );
 
         subscribe_state_mode!(
-            bus, state, ExplorerRename, ExplorerState,
-            |s| { s.start_rename(); },
+            bus,
+            state,
+            ExplorerRename,
+            ExplorerState,
+            |s| {
+                s.start_rename();
+            },
             ModeState::with_interactor_id_sub_mode(
-                COMPONENT_ID, EditMode::Normal, SubMode::Interactor(COMPONENT_ID)
+                COMPONENT_ID,
+                EditMode::Normal,
+                SubMode::Interactor(COMPONENT_ID)
             )
         );
 
         subscribe_state_mode!(
-            bus, state, ExplorerDelete, ExplorerState,
-            |s| { s.start_delete(); },
+            bus,
+            state,
+            ExplorerDelete,
+            ExplorerState,
+            |s| {
+                s.start_delete();
+            },
             ModeState::with_interactor_id_sub_mode(
-                COMPONENT_ID, EditMode::Normal, SubMode::Interactor(COMPONENT_ID)
+                COMPONENT_ID,
+                EditMode::Normal,
+                SubMode::Interactor(COMPONENT_ID)
             )
         );
 
         subscribe_state_mode!(
-            bus, state, ExplorerStartFilter, ExplorerState,
-            |s| { s.start_filter(); },
+            bus,
+            state,
+            ExplorerStartFilter,
+            ExplorerState,
+            |s| {
+                s.start_filter();
+            },
             ModeState::with_interactor_id_sub_mode(
-                COMPONENT_ID, EditMode::Normal, SubMode::Interactor(COMPONENT_ID)
+                COMPONENT_ID,
+                EditMode::Normal,
+                SubMode::Interactor(COMPONENT_ID)
             )
         );
 
         // Exit Interactor sub-mode back to normal explorer mode
         subscribe_state_mode!(
-            bus, state, ExplorerClearFilter, ExplorerState,
-            |s| { s.clear_filter(); },
+            bus,
+            state,
+            ExplorerClearFilter,
+            ExplorerState,
+            |s| {
+                s.clear_filter();
+            },
             ModeState::with_interactor_id_and_mode(COMPONENT_ID, EditMode::Normal)
         );
+    }
 
-        // Input events
-        let state_clone = Arc::clone(&state);
+    /// Subscribe to input handling events (confirm, cancel, char input)
+    fn subscribe_input_handling(&self, bus: &EventBus, state: &Arc<PluginStateRegistry>) {
+        use reovim_core::{
+            event_bus::core_events::RequestModeChange,
+            modd::{EditMode, ModeState},
+        };
+
+        let state_clone = Arc::clone(state);
         bus.subscribe::<ExplorerConfirmInput, _>(100, move |_event, ctx| {
             // Check if popup is visible
             let popup_visible = state_clone
@@ -401,7 +504,7 @@ impl Plugin for ExplorerPlugin {
             EventResult::Handled
         });
 
-        let state_clone = Arc::clone(&state);
+        let state_clone = Arc::clone(state);
         bus.subscribe::<ExplorerCancelInput, _>(100, move |_event, ctx| {
             // Check if popup is visible
             let popup_visible = state_clone
@@ -449,8 +552,10 @@ impl Plugin for ExplorerPlugin {
         subscribe_state!(bus, state, ExplorerInputBackspace, ExplorerState, |s| {
             s.input_backspace();
         });
+    }
 
-        // Visual selection events
+    /// Subscribe to visual selection mode events
+    fn subscribe_visual_mode(&self, bus: &EventBus, state: &Arc<PluginStateRegistry>) {
         subscribe_state!(bus, state, ExplorerVisualMode, ExplorerState, |s| {
             s.enter_visual_mode();
         });
@@ -466,9 +571,14 @@ impl Plugin for ExplorerPlugin {
         subscribe_state!(bus, state, ExplorerExitVisual, ExplorerState, |s| {
             s.exit_visual_mode();
         });
+    }
+
+    /// Subscribe to focus and visibility events (toggle, close, focus editor)
+    fn subscribe_focus_visibility(&self, bus: &EventBus, state: &Arc<PluginStateRegistry>) {
+        use reovim_core::event_bus::core_events::RequestFocusChange;
 
         // Toggle explorer visibility
-        let state_clone = Arc::clone(&state);
+        let state_clone = Arc::clone(state);
         bus.subscribe::<ExplorerToggle, _>(100, move |_event, ctx| {
             tracing::info!("ExplorerPlugin: ExplorerToggle received");
 
@@ -514,7 +624,7 @@ impl Plugin for ExplorerPlugin {
         });
 
         // Close explorer and return focus to editor
-        let state_clone = Arc::clone(&state);
+        let state_clone = Arc::clone(state);
         bus.subscribe::<ExplorerClose, _>(100, move |_event, ctx| {
             tracing::info!("ExplorerPlugin: ExplorerClose received");
 
@@ -535,7 +645,6 @@ impl Plugin for ExplorerPlugin {
         });
 
         // Focus editor (without closing explorer)
-        let _state_clone = Arc::clone(&state);
         bus.subscribe::<ExplorerFocusEditor, _>(100, move |_event, ctx| {
             tracing::info!("ExplorerPlugin: ExplorerFocusEditor received");
 
@@ -547,48 +656,16 @@ impl Plugin for ExplorerPlugin {
             ctx.request_render();
             EventResult::Handled
         });
+    }
 
-        // Show file details popup
+    /// Subscribe to popup events (show info, close popup)
+    fn subscribe_popup(&self, bus: &EventBus, state: &Arc<PluginStateRegistry>) {
         subscribe_state!(bus, state, ExplorerShowInfo, ExplorerState, |s| {
             s.show_file_details();
         });
 
-        // Close file details popup
         subscribe_state!(bus, state, ExplorerClosePopup, ExplorerState, |s| {
             s.close_popup();
-        });
-
-        // Copy path to clipboard
-        let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerCopyPath, _>(100, move |_event, ctx| {
-            use reovim_core::event_bus::core_events::RequestSetRegister;
-
-            let path = state_clone
-                .with::<ExplorerState, _, _>(|s| {
-                    s.current_node()
-                        .map(|n| n.path.to_string_lossy().to_string())
-                })
-                .flatten();
-
-            if let Some(path) = path {
-                // Set both unnamed register and system clipboard
-                ctx.emit(RequestSetRegister {
-                    register: None, // Unnamed register for 'p' paste
-                    text: path.clone(),
-                });
-                ctx.emit(RequestSetRegister {
-                    register: Some('+'), // System clipboard
-                    text: path,
-                });
-
-                state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                    s.close_popup();
-                    s.message = Some("Path copied to clipboard".to_string());
-                });
-            }
-
-            ctx.request_render();
-            EventResult::Handled
         });
     }
 }
