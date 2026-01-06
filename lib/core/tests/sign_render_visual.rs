@@ -11,7 +11,7 @@ use reovim_core::{
     render::RenderData,
     screen::{
         Position,
-        window::{Anchor, LineNumber, Window},
+        window::{Anchor, LineNumber, SignColumnMode, Window},
     },
     sign::Sign,
 };
@@ -36,7 +36,7 @@ fn test_sign_visual_rendering() {
         is_active: true,
         is_floating: false,
         line_number: Some(LineNumber::default()),
-        sign_column_width: Some(2), // Enable 2-char sign column
+        sign_column_mode: SignColumnMode::Yes(2), // Enable 2-char sign column
         scrollbar_enabled: false,
         cursor: Position { x: 0, y: 0 },
         desired_col: None,

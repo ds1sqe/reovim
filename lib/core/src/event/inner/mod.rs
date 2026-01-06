@@ -10,7 +10,7 @@ use crate::{
     modd::{ComponentId, ModeState},
     plugin::PluginId,
     rpc::RpcResponse,
-    screen::{NavigateDirection, SplitDirection},
+    screen::{NavigateDirection, SplitDirection, window::SignColumnMode},
     syntax::SyntaxProvider,
     textobject::{SemanticTextObjectSpec, TextObject, WordTextObject},
 };
@@ -104,7 +104,7 @@ pub enum InnerEvent {
     },
     /// Set sign column configuration
     SetSignColumn {
-        width: Option<u16>,
+        mode: SignColumnMode,
     },
     /// Move cursor to specific position (from plugins like range-finder, LSP)
     MoveCursor {
