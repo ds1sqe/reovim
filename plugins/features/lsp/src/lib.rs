@@ -14,6 +14,7 @@
 
 mod command;
 mod document;
+mod health;
 mod hover;
 mod manager;
 mod picker;
@@ -179,6 +180,14 @@ impl Plugin for LspPlugin {
 
     #[allow(clippy::too_many_lines)]
     fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {
+        // Register LSP health check with health-check plugin
+        {
+            use reovim_plugin_health_check::RegisterHealthCheck;
+
+            let manager = Arc::clone(&self.manager);
+            bus.emit(RegisterHealthCheck::new(Arc::new(health::LspHealthCheck::new(manager))));
+        }
+
         // Handle file open - register document and schedule sync for render stage
         // Note: We don't send didOpen here directly. The render stage handles it
         // via schedule_immediate_sync() to avoid version synchronization bugs.

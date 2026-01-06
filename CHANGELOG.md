@@ -39,6 +39,12 @@ All notable changes to Reovim will be documented in this file.
   - Visual identity: Explorer (orange), Microscope (blue), Settings (gray), Leap (green), Health (teal)
   - Status line shows `[INTERACTOR][MODE]` as separate colored sections
   - `Color` type exported from `reovim_core::highlight` for plugin use
+- **LSP debugging tools** (Issue #26) - Tools for debugging LSP communication
+  - LSP health check: Shows server status, document count, and diagnostic stats in `:health` modal
+  - Dedicated LSP log: `--lsp-log` flag for capturing JSON-RPC messages to separate file
+    - `--lsp-log=default` creates timestamped `lsp-<timestamp>.log` in data directory
+    - `--lsp-log=/path/to/file.log` for custom path
+    - Logs show `->` for outgoing and `<-` for incoming messages at TRACE level
 
 ### Changed
 

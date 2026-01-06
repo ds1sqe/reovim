@@ -61,6 +61,11 @@ struct Cli {
     /// Special values: '-' or 'stderr' for stderr, 'none' or 'off' to disable
     #[arg(long, value_name = "PATH")]
     log: Option<String>,
+
+    /// Enable LSP JSON-RPC message logging for debugging
+    /// Values: 'default' for timestamped file, or custom path
+    #[arg(long, value_name = "PATH")]
+    lsp_log: Option<String>,
 }
 
 #[tokio::main]
@@ -70,7 +75,8 @@ async fn main() -> Result<(), io::Error> {
 
     // Initialize logging BEFORE any terminal manipulation
     let log_target = logging::parse_log_target(cli.log.as_deref());
-    let _log_guard = logging::init(&log_target);
+    let lsp_log_target = logging::parse_lsp_log_target(cli.lsp_log.as_deref());
+    let _log_guards = logging::init_with_lsp(&log_target, &lsp_log_target);
 
     tracing::info!("reovim {} starting", env!("CARGO_PKG_VERSION"));
 
