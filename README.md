@@ -256,4 +256,6 @@ See [perf/](./perf/) for versioned benchmark results.
 
 ## License
 
-MIT
+AGPL-3.0 - See [LICENSE](./LICENSE) for details.
+
+For commercial licensing options, contact: ds1sqe@mensakorea.org

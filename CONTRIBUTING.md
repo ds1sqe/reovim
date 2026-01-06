@@ -65,3 +65,17 @@ Add cursor word-forward motion
 Implement w command for word-forward navigation.
 Handles word boundaries and line ends.
 ```
+
+## Contributor License Agreement
+
+By contributing to this project, you agree to the following terms:
+
+1. **Grant of Rights**: You grant ds1sqe (the project maintainer) a perpetual, worldwide, non-exclusive, royalty-free, irrevocable license to use, reproduce, modify, prepare derivative works of, publicly display, publicly perform, sublicense, and distribute your contributions and any derivative works.
+
+2. **Dual Licensing**: You understand and agree that your contributions may be used under the AGPL-3.0 license for the open source version, and may also be included in commercially licensed versions of the software.
+
+3. **Original Work**: You represent that your contributions are your original work and that you have the right to grant the above license.
+
+4. **No Obligation**: The project maintainer is under no obligation to use or incorporate your contributions.
+
+This CLA ensures that the project can maintain flexibility in licensing while keeping the core open source.
