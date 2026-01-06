@@ -5,23 +5,94 @@ use {
         client::{ConnectionConfig, ReoClient},
         commands,
     },
+    clap::{CommandFactory, Parser, Subcommand},
     rustyline::{DefaultEditor, error::ReadlineError},
-    serde_json::json,
 };
 
-const HELP_TEXT: &str = r"Available commands:
-  keys <sequence>     Inject key sequence (e.g., 'iHello<Esc>')
-  mode                Get current mode
-  cursor              Get cursor position
-  selection           Get selection state
-  screen              Get screen dimensions
-  screen-content      Get rendered screen content
-  buffer list         List all buffers
-  buffer content      Get buffer content
-  buffer open <path>  Open a file
-  resize <w> <h>      Resize editor
-  quit                Quit editor and exit
+/// REPL command parser
+#[derive(Parser)]
+#[command(name = "")]
+#[command(about = "Interactive REPL for reovim")]
+#[command(no_binary_name = true)]
+struct ReplCli {
+    #[command(subcommand)]
+    command: ReplCommands,
+}
 
+#[derive(Subcommand)]
+enum ReplCommands {
+    /// Inject key sequence (vim notation, e.g., 'iHello<Esc>')
+    Keys {
+        /// Key sequence
+        #[arg(trailing_var_arg = true, num_args = 1..)]
+        keys: Vec<String>,
+    },
+
+    /// Get current mode
+    Mode,
+
+    /// Get cursor position
+    Cursor {
+        /// Buffer ID (default: active buffer)
+        #[arg(long, short = 'b')]
+        buffer_id: Option<u64>,
+    },
+
+    /// Get selection state
+    Selection {
+        /// Buffer ID (default: active buffer)
+        #[arg(long, short = 'b')]
+        buffer_id: Option<u64>,
+    },
+
+    /// Get screen dimensions
+    ScreenSize,
+
+    /// Get rendered screen content
+    #[command(visible_alias = "capture")]
+    Screen {
+        /// Output format (`plain_text`, `raw_ansi`, `cell_grid`)
+        format: Option<String>,
+    },
+
+    /// Buffer operations
+    Buffer {
+        #[command(subcommand)]
+        command: ReplBufferCommands,
+    },
+
+    /// Resize the editor
+    Resize {
+        /// Width in columns
+        width: u64,
+        /// Height in rows
+        height: u64,
+    },
+
+    /// Quit the editor and exit REPL
+    Quit,
+}
+
+#[derive(Subcommand)]
+enum ReplBufferCommands {
+    /// List all buffers
+    List,
+
+    /// Get buffer content
+    Content {
+        /// Buffer ID (default: active buffer)
+        #[arg(long, short = 'b')]
+        buffer_id: Option<u64>,
+    },
+
+    /// Open a file
+    Open {
+        /// Path to file
+        path: String,
+    },
+}
+
+const META_HELP: &str = r"
 Meta commands:
   .help               Show this help
   .quit / .exit       Exit REPL (keeps editor running)
@@ -94,13 +165,20 @@ enum MetaResult {
     Error(String),
 }
 
+fn print_help() {
+    let mut cmd = ReplCli::command();
+    let help = cmd.render_help();
+    println!("{help}");
+    println!("{META_HELP}");
+}
+
 async fn handle_meta_command(line: &str, client: &mut ReoClient) -> MetaResult {
     let parts: Vec<&str> = line.splitn(2, ' ').collect();
     let cmd = parts[0];
 
     match cmd {
         ".help" => {
-            println!("{HELP_TEXT}");
+            print_help();
             MetaResult::Continue
         }
         ".quit" | ".exit" => MetaResult::Exit,
@@ -126,78 +204,160 @@ async fn execute_command(
     line: &str,
     client: &mut ReoClient,
 ) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    let parts: Vec<&str> = line.split_whitespace().collect();
-    if parts.is_empty() {
-        return Ok(json!(null));
+    // Parse using clap
+    let args: Vec<&str> = line.split_whitespace().collect();
+    if args.is_empty() {
+        return Ok(serde_json::json!(null));
     }
 
-    let cmd = parts[0];
-    let args = &parts[1..];
+    let cli = match ReplCli::try_parse_from(args) {
+        Ok(cli) => cli,
+        Err(e) => {
+            // Print clap's error message (includes help for that command)
+            return Err(e.to_string().into());
+        }
+    };
 
-    match cmd {
-        "keys" => {
-            if args.is_empty() {
-                return Err("Usage: keys <sequence>".into());
-            }
-            Ok(commands::cmd_keys(client, args.join(" ").as_str()).await?)
+    match cli.command {
+        ReplCommands::Keys { keys } => {
+            let key_str = keys.join(" ");
+            Ok(commands::cmd_keys(client, &key_str).await?)
         }
-        "mode" => Ok(commands::cmd_mode(client).await?),
-        "cursor" => {
-            let buffer_id = parse_buffer_id_arg(args);
-            Ok(commands::cmd_cursor(client, buffer_id).await?)
-        }
-        "selection" => {
-            let buffer_id = parse_buffer_id_arg(args);
+        ReplCommands::Mode => Ok(commands::cmd_mode(client).await?),
+        ReplCommands::Cursor { buffer_id } => Ok(commands::cmd_cursor(client, buffer_id).await?),
+        ReplCommands::Selection { buffer_id } => {
             Ok(commands::cmd_selection(client, buffer_id).await?)
         }
-        "screen_size" => Ok(commands::cmd_screen(client).await?),
-        "screen" | "capture" => {
-            let format = args.first().copied().unwrap_or("plain_text");
-            Ok(commands::cmd_screen_content(client, format).await?)
+        ReplCommands::ScreenSize => Ok(commands::cmd_screen(client).await?),
+        ReplCommands::Screen { format } => {
+            let fmt = format.as_deref().unwrap_or("plain_text");
+            Ok(commands::cmd_screen_content(client, fmt).await?)
         }
-        "buffer" => {
-            if args.is_empty() {
-                return Err("Usage: buffer <list|content|open <path>>".into());
+        ReplCommands::Buffer { command } => match command {
+            ReplBufferCommands::List => Ok(commands::cmd_buffer_list(client).await?),
+            ReplBufferCommands::Content { buffer_id } => {
+                Ok(commands::cmd_buffer_content(client, buffer_id).await?)
             }
-            match args[0] {
-                "list" => Ok(commands::cmd_buffer_list(client).await?),
-                "content" => {
-                    let buffer_id = parse_buffer_id_arg(&args[1..]);
-                    Ok(commands::cmd_buffer_content(client, buffer_id).await?)
-                }
-                "open" => {
-                    if args.len() < 2 {
-                        return Err("Usage: buffer open <path>".into());
-                    }
-                    Ok(commands::cmd_buffer_open(client, args[1]).await?)
-                }
-                _ => Err(format!("Unknown buffer subcommand: {}", args[0]).into()),
+            ReplBufferCommands::Open { path } => {
+                Ok(commands::cmd_buffer_open(client, &path).await?)
             }
-        }
-        "resize" => {
-            if args.len() < 2 {
-                return Err("Usage: resize <width> <height>".into());
-            }
-            let width: u64 = args[0].parse()?;
-            let height: u64 = args[1].parse()?;
+        },
+        ReplCommands::Resize { width, height } => {
             Ok(commands::cmd_resize(client, width, height).await?)
         }
-        "quit" => {
+        ReplCommands::Quit => {
             let _result = commands::cmd_quit(client).await?;
             println!("Editor quit. Exiting REPL...");
             std::process::exit(0);
         }
-        _ => Err(format!("Unknown command: {cmd}. Type '.help' for available commands.").into()),
     }
 }
 
-fn parse_buffer_id_arg(args: &[&str]) -> Option<u64> {
-    for (i, arg) in args.iter().enumerate() {
-        if (*arg == "--buffer-id" || *arg == "-b")
-            && let Some(id_str) = args.get(i + 1)
-        {
-            return id_str.parse().ok();
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_help_generation() {
+        // Verify that help can be rendered without panicking
+        let mut cmd = ReplCli::command();
+        let help = cmd.render_help().to_string();
+
+        // Check that key commands are present
+        assert!(help.contains("keys"), "Help should contain 'keys' command");
+        assert!(help.contains("mode"), "Help should contain 'mode' command");
+        assert!(help.contains("cursor"), "Help should contain 'cursor' command");
+        assert!(help.contains("selection"), "Help should contain 'selection' command");
+        assert!(help.contains("screen-size"), "Help should contain 'screen-size' command");
+        assert!(help.contains("screen"), "Help should contain 'screen' command");
+        assert!(help.contains("capture"), "Help should contain 'capture' alias");
+        assert!(help.contains("buffer"), "Help should contain 'buffer' command");
+        assert!(help.contains("resize"), "Help should contain 'resize' command");
+        assert!(help.contains("quit"), "Help should contain 'quit' command");
+    }
+
+    #[test]
+    fn test_command_parsing_keys() {
+        let cli = ReplCli::try_parse_from(["keys", "iHello<Esc>"]).unwrap();
+        match cli.command {
+            ReplCommands::Keys { keys } => {
+                assert_eq!(keys, vec!["iHello<Esc>"]);
+            }
+            _ => panic!("Expected Keys command"),
         }
     }
-    None
+
+    #[test]
+    fn test_command_parsing_keys_with_spaces() {
+        let cli = ReplCli::try_parse_from(["keys", "i", "Hello", "World"]).unwrap();
+        match cli.command {
+            ReplCommands::Keys { keys } => {
+                assert_eq!(keys, vec!["i", "Hello", "World"]);
+            }
+            _ => panic!("Expected Keys command"),
+        }
+    }
+
+    #[test]
+    fn test_command_parsing_mode() {
+        let cli = ReplCli::try_parse_from(["mode"]).unwrap();
+        assert!(matches!(cli.command, ReplCommands::Mode));
+    }
+
+    #[test]
+    fn test_command_parsing_cursor_with_buffer_id() {
+        let cli = ReplCli::try_parse_from(["cursor", "-b", "42"]).unwrap();
+        match cli.command {
+            ReplCommands::Cursor { buffer_id } => {
+                assert_eq!(buffer_id, Some(42));
+            }
+            _ => panic!("Expected Cursor command"),
+        }
+    }
+
+    #[test]
+    fn test_command_parsing_screen_size() {
+        let cli = ReplCli::try_parse_from(["screen-size"]).unwrap();
+        assert!(matches!(cli.command, ReplCommands::ScreenSize));
+    }
+
+    #[test]
+    fn test_command_parsing_screen_with_format() {
+        let cli = ReplCli::try_parse_from(["screen", "raw_ansi"]).unwrap();
+        match cli.command {
+            ReplCommands::Screen { format } => {
+                assert_eq!(format, Some("raw_ansi".to_string()));
+            }
+            _ => panic!("Expected Screen command"),
+        }
+    }
+
+    #[test]
+    fn test_command_parsing_capture_alias() {
+        let cli = ReplCli::try_parse_from(["capture"]).unwrap();
+        assert!(matches!(cli.command, ReplCommands::Screen { .. }));
+    }
+
+    #[test]
+    fn test_command_parsing_buffer_list() {
+        let cli = ReplCli::try_parse_from(["buffer", "list"]).unwrap();
+        match cli.command {
+            ReplCommands::Buffer { command } => {
+                assert!(matches!(command, ReplBufferCommands::List));
+            }
+            _ => panic!("Expected Buffer command"),
+        }
+    }
+
+    #[test]
+    fn test_command_parsing_resize() {
+        let cli = ReplCli::try_parse_from(["resize", "80", "24"]).unwrap();
+        match cli.command {
+            ReplCommands::Resize { width, height } => {
+                assert_eq!(width, 80);
+                assert_eq!(height, 24);
+            }
+            _ => panic!("Expected Resize command"),
+        }
+    }
 }
