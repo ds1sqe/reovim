@@ -228,6 +228,12 @@ See [perf/](./perf/) for versioned benchmark results.
 - [Architecture](./docs/architecture.md) - System design and component overview
 - [Event System](./docs/event-system.md) - Input handling and event flow
 - [Commands](./docs/commands.md) - Command system and keybindings
+- [Plugin System](./docs/plugin-system.md) - Plugin architecture and development
+- [Plugin Rendering](./docs/plugin-rendering.md) - Rendering systems guide
+- [Window & Buffer](./docs/window-buffer.md) - Window architecture
+- [Saturator](./docs/saturator.md) - Background task architecture
+- [Color System](./docs/color-system.md) - Color palette design
+- [Syntax Highlighting](./docs/syntax-highlighting.md) - Rust AST taxonomy
 - [Development](./docs/DEVELOPMENT.md) - Setup and contributing
 - [Testing](./docs/TESTING.md) - Running and writing tests
 

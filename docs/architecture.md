@@ -16,12 +16,20 @@ reovim/
 ├── lib/core/               # reovim-core - core editor logic
 ├── lib/sys/                # reovim-sys - terminal abstraction (crossterm)
 ├── plugins/features/       # External feature plugins
-│   ├── fold/               # reovim-plugin-fold
-│   ├── settings-menu/      # reovim-plugin-settings-menu
 │   ├── completion/         # reovim-plugin-completion
 │   ├── explorer/           # reovim-plugin-explorer
-│   ├── telescope/          # reovim-plugin-telescope
-│   └── treesitter/         # reovim-plugin-treesitter
+│   ├── health-check/       # reovim-plugin-health-check
+│   ├── lsp/                # reovim-plugin-lsp
+│   ├── microscope/         # reovim-plugin-microscope (fuzzy finder)
+│   ├── notification/       # reovim-plugin-notification
+│   ├── pair/               # reovim-plugin-pair
+│   ├── pickers/            # reovim-plugin-pickers
+│   ├── profiles/           # reovim-plugin-profiles
+│   ├── range-finder/       # reovim-plugin-range-finder (jump/fold)
+│   ├── settings-menu/      # reovim-plugin-settings-menu
+│   ├── statusline/         # reovim-plugin-statusline
+│   ├── treesitter/         # reovim-plugin-treesitter
+│   └── which-key/          # reovim-plugin-which-key
 ├── plugins/languages/      # Language plugins
 │   ├── rust/               # reovim-lang-rust
 │   ├── c/                  # reovim-lang-c
@@ -47,8 +55,8 @@ reovim/
         ▼                    ▼                    ▼
 ┌──────────────┐   ┌──────────────────┐   ┌──────────────────┐
 │    CORE      │◄──│ Feature Plugins  │   │ Language Plugins │
-│(reovim-core) │   │ (fold, telescope,│   │ (rust, c, js,    │
-└──────────────┘   │  explorer, etc.) │   │  python, etc.)   │
+│(reovim-core) │   │ (range-finder,   │   │ (rust, c, js,    │
+└──────────────┘   │ microscope, lsp) │   │  python, etc.)   │
         │          └──────────────────┘   └──────────────────┘
         ▼
 ┌──────────────┐
@@ -67,7 +75,7 @@ reovim/
 | `runner` | Bootstrap editor, parse CLI args, configure plugins (AllPlugins), invoke runtime |
 | `reovim-core` | Runtime, buffers, events, screen, commands, plugin system, DefaultPlugins |
 | `reovim-sys` | Re-exports crossterm for terminal I/O |
-| `reovim-plugin-*` | External feature plugins (fold, completion, explorer, telescope, etc.) |
+| `reovim-plugin-*` | External feature plugins (range-finder, microscope, lsp, completion, explorer, etc.) |
 | `reovim-lang-*` | Language support plugins (syntax highlighting, queries) |
 
 ## Core Architecture Overview
@@ -621,12 +629,20 @@ impl Plugin for ExamplePlugin {
 
 | Plugin | Crate | Purpose |
 |--------|-------|---------|
-| `FoldPlugin` | `reovim-plugin-fold` | Code folding |
-| `SettingsMenuPlugin` | `reovim-plugin-settings-menu` | In-editor settings |
 | `CompletionPlugin` | `reovim-plugin-completion` | Text completion |
 | `ExplorerPlugin` | `reovim-plugin-explorer` | File browser |
-| `TelescopePlugin` | `reovim-plugin-telescope` | Fuzzy finder |
+| `HealthCheckPlugin` | `reovim-plugin-health-check` | System health diagnostics |
+| `LspPlugin` | `reovim-plugin-lsp` | Language server protocol |
+| `MicroscopePlugin` | `reovim-plugin-microscope` | Fuzzy finder |
+| `NotificationPlugin` | `reovim-plugin-notification` | User notifications |
+| `PairPlugin` | `reovim-plugin-pair` | Auto-pairing brackets |
+| `PickersPlugin` | `reovim-plugin-pickers` | Picker extensions |
+| `ProfilesPlugin` | `reovim-plugin-profiles` | Configuration profiles |
+| `RangeFinderPlugin` | `reovim-plugin-range-finder` | Jump navigation and code folding |
+| `SettingsMenuPlugin` | `reovim-plugin-settings-menu` | In-editor settings |
+| `StatuslinePlugin` | `reovim-plugin-statusline` | Custom status line |
 | `TreesitterPlugin` | `reovim-plugin-treesitter` | Syntax highlighting |
+| `WhichKeyPlugin` | `reovim-plugin-which-key` | Keybinding hints |
 
 ### Language Plugins
 

@@ -59,9 +59,11 @@ impl EventBus {
 **Event Result:**
 ```rust
 pub enum EventResult {
-    Handled,      // Event was handled, stop propagation
-    Continue,     // Event was handled, continue propagation
-    NotHandled,   // Event was not handled
+    Handled,      // Event was handled, continue processing other handlers
+    Consumed,     // Event was consumed, stop propagation to other handlers
+    NotHandled,   // Event was not handled by this handler
+    NeedsRender,  // Request a render after all handlers complete
+    Quit,         // Editor should quit
 }
 ```
 
@@ -104,6 +106,62 @@ Core events are defined in `lib/core/src/event_bus/core_events.rs` and allow plu
 | Event | Description |
 |-------|-------------|
 | `RequestSetRegister` | Set register content (unnamed or named) |
+
+**Ex-Command Registry Events (via Event Bus):**
+
+Ex-command events are defined in `lib/core/src/event_bus/core_events.rs` for the plugin ex-command system.
+
+| Event | Priority | Description |
+|-------|----------|-------------|
+| `RegisterExCommand` | 30 | Plugin registers an ex-command handler |
+
+**RegisterExCommand:**
+
+Emitted by plugins to register ex-command handlers:
+
+```rust
+use reovim_core::event_bus::core_events::RegisterExCommand;
+use reovim_core::command_line::{ExCommandHandler, HandlerPattern};
+
+bus.emit(RegisterExCommand {
+    name: "settings".into(),
+    handler: ExCommandHandler::ZeroArg {
+        callback: Arc::new(|ctx| {
+            ctx.emit(SettingsMenuOpen);
+        }),
+        description: "Open settings menu".into(),
+    },
+});
+```
+
+Handler patterns:
+- `ZeroArg` - Command takes no arguments (e.g., `:settings`)
+- `SingleArg` - Command takes one argument (e.g., `:profile load <name>`)
+- `Subcommand` - Command has subcommands (e.g., `:profile list|load|save`)
+
+**Profile Events (via Event Bus):**
+
+Profile events are defined in `lib/core/src/event_bus/core_events.rs` for the configuration profile system.
+
+| Event | Priority | Description |
+|-------|----------|-------------|
+| `RegisterConfigurable` | 30 | Component registers for profile system |
+| `ProfileListEvent` | 100 | Profile list requested |
+| `ProfileLoadEvent` | 100 | Profile load requested |
+| `ProfileSaveEvent` | 100 | Profile save requested |
+
+**RegisterConfigurable:**
+
+Emitted by components that want to participate in the profile save/load system:
+
+```rust
+use reovim_core::event_bus::core_events::RegisterConfigurable;
+use reovim_core::config::Configurable;
+
+bus.emit(RegisterConfigurable {
+    component: Arc::new(RwLock::new(MyConfigurable::new())),
+});
+```
 
 **Option Events (via Event Bus):**
 
@@ -391,30 +449,48 @@ Internal events passed to the runtime via mpsc channel.
 pub enum InnerEvent {
     // Core events
     BufferEvent(BufferEvent),
+    WindowEvent(WindowEvent),
     CommandEvent(CommandEvent),
     ModeChangeEvent(ModeState),
     PendingKeysEvent(String),
-    WindowEvent(WindowEvent),
     HighlightEvent(HighlightEvent),
+    SyntaxEvent(SyntaxEvent),
 
-    // Feature events
-    CompletionEvent(CompletionEvent),
-    ExplorerEvent(ExplorerEvent),
-    TelescopeEvent(TelescopeEvent),
-    TreesitterEvent(TreesitterEvent),
+    // Operator/motion events
     OperatorMotionEvent(OperatorMotionAction),
+    VisualTextObjectEvent(VisualTextObjectAction),
 
     // Text input events (direct dispatch to components)
     TextInputEvent(TextInputEvent),
-    VisualTextObjectEvent(VisualTextObjectAction),
-
-    // UI events
-    WhichKeyShow { prefix: String, bindings: Vec<WhichKeyBinding> },
-    WhichKeyHide,
 
     // System
     RenderSignal,
     KillSignal,
+    ScreenResizeEvent { width: u16, height: u16 },
+
+    // RPC (server mode)
+    RpcRequest { id: u64, method: String, params: Value, response_tx: Sender<RpcResponse> },
+
+    // Plugin-defined events (type-erased)
+    PluginEvent { plugin_id: PluginId, event: DynEvent },
+
+    // File operations
+    OpenFileRequest { path: PathBuf },
+    OpenFileAtPositionRequest { path: PathBuf, line: usize, column: usize },
+
+    // Register operations
+    SetRegister { register: Option<char>, text: String },
+
+    // Settings/option events
+    SetLineNumbers { enabled: bool },
+    SetRelativeLineNumbers { enabled: bool },
+    SetTheme { name: String },
+    SetScrollbar { enabled: bool },
+    SetIndentGuide { enabled: bool },
+    SetSignColumn { width: Option<u16> },
+
+    // Cursor movement (from plugins)
+    MoveCursor { buffer_id: usize, line: u32, column: u32 },
 }
 ```
 
@@ -425,8 +501,8 @@ Buffer management operations:
 ```rust
 pub enum BufferEvent {
     SetContent { buffer_id: usize, content: String },
-    LoadFile { path: String },
-    Create,
+    LoadFile { buffer_id: usize, path: PathBuf },
+    Create { buffer_id: usize },
     Close { buffer_id: usize },
     Switch { buffer_id: usize },
 }
@@ -571,9 +647,30 @@ Window management:
 
 ```rust
 pub enum WindowEvent {
-    ToggleExplorer,
-    FocusExplorer,
+    // Focus
+    FocusPlugin { id: ComponentId },
     FocusEditor,
+
+    // Splits
+    SplitHorizontal { filename: Option<String> },
+    SplitVertical { filename: Option<String> },
+    Close { force: bool },
+    CloseOthers,
+
+    // Navigation
+    FocusDirection { direction: NavigateDirection },
+    MoveWindow { direction: NavigateDirection },
+
+    // Resize
+    Resize { direction: SplitDirection, delta: i16 },
+    Equalize,
+
+    // Tabs
+    TabNew { filename: Option<String> },
+    TabClose,
+    TabNext,
+    TabPrev,
+    TabGoto { index: usize },
 }
 ```
 
