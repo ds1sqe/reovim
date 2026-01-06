@@ -11,6 +11,7 @@ use reovim_core::plugin::{
 
 // External plugin crates
 use {
+    reovim_plugin_cmdline_completion::CmdlineCompletionPlugin,
     reovim_plugin_completion::CompletionPlugin, reovim_plugin_explorer::ExplorerPlugin,
     reovim_plugin_health_check::HealthCheckPlugin, reovim_plugin_lsp::LspPlugin,
     reovim_plugin_microscope::MicroscopePlugin, reovim_plugin_notification::NotificationPlugin,
@@ -49,6 +50,7 @@ impl PluginTuple for AllPlugins {
         loader.add(ProfilesPlugin);
         loader.add(HealthCheckPlugin::new());
         loader.add(CompletionPlugin::new());
+        loader.add(CmdlineCompletionPlugin::new());
         loader.add(ExplorerPlugin);
         loader.add(MicroscopePlugin);
         loader.add(PickersPlugin); // Must come after MicroscopePlugin
@@ -91,6 +93,7 @@ pub fn default_plugins() -> impl IntoIterator<Item = Box<dyn Plugin>> {
         Box::new(MicroscopePlugin),
         Box::new(PickersPlugin), // Must come after MicroscopePlugin
         Box::new(CompletionPlugin::new()),
+        Box::new(CmdlineCompletionPlugin::new()),
         Box::new(ExplorerPlugin),
         Box::new(PairPlugin::new()),
         Box::new(SettingsMenuPlugin),
@@ -138,6 +141,7 @@ pub fn create_plugin_loader() -> PluginLoader {
     loader.add(ProfilesPlugin);
     loader.add(HealthCheckPlugin::new());
     loader.add(CompletionPlugin::new());
+    loader.add(CmdlineCompletionPlugin::new());
     loader.add(ExplorerPlugin);
     loader.add(MicroscopePlugin);
     loader.add(PickersPlugin); // Must come after MicroscopePlugin

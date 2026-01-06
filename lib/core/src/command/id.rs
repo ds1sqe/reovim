@@ -86,6 +86,13 @@ pub mod builtin {
     pub const COMMAND_LINE_EXECUTE: CommandId = CommandId::new("command_line_execute");
     pub const COMMAND_LINE_CANCEL: CommandId = CommandId::new("command_line_cancel");
 
+    // === Command Line Completion ===
+    pub const CMDLINE_COMPLETE: CommandId = CommandId::new("cmdline_complete");
+    pub const CMDLINE_COMPLETE_NEXT: CommandId = CommandId::new("cmdline_complete_next");
+    pub const CMDLINE_COMPLETE_PREV: CommandId = CommandId::new("cmdline_complete_prev");
+    pub const CMDLINE_COMPLETE_CONFIRM: CommandId = CommandId::new("cmdline_complete_confirm");
+    pub const CMDLINE_COMPLETE_DISMISS: CommandId = CommandId::new("cmdline_complete_dismiss");
+
     // === Clipboard ===
     pub const PASTE: CommandId = CommandId::new("paste");
     pub const PASTE_BEFORE: CommandId = CommandId::new("paste_before");

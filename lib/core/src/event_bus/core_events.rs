@@ -802,3 +802,50 @@ impl Event for RegisterConfigurable {
         priority::CORE // High priority, register early
     }
 }
+
+// =============================================================================
+// Command Line Completion Events
+// =============================================================================
+
+/// Emitted by runtime when command-line completion is triggered (Tab key)
+///
+/// The plugin subscribes to this event to generate completions based on
+/// the current command line state.
+#[derive(Debug, Clone)]
+pub struct CmdlineCompletionTriggered {
+    /// The completion context (command or argument)
+    pub context: crate::command_line::CmdlineCompletionContext,
+    /// Available registry commands (name, description) for command completion
+    pub registry_commands: Vec<(String, String)>,
+}
+
+impl Event for CmdlineCompletionTriggered {
+    fn priority(&self) -> u32 {
+        priority::PLUGIN
+    }
+}
+
+/// Emitted by runtime when previous completion is requested (Shift-Tab)
+#[derive(Debug, Clone, Copy)]
+pub struct CmdlineCompletionPrevRequested;
+
+impl Event for CmdlineCompletionPrevRequested {
+    fn priority(&self) -> u32 {
+        priority::PLUGIN
+    }
+}
+
+/// Emitted by plugin to request applying a completion to the command line
+#[derive(Debug, Clone)]
+pub struct RequestApplyCmdlineCompletion {
+    /// Text to insert
+    pub text: String,
+    /// Position where to start replacing
+    pub replace_start: usize,
+}
+
+impl Event for RequestApplyCmdlineCompletion {
+    fn priority(&self) -> u32 {
+        priority::CORE
+    }
+}

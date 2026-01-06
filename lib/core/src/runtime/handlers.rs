@@ -313,6 +313,28 @@ impl Runtime {
                 // Just clear the command line, mode change handled by CommandHandler
                 self.command_line.clear();
             }
+            CommandLineAction::Complete => {
+                // Emit event with command line context for plugin to handle
+                let context = self.command_line.completion_context();
+                let registry_commands = self.ex_command_registry.list_commands();
+                self.event_bus
+                    .emit(crate::event_bus::core_events::CmdlineCompletionTriggered {
+                        context,
+                        registry_commands,
+                    });
+            }
+            CommandLineAction::CompletePrev => {
+                // Emit event for plugin to select previous completion
+                self.event_bus
+                    .emit(crate::event_bus::core_events::CmdlineCompletionPrevRequested);
+            }
+            CommandLineAction::ApplyCompletion {
+                text,
+                replace_start,
+            } => {
+                // Apply the completion text to the command line
+                self.command_line.apply_completion(text, *replace_start);
+            }
         }
         false
     }

@@ -112,6 +112,11 @@ pub enum InnerEvent {
         line: u32,
         column: u32,
     },
+    /// Apply completion text to command line
+    ApplyCmdlineCompletion {
+        text: String,
+        replace_start: usize,
+    },
 }
 
 /// Input events routed to the active focus target

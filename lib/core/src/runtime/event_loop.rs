@@ -658,6 +658,18 @@ impl Runtime {
                     tracing::warn!("Runtime: Buffer {} not found for cursor move", buffer_id);
                 }
             }
+            InnerEvent::ApplyCmdlineCompletion {
+                text,
+                replace_start,
+            } => {
+                tracing::debug!(
+                    "Runtime: Applying cmdline completion: {:?} at {}",
+                    text,
+                    replace_start
+                );
+                self.command_line.apply_completion(&text, replace_start);
+                self.request_render();
+            }
         }
         false
     }

@@ -180,6 +180,29 @@ impl ExCommandRegistry {
 
         Some(desc.to_string())
     }
+
+    /// List all registered commands with their descriptions
+    ///
+    /// Returns a vector of (`command_name`, description) pairs.
+    /// Used for command-line auto-completion.
+    #[must_use]
+    pub fn list_commands(&self) -> Vec<(String, String)> {
+        let Ok(handlers) = self.handlers.read() else {
+            return Vec::new();
+        };
+
+        handlers
+            .iter()
+            .map(|(name, handler)| {
+                let desc = match handler {
+                    ExCommandHandler::ZeroArg { description, .. }
+                    | ExCommandHandler::SingleArg { description, .. }
+                    | ExCommandHandler::Subcommand { description, .. } => *description,
+                };
+                (name.clone(), desc.to_string())
+            })
+            .collect()
+    }
 }
 
 impl Default for ExCommandRegistry {
