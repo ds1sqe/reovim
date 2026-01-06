@@ -25,6 +25,12 @@ All notable changes to Reovim will be documented in this file.
 
 ### Fixed
 
+- **Light theme syntax highlighting** (Issue #43) - Light theme now uses proper One Light colors
+  - Added `light_palette` module with Atom One Light colors (red, blue, purple, green, cyan, orange, yellow)
+  - Created `TreesitterTheme::light()` with comprehensive capture mappings
+  - Fixed `from_theme_name()` to correctly return light theme instead of dark
+  - 3 new tests for light theme functionality
+
 - **RegisterOption events not processed** (Issue #39) - Options registered via `bus.emit(RegisterOption)` are now properly added to the option registry
   - `:set` commands now work for all core options (signcolumn, number, tabwidth, etc.)
   - Fix: Create OptionRegistry before plugins subscribe and add event handler
