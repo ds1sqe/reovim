@@ -6,6 +6,13 @@ All notable changes to Reovim will be documented in this file.
 
 ### Changed
 
+- **Remove dead status line code** (Issue #50) - Delete unused `StatusLineComponent` and consolidate duplicates
+  - Deleted `lib/core/src/component/status_line.rs` (303 lines) - `StatusLineComponent` was never instantiated
+  - Deleted `lib/core/src/screen/status_line.rs` (256 lines) - `StatusLineRenderer` trait was never called
+  - Removed `impl StatusLineRenderer for Screen` (31 lines) - Only consumer of deleted functions
+  - Active rendering uses `Screen::render_status_line_to_buffer()` which remains unchanged
+  - Fixes OperatorPending style bug (was in dead code path using wrong style)
+
 - **RAII-based cursor synchronization** (Issue #48) - Centralize cursor sync between windows and buffers
   - Added `Screen::save_cursor_to_active_window()` for pre-split cursor save
   - Added `Screen::switch_active_window()` for full cursor handoff during navigation
