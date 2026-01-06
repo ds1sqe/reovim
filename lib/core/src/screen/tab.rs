@@ -86,6 +86,12 @@ impl TabPage {
     pub fn adjust_ratio(&mut self, delta: f32) {
         self.root.adjust_ratio(self.active_window_id, delta);
     }
+
+    /// Adjust ratio of splits matching a specific direction for the active window
+    pub fn adjust_ratio_in_direction(&mut self, target_direction: SplitDirection, delta: f32) {
+        self.root
+            .adjust_ratio_in_direction(self.active_window_id, target_direction, delta);
+    }
 }
 
 #[derive(Debug)]

@@ -137,7 +137,7 @@ impl CommandTrait for WindowMoveLeftCommand {
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::DeferToRuntime(DeferredAction::Window(WindowAction::MoveDirection {
+        CommandResult::DeferToRuntime(DeferredAction::Window(WindowAction::SwapDirection {
             direction: NavigateDirection::Left,
         }))
     }
@@ -165,7 +165,7 @@ impl CommandTrait for WindowMoveDownCommand {
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::DeferToRuntime(DeferredAction::Window(WindowAction::MoveDirection {
+        CommandResult::DeferToRuntime(DeferredAction::Window(WindowAction::SwapDirection {
             direction: NavigateDirection::Down,
         }))
     }
@@ -193,7 +193,7 @@ impl CommandTrait for WindowMoveUpCommand {
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::DeferToRuntime(DeferredAction::Window(WindowAction::MoveDirection {
+        CommandResult::DeferToRuntime(DeferredAction::Window(WindowAction::SwapDirection {
             direction: NavigateDirection::Up,
         }))
     }
@@ -221,7 +221,7 @@ impl CommandTrait for WindowMoveRightCommand {
     }
 
     fn execute(&self, _ctx: &mut ExecutionContext) -> CommandResult {
-        CommandResult::DeferToRuntime(DeferredAction::Window(WindowAction::MoveDirection {
+        CommandResult::DeferToRuntime(DeferredAction::Window(WindowAction::SwapDirection {
             direction: NavigateDirection::Right,
         }))
     }
@@ -482,7 +482,7 @@ window_mode_command!(
     WindowModeMoveLeftCommand,
     "window_mode_move_left",
     "Move window left (window mode)",
-    WindowAction::MoveDirection {
+    WindowAction::SwapDirection {
         direction: NavigateDirection::Left
     }
 );
@@ -491,7 +491,7 @@ window_mode_command!(
     WindowModeMoveDownCommand,
     "window_mode_move_down",
     "Move window down (window mode)",
-    WindowAction::MoveDirection {
+    WindowAction::SwapDirection {
         direction: NavigateDirection::Down
     }
 );
@@ -500,7 +500,7 @@ window_mode_command!(
     WindowModeMoveUpCommand,
     "window_mode_move_up",
     "Move window up (window mode)",
-    WindowAction::MoveDirection {
+    WindowAction::SwapDirection {
         direction: NavigateDirection::Up
     }
 );
@@ -509,7 +509,7 @@ window_mode_command!(
     WindowModeMoveRightCommand,
     "window_mode_move_right",
     "Move window right (window mode)",
-    WindowAction::MoveDirection {
+    WindowAction::SwapDirection {
         direction: NavigateDirection::Right
     }
 );

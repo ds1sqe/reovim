@@ -1773,6 +1773,19 @@ impl Screen {
         }
     }
 
+    /// Resize the active window in the specified direction
+    ///
+    /// - `Vertical` direction adjusts the width of vertical splits (left/right)
+    /// - `Horizontal` direction adjusts the height of horizontal splits (top/bottom)
+    /// - Positive delta increases size in that direction
+    /// - Negative delta decreases size
+    pub fn resize_window(&mut self, direction: SplitDirection, delta: f32) {
+        if let Some(tab) = self.tab_manager.active_tab_mut() {
+            tab.adjust_ratio_in_direction(direction, delta);
+            self.update_window_layouts();
+        }
+    }
+
     /// Swap the active window with the window in the given direction
     ///
     /// Returns true if a swap occurred
@@ -2483,4 +2496,3 @@ impl StyleExt for crate::highlight::Style {
         self
     }
 }
-
