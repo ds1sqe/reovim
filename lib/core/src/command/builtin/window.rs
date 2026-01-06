@@ -399,6 +399,10 @@ impl CommandTrait for EnterWindowModeCommand {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn resulting_mode(&self) -> Option<ModeState> {
+        Some(ModeState::new().with_sub(SubMode::Interactor(ComponentId::WINDOW)))
+    }
 }
 
 /// Helper to create window mode commands that exit to normal after execution
@@ -427,6 +431,10 @@ macro_rules! window_mode_command {
 
             fn as_any(&self) -> &dyn Any {
                 self
+            }
+
+            fn resulting_mode(&self) -> Option<ModeState> {
+                Some(ModeState::normal())
             }
         }
     };

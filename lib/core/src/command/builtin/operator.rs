@@ -32,6 +32,10 @@ impl CommandTrait for EnterDeleteOperatorCommand {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn resulting_mode(&self) -> Option<ModeState> {
+        Some(ModeState::operator_pending(OperatorType::Delete, None))
+    }
 }
 
 /// Enter operator-pending mode for yank (y)
@@ -58,6 +62,10 @@ impl CommandTrait for EnterYankOperatorCommand {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn resulting_mode(&self) -> Option<ModeState> {
+        Some(ModeState::operator_pending(OperatorType::Yank, None))
+    }
 }
 
 /// Enter operator-pending mode for change (c)
@@ -83,5 +91,9 @@ impl CommandTrait for EnterChangeOperatorCommand {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn resulting_mode(&self) -> Option<ModeState> {
+        Some(ModeState::operator_pending(OperatorType::Change, None))
     }
 }

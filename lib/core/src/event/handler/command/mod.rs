@@ -9,7 +9,7 @@ pub use {count_parser::CountParser, dispatcher::Dispatcher, key_parser::key_to_s
 use {
     crate::{
         bind::{CommandRef, KeyMap, KeyMapInner},
-        command::traits::OperatorMotionAction,
+        command::{CommandRegistry, traits::OperatorMotionAction},
         event::{InnerEvent, KeyEvent, Subscribe, VisualTextObjectAction},
         keystroke::{KeyNotationFormat, KeySequence, Keystroke},
         modd::{ModeState, OperatorType, SubMode},
@@ -19,7 +19,7 @@ use {
             WordTextObject, WordType,
         },
     },
-    std::time::Duration,
+    std::{sync::Arc, time::Duration},
     tokio::sync::{broadcast::Receiver, mpsc::Sender, watch},
 };
 
@@ -50,6 +50,7 @@ impl CommandHandler {
         tx: Sender<InnerEvent>,
         mode_rx: watch::Receiver<ModeState>,
         keymap: KeyMap,
+        command_registry: Arc<CommandRegistry>,
     ) -> Self {
         let initial_mode = mode_rx.borrow().clone();
         Self {
@@ -59,7 +60,7 @@ impl CommandHandler {
             local_mode: initial_mode,
             pending_keys: KeySequence::new(),
             count_parser: CountParser::new(),
-            dispatcher: Dispatcher::new(tx, 0, 0),
+            dispatcher: Dispatcher::new(tx, 0, 0, command_registry),
             mode_locally_changed: false,
         }
     }
@@ -614,7 +615,7 @@ impl CommandHandler {
 
                                     // Check for mode change commands and update local mode immediately
                                     // This avoids race conditions with the Runtime's watch channel
-                                    if let Some(new_mode) = Dispatcher::mode_for_command(cmd) {
+                                    if let Some(new_mode) = self.dispatcher.mode_for_command(cmd) {
                                         tracing::debug!(
                                             "[MODE] Immediate mode update: {:?} -> {:?}",
                                             self.current_mode().sub_mode,

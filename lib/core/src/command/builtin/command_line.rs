@@ -1,8 +1,11 @@
 //! Command line mode commands
 
 use {
-    crate::command::traits::{
-        CommandLineAction, CommandResult, CommandTrait, DeferredAction, ExecutionContext,
+    crate::{
+        command::traits::{
+            CommandLineAction, CommandResult, CommandTrait, DeferredAction, ExecutionContext,
+        },
+        modd::ModeState,
     },
     std::any::Any,
 };
@@ -94,6 +97,10 @@ impl CommandTrait for CommandLineExecuteCommand {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn resulting_mode(&self) -> Option<ModeState> {
+        Some(ModeState::normal())
+    }
 }
 
 /// Cancel command line
@@ -119,5 +126,9 @@ impl CommandTrait for CommandLineCancelCommand {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn resulting_mode(&self) -> Option<ModeState> {
+        Some(ModeState::normal())
     }
 }
