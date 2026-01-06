@@ -6,6 +6,13 @@ All notable changes to Reovim will be documented in this file.
 
 ### Added
 
+- **Dynamic content in DisplayRegistry** (Issue #57) - Allow plugins to show contextual status line info
+  - `DisplayContext` struct for render context with `PluginStateRegistry` access
+  - `DynamicDisplayFn` type alias for dynamic display callbacks
+  - `DisplayInfo::with_dynamic()` method for fluent configuration
+  - `DisplayInfoBuilder::dynamic()` builder method
+  - `DisplayRegistry::display_string()` now takes `PluginStateRegistry` and invokes dynamic callbacks
+  - Enables dynamic status like "Explorer (3 files)" or "Telescope (42 results)"
 - **Common UI rendering helpers** (Issue #56) - New `ui` module with shared utilities for plugins
   - `ui::text` module with Unicode-aware text manipulation functions
   - `display_width()` - Get display width of string (handles CJK, emoji)

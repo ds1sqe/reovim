@@ -2069,8 +2069,15 @@ impl Screen {
                     )
                 },
                 |info| {
-                    // Use plugin-provided info
-                    (info.display_string.to_string(), info.icon, &info.style)
+                    // Use plugin-provided info, with dynamic display support
+                    let text = info.dynamic_display.as_ref().map_or_else(
+                        || info.display_string.to_string(),
+                        |dynamic| {
+                            let ctx = crate::display::DisplayContext { plugin_state };
+                            dynamic(&ctx)
+                        },
+                    );
+                    (text, info.icon, &info.style)
                 },
             );
 
