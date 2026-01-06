@@ -273,6 +273,18 @@ impl FrameRenderer {
         self.initialized = false;
     }
 
+    /// Calculate the display width of a string, accounting for wide characters
+    ///
+    /// Returns the number of terminal columns the string will occupy.
+    /// Wide characters (CJK, emoji, Nerd Font icons) count as 2 columns.
+    fn display_width(s: &str) -> u16 {
+        use crate::frame::cell::is_wide_char;
+
+        s.chars()
+            .map(|c| if is_wide_char(c) { 2 } else { 1 })
+            .sum::<u16>()
+    }
+
     /// Compute diff between back (current) and front (previous) buffers
     ///
     /// Returns commands for only changed cells, with batching for
@@ -321,6 +333,12 @@ impl FrameRenderer {
                 let Some(curr_cell) = self.back.get(x, y) else {
                     continue;
                 };
+
+                // Skip continuation cells - they're virtual placeholders for wide chars
+                if curr_cell.is_continuation {
+                    continue;
+                }
+
                 let prev_cell = self.front.get(x, y);
 
                 // Check if cell differs
@@ -331,8 +349,7 @@ impl FrameRenderer {
 
                     // Check if we can batch with pending (same row, consecutive, same style)
                     let can_batch = pending_y == y
-                        && u16::try_from(pending_start_x as usize + pending_chars.len())
-                            .is_ok_and(|expected| expected == x)
+                        && pending_start_x + Self::display_width(&pending_chars) == x
                         && pending_style.as_ref() == Some(&style_str);
 
                     if can_batch {

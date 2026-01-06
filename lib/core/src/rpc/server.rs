@@ -191,15 +191,19 @@ impl RpcServer {
                         let content = match format {
                             ScreenFormat::CellGrid => {
                                 let buf = handle.snapshot();
-                                // Convert to 2D array of CellSnapshots
+                                // Convert to 2D array of CellSnapshots (skip continuation cells)
                                 let rows: Vec<Vec<CellSnapshot>> = (0..h)
                                     .map(|y| {
                                         (0..w)
-                                            .map(|x| {
-                                                buf.get(x, y).map_or_else(
-                                                    || CellSnapshot::new(' '),
-                                                    CellSnapshot::from,
-                                                )
+                                            .filter_map(|x| {
+                                                buf.get(x, y).and_then(|cell| {
+                                                    // Skip continuation cells
+                                                    if cell.is_continuation {
+                                                        None
+                                                    } else {
+                                                        Some(CellSnapshot::from(cell))
+                                                    }
+                                                })
                                             })
                                             .collect()
                                     })

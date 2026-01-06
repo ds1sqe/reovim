@@ -125,20 +125,12 @@ impl PluginWindow for ExplorerPluginWindow {
                     &theme.base.default
                 };
 
-                // Render the line
-                let mut x = bounds.x;
-                for ch in line.chars() {
-                    if x >= bounds.x + bounds.width {
-                        break;
-                    }
-                    buffer.put_char(x, y, ch, style);
-                    x += 1;
-                }
+                // Render the line using write_str (handles wide characters properly)
+                let x = bounds.x + buffer.write_str(bounds.x, y, &line, style);
 
                 // Fill rest of line with spaces
-                while x < bounds.x + bounds.width {
-                    buffer.put_char(x, y, ' ', style);
-                    x += 1;
+                for col in x..(bounds.x + bounds.width) {
+                    buffer.put_char(col, y, ' ', style);
                 }
             }
 
