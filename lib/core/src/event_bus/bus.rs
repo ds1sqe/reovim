@@ -212,6 +212,44 @@ impl EventBus {
         entry.sort_by_key(|h| h.priority);
     }
 
+    /// Register a handler for a targeted event, filtering by component ID
+    ///
+    /// This is a convenience method for events that implement `TargetedEvent`.
+    /// The handler will only be called when `event.target() == target`.
+    ///
+    /// # Arguments
+    ///
+    /// * `target` - The component ID to filter events for
+    /// * `priority` - Lower values are called first (0-50 for core, 100+ for plugins)
+    /// * `handler` - Function to call when matching event is received
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// pub const COMPONENT_ID: ComponentId = ComponentId("my_plugin");
+    ///
+    /// bus.subscribe_targeted::<PluginTextInput, _>(COMPONENT_ID, 100, |event, ctx| {
+    ///     // Only called when event.target == COMPONENT_ID
+    ///     println!("Received char: {}", event.c);
+    ///     EventResult::Handled
+    /// });
+    /// ```
+    pub fn subscribe_targeted<E: super::TargetedEvent, F>(
+        &self,
+        target: crate::modd::ComponentId,
+        priority: u32,
+        handler: F,
+    ) where
+        F: Fn(&E, &mut HandlerContext) -> EventResult + Send + Sync + 'static,
+    {
+        self.subscribe::<E, _>(priority, move |event, ctx| {
+            if event.target() != target {
+                return EventResult::NotHandled;
+            }
+            handler(event, ctx)
+        });
+    }
+
     /// Emit an event to the bus (non-blocking)
     pub fn emit<E: Event>(&self, event: E) {
         let _ = self.tx.try_send(DynEvent::new(event));
@@ -399,5 +437,58 @@ mod tests {
         let result = bus.dispatch(&event, &mut ctx);
 
         assert_eq!(result, EventResult::NotHandled);
+    }
+
+    #[test]
+    fn test_subscribe_targeted() {
+        use crate::{event_bus::TargetedEvent, modd::ComponentId};
+
+        #[derive(Debug)]
+        struct TargetedTestEvent {
+            target: ComponentId,
+            value: i32,
+        }
+
+        impl Event for TargetedTestEvent {}
+
+        impl TargetedEvent for TargetedTestEvent {
+            fn target(&self) -> ComponentId {
+                self.target
+            }
+        }
+
+        const MY_COMPONENT: ComponentId = ComponentId("my_component");
+        const OTHER_COMPONENT: ComponentId = ComponentId("other");
+
+        let bus = EventBus::new(16);
+        let counter = Arc::new(AtomicI32::new(0));
+        let counter_clone = counter.clone();
+
+        bus.subscribe_targeted::<TargetedTestEvent, _>(MY_COMPONENT, 100, move |event, _ctx| {
+            counter_clone.fetch_add(event.value, Ordering::SeqCst);
+            EventResult::Handled
+        });
+
+        let sender = bus.sender();
+
+        // Event targeting MY_COMPONENT - should be handled
+        let event1 = DynEvent::new(TargetedTestEvent {
+            target: MY_COMPONENT,
+            value: 10,
+        });
+        let mut ctx = HandlerContext::new(&sender);
+        let result = bus.dispatch(&event1, &mut ctx);
+        assert_eq!(result, EventResult::Handled);
+        assert_eq!(counter.load(Ordering::SeqCst), 10);
+
+        // Event targeting OTHER_COMPONENT - should NOT be handled
+        let event2 = DynEvent::new(TargetedTestEvent {
+            target: OTHER_COMPONENT,
+            value: 5,
+        });
+        let mut ctx = HandlerContext::new(&sender);
+        let result = bus.dispatch(&event2, &mut ctx);
+        assert_eq!(result, EventResult::NotHandled);
+        assert_eq!(counter.load(Ordering::SeqCst), 10); // Unchanged
     }
 }

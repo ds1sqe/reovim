@@ -60,6 +60,16 @@ pub trait Event: Send + Sync + Debug + 'static {
     }
 }
 
+/// Marker trait for events that target a specific component
+///
+/// Events implementing this trait have a `target` field that specifies
+/// which component should handle the event. This enables `subscribe_targeted()`
+/// to automatically filter events by target.
+pub trait TargetedEvent: Event {
+    /// Get the target component ID for this event
+    fn target(&self) -> crate::modd::ComponentId;
+}
+
 /// A type-erased event that can carry any payload
 ///
 /// This allows different event types to be sent through the same channel

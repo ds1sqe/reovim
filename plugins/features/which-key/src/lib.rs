@@ -208,12 +208,7 @@ impl Plugin for WhichKeyPlugin {
 
         // Subscribe to PluginTextInput - handle keys typed while panel is visible
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<PluginTextInput, _>(100, move |event, ctx| {
-            // Only handle if we're the target
-            if event.target != COMPONENT_ID {
-                return EventResult::NotHandled;
-            }
-
+        bus.subscribe_targeted::<PluginTextInput, _>(COMPONENT_ID, 100, move |event, ctx| {
             tracing::info!("WhichKeyPlugin: received PluginTextInput c={}", event.c);
 
             // Convert char to keystroke and update filter
@@ -240,12 +235,7 @@ impl Plugin for WhichKeyPlugin {
 
         // Subscribe to PluginBackspace - same as WhichKeyBackspace
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<PluginBackspace, _>(100, move |event, ctx| {
-            // Only handle if we're the target
-            if event.target != COMPONENT_ID {
-                return EventResult::NotHandled;
-            }
-
+        bus.subscribe_targeted::<PluginBackspace, _>(COMPONENT_ID, 100, move |_event, ctx| {
             tracing::info!("WhichKeyPlugin: received PluginBackspace");
 
             state_clone.with::<WhichKeyState, _, _>(|wk| {

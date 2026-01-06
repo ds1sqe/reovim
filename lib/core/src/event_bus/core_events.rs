@@ -246,6 +246,12 @@ impl Event for RequestFocusChange {
     }
 }
 
+impl super::TargetedEvent for RequestFocusChange {
+    fn target(&self) -> crate::modd::ComponentId {
+        self.target
+    }
+}
+
 /// Request to change the editor mode
 ///
 /// Plugins emit this event to request a mode change (edit mode, sub-mode, etc.).
@@ -507,6 +513,12 @@ impl Event for PluginTextInput {
     }
 }
 
+impl super::TargetedEvent for PluginTextInput {
+    fn target(&self) -> crate::modd::ComponentId {
+        self.target
+    }
+}
+
 /// Backspace received by a plugin component
 ///
 /// Emitted when backspace is pressed while a plugin component has focus.
@@ -520,6 +532,12 @@ pub struct PluginBackspace {
 impl Event for PluginBackspace {
     fn priority(&self) -> u32 {
         priority::CORE
+    }
+}
+
+impl super::TargetedEvent for PluginBackspace {
+    fn target(&self) -> crate::modd::ComponentId {
+        self.target
     }
 }
 
