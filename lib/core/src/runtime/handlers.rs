@@ -991,12 +991,10 @@ impl Runtime {
             WindowAction::FocusDirection { direction } => {
                 self.handle_window_navigate(*direction);
             }
-            WindowAction::MoveDirection { direction } => {
-                // Window movement (swap windows) - not yet implemented
-                tracing::info!(direction = ?direction, "Window move direction (not yet implemented)");
-            }
             WindowAction::Resize { direction, delta } => {
-                tracing::info!(direction = ?direction, delta = %delta, "Window resize (not yet implemented)");
+                // Each unit represents 5% of the split ratio
+                let ratio_delta = f32::from(*delta) * 0.05;
+                self.screen.resize_window(*direction, ratio_delta);
             }
             WindowAction::Equalize => {
                 self.handle_window_equalize();

@@ -146,9 +146,6 @@ pub enum WindowAction {
     FocusDirection {
         direction: NavigateDirection,
     },
-    MoveDirection {
-        direction: NavigateDirection,
-    },
     Resize {
         direction: SplitDirection,
         delta: i16,

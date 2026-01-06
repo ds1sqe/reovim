@@ -233,6 +233,59 @@ impl SplitNode {
         }
     }
 
+    /// Adjust ratio of splits matching a specific direction
+    ///
+    /// Finds the innermost split that:
+    /// 1. Contains the window
+    /// 2. Matches the specified split direction
+    ///
+    /// Returns true if a matching split was found and adjusted.
+    pub fn adjust_ratio_in_direction(
+        &mut self,
+        window_id: usize,
+        target_direction: SplitDirection,
+        delta: f32,
+    ) -> bool {
+        match self {
+            Self::Leaf { .. } => false,
+            Self::Split {
+                direction,
+                ratio,
+                first,
+                second,
+            } => {
+                let in_first = first.contains_window(window_id);
+                let in_second = second.contains_window(window_id);
+
+                if !in_first && !in_second {
+                    // Window not in this subtree, search children
+                    return first.adjust_ratio_in_direction(window_id, target_direction, delta)
+                        || second.adjust_ratio_in_direction(window_id, target_direction, delta);
+                }
+
+                // Window is in this split - try children first (innermost matching split)
+                let found_in_child = if in_first {
+                    first.adjust_ratio_in_direction(window_id, target_direction, delta)
+                } else {
+                    second.adjust_ratio_in_direction(window_id, target_direction, delta)
+                };
+
+                if found_in_child {
+                    return true;
+                }
+
+                // No matching split in children, check if this split matches
+                if *direction == target_direction {
+                    let adjustment = if in_first { delta } else { -delta };
+                    *ratio = (*ratio + adjustment).clamp(0.1, 0.9);
+                    return true;
+                }
+
+                false
+            }
+        }
+    }
+
     pub fn equalize(&mut self) {
         if let Self::Split {
             ratio,
