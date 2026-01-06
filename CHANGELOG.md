@@ -36,7 +36,7 @@ All notable changes to Reovim will be documented in this file.
   - Plugin-decoupled architecture - zero core modifications using v0.7.9+ ex-command registry
 - **Plugin-specific status line styling** - Plugins can now provide custom colors for status line
   - Each plugin defines its own `Style` with custom fg/bg colors
-  - Visual identity: Explorer (orange), Microscope (blue), Settings (gray), Leap (green), Health (teal)
+  - Visual identity: Explorer (orange), Microscope (blue), Settings (gray), Leap (green), Health (teal), Jump (gold)
   - Status line shows `[INTERACTOR][MODE]` as separate colored sections
   - `Color` type exported from `reovim_core::highlight` for plugin use
 - **LSP debugging tools** (Issue #26) - Tools for debugging LSP communication
@@ -45,6 +45,13 @@ All notable changes to Reovim will be documented in this file.
     - `--lsp-log=default` creates timestamped `lsp-<timestamp>.log` in data directory
     - `--lsp-log=/path/to/file.log` for custom path
     - Logs show `->` for outgoing and `<-` for incoming messages at TRACE level
+- **Request-driven cursor movement with operator support** - Plugin-to-runtime communication for cursor positioning
+  - `RequestCursorMove` event allows plugins to request cursor movement
+  - `Motion::JumpTo { line, column }` variant for absolute positioning
+  - `InnerEvent::MoveCursor` for runtime event loop handling
+  - Automatic operator integration: `d`/`y`/`c` + jump creates `OperatorMotionAction`
+  - Runtime detects `OperatorPending` mode and applies operators to jump targets
+  - Enables jump navigation, LSP goto-definition, and other plugin-driven navigation with full vim operator semantics
 
 ### Changed
 
@@ -67,6 +74,10 @@ All notable changes to Reovim will be documented in this file.
   - Distinct from yank's gold fade animation
   - Works with both characterwise and linewise paste
   - Helps locate pasted content in large files
+- **Performance logging reduced** - [RTT] performance logs lowered from debug to trace level
+  - Render timing, event loop, pipeline execution now require TRACE log level
+  - Reduces noise in DEBUG logs while still available for performance analysis
+  - Affects 10+ log statements across runtime, screen, and render modules
 
 ### Fixed
 
@@ -90,6 +101,21 @@ All notable changes to Reovim will be documented in this file.
   - Converted embedded query constants to `.scm` files via `include_str!()` (57 lines → 2 lines)
   - Queries now editable in `.scm` files with syntax highlighting support
   - Total reduction: ~740 lines
+
+- **Range-Finder plugin** - Merged Leap and Fold plugins into unified navigation system
+  - Combined jump navigation and code folding into single `reovim-plugin-range-finder` plugin
+  - New architecture: `src/jump/` (navigation subsystem) + `src/fold/` (visibility subsystem)
+  - Multi-char search: `s` + 2 chars + label to jump (leap-style navigation)
+  - Enhanced f/t motions: `f`/`F`/`t`/`T` now use label selection for multiple matches
+  - Smart auto-jump: 1 match → instant, 2-676 matches → show labels, >676 → cancel
+  - Code folding: `za`/`zo`/`zc`/`zR`/`zM` (unchanged functionality)
+  - Home row priority labels: `sfnjklhodweimbuyvrgtaqpcxz`
+  - Single-char labels for <=26 matches, two-char labels for >26 matches (up to 676)
+  - Two-char label input: first character validates, second completes the jump
+  - Label overlay rendering with z-order 200 (above editor, below popups)
+  - **BREAKING**: `f`/`F`/`t`/`T` keys now trigger leap-style label selection (replaces default vim single-char find/till)
+  - Removed separate `reovim-plugin-leap` and `reovim-plugin-fold` plugins
+  - Total plugin size: ~2,000 lines (vs 2,295 lines for separate plugins)
 
 ## [0.7.9]
 

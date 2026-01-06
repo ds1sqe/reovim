@@ -114,7 +114,7 @@ lib/core/src/
 │   ├── loader.rs   # PluginLoader for dependency resolution
 │   ├── state.rs    # PluginStateRegistry
 │   ├── runtime_context.rs  # RuntimeContext for plugins
-│   └── builtin/    # Built-in plugins (core, leap)
+│   └── builtin/    # Built-in plugins (core)
 ├── buffer/         # Text storage and cursor
 ├── compositor/     # Compositing system
 │   ├── mod.rs      # ZOrder, ZGroup
@@ -143,7 +143,6 @@ lib/core/src/
 │   │   ├── base.rs       # Tab line, status line (z=0)
 │   │   ├── explorer.rs   # File browser sidebar (z=1)
 │   │   ├── editor.rs     # Buffer windows (z=2)
-│   │   ├── leap.rs       # Jump labels (z=3)
 │   │   ├── completion.rs # Completion popup (z=4)
 │   │   ├── telescope.rs  # Fuzzy finder (z=5)
 │   │   └── settings_menu.rs # Settings overlay (z=6)
@@ -183,7 +182,6 @@ lib/core/src/
 ├── completion/     # Completion core types (CompletionContext, CompletionItem)
 ├── telescope/      # Fuzzy finder
 ├── explorer/       # File browser
-├── leap/           # Two-character motion
 ├── jump_list/      # Navigation history
 ├── registers/      # Copy/paste storage
 ├── theme/          # Color themes
@@ -244,9 +242,8 @@ pub struct Runtime {
     pub telescope_state: TelescopeState,
     pub telescope_matcher: TelescopeMatcher,
     pub telescope_pickers: HashMap<String, Arc<dyn Picker>>,
-    pub leap_state: LeapState,
-    pub fold_manager: FoldManager,
     // Note: Treesitter is now a plugin, accessed via plugin_state.text_object_source()
+    // Note: Jump navigation (range-finder) is now a plugin
 }
 ```
 
@@ -368,7 +365,7 @@ Core defines only base z-order constants. Plugins define their own via `OverlayR
 | Plugin overlays | 100-400 | `OverlayRenderer::z_order()` |
 
 Plugins register overlays with their own z-orders:
-- Leap: 100
+- Range-Finder (jump labels): 110
 - Completion: 200
 - Telescope: 300
 - Settings: 400
@@ -593,18 +590,18 @@ impl EventBus {
 }
 ```
 
-**Example - LeapPlugin:**
+**Example Plugin:**
 ```rust
-impl Plugin for LeapPlugin {
+impl Plugin for ExamplePlugin {
     fn init_state(&self, registry: &PluginStateRegistry) {
-        registry.register(LeapState::new());
+        registry.register(PluginState::new());
     }
 
     fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<LeapStartEvent, _>(100, move |event, _ctx| {
-            state_clone.with_mut::<LeapState, _, _>(|leap_state| {
-                leap_state.start(event.direction, event.operator, event.count);
+        bus.subscribe::<ExampleEvent, _>(100, move |event, _ctx| {
+            state_clone.with_mut::<PluginState, _, _>(|plugin_state| {
+                plugin_state.handle(event);
             });
             EventResult::Handled
         });
@@ -617,7 +614,6 @@ impl Plugin for LeapPlugin {
 | Plugin | Purpose |
 |--------|---------|
 | `CorePlugin` | Essential commands, keybindings |
-| `LeapPlugin` | Two-character jump navigation |
 | `WindowPlugin` | Window splits and navigation |
 | `UIComponentsPlugin` | UI component infrastructure |
 
@@ -823,17 +819,6 @@ bus.emit(RegisterSource {
 - `Ctrl-n`/`Ctrl-p` - Navigate suggestions
 - `Enter`/`Tab` - Confirm selection
 - `Escape` - Dismiss popup
-
-### Leap (`lib/core/src/leap/`)
-
-Two-character motion for quick cursor jumps (inspired by leap.nvim).
-
-**Components:**
-- `LeapState` - Current leap session
-- `LeapTarget` - Jump target with label
-- Bi-directional search with `s`/`S`
-
-**Integration:** Works with operators (`ds{char}{char}` to delete to target)
 
 ### Jump List (`lib/core/src/jump_list/`)
 
@@ -1266,8 +1251,8 @@ CommandEvent         KillSignal
               ├── ModeChangeEvent → update mode
               ├── CompletionEvent → update completion
               ├── TelescopeEvent → update telescope
-              ├── LeapEvent → handle leap
               ├── ExplorerEvent → handle explorer
+              ├── RangeFinderEvent → handle jump/fold
               └── ...
               │
               ▼

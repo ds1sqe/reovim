@@ -10,6 +10,7 @@ use std::{
 };
 
 // Re-export data types from core (used by treesitter to produce fold ranges)
+#[allow(unused_imports)] // FoldKind used in tests, will be used once wired up
 pub use reovim_core::folding::{FoldKind, FoldRange};
 
 use reovim_core::visibility::{

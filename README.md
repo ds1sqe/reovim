@@ -19,7 +19,10 @@ A Rust-powered neovim-like text editor.
 - Registers for copy/paste
 
 ### Navigation
-- **Leap motion** - Two-character jump (`s`/`S` + 2 chars)
+- **Range-Finder plugin** - Unified jump navigation and code visibility
+  - **Multi-char jump** (`s` + 2 chars) - Leap-style navigation with smart auto-jump
+  - **Enhanced f/t motions** (`f`/`F`/`t`/`T`) - Single-char search with label selection
+  - **Code folding** (`za`/`zo`/`zc`/`zR`/`zM`) - Collapse/expand code blocks
 - **Telescope fuzzy finder** - Files, buffers, grep (`Space f`)
 - **Explorer file browser** - Tree view (`Space e`)
 - Jump list navigation (`Ctrl-O`, `Ctrl-I`)
@@ -34,7 +37,6 @@ A Rust-powered neovim-like text editor.
 
 ### Syntax & Code Intelligence
 - **Treesitter syntax highlighting** - Accurate parsing for Rust, C, JavaScript, Python, JSON, TOML, Markdown
-- **Code folding** - `za`/`zo`/`zc` to toggle, `zR`/`zM` to open/close all
 - **Semantic text objects** - `af`/`if` (function), `ac`/`ic` (class/struct)
 
 ### Performance
@@ -154,8 +156,9 @@ Most movement commands support a numeric prefix (e.g., `5j` moves down 5 lines).
 | `:` | Enter command mode |
 | `x` | Delete character |
 | `p/P` | Paste after/before cursor |
-| `s` | Leap forward (type 2 chars to jump) |
-| `S` | Leap backward |
+| `s` | Multi-char jump (type 2 chars + label to jump) |
+| `f/F` | Find char forward/backward with labels |
+| `t/T` | Till char forward/backward with labels |
 | `Space e` | Toggle explorer |
 | `Space f f` | Telescope find files |
 | `Space f g` | Telescope live grep |

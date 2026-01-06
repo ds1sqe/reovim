@@ -61,7 +61,7 @@ impl Dispatcher {
                 context: ctx,
             }))
             .await;
-        tracing::debug!(
+        tracing::trace!(
             "[RTT] Dispatcher.dispatch: cmd={:?} send took {:?}",
             match &cmd {
                 CommandRef::Registered(id) => id.as_str(),

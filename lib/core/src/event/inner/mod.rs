@@ -106,6 +106,12 @@ pub enum InnerEvent {
     SetSignColumn {
         width: Option<u16>,
     },
+    /// Move cursor to specific position (from plugins like range-finder, LSP)
+    MoveCursor {
+        buffer_id: usize,
+        line: u32,
+        column: u32,
+    },
 }
 
 /// Input events routed to the active focus target

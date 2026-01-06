@@ -29,6 +29,19 @@ No warnings are acceptable. Fix all warnings before committing.
 
 Use `REOVIM_LOG=debug` to enable debug logging in spawned server processes.
 
+**When debugging in background:** Always specify a log file output instead of stderr:
+```bash
+# GOOD: Use a specific log file
+REOVIM_LOG=debug cargo run -- --server --log=/tmp/reovim-debug.log file.txt &
+
+# BAD: Don't use stderr (--log=-) for background processes
+REOVIM_LOG=debug cargo run -- --server --log=- file.txt &  # Output gets mixed up
+```
+Then monitor the log file:
+```bash
+tail -f /tmp/reovim-debug.log
+```
+
 ### Plugin Decoupling Policy
 
 **NEVER add plugin-specific code to reovim-core.** Core must remain plugin-agnostic.
@@ -57,10 +70,27 @@ Use `REOVIM_LOG=debug` to enable debug logging in spawned server processes.
 - `killall reovim`
 - Any command that terminates reovim processes you didn't start
 
-**Safe alternatives:**
-- Use `reo-cli list` to see running servers
-- Use `reo-cli --tcp 127.0.0.1:<PORT> kill` to kill a specific server
-- Only kill servers you started in the current session
+**Safe workflow for testing:**
+1. **Before starting a server**: Run `reo-cli list` to see existing servers
+2. **Start your server**: Note the PID/port from stderr output or `reo-cli list`
+3. **Track your servers**: Keep a list of PIDs you started in this session
+4. **After testing**: Only kill the specific server(s) YOU started: `reo-cli --tcp 127.0.0.1:<PORT> kill`
+5. **Never assume**: Don't kill servers just because they exist - they might be from another session
+
+**Example safe workflow:**
+```bash
+# Check existing servers first
+cargo run -p reo-cli -- list
+
+# Start server and note its port from output
+cargo run -- --server Cargo.toml &  # Note: prints "Listening on 127.0.0.1:12521"
+
+# Do testing with reo-cli
+cargo run -p reo-cli -- keys 'gg'
+
+# Kill ONLY the server you just started
+cargo run -p reo-cli -- --tcp 127.0.0.1:12521 kill
+```
 
 ## Build Commands
 
@@ -180,7 +210,7 @@ Reovim is a Rust-based neovim-like text editor built with async tokio runtime an
 - `runner/` - Main binary crate that bootstraps the editor and loads plugins
 - `lib/core/` (reovim-core) - Core editor logic: runtime, buffers, events, screen rendering
 - `lib/sys/` (reovim-sys) - Re-exports crossterm for terminal abstraction
-- `plugins/features/` - Feature plugins (treesitter, fold, completion, explorer, telescope)
+- `plugins/features/` - Feature plugins (range-finder, treesitter, completion, explorer, telescope)
 - `plugins/languages/` - Language support plugins (rust, c, javascript, python, json, toml, markdown)
 - `tools/perf-report/` - Performance report generator CLI
 - `tools/reo-cli/` - CLI client for server mode
@@ -229,11 +259,11 @@ Reovim is a Rust-based neovim-like text editor built with async tokio runtime an
 - `lib/core/src/overlay/` - Overlay compositing system (z-order popups)
 - `lib/core/src/screen/mod.rs` - Contains `z_order` constants and `LayerBounds` for rendering layers
 
-**Feature Modules**:
-- `lib/core/src/leap/` - Two-character jump navigation (s/S)
-- `lib/core/src/telescope/` - Fuzzy finder (Space f)
-- `lib/core/src/explorer/` - File browser (Space e)
-- `lib/core/src/completion/` - Async completion (Ctrl-Space)
+**Feature Plugins**:
+- `plugins/features/range-finder/` - Jump navigation (s/f/F/t/T) and code folding (za/zo/zc/zR/zM)
+- `plugins/features/telescope/` - Fuzzy finder (Space f)
+- `plugins/features/explorer/` - File browser (Space e)
+- `plugins/features/completion/` - Async completion (Ctrl-Space)
 - `lib/core/src/modd/` - Multi-dimensional mode state (Focus, EditMode, SubMode)
 
 **Plugin System** (`lib/core/src/plugin/`):

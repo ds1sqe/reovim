@@ -61,7 +61,7 @@ impl RenderData {
         // If empty, just render without syntax - that's fine, still fast
         let hl_start = std::time::Instant::now();
         let highlights = buffer.highlight_cache.get_ready_highlights(line_count);
-        tracing::debug!(
+        tracing::trace!(
             "[RTT] from_buffer: highlight_cache_read={:?} lines={}",
             hl_start.elapsed(),
             line_count
@@ -81,7 +81,7 @@ impl RenderData {
             }
         }
 
-        tracing::debug!(
+        tracing::trace!(
             "[RTT] from_buffer: decoration_cache_read={:?} lines={} insert_mode={}",
             deco_start.elapsed(),
             line_count,

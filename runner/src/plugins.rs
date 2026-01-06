@@ -12,13 +12,12 @@ use reovim_core::plugin::{
 // External plugin crates
 use {
     reovim_plugin_completion::CompletionPlugin, reovim_plugin_explorer::ExplorerPlugin,
-    reovim_plugin_fold::FoldPlugin, reovim_plugin_health_check::HealthCheckPlugin,
-    reovim_plugin_leap::LeapPlugin, reovim_plugin_lsp::LspPlugin,
+    reovim_plugin_health_check::HealthCheckPlugin, reovim_plugin_lsp::LspPlugin,
     reovim_plugin_microscope::MicroscopePlugin, reovim_plugin_notification::NotificationPlugin,
     reovim_plugin_pair::PairPlugin, reovim_plugin_pickers::PickersPlugin,
-    reovim_plugin_profiles::ProfilesPlugin, reovim_plugin_settings_menu::SettingsMenuPlugin,
-    reovim_plugin_statusline::StatuslinePlugin, reovim_plugin_treesitter::TreesitterPlugin,
-    reovim_plugin_which_key::WhichKeyPlugin,
+    reovim_plugin_profiles::ProfilesPlugin, reovim_plugin_range_finder::RangeFinderPlugin,
+    reovim_plugin_settings_menu::SettingsMenuPlugin, reovim_plugin_statusline::StatuslinePlugin,
+    reovim_plugin_treesitter::TreesitterPlugin, reovim_plugin_which_key::WhichKeyPlugin,
 };
 
 // Language plugins
@@ -44,8 +43,7 @@ impl PluginTuple for AllPlugins {
         loader.add(NotificationPlugin::new());
 
         // Add external plugin crates
-        loader.add(LeapPlugin);
-        loader.add(FoldPlugin::new());
+        loader.add(RangeFinderPlugin::new());
         loader.add(PairPlugin::new());
         loader.add(SettingsMenuPlugin);
         loader.add(ProfilesPlugin);
@@ -89,12 +87,11 @@ pub fn default_plugins() -> impl IntoIterator<Item = Box<dyn Plugin>> {
         Box::new(StatuslinePlugin::new()),
         // Notification system
         Box::new(NotificationPlugin::new()),
-        Box::new(LeapPlugin),
+        Box::new(RangeFinderPlugin::new()),
         Box::new(MicroscopePlugin),
         Box::new(PickersPlugin), // Must come after MicroscopePlugin
         Box::new(CompletionPlugin::new()),
         Box::new(ExplorerPlugin),
-        Box::new(FoldPlugin::new()),
         Box::new(PairPlugin::new()),
         Box::new(SettingsMenuPlugin),
         Box::new(ProfilesPlugin),
@@ -135,8 +132,7 @@ pub fn create_plugin_loader() -> PluginLoader {
     // Notification system
     loader.add(NotificationPlugin::new());
     // Add external plugin crates
-    loader.add(LeapPlugin);
-    loader.add(FoldPlugin::new());
+    loader.add(RangeFinderPlugin::new());
     loader.add(PairPlugin::new());
     loader.add(SettingsMenuPlugin);
     loader.add(ProfilesPlugin);

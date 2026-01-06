@@ -50,11 +50,13 @@ impl Runtime {
             let inner_tx = self.tx.clone();
             tokio::spawn(async move {
                 while let Some(event) = event_rx.recv().await {
+                    let event_type = event.type_name();
                     let sender = event_bus.sender();
                     let mut ctx = crate::event_bus::HandlerContext::new(&sender);
                     let _ = event_bus.dispatch(&event, &mut ctx);
                     // If any handler requested a render, send RenderSignal to main loop
                     if ctx.render_requested() {
+                        tracing::info!("==> Render requested by event: {}", event_type);
                         let _ = inner_tx.try_send(InnerEvent::RenderSignal);
                     }
                 }
@@ -149,11 +151,13 @@ impl Runtime {
             let inner_tx = self.tx.clone();
             tokio::spawn(async move {
                 while let Some(event) = event_rx.recv().await {
+                    let event_type = event.type_name();
                     let sender = event_bus.sender();
                     let mut ctx = crate::event_bus::HandlerContext::new(&sender);
                     let _ = event_bus.dispatch(&event, &mut ctx);
                     // If any handler requested a render, send RenderSignal to main loop
                     if ctx.render_requested() {
+                        tracing::info!("==> Render requested by event: {}", event_type);
                         let _ = inner_tx.try_send(InnerEvent::RenderSignal);
                     }
                 }
@@ -262,7 +266,7 @@ impl Runtime {
                         // Flush render once after all pending events processed
                         let pre_render = loop_start.elapsed();
                         self.flush_render();
-                        tracing::debug!(
+                        tracing::trace!(
                             "[RTT] event_loop: first_ev={} drained={} pre_render={:?} total={:?}",
                             ev_name,
                             drained,
@@ -632,6 +636,27 @@ impl Runtime {
             InnerEvent::SetSignColumn { width } => {
                 tracing::info!("Runtime: Setting sign column: {:?}", width);
                 self.screen.set_sign_column_width(width);
+            }
+            InnerEvent::MoveCursor {
+                buffer_id,
+                line,
+                column,
+            } => {
+                tracing::debug!(
+                    "Runtime: Moving cursor to line={}, col={} in buffer={}",
+                    line,
+                    column,
+                    buffer_id
+                );
+                if let Some(buffer) = self.buffers.get_mut(&buffer_id) {
+                    use crate::{buffer::CursorOps, motion::Motion};
+                    buffer.apply_motion(
+                        Motion::JumpTo { line, column },
+                        1, // count
+                    );
+                } else {
+                    tracing::warn!("Runtime: Buffer {} not found for cursor move", buffer_id);
+                }
             }
         }
         false
@@ -1151,7 +1176,8 @@ impl Runtime {
 
             let sender = self.event_bus.sender();
             let mut ctx = crate::event_bus::HandlerContext::new(&sender);
-            let _ = self.event_bus.dispatch(&dyn_event, &mut ctx);
+            let dispatch_result = self.event_bus.dispatch(&dyn_event, &mut ctx);
+            tracing::info!("==> Dispatch result for sub_mode interactor: {:?}", dispatch_result);
             if ctx.render_requested() {
                 self.request_render();
             }
@@ -1202,7 +1228,8 @@ impl Runtime {
         // Dispatch via event bus
         let sender = self.event_bus.sender();
         let mut ctx = crate::event_bus::HandlerContext::new(&sender);
-        let _ = self.event_bus.dispatch(&dyn_event, &mut ctx);
+        let dispatch_result = self.event_bus.dispatch(&dyn_event, &mut ctx);
+        tracing::info!("==> Dispatch result for plugin path: {:?}", dispatch_result);
         if ctx.render_requested() {
             self.request_render();
         }

@@ -464,7 +464,7 @@ This separation ensures:
 | `explorer` | Node, render, state, tree | 15 |
 | `highlight` | Color, span, store, theme | 18 |
 | `jumplist` | Jump navigation | 4 |
-| `leap` | Two-character jump labels | 3 |
+| `range-finder` | Jump navigation and code folding | 15+ |
 | `screen/layout` | Layout calculations | 4 |
 | `telescope` | Item, matcher, state | 11 |
 | `types` | Core data types | 4 |

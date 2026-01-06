@@ -65,44 +65,37 @@ pub enum EventResult {
 }
 ```
 
-**Example - Leap Events:**
+**Example - Plugin Events:**
 ```rust
 // Define event
 #[derive(Debug, Clone)]
-pub struct LeapStartEvent {
-    pub direction: LeapDirection,
-    pub operator: Option<OperatorType>,
-    pub count: Option<usize>,
+pub struct MyActionEvent {
+    pub data: String,
 }
 
-impl Event for LeapStartEvent {
-    fn priority(&self) -> u32 { 50 }  // High priority for mode changes
+impl Event for MyActionEvent {
+    fn priority(&self) -> u32 { 100 }
 }
 
 // Subscribe in plugin
-bus.subscribe::<LeapStartEvent, _>(100, |event, _ctx| {
-    tracing::trace!(direction = ?event.direction, "Leap started");
+bus.subscribe::<MyActionEvent, _>(100, |event, _ctx| {
+    tracing::trace!(data = ?event.data, "Action triggered");
     EventResult::Handled
 });
 
-// Emit from runtime
-event_bus.emit(LeapStartEvent {
-    direction: LeapDirection::Forward,
-    operator: None,
-    count: None,
+// Emit from plugin or runtime
+event_bus.emit(MyActionEvent {
+    data: "example".to_string(),
 });
 ```
 
-**Leap Events (via Event Bus):**
+**Example Plugin Events:**
 | Event | Description |
 |-------|-------------|
-| `LeapStartEvent` | Leap mode activated |
-| `LeapFirstCharEvent` | First character entered |
-| `LeapSecondCharEvent` | Second character entered |
-| `LeapSelectLabelEvent` | Label selected for jump |
-| `LeapCancelEvent` | Leap mode cancelled |
-| `LeapJumpEvent` | Jump completed (from, to, direction) |
-| `LeapMatchesFoundEvent` | Matches found (count, pattern) |
+| `ExplorerRefresh` | Refresh explorer view |
+| `TelescopeOpen` | Open telescope picker |
+| `CompletionTrigger` | Trigger completion |
+| `SettingsMenuOpen` | Open settings menu |
 
 **Core Events (via Event Bus):**
 
@@ -408,7 +401,6 @@ pub enum InnerEvent {
     CompletionEvent(CompletionEvent),
     ExplorerEvent(ExplorerEvent),
     TelescopeEvent(TelescopeEvent),
-    LeapEvent(LeapEvent),
     TreesitterEvent(TreesitterEvent),
     OperatorMotionEvent(OperatorMotionAction),
 
@@ -489,20 +481,6 @@ pub enum TelescopeEvent {
     Confirm,
     Close,
     UpdatePreview { content: String },
-}
-```
-
-### LeapEvent
-
-Leap motion operations:
-
-```rust
-pub enum LeapEvent {
-    Start { direction: LeapDirection, operator: Option<OperatorType>, count: Option<usize> },
-    FirstChar { char: char },
-    SecondChar { char: char },
-    SelectLabel { label: char },
-    Cancel,
 }
 ```
 
@@ -762,7 +740,6 @@ impl TerminateHandler {
         ▼                    ▼                    ▼
    CommandEvent          KillSignal        CompletionEvent
    TelescopeEvent
-   LeapEvent
    ModeChangeEvent
         │                    │                    │
         └─────────┬──────────┴────────────────────┘
@@ -775,7 +752,6 @@ impl TerminateHandler {
        ModeChangeEvent => update mode, broadcast
        CompletionEvent => update completion state
        TelescopeEvent => update telescope state
-       LeapEvent => handle leap motion
        TreesitterEvent => update highlights
        ExplorerEvent => handle explorer
        OperatorMotionEvent => execute operator+motion
@@ -838,43 +814,31 @@ Step 3: Runtime processes
 └─────────────────────────────────────────────┘
 ```
 
-### Example: Leap Motion "sab"
+### Example: Plugin Event Flow
 
 ```
-Step 1: User presses "s"
+Step 1: User triggers plugin action
 ┌─────────────────────────────────────────────┐
 │ CommandHandler                              │
-│     lookup("s") → LeapForwardCommand        │
+│     lookup("Space e") → ExplorerToggle      │
 │     │                                       │
 │     ▼                                       │
-│ Execute → DeferToRuntime(Leap(Start))       │
+│ EventBus.emit(ExplorerToggle)               │
 │     │                                       │
 │     ▼                                       │
-│ Runtime: set_mode(leap(Forward))            │
-│ LeapState: WaitingFirstChar                 │
+│ Plugin subscriber receives event            │
+│ Plugin updates state, requests render       │
 └─────────────────────────────────────────────┘
 
-Step 2: User presses "a" (first char)
+Step 2: Plugin interacts with runtime
 ┌─────────────────────────────────────────────┐
-│ CommandHandler (in Leap mode)               │
-│     Send LeapEvent::FirstChar { char: 'a' } │
+│ Plugin emits core event                     │
+│     EventBus.emit(RequestCursorMove)        │
 │     │                                       │
 │     ▼                                       │
-│ Runtime: Find all "a?" matches              │
-│ LeapState: WaitingSecondChar                │
-│ Render targets with labels                  │
-└─────────────────────────────────────────────┘
-
-Step 3: User presses "b" (second char)
-┌─────────────────────────────────────────────┐
-│ LeapEvent::SecondChar { char: 'b' }         │
-│     │                                       │
-│     ▼                                       │
-│ Runtime: Find "ab" matches                  │
-│ If single match: jump directly              │
-│ If multiple: show labels for selection      │
-│ set_mode(normal())                          │
-│ Render                                      │
+│ Runtime handler processes event             │
+│ Updates buffer/window state                 │
+│ Requests render                             │
 └─────────────────────────────────────────────┘
 ```
 
@@ -898,7 +862,6 @@ pub struct KeyMap {
     pub operator_pending: HashMap<String, KeyMapInner>,
     pub telescope_normal: HashMap<String, KeyMapInner>,
     pub telescope_insert: HashMap<String, KeyMapInner>,
-    pub leap: HashMap<String, KeyMapInner>,
 }
 ```
 
@@ -915,7 +878,6 @@ pub struct KeyMap {
 | Operator Pending | `operator_pending` | Motion after d/y/c |
 | Telescope Normal | `telescope_normal` | Navigation with j/k |
 | Telescope Insert | `telescope_insert` | Query typing |
-| Leap | `leap` | Leap motion key handling |
 
 ### Default Bindings
 
@@ -934,7 +896,8 @@ pub struct KeyMap {
 | p/P | Paste after/before |
 | u/Ctrl-r | Undo/redo |
 | d/y/c | Operators |
-| s/S | Leap forward/backward |
+| s | Multi-char jump search |
+| f/F/t/T | Single-char jump find/till |
 | Ctrl-o/Ctrl-i | Jump list |
 | Space e | Toggle explorer |
 | Space ff/fb/fg/fr | Telescope pickers |
@@ -978,8 +941,6 @@ if mode.is_insert() {
     // Unmapped keys become CommandLineChar(c)
 } else if mode.is_telescope_focus() && mode.is_insert() {
     // Unmapped keys become TelescopeInsertChar(c)
-} else if mode.is_leap() {
-    // Keys go to LeapEvent handling
 } else if mode.is_normal() || mode.is_visual() {
     // Unmapped keys are ignored
 }

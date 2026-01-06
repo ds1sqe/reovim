@@ -33,6 +33,7 @@ pub fn calculate_motion(
 /// - For horizontal movements, clears `desired_col`
 #[must_use]
 #[allow(clippy::cast_possible_truncation)]
+#[allow(clippy::too_many_lines)] // Motion handling for all motion types
 pub fn calculate_motion_with_desired_col(
     contents: &[crate::buffer::Line],
     cur: Position,
@@ -128,6 +129,23 @@ pub fn calculate_motion_with_desired_col(
             let max_y = contents.len().saturating_sub(1) as u16;
             pos.y = max_y;
             pos.x = 0;
+            new_desired_col = None;
+        }
+        Motion::JumpTo { line, column } => {
+            // Jump to specific position (used by plugins like range-finder, LSP, etc.)
+            let max_y = contents.len().saturating_sub(1) as u16;
+            pos.y = (line as u16).min(max_y);
+            // Clamp column to line length
+            if let Some(line_content) = contents.get(pos.y as usize) {
+                let max_x = if line_content.inner.is_empty() {
+                    0
+                } else {
+                    line_content.inner.len().saturating_sub(1) as u16
+                };
+                pos.x = (column as u16).min(max_x);
+            } else {
+                pos.x = 0;
+            }
             new_desired_col = None;
         }
     }

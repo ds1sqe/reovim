@@ -338,6 +338,57 @@ impl Event for RequestInsertText {
     }
 }
 
+/// Request to move cursor to a specific position
+///
+/// Plugins emit this event to programmatically move the cursor in the active buffer.
+/// The runtime subscribes to this event and updates the cursor position.
+/// This is used for features like jump navigation, goto definition, etc.
+///
+/// # Optional Motion Context
+///
+/// When `motion_context` is provided, the cursor movement is treated as a motion
+/// that can complete pending operators (d, y, c, etc.). The motion creates a range
+/// from the current cursor position to the target position.
+#[derive(Debug, Clone)]
+pub struct RequestCursorMove {
+    /// Target buffer ID
+    pub buffer_id: usize,
+    /// Target line (0-indexed)
+    pub line: u32,
+    /// Target column (0-indexed)
+    pub column: u32,
+    /// Optional motion context for operator completion
+    ///
+    /// When present, this cursor movement acts as a motion that completes
+    /// any pending operator (d, y, c). The range is calculated from the
+    /// current cursor position to the target position.
+    pub motion_context: Option<MotionContext>,
+}
+
+/// Context for motion-based cursor movement
+///
+/// This allows cursor movements to integrate with vim-style operators.
+/// When a cursor movement is performed with motion context, it can complete
+/// pending operators like delete (d), yank (y), or change (c).
+#[derive(Debug, Clone)]
+pub struct MotionContext {
+    /// Whether this is a linewise motion (affects whole lines)
+    pub linewise: bool,
+    /// Whether to include the character at the target position
+    pub inclusive: bool,
+    /// Optional operator to apply (Delete, Yank, Change)
+    /// When set, overrides any operator from current mode state
+    pub operator: Option<crate::modd::OperatorType>,
+    /// Optional repeat count for the operator
+    pub count: Option<usize>,
+}
+
+impl Event for RequestCursorMove {
+    fn priority(&self) -> u32 {
+        priority::CORE
+    }
+}
+
 // =============================================================================
 // Settings/Option Request Events
 // =============================================================================

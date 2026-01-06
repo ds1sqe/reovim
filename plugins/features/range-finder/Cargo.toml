@@ -1,10 +1,10 @@
 [package]
-name = "reovim-plugin-fold"
+name = "reovim-plugin-range-finder"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "Code folding plugin for reovim"
+description = "Unified jump navigation and code folding plugin for reovim"
 repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
