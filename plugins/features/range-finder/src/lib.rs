@@ -23,6 +23,7 @@ use {
         keys,
         modd::{ComponentId, EditMode, ModeState, SubMode},
         plugin::{Plugin, PluginContext, PluginId, PluginStateRegistry},
+        subscribe_state, subscribe_state_conditional,
     },
 };
 
@@ -424,53 +425,29 @@ impl Plugin for RangeFinderPlugin {
 
         // === Fold Event Subscriptions ===
 
-        // FoldToggle
-        let fold_manager = Arc::clone(&self.fold_manager);
-        bus.subscribe::<FoldToggle, _>(100, move |event, ctx| {
-            let changed = fold_manager.with_mut(|m| m.toggle(event.buffer_id, event.line));
-            if changed {
-                ctx.request_render();
-            }
-            EventResult::Handled
+        // Conditional render subscriptions (render only if state changed)
+        subscribe_state_conditional!(bus, self.fold_manager, FoldToggle, |m, e| {
+            m.toggle(e.buffer_id, e.line)
         });
 
-        // FoldOpen
-        let fold_manager = Arc::clone(&self.fold_manager);
-        bus.subscribe::<FoldOpen, _>(100, move |event, ctx| {
-            let changed = fold_manager.with_mut(|m| m.open(event.buffer_id, event.line));
-            if changed {
-                ctx.request_render();
-            }
-            EventResult::Handled
+        subscribe_state_conditional!(bus, self.fold_manager, FoldOpen, |m, e| {
+            m.open(e.buffer_id, e.line)
         });
 
-        // FoldClose
-        let fold_manager = Arc::clone(&self.fold_manager);
-        bus.subscribe::<FoldClose, _>(100, move |event, ctx| {
-            let changed = fold_manager.with_mut(|m| m.close(event.buffer_id, event.line));
-            if changed {
-                ctx.request_render();
-            }
-            EventResult::Handled
+        subscribe_state_conditional!(bus, self.fold_manager, FoldClose, |m, e| {
+            m.close(e.buffer_id, e.line)
         });
 
-        // FoldOpenAll
-        let fold_manager = Arc::clone(&self.fold_manager);
-        bus.subscribe::<FoldOpenAll, _>(100, move |event, ctx| {
-            fold_manager.with_mut(|m| m.open_all(event.buffer_id));
-            ctx.request_render();
-            EventResult::Handled
+        // Simple mutation + render subscriptions
+        subscribe_state!(bus, self.fold_manager, FoldOpenAll, |m, e| {
+            m.open_all(e.buffer_id);
         });
 
-        // FoldCloseAll
-        let fold_manager = Arc::clone(&self.fold_manager);
-        bus.subscribe::<FoldCloseAll, _>(100, move |event, ctx| {
-            fold_manager.with_mut(|m| m.close_all(event.buffer_id));
-            ctx.request_render();
-            EventResult::Handled
+        subscribe_state!(bus, self.fold_manager, FoldCloseAll, |m, e| {
+            m.close_all(e.buffer_id);
         });
 
-        // FoldRangesUpdated (from treesitter)
+        // FoldRangesUpdated (from treesitter) - uses priority 50, keep manual
         let fold_manager = Arc::clone(&self.fold_manager);
         bus.subscribe::<FoldRangesUpdated, _>(50, move |event, ctx| {
             fold_manager.with_mut(|m| m.set_ranges(event.buffer_id, event.ranges.clone()));
