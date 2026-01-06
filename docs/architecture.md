@@ -427,6 +427,95 @@ Screen::render_buffered()
     Terminal Output (minimal I/O)
 ```
 
+### Render Pipeline Stages
+
+The render pipeline processes buffer content through composable stages:
+
+```
+Buffer → Visibility → Highlighting → Decorations → Visual → Indent → Signs → VirtualText → FrameBuffer
+```
+
+Each stage enriches `RenderData` with layer-specific information:
+
+| Stage | Priority | Description |
+|-------|----------|-------------|
+| Visibility | 50 | Apply folding (collapsed/hidden lines) |
+| Highlighting | 100 | Treesitter syntax highlighting |
+| Decorations | 120 | Language decorations (markdown headers, etc.) |
+| Visual | 150 | Visual mode selection highlighting |
+| Animation | 200 | Animated effects (yank, paste feedback) |
+| Indent | 220 | Indent guide computation |
+| Signs | 230 | Sign column (diagnostics, git, etc.) |
+| VirtualText | 240 | Inline diagnostic messages |
+
+See [render-pipeline.md](./render-pipeline.md) for detailed documentation.
+
+### Animation System
+
+Visual effects are managed by `AnimationController`:
+
+```rust
+pub struct AnimationController {
+    effects: HashMap<AnimationId, ActiveEffect>,
+    frame_rate: u32,  // Default: 30 fps
+}
+```
+
+Built-in animations:
+- **Yank**: Gold fade (400ms) on yanked region
+- **Paste**: Cyan pulse (600ms, 2 cycles) on pasted region
+- **Landing**: Breathing effect on ASCII art
+
+See [animation-system.md](./animation-system.md) for API documentation.
+
+### Decoration System
+
+Language-aware visual rendering via `LanguageRenderer` trait:
+
+```rust
+pub trait LanguageRenderer: Send + Sync {
+    fn render(&self, buffer: &Buffer) -> Vec<LineDecoration>;
+}
+```
+
+Decorations can:
+- Replace text (e.g., `#` → ` ◉ ` for markdown headings)
+- Conceal characters (hide `**` around bold text)
+- Add virtual text
+
+See [decoration-system.md](./decoration-system.md) for implementation guide.
+
+### Visibility Provider
+
+The `VisibilityProvider` abstraction supports code folding:
+
+```rust
+pub enum LineVisibility {
+    Visible,
+    Collapsed { marker: String },
+    Hidden,
+}
+
+pub trait VisibilityProvider {
+    fn visibility_for_line(&self, line: usize) -> LineVisibility;
+}
+```
+
+The Range-Finder plugin implements folding based on treesitter structure.
+
+### Indent Guides
+
+`IndentAnalyzer` computes indent guide positions:
+
+```rust
+pub struct IndentGuide {
+    pub column: usize,
+    pub is_active: bool,  // Cursor's indent level
+}
+```
+
+Guides are rendered as vertical lines (`│`) showing code structure.
+
 ### Mode State System
 
 Editor mode is represented by a multi-dimensional `ModeState`:

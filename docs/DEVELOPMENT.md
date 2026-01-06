@@ -135,6 +135,68 @@ RUST_BACKTRACE=full cargo run -p reovim  # Full backtrace
 - Check `lib/core/src/runtime/mod.rs` for event loop debugging
 - Event flow: InputEventBroker → KeyEventBroker → Handlers → Runtime
 
+### LSP Debugging
+
+When troubleshooting LSP integration issues (rust-analyzer, etc.):
+
+#### Enable LSP Logging
+
+```bash
+# Log to timestamped file in data directory
+reovim --lsp-log=default myfile.rs
+
+# Log to custom file
+reovim --lsp-log=/tmp/lsp.log myfile.rs
+
+# Log with specific level (error, warn, info, debug, trace)
+reovim --lsp-log=default:debug myfile.rs
+reovim --lsp-log=/tmp/lsp.log:info myfile.rs
+```
+
+Log format shows direction (`->` outgoing, `<-` incoming) and JSON-RPC messages:
+```
+[2026-01-06T12:00:00Z] -> initialize { ... }
+[2026-01-06T12:00:01Z] <- initialized { ... }
+[2026-01-06T12:00:02Z] -> textDocument/didOpen { ... }
+```
+
+#### View LSP Log in Editor
+
+```vim
+:LspLog
+```
+
+This opens the current LSP log file in a new buffer.
+
+#### LSP Health Check
+
+```vim
+:health
+```
+
+Navigate to the "LSP" section to see:
+- Server status (running/stopped)
+- Document count
+- Diagnostic statistics
+- Timestamps for initialization and last activity
+
+#### Common LSP Issues
+
+**Diagnostics not appearing:**
+- rust-analyzer uses LSP 3.17 "pull diagnostics"
+- Reovim requests diagnostics after `textDocument/didOpen`
+- Check `:health` to verify server is running
+
+**Server not starting:**
+- Verify LSP server is installed (`which rust-analyzer`)
+- Check LSP log for error messages
+- Ensure file is in a project directory (has `Cargo.toml` for Rust)
+
+**Slow completions:**
+- LSP completions are async and debounced
+- Large projects may have slower initial indexing
+- Check LSP log for timeout messages
+
 ## Performance Considerations
 
 Reovim prioritizes **minimal latency**:

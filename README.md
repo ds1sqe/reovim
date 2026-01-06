@@ -30,9 +30,12 @@ A Rust-powered neovim-like text editor.
 ### UI
 - Command-line mode (`:q`, `:w`, `:wq`, `:set`)
 - Line numbers (absolute, relative, hybrid)
+- **Sign column** - Configurable modes: `auto`, `yes`, `no`, `number`
+- **Virtual text** - Inline diagnostic messages after line content
 - Which-key popup for keybindings
 - Completion engine (`Ctrl-Space`)
 - Status line with mode, pending keys, last command
+- **Health check** (`:health`) - Diagnostic system for core and plugin status
 - Landing page when started without a file
 
 ### Syntax & Code Intelligence
@@ -41,20 +44,19 @@ A Rust-powered neovim-like text editor.
 
 ### Performance
 
-v0.6.0 uses diff-based rendering via FrameBuffer - trades per-render overhead for zero flickering:
+v0.7.10 continues the diff-based rendering with significant optimizations:
 
-| Metric | v0.5.0 | v0.6.0 | Change |
-|--------|--------|--------|--------|
-| Window render (10 lines) | 1.6 µs | 10 µs | +6x |
-| Window render (10k lines) | 6.9 µs | 56 µs | +8x |
-| Full screen render | 14 µs | 62 µs | +4x |
-| Char insert RTT | 56 µs | 108 µs | +2x |
-| Move down RTT | 751 µs | 806 µs | +7% |
-| Throughput | 144k/sec | 18k/sec | -87% |
+| Metric | v0.6.0 | v0.7.10 | Change |
+|--------|--------|---------|--------|
+| Window render (10 lines) | 10 µs | 5.3 µs | **-47%** |
+| Window render (10k lines) | 56 µs | 26 µs | **-54%** |
+| Full scroll cycle | 85 µs | 55 µs | **-35%** |
+| Large file (5k lines) | 174 µs | 87 µs | **-50%** |
+| Throughput | 18k/sec | 38k/sec | **+111%** |
 
 **Key benefits:**
 - **Zero flickering** - Only changed cells sent to terminal
-- **Consistent I/O** - Buffer size doesn't affect terminal writes
+- **2x faster rendering** - Optimized render pipeline
 - **Composable layers** - Clean UI component separation
 - Async architecture with tokio runtime
 - Cross-platform terminal support via crossterm
@@ -82,6 +84,8 @@ reovim [file]
 ### Server Mode
 
 Reovim can run as a JSON-RPC 2.0 server for programmatic control, enabling integration with external tools, IDEs, and automation scripts. The server accepts multiple sequential connections - clients can connect, disconnect, and reconnect without restarting the server.
+
+**Multi-instance support**: Multiple reovim servers can run concurrently. When the default port (12521) is in use, the server automatically tries 12522, 12523, etc. Each server writes a port file to `~/.local/share/reovim/servers/<pid>.port` for discovery.
 
 ```bash
 # Start server (TCP on 127.0.0.1:12521 by default)
@@ -194,6 +198,13 @@ Most movement commands support a numeric prefix (e.g., `5j` moves down 5 lines).
 | `:set nonu` / `:set nonumber` | Hide line numbers |
 | `:set rnu` / `:set relativenumber` | Show relative line numbers |
 | `:set nornu` / `:set norelativenumber` | Hide relative line numbers |
+| `:set signcolumn=<mode>` | Sign column: `auto`, `yes`, `no`, `number` |
+| `:set virtual_text` | Enable inline diagnostic messages |
+| `:health` / `:checkhealth` | Open health check diagnostic modal |
+| `:LspLog` | Open LSP log file in editor |
+| `:profile list` | Open profile picker |
+| `:profile load <name>` | Load a configuration profile |
+| `:profile save <name>` | Save current settings as profile |
 
 ## Architecture
 
@@ -230,7 +241,13 @@ See [perf/](./perf/) for versioned benchmark results.
 - [Commands](./docs/commands.md) - Command system and keybindings
 - [Plugin System](./docs/plugin-system.md) - Plugin architecture and development
 - [Plugin Rendering](./docs/plugin-rendering.md) - Rendering systems guide
+- [Render Pipeline](./docs/render-pipeline.md) - Render stages and data flow
+- [Diagnostics](./docs/diagnostics.md) - Sign column and virtual text configuration
+- [Text Objects](./docs/text-objects.md) - Delimiter and semantic text objects
+- [Server Mode](./docs/server-mode.md) - RPC server and multi-instance support
 - [Window & Buffer](./docs/window-buffer.md) - Window architecture
+- [Animation System](./docs/animation-system.md) - Visual effects and animations
+- [Decoration System](./docs/decoration-system.md) - Language-aware decorations
 - [Saturator](./docs/saturator.md) - Background task architecture
 - [Color System](./docs/color-system.md) - Color palette design
 - [Syntax Highlighting](./docs/syntax-highlighting.md) - Rust AST taxonomy

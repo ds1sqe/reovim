@@ -53,15 +53,17 @@ CRATES=(
     # Feature plugins - tier 1 (no inter-plugin deps)
     "plugins/features/microscope"
     "plugins/features/treesitter"
-    "plugins/features/fold"
+    "plugins/features/range-finder"
     "plugins/features/settings-menu"
     "plugins/features/completion"
     "plugins/features/explorer"
-    "plugins/features/leap"
     "plugins/features/notification"
     "plugins/features/pair"
     "plugins/features/statusline"
     "plugins/features/which-key"
+    "plugins/features/profiles"
+    "plugins/features/health-check"
+    "plugins/features/cmdline-completion"
 
     # Language plugins (all depend on treesitter)
     "plugins/languages/rust"
@@ -92,15 +94,17 @@ NAMES=(
     # Feature plugins - tier 1
     "reovim-plugin-microscope"
     "reovim-plugin-treesitter"
-    "reovim-plugin-fold"
+    "reovim-plugin-range-finder"
     "reovim-plugin-settings-menu"
     "reovim-plugin-completion"
     "reovim-plugin-explorer"
-    "reovim-plugin-leap"
     "reovim-plugin-notification"
     "reovim-plugin-pair"
     "reovim-plugin-statusline"
     "reovim-plugin-which-key"
+    "reovim-plugin-profiles"
+    "reovim-plugin-health-check"
+    "reovim-plugin-cmdline-completion"
 
     # Language plugins
     "reovim-lang-rust"
