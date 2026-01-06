@@ -332,6 +332,15 @@ pub trait CommandTrait: Debug + Send + Sync {
     fn is_text_modifying(&self) -> bool {
         false
     }
+
+    /// The mode to transition to after this command executes, if any
+    ///
+    /// Commands that change modes should override this to return `Some(ModeState)`.
+    /// This is used by the command handler to update mode immediately before dispatch,
+    /// avoiding race conditions with the runtime's watch channel.
+    fn resulting_mode(&self) -> Option<ModeState> {
+        None
+    }
 }
 
 impl Clone for Box<dyn CommandTrait> {

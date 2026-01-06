@@ -4,6 +4,15 @@ All notable changes to Reovim will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **Declarative mode metadata** (Issue #42) - Replace hardcoded `mode_for_command()` with `resulting_mode()` trait method
+  - Added `resulting_mode()` method to `CommandTrait` with default `None` return
+  - Implemented for 32 mode-changing commands (mode, window, operator, command-line)
+  - Replaced 60-line string matching function with 6-line trait-based lookup
+  - Provides compile-time safety: no more missing match arms causing flaky tests
+  - Fixed bug: `enter_visual_line_mode` was missing from old implementation
+
 ### Added
 
 - **Subscription helper macros** (Issue #41) - Reduce plugin boilerplate with three new macros

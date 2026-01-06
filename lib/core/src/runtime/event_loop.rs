@@ -33,7 +33,12 @@ impl Runtime {
         // Command handler for key-to-command translation
         // Pass mode receiver so CommandHandler can read mode from Runtime (single source of truth)
         let mode_rx = self.subscribe_mode();
-        let mut command_hdr = CommandHandler::new(self.tx.clone(), mode_rx, self.keymap.clone());
+        let mut command_hdr = CommandHandler::new(
+            self.tx.clone(),
+            mode_rx,
+            self.keymap.clone(),
+            self.command_registry.clone(),
+        );
         let mut terminate_hdr = TerminateHandler::new(self.tx.clone());
 
         input_broker.key_broker.enlist(&mut command_hdr);
@@ -133,8 +138,12 @@ impl Runtime {
 
         // Command handler for key-to-command translation
         let mode_rx = self.subscribe_mode();
-        let mut command_hdr =
-            crate::event::CommandHandler::new(self.tx.clone(), mode_rx, self.keymap.clone());
+        let mut command_hdr = crate::event::CommandHandler::new(
+            self.tx.clone(),
+            mode_rx,
+            self.keymap.clone(),
+            self.command_registry.clone(),
+        );
         let mut terminate_hdr = crate::event::TerminateHandler::new(self.tx.clone());
 
         input_broker.key_broker.enlist(&mut command_hdr);

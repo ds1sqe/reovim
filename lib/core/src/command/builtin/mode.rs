@@ -37,6 +37,10 @@ impl CommandTrait for EnterNormalModeCommand {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn resulting_mode(&self) -> Option<ModeState> {
+        Some(ModeState::normal())
+    }
 }
 
 /// Enter insert mode
@@ -62,6 +66,10 @@ impl CommandTrait for EnterInsertModeCommand {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn resulting_mode(&self) -> Option<ModeState> {
+        Some(ModeState::insert())
     }
 }
 
@@ -95,6 +103,10 @@ impl CommandTrait for EnterInsertModeAfterCommand {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn resulting_mode(&self) -> Option<ModeState> {
+        Some(ModeState::insert())
+    }
 }
 
 /// Enter insert mode at end of line (A)
@@ -125,6 +137,10 @@ impl CommandTrait for EnterInsertModeEolCommand {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn resulting_mode(&self) -> Option<ModeState> {
+        Some(ModeState::insert())
     }
 }
 
@@ -161,6 +177,10 @@ impl CommandTrait for OpenLineBelowCommand {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn resulting_mode(&self) -> Option<ModeState> {
+        Some(ModeState::insert())
+    }
 }
 
 /// Open line above (O)
@@ -195,6 +215,10 @@ impl CommandTrait for OpenLineAboveCommand {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn resulting_mode(&self) -> Option<ModeState> {
+        Some(ModeState::insert())
+    }
 }
 
 /// Enter visual mode
@@ -221,6 +245,10 @@ impl CommandTrait for EnterVisualModeCommand {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn resulting_mode(&self) -> Option<ModeState> {
+        Some(ModeState::visual())
     }
 }
 
@@ -249,6 +277,10 @@ impl CommandTrait for EnterVisualBlockModeCommand {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn resulting_mode(&self) -> Option<ModeState> {
+        Some(ModeState::visual_block())
+    }
 }
 
 /// Enter visual line mode (V)
@@ -276,6 +308,10 @@ impl CommandTrait for EnterVisualLineModeCommand {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn resulting_mode(&self) -> Option<ModeState> {
+        Some(ModeState::visual_line())
+    }
 }
 
 /// Enter command mode
@@ -301,5 +337,9 @@ impl CommandTrait for EnterCommandModeCommand {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn resulting_mode(&self) -> Option<ModeState> {
+        Some(ModeState::command())
     }
 }
