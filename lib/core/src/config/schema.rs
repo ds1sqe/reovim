@@ -1,6 +1,7 @@
 //! TOML schema definitions for configuration profiles
 
 use {
+    crate::highlight::ThemeOverrides,
     serde::{Deserialize, Serialize},
     std::collections::HashMap,
 };
@@ -103,6 +104,20 @@ pub struct EditorConfig {
     #[serde(default = "default_theme")]
     pub theme: String,
 
+    /// Theme style overrides
+    ///
+    /// Override individual colors/styles in the selected theme.
+    ///
+    /// # Example TOML
+    /// ```toml
+    /// [editor.theme_overrides]
+    /// "statusline.background" = { bg = "#1a1b26" }
+    /// "gutter.line_number" = { fg = "#565f89" }
+    /// "statusline.mode.normal" = { fg = "#1a1b26", bg = "#7aa2f7", bold = true }
+    /// ```
+    #[serde(default)]
+    pub theme_overrides: ThemeOverrides,
+
     /// Color mode: ansi, 256, truecolor
     #[serde(default = "default_colormode")]
     pub colormode: String,
@@ -144,6 +159,7 @@ impl Default for EditorConfig {
     fn default() -> Self {
         Self {
             theme: default_theme(),
+            theme_overrides: ThemeOverrides::default(),
             colormode: default_colormode(),
             number: true,
             relativenumber: true,
@@ -329,5 +345,41 @@ tabwidth = 2
         let toml = toml::to_string_pretty(&config).unwrap();
         assert!(toml.contains("[profile]"));
         assert!(toml.contains("[editor]"));
+    }
+
+    #[test]
+    fn test_parse_profile_with_theme_overrides() {
+        let toml = r##"
+[profile]
+name = "custom_theme"
+
+[editor]
+theme = "dark"
+
+[editor.theme_overrides]
+"statusline.background" = { bg = "#1a1b26" }
+"gutter.line_number" = { fg = "#565f89" }
+"statusline.mode.normal" = { fg = "#000000", bg = "#7aa2f7", bold = true }
+"##;
+        let config: ProfileConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.profile.name, "custom_theme");
+        assert_eq!(config.editor.theme, "dark");
+        assert_eq!(config.editor.theme_overrides.len(), 3);
+
+        let statusline_bg = config
+            .editor
+            .theme_overrides
+            .overrides
+            .get("statusline.background")
+            .unwrap();
+        assert_eq!(statusline_bg.bg, Some("#1a1b26".to_string()));
+
+        let mode_normal = config
+            .editor
+            .theme_overrides
+            .overrides
+            .get("statusline.mode.normal")
+            .unwrap();
+        assert_eq!(mode_normal.bold, Some(true));
     }
 }

@@ -20,7 +20,11 @@
 //! - `leap`: Leap navigation label styles
 //! - `animation`: Animation configuration
 
-use {crate::highlight::Style, reovim_sys::style::Color};
+use crate::highlight::{
+    theme_override::{ThemeOverrideError, ThemeOverrides},
+    Style,
+};
+use reovim_sys::style::Color;
 
 // ============================================================================
 // Theme Name Enum
@@ -957,6 +961,199 @@ impl Theme {
             animation: AnimationConfig::default(),
         }
     }
+
+    // ========================================================================
+    // Theme Override Methods
+    // ========================================================================
+
+    /// Create a theme from name with custom overrides applied
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use reovim_core::highlight::{Theme, ThemeName, ThemeOverrides};
+    ///
+    /// let overrides = ThemeOverrides::default();
+    /// let theme = Theme::from_name_with_overrides(ThemeName::Dark, &overrides);
+    /// ```
+    #[must_use]
+    pub fn from_name_with_overrides(name: ThemeName, overrides: &ThemeOverrides) -> Self {
+        let mut theme = Self::from_name(name);
+        theme.apply_overrides(overrides);
+        theme
+    }
+
+    /// Apply overrides to this theme
+    ///
+    /// Invalid paths are logged as warnings and skipped.
+    pub fn apply_overrides(&mut self, overrides: &ThemeOverrides) {
+        for (path, style_override) in &overrides.overrides {
+            match self.get_style_mut(path) {
+                Ok(style) => style_override.apply_to(style),
+                Err(e) => tracing::warn!(path = %path, error = %e, "Failed to apply theme override"),
+            }
+        }
+    }
+
+    /// Get mutable reference to a style by dot-notation path
+    ///
+    /// # Valid Paths
+    ///
+    /// - `base.{default,cursor_line,command_line}`
+    /// - `gutter.{line_number,current_line_number,inactive_line_number,sign_column_bg}`
+    /// - `selection.{visual,block}`
+    /// - `statusline.{background,interactor,filename,modified,position,filetype}`
+    /// - `statusline.mode.{normal,insert,visual,command,replace,operator_pending}`
+    /// - `popup.{normal,selected,border,match_fg}`
+    /// - `whichkey.{background,key,description,prefix,border}`
+    /// - `fold.{marker,folded_line}`
+    /// - `indent.{guide,active}`
+    /// - `scrollbar.{track,thumb,search_mark,error_mark,warn_mark,info_mark,hint_mark}`
+    /// - `search.{match_highlight,current_match,inc_search}`
+    /// - `tab.{active,inactive,fill}`
+    /// - `window.separator`
+    /// - `brackets.{rainbow.0-5,matched,unmatched}`
+    /// - `diagnostic.{hint,info,warn,error,deprecated,unnecessary}`
+    /// - `cursor.{line,column}`
+    /// - `semantic.{lifetime,trait_bound,async_keyword,await_keyword,unsafe_keyword,macro_invocation,attribute,mutable,constant,static_var}`
+    /// - `leap.{label_primary,label_secondary,dimmed}`
+    /// - `virtual_text.{default,error,warn,info,hint}`
+    ///
+    /// # Errors
+    ///
+    /// Returns `ThemeOverrideError::InvalidPath` if the path does not match any valid theme style.
+    #[allow(clippy::too_many_lines)]
+    pub fn get_style_mut(&mut self, path: &str) -> Result<&mut Style, ThemeOverrideError> {
+        let parts: Vec<&str> = path.split('.').collect();
+        match parts.as_slice() {
+            // base.*
+            ["base", "default"] => Ok(&mut self.base.default),
+            ["base", "cursor_line"] => Ok(&mut self.base.cursor_line),
+            ["base", "command_line"] => Ok(&mut self.base.command_line),
+
+            // gutter.*
+            ["gutter", "line_number"] => Ok(&mut self.gutter.line_number),
+            ["gutter", "current_line_number"] => Ok(&mut self.gutter.current_line_number),
+            ["gutter", "inactive_line_number"] => Ok(&mut self.gutter.inactive_line_number),
+            ["gutter", "sign_column_bg"] => Ok(&mut self.gutter.sign_column_bg),
+
+            // selection.*
+            ["selection", "visual"] => Ok(&mut self.selection.visual),
+            ["selection", "block"] => Ok(&mut self.selection.block),
+
+            // statusline.*
+            ["statusline", "background"] => Ok(&mut self.statusline.background),
+            ["statusline", "interactor"] => Ok(&mut self.statusline.interactor),
+            ["statusline", "filename"] => Ok(&mut self.statusline.filename),
+            ["statusline", "modified"] => Ok(&mut self.statusline.modified),
+            ["statusline", "position"] => Ok(&mut self.statusline.position),
+            ["statusline", "filetype"] => Ok(&mut self.statusline.filetype),
+
+            // statusline.mode.*
+            ["statusline", "mode", "normal"] => Ok(&mut self.statusline.mode.normal),
+            ["statusline", "mode", "insert"] => Ok(&mut self.statusline.mode.insert),
+            ["statusline", "mode", "visual"] => Ok(&mut self.statusline.mode.visual),
+            ["statusline", "mode", "command"] => Ok(&mut self.statusline.mode.command),
+            ["statusline", "mode", "replace"] => Ok(&mut self.statusline.mode.replace),
+            ["statusline", "mode", "operator_pending"] => {
+                Ok(&mut self.statusline.mode.operator_pending)
+            }
+
+            // popup.*
+            ["popup", "normal"] => Ok(&mut self.popup.normal),
+            ["popup", "selected"] => Ok(&mut self.popup.selected),
+            ["popup", "border"] => Ok(&mut self.popup.border),
+            ["popup", "match_fg"] => Ok(&mut self.popup.match_fg),
+
+            // whichkey.*
+            ["whichkey", "background"] => Ok(&mut self.whichkey.background),
+            ["whichkey", "key"] => Ok(&mut self.whichkey.key),
+            ["whichkey", "description"] => Ok(&mut self.whichkey.description),
+            ["whichkey", "prefix"] => Ok(&mut self.whichkey.prefix),
+            ["whichkey", "border"] => Ok(&mut self.whichkey.border),
+
+            // fold.*
+            ["fold", "marker"] => Ok(&mut self.fold.marker),
+            ["fold", "folded_line"] => Ok(&mut self.fold.folded_line),
+
+            // indent.*
+            ["indent", "guide"] => Ok(&mut self.indent.guide),
+            ["indent", "active"] => Ok(&mut self.indent.active),
+
+            // scrollbar.*
+            ["scrollbar", "track"] => Ok(&mut self.scrollbar.track),
+            ["scrollbar", "thumb"] => Ok(&mut self.scrollbar.thumb),
+            ["scrollbar", "search_mark"] => Ok(&mut self.scrollbar.search_mark),
+            ["scrollbar", "error_mark"] => Ok(&mut self.scrollbar.error_mark),
+            ["scrollbar", "warn_mark"] => Ok(&mut self.scrollbar.warn_mark),
+            ["scrollbar", "info_mark"] => Ok(&mut self.scrollbar.info_mark),
+            ["scrollbar", "hint_mark"] => Ok(&mut self.scrollbar.hint_mark),
+
+            // search.*
+            ["search", "match_highlight"] => Ok(&mut self.search.match_highlight),
+            ["search", "current_match"] => Ok(&mut self.search.current_match),
+            ["search", "inc_search"] => Ok(&mut self.search.inc_search),
+
+            // tab.*
+            ["tab", "active"] => Ok(&mut self.tab.active),
+            ["tab", "inactive"] => Ok(&mut self.tab.inactive),
+            ["tab", "fill"] => Ok(&mut self.tab.fill),
+
+            // window.*
+            ["window", "separator"] => Ok(&mut self.window.separator),
+
+            // brackets.*
+            ["brackets", "matched"] => Ok(&mut self.brackets.matched),
+            ["brackets", "unmatched"] => Ok(&mut self.brackets.unmatched),
+            ["brackets", "rainbow", idx] => {
+                let i: usize = idx.parse().map_err(|_| {
+                    ThemeOverrideError::InvalidPath(format!("brackets.rainbow.{idx}"))
+                })?;
+                self.brackets
+                    .rainbow
+                    .get_mut(i)
+                    .ok_or_else(|| ThemeOverrideError::InvalidPath(path.to_string()))
+            }
+
+            // diagnostic.*
+            ["diagnostic", "hint"] => Ok(&mut self.diagnostic.hint),
+            ["diagnostic", "info"] => Ok(&mut self.diagnostic.info),
+            ["diagnostic", "warn"] => Ok(&mut self.diagnostic.warn),
+            ["diagnostic", "error"] => Ok(&mut self.diagnostic.error),
+            ["diagnostic", "deprecated"] => Ok(&mut self.diagnostic.deprecated),
+            ["diagnostic", "unnecessary"] => Ok(&mut self.diagnostic.unnecessary),
+
+            // cursor.*
+            ["cursor", "line"] => Ok(&mut self.cursor.line),
+            ["cursor", "column"] => Ok(&mut self.cursor.column),
+
+            // semantic.*
+            ["semantic", "lifetime"] => Ok(&mut self.semantic.lifetime),
+            ["semantic", "trait_bound"] => Ok(&mut self.semantic.trait_bound),
+            ["semantic", "async_keyword"] => Ok(&mut self.semantic.async_keyword),
+            ["semantic", "await_keyword"] => Ok(&mut self.semantic.await_keyword),
+            ["semantic", "unsafe_keyword"] => Ok(&mut self.semantic.unsafe_keyword),
+            ["semantic", "macro_invocation"] => Ok(&mut self.semantic.macro_invocation),
+            ["semantic", "attribute"] => Ok(&mut self.semantic.attribute),
+            ["semantic", "mutable"] => Ok(&mut self.semantic.mutable),
+            ["semantic", "constant"] => Ok(&mut self.semantic.constant),
+            ["semantic", "static_var"] => Ok(&mut self.semantic.static_var),
+
+            // leap.*
+            ["leap", "label_primary"] => Ok(&mut self.leap.label_primary),
+            ["leap", "label_secondary"] => Ok(&mut self.leap.label_secondary),
+            ["leap", "dimmed"] => Ok(&mut self.leap.dimmed),
+
+            // virtual_text.*
+            ["virtual_text", "default"] => Ok(&mut self.virtual_text.default),
+            ["virtual_text", "error"] => Ok(&mut self.virtual_text.error),
+            ["virtual_text", "warn"] => Ok(&mut self.virtual_text.warn),
+            ["virtual_text", "info"] => Ok(&mut self.virtual_text.info),
+            ["virtual_text", "hint"] => Ok(&mut self.virtual_text.hint),
+
+            _ => Err(ThemeOverrideError::InvalidPath(path.to_string())),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1022,5 +1219,97 @@ mod tests {
         assert_eq!(ThemeName::parse("dark"), Some(ThemeName::Dark));
         assert_eq!(ThemeName::parse("tokyonight"), Some(ThemeName::TokyoNightOrange));
         assert_eq!(ThemeName::parse("invalid"), None);
+    }
+
+    // ========== Theme override tests ==========
+
+    #[test]
+    fn test_get_style_mut_base() {
+        let mut theme = Theme::dark();
+        let style = theme.get_style_mut("base.default").unwrap();
+        assert!(style.fg.is_some());
+    }
+
+    #[test]
+    fn test_get_style_mut_nested() {
+        let mut theme = Theme::dark();
+        let style = theme.get_style_mut("statusline.mode.normal").unwrap();
+        assert!(style.bg.is_some());
+    }
+
+    #[test]
+    fn test_get_style_mut_brackets_rainbow() {
+        let mut theme = Theme::dark();
+        for i in 0..6 {
+            let path = format!("brackets.rainbow.{i}");
+            assert!(theme.get_style_mut(&path).is_ok());
+        }
+        // Out of bounds
+        assert!(theme.get_style_mut("brackets.rainbow.6").is_err());
+    }
+
+    #[test]
+    fn test_get_style_mut_invalid_path() {
+        let mut theme = Theme::dark();
+        assert!(theme.get_style_mut("invalid.path").is_err());
+        assert!(theme.get_style_mut("base.nonexistent").is_err());
+        assert!(theme.get_style_mut("").is_err());
+    }
+
+    #[test]
+    fn test_apply_overrides() {
+        use crate::highlight::theme_override::{StyleOverride, ThemeOverrides};
+        use std::collections::HashMap;
+
+        let mut overrides_map = HashMap::new();
+        overrides_map.insert(
+            "gutter.line_number".to_string(),
+            StyleOverride {
+                fg: Some("#ff0000".to_string()),
+                ..Default::default()
+            },
+        );
+
+        let overrides = ThemeOverrides {
+            overrides: overrides_map,
+        };
+
+        let mut theme = Theme::dark();
+        theme.apply_overrides(&overrides);
+
+        assert_eq!(
+            theme.gutter.line_number.fg,
+            Some(Color::Rgb { r: 255, g: 0, b: 0 })
+        );
+    }
+
+    #[test]
+    fn test_from_name_with_overrides() {
+        use crate::highlight::theme_override::{StyleOverride, ThemeOverrides};
+        use std::collections::HashMap;
+
+        let mut overrides_map = HashMap::new();
+        overrides_map.insert(
+            "selection.visual".to_string(),
+            StyleOverride {
+                bg: Some("#3d3d5c".to_string()),
+                ..Default::default()
+            },
+        );
+
+        let overrides = ThemeOverrides {
+            overrides: overrides_map,
+        };
+
+        let theme = Theme::from_name_with_overrides(ThemeName::Dark, &overrides);
+
+        assert_eq!(
+            theme.selection.visual.bg,
+            Some(Color::Rgb {
+                r: 61,
+                g: 61,
+                b: 92
+            })
+        );
     }
 }

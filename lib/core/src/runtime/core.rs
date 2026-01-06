@@ -1114,12 +1114,17 @@ impl Runtime {
     pub fn apply_profile(&mut self, config: &ProfileConfig) {
         use crate::highlight::ThemeName;
 
-        // Apply theme
+        // Apply theme with overrides
         if let Some(theme_name) = ThemeName::parse(&config.editor.theme) {
-            self.theme = Theme::from_name(theme_name);
+            self.theme =
+                Theme::from_name_with_overrides(theme_name, &config.editor.theme_overrides);
             // Theme change will trigger rehighlighting via event bus
             self.rehighlight_all_buffers();
-            debug!(theme = %config.editor.theme, "Applied theme from profile");
+            debug!(
+                theme = %config.editor.theme,
+                overrides = config.editor.theme_overrides.len(),
+                "Applied theme with overrides from profile"
+            );
         }
 
         // Apply color mode

@@ -3,9 +3,10 @@ mod span;
 pub mod store;
 mod style;
 mod theme;
+mod theme_override;
 
 pub use {
-    color::{ColorMode, downgrade_color, rgb_to_ansi256},
+    color::{ColorMode, downgrade_color, parse_color, rgb_to_ansi256},
     span::Span,
     store::{BufferHighlights, HighlightStore, LineHighlight},
     style::{Attributes, Style},
@@ -13,6 +14,7 @@ pub use {
         AnimationConfig, BracketStyles, CursorStyles, DiagnosticStyles, EffectConfig, LeapStyles,
         SemanticStyles, StatusLineModeStyles, Theme, ThemeName,
     },
+    theme_override::{StyleOverride, ThemeOverrideError, ThemeOverrides},
 };
 
 // Re-export Color from reovim_sys for plugin use
