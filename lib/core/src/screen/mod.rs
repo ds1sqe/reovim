@@ -1776,17 +1776,13 @@ impl Screen {
                     // Fallback for unregistered components
                     (
                         format!(" {} ", mode.interactor_id.0),
-                        "",  // No icon fallback
-                        interactor_style,  // theme.statusline.interactor
+                        "",               // No icon fallback
+                        interactor_style, // theme.statusline.interactor
                     )
                 },
                 |info| {
                     // Use plugin-provided info
-                    (
-                        info.display_string.to_string(),
-                        info.icon,
-                        &info.style,
-                    )
+                    (info.display_string.to_string(), info.icon, &info.style)
                 },
             );
 

@@ -1188,6 +1188,14 @@ TransportListener::bind()
 
 **Default Port:** 12521 (derived from ASCII: 'r'×100 + 'e'×10 + 'o' = 11400 + 1010 + 111)
 
+**Multi-Instance Support** (`runner/src/dirs.rs`, `runner/src/server.rs`):
+- **Port fallback**: If default port (12521) is in use, tries 12522, 12523, ... up to 12530
+- **Port files**: Each server writes `~/.local/share/reovim/servers/<pid>.port` for discovery
+- **Startup output**: Server prints `Listening on <host>:<port>` to stderr
+- **Discovery**: `reo-cli list` scans port files to find running servers
+- **Auto-connect**: `reo-cli` auto-connects to single server, prompts when multiple running
+- **Clean shutdown**: Port files removed automatically when server exits
+
 **Edge Cases:**
 | Case | Behavior |
 |------|----------|
@@ -1195,6 +1203,9 @@ TransportListener::bind()
 | New client while old connected | Old connection orphaned, new one takes over |
 | No client connected | Requests process, responses dropped |
 | `--test` all clients disconnect | Server exits cleanly |
+| Default port in use | Tries next port (12522, 12523, ...) |
+| All ports 12521-12530 in use | Server fails with clear error |
+| Server crashes | Stale port file cleaned up on next `reo-cli list` |
 
 ## Architecture Patterns
 
