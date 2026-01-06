@@ -6,6 +6,11 @@ All notable changes to Reovim will be documented in this file.
 
 ### Changed
 
+- **Split large subscribe() methods** (Issue #52) - Improve plugin maintainability by splitting monolithic subscribe() methods
+  - Explorer plugin: Split 426-line method into 9 focused sub-methods (raw_input, navigation, tree_operations, clipboard, file_operations, input_handling, visual_mode, focus_visibility, popup)
+  - Range-Finder plugin: Split 191-line method into 5 focused sub-methods (jump_mode_handlers, jump_input_handler, fold_handlers, cleanup)
+  - Removed `#[allow(clippy::too_many_lines)]` pragmas from both plugins
+
 - **Declarative mode metadata** (Issue #42) - Replace hardcoded `mode_for_command()` with `resulting_mode()` trait method
   - Added `resulting_mode()` method to `CommandTrait` with default `None` return
   - Implemented for 32 mode-changing commands (mode, window, operator, command-line)

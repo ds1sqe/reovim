@@ -16,9 +16,7 @@ use {
         command::id::CommandId,
         event_bus::{
             EventBus, EventResult,
-            core_events::{
-                BufferClosed, MotionContext, PluginTextInput, RequestCursorMove,
-            },
+            core_events::{BufferClosed, MotionContext, PluginTextInput, RequestCursorMove},
         },
         keys,
         modd::ComponentId,
@@ -254,10 +252,18 @@ impl Plugin for RangeFinderPlugin {
             .register_render_stage(Arc::new(FoldRenderStage::new(Arc::clone(&self.fold_manager))));
     }
 
-    #[allow(clippy::too_many_lines)] // Unified subscription for jump + fold subsystems
     fn subscribe(&self, bus: &EventBus, _state: Arc<PluginStateRegistry>) {
-        // === Jump Event Subscriptions ===
+        self.subscribe_jump_mode_handlers(bus);
+        self.subscribe_jump_input_handler(bus);
+        self.subscribe_fold_handlers(bus);
+        self.subscribe_cleanup(bus);
+    }
+}
 
+// Event subscription sub-methods
+impl RangeFinderPlugin {
+    /// Subscribe to jump mode entry events (search started, find char started)
+    fn subscribe_jump_mode_handlers(&self, bus: &EventBus) {
         // JumpSearchStarted - enter Interactor mode for multi-char search
         let jump_state = Arc::clone(&self.jump_state);
         bus.subscribe::<JumpSearchStarted, _>(100, move |event, ctx| {
@@ -317,7 +323,23 @@ impl Plugin for RangeFinderPlugin {
             EventResult::Handled
         });
 
-        // PluginTextInput - handle character input during jump mode
+        // JumpCancel - handle explicit cancel (Escape key)
+        let jump_state = Arc::clone(&self.jump_state);
+        bus.subscribe::<JumpCancel, _>(100, move |_event, ctx| {
+            // Reset jump state
+            jump_state.with_mut(jump::state::JumpState::reset);
+
+            // Exit Interactor mode
+            ctx.exit_to_normal();
+            ctx.request_render();
+
+            tracing::debug!("Jump explicitly canceled");
+            EventResult::Handled
+        });
+    }
+
+    /// Subscribe to jump text input handler (character input during jump mode)
+    fn subscribe_jump_input_handler(&self, bus: &EventBus) {
         let jump_state = Arc::clone(&self.jump_state);
         bus.subscribe_targeted::<PluginTextInput, _>(JUMP_COMPONENT_ID, 100, move |event, ctx| {
             // Handle input through the state machine
@@ -390,23 +412,10 @@ impl Plugin for RangeFinderPlugin {
                 }
             }
         });
+    }
 
-        // JumpCancel - handle explicit cancel (Escape key)
-        let jump_state = Arc::clone(&self.jump_state);
-        bus.subscribe::<JumpCancel, _>(100, move |_event, ctx| {
-            // Reset jump state
-            jump_state.with_mut(jump::state::JumpState::reset);
-
-            // Exit Interactor mode
-            ctx.exit_to_normal();
-            ctx.request_render();
-
-            tracing::debug!("Jump explicitly canceled");
-            EventResult::Handled
-        });
-
-        // === Fold Event Subscriptions ===
-
+    /// Subscribe to fold operation events (toggle, open, close, open all, close all, ranges updated)
+    fn subscribe_fold_handlers(&self, bus: &EventBus) {
         // Conditional render subscriptions (render only if state changed)
         subscribe_state_conditional!(bus, self.fold_manager, FoldToggle, |m, e| {
             m.toggle(e.buffer_id, e.line)
@@ -429,17 +438,17 @@ impl Plugin for RangeFinderPlugin {
             m.close_all(e.buffer_id);
         });
 
-        // FoldRangesUpdated (from treesitter) - uses priority 50, keep manual
+        // FoldRangesUpdated (from treesitter) - uses priority 50
         let fold_manager = Arc::clone(&self.fold_manager);
         bus.subscribe::<FoldRangesUpdated, _>(50, move |event, ctx| {
             fold_manager.with_mut(|m| m.set_ranges(event.buffer_id, event.ranges.clone()));
             ctx.request_render();
             EventResult::Handled
         });
+    }
 
-        // === Cleanup Subscriptions ===
-
-        // BufferClosed - cleanup state
+    /// Subscribe to cleanup events (buffer closed)
+    fn subscribe_cleanup(&self, bus: &EventBus) {
         let fold_manager = Arc::clone(&self.fold_manager);
         bus.subscribe::<BufferClosed, _>(100, move |event, _ctx| {
             fold_manager.with_mut(|m| m.remove_buffer(event.buffer_id));
