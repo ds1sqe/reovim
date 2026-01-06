@@ -18,7 +18,7 @@ use {
         decoration::{DecorationStore, LanguageRendererRegistry},
         event::InnerEvent,
         event_bus::{
-            BufferClosed, DynEvent, EventBus, EventSender, FileOpened, HandlerContext,
+            BufferClosed, DynEvent, EventBus, EventResult, EventSender, FileOpened, HandlerContext,
             core_events::ModeChanged,
         },
         highlight::{ColorMode, HighlightStore, Theme},
@@ -26,7 +26,7 @@ use {
         jumplist::JumpList,
         modd::ModeState,
         modifier::{ModifierContext, ModifierRegistry},
-        option::OptionRegistry,
+        option::{OptionRegistry, RegisterOption},
         plugin::{Plugin, PluginContext, PluginLoader, PluginStateRegistry, PluginTuple},
         register::Registers,
         screen::Screen,
@@ -155,6 +155,22 @@ impl Runtime {
         let event_bus = Arc::new(EventBus::new(EVENT_CHANNEL_CAPACITY));
         let plugin_state = Arc::new(PluginStateRegistry::new());
 
+        // Initialize option registry EARLY (before plugins subscribe)
+        // This allows RegisterOption events emitted during subscribe phase to be processed
+        let option_registry = Arc::new(OptionRegistry::new());
+
+        // Add handler for RegisterOption events BEFORE plugins subscribe
+        // When event loop starts, queued events will be dispatched to this handler
+        {
+            let registry = Arc::clone(&option_registry);
+            event_bus.subscribe::<RegisterOption, _>(10, move |event, _ctx| {
+                if let Err(e) = registry.register(event.spec.clone()) {
+                    tracing::warn!("Failed to register option via event: {e}");
+                }
+                EventResult::Handled
+            });
+        }
+
         // Initialize profile manager
         let profile_manager = ProfileManager::default();
         let default_profile_name = profile_manager.default_profile_name().to_string();
@@ -178,8 +194,7 @@ impl Runtime {
             option_specs,
         ) = ctx.into_parts();
 
-        // Initialize option registry and register plugin options
-        let option_registry = Arc::new(OptionRegistry::new());
+        // Register build-phase options (backward compatibility with ctx.option())
         for spec in option_specs {
             if let Err(e) = option_registry.register(spec) {
                 tracing::warn!("Failed to register option: {e}");

@@ -2,6 +2,14 @@
 
 All notable changes to Reovim will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- **RegisterOption events not processed** (Issue #39) - Options registered via `bus.emit(RegisterOption)` are now properly added to the option registry
+  - `:set` commands now work for all core options (signcolumn, number, tabwidth, etc.)
+  - Fix: Create OptionRegistry before plugins subscribe and add event handler
+
 ## [0.7.10] - 2026-01-06
 
 ### Fixed
