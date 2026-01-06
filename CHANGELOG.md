@@ -30,6 +30,12 @@ All notable changes to Reovim will be documented in this file.
   - Migrated Range-Finder plugin: 5 subscription blocks (~30 lines saved)
   - Total: ~210 lines of boilerplate removed across 28 subscription blocks
 
+- **`subscribe_targeted()` API for EventBus** (Issue #45) - New method to automatically filter events by component ID
+  - `TargetedEvent` trait for events with a `target: ComponentId` field
+  - Implemented for `PluginTextInput`, `PluginBackspace`, and `RequestFocusChange`
+  - Eliminates boilerplate target-checking code in plugin event handlers
+  - Migrated 7 subscriptions across 4 plugins (Explorer, Microscope, Range-finder, Which-key)
+
 ### Fixed
 
 - **Light theme syntax highlighting** (Issue #43) - Light theme now uses proper One Light colors

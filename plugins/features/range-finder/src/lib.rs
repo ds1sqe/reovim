@@ -319,12 +319,7 @@ impl Plugin for RangeFinderPlugin {
 
         // PluginTextInput - handle character input during jump mode
         let jump_state = Arc::clone(&self.jump_state);
-        bus.subscribe::<PluginTextInput, _>(100, move |event, ctx| {
-            // Only handle if we're the target
-            if event.target != JUMP_COMPONENT_ID {
-                return EventResult::NotHandled;
-            }
-
+        bus.subscribe_targeted::<PluginTextInput, _>(JUMP_COMPONENT_ID, 100, move |event, ctx| {
             // Handle input through the state machine
             let result = jump_state.with_mut(|state| {
                 let buffer_id = state.buffer_id.unwrap_or(0);

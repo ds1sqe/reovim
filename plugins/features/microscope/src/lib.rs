@@ -946,12 +946,7 @@ impl Plugin for MicroscopePlugin {
 
         // Handle text input from runtime (PluginTextInput event)
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<PluginTextInput, _>(100, move |event, ctx| {
-            // Only handle if target is microscope and microscope is active
-            if event.target != COMPONENT_ID {
-                return EventResult::NotHandled;
-            }
-
+        bus.subscribe_targeted::<PluginTextInput, _>(COMPONENT_ID, 100, move |event, ctx| {
             let is_active = state_clone
                 .with::<MicroscopeState, _, _>(|s| s.active)
                 .unwrap_or(false);
@@ -969,12 +964,7 @@ impl Plugin for MicroscopePlugin {
 
         // Handle backspace from runtime (PluginBackspace event)
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<PluginBackspace, _>(100, move |event, ctx| {
-            // Only handle if we're the target
-            if event.target != COMPONENT_ID {
-                return EventResult::NotHandled;
-            }
-
+        bus.subscribe_targeted::<PluginBackspace, _>(COMPONENT_ID, 100, move |_event, ctx| {
             let is_active = state_clone
                 .with::<MicroscopeState, _, _>(|s| s.active)
                 .unwrap_or(false);

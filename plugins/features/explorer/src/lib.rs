@@ -174,12 +174,8 @@ impl Plugin for ExplorerPlugin {
         };
 
         // Handle text input from runtime (PluginTextInput event)
-        // Keep manual: target check with early return
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<PluginTextInput, _>(100, move |event, ctx| {
-            if event.target != COMPONENT_ID {
-                return EventResult::NotHandled;
-            }
+        bus.subscribe_targeted::<PluginTextInput, _>(COMPONENT_ID, 100, move |event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.input_char(event.c);
             });
@@ -188,12 +184,8 @@ impl Plugin for ExplorerPlugin {
         });
 
         // Handle backspace from runtime (PluginBackspace event)
-        // Keep manual: target check with early return
         let state_clone = Arc::clone(&state);
-        bus.subscribe::<PluginBackspace, _>(100, move |event, ctx| {
-            if event.target != COMPONENT_ID {
-                return EventResult::NotHandled;
-            }
+        bus.subscribe_targeted::<PluginBackspace, _>(COMPONENT_ID, 100, move |_event, ctx| {
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.input_backspace();
             });

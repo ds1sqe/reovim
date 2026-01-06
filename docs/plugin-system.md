@@ -1599,17 +1599,16 @@ fn build(&self, ctx: &mut PluginContext) {
 
 ### Plugin Input Handling
 
-Plugin input is handled via event subscriptions. When a plugin component has focus, the runtime emits `PluginTextInput` and `PluginBackspace` events that plugins can subscribe to:
+Plugin input is handled via event subscriptions. When a plugin component has focus, the runtime emits `PluginTextInput` and `PluginBackspace` events that plugins can subscribe to.
+
+Use `subscribe_targeted()` to automatically filter events by component ID:
 
 ```rust
 use reovim_core::event_bus::core_events::{PluginTextInput, PluginBackspace};
 
 fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {
     let state_clone = Arc::clone(&state);
-    bus.subscribe::<PluginTextInput, _>(100, move |event, ctx| {
-        if event.target != COMPONENT_ID {
-            return EventResult::NotHandled;
-        }
+    bus.subscribe_targeted::<PluginTextInput, _>(COMPONENT_ID, 100, move |event, ctx| {
         state_clone.with_mut::<ExplorerState, _, _>(|s| {
             s.input_char(event.c);
         });
@@ -1618,10 +1617,7 @@ fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {
     });
 
     let state_clone = Arc::clone(&state);
-    bus.subscribe::<PluginBackspace, _>(100, move |event, ctx| {
-        if event.target != COMPONENT_ID {
-            return EventResult::NotHandled;
-        }
+    bus.subscribe_targeted::<PluginBackspace, _>(COMPONENT_ID, 100, move |_event, ctx| {
         state_clone.with_mut::<ExplorerState, _, _>(|s| {
             s.input_backspace();
         });
@@ -1630,6 +1626,8 @@ fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {
     });
 }
 ```
+
+The `subscribe_targeted()` method only calls your handler when `event.target()` matches the specified component ID, eliminating the need for manual target checks.
 
 **Built-in vs Plugin Components:**
 
