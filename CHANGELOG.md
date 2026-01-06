@@ -15,6 +15,13 @@ All notable changes to Reovim will be documented in this file.
 
 ### Added
 
+- **HandlerContext mode change helpers** (Issue #44) - Reduce mode change boilerplate
+  - `enter_interactor_mode(component_id)` - Enter interactor sub-mode for text input
+  - `exit_to_normal()` - Return to normal editor mode
+  - `set_mode(mode)` - Set arbitrary mode state for edge cases
+  - Updated Range-Finder plugin: 5 mode changes simplified
+  - Updated Microscope plugin: 1 mode change simplified
+
 - **Subscription helper macros** (Issue #41) - Reduce plugin boilerplate with three new macros
   - `subscribe_state!` - Simple state mutation + render pattern (4 variants)
   - `subscribe_state_mode!` - State mutation + mode change + render (2 variants)

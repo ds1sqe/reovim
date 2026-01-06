@@ -678,6 +678,47 @@ pub enum WindowEvent {
 
 Terminal key events from crossterm, broadcast to handlers.
 
+## HandlerContext Methods
+
+The `HandlerContext` passed to event handlers provides several utility methods:
+
+### Basic Methods
+
+```rust
+// Emit a new event
+ctx.emit(SomeEvent { ... });
+
+// Request a render after event processing
+ctx.request_render();
+
+// Request the editor to quit
+ctx.request_quit();
+```
+
+### Mode Change Helpers
+
+Common patterns for changing editor mode are simplified with helper methods:
+
+```rust
+// Enter interactor mode for a plugin component
+// Sets both interactor_id and SubMode::Interactor to the component
+ctx.enter_interactor_mode(COMPONENT_ID);
+
+// Return to normal editor mode
+ctx.exit_to_normal();
+
+// Set arbitrary mode state (for edge cases)
+ctx.set_mode(ModeState::with_interactor_id_and_mode(
+    COMPONENT_ID,
+    EditMode::Normal,
+));
+```
+
+**When to use:**
+- `enter_interactor_mode(id)` - Plugin needs to receive text input (like search, rename dialogs)
+- `exit_to_normal()` - Return to normal editing after plugin operation completes
+- `set_mode(mode)` - Custom mode transitions that don't fit the standard patterns
+
 ## Components
 
 ### InputEventBroker
