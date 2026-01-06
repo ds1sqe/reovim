@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use reovim_sys::event::KeyModifiers;
 use tokio::sync::oneshot;
 
 use crate::{
@@ -117,6 +118,8 @@ pub enum InnerEvent {
         text: String,
         replace_start: usize,
     },
+    /// Mouse event from terminal
+    MouseEvent(MouseEvent),
 }
 
 /// Input events routed to the active focus target
@@ -232,4 +235,91 @@ pub enum VisualTextObjectAction {
     SelectWord { text_object: WordTextObject },
     /// Select semantic text object (vif, vac, etc.) - uses treesitter
     SelectSemantic { text_object: SemanticTextObjectSpec },
+}
+
+// =============================================================================
+// Mouse Events
+// =============================================================================
+
+/// Mouse event from terminal input
+#[derive(Debug, Clone, Copy)]
+pub struct MouseEvent {
+    /// Type of mouse action
+    pub kind: MouseEventKind,
+    /// Column (x) position in terminal coordinates
+    pub column: u16,
+    /// Row (y) position in terminal coordinates
+    pub row: u16,
+    /// Modifier keys held during the event
+    pub modifiers: KeyModifiers,
+}
+
+/// Type of mouse action
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MouseEventKind {
+    /// Mouse button pressed down
+    Down(MouseButton),
+    /// Mouse button released
+    Up(MouseButton),
+    /// Mouse dragged while button held
+    Drag(MouseButton),
+    /// Scroll wheel up
+    ScrollUp,
+    /// Scroll wheel down
+    ScrollDown,
+    /// Scroll wheel left (horizontal)
+    ScrollLeft,
+    /// Scroll wheel right (horizontal)
+    ScrollRight,
+    /// Mouse moved (without button pressed)
+    Moved,
+}
+
+/// Mouse button identifier
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MouseButton {
+    /// Left mouse button
+    Left,
+    /// Right mouse button
+    Right,
+    /// Middle mouse button (scroll wheel click)
+    Middle,
+}
+
+impl From<reovim_sys::event::MouseEvent> for MouseEvent {
+    fn from(event: reovim_sys::event::MouseEvent) -> Self {
+        Self {
+            kind: event.kind.into(),
+            column: event.column,
+            row: event.row,
+            modifiers: event.modifiers,
+        }
+    }
+}
+
+impl From<reovim_sys::event::MouseEventKind> for MouseEventKind {
+    fn from(kind: reovim_sys::event::MouseEventKind) -> Self {
+        use reovim_sys::event::MouseEventKind as CT;
+        match kind {
+            CT::Down(btn) => Self::Down(btn.into()),
+            CT::Up(btn) => Self::Up(btn.into()),
+            CT::Drag(btn) => Self::Drag(btn.into()),
+            CT::Moved => Self::Moved,
+            CT::ScrollUp => Self::ScrollUp,
+            CT::ScrollDown => Self::ScrollDown,
+            CT::ScrollLeft => Self::ScrollLeft,
+            CT::ScrollRight => Self::ScrollRight,
+        }
+    }
+}
+
+impl From<reovim_sys::event::MouseButton> for MouseButton {
+    fn from(button: reovim_sys::event::MouseButton) -> Self {
+        use reovim_sys::event::MouseButton as CT;
+        match button {
+            CT::Left => Self::Left,
+            CT::Right => Self::Right,
+            CT::Middle => Self::Middle,
+        }
+    }
 }
