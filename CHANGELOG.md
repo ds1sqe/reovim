@@ -4,6 +4,16 @@ All notable changes to Reovim will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **reo-cli REPL help text** (Issue #36) - Help text now auto-generated from clap definitions
+  - Fixed incorrect `screen` command description (said "dimensions" but returned content)
+  - Removed non-existent `screen-content` command from help
+  - Added `screen-size` command for getting dimensions
+  - Added `capture` as visible alias for `screen` command
+  - Help text now always matches implementation (single source of truth)
+  - Added 10 unit tests for command parsing and help generation
+
 ### Added
 
 - **Virtual text system for inline diagnostics** (Issue #28) - Display diagnostic messages after line content
