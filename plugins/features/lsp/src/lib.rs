@@ -59,7 +59,7 @@ pub use {
 // Re-export events and commands for external use
 pub use command::{
     LspGotoDefinition, LspGotoDefinitionCommand, LspGotoReferences, LspGotoReferencesCommand,
-    LspHoverDismiss, LspShowHover, LspShowHoverCommand,
+    LspHoverDismiss, LspLogOpen, LspShowHover, LspShowHoverCommand,
 };
 
 /// LSP integration plugin.
@@ -187,6 +187,67 @@ impl Plugin for LspPlugin {
             let manager = Arc::clone(&self.manager);
             bus.emit(RegisterHealthCheck::new(Arc::new(health::LspHealthCheck::new(manager))));
         }
+
+        // Register :LspLog ex-command
+        {
+            use reovim_core::{
+                command_line::ExCommandHandler,
+                event_bus::{DynEvent, core_events::RegisterExCommand},
+            };
+
+            bus.emit(RegisterExCommand::new(
+                "LspLog",
+                ExCommandHandler::ZeroArg {
+                    event_constructor: || DynEvent::new(command::LspLogOpen),
+                    description: "Open the LSP log file",
+                },
+            ));
+        }
+
+        // Handle LspLogOpen - find and open the LSP log file
+        bus.subscribe::<command::LspLogOpen, _>(100, move |_event, ctx| {
+            use reovim_core::event_bus::core_events::RequestOpenFile;
+
+            // Find the latest LSP log file in the data directory
+            let data_dir = dirs::data_local_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join("reovim");
+
+            // Find latest lsp-*.log file
+            if let Ok(entries) = std::fs::read_dir(&data_dir) {
+                let mut lsp_logs: Vec<_> = entries
+                    .filter_map(std::result::Result::ok)
+                    .filter(|e| {
+                        e.file_name().to_string_lossy().starts_with("lsp-")
+                            && e.file_name().to_string_lossy().ends_with(".log")
+                    })
+                    .collect();
+
+                // Sort by modification time (newest first)
+                lsp_logs.sort_by(|a, b| {
+                    b.metadata()
+                        .and_then(|m| m.modified())
+                        .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+                        .cmp(
+                            &a.metadata()
+                                .and_then(|m| m.modified())
+                                .unwrap_or(std::time::SystemTime::UNIX_EPOCH),
+                        )
+                });
+
+                if let Some(latest) = lsp_logs.first() {
+                    let log_path = latest.path();
+                    info!("Opening LSP log: {}", log_path.display());
+                    ctx.emit(RequestOpenFile { path: log_path });
+                } else {
+                    warn!("No LSP log files found in {}", data_dir.display());
+                }
+            } else {
+                warn!("Could not read data directory: {}", data_dir.display());
+            }
+
+            EventResult::Handled
+        });
 
         // Handle file open - register document and schedule sync for render stage
         // Note: We don't send didOpen here directly. The render stage handles it

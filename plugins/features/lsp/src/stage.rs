@@ -166,6 +166,9 @@ impl LspRenderStage {
                 // Mark as opened only after successfully sending didOpen
                 m.documents.mark_opened(buffer_id);
             }
+
+            // Update last sync timestamp
+            m.mark_sync_sent();
         });
     }
 

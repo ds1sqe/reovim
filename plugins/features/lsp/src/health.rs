@@ -2,11 +2,23 @@
 //!
 //! Provides status information about the LSP server connection and diagnostics.
 
-use std::{fmt, sync::Arc};
+use std::{fmt, sync::Arc, time::Instant};
 
 use reovim_plugin_health_check::{HealthCheck, HealthCheckResult};
 
 use crate::SharedLspManager;
+
+/// Format an instant as "Xs ago" or "Xm ago".
+fn format_elapsed(instant: Instant) -> String {
+    let elapsed = instant.elapsed();
+    if elapsed.as_secs() < 60 {
+        format!("{}s ago", elapsed.as_secs())
+    } else if elapsed.as_secs() < 3600 {
+        format!("{}m ago", elapsed.as_secs() / 60)
+    } else {
+        format!("{}h ago", elapsed.as_secs() / 3600)
+    }
+}
 
 /// Health check for LSP server status.
 ///
@@ -68,6 +80,16 @@ impl HealthCheck for LspHealthCheck {
             details.push(format!("Total diagnostics: {total_diagnostics}"));
             if pending_syncs {
                 details.push("Pending syncs: yes (debouncing)".to_string());
+            }
+
+            // Timestamps
+            if let Some(ref cache) = m.cache
+                && let Some(last_diag) = cache.last_updated()
+            {
+                details.push(format!("Last diagnostics: {}", format_elapsed(last_diag)));
+            }
+            if let Some(last_sync) = m.last_sync {
+                details.push(format!("Last sync: {}", format_elapsed(last_sync)));
             }
 
             HealthCheckResult::ok(format!(

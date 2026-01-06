@@ -2,7 +2,10 @@
 //!
 //! Manages the LSP client connection and document synchronization state.
 
-use std::sync::{Arc, RwLock};
+use std::{
+    sync::{Arc, RwLock},
+    time::Instant,
+};
 
 use {
     reovim_core::event::InnerEvent,
@@ -75,6 +78,8 @@ pub struct LspManager {
     pub event_tx: Option<mpsc::Sender<InnerEvent>>,
     /// Whether the LSP server is running.
     pub running: bool,
+    /// Last time a document was synced.
+    pub last_sync: Option<Instant>,
 }
 
 impl LspManager {
@@ -88,7 +93,13 @@ impl LspManager {
             hover_cache: HoverCache::new(),
             event_tx: None,
             running: false,
+            last_sync: None,
         }
+    }
+
+    /// Update the last document sync timestamp.
+    pub fn mark_sync_sent(&mut self) {
+        self.last_sync = Some(Instant::now());
     }
 
     /// Set the event sender for triggering re-renders.
