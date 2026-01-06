@@ -354,19 +354,6 @@ impl Effect for MyCustomEffect {
 }
 ```
 
-## Configuration (Future)
-
-Planned configuration options:
-
-```toml
-[animation]
-enabled = true
-frame_rate = 30
-yank_effect = "fade"       # or "pulse", "none"
-paste_effect = "pulse"     # or "fade", "none"
-cursor_trail = false       # Experimental
-```
-
 ## Source Files
 
 - `lib/core/src/animation/mod.rs` - Core types and exports

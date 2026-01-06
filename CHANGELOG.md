@@ -13,6 +13,13 @@ All notable changes to Reovim will be documented in this file.
   - Active rendering uses `Screen::render_status_line_to_buffer()` which remains unchanged
   - Fixes OperatorPending style bug (was in dead code path using wrong style)
 
+- **Remove unused cursor and animation theme features** (Issue #49) - Dead code cleanup
+  - Removed `CursorStyles` struct (line, column, glow, pulse fields never accessed)
+  - Removed `EffectConfig` struct (never instantiated)
+  - Removed `AnimationConfig` struct (actual animation system uses hardcoded frame rate)
+  - Removed `HighlightGroup::CursorEffect` enum variant (never applied)
+  - Updated docs/animation-system.md to remove future config section
+
 - **RAII-based cursor synchronization** (Issue #48) - Centralize cursor sync between windows and buffers
   - Added `Screen::save_cursor_to_active_window()` for pre-split cursor save
   - Added `Screen::switch_active_window()` for full cursor handoff during navigation

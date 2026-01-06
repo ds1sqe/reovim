@@ -11,8 +11,8 @@ pub use {
     store::{BufferHighlights, HighlightStore, LineHighlight},
     style::{Attributes, Style},
     theme::{
-        AnimationConfig, BracketStyles, CursorStyles, DiagnosticStyles, EffectConfig, LeapStyles,
-        SemanticStyles, StatusLineModeStyles, Theme, ThemeName,
+        BracketStyles, DiagnosticStyles, LeapStyles, SemanticStyles, StatusLineModeStyles, Theme,
+        ThemeName,
     },
     theme_override::{StyleOverride, ThemeOverrideError, ThemeOverrides},
 };
@@ -72,8 +72,6 @@ pub enum HighlightGroup {
     CursorColumn = 41,
     /// Matched bracket pair (high priority, visible over cursor line)
     MatchedBracket = 45,
-    /// Cursor effects (glow, pulse) - highest cursor layer
-    CursorEffect = 50,
 
     // === Mode Indicator Layer (60-69) ===
     /// Mode-specific styling for UI elements
@@ -164,7 +162,7 @@ impl HighlightGroup {
     /// Check if this is a cursor-related group
     #[must_use]
     pub const fn is_cursor_related(self) -> bool {
-        matches!(self, Self::CursorLine | Self::CursorColumn | Self::CursorEffect)
+        matches!(self, Self::CursorLine | Self::CursorColumn)
     }
 }
 
