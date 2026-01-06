@@ -5,12 +5,16 @@
 //! own visual representations without modifying core code.
 
 mod builder;
+pub mod icons;
 
 pub use builder::DisplayInfoBuilder;
 
 use std::collections::HashMap;
 
-use crate::modd::{ComponentId, ModeState};
+use crate::{
+    highlight::{Style, Theme},
+    modd::{ComponentId, EditMode, ModeState, SubMode, VisualVariant},
+};
 
 /// Display information for a mode/component
 #[derive(Debug, Clone)]
@@ -82,13 +86,14 @@ impl DisplayRegistry {
     #[must_use]
     pub fn display_string(&self, mode: &ModeState) -> String {
         self.get_display(mode)
-            .map_or_else(|| mode.hierarchical_display(), |info| info.display_string.to_string())
+            .map_or_else(|| self.hierarchical_display(mode), |info| info.display_string.to_string())
     }
 
-    /// Get icon for a mode, with fallback
+    /// Get icon for interactor, with fallback to `mode_icon`
     #[must_use]
     pub fn icon(&self, mode: &ModeState) -> &'static str {
-        self.get_display(mode).map_or(" ", |info| info.icon)
+        self.get_display(mode)
+            .map_or_else(|| self.mode_icon(mode), |info| info.icon)
     }
 
     /// Register all built-in display info
@@ -106,6 +111,173 @@ impl DisplayRegistry {
             ComponentId::EDITOR,
             DisplayInfo::new(" EDITOR ", "󰈸 ", theme.statusline.interactor.clone()),
         );
+    }
+
+    /// Get mode icon for the current mode state
+    ///
+    /// Priority: sub-mode -> interactor -> edit mode
+    #[must_use]
+    pub fn mode_icon(&self, mode: &ModeState) -> &'static str {
+        // 1. Sub-modes take precedence
+        match &mode.sub_mode {
+            SubMode::Command => return icons::core::COMMAND,
+            SubMode::OperatorPending { .. } => return icons::core::OPERATOR,
+            SubMode::Interactor(id) => {
+                // Check if interactor has registered icon
+                if let Some(info) = self.interactors.get(id)
+                    && !info.icon.is_empty()
+                {
+                    return info.icon;
+                }
+                return icons::fallback::INTERACTOR;
+            }
+            SubMode::None => {}
+        }
+
+        // 2. Non-editor interactors check registry
+        if mode.interactor_id != ComponentId::EDITOR {
+            if let Some(info) = self.interactors.get(&mode.interactor_id) {
+                return info.icon;
+            }
+            return icons::fallback::INTERACTOR;
+        }
+
+        // 3. Editor edit modes
+        match &mode.edit_mode {
+            EditMode::Normal => icons::core::NORMAL,
+            EditMode::Insert(_) => icons::core::INSERT,
+            EditMode::Visual(_) => icons::core::VISUAL,
+        }
+    }
+
+    /// Get style for current mode state
+    ///
+    /// Priority: sub-mode -> interactor -> edit mode
+    #[must_use]
+    pub fn mode_style<'t>(&self, mode: &ModeState, theme: &'t Theme) -> &'t Style {
+        // 1. Sub-modes take precedence
+        match &mode.sub_mode {
+            SubMode::Command => return &theme.statusline.mode.command,
+            SubMode::OperatorPending { .. } => return &theme.statusline.mode.operator_pending,
+            SubMode::Interactor(_) => return &theme.statusline.mode.normal,
+            SubMode::None => {}
+        }
+
+        // 2. Non-editor interactors use normal style
+        if mode.interactor_id != ComponentId::EDITOR {
+            return &theme.statusline.mode.normal;
+        }
+
+        // 3. Editor edit modes
+        match &mode.edit_mode {
+            EditMode::Normal => &theme.statusline.mode.normal,
+            EditMode::Insert(_) => &theme.statusline.mode.insert,
+            EditMode::Visual(_) => &theme.statusline.mode.visual,
+        }
+    }
+
+    /// Get mode name for display (e.g., "Normal", "Insert", "Command")
+    #[must_use]
+    pub fn mode_name(&self, mode: &ModeState) -> &'static str {
+        // 1. Sub-modes take precedence
+        match &mode.sub_mode {
+            SubMode::Command => return "Command",
+            SubMode::OperatorPending { .. } => return "Operator",
+            SubMode::Interactor(id) => return Self::interactor_mode_name(id.0),
+            SubMode::None => {}
+        }
+
+        // 2. Editor edit modes
+        match &mode.edit_mode {
+            EditMode::Normal => "Normal",
+            EditMode::Insert(_) => "Insert",
+            EditMode::Visual(VisualVariant::Char) => "Visual",
+            EditMode::Visual(VisualVariant::Line) => "V-Line",
+            EditMode::Visual(VisualVariant::Block) => "V-Block",
+        }
+    }
+
+    /// Get short mode name for display (e.g., "NORMAL", "INSERT")
+    #[must_use]
+    pub const fn short_mode_name(&self, mode: &ModeState) -> &'static str {
+        match &mode.sub_mode {
+            SubMode::Command => return "COMMAND",
+            SubMode::OperatorPending { .. } => return "OPERATOR",
+            SubMode::Interactor(_) => return "INTERACTOR",
+            SubMode::None => {}
+        }
+
+        match &mode.edit_mode {
+            EditMode::Normal => "NORMAL",
+            EditMode::Insert(_) => "INSERT",
+            EditMode::Visual(_) => "VISUAL",
+        }
+    }
+
+    /// Build hierarchical mode display: "Kind | Mode | `SubMode`"
+    ///
+    /// Format: `Kind | Mode` or `Kind | Mode | SubMode`
+    /// Examples: `Editor | Normal`, `Editor | Normal | Window`, `Explorer | Insert`
+    #[must_use]
+    pub fn hierarchical_display(&self, mode: &ModeState) -> String {
+        let mut parts = Vec::with_capacity(3);
+
+        // Part 1: Kind (interactor)
+        let kind = self.interactors.get(&mode.interactor_id).map_or_else(
+            || Self::default_interactor_name(mode.interactor_id.0),
+            |info| info.display_string.trim(),
+        );
+        parts.push(kind);
+
+        // Part 2: Edit mode
+        let edit = match &mode.edit_mode {
+            EditMode::Normal => "Normal",
+            EditMode::Insert(_) => "Insert",
+            EditMode::Visual(VisualVariant::Char) => "Visual",
+            EditMode::Visual(VisualVariant::Line) => "V-Line",
+            EditMode::Visual(VisualVariant::Block) => "V-Block",
+        };
+        parts.push(edit);
+
+        // Part 3: Sub-mode (if active)
+        if let Some(sub) = Self::sub_mode_name(mode) {
+            parts.push(sub);
+        }
+
+        parts.join(" | ")
+    }
+
+    /// Get display name for interactor sub-mode
+    fn interactor_mode_name(name: &str) -> &'static str {
+        match name {
+            "filter" => "Filter",
+            "input" => "Input",
+            "search" => "Search",
+            "prompt" => "Prompt",
+            "window" => "Window",
+            "leap" => "Leap",
+            _ => "Active",
+        }
+    }
+
+    /// Get default interactor name for unregistered components
+    fn default_interactor_name(name: &str) -> &'static str {
+        match name {
+            "editor" | "microscope" => "Editor",
+            "command_line" => "Cmd",
+            "explorer" => "Explorer",
+            _ => "Component",
+        }
+    }
+
+    /// Get sub-mode name if active
+    fn sub_mode_name(mode: &ModeState) -> Option<&'static str> {
+        match &mode.sub_mode {
+            SubMode::None => None,
+            SubMode::Command => Some("Command"),
+            SubMode::OperatorPending { .. } => Some("Operator"),
+            SubMode::Interactor(id) => Some(Self::interactor_mode_name(id.0)),
+        }
     }
 }
 
@@ -166,11 +338,103 @@ mod tests {
 
         // display_string should fall back to hierarchical display
         let display_str = registry.display_string(&mode);
-        // hierarchical_display() format is "component" or "component.submode"
         assert!(!display_str.is_empty());
-        assert!(display_str.to_lowercase().contains("editor") || display_str.contains("editor"));
+        assert!(display_str.contains("Editor") || display_str.contains("Normal"));
 
-        // icon should return default
-        assert_eq!(registry.icon(&mode), " ");
+        // icon should return mode icon (not empty anymore)
+        assert_eq!(registry.icon(&mode), icons::core::NORMAL);
+    }
+
+    #[test]
+    fn test_mode_icon_normal() {
+        let registry = DisplayRegistry::new();
+        let mode = ModeState::normal();
+        assert_eq!(registry.mode_icon(&mode), icons::core::NORMAL);
+    }
+
+    #[test]
+    fn test_mode_icon_insert() {
+        let registry = DisplayRegistry::new();
+        let mode = ModeState::insert();
+        assert_eq!(registry.mode_icon(&mode), icons::core::INSERT);
+    }
+
+    #[test]
+    fn test_mode_icon_visual() {
+        let registry = DisplayRegistry::new();
+        let mode = ModeState::visual();
+        assert_eq!(registry.mode_icon(&mode), icons::core::VISUAL);
+    }
+
+    #[test]
+    fn test_mode_icon_command() {
+        let registry = DisplayRegistry::new();
+        let mode = ModeState::command();
+        assert_eq!(registry.mode_icon(&mode), icons::core::COMMAND);
+    }
+
+    #[test]
+    fn test_mode_style_normal() {
+        let registry = DisplayRegistry::new();
+        let theme = crate::highlight::Theme::default();
+        let mode = ModeState::normal();
+        let style = registry.mode_style(&mode, &theme);
+        assert_eq!(style, &theme.statusline.mode.normal);
+    }
+
+    #[test]
+    fn test_mode_style_insert() {
+        let registry = DisplayRegistry::new();
+        let theme = crate::highlight::Theme::default();
+        let mode = ModeState::insert();
+        let style = registry.mode_style(&mode, &theme);
+        assert_eq!(style, &theme.statusline.mode.insert);
+    }
+
+    #[test]
+    fn test_mode_style_visual() {
+        let registry = DisplayRegistry::new();
+        let theme = crate::highlight::Theme::default();
+        let mode = ModeState::visual();
+        let style = registry.mode_style(&mode, &theme);
+        assert_eq!(style, &theme.statusline.mode.visual);
+    }
+
+    #[test]
+    fn test_mode_name() {
+        let registry = DisplayRegistry::new();
+
+        assert_eq!(registry.mode_name(&ModeState::normal()), "Normal");
+        assert_eq!(registry.mode_name(&ModeState::insert()), "Insert");
+        assert_eq!(registry.mode_name(&ModeState::visual()), "Visual");
+        assert_eq!(registry.mode_name(&ModeState::visual_line()), "V-Line");
+        assert_eq!(registry.mode_name(&ModeState::visual_block()), "V-Block");
+        assert_eq!(registry.mode_name(&ModeState::command()), "Command");
+    }
+
+    #[test]
+    fn test_short_mode_name() {
+        let registry = DisplayRegistry::new();
+
+        assert_eq!(registry.short_mode_name(&ModeState::normal()), "NORMAL");
+        assert_eq!(registry.short_mode_name(&ModeState::insert()), "INSERT");
+        assert_eq!(registry.short_mode_name(&ModeState::visual()), "VISUAL");
+        assert_eq!(registry.short_mode_name(&ModeState::command()), "COMMAND");
+    }
+
+    #[test]
+    fn test_hierarchical_display() {
+        let registry = DisplayRegistry::new();
+
+        // Normal mode should produce "Editor | Normal"
+        let normal = ModeState::normal();
+        let display = registry.hierarchical_display(&normal);
+        assert!(display.contains("Editor"));
+        assert!(display.contains("Normal"));
+
+        // Command mode should include sub-mode
+        let command = ModeState::command();
+        let display = registry.hierarchical_display(&command);
+        assert!(display.contains("Command"));
     }
 }

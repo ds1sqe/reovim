@@ -1218,7 +1218,7 @@ impl Runtime {
     /// Get a snapshot of the current mode state for RPC
     #[must_use]
     pub fn mode_snapshot(&self) -> crate::rpc::ModeSnapshot {
-        crate::rpc::ModeSnapshot::from(&self.mode_state)
+        crate::rpc::ModeSnapshot::from_mode(&self.mode_state, &self.display_registry)
     }
 
     /// Get a snapshot of cursor position for a buffer
