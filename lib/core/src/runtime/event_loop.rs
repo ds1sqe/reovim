@@ -535,6 +535,9 @@ impl Runtime {
                 self.screen.resize(width, height);
                 self.request_render();
             }
+            InnerEvent::MouseEvent(mouse_event) => {
+                self.handle_mouse_event(mouse_event);
+            }
             InnerEvent::RpcRequest {
                 id,
                 method,

@@ -1265,6 +1265,78 @@ impl Window {
         self.scrollbar_enabled = enabled;
     }
 
+    /// Check if a screen position is within this window's bounds
+    #[must_use]
+    pub const fn contains_screen_position(&self, x: u16, y: u16) -> bool {
+        x >= self.anchor.x
+            && x < self.anchor.x + self.width
+            && y >= self.anchor.y
+            && y < self.anchor.y + self.height
+    }
+
+    /// Translate screen coordinates to buffer position
+    ///
+    /// Returns `Some(Position)` if the click is in the content area,
+    /// `None` if the click is outside the window or in the gutter/scrollbar.
+    ///
+    /// # Arguments
+    /// * `screen_x` - Screen column coordinate
+    /// * `screen_y` - Screen row coordinate
+    /// * `buffer_line_count` - Total number of lines in the buffer
+    /// * `has_signs` - Whether the buffer has any signs to display
+    #[must_use]
+    #[allow(clippy::cast_possible_truncation)]
+    pub fn screen_to_buffer_position(
+        &self,
+        screen_x: u16,
+        screen_y: u16,
+        buffer_line_count: usize,
+        has_signs: bool,
+    ) -> Option<Position> {
+        // Check if position is within window bounds
+        if !self.contains_screen_position(screen_x, screen_y) {
+            return None;
+        }
+
+        // Calculate window-relative position
+        let window_x = screen_x - self.anchor.x;
+        let window_y = screen_y - self.anchor.y;
+
+        // Calculate gutter width (line numbers + sign column)
+        let line_num_width = self.line_number_width(buffer_line_count);
+        let sign_width = self.sign_column_mode.effective_width(has_signs);
+        let gutter_width = line_num_width + sign_width;
+
+        // Check if click is in gutter area
+        if window_x < gutter_width {
+            // Click in gutter - treat as first column of that line
+            let buffer_y = self.buffer_anchor().map_or(0, |a| a.y) + window_y;
+            return Some(Position { x: 0, y: buffer_y });
+        }
+
+        // Calculate content position (accounting for scrollbar on right)
+        let scrollbar_width = u16::from(self.scrollbar_enabled);
+        let content_width = self.width.saturating_sub(gutter_width + scrollbar_width);
+
+        // Check if click is in scrollbar area
+        if window_x >= gutter_width + content_width {
+            return None; // Click on scrollbar - don't move cursor
+        }
+
+        // Calculate buffer position
+        let content_x = window_x - gutter_width;
+        let buffer_y = self.buffer_anchor().map_or(0, |a| a.y) + window_y;
+
+        // Clamp to valid buffer bounds
+        let max_y = buffer_line_count.saturating_sub(1) as u16;
+        let clamped_y = buffer_y.min(max_y);
+
+        Some(Position {
+            x: content_x,
+            y: clamped_y,
+        })
+    }
+
     /// Compute scrollbar state based on buffer content and viewport
     #[must_use]
     #[allow(clippy::cast_possible_truncation)]

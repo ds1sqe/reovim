@@ -190,8 +190,15 @@ impl KeySource for EventStreamKeySource {
                     }
                     // Continue polling for key events
                 }
+                Poll::Ready(Some(Ok(Event::Mouse(mouse_event)))) => {
+                    // Forward mouse events to runtime
+                    if let Some(ref sender) = self.event_sender {
+                        let _ = sender.try_send(InnerEvent::MouseEvent(mouse_event.into()));
+                    }
+                    // Continue polling for key events
+                }
                 Poll::Ready(Some(Ok(_))) => {
-                    // Skip other non-key events (Mouse, Focus, Paste)
+                    // Skip other non-key events (Focus, Paste)
                     // Fall through to loop
                 }
                 Poll::Ready(Some(Err(e))) => {

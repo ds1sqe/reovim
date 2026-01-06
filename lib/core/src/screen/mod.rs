@@ -313,6 +313,47 @@ impl Screen {
         }
     }
 
+    /// Find the window at a given screen position
+    ///
+    /// Returns the window ID if a window exists at the position, or None if the
+    /// position is outside all windows (e.g., on the status line).
+    ///
+    /// When multiple windows overlap (floating windows), returns the topmost
+    /// window (highest z-order).
+    #[must_use]
+    pub fn window_at_position(&self, x: u16, y: u16) -> Option<usize> {
+        // Find all windows containing this position, sorted by z-order (highest first)
+        self.windows
+            .iter()
+            .filter(|w| w.contains_screen_position(x, y))
+            .max_by_key(|w| w.z_order)
+            .map(|w| w.id)
+    }
+
+    /// Get a reference to a window by ID
+    #[must_use]
+    pub fn window(&self, window_id: usize) -> Option<&Window> {
+        self.windows.iter().find(|w| w.id == window_id)
+    }
+
+    /// Get a mutable reference to a window by ID
+    pub fn window_mut(&mut self, window_id: usize) -> Option<&mut Window> {
+        self.windows.iter_mut().find(|w| w.id == window_id)
+    }
+
+    /// Set the active window by ID
+    ///
+    /// Returns true if the window was found and activated, false otherwise.
+    pub fn set_active_window(&mut self, window_id: usize) -> bool {
+        let found = self.windows.iter().any(|w| w.id == window_id);
+        if found {
+            for w in &mut self.windows {
+                w.is_active = w.id == window_id;
+            }
+        }
+        found
+    }
+
     /// Enable frame buffer capture and return a handle for external readers
     ///
     /// This enables capture on the frame renderer and returns a handle that

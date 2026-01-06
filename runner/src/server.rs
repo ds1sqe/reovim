@@ -109,7 +109,12 @@ pub async fn run_server(
                             })
                             .await;
                     }
-                    Ok(_) => {} // Ignore other events (Mouse, Focus, Paste)
+                    Ok(Event::Mouse(mouse_event)) => {
+                        let _ = event_tx_resize
+                            .send(InnerEvent::MouseEvent(mouse_event.into()))
+                            .await;
+                    }
+                    Ok(_) => {} // Ignore other events (Focus, Paste)
                     Err(_) => break,
                 }
             }

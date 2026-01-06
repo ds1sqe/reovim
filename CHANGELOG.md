@@ -21,6 +21,12 @@ All notable changes to Reovim will be documented in this file.
 
 ### Added
 
+- **Mouse click and scroll support** (Issue #59) - Basic mouse interaction for cursor positioning and scrolling
+  - Left click: Move cursor to clicked position and focus window if different
+  - Scroll wheel: Move viewport up/down by 3 lines, cursor adjusts to stay visible
+  - Coordinate translation: Screen position to buffer position with gutter and scrollbar awareness
+  - Server mode support: Mouse events forwarded in dual-output mode
+
 - **Metadata-driven interactor input behavior** (Issue #46) - Refactored `accepts_char_input()` to use registry instead of hardcoded checks
   - `InteractorConfig` struct for configuring input behavior per interactor
   - `InteractorRegistry` for storing and querying interactor configurations
