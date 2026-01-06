@@ -1414,6 +1414,90 @@ impl Screen {
         self.windows.iter_mut().find(|w| w.id == active_id)
     }
 
+    /// Save cursor from buffer to active window.
+    ///
+    /// Used before split to ensure new window inherits current cursor.
+    /// Returns the active window ID if save was performed.
+    pub fn save_cursor_to_active_window(
+        &mut self,
+        buffers: &BTreeMap<usize, Buffer>,
+    ) -> Option<usize> {
+        let active_id = self.active_window_id()?;
+        let window = self.active_window_mut()?;
+        let buffer_id = window.buffer_id()?;
+        let buffer = buffers.get(&buffer_id)?;
+
+        window.cursor = buffer.cur;
+        window.desired_col = buffer.desired_col;
+
+        tracing::debug!(
+            "[CURSOR_SYNC] SAVE: win={} buffer.cur=({},{}) -> window.cursor",
+            active_id,
+            buffer.cur.x,
+            buffer.cur.y,
+        );
+
+        Some(active_id)
+    }
+
+    /// Switch active window with full cursor synchronization.
+    ///
+    /// Use this for keyboard-driven window navigation (Ctrl-W h/j/k/l).
+    /// For mouse clicks, use `set_active_window()` instead since the mouse
+    /// directly sets cursor position.
+    ///
+    /// Performs the complete cursor handoff:
+    /// 1. Saves current buffer cursor to old active window
+    /// 2. Changes active window (updates `is_active` flags)
+    /// 3. Loads new window's cursor into buffer
+    ///
+    /// Returns the previous active window ID, or `None` if same window (no-op).
+    pub fn switch_active_window(
+        &mut self,
+        window_id: usize,
+        buffers: &mut BTreeMap<usize, Buffer>,
+    ) -> Option<usize> {
+        let current_active = self.active_window_id();
+
+        // Early return if same window (no-op)
+        if current_active == Some(window_id) {
+            return None;
+        }
+
+        // Step 1: Save cursor to old window
+        self.save_cursor_to_active_window(buffers);
+
+        // Step 2: Update is_active flags
+        for window in &mut self.windows {
+            window.is_active = window.id == window_id;
+        }
+        if let Some(tab) = self.tab_manager.active_tab_mut() {
+            tab.active_window_id = window_id;
+        }
+
+        // Step 3: Load cursor from new window into buffer
+        let new_window_data = self
+            .windows
+            .iter()
+            .find(|w| w.id == window_id)
+            .map(|w| (w.buffer_id(), w.cursor, w.desired_col));
+
+        if let Some((Some(buffer_id), cursor, desired_col)) = new_window_data
+            && let Some(buffer) = buffers.get_mut(&buffer_id)
+        {
+            buffer.cur = cursor;
+            buffer.desired_col = desired_col;
+            tracing::debug!(
+                "[CURSOR_SYNC] LOAD: win={} window.cursor=({},{}) -> buffer.cur",
+                window_id,
+                cursor.x,
+                cursor.y,
+            );
+        }
+
+        current_active
+    }
+
     /// Get the number of windows in the active tab
     #[must_use]
     pub fn window_count(&self) -> usize {
@@ -1640,7 +1724,7 @@ impl Screen {
     }
 
     /// Update `is_active` flag on all windows based on active window ID
-    fn update_window_active_state(&mut self) {
+    pub fn update_window_active_state(&mut self) {
         if let Some(active_id) = self.tab_manager.active_window_id() {
             for window in &mut self.windows {
                 window.is_active = window.id == active_id;
