@@ -160,9 +160,13 @@ impl CellSnapshot {
 
 // === Conversion implementations ===
 
-impl From<&crate::modd::ModeState> for ModeSnapshot {
-    fn from(mode: &crate::modd::ModeState) -> Self {
-        // Use the interactor_id field
+impl ModeSnapshot {
+    /// Create a `ModeSnapshot` from mode state and display registry
+    #[must_use]
+    pub fn from_mode(
+        mode: &crate::modd::ModeState,
+        display_registry: &crate::display::DisplayRegistry,
+    ) -> Self {
         let focus = mode.interactor_id.0;
 
         let edit_mode = match &mode.edit_mode {
@@ -186,7 +190,7 @@ impl From<&crate::modd::ModeState> for ModeSnapshot {
             focus: focus.to_string(),
             edit_mode,
             sub_mode,
-            display: mode.hierarchical_display(),
+            display: display_registry.hierarchical_display(mode),
         }
     }
 }

@@ -2035,7 +2035,7 @@ impl Screen {
 
         // Get base styles
         let interactor_style = &theme.statusline.interactor;
-        let base_mode_style = Self::get_mode_style(mode, theme);
+        let base_mode_style = display_registry.mode_style(mode, theme);
         let separator = &theme.statusline.separator;
 
         // Check for animation effects on the status line
@@ -2103,7 +2103,7 @@ impl Screen {
         }
 
         // === Section 2: Mode (e.g., "Normal", "Insert", "Visual") ===
-        let mode_name = Self::get_mode_name(mode);
+        let mode_name = display_registry.mode_name(mode);
         let mode_text = format!(" {mode_name} ");
         for ch in mode_text.chars() {
             if x < buffer.width() {
@@ -2261,63 +2261,7 @@ impl Screen {
 
     // Settings menu rendering is now handled by the settings-menu plugin
     // Telescope buffer rendering is now handled by the telescope plugin
-
-    /// Get the appropriate mode style based on current mode state
-    fn get_mode_style<'t>(mode: &ModeState, theme: &'t Theme) -> &'t crate::highlight::Style {
-        use crate::modd::{EditMode, SubMode};
-
-        // Sub-modes take precedence
-        match &mode.sub_mode {
-            SubMode::Command => return &theme.statusline.mode.command,
-            SubMode::OperatorPending { .. } => return &theme.statusline.mode.operator_pending,
-            SubMode::Interactor(_) => return &theme.statusline.mode.normal,
-            SubMode::None => {}
-        }
-
-        // Non-editor interactors use normal style
-        if mode.interactor_id.0 != "editor" {
-            return &theme.statusline.mode.normal;
-        }
-
-        // Editor edit modes
-        match &mode.edit_mode {
-            EditMode::Normal => &theme.statusline.mode.normal,
-            EditMode::Insert(_) => &theme.statusline.mode.insert,
-            EditMode::Visual(_) => &theme.statusline.mode.visual,
-        }
-    }
-
-    /// Get the mode name as a string
-    fn get_mode_name(mode: &ModeState) -> &'static str {
-        use crate::modd::{EditMode, SubMode};
-
-        // Sub-modes take precedence
-        match &mode.sub_mode {
-            SubMode::Command => return "Command",
-            SubMode::OperatorPending { .. } => return "Operator",
-            SubMode::Interactor(component_id) => return Self::interactor_mode_name(component_id.0),
-            SubMode::None => {}
-        }
-
-        // Editor edit modes
-        match &mode.edit_mode {
-            EditMode::Normal => "Normal",
-            EditMode::Insert(_) => "Insert",
-            EditMode::Visual(_) => "Visual",
-        }
-    }
-
-    /// Get display name for interactor sub-mode
-    fn interactor_mode_name(name: &str) -> &'static str {
-        match name {
-            "filter" => "Filter",
-            "input" => "Input",
-            "search" => "Search",
-            "prompt" => "Prompt",
-            "window" => "Window",
-            _ => "Active",
-        }
-    }
+    // Mode display functions now consolidated in DisplayRegistry
 
     /// Create a separator style that transitions between two backgrounds
     fn create_separator_style(

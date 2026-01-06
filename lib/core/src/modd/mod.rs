@@ -333,49 +333,4 @@ impl ModeState {
         // but Window mode does NOT - it uses keymap commands
         matches!(self.sub_mode, SubMode::Interactor(id) if id != ComponentId::WINDOW)
     }
-
-    /// Build hierarchical mode display: "Kind | Mode | `SubMode`"
-    ///
-    /// Format: ` Kind | Mode ` or ` Kind | Mode | SubMode `
-    /// Examples: `Editor | Normal`, `Editor | Normal | Window`, `Explorer | Insert`
-    #[must_use]
-    pub fn hierarchical_display(&self) -> String {
-        let mut parts = Vec::with_capacity(3);
-
-        // Part 1: Kind (interactor)
-        let kind = match self.interactor_id.0 {
-            "editor" | "microscope" => "Editor", // microscope is an overlay on editor
-            "command_line" => "Cmd",
-            "explorer" => "Explorer",
-            other => other,
-        };
-        parts.push(kind);
-
-        // Part 2: Edit mode
-        let edit = match &self.edit_mode {
-            EditMode::Normal => "Normal",
-            EditMode::Insert(_) => "Insert",
-            EditMode::Visual(VisualVariant::Char) => "Visual",
-            EditMode::Visual(VisualVariant::Line) => "V-Line",
-            EditMode::Visual(VisualVariant::Block) => "V-Block",
-        };
-        parts.push(edit);
-
-        // Part 3: Sub-mode (if active)
-        let sub = match &self.sub_mode {
-            SubMode::None => None,
-            SubMode::Command => Some("Command"),
-            SubMode::OperatorPending { .. } => Some("Operator"),
-            SubMode::Interactor(id) => Some(match id.0 {
-                "window" => "Window",
-                "leap" => "Leap",
-                other => other,
-            }),
-        };
-        if let Some(s) = sub {
-            parts.push(s);
-        }
-
-        parts.join(" | ")
-    }
 }

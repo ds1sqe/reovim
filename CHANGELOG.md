@@ -32,6 +32,17 @@ All notable changes to Reovim will be documented in this file.
     "statusline.mode.normal" = { fg = "#1a1b26", bg = "#7aa2f7", bold = true }
     ```
 
+- **Consolidated mode display logic into DisplayRegistry** (Issue #53) - Centralize all mode display logic in one place
+  - New `display/icons.rs` module for icon constants
+  - `DisplayRegistry::mode_icon()` - Get icon for current mode state
+  - `DisplayRegistry::mode_style()` - Get style for current mode from theme
+  - `DisplayRegistry::mode_name()` - Get display name ("Normal", "Insert", etc.)
+  - `DisplayRegistry::short_mode_name()` - Get short name ("NORMAL", "INSERT", etc.)
+  - `DisplayRegistry::hierarchical_display()` - Build "Kind | Mode | SubMode" string
+  - Removed duplicate logic from `Screen` (was `get_mode_style()`, `get_mode_name()`)
+  - Removed `ModeState::hierarchical_display()` - use `DisplayRegistry` instead
+  - `ModeSnapshot::from_mode()` added for RPC serialization with display registry
+
 - **Metadata-driven interactor input behavior** (Issue #46) - Refactored `accepts_char_input()` to use registry instead of hardcoded checks
   - `InteractorConfig` struct for configuring input behavior per interactor
   - `InteractorRegistry` for storing and querying interactor configurations
