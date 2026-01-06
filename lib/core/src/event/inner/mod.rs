@@ -102,6 +102,10 @@ pub enum InnerEvent {
     SetIndentGuide {
         enabled: bool,
     },
+    /// Set sign column configuration
+    SetSignColumn {
+        width: Option<u16>,
+    },
 }
 
 /// Input events routed to the active focus target

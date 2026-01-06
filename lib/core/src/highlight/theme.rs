@@ -65,7 +65,8 @@ pub struct GutterStyles {
     pub line_number: Style,
     pub current_line_number: Style,
     pub inactive_line_number: Style,
-    pub sign_column: Style,
+    /// Background style for sign column
+    pub sign_column_bg: Style,
 }
 
 #[derive(Debug, Clone)]
@@ -387,7 +388,7 @@ impl Theme {
                 line_number: Style::new().fg(fg_dark).bg(bg_dark),
                 current_line_number: Style::new().fg(yellow).bg(bg_dark).bold(),
                 inactive_line_number: Style::new().fg(fg_dark).bg(bg_dark),
-                sign_column: Style::new().fg(fg_dark).bg(bg_dark),
+                sign_column_bg: Style::new().bg(bg_dark),
             },
             selection: SelectionStyles {
                 visual: Style::new().bg(bg_light),
@@ -550,7 +551,7 @@ impl Theme {
                 line_number: Style::new().fg(Color::Grey),
                 current_line_number: Style::new().fg(Color::DarkBlue).bold(),
                 inactive_line_number: Style::new().fg(Color::Grey),
-                sign_column: Style::new().fg(Color::Grey),
+                sign_column_bg: Style::new().bg(bg_medium),
             },
             selection: SelectionStyles {
                 visual: Style::new().bg(Color::AnsiValue(153)),
@@ -717,12 +718,6 @@ impl Theme {
             g: 95,
             b: 137,
         };
-        // TokyoNight fg_gutter color for active non-current line numbers (#3b4261)
-        let fg_gutter = Color::Rgb {
-            r: 59,
-            g: 66,
-            b: 97,
-        };
         // Much darker color for inactive windows (#292e42)
         let fg_inactive = Color::Rgb {
             r: 41,
@@ -785,7 +780,7 @@ impl Theme {
                 line_number: Style::new().fg(fg_dark),
                 current_line_number: Style::new().fg(orange_bright).bold(),
                 inactive_line_number: Style::new().fg(fg_inactive),
-                sign_column: Style::new().fg(fg_gutter),
+                sign_column_bg: Style::new().bg(bg_dark),
             },
             selection: SelectionStyles {
                 visual: Style::new().bg(bg_highlight),

@@ -70,6 +70,9 @@ pub struct Window {
     pub line_number: Option<LineNumber>,
     /// Whether to show scrollbar
     pub scrollbar_enabled: bool,
+    /// Sign column width (None = disabled, Some(width) = enabled)
+    /// Typical values: Some(1) or Some(2)
+    pub sign_column_width: Option<u16>,
     /// Per-window cursor position
     pub cursor: Position,
     /// Track preferred column for vertical movement (j/k)
@@ -729,6 +732,52 @@ impl Window {
         col.saturating_sub(x)
     }
 
+    /// Render sign column to frame buffer
+    ///
+    /// Displays sign icon if present, otherwise renders background padding.
+    /// Returns the width consumed (equal to `sign_column_width`).
+    pub(crate) fn render_sign_to_buffer(
+        buffer: &mut FrameBuffer,
+        x: u16,
+        y: u16,
+        sign: Option<&crate::sign::Sign>,
+        width: u16,
+        theme: &Theme,
+    ) -> u16 {
+        if sign.is_some() {
+            tracing::info!(
+                "SIGN_RENDER: Rendering sign at ({}, {}) width={} sign={:?}",
+                x,
+                y,
+                width,
+                sign
+            );
+        }
+        let bg_style = &theme.gutter.sign_column_bg;
+
+        if let Some(sign) = sign {
+            // Render sign icon (truncate if too long)
+            let mut col = x;
+            for ch in sign.icon.chars().take(width as usize) {
+                buffer.put_char(col, y, ch, &sign.style);
+                col += 1;
+            }
+
+            // Pad remaining width with background
+            while col < x + width {
+                buffer.put_char(col, y, ' ', bg_style);
+                col += 1;
+            }
+        } else {
+            // No sign - render background padding only
+            for col in x..(x + width) {
+                buffer.put_char(col, y, ' ', bg_style);
+            }
+        }
+
+        width
+    }
+
     /// Render a complete content line to frame buffer
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::too_many_arguments)]
@@ -1250,10 +1299,11 @@ impl Window {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
 
-    fn create_test_window(height: u16) -> Window {
+    #[must_use]
+    pub fn create_test_window(height: u16) -> Window {
         Window {
             id: 0,
             source: WindowContentSource::FileBuffer {
@@ -1268,6 +1318,7 @@ mod tests {
             is_floating: false,
             line_number: Some(LineNumber::default()),
             scrollbar_enabled: false,
+            sign_column_width: None, // Disabled by default in tests to avoid position shifts
             cursor: Position { x: 0, y: 0 },
             desired_col: None,
             border_config: None,

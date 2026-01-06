@@ -100,7 +100,7 @@ use crate::{
         EventBus, EventResult,
         core_events::{
             RequestSetIndentGuide, RequestSetLineNumbers, RequestSetRelativeLineNumbers,
-            RequestSetScrollbar, RequestSetTheme,
+            RequestSetScrollbar, RequestSetSignColumn, RequestSetTheme,
         },
     },
     keys,
@@ -201,6 +201,20 @@ impl CorePlugin {
                 "scrollbar" => {
                     if let OptionValue::Bool(enabled) = &event.new_value {
                         ctx.emit(RequestSetScrollbar { enabled: *enabled });
+                        needs_render = true;
+                    }
+                }
+                "signcolumn" => {
+                    if let OptionValue::String(value) = &event.new_value {
+                        // Parse signcolumn value: "no" or "yes:N"
+                        let width = if value == "no" {
+                            None
+                        } else if let Some(num_str) = value.strip_prefix("yes:") {
+                            num_str.parse::<u16>().ok()
+                        } else {
+                            Some(2) // Default width if invalid format
+                        };
+                        ctx.emit(RequestSetSignColumn { width });
                         needs_render = true;
                     }
                 }
@@ -775,6 +789,19 @@ impl CorePlugin {
             .with_section("Editor")
             .with_scope(OptionScope::Window)
             .with_display_order(11),
+        ));
+
+        // Sign column
+        bus.emit(RegisterOption::new(
+            OptionSpec::new(
+                "signcolumn",
+                "Sign column display ('no' or 'yes:N')",
+                OptionValue::String("yes:2".into()),
+            )
+            .with_category(OptionCategory::Editor)
+            .with_section("Editor")
+            .with_scope(OptionScope::Window)
+            .with_display_order(12),
         ));
 
         // Tab width
