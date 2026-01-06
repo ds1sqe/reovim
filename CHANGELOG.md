@@ -4,6 +4,16 @@ All notable changes to Reovim will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Subscription helper macros** (Issue #41) - Reduce plugin boilerplate with three new macros
+  - `subscribe_state!` - Simple state mutation + render pattern (4 variants)
+  - `subscribe_state_mode!` - State mutation + mode change + render (2 variants)
+  - `subscribe_state_conditional!` - Conditional render based on return value (4 variants)
+  - Migrated Explorer plugin: 23 subscription blocks (~180 lines saved)
+  - Migrated Range-Finder plugin: 5 subscription blocks (~30 lines saved)
+  - Total: ~210 lines of boilerplate removed across 28 subscription blocks
+
 ### Fixed
 
 - **RegisterOption events not processed** (Issue #39) - Options registered via `bus.emit(RegisterOption)` are now properly added to the option registry

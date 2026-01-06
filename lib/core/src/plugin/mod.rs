@@ -31,6 +31,7 @@
 mod context;
 mod editor_context;
 mod loader;
+pub mod macros;
 mod runtime_context;
 mod state;
 mod statusline;

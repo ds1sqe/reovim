@@ -22,6 +22,7 @@ use reovim_core::{
     keys,
     modd::ComponentId,
     plugin::{Plugin, PluginContext, PluginId, PluginStateRegistry},
+    subscribe_state, subscribe_state_mode,
 };
 
 mod command;
@@ -173,13 +174,12 @@ impl Plugin for ExplorerPlugin {
         };
 
         // Handle text input from runtime (PluginTextInput event)
+        // Keep manual: target check with early return
         let state_clone = Arc::clone(&state);
         bus.subscribe::<PluginTextInput, _>(100, move |event, ctx| {
-            // Only handle if we're the target
             if event.target != COMPONENT_ID {
                 return EventResult::NotHandled;
             }
-
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.input_char(event.c);
             });
@@ -188,13 +188,12 @@ impl Plugin for ExplorerPlugin {
         });
 
         // Handle backspace from runtime (PluginBackspace event)
+        // Keep manual: target check with early return
         let state_clone = Arc::clone(&state);
         bus.subscribe::<PluginBackspace, _>(100, move |event, ctx| {
-            // Only handle if we're the target
             if event.target != COMPONENT_ID {
                 return EventResult::NotHandled;
             }
-
             state_clone.with_mut::<ExplorerState, _, _>(|s| {
                 s.input_backspace();
             });
@@ -203,81 +202,46 @@ impl Plugin for ExplorerPlugin {
         });
 
         // Navigation events (sync popup with cursor if visible)
-        let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerCursorUp, _>(100, move |event, ctx| {
-            state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                s.move_cursor(-(event.count as isize));
-                s.update_scroll();
-                s.sync_popup();
-            });
-            ctx.request_render();
-            EventResult::Handled
+        subscribe_state!(bus, state, ExplorerCursorUp, ExplorerState, |s, e| {
+            s.move_cursor(-(e.count as isize));
+            s.update_scroll();
+            s.sync_popup();
         });
 
-        let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerCursorDown, _>(100, move |event, ctx| {
-            state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                s.move_cursor(event.count as isize);
-                s.update_scroll();
-                s.sync_popup();
-            });
-            ctx.request_render();
-            EventResult::Handled
+        subscribe_state!(bus, state, ExplorerCursorDown, ExplorerState, |s, e| {
+            s.move_cursor(e.count as isize);
+            s.update_scroll();
+            s.sync_popup();
         });
 
-        let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerPageUp, _>(100, move |_event, ctx| {
-            state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                s.move_page(s.visible_height, false);
-                s.update_scroll();
-                s.sync_popup();
-            });
-            ctx.request_render();
-            EventResult::Handled
+        subscribe_state!(bus, state, ExplorerPageUp, ExplorerState, |s| {
+            s.move_page(s.visible_height, false);
+            s.update_scroll();
+            s.sync_popup();
         });
 
-        let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerPageDown, _>(100, move |_event, ctx| {
-            state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                s.move_page(s.visible_height, true);
-                s.update_scroll();
-                s.sync_popup();
-            });
-            ctx.request_render();
-            EventResult::Handled
+        subscribe_state!(bus, state, ExplorerPageDown, ExplorerState, |s| {
+            s.move_page(s.visible_height, true);
+            s.update_scroll();
+            s.sync_popup();
         });
 
-        let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerGotoFirst, _>(100, move |_event, ctx| {
-            state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                s.move_to_first();
-                s.update_scroll();
-                s.sync_popup();
-            });
-            ctx.request_render();
-            EventResult::Handled
+        subscribe_state!(bus, state, ExplorerGotoFirst, ExplorerState, |s| {
+            s.move_to_first();
+            s.update_scroll();
+            s.sync_popup();
         });
 
-        let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerGotoLast, _>(100, move |_event, ctx| {
-            state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                s.move_to_last();
-                s.update_scroll();
-                s.sync_popup();
-            });
-            ctx.request_render();
-            EventResult::Handled
+        subscribe_state!(bus, state, ExplorerGotoLast, ExplorerState, |s| {
+            s.move_to_last();
+            s.update_scroll();
+            s.sync_popup();
         });
 
-        let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerGoToParent, _>(100, move |_event, ctx| {
-            state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                s.go_to_parent();
-                s.update_scroll();
-                s.sync_popup();
-            });
-            ctx.request_render();
-            EventResult::Handled
+        subscribe_state!(bus, state, ExplorerGoToParent, ExplorerState, |s| {
+            s.go_to_parent();
+            s.update_scroll();
+            s.sync_popup();
         });
 
         // Open file or toggle directory
@@ -322,183 +286,86 @@ impl Plugin for ExplorerPlugin {
         });
 
         // Tree manipulation events
-        let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerToggleNode, _>(100, move |_event, ctx| {
-            state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                let _ = s.toggle_current();
-            });
-            ctx.request_render();
-            EventResult::Handled
+        subscribe_state!(bus, state, ExplorerToggleNode, ExplorerState, |s| {
+            let _ = s.toggle_current();
         });
 
-        let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerCloseParent, _>(100, move |_event, ctx| {
-            state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                s.collapse_current();
-            });
-            ctx.request_render();
-            EventResult::Handled
+        subscribe_state!(bus, state, ExplorerCloseParent, ExplorerState, |s| {
+            s.collapse_current();
         });
 
-        let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerRefresh, _>(100, move |_event, ctx| {
-            state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                let _ = s.refresh();
-            });
-            ctx.request_render();
-            EventResult::Handled
+        subscribe_state!(bus, state, ExplorerRefresh, ExplorerState, |s| {
+            let _ = s.refresh();
         });
 
-        let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerToggleHidden, _>(100, move |_event, ctx| {
-            state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                s.toggle_hidden();
-            });
-            ctx.request_render();
-            EventResult::Handled
+        subscribe_state!(bus, state, ExplorerToggleHidden, ExplorerState, |s| {
+            s.toggle_hidden();
         });
 
-        let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerToggleSizes, _>(100, move |_event, ctx| {
-            state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                s.toggle_sizes();
-            });
-            ctx.request_render();
-            EventResult::Handled
+        subscribe_state!(bus, state, ExplorerToggleSizes, ExplorerState, |s| {
+            s.toggle_sizes();
         });
 
         // Clipboard events
-        let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerYank, _>(100, move |_event, ctx| {
-            state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                s.yank_current();
-            });
-            ctx.request_render();
-            EventResult::Handled
+        subscribe_state!(bus, state, ExplorerYank, ExplorerState, |s| {
+            s.yank_current();
         });
 
-        let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerCut, _>(100, move |_event, ctx| {
-            state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                s.cut_current();
-            });
-            ctx.request_render();
-            EventResult::Handled
+        subscribe_state!(bus, state, ExplorerCut, ExplorerState, |s| {
+            s.cut_current();
         });
 
-        let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerPaste, _>(100, move |_event, ctx| {
-            state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                let _ = s.paste();
-            });
-            ctx.request_render();
-            EventResult::Handled
+        subscribe_state!(bus, state, ExplorerPaste, ExplorerState, |s| {
+            let _ = s.paste();
         });
 
-        // File operation events
-        let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerCreateFile, _>(100, move |_event, ctx| {
-            state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                s.start_create_file();
-            });
+        // File operation events (enter Interactor sub-mode for input)
+        subscribe_state_mode!(
+            bus, state, ExplorerCreateFile, ExplorerState,
+            |s| { s.start_create_file(); },
+            ModeState::with_interactor_id_sub_mode(
+                COMPONENT_ID, EditMode::Normal, SubMode::Interactor(COMPONENT_ID)
+            )
+        );
 
-            // Enter Interactor sub-mode so characters route to focus handler
-            let mode = ModeState::with_interactor_id_sub_mode(
-                COMPONENT_ID,
-                EditMode::Normal,
-                SubMode::Interactor(COMPONENT_ID),
-            );
-            ctx.emit(RequestModeChange { mode });
+        subscribe_state_mode!(
+            bus, state, ExplorerCreateDir, ExplorerState,
+            |s| { s.start_create_dir(); },
+            ModeState::with_interactor_id_sub_mode(
+                COMPONENT_ID, EditMode::Normal, SubMode::Interactor(COMPONENT_ID)
+            )
+        );
 
-            ctx.request_render();
-            EventResult::Handled
-        });
+        subscribe_state_mode!(
+            bus, state, ExplorerRename, ExplorerState,
+            |s| { s.start_rename(); },
+            ModeState::with_interactor_id_sub_mode(
+                COMPONENT_ID, EditMode::Normal, SubMode::Interactor(COMPONENT_ID)
+            )
+        );
 
-        let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerCreateDir, _>(100, move |_event, ctx| {
-            state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                s.start_create_dir();
-            });
+        subscribe_state_mode!(
+            bus, state, ExplorerDelete, ExplorerState,
+            |s| { s.start_delete(); },
+            ModeState::with_interactor_id_sub_mode(
+                COMPONENT_ID, EditMode::Normal, SubMode::Interactor(COMPONENT_ID)
+            )
+        );
 
-            // Enter Interactor sub-mode so characters route to focus handler
-            let mode = ModeState::with_interactor_id_sub_mode(
-                COMPONENT_ID,
-                EditMode::Normal,
-                SubMode::Interactor(COMPONENT_ID),
-            );
-            ctx.emit(RequestModeChange { mode });
+        subscribe_state_mode!(
+            bus, state, ExplorerStartFilter, ExplorerState,
+            |s| { s.start_filter(); },
+            ModeState::with_interactor_id_sub_mode(
+                COMPONENT_ID, EditMode::Normal, SubMode::Interactor(COMPONENT_ID)
+            )
+        );
 
-            ctx.request_render();
-            EventResult::Handled
-        });
-
-        let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerRename, _>(100, move |_event, ctx| {
-            state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                s.start_rename();
-            });
-
-            // Enter Interactor sub-mode so characters route to focus handler
-            let mode = ModeState::with_interactor_id_sub_mode(
-                COMPONENT_ID,
-                EditMode::Normal,
-                SubMode::Interactor(COMPONENT_ID),
-            );
-            ctx.emit(RequestModeChange { mode });
-
-            ctx.request_render();
-            EventResult::Handled
-        });
-
-        let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerDelete, _>(100, move |_event, ctx| {
-            state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                s.start_delete();
-            });
-
-            // Enter Interactor sub-mode for confirmation input
-            let mode = ModeState::with_interactor_id_sub_mode(
-                COMPONENT_ID,
-                EditMode::Normal,
-                SubMode::Interactor(COMPONENT_ID),
-            );
-            ctx.emit(RequestModeChange { mode });
-
-            ctx.request_render();
-            EventResult::Handled
-        });
-
-        let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerStartFilter, _>(100, move |_event, ctx| {
-            state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                s.start_filter();
-            });
-
-            // Enter Interactor sub-mode so characters route to focus handler
-            let mode = ModeState::with_interactor_id_sub_mode(
-                COMPONENT_ID,
-                EditMode::Normal,
-                SubMode::Interactor(COMPONENT_ID),
-            );
-            ctx.emit(RequestModeChange { mode });
-
-            ctx.request_render();
-            EventResult::Handled
-        });
-
-        let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerClearFilter, _>(100, move |_event, ctx| {
-            state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                s.clear_filter();
-            });
-
-            // Exit Interactor sub-mode back to normal explorer mode
-            let mode = ModeState::with_interactor_id_and_mode(COMPONENT_ID, EditMode::Normal);
-            ctx.emit(RequestModeChange { mode });
-
-            ctx.request_render();
-            EventResult::Handled
-        });
+        // Exit Interactor sub-mode back to normal explorer mode
+        subscribe_state_mode!(
+            bus, state, ExplorerClearFilter, ExplorerState,
+            |s| { s.clear_filter(); },
+            ModeState::with_interactor_id_and_mode(COMPONENT_ID, EditMode::Normal)
+        );
 
         // Input events
         let state_clone = Arc::clone(&state);
@@ -583,59 +450,29 @@ impl Plugin for ExplorerPlugin {
             EventResult::Handled
         });
 
-        let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerInputChar, _>(100, move |event, ctx| {
-            state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                s.input_char(event.c);
-            });
-            ctx.request_render();
-            EventResult::Handled
+        subscribe_state!(bus, state, ExplorerInputChar, ExplorerState, |s, e| {
+            s.input_char(e.c);
         });
 
-        let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerInputBackspace, _>(100, move |_event, ctx| {
-            state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                s.input_backspace();
-            });
-            ctx.request_render();
-            EventResult::Handled
+        subscribe_state!(bus, state, ExplorerInputBackspace, ExplorerState, |s| {
+            s.input_backspace();
         });
 
         // Visual selection events
-        let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerVisualMode, _>(100, move |_event, ctx| {
-            state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                s.enter_visual_mode();
-            });
-            ctx.request_render();
-            EventResult::Handled
+        subscribe_state!(bus, state, ExplorerVisualMode, ExplorerState, |s| {
+            s.enter_visual_mode();
         });
 
-        let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerToggleSelect, _>(100, move |_event, ctx| {
-            state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                s.toggle_select_current();
-            });
-            ctx.request_render();
-            EventResult::Handled
+        subscribe_state!(bus, state, ExplorerToggleSelect, ExplorerState, |s| {
+            s.toggle_select_current();
         });
 
-        let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerSelectAll, _>(100, move |_event, ctx| {
-            state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                s.select_all();
-            });
-            ctx.request_render();
-            EventResult::Handled
+        subscribe_state!(bus, state, ExplorerSelectAll, ExplorerState, |s| {
+            s.select_all();
         });
 
-        let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerExitVisual, _>(100, move |_event, ctx| {
-            state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                s.exit_visual_mode();
-            });
-            ctx.request_render();
-            EventResult::Handled
+        subscribe_state!(bus, state, ExplorerExitVisual, ExplorerState, |s| {
+            s.exit_visual_mode();
         });
 
         // Toggle explorer visibility
@@ -720,23 +557,13 @@ impl Plugin for ExplorerPlugin {
         });
 
         // Show file details popup
-        let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerShowInfo, _>(100, move |_event, ctx| {
-            state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                s.show_file_details();
-            });
-            ctx.request_render();
-            EventResult::Handled
+        subscribe_state!(bus, state, ExplorerShowInfo, ExplorerState, |s| {
+            s.show_file_details();
         });
 
         // Close file details popup
-        let state_clone = Arc::clone(&state);
-        bus.subscribe::<ExplorerClosePopup, _>(100, move |_event, ctx| {
-            state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                s.close_popup();
-            });
-            ctx.request_render();
-            EventResult::Handled
+        subscribe_state!(bus, state, ExplorerClosePopup, ExplorerState, |s| {
+            s.close_popup();
         });
 
         // Copy path to clipboard
