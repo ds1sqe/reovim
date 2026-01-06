@@ -6,6 +6,13 @@ All notable changes to Reovim will be documented in this file.
 
 ### Added
 
+- **Multi-instance server support** (Issue #19) - Multiple reovim servers can now run concurrently
+  - Port fallback: When default port (12521) is in use, server automatically tries 12522, 12523, etc.
+  - Port files: Each server writes `~/.local/share/reovim/servers/<pid>.port` for discovery
+  - `reo-cli list` command: Lists all running reovim server instances with PID and port
+  - Auto-discovery: `reo-cli` auto-connects to single server, prompts when multiple servers running
+  - Clean shutdown: Port files automatically removed when server exits
+
 - **Ex-command registry system** - Plugins can now register custom ex-commands dynamically
   - `ExCommandRegistry` for thread-safe command registration and dispatch
   - `RegisterExCommand` event for plugin-based command registration

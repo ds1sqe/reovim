@@ -48,6 +48,20 @@ Use `REOVIM_LOG=debug` to enable debug logging in spawned server processes.
 - Use generic APIs: `ComposableId::Custom("my_plugin")`
 - Extend core APIs only when multiple plugins would benefit
 
+### Process Safety Policy
+
+**NEVER kill other reovim instances.** Multiple reovim servers can run concurrently for debugging.
+
+**Forbidden commands:**
+- `pkill reovim` or `pkill -f reovim`
+- `killall reovim`
+- Any command that terminates reovim processes you didn't start
+
+**Safe alternatives:**
+- Use `reo-cli list` to see running servers
+- Use `reo-cli --tcp 127.0.0.1:<PORT> kill` to kill a specific server
+- Only kill servers you started in the current session
+
 ## Build Commands
 
 ```bash
@@ -84,8 +98,9 @@ cargo bench -p reovim-bench
 # Generate report from existing benchmark data
 cargo run -p perf-report -- update -v X.Y.Z
 
-# Run in server mode (TCP on 127.0.0.1:12521)
+# Run in server mode (TCP on 127.0.0.1:12521, or next available port)
 cargo run -- --server
+# Server prints "Listening on 127.0.0.1:<PORT>" to stderr
 
 # Run server with stdio transport
 cargo run -- --stdio
@@ -97,10 +112,10 @@ cargo run -- --listen-socket /tmp/reovim.sock
 cargo run -- --listen-tcp 9000
 
 # Run reo-cli client
-cargo run -p reo-cli -- mode
-cargo run -p reo-cli -- keys 'iHello<Esc>'
-# screen capture
-cargo run -p reo-cli -- capture
+cargo run -p reo-cli -- list              # List running servers
+cargo run -p reo-cli -- keys 'iHello<Esc>'  # Inject keys, show status (screen + mode + cursor)
+cargo run -p reo-cli -- --tcp 127.0.0.1:12522 keys 'j'  # Connect to specific server
+cargo run -p reo-cli -- -i                # Interactive REPL mode
 
 # View logs (timestamped files)
 tail -f ~/.local/share/reovim/reovim-*.log
@@ -250,6 +265,14 @@ Reovim is a Rust-based neovim-like text editor built with async tokio runtime an
 - `FrameBufferHandle` - Unified capture for all RPC formats (RawAnsi, PlainText, CellGrid)
 - Default port: 12521 ('r'×100 + 'e'×10 + 'o')
 - Server modes: `--server` (persistent, runs forever), `--server --test` (exit when all clients disconnect), `--stdio` (always one-shot)
+
+**Multi-Instance Support** (`runner/src/dirs.rs`, `runner/src/server.rs`):
+- Port fallback: If default port (12521) is in use, tries 12522, 12523, ... up to 12530
+- Port files: `~/.local/share/reovim/servers/<pid>.port` stores the bound port for discovery
+- Server prints `Listening on <host>:<port>` to stderr on startup
+- `reo-cli list` discovers running servers by scanning port files
+- Auto-discovery: `reo-cli` auto-connects to single server, prompts when multiple running
+- Clean shutdown removes port file automatically
 
 ### Event Flow
 

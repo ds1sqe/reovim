@@ -172,7 +172,7 @@ lib/core/tests/
 Spawns and manages a reovim server process:
 
 ```rust
-// Automatically spawns server on unique port (12600-12699)
+// Automatically spawns server on unique port (17000-17099)
 let harness = ServerTestHarness::spawn().await?;
 
 // Get a connected client
@@ -431,7 +431,19 @@ lib/core/tests/
 2. **Keep key sequences short** - Long sequences are harder to debug
 3. **Test one behavior per test** - Makes failures easier to diagnose
 4. **Use `with_content()` for cursor tests** - Need text to move through
-5. **Tests run in parallel** - Each spawns its own server on a unique port
+5. **Tests run in parallel** - Each spawns its own server on a unique port (17000-17099)
+
+### Port Allocation
+
+Integration tests use a **separate port range** (17000-17099) from regular server mode (12521+):
+
+- **Test servers**: Ports 17000-17099 (atomic allocation, wraps around)
+- **Regular servers**: Port 12521 by default, auto-increments to 12522, 12523, ... if in use
+
+This separation ensures:
+- Tests don't interfere with manually started debug servers
+- Multiple test runs can execute in parallel
+- `reo-cli list` only shows regular servers (not test instances)
 
 ### How It Works
 

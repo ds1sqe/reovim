@@ -7,6 +7,7 @@
 
 use std::{
     io,
+    path::PathBuf,
     sync::{
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
@@ -123,6 +124,9 @@ pub async fn run_server(
     // Create RPC server with frame buffer handle for all capture formats
     let server = Arc::new(RpcServer::new(event_tx, key_tx, frame_handle, notification_tx));
 
+    // Track port file for cleanup on shutdown
+    let mut port_file_path: Option<PathBuf> = None;
+
     // Set up transport based on configuration
     match &transport_config {
         TransportConfig::Stdio => {
@@ -135,69 +139,48 @@ pub async fn run_server(
             let server_clone = Arc::clone(&server);
             tokio::spawn(run_server_loop(server_clone, request_rx, response_tx));
         }
-        TransportConfig::UnixSocket { .. } | TransportConfig::Tcp { .. } => {
-            // Listener mode: persistent server
+        TransportConfig::UnixSocket { path } => {
+            // Unix socket mode: bind directly (no port fallback needed)
             let listener = TransportListener::bind(&transport_config)
                 .await?
-                .expect("listener should be Some for non-stdio transport");
+                .expect("listener should be Some for unix socket transport");
 
-            let conn_state = Arc::new(ConnectionState {
-                response_tx: Mutex::new(None),
-                notification_tx: Mutex::new(None),
-                connection_count: AtomicUsize::new(0),
-            });
+            // Print the socket path to stderr
+            eprintln!("Listening on {}", path.display());
 
-            // Spawn persistent server loop (uses shared state for responses)
-            let server_clone = Arc::clone(&server);
-            let conn_state_clone = Arc::clone(&conn_state);
-            tokio::spawn(run_server_loop_persistent(server_clone, request_rx, conn_state_clone));
+            spawn_persistent_server(
+                listener,
+                server,
+                request_tx,
+                request_rx,
+                event_tx_for_shutdown,
+                test_mode,
+            );
+        }
+        TransportConfig::Tcp { host, port } => {
+            // TCP mode: use port fallback for multi-instance support
+            const MAX_PORT_ATTEMPTS: u16 = 10;
 
-            // Accept loop (runs in background)
-            let conn_state_accept = Arc::clone(&conn_state);
-            tokio::spawn(async move {
-                loop {
-                    tracing::info!("Waiting for client connection...");
-                    match listener.accept().await {
-                        Ok(conn) => {
-                            conn_state_accept
-                                .connection_count
-                                .fetch_add(1, Ordering::SeqCst);
-                            let count = conn_state_accept.connection_count.load(Ordering::SeqCst);
-                            tracing::info!("Client connected (active connections: {count})");
+            let (listener, actual_port) =
+                TransportListener::bind_tcp_with_fallback(host, *port, MAX_PORT_ATTEMPTS).await?;
 
-                            // Fresh channels for this connection
-                            let (resp_tx, resp_rx) = mpsc::channel::<RpcResponse>(256);
-                            let (notif_tx, notif_rx) = mpsc::channel::<RpcNotification>(256);
+            // Print the actual port to stderr for scripts/users to capture
+            eprintln!("Listening on {host}:{actual_port}");
 
-                            // Update shared state with new connection's channels
-                            *conn_state_accept.response_tx.lock().unwrap() = Some(resp_tx);
-                            *conn_state_accept.notification_tx.lock().unwrap() = Some(notif_tx);
-
-                            // Spawn connection handler that tracks disconnect
-                            let state = Arc::clone(&conn_state_accept);
-                            tokio::spawn(handle_connection(
-                                conn,
-                                request_tx.clone(),
-                                resp_rx,
-                                notif_rx,
-                                state,
-                            ));
-                        }
-                        Err(e) => {
-                            tracing::error!("Accept error: {e}");
-                        }
-                    }
-                }
-            });
-
-            // In test mode: run for 3 minutes then shutdown
-            if test_mode {
-                tokio::spawn(async move {
-                    tokio::time::sleep(tokio::time::Duration::from_secs(180)).await;
-                    tracing::info!("Test mode: 3 minutes elapsed, shutting down");
-                    let _ = event_tx_for_shutdown.send(InnerEvent::KillSignal).await;
-                });
+            // Write port file for discovery (only for TCP)
+            match crate::dirs::write_port_file(actual_port) {
+                Ok(path) => port_file_path = Some(path),
+                Err(e) => tracing::warn!("Failed to write port file: {}", e),
             }
+
+            spawn_persistent_server(
+                listener,
+                server,
+                request_tx,
+                request_rx,
+                event_tx_for_shutdown,
+                test_mode,
+            );
         }
     }
 
@@ -210,8 +193,80 @@ pub async fn run_server(
         reovim_core::command::terminal::disable_raw_mode()?;
     }
 
+    // Remove port file on shutdown
+    if let Some(path) = port_file_path {
+        crate::dirs::remove_port_file(&path);
+    }
+
     tracing::info!("Server mode shutting down");
     Ok(())
+}
+
+/// Spawn the persistent server accept loop and related tasks
+fn spawn_persistent_server(
+    listener: TransportListener,
+    server: Arc<RpcServer>,
+    request_tx: mpsc::Sender<RpcRequest>,
+    request_rx: mpsc::Receiver<RpcRequest>,
+    event_tx_for_shutdown: mpsc::Sender<InnerEvent>,
+    test_mode: bool,
+) {
+    let conn_state = Arc::new(ConnectionState {
+        response_tx: Mutex::new(None),
+        notification_tx: Mutex::new(None),
+        connection_count: AtomicUsize::new(0),
+    });
+
+    // Spawn persistent server loop (uses shared state for responses)
+    let conn_state_clone = Arc::clone(&conn_state);
+    tokio::spawn(run_server_loop_persistent(server, request_rx, conn_state_clone));
+
+    // Accept loop (runs in background)
+    let conn_state_accept = Arc::clone(&conn_state);
+    tokio::spawn(async move {
+        loop {
+            tracing::info!("Waiting for client connection...");
+            match listener.accept().await {
+                Ok(conn) => {
+                    conn_state_accept
+                        .connection_count
+                        .fetch_add(1, Ordering::SeqCst);
+                    let count = conn_state_accept.connection_count.load(Ordering::SeqCst);
+                    tracing::info!("Client connected (active connections: {count})");
+
+                    // Fresh channels for this connection
+                    let (resp_tx, resp_rx) = mpsc::channel::<RpcResponse>(256);
+                    let (notif_tx, notif_rx) = mpsc::channel::<RpcNotification>(256);
+
+                    // Update shared state with new connection's channels
+                    *conn_state_accept.response_tx.lock().unwrap() = Some(resp_tx);
+                    *conn_state_accept.notification_tx.lock().unwrap() = Some(notif_tx);
+
+                    // Spawn connection handler that tracks disconnect
+                    let state = Arc::clone(&conn_state_accept);
+                    tokio::spawn(handle_connection(
+                        conn,
+                        request_tx.clone(),
+                        resp_rx,
+                        notif_rx,
+                        state,
+                    ));
+                }
+                Err(e) => {
+                    tracing::error!("Accept error: {e}");
+                }
+            }
+        }
+    });
+
+    // In test mode: run for 3 minutes then shutdown
+    if test_mode {
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_secs(180)).await;
+            tracing::info!("Test mode: 3 minutes elapsed, shutting down");
+            let _ = event_tx_for_shutdown.send(InnerEvent::KillSignal).await;
+        });
+    }
 }
 
 /// Handle a single client connection, tracking its lifecycle

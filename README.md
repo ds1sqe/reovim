@@ -119,14 +119,15 @@ reovim --server --terminal
 A CLI client tool is available for interacting with the server:
 
 ```bash
-# Connect to default server (127.0.0.1:12521)
-reo-cli mode                    # Get current mode
-reo-cli keys 'iHello<Esc>'      # Inject key sequence
-reo-cli cursor                  # Get cursor position
+# List running servers
+reo-cli list
+
+# Inject keys and show status (screen + mode + cursor)
+reo-cli keys 'iHello<Esc>'
 
 # Connect to custom address
-reo-cli --tcp localhost:9000 mode
-reo-cli --socket /tmp/reovim.sock mode
+reo-cli --tcp localhost:9000 keys 'j'
+reo-cli --socket /tmp/reovim.sock keys 'j'
 
 # Interactive REPL
 reo-cli --interactive

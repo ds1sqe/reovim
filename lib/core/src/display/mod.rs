@@ -127,10 +127,8 @@ mod tests {
         let style = crate::highlight::Style::new();
 
         // Register a component
-        registry.register_interactor(
-            ComponentId::EDITOR,
-            DisplayInfo::new(" EDITOR ", "󰈸 ", style),
-        );
+        registry
+            .register_interactor(ComponentId::EDITOR, DisplayInfo::new(" EDITOR ", "󰈸 ", style));
 
         // Check that we can retrieve it
         let mode = ModeState::normal();

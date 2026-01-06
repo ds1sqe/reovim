@@ -7,6 +7,7 @@ use {
     std::io::{self, IsTerminal},
 };
 
+mod dirs;
 mod logging;
 mod plugins;
 mod server;
