@@ -14,7 +14,8 @@ use std::{
 
 use tokio::sync::mpsc;
 
-use super::{DynEvent, Event, EventResult};
+use super::{core_events::RequestModeChange, DynEvent, Event, EventResult};
+use crate::modd::{ComponentId, EditMode, ModeState, SubMode};
 
 /// Handler function type - receives event and context, returns result
 type EventHandlerFn = Box<dyn Fn(&DynEvent, &mut HandlerContext) -> EventResult + Send + Sync>;
@@ -73,6 +74,38 @@ impl<'a> HandlerContext<'a> {
     #[must_use]
     pub fn quit_requested(&self) -> bool {
         self.quit_requested
+    }
+
+    // === Mode change helpers ===
+
+    /// Enter interactor mode: sets both focus and SubMode to component_id
+    ///
+    /// This is the common pattern for plugins that want to receive text input.
+    /// It sets the interactor_id to the component and also sets SubMode::Interactor
+    /// to route input events to the plugin.
+    pub fn enter_interactor_mode(&self, component_id: ComponentId) {
+        let mode = ModeState::with_interactor_id_sub_mode(
+            component_id,
+            EditMode::Normal,
+            SubMode::Interactor(component_id),
+        );
+        self.emit(RequestModeChange { mode });
+    }
+
+    /// Return to normal editor mode
+    ///
+    /// Resets to standard editor Normal mode with no sub-mode.
+    pub fn exit_to_normal(&self) {
+        self.emit(RequestModeChange {
+            mode: ModeState::normal(),
+        });
+    }
+
+    /// Set arbitrary mode state
+    ///
+    /// For edge cases that don't fit the standard patterns.
+    pub fn set_mode(&self, mode: ModeState) {
+        self.emit(RequestModeChange { mode });
     }
 }
 

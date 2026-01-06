@@ -17,11 +17,11 @@ use {
         event_bus::{
             EventBus, EventResult,
             core_events::{
-                BufferClosed, MotionContext, PluginTextInput, RequestCursorMove, RequestModeChange,
+                BufferClosed, MotionContext, PluginTextInput, RequestCursorMove,
             },
         },
         keys,
-        modd::{ComponentId, EditMode, ModeState, SubMode},
+        modd::ComponentId,
         plugin::{Plugin, PluginContext, PluginId, PluginStateRegistry},
         subscribe_state, subscribe_state_conditional,
     },
@@ -277,12 +277,7 @@ impl Plugin for RangeFinderPlugin {
             });
 
             // Enter Interactor mode to receive character input
-            let mode = ModeState::with_interactor_id_sub_mode(
-                JUMP_COMPONENT_ID,
-                EditMode::Normal,
-                SubMode::Interactor(JUMP_COMPONENT_ID),
-            );
-            ctx.emit(RequestModeChange { mode });
+            ctx.enter_interactor_mode(JUMP_COMPONENT_ID);
             ctx.request_render();
 
             tracing::debug!(
@@ -311,12 +306,7 @@ impl Plugin for RangeFinderPlugin {
             });
 
             // Enter Interactor mode to receive character input
-            let mode = ModeState::with_interactor_id_sub_mode(
-                JUMP_COMPONENT_ID,
-                EditMode::Normal,
-                SubMode::Interactor(JUMP_COMPONENT_ID),
-            );
-            ctx.emit(RequestModeChange { mode });
+            ctx.enter_interactor_mode(JUMP_COMPONENT_ID);
             ctx.request_render();
 
             tracing::debug!(
@@ -385,8 +375,7 @@ impl Plugin for RangeFinderPlugin {
                     }
 
                     // Return to Normal mode after jump
-                    let mode = ModeState::normal();
-                    ctx.emit(RequestModeChange { mode });
+                    ctx.exit_to_normal();
 
                     // Reset jump state
                     jump_state.with_mut(jump::state::JumpState::reset);
@@ -399,8 +388,7 @@ impl Plugin for RangeFinderPlugin {
 
                     // Reset state and exit Interactor mode
                     jump_state.with_mut(jump::state::JumpState::reset);
-                    let mode = ModeState::normal();
-                    ctx.emit(RequestModeChange { mode });
+                    ctx.exit_to_normal();
                     ctx.request_render();
 
                     EventResult::Handled
@@ -415,8 +403,7 @@ impl Plugin for RangeFinderPlugin {
             jump_state.with_mut(jump::state::JumpState::reset);
 
             // Exit Interactor mode
-            let mode = ModeState::normal();
-            ctx.emit(RequestModeChange { mode });
+            ctx.exit_to_normal();
             ctx.request_render();
 
             tracing::debug!("Jump explicitly canceled");

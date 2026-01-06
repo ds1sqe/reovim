@@ -862,7 +862,7 @@ impl Plugin for MicroscopePlugin {
                     PluginBackspace, PluginTextInput, RequestFocusChange, RequestModeChange,
                 },
             },
-            modd::{EditMode, ModeState, SubMode},
+            modd::{EditMode, ModeState},
         };
 
         // Helper function to load preview for the currently selected item
@@ -1238,12 +1238,7 @@ impl Plugin for MicroscopePlugin {
             });
 
             // Enter Interactor sub-mode so characters route to PluginTextInput handler
-            let mode = ModeState::with_interactor_id_sub_mode(
-                COMPONENT_ID,
-                EditMode::Normal,
-                SubMode::Interactor(COMPONENT_ID),
-            );
-            ctx.emit(RequestModeChange { mode });
+            ctx.enter_interactor_mode(COMPONENT_ID);
 
             ctx.request_render();
             EventResult::Handled
