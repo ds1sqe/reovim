@@ -278,10 +278,50 @@ impl ModeState {
         self.interactor_id.0 == "editor"
     }
 
+    /// Check if the mode accepts character input, using registry for interactor lookup
+    ///
+    /// This method queries the [`InteractorRegistry`] to determine whether an
+    /// interactor accepts character input, avoiding hardcoded component checks.
+    ///
+    /// # Arguments
+    ///
+    /// * `registry` - The interactor registry to query for input behavior
+    ///
+    /// # Returns
+    ///
+    /// * `true` if in Insert mode, Command mode, or an Interactor that accepts input
+    /// * `false` for Normal, Visual, `OperatorPending`, or Interactors using keymap
+    ///
+    /// [`InteractorRegistry`]: crate::interactor::InteractorRegistry
+    #[must_use]
+    pub fn accepts_char_input_with(
+        &self,
+        registry: &crate::interactor::InteractorRegistry,
+    ) -> bool {
+        // Insert mode or Command mode always accept char input
+        if self.is_insert() || self.is_command() {
+            return true;
+        }
+
+        // For Interactor sub-modes, check the registry
+        if let SubMode::Interactor(id) = &self.sub_mode {
+            return registry.accepts_char_input(id);
+        }
+
+        // Other sub-modes (None, OperatorPending) don't accept char input
+        false
+    }
+
     /// Check if the mode accepts character input (insert mode or command mode)
     ///
     /// Note: Window mode (`SubMode::Interactor(ComponentId::WINDOW)`) does NOT accept char input -
     /// it uses the keymap for commands like h/j/k/l to navigate windows.
+    ///
+    /// **Deprecated**: Use [`accepts_char_input_with()`] with an [`InteractorRegistry`]
+    /// for accurate results. This method uses hardcoded fallbacks for backwards compatibility.
+    ///
+    /// [`accepts_char_input_with()`]: ModeState::accepts_char_input_with
+    /// [`InteractorRegistry`]: crate::interactor::InteractorRegistry
     #[must_use]
     pub fn accepts_char_input(&self) -> bool {
         // Insert mode or Command mode accept char input

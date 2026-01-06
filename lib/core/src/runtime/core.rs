@@ -23,6 +23,7 @@ use {
         },
         highlight::{ColorMode, HighlightStore, Theme},
         indent::IndentAnalyzer,
+        interactor::InteractorRegistry,
         jumplist::JumpList,
         modd::ModeState,
         modifier::{ModifierContext, ModifierRegistry},
@@ -104,6 +105,8 @@ pub struct Runtime {
     pub(crate) idle_shimmer_active: bool,
     /// Landing page animation state (when showing landing page)
     pub(crate) landing_state: Option<crate::landing::LandingState>,
+    /// Interactor registry for input behavior configuration
+    pub interactor_registry: Arc<InteractorRegistry>,
 }
 
 impl Default for Runtime {
@@ -192,7 +195,11 @@ impl Runtime {
             display_registry,
             render_stages,
             option_specs,
+            mut interactor_registry,
         ) = ctx.into_parts();
+
+        // Register built-in interactor configs (e.g., Window mode doesn't accept char input)
+        interactor_registry.register_builtins();
 
         // Register build-phase options (backward compatibility with ctx.option())
         for spec in option_specs {
@@ -264,6 +271,7 @@ impl Runtime {
             last_input_at: std::time::Instant::now(),
             idle_shimmer_active: false,
             landing_state: None,
+            interactor_registry: Arc::new(interactor_registry),
         };
 
         // Make keymap and command registry accessible to plugins (e.g., which-key)

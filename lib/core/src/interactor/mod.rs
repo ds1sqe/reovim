@@ -10,6 +10,17 @@
 //! the currently focused component. Built-in components (`Editor`, `CommandLine`)
 //! are handled directly by the runtime. Plugin components receive input via
 //! `PluginTextInput` and `PluginBackspace` events.
+//!
+//! ## Interactor Configuration
+//!
+//! Interactors can register their input behavior via [`InteractorConfig`] and
+//! [`InteractorRegistry`]. This allows the mode system to determine whether
+//! an interactor accepts character input without hardcoding component-specific
+//! logic.
+
+mod config;
+
+pub use config::{InteractorConfig, InteractorRegistry};
 
 #[cfg(test)]
 mod tests {
