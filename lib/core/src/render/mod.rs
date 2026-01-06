@@ -35,6 +35,10 @@ pub struct RenderData {
     /// Populated by plugins via `RenderStage` transforms
     pub signs: Vec<LineSign>,
 
+    /// Per-line virtual text for end-of-line display (same length as lines)
+    /// Populated by plugins via `RenderStage` transforms (e.g., LSP diagnostics)
+    pub virtual_texts: Vec<Option<VirtualTextEntry>>,
+
     /// Metadata
     pub buffer_id: usize,
     pub window_id: usize,
@@ -98,6 +102,7 @@ impl RenderData {
             highlights,
             decorations,
             signs: vec![None; line_count],
+            virtual_texts: vec![None; line_count],
             buffer_id: buffer.id,
             window_id: window.id,
             window_bounds: Bounds {
@@ -169,6 +174,22 @@ pub struct Bounds {
     pub height: u16,
 }
 
+/// Virtual text entry for end-of-line display
+///
+/// Used to display inline information after line content, such as:
+/// - LSP diagnostic messages
+/// - Type hints
+/// - Git blame
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VirtualTextEntry {
+    /// The text to display
+    pub text: String,
+    /// Style for rendering
+    pub style: Style,
+    /// Priority (higher wins when multiple on same line)
+    pub priority: u32,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -217,5 +238,102 @@ mod tests {
         assert!(render_data.signs[0].is_some());
         assert_eq!(render_data.signs[0].as_ref().unwrap().icon, "●");
         assert_eq!(render_data.signs[0].as_ref().unwrap().priority, 304);
+    }
+
+    #[test]
+    fn test_virtual_text_entry_creation() {
+        let vt = VirtualTextEntry {
+            text: "● error message".to_string(),
+            style: Style::new(),
+            priority: 404,
+        };
+
+        assert_eq!(vt.text, "● error message");
+        assert_eq!(vt.priority, 404);
+    }
+
+    #[test]
+    fn test_render_data_virtual_texts_initialization() {
+        use crate::{buffer::Buffer, modd::ModeState};
+
+        let buffer = Buffer::empty(0);
+        let mode = ModeState::default();
+        let window = crate::screen::window::tests::create_test_window(10);
+
+        let render_data = RenderData::from_buffer(&window, &buffer, &mode);
+
+        // Virtual texts should be initialized as empty vector with correct length
+        assert_eq!(render_data.virtual_texts.len(), buffer.contents.len());
+        assert!(render_data.virtual_texts.iter().all(Option::is_none));
+    }
+
+    #[test]
+    fn test_render_data_virtual_texts_can_be_modified() {
+        use crate::{
+            buffer::{Buffer, Line},
+            highlight::Style,
+            modd::ModeState,
+        };
+
+        let mut buffer = Buffer::empty(0);
+        buffer.contents.push(Line::from("line 1"));
+        buffer.contents.push(Line::from("line 2"));
+
+        let mode = ModeState::default();
+        let window = crate::screen::window::tests::create_test_window(10);
+
+        let mut render_data = RenderData::from_buffer(&window, &buffer, &mode);
+
+        // Add virtual text to line 0
+        render_data.virtual_texts[0] = Some(VirtualTextEntry {
+            text: "◐ warning message".to_string(),
+            style: Style::new(),
+            priority: 403,
+        });
+
+        // Verify it was set
+        assert!(render_data.virtual_texts[0].is_some());
+        let vt = render_data.virtual_texts[0].as_ref().unwrap();
+        assert_eq!(vt.text, "◐ warning message");
+        assert_eq!(vt.priority, 403);
+    }
+
+    #[test]
+    fn test_virtual_text_priority_resolution() {
+        use crate::{
+            buffer::{Buffer, Line},
+            highlight::Style,
+            modd::ModeState,
+        };
+
+        let mut buffer = Buffer::empty(0);
+        buffer.contents.push(Line::from("let x = 1;"));
+
+        let mode = ModeState::default();
+        let window = crate::screen::window::tests::create_test_window(10);
+
+        let mut render_data = RenderData::from_buffer(&window, &buffer, &mode);
+
+        // Add lower-priority virtual text first
+        render_data.virtual_texts[0] = Some(VirtualTextEntry {
+            text: "· hint".to_string(),
+            style: Style::new(),
+            priority: 401,
+        });
+
+        // Higher priority should replace
+        let should_replace = render_data.virtual_texts[0]
+            .as_ref()
+            .is_none_or(|existing| existing.priority < 404);
+        assert!(should_replace);
+
+        // Replace with higher priority
+        render_data.virtual_texts[0] = Some(VirtualTextEntry {
+            text: "● error".to_string(),
+            style: Style::new(),
+            priority: 404,
+        });
+
+        assert_eq!(render_data.virtual_texts[0].as_ref().unwrap().text, "● error");
     }
 }

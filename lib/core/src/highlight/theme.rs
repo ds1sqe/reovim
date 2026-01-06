@@ -258,6 +258,21 @@ pub struct LeapStyles {
     pub dimmed: Style,
 }
 
+/// Virtual text styles for inline diagnostic messages
+#[derive(Debug, Clone)]
+pub struct VirtualTextStyles {
+    /// Default virtual text style (dimmed)
+    pub default: Style,
+    /// Error diagnostic virtual text
+    pub error: Style,
+    /// Warning diagnostic virtual text
+    pub warn: Style,
+    /// Info diagnostic virtual text
+    pub info: Style,
+    /// Hint diagnostic virtual text
+    pub hint: Style,
+}
+
 /// Animation configuration
 #[derive(Debug, Clone)]
 pub struct AnimationConfig {
@@ -300,6 +315,7 @@ pub struct Theme {
     pub cursor: CursorStyles,
     pub semantic: SemanticStyles,
     pub leap: LeapStyles,
+    pub virtual_text: VirtualTextStyles,
     pub animation: AnimationConfig,
 }
 
@@ -517,6 +533,13 @@ impl Theme {
                 label_secondary: Style::new().fg(bg_dark).bg(yellow).bold(),
                 dimmed: Style::new().dim(),
             },
+            virtual_text: VirtualTextStyles {
+                default: Style::new().fg(fg_dark).italic(),
+                error: Style::new().fg(red).italic(),
+                warn: Style::new().fg(yellow).italic(),
+                info: Style::new().fg(blue).italic(),
+                hint: Style::new().fg(fg_dark).italic(),
+            },
             animation: AnimationConfig::default(),
         }
     }
@@ -685,6 +708,13 @@ impl Theme {
                 label_primary: Style::new().fg(Color::White).bg(Color::DarkMagenta).bold(),
                 label_secondary: Style::new().fg(Color::Black).bg(Color::Yellow).bold(),
                 dimmed: Style::new().dim(),
+            },
+            virtual_text: VirtualTextStyles {
+                default: Style::new().fg(Color::Grey).italic(),
+                error: Style::new().fg(Color::DarkRed).italic(),
+                warn: Style::new().fg(Color::DarkYellow).italic(),
+                info: Style::new().fg(Color::DarkBlue).italic(),
+                hint: Style::new().fg(Color::Grey).italic(),
             },
             animation: AnimationConfig::default(),
         }
@@ -916,6 +946,13 @@ impl Theme {
                 label_primary: Style::new().fg(bg).bg(magenta).bold(),
                 label_secondary: Style::new().fg(bg).bg(orange).bold(),
                 dimmed: Style::new().dim(),
+            },
+            virtual_text: VirtualTextStyles {
+                default: Style::new().fg(fg_dark).italic(),
+                error: Style::new().fg(red).italic(),
+                warn: Style::new().fg(yellow).italic(),
+                info: Style::new().fg(blue).italic(),
+                hint: Style::new().fg(fg_dark).italic(),
             },
             animation: AnimationConfig::default(),
         }

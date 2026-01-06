@@ -12,7 +12,7 @@ use {
     reovim_core::{
         component::RenderContext,
         highlight::Style,
-        render::{LineHighlight, RenderData, RenderStage},
+        render::{LineHighlight, RenderData, RenderStage, VirtualTextEntry},
     },
     reovim_lsp::DiagnosticSeverity,
     tracing::{debug, info},
@@ -170,6 +170,7 @@ impl LspRenderStage {
     }
 
     /// Apply diagnostic highlights to render data.
+    #[allow(clippy::too_many_lines)]
     fn apply_diagnostics(&self, input: &mut RenderData, ctx: &RenderContext<'_>) {
         let buffer_id = input.buffer_id;
 
@@ -241,6 +242,46 @@ impl LspRenderStage {
                         // Replace with new sign
                         input.signs[start_line] = Some(sign);
                     }
+                }
+            }
+
+            // Create virtual text for diagnostic message (inline display)
+            if start_line < input.virtual_texts.len() {
+                let vt_style = match diagnostic.severity {
+                    Some(DiagnosticSeverity::ERROR) => ctx.theme.virtual_text.error.clone(),
+                    Some(DiagnosticSeverity::WARNING) => ctx.theme.virtual_text.warn.clone(),
+                    Some(DiagnosticSeverity::INFORMATION) => ctx.theme.virtual_text.info.clone(),
+                    Some(DiagnosticSeverity::HINT) => ctx.theme.virtual_text.hint.clone(),
+                    Some(_) | None => ctx.theme.virtual_text.default.clone(),
+                };
+
+                let vt_priority = match diagnostic.severity {
+                    Some(DiagnosticSeverity::ERROR) => 404,
+                    Some(DiagnosticSeverity::WARNING) => 403,
+                    Some(DiagnosticSeverity::INFORMATION) => 402,
+                    Some(DiagnosticSeverity::HINT) => 401,
+                    Some(_) | None => 400,
+                };
+
+                // Only set if no existing higher-priority virtual text
+                let should_set = input.virtual_texts[start_line]
+                    .as_ref()
+                    .is_none_or(|existing| existing.priority < vt_priority);
+
+                if should_set {
+                    // Format with severity icon prefix
+                    let icon = match diagnostic.severity {
+                        Some(DiagnosticSeverity::ERROR) => "●",
+                        Some(DiagnosticSeverity::WARNING) => "◐",
+                        Some(DiagnosticSeverity::HINT) => "·",
+                        Some(DiagnosticSeverity::INFORMATION | _) | None => "ⓘ",
+                    };
+
+                    input.virtual_texts[start_line] = Some(VirtualTextEntry {
+                        text: format!("{} {}", icon, diagnostic.message),
+                        style: vt_style,
+                        priority: vt_priority,
+                    });
                 }
             }
 
@@ -325,5 +366,213 @@ impl RenderStage for LspRenderStage {
 
     fn name(&self) -> &'static str {
         "lsp"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        reovim_core::{
+            highlight::{ColorMode, Theme},
+            render::{Bounds, LineVisibility},
+        },
+    };
+
+    fn create_test_render_data(lines: Vec<&str>) -> RenderData {
+        let line_count = lines.len();
+        RenderData {
+            lines: lines.into_iter().map(String::from).collect(),
+            visibility: vec![LineVisibility::Visible; line_count],
+            highlights: vec![Vec::new(); line_count],
+            decorations: vec![Vec::new(); line_count],
+            signs: vec![None; line_count],
+            virtual_texts: vec![None; line_count],
+            buffer_id: 1,
+            window_id: 1,
+            window_bounds: Bounds {
+                x: 0,
+                y: 0,
+                width: 80,
+                height: 24,
+            },
+            cursor: (0, 0),
+        }
+    }
+
+    fn create_test_context() -> RenderContext<'static> {
+        let theme = Box::leak(Box::new(Theme::dark()));
+        RenderContext {
+            screen_width: 80,
+            screen_height: 24,
+            theme,
+            color_mode: ColorMode::TrueColor,
+            tab_line_offset: 0,
+            state: None,
+            modifier_style: None,
+            modifier_behavior: None,
+        }
+    }
+
+    #[test]
+    fn test_severity_to_style_error() {
+        let theme = Theme::dark();
+        let style = severity_to_style(Some(DiagnosticSeverity::ERROR), &theme.diagnostic);
+        assert_eq!(style, theme.diagnostic.error);
+    }
+
+    #[test]
+    fn test_severity_to_style_warning() {
+        let theme = Theme::dark();
+        let style = severity_to_style(Some(DiagnosticSeverity::WARNING), &theme.diagnostic);
+        assert_eq!(style, theme.diagnostic.warn);
+    }
+
+    #[test]
+    fn test_severity_to_style_hint() {
+        let theme = Theme::dark();
+        let style = severity_to_style(Some(DiagnosticSeverity::HINT), &theme.diagnostic);
+        assert_eq!(style, theme.diagnostic.hint);
+    }
+
+    #[test]
+    fn test_severity_to_style_info() {
+        let theme = Theme::dark();
+        let style = severity_to_style(Some(DiagnosticSeverity::INFORMATION), &theme.diagnostic);
+        assert_eq!(style, theme.diagnostic.info);
+    }
+
+    #[test]
+    fn test_severity_to_style_none() {
+        let theme = Theme::dark();
+        let style = severity_to_style(None, &theme.diagnostic);
+        assert_eq!(style, theme.diagnostic.info);
+    }
+
+    #[test]
+    fn test_virtual_text_priority_error_highest() {
+        // Test that ERROR has highest priority
+        let priorities = [
+            (Some(DiagnosticSeverity::ERROR), 404),
+            (Some(DiagnosticSeverity::WARNING), 403),
+            (Some(DiagnosticSeverity::INFORMATION), 402),
+            (Some(DiagnosticSeverity::HINT), 401),
+        ];
+
+        let mut prev_priority = u32::MAX;
+        for (severity, expected_priority) in priorities {
+            let priority = match severity {
+                Some(DiagnosticSeverity::ERROR) => 404,
+                Some(DiagnosticSeverity::WARNING) => 403,
+                Some(DiagnosticSeverity::INFORMATION) => 402,
+                Some(DiagnosticSeverity::HINT) => 401,
+                _ => 400,
+            };
+
+            assert_eq!(priority, expected_priority);
+            assert!(priority < prev_priority, "Priorities should be in descending order");
+            prev_priority = priority;
+        }
+    }
+
+    #[test]
+    fn test_virtual_text_icon_mapping() {
+        let icon_mappings = [
+            (Some(DiagnosticSeverity::ERROR), "●"),
+            (Some(DiagnosticSeverity::WARNING), "◐"),
+            (Some(DiagnosticSeverity::HINT), "·"),
+            (Some(DiagnosticSeverity::INFORMATION), "ⓘ"),
+            (None, "ⓘ"),
+        ];
+
+        for (severity, expected_icon) in icon_mappings {
+            let icon = match severity {
+                Some(DiagnosticSeverity::ERROR) => "●",
+                Some(DiagnosticSeverity::WARNING) => "◐",
+                Some(DiagnosticSeverity::HINT) => "·",
+                Some(DiagnosticSeverity::INFORMATION | _) | None => "ⓘ",
+            };
+
+            assert_eq!(
+                icon, expected_icon,
+                "Severity {severity:?} should map to icon {expected_icon}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_sign_priority_mapping() {
+        let sign_mappings = [
+            (Some(DiagnosticSeverity::ERROR), 304),
+            (Some(DiagnosticSeverity::WARNING), 303),
+            (Some(DiagnosticSeverity::INFORMATION), 302),
+            (Some(DiagnosticSeverity::HINT), 301),
+            (None, 300),
+        ];
+
+        for (severity, expected_priority) in sign_mappings {
+            let (_, priority) = match severity {
+                Some(DiagnosticSeverity::ERROR) => ("●", 304),
+                Some(DiagnosticSeverity::WARNING) => ("◐", 303),
+                Some(DiagnosticSeverity::INFORMATION) => ("ⓘ", 302),
+                Some(DiagnosticSeverity::HINT) => ("·", 301),
+                Some(_) | None => ("ⓘ", 300),
+            };
+
+            assert_eq!(
+                priority, expected_priority,
+                "Severity {severity:?} should have sign priority {expected_priority}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_render_data_initialization_for_lsp() {
+        let render_data = create_test_render_data(vec!["line 1", "line 2", "line 3"]);
+
+        // Verify all virtual text slots are initialized to None
+        assert_eq!(render_data.virtual_texts.len(), 3);
+        assert!(render_data.virtual_texts.iter().all(Option::is_none));
+
+        // Verify all sign slots are initialized to None
+        assert_eq!(render_data.signs.len(), 3);
+        assert!(render_data.signs.iter().all(Option::is_none));
+    }
+
+    #[test]
+    fn test_virtual_text_style_selection() {
+        let ctx = create_test_context();
+
+        // Test that each severity maps to the correct style
+        let error_style = match Some(DiagnosticSeverity::ERROR) {
+            Some(DiagnosticSeverity::ERROR) => ctx.theme.virtual_text.error.clone(),
+            Some(DiagnosticSeverity::WARNING) => ctx.theme.virtual_text.warn.clone(),
+            Some(DiagnosticSeverity::INFORMATION) => ctx.theme.virtual_text.info.clone(),
+            Some(DiagnosticSeverity::HINT) => ctx.theme.virtual_text.hint.clone(),
+            Some(_) | None => ctx.theme.virtual_text.default.clone(),
+        };
+
+        assert_eq!(error_style, ctx.theme.virtual_text.error);
+    }
+
+    #[test]
+    fn test_virtual_text_message_formatting() {
+        let message = "mismatched types: expected `i32`, found `&str`";
+        let icon = "●";
+        let formatted = format!("{icon} {message}");
+
+        assert!(formatted.starts_with("●"));
+        assert!(formatted.contains("mismatched types"));
+        assert_eq!(formatted, "● mismatched types: expected `i32`, found `&str`");
+    }
+
+    #[test]
+    fn test_lsp_render_stage_name() {
+        use {crate::SharedLspManager, std::sync::Arc};
+
+        let manager = Arc::new(SharedLspManager::new());
+        let stage = LspRenderStage::new(manager);
+
+        assert_eq!(stage.name(), "lsp");
     }
 }

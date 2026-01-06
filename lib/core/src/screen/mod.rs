@@ -804,6 +804,54 @@ impl Screen {
                         col += 1;
                         char_idx += 1;
                     }
+
+                    // Render virtual text after line content (if present)
+                    if let Some(vt) = render_data
+                        .virtual_texts
+                        .get(line_idx)
+                        .and_then(|v| v.as_ref())
+                    {
+                        let window_right = window.anchor.x + window.width;
+                        let remaining = window_right.saturating_sub(col) as usize;
+
+                        // Need at least 4 chars: "  X..." (separator + 1 char + ellipsis)
+                        if remaining > 4 {
+                            // Render separator (2 spaces)
+                            frame_buffer.put_char(col, screen_y, ' ', &vt.style);
+                            frame_buffer.put_char(col + 1, screen_y, ' ', &vt.style);
+                            col += 2;
+
+                            // Calculate max chars for virtual text
+                            let max_chars = remaining.saturating_sub(2);
+                            let vt_chars: Vec<char> = vt.text.chars().collect();
+
+                            // Truncate with ellipsis if needed
+                            let (text_to_render, needs_ellipsis) = if vt_chars.len() > max_chars {
+                                (&vt_chars[..max_chars.saturating_sub(3)], true)
+                            } else {
+                                (&vt_chars[..], false)
+                            };
+
+                            // Render virtual text characters
+                            for &ch in text_to_render {
+                                if col < window_right {
+                                    frame_buffer.put_char(col, screen_y, ch, &vt.style);
+                                    col += 1;
+                                }
+                            }
+
+                            // Render ellipsis if truncated
+                            if needs_ellipsis {
+                                for ch in "...".chars() {
+                                    if col < window_right {
+                                        frame_buffer.put_char(col, screen_y, ch, &vt.style);
+                                        col += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     display_row += 1;
                 }
             }

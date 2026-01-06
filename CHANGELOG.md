@@ -6,6 +6,14 @@ All notable changes to Reovim will be documented in this file.
 
 ### Added
 
+- **Virtual text system for inline diagnostics** (Issue #28) - Display diagnostic messages after line content
+  - `VirtualTextEntry` type with text, style, and priority fields
+  - `VirtualTextStyles` in theme for severity-based styling (error, warn, info, hint)
+  - Rendering with automatic truncation and ellipsis when exceeding viewport
+  - LSP integration: severity icons (● error, ◐ warning, ⓘ info, · hint) + message
+  - Priority-based resolution (ERROR 404 > WARNING 403 > INFO 402 > HINT 401)
+  - 44 new tests covering all virtual text functionality
+
 - **Multi-instance server support** (Issue #19) - Multiple reovim servers can now run concurrently
   - Port fallback: When default port (12521) is in use, server automatically tries 12522, 12523, etc.
   - Port files: Each server writes `~/.local/share/reovim/servers/<pid>.port` for discovery

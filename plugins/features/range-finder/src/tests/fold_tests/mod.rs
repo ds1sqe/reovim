@@ -151,6 +151,7 @@ fn test_fold_render_stage_no_folds() {
         highlights: vec![Vec::new(); 3],
         decorations: vec![Vec::new(); 3],
         signs: vec![None; 3],
+        virtual_texts: vec![None; 3],
         buffer_id: 1,
         window_id: 0,
         window_bounds: reovim_core::render::Bounds {
@@ -208,6 +209,7 @@ fn test_fold_render_stage_with_collapsed_fold() {
         highlights: vec![Vec::new(); 5],
         decorations: vec![Vec::new(); 5],
         signs: vec![None; 5],
+        virtual_texts: vec![None; 5],
         buffer_id: 1,
         window_id: 0,
         window_bounds: reovim_core::render::Bounds {
@@ -274,6 +276,7 @@ fn test_fold_render_stage_multiple_folds() {
         highlights: vec![Vec::new(); 9],
         decorations: vec![Vec::new(); 9],
         signs: vec![None; 9],
+        virtual_texts: vec![None; 9],
         buffer_id: 2,
         window_id: 0,
         window_bounds: reovim_core::render::Bounds {
