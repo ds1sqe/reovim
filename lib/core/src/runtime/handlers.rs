@@ -249,7 +249,7 @@ impl Runtime {
                         }
                         ExCommand::Edit { filename } => {
                             self.open_file(&filename);
-                            self.screen.set_editor_buffer(self.active_buffer_id);
+                            self.screen.set_editor_buffer(self.active_buffer_id());
                         }
                         // Window management
                         ExCommand::Split { filename } => {
@@ -366,7 +366,7 @@ impl Runtime {
         // Use active_buffer_id instead of context.buffer_id since the dispatcher
         // doesn't track buffer changes. In a single-window editor, active_buffer_id
         // is the correct buffer to operate on.
-        let buffer_id = self.active_buffer_id;
+        let buffer_id = self.active_buffer_id();
 
         // Get the buffer and execute the command
         if let Some(buffer) = self.buffers.get_mut(&buffer_id) {
@@ -488,7 +488,7 @@ impl Runtime {
 
                             // Handle paste from specified register
                             // Use active_buffer_id, not context.buffer_id (which is hardcoded to 0 in dispatcher)
-                            let paste_buffer_id = self.active_buffer_id;
+                            let paste_buffer_id = self.active_buffer_id();
                             if let Some(content) = self.registers.get_by_name(register)
                                 && let Some(buf) = self.buffers.get_mut(&paste_buffer_id)
                             {
@@ -572,7 +572,7 @@ impl Runtime {
                             );
 
                             // Get current position to skip if jump returns the same position
-                            let current_buf_id = self.active_buffer_id;
+                            let current_buf_id = self.active_buffer_id();
                             let current_pos = self.buffers.get(&current_buf_id).map(|b| b.cur);
 
                             // Try to jump older, skipping current position if needed
@@ -610,7 +610,7 @@ impl Runtime {
                         }
                         DeferredAction::JumpNewer => {
                             // Get current position to skip if jump returns the same position
-                            let current_buf_id = self.active_buffer_id;
+                            let current_buf_id = self.active_buffer_id();
                             let current_pos = self.buffers.get(&current_buf_id).map(|b| b.cur);
 
                             // Try to jump newer, skipping current position if needed
@@ -717,7 +717,7 @@ impl Runtime {
     /// Handle operator + motion action (d/y/c + motion)
     #[allow(clippy::too_many_lines)]
     pub(crate) fn handle_operator_motion(&mut self, action: &OperatorMotionAction) {
-        let buffer_id = self.active_buffer_id;
+        let buffer_id = self.active_buffer_id();
         let mut text_modified = false;
 
         if let Some(buffer) = self.buffers.get_mut(&buffer_id) {
@@ -1066,8 +1066,8 @@ impl Runtime {
         }
 
         // Get the current buffer ID (either the newly opened file or existing buffer)
-        // Use self.active_buffer_id directly since open_file updates it
-        let buffer_id = self.active_buffer_id;
+        // Use self.active_buffer_id() since open_file updates it via screen
+        let buffer_id = self.active_buffer_id();
 
         // CRITICAL: Save the buffer's live cursor to the current window BEFORE splitting.
         // split_window() reads window.cursor to copy to the new window, so we must
@@ -1161,9 +1161,6 @@ impl Runtime {
                 start.elapsed()
             );
 
-            // Update active_buffer_id to match the new window's buffer
-            self.active_buffer_id = new_buffer_id;
-
             // Load window's cursor into buffer
             if let Some(buffer) = self.buffers.get_mut(&new_buffer_id) {
                 buffer.cur = window_cursor;
@@ -1188,8 +1185,8 @@ impl Runtime {
         }
 
         // Get the current buffer ID
-        // Use self.active_buffer_id directly since open_file updates it
-        let buffer_id = self.active_buffer_id;
+        // Use self.active_buffer_id() since open_file updates it via screen
+        let buffer_id = self.active_buffer_id();
 
         let tab_id = self.screen.new_tab(buffer_id);
         tracing::info!(tab_id = tab_id, buffer_id = buffer_id, "New tab created");
@@ -1234,12 +1231,12 @@ impl Runtime {
             }
             BufferAction::Delete { force: _ } => {
                 // TODO: Check modified state if !force
-                let buffer_id = self.active_buffer_id;
+                let buffer_id = self.active_buffer_id();
                 self.close_buffer(buffer_id);
                 // Update window to show the new active buffer
                 if let Some(window_id) = self.screen.active_window_id() {
                     self.screen
-                        .set_window_buffer(window_id, self.active_buffer_id);
+                        .set_window_buffer(window_id, self.active_buffer_id());
                 }
             }
         }
@@ -1258,7 +1255,7 @@ impl Runtime {
         match action {
             FileAction::Open { path } => {
                 self.open_file(path);
-                self.screen.set_editor_buffer(self.active_buffer_id);
+                self.screen.set_editor_buffer(self.active_buffer_id());
                 // Switch focus to editor if a plugin has focus
                 if self.screen.has_plugin_focus() {
                     self.screen.focus_editor();

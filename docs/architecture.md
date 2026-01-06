@@ -213,8 +213,8 @@ The central event loop that owns all editor state:
 pub struct Runtime {
     // Buffer management
     pub buffers: BTreeMap<usize, Buffer>,
-    pub active_buffer_id: usize,
-    pub next_buffer_id: usize,
+    next_buffer_id: usize,
+    // Note: active_buffer_id is derived from screen.active_buffer_id()
 
     // Display
     pub screen: Screen,

@@ -13,6 +13,12 @@ All notable changes to Reovim will be documented in this file.
   - Provides compile-time safety: no more missing match arms causing flaky tests
   - Fixed bug: `enter_visual_line_mode` was missing from old implementation
 
+- **Unified active buffer tracking** (Issue #47) - Removed redundant `active_buffer_id` field from Runtime
+  - Screen is now the single source of truth for active buffer ID
+  - `Runtime::active_buffer_id()` method derives value from `Screen::active_buffer_id()`
+  - Eliminates dual tracking and manual synchronization between Runtime and Screen
+  - Simplifies buffer switching, file opening, and window navigation code
+
 ### Added
 
 - **Metadata-driven interactor input behavior** (Issue #46) - Refactored `accepts_char_input()` to use registry instead of hardcoded checks
