@@ -4,7 +4,7 @@
 //! need to react to. They use low priority numbers (0-50) to ensure core
 //! handlers run before plugin handlers.
 
-use super::Event;
+use {super::Event, crate::screen::window::SignColumnMode};
 
 /// Priority constants for core events
 pub mod priority {
@@ -474,8 +474,8 @@ impl Event for RequestSetIndentGuide {
 /// Emitted by plugins when the signcolumn option changes.
 #[derive(Debug, Clone, Copy)]
 pub struct RequestSetSignColumn {
-    /// Sign column width (None = disabled, Some(width) = enabled)
-    pub width: Option<u16>,
+    /// Sign column display mode
+    pub mode: SignColumnMode,
 }
 
 impl Event for RequestSetSignColumn {

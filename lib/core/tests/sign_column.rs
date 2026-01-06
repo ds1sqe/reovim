@@ -1,24 +1,50 @@
 //! Integration tests for sign column rendering
 
-use reovim_core::{highlight::Style, render::RenderData, sign::Sign};
+use reovim_core::{
+    highlight::Style, render::RenderData, screen::window::SignColumnMode, sign::Sign,
+};
 
 #[test]
-fn test_sign_column_width_configuration() {
+fn test_sign_column_mode_configuration() {
     let mut window = common::create_test_window();
 
-    // Default should be enabled with width 2
-    assert_eq!(window.sign_column_width, Some(2));
+    // Default should be Yes(2) mode (always show with width 2)
+    assert_eq!(window.sign_column_mode, SignColumnMode::Yes(2));
+    assert_eq!(window.sign_column_mode.effective_width(true), 2);
+    assert_eq!(window.sign_column_mode.effective_width(false), 2);
 
-    // Can be disabled
-    window.sign_column_width = None;
-    assert!(window.sign_column_width.is_none());
+    // Can be set to No (disabled)
+    window.sign_column_mode = SignColumnMode::No;
+    assert_eq!(window.sign_column_mode, SignColumnMode::No);
+    assert_eq!(window.sign_column_mode.effective_width(true), 0);
+    assert_eq!(window.sign_column_mode.effective_width(false), 0);
 
-    // Can be set to different widths
-    window.sign_column_width = Some(1);
-    assert_eq!(window.sign_column_width, Some(1));
+    // Can be set to Yes with different widths
+    window.sign_column_mode = SignColumnMode::Yes(1);
+    assert_eq!(window.sign_column_mode.effective_width(true), 1);
 
-    window.sign_column_width = Some(3);
-    assert_eq!(window.sign_column_width, Some(3));
+    window.sign_column_mode = SignColumnMode::Yes(3);
+    assert_eq!(window.sign_column_mode.effective_width(true), 3);
+}
+
+#[test]
+fn test_sign_column_auto_mode() {
+    let mut window = common::create_test_window();
+
+    // Auto mode: width depends on whether signs exist
+    window.sign_column_mode = SignColumnMode::Auto;
+    assert_eq!(window.sign_column_mode.effective_width(false), 0);
+    assert_eq!(window.sign_column_mode.effective_width(true), 2);
+}
+
+#[test]
+fn test_sign_column_number_mode() {
+    let mut window = common::create_test_window();
+
+    // Number mode: signs displayed in line number column
+    window.sign_column_mode = SignColumnMode::Number;
+    assert_eq!(window.sign_column_mode.effective_width(true), 0);
+    assert_eq!(window.sign_column_mode.effective_width(false), 0);
 }
 
 #[test]
@@ -145,7 +171,7 @@ mod common {
         content::WindowContentSource,
         screen::{
             Position,
-            window::{Anchor, Window},
+            window::{Anchor, SignColumnMode, Window},
         },
     };
 
@@ -164,7 +190,7 @@ mod common {
             is_floating: false,
             line_number: None,
             scrollbar_enabled: false,
-            sign_column_width: Some(2),
+            sign_column_mode: SignColumnMode::Yes(2),
             cursor: Position { x: 0, y: 0 },
             desired_col: None,
             border_config: None,

@@ -249,7 +249,12 @@ impl LspRenderStage {
             }
 
             // Create virtual text for diagnostic message (inline display)
-            if start_line < input.virtual_texts.len() {
+            // Get virtual text config from manager
+            let vt_config = self.manager.with(|m| m.virtual_text_config.clone());
+
+            if vt_config.enabled && start_line < input.virtual_texts.len() {
+                use crate::manager::VirtualTextShowMode;
+
                 let vt_style = match diagnostic.severity {
                     Some(DiagnosticSeverity::ERROR) => ctx.theme.virtual_text.error.clone(),
                     Some(DiagnosticSeverity::WARNING) => ctx.theme.virtual_text.warn.clone(),
@@ -266,22 +271,62 @@ impl LspRenderStage {
                     Some(_) | None => 400,
                 };
 
-                // Only set if no existing higher-priority virtual text
-                let should_set = input.virtual_texts[start_line]
-                    .as_ref()
-                    .is_none_or(|existing| existing.priority < vt_priority);
+                // Determine if we should set virtual text based on show_mode
+                let should_set = match vt_config.show_mode {
+                    VirtualTextShowMode::First => {
+                        // First diagnostic wins
+                        input.virtual_texts[start_line].is_none()
+                    }
+                    VirtualTextShowMode::Highest => {
+                        // Higher priority wins
+                        input.virtual_texts[start_line]
+                            .as_ref()
+                            .is_none_or(|existing| existing.priority < vt_priority)
+                    }
+                    VirtualTextShowMode::All => {
+                        // Will concatenate in a separate pass - always set if higher priority
+                        true
+                    }
+                };
 
                 if should_set {
-                    // Format with severity icon prefix
-                    let icon = match diagnostic.severity {
-                        Some(DiagnosticSeverity::ERROR) => "●",
-                        Some(DiagnosticSeverity::WARNING) => "◐",
-                        Some(DiagnosticSeverity::HINT) => "·",
-                        Some(DiagnosticSeverity::INFORMATION | _) | None => "ⓘ",
+                    // Use custom prefix or default severity icon
+                    let prefix = if vt_config.prefix.is_empty() {
+                        match diagnostic.severity {
+                            Some(DiagnosticSeverity::ERROR) => "●",
+                            Some(DiagnosticSeverity::WARNING) => "◐",
+                            Some(DiagnosticSeverity::HINT) => "·",
+                            Some(DiagnosticSeverity::INFORMATION | _) | None => "ⓘ",
+                        }
+                    } else {
+                        &vt_config.prefix
                     };
 
+                    let mut text = format!("{prefix} {}", diagnostic.message);
+
+                    // Apply max_length truncation
+                    let max_len = vt_config.max_length as usize;
+                    if text.chars().count() > max_len {
+                        let truncated: String =
+                            text.chars().take(max_len.saturating_sub(3)).collect();
+                        text = format!("{truncated}...");
+                    }
+
+                    // For "all" mode, concatenate with existing
+                    if vt_config.show_mode == VirtualTextShowMode::All
+                        && let Some(existing) = &input.virtual_texts[start_line]
+                    {
+                        text = format!("{} | {text}", existing.text);
+                        // Re-truncate if needed
+                        if text.chars().count() > max_len {
+                            let truncated: String =
+                                text.chars().take(max_len.saturating_sub(3)).collect();
+                            text = format!("{truncated}...");
+                        }
+                    }
+
                     input.virtual_texts[start_line] = Some(VirtualTextEntry {
-                        text: format!("{} {}", icon, diagnostic.message),
+                        text,
                         style: vt_style,
                         priority: vt_priority,
                     });

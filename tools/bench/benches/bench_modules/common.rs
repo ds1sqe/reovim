@@ -5,7 +5,7 @@ use reovim_core::{
     content::WindowContentSource,
     screen::{
         Position,
-        window::{Anchor, LineNumber, Window},
+        window::{Anchor, LineNumber, SignColumnMode, Window},
     },
 };
 
@@ -35,7 +35,7 @@ pub fn create_window(height: u16) -> Window {
         is_active: true,
         is_floating: false,
         line_number: Some(LineNumber::default()),
-        sign_column_width: None,
+        sign_column_mode: SignColumnMode::No,
         scrollbar_enabled: false,
         cursor: Position { x: 0, y: 0 },
         desired_col: None,

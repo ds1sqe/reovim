@@ -673,6 +673,66 @@ impl Plugin for LspPlugin {
                 }
             });
         }
+
+        // Handle virtual text option changes
+        {
+            use reovim_core::option::{OptionChanged, OptionValue};
+
+            let state = Arc::clone(&state);
+            bus.subscribe::<OptionChanged, _>(100, move |event, _ctx| {
+                let name = event.name.as_str();
+
+                // Only handle virtual_text_* options
+                if !name.starts_with("virtual_text") {
+                    return EventResult::Handled;
+                }
+
+                state.with_mut::<Arc<SharedLspManager>, _, _>(|manager| {
+                    manager.with_mut(|m| {
+                        let config = &mut m.virtual_text_config;
+                        match name {
+                            "virtual_text" => {
+                                if let OptionValue::Bool(enabled) = &event.new_value {
+                                    config.enabled = *enabled;
+                                    debug!("LSP: virtual_text enabled = {}", enabled);
+                                }
+                            }
+                            "virtual_text_prefix" => {
+                                if let OptionValue::String(prefix) = &event.new_value {
+                                    config.prefix.clone_from(prefix);
+                                    debug!("LSP: virtual_text prefix = {:?}", prefix);
+                                }
+                            }
+                            "virtual_text_max_length" => {
+                                if let OptionValue::Integer(len) = &event.new_value {
+                                    #[allow(
+                                        clippy::cast_possible_truncation,
+                                        clippy::cast_sign_loss
+                                    )]
+                                    {
+                                        config.max_length = (*len).clamp(10, 200) as u16;
+                                    }
+                                    debug!("LSP: virtual_text max_length = {}", len);
+                                }
+                            }
+                            "virtual_text_show" => {
+                                if let OptionValue::String(mode) = &event.new_value {
+                                    config.show_mode = match mode.as_str() {
+                                        "highest" => manager::VirtualTextShowMode::Highest,
+                                        "all" => manager::VirtualTextShowMode::All,
+                                        _ => manager::VirtualTextShowMode::First,
+                                    };
+                                    debug!("LSP: virtual_text show_mode = {:?}", config.show_mode);
+                                }
+                            }
+                            _ => {}
+                        }
+                    });
+                });
+
+                EventResult::NeedsRender
+            });
+        }
     }
 
     #[allow(clippy::too_many_lines)]

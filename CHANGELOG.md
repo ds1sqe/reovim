@@ -16,6 +16,20 @@ All notable changes to Reovim will be documented in this file.
 
 ### Added
 
+- **Sign column and virtual text configuration** (Issue #29) - Phase 3 of diagnostics system (#21)
+  - Sign column modes: `auto`, `yes`, `no`, `number`
+    - `auto`: Show sign column only when signs are present (width 2)
+    - `yes`: Always show sign column (default, width 2)
+    - `no`: Never show sign column
+    - `number`: Display signs as background color on line numbers
+  - Virtual text options: `:set virtual_text`, `virtual_text_prefix`, `virtual_text_max_length`, `virtual_text_show`
+    - `virtual_text` (bool): Enable/disable virtual text display
+    - `virtual_text_prefix` (string): Custom prefix (empty = use severity icons)
+    - `virtual_text_max_length` (number): Maximum length before truncation (default: 80)
+    - `virtual_text_show` (string): "first", "highest", or "all" mode
+  - Settings menu integration for all new options under "Diagnostics" section
+  - 14 new tests for sign column modes and virtual text configuration
+
 - **Virtual text system for inline diagnostics** (Issue #28) - Display diagnostic messages after line content
   - `VirtualTextEntry` type with text, style, and priority fields
   - `VirtualTextStyles` in theme for severity-based styling (error, warn, info, hint)

@@ -62,11 +62,12 @@ use {
         content::WindowContentSource,
         decoration::DecorationStore,
         frame::{FrameBuffer, FrameRenderer},
-        highlight::{ColorMode, HighlightStore, Theme},
+        highlight::{ColorMode, HighlightStore, Style, Theme},
         indent::IndentAnalyzer,
         modd::{ComponentId, ModeState},
         modifier::{ModifierContext, ModifierRegistry},
         plugin::{SectionAlignment, StatuslineRenderContext},
+        sign::Sign,
         visibility::BufferVisibilitySource,
     },
     reovim_sys::{
@@ -79,7 +80,7 @@ use {
         collections::BTreeMap,
         io::{self, Write},
     },
-    window::{Anchor, LineNumber, Window},
+    window::{Anchor, LineNumber, SignColumnMode, Window},
 };
 
 pub use status_line::{StatusLineRenderer, render_command_line_to, render_status_line_to};
@@ -151,7 +152,7 @@ impl Default for Screen {
             is_floating: false,
             line_number: Some(LineNumber::default()),
             scrollbar_enabled: false,
-            sign_column_width: Some(2),
+            sign_column_mode: SignColumnMode::Yes(2),
             cursor: Position { x: 0, y: 0 },
             desired_col: None,
             border_config: None,
@@ -214,7 +215,7 @@ impl Screen {
             is_floating: false,
             line_number: Some(LineNumber::default()),
             scrollbar_enabled: false,
-            sign_column_width: Some(2),
+            sign_column_mode: SignColumnMode::Yes(2),
             cursor: Position { x: 0, y: 0 },
             desired_col: None,
             border_config: None,
@@ -510,6 +511,10 @@ impl Screen {
             1
         };
 
+        // Precompute whether any signs exist (for auto mode)
+        let has_signs = render_data.signs.iter().any(Option::is_some);
+        let sign_column_width = window.sign_column_mode.effective_width(has_signs);
+
         // Render each visible line, starting from scroll offset
         let mut display_row = 0u16;
         let start_line = scroll_offset as usize;
@@ -527,16 +532,18 @@ impl Screen {
                     let screen_y = window.anchor.y + display_row;
                     let mut gutter_width = 0u16;
 
+                    // Get sign for this line (used by both sign column and number mode)
+                    let sign = render_data.signs.get(line_idx).and_then(|s| s.as_ref());
+
                     // Render sign column FIRST (if enabled) - leftmost gutter element
-                    if let Some(sign_width) = window.sign_column_width {
-                        let sign = render_data.signs.get(line_idx).and_then(|s| s.as_ref());
+                    if sign_column_width > 0 {
                         let sign_x = window.anchor.x + gutter_width;
                         if line_idx == 0 {
                             tracing::info!(
                                 "SIGN_COLUMN: x={} y={} width={} sign_present={}",
                                 sign_x,
                                 screen_y,
-                                sign_width,
+                                sign_column_width,
                                 sign.is_some()
                             );
                         }
@@ -545,7 +552,7 @@ impl Screen {
                             sign_x,
                             screen_y,
                             sign,
-                            sign_width,
+                            sign_column_width,
                             theme,
                         );
                     }
@@ -564,6 +571,7 @@ impl Screen {
                         num_width,
                         theme,
                         window,
+                        sign,
                     );
 
                     // Render fold marker
@@ -608,16 +616,18 @@ impl Screen {
                     let screen_y = window.anchor.y + display_row;
                     let mut gutter_width = 0u16;
 
+                    // Get sign for this line (used by both sign column and number mode)
+                    let sign = render_data.signs.get(line_idx).and_then(|s| s.as_ref());
+
                     // Render sign column FIRST (if enabled) - leftmost gutter element
-                    if let Some(sign_width) = window.sign_column_width {
-                        let sign = render_data.signs.get(line_idx).and_then(|s| s.as_ref());
+                    if sign_column_width > 0 {
                         let sign_x = window.anchor.x + gutter_width;
                         if line_idx == 0 {
                             tracing::info!(
                                 "SIGN_COLUMN: x={} y={} width={} sign_present={}",
                                 sign_x,
                                 screen_y,
-                                sign_width,
+                                sign_column_width,
                                 sign.is_some()
                             );
                         }
@@ -626,7 +636,7 @@ impl Screen {
                             sign_x,
                             screen_y,
                             sign,
-                            sign_width,
+                            sign_column_width,
                             theme,
                         );
                     }
@@ -645,6 +655,7 @@ impl Screen {
                         num_width,
                         theme,
                         window,
+                        sign,
                     );
 
                     // Render line content with syntax highlights and decorations
@@ -880,6 +891,7 @@ impl Screen {
         num_width: usize,
         theme: &Theme,
         window: &Window,
+        sign: Option<&Sign>,
     ) -> u16 {
         use crate::screen::window::LineNumberMode;
 
@@ -917,17 +929,32 @@ impl Screen {
         let line_num_str = format!("{num_str:>num_width$} ");
 
         // Render line number with style
-        let line_num_style = if !window.is_active {
-            &theme.gutter.inactive_line_number
+        // For Number mode: use sign's foreground as background color
+        let base_style = if !window.is_active {
+            theme.gutter.inactive_line_number.clone()
         } else if is_current_line {
-            &theme.gutter.current_line_number
+            theme.gutter.current_line_number.clone()
         } else {
-            &theme.gutter.line_number
+            theme.gutter.line_number.clone()
+        };
+
+        let line_num_style = if window.sign_column_mode == SignColumnMode::Number {
+            if let Some(sign) = sign {
+                // Use sign's foreground color as background for line number
+                Style {
+                    bg: sign.style.fg,
+                    ..base_style
+                }
+            } else {
+                base_style
+            }
+        } else {
+            base_style
         };
 
         let mut col = x;
         for ch in line_num_str.chars() {
-            buffer.put_char(col, y, ch, line_num_style);
+            buffer.put_char(col, y, ch, &line_num_style);
             col += 1;
         }
 
@@ -1025,7 +1052,8 @@ impl Screen {
                 let buffer_id = win.buffer_id()?;
                 let buf = buffers.get(&buffer_id)?;
                 let line_num_width = win.line_number_width(buf.contents.len());
-                let sign_width = win.sign_column_width.unwrap_or(0);
+                // Use max width for layout (assume signs present in auto mode)
+                let sign_width = win.sign_column_mode.effective_width(true);
                 let gutter_width = sign_width + line_num_width;
                 let scroll_y = win.buffer_anchor().map_or(0, |a| a.y);
                 Some((win.anchor.x, win.anchor.y, gutter_width, scroll_y, buf.cur.x, buf.cur.y))
@@ -1158,7 +1186,8 @@ impl Screen {
                 // Calculate cursor position only for the ACTIVE window (and if editor is focused)
                 if win.is_active {
                     let line_num_width = win.line_number_width(buf.contents.len());
-                    let sign_width = win.sign_column_width.unwrap_or(0);
+                    // Use max width for cursor position (assume signs present in auto mode)
+                    let sign_width = win.sign_column_mode.effective_width(true);
                     let cursor_x = win.anchor.x + sign_width + line_num_width + buf.cur.x;
                     let cursor_y = win.anchor.y
                         + buf
@@ -1233,9 +1262,9 @@ impl Screen {
         }
     }
 
-    pub fn set_sign_column_width(&mut self, width: Option<u16>) {
+    pub fn set_sign_column_mode(&mut self, mode: SignColumnMode) {
         for window in &mut self.windows {
-            window.sign_column_width = width;
+            window.sign_column_mode = mode;
         }
     }
 
@@ -1482,7 +1511,7 @@ impl Screen {
                     is_floating: false,
                     line_number: Some(LineNumber::default()),
                     scrollbar_enabled: false,
-                    sign_column_width: Some(2),
+                    sign_column_mode: SignColumnMode::Yes(2),
                     cursor,
                     desired_col,
                     border_config: None,

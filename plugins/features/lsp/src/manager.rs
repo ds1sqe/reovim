@@ -15,6 +15,42 @@ use {
 
 use crate::{document::DocumentManager, hover::HoverCache};
 
+/// Virtual text display mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VirtualTextShowMode {
+    /// Show first diagnostic only (default)
+    #[default]
+    First,
+    /// Show highest severity diagnostic
+    Highest,
+    /// Show all diagnostics concatenated with separator
+    All,
+}
+
+/// Configuration for virtual text display.
+#[derive(Debug, Clone)]
+pub struct VirtualTextConfig {
+    /// Whether virtual text is enabled
+    pub enabled: bool,
+    /// Custom prefix for virtual text (empty = use severity icon)
+    pub prefix: String,
+    /// Maximum length before truncation
+    pub max_length: u16,
+    /// Which diagnostics to show
+    pub show_mode: VirtualTextShowMode,
+}
+
+impl Default for VirtualTextConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            prefix: String::new(),
+            max_length: 80,
+            show_mode: VirtualTextShowMode::First,
+        }
+    }
+}
+
 /// Thread-safe wrapper for LSP state.
 ///
 /// Registered in `PluginStateRegistry` for cross-plugin access.
@@ -80,6 +116,8 @@ pub struct LspManager {
     pub running: bool,
     /// Last time a document was synced.
     pub last_sync: Option<Instant>,
+    /// Virtual text configuration.
+    pub virtual_text_config: VirtualTextConfig,
 }
 
 impl LspManager {
@@ -94,6 +132,7 @@ impl LspManager {
             event_tx: None,
             running: false,
             last_sync: None,
+            virtual_text_config: VirtualTextConfig::default(),
         }
     }
 

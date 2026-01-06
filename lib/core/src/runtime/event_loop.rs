@@ -633,9 +633,9 @@ impl Runtime {
                 tracing::info!("Runtime: Setting indent guide: {}", enabled);
                 self.indent_analyzer.set_enabled(enabled);
             }
-            InnerEvent::SetSignColumn { width } => {
-                tracing::info!("Runtime: Setting sign column: {:?}", width);
-                self.screen.set_sign_column_width(width);
+            InnerEvent::SetSignColumn { mode } => {
+                tracing::info!("Runtime: Setting sign column mode: {:?}", mode);
+                self.screen.set_sign_column_mode(mode);
             }
             InnerEvent::MoveCursor {
                 buffer_id,

@@ -13,7 +13,7 @@ use reovim_core::{
     render::{RenderData, VirtualTextEntry},
     screen::{
         Position,
-        window::{Anchor, LineNumber, Window},
+        window::{Anchor, LineNumber, SignColumnMode, Window},
     },
     sign::Sign,
 };
@@ -32,7 +32,7 @@ fn create_test_window(width: u16, height: u16) -> Window {
         is_active: true,
         is_floating: false,
         line_number: Some(LineNumber::default()),
-        sign_column_width: Some(2),
+        sign_column_mode: SignColumnMode::Yes(2),
         scrollbar_enabled: false,
         cursor: Position { x: 0, y: 0 },
         desired_col: None,

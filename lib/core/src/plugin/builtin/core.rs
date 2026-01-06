@@ -110,6 +110,7 @@ use crate::{
         OptionValue, RegisterOption, RegisterSettingSection,
     },
     plugin::{Plugin, PluginContext, PluginId, PluginStateRegistry},
+    screen::window::SignColumnMode,
 };
 
 /// Core editor functionality plugin
@@ -206,15 +207,15 @@ impl CorePlugin {
                 }
                 "signcolumn" => {
                     if let OptionValue::String(value) = &event.new_value {
-                        // Parse signcolumn value: "no" or "yes:N"
-                        let width = if value == "no" {
-                            None
-                        } else if let Some(num_str) = value.strip_prefix("yes:") {
-                            num_str.parse::<u16>().ok()
-                        } else {
-                            Some(2) // Default width if invalid format
+                        // Parse signcolumn value: "auto", "yes", "no", "number"
+                        let mode = match value.as_str() {
+                            "yes" => SignColumnMode::Yes(2),
+                            "no" => SignColumnMode::No,
+                            "number" => SignColumnMode::Number,
+                            // "auto" and any invalid value default to Auto
+                            _ => SignColumnMode::Auto,
                         };
-                        ctx.emit(RequestSetSignColumn { width });
+                        ctx.emit(RequestSetSignColumn { mode });
                         needs_render = true;
                     }
                 }
@@ -795,8 +796,8 @@ impl CorePlugin {
         bus.emit(RegisterOption::new(
             OptionSpec::new(
                 "signcolumn",
-                "Sign column display ('no' or 'yes:N')",
-                OptionValue::String("yes:2".into()),
+                "Sign column display ('auto', 'yes', 'no', 'number')",
+                OptionValue::String("yes".into()),
             )
             .with_category(OptionCategory::Editor)
             .with_section("Editor")
@@ -912,6 +913,49 @@ impl CorePlugin {
             .with_category(OptionCategory::Window)
             .with_section("Window")
             .with_display_order(11),
+        ));
+
+        // Virtual text options (diagnostics)
+        bus.emit(RegisterOption::new(
+            OptionSpec::new("virtual_text", "Show inline diagnostics", OptionValue::Bool(true))
+                .with_short("vt")
+                .with_category(OptionCategory::Editor)
+                .with_section("Diagnostics")
+                .with_display_order(40),
+        ));
+
+        bus.emit(RegisterOption::new(
+            OptionSpec::new(
+                "virtual_text_prefix",
+                "Prefix for virtual text",
+                OptionValue::String(String::new()),
+            )
+            .with_category(OptionCategory::Editor)
+            .with_section("Diagnostics")
+            .with_display_order(41),
+        ));
+
+        bus.emit(RegisterOption::new(
+            OptionSpec::new(
+                "virtual_text_max_length",
+                "Maximum virtual text length",
+                OptionValue::Integer(80),
+            )
+            .with_category(OptionCategory::Editor)
+            .with_section("Diagnostics")
+            .with_constraint(OptionConstraint::range(10, 200))
+            .with_display_order(42),
+        ));
+
+        bus.emit(RegisterOption::new(
+            OptionSpec::new(
+                "virtual_text_show",
+                "Which diagnostics to show ('first', 'highest', 'all')",
+                OptionValue::choice("first", vec!["first".into(), "highest".into(), "all".into()]),
+            )
+            .with_category(OptionCategory::Editor)
+            .with_section("Diagnostics")
+            .with_display_order(43),
         ));
     }
 }

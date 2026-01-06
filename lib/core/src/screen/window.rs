@@ -70,9 +70,8 @@ pub struct Window {
     pub line_number: Option<LineNumber>,
     /// Whether to show scrollbar
     pub scrollbar_enabled: bool,
-    /// Sign column width (None = disabled, Some(width) = enabled)
-    /// Typical values: Some(1) or Some(2)
-    pub sign_column_width: Option<u16>,
+    /// Sign column display mode
+    pub sign_column_mode: SignColumnMode,
     /// Per-window cursor position
     pub cursor: Position,
     /// Track preferred column for vertical movement (j/k)
@@ -86,6 +85,38 @@ pub enum LineNumberMode {
     Absolute,
     Relative,
     Hybrid,
+}
+
+/// Sign column display mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SignColumnMode {
+    /// Show when signs present, hide otherwise (default)
+    #[default]
+    Auto,
+    /// Always show with specified width
+    Yes(u16),
+    /// Never show
+    No,
+    /// Display signs in line number column (as background color)
+    Number,
+}
+
+impl SignColumnMode {
+    /// Get the effective sign column width based on mode and whether signs exist
+    #[must_use]
+    pub const fn effective_width(&self, has_signs: bool) -> u16 {
+        match self {
+            Self::Auto => {
+                if has_signs {
+                    2
+                } else {
+                    0
+                }
+            }
+            Self::Yes(width) => *width,
+            Self::No | Self::Number => 0,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1318,7 +1349,7 @@ pub mod tests {
             is_floating: false,
             line_number: Some(LineNumber::default()),
             scrollbar_enabled: false,
-            sign_column_width: None, // Disabled by default in tests to avoid position shifts
+            sign_column_mode: SignColumnMode::No, // Disabled by default in tests to avoid position shifts
             cursor: Position { x: 0, y: 0 },
             desired_col: None,
             border_config: None,

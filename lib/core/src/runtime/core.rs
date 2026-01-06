@@ -595,7 +595,7 @@ impl Runtime {
             runtime
                 .event_bus
                 .subscribe::<RequestSetSignColumn, _>(100, move |event, _ctx| {
-                    let _ = tx.try_send(InnerEvent::SetSignColumn { width: event.width });
+                    let _ = tx.try_send(InnerEvent::SetSignColumn { mode: event.mode });
                     EventResult::Handled
                 });
         }
