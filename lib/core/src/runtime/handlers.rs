@@ -1069,23 +1069,10 @@ impl Runtime {
         // Use self.active_buffer_id() since open_file updates it via screen
         let buffer_id = self.active_buffer_id();
 
-        // CRITICAL: Save the buffer's live cursor to the current window BEFORE splitting.
-        // split_window() reads window.cursor to copy to the new window, so we must
-        // ensure it reflects the current buffer cursor, not a stale saved value.
-        if let Some(window) = self.screen.active_window_mut()
-            && let Some(buffer) = self.buffers.get(&buffer_id)
-        {
-            tracing::debug!(
-                "[SPLIT] SAVE cursor: win={} buffer.cur=({},{}) -> window.cursor at {:?}",
-                window.id,
-                buffer.cur.x,
-                buffer.cur.y,
-                start.elapsed()
-            );
-            window.cursor = buffer.cur;
-            window.desired_col = buffer.desired_col;
-        } else {
-            tracing::warn!("[SPLIT] failed to get active window or buffer!");
+        // CENTRALIZED: Save buffer cursor to window before split.
+        // split_window() reads window.cursor to copy to new window.
+        if self.screen.save_cursor_to_active_window(&self.buffers).is_none() {
+            tracing::warn!("[SPLIT] failed to save cursor to active window");
         }
 
         // Split the window
@@ -1116,58 +1103,50 @@ impl Runtime {
     /// Handle window navigation (focus direction)
     pub(crate) fn handle_window_navigate(&mut self, direction: NavigateDirection) {
         let start = std::time::Instant::now();
-        let before_window_id = self.screen.active_window_id();
 
-        // Before navigation: save current buffer cursor to current window
-        if let Some(window) = self.screen.active_window_mut()
-            && let Some(buffer_id) = window.buffer_id()
-            && let Some(buffer) = self.buffers.get(&buffer_id)
-        {
-            tracing::debug!(
-                "[NAV] SAVE cursor: win={} buffer.cur=({},{}) -> window.cursor at {:?}",
-                window.id,
-                buffer.cur.x,
-                buffer.cur.y,
-                start.elapsed()
-            );
-            window.cursor = buffer.cur;
-            window.desired_col = buffer.desired_col;
+        // Handle plugin focus case: unfocus plugin and return
+        if self.screen.has_plugin_focus() {
+            self.screen.focus_editor();
+            self.screen.update_window_active_state();
+            tracing::debug!("[NAV] Unfocused plugin, focused editor at {:?}", start.elapsed());
+            return;
         }
 
-        // Navigate to new window
-        self.screen.navigate_window(direction);
+        // Find target window via direction lookup
+        let target_id = {
+            let Some(tab) = self.screen.tab_manager().active_tab() else {
+                return;
+            };
+            let editor_layout = self.screen.layout().editor_layout();
+            let editor_rect = crate::screen::WindowRect::new(
+                editor_layout.anchor.x,
+                editor_layout.anchor.y,
+                editor_layout.width,
+                editor_layout.height,
+            );
+            let layouts = tab.calculate_layouts(editor_rect);
 
-        let after_window_id = self.screen.active_window_id();
+            let Some(id) = crate::screen::split::find_adjacent_window(
+                tab.active_window_id,
+                direction,
+                &layouts,
+            ) else {
+                tracing::debug!("[NAV] No adjacent window in direction {:?}", direction);
+                return;
+            };
+            id
+        };
+
+        // CENTRALIZED: Full cursor sync (save to old, load from new)
+        let prev = self.screen.switch_active_window(target_id, &mut self.buffers);
+
         tracing::debug!(
-            "[NAV] navigate {:?}: win {} -> win {:?} at {:?}",
+            "[NAV] {:?}: win {:?} -> {} at {:?}",
             direction,
-            before_window_id.unwrap_or(999),
-            after_window_id,
+            prev,
+            target_id,
             start.elapsed()
         );
-
-        // After navigation: load new window's cursor into buffer and update active_buffer_id
-        if let Some(window) = self.screen.active_window()
-            && let Some(new_buffer_id) = window.buffer_id()
-        {
-            let window_cursor = window.cursor;
-            let window_desired_col = window.desired_col;
-
-            tracing::debug!(
-                "[NAV] LOAD cursor: win={} window.cursor=({},{}) -> buffer.cur at {:?}",
-                window.id,
-                window_cursor.x,
-                window_cursor.y,
-                start.elapsed()
-            );
-
-            // Load window's cursor into buffer
-            if let Some(buffer) = self.buffers.get_mut(&new_buffer_id) {
-                buffer.cur = window_cursor;
-                buffer.desired_col = window_desired_col;
-            }
-        }
-        tracing::debug!("[NAV] handle_window_navigate DONE at {:?}", start.elapsed());
     }
 
     /// Handle window equalize

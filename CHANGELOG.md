@@ -6,6 +6,13 @@ All notable changes to Reovim will be documented in this file.
 
 ### Changed
 
+- **RAII-based cursor synchronization** (Issue #48) - Centralize cursor sync between windows and buffers
+  - Added `Screen::save_cursor_to_active_window()` for pre-split cursor save
+  - Added `Screen::switch_active_window()` for full cursor handoff during navigation
+  - Refactored `handle_window_split()` to use centralized API (15 lines → 1 call)
+  - Refactored `handle_window_navigate()` to use centralized API (50 lines → direction lookup + 1 call)
+  - Eliminates manual cursor sync scattered across handlers, reducing error risk
+
 - **Split large subscribe() methods** (Issue #52) - Improve plugin maintainability by splitting monolithic subscribe() methods
   - Explorer plugin: Split 426-line method into 9 focused sub-methods (raw_input, navigation, tree_operations, clipboard, file_operations, input_handling, visual_mode, focus_visibility, popup)
   - Range-Finder plugin: Split 191-line method into 5 focused sub-methods (jump_mode_handlers, jump_input_handler, fold_handlers, cleanup)
