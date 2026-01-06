@@ -20,6 +20,7 @@ tokio.workspace = true
 tracing.workspace = true
 arboard = "3"
 arc-swap = "1.8"
+unicode-width = "0.2"
 
 # Config system
 toml = "0.8"

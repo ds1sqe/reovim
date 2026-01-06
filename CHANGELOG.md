@@ -6,6 +6,16 @@ All notable changes to Reovim will be documented in this file.
 
 ### Added
 
+- **Common UI rendering helpers** (Issue #56) - New `ui` module with shared utilities for plugins
+  - `ui::text` module with Unicode-aware text manipulation functions
+  - `display_width()` - Get display width of string (handles CJK, emoji)
+  - `truncate_end()` - Truncate with ellipsis at end ("Hello...")
+  - `truncate_start()` - Truncate with ellipsis at start ("...file.rs")
+  - `align()` - Align text (left/center/right) within width
+  - `pad_left()` / `pad_right()` - Pad text with fill character
+  - Re-exports border utilities from `screen::border` for unified access
+  - Added `unicode-width` dependency for proper Unicode handling
+
 - **Window resize operations** (Issue #54) - Implement direction-specific window resizing
   - `SplitNode::adjust_ratio_in_direction()` - Find innermost split matching direction and adjust ratio
   - `Screen::resize_window(direction, delta)` - Public API for resizing active window
