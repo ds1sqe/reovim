@@ -18,6 +18,12 @@ All notable changes to Reovim will be documented in this file.
   - Range-Finder plugin: Split 191-line method into 5 focused sub-methods (jump_mode_handlers, jump_input_handler, fold_handlers, cleanup)
   - Removed `#[allow(clippy::too_many_lines)]` pragmas from both plugins
 
+- **Decomposed window render_to_buffer() method** (Issue #51) - Extract focused helper methods for better testability
+  - `compute_line_number_width()` - Calculate line number column width
+  - `render_fold_marker_to_buffer()` - Render collapsed fold indicators
+  - `render_empty_lines_to_buffer()` - Fill viewport with tilde markers
+  - Main method reduced from ~106 to ~82 lines with clearer separation of concerns
+
 - **Declarative mode metadata** (Issue #42) - Replace hardcoded `mode_for_command()` with `resulting_mode()` trait method
   - Added `resulting_mode()` method to `CommandTrait` with default `None` return
   - Implemented for 32 mode-changing commands (mode, window, operator, command-line)

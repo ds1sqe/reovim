@@ -14,8 +14,10 @@ use std::{
 
 use tokio::sync::mpsc;
 
-use super::{core_events::RequestModeChange, DynEvent, Event, EventResult};
-use crate::modd::{ComponentId, EditMode, ModeState, SubMode};
+use {
+    super::{DynEvent, Event, EventResult, core_events::RequestModeChange},
+    crate::modd::{ComponentId, EditMode, ModeState, SubMode},
+};
 
 /// Handler function type - receives event and context, returns result
 type EventHandlerFn = Box<dyn Fn(&DynEvent, &mut HandlerContext) -> EventResult + Send + Sync>;

@@ -809,6 +809,70 @@ impl Window {
         width
     }
 
+    /// Calculate the width needed for line numbers based on total line count.
+    ///
+    /// Returns the number of character columns required to display the largest line number.
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_sign_loss)]
+    #[allow(clippy::cast_precision_loss)]
+    fn compute_line_number_width(&self, total_lines: usize) -> usize {
+        if self.line_number.as_ref().is_some_and(LineNumber::is_shown) && total_lines > 0 {
+            (total_lines as f64).log10().floor() as usize + 1
+        } else {
+            1
+        }
+    }
+
+    /// Render a fold marker line (collapsed fold indicator) to frame buffer.
+    ///
+    /// Displays line number followed by fold indicator text "+-- folded ---".
+    fn render_fold_marker_to_buffer(
+        &self,
+        buffer: &mut FrameBuffer,
+        screen_y: u16,
+        row: u16,
+        cursor_y: u16,
+        num_width: usize,
+        theme: &Theme,
+    ) {
+        let gutter_width = self.render_line_number_to_buffer(
+            buffer,
+            self.anchor.x,
+            screen_y,
+            row,
+            cursor_y,
+            num_width,
+            theme,
+        );
+        let fold_style = &theme.fold.marker;
+        let fold_text = "+-- folded ---";
+        let mut col = self.anchor.x + gutter_width;
+        for ch in fold_text.chars() {
+            if col < buffer.width() {
+                buffer.put_char(col, screen_y, ch, fold_style);
+                col += 1;
+            }
+        }
+    }
+
+    /// Fill remaining viewport rows with empty line markers (~).
+    ///
+    /// Renders tilde characters in the gutter for lines beyond the buffer content.
+    fn render_empty_lines_to_buffer(
+        &self,
+        buffer: &mut FrameBuffer,
+        start_display_row: u16,
+        theme: &Theme,
+    ) {
+        let tilde_style = &theme.gutter.line_number;
+        let mut display_row = start_display_row;
+        while display_row < self.height {
+            let screen_y = self.anchor.y + display_row;
+            buffer.put_char(self.anchor.x, screen_y, '~', tilde_style);
+            display_row += 1;
+        }
+    }
+
     /// Render a complete content line to frame buffer
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::too_many_arguments)]
@@ -1073,9 +1137,6 @@ impl Window {
     }
 
     /// Render the entire window content to frame buffer
-    #[allow(clippy::cast_possible_truncation)]
-    #[allow(clippy::cast_sign_loss)]
-    #[allow(clippy::cast_precision_loss)]
     #[allow(clippy::too_many_arguments)]
     pub fn render_to_buffer(
         &self,
@@ -1089,13 +1150,7 @@ impl Window {
         edit_mode: &EditMode,
     ) {
         // Calculate line number width for alignment
-        let total_lines = buf.contents.len();
-        let num_width =
-            if self.line_number.as_ref().is_some_and(LineNumber::is_shown) && total_lines > 0 {
-                (total_lines as f64).log10().floor() as usize + 1
-            } else {
-                1
-            };
+        let num_width = self.compute_line_number_width(buf.contents.len());
 
         // Build visual selection highlight
         let visual_highlight = Self::build_visual_highlight(buf, theme);
@@ -1124,25 +1179,10 @@ impl Window {
             let screen_y = self.anchor.y + display_row;
 
             if visibility_marker.is_some() {
-                // Render fold marker (simplified - just show fold indicator)
-                let gutter_width = self.render_line_number_to_buffer(
-                    buffer,
-                    self.anchor.x,
-                    screen_y,
-                    row,
-                    cursor_y,
-                    num_width,
-                    theme,
+                // Render fold marker
+                self.render_fold_marker_to_buffer(
+                    buffer, screen_y, row, cursor_y, num_width, theme,
                 );
-                let fold_style = &theme.fold.marker;
-                let fold_text = "+-- folded ---";
-                let mut col = self.anchor.x + gutter_width;
-                for ch in fold_text.chars() {
-                    if col < buffer.width() {
-                        buffer.put_char(col, screen_y, ch, fold_style);
-                        col += 1;
-                    }
-                }
             } else {
                 // Render normal content line
                 if screen_y == self.anchor.y {
@@ -1176,13 +1216,8 @@ impl Window {
             display_row += 1;
         }
 
-        // Fill remaining rows with empty cells (tilde markers for empty lines)
-        let tilde_style = &theme.gutter.line_number;
-        while display_row < self.height {
-            let screen_y = self.anchor.y + display_row;
-            buffer.put_char(self.anchor.x, screen_y, '~', tilde_style);
-            display_row += 1;
-        }
+        // Fill remaining rows with empty line markers
+        self.render_empty_lines_to_buffer(buffer, display_row, theme);
     }
 
     pub fn set_number(&mut self, enabled: bool) {

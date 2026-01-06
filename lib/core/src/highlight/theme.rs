@@ -20,11 +20,13 @@
 //! - `leap`: Leap navigation label styles
 //! - `animation`: Animation configuration
 
-use crate::highlight::{
-    theme_override::{ThemeOverrideError, ThemeOverrides},
-    Style,
+use {
+    crate::highlight::{
+        Style,
+        theme_override::{ThemeOverrideError, ThemeOverrides},
+    },
+    reovim_sys::style::Color,
 };
-use reovim_sys::style::Color;
 
 // ============================================================================
 // Theme Name Enum
@@ -990,7 +992,9 @@ impl Theme {
         for (path, style_override) in &overrides.overrides {
             match self.get_style_mut(path) {
                 Ok(style) => style_override.apply_to(style),
-                Err(e) => tracing::warn!(path = %path, error = %e, "Failed to apply theme override"),
+                Err(e) => {
+                    tracing::warn!(path = %path, error = %e, "Failed to apply theme override");
+                }
             }
         }
     }
@@ -1258,8 +1262,10 @@ mod tests {
 
     #[test]
     fn test_apply_overrides() {
-        use crate::highlight::theme_override::{StyleOverride, ThemeOverrides};
-        use std::collections::HashMap;
+        use {
+            crate::highlight::theme_override::{StyleOverride, ThemeOverrides},
+            std::collections::HashMap,
+        };
 
         let mut overrides_map = HashMap::new();
         overrides_map.insert(
@@ -1277,16 +1283,15 @@ mod tests {
         let mut theme = Theme::dark();
         theme.apply_overrides(&overrides);
 
-        assert_eq!(
-            theme.gutter.line_number.fg,
-            Some(Color::Rgb { r: 255, g: 0, b: 0 })
-        );
+        assert_eq!(theme.gutter.line_number.fg, Some(Color::Rgb { r: 255, g: 0, b: 0 }));
     }
 
     #[test]
     fn test_from_name_with_overrides() {
-        use crate::highlight::theme_override::{StyleOverride, ThemeOverrides};
-        use std::collections::HashMap;
+        use {
+            crate::highlight::theme_override::{StyleOverride, ThemeOverrides},
+            std::collections::HashMap,
+        };
 
         let mut overrides_map = HashMap::new();
         overrides_map.insert(

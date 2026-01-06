@@ -71,53 +71,41 @@ macro_rules! subscribe_state {
     // Registry-based, no event access
     ($bus:expr, $state:expr, $event:ty, $state_type:ty, |$s:ident| $body:block) => {{
         let state_clone = std::sync::Arc::clone(&$state);
-        $bus.subscribe::<$event, _>(
-            $crate::event_bus::priority::PLUGIN,
-            move |_event, ctx| {
-                state_clone.with_mut::<$state_type, _, _>(|$s| $body);
-                ctx.request_render();
-                $crate::event_bus::EventResult::Handled
-            },
-        );
+        $bus.subscribe::<$event, _>($crate::event_bus::priority::PLUGIN, move |_event, ctx| {
+            state_clone.with_mut::<$state_type, _, _>(|$s| $body);
+            ctx.request_render();
+            $crate::event_bus::EventResult::Handled
+        });
     }};
 
     // Registry-based, with event access
     ($bus:expr, $state:expr, $event:ty, $state_type:ty, |$s:ident, $e:ident| $body:block) => {{
         let state_clone = std::sync::Arc::clone(&$state);
-        $bus.subscribe::<$event, _>(
-            $crate::event_bus::priority::PLUGIN,
-            move |$e, ctx| {
-                state_clone.with_mut::<$state_type, _, _>(|$s| $body);
-                ctx.request_render();
-                $crate::event_bus::EventResult::Handled
-            },
-        );
+        $bus.subscribe::<$event, _>($crate::event_bus::priority::PLUGIN, move |$e, ctx| {
+            state_clone.with_mut::<$state_type, _, _>(|$s| $body);
+            ctx.request_render();
+            $crate::event_bus::EventResult::Handled
+        });
     }};
 
     // Arc-based (plugin-owned state), no event access
     ($bus:expr, $arc_state:expr, $event:ty, |$s:ident| $body:block) => {{
         let state_clone = std::sync::Arc::clone(&$arc_state);
-        $bus.subscribe::<$event, _>(
-            $crate::event_bus::priority::PLUGIN,
-            move |_event, ctx| {
-                state_clone.with_mut(|$s| $body);
-                ctx.request_render();
-                $crate::event_bus::EventResult::Handled
-            },
-        );
+        $bus.subscribe::<$event, _>($crate::event_bus::priority::PLUGIN, move |_event, ctx| {
+            state_clone.with_mut(|$s| $body);
+            ctx.request_render();
+            $crate::event_bus::EventResult::Handled
+        });
     }};
 
     // Arc-based (plugin-owned state), with event access
     ($bus:expr, $arc_state:expr, $event:ty, |$s:ident, $e:ident| $body:block) => {{
         let state_clone = std::sync::Arc::clone(&$arc_state);
-        $bus.subscribe::<$event, _>(
-            $crate::event_bus::priority::PLUGIN,
-            move |$e, ctx| {
-                state_clone.with_mut(|$s| $body);
-                ctx.request_render();
-                $crate::event_bus::EventResult::Handled
-            },
-        );
+        $bus.subscribe::<$event, _>($crate::event_bus::priority::PLUGIN, move |$e, ctx| {
+            state_clone.with_mut(|$s| $body);
+            ctx.request_render();
+            $crate::event_bus::EventResult::Handled
+        });
     }};
 }
 
@@ -151,15 +139,12 @@ macro_rules! subscribe_state_mode {
         let state_clone = std::sync::Arc::clone(&$state);
         // Evaluate mode expression before closure to avoid move issues
         let mode = $mode;
-        $bus.subscribe::<$event, _>(
-            $crate::event_bus::priority::PLUGIN,
-            move |_event, ctx| {
-                state_clone.with_mut::<$state_type, _, _>(|$s| $body);
-                ctx.emit($crate::event_bus::RequestModeChange { mode: mode.clone() });
-                ctx.request_render();
-                $crate::event_bus::EventResult::Handled
-            },
-        );
+        $bus.subscribe::<$event, _>($crate::event_bus::priority::PLUGIN, move |_event, ctx| {
+            state_clone.with_mut::<$state_type, _, _>(|$s| $body);
+            ctx.emit($crate::event_bus::RequestModeChange { mode: mode.clone() });
+            ctx.request_render();
+            $crate::event_bus::EventResult::Handled
+        });
     }};
 
     // Arc-based
@@ -167,15 +152,12 @@ macro_rules! subscribe_state_mode {
         let state_clone = std::sync::Arc::clone(&$arc_state);
         // Evaluate mode expression before closure to avoid move issues
         let mode = $mode;
-        $bus.subscribe::<$event, _>(
-            $crate::event_bus::priority::PLUGIN,
-            move |_event, ctx| {
-                state_clone.with_mut(|$s| $body);
-                ctx.emit($crate::event_bus::RequestModeChange { mode: mode.clone() });
-                ctx.request_render();
-                $crate::event_bus::EventResult::Handled
-            },
-        );
+        $bus.subscribe::<$event, _>($crate::event_bus::priority::PLUGIN, move |_event, ctx| {
+            state_clone.with_mut(|$s| $body);
+            ctx.emit($crate::event_bus::RequestModeChange { mode: mode.clone() });
+            ctx.request_render();
+            $crate::event_bus::EventResult::Handled
+        });
     }};
 }
 
@@ -196,64 +178,52 @@ macro_rules! subscribe_state_conditional {
     // Arc-based with event access (most common for fold operations)
     ($bus:expr, $arc_state:expr, $event:ty, |$s:ident, $e:ident| $body:expr) => {{
         let state_clone = std::sync::Arc::clone(&$arc_state);
-        $bus.subscribe::<$event, _>(
-            $crate::event_bus::priority::PLUGIN,
-            move |$e, ctx| {
-                let changed = state_clone.with_mut(|$s| $body);
-                if changed {
-                    ctx.request_render();
-                }
-                $crate::event_bus::EventResult::Handled
-            },
-        );
+        $bus.subscribe::<$event, _>($crate::event_bus::priority::PLUGIN, move |$e, ctx| {
+            let changed = state_clone.with_mut(|$s| $body);
+            if changed {
+                ctx.request_render();
+            }
+            $crate::event_bus::EventResult::Handled
+        });
     }};
 
     // Arc-based without event access
     ($bus:expr, $arc_state:expr, $event:ty, |$s:ident| $body:expr) => {{
         let state_clone = std::sync::Arc::clone(&$arc_state);
-        $bus.subscribe::<$event, _>(
-            $crate::event_bus::priority::PLUGIN,
-            move |_event, ctx| {
-                let changed = state_clone.with_mut(|$s| $body);
-                if changed {
-                    ctx.request_render();
-                }
-                $crate::event_bus::EventResult::Handled
-            },
-        );
+        $bus.subscribe::<$event, _>($crate::event_bus::priority::PLUGIN, move |_event, ctx| {
+            let changed = state_clone.with_mut(|$s| $body);
+            if changed {
+                ctx.request_render();
+            }
+            $crate::event_bus::EventResult::Handled
+        });
     }};
 
     // Registry-based with event access
     ($bus:expr, $state:expr, $event:ty, $state_type:ty, |$s:ident, $e:ident| $body:expr) => {{
         let state_clone = std::sync::Arc::clone(&$state);
-        $bus.subscribe::<$event, _>(
-            $crate::event_bus::priority::PLUGIN,
-            move |$e, ctx| {
-                let changed = state_clone
-                    .with_mut::<$state_type, _, _>(|$s| $body)
-                    .unwrap_or(false);
-                if changed {
-                    ctx.request_render();
-                }
-                $crate::event_bus::EventResult::Handled
-            },
-        );
+        $bus.subscribe::<$event, _>($crate::event_bus::priority::PLUGIN, move |$e, ctx| {
+            let changed = state_clone
+                .with_mut::<$state_type, _, _>(|$s| $body)
+                .unwrap_or(false);
+            if changed {
+                ctx.request_render();
+            }
+            $crate::event_bus::EventResult::Handled
+        });
     }};
 
     // Registry-based without event access
     ($bus:expr, $state:expr, $event:ty, $state_type:ty, |$s:ident| $body:expr) => {{
         let state_clone = std::sync::Arc::clone(&$state);
-        $bus.subscribe::<$event, _>(
-            $crate::event_bus::priority::PLUGIN,
-            move |_event, ctx| {
-                let changed = state_clone
-                    .with_mut::<$state_type, _, _>(|$s| $body)
-                    .unwrap_or(false);
-                if changed {
-                    ctx.request_render();
-                }
-                $crate::event_bus::EventResult::Handled
-            },
-        );
+        $bus.subscribe::<$event, _>($crate::event_bus::priority::PLUGIN, move |_event, ctx| {
+            let changed = state_clone
+                .with_mut::<$state_type, _, _>(|$s| $body)
+                .unwrap_or(false);
+            if changed {
+                ctx.request_render();
+            }
+            $crate::event_bus::EventResult::Handled
+        });
     }};
 }
