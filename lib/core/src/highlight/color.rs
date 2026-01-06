@@ -442,14 +442,8 @@ mod tests {
 
     #[test]
     fn test_parse_color_hex_6digit() {
-        assert_eq!(
-            parse_color("#ff0000"),
-            Some(Color::Rgb { r: 255, g: 0, b: 0 })
-        );
-        assert_eq!(
-            parse_color("#00ff00"),
-            Some(Color::Rgb { r: 0, g: 255, b: 0 })
-        );
+        assert_eq!(parse_color("#ff0000"), Some(Color::Rgb { r: 255, g: 0, b: 0 }));
+        assert_eq!(parse_color("#00ff00"), Some(Color::Rgb { r: 0, g: 255, b: 0 }));
         assert_eq!(
             parse_color("#1a1b26"),
             Some(Color::Rgb {
@@ -463,10 +457,7 @@ mod tests {
     #[test]
     fn test_parse_color_hex_3digit() {
         // #f00 -> #ff0000
-        assert_eq!(
-            parse_color("#f00"),
-            Some(Color::Rgb { r: 255, g: 0, b: 0 })
-        );
+        assert_eq!(parse_color("#f00"), Some(Color::Rgb { r: 255, g: 0, b: 0 }));
         // #abc -> #aabbcc
         assert_eq!(
             parse_color("#abc"),
@@ -481,22 +472,13 @@ mod tests {
     #[test]
     fn test_parse_color_hex_8digit() {
         // Alpha is ignored
-        assert_eq!(
-            parse_color("#ff0000ff"),
-            Some(Color::Rgb { r: 255, g: 0, b: 0 })
-        );
+        assert_eq!(parse_color("#ff0000ff"), Some(Color::Rgb { r: 255, g: 0, b: 0 }));
     }
 
     #[test]
     fn test_parse_color_rgb_function() {
-        assert_eq!(
-            parse_color("rgb(255, 0, 0)"),
-            Some(Color::Rgb { r: 255, g: 0, b: 0 })
-        );
-        assert_eq!(
-            parse_color("rgb(255,0,0)"),
-            Some(Color::Rgb { r: 255, g: 0, b: 0 })
-        );
+        assert_eq!(parse_color("rgb(255, 0, 0)"), Some(Color::Rgb { r: 255, g: 0, b: 0 }));
+        assert_eq!(parse_color("rgb(255,0,0)"), Some(Color::Rgb { r: 255, g: 0, b: 0 }));
         assert_eq!(
             parse_color("rgb( 128 , 64 , 32 )"),
             Some(Color::Rgb {
@@ -539,10 +521,7 @@ mod tests {
 
     #[test]
     fn test_parse_color_whitespace() {
-        assert_eq!(
-            parse_color("  #ff0000  "),
-            Some(Color::Rgb { r: 255, g: 0, b: 0 })
-        );
+        assert_eq!(parse_color("  #ff0000  "), Some(Color::Rgb { r: 255, g: 0, b: 0 }));
         assert_eq!(parse_color("  red  "), Some(Color::Red));
     }
 }

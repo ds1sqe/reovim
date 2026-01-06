@@ -1071,7 +1071,11 @@ impl Runtime {
 
         // CENTRALIZED: Save buffer cursor to window before split.
         // split_window() reads window.cursor to copy to new window.
-        if self.screen.save_cursor_to_active_window(&self.buffers).is_none() {
+        if self
+            .screen
+            .save_cursor_to_active_window(&self.buffers)
+            .is_none()
+        {
             tracing::warn!("[SPLIT] failed to save cursor to active window");
         }
 
@@ -1138,7 +1142,9 @@ impl Runtime {
         };
 
         // CENTRALIZED: Full cursor sync (save to old, load from new)
-        let prev = self.screen.switch_active_window(target_id, &mut self.buffers);
+        let prev = self
+            .screen
+            .switch_active_window(target_id, &mut self.buffers);
 
         tracing::debug!(
             "[NAV] {:?}: win {:?} -> {} at {:?}",
@@ -1469,12 +1475,7 @@ impl Runtime {
     /// - Scroll: Move viewport by 3 lines, adjust cursor to stay visible
     #[allow(clippy::cast_possible_truncation)]
     pub(crate) fn handle_mouse_event(&mut self, event: MouseEvent) {
-        tracing::debug!(
-            "Mouse event: {:?} at ({}, {})",
-            event.kind,
-            event.column,
-            event.row
-        );
+        tracing::debug!("Mouse event: {:?} at ({}, {})", event.kind, event.column, event.row);
 
         match event.kind {
             MouseEventKind::Down(MouseButton::Left) => {
@@ -1511,10 +1512,7 @@ impl Runtime {
             let Some(buffer_id) = window.buffer_id() else {
                 return; // Window doesn't have a buffer
             };
-            let buffer_line_count = self
-                .buffers
-                .get(&buffer_id)
-                .map_or(0, |b| b.contents.len());
+            let buffer_line_count = self.buffers.get(&buffer_id).map_or(0, |b| b.contents.len());
             (buffer_id, buffer_line_count)
         };
 
@@ -1589,10 +1587,7 @@ impl Runtime {
             return;
         };
 
-        let buffer_line_count = self
-            .buffers
-            .get(&buffer_id)
-            .map_or(0, |b| b.contents.len());
+        let buffer_line_count = self.buffers.get(&buffer_id).map_or(0, |b| b.contents.len());
 
         // Get current buffer anchor (scroll position)
         let current_anchor = window.buffer_anchor().unwrap_or(Anchor { x: 0, y: 0 });

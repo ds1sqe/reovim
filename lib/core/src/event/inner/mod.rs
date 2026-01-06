@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
-use reovim_sys::event::KeyModifiers;
-use tokio::sync::oneshot;
+use {reovim_sys::event::KeyModifiers, tokio::sync::oneshot};
 
 use crate::{
     bind::CommandRef,

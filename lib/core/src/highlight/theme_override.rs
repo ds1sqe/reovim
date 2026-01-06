@@ -13,7 +13,7 @@
 //! ```
 
 use {
-    crate::highlight::{color::parse_color, Attributes, Style},
+    crate::highlight::{Attributes, Style, color::parse_color},
     serde::{Deserialize, Serialize},
     std::collections::HashMap,
 };
@@ -229,7 +229,14 @@ mod tests {
 
         override_.apply_to(&mut style);
 
-        assert_eq!(style.bg, Some(Color::Rgb { r: 26, g: 27, b: 38 }));
+        assert_eq!(
+            style.bg,
+            Some(Color::Rgb {
+                r: 26,
+                g: 27,
+                b: 38
+            })
+        );
         assert_eq!(style.fg, None);
     }
 
@@ -261,11 +268,7 @@ mod tests {
 
     #[test]
     fn test_style_override_preserves_unset() {
-        let mut style = Style::new()
-            .fg(Color::Red)
-            .bg(Color::Blue)
-            .bold()
-            .italic();
+        let mut style = Style::new().fg(Color::Red).bg(Color::Blue).bold().italic();
 
         let override_ = StyleOverride {
             fg: Some("green".to_string()),
