@@ -70,6 +70,16 @@ impl Event for LspHoverDismiss {
     }
 }
 
+/// Event emitted to open the LSP log file
+#[derive(Debug, Clone, Copy)]
+pub struct LspLogOpen;
+
+impl Event for LspLogOpen {
+    fn priority(&self) -> u32 {
+        100
+    }
+}
+
 // =============================================================================
 // Commands (extract context from ExecutionContext, emit events)
 // =============================================================================

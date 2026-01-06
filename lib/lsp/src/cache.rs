@@ -6,7 +6,7 @@
 //!
 //! This ensures the render thread never blocks on diagnostic updates.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use {
     arc_swap::ArcSwap,
@@ -29,6 +29,8 @@ pub struct BufferDiagnostics {
 struct CacheData {
     /// Map from document URI string to diagnostics.
     entries: HashMap<String, BufferDiagnostics>,
+    /// When the cache was last updated.
+    last_updated: Option<Instant>,
 }
 
 /// Lock-free diagnostic cache.
@@ -80,6 +82,7 @@ impl DiagnosticCache {
         // Atomic swap
         self.current.store(Arc::new(CacheData {
             entries: new_entries,
+            last_updated: Some(Instant::now()),
         }));
     }
 
@@ -113,6 +116,7 @@ impl DiagnosticCache {
 
         self.current.store(Arc::new(CacheData {
             entries: new_entries,
+            last_updated: old.last_updated,
         }));
     }
 
@@ -141,6 +145,12 @@ impl DiagnosticCache {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    /// Get when the cache was last updated.
+    #[must_use]
+    pub fn last_updated(&self) -> Option<Instant> {
+        self.current.load().last_updated
     }
 }
 

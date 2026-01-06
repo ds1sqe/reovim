@@ -41,15 +41,44 @@ pub enum LogTarget {
     Disabled,
 }
 
+/// Log verbosity level for LSP logging
+#[derive(Debug, Clone, Copy, Default)]
+pub enum LspLogLevel {
+    /// Error level only
+    Error,
+    /// Warn and above
+    Warn,
+    /// Info and above
+    Info,
+    /// Debug and above
+    Debug,
+    /// All messages (default for LSP logging)
+    #[default]
+    Trace,
+}
+
+impl LspLogLevel {
+    /// Convert to tracing filter directive
+    const fn as_filter_directive(self) -> &'static str {
+        match self {
+            Self::Error => "reovim_lsp=error",
+            Self::Warn => "reovim_lsp=warn",
+            Self::Info => "reovim_lsp=info",
+            Self::Debug => "reovim_lsp=debug",
+            Self::Trace => "reovim_lsp=trace",
+        }
+    }
+}
+
 /// Target for LSP-specific log output
 #[derive(Debug, Clone)]
 pub enum LspLogTarget {
     /// LSP logging disabled (default)
     Disabled,
     /// Default: timestamped file `lsp-<timestamp>.log` in XDG data directory
-    Default,
+    Default(LspLogLevel),
     /// Custom file path
-    File(PathBuf),
+    File(PathBuf, LspLogLevel),
 }
 
 /// Container for log guards (must be held for duration of program)
@@ -93,29 +122,67 @@ pub fn parse_log_target(arg: Option<&str>) -> LogTarget {
     }
 }
 
+/// Parse a log level from a string
+fn parse_lsp_level(s: &str) -> LspLogLevel {
+    match s.to_lowercase().as_str() {
+        "error" => LspLogLevel::Error,
+        "warn" | "warning" => LspLogLevel::Warn,
+        "info" => LspLogLevel::Info,
+        "debug" => LspLogLevel::Debug,
+        // trace or any invalid value defaults to trace
+        _ => LspLogLevel::Trace,
+    }
+}
+
 /// Parse an LSP log target from a CLI argument
 ///
 /// # Special values
 /// - `None` -> Disabled (no LSP logging)
-/// - `"default"` -> Default (timestamped file in ~/.local/share/reovim/)
+/// - `"default"` -> Default path with trace level
+/// - `"default:LEVEL"` -> Default path with specified level
 /// - `"none"` or `"off"` -> Disabled
-/// - Any other string -> File path
+/// - `"/path"` -> File path with trace level
+/// - `"/path:LEVEL"` -> File path with specified level
+///
+/// # Levels
+/// - `error`, `warn`, `info`, `debug`, `trace`
 #[must_use]
 pub fn parse_lsp_log_target(arg: Option<&str>) -> LspLogTarget {
     match arg {
         None | Some("none" | "off") => LspLogTarget::Disabled,
-        Some("default") => LspLogTarget::Default,
-        Some(path) => {
-            let path = PathBuf::from(path);
-            // Resolve relative paths against CWD
-            if path.is_relative() {
-                LspLogTarget::File(
+        Some(s) => {
+            // Check for level suffix (e.g., "default:debug" or "/path:trace")
+            let (target, level) = s.rfind(':').map_or_else(
+                || (s, LspLogLevel::default()),
+                |pos| {
+                    let (t, l) = s.split_at(pos);
+                    // Check if the part after ':' looks like a level
+                    let potential_level = &l[1..];
+                    if matches!(
+                        potential_level.to_lowercase().as_str(),
+                        "error" | "warn" | "warning" | "info" | "debug" | "trace"
+                    ) {
+                        (t, parse_lsp_level(potential_level))
+                    } else {
+                        // Not a level suffix, treat whole string as path (could be C:\path on Windows)
+                        (s, LspLogLevel::default())
+                    }
+                },
+            );
+
+            if target == "default" {
+                LspLogTarget::Default(level)
+            } else {
+                let path = PathBuf::from(target);
+                // Resolve relative paths against CWD
+                let resolved = if path.is_relative() {
                     std::env::current_dir()
                         .map(|cwd| cwd.join(&path))
-                        .unwrap_or(path),
-                )
-            } else {
-                LspLogTarget::File(path)
+                        .unwrap_or(path)
+                } else {
+                    path
+                };
+                LspLogTarget::File(resolved, level)
             }
         }
     }
@@ -292,17 +359,17 @@ fn init_file_layer(
 
 /// Initialize LSP-only logging (when main logging is disabled)
 fn init_lsp_only(target: &LspLogTarget) -> Option<WorkerGuard> {
-    let (log_dir, log_filename) = match target {
+    let (log_dir, log_filename, level) = match target {
         LspLogTarget::Disabled => return None,
-        LspLogTarget::Default => {
+        LspLogTarget::Default(level) => {
             let log_dir = get_log_directory();
             if let Err(e) = std::fs::create_dir_all(&log_dir) {
                 eprintln!("Warning: Failed to create LSP log directory: {e}");
                 return None;
             }
-            (log_dir, generate_lsp_log_filename())
+            (log_dir, generate_lsp_log_filename(), *level)
         }
-        LspLogTarget::File(path) => {
+        LspLogTarget::File(path, level) => {
             if let Some(parent) = path.parent()
                 && !parent.as_os_str().is_empty()
                 && let Err(e) = std::fs::create_dir_all(parent)
@@ -314,15 +381,15 @@ fn init_lsp_only(target: &LspLogTarget) -> Option<WorkerGuard> {
             let log_filename = path
                 .file_name()
                 .map_or_else(|| "lsp.log".to_string(), |s| s.to_string_lossy().to_string());
-            (log_dir.to_path_buf(), log_filename)
+            (log_dir.to_path_buf(), log_filename, *level)
         }
     };
 
     let file_appender = tracing_appender::rolling::never(&log_dir, &log_filename);
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
-    // Filter to only include reovim_lsp target at trace level
-    let lsp_filter = EnvFilter::new("reovim_lsp=trace");
+    // Filter to only include reovim_lsp target at configured level
+    let lsp_filter = EnvFilter::new(level.as_filter_directive());
 
     let layer = fmt::layer()
         .with_writer(non_blocking)
@@ -382,28 +449,28 @@ fn init_both_layers(
         }
     };
 
-    // Get LSP layer components
-    let (lsp_guard, lsp_nb) = match lsp_target {
-        LspLogTarget::Disabled => (None, None),
-        LspLogTarget::Default => {
+    // Get LSP layer components and level
+    let (lsp_guard, lsp_nb, lsp_level) = match lsp_target {
+        LspLogTarget::Disabled => (None, None, LspLogLevel::default()),
+        LspLogTarget::Default(level) => {
             let log_dir = get_log_directory();
             if let Err(e) = std::fs::create_dir_all(&log_dir) {
                 eprintln!("Warning: Failed to create LSP log directory: {e}");
-                (None, None)
+                (None, None, *level)
             } else {
                 let log_filename = generate_lsp_log_filename();
                 let file_appender = tracing_appender::rolling::never(&log_dir, &log_filename);
                 let (nb, guard) = tracing_appender::non_blocking(file_appender);
-                (Some(guard), Some(nb))
+                (Some(guard), Some(nb), *level)
             }
         }
-        LspLogTarget::File(path) => {
+        LspLogTarget::File(path, level) => {
             if let Some(parent) = path.parent()
                 && !parent.as_os_str().is_empty()
                 && let Err(e) = std::fs::create_dir_all(parent)
             {
                 eprintln!("Warning: Failed to create LSP log directory {}: {e}", parent.display());
-                (None, None)
+                (None, None, *level)
             } else {
                 let log_dir = path.parent().unwrap_or_else(|| std::path::Path::new("."));
                 let log_filename = path
@@ -411,7 +478,7 @@ fn init_both_layers(
                     .map_or_else(|| "lsp.log".to_string(), |s| s.to_string_lossy().to_string());
                 let file_appender = tracing_appender::rolling::never(log_dir, &log_filename);
                 let (nb, guard) = tracing_appender::non_blocking(file_appender);
-                (Some(guard), Some(nb))
+                (Some(guard), Some(nb), *level)
             }
         }
     };
@@ -432,7 +499,7 @@ fn init_both_layers(
                 .with_line_number(true)
                 .with_filter(main_filter);
 
-            let lsp_filter = EnvFilter::new("reovim_lsp=trace");
+            let lsp_filter = EnvFilter::new(lsp_level.as_filter_directive());
             let lsp_layer = fmt::layer()
                 .with_writer(lsp_nb)
                 .with_ansi(false)
@@ -456,7 +523,7 @@ fn init_both_layers(
             registry.with(main_filter).with(main_layer).init();
         }
         (None, Some(lsp_nb)) => {
-            let lsp_filter = EnvFilter::new("reovim_lsp=trace");
+            let lsp_filter = EnvFilter::new(lsp_level.as_filter_directive());
             let lsp_layer = fmt::layer()
                 .with_writer(lsp_nb)
                 .with_ansi(false)

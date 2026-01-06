@@ -182,8 +182,11 @@ cargo run -- --server --log=-
 cargo run -- --server --log=/tmp/reovim-server.log
 
 # LSP JSON-RPC message logging (for debugging LSP issues)
-reovim --lsp-log=default myfile.rs           # Timestamped lsp-*.log in data dir
-reovim --lsp-log=/tmp/lsp.log myfile.rs      # Custom path
+reovim --lsp-log=default myfile.rs              # Timestamped lsp-*.log in data dir (trace level)
+reovim --lsp-log=/tmp/lsp.log myfile.rs         # Custom path (trace level)
+reovim --lsp-log=default:debug myfile.rs        # Default path with debug level
+reovim --lsp-log=/tmp/lsp.log:info myfile.rs    # Custom path with info level
+# LSP log levels: error, warn, info, debug, trace (default: trace)
 cargo run -- --server --log=/tmp/main.log --lsp-log=/tmp/lsp.log  # Both logs
 ```
 

@@ -410,7 +410,27 @@ impl LspSaturator {
                 Some(request) = request_rx.recv() => {
                     match request {
                         LspRequest::DidOpen { uri, language_id, version, content } => {
-                            Self::handle_did_open(&client, &open_docs, uri, language_id, version, content);
+                            Self::handle_did_open(&client, &open_docs, uri.clone(), language_id, version, content);
+
+                            // Request diagnostics for the opened document (pull diagnostics - LSP 3.17)
+                            // rust-analyzer uses pull diagnostics, so we must request them after didOpen
+                            // Note: Only store non-empty results from immediate request since rust-analyzer
+                            // may not have finished analyzing yet. Empty results will be filled by
+                            // subsequent workspace/diagnostic/refresh requests.
+                            let client = Arc::clone(&client);
+                            let cache = Arc::clone(&cache);
+                            let render_signal = render_signal.clone();
+                            tokio::spawn(async move {
+                                debug!(uri = %uri.as_str(), "Requesting diagnostics after didOpen");
+                                match client.request_diagnostics(uri.clone(), None, None).await {
+                                    Ok(report) => {
+                                        Self::handle_diagnostic_report_if_non_empty(&cache, render_signal.as_ref(), &uri, report);
+                                    }
+                                    Err(e) => {
+                                        debug!(uri = %uri.as_str(), error = %e, "Failed to request diagnostics after didOpen");
+                                    }
+                                }
+                            });
                         }
                         LspRequest::DidChange { uri, version, content } => {
                             Self::handle_did_change(&client, uri, version, content);
@@ -726,6 +746,43 @@ impl LspSaturator {
                     "Diagnostics unchanged"
                 );
                 // No update needed - diagnostics haven't changed
+            }
+        }
+    }
+
+    /// Handle a diagnostic report, but only store if non-empty.
+    ///
+    /// Used for immediate post-didOpen requests where rust-analyzer may not have
+    /// finished analyzing the file yet. Empty results are ignored to avoid
+    /// polluting the cache before actual diagnostics are available.
+    fn handle_diagnostic_report_if_non_empty(
+        cache: &Arc<DiagnosticCache>,
+        render_signal: Option<&mpsc::Sender<()>>,
+        uri: &Uri,
+        report: DocumentDiagnosticReport,
+    ) {
+        match report {
+            DocumentDiagnosticReport::Full(full_report) => {
+                let diagnostics = full_report.full_document_diagnostic_report.items;
+                let count = diagnostics.len();
+
+                if count > 0 {
+                    debug!(uri = ?uri, count = count, "Received full diagnostic report (immediate)");
+                    cache.store(uri, None, diagnostics);
+
+                    if let Some(tx) = render_signal {
+                        let _ = tx.try_send(());
+                    }
+                } else {
+                    debug!(uri = ?uri, "Skipping empty diagnostic report (waiting for refresh)");
+                }
+            }
+            DocumentDiagnosticReport::Unchanged(unchanged_report) => {
+                debug!(
+                    uri = ?uri,
+                    result_id = ?unchanged_report.unchanged_document_diagnostic_report.result_id,
+                    "Diagnostics unchanged (immediate)"
+                );
             }
         }
     }

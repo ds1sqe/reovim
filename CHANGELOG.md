@@ -48,11 +48,14 @@ All notable changes to Reovim will be documented in this file.
   - Status line shows `[INTERACTOR][MODE]` as separate colored sections
   - `Color` type exported from `reovim_core::highlight` for plugin use
 - **LSP debugging tools** (Issue #26) - Tools for debugging LSP communication
-  - LSP health check: Shows server status, document count, and diagnostic stats in `:health` modal
+  - LSP health check: Shows server status, document count, diagnostic stats, and timestamps in `:health` modal
+  - `:LspLog` command to open the latest LSP log file directly in the editor
   - Dedicated LSP log: `--lsp-log` flag for capturing JSON-RPC messages to separate file
     - `--lsp-log=default` creates timestamped `lsp-<timestamp>.log` in data directory
     - `--lsp-log=/path/to/file.log` for custom path
-    - Logs show `->` for outgoing and `<-` for incoming messages at TRACE level
+    - `--lsp-log=default:LEVEL` or `--lsp-log=/path:LEVEL` for configurable verbosity
+    - Supported levels: error, warn, info, debug, trace (default: trace)
+    - Logs show `->` for outgoing and `<-` for incoming messages
 - **Request-driven cursor movement with operator support** - Plugin-to-runtime communication for cursor positioning
   - `RequestCursorMove` event allows plugins to request cursor movement
   - `Motion::JumpTo { line, column }` variant for absolute positioning
@@ -60,6 +63,13 @@ All notable changes to Reovim will be documented in this file.
   - Automatic operator integration: `d`/`y`/`c` + jump creates `OperatorMotionAction`
   - Runtime detects `OperatorPending` mode and applies operators to jump targets
   - Enables jump navigation, LSP goto-definition, and other plugin-driven navigation with full vim operator semantics
+
+### Fixed
+
+- **LSP diagnostics not received after opening files** (Issue #26)
+  - rust-analyzer uses LSP 3.17 "pull diagnostics" instead of push notifications
+  - Now request diagnostics immediately after `textDocument/didOpen`
+  - Handle `workspace/diagnostic/refresh` requests from server
 
 ### Changed
 
