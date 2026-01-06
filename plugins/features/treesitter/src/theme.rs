@@ -320,6 +320,71 @@ mod palette {
     pub const DELETE: Color = RED;
 }
 
+// =============================================================================
+// ONE LIGHT COLOR PALETTE
+// Light theme colors based on Atom One Light
+// =============================================================================
+
+/// One Light palette - colors optimized for light backgrounds
+mod light_palette {
+    use reovim_sys::style::Color;
+
+    /// #e45649 - Keywords, parameters
+    pub const RED: Color = Color::Rgb {
+        r: 228,
+        g: 86,
+        b: 73,
+    };
+    /// #4078f2 - Functions
+    pub const BLUE: Color = Color::Rgb {
+        r: 64,
+        g: 120,
+        b: 242,
+    };
+    /// #a626a4 - Keywords, control flow
+    pub const PURPLE: Color = Color::Rgb {
+        r: 166,
+        g: 38,
+        b: 164,
+    };
+    /// #50a14f - Strings
+    pub const GREEN: Color = Color::Rgb {
+        r: 80,
+        g: 161,
+        b: 79,
+    };
+    /// #0184bc - Types
+    pub const CYAN: Color = Color::Rgb {
+        r: 1,
+        g: 132,
+        b: 188,
+    };
+    /// #986801 - Constants, numbers
+    pub const ORANGE: Color = Color::Rgb {
+        r: 152,
+        g: 104,
+        b: 1,
+    };
+    /// #c18401 - Floats, labels
+    pub const YELLOW: Color = Color::Rgb {
+        r: 193,
+        g: 132,
+        b: 1,
+    };
+    /// #a0a1a7 - Comments
+    pub const COMMENT: Color = Color::Rgb {
+        r: 160,
+        g: 161,
+        b: 167,
+    };
+    /// #383a42 - Default text
+    pub const TEXT: Color = Color::Rgb {
+        r: 56,
+        g: 58,
+        b: 66,
+    };
+}
+
 /// Theme mapping from treesitter capture names to styles
 pub struct TreesitterTheme {
     captures: HashMap<&'static str, Style>,
@@ -653,6 +718,68 @@ impl TreesitterTheme {
         Self { captures }
     }
 
+    /// Create a light theme (One Light style)
+    ///
+    /// Colors from Atom One Light theme, optimized for light backgrounds.
+    #[must_use]
+    pub fn light() -> Self {
+        use light_palette::*;
+
+        let mut captures = HashMap::new();
+
+        // Keywords
+        captures.insert("keyword", Style::new().fg(PURPLE).italic());
+        captures.insert("keyword.function", Style::new().fg(PURPLE));
+        captures.insert("keyword.control", Style::new().fg(PURPLE));
+        captures.insert("keyword.operator", Style::new().fg(PURPLE));
+
+        // Types
+        captures.insert("type", Style::new().fg(CYAN).italic());
+        captures.insert("type.builtin", Style::new().fg(CYAN).italic());
+
+        // Functions
+        captures.insert("function", Style::new().fg(BLUE));
+        captures.insert("function.method", Style::new().fg(BLUE));
+        captures.insert("function.builtin", Style::new().fg(BLUE).italic());
+
+        // Variables
+        captures.insert("variable", Style::new().fg(TEXT));
+        captures.insert("variable.parameter", Style::new().fg(RED));
+        captures.insert("variable.builtin", Style::new().fg(RED).italic());
+
+        // Strings
+        captures.insert("string", Style::new().fg(GREEN));
+        captures.insert("string.special", Style::new().fg(GREEN));
+        captures.insert("character", Style::new().fg(GREEN));
+
+        // Numbers
+        captures.insert("number", Style::new().fg(ORANGE));
+        captures.insert("number.float", Style::new().fg(YELLOW));
+        captures.insert("constant", Style::new().fg(ORANGE));
+        captures.insert("constant.builtin", Style::new().fg(ORANGE).italic());
+        captures.insert("boolean", Style::new().fg(ORANGE));
+
+        // Comments
+        captures.insert("comment", Style::new().fg(COMMENT).italic());
+
+        // Operators & Punctuation
+        captures.insert("operator", Style::new().fg(TEXT));
+        captures.insert("punctuation", Style::new().fg(TEXT));
+        captures.insert("punctuation.bracket", Style::new().fg(TEXT));
+        captures.insert("punctuation.delimiter", Style::new().fg(TEXT));
+
+        // Properties & Attributes
+        captures.insert("property", Style::new().fg(RED));
+        captures.insert("attribute", Style::new().fg(CYAN));
+        captures.insert("label", Style::new().fg(YELLOW));
+
+        // Modules & Namespaces
+        captures.insert("namespace", Style::new().fg(ORANGE));
+        captures.insert("module", Style::new().fg(ORANGE));
+
+        Self { captures }
+    }
+
     /// Get the style for a capture name
     ///
     /// Falls back to parent scope if exact match not found
@@ -682,7 +809,7 @@ impl TreesitterTheme {
         match name {
             ThemeName::TokyoNightOrange => Self::reo(),
             ThemeName::Dark => Self::dark(),
-            ThemeName::Light => Self::dark(), // Light theme TODO
+            ThemeName::Light => Self::light(),
         }
     }
 }
@@ -841,5 +968,71 @@ mod tests {
         assert!(theme.style_for_capture("markup.heading").is_some());
         assert!(theme.style_for_capture("markup.bold").is_some());
         assert!(theme.style_for_capture("markup.link").is_some());
+    }
+
+    #[test]
+    fn test_light_theme() {
+        let theme = TreesitterTheme::light();
+
+        // Verify key captures exist
+        assert!(theme.style_for_capture("keyword").is_some());
+        assert!(theme.style_for_capture("function").is_some());
+        assert!(theme.style_for_capture("string").is_some());
+        assert!(theme.style_for_capture("comment").is_some());
+        assert!(theme.style_for_capture("type").is_some());
+        assert!(theme.style_for_capture("variable").is_some());
+        assert!(theme.style_for_capture("number").is_some());
+    }
+
+    #[test]
+    fn test_from_theme_name_light() {
+        use reovim_core::highlight::ThemeName;
+
+        let theme = TreesitterTheme::from_theme_name(ThemeName::Light);
+        let dark = TreesitterTheme::dark();
+
+        // Verify they have different styles (light should NOT use dark colors)
+        let light_keyword = theme.style_for_capture("keyword");
+        let dark_keyword = dark.style_for_capture("keyword");
+        assert_ne!(format!("{:?}", light_keyword), format!("{:?}", dark_keyword));
+    }
+
+    #[test]
+    fn test_light_palette_colors() {
+        use light_palette::*;
+
+        // Verify One Light colors are correct
+        assert!(matches!(
+            RED,
+            Color::Rgb {
+                r: 228,
+                g: 86,
+                b: 73
+            }
+        ));
+        assert!(matches!(
+            GREEN,
+            Color::Rgb {
+                r: 80,
+                g: 161,
+                b: 79
+            }
+        ));
+        assert!(matches!(
+            BLUE,
+            Color::Rgb {
+                r: 64,
+                g: 120,
+                b: 242
+            }
+        ));
+        assert!(matches!(
+            PURPLE,
+            Color::Rgb {
+                r: 166,
+                g: 38,
+                b: 164
+            }
+        ));
     }
 }
