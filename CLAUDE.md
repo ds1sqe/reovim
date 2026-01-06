@@ -150,6 +150,11 @@ cargo run -- --server --log=-
 
 # Server mode with custom log file
 cargo run -- --server --log=/tmp/reovim-server.log
+
+# LSP JSON-RPC message logging (for debugging LSP issues)
+reovim --lsp-log=default myfile.rs           # Timestamped lsp-*.log in data dir
+reovim --lsp-log=/tmp/lsp.log myfile.rs      # Custom path
+cargo run -- --server --log=/tmp/main.log --lsp-log=/tmp/lsp.log  # Both logs
 ```
 
 ### Log Level

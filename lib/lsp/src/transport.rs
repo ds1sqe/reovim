@@ -125,10 +125,10 @@ impl Transport {
         reader.read_exact(&mut buffer).await?;
 
         let json_str = String::from_utf8_lossy(&buffer);
-        trace!(len = content_length, "<- {}", json_str);
+        trace!(target: "reovim_lsp", len = content_length, "<- {}", json_str);
 
         let message: Message = serde_json::from_slice(&buffer)?;
-        debug!("<- {:?}", message);
+        debug!(target: "reovim_lsp", "<- {:?}", message);
 
         Ok(message)
     }
@@ -149,8 +149,8 @@ impl Transport {
         let json = serde_json::to_string(message)?;
         let content_length = json.len();
 
-        debug!("-> {:?}", message);
-        trace!(len = content_length, "-> {}", json);
+        debug!(target: "reovim_lsp", "-> {:?}", message);
+        trace!(target: "reovim_lsp", len = content_length, "-> {}", json);
 
         // Write header
         let header = format!("Content-Length: {content_length}\r\n\r\n");

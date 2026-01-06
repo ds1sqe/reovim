@@ -1700,6 +1700,7 @@ dependencies = [
  "reovim-core",
  "reovim-lang-markdown",
  "reovim-lsp",
+ "reovim-plugin-health-check",
  "reovim-plugin-microscope",
  "reovim-plugin-notification",
  "reovim-plugin-statusline",
