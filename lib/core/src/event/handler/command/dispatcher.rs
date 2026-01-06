@@ -117,6 +117,24 @@ impl Dispatcher {
             "enter_window_mode" => {
                 Some(ModeState::new().with_sub(SubMode::Interactor(ComponentId::WINDOW)))
             }
+            // Window mode actions -> Normal mode
+            "window_mode_focus_left"
+            | "window_mode_focus_down"
+            | "window_mode_focus_up"
+            | "window_mode_focus_right"
+            | "window_mode_move_left"
+            | "window_mode_move_down"
+            | "window_mode_move_up"
+            | "window_mode_move_right"
+            | "window_mode_swap_left"
+            | "window_mode_swap_down"
+            | "window_mode_swap_up"
+            | "window_mode_swap_right"
+            | "window_mode_split_h"
+            | "window_mode_split_v"
+            | "window_mode_close"
+            | "window_mode_only"
+            | "window_mode_equalize" => Some(ModeState::normal()),
             // Plugin mode transitions (telescope, explorer) are handled via DeferredAction
             // toggle_explorer, explorer_close, explorer_focus_editor etc.
             _ => None,

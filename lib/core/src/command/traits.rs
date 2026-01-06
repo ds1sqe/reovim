@@ -265,6 +265,17 @@ pub enum CommandLineAction {
     Execute,
     /// Cancel command line mode
     Cancel,
+    /// Trigger completion (Tab key)
+    Complete,
+    /// Select previous completion (Shift-Tab)
+    CompletePrev,
+    /// Apply the selected completion text
+    ApplyCompletion {
+        /// Text to insert
+        text: String,
+        /// Position where to start replacing
+        replace_start: usize,
+    },
 }
 
 /// The core command trait - all commands must implement this

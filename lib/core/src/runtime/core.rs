@@ -600,6 +600,21 @@ impl Runtime {
                 });
         }
 
+        // Subscribe to command line completion apply requests
+        {
+            use crate::event_bus::{EventResult, core_events::RequestApplyCmdlineCompletion};
+            let tx = runtime.tx.clone();
+            runtime
+                .event_bus
+                .subscribe::<RequestApplyCmdlineCompletion, _>(100, move |event, _ctx| {
+                    let _ = tx.try_send(InnerEvent::ApplyCmdlineCompletion {
+                        text: event.text.clone(),
+                        replace_start: event.replace_start,
+                    });
+                    EventResult::Handled
+                });
+        }
+
         // Enable keyboard enhancement protocol if supported
         // This allows terminals (kitty, WezTerm, foot) to disambiguate Ctrl+I from Tab
         if reovim_sys::terminal::supports_keyboard_enhancement().unwrap_or(false) {

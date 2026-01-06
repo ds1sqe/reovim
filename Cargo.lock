@@ -1543,6 +1543,7 @@ dependencies = [
  "reovim-lang-python",
  "reovim-lang-rust",
  "reovim-lang-toml",
+ "reovim-plugin-cmdline-completion",
  "reovim-plugin-completion",
  "reovim-plugin-explorer",
  "reovim-plugin-health-check",
@@ -1700,6 +1701,15 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+]
+
+[[package]]
+name = "reovim-plugin-cmdline-completion"
+version = "0.7.9"
+dependencies = [
+ "arc-swap",
+ "reovim-core",
+ "tracing",
 ]
 
 [[package]]

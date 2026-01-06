@@ -401,14 +401,12 @@ impl CommandHandler {
                                 let runtime_mode = self.mode_rx.borrow().clone();
                                 let should_sync = runtime_mode != self.local_mode;
 
-                                if should_sync {
-                                    tracing::debug!(
-                                        "Mode sync: runtime_mode interactor={}, local_mode interactor={}, mode_locally_changed={}",
-                                        runtime_mode.interactor_id.0,
-                                        self.local_mode.interactor_id.0,
-                                        self.mode_locally_changed
-                                    );
+                                // Clear stale flag when runtime caught up
+                                if !should_sync && self.mode_locally_changed {
+                                    self.mode_locally_changed = false;
+                                }
 
+                                if should_sync {
                                     // If interactor changed, always sync (focus change initiated by runtime)
                                     let interactor_changed = runtime_mode.interactor_id != self.local_mode.interactor_id;
 
@@ -416,10 +414,6 @@ impl CommandHandler {
                                         // Focus change - always sync and clear mode_locally_changed flag
                                         self.local_mode = runtime_mode;
                                         self.mode_locally_changed = false;
-                                        tracing::info!(
-                                            "Focus changed: interactor={}",
-                                            self.local_mode.interactor_id.0
-                                        );
                                     } else if self.mode_locally_changed {
                                         // Check if runtime has caught up with our local change
                                         if runtime_mode == self.local_mode {

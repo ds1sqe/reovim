@@ -1,0 +1,12 @@
+[package]
+name = "reovim-plugin-cmdline-completion"
+version.workspace = true
+edition.workspace = true
+description = "Command-line auto-completion plugin for reovim"
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+reovim-core.workspace = true
+arc-swap = "1"
+tracing.workspace = true

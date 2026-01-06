@@ -754,6 +754,12 @@ impl KeyMap {
         cmd.insert(keys![Escape], KeyMapInner::with_command_id(builtin::COMMAND_LINE_CANCEL));
         cmd.insert(keys![Enter], KeyMapInner::with_command_id(builtin::COMMAND_LINE_EXECUTE));
         cmd.insert(keys![Backspace], KeyMapInner::with_command_id(builtin::COMMAND_LINE_BACKSPACE));
+        // Command line completion
+        cmd.insert(keys![Tab], KeyMapInner::with_command_id(builtin::CMDLINE_COMPLETE));
+        cmd.insert(
+            keys![(Shift Tab)],
+            KeyMapInner::with_command_id(builtin::CMDLINE_COMPLETE_PREV),
+        );
 
         // Operator-pending mode
         let op = self.get_scope_mut(KeymapScope::SubMode(SubModeKind::OperatorPending));
