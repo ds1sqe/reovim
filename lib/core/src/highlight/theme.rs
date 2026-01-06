@@ -15,10 +15,8 @@
 //! - `tab`: Tab line styles
 //! - `window`: Window separator styles
 //! - `diagnostic`: Enhanced diagnostic styles with underline colors
-//! - `cursor`: Cursor effects (glow, pulse)
 //! - `semantic`: Language-specific semantic token styles
 //! - `leap`: Leap navigation label styles
-//! - `animation`: Animation configuration
 
 use {
     crate::highlight::{
@@ -204,30 +202,6 @@ pub struct DiagnosticStyles {
     pub unnecessary: Style,
 }
 
-/// Cursor-related styles and effect configurations
-#[derive(Debug, Clone)]
-pub struct CursorStyles {
-    /// Cursor line background
-    pub line: Style,
-    /// Cursor column background (if enabled)
-    pub column: Style,
-    /// Cursor glow effect configuration
-    pub glow: Option<EffectConfig>,
-    /// Cursor pulse effect configuration
-    pub pulse: Option<EffectConfig>,
-}
-
-/// Configuration for visual effects
-#[derive(Debug, Clone)]
-pub struct EffectConfig {
-    /// Base style for the effect
-    pub style: Style,
-    /// Effect radius in cells (for glow)
-    pub radius: u8,
-    /// Animation speed in ms per frame (0 = no animation)
-    pub animation_ms: u16,
-}
-
 /// Semantic token styles for language-specific highlighting
 #[derive(Debug, Clone)]
 pub struct SemanticStyles {
@@ -279,24 +253,6 @@ pub struct VirtualTextStyles {
     pub hint: Style,
 }
 
-/// Animation configuration
-#[derive(Debug, Clone)]
-pub struct AnimationConfig {
-    /// Enable animations globally
-    pub enabled: bool,
-    /// Animation frame rate (fps, default 30)
-    pub frame_rate: u8,
-}
-
-impl Default for AnimationConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            frame_rate: 30,
-        }
-    }
-}
-
 // ============================================================================
 // Main Theme Struct
 // ============================================================================
@@ -318,11 +274,9 @@ pub struct Theme {
     pub brackets: BracketStyles,
     // Extended style categories
     pub diagnostic: DiagnosticStyles,
-    pub cursor: CursorStyles,
     pub semantic: SemanticStyles,
     pub leap: LeapStyles,
     pub virtual_text: VirtualTextStyles,
-    pub animation: AnimationConfig,
 }
 
 impl Default for Theme {
@@ -516,12 +470,6 @@ impl Theme {
                 deprecated: Style::new().strikethrough().dim(),
                 unnecessary: Style::new().dim(),
             },
-            cursor: CursorStyles {
-                line: Style::new().bg(bg_light),
-                column: Style::new().bg(bg_light),
-                glow: None, // No animation by default
-                pulse: None,
-            },
             semantic: SemanticStyles {
                 lifetime: Style::new().fg(magenta).italic(),
                 trait_bound: Style::new().fg(yellow).italic(),
@@ -546,7 +494,6 @@ impl Theme {
                 info: Style::new().fg(blue).italic(),
                 hint: Style::new().fg(fg_dark).italic(),
             },
-            animation: AnimationConfig::default(),
         }
     }
 
@@ -692,12 +639,6 @@ impl Theme {
                 deprecated: Style::new().strikethrough().dim(),
                 unnecessary: Style::new().dim(),
             },
-            cursor: CursorStyles {
-                line: Style::new().bg(bg_highlight),
-                column: Style::new().bg(bg_highlight),
-                glow: None,
-                pulse: None,
-            },
             semantic: SemanticStyles {
                 lifetime: Style::new().fg(Color::DarkMagenta).italic(),
                 trait_bound: Style::new().fg(Color::DarkYellow).italic(),
@@ -722,7 +663,6 @@ impl Theme {
                 info: Style::new().fg(Color::DarkBlue).italic(),
                 hint: Style::new().fg(Color::Grey).italic(),
             },
-            animation: AnimationConfig::default(),
         }
     }
 
@@ -930,12 +870,6 @@ impl Theme {
                 deprecated: Style::new().strikethrough().dim(),
                 unnecessary: Style::new().dim(),
             },
-            cursor: CursorStyles {
-                line: Style::new().bg(bg_highlight),
-                column: Style::new().bg(bg_highlight),
-                glow: None,
-                pulse: None,
-            },
             semantic: SemanticStyles {
                 lifetime: Style::new().fg(magenta).italic(),
                 trait_bound: Style::new().fg(yellow).italic(),
@@ -960,7 +894,6 @@ impl Theme {
                 info: Style::new().fg(blue).italic(),
                 hint: Style::new().fg(fg_dark).italic(),
             },
-            animation: AnimationConfig::default(),
         }
     }
 
@@ -1018,7 +951,6 @@ impl Theme {
     /// - `window.separator`
     /// - `brackets.{rainbow.0-5,matched,unmatched}`
     /// - `diagnostic.{hint,info,warn,error,deprecated,unnecessary}`
-    /// - `cursor.{line,column}`
     /// - `semantic.{lifetime,trait_bound,async_keyword,await_keyword,unsafe_keyword,macro_invocation,attribute,mutable,constant,static_var}`
     /// - `leap.{label_primary,label_secondary,dimmed}`
     /// - `virtual_text.{default,error,warn,info,hint}`
@@ -1126,10 +1058,6 @@ impl Theme {
             ["diagnostic", "error"] => Ok(&mut self.diagnostic.error),
             ["diagnostic", "deprecated"] => Ok(&mut self.diagnostic.deprecated),
             ["diagnostic", "unnecessary"] => Ok(&mut self.diagnostic.unnecessary),
-
-            // cursor.*
-            ["cursor", "line"] => Ok(&mut self.cursor.line),
-            ["cursor", "column"] => Ok(&mut self.cursor.column),
 
             // semantic.*
             ["semantic", "lifetime"] => Ok(&mut self.semantic.lifetime),
