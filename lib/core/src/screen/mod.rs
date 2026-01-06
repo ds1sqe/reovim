@@ -1,7 +1,6 @@
 #![allow(clippy::missing_errors_doc)]
 
 pub mod border;
-mod status_line;
 
 /// Z-order constants for core rendering layers
 ///
@@ -82,8 +81,6 @@ use {
     },
     window::{Anchor, LineNumber, SignColumnMode, Window},
 };
-
-pub use status_line::{StatusLineRenderer, render_command_line_to, render_status_line_to};
 
 pub mod cusor;
 pub mod layout;
@@ -2487,34 +2484,3 @@ impl StyleExt for crate::highlight::Style {
     }
 }
 
-// Implement StatusLineRenderer trait for Screen
-impl StatusLineRenderer for Screen {
-    fn render_status_line(
-        &mut self,
-        mode: &ModeState,
-        buffer: Option<&Buffer>,
-        pending_keys: &str,
-        last_command: &str,
-        theme: &Theme,
-        color_mode: ColorMode,
-    ) -> std::result::Result<(), std::io::Error> {
-        render_status_line_to(
-            &mut self.out_stream,
-            self.size.width,
-            self.size.height,
-            mode,
-            buffer,
-            pending_keys,
-            last_command,
-            theme,
-            color_mode,
-        )
-    }
-
-    fn render_command_line(
-        &mut self,
-        cmd_line: &CommandLine,
-    ) -> std::result::Result<(), std::io::Error> {
-        render_command_line_to(&mut self.out_stream, self.size.height, cmd_line)
-    }
-}
