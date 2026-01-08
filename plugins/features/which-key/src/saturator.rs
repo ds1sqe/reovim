@@ -7,7 +7,7 @@ use {
     reovim_core::{
         bind::{KeyMap, KeymapScope},
         command::registry::CommandRegistry,
-        event::InnerEvent,
+        event::RuntimeEvent,
         keystroke::KeySequence,
     },
     tokio::sync::mpsc,
@@ -40,7 +40,7 @@ impl WhichKeySaturatorHandle {
 /// Spawn background saturator task
 pub fn spawn_whichkey_saturator(
     cache: Arc<ArcSwap<WhichKeyCache>>,
-    event_tx: mpsc::Sender<InnerEvent>,
+    event_tx: mpsc::Sender<RuntimeEvent>,
     keymap: Arc<KeyMap>,
     command_registry: Arc<CommandRegistry>,
 ) -> WhichKeySaturatorHandle {
@@ -69,7 +69,7 @@ pub fn spawn_whichkey_saturator(
 
             // Signal re-render
             tracing::info!("WhichKey saturator: sending RenderSignal");
-            let _ = event_tx.send(InnerEvent::RenderSignal).await;
+            let _ = event_tx.send(RuntimeEvent::render_signal()).await;
         }
         tracing::warn!("WhichKey saturator task ended");
     });

@@ -688,7 +688,7 @@ impl Runtime {
                         // Emit quit - the event loop will handle it
                         let tx = self.tx.clone();
                         tokio::spawn(async move {
-                            let _ = tx.send(crate::event::InnerEvent::KillSignal).await;
+                            let _ = tx.send(crate::event::RuntimeEvent::kill()).await;
                         });
                     }
 

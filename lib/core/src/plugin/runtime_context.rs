@@ -12,7 +12,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use crate::{
-    event::InnerEvent,
+    event::RuntimeEvent,
     event_bus::{DynEvent, Event, EventSender},
     modd::ModeState,
 };
@@ -22,15 +22,15 @@ use super::{PluginId, PluginStateRegistry};
 /// Context provided to plugins during runtime operations
 ///
 /// This provides plugins with controlled access to:
-/// - Event emission (both legacy InnerEvent and new plugin events)
+/// - Event emission (both legacy RuntimeEvent and new plugin events)
 /// - Read-only mode state observation
 /// - Plugin state registry access
 /// - Render requests
 pub struct RuntimeContext {
     /// Plugin ID for event attribution
     plugin_id: PluginId,
-    /// Sender for legacy InnerEvent system
-    inner_event_tx: mpsc::Sender<InnerEvent>,
+    /// Sender for legacy RuntimeEvent system
+    inner_event_tx: mpsc::Sender<RuntimeEvent>,
     /// Sender for new event bus system
     event_bus_sender: EventSender,
     /// Current mode state (snapshot)
@@ -48,7 +48,7 @@ impl RuntimeContext {
     #[must_use]
     pub fn new(
         plugin_id: PluginId,
-        inner_event_tx: mpsc::Sender<InnerEvent>,
+        inner_event_tx: mpsc::Sender<RuntimeEvent>,
         event_bus_sender: EventSender,
         mode_state: ModeState,
         state_registry: Arc<PluginStateRegistry>,
@@ -106,31 +106,28 @@ impl RuntimeContext {
         self.event_bus_sender.try_send(event);
     }
 
-    /// Emit a legacy InnerEvent
+    /// Emit a legacy RuntimeEvent
     ///
     /// Used during migration when plugins need to interact with
     /// the existing event system.
-    pub fn emit_inner(&self, event: InnerEvent) {
+    pub fn emit_inner(&self, event: RuntimeEvent) {
         let _ = self.inner_event_tx.try_send(event);
     }
 
-    /// Emit a plugin event wrapped in InnerEvent::PluginEvent
+    /// Emit a plugin event wrapped in RuntimeEvent
     ///
     /// This routes the event through the legacy system but marks it
     /// as a plugin event for proper dispatch.
     pub fn emit_plugin_event<E: Event>(&self, event: E) {
         let dyn_event = DynEvent::new(event);
-        let inner = InnerEvent::PluginEvent {
-            plugin_id: self.plugin_id.clone(),
-            event: dyn_event,
-        };
+        let inner = RuntimeEvent::plugin(self.plugin_id.clone(), dyn_event);
         let _ = self.inner_event_tx.try_send(inner);
     }
 
     /// Request a render after this event is processed
     pub fn request_render(&mut self) {
         self.render_requested = true;
-        let _ = self.inner_event_tx.try_send(InnerEvent::RenderSignal);
+        let _ = self.inner_event_tx.try_send(RuntimeEvent::render_signal());
     }
 
     // =========================================================================
@@ -163,7 +160,7 @@ impl RuntimeContext {
 /// Used by the Runtime when dispatching events to plugins.
 pub struct RuntimeContextBuilder {
     plugin_id: Option<PluginId>,
-    inner_event_tx: Option<mpsc::Sender<InnerEvent>>,
+    inner_event_tx: Option<mpsc::Sender<RuntimeEvent>>,
     event_bus_sender: Option<EventSender>,
     mode_state: Option<ModeState>,
     state_registry: Option<Arc<PluginStateRegistry>>,
@@ -193,7 +190,7 @@ impl RuntimeContextBuilder {
 
     /// Set the inner event sender
     #[must_use]
-    pub fn inner_event_tx(mut self, tx: mpsc::Sender<InnerEvent>) -> Self {
+    pub fn inner_event_tx(mut self, tx: mpsc::Sender<RuntimeEvent>) -> Self {
         self.inner_event_tx = Some(tx);
         self
     }

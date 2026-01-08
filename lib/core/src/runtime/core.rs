@@ -16,7 +16,7 @@ use {
         config::{ProfileConfig, ProfileManager},
         constants::EVENT_CHANNEL_CAPACITY,
         decoration::{DecorationStore, LanguageRendererRegistry},
-        event::InnerEvent,
+        event::RuntimeEvent,
         event_bus::{
             BufferClosed, DynEvent, EventBus, EventResult, EventSender, FileOpened, HandlerContext,
             core_events::ModeChanged,
@@ -49,8 +49,8 @@ pub struct Runtime {
     pub command_line: CommandLine,
     pub pending_keys: String,
     pub last_command: String,
-    pub tx: mpsc::Sender<InnerEvent>,
-    pub rx: mpsc::Receiver<InnerEvent>,
+    pub tx: mpsc::Sender<RuntimeEvent>,
+    pub rx: mpsc::Receiver<RuntimeEvent>,
     pub initial_file: Option<String>,
     pub(crate) showing_landing_page: bool,
     /// Watch channel sender for broadcasting mode changes
@@ -293,7 +293,7 @@ impl Runtime {
                     let current_mode = mode_tx.borrow().clone();
                     let new_mode = current_mode.set_interactor_id(event.target);
                     // Send through event loop to properly update runtime.mode_state
-                    let _ = tx.try_send(crate::event::InnerEvent::ModeChangeEvent(new_mode));
+                    let _ = tx.try_send(RuntimeEvent::mode_change(new_mode));
                     tracing::info!(
                         "Runtime: Requesting focus change to component '{}'",
                         event.target.0
@@ -310,7 +310,7 @@ impl Runtime {
                 .event_bus
                 .subscribe::<RequestModeChange, _>(100, move |event, _ctx| {
                     // Send through event loop to properly update runtime.mode_state
-                    let _ = tx.try_send(crate::event::InnerEvent::ModeChangeEvent(event.mode.clone()));
+                    let _ = tx.try_send(RuntimeEvent::mode_change(event.mode.clone()));
                     tracing::info!(
                         "Runtime: Requesting mode change to interactor='{}', edit_mode={:?}, sub_mode={:?}",
                         event.mode.interactor_id.0,
@@ -330,9 +330,7 @@ impl Runtime {
                 .subscribe::<RequestOpenFile, _>(100, move |event, _ctx| {
                     tracing::info!("Runtime: Requesting to open file: {:?}", event.path);
                     // Send OpenFileRequest to the runtime event loop
-                    let _ = tx.try_send(InnerEvent::OpenFileRequest {
-                        path: event.path.clone(),
-                    });
+                    let _ = tx.try_send(RuntimeEvent::open_file(event.path.clone()));
                     EventResult::Handled
                 });
         }
@@ -350,11 +348,11 @@ impl Runtime {
                         event.line,
                         event.column
                     );
-                    let _ = tx.try_send(InnerEvent::OpenFileAtPositionRequest {
-                        path: event.path.clone(),
-                        line: event.line,
-                        column: event.column,
-                    });
+                    let _ = tx.try_send(RuntimeEvent::open_file_at(
+                        event.path.clone(),
+                        event.line,
+                        event.column,
+                    ));
                     EventResult::Handled
                 });
         }
@@ -367,10 +365,10 @@ impl Runtime {
                 .event_bus
                 .subscribe::<RequestSetRegister, _>(100, move |event, _ctx| {
                     tracing::debug!("Runtime: Requesting to set register {:?}", event.register);
-                    let _ = tx.try_send(InnerEvent::SetRegister {
-                        register: event.register,
-                        text: event.text.clone(),
-                    });
+                    let _ = tx.try_send(RuntimeEvent::set_register(
+                        event.register,
+                        event.text.clone(),
+                    ));
                     EventResult::Handled
                 });
         }
@@ -444,7 +442,7 @@ impl Runtime {
 
                     // Delete prefix first (for completion: replace typed prefix with full word)
                     for _ in 0..event.delete_prefix_len {
-                        let _ = tx.try_send(InnerEvent::TextInputEvent(
+                        let _ = tx.try_send(RuntimeEvent::text_input(
                             TextInputEvent::DeleteCharBackward,
                         ));
                     }
@@ -452,12 +450,12 @@ impl Runtime {
                     // Insert each character
                     for c in event.text.chars() {
                         let _ =
-                            tx.try_send(InnerEvent::TextInputEvent(TextInputEvent::InsertChar(c)));
+                            tx.try_send(RuntimeEvent::text_input(TextInputEvent::InsertChar(c)));
                     }
 
                     // If requested, move cursor left after insertion
                     if event.move_cursor_left {
-                        let _ = tx.try_send(InnerEvent::CommandEvent(CommandEvent {
+                        let _ = tx.try_send(RuntimeEvent::command(CommandEvent {
                             command: CommandRef::Registered(builtin::CURSOR_LEFT),
                             context: CommandContext::default(),
                         }));
@@ -532,15 +530,15 @@ impl Runtime {
                             };
 
                             // Send operator motion event (runtime will handle mode change)
-                            let _ = tx.try_send(InnerEvent::OperatorMotionEvent(action));
+                            let _ = tx.try_send(RuntimeEvent::operator_motion(action));
                         }
                         None => {
                             // Normal cursor move (no operator)
-                            let _ = tx.try_send(InnerEvent::MoveCursor {
-                                buffer_id: event.buffer_id,
-                                line: event.line,
-                                column: event.column,
-                            });
+                            let _ = tx.try_send(RuntimeEvent::move_cursor(
+                                event.buffer_id,
+                                event.line,
+                                event.column,
+                            ));
                         }
                     }
 
@@ -555,9 +553,7 @@ impl Runtime {
             runtime
                 .event_bus
                 .subscribe::<RequestSetLineNumbers, _>(100, move |event, _ctx| {
-                    let _ = tx.try_send(InnerEvent::SetLineNumbers {
-                        enabled: event.enabled,
-                    });
+                    let _ = tx.try_send(RuntimeEvent::set_line_numbers(event.enabled));
                     EventResult::Handled
                 });
         }
@@ -567,9 +563,7 @@ impl Runtime {
             runtime
                 .event_bus
                 .subscribe::<RequestSetRelativeLineNumbers, _>(100, move |event, _ctx| {
-                    let _ = tx.try_send(InnerEvent::SetRelativeLineNumbers {
-                        enabled: event.enabled,
-                    });
+                    let _ = tx.try_send(RuntimeEvent::set_relative_line_numbers(event.enabled));
                     EventResult::Handled
                 });
         }
@@ -579,9 +573,7 @@ impl Runtime {
             runtime
                 .event_bus
                 .subscribe::<RequestSetTheme, _>(100, move |event, _ctx| {
-                    let _ = tx.try_send(InnerEvent::SetTheme {
-                        name: event.name.clone(),
-                    });
+                    let _ = tx.try_send(RuntimeEvent::set_theme(event.name.clone()));
                     EventResult::Handled
                 });
         }
@@ -591,9 +583,7 @@ impl Runtime {
             runtime
                 .event_bus
                 .subscribe::<RequestSetScrollbar, _>(100, move |event, _ctx| {
-                    let _ = tx.try_send(InnerEvent::SetScrollbar {
-                        enabled: event.enabled,
-                    });
+                    let _ = tx.try_send(RuntimeEvent::set_scrollbar(event.enabled));
                     EventResult::Handled
                 });
         }
@@ -603,9 +593,7 @@ impl Runtime {
             runtime
                 .event_bus
                 .subscribe::<RequestSetIndentGuide, _>(100, move |event, _ctx| {
-                    let _ = tx.try_send(InnerEvent::SetIndentGuide {
-                        enabled: event.enabled,
-                    });
+                    let _ = tx.try_send(RuntimeEvent::set_indent_guide(event.enabled));
                     EventResult::Handled
                 });
         }
@@ -615,7 +603,7 @@ impl Runtime {
             runtime
                 .event_bus
                 .subscribe::<RequestSetSignColumn, _>(100, move |event, _ctx| {
-                    let _ = tx.try_send(InnerEvent::SetSignColumn { mode: event.mode });
+                    let _ = tx.try_send(RuntimeEvent::set_sign_column(event.mode));
                     EventResult::Handled
                 });
         }
@@ -627,10 +615,10 @@ impl Runtime {
             runtime
                 .event_bus
                 .subscribe::<RequestApplyCmdlineCompletion, _>(100, move |event, _ctx| {
-                    let _ = tx.try_send(InnerEvent::ApplyCmdlineCompletion {
-                        text: event.text.clone(),
-                        replace_start: event.replace_start,
-                    });
+                    let _ = tx.try_send(RuntimeEvent::apply_cmdline_completion(
+                        event.text.clone(),
+                        event.replace_start,
+                    ));
                     EventResult::Handled
                 });
         }

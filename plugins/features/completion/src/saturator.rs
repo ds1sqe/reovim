@@ -15,7 +15,7 @@ use nucleo::{
 
 use reovim_core::{
     completion::{CompletionContext, CompletionItem},
-    event::InnerEvent,
+    event::RuntimeEvent,
 };
 
 use crate::{CompletionCache, cache::CompletionSnapshot, registry::SourceSupport};
@@ -96,7 +96,7 @@ impl CompletionSaturatorHandle {
 pub fn spawn_completion_saturator(
     sources: Arc<Vec<Arc<dyn SourceSupport>>>,
     cache: Arc<CompletionCache>,
-    event_tx: mpsc::Sender<InnerEvent>,
+    event_tx: mpsc::Sender<RuntimeEvent>,
     max_items: usize,
 ) -> CompletionSaturatorHandle {
     // Buffer of 1: only latest request matters
@@ -204,7 +204,7 @@ pub fn spawn_completion_saturator(
             tracing::debug!(item_count, "Completion results ready");
 
             // Signal render update
-            if let Err(e) = event_tx.send(InnerEvent::RenderSignal).await {
+            if let Err(e) = event_tx.send(RuntimeEvent::render_signal()).await {
                 tracing::warn!("Failed to send render signal: {}", e);
             }
         }
@@ -329,7 +329,10 @@ mod tests {
             .expect("timeout")
             .expect("channel closed");
 
-        assert!(matches!(event, InnerEvent::RenderSignal));
+        assert!(matches!(
+            event.into_payload(),
+            reovim_core::event::RuntimeEventPayload::Render(reovim_core::event::RenderEvent::Signal)
+        ));
 
         // Check cache
         let snapshot = cache.load();

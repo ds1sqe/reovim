@@ -16,7 +16,7 @@ use std::{
 
 use {
     reovim_core::{
-        event::InnerEvent,
+        event::RuntimeEvent,
         io::input::ChannelKeySource,
         rpc::{
             RpcNotification, RpcRequest, RpcResponse, TransportConfig, TransportConnection,
@@ -103,15 +103,12 @@ pub async fn run_server(
                     }
                     Ok(Event::Resize(cols, rows)) => {
                         let _ = event_tx_resize
-                            .send(InnerEvent::ScreenResizeEvent {
-                                width: cols,
-                                height: rows,
-                            })
+                            .send(RuntimeEvent::screen_resize(cols, rows))
                             .await;
                     }
                     Ok(Event::Mouse(mouse_event)) => {
                         let _ = event_tx_resize
-                            .send(InnerEvent::MouseEvent(mouse_event.into()))
+                            .send(RuntimeEvent::mouse(mouse_event.into()))
                             .await;
                     }
                     Ok(_) => {} // Ignore other events (Focus, Paste)
@@ -213,7 +210,7 @@ fn spawn_persistent_server(
     server: Arc<RpcServer>,
     request_tx: mpsc::Sender<RpcRequest>,
     request_rx: mpsc::Receiver<RpcRequest>,
-    event_tx_for_shutdown: mpsc::Sender<InnerEvent>,
+    event_tx_for_shutdown: mpsc::Sender<RuntimeEvent>,
     test_mode: bool,
 ) {
     let conn_state = Arc::new(ConnectionState {
@@ -269,7 +266,7 @@ fn spawn_persistent_server(
         tokio::spawn(async move {
             tokio::time::sleep(tokio::time::Duration::from_secs(180)).await;
             tracing::info!("Test mode: 3 minutes elapsed, shutting down");
-            let _ = event_tx_for_shutdown.send(InnerEvent::KillSignal).await;
+            let _ = event_tx_for_shutdown.send(RuntimeEvent::kill()).await;
         });
     }
 }

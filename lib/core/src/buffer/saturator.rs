@@ -14,7 +14,7 @@ use tokio::sync::mpsc;
 
 use crate::{
     decoration::DecorationProvider,
-    event::InnerEvent,
+    event::RuntimeEvent,
     render::{Decoration, DecorationCache, DecorationKind, HighlightCache, LineHighlight},
     syntax::SyntaxProvider,
 };
@@ -61,7 +61,7 @@ pub fn spawn_saturator(
     decoration: Option<Box<dyn DecorationProvider>>,
     highlight_cache: Arc<HighlightCache>,
     decoration_cache: Arc<DecorationCache>,
-    event_tx: mpsc::Sender<InnerEvent>,
+    event_tx: mpsc::Sender<RuntimeEvent>,
 ) -> SaturatorHandle {
     // Channel with buffer of 1 - only latest request matters
     let (tx, mut rx) = mpsc::channel::<SaturatorRequest>(1);
@@ -87,7 +87,7 @@ pub fn spawn_saturator(
 
             // Signal re-render if cache was updated
             if cache_updated {
-                let _ = event_tx.send(InnerEvent::RenderSignal).await;
+                let _ = event_tx.send(RuntimeEvent::render_signal()).await;
             }
         }
     });

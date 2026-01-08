@@ -740,7 +740,7 @@ impl Plugin for LspPlugin {
         &self,
         bus: &EventBus,
         state: Arc<PluginStateRegistry>,
-        event_tx: Option<tokio::sync::mpsc::Sender<reovim_core::event::InnerEvent>>,
+        event_tx: Option<tokio::sync::mpsc::Sender<reovim_core::event::RuntimeEvent>>,
     ) {
         // Store event_tx in manager for triggering re-renders
         if let Some(tx) = event_tx {

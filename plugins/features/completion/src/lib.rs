@@ -366,7 +366,7 @@ impl Plugin for CompletionPlugin {
         &self,
         _bus: &EventBus,
         state: Arc<PluginStateRegistry>,
-        event_tx: Option<tokio::sync::mpsc::Sender<reovim_core::event::InnerEvent>>,
+        event_tx: Option<tokio::sync::mpsc::Sender<reovim_core::event::RuntimeEvent>>,
     ) {
         // Get event_tx from parameter or fall back to state registry
         let Some(event_tx) = event_tx.or_else(|| state.inner_event_tx()) else {

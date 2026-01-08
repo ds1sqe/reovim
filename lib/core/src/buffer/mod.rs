@@ -226,7 +226,7 @@ impl Buffer {
     /// * `event_tx` - Channel to send `RenderSignal` when cache is updated
     pub fn start_saturator(
         &mut self,
-        event_tx: tokio::sync::mpsc::Sender<crate::event::InnerEvent>,
+        event_tx: tokio::sync::mpsc::Sender<crate::event::RuntimeEvent>,
     ) {
         // Only start if we have something to compute
         if self.syntax.is_none() && self.decoration_provider.is_none() {

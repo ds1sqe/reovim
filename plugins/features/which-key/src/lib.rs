@@ -17,7 +17,7 @@ use {
     reovim_core::{
         bind::{CommandRef, KeymapScope, SubModeKind},
         command::CommandId,
-        event::InnerEvent,
+        event::RuntimeEvent,
         event_bus::{EventBus, EventResult, PluginBackspace, PluginTextInput, RequestModeChange},
         frame::FrameBuffer,
         highlight::Theme,
@@ -129,7 +129,7 @@ impl Plugin for WhichKeyPlugin {
         &self,
         _bus: &EventBus,
         state: Arc<PluginStateRegistry>,
-        event_tx: Option<mpsc::Sender<InnerEvent>>,
+        event_tx: Option<mpsc::Sender<RuntimeEvent>>,
     ) {
         tracing::info!("WhichKeyPlugin: boot() called");
         // Get cache from init_state

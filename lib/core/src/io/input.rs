@@ -11,7 +11,7 @@ use {
     tokio::sync::mpsc,
 };
 
-use crate::event::InnerEvent;
+use crate::event::RuntimeEvent;
 
 /// Trait for abstracting key event sources.
 ///
@@ -135,7 +135,7 @@ impl KeySource for ChannelKeySource {
 pub struct EventStreamKeySource {
     stream: EventStream,
     /// Optional sender for resize events
-    event_sender: Option<mpsc::Sender<InnerEvent>>,
+    event_sender: Option<mpsc::Sender<RuntimeEvent>>,
 }
 
 impl Default for EventStreamKeySource {
@@ -156,7 +156,7 @@ impl EventStreamKeySource {
 
     /// Create a new event stream key source with a resize event sender.
     #[must_use]
-    pub fn with_event_sender(event_sender: mpsc::Sender<InnerEvent>) -> Self {
+    pub fn with_event_sender(event_sender: mpsc::Sender<RuntimeEvent>) -> Self {
         Self {
             stream: EventStream::new(),
             event_sender: Some(event_sender),
@@ -183,17 +183,14 @@ impl KeySource for EventStreamKeySource {
                 Poll::Ready(Some(Ok(Event::Resize(cols, rows)))) => {
                     // Send resize event if we have a sender
                     if let Some(ref sender) = self.event_sender {
-                        let _ = sender.try_send(InnerEvent::ScreenResizeEvent {
-                            width: cols,
-                            height: rows,
-                        });
+                        let _ = sender.try_send(RuntimeEvent::screen_resize(cols, rows));
                     }
                     // Continue polling for key events
                 }
                 Poll::Ready(Some(Ok(Event::Mouse(mouse_event)))) => {
                     // Forward mouse events to runtime
                     if let Some(ref sender) = self.event_sender {
-                        let _ = sender.try_send(InnerEvent::MouseEvent(mouse_event.into()));
+                        let _ = sender.try_send(RuntimeEvent::mouse(mouse_event.into()));
                     }
                     // Continue polling for key events
                 }

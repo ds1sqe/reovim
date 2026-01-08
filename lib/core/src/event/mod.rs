@@ -9,8 +9,10 @@ mod input;
 pub use {
     handler::{CommandHandler, PrintEventHandler, TerminateHandler},
     inner::{
-        BufferEvent, CommandEvent, HighlightEvent, InnerEvent, MouseButton, MouseEvent,
-        MouseEventKind, SyntaxEvent, TextInputEvent, VisualTextObjectAction, WindowEvent,
+        BufferEvent, CommandEvent, EditingEvent, FileEvent, HighlightEvent, InputEvent, ModeEvent,
+        MouseButton, MouseEvent, MouseEventKind, PluginEventData, RenderEvent, RpcEvent,
+        RuntimeEvent, RuntimeEventPayload, SettingsEvent, SyntaxEvent, TextInputEvent,
+        VisualTextObjectAction, WindowEvent,
     },
     input::*,
 };

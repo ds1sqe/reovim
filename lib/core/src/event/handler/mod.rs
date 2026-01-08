@@ -1,5 +1,5 @@
 use {
-    super::{InnerEvent, inner::BufferEvent},
+    super::{RuntimeEvent, inner::BufferEvent},
     crate::event::{KeyEvent, Subscribe, key::KeyCode},
     reovim_sys::{cursor, event::KeyModifiers},
     tokio::sync::{broadcast::Receiver, mpsc::Sender},
@@ -12,7 +12,7 @@ pub use command::CommandHandler;
 pub struct PrintEventHandler {
     pub buffer_id: usize,
     key_event_rx: Option<Receiver<KeyEvent>>,
-    buffer_tx: Sender<InnerEvent>,
+    buffer_tx: Sender<RuntimeEvent>,
 }
 
 impl Subscribe<KeyEvent> for PrintEventHandler {
@@ -24,7 +24,7 @@ impl Subscribe<KeyEvent> for PrintEventHandler {
 impl PrintEventHandler {
     #[must_use]
     #[allow(clippy::missing_const_for_fn)]
-    pub fn new(buffer_id: usize, tx: Sender<InnerEvent>) -> Self {
+    pub fn new(buffer_id: usize, tx: Sender<RuntimeEvent>) -> Self {
         Self {
             buffer_id,
             key_event_rx: None,
@@ -34,7 +34,7 @@ impl PrintEventHandler {
 
     async fn send_event(&self, content: String) {
         self.buffer_tx
-            .send(InnerEvent::BufferEvent(BufferEvent::SetContent {
+            .send(RuntimeEvent::buffer(BufferEvent::SetContent {
                 buffer_id: self.buffer_id,
                 content,
             }))
@@ -59,7 +59,7 @@ impl PrintEventHandler {
 
 pub struct TerminateHandler {
     key_event_rx: Option<Receiver<KeyEvent>>,
-    kill_tx: Sender<InnerEvent>,
+    kill_tx: Sender<RuntimeEvent>,
 }
 
 impl Subscribe<KeyEvent> for TerminateHandler {
@@ -71,7 +71,7 @@ impl Subscribe<KeyEvent> for TerminateHandler {
 impl TerminateHandler {
     #[must_use]
     #[allow(clippy::missing_const_for_fn)]
-    pub fn new(tx: Sender<InnerEvent>) -> Self {
+    pub fn new(tx: Sender<RuntimeEvent>) -> Self {
         Self {
             key_event_rx: None,
             kill_tx: tx,
@@ -80,7 +80,7 @@ impl TerminateHandler {
 
     async fn send_event(&self) {
         self.kill_tx
-            .send(InnerEvent::KillSignal)
+            .send(RuntimeEvent::kill())
             .await
             .expect("failed to send terminate signal");
     }

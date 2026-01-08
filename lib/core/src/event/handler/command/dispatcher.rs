@@ -5,7 +5,7 @@ use {
         bind::CommandRef,
         command::{CommandContext, CommandRegistry, traits::OperatorMotionAction},
         event::{
-            InnerEvent,
+            RuntimeEvent,
             inner::{CommandEvent, VisualTextObjectAction},
         },
         modd::ModeState,
@@ -16,7 +16,7 @@ use {
 
 /// Handles command dispatch and mode transitions
 pub struct Dispatcher {
-    inner_tx: Sender<InnerEvent>,
+    inner_tx: Sender<RuntimeEvent>,
     current_buffer_id: usize,
     current_window_id: usize,
     command_registry: Arc<CommandRegistry>,
@@ -25,7 +25,7 @@ pub struct Dispatcher {
 impl Dispatcher {
     #[must_use]
     pub const fn new(
-        tx: Sender<InnerEvent>,
+        tx: Sender<RuntimeEvent>,
         buffer_id: usize,
         window_id: usize,
         command_registry: Arc<CommandRegistry>,
@@ -41,7 +41,7 @@ impl Dispatcher {
     /// Get the sender for sending events
     #[must_use]
     #[allow(dead_code)]
-    pub const fn sender(&self) -> &Sender<InnerEvent> {
+    pub const fn sender(&self) -> &Sender<RuntimeEvent> {
         &self.inner_tx
     }
 
@@ -49,7 +49,7 @@ impl Dispatcher {
     pub async fn update_mode(&self, new_mode: ModeState) {
         let _ = self
             .inner_tx
-            .send(InnerEvent::ModeChangeEvent(new_mode))
+            .send(RuntimeEvent::mode_change(new_mode))
             .await;
     }
 
@@ -64,7 +64,7 @@ impl Dispatcher {
 
         let _ = self
             .inner_tx
-            .send(InnerEvent::CommandEvent(CommandEvent {
+            .send(RuntimeEvent::command(CommandEvent {
                 command: cmd.clone(),
                 context: ctx,
             }))
@@ -83,7 +83,7 @@ impl Dispatcher {
     pub async fn send_pending_keys(&self, display: String) {
         let _ = self
             .inner_tx
-            .send(InnerEvent::PendingKeysEvent(display))
+            .send(RuntimeEvent::pending_keys(display))
             .await;
     }
 
@@ -113,11 +113,11 @@ impl Dispatcher {
         };
         let _ = self
             .inner_tx
-            .send(InnerEvent::ModeChangeEvent(new_mode))
+            .send(RuntimeEvent::mode_change(new_mode))
             .await;
         let _ = self
             .inner_tx
-            .send(InnerEvent::OperatorMotionEvent(action))
+            .send(RuntimeEvent::operator_motion(action))
             .await;
     }
 
@@ -125,7 +125,7 @@ impl Dispatcher {
     pub async fn send_visual_text_object(&self, action: VisualTextObjectAction) {
         let _ = self
             .inner_tx
-            .send(InnerEvent::VisualTextObjectEvent(action))
+            .send(RuntimeEvent::visual_text_object(action))
             .await;
     }
 
@@ -133,7 +133,7 @@ impl Dispatcher {
     pub async fn send_focus_insert_char(&self, c: char) {
         let _ = self
             .inner_tx
-            .send(InnerEvent::TextInputEvent(crate::event::TextInputEvent::InsertChar(c)))
+            .send(RuntimeEvent::text_input(crate::event::TextInputEvent::InsertChar(c)))
             .await;
     }
 
@@ -141,7 +141,7 @@ impl Dispatcher {
     pub async fn send_focus_delete_backward(&self) {
         let _ = self
             .inner_tx
-            .send(InnerEvent::TextInputEvent(crate::event::TextInputEvent::DeleteCharBackward))
+            .send(RuntimeEvent::text_input(crate::event::TextInputEvent::DeleteCharBackward))
             .await;
     }
 }

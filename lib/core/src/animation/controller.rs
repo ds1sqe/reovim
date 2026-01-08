@@ -10,7 +10,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use tokio::sync::{RwLock, mpsc};
 
-use crate::event::InnerEvent;
+use crate::event::RuntimeEvent;
 
 use super::effect::{Effect, EffectId, EffectTarget};
 
@@ -192,7 +192,7 @@ impl AnimationController {
 /// # Returns
 /// Handle to send commands to the controller
 pub fn spawn_animation_controller(
-    event_tx: mpsc::Sender<InnerEvent>,
+    event_tx: mpsc::Sender<RuntimeEvent>,
     frame_rate: u8,
     state: Arc<RwLock<AnimationState>>,
 ) -> AnimationHandle {
@@ -248,7 +248,7 @@ pub fn spawn_animation_controller(
 
                         // Request re-render
                         tracing::debug!("==> Sending RenderSignal");
-                        let _ = event_tx.try_send(InnerEvent::RenderSignal);
+                        let _ = event_tx.try_send(RuntimeEvent::render_signal());
                         tracing::debug!("==> RenderSignal sent");
                     }
                 }
