@@ -338,7 +338,7 @@ fn cmd_bench(cli: &Cli, version: &str, no_clean: bool) -> Result<(), Box<dyn std
     // Step 2: Run benchmarks
     println!("Running benchmarks...\n");
     let status = Command::new("cargo")
-        .args(["bench", "-p", "reovim-core"])
+        .args(["bench", "-p", "reovim-bench"])
         .status()?;
 
     if !status.success() {
@@ -359,7 +359,7 @@ fn cmd_update(cli: &Cli, version: &str) -> Result<(), Box<dyn std::error::Error>
     let results = read_criterion_results(&cli.criterion_dir);
 
     if results.is_empty() {
-        eprintln!("No benchmark results found. Run `cargo bench -p reovim-core` first.");
+        eprintln!("No benchmark results found. Run `cargo bench -p reovim-bench` first.");
         std::process::exit(1);
     }
 

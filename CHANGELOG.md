@@ -6,6 +6,24 @@ All notable changes to Reovim will be documented in this file.
 
 ### Added
 
+- **Event bus and treesitter initialization benchmarks** (Issue #97) - Add benchmarks to measure latency sources
+  - `event_bus/dyn_event_new` - DynEvent creation overhead (~10.6ns)
+  - `event_bus/dispatch/handlers/*` - Dispatch latency by handler count (1: ~26ns, 100: ~360ns)
+  - `event_bus/dispatch_multi_type/*` - HashMap lookup with multiple event types (~25ns)
+  - `event_bus/dispatch_priority/*` - Priority-sorted handler dispatch (~42-88ns)
+  - `event_bus/dispatch_emit/*` - Cascading event emission (0: ~25ns, 10: ~106ns)
+  - `event_bus/dispatch_consumed/*` - Early exit on consumed events (~25-27ns)
+  - `event_bus/rwlock/*` - RwLock acquisition overhead (1: ~26ns, 100: ~124ns)
+  - `event_bus/subscribe` - Handler registration time (~200ns)
+  - `event_bus/bottleneck_blocking/*` - Slow handler blocking impact (100µs-10ms)
+  - `event_bus/bottleneck_queue/*` - Queue depth behind slow handler (~1ms baseline)
+  - `event_bus/bottleneck_sequential/*` - Multiple slow handlers (accumulates linearly)
+  - `event_bus/bottleneck_comparison/*` - Fast event latency with/without slow handlers (~25ns)
+  - `treesitter/query_compile/highlights/*` - Query compilation time per language (rust: ~26ms)
+  - `treesitter/register_language/*` - Full language registration time (rust: ~35ms)
+  - `treesitter/register_all_languages` - Total startup cost (~72ms)
+  - Made `HandlerContext::new()` public for benchmark access
+
 - **Dynamic content in DisplayRegistry** (Issue #57) - Allow plugins to show contextual status line info
   - `DisplayContext` struct for render context with `PluginStateRegistry` access
   - `DynamicDisplayFn` type alias for dynamic display callbacks

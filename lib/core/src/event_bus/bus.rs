@@ -42,8 +42,10 @@ pub struct HandlerContext<'a> {
 
 impl<'a> HandlerContext<'a> {
     /// Create a new handler context
-    #[allow(dead_code)] // Will be used by runtime integration
-    pub(crate) fn new(event_tx: &'a EventSender) -> Self {
+    ///
+    /// Typically used by the runtime event loop, but exposed for benchmarking.
+    #[must_use]
+    pub fn new(event_tx: &'a EventSender) -> Self {
         Self {
             event_tx,
             render_requested: false,

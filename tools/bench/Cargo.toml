@@ -17,6 +17,7 @@ reovim-lang-python = { path = "../../plugins/languages/python" }
 reovim-lang-json = { path = "../../plugins/languages/json" }
 reovim-lang-toml = { path = "../../plugins/languages/toml" }
 reovim-lang-bash = { path = "../../plugins/languages/bash" }
+tree-sitter = "0.26"
 criterion = { version = "0.8", features = ["html_reports"] }
 tempfile = "3"
 

@@ -1581,6 +1581,7 @@ dependencies = [
  "reovim-lang-toml",
  "reovim-plugin-treesitter",
  "tempfile",
+ "tree-sitter",
 ]
 
 [[package]]
