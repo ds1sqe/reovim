@@ -180,6 +180,10 @@ impl Plugin for LspPlugin {
 
     #[allow(clippy::too_many_lines)]
     fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {
+        // Capture tokio runtime handle for use in EventBus handlers
+        // (EventBus handlers run on std::thread, not tokio runtime - see #120)
+        let rt_handle = tokio::runtime::Handle::current();
+
         // Register LSP health check with health-check plugin
         {
             use reovim_plugin_health_check::RegisterHealthCheck;
@@ -327,6 +331,7 @@ impl Plugin for LspPlugin {
         {
             let state = Arc::clone(&state);
             let event_sender = bus.sender();
+            let rt_handle = rt_handle.clone();
             bus.subscribe::<LspGotoDefinition, _>(100, move |event, _ctx| {
                 info!(
                     buffer_id = event.buffer_id,
@@ -364,9 +369,10 @@ impl Plugin for LspPlugin {
                     );
 
                     // Spawn async task to handle response
+                    // Use captured rt_handle since EventBus handlers run on std::thread (#120)
                     let sender = event_sender.clone();
                     let state_clone = Arc::clone(&state);
-                    tokio::spawn(async move {
+                    rt_handle.spawn(async move {
                         match rx.await {
                             Ok(Ok(Some(response))) => {
                                 // Extract all locations from response
@@ -433,6 +439,7 @@ impl Plugin for LspPlugin {
         {
             let state = Arc::clone(&state);
             let event_sender = bus.sender();
+            let rt_handle = rt_handle.clone();
             bus.subscribe::<LspGotoReferences, _>(100, move |event, _ctx| {
                 let buffer_id = event.buffer_id;
                 let line = event.line;
@@ -464,9 +471,10 @@ impl Plugin for LspPlugin {
                     );
 
                     // Spawn async task to handle response
+                    // Use captured rt_handle since EventBus handlers run on std::thread (#120)
                     let state_clone = Arc::clone(&state);
                     let sender = event_sender.clone();
-                    tokio::spawn(async move {
+                    rt_handle.spawn(async move {
                         match rx.await {
                             Ok(Ok(Some(locations))) => {
                                 info!(count = locations.len(), "LSP: references found");
@@ -508,6 +516,7 @@ impl Plugin for LspPlugin {
         // Handle show hover command
         {
             let state = Arc::clone(&state);
+            // Last use of rt_handle - no clone needed (moved into closure)
             bus.subscribe::<LspShowHover, _>(100, move |event, _ctx| {
                 let buffer_id = event.buffer_id;
                 let line = event.line;
@@ -539,8 +548,9 @@ impl Plugin for LspPlugin {
                     );
 
                     // Spawn async task to handle response
+                    // Use captured rt_handle since EventBus handlers run on std::thread (#120)
                     let state_clone = Arc::clone(&state);
-                    tokio::spawn(async move {
+                    rt_handle.spawn(async move {
                         match rx.await {
                             Ok(Ok(Some(hover))) => {
                                 // Extract hover text content

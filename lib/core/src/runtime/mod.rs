@@ -5,9 +5,11 @@ mod core;
 mod enlist;
 mod event_loop;
 mod handlers;
+mod sender;
 
 pub use {
     context::{RuntimeContext, RuntimeContextExt},
     core::{FocusInputHandler, Runtime},
     enlist::{handle_command_line_input, handle_editor_input},
+    sender::PrioritizedEventSender,
 };

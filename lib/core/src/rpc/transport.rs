@@ -199,7 +199,11 @@ impl TransportListener {
                     let actual_port = listener.local_addr()?.port();
 
                     if offset > 0 {
-                        tracing::info!("Port {} in use, bound to {} instead", start_port, actual_port);
+                        tracing::info!(
+                            "Port {} in use, bound to {} instead",
+                            start_port,
+                            actual_port
+                        );
                     } else {
                         tracing::info!("Listening on TCP: {}:{}", host, actual_port);
                     }

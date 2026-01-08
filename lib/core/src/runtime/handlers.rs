@@ -697,9 +697,10 @@ impl Runtime {
                     }
                     if ctx.quit_requested() {
                         // Emit quit - the event loop will handle it
-                        let tx = self.tx.clone();
+                        // HIGH PRIORITY: Kill signal must be processed immediately
+                        let hi_tx = self.hi_tx.clone();
                         tokio::spawn(async move {
-                            let _ = tx.send(crate::event::RuntimeEvent::kill()).await;
+                            let _ = hi_tx.send(crate::event::RuntimeEvent::kill()).await;
                         });
                     }
 

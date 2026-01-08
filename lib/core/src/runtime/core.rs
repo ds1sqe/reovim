@@ -14,7 +14,7 @@ use {
         command_line::CommandLine,
         component::RenderState,
         config::{ProfileConfig, ProfileManager},
-        constants::EVENT_CHANNEL_CAPACITY,
+        constants::{EVENT_CHANNEL_CAPACITY, HI_PRIORITY_CHANNEL_CAPACITY},
         decoration::{DecorationStore, LanguageRendererRegistry},
         event::RuntimeEvent,
         event_bus::{
@@ -30,6 +30,7 @@ use {
         option::{OptionRegistry, RegisterOption},
         plugin::{Plugin, PluginContext, PluginLoader, PluginStateRegistry, PluginTuple},
         register::Registers,
+        runtime::PrioritizedEventSender,
         screen::Screen,
     },
     tracing::debug,
@@ -49,8 +50,16 @@ pub struct Runtime {
     pub command_line: CommandLine,
     pub pending_keys: String,
     pub last_command: String,
-    pub tx: mpsc::Sender<RuntimeEvent>,
-    pub rx: mpsc::Receiver<RuntimeEvent>,
+    /// High-priority channel sender (user input, mode changes)
+    pub hi_tx: mpsc::Sender<RuntimeEvent>,
+    /// High-priority channel receiver
+    pub(crate) hi_rx: mpsc::Receiver<RuntimeEvent>,
+    /// Low-priority channel sender (render signals, background tasks)
+    pub lo_tx: mpsc::Sender<RuntimeEvent>,
+    /// Low-priority channel receiver
+    pub(crate) lo_rx: mpsc::Receiver<RuntimeEvent>,
+    /// Prioritized sender wrapper for convenient access to both channels
+    pub prioritized_sender: PrioritizedEventSender,
     pub initial_file: Option<String>,
     pub(crate) showing_landing_page: bool,
     /// Watch channel sender for broadcasting mode changes
@@ -151,7 +160,14 @@ impl Runtime {
     #[must_use]
     #[allow(clippy::too_many_lines)]
     pub fn with_plugins<T: PluginTuple>(screen: Screen, plugins: T) -> Self {
-        let (tx, rx) = mpsc::channel(EVENT_CHANNEL_CAPACITY);
+        // Create dual channels for priority-based event processing
+        // High-priority: user input, mode changes (smaller capacity, processed first)
+        let (hi_tx, hi_rx) = mpsc::channel(HI_PRIORITY_CHANNEL_CAPACITY);
+        // Low-priority: render signals, background tasks (larger capacity)
+        let (lo_tx, lo_rx) = mpsc::channel(EVENT_CHANNEL_CAPACITY);
+        // Create prioritized sender wrapper
+        let prioritized_sender = PrioritizedEventSender::new(hi_tx.clone(), lo_tx.clone());
+
         let (mode_tx, mode_rx) = watch::channel(ModeState::new());
 
         // Initialize event bus and plugin state registry
@@ -221,7 +237,8 @@ impl Runtime {
 
         // Initialize animation system
         // Frame rate of 30 fps provides smooth transitions without excessive CPU usage
-        let animation_system = AnimationSystem::spawn(tx.clone(), 30);
+        // Animation sends render signals which are low-priority events
+        let animation_system = AnimationSystem::spawn(lo_tx.clone(), 30);
         plugin_state.set_animation_handle(animation_system.handle().clone());
         plugin_state.set_animation_state(animation_system.state());
         // Register the animation render stage
@@ -241,8 +258,11 @@ impl Runtime {
             command_line: CommandLine::default(),
             pending_keys: String::new(),
             last_command: String::new(),
-            tx,
-            rx,
+            hi_tx,
+            hi_rx,
+            lo_tx,
+            lo_rx,
+            prioritized_sender,
             initial_file: None,
             showing_landing_page: false,
             mode_tx,
@@ -286,17 +306,18 @@ impl Runtime {
         runtime.display_registry.register_builtins(&runtime.theme);
 
         // Subscribe to focus change requests from plugins
+        // HIGH PRIORITY: Focus changes are user-visible and should be processed immediately
         {
             use crate::event_bus::{EventResult, core_events::RequestFocusChange};
             let mode_tx = runtime.mode_tx.clone();
-            let tx = runtime.tx.clone();
+            let hi_tx = runtime.hi_tx.clone();
             runtime
                 .event_bus
                 .subscribe::<RequestFocusChange, _>(100, move |event, _ctx| {
                     let current_mode = mode_tx.borrow().clone();
                     let new_mode = current_mode.set_interactor_id(event.target);
                     // Send through event loop to properly update runtime.mode_state
-                    let _ = tx.try_send(RuntimeEvent::mode_change(new_mode));
+                    let _ = hi_tx.try_send(RuntimeEvent::mode_change(new_mode));
                     tracing::info!(
                         "Runtime: Requesting focus change to component '{}'",
                         event.target.0
@@ -306,14 +327,15 @@ impl Runtime {
         }
 
         // Subscribe to mode change requests from plugins
+        // HIGH PRIORITY: Mode changes are user-visible and should be processed immediately
         {
             use crate::event_bus::{EventResult, core_events::RequestModeChange};
-            let tx = runtime.tx.clone();
+            let hi_tx = runtime.hi_tx.clone();
             runtime
                 .event_bus
                 .subscribe::<RequestModeChange, _>(100, move |event, _ctx| {
                     // Send through event loop to properly update runtime.mode_state
-                    let _ = tx.try_send(RuntimeEvent::mode_change(event.mode.clone()));
+                    let _ = hi_tx.try_send(RuntimeEvent::mode_change(event.mode.clone()));
                     tracing::info!(
                         "Runtime: Requesting mode change to interactor='{}', edit_mode={:?}, sub_mode={:?}",
                         event.mode.interactor_id.0,
@@ -325,23 +347,25 @@ impl Runtime {
         }
 
         // Subscribe to file open requests from plugins
+        // LOW PRIORITY: File loading is a background operation
         {
             use crate::event_bus::{EventResult, core_events::RequestOpenFile};
-            let tx = runtime.tx.clone();
+            let lo_tx = runtime.lo_tx.clone();
             runtime
                 .event_bus
                 .subscribe::<RequestOpenFile, _>(100, move |event, _ctx| {
                     tracing::info!("Runtime: Requesting to open file: {:?}", event.path);
                     // Send OpenFileRequest to the runtime event loop
-                    let _ = tx.try_send(RuntimeEvent::open_file(event.path.clone()));
+                    let _ = lo_tx.try_send(RuntimeEvent::open_file(event.path.clone()));
                     EventResult::Handled
                 });
         }
 
         // Subscribe to file open at position requests from plugins (LSP navigation)
+        // LOW PRIORITY: File loading is a background operation
         {
             use crate::event_bus::{EventResult, core_events::RequestOpenFileAtPosition};
-            let tx = runtime.tx.clone();
+            let lo_tx = runtime.lo_tx.clone();
             runtime
                 .event_bus
                 .subscribe::<RequestOpenFileAtPosition, _>(100, move |event, _ctx| {
@@ -351,7 +375,7 @@ impl Runtime {
                         event.line,
                         event.column
                     );
-                    let _ = tx.try_send(RuntimeEvent::open_file_at(
+                    let _ = lo_tx.try_send(RuntimeEvent::open_file_at(
                         event.path.clone(),
                         event.line,
                         event.column,
@@ -361,15 +385,16 @@ impl Runtime {
         }
 
         // Subscribe to register set requests from plugins
+        // LOW PRIORITY: Register operations are background tasks
         {
             use crate::event_bus::{EventResult, core_events::RequestSetRegister};
-            let tx = runtime.tx.clone();
+            let lo_tx = runtime.lo_tx.clone();
             runtime
                 .event_bus
                 .subscribe::<RequestSetRegister, _>(100, move |event, _ctx| {
                     tracing::debug!("Runtime: Requesting to set register {:?}", event.register);
-                    let _ =
-                        tx.try_send(RuntimeEvent::set_register(event.register, event.text.clone()));
+                    let _ = lo_tx
+                        .try_send(RuntimeEvent::set_register(event.register, event.text.clone()));
                     EventResult::Handled
                 });
         }
@@ -428,6 +453,8 @@ impl Runtime {
         }
 
         // Subscribe to text insert requests from plugins (for auto-pair insertion)
+        // HIGH PRIORITY: Auto-pair and completion insertions must be processed immediately
+        // to maintain <16ms latency target for user-initiated text input
         {
             use crate::{
                 bind::CommandRef,
@@ -435,7 +462,7 @@ impl Runtime {
                 event::{CommandEvent, TextInputEvent},
                 event_bus::{EventResult, core_events::RequestInsertText},
             };
-            let tx = runtime.tx.clone();
+            let hi_tx = runtime.hi_tx.clone();
             runtime
                 .event_bus
                 .subscribe::<RequestInsertText, _>(100, move |event, _ctx| {
@@ -443,19 +470,19 @@ impl Runtime {
 
                     // Delete prefix first (for completion: replace typed prefix with full word)
                     for _ in 0..event.delete_prefix_len {
-                        let _ = tx
+                        let _ = hi_tx
                             .try_send(RuntimeEvent::text_input(TextInputEvent::DeleteCharBackward));
                     }
 
                     // Insert each character
                     for c in event.text.chars() {
                         let _ =
-                            tx.try_send(RuntimeEvent::text_input(TextInputEvent::InsertChar(c)));
+                            hi_tx.try_send(RuntimeEvent::text_input(TextInputEvent::InsertChar(c)));
                     }
 
                     // If requested, move cursor left after insertion
                     if event.move_cursor_left {
-                        let _ = tx.try_send(RuntimeEvent::command(CommandEvent {
+                        let _ = hi_tx.try_send(RuntimeEvent::command(CommandEvent {
                             command: CommandRef::Registered(builtin::CURSOR_LEFT),
                             context: CommandContext::default(),
                         }));
@@ -466,6 +493,7 @@ impl Runtime {
         }
 
         // Subscribe to RequestCursorMove (for plugin-driven jumps)
+        // HIGH PRIORITY: Cursor movements are user-visible and should be processed immediately
         {
             use crate::{
                 command::traits::OperatorMotionAction,
@@ -473,7 +501,7 @@ impl Runtime {
                 modd::{OperatorType, SubMode},
                 motion::Motion,
             };
-            let tx = runtime.tx.clone();
+            let hi_tx = runtime.hi_tx.clone();
             let mode_tx = runtime.mode_tx.clone();
             runtime
                 .event_bus
@@ -530,11 +558,11 @@ impl Runtime {
                             };
 
                             // Send operator motion event (runtime will handle mode change)
-                            let _ = tx.try_send(RuntimeEvent::operator_motion(action));
+                            let _ = hi_tx.try_send(RuntimeEvent::operator_motion(action));
                         }
                         None => {
                             // Normal cursor move (no operator)
-                            let _ = tx.try_send(RuntimeEvent::move_cursor(
+                            let _ = hi_tx.try_send(RuntimeEvent::move_cursor(
                                 event.buffer_id,
                                 event.line,
                                 event.column,
@@ -547,75 +575,77 @@ impl Runtime {
         }
 
         // Subscribe to settings/option capability requests
+        // LOW PRIORITY: Settings changes are background operations
         {
             use crate::event_bus::{EventResult, core_events::RequestSetLineNumbers};
-            let tx = runtime.tx.clone();
+            let lo_tx = runtime.lo_tx.clone();
             runtime
                 .event_bus
                 .subscribe::<RequestSetLineNumbers, _>(100, move |event, _ctx| {
-                    let _ = tx.try_send(RuntimeEvent::set_line_numbers(event.enabled));
+                    let _ = lo_tx.try_send(RuntimeEvent::set_line_numbers(event.enabled));
                     EventResult::Handled
                 });
         }
         {
             use crate::event_bus::{EventResult, core_events::RequestSetRelativeLineNumbers};
-            let tx = runtime.tx.clone();
+            let lo_tx = runtime.lo_tx.clone();
             runtime
                 .event_bus
                 .subscribe::<RequestSetRelativeLineNumbers, _>(100, move |event, _ctx| {
-                    let _ = tx.try_send(RuntimeEvent::set_relative_line_numbers(event.enabled));
+                    let _ = lo_tx.try_send(RuntimeEvent::set_relative_line_numbers(event.enabled));
                     EventResult::Handled
                 });
         }
         {
             use crate::event_bus::{EventResult, core_events::RequestSetTheme};
-            let tx = runtime.tx.clone();
+            let lo_tx = runtime.lo_tx.clone();
             runtime
                 .event_bus
                 .subscribe::<RequestSetTheme, _>(100, move |event, _ctx| {
-                    let _ = tx.try_send(RuntimeEvent::set_theme(event.name.clone()));
+                    let _ = lo_tx.try_send(RuntimeEvent::set_theme(event.name.clone()));
                     EventResult::Handled
                 });
         }
         {
             use crate::event_bus::{EventResult, core_events::RequestSetScrollbar};
-            let tx = runtime.tx.clone();
+            let lo_tx = runtime.lo_tx.clone();
             runtime
                 .event_bus
                 .subscribe::<RequestSetScrollbar, _>(100, move |event, _ctx| {
-                    let _ = tx.try_send(RuntimeEvent::set_scrollbar(event.enabled));
+                    let _ = lo_tx.try_send(RuntimeEvent::set_scrollbar(event.enabled));
                     EventResult::Handled
                 });
         }
         {
             use crate::event_bus::{EventResult, core_events::RequestSetIndentGuide};
-            let tx = runtime.tx.clone();
+            let lo_tx = runtime.lo_tx.clone();
             runtime
                 .event_bus
                 .subscribe::<RequestSetIndentGuide, _>(100, move |event, _ctx| {
-                    let _ = tx.try_send(RuntimeEvent::set_indent_guide(event.enabled));
+                    let _ = lo_tx.try_send(RuntimeEvent::set_indent_guide(event.enabled));
                     EventResult::Handled
                 });
         }
         {
             use crate::event_bus::{EventResult, core_events::RequestSetSignColumn};
-            let tx = runtime.tx.clone();
+            let lo_tx = runtime.lo_tx.clone();
             runtime
                 .event_bus
                 .subscribe::<RequestSetSignColumn, _>(100, move |event, _ctx| {
-                    let _ = tx.try_send(RuntimeEvent::set_sign_column(event.mode));
+                    let _ = lo_tx.try_send(RuntimeEvent::set_sign_column(event.mode));
                     EventResult::Handled
                 });
         }
 
         // Subscribe to command line completion apply requests
+        // HIGH PRIORITY: Command line completion is user-initiated and should be processed immediately
         {
             use crate::event_bus::{EventResult, core_events::RequestApplyCmdlineCompletion};
-            let tx = runtime.tx.clone();
+            let hi_tx = runtime.hi_tx.clone();
             runtime
                 .event_bus
                 .subscribe::<RequestApplyCmdlineCompletion, _>(100, move |event, _ctx| {
-                    let _ = tx.try_send(RuntimeEvent::apply_cmdline_completion(
+                    let _ = hi_tx.try_send(RuntimeEvent::apply_cmdline_completion(
                         event.text.clone(),
                         event.replace_start,
                     ));
@@ -916,8 +946,9 @@ impl Runtime {
                 }
 
                 // Start background saturator if syntax/decoration providers exist
+                // Saturator sends render signals which are low-priority events
                 if buffer.has_syntax() || buffer.has_decoration_provider() {
-                    buffer.start_saturator(self.tx.clone());
+                    buffer.start_saturator(self.lo_tx.clone());
                     debug!(id, path, "create_buffer_from_file: started saturator");
                 }
 

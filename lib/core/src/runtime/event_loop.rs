@@ -29,19 +29,22 @@ impl Runtime {
         tracing::info!("Runtime initializing");
 
         // STEP 1: Set up input handlers FIRST (before file loading)
-        let input_broker = InputEventBroker::with_event_sender(self.tx.clone());
+        // HIGH PRIORITY: User input events go through the high-priority channel
+        let input_broker = InputEventBroker::with_event_sender(self.hi_tx.clone());
 
         // Command handler for key-to-command translation
         // Pass mode receiver so CommandHandler can read mode from Runtime (single source of truth)
+        // HIGH PRIORITY: Commands are user-initiated and must be processed immediately
         let mode_rx = self.subscribe_mode();
         let mut command_hdr = CommandHandler::new(
-            self.tx.clone(),
+            self.hi_tx.clone(),
             mode_rx,
             self.keymap.clone(),
             Arc::clone(&self.command_registry),
             Arc::clone(&self.interactor_registry),
         );
-        let mut terminate_hdr = TerminateHandler::new(self.tx.clone());
+        // HIGH PRIORITY: Terminate handler processes Ctrl+D kill signal
+        let mut terminate_hdr = TerminateHandler::new(self.hi_tx.clone());
 
         input_broker.key_broker.enlist(&mut command_hdr);
         input_broker.key_broker.enlist(&mut terminate_hdr);
@@ -54,7 +57,7 @@ impl Runtime {
         // Uses std::thread to avoid tokio scheduler starvation under parallel load (#85)
         if let Some(mut event_rx) = self.event_bus.take_receiver() {
             let event_bus = Arc::clone(&self.event_bus);
-            let inner_tx = self.tx.clone();
+            let lo_tx = self.lo_tx.clone();
             std::thread::spawn(move || {
                 while let Some(mut event) = event_rx.blocking_recv() {
                     let event_type = event.type_name();
@@ -72,9 +75,10 @@ impl Runtime {
                     }
 
                     // If any handler requested a render, send RenderSignal to main loop
+                    // LOW PRIORITY: Render signals are background events
                     if ctx.render_requested() {
                         tracing::info!("==> Render requested by event: {}", event_type);
-                        let _ = inner_tx.try_send(RuntimeEvent::render_signal());
+                        let _ = lo_tx.try_send(RuntimeEvent::render_signal());
                     }
                 }
             });
@@ -86,12 +90,14 @@ impl Runtime {
         // STEP 4: Boot phase - plugins can do post-EventBus initialization
         // Languages are now registered, syntax providers can be created
         // Make inner_event_tx available to plugins for background tasks (e.g., completion saturator)
-        self.plugin_state.set_inner_event_tx(self.tx.clone());
+        // LOW PRIORITY: Plugin background tasks use the low-priority channel
+        self.plugin_state.set_inner_event_tx(self.lo_tx.clone());
         tracing::debug!("Boot phase starting with {} plugins", self.plugins.len());
         for plugin in &self.plugins {
             let plugin_id = plugin.id();
             tracing::debug!(plugin = %plugin_id, "Booting plugin");
-            plugin.boot(&self.event_bus, Arc::clone(&self.plugin_state), Some(self.tx.clone()));
+            // LOW PRIORITY: Plugin boot events are background operations
+            plugin.boot(&self.event_bus, Arc::clone(&self.plugin_state), Some(self.lo_tx.clone()));
         }
         tracing::debug!("Boot phase complete");
 
@@ -149,15 +155,17 @@ impl Runtime {
         let input_broker = crate::event::InputEventBroker::with_key_source(key_source);
 
         // Command handler for key-to-command translation
+        // HIGH PRIORITY: Commands are user-initiated and must be processed immediately
         let mode_rx = self.subscribe_mode();
         let mut command_hdr = crate::event::CommandHandler::new(
-            self.tx.clone(),
+            self.hi_tx.clone(),
             mode_rx,
             self.keymap.clone(),
             Arc::clone(&self.command_registry),
             Arc::clone(&self.interactor_registry),
         );
-        let mut terminate_hdr = crate::event::TerminateHandler::new(self.tx.clone());
+        // HIGH PRIORITY: Terminate handler processes Ctrl+D kill signal
+        let mut terminate_hdr = crate::event::TerminateHandler::new(self.hi_tx.clone());
 
         input_broker.key_broker.enlist(&mut command_hdr);
         input_broker.key_broker.enlist(&mut terminate_hdr);
@@ -168,9 +176,10 @@ impl Runtime {
 
         // STEP 2: Spawn EventBus event processor on dedicated OS thread
         // Uses std::thread to avoid tokio scheduler starvation under parallel load (#85)
+        // LOW PRIORITY: EventBus processor sends render signals which are background events
         if let Some(mut event_rx) = self.event_bus.take_receiver() {
             let event_bus = Arc::clone(&self.event_bus);
-            let inner_tx = self.tx.clone();
+            let lo_tx = self.lo_tx.clone();
             std::thread::spawn(move || {
                 while let Some(mut event) = event_rx.blocking_recv() {
                     let event_type = event.type_name();
@@ -188,9 +197,10 @@ impl Runtime {
                     }
 
                     // If any handler requested a render, send RenderSignal to main loop
+                    // LOW PRIORITY: Render signals are background events
                     if ctx.render_requested() {
                         tracing::info!("==> Render requested by event: {}", event_type);
-                        let _ = inner_tx.try_send(RuntimeEvent::render_signal());
+                        let _ = lo_tx.try_send(RuntimeEvent::render_signal());
                     }
                 }
             });
@@ -202,12 +212,14 @@ impl Runtime {
         // STEP 4: Boot phase - plugins can do post-EventBus initialization
         // Languages are now registered, syntax providers can be created
         // Make inner_event_tx available to plugins for background tasks (e.g., completion saturator)
-        self.plugin_state.set_inner_event_tx(self.tx.clone());
+        // LOW PRIORITY: Plugin background tasks use the low-priority channel
+        self.plugin_state.set_inner_event_tx(self.lo_tx.clone());
         tracing::debug!("Boot phase starting with {} plugins", self.plugins.len());
         for plugin in &self.plugins {
             let plugin_id = plugin.id();
             tracing::debug!(plugin = %plugin_id, "Booting plugin");
-            plugin.boot(&self.event_bus, Arc::clone(&self.plugin_state), Some(self.tx.clone()));
+            // LOW PRIORITY: Plugin boot events are background operations
+            plugin.boot(&self.event_bus, Arc::clone(&self.plugin_state), Some(self.lo_tx.clone()));
         }
         tracing::debug!("Boot phase complete");
 
@@ -248,12 +260,16 @@ impl Runtime {
         let _ = self.screen.finalize();
     }
 
-    /// The main event processing loop
+    /// The main event processing loop with priority-based dual-channel architecture
+    ///
+    /// Uses biased select! to ensure high-priority events (user input) are processed
+    /// before low-priority events (render signals, background tasks).
     #[allow(clippy::collapsible_if)]
     #[allow(clippy::match_same_arms)]
     #[allow(clippy::future_not_send)]
+    #[allow(clippy::too_many_lines)]
     async fn run_event_loop(&mut self) {
-        use std::time::Duration;
+        use {crate::constants::MAX_LO_DRAIN, std::time::Duration};
 
         // Idle timeout: start shimmer after 3 seconds of inactivity
         const IDLE_TIMEOUT: Duration = Duration::from_secs(3);
@@ -270,49 +286,110 @@ impl Runtime {
 
         loop {
             tokio::select! {
-                // Check for incoming events
-                ev = self.rx.recv() => {
-                    if let Some(ev) = ev {
-                        let loop_start = std::time::Instant::now();
-                        let ev_name = format!("{:?}", std::mem::discriminant(ev.payload()));
+                // Use biased selection to process high-priority events first
+                biased;
 
-                        // Track user input for idle detection
+                // HIGH PRIORITY: User input events (commands, mode changes, text input)
+                Some(ev) = self.hi_rx.recv() => {
+                    let loop_start = std::time::Instant::now();
+                    let ev_name = format!("{:?}", std::mem::discriminant(ev.payload()));
+
+                    // Track user input for idle detection
+                    self.track_input_for_idle(ev.payload());
+
+                    if self.handle_event(ev) {
+                        break;
+                    }
+
+                    // Drain ALL high-priority events first (user input takes precedence)
+                    let mut hi_drained = 0;
+                    while let Ok(ev) = self.hi_rx.try_recv() {
+                        hi_drained += 1;
                         self.track_input_for_idle(ev.payload());
-
                         if self.handle_event(ev) {
-                            break;
+                            self.flush_render();
+                            return;
                         }
-                        // Drain all pending events before rendering
-                        // This coalesces renders across multiple related events
-                        // (e.g., PendingKeysEvent + CommandEvent + ModeChangeEvent from one key)
-                        let mut drained = 0;
-                        while let Ok(ev) = self.rx.try_recv() {
-                            drained += 1;
+                    }
+
+                    // Then drain some low-priority events for fairness
+                    let mut lo_drained = 0;
+                    for _ in 0..MAX_LO_DRAIN {
+                        match self.lo_rx.try_recv() {
+                            Ok(ev) => {
+                                lo_drained += 1;
+                                self.track_input_for_idle(ev.payload());
+                                if self.handle_event(ev) {
+                                    self.flush_render();
+                                    return;
+                                }
+                            }
+                            Err(_) => break,
+                        }
+                    }
+
+                    // Flush render once after all pending events processed
+                    let pre_render = loop_start.elapsed();
+                    self.flush_render();
+                    tracing::trace!(
+                        "[RTT] event_loop(hi): first_ev={} hi_drained={} lo_drained={} pre_render={:?} total={:?}",
+                        ev_name,
+                        hi_drained,
+                        lo_drained,
+                        pre_render,
+                        loop_start.elapsed()
+                    );
+                }
+
+                // LOW PRIORITY: Background events (render signals, syntax updates, plugin events)
+                Some(ev) = self.lo_rx.recv() => {
+                    let loop_start = std::time::Instant::now();
+                    let ev_name = format!("{:?}", std::mem::discriminant(ev.payload()));
+
+                    // Track input for idle detection (some low-pri events may affect idle)
+                    self.track_input_for_idle(ev.payload());
+
+                    if self.handle_event(ev) {
+                        break;
+                    }
+
+                    // Drain low-priority, but re-check high-priority between batches
+                    let mut lo_drained = 0;
+                    loop {
+                        // Always check high-priority first during low-priority drain
+                        while let Ok(ev) = self.hi_rx.try_recv() {
                             self.track_input_for_idle(ev.payload());
                             if self.handle_event(ev) {
-                                // Flush before breaking on quit
                                 self.flush_render();
                                 return;
                             }
                         }
-                        // Flush render once after all pending events processed
-                        let pre_render = loop_start.elapsed();
-                        self.flush_render();
-                        tracing::trace!(
-                            "[RTT] event_loop: first_ev={} drained={} pre_render={:?} total={:?}",
-                            ev_name,
-                            drained,
-                            pre_render,
-                            loop_start.elapsed()
-                        );
-                    } else {
-                        self.tx
-                            .send(RuntimeEvent::kill())
-                            .await
-                            .expect("cannot broadcast kill signal");
-                        break;
+                        // Then process one low-priority event
+                        match self.lo_rx.try_recv() {
+                            Ok(ev) => {
+                                lo_drained += 1;
+                                self.track_input_for_idle(ev.payload());
+                                if self.handle_event(ev) {
+                                    self.flush_render();
+                                    return;
+                                }
+                            }
+                            Err(_) => break,
+                        }
                     }
+
+                    // Flush render once after all pending events processed
+                    let pre_render = loop_start.elapsed();
+                    self.flush_render();
+                    tracing::trace!(
+                        "[RTT] event_loop(lo): first_ev={} lo_drained={} pre_render={:?} total={:?}",
+                        ev_name,
+                        lo_drained,
+                        pre_render,
+                        loop_start.elapsed()
+                    );
                 }
+
                 // Periodic idle check
                 _ = idle_check_interval.tick() => {
                     let elapsed = self.last_input_at.elapsed();
@@ -321,6 +398,7 @@ impl Runtime {
                         self.start_idle_shimmer();
                     }
                 }
+
                 // Landing page animation tick (only when showing landing page)
                 _ = landing_anim_interval.tick(), if self.showing_landing_page => {
                     if let Some(ref mut state) = self.landing_state {
@@ -338,6 +416,15 @@ impl Runtime {
                             self.flush_render();
                         }
                     }
+                }
+
+                // Both channels closed - shutdown
+                else => {
+                    self.hi_tx
+                        .send(RuntimeEvent::kill())
+                        .await
+                        .expect("cannot broadcast kill signal");
+                    break;
                 }
             }
         }
@@ -519,8 +606,9 @@ impl Runtime {
                             if let Some(buffer) = self.buffers.get_mut(&buffer_id) {
                                 buffer.attach_syntax(syntax);
                                 // Start saturator for background cache computation
+                                // LOW PRIORITY: Saturator sends render signals which are background events
                                 if !buffer.has_saturator() {
-                                    buffer.start_saturator(self.tx.clone());
+                                    buffer.start_saturator(self.lo_tx.clone());
                                 }
                                 tracing::debug!(
                                     buffer_id,

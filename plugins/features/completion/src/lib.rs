@@ -165,6 +165,10 @@ impl Plugin for CompletionPlugin {
     }
 
     fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {
+        // Capture tokio runtime handle for use in EventBus handlers
+        // (EventBus handlers run on std::thread, not tokio runtime)
+        let rt_handle = tokio::runtime::Handle::current();
+
         // Subscribe to CompletionTriggered events (from CompletionTrigger command)
         let manager = Arc::clone(&self.manager);
         bus.subscribe::<CompletionTriggered, _>(100, move |event, ctx| {
@@ -296,6 +300,7 @@ impl Plugin for CompletionPlugin {
 
         // Subscribe to BufferModified for auto-popup and live update
         let manager = Arc::clone(&self.manager);
+        let rt_handle = rt_handle.clone();
         bus.subscribe::<BufferModified, _>(100, move |event, _ctx| {
             let is_active = manager.is_active();
 
@@ -330,7 +335,8 @@ impl Plugin for CompletionPlugin {
             let buffer_id = event.buffer_id;
 
             // Spawn task to trigger/update completion
-            tokio::spawn(async move {
+            // Use captured rt_handle since EventBus handlers run on std::thread (#120)
+            rt_handle.spawn(async move {
                 if !is_active {
                     // Completion not active: use debounce delay for auto-popup
                     tokio::time::sleep(std::time::Duration::from_millis(

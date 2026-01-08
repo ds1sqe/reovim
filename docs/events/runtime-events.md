@@ -1,6 +1,10 @@
 # Runtime Events
 
-Internal events passed to the runtime via mpsc channel.
+Internal events passed to the runtime via dual mpsc channels with priority-based routing.
+
+**Priority Channels:**
+- `hi_tx/hi_rx` (64 capacity): user input, mode changes, text insertion
+- `lo_tx/lo_rx` (255 capacity): render signals, plugins, background tasks
 
 ## Location
 
