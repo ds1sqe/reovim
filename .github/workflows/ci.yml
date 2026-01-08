@@ -57,6 +57,8 @@ jobs:
         with:
           toolchain: "1.92"
       - uses: Swatinem/rust-cache@v2
+      - name: Build workspace
+        run: cargo build --workspace
       - name: Run tests
         run: cargo test --workspace
       - name: Run doc tests
