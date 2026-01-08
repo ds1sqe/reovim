@@ -10,17 +10,17 @@ Reovim uses an **N:1 window-to-buffer relationship**: multiple windows can view 
 
 ```
 ┌─────────────────────────────────────────┐
-│ Screen                                   │
+│ Screen                                  │
 │ ┌──────────────────────────────────────┐│
 │ │ windows: [                           ││
-│ │   Window { id: 1, buffer_id: 0,     ││
-│ │            is_active: true,         ││
-│ │            cursor: (0, 0),          ││
-│ │            buffer_anchor: (0, 0) }  ││
-│ │   Window { id: 2, buffer_id: 0,     ││  ← Same buffer
-│ │            is_active: false,        ││
-│ │            cursor: (5, 10),         ││  ← Different cursor
-│ │            buffer_anchor: (0, 5) }  ││  ← Different scroll
+│ │   Window { id: 1, buffer_id: 0,      ││
+│ │            is_active: true,          ││
+│ │            cursor: (0, 0),           ││
+│ │            buffer_anchor: (0, 0) }   ││
+│ │   Window { id: 2, buffer_id: 0,      ││  ← Same buffer
+│ │            is_active: false,         ││
+│ │            cursor: (5, 10),          ││  ← Different cursor
+│ │            buffer_anchor: (0, 5) }   ││  ← Different scroll
 │ │ ]                                    ││
 │ └──────────────────────────────────────┘│
 └─────────────────────────────────────────┘

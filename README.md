@@ -1,5 +1,8 @@
 # reovim
 
+[![CI](https://github.com/ds1sqe/reovim/actions/workflows/ci.yml/badge.svg)](https://github.com/ds1sqe/reovim/actions/workflows/ci.yml)
+[![Crates.io](https://img.shields.io/crates/v/reovim.svg)](https://crates.io/crates/reovim)
+
 A Rust-powered neovim-like text editor.
 
 ## Project Goals
@@ -37,6 +40,17 @@ A Rust-powered neovim-like text editor.
 - Status line with mode, pending keys, last command
 - **Health check** (`:health`) - Diagnostic system for core and plugin status
 - Landing page when started without a file
+- **Mouse support** - Click to position cursor, scroll wheel navigation
+
+### Customization
+- **Theme overrides** - TOML-based color customization
+  ```toml
+  [editor.theme_overrides]
+  "statusline.background" = { bg = "#1a1b26" }
+  "gutter.line_number" = { fg = "#565f89" }
+  "statusline.mode.normal" = { fg = "#1a1b26", bg = "#7aa2f7", bold = true }
+  ```
+- Supports hex colors, `rgb()`, `ansi:N`, and named colors
 
 ### Syntax & Code Intelligence
 - **Treesitter syntax highlighting** - Accurate parsing for Rust, C, JavaScript, Python, JSON, TOML, Markdown
@@ -44,20 +58,21 @@ A Rust-powered neovim-like text editor.
 
 ### Performance
 
-v0.7.10 continues the diff-based rendering with significant optimizations:
+v0.8.0 introduces priority channels for dramatically improved input responsiveness:
 
-| Metric | v0.6.0 | v0.7.10 | Change |
+| Metric | v0.6.0 | v0.7.10 | v0.8.0 |
 |--------|--------|---------|--------|
-| Window render (10 lines) | 10 µs | 5.3 µs | **-47%** |
-| Window render (10k lines) | 56 µs | 26 µs | **-54%** |
-| Full scroll cycle | 85 µs | 55 µs | **-35%** |
-| Large file (5k lines) | 174 µs | 87 µs | **-50%** |
-| Throughput | 18k/sec | 38k/sec | **+111%** |
+| Window render (10 lines) | 10 µs | 5.3 µs | 5.1 µs |
+| Window render (10k lines) | 56 µs | 26 µs | 23 µs |
+| Full scroll cycle | 85 µs | 55 µs | 48 µs |
+| Large file (5k lines) | 174 µs | 87 µs | 87 µs |
+| Throughput | 18k/sec | 38k/sec | 40k/sec |
+| **Auto-pair latency** | - | ~100ms | **~92µs** |
 
-**Key benefits:**
-- **Zero flickering** - Only changed cells sent to terminal
-- **2x faster rendering** - Optimized render pipeline
-- **Composable layers** - Clean UI component separation
+**v0.8.0 highlights:**
+- **~1000x input latency improvement** - Priority channels separate user input from background tasks
+- **Zero flickering** - Diff-based rendering sends only changed cells
+- **2x faster rendering** - Optimized render pipeline since v0.6.0
 - Async architecture with tokio runtime
 - Cross-platform terminal support via crossterm
 
@@ -209,16 +224,60 @@ Most movement commands support a numeric prefix (e.g., `5j` moves down 5 lines).
 ## Architecture
 
 ```
-MAIN ──▶ CORE ──▶ SYS
-           │
-           └── LayerCompositor ──▶ FrameBuffer ──▶ Terminal
+┌─I/O─────────────────────────────────────────────────────────┐
+│  ┌──────────────┐                        ┌──────────────┐   │
+│  │    CLIENT    │                        │   TERMINAL   │   │
+│  │  (reo-cli)   │                        │  (crossterm) │   │
+│  └──────────────┘                        └──────────────┘   │
+└───────┬────────────────────────────────────────────┬────────┘
+        │ input                               output │
+        ▼                                            ▲
+┌──────────────────┐                       ┌─────────┴──────────┐
+│ InputEventBroker │                       │    FrameBuffer     │
+│  (async reader)  │                       │  (diff rendering)  │
+└────────┬─────────┘                       └──────────▲─────────┘
+         │                                            │
+         ▼                                            │
+┌──────────────────┐                       ┌──────────┴─────────┐
+│  KeyEventBroker  │                       │  LayerCompositor   │
+│   (broadcast)    │                       │ (editor/overlays)  │
+└────────┬─────────┘                       └──────────▲─────────┘
+         │                                            ¦
+       ┌─┴──────────────┐                             ¦
+       ▼                ▼                             ¦
+┌──────────────┐ ┌──────────────┐                     ¦
+│CommandHandler│ │PluginHandlers│                     ¦
+│(keys→command)│ │  (EventBus)  │ ◀────────────────┐  ¦
+└──────┬───────┘ └──────┬───────┘                  │  ¦
+       │                │                          │  ¦
+       └───────┬────────┘                          │  ¦
+               ▼                                   │  ¦
+┌─────────────────────────────┐                    │  ¦
+│      PRIORITY CHANNELS      │                    │  ¦
+│  hi: user input (64)        │                    │  ¦
+│  lo: background (255)       │                    │  ¦
+└─────────────┬───────────────┘                    │  ¦
+              ▼                                    ▼  ¦
+┌─────────────────────────────┐  ┌────────────────────────────┐
+│          RUNTIME            │  │           PLUGINS          │
+│ ┌───────┐ ┌──────┐ ┌──────┐ │  │ Feature: range-finder,     │
+│ │Buffers│ │Screen│ │ Cmds │ │  │   microscope, lsp,         │
+│ └───────┘ └──────┘ └──────┘ │  │   completion, explorer     │
+│ ┌──────┐                    │  │ Languages: rust, c, js,    │
+│ │ Mode │                    │  │   python, json, toml, md   │
+│ └──────┘                    │  └────────────────────────────┘
+└──────────────┬──────────────┘                       ¦
+               └-----─────────────────────────────────┘
 ```
 
-- `reovim` (MAIN) - Main binary
-- `reovim-core` (CORE) - Core editor logic (runtime, buffers, events, screen)
+- `reovim` (RUNNER) - Main binary, plugin loading
+- `reovim-core` (CORE) - Runtime, buffers, events, screen, commands
 - `reovim-sys` (SYS) - System abstraction layer (crossterm re-exports)
 
-**Rendering Pipeline**: LayerCompositor renders UI layers (editor, explorer, overlays) to a FrameBuffer, which diffs against the previous frame to emit minimal terminal updates.
+**Key Design:**
+- **Priority channels** separate user input (hi) from background tasks (lo) for ~1000x latency improvement
+- **Diff-based rendering** sends only changed cells to terminal (zero flickering)
+- **EventBus** enables plugin-to-plugin communication without core modifications
 
 ## Performance
 
@@ -236,23 +295,23 @@ See [perf/](./perf/) for versioned benchmark results.
 
 ## Documentation
 
-- [Architecture](./docs/architecture.md) - System design and component overview
-- [Event System](./docs/event-system.md) - Input handling and event flow
-- [Commands](./docs/commands.md) - Command system and keybindings
-- [Plugin System](./docs/plugin-system.md) - Plugin architecture and development
-- [Plugin Rendering](./docs/plugin-rendering.md) - Rendering systems guide
-- [Render Pipeline](./docs/render-pipeline.md) - Render stages and data flow
-- [Diagnostics](./docs/diagnostics.md) - Sign column and virtual text configuration
-- [Text Objects](./docs/text-objects.md) - Delimiter and semantic text objects
-- [Server Mode](./docs/server-mode.md) - RPC server and multi-instance support
-- [Window & Buffer](./docs/window-buffer.md) - Window architecture
-- [Animation System](./docs/animation-system.md) - Visual effects and animations
-- [Decoration System](./docs/decoration-system.md) - Language-aware decorations
-- [Saturator](./docs/saturator.md) - Background task architecture
-- [Color System](./docs/color-system.md) - Color palette design
-- [Syntax Highlighting](./docs/syntax-highlighting.md) - Rust AST taxonomy
-- [Development](./docs/DEVELOPMENT.md) - Setup and contributing
-- [Testing](./docs/TESTING.md) - Running and writing tests
+- [Architecture](./docs/architecture/overview.md) - System design and component overview
+- [Event System](./docs/events/overview.md) - Input handling and event flow
+- [Commands](./docs/reference/commands.md) - Command system and keybindings
+- [Plugin System](./docs/plugins/system.md) - Plugin architecture and development
+- [Rendering](./docs/rendering/overview.md) - Rendering systems guide
+- [Render Pipeline](./docs/rendering/pipeline.md) - Render stages and data flow
+- [Diagnostics](./docs/features/diagnostics.md) - Sign column and virtual text configuration
+- [Text Objects](./docs/reference/text-objects.md) - Delimiter and semantic text objects
+- [Server Mode](./docs/reference/server-mode.md) - RPC server and multi-instance support
+- [Window & Buffer](./docs/features/window-buffer.md) - Window architecture
+- [Animation System](./docs/features/animation-system.md) - Visual effects and animations
+- [Decoration System](./docs/features/decoration-system.md) - Language-aware decorations
+- [Saturator](./docs/features/saturator.md) - Background task architecture
+- [Color System](./docs/features/color-system.md) - Color palette design
+- [Syntax Highlighting](./docs/features/syntax-highlighting.md) - Rust AST taxonomy
+- [Development](./docs/guides/development.md) - Setup and contributing
+- [Testing](./docs/guides/testing.md) - Running and writing tests
 
 ## License
 
