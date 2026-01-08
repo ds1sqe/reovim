@@ -12,6 +12,9 @@ All notable changes to Reovim will be documented in this file.
   - `increment()` / `decrement()` for tracking event lifecycle
   - `wait()` / `wait_timeout()` for async completion waiting
   - Tracing support for debugging stuck scopes (`REOVIM_LOG=trace`)
+  - `DynEvent` now carries optional scope for lifecycle tracking
+  - `HandlerContext` propagates scope to child events automatically
+  - `EventBus::emit_scoped()` for scoped event emission
 
 - **Event bus and treesitter initialization benchmarks** (Issue #97) - Add benchmarks to measure latency sources
   - `event_bus/dyn_event_new` - DynEvent creation overhead (~10.6ns)
