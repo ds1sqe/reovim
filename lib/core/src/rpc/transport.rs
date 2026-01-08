@@ -195,12 +195,15 @@ impl TransportListener {
             let addr = format!("{host}:{port}");
             match TcpListener::bind(&addr).await {
                 Ok(listener) => {
+                    // Get the actual bound port (important for port 0 / OS-assigned)
+                    let actual_port = listener.local_addr()?.port();
+
                     if offset > 0 {
-                        tracing::info!("Port {} in use, bound to {} instead", start_port, port);
+                        tracing::info!("Port {} in use, bound to {} instead", start_port, actual_port);
                     } else {
-                        tracing::info!("Listening on TCP: {}", addr);
+                        tracing::info!("Listening on TCP: {}:{}", host, actual_port);
                     }
-                    return Ok((Self::Tcp { listener }, port));
+                    return Ok((Self::Tcp { listener }, actual_port));
                 }
                 Err(e) if e.kind() == io::ErrorKind::AddrInUse => {
                     tracing::debug!("Port {} in use, trying next", port);

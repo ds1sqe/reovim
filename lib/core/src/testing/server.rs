@@ -1,51 +1,25 @@
 //! Server test harness for integration testing
 //!
 //! Spawns a reovim server process and provides a client for testing.
+//! Uses OS-assigned ports (port 0) to avoid port contention when running
+//! tests in parallel across multiple processes.
 
 use std::{
-    net::TcpListener,
     path::PathBuf,
-    process::{Child, Command, Stdio},
-    sync::atomic::{AtomicU16, Ordering},
+    process::Stdio,
+    sync::atomic::{AtomicU32, Ordering},
     time::Duration,
 };
 
-use tokio::time::sleep;
+use tokio::{
+    io::{AsyncBufReadExt, BufReader},
+    process::{Child, Command},
+};
 
 use super::client::TestClient;
 
-/// Port range for tests: 17000-17999 (1000 ports)
-static TEST_PORT: AtomicU16 = AtomicU16::new(17000);
-
-/// Get the next available test port
-///
-/// Uses atomic increment with wrap-around, then verifies the port is actually available.
-fn next_test_port() -> u16 {
-    // Try up to 100 times to find an available port
-    for _ in 0..100 {
-        let port = TEST_PORT.fetch_add(1, Ordering::SeqCst);
-        // Wrap around if we exceed the range
-        let port = if port > 17999 {
-            TEST_PORT.store(17000, Ordering::SeqCst);
-            17000
-        } else {
-            port
-        };
-
-        // Check if port is actually available
-        if is_port_available(port) {
-            return port;
-        }
-    }
-
-    // Fallback: let the OS assign a port (shouldn't normally happen)
-    panic!("Could not find available port in range 17000-17999 after 100 attempts");
-}
-
-/// Check if a port is available for binding
-fn is_port_available(port: u16) -> bool {
-    TcpListener::bind(("127.0.0.1", port)).is_ok()
-}
+/// Counter for unique test identifiers (combined with PID for uniqueness across processes)
+static TEST_COUNTER: AtomicU32 = AtomicU32::new(0);
 
 /// Get the path to the reovim binary
 fn binary_path() -> PathBuf {
@@ -58,6 +32,38 @@ fn binary_path() -> PathBuf {
         .join("target/debug/reovim")
 }
 
+/// Read the actual port from server's stderr output
+///
+/// The server prints "Listening on 127.0.0.1:<port>" when ready.
+/// This function handles potential early output (warnings, panics).
+async fn read_port_from_stderr(
+    process: &mut Child,
+) -> Result<u16, Box<dyn std::error::Error + Send + Sync>> {
+    let stderr = process.stderr.take().ok_or("Failed to capture stderr")?;
+
+    let mut reader = BufReader::new(stderr).lines();
+
+    while let Some(line) = reader.next_line().await? {
+        // Skip warning messages from logging setup
+        if line.starts_with("Warning:") {
+            continue;
+        }
+
+        // Detect panic - server won't start
+        if line.contains("!!!! PANIC !!!!") {
+            return Err(format!("Server panicked during startup: {line}").into());
+        }
+
+        // Parse port from "Listening on 127.0.0.1:<port>"
+        if let Some(rest) = line.strip_prefix("Listening on 127.0.0.1:") {
+            let port = rest.parse::<u16>()?;
+            return Ok(port);
+        }
+    }
+
+    Err("Server exited without outputting listening port".into())
+}
+
 /// Test harness that spawns a reovim server for integration testing
 pub struct ServerTestHarness {
     process: Child,
@@ -65,27 +71,30 @@ pub struct ServerTestHarness {
 }
 
 impl ServerTestHarness {
-    /// Spawn a new server on a unique port
+    /// Spawn a new server on an OS-assigned port
     ///
     /// Uses `--server --test` mode so the server exits when all clients disconnect.
+    /// The server binds to port 0 and the OS assigns an available port, eliminating
+    /// port contention when running tests in parallel.
     ///
     /// # Errors
     ///
-    /// Returns an error if the server process fails to spawn.
+    /// Returns an error if the server process fails to spawn or doesn't output
+    /// its listening port within 10 seconds.
     pub async fn spawn() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let port = next_test_port();
-
         // Inherit REOVIM_LOG from test environment for debug tracing
         let log_level = std::env::var("REOVIM_LOG").unwrap_or_else(|_| "info".to_string());
 
-        // Write logs to a temp file for debugging
-        let log_path = format!("/tmp/reovim-test-{port}.log");
-        let process = Command::new(binary_path())
+        // Use PID + counter for unique log file naming (no external dependency needed)
+        let test_id = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let log_path = format!("/tmp/reovim-test-{}-{test_id}.log", std::process::id());
+
+        let mut process = Command::new(binary_path())
             .args([
                 "--server",
                 "--test",
                 "--listen-tcp",
-                &port.to_string(),
+                "0", // OS assigns port
                 "--log",
                 &log_path,
             ])
@@ -93,35 +102,42 @@ impl ServerTestHarness {
             .env("REOVIM_TEST", "1") // Disable LSP auto-start in tests
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
+            .kill_on_drop(true) // Automatic cleanup
             .spawn()?;
 
-        // Wait for server to be ready (longer on slower machines)
-        sleep(Duration::from_millis(200)).await;
+        // Read actual port from stderr with timeout
+        let port = tokio::time::timeout(Duration::from_secs(10), read_port_from_stderr(&mut process))
+            .await
+            .map_err(|_| "Server startup timed out (10s)")?
+            .map_err(|e| format!("Failed to read port from server: {e}"))?;
 
         Ok(Self { process, port })
     }
 
     /// Spawn with initial file content
     ///
+    /// Uses OS-assigned port like `spawn()`.
+    ///
     /// # Errors
     ///
-    /// Returns an error if the server process fails to spawn.
+    /// Returns an error if the server process fails to spawn or doesn't output
+    /// its listening port within 10 seconds.
     pub async fn spawn_with_file(
         path: &str,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let port = next_test_port();
-
         // Inherit REOVIM_LOG from test environment for debug tracing
         let log_level = std::env::var("REOVIM_LOG").unwrap_or_else(|_| "info".to_string());
 
-        // Write logs to a temp file for debugging
-        let log_path = format!("/tmp/reovim-test-{port}.log");
-        let process = Command::new(binary_path())
+        // Use PID + counter for unique log file naming
+        let test_id = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let log_path = format!("/tmp/reovim-test-{}-{test_id}.log", std::process::id());
+
+        let mut process = Command::new(binary_path())
             .args([
                 "--server",
                 "--test",
                 "--listen-tcp",
-                &port.to_string(),
+                "0", // OS assigns port
                 "--log",
                 &log_path,
                 path,
@@ -130,10 +146,14 @@ impl ServerTestHarness {
             .env("REOVIM_TEST", "1") // Disable LSP auto-start in tests
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
+            .kill_on_drop(true) // Automatic cleanup
             .spawn()?;
 
-        // Wait for server to be ready (longer on slower machines)
-        sleep(Duration::from_millis(200)).await;
+        // Read actual port from stderr with timeout
+        let port = tokio::time::timeout(Duration::from_secs(10), read_port_from_stderr(&mut process))
+            .await
+            .map_err(|_| "Server startup timed out (10s)")?
+            .map_err(|e| format!("Failed to read port from server: {e}"))?;
 
         Ok(Self { process, port })
     }
@@ -152,7 +172,7 @@ impl ServerTestHarness {
             }
             // Exponential backoff: 50ms, 100ms, 150ms, ..., up to 200ms
             let delay = std::cmp::min(50 + attempt * 50, 200);
-            sleep(Duration::from_millis(delay)).await;
+            tokio::time::sleep(Duration::from_millis(delay)).await;
         }
         TestClient::connect("127.0.0.1", self.port)
             .await
@@ -168,9 +188,11 @@ impl ServerTestHarness {
 
 impl Drop for ServerTestHarness {
     fn drop(&mut self) {
-        // Kill the server process when the harness is dropped
-        let _ = self.process.kill();
-        let _ = self.process.wait();
+        // kill_on_drop(true) handles cleanup, but we still wait for the process
+        // to ensure clean shutdown
+        if let Ok(Some(_)) = self.process.try_wait() {
+            // Process already exited
+        }
     }
 }
 
@@ -179,21 +201,10 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_port_allocation() {
-        let port1 = next_test_port();
-        let port2 = next_test_port();
-        assert_ne!(port1, port2);
-        assert!((17000..=17999).contains(&port1));
-        assert!((17000..=17999).contains(&port2));
-    }
-
-    #[test]
-    fn test_is_port_available() {
-        // Bind a port, then check it's not available
-        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
-        let bound_port = listener.local_addr().unwrap().port();
-        assert!(!is_port_available(bound_port));
-        drop(listener);
-        // After dropping, it should be available again (though may take a moment)
+    async fn test_harness_spawn_and_connect() {
+        let harness = ServerTestHarness::spawn().await.unwrap();
+        assert!(harness.port() > 0);
+        let _client = harness.client().await.unwrap();
+        // Basic connectivity test - if we get here, connection succeeded
     }
 }
