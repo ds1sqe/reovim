@@ -367,11 +367,12 @@ impl InjectionManager {
                     return None;
                 }
                 let registered = registered.unwrap();
-                let query = m.query_cache().get(language_id, QueryType::Highlights);
+                // Use lazy compilation - query will be compiled on first access
+                let query = m.get_cached_query(language_id, QueryType::Highlights);
                 if query.is_none() {
                     tracing::debug!(
                         language_id = %language_id,
-                        "Injection layer skipped: highlights query not cached"
+                        "Injection layer skipped: highlights query compilation failed"
                     );
                     return None;
                 }
