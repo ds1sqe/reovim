@@ -25,14 +25,14 @@ lib/core/src/
 │   │   │   └── count_parser.rs
 │   │   └── completion.rs # CompletionHandler
 │   └── inner/
-│       └── mod.rs      # InnerEvent enum
+│       └── mod.rs      # RuntimeEventPayload enum
 ```
 
 ## Event Types
 
 ### Event Bus (Type-Erased Events)
 
-The event bus provides a type-erased event system for plugin communication. Unlike `InnerEvent`, the event bus allows plugins to define their own event types without modifying core enums.
+The event bus provides a type-erased event system for plugin communication. Unlike `RuntimeEventPayload`, the event bus allows plugins to define their own event types without modifying core enums.
 
 **Location:** `lib/core/src/event_bus/`
 
@@ -51,7 +51,7 @@ impl EventBus {
     // Subscribe to events of type E
     pub fn subscribe<E: Event, F>(&self, priority: u32, handler: F)
     where
-        F: Fn(&E, &EventContext) -> EventResult + Send + Sync + 'static;
+        F: Fn(&E, &mut HandlerContext) -> EventResult + Send + Sync + 'static;
 
     // Emit an event to all subscribers
     pub fn emit<E: Event>(&self, event: E);
@@ -153,7 +153,7 @@ If a scope hangs, look for increments without matching decrements to find the le
 | Event | Description |
 |-------|-------------|
 | `ExplorerRefresh` | Refresh explorer view |
-| `TelescopeOpen` | Open telescope picker |
+| `MicroscopeOpen` | Open microscope picker |
 | `CompletionTrigger` | Trigger completion |
 | `SettingsMenuOpen` | Open settings menu |
 
@@ -497,59 +497,92 @@ declare_event_command! {
 }
 ```
 
-### InnerEvent (Legacy)
+### RuntimeEventPayload
 
-Internal events passed to the runtime via mpsc channel.
+**Location:** `lib/core/src/event/inner/mod.rs`
 
-> **Note:** Features are being migrated to the Event Bus. New plugins should use `Event` trait and `EventBus` instead of adding variants to `InnerEvent`.
+Internal events passed to the runtime via mpsc channel. The payload is wrapped in `RuntimeEvent` which optionally carries an `EventScope` for lifecycle tracking.
 
 ```rust
-pub enum InnerEvent {
-    // Core events
-    BufferEvent(BufferEvent),
-    WindowEvent(WindowEvent),
-    CommandEvent(CommandEvent),
-    ModeChangeEvent(ModeState),
-    PendingKeysEvent(String),
-    HighlightEvent(HighlightEvent),
-    SyntaxEvent(SyntaxEvent),
-
-    // Operator/motion events
-    OperatorMotionEvent(OperatorMotionAction),
-    VisualTextObjectEvent(VisualTextObjectAction),
-
-    // Text input events (direct dispatch to components)
-    TextInputEvent(TextInputEvent),
-
-    // System
-    RenderSignal,
-    KillSignal,
-    ScreenResizeEvent { width: u16, height: u16 },
-
-    // RPC (server mode)
-    RpcRequest { id: u64, method: String, params: Value, response_tx: Sender<RpcResponse> },
-
-    // Plugin-defined events (type-erased)
-    PluginEvent { plugin_id: PluginId, event: DynEvent },
-
-    // File operations
-    OpenFileRequest { path: PathBuf },
-    OpenFileAtPositionRequest { path: PathBuf, line: usize, column: usize },
-
-    // Register operations
-    SetRegister { register: Option<char>, text: String },
-
-    // Settings/option events
-    SetLineNumbers { enabled: bool },
-    SetRelativeLineNumbers { enabled: bool },
-    SetTheme { name: String },
-    SetScrollbar { enabled: bool },
-    SetIndentGuide { enabled: bool },
-    SetSignColumn { width: Option<u16> },
-
-    // Cursor movement (from plugins)
-    MoveCursor { buffer_id: usize, line: u32, column: u32 },
+/// Wrapper with optional scope tracking
+pub struct RuntimeEvent {
+    payload: RuntimeEventPayload,
+    scope: Option<EventScope>,
 }
+
+/// The actual event data, grouped into logical categories
+pub enum RuntimeEventPayload {
+    Buffer(BufferEvent),       // Buffer operations
+    Window(WindowEvent),       // Window management
+    Command(CommandEvent),     // Command execution
+    Editing(EditingEvent),     // Text editing operations
+    Mode(ModeEvent),           // Mode changes
+    Render(RenderEvent),       // Visual updates
+    Settings(SettingsEvent),   // Settings/options
+    Input(InputEvent),         // External input (mouse, resize)
+    File(FileEvent),           // File operations
+    Rpc(RpcEvent),             // RPC requests (server mode)
+    Plugin(PluginEventData),   // Plugin-defined events
+    Kill,                      // Terminate runtime
+}
+```
+
+**Sub-enums:**
+
+```rust
+pub enum EditingEvent {
+    TextInput(TextInputEvent),
+    OperatorMotion(OperatorMotionAction),
+    VisualTextObject(VisualTextObjectAction),
+    MoveCursor { buffer_id: usize, line: u32, column: u32 },
+    SetRegister { register: Option<char>, text: String },
+}
+
+pub enum ModeEvent {
+    Change(ModeState),
+    PendingKeys(String),
+}
+
+pub enum RenderEvent {
+    Signal,
+    Highlight(HighlightEvent),
+    Syntax(SyntaxEvent),
+}
+
+pub enum SettingsEvent {
+    LineNumbers { enabled: bool },
+    RelativeLineNumbers { enabled: bool },
+    Theme { name: String },
+    Scrollbar { enabled: bool },
+    IndentGuide { enabled: bool },
+    SignColumn { mode: SignColumnMode },
+    ApplyCmdlineCompletion { text: String, replace_start: usize },
+}
+
+pub enum InputEvent {
+    Mouse(MouseEvent),
+    ScreenResize { width: u16, height: u16 },
+}
+
+pub enum FileEvent {
+    Open { path: PathBuf },
+    OpenAt { path: PathBuf, line: usize, column: usize },
+}
+```
+
+**Convenience constructors on RuntimeEvent:**
+
+```rust
+RuntimeEvent::render_signal()
+RuntimeEvent::kill()
+RuntimeEvent::mode_change(mode)
+RuntimeEvent::pending_keys(keys)
+RuntimeEvent::buffer(event)
+RuntimeEvent::window(event)
+RuntimeEvent::command(event)
+RuntimeEvent::open_file(path)
+RuntimeEvent::plugin(plugin_id, event)
+// ... and more
 ```
 
 ### BufferEvent
@@ -583,39 +616,42 @@ pub struct CommandContext {
 }
 ```
 
-### CompletionEvent
+### Completion Events (Plugin)
 
-Text completion operations:
+**Location:** `plugins/features/completion/src/commands.rs`
+
+Completion is now a plugin using the unified command-event pattern via EventBus:
 
 ```rust
-pub enum CompletionEvent {
-    Trigger { buffer_id: usize },
-    Update { items: Vec<CompletionItem>, prefix: String, start_col: usize, start_row: usize },
-    SelectNext,
-    SelectPrev,
-    Confirm,
-    Dismiss,
-    UpdateFilter { new_prefix: String },
+// Unified command-event types (via declare_event_command! macro)
+pub struct CompletionTrigger;      // Trigger completion popup
+pub struct CompletionSelectNext;   // Select next item
+pub struct CompletionSelectPrev;   // Select previous item
+pub struct CompletionConfirm;      // Confirm selection
+pub struct CompletionDismiss;      // Close popup
+
+// Event with data
+pub struct CompletionReady {
+    pub items: Vec<CompletionItem>,
+    pub prefix: String,
 }
 ```
 
-### TelescopeEvent
+### MicroscopeEvent
 
-Fuzzy finder operations:
+Fuzzy finder operations (Microscope plugin):
 
 ```rust
-pub enum TelescopeEvent {
-    Open { picker: String },
-    UpdateQuery { query: String },
-    UpdateItems { items: Vec<TelescopeItem> },
-    SelectNext,
-    SelectPrev,
-    PageDown,
-    PageUp,
-    Confirm,
-    Close,
-    UpdatePreview { content: String },
-}
+// Events are unified command-event types in plugins/features/microscope/src/commands.rs
+// Examples:
+pub struct MicroscopeOpen { pub picker: String }
+pub struct MicroscopeSelectNext;  // via declare_event_command!
+pub struct MicroscopeSelectPrev;
+pub struct MicroscopePageDown;
+pub struct MicroscopePageUp;
+pub struct MicroscopeConfirm;
+pub struct MicroscopeClose;
+pub struct MicroscopeInsertChar { pub c: char }
 ```
 
 ### TextInputEvent
@@ -671,32 +707,38 @@ fn handle_interactor_input(&mut self, event: TextInputEvent) {
 - Single printable characters → `TextInputEvent::InsertChar(c)`
 - Backspace key → `TextInputEvent::DeleteCharBackward`
 
-### TreesitterEvent
+### SyntaxEvent
 
-Treesitter parsing and highlight events:
+Syntax/treesitter operations (part of `RenderEvent`):
 
 ```rust
-pub enum TreesitterEvent {
-    /// Request reparse for buffer
+pub enum SyntaxEvent {
+    /// Attach a syntax provider to a buffer
+    Attach { buffer_id: usize, syntax: Box<dyn SyntaxProvider> },
+    /// Detach syntax provider from a buffer
+    Detach { buffer_id: usize },
+    /// Request a reparse (after buffer modification)
     Reparse { buffer_id: usize },
 }
 ```
 
-### ExplorerEvent
+> **Note:** Emitted via `RuntimeEvent::syntax(event)` or `RuntimeEventPayload::Render(RenderEvent::Syntax(event))`.
 
-File explorer operations:
+### Explorer Events (Plugin)
+
+**Location:** `plugins/features/explorer/src/command.rs`
+
+Explorer is now a plugin using the unified command-event pattern via EventBus:
 
 ```rust
-pub enum ExplorerEvent {
-    Toggle,
-    Focus,
-    Unfocus,
-    CursorUp,
-    CursorDown,
-    ToggleNode,
-    OpenNode,
-    // ... more variants
-}
+// Unified command-event types (via declare_event_command! macro)
+pub struct ExplorerToggle;         // Toggle file explorer
+pub struct ExplorerRefresh;        // Refresh explorer view
+pub struct ExplorerCursorUp;       // Move cursor up
+pub struct ExplorerCursorDown;     // Move cursor down
+pub struct ExplorerToggleNode;     // Expand/collapse directory
+pub struct ExplorerOpenNode;       // Open file or expand directory
+pub struct ExplorerClose;          // Close explorer
 ```
 
 ### WindowEvent
@@ -806,11 +848,13 @@ impl InputEventBroker {
 
 ### KeyEventBroker
 
-Broadcasts key events to subscribed handlers:
+**Location:** `lib/core/src/event/key/mod.rs`
+
+Broadcasts scoped key events to subscribed handlers:
 
 ```rust
 pub struct KeyEventBroker {
-    tx: broadcast::Sender<KeyEvent>,
+    tx: Sender<ScopedKeyEvent>,
 }
 
 impl KeyEventBroker {
@@ -819,13 +863,19 @@ impl KeyEventBroker {
         Self { tx }
     }
 
-    pub fn enlist<T: Subscribe<KeyEvent>>(&self, handler: &mut T) {
+    pub fn enlist(&self, handler: &mut impl Subscribe<ScopedKeyEvent>) {
         handler.subscribe(self.tx.subscribe());
     }
 
-    pub fn handle(&self, event: KeyEvent) {
-        let _ = self.tx.send(event);
+    pub fn handle(&self, ev: ScopedKeyEvent) -> Result<usize, SendError<ScopedKeyEvent>> {
+        self.tx.send(ev)
     }
+}
+
+/// Key event with optional scope for lifecycle tracking
+pub struct ScopedKeyEvent {
+    pub event: KeyEvent,
+    pub scope: Option<EventScope>,
 }
 ```
 
@@ -843,52 +893,46 @@ pub trait Subscribe<T> {
 
 ### CommandHandler
 
+**Location:** `lib/core/src/event/handler/command/mod.rs`
+
 Translates key events to commands:
 
 ```rust
 pub struct CommandHandler {
+    key_event_rx: Option<Receiver<ScopedKeyEvent>>,
     keymap: KeyMap,
-    rx: Option<broadcast::Receiver<KeyEvent>>,
-    tx: mpsc::Sender<InnerEvent>,
-    pending_keys: String,
-    pending_count: Option<usize>,
-    local_mode: ModeState,
     mode_rx: watch::Receiver<ModeState>,
-    command_registry: Arc<CommandRegistry>,
+    local_mode: ModeState,
+    pending_keys: KeySequence,
+    count_parser: CountParser,
+    dispatcher: Dispatcher,
+    mode_locally_changed: bool,
+    interactor_registry: Arc<InteractorRegistry>,
+    current_scope: Option<EventScope>,
 }
 ```
+
+**Key Fields:**
+- `pending_keys: KeySequence` - Accumulated key sequence (not String)
+- `count_parser: CountParser` - Parses numeric prefixes (e.g., "5j")
+- `dispatcher: Dispatcher` - Sends events to runtime
+- `interactor_registry` - Tracks which components accept text input
 
 **Key Translation Process:**
-1. Receive KeyEvent from broadcast
-2. Update pending_keys with key representation
-3. Look up in mode-specific keymap
+1. Receive `ScopedKeyEvent` from broadcast (includes scope for tracking)
+2. Update `pending_keys` with key sequence
+3. Look up in scope-based keymap via `keymap.lookup_binding(mode, keys)`
 4. If command found:
-   - Create CommandContext with count
-   - Send CommandEvent to runtime
+   - Create `CommandContext` with count from `CountParser`
+   - Send `CommandEvent` via `Dispatcher`
    - Clear pending state
-5. If partial match: wait for more keys, show which-key
-6. If no match: handle based on mode
-   - Insert: send InsertChar
-   - Command: send CommandLineChar
-   - Telescope Insert: send TelescopeInsertChar
-   - Normal/Visual: ignore
-
-### CompletionHandler
-
-Handles async completion item fetching:
-
-```rust
-pub struct CompletionHandler {
-    rx: mpsc::Receiver<CompletionRequest>,
-    tx: mpsc::Sender<InnerEvent>,
-    engine: Arc<CompletionEngine>,
-}
-```
-
-**Process:**
-1. Receive trigger request
-2. Fetch completion items asynchronously
-3. Send CompletionEvent::Update with results
+5. If partial match: wait for more keys, trigger which-key panel
+6. If no match: handle based on mode and interactor registry
+   - Check `interactor_registry.accepts_char_input(mode)`
+   - Insert mode → `TextInputEvent::InsertChar(c)`
+   - Command mode → CommandLine input
+   - Plugin interactor → `PluginTextInput` event via EventBus
+   - Normal/Visual → ignore
 
 ### TerminateHandler
 
@@ -900,7 +944,7 @@ impl TerminateHandler {
         while let Ok(event) = self.rx.recv().await {
             if event.code == KeyCode::Char('c')
                && event.modifiers == KeyModifiers::CONTROL {
-                let _ = self.tx.send(InnerEvent::KillSignal).await;
+                let _ = self.tx.send(RuntimeEvent::kill()).await;
             }
         }
     }
@@ -919,45 +963,55 @@ impl TerminateHandler {
 2. INPUT BROKER
    InputEventBroker::subscribe()
    - Filters Key Press events
+   - Wraps in ScopedKeyEvent with optional scope
    - Calls KeyEventBroker::handle()
         │
         ▼
 3. KEY BROADCAST
    KeyEventBroker (tokio broadcast, buffer: 255)
         │
-        ├────────────────────┬────────────────────┐
-        ▼                    ▼                    ▼
+        ├────────────────────┐
+        ▼                    ▼
 4. HANDLERS
-   CommandHandler        TerminateHandler    CompletionHandler
-   - Keys → Commands     - Ctrl+C → Kill    - Async fetching
-   - Track pending_keys
+   CommandHandler        TerminateHandler
+   - Keys → Commands     - Ctrl+C → Kill
+   - Track pending_keys (KeySequence)
    - Watch mode changes
-        │                    │                    │
-        ▼                    ▼                    ▼
-   CommandEvent          KillSignal        CompletionEvent
-   TelescopeEvent
-   ModeChangeEvent
-        │                    │                    │
-        └─────────┬──────────┴────────────────────┘
-                  ▼
+   - Uses Dispatcher for events
+        │                    │
+        ▼                    ▼
+   RuntimeEventPayload   RuntimeEvent::kill()
+        │                    │
+        └──────────┬─────────┘
+                   ▼
 5. RUNTIME EVENT LOOP
-   Runtime::rx.recv().await
+   Runtime::rx.recv().await (RuntimeEvent)
 
-   match event {
-       CommandEvent => execute command
-       ModeChangeEvent => update mode, broadcast
-       CompletionEvent => update completion state
-       TelescopeEvent => update telescope state
-       TreesitterEvent => update highlights
-       ExplorerEvent => handle explorer
-       OperatorMotionEvent => execute operator+motion
-       WhichKeyShow/Hide => update which-key panel
-       RenderSignal => render()
-       KillSignal => exit
+   match event.into_payload() {
+       Buffer(_) => handle buffer operations
+       Window(_) => handle window operations
+       Command(_) => execute command via registry
+       Editing(EditingEvent::TextInput(_)) => route to component
+       Editing(EditingEvent::OperatorMotion(_)) => execute operator
+       Mode(ModeEvent::Change(_)) => update mode, broadcast
+       Mode(ModeEvent::PendingKeys(_)) => update status line
+       Render(RenderEvent::Signal) => trigger render
+       Render(RenderEvent::Syntax(_)) => update syntax provider
+       Settings(_) => apply setting change
+       File(_) => open/navigate to file
+       Plugin(_) => emit via EventBus to plugin handlers
+       Kill => exit
    }
         │
         ▼
-6. RENDERING
+6. EVENT BUS (Plugin Events)
+   EventBus handles plugin-defined events:
+   - Completion, Explorer, Microscope, etc.
+   - Plugins subscribe with handlers
+   - May request render or emit more events
+        │
+        ▼
+7. RENDERING
    Screen::render()
 ```
 
@@ -1040,40 +1094,89 @@ Step 2: Plugin interacts with runtime
 
 ## Key Bindings
 
-The keymap uses a trie structure for multi-key sequences:
+**Location:** `lib/core/src/bind/mod.rs`
+
+The keymap uses a scope-based architecture with `KeymapScope` for flexible component/mode binding:
 
 ```rust
 pub struct KeyMapInner {
     pub command: Option<CommandRef>,
-    pub next: HashMap<String, Self>,
+    pub description: Option<String>,
+    pub category: Option<&'static str>,
+    pub next: HashMap<KeySequence, Self>,
 }
 
 pub struct KeyMap {
-    pub normal: HashMap<String, KeyMapInner>,
-    pub insert: HashMap<String, KeyMapInner>,
-    pub visual: HashMap<String, KeyMapInner>,
-    pub command: HashMap<String, KeyMapInner>,
-    pub explorer: HashMap<String, KeyMapInner>,
-    pub explorer_input: HashMap<String, KeyMapInner>,
-    pub operator_pending: HashMap<String, KeyMapInner>,
-    pub telescope_normal: HashMap<String, KeyMapInner>,
-    pub telescope_insert: HashMap<String, KeyMapInner>,
+    /// All keymaps indexed by scope
+    maps: HashMap<KeymapScope, HashMap<KeySequence, KeyMapInner>>,
+}
+
+/// Identifies which keymap a binding belongs to
+pub enum KeymapScope {
+    /// Component-specific: ComponentId + EditModeKind
+    Component { id: ComponentId, mode: EditModeKind },
+    /// Global sub-mode (Command, OperatorPending, Interactor)
+    SubMode(SubModeKind),
+    /// Fallback for all components in Normal mode
+    DefaultNormal,
+}
+
+pub enum EditModeKind { Normal, Insert, Visual }
+pub enum SubModeKind { Command, OperatorPending, Interactor(ComponentId) }
+```
+
+### Scope-Based Keymaps
+
+| Scope | Example | Purpose |
+|-------|---------|---------|
+| `Component { EDITOR, Normal }` | `KeymapScope::editor_normal()` | Editor normal mode |
+| `Component { EDITOR, Insert }` | `KeymapScope::editor_insert()` | Editor insert mode |
+| `Component { EDITOR, Visual }` | `KeymapScope::editor_visual()` | Editor visual mode |
+| `SubMode(Command)` | Ex-command input | Command line bindings |
+| `SubMode(OperatorPending)` | After d/y/c | Motion bindings |
+| `SubMode(Interactor(id))` | Plugin text input | Plugin-specific input mode |
+| `Component { MICROSCOPE, Normal }` | Plugin registers | Microscope j/k navigation |
+| `Component { EXPLORER, Normal }` | Plugin registers | Explorer navigation |
+| `DefaultNormal` | Ctrl-W | Fallback for all Normal modes |
+
+### Keymap Resolution
+
+```rust
+impl KeyMap {
+    /// Convert ModeState to KeymapScope
+    pub fn mode_to_scope(mode: &ModeState) -> KeymapScope {
+        // SubMode takes precedence
+        match &mode.sub_mode {
+            SubMode::Command => KeymapScope::SubMode(SubModeKind::Command),
+            SubMode::OperatorPending { .. } => KeymapScope::SubMode(SubModeKind::OperatorPending),
+            SubMode::Interactor(id) => KeymapScope::SubMode(SubModeKind::Interactor(*id)),
+            SubMode::None => {}
+        }
+        // Otherwise: ComponentId + EditMode
+        KeymapScope::Component { id: mode.interactor_id, mode: mode.edit_mode.into() }
+    }
+
+    /// Lookup with fallback to DefaultNormal
+    pub fn lookup_binding(&self, mode: &ModeState, keys: &KeySequence) -> Option<&KeyMapInner>;
 }
 ```
 
-### Mode-Specific Keymaps
+### Plugin Keybinding Registration
 
-| Mode | Keymap | Purpose |
-|------|--------|---------|
-| Normal | `normal` | Standard editing commands |
-| Insert | `insert` | Text input, Escape, completion |
-| Visual | `visual` | Selection extension, operations |
-| Command | `command` | Ex-command input |
-| Explorer | `explorer` | File browser navigation |
-| Explorer Input | `explorer_input` | File creation/rename input |
-| Operator Pending | `operator_pending` | Motion after d/y/c |
-| Telescope Normal | `telescope_normal` | Navigation with j/k |
-| Telescope Insert | `telescope_insert` | Query typing |
+Plugins register keybindings in `build()` phase:
+
+```rust
+fn build(&self, ctx: &mut PluginContext) {
+    // Component-specific scope
+    let my_normal = KeymapScope::Component {
+        id: COMPONENT_ID,
+        mode: EditModeKind::Normal,
+    };
+
+    ctx.bind_key_scoped(my_normal, keys!['j'], CommandRef::Registered(MY_NEXT));
+    ctx.bind_key_scoped(my_normal, keys!['k'], CommandRef::Registered(MY_PREV));
+}
+```
 
 ### Default Bindings
 
@@ -1096,7 +1199,7 @@ pub struct KeyMap {
 | f/F/t/T | Single-char jump find/till |
 | Ctrl-o/Ctrl-i | Jump list |
 | Space e | Toggle explorer |
-| Space ff/fb/fg/fr | Telescope pickers |
+| Space ff/fb/fg/fr | Microscope pickers |
 
 **Insert Mode:**
 | Key | Command |
@@ -1128,19 +1231,36 @@ pub struct KeyMap {
 
 ## Mode-Specific Behavior
 
-The CommandHandler adjusts behavior based on current mode:
+The CommandHandler uses `InteractorRegistry` to determine how to handle unmapped keys:
 
 ```rust
-if mode.is_insert() {
-    // Unmapped keys become InsertChar(c)
-} else if mode.is_command() {
-    // Unmapped keys become CommandLineChar(c)
-} else if mode.is_telescope_focus() && mode.is_insert() {
-    // Unmapped keys become TelescopeInsertChar(c)
+// Check if current interactor accepts character input
+if interactor_registry.accepts_char_input(&mode) {
+    match mode.interactor_id {
+        ComponentId::EDITOR if mode.edit_mode.is_insert() => {
+            // Editor insert mode: TextInputEvent::InsertChar(c)
+            dispatcher.send(RuntimeEvent::text_input(TextInputEvent::InsertChar(c)));
+        }
+        ComponentId::COMMAND_LINE => {
+            // Command mode: direct command line input
+        }
+        other_component => {
+            // Plugin component: emit PluginTextInput via EventBus
+            event_bus.emit(PluginTextInput { c, target: other_component });
+        }
+    }
 } else if mode.is_normal() || mode.is_visual() {
-    // Unmapped keys are ignored
+    // Unmapped keys in normal/visual mode are ignored
 }
 ```
+
+**Key methods on ModeState:**
+- `is_normal()` - Check if in normal editing mode
+- `is_insert()` - Check if in insert mode
+- `is_visual()` - Check if in visual selection mode
+- `is_command()` - Check if in command-line mode (`:` prefix)
+- `is_operator_pending()` - Check if waiting for motion after operator
+- `is_editor_focus()` - Check if editor component has focus
 
 ## Mode Change Broadcasting
 
