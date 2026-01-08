@@ -28,7 +28,7 @@ impl Runtime {
     ///
     /// Emits a `BufferModified` event so the treesitter plugin can handle the reparse.
     pub(crate) fn schedule_treesitter_reparse(&self, buffer_id: usize) {
-        self.event_bus.emit(crate::event_bus::BufferModified {
+        self.emit_event(crate::event_bus::BufferModified {
             buffer_id,
             modification: BufferModification::FullReplace,
         });
@@ -317,16 +317,14 @@ impl Runtime {
                 // Emit event with command line context for plugin to handle
                 let context = self.command_line.completion_context();
                 let registry_commands = self.ex_command_registry.list_commands();
-                self.event_bus
-                    .emit(crate::event_bus::core_events::CmdlineCompletionTriggered {
-                        context,
-                        registry_commands,
-                    });
+                self.emit_event(crate::event_bus::core_events::CmdlineCompletionTriggered {
+                    context,
+                    registry_commands,
+                });
             }
             CommandLineAction::CompletePrev => {
                 // Emit event for plugin to select previous completion
-                self.event_bus
-                    .emit(crate::event_bus::core_events::CmdlineCompletionPrevRequested);
+                self.emit_event(crate::event_bus::core_events::CmdlineCompletionPrevRequested);
             }
             CommandLineAction::ApplyCompletion {
                 text,
@@ -407,7 +405,7 @@ impl Runtime {
             // Check if cursor moved and emit event
             let cursor_after = exec_ctx.buffer.cur;
             if cursor_before != cursor_after {
-                self.event_bus.emit(crate::event_bus::CursorMoved {
+                self.emit_event(crate::event_bus::CursorMoved {
                     buffer_id,
                     from: (cursor_before.y as usize, cursor_before.x as usize),
                     to: (cursor_after.y as usize, cursor_after.x as usize),
@@ -671,14 +669,27 @@ impl Runtime {
                 CommandResult::EmitEvent(event) => {
                     tracing::info!("Command result: EmitEvent, type={}", event.type_name());
                     // Dispatch the event to the event bus for plugin handling
+                    // Propagate the current scope for proper lifecycle tracking
                     let sender = self.event_bus.sender();
-                    let mut ctx = crate::event_bus::HandlerContext::new(&sender);
+                    let mut ctx = crate::event_bus::HandlerContext::new(&sender)
+                        .with_scope(self.current_scope.clone());
+
+                    // Increment scope before dispatch (will be decremented after)
+                    if let Some(ref scope) = self.current_scope {
+                        scope.increment();
+                    }
+
                     let result = self.event_bus.dispatch(&event, &mut ctx);
                     tracing::info!(
                         "Event dispatched: type={}, result={:?}",
                         event.type_name(),
                         result
                     );
+
+                    // Decrement scope after dispatch completes
+                    if let Some(ref scope) = self.current_scope {
+                        scope.decrement();
+                    }
 
                     // Check if any handler requested render or quit
                     if ctx.render_requested() {
@@ -1304,7 +1315,7 @@ impl Runtime {
                 Ok(_) => {
                     tracing::info!(option = %name, "Option enabled");
                     // Emit change event
-                    self.event_bus.emit(OptionChanged::new(
+                    self.emit_event(OptionChanged::new(
                         name,
                         old_value,
                         new_value,
@@ -1330,7 +1341,7 @@ impl Runtime {
                 Ok(_) => {
                     tracing::info!(option = %name, "Option disabled");
                     // Emit change event
-                    self.event_bus.emit(OptionChanged::new(
+                    self.emit_event(OptionChanged::new(
                         name,
                         old_value,
                         new_value,
@@ -1407,7 +1418,7 @@ impl Runtime {
             Ok(_) => {
                 tracing::info!(option = %name, value = %value_str, "Option set");
                 // Emit change event
-                self.event_bus.emit(OptionChanged::new(
+                self.emit_event(OptionChanged::new(
                     name,
                     old_value,
                     new_value,
@@ -1449,7 +1460,7 @@ impl Runtime {
             Ok(_) => {
                 tracing::info!(option = %name, "Option reset to default");
                 // Emit change event
-                self.event_bus.emit(OptionChanged::new(
+                self.emit_event(OptionChanged::new(
                     name,
                     old_value,
                     default_value,

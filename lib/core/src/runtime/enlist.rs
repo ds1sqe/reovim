@@ -46,24 +46,32 @@ pub fn handle_editor_input(
     } else if rt.mode_state.is_insert() {
         // Buffer input
         let buffer_id = rt.active_buffer_id();
+
+        // Track event data to emit after releasing mutable borrow
+        let mut insert_event: Option<(usize, usize, char)> = None;
+
         if let Some(buffer) = rt.buffers.get_mut(&buffer_id) {
             if let Some(c) = char {
                 // Get position before insertion for event
                 let start = (buffer.cur.y as usize, buffer.cur.x as usize);
                 buffer.insert_char(c);
-
-                // Emit BufferModified event so plugins can react (e.g., auto-pair)
-                rt.event_bus.emit(BufferModified {
-                    buffer_id,
-                    modification: BufferModification::Insert {
-                        start,
-                        text: c.to_string(),
-                    },
-                });
+                insert_event = Some((start.0, start.1, c));
             }
             if delete {
                 buffer.delete_char_backward();
             }
+        }
+
+        // Emit BufferModified event after releasing mutable borrow
+        // Use emit_event to propagate scope for deterministic completion tracking
+        if let Some((start_y, start_x, c)) = insert_event {
+            rt.emit_event(BufferModified {
+                buffer_id,
+                modification: BufferModification::Insert {
+                    start: (start_y, start_x),
+                    text: c.to_string(),
+                },
+            });
         }
     }
 }

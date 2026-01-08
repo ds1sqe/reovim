@@ -11,7 +11,7 @@ use {
     tokio::sync::mpsc,
 };
 
-use crate::event::RuntimeEvent;
+use crate::event::{RuntimeEvent, key::ScopedKeyEvent};
 
 /// Trait for abstracting key event sources.
 ///
@@ -27,7 +27,7 @@ pub trait KeySource: Send {
     fn poll_next_key(
         &mut self,
         cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Option<Result<KeyEvent, Box<dyn Error + Send>>>>;
+    ) -> std::task::Poll<Option<Result<ScopedKeyEvent, Box<dyn Error + Send>>>>;
 
     /// Check if the source has been exhausted (no more events will arrive).
     fn is_exhausted(&self) -> bool;
@@ -65,7 +65,7 @@ impl KeySource for MockKeySource {
     fn poll_next_key(
         &mut self,
         cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Option<Result<KeyEvent, Box<dyn Error + Send>>>> {
+    ) -> std::task::Poll<Option<Result<ScopedKeyEvent, Box<dyn Error + Send>>>> {
         use std::task::Poll;
 
         // Handle delay if configured
@@ -84,9 +84,10 @@ impl KeySource for MockKeySource {
             }
         }
 
-        self.events
-            .pop_front()
-            .map_or_else(|| Poll::Ready(None), |event| Poll::Ready(Some(Ok(event))))
+        self.events.pop_front().map_or_else(
+            || Poll::Ready(None),
+            |event| Poll::Ready(Some(Ok(ScopedKeyEvent::new(event)))),
+        )
     }
 
     fn is_exhausted(&self) -> bool {
@@ -97,14 +98,15 @@ impl KeySource for MockKeySource {
 /// Channel-based key source for dynamic event injection.
 ///
 /// Allows sending key events from another task during test execution.
+/// Events include optional `EventScope` for lifecycle tracking.
 pub struct ChannelKeySource {
-    rx: mpsc::Receiver<KeyEvent>,
+    rx: mpsc::Receiver<ScopedKeyEvent>,
 }
 
 impl ChannelKeySource {
     /// Create a new channel key source, returning the sender and receiver.
     #[must_use]
-    pub fn new() -> (mpsc::Sender<KeyEvent>, Self) {
+    pub fn new() -> (mpsc::Sender<ScopedKeyEvent>, Self) {
         let (tx, rx) = mpsc::channel(256);
         (tx, Self { rx })
     }
@@ -114,7 +116,7 @@ impl KeySource for ChannelKeySource {
     fn poll_next_key(
         &mut self,
         cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Option<Result<KeyEvent, Box<dyn Error + Send>>>> {
+    ) -> std::task::Poll<Option<Result<ScopedKeyEvent, Box<dyn Error + Send>>>> {
         use std::task::Poll;
 
         match self.rx.poll_recv(cx) {
@@ -168,7 +170,7 @@ impl KeySource for EventStreamKeySource {
     fn poll_next_key(
         &mut self,
         cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Option<Result<KeyEvent, Box<dyn Error + Send>>>> {
+    ) -> std::task::Poll<Option<Result<ScopedKeyEvent, Box<dyn Error + Send>>>> {
         use std::task::Poll;
 
         loop {
@@ -176,7 +178,8 @@ impl KeySource for EventStreamKeySource {
                 Poll::Ready(Some(Ok(Event::Key(key_event)))) => {
                     // Only handle Press events, ignore Release/Repeat
                     if key_event.kind == KeyEventKind::Press {
-                        return Poll::Ready(Some(Ok(key_event)));
+                        // Real terminal events don't have a scope
+                        return Poll::Ready(Some(Ok(ScopedKeyEvent::new(key_event))));
                     }
                     // Continue polling for Press events (fall through to loop)
                 }
@@ -251,17 +254,17 @@ mod tests {
 
         let mut cx = noop_context();
 
-        // Should yield all events in order
+        // Should yield all events in order (wrapped in ScopedKeyEvent)
         match source.poll_next_key(&mut cx) {
-            Poll::Ready(Some(Ok(e))) => assert_eq!(e.code, KeyCode::Char('i')),
+            Poll::Ready(Some(Ok(e))) => assert_eq!(e.key.code, KeyCode::Char('i')),
             _ => panic!("Expected char 'i'"),
         }
         match source.poll_next_key(&mut cx) {
-            Poll::Ready(Some(Ok(e))) => assert_eq!(e.code, KeyCode::Char('h')),
+            Poll::Ready(Some(Ok(e))) => assert_eq!(e.key.code, KeyCode::Char('h')),
             _ => panic!("Expected char 'h'"),
         }
         match source.poll_next_key(&mut cx) {
-            Poll::Ready(Some(Ok(e))) => assert_eq!(e.code, KeyCode::Esc),
+            Poll::Ready(Some(Ok(e))) => assert_eq!(e.key.code, KeyCode::Esc),
             _ => panic!("Expected Esc"),
         }
 

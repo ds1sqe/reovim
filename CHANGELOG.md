@@ -39,6 +39,10 @@ All notable changes to Reovim will be documented in this file.
   - `DynEvent` now carries optional scope for lifecycle tracking
   - `HandlerContext` propagates scope to child events automatically
   - `EventBus::emit_scoped()` for scoped event emission
+  - Dispatcher takes `Option<EventScope>` by value for clean ownership transfer
+  - CommandHandler manages scope lifecycle with `.take()` pattern
+  - RPC `input/keys` waits for scope completion with 3-second timeout
+  - Test harness writes logs to `/tmp/reovim-test-{port}.log` for debugging
 
 - **Event bus and treesitter initialization benchmarks** (Issue #97) - Add benchmarks to measure latency sources
   - `event_bus/dyn_event_new` - DynEvent creation overhead (~10.6ns)

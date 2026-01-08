@@ -78,12 +78,21 @@ impl ServerTestHarness {
         // Inherit REOVIM_LOG from test environment for debug tracing
         let log_level = std::env::var("REOVIM_LOG").unwrap_or_else(|_| "info".to_string());
 
+        // Write logs to a temp file for debugging
+        let log_path = format!("/tmp/reovim-test-{port}.log");
         let process = Command::new(binary_path())
-            .args(["--server", "--test", "--listen-tcp", &port.to_string()])
+            .args([
+                "--server",
+                "--test",
+                "--listen-tcp",
+                &port.to_string(),
+                "--log",
+                &log_path,
+            ])
             .env("REOVIM_LOG", log_level)
             .env("REOVIM_TEST", "1") // Disable LSP auto-start in tests
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .spawn()?;
 
         // Wait for server to be ready (longer on slower machines)
@@ -105,18 +114,22 @@ impl ServerTestHarness {
         // Inherit REOVIM_LOG from test environment for debug tracing
         let log_level = std::env::var("REOVIM_LOG").unwrap_or_else(|_| "info".to_string());
 
+        // Write logs to a temp file for debugging
+        let log_path = format!("/tmp/reovim-test-{port}.log");
         let process = Command::new(binary_path())
             .args([
                 "--server",
                 "--test",
                 "--listen-tcp",
                 &port.to_string(),
+                "--log",
+                &log_path,
                 path,
             ])
             .env("REOVIM_LOG", log_level)
             .env("REOVIM_TEST", "1") // Disable LSP auto-start in tests
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .spawn()?;
 
         // Wait for server to be ready (longer on slower machines)

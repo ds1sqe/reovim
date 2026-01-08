@@ -15,19 +15,17 @@ use std::sync::Arc;
 
 use tokio::sync::{mpsc, oneshot};
 
-use {
-    crate::{
-        event::RuntimeEvent,
-        frame::FrameBufferHandle,
-        highlight::ColorMode,
-        keystroke::Keystroke,
-        rpc::{
-            CellSnapshot, RpcError, RpcNotification, RpcRequest, RpcResponse,
-            ScreenContentSnapshot, ScreenFormat, keys_from_str, methods,
-            transport::{TransportReader, TransportWriter},
-        },
+use crate::{
+    event::{RuntimeEvent, ScopedKeyEvent},
+    event_bus::EventScope,
+    frame::FrameBufferHandle,
+    highlight::ColorMode,
+    keystroke::Keystroke,
+    rpc::{
+        CellSnapshot, RpcError, RpcNotification, RpcRequest, RpcResponse, ScreenContentSnapshot,
+        ScreenFormat, keys_from_str, methods,
+        transport::{TransportReader, TransportWriter},
     },
-    reovim_sys::event::KeyEvent,
 };
 
 /// Server mode configuration
@@ -76,8 +74,8 @@ impl ServerConfig {
 pub struct RpcServer {
     /// Channel to send events to runtime
     event_tx: mpsc::Sender<RuntimeEvent>,
-    /// Channel to inject keys
-    key_tx: mpsc::Sender<KeyEvent>,
+    /// Channel to inject keys (with optional scope for lifecycle tracking)
+    key_tx: mpsc::Sender<ScopedKeyEvent>,
     /// Handle to read captured frame buffer (for all screen content formats)
     frame_handle: Option<FrameBufferHandle>,
     /// Notification output channel
@@ -90,7 +88,7 @@ impl RpcServer {
     #[must_use]
     pub const fn new(
         event_tx: mpsc::Sender<RuntimeEvent>,
-        key_tx: mpsc::Sender<KeyEvent>,
+        key_tx: mpsc::Sender<ScopedKeyEvent>,
         frame_handle: Option<FrameBufferHandle>,
         notification_tx: mpsc::Sender<RpcNotification>,
     ) -> Self {
@@ -141,20 +139,36 @@ impl RpcServer {
                     .map(|ke| Keystroke::from(ke).to_string())
                     .collect();
 
-                // Inject keys via channel with minimal delay between each
-                // to allow mode changes to propagate before next key is processed.
-                // 1ms is enough for async task switching while keeping latency low.
+                // Create a scope to track when all key effects have completed
+                let scope = EventScope::new();
                 let mut injected = 0;
                 let start = std::time::Instant::now();
                 tracing::debug!("[RPC] input/keys START: {:?}", keys_str);
+
                 for key_event in key_events {
-                    if self.key_tx.send(key_event).await.is_ok() {
+                    // Increment scope counter for each key
+                    scope.increment();
+                    let scoped = ScopedKeyEvent::with_scope(key_event, scope.clone());
+                    if self.key_tx.send(scoped).await.is_ok() {
                         injected += 1;
                         tracing::trace!("[RPC] sent key {:?} at {:?}", key_event, start.elapsed());
-                        // Minimal delay for runtime to process mode changes
-                        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+                    } else {
+                        // If send failed, decrement since this key won't be processed
+                        scope.decrement();
                     }
                 }
+
+                // Wait for all key effects to complete (scope counter reaches zero)
+                // Use 3-second timeout to prevent hanging on scope leaks
+                let timeout = std::time::Duration::from_secs(3);
+                if !scope.wait_timeout(timeout).await {
+                    tracing::warn!(
+                        scope_id = %scope.id(),
+                        in_flight = scope.in_flight(),
+                        "[RPC] scope wait timed out after 3s - possible scope leak"
+                    );
+                }
+
                 tracing::debug!(
                     "[RPC] input/keys END: injected={} elapsed={:?}",
                     injected,

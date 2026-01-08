@@ -1,7 +1,7 @@
 use tokio::sync::broadcast;
 
 mod handler;
-mod key;
+pub mod key;
 
 mod inner;
 mod input;
@@ -17,7 +17,7 @@ pub use {
     input::*,
 };
 
-pub use key::KeyEvent;
+pub use key::{KeyEvent, ScopedKeyEvent};
 
 pub trait Subscribe<T> {
     fn subscribe(&mut self, rx: broadcast::Receiver<T>);
