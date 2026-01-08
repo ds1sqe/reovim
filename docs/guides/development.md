@@ -13,41 +13,23 @@ This guide covers setting up your development environment and contributing to re
 
 ## Build Commands
 
+Essential commands for development:
+
 ```bash
 # Build all crates
 cargo build
 
-# Build release
-cargo build --release
-
 # Run the editor
-cargo run -p reovim
+cargo run
 
-# Run with a file
-cargo run -p reovim -- path/to/file.txt
+# Run tests
+cargo test
 
-# Run in server mode (TCP on 127.0.0.1:12521)
-cargo run -p reovim -- --server
-
-# Run server with stdio transport
-cargo run -p reovim -- --stdio
-
-# Run server on Unix socket
-cargo run -p reovim -- --listen-socket /tmp/reovim.sock
-
-# Run reo-cli client
-cargo run -p reo-cli -- list              # List running servers
-cargo run -p reo-cli -- keys 'iHello<Esc>'  # Inject keys, show status
-
-# Check code without building
-cargo check
-
-# Format code
-cargo fmt
-
-# Run clippy
-cargo clippy
+# Format and lint
+cargo fmt && cargo clippy
 ```
+
+For the full command reference including server mode, reo-cli, benchmarks, and debugging options, see [CLAUDE.md](../../CLAUDE.md#build-commands).
 
 ## Code Standards
 
@@ -77,7 +59,7 @@ Before committing:
 ### Plugin Decoupling
 
 - Never add plugin-specific code to core
-- If API is insufficient, propose an extension (see [plugin-system.md](./plugin-system.md))
+- If API is insufficient, propose an extension (see [plugin-system.md](../plugins/system.md))
 - Plugins must be fully self-contained
 
 ## Project Structure
@@ -90,13 +72,22 @@ reovim/
 │   ├── core/               # reovim-core - core editor logic, plugin system
 │   └── sys/                # reovim-sys - terminal abstraction
 ├── plugins/
-│   ├── features/           # External feature plugins
-│   │   ├── fold/           # Code folding
-│   │   ├── settings-menu/  # In-editor settings
+│   ├── features/           # Feature plugins
+│   │   ├── cmdline-completion/  # Command line completion
 │   │   ├── completion/     # Text completion
 │   │   ├── explorer/       # File browser
-│   │   ├── telescope/      # Fuzzy finder
-│   │   └── treesitter/     # Syntax highlighting infrastructure
+│   │   ├── health-check/   # System health check
+│   │   ├── lsp/            # Language Server Protocol
+│   │   ├── microscope/     # Fuzzy finder
+│   │   ├── notification/   # Notifications
+│   │   ├── pair/           # Auto pairs
+│   │   ├── pickers/        # File pickers
+│   │   ├── profiles/       # Config profiles
+│   │   ├── range-finder/   # Jump navigation & folding
+│   │   ├── settings-menu/  # In-editor settings
+│   │   ├── statusline/     # Status line
+│   │   ├── treesitter/     # Syntax highlighting
+│   │   └── which-key/      # Key hint popup
 │   └── languages/          # Language plugins
 │       ├── rust/           # Rust support
 │       ├── c/              # C support
@@ -118,7 +109,7 @@ reovim/
 - **AllPlugins** (in `runner`): Combines DefaultPlugins + external plugins
 - External plugins depend on `reovim-core` and register commands
 
-For detailed architecture, see [architecture.md](./architecture.md).
+For detailed architecture, see [architecture overview](../architecture/overview.md).
 
 ## Debugging
 
@@ -222,24 +213,23 @@ cargo run -p perf-report -- update --version X.Y.Z
 cargo run -p perf-report -- compare 0.3.0 0.4.2
 ```
 
-### Current Performance (v0.6.0 vs v0.5.0)
+### Current Performance (v0.7.10 vs v0.6.0)
 
-| Operation | v0.5.0 | v0.6.0 | Change |
-|-----------|--------|--------|--------|
-| Window render (10 lines) | 1.63 µs | 10.15 µs | +6.2x (frame buffer overhead) |
-| Window render (10k lines) | 6.91 µs | 56.08 µs | +8.1x (frame buffer overhead) |
-| Full screen render | 14.50 µs | 62.41 µs | +4.3x (diff calculation) |
-| Char insert RTT | 55.58 µs | 108.17 µs | +1.9x |
-| Word forward RTT | 89.31 µs | 135.91 µs | +1.5x |
-| Move down RTT | 751.31 µs | 806.35 µs | +7% |
-| Mode switch | 46.85 µs | 186.77 µs | +4x |
-| Throughput | ~144k/sec | ~18k/sec | -87% (expected) |
+| Metric | v0.6.0 | v0.7.10 | Change |
+|--------|--------|---------|--------|
+| Window render (10 lines) | 10 µs | 5.3 µs | **-47%** |
+| Window render (10k lines) | 56 µs | 26 µs | **-54%** |
+| Full scroll cycle | 85 µs | 55 µs | **-35%** |
+| Large file (5k lines) | 174 µs | 87 µs | **-50%** |
+| Throughput | 18k/sec | 38k/sec | **+111%** |
 
-**v0.6.0 Trade-offs**: The frame buffer architecture adds per-render overhead but provides:
+**v0.7.x Improvements**: Optimized render pipeline while maintaining frame buffer benefits:
 - **Zero flickering** - Only changed cells sent to terminal
-- **Consistent performance** - Buffer size doesn't affect I/O
+- **2x faster rendering** - Optimized pipeline stages
 - **Composable layers** - Clean separation of UI components
-- **Future optimization potential** - Dirty region tracking ready
+- **Saturator architecture** - Background async computation
+
+See `perf/` directory for detailed versioned performance reports.
 
 ### Latency Goals
 
@@ -249,7 +239,7 @@ cargo run -p perf-report -- compare 0.3.0 0.4.2
 
 ## Related Documentation
 
-- [Architecture](./architecture.md) - System design overview
-- [Event System](./event-system.md) - Input handling and event flow
-- [Commands](./commands.md) - Command system and execution
-- [Testing](./TESTING.md) - Running and writing tests
+- [Architecture](../architecture/overview.md) - System design overview
+- [Event System](../events/overview.md) - Input handling and event flow
+- [Commands](../reference/commands.md) - Command system and execution
+- [Testing](./testing.md) - Running and writing tests

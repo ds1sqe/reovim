@@ -1,14 +1,6 @@
 # Render Pipeline
 
-This document describes reovim's render pipeline, which transforms buffer content into terminal output through a series of composable stages.
-
-## Pipeline Overview
-
-```
-Buffer → Visibility → Highlighting → Decorations → Visual → Indent → FrameBuffer → Terminal
-```
-
-Each stage adds information to the `RenderData` structure, which accumulates all the data needed to render a window.
+This document describes the data transformation stages that convert buffer content to terminal output.
 
 ## RenderData Structure
 
@@ -16,24 +8,35 @@ The `RenderData` struct holds all rendering information for a window:
 
 ```rust
 pub struct RenderData {
-    // Core data
-    pub lines: Vec<RenderedLine>,       // Text content
-    pub cursor: CursorPosition,          // Cursor location
+    /// Base content (lines of text)
+    pub lines: Vec<String>,
 
-    // Per-line metadata
-    pub visibility: Vec<LineVisibility>, // Folding state
-    pub highlights: Vec<LineHighlights>, // Syntax highlighting
-    pub decorations: Vec<LineDecorations>, // Language decorations
-    pub signs: Vec<LineSign>,            // Sign column markers
-    pub virtual_text: Vec<VirtualTextEntry>, // Inline diagnostics
+    /// Per-line visibility state (for folding)
+    pub visibility: Vec<LineVisibility>,
 
-    // Visual state
-    pub selection: Option<SelectionRange>, // Visual mode selection
-    pub indent_guides: Vec<IndentGuide>,   // Indent visualization
+    /// Per-line highlights (syntax, search, etc.)
+    pub highlights: Vec<Vec<LineHighlight>>,
+
+    /// Per-line decorations (conceals, backgrounds)
+    pub decorations: Vec<Vec<Decoration>>,
+
+    /// Per-line signs for gutter
+    pub signs: Vec<LineSign>,
+
+    /// Per-line virtual text for end-of-line display
+    pub virtual_texts: Vec<Option<VirtualTextEntry>>,
+
+    /// Metadata
+    pub buffer_id: usize,
+    pub window_id: usize,
+    pub window_bounds: Bounds,
+
+    /// Cursor position (line, column) for bracket matching etc.
+    pub cursor: (usize, usize),
 }
 ```
 
-## Render Stages
+## Pipeline Stages
 
 ### 1. Buffer Stage
 
@@ -52,26 +55,34 @@ Applies folding to determine which lines are visible.
 
 ```rust
 pub enum LineVisibility {
+    /// Line is visible
     Visible,
-    Collapsed { marker: String },
+    /// Line is hidden (folded)
     Hidden,
+    /// Line is a fold marker showing preview text
+    FoldMarker {
+        /// Preview text to display
+        preview: String,
+        /// Number of hidden lines
+        hidden_lines: u32,
+    },
 }
 ```
 
-Collapsed regions show a marker (e.g., `+-- 10 lines`). Hidden lines are skipped entirely.
+`FoldMarker` variants show a preview (e.g., `fn main() {...}`). Hidden lines are skipped entirely.
 
 ### 3. Highlighting Stage
 
 Applies syntax highlighting from treesitter.
 
 ```rust
-pub struct LineHighlights {
-    pub spans: Vec<HighlightSpan>,
-}
-
-pub struct HighlightSpan {
-    pub start: usize,
-    pub end: usize,
+/// Highlight span for a portion of a line
+pub struct LineHighlight {
+    /// Starting column (0-indexed)
+    pub start_col: usize,
+    /// Ending column (exclusive)
+    pub end_col: usize,
+    /// Style to apply
     pub style: Style,
 }
 ```
@@ -83,16 +94,31 @@ The `HighlightCache` stores computed highlights per buffer to avoid re-parsing.
 Applies language-specific decorations (markdown headings, list markers, etc.).
 
 ```rust
-pub struct LineDecorations {
-    pub replacements: Vec<DecorationReplacement>,
-    pub conceals: Vec<ConceaRange>,
+/// Decoration for a portion of a line
+pub struct Decoration {
+    /// Starting column (0-indexed)
+    pub start_col: usize,
+    /// Ending column (exclusive)
+    pub end_col: usize,
+    /// Type of decoration
+    pub kind: DecorationKind,
+}
+
+/// Type of decoration
+pub enum DecorationKind {
+    /// Conceal text with replacement
+    Conceal { replacement: Option<String> },
+    /// Background highlight
+    Background { style: Style },
+    /// Inline virtual text
+    VirtualText { text: String, style: Style },
 }
 ```
 
 Decorations can:
-- Replace text (e.g., `#` → ` `)
-- Conceal characters (hide syntax markers)
-- Add virtual text
+- Conceal text with optional replacement (e.g., `#` → ` `)
+- Add background highlighting
+- Add inline virtual text
 
 ### 5. Visual Stage
 
@@ -146,34 +172,51 @@ for (row, col) in changed_cells {
 }
 ```
 
-## Render Stage Trait
+## RenderStage Trait
 
 Stages implement the `RenderStage` trait:
 
 ```rust
+/// Pipeline stage that transforms render data
+///
+/// Each stage receives render data and returns augmented data.
+/// Stages should be immutable transformations.
 pub trait RenderStage: Send + Sync {
+    /// Transform render data
+    ///
+    /// Takes input data and returns modified data for the next stage.
+    fn transform(&self, input: RenderData, ctx: &RenderContext<'_>) -> RenderData;
+
+    /// Stage name for debugging
     fn name(&self) -> &'static str;
-    fn priority(&self) -> u32;
-    fn execute(&self, data: &mut RenderData, ctx: &RenderContext);
 }
 ```
 
-Priority determines execution order (lower = earlier).
+Stages are executed in registration order. Each stage takes ownership of `RenderData`, transforms it, and returns the modified data for the next stage.
 
 ## Stage Registry
 
-Stages are registered and executed via `RenderStageRegistry`:
+Stages are registered via `RenderStageRegistry`:
 
 ```rust
 pub struct RenderStageRegistry {
-    stages: Vec<Box<dyn RenderStage>>,
+    stages: Vec<Arc<dyn RenderStage>>,
 }
 
 impl RenderStageRegistry {
-    pub fn register(&mut self, stage: Box<dyn RenderStage>);
-    pub fn execute_all(&self, data: &mut RenderData, ctx: &RenderContext);
+    /// Create a new empty registry
+    pub fn new() -> Self;
+
+    /// Register a render stage
+    /// Stages are executed in registration order during rendering.
+    pub fn register(&mut self, stage: Arc<dyn RenderStage>);
+
+    /// Get all registered stages
+    pub fn stages(&self) -> &[Arc<dyn RenderStage>];
 }
 ```
+
+Note: Stages use `Arc` (not `Box`) to allow shared ownership across async contexts.
 
 ## Caching
 
@@ -238,7 +281,7 @@ Rendering handles:
 - Truncation with ellipsis
 - Viewport clipping
 
-## Performance Considerations
+## Performance
 
 ### Batch Operations
 
@@ -246,10 +289,11 @@ Stages process entire windows at once, not line-by-line:
 
 ```rust
 // Good: Process all lines together
-fn execute(&self, data: &mut RenderData, ctx: &RenderContext) {
+fn transform(&self, mut data: RenderData, ctx: &RenderContext<'_>) -> RenderData {
     for line in &mut data.lines {
         self.process_line(line);
     }
+    data
 }
 ```
 
@@ -282,25 +326,8 @@ data.lines.par_iter_mut().for_each(|line| {
 - `lib/core/src/frame/` - FrameBuffer implementation
 - `lib/core/src/screen/window.rs` - Window rendering
 
-## Adding Custom Stages
+## Related Documentation
 
-Plugins can register custom render stages:
-
-```rust
-impl Plugin for MyPlugin {
-    fn register(&self, registry: &mut RenderStageRegistry) {
-        registry.register(Box::new(MyCustomStage));
-    }
-}
-
-struct MyCustomStage;
-
-impl RenderStage for MyCustomStage {
-    fn name(&self) -> &'static str { "my_stage" }
-    fn priority(&self) -> u32 { 150 }  // After highlighting (100)
-
-    fn execute(&self, data: &mut RenderData, ctx: &RenderContext) {
-        // Add custom rendering logic
-    }
-}
-```
+- [Custom Stages](./custom-stages.md) - Adding custom render stages
+- [UI Systems](./ui-systems.md) - Plugin UI rendering
+- [Screen](../architecture/screen.md) - FrameBuffer details

@@ -311,7 +311,6 @@ pub struct CompletionRequest {
 
 ## Related
 
-- [Architecture Overview](./architecture.md) - Core editor architecture
-- [Syntax System](./architecture.md#syntax-system-libcoresrcsyntax) - Buffer-centric syntax design
-- [Background Saturator](./architecture.md#background-saturator-performance-optimization) - Summary in architecture doc
-- [Completion Plugin](./architecture.md#completion-plugin-pluginsfeaturescompletion) - Completion architecture
+- [Architecture Overview](../architecture/overview.md) - Core editor architecture
+- [Features](../architecture/features.md) - Feature modules including saturator patterns
+- [Syntax Highlighting](./syntax-highlighting.md) - Treesitter integration

@@ -1,22 +1,20 @@
-# Plugin Rendering Guide
+# Plugin UI Systems
 
-This guide explains the three rendering systems available in Reovim and when to use each one.
+Reovim provides three distinct rendering systems for plugin UIs, each optimized for different patterns.
 
-## Overview
+## Decision Flow
 
-Reovim provides three distinct rendering systems, each optimized for different UI patterns:
+1. **Is it temporary/modal?**
+   - Yes → Use **Overlay**
+   - No → Continue
 
-1. **Overlays** - Temporary popups and modals
-2. **Window Providers** - Persistent side panels
-3. **UIComponent Rendering** - Fixed UI elements (status line, tab line)
+2. **Is it part of the window layout?**
+   - Yes → Use **Window Provider**
+   - No → Continue
 
-## Decision Matrix
-
-| Use Case | System | When to Use |
-|----------|--------|-------------|
-| Popup/Modal | **Overlay** | Temporary UI over editor (completion, telescope) |
-| Sidebar/Panel | **WindowProvider** | Persistent side panel (explorer, outline) |
-| Status/Tab line | **UIComponent::render_to_frame()** | Fixed position UI elements |
+3. **Is it fixed position (top/bottom)?**
+   - Yes → Use **UIComponent**
+   - No → Reconsider your design
 
 ## Overlays - Temporary Popups
 
@@ -31,7 +29,7 @@ Use overlays for temporary UI elements that:
 ### Examples
 
 - Completion menus
-- Fuzzy finders (telescope)
+- Fuzzy finders (microscope)
 - Command palettes
 - Quick pick dialogs
 
@@ -43,8 +41,6 @@ Use overlays for temporary UI elements that:
 - **Non-blocking**: Don't affect window layout
 
 ### Implementation
-
-1. **Implement the `OverlayRenderer` trait**:
 
 ```rust
 use reovim_core::overlay::{OverlayRenderer, OverlayBounds};
@@ -82,7 +78,7 @@ impl OverlayRenderer for MyOverlay {
 }
 ```
 
-2. **Register the overlay**:
+### Registration
 
 ```rust
 fn build(&self, ctx: &mut PluginContext) {
@@ -122,8 +118,6 @@ Use window providers for UI elements that:
 - **Resizable**: Can participate in window sizing
 
 ### Implementation
-
-1. **Implement the `WindowProvider` trait**:
 
 ```rust
 use reovim_core::screen::window::WindowProvider;
@@ -169,7 +163,7 @@ impl WindowProvider for MyPanel {
 }
 ```
 
-2. **Register the window provider**:
+### Registration
 
 ```rust
 fn init_state(&self, registry: &PluginStateRegistry) {
@@ -190,7 +184,7 @@ fn init_state(&self, registry: &PluginStateRegistry) {
 - Provide meaningful cursor positioning
 - Support window resize gracefully
 
-## UIComponent Rendering - Fixed UI Elements
+## UIComponent - Fixed Chrome
 
 ### When to Use
 
@@ -211,12 +205,10 @@ Use UIComponent rendering for:
 
 - **Fixed position**: Top or bottom of screen
 - **Always visible**: Part of editor chrome
-- **Non-interactive rendering**: For display only (use other traits for input)
+- **Non-interactive rendering**: For display only
 - **Simple**: Straightforward rendering API
 
 ### Implementation
-
-1. **Implement UIComponent with render_to_frame**:
 
 ```rust
 use reovim_core::ui_component::UIComponent;
@@ -269,7 +261,7 @@ impl UIComponent for MyStatusLine {
 }
 ```
 
-2. **Register the component**:
+### Registration
 
 ```rust
 fn build(&self, ctx: &mut PluginContext) {
@@ -284,68 +276,19 @@ fn build(&self, ctx: &mut PluginContext) {
 - Use consistent styling
 - Cache computed values when possible
 
-## Choosing the Right System
+## Common Mistakes
 
-### Decision Flow
+### Using Overlay for Persistent UI
 
-1. **Is it temporary/modal?**
-   - Yes → Use **Overlay**
-   - No → Continue
+Overlays are for temporary popups only. Use WindowProvider for persistent panels.
 
-2. **Is it part of the window layout?**
-   - Yes → Use **Window Provider**
-   - No → Continue
+### Using WindowProvider for Status Line
 
-3. **Is it fixed position (top/bottom)?**
-   - Yes → Use **UIComponent::render_to_frame()**
-   - No → Reconsider your design
+Status lines should use UIComponent. WindowProvider is for layout-integrated panels.
 
-### Common Mistakes
+### Using UIComponent for Popups
 
-1. **Using Overlay for persistent UI**
-   - Overlays are for temporary popups only
-   - Use WindowProvider for persistent panels
-
-2. **Using WindowProvider for status line**
-   - Status lines should use UIComponent::render_to_frame()
-   - WindowProvider is for layout-integrated panels
-
-3. **Using UIComponent for popups**
-   - Popups should use Overlay system
-   - UIComponent is for fixed chrome elements
-
-## Performance Considerations
-
-### Overlays
-
-- Only rendered when visible
-- Composited on top of main screen
-- Keep rendering logic simple
-
-### Window Providers
-
-- Rendered every frame when visible
-- Part of main rendering pipeline
-- Cache complex calculations
-
-### UIComponent
-
-- Rendered every frame
-- Keep rendering very efficient
-- Avoid allocations in render path
-
-## Z-Order Constants
-
-Available z-order constants (from `reovim_core::screen::z_order`):
-
-- `BASE` (0) - Base layer for main content
-- `WINDOW` (10) - Window content
-- `STATUS_LINE` (50) - Status line elements
-- `OVERLAY` (100) - Overlay popups
-- `COMPLETION` (110) - Completion menu (above other overlays)
-- `COMMAND_LINE` (120) - Command line (topmost)
-
-Higher values render on top of lower values.
+Popups should use the Overlay system. UIComponent is for fixed chrome elements.
 
 ## Examples by Use Case
 
@@ -368,7 +311,7 @@ impl WindowProvider for ExplorerState {
 **Reason**: Temporary popup, dismissible
 
 ```rust
-impl OverlayRenderer for TelescopePicker {
+impl OverlayRenderer for MicroscopePicker {
     fn z_order(&self) -> u8 { z_order::OVERLAY }
     fn bounds(&self, ctx: &RenderContext<'_>) -> OverlayBounds {
         OverlayBounds::Centered { width: 80, height: 20 }
@@ -379,7 +322,7 @@ impl OverlayRenderer for TelescopePicker {
 
 ### Status Line
 
-**System**: UIComponent::render_to_frame()
+**System**: UIComponent
 **Reason**: Fixed position, always visible
 
 ```rust
@@ -399,17 +342,28 @@ impl UIComponent for StatusLine {
 }
 ```
 
-## Migration Guide
+## Performance Considerations
 
-If you're updating existing code:
+### Overlays
 
-1. **Identify current pattern** - Which system are you using?
-2. **Verify it's correct** - Does it match the decision matrix?
-3. **Migrate if needed** - Follow implementation guide above
-4. **Test thoroughly** - Verify rendering and interactions
+- Only rendered when visible
+- Composited on top of main screen
+- Keep rendering logic simple
 
-## Further Reading
+### Window Providers
 
-- [Plugin System Guide](./plugin-system.md) - General plugin development
-- [Architecture](./architecture.md) - Overall system architecture
-- [UIComponent Trait](./plugin-system.md#uicomponent-trait) - Input handling with UIComponent
+- Rendered every frame when visible
+- Part of main rendering pipeline
+- Cache complex calculations
+
+### UIComponent
+
+- Rendered every frame
+- Keep rendering very efficient
+- Avoid allocations in render path
+
+## Related Documentation
+
+- [Pipeline](./pipeline.md) - Data transformation stages
+- [Custom Stages](./custom-stages.md) - Extending the pipeline
+- [Plugin Tutorial](../plugins/tutorial.md) - Getting started

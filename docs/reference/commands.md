@@ -8,23 +8,33 @@ The command system defines and executes all editor actions using a trait-based a
 lib/core/src/command/
 ├── mod.rs          # Re-exports, CommandRef
 ├── id.rs           # CommandId constants
-├── traits.rs       # CommandTrait, ExecutionContext, CommandResult
+├── traits.rs       # CommandTrait, ExecutionContext, CommandResult, DeferredAction
+├── context.rs      # OperatorContext for operator-pending mode
+├── macros.rs       # declare_event_command! and declare_counted_event_command!
 ├── registry.rs     # CommandRegistry
 ├── builtin/        # Built-in command implementations
 │   ├── mod.rs
-│   ├── cursor.rs
-│   ├── mode.rs
-│   ├── text.rs
-│   ├── visual.rs
-│   ├── clipboard.rs
-│   ├── command_line.rs
-│   ├── completion.rs
-│   ├── explorer.rs
-│   ├── telescope.rs
-│   ├── operator.rs
-│   ├── jump.rs
-│   └── history.rs
-└── deferred.rs     # DeferredAction enum
+│   ├── buffer.rs       # Buffer navigation (H/L, <leader>bd)
+│   ├── clipboard.rs    # Paste, yank operations
+│   ├── command_line.rs # Ex-command handling
+│   ├── cursor.rs       # Cursor movement (h/j/k/l, w/b/e)
+│   ├── history.rs      # Undo/redo
+│   ├── jump.rs         # Jump list (Ctrl-O/Ctrl-I)
+│   ├── mode.rs         # Mode switching (i/a/v/V)
+│   ├── operator.rs     # Operators (d/y/c)
+│   ├── system.rs       # System commands (quit, etc.)
+│   ├── tab.rs          # Tab management
+│   ├── text.rs         # Text editing (x, o/O)
+│   ├── visual.rs       # Visual mode operations
+│   └── window.rs       # Window management (splits, focus)
+└── terminal/           # Terminal handling
+    ├── mod.rs
+    └── terminal_guard.rs
+
+# Plugin commands are in their respective plugin directories:
+# - plugins/features/completion/src/commands.rs
+# - plugins/features/explorer/src/command.rs
+# - plugins/features/microscope/src/commands.rs
 ```
 
 ## CommandTrait
@@ -32,15 +42,17 @@ lib/core/src/command/
 All commands implement this trait:
 
 ```rust
-pub trait CommandTrait: Send + Sync {
+pub trait CommandTrait: Debug + Send + Sync {
     fn name(&self) -> &'static str;
     fn description(&self) -> &'static str;
     fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult;
     fn clone_box(&self) -> Box<dyn CommandTrait>;
     fn as_any(&self) -> &dyn std::any::Any;
     fn valid_modes(&self) -> Option<Vec<ModeState>> { None }
-    fn supports_count(&self) -> bool { false }
+    fn supports_count(&self) -> bool { true }  // Most commands support count
     fn is_jump(&self) -> bool { false }
+    fn is_text_modifying(&self) -> bool { false }
+    fn resulting_mode(&self) -> Option<ModeState> { None }
 }
 ```
 
@@ -51,8 +63,10 @@ pub trait CommandTrait: Send + Sync {
 - `clone_box()` - Creates a boxed clone (for trait object cloning)
 - `as_any()` - Downcast support for type-specific operations
 - `valid_modes()` - Optional mode restrictions
-- `supports_count()` - Whether command accepts repeat count (e.g., `5j`)
+- `supports_count()` - Whether command accepts repeat count (e.g., `5j`) - default: `true`
 - `is_jump()` - Whether to record position in jump list
+- `is_text_modifying()` - Whether command modifies buffer text (for undo grouping)
+- `resulting_mode()` - Mode to enter after command execution (if any)
 
 ## ExecutionContext
 
@@ -64,6 +78,7 @@ pub struct ExecutionContext<'a> {
     pub count: Option<usize>,
     pub buffer_id: usize,
     pub window_id: usize,
+    pub operator_context: Option<OperatorContext>,
 }
 ```
 
@@ -72,6 +87,7 @@ pub struct ExecutionContext<'a> {
 - `count` - Optional repeat count from key sequence
 - `buffer_id` - Target buffer identifier
 - `window_id` - Target window (for multi-window support)
+- `operator_context` - Context for operator-pending mode (motion target, etc.)
 
 ## CommandResult
 
@@ -83,8 +99,16 @@ pub enum CommandResult {
     NeedsRender,
     ModeChange(ModeState),
     Quit,
-    ClipboardWrite { text: String, register: char },
+    ClipboardWrite {
+        text: String,
+        register: Option<char>,
+        mode_change: Option<ModeState>,
+        yank_type: Option<YankType>,
+        yank_range: Option<(Position, Position)>,
+    },
     DeferToRuntime(DeferredAction),
+    Deferred(Box<dyn DeferredActionHandler>),
+    EmitEvent(DynEvent),
     Error(String),
 }
 ```
@@ -96,9 +120,11 @@ pub enum CommandResult {
 | `NeedsRender` | Trigger screen render |
 | `ModeChange(mode)` | Update runtime mode and render |
 | `Quit` | Exit editor |
-| `ClipboardWrite` | Store text in specified register |
+| `ClipboardWrite` | Store text in register with optional mode change |
 | `DeferToRuntime(action)` | Dispatch to runtime handler |
-| `Error(msg)` | Log warning message |
+| `Deferred(handler)` | Execute handler with runtime access |
+| `EmitEvent(event)` | Emit event via EventBus (for plugin commands) |
+| `Error(msg)` | Display error message |
 
 ## DeferredAction
 
@@ -106,18 +132,21 @@ Actions that require Runtime access (can't be done with just buffer):
 
 ```rust
 pub enum DeferredAction {
-    Paste { before: bool, register: char },
+    Paste { before: bool, register: Option<char> },
     CommandLine(CommandLineAction),
-    Completion(CompletionAction),
-    Explorer(ExplorerAction),
-    Telescope(TelescopeAction),
     JumpOlder,
     JumpNewer,
     OperatorMotion(OperatorMotionAction),
+    Window(WindowAction),
+    Tab(TabAction),
+    Buffer(BufferAction),
+    File(FileAction),
 }
 ```
 
 These are dispatched to specialized handlers in the runtime.
+
+> **Note:** Plugin actions (Completion, Explorer, Microscope) use `CommandResult::EmitEvent(DynEvent)` instead of `DeferredAction`. This decouples plugins from core.
 
 ## CommandRegistry
 
@@ -300,36 +329,43 @@ Folds are computed from treesitter queries when a buffer is opened.
 | `explorer_close` | q | Close explorer |
 | `explorer_focus_editor` | Tab/Esc | Focus back to editor |
 
-### Telescope (18)
+### Microscope (20+)
+
+**Location:** `plugins/features/microscope/src/commands.rs`
 
 **Pickers:**
 | Command | Key | Description |
 |---------|-----|-------------|
-| `telescope_find_files` | Space ff | Find files |
-| `telescope_find_buffers` | Space fb | Find open buffers |
-| `telescope_live_grep` | Space fg | Live grep search |
-| `telescope_recent` | Space fr | Recent files |
-| `telescope_commands` | Space fc | Command palette |
-| `telescope_help` | Space fh | Help tags |
-| `telescope_keymaps` | Space fk | Show keymaps |
+| `microscope_find_files` | Space ff | Find files |
+| `microscope_find_buffers` | Space fb | Find open buffers |
+| `microscope_live_grep` | Space fg | Live grep search |
+| `microscope_find_recent` | Space fr | Recent files |
+| `microscope_commands` | Space fc | Command palette |
+| `microscope_help` | Space fh | Help tags |
+| `microscope_keymaps` | Space fk | Show keymaps |
+| `microscope_themes` | - | Theme picker |
+| `microscope_profiles` | - | Profile picker |
 
 **Navigation:**
 | Command | Key | Description |
 |---------|-----|-------------|
-| `telescope_next` | j / Ctrl-n | Select next item |
-| `telescope_prev` | k / Ctrl-p | Select previous item |
-| `telescope_page_down` | Ctrl-d | Page down |
-| `telescope_page_up` | Ctrl-u | Page up |
-| `telescope_goto_first` | gg | Go to first item |
-| `telescope_goto_last` | G | Go to last item |
+| `microscope_select_next` | j / Ctrl-n | Select next item |
+| `microscope_select_prev` | k / Ctrl-p | Select previous item |
+| `microscope_page_down` | Ctrl-d | Page down |
+| `microscope_page_up` | Ctrl-u | Page up |
+| `microscope_goto_first` | gg | Go to first item |
+| `microscope_goto_last` | G | Go to last item |
 
 **Actions:**
 | Command | Key | Description |
 |---------|-----|-------------|
-| `telescope_confirm` | Enter | Confirm selection |
-| `telescope_close` | Esc | Close telescope |
-| `telescope_enter_insert` | i | Enter insert mode (for query) |
-| `telescope_enter_normal` | Esc | Enter normal mode (for navigation) |
+| `microscope_confirm` | Enter | Confirm selection |
+| `microscope_close` | Esc / q | Close microscope |
+| `microscope_enter_insert` | i / a | Enter insert mode (for query) |
+| `microscope_enter_normal` | Esc | Enter normal mode (for navigation) |
+| `microscope_backspace` | Backspace | Delete char from query |
+| `microscope_clear_query` | Ctrl-u | Clear entire query |
+| `microscope_delete_word` | Ctrl-w | Delete word from query |
 
 ## Ex-Commands
 
@@ -364,7 +400,7 @@ Plugins can register custom ex-commands dynamically using the `ExCommandRegistry
 
 **For plugin authors:**
 
-See [Plugin System - Registering Ex-Commands](./plugin-system.md#registering-ex-commands) for complete documentation on:
+See [Plugin System - Registering Ex-Commands](../plugins/system.md#registering-ex-commands) for complete documentation on:
 - Zero-arg commands (`:mycommand`)
 - Single-arg commands (`:mycommand arg`)
 - Subcommand pattern (`:mycommand subcommand [arg]`)
@@ -412,14 +448,20 @@ EventBus.dispatch() → Settings plugin opens
        ├── ModeChange → set_mode() + render()
        ├── Quit → exit loop
        ├── ClipboardWrite → store in registers
-       └── DeferToRuntime → dispatch to handler:
+       └── DeferToRuntime → dispatch to runtime handler:
            ├── Paste → retrieve from registers
            ├── CommandLine → parse and execute ex-command
-           ├── Completion → trigger/update/confirm completion
-           ├── Explorer → explorer navigation/operations
-           ├── Telescope → fuzzy finder operations
+           ├── Window → window management operations
+           ├── Tab → tab management operations
+           ├── Buffer → buffer management operations
+           ├── File → file operations
            ├── JumpOlder/Newer → jump list navigation
            └── OperatorMotion → execute operator+motion
+      └── EmitEvent → dispatch to EventBus:
+           ├── Completion events → completion plugin
+           ├── Explorer events → explorer plugin
+           ├── Microscope events → fuzzy finder plugin
+           └── Custom plugin events → plugin handlers
 ```
 
 ## Adding New Commands

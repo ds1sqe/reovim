@@ -207,7 +207,7 @@ fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {
             }
             ctx.request_render();
         }
-        EventResult::Continue
+        EventResult::Handled
     });
 }
 ```
@@ -945,10 +945,39 @@ impl EventBus {
     /// Subscribe to events of type E
     pub fn subscribe<E: Event, F>(&self, priority: u32, handler: F)
     where
-        F: Fn(&E, &EventContext) -> EventResult + Send + Sync + 'static;
+        F: Fn(&E, &mut HandlerContext) -> EventResult + Send + Sync + 'static;
 
     /// Emit an event to all subscribers
     pub fn emit<E: Event>(&self, event: E);
+}
+```
+
+### HandlerContext
+
+```rust
+/// Context passed to event handlers
+pub struct HandlerContext<'a> {
+    event_tx: &'a EventSender,     // Event sender for emitting new events
+    render_requested: bool,        // Flag to track render requests
+    quit_requested: bool,          // Flag to track quit requests
+    scope: Option<EventScope>,     // Optional scope for lifecycle tracking
+}
+
+impl<'a> HandlerContext<'a> {
+    /// Emit a new event from within a handler
+    pub fn emit<E: Event>(&self, event: E);
+
+    /// Request a render after event processing
+    pub fn request_render(&mut self);
+
+    /// Request the editor to quit
+    pub fn request_quit(&mut self);
+
+    /// Request mode change
+    pub fn request_mode(&mut self, mode: ModeState);
+
+    /// Get a reference to the current scope
+    pub fn scope(&self) -> Option<&EventScope>;
 }
 ```
 
@@ -956,9 +985,11 @@ impl EventBus {
 
 ```rust
 pub enum EventResult {
-    Handled,     // Event handled, stop propagation
-    Continue,    // Event handled, continue propagation
-    NotHandled,  // Event not handled
+    Handled,      // Event was handled, continue processing other handlers
+    Consumed,     // Event was consumed, stop propagation
+    NotHandled,   // Event was not handled by this handler
+    NeedsRender,  // Request a render after all handlers complete
+    Quit,         // Editor should quit
 }
 ```
 
@@ -1038,11 +1069,13 @@ Text completion with popup menu and background processing (treesitter-like patte
 - Background saturator for non-blocking completion
 - Lock-free cache for responsive UI
 
-**Keybindings:**
-- `Alt-Space` (insert mode) - Trigger completion
+**Keybindings (Insert Mode):**
+- `Alt-Space` - Trigger completion popup
 - `Ctrl-n`/`Ctrl-p` - Navigate suggestions
-- `Tab` - Confirm selection
+- `Ctrl-y` - Confirm selection (vim convention)
 - `Escape` - Dismiss popup
+
+> **Note:** Tab cannot be used for confirm due to keybinding fallback limitations. Use `Ctrl-y` instead.
 
 **Plugin Structure:**
 ```
@@ -1124,14 +1157,14 @@ Press `s` on any file/directory to show a centered popup with details:
 
 The popup syncs with cursor movement - navigate with `j`/`k` while popup is open to view details of different files. Press `t` to copy the path to both system clipboard and editor registers (pasteable with `p`).
 
-### TelescopePlugin (`reovim-plugin-telescope`)
+### MicroscopePlugin (`plugins/features/microscope`)
 
 Fuzzy finder:
 - Files picker (`Space ff`)
 - Buffers picker (`Space fb`)
 - Live grep (`Space fg`)
-- 9 built-in pickers
-- 19 navigation/action commands
+- Built-in pickers (files, buffers, grep, recent, commands, help, keymaps)
+- Navigation/action commands for picker interaction
 
 ### TreesitterPlugin (`reovim-plugin-treesitter`)
 
@@ -1440,7 +1473,7 @@ impl PluginTuple for AllPlugins {
         loader.add(SettingsMenuPlugin);
         loader.add(CompletionPlugin);
         loader.add(ExplorerPlugin);
-        loader.add(TelescopePlugin);
+        loader.add(MicroscopePlugin);
         loader.add(TreesitterPlugin);
 
         // Language plugins
@@ -1512,13 +1545,13 @@ fn handle_plugin_event(&mut self, event: MyPluginEvent) {
 
 ## Migration Guide
 
-Features are being migrated from hardcoded `InnerEvent` variants to the event bus:
+Features are migrated from hardcoded `RuntimeEventPayload` variants to the plugin event bus:
 
-### Before (InnerEvent)
+### Before (RuntimeEventPayload)
 ```rust
 // In event/inner/mod.rs - requires modifying core enum
-pub enum InnerEvent {
-    MyPluginEvent(MyPluginEvent),
+pub enum RuntimeEventPayload {
+    MyPlugin(MyPluginEvent),
     // ... many variants
 }
 ```
@@ -1531,7 +1564,7 @@ pub struct MyActionEvent { ... }
 impl Event for MyActionEvent {}
 
 // Subscribe in plugin
-bus.subscribe::<MyActionEvent, _>(100, |event, _ctx| {
+bus.subscribe::<MyActionEvent, _>(100, |event, ctx| {
     // Handle event
     EventResult::Handled
 });
@@ -1577,7 +1610,7 @@ The `DisplayRegistry` provides fallback for unregistered components.
 Plugin windows control their z-order via the `PluginWindow::z_order()` method. Core only defines `z_order::BASE` (0) and `z_order::EDITOR` (2). Typical plugin z-orders:
 - Range-Finder (jump labels): 110
 - Completion: 200
-- Telescope: 300
+- Microscope: 300
 - Settings: 400
 
 ### Keybindings
@@ -1632,7 +1665,7 @@ The `subscribe_targeted()` method only calls your handler when `event.target()` 
 **Built-in vs Plugin Components:**
 
 - **Built-in components** (Editor, CommandLine): Handled via fast path in Runtime with direct access to Runtime state (buffers, command_line)
-- **Plugin components** (Explorer, Telescope): Receive input via `PluginTextInput` and `PluginBackspace` events
+- **Plugin components** (Explorer, Microscope): Receive input via `PluginTextInput` and `PluginBackspace` events
 
 This separation ensures built-in components can execute synchronously with full Runtime access while plugins maintain proper encapsulation through the event bus and state registry.
 
@@ -1640,9 +1673,9 @@ This separation ensures built-in components can execute synchronously with full 
 
 Reovim uses the `PluginWindow` trait for plugin UI rendering:
 
-- **PluginWindow**: Plugin panels and windows (explorer, telescope, settings)
+- **PluginWindow**: Plugin panels and windows (explorer, microscope, settings)
   - Implement `PluginWindow` trait for visibility, bounds, and rendering
-  - See [Plugin Rendering Guide](./plugin-rendering.md) for details
+  - See [Plugin Rendering Guide](../rendering/ui-systems.md) for details
 
 For built-in components (status line, tab line), rendering is handled directly by dedicated component modules.
 
@@ -1779,7 +1812,7 @@ reovim-plugin-my-plugin.workspace = true
 │  │  │  • WindowPlugin │  │  • SettingsMenuPlugin           │││
 │  │  │                 │  │  • CompletionPlugin             │││
 │  │  │                 │  │  • ExplorerPlugin               │││
-│  │  │                 │  │  • TelescopePlugin              │││
+│  │  │                 │  │  • MicroscopePlugin             │││
 │  │  │                 │  │  • TreesitterPlugin             │││
 │  │  │                 │  │  • Language plugins...          │││
 │  │  └─────────────────┘  └─────────────────────────────────┘││
@@ -1795,7 +1828,7 @@ reovim-plugin-my-plugin.workspace = true
 │  └─────────────┘  └─────────────┘  └─────────────────────┘  │
 │  ┌─────────────────────────────────────────────────────────┐│
 │  │                    Feature Modules                      ││
-│  │  completion/ explorer/ telescope/ settings_menu/        ││
+│  │  completion/ (core types only, plugins in plugins/)      ││
 │  │         (types and commands for external plugins)       ││
 │  └─────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────┘
@@ -1843,6 +1876,6 @@ When the current API is insufficient:
 
 ## Related Documentation
 
-- [Architecture](./architecture.md) - System design overview
-- [Event System](./event-system.md) - Event flow details
-- [Commands](./commands.md) - Command system
+- [Architecture](../architecture/overview.md) - System design overview
+- [Event System](../events/overview.md) - Event flow details
+- [Commands](../reference/commands.md) - Command system

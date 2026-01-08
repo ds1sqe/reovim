@@ -4,6 +4,19 @@ All notable changes to Reovim will be documented in this file.
 
 ## [Unreleased]
 
+### Documentation
+
+- **Restructured docs into topic-based subdirectories** - Improved navigation and maintainability
+  - Split `architecture.md` (~1400 lines) into `docs/architecture/` with 6 focused files
+  - Split `event-system.md` (~1300 lines) into `docs/events/` with 6 focused files
+  - Merged `render-pipeline.md` + `plugin-rendering.md` into `docs/rendering/` with 4 files
+  - Organized plugins docs into `docs/plugins/` (4 files)
+  - Organized guides into `docs/guides/` (4 files)
+  - Organized reference docs into `docs/reference/` (3 files)
+  - Organized feature docs into `docs/features/` (7 files)
+  - Added `docs/README.md` as documentation index with reading order
+  - Updated all cross-references and CLAUDE.md links
+
 ### Fixed
 
 - **Port file cleanup on abnormal termination** (Issue #111) - Port files now cleaned up on SIGTERM/SIGINT

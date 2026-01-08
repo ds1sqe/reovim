@@ -291,7 +291,7 @@ Reovim is a Rust-based neovim-like text editor built with async tokio runtime an
 - Benefits: 50% fewer types, ~20 lines less boilerplate per command
 - All feature plugins migrated (Fold, Settings, Completion, Explorer, Telescope)
 - Example: `ExplorerRefresh` (not `ExplorerRefreshCommand` + `ExplorerRefreshEvent`)
-- See: `docs/commands.md`, `docs/plugin-system.md`, `docs/event-system.md`
+- See: `docs/reference/commands.md`, `docs/plugins/system.md`, `docs/events/overview.md`
 
 **Treesitter Plugin** (`plugins/features/treesitter/`):
 - Syntax highlighting via tree-sitter parsing
@@ -453,12 +453,12 @@ Check `git worktree list` to see active worktrees. Common setup:
 ## Detailed Documentation
 
 For in-depth information, see:
-- [docs/architecture.md](./docs/architecture.md) - Full architecture overview
-- [docs/event-system.md](./docs/event-system.md) - Event flow details and unified pattern
-- [docs/commands.md](./docs/commands.md) - Command system and unified pattern macros
-- [docs/plugin-system.md](./docs/plugin-system.md) - Plugin development with unified pattern
-- [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md) - Development guide
-- [docs/TESTING.md](./docs/TESTING.md) - Testing guide
+- [docs/architecture/overview.md](./docs/architecture/overview.md) - Full architecture overview
+- [docs/events/overview.md](./docs/events/overview.md) - Event flow details and unified pattern
+- [docs/reference/commands.md](./docs/reference/commands.md) - Command system and unified pattern macros
+- [docs/plugins/system.md](./docs/plugins/system.md) - Plugin development with unified pattern
+- [docs/guides/development.md](./docs/guides/development.md) - Development guide
+- [docs/guides/testing.md](./docs/guides/testing.md) - Testing guide
 
 ### Creating Plugin Commands (Modern Pattern)
 

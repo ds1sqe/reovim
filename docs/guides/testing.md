@@ -318,17 +318,17 @@ let mut result = ServerTest::new()
 let layers = result.layer_info().await;
 assert!(layers.iter().any(|l| l.name == "which_key" && l.visible));
 
-// Test telescope layer
+// Test microscope layer
 let mut result = ServerTest::new()
     .await
     .with_size(80, 24)
-    .with_keys(" ff")  // Open telescope
+    .with_keys(" ff")  // Open microscope
     .with_delay(100)
     .run()
     .await;
 
 let layers = result.layer_info().await;
-assert!(layers.iter().any(|l| l.name == "telescope" && l.visible));
+assert!(layers.iter().any(|l| l.name == "microscope" && l.visible));
 ```
 
 #### Visual Assertions Trait
@@ -402,7 +402,7 @@ pub struct CellSnapshot {
 pub struct CursorInfo {
     pub x: u16,
     pub y: u16,
-    pub layer: String,  // "editor", "telescope", etc.
+    pub layer: String,  // "editor", "microscope", etc.
 }
 
 pub struct LayerInfo {
@@ -420,7 +420,7 @@ lib/core/tests/
 ├── visual_snapshot.rs      # Visual testing tests
 │   ├── Screen size tests   # Explicit dimensions, full screen cells
 │   ├── Basic snapshot      # Content verification, ASCII art
-│   ├── Layer tests         # Editor, telescope, which-key
+│   ├── Layer tests         # Editor, microscope, which-key
 │   └── Visual assertions   # Cell/row/content checks
 └── ...
 ```
@@ -470,7 +470,7 @@ This approach ensures:
 | `jumplist` | Jump navigation | 4 |
 | `range-finder` | Jump navigation and code folding | 15+ |
 | `screen/layout` | Layout calculations | 4 |
-| `telescope` | Item, matcher, state | 11 |
+| `microscope` | Item, matcher, state | 11 |
 | `types` | Core data types | 4 |
 | `folding` | Fold state, toggle, markers | 4 |
 | `rpc` | Server config, transport, types | 15 |
@@ -645,5 +645,5 @@ cargo fmt -- --check   # Code must be formatted
 
 ## Related Documentation
 
-- [Development](./DEVELOPMENT.md) - Build and code standards
-- [Commands](./commands.md) - Command system (testable units)
+- [Development](./development.md) - Build and code standards
+- [Commands](../reference/commands.md) - Command system (testable units)
