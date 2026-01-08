@@ -33,15 +33,11 @@ impl SyntaxFactory for TreesitterSyntaxFactory {
             // Get the registered language
             let registered = manager.registry().get(&language_id)?;
 
-            // Get the pre-compiled highlights query
-            let query = manager
-                .query_cache()
-                .get(&language_id, QueryType::Highlights)?;
+            // Get or compile highlights query (lazy compilation)
+            let query = manager.get_cached_query(&language_id, QueryType::Highlights)?;
 
-            // Check for injection query
-            let injection_query = manager
-                .query_cache()
-                .get(&language_id, QueryType::Injections);
+            // Check for injection query (lazy compilation)
+            let injection_query = manager.get_cached_query(&language_id, QueryType::Injections);
 
             // Create syntax provider - use injection-aware version if available
             let syntax = if injection_query.is_some() {
