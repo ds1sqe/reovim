@@ -172,13 +172,13 @@ lib/core/tests/
 Spawns and manages a reovim server process:
 
 ```rust
-// Automatically spawns server on unique port (17000-17099)
+// Automatically spawns server on OS-assigned port
 let harness = ServerTestHarness::spawn().await?;
 
 // Get a connected client
 let client = harness.client().await?;
 
-// Server is killed when harness is dropped
+// Server is killed when harness is dropped (kill_on_drop)
 ```
 
 #### TestClient (`lib/core/src/testing/client.rs`)
@@ -431,28 +431,32 @@ lib/core/tests/
 2. **Keep key sequences short** - Long sequences are harder to debug
 3. **Test one behavior per test** - Makes failures easier to diagnose
 4. **Use `with_content()` for cursor tests** - Need text to move through
-5. **Tests run in parallel** - Each spawns its own server on a unique port (17000-17099)
+5. **Tests run in parallel** - Each spawns its own server on an OS-assigned port
 
 ### Port Allocation
 
-Integration tests use a **separate port range** (17000-17099) from regular server mode (12521+):
+Integration tests use **OS-assigned ports** (port 0) for collision-free parallel execution:
 
-- **Test servers**: Ports 17000-17099 (atomic allocation, wraps around)
+- **Test servers**: OS-assigned ephemeral ports (let the kernel pick an available port)
 - **Regular servers**: Port 12521 by default, auto-increments to 12522, 12523, ... if in use
 
-This separation ensures:
+This approach ensures:
+- **No port collisions** - OS guarantees port uniqueness
+- **Parallel-safe** - Multiple test processes can run simultaneously
+- **Cross-process safe** - Works correctly with `cargo test` parallelism
 - Tests don't interfere with manually started debug servers
-- Multiple test runs can execute in parallel
 - `reo-cli list` only shows regular servers (not test instances)
 
 ### How It Works
 
-1. `ServerTest::new()` spawns `reovim --server --test --listen-tcp <port>`
-2. Server runs in headless mode with JSON-RPC interface
-3. `TestClient` connects via TCP and sends commands
-4. Keys are injected with 1ms delay between each (for mode propagation)
-5. After keys, 50ms delay allows processing before querying state
-6. Server auto-exits when client disconnects (test mode)
+1. `ServerTest::new()` spawns `reovim --server --test --listen-tcp 0`
+2. Server binds to port 0, OS assigns an available port
+3. Server prints `Listening on 127.0.0.1:<port>` to stderr
+4. Test harness reads stderr to discover the actual port
+5. `TestClient` connects via TCP and sends commands
+6. Keys are injected with 1ms delay between each (for mode propagation)
+7. After keys, 50ms delay allows processing before querying state
+8. Server auto-exits when client disconnects (test mode)
 
 ## Current Test Coverage
 
@@ -470,7 +474,7 @@ This separation ensures:
 | `types` | Core data types | 4 |
 | `folding` | Fold state, toggle, markers | 4 |
 | `rpc` | Server config, transport, types | 15 |
-| `testing` | Key parsing, port allocation | 10 |
+| `testing` | Key parsing, harness spawn | 10 |
 
 **Unit Tests: 213**
 **Integration Tests: 40** (basic_editing: 10, mode_switching: 8, resize: 5, visual_snapshot: 17)
