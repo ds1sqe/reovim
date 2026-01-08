@@ -7,7 +7,6 @@
 
 use std::{
     io,
-    path::PathBuf,
     sync::{
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
@@ -126,8 +125,14 @@ pub async fn run_server(
     // Create RPC server with frame buffer handle for all capture formats
     let server = Arc::new(RpcServer::new(event_tx, key_tx, frame_handle, notification_tx));
 
-    // Track port file for cleanup on shutdown
-    let mut port_file_path: Option<PathBuf> = None;
+    // Clean up stale port files from previous crashed instances
+    crate::dirs::cleanup_stale_port_files();
+
+    // Port file guard for automatic cleanup (RAII pattern)
+    // This ensures cleanup even on panic or signal termination
+    // The guard is intentionally held for its Drop behavior, not read
+    #[allow(clippy::collection_is_never_read)]
+    let mut _port_guard: Option<crate::dirs::PortFileGuard> = None;
 
     // Set up transport based on configuration
     match &transport_config {
@@ -169,11 +174,15 @@ pub async fn run_server(
             // Print the actual port to stderr for scripts/users to capture
             eprintln!("Listening on {host}:{actual_port}");
 
-            // Write port file for discovery (only for TCP)
-            match crate::dirs::write_port_file(actual_port) {
-                Ok(path) => port_file_path = Some(path),
+            // Create port file guard for automatic cleanup (only for TCP)
+            match crate::dirs::PortFileGuard::new(actual_port) {
+                Ok(guard) => _port_guard = Some(guard),
                 Err(e) => tracing::warn!("Failed to write port file: {}", e),
             }
+
+            // Spawn signal handler for graceful shutdown
+            let event_tx_signal = event_tx_for_shutdown.clone();
+            tokio::spawn(handle_shutdown_signals(event_tx_signal));
 
             spawn_persistent_server(
                 listener,
@@ -195,13 +204,40 @@ pub async fn run_server(
         reovim_core::command::terminal::disable_raw_mode()?;
     }
 
-    // Remove port file on shutdown
-    if let Some(path) = port_file_path {
-        crate::dirs::remove_port_file(&path);
-    }
-
+    // Port file is automatically removed when _port_guard is dropped here
     tracing::info!("Server mode shutting down");
     Ok(())
+}
+
+/// Handle shutdown signals (SIGTERM, SIGINT) for graceful termination
+///
+/// Sends a kill event to the runtime when a termination signal is received,
+/// allowing the port file guard to clean up properly.
+#[cfg(unix)]
+async fn handle_shutdown_signals(event_tx: mpsc::Sender<RuntimeEvent>) {
+    use tokio::signal::unix::{SignalKind, signal};
+
+    let mut sigterm = signal(SignalKind::terminate()).expect("Failed to register SIGTERM handler");
+    let mut sigint = signal(SignalKind::interrupt()).expect("Failed to register SIGINT handler");
+
+    tokio::select! {
+        _ = sigterm.recv() => {
+            tracing::info!("Received SIGTERM, initiating graceful shutdown");
+        }
+        _ = sigint.recv() => {
+            tracing::info!("Received SIGINT, initiating graceful shutdown");
+        }
+    }
+
+    let _ = event_tx.send(RuntimeEvent::kill()).await;
+}
+
+/// Handle shutdown signals (stub for non-Unix platforms)
+#[cfg(not(unix))]
+async fn handle_shutdown_signals(_event_tx: mpsc::Sender<RuntimeEvent>) {
+    // On non-Unix platforms, we don't have SIGTERM/SIGINT
+    // The server will only shutdown via RPC kill command
+    std::future::pending::<()>().await;
 }
 
 /// Spawn the persistent server accept loop and related tasks

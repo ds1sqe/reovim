@@ -51,6 +51,60 @@ pub fn remove_port_file(path: &std::path::Path) {
     }
 }
 
+/// RAII guard that removes the port file on drop
+///
+/// This ensures cleanup happens even on panic or signal termination.
+pub struct PortFileGuard {
+    path: PathBuf,
+}
+
+impl PortFileGuard {
+    /// Create a new port file guard, writing the port file immediately
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if directory creation or file writing fails.
+    pub fn new(port: u16) -> std::io::Result<Self> {
+        let path = write_port_file(port)?;
+        Ok(Self { path })
+    }
+}
+
+impl Drop for PortFileGuard {
+    fn drop(&mut self) {
+        remove_port_file(&self.path);
+    }
+}
+
+/// Clean up stale port files for processes that no longer exist
+///
+/// Scans the servers directory and removes port files for PIDs that are no longer running.
+pub fn cleanup_stale_port_files() {
+    let servers_dir = servers_dir();
+    let Ok(entries) = std::fs::read_dir(&servers_dir) else {
+        return;
+    };
+
+    for entry in entries.flatten() {
+        let Some(name) = entry.file_name().to_str().map(String::from) else {
+            continue;
+        };
+        let Some(pid_str) = name.strip_suffix(".port") else {
+            continue;
+        };
+        let Ok(pid) = pid_str.parse::<u32>() else {
+            continue;
+        };
+
+        // Check if process exists (Linux: /proc/<pid>)
+        if !std::path::Path::new(&format!("/proc/{pid}")).exists()
+            && std::fs::remove_file(entry.path()).is_ok()
+        {
+            tracing::debug!("Removed stale port file for PID {}", pid);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
