@@ -4,6 +4,14 @@ All notable changes to Reovim will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Port file cleanup on abnormal termination** (Issue #111) - Port files now cleaned up on SIGTERM/SIGINT
+  - Added `PortFileGuard` RAII struct for automatic cleanup on drop (including panics)
+  - Added signal handler for SIGTERM/SIGINT to trigger graceful shutdown
+  - Added startup cleanup to remove stale port files from crashed instances
+  - Port files at `~/.local/share/reovim/servers/<pid>.port` are now reliably removed
+
 ### Performance
 
 - **Lazy tree-sitter query compilation** (Issue #93) - Defer query compilation from startup to first use
