@@ -3,13 +3,19 @@
 //! Measures synchronous dispatch performance and DynEvent overhead.
 //! These benchmarks help identify latency sources in the event system (Issue #86).
 
-use std::hint::black_box;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
-use std::time::Duration;
+use std::{
+    hint::black_box,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::Duration,
+};
 
-use criterion::{BenchmarkId, Criterion};
-use reovim_core::event_bus::{DynEvent, Event, EventBus, EventResult, HandlerContext};
+use {
+    criterion::{BenchmarkId, Criterion},
+    reovim_core::event_bus::{DynEvent, Event, EventBus, EventResult, HandlerContext},
+};
 
 /// Test event for benchmarking
 #[derive(Debug)]
@@ -213,17 +219,13 @@ pub fn bench_dispatch_with_emit(c: &mut Criterion) {
 
         let sender = bus.sender();
 
-        group.bench_with_input(
-            BenchmarkId::new("emits", emit_count),
-            &emit_count,
-            |b, _| {
-                b.iter(|| {
-                    let event = DynEvent::new(BenchEvent { value: 1 });
-                    let mut ctx = HandlerContext::new(&sender);
-                    black_box(bus.dispatch(&event, &mut ctx))
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("emits", emit_count), &emit_count, |b, _| {
+            b.iter(|| {
+                let event = DynEvent::new(BenchEvent { value: 1 });
+                let mut ctx = HandlerContext::new(&sender);
+                black_box(bus.dispatch(&event, &mut ctx))
+            });
+        });
     }
 
     group.finish();

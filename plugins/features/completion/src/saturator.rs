@@ -331,7 +331,9 @@ mod tests {
 
         assert!(matches!(
             event.into_payload(),
-            reovim_core::event::RuntimeEventPayload::Render(reovim_core::event::RenderEvent::Signal)
+            reovim_core::event::RuntimeEventPayload::Render(
+                reovim_core::event::RenderEvent::Signal
+            )
         ));
 
         // Check cache
