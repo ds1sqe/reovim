@@ -1,6 +1,6 @@
 use {
     super::{RuntimeEvent, inner::BufferEvent},
-    crate::event::{KeyEvent, Subscribe, key::KeyCode},
+    crate::event::{ScopedKeyEvent, Subscribe, key::KeyCode},
     reovim_sys::{cursor, event::KeyModifiers},
     tokio::sync::{broadcast::Receiver, mpsc::Sender},
 };
@@ -11,12 +11,12 @@ pub use command::CommandHandler;
 
 pub struct PrintEventHandler {
     pub buffer_id: usize,
-    key_event_rx: Option<Receiver<KeyEvent>>,
+    key_event_rx: Option<Receiver<ScopedKeyEvent>>,
     buffer_tx: Sender<RuntimeEvent>,
 }
 
-impl Subscribe<KeyEvent> for PrintEventHandler {
-    fn subscribe(&mut self, rx: Receiver<KeyEvent>) {
+impl Subscribe<ScopedKeyEvent> for PrintEventHandler {
+    fn subscribe(&mut self, rx: Receiver<ScopedKeyEvent>) {
         self.key_event_rx = Some(rx);
     }
 }
@@ -45,7 +45,8 @@ impl PrintEventHandler {
     pub async fn run(mut self) {
         if let Some(rx) = self.key_event_rx.take() {
             let mut rx = rx;
-            while let Ok(event) = rx.recv().await {
+            while let Ok(scoped_event) = rx.recv().await {
+                let event = scoped_event.key;
                 if event == KeyCode::Char('c').into() {
                     self.send_event(format!("\rCursor position: {:?}", cursor::position()))
                         .await;
@@ -58,12 +59,12 @@ impl PrintEventHandler {
 }
 
 pub struct TerminateHandler {
-    key_event_rx: Option<Receiver<KeyEvent>>,
+    key_event_rx: Option<Receiver<ScopedKeyEvent>>,
     kill_tx: Sender<RuntimeEvent>,
 }
 
-impl Subscribe<KeyEvent> for TerminateHandler {
-    fn subscribe(&mut self, rx: Receiver<KeyEvent>) {
+impl Subscribe<ScopedKeyEvent> for TerminateHandler {
+    fn subscribe(&mut self, rx: Receiver<ScopedKeyEvent>) {
         self.key_event_rx = Some(rx);
     }
 }
@@ -88,7 +89,8 @@ impl TerminateHandler {
     pub async fn run(mut self) {
         if let Some(rx) = self.key_event_rx.take() {
             let mut rx = rx;
-            while let Ok(event) = rx.recv().await {
+            while let Ok(scoped_event) = rx.recv().await {
+                let event = scoped_event.key;
                 if event.code == KeyCode::Char('d') && event.modifiers == (KeyModifiers::CONTROL) {
                     self.send_event().await;
                     break;

@@ -15,7 +15,7 @@ use std::{
 
 use {
     reovim_core::{
-        event::RuntimeEvent,
+        event::{RuntimeEvent, ScopedKeyEvent},
         io::input::ChannelKeySource,
         rpc::{
             RpcNotification, RpcRequest, RpcResponse, TransportConfig, TransportConnection,
@@ -95,7 +95,10 @@ pub async fn run_server(
                 match result {
                     Ok(Event::Key(key_event)) => {
                         if key_event.kind == KeyEventKind::Press
-                            && key_tx_terminal.send(key_event).await.is_err()
+                            && key_tx_terminal
+                                .send(ScopedKeyEvent::new(key_event))
+                                .await
+                                .is_err()
                         {
                             break; // Channel closed
                         }

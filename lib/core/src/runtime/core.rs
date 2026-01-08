@@ -105,6 +105,8 @@ pub struct Runtime {
     pub(crate) landing_state: Option<crate::landing::LandingState>,
     /// Interactor registry for input behavior configuration
     pub interactor_registry: Arc<InteractorRegistry>,
+    /// Current event scope for tracking event lifecycle (set during `handle_event`)
+    pub(crate) current_scope: Option<crate::event_bus::EventScope>,
 }
 
 impl Default for Runtime {
@@ -269,6 +271,7 @@ impl Runtime {
             idle_shimmer_active: false,
             landing_state: None,
             interactor_registry: Arc::new(interactor_registry),
+            current_scope: None,
         };
 
         // Make keymap and command registry accessible to plugins (e.g., which-key)
@@ -921,7 +924,8 @@ impl Runtime {
                 self.buffers.insert(id, buffer);
 
                 // Emit FileOpened event for plugins that need to know about new files
-                self.event_bus.emit(FileOpened {
+                // Use emit_event to propagate scope for deterministic completion tracking
+                self.emit_event(FileOpened {
                     buffer_id: id,
                     path: path.to_string(),
                 });
@@ -957,7 +961,8 @@ impl Runtime {
             self.highlight_store.clear_all(buffer_id);
 
             // Emit BufferClosed event for plugins to clean up their state
-            self.event_bus.emit(BufferClosed { buffer_id });
+            // Use emit_event to propagate scope for deterministic completion tracking
+            self.emit_event(BufferClosed { buffer_id });
 
             // If we closed the active buffer, switch to another one
             if self.active_buffer_id() == buffer_id
@@ -1019,6 +1024,31 @@ impl Runtime {
         self.buffers.get_mut(&self.active_buffer_id())
     }
 
+    /// Emit an event to the `EventBus`, attaching the current scope if present.
+    ///
+    /// When a scope is present (during `handle_event` processing), this dispatches
+    /// the event synchronously to ensure proper scope tracking. When no scope is
+    /// present, the event is queued for async processing.
+    pub fn emit_event<E: crate::event_bus::Event>(&self, event: E) {
+        if let Some(ref scope) = self.current_scope {
+            // Synchronous dispatch when scope is present
+            // This ensures the scope counter is accurate and wait() works correctly
+            scope.increment();
+            let dyn_event = crate::event_bus::DynEvent::new(event).with_scope(scope.clone());
+
+            let sender = self.event_bus.sender();
+            let mut ctx =
+                crate::event_bus::HandlerContext::new(&sender).with_scope(Some(scope.clone()));
+            self.event_bus.dispatch(&dyn_event, &mut ctx);
+
+            // Decrement after dispatch completes
+            scope.decrement();
+        } else {
+            // Async queue when no scope tracking needed
+            self.event_bus.emit(event);
+        }
+    }
+
     /// Open a file, creating a new buffer or switching to existing one
     pub fn open_file(&mut self, path: &str) {
         debug!(path, "open_file: called");
@@ -1055,7 +1085,8 @@ impl Runtime {
             self.highlight_store.clear_all(buffer_id);
 
             // Emit BufferModified event to trigger reparse by treesitter plugin
-            self.event_bus.emit(crate::event_bus::BufferModified {
+            // Use emit_event to propagate scope for deterministic completion tracking
+            self.emit_event(crate::event_bus::BufferModified {
                 buffer_id,
                 modification: BufferModification::FullReplace,
             });

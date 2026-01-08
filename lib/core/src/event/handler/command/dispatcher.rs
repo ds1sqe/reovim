@@ -8,6 +8,7 @@ use {
             RuntimeEvent,
             inner::{CommandEvent, VisualTextObjectAction},
         },
+        event_bus::EventScope,
         modd::ModeState,
     },
     std::sync::Arc,
@@ -45,16 +46,23 @@ impl Dispatcher {
         &self.inner_tx
     }
 
-    /// Update the current mode and notify listeners
-    pub async fn update_mode(&self, new_mode: ModeState) {
-        let _ = self
-            .inner_tx
-            .send(RuntimeEvent::mode_change(new_mode))
+    /// Helper to send event with optional scope (consumes scope)
+    async fn send_with_scope(&self, event: RuntimeEvent, scope: Option<EventScope>) {
+        let event = match scope {
+            Some(s) => event.with_scope(s),
+            None => event,
+        };
+        let _ = self.inner_tx.send(event).await;
+    }
+
+    /// Update the current mode and notify listeners (consumes scope)
+    pub async fn update_mode(&self, new_mode: ModeState, scope: Option<EventScope>) {
+        self.send_with_scope(RuntimeEvent::mode_change(new_mode), scope)
             .await;
     }
 
-    /// Dispatch a command with the given count
-    pub async fn dispatch(&self, cmd: CommandRef, count: Option<usize>) {
+    /// Dispatch a command with the given count (consumes scope)
+    pub async fn dispatch(&self, cmd: CommandRef, count: Option<usize>, scope: Option<EventScope>) {
         let start = std::time::Instant::now();
         let ctx = CommandContext {
             buffer_id: self.current_buffer_id,
@@ -62,13 +70,14 @@ impl Dispatcher {
             count,
         };
 
-        let _ = self
-            .inner_tx
-            .send(RuntimeEvent::command(CommandEvent {
+        self.send_with_scope(
+            RuntimeEvent::command(CommandEvent {
                 command: cmd.clone(),
                 context: ctx,
-            }))
-            .await;
+            }),
+            scope,
+        )
+        .await;
         tracing::trace!(
             "[RTT] Dispatcher.dispatch: cmd={:?} send took {:?}",
             match &cmd {
@@ -79,7 +88,7 @@ impl Dispatcher {
         );
     }
 
-    /// Send pending keys display update
+    /// Send pending keys display update (no scope - pure UI event)
     pub async fn send_pending_keys(&self, display: String) {
         let _ = self
             .inner_tx
@@ -101,8 +110,12 @@ impl Dispatcher {
         }
     }
 
-    /// Send operator + motion action to runtime
-    pub async fn send_operator_motion(&self, action: OperatorMotionAction) {
+    /// Send operator + motion action to runtime (consumes scope)
+    pub async fn send_operator_motion(
+        &self,
+        action: OperatorMotionAction,
+        scope: Option<EventScope>,
+    ) {
         // Change actions enter Insert mode, others return to Normal
         let new_mode = match &action {
             OperatorMotionAction::Change { .. }
@@ -111,37 +124,38 @@ impl Dispatcher {
             | OperatorMotionAction::ChangeSemanticTextObject { .. } => ModeState::insert(),
             _ => ModeState::normal(),
         };
-        let _ = self
-            .inner_tx
-            .send(RuntimeEvent::mode_change(new_mode))
+        // Mode change doesn't need scope - operator_motion is the primary event
+        self.send_with_scope(RuntimeEvent::mode_change(new_mode), None)
             .await;
-        let _ = self
-            .inner_tx
-            .send(RuntimeEvent::operator_motion(action))
+        self.send_with_scope(RuntimeEvent::operator_motion(action), scope)
             .await;
     }
 
-    /// Send visual text object selection event
-    pub async fn send_visual_text_object(&self, action: VisualTextObjectAction) {
-        let _ = self
-            .inner_tx
-            .send(RuntimeEvent::visual_text_object(action))
+    /// Send visual text object selection event (consumes scope)
+    pub async fn send_visual_text_object(
+        &self,
+        action: VisualTextObjectAction,
+        scope: Option<EventScope>,
+    ) {
+        self.send_with_scope(RuntimeEvent::visual_text_object(action), scope)
             .await;
     }
 
-    /// Send focus input event for character insertion
-    pub async fn send_focus_insert_char(&self, c: char) {
-        let _ = self
-            .inner_tx
-            .send(RuntimeEvent::text_input(crate::event::TextInputEvent::InsertChar(c)))
-            .await;
+    /// Send focus input event for character insertion (consumes scope)
+    pub async fn send_focus_insert_char(&self, c: char, scope: Option<EventScope>) {
+        self.send_with_scope(
+            RuntimeEvent::text_input(crate::event::TextInputEvent::InsertChar(c)),
+            scope,
+        )
+        .await;
     }
 
-    /// Send focus input event for character deletion (backspace)
-    pub async fn send_focus_delete_backward(&self) {
-        let _ = self
-            .inner_tx
-            .send(RuntimeEvent::text_input(crate::event::TextInputEvent::DeleteCharBackward))
-            .await;
+    /// Send focus input event for character deletion (backspace) (consumes scope)
+    pub async fn send_focus_delete_backward(&self, scope: Option<EventScope>) {
+        self.send_with_scope(
+            RuntimeEvent::text_input(crate::event::TextInputEvent::DeleteCharBackward),
+            scope,
+        )
+        .await;
     }
 }

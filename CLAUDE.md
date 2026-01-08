@@ -232,6 +232,16 @@ Reovim is a Rust-based neovim-like text editor built with async tokio runtime an
 - `KeyEventBroker` - Broadcasts key events to subscribed handlers via tokio broadcast channels
 - Handlers implement `Subscribe<T>` trait to receive events
 - `InnerEvent` enum for internal communication (BufferEvent, CommandEvent, ModeChangeEvent, PendingKeysEvent, WindowEvent, RenderSignal, KillSignal)
+- `ScopedKeyEvent` - Key event with optional `EventScope` for lifecycle tracking
+
+**EventScope** (`lib/core/src/event_bus/scope.rs`) - GC-like tracking for deterministic event synchronization:
+- `EventScope::new()` - Create scope with counter = 0
+- `scope.increment()` - Track new event (counter++)
+- `scope.decrement()` - Mark event complete (counter--), notify if zero
+- `scope.wait()` - Async wait for counter to reach 0
+- `scope.wait_timeout(duration)` - Wait with timeout, returns `false` if timed out
+- Debug with `REOVIM_LOG=trace` to see scope lifecycle
+- Used by RPC `input/keys` to wait for all key effects to complete
 
 **Buffer** (`lib/core/src/buffer/`) - Text storage with lines and cursor position
 

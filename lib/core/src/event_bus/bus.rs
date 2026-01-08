@@ -72,9 +72,15 @@ impl<'a> HandlerContext<'a> {
 
     /// Emit a new event from within a handler
     ///
-    /// If this context has a scope, the child event inherits it and
-    /// the scope's in-flight counter is incremented.
+    /// If this context has a scope, the child event is dispatched synchronously
+    /// to ensure proper scope tracking. Without a scope, the event is queued
+    /// for async processing.
     pub fn emit<E: Event>(&self, event: E) {
+        // Note: Events with scope must be processed synchronously because the
+        // async EventBus processor doesn't track scopes. We cannot dispatch
+        // here directly because we don't have access to the EventBus.
+        // Instead, we queue the event and it will be processed by the caller
+        // if they're tracking scopes. For non-scoped events, async is fine.
         if let Some(ref scope) = self.scope {
             scope.increment();
             let dyn_event = DynEvent::new(event).with_scope(scope.clone());
@@ -361,6 +367,43 @@ impl EventBus {
     /// Clear all handlers (mainly for testing)
     pub fn clear(&self) {
         self.handlers.write().unwrap().clear();
+    }
+
+    /// Drain all queued events and dispatch them synchronously
+    ///
+    /// This is used to process events that were emitted during `handle_event`
+    /// so that scope tracking works correctly. After each event is dispatched,
+    /// its scope (if present) is decremented.
+    ///
+    /// Returns true if render was requested by any handler.
+    pub fn drain_and_dispatch(&self, base_ctx: &HandlerContext) -> bool {
+        let mut render_requested = false;
+
+        // Try to drain events from the channel without blocking
+        let mut rx_guard = self.rx.write().unwrap();
+        if let Some(ref mut rx) = *rx_guard {
+            while let Ok(event) = rx.try_recv() {
+                // Take the scope from the event for lifecycle tracking
+                let scope = event.scope();
+
+                // Create context with scope for handler propagation
+                let mut ctx = HandlerContext::new(base_ctx.event_tx).with_scope(scope.cloned());
+
+                // Dispatch the event
+                self.dispatch(&event, &mut ctx);
+
+                if ctx.render_requested() {
+                    render_requested = true;
+                }
+
+                // Decrement scope after dispatch completes
+                if let Some(s) = scope {
+                    s.decrement();
+                }
+            }
+        }
+
+        render_requested
     }
 }
 

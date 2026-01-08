@@ -10,7 +10,8 @@ use {
     crate::{
         bind::{CommandRef, KeyMap, KeyMapInner},
         command::{CommandRegistry, traits::OperatorMotionAction},
-        event::{KeyEvent, RuntimeEvent, Subscribe, VisualTextObjectAction},
+        event::{RuntimeEvent, ScopedKeyEvent, Subscribe, VisualTextObjectAction},
+        event_bus::EventScope,
         interactor::InteractorRegistry,
         keystroke::{KeyNotationFormat, KeySequence, Keystroke},
         modd::{ModeState, OperatorType, SubMode},
@@ -26,7 +27,7 @@ use {
 
 /// Handler that translates key events to commands based on current mode
 pub struct CommandHandler {
-    key_event_rx: Option<Receiver<KeyEvent>>,
+    key_event_rx: Option<Receiver<ScopedKeyEvent>>,
     keymap: KeyMap,
     /// Watch receiver for mode changes from Runtime
     mode_rx: watch::Receiver<ModeState>,
@@ -39,10 +40,12 @@ pub struct CommandHandler {
     mode_locally_changed: bool,
     /// Interactor registry for input behavior lookup
     interactor_registry: Arc<InteractorRegistry>,
+    /// Current scope for event tracking (set per-key, passed to dispatcher)
+    current_scope: Option<EventScope>,
 }
 
-impl Subscribe<KeyEvent> for CommandHandler {
-    fn subscribe(&mut self, rx: Receiver<KeyEvent>) {
+impl Subscribe<ScopedKeyEvent> for CommandHandler {
+    fn subscribe(&mut self, rx: Receiver<ScopedKeyEvent>) {
         self.key_event_rx = Some(rx);
     }
 }
@@ -67,6 +70,7 @@ impl CommandHandler {
             dispatcher: Dispatcher::new(tx, 0, 0, command_registry),
             mode_locally_changed: false,
             interactor_registry,
+            current_scope: None,
         }
     }
 
@@ -389,10 +393,20 @@ impl CommandHandler {
                     // Key event received
                     result = rx.recv() => {
                         match result {
-                            Ok(event) => {
+                            Ok(mut scoped_event) => {
+                                // Extract key and scope from ScopedKeyEvent
+                                let event = scoped_event.key;
+                                // Store scope for this key - will be consumed by dispatcher or
+                                // decremented at end of processing if not dispatched
+                                self.current_scope = scoped_event.take_scope();
+
                                 let key_start = std::time::Instant::now();
                                 let key_str = key_to_string(&event);
                                 if key_str.is_empty() {
+                                    // Decrement scope - no dispatch for empty key
+                                    if let Some(scope) = self.current_scope.take() {
+                                        scope.decrement();
+                                    }
                                     continue;
                                 }
                                 // Convert KeyEvent to Keystroke for pending_keys
@@ -439,6 +453,10 @@ impl CommandHandler {
                                     self.dispatcher
                                         .send_pending_keys(self.pending_display())
                                         .await;
+                                    // Decrement scope - no dispatch for count digit
+                                    if let Some(scope) = self.current_scope.take() {
+                                        scope.decrement();
+                                    }
                                     continue;
                                 }
 
@@ -472,7 +490,12 @@ impl CommandHandler {
                                                 let normal = ModeState::normal();
                                                 self.set_local_mode(normal.clone());
                                                 self.mode_locally_changed = true;
-                                                self.dispatcher.update_mode(normal).await;
+                                                self.dispatcher.update_mode(normal, self.current_scope.take()).await;
+                                            } else {
+                                                // Decrement scope - no dispatch for non-op-pending Escape
+                                                if let Some(scope) = self.current_scope.take() {
+                                                    scope.decrement();
+                                                }
                                             }
                                             continue;
                                         }
@@ -490,6 +513,10 @@ impl CommandHandler {
                                             self.dispatcher
                                                 .send_pending_keys(self.pending_display())
                                                 .await;
+                                        }
+                                        // Decrement scope - no dispatch for Backspace in editable mode
+                                        if let Some(scope) = self.current_scope.take() {
+                                            scope.decrement();
                                         }
                                         // In Normal/Visual/Explorer, ignore backspace (don't add to pending)
                                         continue;
@@ -532,7 +559,7 @@ impl CommandHandler {
                                             };
                                             self.set_local_mode(new_mode);
                                             self.mode_locally_changed = true;
-                                            self.dispatcher.send_operator_motion(action).await;
+                                            self.dispatcher.send_operator_motion(action, self.current_scope.take()).await;
                                             self.dispatcher
                                                 .send_pending_keys(self.pending_display())
                                                 .await;
@@ -544,6 +571,10 @@ impl CommandHandler {
                                             self.dispatcher
                                                 .send_pending_keys(self.pending_display())
                                                 .await;
+                                            // Decrement scope - no dispatch while waiting for text object
+                                            if let Some(scope) = self.current_scope.take() {
+                                                scope.decrement();
+                                            }
                                             continue;
                                         }
                                     }
@@ -561,7 +592,7 @@ impl CommandHandler {
                                         tracing::debug!(?action, "Visual text object selection detected");
                                         self.pending_keys.clear();
                                         self.count_parser.take(); // Consume count
-                                        self.dispatcher.send_visual_text_object(action).await;
+                                        self.dispatcher.send_visual_text_object(action, self.current_scope.take()).await;
                                         self.dispatcher
                                             .send_pending_keys(self.pending_display())
                                             .await;
@@ -573,6 +604,10 @@ impl CommandHandler {
                                         self.dispatcher
                                             .send_pending_keys(self.pending_display())
                                             .await;
+                                        // Decrement scope - no dispatch while waiting for text object
+                                        if let Some(scope) = self.current_scope.take() {
+                                            scope.decrement();
+                                        }
                                         continue;
                                     }
                                 }
@@ -586,7 +621,7 @@ impl CommandHandler {
                                 {
                                     // Single printable character - route through focus system
                                     self.pending_keys.clear();
-                                    self.dispatcher.send_focus_insert_char(c).await;
+                                    self.dispatcher.send_focus_insert_char(c, self.current_scope.take()).await;
                                     self.dispatcher
                                         .send_pending_keys(self.pending_display())
                                         .await;
@@ -600,7 +635,7 @@ impl CommandHandler {
                                     && key_str == "Backspace"
                                 {
                                     self.pending_keys.clear();
-                                    self.dispatcher.send_focus_delete_backward().await;
+                                    self.dispatcher.send_focus_delete_backward(self.current_scope.take()).await;
                                     self.dispatcher
                                         .send_pending_keys(self.pending_display())
                                         .await;
@@ -629,12 +664,13 @@ impl CommandHandler {
                                         );
                                         self.set_local_mode(new_mode.clone());
                                         self.mode_locally_changed = true;
-                                        self.dispatcher.update_mode(new_mode).await;
+                                        // Mode change doesn't need scope - dispatch gets the scope
+                                        self.dispatcher.update_mode(new_mode, None).await;
                                     }
 
-                                    // Dispatch the command with count
+                                    // Dispatch the command with count (consumes scope)
                                     let count = self.count_parser.take();
-                                    self.dispatcher.dispatch(cmd.clone(), count).await;
+                                    self.dispatcher.dispatch(cmd.clone(), count, self.current_scope.take()).await;
 
                                     // Clear display after command execution
                                     self.dispatcher
@@ -645,11 +681,16 @@ impl CommandHandler {
                                     let mode = self.current_mode();
                                     if mode.is_insert() && key_str == "Tab" {
                                         self.pending_keys.clear();
-                                        self.dispatcher.send_focus_insert_char('\t').await;
+                                        self.dispatcher.send_focus_insert_char('\t', self.current_scope.take()).await;
                                         self.dispatcher
                                             .send_pending_keys(self.pending_display())
                                             .await;
                                     }
+                                }
+
+                                // Decrement scope if it wasn't consumed by a dispatch
+                                if let Some(scope) = self.current_scope.take() {
+                                    scope.decrement();
                                 }
                             }
                             Err(e) => {
