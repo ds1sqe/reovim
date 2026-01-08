@@ -23,6 +23,13 @@ All notable changes to Reovim will be documented in this file.
 
 ### Added
 
+- **GitHub Actions CI pipeline** (Issue #121) - Automated code quality checks on PRs and pushes to develop
+  - Format check with `cargo fmt --all --check`
+  - Clippy with zero-warning enforcement (`-D warnings`)
+  - Build verification for entire workspace
+  - Unit tests and doc tests
+  - Rust cache for faster subsequent builds
+
 - **Dynamic content in DisplayRegistry** (Issue #57) - Allow plugins to show contextual status line info
   - `DisplayContext` struct for render context with `PluginStateRegistry` access
   - `DynamicDisplayFn` type alias for dynamic display callbacks
