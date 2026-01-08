@@ -4,7 +4,7 @@ use std::{any::TypeId, sync::Arc};
 
 use tokio::sync::mpsc;
 
-use crate::{event::InnerEvent, event_bus::EventBus};
+use crate::{event::RuntimeEvent, event_bus::EventBus};
 
 use super::{PluginContext, PluginStateRegistry};
 
@@ -177,13 +177,13 @@ pub trait Plugin: Send + Sync + 'static {
     ///
     /// * `bus` - The event bus (now active and processing events)
     /// * `state` - Shared reference to the plugin state registry
-    /// * `event_tx` - Optional sender for `InnerEvent` (for spawning background tasks
+    /// * `event_tx` - Optional sender for `RuntimeEvent` (for spawning background tasks
     ///   that need to signal re-renders). Plugins that don't need this can ignore it.
     fn boot(
         &self,
         _bus: &EventBus,
         _state: Arc<PluginStateRegistry>,
-        _event_tx: Option<mpsc::Sender<InnerEvent>>,
+        _event_tx: Option<mpsc::Sender<RuntimeEvent>>,
     ) {
         // Default: no boot-time initialization
     }

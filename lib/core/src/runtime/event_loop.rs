@@ -8,8 +8,9 @@ use crate::{
     animation::{AnimatedStyle, Effect, EffectId, EffectTarget},
     buffer::{Buffer, SelectionOps, TextOps},
     event::{
-        BufferEvent, CommandHandler, HighlightEvent, InnerEvent, InputEventBroker,
-        TerminateHandler, TextInputEvent, WindowEvent,
+        BufferEvent, CommandHandler, EditingEvent, FileEvent, HighlightEvent, InputEvent,
+        InputEventBroker, ModeEvent, RenderEvent, RuntimeEvent, RuntimeEventPayload,
+        SettingsEvent, SyntaxEvent, TerminateHandler, TextInputEvent, WindowEvent,
     },
     modd::{EditMode, ModeState, SubMode},
 };
@@ -73,7 +74,7 @@ impl Runtime {
                     // If any handler requested a render, send RenderSignal to main loop
                     if ctx.render_requested() {
                         tracing::info!("==> Render requested by event: {}", event_type);
-                        let _ = inner_tx.try_send(InnerEvent::RenderSignal);
+                        let _ = inner_tx.try_send(RuntimeEvent::render_signal());
                     }
                 }
             });
@@ -189,7 +190,7 @@ impl Runtime {
                     // If any handler requested a render, send RenderSignal to main loop
                     if ctx.render_requested() {
                         tracing::info!("==> Render requested by event: {}", event_type);
-                        let _ = inner_tx.try_send(InnerEvent::RenderSignal);
+                        let _ = inner_tx.try_send(RuntimeEvent::render_signal());
                     }
                 }
             });
@@ -273,10 +274,10 @@ impl Runtime {
                 ev = self.rx.recv() => {
                     if let Some(ev) = ev {
                         let loop_start = std::time::Instant::now();
-                        let ev_name = format!("{:?}", std::mem::discriminant(&ev));
+                        let ev_name = format!("{:?}", std::mem::discriminant(ev.payload()));
 
                         // Track user input for idle detection
-                        self.track_input_for_idle(&ev);
+                        self.track_input_for_idle(ev.payload());
 
                         if self.handle_event(ev) {
                             break;
@@ -287,7 +288,7 @@ impl Runtime {
                         let mut drained = 0;
                         while let Ok(ev) = self.rx.try_recv() {
                             drained += 1;
-                            self.track_input_for_idle(&ev);
+                            self.track_input_for_idle(ev.payload());
                             if self.handle_event(ev) {
                                 // Flush before breaking on quit
                                 self.flush_render();
@@ -306,7 +307,7 @@ impl Runtime {
                         );
                     } else {
                         self.tx
-                            .send(InnerEvent::KillSignal)
+                            .send(RuntimeEvent::kill())
                             .await
                             .expect("cannot broadcast kill signal");
                         break;
@@ -343,13 +344,13 @@ impl Runtime {
     }
 
     /// Track user input events for idle detection
-    fn track_input_for_idle(&mut self, ev: &InnerEvent) {
+    fn track_input_for_idle(&mut self, ev: &RuntimeEventPayload) {
         // Only track actual user input events
         let is_user_input = matches!(
             ev,
-            InnerEvent::CommandEvent(_)
-                | InnerEvent::PendingKeysEvent(_)
-                | InnerEvent::TextInputEvent(_)
+            RuntimeEventPayload::Command(_)
+                | RuntimeEventPayload::Mode(ModeEvent::PendingKeys(_))
+                | RuntimeEventPayload::Editing(EditingEvent::TextInput(_))
         );
 
         if is_user_input {
@@ -403,9 +404,13 @@ impl Runtime {
     #[allow(clippy::collapsible_if)]
     #[allow(clippy::match_same_arms)]
     #[allow(clippy::too_many_lines)]
-    pub(crate) fn handle_event(&mut self, ev: InnerEvent) -> bool {
-        match ev {
-            InnerEvent::BufferEvent(buffer_event) => match buffer_event {
+    pub(crate) fn handle_event(&mut self, mut ev: RuntimeEvent) -> bool {
+        // Extract scope for lifecycle tracking (will be used in Phase 4)
+        let _scope = ev.take_scope();
+
+        // Handle the payload
+        match ev.into_payload() {
+            RuntimeEventPayload::Buffer(buffer_event) => match buffer_event {
                 BufferEvent::SetContent { buffer_id, content } => {
                     if let Some(b) = self.buffers.get_mut(&buffer_id) {
                         b.set_content(&content);
@@ -435,25 +440,27 @@ impl Runtime {
                     self.request_render();
                 }
             },
-            InnerEvent::CommandEvent(cmd_event) => {
+            RuntimeEventPayload::Command(cmd_event) => {
                 if self.handle_command(cmd_event) {
                     return true;
                 }
             }
-            InnerEvent::ModeChangeEvent(new_mode) => {
-                self.handle_mode_change(new_mode);
-            }
-            InnerEvent::PendingKeysEvent(keys) => {
-                // If pending_keys is being cleared and had content, save as last_command
-                if keys.is_empty() && !self.pending_keys.is_empty() {
-                    self.last_command.clone_from(&self.pending_keys);
+            RuntimeEventPayload::Mode(mode_event) => match mode_event {
+                ModeEvent::Change(new_mode) => {
+                    self.handle_mode_change(new_mode);
                 }
-                // Update plugin state so which-key and other plugins can access pending keys
-                self.plugin_state.set_pending_keys(keys.clone());
-                self.pending_keys = keys;
-                self.request_render();
-            }
-            InnerEvent::WindowEvent(window_event) => match window_event {
+                ModeEvent::PendingKeys(keys) => {
+                    // If pending_keys is being cleared and had content, save as last_command
+                    if keys.is_empty() && !self.pending_keys.is_empty() {
+                        self.last_command.clone_from(&self.pending_keys);
+                    }
+                    // Update plugin state so which-key and other plugins can access pending keys
+                    self.plugin_state.set_pending_keys(keys.clone());
+                    self.pending_keys = keys;
+                    self.request_render();
+                }
+            },
+            RuntimeEventPayload::Window(window_event) => match window_event {
                 WindowEvent::FocusPlugin { id } => {
                     self.screen.focus_plugin(id);
                     self.request_render();
@@ -479,26 +486,28 @@ impl Runtime {
                     // Window management events - to be implemented
                 }
             },
-            InnerEvent::HighlightEvent(hl_event) => match hl_event {
-                HighlightEvent::Add {
-                    buffer_id,
-                    highlights,
-                } => {
-                    self.highlight_store.add(buffer_id, highlights);
+            RuntimeEventPayload::Render(render_event) => match render_event {
+                RenderEvent::Signal => {
                     self.request_render();
                 }
-                HighlightEvent::ClearGroup { buffer_id, group } => {
-                    self.highlight_store.clear_group(buffer_id, group);
-                    self.request_render();
-                }
-                HighlightEvent::ClearAll { buffer_id } => {
-                    self.highlight_store.clear_all(buffer_id);
-                    self.request_render();
-                }
-            },
-            InnerEvent::SyntaxEvent(syntax_event) => {
-                use crate::event::SyntaxEvent;
-                match syntax_event {
+                RenderEvent::Highlight(hl_event) => match hl_event {
+                    HighlightEvent::Add {
+                        buffer_id,
+                        highlights,
+                    } => {
+                        self.highlight_store.add(buffer_id, highlights);
+                        self.request_render();
+                    }
+                    HighlightEvent::ClearGroup { buffer_id, group } => {
+                        self.highlight_store.clear_group(buffer_id, group);
+                        self.request_render();
+                    }
+                    HighlightEvent::ClearAll { buffer_id } => {
+                        self.highlight_store.clear_all(buffer_id);
+                        self.request_render();
+                    }
+                },
+                RenderEvent::Syntax(syntax_event) => match syntax_event {
                     SyntaxEvent::Attach { buffer_id, syntax } => {
                         if let Some(buffer) = self.buffers.get_mut(&buffer_id) {
                             buffer.attach_syntax(syntax);
@@ -536,173 +545,174 @@ impl Runtime {
                             self.request_render();
                         }
                     }
+                },
+            },
+            RuntimeEventPayload::Editing(editing_event) => match editing_event {
+                EditingEvent::TextInput(focus_event) => {
+                    self.handle_interactor_input(focus_event);
                 }
+                EditingEvent::OperatorMotion(action) => {
+                    self.handle_operator_motion(&action);
+                }
+                EditingEvent::VisualTextObject(action) => {
+                    self.handle_visual_text_object(&action);
+                }
+                EditingEvent::MoveCursor {
+                    buffer_id,
+                    line,
+                    column,
+                } => {
+                    tracing::debug!(
+                        "Runtime: Moving cursor to line={}, col={} in buffer={}",
+                        line,
+                        column,
+                        buffer_id
+                    );
+                    if let Some(buffer) = self.buffers.get_mut(&buffer_id) {
+                        use crate::{buffer::CursorOps, motion::Motion};
+                        buffer.apply_motion(
+                            Motion::JumpTo { line, column },
+                            1, // count
+                        );
+                    } else {
+                        tracing::warn!("Runtime: Buffer {} not found for cursor move", buffer_id);
+                    }
+                }
+                EditingEvent::SetRegister { register, text } => {
+                    tracing::debug!(
+                        "Runtime: Setting register {:?} with text length {}",
+                        register,
+                        text.len()
+                    );
+                    self.registers.set_by_name(register, text);
+                }
+            },
+            RuntimeEventPayload::Settings(settings_event) => match settings_event {
+                SettingsEvent::LineNumbers { enabled } => {
+                    tracing::info!("Runtime: Setting line numbers: {}", enabled);
+                    self.screen.set_number(enabled);
+                }
+                SettingsEvent::RelativeLineNumbers { enabled } => {
+                    tracing::info!("Runtime: Setting relative line numbers: {}", enabled);
+                    self.screen.set_relative_number(enabled);
+                }
+                SettingsEvent::Theme { name } => {
+                    tracing::info!("Runtime: Setting theme: {}", name);
+                    if let Some(theme_name) = crate::highlight::ThemeName::parse(&name) {
+                        self.theme = crate::highlight::Theme::from_name(theme_name);
+                        self.rehighlight_all_buffers();
+                        // Request a render to apply the new theme immediately
+                        self.request_render();
+                    } else {
+                        tracing::warn!("Runtime: Unknown theme name: {}", name);
+                    }
+                }
+                SettingsEvent::Scrollbar { enabled } => {
+                    tracing::info!("Runtime: Setting scrollbar: {}", enabled);
+                    self.screen.set_scrollbar(enabled);
+                }
+                SettingsEvent::IndentGuide { enabled } => {
+                    tracing::info!("Runtime: Setting indent guide: {}", enabled);
+                    self.indent_analyzer.set_enabled(enabled);
+                }
+                SettingsEvent::SignColumn { mode } => {
+                    tracing::info!("Runtime: Setting sign column mode: {:?}", mode);
+                    self.screen.set_sign_column_mode(mode);
+                }
+                SettingsEvent::ApplyCmdlineCompletion {
+                    text,
+                    replace_start,
+                } => {
+                    tracing::debug!(
+                        "Runtime: Applying cmdline completion: {:?} at {}",
+                        text,
+                        replace_start
+                    );
+                    self.command_line.apply_completion(&text, replace_start);
+                    self.request_render();
+                }
+            },
+            RuntimeEventPayload::Input(input_event) => match input_event {
+                InputEvent::ScreenResize { width, height } => {
+                    tracing::debug!("Screen resize: {}x{}", width, height);
+                    self.screen.resize(width, height);
+                    self.request_render();
+                }
+                InputEvent::Mouse(mouse_event) => {
+                    self.handle_mouse_event(mouse_event);
+                }
+            },
+            RuntimeEventPayload::File(file_event) => match file_event {
+                FileEvent::Open { path } => {
+                    tracing::info!("Runtime: Opening file from request: {:?}", path);
+                    // Convert PathBuf to &str for open_file
+                    if let Some(path_str) = path.to_str() {
+                        self.open_file(path_str);
+                        self.screen.set_editor_buffer(self.active_buffer_id());
+                        self.request_render();
+                    } else {
+                        tracing::error!("Runtime: Invalid UTF-8 in file path: {:?}", path);
+                    }
+                }
+                FileEvent::OpenAt { path, line, column } => {
+                    tracing::info!(
+                        "Runtime: Opening file at position: {:?}:{}:{}",
+                        path,
+                        line,
+                        column
+                    );
+                    if let Some(path_str) = path.to_str() {
+                        self.open_file(path_str);
+                        self.screen.set_editor_buffer(self.active_buffer_id());
+                        // Set cursor position in the opened buffer
+                        if let Some(buffer) = self.buffers.get_mut(&self.active_buffer_id()) {
+                            // Ensure line is within bounds
+                            let max_line = buffer.contents.len().saturating_sub(1);
+                            let target_line = line.min(max_line);
+                            // Ensure column is within bounds for the target line
+                            let line_len = buffer
+                                .contents
+                                .get(target_line)
+                                .map_or(0, |l| l.inner.len());
+                            let target_col = column.min(line_len.saturating_sub(1).max(0));
+                            #[allow(clippy::cast_possible_truncation)]
+                            {
+                                buffer.cur.y = target_line as u16;
+                                buffer.cur.x = target_col as u16;
+                            }
+                            tracing::debug!(
+                                "Runtime: Cursor set to line={}, col={}",
+                                target_line,
+                                target_col
+                            );
+                        }
+                        self.request_render();
+                    } else {
+                        tracing::error!("Runtime: Invalid UTF-8 in file path: {:?}", path);
+                    }
+                }
+            },
+            RuntimeEventPayload::Rpc(rpc_event) => {
+                let response =
+                    self.handle_rpc_request(rpc_event.id, &rpc_event.method, &rpc_event.params);
+                let _ = rpc_event.response_tx.send(response);
             }
-            InnerEvent::RenderSignal => {
-                self.request_render();
-            }
-            InnerEvent::KillSignal => {
-                return true;
-            }
-            InnerEvent::OperatorMotionEvent(ref action) => {
-                self.handle_operator_motion(action);
-            }
-            InnerEvent::VisualTextObjectEvent(ref action) => {
-                self.handle_visual_text_object(action);
-            }
-            InnerEvent::ScreenResizeEvent { width, height } => {
-                tracing::debug!("Screen resize: {}x{}", width, height);
-                self.screen.resize(width, height);
-                self.request_render();
-            }
-            InnerEvent::MouseEvent(mouse_event) => {
-                self.handle_mouse_event(mouse_event);
-            }
-            InnerEvent::RpcRequest {
-                id,
-                method,
-                params,
-                response_tx,
-            } => {
-                let response = self.handle_rpc_request(id, &method, &params);
-                let _ = response_tx.send(response);
-            }
-            InnerEvent::TextInputEvent(focus_event) => {
-                self.handle_interactor_input(focus_event);
-            }
-            // Plugin-defined events - dispatched via event bus
-            InnerEvent::PluginEvent { plugin_id, event } => {
+            RuntimeEventPayload::Plugin(plugin_data) => {
                 tracing::debug!(
                     "Runtime: Dispatching plugin event from {}: {:?}",
-                    plugin_id,
-                    event.type_name()
+                    plugin_data.plugin_id,
+                    plugin_data.event.type_name()
                 );
                 // Dispatch to event bus - subscribers will receive the event
                 let sender = self.event_bus.sender();
                 let mut ctx = crate::event_bus::HandlerContext::new(&sender);
-                let _ = self.event_bus.dispatch(&event, &mut ctx);
+                let _ = self.event_bus.dispatch(&plugin_data.event, &mut ctx);
                 if ctx.render_requested() {
                     self.request_render();
                 }
             }
-            // File open request (from explorer, etc.)
-            InnerEvent::OpenFileRequest { path } => {
-                tracing::info!("Runtime: Opening file from request: {:?}", path);
-                // Convert PathBuf to &str for open_file
-                if let Some(path_str) = path.to_str() {
-                    self.open_file(path_str);
-                    self.screen.set_editor_buffer(self.active_buffer_id());
-                    self.request_render();
-                } else {
-                    tracing::error!("Runtime: Invalid UTF-8 in file path: {:?}", path);
-                }
-            }
-            // File open at position request (from LSP navigation)
-            InnerEvent::OpenFileAtPositionRequest { path, line, column } => {
-                tracing::info!("Runtime: Opening file at position: {:?}:{}:{}", path, line, column);
-                if let Some(path_str) = path.to_str() {
-                    self.open_file(path_str);
-                    self.screen.set_editor_buffer(self.active_buffer_id());
-                    // Set cursor position in the opened buffer
-                    if let Some(buffer) = self.buffers.get_mut(&self.active_buffer_id()) {
-                        // Ensure line is within bounds
-                        let max_line = buffer.contents.len().saturating_sub(1);
-                        let target_line = line.min(max_line);
-                        // Ensure column is within bounds for the target line
-                        let line_len = buffer
-                            .contents
-                            .get(target_line)
-                            .map_or(0, |l| l.inner.len());
-                        let target_col = column.min(line_len.saturating_sub(1).max(0));
-                        #[allow(clippy::cast_possible_truncation)]
-                        {
-                            buffer.cur.y = target_line as u16;
-                            buffer.cur.x = target_col as u16;
-                        }
-                        tracing::debug!(
-                            "Runtime: Cursor set to line={}, col={}",
-                            target_line,
-                            target_col
-                        );
-                    }
-                    self.request_render();
-                } else {
-                    tracing::error!("Runtime: Invalid UTF-8 in file path: {:?}", path);
-                }
-            }
-            // Set register content (from plugins)
-            InnerEvent::SetRegister { register, text } => {
-                tracing::debug!(
-                    "Runtime: Setting register {:?} with text length {}",
-                    register,
-                    text.len()
-                );
-                self.registers.set_by_name(register, text);
-            }
-            // Settings/Option capability events
-            InnerEvent::SetLineNumbers { enabled } => {
-                tracing::info!("Runtime: Setting line numbers: {}", enabled);
-                self.screen.set_number(enabled);
-            }
-            InnerEvent::SetRelativeLineNumbers { enabled } => {
-                tracing::info!("Runtime: Setting relative line numbers: {}", enabled);
-                self.screen.set_relative_number(enabled);
-            }
-            InnerEvent::SetTheme { name } => {
-                tracing::info!("Runtime: Setting theme: {}", name);
-                if let Some(theme_name) = crate::highlight::ThemeName::parse(&name) {
-                    self.theme = crate::highlight::Theme::from_name(theme_name);
-                    self.rehighlight_all_buffers();
-                    // Request a render to apply the new theme immediately
-                    self.request_render();
-                } else {
-                    tracing::warn!("Runtime: Unknown theme name: {}", name);
-                }
-            }
-            InnerEvent::SetScrollbar { enabled } => {
-                tracing::info!("Runtime: Setting scrollbar: {}", enabled);
-                self.screen.set_scrollbar(enabled);
-            }
-            InnerEvent::SetIndentGuide { enabled } => {
-                tracing::info!("Runtime: Setting indent guide: {}", enabled);
-                self.indent_analyzer.set_enabled(enabled);
-            }
-            InnerEvent::SetSignColumn { mode } => {
-                tracing::info!("Runtime: Setting sign column mode: {:?}", mode);
-                self.screen.set_sign_column_mode(mode);
-            }
-            InnerEvent::MoveCursor {
-                buffer_id,
-                line,
-                column,
-            } => {
-                tracing::debug!(
-                    "Runtime: Moving cursor to line={}, col={} in buffer={}",
-                    line,
-                    column,
-                    buffer_id
-                );
-                if let Some(buffer) = self.buffers.get_mut(&buffer_id) {
-                    use crate::{buffer::CursorOps, motion::Motion};
-                    buffer.apply_motion(
-                        Motion::JumpTo { line, column },
-                        1, // count
-                    );
-                } else {
-                    tracing::warn!("Runtime: Buffer {} not found for cursor move", buffer_id);
-                }
-            }
-            InnerEvent::ApplyCmdlineCompletion {
-                text,
-                replace_start,
-            } => {
-                tracing::debug!(
-                    "Runtime: Applying cmdline completion: {:?} at {}",
-                    text,
-                    replace_start
-                );
-                self.command_line.apply_completion(&text, replace_start);
-                self.request_render();
+            RuntimeEventPayload::Kill => {
+                return true;
             }
         }
         false

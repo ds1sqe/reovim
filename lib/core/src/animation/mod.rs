@@ -61,7 +61,7 @@ use std::sync::Arc;
 
 use tokio::sync::{RwLock, mpsc};
 
-use crate::event::InnerEvent;
+use crate::event::RuntimeEvent;
 
 pub use {
     color::AnimatedColor,
@@ -95,7 +95,7 @@ impl AnimationSystem {
     /// * `event_tx` - Channel to send `RenderSignal` events to the runtime
     /// * `frame_rate` - Animation frame rate in fps (typically 30)
     #[must_use]
-    pub fn spawn(event_tx: mpsc::Sender<InnerEvent>, frame_rate: u8) -> Self {
+    pub fn spawn(event_tx: mpsc::Sender<RuntimeEvent>, frame_rate: u8) -> Self {
         let state = Arc::new(RwLock::new(AnimationState::default()));
         let handle = spawn_animation_controller(event_tx, frame_rate, Arc::clone(&state));
 

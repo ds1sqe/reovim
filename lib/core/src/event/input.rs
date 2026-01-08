@@ -11,7 +11,7 @@ use {
 };
 
 use crate::{
-    event::{InnerEvent, key},
+    event::{RuntimeEvent, key},
     io::input::{EventStreamKeySource, KeySource},
 };
 
@@ -47,7 +47,7 @@ impl Default for InputEventBroker<EventStreamKeySource> {
 impl InputEventBroker<EventStreamKeySource> {
     /// Create an `InputEventBroker` with an event sender for resize events.
     #[must_use]
-    pub fn with_event_sender(event_sender: mpsc::Sender<InnerEvent>) -> Self {
+    pub fn with_event_sender(event_sender: mpsc::Sender<RuntimeEvent>) -> Self {
         Self {
             delay: Duration::from_millis(DEFAULT_DELAY),
             grace_period: Duration::ZERO,

@@ -10,7 +10,7 @@ use {
     crate::{
         bind::{CommandRef, KeyMap, KeyMapInner},
         command::{CommandRegistry, traits::OperatorMotionAction},
-        event::{InnerEvent, KeyEvent, Subscribe, VisualTextObjectAction},
+        event::{KeyEvent, RuntimeEvent, Subscribe, VisualTextObjectAction},
         interactor::InteractorRegistry,
         keystroke::{KeyNotationFormat, KeySequence, Keystroke},
         modd::{ModeState, OperatorType, SubMode},
@@ -50,7 +50,7 @@ impl Subscribe<KeyEvent> for CommandHandler {
 impl CommandHandler {
     #[must_use]
     pub fn new(
-        tx: Sender<InnerEvent>,
+        tx: Sender<RuntimeEvent>,
         mode_rx: watch::Receiver<ModeState>,
         keymap: KeyMap,
         command_registry: Arc<CommandRegistry>,

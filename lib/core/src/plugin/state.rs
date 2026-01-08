@@ -38,7 +38,7 @@ use crate::{
     command::CommandRegistry,
     completion::SharedCompletionFactory,
     decoration::SharedDecorationFactory,
-    event::InnerEvent,
+    event::RuntimeEvent,
     render::{RenderStage, RenderStageRegistry},
     syntax::SharedSyntaxFactory,
     textobject::SharedSemanticTextObjectSource,
@@ -79,8 +79,8 @@ pub struct PluginStateRegistry {
     animation_handle: RwLock<Option<AnimationHandle>>,
     /// Shared animation state for querying active effects during render
     animation_state: RwLock<Option<Arc<TokioRwLock<AnimationState>>>>,
-    /// Inner event sender for plugins that need to send InnerEvent (e.g., completion saturator)
-    inner_event_tx: RwLock<Option<mpsc::Sender<InnerEvent>>>,
+    /// Inner event sender for plugins that need to send RuntimeEvent (e.g., completion saturator)
+    inner_event_tx: RwLock<Option<mpsc::Sender<RuntimeEvent>>>,
     /// Keymap reference for plugins that need to access keybindings
     keymap: RwLock<Option<Arc<KeyMap>>>,
     /// Command registry reference for plugins that need command metadata
@@ -244,17 +244,17 @@ impl PluginStateRegistry {
     /// Set the inner event sender (called by Runtime during startup)
     ///
     /// This allows plugins like completion to spawn background tasks that
-    /// can send InnerEvent (e.g., RenderSignal) back to the runtime.
-    pub fn set_inner_event_tx(&self, tx: mpsc::Sender<InnerEvent>) {
+    /// can send RuntimeEvent (e.g., RenderSignal) back to the runtime.
+    pub fn set_inner_event_tx(&self, tx: mpsc::Sender<RuntimeEvent>) {
         *self.inner_event_tx.write().unwrap() = Some(tx);
     }
 
     /// Get the inner event sender
     ///
-    /// Returns the inner event sender for plugins that need to send InnerEvent
+    /// Returns the inner event sender for plugins that need to send RuntimeEvent
     /// from background tasks (e.g., completion saturator sending RenderSignal).
     #[must_use]
-    pub fn inner_event_tx(&self) -> Option<mpsc::Sender<InnerEvent>> {
+    pub fn inner_event_tx(&self) -> Option<mpsc::Sender<RuntimeEvent>> {
         self.inner_event_tx.read().unwrap().clone()
     }
 

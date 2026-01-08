@@ -17,7 +17,7 @@ use tokio::sync::{mpsc, oneshot};
 
 use {
     crate::{
-        event::InnerEvent,
+        event::RuntimeEvent,
         frame::FrameBufferHandle,
         highlight::ColorMode,
         keystroke::Keystroke,
@@ -75,7 +75,7 @@ impl ServerConfig {
 /// Server coordinator that bridges stdio JSON-RPC with the runtime
 pub struct RpcServer {
     /// Channel to send events to runtime
-    event_tx: mpsc::Sender<InnerEvent>,
+    event_tx: mpsc::Sender<RuntimeEvent>,
     /// Channel to inject keys
     key_tx: mpsc::Sender<KeyEvent>,
     /// Handle to read captured frame buffer (for all screen content formats)
@@ -89,7 +89,7 @@ impl RpcServer {
     /// Create a new RPC server
     #[must_use]
     pub const fn new(
-        event_tx: mpsc::Sender<InnerEvent>,
+        event_tx: mpsc::Sender<RuntimeEvent>,
         key_tx: mpsc::Sender<KeyEvent>,
         frame_handle: Option<FrameBufferHandle>,
         notification_tx: mpsc::Sender<RpcNotification>,
@@ -229,19 +229,14 @@ impl RpcServer {
             methods::SERVER_KILL => {
                 // Kill the server - send KillSignal to runtime
                 tracing::info!("Kill command received, shutting down server");
-                let _ = self.event_tx.send(InnerEvent::KillSignal).await;
+                let _ = self.event_tx.send(RuntimeEvent::kill()).await;
                 Some(RpcResponse::success(id, serde_json::json!({ "status": "shutting_down" })))
             }
             _ => {
                 // Forward to runtime via event channel
                 let (response_tx, response_rx) = oneshot::channel();
 
-                let event = InnerEvent::RpcRequest {
-                    id,
-                    method: request.method,
-                    params: request.params,
-                    response_tx,
-                };
+                let event = RuntimeEvent::rpc(id, request.method, request.params, response_tx);
 
                 if self.event_tx.send(event).await.is_err() {
                     return Some(RpcResponse::error(

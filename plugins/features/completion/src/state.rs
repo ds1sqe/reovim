@@ -31,7 +31,7 @@ pub struct SharedCompletionManager {
     /// Each keystroke increments this; the timer checks if it's still current
     pub debounce_generation: AtomicU64,
     /// Inner event sender for sending CommandEvent after debounce
-    pub inner_event_tx: RwLock<Option<tokio::sync::mpsc::Sender<reovim_core::event::InnerEvent>>>,
+    pub inner_event_tx: RwLock<Option<tokio::sync::mpsc::Sender<reovim_core::event::RuntimeEvent>>>,
 }
 
 impl SharedCompletionManager {
@@ -54,7 +54,7 @@ impl SharedCompletionManager {
     /// Set the inner event sender (called during boot)
     pub fn set_inner_event_tx(
         &self,
-        tx: tokio::sync::mpsc::Sender<reovim_core::event::InnerEvent>,
+        tx: tokio::sync::mpsc::Sender<reovim_core::event::RuntimeEvent>,
     ) {
         *self.inner_event_tx.write().unwrap() = Some(tx);
     }
@@ -75,7 +75,7 @@ impl SharedCompletionManager {
     /// Request a render signal (used after debounce timeout)
     pub fn request_render(&self) {
         if let Some(tx) = self.inner_event_tx.read().unwrap().as_ref() {
-            let _ = tx.try_send(reovim_core::event::InnerEvent::RenderSignal);
+            let _ = tx.try_send(reovim_core::event::RuntimeEvent::render_signal());
         }
     }
 
@@ -85,7 +85,7 @@ impl SharedCompletionManager {
     /// The command will execute with proper buffer context.
     pub fn send_command_event(&self, event: reovim_core::event::CommandEvent) {
         if let Some(tx) = self.inner_event_tx.read().unwrap().as_ref() {
-            let _ = tx.try_send(reovim_core::event::InnerEvent::CommandEvent(event));
+            let _ = tx.try_send(reovim_core::event::RuntimeEvent::command(event));
         }
     }
 
