@@ -14,6 +14,13 @@ All notable changes to Reovim will be documented in this file.
 
 ### Performance
 
+- **Lock-free EventBus dispatch** (Issue #96) - Replace RwLock with ArcSwap for lock-free reads
+  - `dispatch()`, `has_handlers()`, `handler_count()` now use lock-free `load()`
+  - `subscribe()` uses atomic Copy-on-Write via `rcu()`
+  - Changed `EventHandlerFn` from `Box` to `Arc` to enable Clone for CoW
+  - Removed dead code `drain_and_dispatch()` method
+  - Follows established ArcSwap patterns from `highlight_cache.rs`
+
 - **Lazy tree-sitter query compilation** (Issue #93) - Defer query compilation from startup to first use
   - Queries now compiled on-demand when first accessed, not during language registration
   - `register_all_languages` benchmark improved from ~72ms to ~11µs (99.98% faster)

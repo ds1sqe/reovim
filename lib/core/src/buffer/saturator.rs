@@ -215,7 +215,6 @@ fn update_highlights(
     end: usize,
     cache: &Arc<HighlightCache>,
 ) -> bool {
-
     // Check if any lines need computation (cache miss)
     let has_cache_miss = (start..end).any(|line_idx| {
         let hash = request.line_hashes.get(line_idx).copied().unwrap_or(0);
@@ -238,11 +237,7 @@ fn update_highlights(
     // Compute highlights (SLOW - ~46ms for complex grammars)
     // Now includes injection highlights from embedded languages
     #[allow(clippy::cast_possible_truncation)]
-    let all_highlights = syntax.highlight_range(
-        &request.content,
-        start as u32,
-        end as u32,
-    );
+    let all_highlights = syntax.highlight_range(&request.content, start as u32, end as u32);
 
     // Group by line
     let mut line_highlights: Vec<Vec<LineHighlight>> = vec![Vec::new(); request.line_count];
@@ -327,7 +322,6 @@ fn update_decorations(
     end: usize,
     cache: &Arc<DecorationCache>,
 ) -> bool {
-
     // Check if any lines need computation (cache miss)
     let has_cache_miss = (start..end).any(|line_idx| {
         let hash = request.line_hashes.get(line_idx).copied().unwrap_or(0);
@@ -344,11 +338,7 @@ fn update_decorations(
 
     // Compute decorations (SLOW - ~46ms)
     #[allow(clippy::cast_possible_truncation)]
-    let all_decorations = decorator.decoration_range(
-        &request.content,
-        start as u32,
-        end as u32,
-    );
+    let all_decorations = decorator.decoration_range(&request.content, start as u32, end as u32);
 
     // Group by line
     let mut line_decorations: Vec<Vec<Decoration>> = vec![Vec::new(); request.line_count];

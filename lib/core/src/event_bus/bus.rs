@@ -12,6 +12,8 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use arc_swap::ArcSwap;
+
 use tokio::sync::mpsc;
 
 use {
@@ -20,9 +22,12 @@ use {
 };
 
 /// Handler function type - receives event and context, returns result
-type EventHandlerFn = Box<dyn Fn(&DynEvent, &mut HandlerContext) -> EventResult + Send + Sync>;
+///
+/// Uses `Arc` instead of `Box` to enable Clone for Copy-on-Write updates.
+type EventHandlerFn = Arc<dyn Fn(&DynEvent, &mut HandlerContext) -> EventResult + Send + Sync>;
 
 /// A registered event handler with its priority
+#[derive(Clone)]
 struct RegisteredHandler {
     priority: u32,
     handler: EventHandlerFn,
@@ -172,12 +177,17 @@ impl EventSender {
 ///
 /// Handlers are registered by event type and called in priority order
 /// when matching events are dispatched.
+///
+/// Uses `ArcSwap` for lock-free reads during dispatch (hot path).
+/// Writes (subscribe) use Copy-on-Write pattern via `rcu()`.
 pub struct EventBus {
     /// Handlers indexed by event TypeId, sorted by priority
-    handlers: RwLock<HashMap<TypeId, Vec<RegisteredHandler>>>,
+    ///
+    /// Uses ArcSwap for lock-free dispatch reads.
+    handlers: ArcSwap<HashMap<TypeId, Vec<RegisteredHandler>>>,
     /// Channel for sending events
     tx: mpsc::Sender<DynEvent>,
-    /// Channel for receiving events
+    /// Channel for receiving events (kept as RwLock - only accessed during init)
     rx: RwLock<Option<mpsc::Receiver<DynEvent>>>,
 }
 
@@ -187,7 +197,7 @@ impl EventBus {
     pub fn new(capacity: usize) -> Self {
         let (tx, rx) = mpsc::channel(capacity);
         Self {
-            handlers: RwLock::new(HashMap::new()),
+            handlers: ArcSwap::from_pointee(HashMap::new()),
             tx,
             rx: RwLock::new(Some(rx)),
         }
@@ -230,7 +240,7 @@ impl EventBus {
         let type_id = TypeId::of::<E>();
 
         // Wrap the typed handler in a type-erased handler
-        let wrapped: EventHandlerFn = Box::new(move |event, ctx| {
+        let wrapped: EventHandlerFn = Arc::new(move |event, ctx| {
             if let Some(e) = event.downcast_ref::<E>() {
                 handler(e, ctx)
             } else {
@@ -238,14 +248,18 @@ impl EventBus {
             }
         });
 
-        let mut handlers = self.handlers.write().unwrap();
-        let entry = handlers.entry(type_id).or_default();
-        entry.push(RegisteredHandler {
-            priority,
-            handler: wrapped,
+        // Atomic Copy-on-Write update via rcu()
+        self.handlers.rcu(|current| {
+            let mut new_map = (**current).clone();
+            let entry = new_map.entry(type_id).or_default();
+            entry.push(RegisteredHandler {
+                priority,
+                handler: wrapped.clone(),
+            });
+            // Sort by priority (lower = earlier)
+            entry.sort_by_key(|h| h.priority);
+            new_map
         });
-        // Sort by priority (lower = earlier)
-        entry.sort_by_key(|h| h.priority);
     }
 
     /// Register a handler for a targeted event, filtering by component ID
@@ -316,8 +330,10 @@ impl EventBus {
     /// returns `EventResult::Consumed` or `EventResult::Quit`.
     ///
     /// Returns the final result after all handlers have processed.
+    ///
+    /// Uses lock-free `load()` for reading handlers - the hot path.
     pub fn dispatch(&self, event: &DynEvent, ctx: &mut HandlerContext) -> EventResult {
-        let handlers = self.handlers.read().unwrap();
+        let handlers = self.handlers.load(); // Lock-free!
 
         if let Some(type_handlers) = handlers.get(&event.type_id()) {
             let mut final_result = EventResult::NotHandled;
@@ -349,7 +365,7 @@ impl EventBus {
     /// Check if any handlers are registered for an event type
     #[must_use]
     pub fn has_handlers<E: Event>(&self) -> bool {
-        let handlers = self.handlers.read().unwrap();
+        let handlers = self.handlers.load();
         handlers
             .get(&TypeId::of::<E>())
             .is_some_and(|h| !h.is_empty())
@@ -358,52 +374,13 @@ impl EventBus {
     /// Get the number of handlers registered for an event type
     #[must_use]
     pub fn handler_count<E: Event>(&self) -> usize {
-        let handlers = self.handlers.read().unwrap();
-        handlers
-            .get(&TypeId::of::<E>())
-            .map_or(0, std::vec::Vec::len)
+        let handlers = self.handlers.load();
+        handlers.get(&TypeId::of::<E>()).map_or(0, Vec::len)
     }
 
     /// Clear all handlers (mainly for testing)
     pub fn clear(&self) {
-        self.handlers.write().unwrap().clear();
-    }
-
-    /// Drain all queued events and dispatch them synchronously
-    ///
-    /// This is used to process events that were emitted during `handle_event`
-    /// so that scope tracking works correctly. After each event is dispatched,
-    /// its scope (if present) is decremented.
-    ///
-    /// Returns true if render was requested by any handler.
-    pub fn drain_and_dispatch(&self, base_ctx: &HandlerContext) -> bool {
-        let mut render_requested = false;
-
-        // Try to drain events from the channel without blocking
-        let mut rx_guard = self.rx.write().unwrap();
-        if let Some(ref mut rx) = *rx_guard {
-            while let Ok(event) = rx.try_recv() {
-                // Take the scope from the event for lifecycle tracking
-                let scope = event.scope();
-
-                // Create context with scope for handler propagation
-                let mut ctx = HandlerContext::new(base_ctx.event_tx).with_scope(scope.cloned());
-
-                // Dispatch the event
-                self.dispatch(&event, &mut ctx);
-
-                if ctx.render_requested() {
-                    render_requested = true;
-                }
-
-                // Decrement scope after dispatch completes
-                if let Some(s) = scope {
-                    s.decrement();
-                }
-            }
-        }
-
-        render_requested
+        self.handlers.store(Arc::new(HashMap::new()));
     }
 }
 
