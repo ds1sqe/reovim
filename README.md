@@ -247,7 +247,7 @@ Most movement commands support a numeric prefix (e.g., `5j` moves down 5 lines).
        ▼                ▼                             ¦
 ┌──────────────┐ ┌──────────────┐                     ¦
 │CommandHandler│ │PluginHandlers│                     ¦
-│(keys→command)│ │  (EventBus)  │ ◀────────────────┐  ¦
+│(keys→command)│ │  (EventBus)  │ ◀───────────────┐  ¦
 └──────┬───────┘ └──────┬───────┘                  │  ¦
        │                │                          │  ¦
        └───────┬────────┘                          │  ¦
