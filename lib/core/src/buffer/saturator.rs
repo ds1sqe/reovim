@@ -7,6 +7,15 @@
 //! - Computes highlights/decorations without blocking render
 //! - Stores results via lock-free `ArcSwap`
 //! - Sends `RenderSignal` when cache is updated
+//!
+//! ## Two-Path Architecture
+//!
+//! The saturator supports two computation paths:
+//! - **Path 1 (`Viewport`)**: Immediate computation for visible lines (high priority)
+//! - **Path 2 (`FullFile`)**: Background computation for entire file (low priority)
+//!
+//! This ensures instant viewport display while pre-computing the full file
+//! for smooth scrolling.
 
 use std::sync::Arc;
 
@@ -18,6 +27,16 @@ use crate::{
     render::{Decoration, DecorationCache, DecorationKind, HighlightCache, LineHighlight},
     syntax::SyntaxProvider,
 };
+
+/// Request kind for saturator (two-path architecture)
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SaturatorRequestKind {
+    /// Compute for viewport only (immediate, high priority)
+    #[default]
+    Viewport,
+    /// Compute for entire file (background, low priority)
+    FullFile,
+}
 
 /// Request sent to saturator
 #[derive(Debug)]
@@ -32,22 +51,37 @@ pub struct SaturatorRequest {
     pub viewport_start: u16,
     /// Viewport end line
     pub viewport_end: u16,
+    /// Request kind (viewport or full-file)
+    pub kind: SaturatorRequestKind,
 }
 
 /// Handle to communicate with a saturator task
 #[derive(Debug)]
 pub struct SaturatorHandle {
-    /// Send requests to the saturator
-    pub tx: mpsc::Sender<SaturatorRequest>,
+    /// Send viewport requests (high priority)
+    viewport_tx: mpsc::Sender<SaturatorRequest>,
+    /// Send full-file requests (low priority)
+    fullfile_tx: mpsc::Sender<SaturatorRequest>,
 }
 
 impl SaturatorHandle {
-    /// Request a cache update for the given viewport
+    /// Request a cache update for the given viewport (PATH 1: immediate)
     ///
     /// Non-blocking: uses `try_send` which skips if saturator is busy.
+    /// Automatically queues full-file computation after viewport completes.
     pub fn request_update(&self, request: SaturatorRequest) {
         // Use try_send to avoid blocking - if saturator is busy, skip
-        let _ = self.tx.try_send(request);
+        let _ = self.viewport_tx.try_send(request);
+    }
+
+    /// Request full-file cache update (PATH 2: background)
+    ///
+    /// Use this for explicit full-file pre-computation.
+    pub fn request_full_update(&self, request: SaturatorRequest) {
+        let _ = self.fullfile_tx.try_send(SaturatorRequest {
+            kind: SaturatorRequestKind::FullFile,
+            ..request
+        });
     }
 }
 
@@ -56,6 +90,9 @@ impl SaturatorHandle {
 /// Returns a handle to send requests to the saturator.
 ///
 /// The saturator owns the providers and updates the caches.
+/// Uses two-path architecture:
+/// - Path 1 (Viewport): High priority, immediate computation
+/// - Path 2 (FullFile): Low priority, background computation
 pub fn spawn_saturator(
     syntax: Option<Box<dyn SyntaxProvider>>,
     decoration: Option<Box<dyn DecorationProvider>>,
@@ -63,49 +100,121 @@ pub fn spawn_saturator(
     decoration_cache: Arc<DecorationCache>,
     event_tx: mpsc::Sender<RuntimeEvent>,
 ) -> SaturatorHandle {
-    // Channel with buffer of 1 - only latest request matters
-    let (tx, mut rx) = mpsc::channel::<SaturatorRequest>(1);
+    // High priority channel: viewport requests (buffer of 1)
+    let (viewport_tx, mut viewport_rx) = mpsc::channel::<SaturatorRequest>(1);
+    // Low priority channel: full-file requests (buffer of 1)
+    let (fullfile_tx, mut fullfile_rx) = mpsc::channel::<SaturatorRequest>(1);
+
+    // Clone fullfile_tx for auto-queueing after viewport
+    let fullfile_tx_clone = fullfile_tx.clone();
 
     tokio::spawn(async move {
         let mut syntax = syntax;
         let mut decoration = decoration;
 
-        while let Some(request) = rx.recv().await {
-            let mut cache_updated = false;
+        loop {
+            tokio::select! {
+                biased; // Check viewport first (high priority)
 
-            // Update highlights if syntax provider exists
-            if let Some(ref mut syn) = syntax {
-                let updated = update_highlights(syn.as_mut(), &request, &highlight_cache);
-                cache_updated |= updated;
-            }
+                // PATH 1: Viewport requests (high priority)
+                Some(request) = viewport_rx.recv() => {
+                    let cache_updated = process_request(
+                        &mut syntax,
+                        &mut decoration,
+                        &request,
+                        &highlight_cache,
+                        &decoration_cache,
+                    );
 
-            // Update decorations if decoration provider exists
-            if let Some(ref mut decorator) = decoration {
-                let updated = update_decorations(decorator.as_mut(), &request, &decoration_cache);
-                cache_updated |= updated;
-            }
+                    // Signal re-render if cache was updated
+                    if cache_updated {
+                        let _ = event_tx.send(RuntimeEvent::render_signal()).await;
+                    }
 
-            // Signal re-render if cache was updated
-            if cache_updated {
-                let _ = event_tx.send(RuntimeEvent::render_signal()).await;
+                    // Auto-queue full-file computation (PATH 2)
+                    let full_request = SaturatorRequest {
+                        kind: SaturatorRequestKind::FullFile,
+                        content: request.content,
+                        line_count: request.line_count,
+                        line_hashes: request.line_hashes,
+                        viewport_start: request.viewport_start,
+                        viewport_end: request.viewport_end,
+                    };
+                    let _ = fullfile_tx_clone.try_send(full_request);
+                }
+
+                // PATH 2: Full-file requests (low priority)
+                Some(request) = fullfile_rx.recv() => {
+                    let cache_updated = process_request(
+                        &mut syntax,
+                        &mut decoration,
+                        &request,
+                        &highlight_cache,
+                        &decoration_cache,
+                    );
+
+                    // Signal re-render if cache was updated
+                    if cache_updated {
+                        let _ = event_tx.send(RuntimeEvent::render_signal()).await;
+                    }
+                }
+
+                else => break, // Both channels closed
             }
         }
     });
 
-    SaturatorHandle { tx }
+    SaturatorHandle {
+        viewport_tx,
+        fullfile_tx,
+    }
 }
 
-/// Update highlight cache for viewport range
+/// Process a saturator request (shared between viewport and full-file paths)
+fn process_request(
+    syntax: &mut Option<Box<dyn SyntaxProvider>>,
+    decoration: &mut Option<Box<dyn DecorationProvider>>,
+    request: &SaturatorRequest,
+    highlight_cache: &Arc<HighlightCache>,
+    decoration_cache: &Arc<DecorationCache>,
+) -> bool {
+    let mut cache_updated = false;
+
+    // Determine range based on request kind
+    let (start, end) = match request.kind {
+        SaturatorRequestKind::Viewport => (
+            request.viewport_start as usize,
+            (request.viewport_end as usize).min(request.line_count),
+        ),
+        SaturatorRequestKind::FullFile => (0, request.line_count),
+    };
+
+    // Update highlights if syntax provider exists
+    if let Some(syn) = syntax.as_mut() {
+        let updated = update_highlights(syn.as_mut(), request, start, end, highlight_cache);
+        cache_updated |= updated;
+    }
+
+    // Update decorations if decoration provider exists
+    if let Some(decorator) = decoration.as_mut() {
+        let updated = update_decorations(decorator.as_mut(), request, start, end, decoration_cache);
+        cache_updated |= updated;
+    }
+
+    cache_updated
+}
+
+/// Update highlight cache for a line range
 ///
 /// Returns true if cache was updated.
 #[allow(clippy::too_many_lines)]
 fn update_highlights(
     syntax: &mut dyn SyntaxProvider,
     request: &SaturatorRequest,
+    start: usize,
+    end: usize,
     cache: &Arc<HighlightCache>,
 ) -> bool {
-    let start = request.viewport_start as usize;
-    let end = (request.viewport_end as usize).min(request.line_count);
 
     // Check if any lines need computation (cache miss)
     let has_cache_miss = (start..end).any(|line_idx| {
@@ -128,10 +237,11 @@ fn update_highlights(
 
     // Compute highlights (SLOW - ~46ms for complex grammars)
     // Now includes injection highlights from embedded languages
+    #[allow(clippy::cast_possible_truncation)]
     let all_highlights = syntax.highlight_range(
         &request.content,
-        u32::from(request.viewport_start),
-        u32::from(request.viewport_end),
+        start as u32,
+        end as u32,
     );
 
     // Group by line
@@ -206,17 +316,17 @@ fn update_highlights(
     true
 }
 
-/// Update decoration cache for viewport range
+/// Update decoration cache for a line range
 ///
 /// Returns true if cache was updated.
 #[allow(clippy::too_many_lines)]
 fn update_decorations(
     decorator: &mut dyn DecorationProvider,
     request: &SaturatorRequest,
+    start: usize,
+    end: usize,
     cache: &Arc<DecorationCache>,
 ) -> bool {
-    let start = request.viewport_start as usize;
-    let end = (request.viewport_end as usize).min(request.line_count);
 
     // Check if any lines need computation (cache miss)
     let has_cache_miss = (start..end).any(|line_idx| {
@@ -233,10 +343,11 @@ fn update_decorations(
     decorator.refresh(&request.content);
 
     // Compute decorations (SLOW - ~46ms)
+    #[allow(clippy::cast_possible_truncation)]
     let all_decorations = decorator.decoration_range(
         &request.content,
-        u32::from(request.viewport_start),
-        u32::from(request.viewport_end),
+        start as u32,
+        end as u32,
     );
 
     // Group by line
