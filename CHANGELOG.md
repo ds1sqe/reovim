@@ -148,6 +148,12 @@ All notable changes to Reovim will be documented in this file.
 
 ### Fixed
 
+- **Event bus performance under parallel load** (Issue #85) - Fix 300ms auto-pair delay under parallel test load
+  - Changed event bus processor from `tokio::spawn` to `std::thread::spawn`
+  - Dedicated OS thread avoids tokio scheduler starvation under contention
+  - Uses `blocking_recv()` instead of async `recv().await`
+  - No API changes; event bus channel and dispatch remain unchanged
+
 - **Light theme syntax highlighting** (Issue #43) - Light theme now uses proper One Light colors
   - Added `light_palette` module with Atom One Light colors (red, blue, purple, green, cyan, orange, yellow)
   - Created `TreesitterTheme::light()` with comprehensive capture mappings

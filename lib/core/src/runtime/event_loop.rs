@@ -49,13 +49,13 @@ impl Runtime {
         tokio::spawn(async move { terminate_hdr.run().await });
         tokio::spawn(async move { input_broker.subscribe().await });
 
-        // STEP 2: Spawn EventBus event processor
-        // This starts processing queued events (like RegisterLanguage from subscribe phase)
+        // STEP 2: Spawn EventBus event processor on dedicated OS thread
+        // Uses std::thread to avoid tokio scheduler starvation under parallel load (#85)
         if let Some(mut event_rx) = self.event_bus.take_receiver() {
             let event_bus = Arc::clone(&self.event_bus);
             let inner_tx = self.tx.clone();
-            tokio::spawn(async move {
-                while let Some(event) = event_rx.recv().await {
+            std::thread::spawn(move || {
+                while let Some(event) = event_rx.blocking_recv() {
                     let event_type = event.type_name();
                     let sender = event_bus.sender();
                     let mut ctx = crate::event_bus::HandlerContext::new(&sender);
@@ -155,13 +155,13 @@ impl Runtime {
         tokio::spawn(async move { terminate_hdr.run().await });
         tokio::spawn(async move { input_broker.subscribe().await });
 
-        // STEP 2: Spawn EventBus event processor
-        // This starts processing queued events (like RegisterLanguage from subscribe phase)
+        // STEP 2: Spawn EventBus event processor on dedicated OS thread
+        // Uses std::thread to avoid tokio scheduler starvation under parallel load (#85)
         if let Some(mut event_rx) = self.event_bus.take_receiver() {
             let event_bus = Arc::clone(&self.event_bus);
             let inner_tx = self.tx.clone();
-            tokio::spawn(async move {
-                while let Some(event) = event_rx.recv().await {
+            std::thread::spawn(move || {
+                while let Some(event) = event_rx.blocking_recv() {
                     let event_type = event.type_name();
                     let sender = event_bus.sender();
                     let mut ctx = crate::event_bus::HandlerContext::new(&sender);
