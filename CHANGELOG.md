@@ -6,6 +6,13 @@ All notable changes to Reovim will be documented in this file.
 
 ### Added
 
+- **EventScope for event lifecycle tracking** (Issue #70, #98) - GC-like scope tracking for deterministic event synchronization
+  - `EventScope` struct with atomic in-flight counter and async completion notification
+  - `ScopeId` for unique scope identification
+  - `increment()` / `decrement()` for tracking event lifecycle
+  - `wait()` / `wait_timeout()` for async completion waiting
+  - Tracing support for debugging stuck scopes (`REOVIM_LOG=trace`)
+
 - **Event bus and treesitter initialization benchmarks** (Issue #97) - Add benchmarks to measure latency sources
   - `event_bus/dyn_event_new` - DynEvent creation overhead (~10.6ns)
   - `event_bus/dispatch/handlers/*` - Dispatch latency by handler count (1: ~26ns, 100: ~360ns)
@@ -31,6 +38,7 @@ All notable changes to Reovim will be documented in this file.
   - `DisplayInfoBuilder::dynamic()` builder method
   - `DisplayRegistry::display_string()` now takes `PluginStateRegistry` and invokes dynamic callbacks
   - Enables dynamic status like "Explorer (3 files)" or "Telescope (42 results)"
+
 - **Common UI rendering helpers** (Issue #56) - New `ui` module with shared utilities for plugins
   - `ui::text` module with Unicode-aware text manipulation functions
   - `display_width()` - Get display width of string (handles CJK, emoji)

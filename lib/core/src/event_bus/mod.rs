@@ -36,6 +36,7 @@
 
 mod bus;
 pub mod core_events;
+pub mod scope;
 
 use std::{
     any::{Any, TypeId},
@@ -45,6 +46,7 @@ use std::{
 pub use {
     bus::{EventBus, EventSender, HandlerContext},
     core_events::*,
+    scope::{EventScope, ScopeId},
 };
 
 /// Marker trait for events that can be sent through the event bus
