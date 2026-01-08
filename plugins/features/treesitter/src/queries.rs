@@ -2,7 +2,10 @@
 //!
 //! Queries are provided by language plugins via the LanguageSupport trait.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{Arc, RwLock},
+};
 
 use tree_sitter::Query;
 
@@ -30,10 +33,11 @@ struct QueryKey {
 
 /// Cache for compiled queries
 ///
-/// Queries are compiled on-demand from the source provided by language plugins.
+/// Queries are compiled lazily on first access from the source provided by language plugins.
+/// Uses interior mutability (RwLock) to allow lazy compilation through `&self` references.
 /// Uses Arc<Query> to allow cheap cloning for syntax providers.
 pub struct QueryCache {
-    queries: HashMap<QueryKey, Arc<Query>>,
+    queries: RwLock<HashMap<QueryKey, Arc<Query>>>,
 }
 
 impl Default for QueryCache {
@@ -47,7 +51,7 @@ impl QueryCache {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            queries: HashMap::new(),
+            queries: RwLock::new(HashMap::new()),
         }
     }
 
@@ -60,14 +64,15 @@ impl QueryCache {
             language_id: language_id.to_string(),
             query_type,
         };
-        self.queries.get(&key).cloned()
+        self.queries.read().unwrap().get(&key).cloned()
     }
 
     /// Compile and cache a query from source
     ///
     /// Returns an Arc clone of the compiled query, or None if compilation fails.
+    /// Uses interior mutability via RwLock.
     pub fn compile_and_cache(
-        &mut self,
+        &self,
         language_id: &str,
         query_type: QueryType,
         ts_language: &tree_sitter::Language,
@@ -78,8 +83,8 @@ impl QueryCache {
             query_type,
         };
 
-        // Return cached query if available
-        if let Some(query) = self.queries.get(&key) {
+        // Return cached query if available (fast path with read lock)
+        if let Some(query) = self.queries.read().unwrap().get(&key) {
             return Some(Arc::clone(query));
         }
 
@@ -98,8 +103,41 @@ impl QueryCache {
         };
 
         let arc_query = Arc::new(query);
-        self.queries.insert(key.clone(), Arc::clone(&arc_query));
+        self.queries
+            .write()
+            .unwrap()
+            .insert(key, Arc::clone(&arc_query));
+        tracing::debug!(
+            language_id = %language_id,
+            query_type = ?query_type,
+            "Compiled and cached query"
+        );
         Some(arc_query)
+    }
+
+    /// Get a cached query, or compile and cache it on first access (lazy compilation)
+    ///
+    /// This is the primary method for lazy query access. Checks the cache first
+    /// with a read lock, then compiles with a write lock if not cached.
+    pub fn get_or_compile(
+        &self,
+        language_id: &str,
+        query_type: QueryType,
+        ts_language: &tree_sitter::Language,
+        source: &str,
+    ) -> Option<Arc<Query>> {
+        let key = QueryKey {
+            language_id: language_id.to_string(),
+            query_type,
+        };
+
+        // Fast path: check read lock first
+        if let Some(query) = self.queries.read().unwrap().get(&key) {
+            return Some(Arc::clone(query));
+        }
+
+        // Slow path: compile and cache with write lock
+        self.compile_and_cache(language_id, query_type, ts_language, source)
     }
 
     /// Check if a query is cached
@@ -109,16 +147,19 @@ impl QueryCache {
             language_id: language_id.to_string(),
             query_type,
         };
-        self.queries.contains_key(&key)
+        self.queries.read().unwrap().contains_key(&key)
     }
 
     /// Clear all cached queries
-    pub fn clear(&mut self) {
-        self.queries.clear();
+    pub fn clear(&self) {
+        self.queries.write().unwrap().clear();
     }
 
     /// Clear cached queries for a specific language
-    pub fn clear_language(&mut self, language_id: &str) {
-        self.queries.retain(|k, _| k.language_id != language_id);
+    pub fn clear_language(&self, language_id: &str) {
+        self.queries
+            .write()
+            .unwrap()
+            .retain(|k, _| k.language_id != language_id);
     }
 }

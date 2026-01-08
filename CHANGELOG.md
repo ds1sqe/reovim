@@ -4,6 +4,16 @@ All notable changes to Reovim will be documented in this file.
 
 ## [Unreleased]
 
+### Performance
+
+- **Lazy tree-sitter query compilation** (Issue #93) - Defer query compilation from startup to first use
+  - Queries now compiled on-demand when first accessed, not during language registration
+  - `register_all_languages` benchmark improved from ~72ms to ~11µs (99.98% faster)
+  - Startup blocking time reduced from ~72ms to near zero
+  - First file open per language incurs one-time ~26ms compilation cost
+  - Added `QueryCache::get_or_compile()` with interior mutability (`RwLock`) for thread-safe lazy compilation
+  - Simplified `TreesitterManager::register_language()` from ~60 lines to ~5 lines
+
 ### Added
 
 - **EventScope for event lifecycle tracking** (Issue #70, #98) - GC-like scope tracking for deterministic event synchronization
