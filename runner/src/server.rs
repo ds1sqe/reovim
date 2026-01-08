@@ -77,7 +77,8 @@ pub async fn run_server(
     let runtime = Runtime::with_plugins(screen, crate::plugins::AllPlugins).with_file(file_path);
 
     // Get the event sender from runtime (clone for later use)
-    let event_tx = runtime.tx.clone();
+    // Use hi_tx for user-facing events (RPC commands, resize, mouse input)
+    let event_tx = runtime.hi_tx.clone();
     let event_tx_for_shutdown = event_tx.clone();
 
     // In dual mode, spawn a task to read terminal events and forward to key channel

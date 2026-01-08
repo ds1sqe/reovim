@@ -91,7 +91,7 @@ Runtime::init() ─────────────────────�
   ├── Screen (terminal output)                    │
   ├── Buffers (text storage)                      │
   ├── CommandRegistry (trait-based commands)      │
-  ├── mpsc channel (RuntimeEvent)                 │
+  ├── dual mpsc channels (hi/lo priority)         │
   ├── watch channel (ModeState broadcast)         │
   │                                               │
   └── spawned async tasks:                        │

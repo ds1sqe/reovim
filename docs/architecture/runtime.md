@@ -34,9 +34,11 @@ pub struct Runtime {
     pub last_command: String,
     pub keymap: KeyMap,
 
-    // Event channels
-    pub tx: mpsc::Sender<RuntimeEvent>,
-    pub rx: mpsc::Receiver<RuntimeEvent>,
+    // Event channels (dual-channel for priority routing)
+    pub hi_tx: mpsc::Sender<RuntimeEvent>,  // High-priority: user input, mode changes
+    hi_rx: mpsc::Receiver<RuntimeEvent>,    // 64 capacity
+    lo_tx: mpsc::Sender<RuntimeEvent>,      // Low-priority: render signals, plugins
+    lo_rx: mpsc::Receiver<RuntimeEvent>,    // 255 capacity
     pub mode_tx: watch::Sender<ModeState>,
     mode_rx: watch::Receiver<ModeState>,
 

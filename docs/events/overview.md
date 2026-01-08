@@ -43,7 +43,12 @@ The event bus provides a type-erased event system for plugin communication. Unli
 
 ### 2. RuntimeEventPayload
 
-Internal events passed to the runtime via mpsc channel. Used for core system events.
+Internal events passed to the runtime via dual mpsc channels (priority-based routing). Used for core system events.
+
+**Priority Channels:**
+- `hi_tx/hi_rx` (64 capacity): user input, mode changes, text insertion
+- `lo_tx/lo_rx` (255 capacity): render signals, plugins, background tasks
+- Biased `select!` ensures high-priority events processed first
 
 **Location:** `lib/core/src/event/inner/mod.rs`
 

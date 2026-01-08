@@ -106,10 +106,11 @@ impl ServerTestHarness {
             .spawn()?;
 
         // Read actual port from stderr with timeout
-        let port = tokio::time::timeout(Duration::from_secs(10), read_port_from_stderr(&mut process))
-            .await
-            .map_err(|_| "Server startup timed out (10s)")?
-            .map_err(|e| format!("Failed to read port from server: {e}"))?;
+        let port =
+            tokio::time::timeout(Duration::from_secs(10), read_port_from_stderr(&mut process))
+                .await
+                .map_err(|_| "Server startup timed out (10s)")?
+                .map_err(|e| format!("Failed to read port from server: {e}"))?;
 
         Ok(Self { process, port })
     }
@@ -150,10 +151,11 @@ impl ServerTestHarness {
             .spawn()?;
 
         // Read actual port from stderr with timeout
-        let port = tokio::time::timeout(Duration::from_secs(10), read_port_from_stderr(&mut process))
-            .await
-            .map_err(|_| "Server startup timed out (10s)")?
-            .map_err(|e| format!("Failed to read port from server: {e}"))?;
+        let port =
+            tokio::time::timeout(Duration::from_secs(10), read_port_from_stderr(&mut process))
+                .await
+                .map_err(|_| "Server startup timed out (10s)")?
+                .map_err(|e| format!("Failed to read port from server: {e}"))?;
 
         Ok(Self { process, port })
     }
