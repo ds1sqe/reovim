@@ -365,10 +365,8 @@ impl Runtime {
                 .event_bus
                 .subscribe::<RequestSetRegister, _>(100, move |event, _ctx| {
                     tracing::debug!("Runtime: Requesting to set register {:?}", event.register);
-                    let _ = tx.try_send(RuntimeEvent::set_register(
-                        event.register,
-                        event.text.clone(),
-                    ));
+                    let _ =
+                        tx.try_send(RuntimeEvent::set_register(event.register, event.text.clone()));
                     EventResult::Handled
                 });
         }
@@ -442,9 +440,8 @@ impl Runtime {
 
                     // Delete prefix first (for completion: replace typed prefix with full word)
                     for _ in 0..event.delete_prefix_len {
-                        let _ = tx.try_send(RuntimeEvent::text_input(
-                            TextInputEvent::DeleteCharBackward,
-                        ));
+                        let _ = tx
+                            .try_send(RuntimeEvent::text_input(TextInputEvent::DeleteCharBackward));
                     }
 
                     // Insert each character

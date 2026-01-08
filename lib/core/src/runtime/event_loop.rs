@@ -9,8 +9,8 @@ use crate::{
     buffer::{Buffer, SelectionOps, TextOps},
     event::{
         BufferEvent, CommandHandler, EditingEvent, FileEvent, HighlightEvent, InputEvent,
-        InputEventBroker, ModeEvent, RenderEvent, RuntimeEvent, RuntimeEventPayload,
-        SettingsEvent, SyntaxEvent, TerminateHandler, TextInputEvent, WindowEvent,
+        InputEventBroker, ModeEvent, RenderEvent, RuntimeEvent, RuntimeEventPayload, SettingsEvent,
+        SyntaxEvent, TerminateHandler, TextInputEvent, WindowEvent,
     },
     modd::{EditMode, ModeState, SubMode},
 };

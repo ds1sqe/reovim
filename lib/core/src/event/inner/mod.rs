@@ -507,8 +507,11 @@ impl RuntimeEvent {
     /// Create an apply command line completion event.
     #[must_use]
     pub fn apply_cmdline_completion(text: String, replace_start: usize) -> Self {
-        RuntimeEventPayload::Settings(SettingsEvent::ApplyCmdlineCompletion { text, replace_start })
-            .into()
+        RuntimeEventPayload::Settings(SettingsEvent::ApplyCmdlineCompletion {
+            text,
+            replace_start,
+        })
+        .into()
     }
 }
 

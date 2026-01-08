@@ -14,6 +14,12 @@ All notable changes to Reovim will be documented in this file.
   - Added `QueryCache::get_or_compile()` with interior mutability (`RwLock`) for thread-safe lazy compilation
   - Simplified `TreesitterManager::register_language()` from ~60 lines to ~5 lines
 
+- **Background query pre-compilation** (Issue #94) - Complement to lazy compilation
+  - Spawns background thread during `boot()` phase to pre-compile all queries
+  - First file open is instant if background compilation has finished
+  - Falls back to on-demand compilation if background hasn't completed yet
+  - Added `TreesitterManager::precompile_all_queries()` helper method
+
 ### Added
 
 - **EventScope for event lifecycle tracking** (Issue #70, #98) - GC-like scope tracking for deterministic event synchronization

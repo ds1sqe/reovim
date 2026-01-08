@@ -210,6 +210,37 @@ impl TreesitterManager {
         self.get_or_compile_query(language_id, query_type)
     }
 
+    /// Pre-compile all queries for all registered languages
+    ///
+    /// This is called from a background thread during startup to warm the cache.
+    /// Returns the number of queries successfully compiled.
+    pub fn precompile_all_queries(&self) -> usize {
+        let language_ids = self.registry.language_ids();
+        let mut count = 0;
+
+        for lang_id in &language_ids {
+            // Compile all query types for each language
+            for query_type in [
+                QueryType::Highlights,
+                QueryType::Folds,
+                QueryType::TextObjects,
+                QueryType::Decorations,
+                QueryType::Injections,
+            ] {
+                if self.get_or_compile_query(lang_id, query_type).is_some() {
+                    count += 1;
+                }
+            }
+        }
+
+        tracing::debug!(
+            languages = language_ids.len(),
+            queries = count,
+            "Background query precompilation complete"
+        );
+        count
+    }
+
     /// Get the language registry
     #[must_use]
     pub fn registry(&self) -> &LanguageRegistry {

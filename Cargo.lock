@@ -1840,6 +1840,7 @@ version = "0.8.0-dev"
 dependencies = [
  "reovim-core",
  "reovim-sys",
+ "tokio",
  "tracing",
  "tree-sitter",
 ]

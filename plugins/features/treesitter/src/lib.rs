@@ -6,9 +6,13 @@
 
 use std::sync::Arc;
 
-use reovim_core::{
-    event_bus::{EventBus, EventResult, FileOpened},
-    plugin::{Plugin, PluginContext, PluginId, PluginStateRegistry},
+use {
+    reovim_core::{
+        event::RuntimeEvent,
+        event_bus::{EventBus, EventResult, FileOpened},
+        plugin::{Plugin, PluginContext, PluginId, PluginStateRegistry},
+    },
+    tokio::sync::mpsc,
 };
 
 pub mod edit;
@@ -198,5 +202,27 @@ impl Plugin for TreesitterPlugin {
         }
 
         tracing::debug!("TreesitterPlugin: subscribed to events");
+    }
+
+    fn boot(
+        &self,
+        _bus: &EventBus,
+        _state: Arc<PluginStateRegistry>,
+        _event_tx: Option<mpsc::Sender<RuntimeEvent>>,
+    ) {
+        // Spawn background thread to pre-compile all queries
+        // This runs after all languages are registered, before first file opens
+        let manager = Arc::clone(&self.manager);
+        std::thread::spawn(move || {
+            let start = std::time::Instant::now();
+            let count = manager.with(|m| m.precompile_all_queries());
+            let elapsed = start.elapsed();
+            tracing::info!(
+                queries = count,
+                elapsed_ms = elapsed.as_millis(),
+                "Background query precompilation finished"
+            );
+        });
+        tracing::debug!("TreesitterPlugin: spawned background query precompilation");
     }
 }
