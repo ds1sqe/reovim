@@ -283,11 +283,12 @@ impl Buffer {
             line_hashes,
             viewport_start,
             viewport_end,
+            kind: saturator::SaturatorRequestKind::Viewport,
         };
 
-        // Non-blocking send - uses try_send internally
+        // Non-blocking send - uses request_update internally
         // We don't await here since this is called from sync context
-        let _ = handle.tx.try_send(request);
+        handle.request_update(request);
     }
 
     /// Get hash for a line (for highlight cache validation)
