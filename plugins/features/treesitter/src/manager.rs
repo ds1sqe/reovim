@@ -55,63 +55,12 @@ impl TreesitterManager {
 
     /// Register a language with the manager
     ///
-    /// Pre-compiles the highlights query for immediate use.
+    /// Queries are compiled lazily on first access, not at registration time.
+    /// This reduces startup latency significantly (~72ms → <1ms for 8 languages).
     pub fn register_language(&mut self, language: Arc<dyn crate::registry::LanguageSupport>) {
         let lang_id = language.language_id().to_string();
-
-        // Register the language
-        self.registry.register(language.clone());
-
-        // Pre-compile the highlights query
-        if let Some(registered) = self.registry.get(&lang_id) {
-            let source = registered.highlights_query();
-            let _ = self.queries.compile_and_cache(
-                &lang_id,
-                QueryType::Highlights,
-                registered.language(),
-                source,
-            );
-
-            // Also pre-compile optional queries if available
-            if let Some(source) = registered.folds_query() {
-                let _ = self.queries.compile_and_cache(
-                    &lang_id,
-                    QueryType::Folds,
-                    registered.language(),
-                    source,
-                );
-            }
-            if let Some(source) = registered.textobjects_query() {
-                let _ = self.queries.compile_and_cache(
-                    &lang_id,
-                    QueryType::TextObjects,
-                    registered.language(),
-                    source,
-                );
-            }
-            if let Some(source) = registered.decorations_query() {
-                let _ = self.queries.compile_and_cache(
-                    &lang_id,
-                    QueryType::Decorations,
-                    registered.language(),
-                    source,
-                );
-            }
-            // Pre-compile injection query if available
-            if let Some(source) = registered.injections_query()
-                && self
-                    .queries
-                    .compile_and_cache(
-                        &lang_id,
-                        QueryType::Injections,
-                        registered.language(),
-                        source,
-                    )
-                    .is_some()
-            {
-                tracing::debug!(language_id = %lang_id, "Compiled injection query");
-            }
-        }
+        self.registry.register(language);
+        tracing::debug!(language_id = %lang_id, "Registered language (lazy compilation)");
     }
 
     /// Initialize treesitter for a buffer based on file path
@@ -145,26 +94,26 @@ impl TreesitterManager {
         start_line: u32,
         end_line: u32,
     ) -> Vec<Highlight> {
-        // Get parser and parse content
-        let Some(parser) = self.parsers.get_mut(&buffer_id) else {
-            return Vec::new();
+        // Extract language_id and parse tree in a block to release parser borrow
+        let (language_id, tree) = {
+            let Some(parser) = self.parsers.get_mut(&buffer_id) else {
+                return Vec::new();
+            };
+            let language_id = parser.language_id().to_string();
+            let Some(tree) = parser.parse_full(content) else {
+                return Vec::new();
+            };
+            (language_id, tree.clone())
         };
 
-        let language_id = parser.language_id().to_string();
-
-        // Parse the content
-        let Some(tree) = parser.parse_full(content) else {
-            return Vec::new();
-        };
-
-        // Get the pre-compiled query (immutable borrow)
-        let Some(query) = self.queries.get(&language_id, QueryType::Highlights) else {
+        // Get or compile the query (lazy compilation)
+        let Some(query) = self.get_or_compile_query(&language_id, QueryType::Highlights) else {
             return Vec::new();
         };
 
         // Generate highlights
         self.highlighter
-            .highlight_range(tree, &query, content, start_line, end_line)
+            .highlight_range(&tree, &query, content, start_line, end_line)
     }
 
     /// Schedule a buffer for reparsing (with debounce)
@@ -234,13 +183,31 @@ impl TreesitterManager {
         self.parsers.get(&buffer_id).and_then(|p| p.tree())
     }
 
-    /// Get a cached query for a language
+    /// Get or compile a query for a language (lazy compilation)
     ///
-    /// Returns None if the query is not cached. Queries are pre-compiled
-    /// when languages are registered.
+    /// This is the primary method for accessing queries. It checks the cache first,
+    /// and compiles the query on first access if not cached.
+    fn get_or_compile_query(&self, language_id: &str, query_type: QueryType) -> Option<Arc<Query>> {
+        let registered = self.registry.get(language_id)?;
+
+        let source = match query_type {
+            QueryType::Highlights => Some(registered.highlights_query()),
+            QueryType::Folds => registered.folds_query(),
+            QueryType::TextObjects => registered.textobjects_query(),
+            QueryType::Decorations => registered.decorations_query(),
+            QueryType::Injections => registered.injections_query(),
+        }?;
+
+        self.queries
+            .get_or_compile(language_id, query_type, registered.language(), source)
+    }
+
+    /// Get or compile a query for a language (lazy compilation on first access)
+    ///
+    /// Public API for accessing queries with lazy compilation.
     #[must_use]
     pub fn get_cached_query(&self, language_id: &str, query_type: QueryType) -> Option<Arc<Query>> {
-        self.queries.get(language_id, query_type)
+        self.get_or_compile_query(language_id, query_type)
     }
 
     /// Get the language registry
@@ -267,20 +234,20 @@ impl TreesitterManager {
     pub fn compute_fold_ranges(&mut self, buffer_id: usize, content: &str) -> Vec<FoldRange> {
         use {reovim_core::folding::FoldKind, tree_sitter::StreamingIterator};
 
-        // Get parser and parse content
-        let Some(parser) = self.parsers.get_mut(&buffer_id) else {
-            return Vec::new();
+        // Extract language_id and parse tree in a block to release parser borrow
+        let (language_id, tree) = {
+            let Some(parser) = self.parsers.get_mut(&buffer_id) else {
+                return Vec::new();
+            };
+            let language_id = parser.language_id().to_string();
+            let Some(tree) = parser.parse_full(content) else {
+                return Vec::new();
+            };
+            (language_id, tree.clone())
         };
 
-        let language_id = parser.language_id().to_string();
-
-        // Parse if needed
-        let Some(tree) = parser.parse_full(content) else {
-            return Vec::new();
-        };
-
-        // Get the pre-compiled query (immutable borrow)
-        let Some(query) = self.queries.get(&language_id, QueryType::Folds) else {
+        // Get or compile the query (lazy compilation)
+        let Some(query) = self.get_or_compile_query(&language_id, QueryType::Folds) else {
             return Vec::new();
         };
 
@@ -328,25 +295,26 @@ impl TreesitterManager {
         start_line: u32,
         end_line: u32,
     ) -> Vec<Highlight> {
-        let Some(parser) = self.parsers.get_mut(&buffer_id) else {
-            return Vec::new();
+        // Extract language_id and parse tree in a block to release parser borrow
+        let (language_id, tree) = {
+            let Some(parser) = self.parsers.get_mut(&buffer_id) else {
+                return Vec::new();
+            };
+            let language_id = parser.language_id().to_string();
+            let input_edit = edit.to_input_edit();
+            let Some(tree) = parser.parse_incremental(content, &input_edit) else {
+                return Vec::new();
+            };
+            (language_id, tree.clone())
         };
 
-        let language_id = parser.language_id().to_string();
-        let input_edit = edit.to_input_edit();
-
-        // Perform incremental parse
-        let Some(tree) = parser.parse_incremental(content, &input_edit) else {
-            return Vec::new();
-        };
-
-        // Get the pre-compiled query (immutable borrow)
-        let Some(query) = self.queries.get(&language_id, QueryType::Highlights) else {
+        // Get or compile the query (lazy compilation)
+        let Some(query) = self.get_or_compile_query(&language_id, QueryType::Highlights) else {
             return Vec::new();
         };
 
         // Generate highlights
         self.highlighter
-            .highlight_range(tree, &query, content, start_line, end_line)
+            .highlight_range(&tree, &query, content, start_line, end_line)
     }
 }

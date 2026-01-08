@@ -15,7 +15,7 @@ use std::{
 use tokio::sync::mpsc;
 
 use {
-    super::{DynEvent, Event, EventResult, core_events::RequestModeChange},
+    super::{DynEvent, Event, EventResult, core_events::RequestModeChange, scope::EventScope},
     crate::modd::{ComponentId, EditMode, ModeState, SubMode},
 };
 
@@ -31,6 +31,7 @@ struct RegisteredHandler {
 /// Context passed to event handlers
 ///
 /// Provides handlers with access to emit new events and request renders.
+/// Also carries the current scope for event lifecycle tracking.
 pub struct HandlerContext<'a> {
     /// Event sender for emitting new events
     event_tx: &'a EventSender,
@@ -38,6 +39,8 @@ pub struct HandlerContext<'a> {
     render_requested: bool,
     /// Flag to track if quit was requested
     quit_requested: bool,
+    /// Optional scope for tracking event lifecycle
+    scope: Option<EventScope>,
 }
 
 impl<'a> HandlerContext<'a> {
@@ -50,12 +53,35 @@ impl<'a> HandlerContext<'a> {
             event_tx,
             render_requested: false,
             quit_requested: false,
+            scope: None,
         }
     }
 
+    /// Set the scope for this context (called by event processor)
+    #[must_use]
+    pub fn with_scope(mut self, scope: Option<EventScope>) -> Self {
+        self.scope = scope;
+        self
+    }
+
+    /// Get a reference to the current scope
+    #[must_use]
+    pub fn scope(&self) -> Option<&EventScope> {
+        self.scope.as_ref()
+    }
+
     /// Emit a new event from within a handler
+    ///
+    /// If this context has a scope, the child event inherits it and
+    /// the scope's in-flight counter is incremented.
     pub fn emit<E: Event>(&self, event: E) {
-        self.event_tx.try_send(event);
+        if let Some(ref scope) = self.scope {
+            scope.increment();
+            let dyn_event = DynEvent::new(event).with_scope(scope.clone());
+            self.event_tx.send_dyn(dyn_event);
+        } else {
+            self.event_tx.try_send(event);
+        }
     }
 
     /// Request a render after event processing
@@ -257,6 +283,15 @@ impl EventBus {
     /// Emit an event to the bus (non-blocking)
     pub fn emit<E: Event>(&self, event: E) {
         let _ = self.tx.try_send(DynEvent::new(event));
+    }
+
+    /// Emit an event with scope tracking (non-blocking)
+    ///
+    /// Increments the scope's in-flight counter before sending.
+    pub fn emit_scoped<E: Event>(&self, event: E, scope: &EventScope) {
+        scope.increment();
+        let dyn_event = DynEvent::new(event).with_scope(scope.clone());
+        let _ = self.tx.try_send(dyn_event);
     }
 
     /// Emit a pre-boxed dynamic event to the bus (non-blocking)

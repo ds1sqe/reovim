@@ -36,6 +36,7 @@
 
 mod bus;
 pub mod core_events;
+pub mod scope;
 
 use std::{
     any::{Any, TypeId},
@@ -45,6 +46,7 @@ use std::{
 pub use {
     bus::{EventBus, EventSender, HandlerContext},
     core_events::*,
+    scope::{EventScope, ScopeId},
 };
 
 /// Marker trait for events that can be sent through the event bus
@@ -83,6 +85,8 @@ pub struct DynEvent {
     priority: u32,
     /// Boxed payload
     payload: Box<dyn Any + Send + Sync>,
+    /// Optional scope for lifecycle tracking
+    scope: Option<scope::EventScope>,
 }
 
 impl DynEvent {
@@ -94,7 +98,26 @@ impl DynEvent {
             type_name: std::any::type_name::<E>(),
             priority,
             payload: Box::new(event),
+            scope: None,
         }
+    }
+
+    /// Attach a scope to this event for lifecycle tracking
+    #[must_use]
+    pub fn with_scope(mut self, scope: scope::EventScope) -> Self {
+        self.scope = Some(scope);
+        self
+    }
+
+    /// Get a reference to the scope, if any
+    #[must_use]
+    pub fn scope(&self) -> Option<&scope::EventScope> {
+        self.scope.as_ref()
+    }
+
+    /// Take ownership of the scope
+    pub fn take_scope(&mut self) -> Option<scope::EventScope> {
+        self.scope.take()
     }
 
     /// Get the `TypeId` of the wrapped event

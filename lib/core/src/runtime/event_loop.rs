@@ -55,11 +55,21 @@ impl Runtime {
             let event_bus = Arc::clone(&self.event_bus);
             let inner_tx = self.tx.clone();
             std::thread::spawn(move || {
-                while let Some(event) = event_rx.blocking_recv() {
+                while let Some(mut event) = event_rx.blocking_recv() {
                     let event_type = event.type_name();
+                    // Extract scope from event for lifecycle tracking
+                    let scope = event.take_scope();
+
                     let sender = event_bus.sender();
-                    let mut ctx = crate::event_bus::HandlerContext::new(&sender);
+                    let mut ctx =
+                        crate::event_bus::HandlerContext::new(&sender).with_scope(scope.clone());
                     let _ = event_bus.dispatch(&event, &mut ctx);
+
+                    // Decrement scope AFTER dispatch completes
+                    if let Some(scope) = scope {
+                        scope.decrement();
+                    }
+
                     // If any handler requested a render, send RenderSignal to main loop
                     if ctx.render_requested() {
                         tracing::info!("==> Render requested by event: {}", event_type);
@@ -161,11 +171,21 @@ impl Runtime {
             let event_bus = Arc::clone(&self.event_bus);
             let inner_tx = self.tx.clone();
             std::thread::spawn(move || {
-                while let Some(event) = event_rx.blocking_recv() {
+                while let Some(mut event) = event_rx.blocking_recv() {
                     let event_type = event.type_name();
+                    // Extract scope from event for lifecycle tracking
+                    let scope = event.take_scope();
+
                     let sender = event_bus.sender();
-                    let mut ctx = crate::event_bus::HandlerContext::new(&sender);
+                    let mut ctx =
+                        crate::event_bus::HandlerContext::new(&sender).with_scope(scope.clone());
                     let _ = event_bus.dispatch(&event, &mut ctx);
+
+                    // Decrement scope AFTER dispatch completes
+                    if let Some(scope) = scope {
+                        scope.decrement();
+                    }
+
                     // If any handler requested a render, send RenderSignal to main loop
                     if ctx.render_requested() {
                         tracing::info!("==> Render requested by event: {}", event_type);

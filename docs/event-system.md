@@ -6,9 +6,11 @@ The event system handles all input and internal communication in reovim.
 
 ```
 lib/core/src/
-├── event_bus/          # Type-erased event system (NEW)
+├── event_bus/          # Type-erased event system
 │   ├── mod.rs          # Event trait, DynEvent, exports
-│   └── bus.rs          # EventBus implementation
+│   ├── bus.rs          # EventBus implementation
+│   ├── core_events.rs  # Core event definitions
+│   └── scope.rs        # EventScope for lifecycle tracking
 │
 ├── event/              # Legacy event system
 │   ├── mod.rs          # Trait definitions, exports
@@ -90,6 +92,62 @@ event_bus.emit(MyActionEvent {
     data: "example".to_string(),
 });
 ```
+
+### Event Scope Tracking
+
+**Location:** `lib/core/src/event_bus/scope.rs`
+
+EventScope provides GC-like tracking of event lifecycles for deterministic synchronization:
+
+```rust
+use reovim_core::event_bus::{EventScope, ScopeId};
+
+// Create a scope to track events
+let scope = EventScope::new();
+
+// Increment when emitting events
+scope.increment();  // Event 1 emitted
+scope.increment();  // Event 2 emitted (child)
+
+// Decrement when events complete
+scope.decrement();  // Event 1 done
+scope.decrement();  // Event 2 done, counter = 0
+
+// Wait for all events in scope to complete
+scope.wait().await;  // Returns when counter = 0
+```
+
+**Key Methods:**
+
+| Method | Description |
+|--------|-------------|
+| `EventScope::new()` | Create new scope with counter = 0 |
+| `scope.increment()` | Track new event (counter++) |
+| `scope.decrement()` | Mark event complete (counter--), notify if zero |
+| `scope.wait()` | Async wait for counter to reach 0 |
+| `scope.wait_timeout(duration)` | Wait with timeout, returns `false` if timed out |
+| `scope.in_flight()` | Get current counter value |
+| `scope.is_complete()` | Check if counter is 0 |
+
+**Debugging Stuck Scopes:**
+
+Enable trace logging to see scope lifecycle:
+
+```bash
+REOVIM_LOG=trace reovim myfile.txt
+```
+
+Output:
+```
+DEBUG EventScope created                    scope_id=1
+TRACE EventScope increment                  scope_id=1 in_flight=1
+TRACE EventScope increment                  scope_id=1 in_flight=2
+TRACE EventScope decrement                  scope_id=1 in_flight=1
+TRACE EventScope decrement                  scope_id=1 in_flight=0
+DEBUG EventScope completed                  scope_id=1 elapsed_ms=5
+```
+
+If a scope hangs, look for increments without matching decrements to find the leak.
 
 **Example Plugin Events:**
 | Event | Description |
