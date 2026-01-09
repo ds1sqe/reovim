@@ -193,6 +193,86 @@ impl FileTree {
             }
         }
     }
+
+    /// Flatten the tree with metadata for tree structure rendering
+    /// Returns nodes with information about their position in the tree
+    #[must_use]
+    pub fn flatten_with_metadata<'a>(&'a self, show_hidden: bool) -> Vec<FlattenedNode<'a>> {
+        let mut result = Vec::new();
+        let mut vertical_lines = Vec::new();
+        Self::flatten_with_metadata_recursive(
+            &self.root,
+            show_hidden,
+            &mut result,
+            &mut vertical_lines,
+            true,
+        );
+        result
+    }
+
+    fn flatten_with_metadata_recursive<'a>(
+        node: &'a FileNode,
+        show_hidden: bool,
+        result: &mut Vec<FlattenedNode<'a>>,
+        vertical_lines: &mut Vec<bool>,
+        is_last: bool,
+    ) {
+        // Skip hidden files if not showing them (but always show root)
+        if node.depth > 0 && node.is_hidden && !show_hidden {
+            return;
+        }
+
+        // Add current node with metadata
+        result.push(FlattenedNode {
+            node,
+            is_last_child: is_last,
+            vertical_lines: vertical_lines.clone(),
+        });
+
+        // Process children if expanded
+        if node.is_expanded()
+            && let Some(children) = node.children()
+        {
+            // Filter visible children
+            let visible_children: Vec<_> = children
+                .iter()
+                .filter(|child| show_hidden || !child.is_hidden)
+                .collect();
+
+            // Process each visible child
+            for (i, child) in visible_children.iter().enumerate() {
+                let is_last_child = i == visible_children.len() - 1;
+
+                // Update vertical line tracking for this depth
+                vertical_lines.push(!is_last_child);
+
+                Self::flatten_with_metadata_recursive(
+                    child,
+                    show_hidden,
+                    result,
+                    vertical_lines,
+                    is_last_child,
+                );
+
+                // Pop the vertical line tracking for this depth
+                vertical_lines.pop();
+            }
+        }
+    }
+}
+
+/// A flattened node with metadata for tree structure rendering
+#[derive(Debug, Clone)]
+pub struct FlattenedNode<'a> {
+    /// The file node
+    pub node: &'a FileNode,
+
+    /// Whether this node is the last child of its parent
+    pub is_last_child: bool,
+
+    /// For each depth level (0..node.depth-1), whether there are more siblings
+    /// below at that level that need vertical continuation lines
+    pub vertical_lines: Vec<bool>,
 }
 
 #[cfg(test)]

@@ -26,11 +26,13 @@ use reovim_core::{
 };
 
 mod command;
+mod file_colors;
 mod node;
 mod provider;
 mod render;
 mod state;
 mod tree;
+mod tree_render;
 mod window;
 
 #[cfg(test)]
@@ -174,6 +176,103 @@ impl Plugin for ExplorerPlugin {
         self.subscribe_visual_mode(bus, &state);
         self.subscribe_focus_visibility(bus, &state);
         self.subscribe_popup(bus, &state);
+        self.subscribe_settings(bus, &state);
+    }
+}
+
+impl ExplorerPlugin {
+    /// Register and subscribe to explorer settings
+    fn subscribe_settings(&self, bus: &EventBus, state: &Arc<PluginStateRegistry>) {
+        use reovim_core::option::{
+            OptionChanged, OptionSpec, OptionValue, RegisterOption, RegisterSettingSection,
+        };
+
+        // Register settings section
+        bus.emit(
+            RegisterSettingSection::new("explorer", "File Explorer")
+                .with_description("File tree browser settings")
+                .with_order(110),
+        ); // After core (0-50), before custom (200+)
+
+        // Register options
+        bus.emit(RegisterOption::new(
+            OptionSpec::new(
+                "explorer.enable_colors",
+                "Enable file type coloring",
+                OptionValue::Bool(true),
+            )
+            .with_section("File Explorer")
+            .with_display_order(10),
+        ));
+
+        bus.emit(RegisterOption::new(
+            OptionSpec::new(
+                "explorer.tree_style",
+                "Tree drawing style",
+                OptionValue::String("box_drawing".to_string()),
+            )
+            .with_section("File Explorer")
+            .with_display_order(20),
+        ));
+
+        bus.emit(RegisterOption::new(
+            OptionSpec::new("explorer.show_hidden", "Show hidden files", OptionValue::Bool(false))
+                .with_section("File Explorer")
+                .with_display_order(30),
+        ));
+
+        bus.emit(RegisterOption::new(
+            OptionSpec::new("explorer.show_sizes", "Show file sizes", OptionValue::Bool(false))
+                .with_section("File Explorer")
+                .with_display_order(40),
+        ));
+
+        // Subscribe to option changes
+        let state_clone = Arc::clone(state);
+        bus.subscribe::<OptionChanged, _>(100, move |event, ctx| {
+            match event.name.as_str() {
+                "explorer.enable_colors" => {
+                    if let Some(enabled) = event.new_value.as_bool() {
+                        state_clone.with_mut::<ExplorerState, _, _>(|explorer| {
+                            explorer.enable_colors = enabled;
+                        });
+                        ctx.request_render();
+                    }
+                }
+                "explorer.tree_style" => {
+                    if let Some(style_str) = event.new_value.as_str() {
+                        let tree_style = match style_str {
+                            "none" => crate::state::TreeStyle::None,
+                            "simple" => crate::state::TreeStyle::Simple,
+                            "box_drawing" => crate::state::TreeStyle::BoxDrawing,
+                            _ => crate::state::TreeStyle::BoxDrawing,
+                        };
+                        state_clone.with_mut::<ExplorerState, _, _>(|explorer| {
+                            explorer.tree_style = tree_style;
+                        });
+                        ctx.request_render();
+                    }
+                }
+                "explorer.show_hidden" => {
+                    if let Some(show) = event.new_value.as_bool() {
+                        state_clone.with_mut::<ExplorerState, _, _>(|explorer| {
+                            explorer.show_hidden = show;
+                        });
+                        ctx.request_render();
+                    }
+                }
+                "explorer.show_sizes" => {
+                    if let Some(show) = event.new_value.as_bool() {
+                        state_clone.with_mut::<ExplorerState, _, _>(|explorer| {
+                            explorer.show_sizes = show;
+                        });
+                        ctx.request_render();
+                    }
+                }
+                _ => {}
+            }
+            EventResult::Handled
+        });
     }
 }
 
