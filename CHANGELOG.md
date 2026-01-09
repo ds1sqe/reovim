@@ -12,6 +12,12 @@ All notable changes to Reovim will be documented in this file.
   - Closest matches get simpler labels (s, f, n, j, k...)
   - Works with operators: `dsab` deletes to closest match in either direction
 
+- **Viewport-limited jump labels** (Issue #126) - Range-finder labels now only appear within visible viewport
+  - Added `active_window_height` field to EditorContext
+  - Jump labels filtered by viewport boundaries in render
+  - Dramatically reduces visual clutter in large files (100+ matches → ~50 visible labels)
+  - Labels update automatically when scrolling
+
 ### Changed
 
 - **reo-cli**: Changed default output format for `keys` command from `plain_text` to `raw_ansi` for better visual feedback (Issue #134)

@@ -77,6 +77,8 @@ pub struct EditorContext {
     pub active_window_gutter_width: u16,
     /// Active window's vertical scroll offset (first visible line)
     pub active_window_scroll_y: u16,
+    /// Active window's height in rows
+    pub active_window_height: u16,
     /// Active buffer's cursor column position
     pub cursor_col: u16,
     /// Active buffer's cursor row position
@@ -122,6 +124,7 @@ impl EditorContext {
             active_window_anchor_y: 0,
             active_window_gutter_width: 0,
             active_window_scroll_y: 0,
+            active_window_height: 0,
             cursor_col: 0,
             cursor_row: 0,
             color_mode,
@@ -158,11 +161,13 @@ impl EditorContext {
         anchor_y: u16,
         gutter_width: u16,
         scroll_y: u16,
+        height: u16,
     ) -> Self {
         self.active_window_anchor_x = anchor_x;
         self.active_window_anchor_y = anchor_y;
         self.active_window_gutter_width = gutter_width;
         self.active_window_scroll_y = scroll_y;
+        self.active_window_height = height;
         self
     }
 
