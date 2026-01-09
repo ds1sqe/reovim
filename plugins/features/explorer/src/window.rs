@@ -8,7 +8,11 @@ use reovim_core::{
     plugin::{EditorContext, PanelPosition, PluginStateRegistry, PluginWindow, Rect, WindowConfig},
 };
 
-use crate::state::{ExplorerState, FileDetailsPopup};
+use crate::{
+    file_colors::get_file_color,
+    state::{ExplorerState, FileDetailsPopup, TreeStyle},
+    tree_render::{TreeLineInfo, build_simple_prefix, build_tree_prefix},
+};
 
 /// Unified plugin window for the explorer
 ///
@@ -64,7 +68,20 @@ impl PluginWindow for ExplorerPluginWindow {
                 return;
             }
 
-            let nodes = explorer.visible_nodes();
+            // Get flattened nodes with metadata for tree structure
+            let flat_nodes = explorer.tree.flatten_with_metadata(explorer.show_hidden);
+
+            // Apply filter if present
+            let filtered_nodes: Vec<_> = if explorer.filter_text.is_empty() {
+                flat_nodes.iter().collect()
+            } else {
+                let filter_lower = explorer.filter_text.to_lowercase();
+                flat_nodes
+                    .iter()
+                    .filter(|fn_meta| fn_meta.node.name.to_lowercase().contains(&filter_lower))
+                    .collect()
+            };
+
             let height = bounds.height as usize;
 
             // Reserve last line for message/prompt if present
@@ -76,10 +93,10 @@ impl PluginWindow for ExplorerPluginWindow {
 
             // Calculate visible range based on scroll offset
             let start = explorer.scroll_offset;
-            let end = (start + available_height).min(nodes.len());
+            let end = (start + available_height).min(filtered_nodes.len());
 
-            // Render visible nodes
-            for (line_idx, (i, node)) in nodes
+            // Render visible nodes with multi-segment coloring
+            for (line_idx, (i, flat_node)) in filtered_nodes
                 .iter()
                 .enumerate()
                 .skip(start)
@@ -91,13 +108,27 @@ impl PluginWindow for ExplorerPluginWindow {
                     break;
                 }
 
-                let is_cursor = i == explorer.cursor_index;
+                let node = flat_node.node;
+                let is_cursor = i + start == explorer.cursor_index;
                 let is_marked = explorer.selection.selected.contains(&node.path);
 
-                // Build line content
-                let indent = "  ".repeat(node.depth);
-                let icon = node.icon(); // Uses IconRegistry for file/dir icons
+                // 1. Build tree prefix based on style setting
+                let tree_prefix = match explorer.tree_style {
+                    TreeStyle::None => "  ".repeat(node.depth),
+                    TreeStyle::Simple => build_simple_prefix(node.depth),
+                    TreeStyle::BoxDrawing => build_tree_prefix(
+                        &TreeLineInfo {
+                            vertical_lines: flat_node.vertical_lines.clone(),
+                            is_last_child: flat_node.is_last_child,
+                        },
+                        node.depth,
+                    ),
+                };
 
+                // 2. Get icon
+                let icon = node.icon();
+
+                // 3. Build marker
                 let marker = if is_marked {
                     "* "
                 } else if is_cursor {
@@ -106,6 +137,7 @@ impl PluginWindow for ExplorerPluginWindow {
                     "  "
                 };
 
+                // 4. Build size display
                 let size_display = if explorer.show_sizes && !node.is_dir() {
                     if let Some(size) = node.size() {
                         format!(" {:>5} ", super::node::format_size(size))
@@ -116,21 +148,53 @@ impl PluginWindow for ExplorerPluginWindow {
                     String::new()
                 };
 
-                let line = format!("{marker}{indent}{icon}{}{size_display}", node.name);
-
-                // Determine style
-                let style = if is_cursor || is_marked {
-                    &theme.selection.visual
+                // 5. Determine colors
+                let file_color = if explorer.enable_colors {
+                    get_file_color(node, theme)
                 } else {
-                    &theme.base.default
+                    theme.base.default.clone()
                 };
 
-                // Render the line using write_str (handles wide characters properly)
-                let x = bounds.x + buffer.write_str(bounds.x, y, &line, style);
+                // Selection style overrides file color for the whole line
+                let line_style = if is_cursor || is_marked {
+                    &theme.selection.visual
+                } else {
+                    &file_color
+                };
+
+                // 6. Render segments with appropriate colors
+                let mut x = bounds.x;
+
+                // Marker (cursor/selection indicator) - always use line style
+                x += buffer.write_str(x, y, marker, line_style);
+
+                // Tree structure (dimmed) - unless selected
+                let tree_style = if is_cursor || is_marked {
+                    line_style
+                } else {
+                    &theme.fold.marker
+                };
+                x += buffer.write_str(x, y, &tree_prefix, tree_style);
+
+                // Icon - use line style
+                x += buffer.write_str(x, y, icon, line_style);
+
+                // Filename - use line style
+                x += buffer.write_str(x, y, &node.name, line_style);
+
+                // Size display (dimmed) - unless selected
+                if !size_display.is_empty() {
+                    let size_style = if is_cursor || is_marked {
+                        line_style
+                    } else {
+                        &theme.virtual_text.default
+                    };
+                    x += buffer.write_str(x, y, &size_display, size_style);
+                }
 
                 // Fill rest of line with spaces
                 for col in x..(bounds.x + bounds.width) {
-                    buffer.put_char(col, y, ' ', style);
+                    buffer.put_char(col, y, ' ', line_style);
                 }
             }
 
@@ -143,6 +207,29 @@ impl PluginWindow for ExplorerPluginWindow {
                 }
                 for x in bounds.x..(bounds.x + bounds.width) {
                     buffer.put_char(x, y, ' ', &theme.base.default);
+                }
+            }
+
+            // Show hidden items count at bottom when hidden files are not shown
+            if !explorer.show_hidden && explorer.message.is_none() {
+                let hidden_count = count_hidden_items(&flat_nodes);
+                if hidden_count > 0 {
+                    let y = bounds.y + available_height.saturating_sub(1) as u16;
+                    if y < bounds.y + bounds.height {
+                        let text = format!("({} hidden)", hidden_count);
+                        let style = &theme.virtual_text.default;
+
+                        // Center the text
+                        let text_width = text.len() as u16;
+                        let x_offset = if text_width < bounds.width {
+                            (bounds.width - text_width) / 2
+                        } else {
+                            0
+                        };
+                        let x = bounds.x + x_offset;
+
+                        buffer.write_str(x, y, &text, style);
+                    }
                 }
             }
 
@@ -175,6 +262,47 @@ impl PluginWindow for ExplorerPluginWindow {
             }
         });
     }
+}
+
+/// Count hidden items in the tree
+///
+/// Counts all hidden items that exist but are not shown in the flattened view.
+fn count_hidden_items<'a>(flat_nodes: &[crate::tree::FlattenedNode<'a>]) -> usize {
+    // Count all children that are hidden (not in the flattened list)
+    // This traverses all expanded directories and counts their hidden children
+    let mut hidden_count = 0;
+
+    for flat_node in flat_nodes {
+        let node = flat_node.node;
+
+        // If this node is expanded and a directory, check for hidden children
+        if node.is_expanded()
+            && node.is_dir()
+            && let Some(children) = node.children()
+        {
+            for child in children {
+                if child.is_hidden {
+                    // Count this hidden item and all its descendants
+                    hidden_count += 1 + count_hidden_recursive(child);
+                }
+            }
+        }
+    }
+
+    hidden_count
+}
+
+/// Recursively count all descendants of a hidden node
+fn count_hidden_recursive(node: &crate::node::FileNode) -> usize {
+    let mut count = 0;
+
+    if let Some(children) = node.children() {
+        for child in children {
+            count += 1 + count_hidden_recursive(child);
+        }
+    }
+
+    count
 }
 
 /// File details popup window

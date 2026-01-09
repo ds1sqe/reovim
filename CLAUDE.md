@@ -407,11 +407,14 @@ For any changes, Claude should create a proposal file at `tmp/<feature-name>-com
 **Request-for-Landing (End of Work):**
 1. **Sync with upstream (CRUCIAL)**:
    ```bash
-   git fetch origin develop && git rebase origin/develop
+   git stash && git fetch origin develop && git rebase origin/develop
    ```
+   - Save work with `git stash` first to avoid rebase conflicts with unstaged changes
+   - **Check upstream changes carefully**: Review what changed with `git log HEAD..origin/develop` and `git diff HEAD..origin/develop` before rebasing
+   - **Use gh cli to check context**: Check recent PRs/issues with `gh pr list`, `gh issue list`, or `gh pr view <number>` to understand upstream changes
    - Carefully rebase - resolve any conflicts before landing
    - Contributors own their conflicts
-   - Use `git stash` if needed to save work before rebasing
+   - Restore with `git stash pop` after successful rebase
 
 2. **Run full check script**:
    ```bash

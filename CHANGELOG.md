@@ -17,6 +17,28 @@ All notable changes to Reovim will be documented in this file.
   - Jump labels filtered by viewport boundaries in render
   - Dramatically reduces visual clutter in large files (100+ matches → ~50 visible labels)
   - Labels update automatically when scrolling
+### Added
+
+- **File explorer visual enhancements** (Issue #127) - nvim-tree style coloring and tree structure
+  - **Dedicated FileExplorerStyles** in theme system with distinct colors for each file category:
+    - Directories: blue (bold)
+    - Source files: orange (for .rs, .py, .js, etc.)
+    - Config files: gray/dimmed (for .toml, .yaml, .json)
+    - Documentation: cyan (for README, .md)
+    - Data files: magenta (for .csv, .sql, .db)
+    - Media files: pink (for images, audio, video)
+    - Special files: yellow (for LICENSE, .gitignore)
+    - Lock files: dimmed yellow (for Cargo.lock, package-lock.json)
+    - Executable files: green (for shell scripts, binaries)
+    - Hidden files: dimmed gray
+  - Box-drawing characters (│, ├, └) for visual tree hierarchy
+  - Three tree styles: None (indent only), Simple (ASCII ">"), BoxDrawing (Unicode)
+  - Hidden items count display at bottom: "(N hidden)" when hidden files are not shown
+  - Explorer settings section with options:
+    - `explorer.enable_colors` - Toggle file type coloring (default: true)
+    - `explorer.tree_style` - Choose tree drawing style (default: "box_drawing")
+    - `explorer.show_hidden` - Toggle hidden files visibility (default: false)
+    - `explorer.show_sizes` - Toggle file size display (default: false)
 
 ### Changed
 
