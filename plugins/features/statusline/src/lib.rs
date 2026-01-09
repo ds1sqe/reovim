@@ -30,14 +30,17 @@ pub mod state;
 
 use std::{any::TypeId, sync::Arc};
 
-use reovim_core::{
-    event_bus::{EventBus, EventResult},
-    plugin::{Plugin, PluginContext, PluginId, PluginStateRegistry},
+use {
+    reovim_core::{
+        event_bus::{EventBus, EventResult},
+        plugin::{Plugin, PluginContext, PluginId, PluginStateRegistry},
+    },
+    reovim_plugin_context::CursorContextUpdated,
 };
 
 use {
     command::{StatuslineSectionRegister, StatuslineSectionUnregister},
-    state::SharedStatuslineManager,
+    state::{CachedCursorContext, SharedStatuslineManager},
 };
 
 // Re-export for external use
@@ -173,6 +176,31 @@ impl Plugin for StatuslinePlugin {
         let _manager = Arc::clone(&self.manager);
         bus.subscribe::<StatuslineRefresh, _>(100, move |_event, ctx| {
             ctx.request_render();
+            EventResult::Handled
+        });
+
+        // Subscribe to cursor context updates from context plugin
+        let manager = Arc::clone(&self.manager);
+        bus.subscribe::<CursorContextUpdated, _>(100, move |event, ctx| {
+            // Cache the context for rendering
+            manager.set_cached_cursor_context(CachedCursorContext {
+                buffer_id: event.buffer_id,
+                line: event.line,
+                col: event.col,
+                context: event.context.clone(),
+            });
+
+            // Request render to update statusline
+            ctx.request_render();
+
+            tracing::trace!(
+                buffer_id = event.buffer_id,
+                line = event.line,
+                col = event.col,
+                has_context = event.context.is_some(),
+                "StatuslinePlugin: received CursorContextUpdated"
+            );
+
             EventResult::Handled
         });
 

@@ -4,6 +4,17 @@ All notable changes to Reovim will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Sticky context headers** (Issue #88) - Overlay at viewport top showing enclosing scopes
+  - Displays 1-3 parent scope headers as user scrolls through files
+  - Works with both markdown headings and code scopes (functions, classes, impl blocks)
+  - Uses same ContextProvider infrastructure as statusline breadcrumbs (#130, #131, #132)
+  - Buffer content passed via EditorContext (same pattern as #133) for markdown support
+  - Settings: `sticky_headers_enabled`, `sticky_headers_max_count`, `sticky_headers_show_separator`
+  - z-order 125 overlay window using PluginWindow trait
+  - Auto-queries context at top visible line
+
 ### Enhanced
 
 - **Bidirectional multi-char search** (Issue #125) - `s` key now searches both directions simultaneously

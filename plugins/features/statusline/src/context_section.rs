@@ -2,10 +2,18 @@
 //!
 //! Provides a statusline section that displays the current scope hierarchy
 //! as a breadcrumb trail (e.g., `> CLAUDE.md > Section > Subsection`).
+//!
+//! This section uses cached context from `CursorContextUpdated` events
+//! instead of polling `get_context()` on every render.
 
 use reovim_core::{context_provider::ContextHierarchy, plugin::SectionAlignment};
 
-use crate::section::{SectionContent, SectionRenderContext, StatuslineSection};
+use std::sync::Arc;
+
+use crate::{
+    section::{SectionContent, SectionRenderContext, StatuslineSection},
+    state::SharedStatuslineManager,
+};
 
 /// Maximum number of breadcrumb items to display before truncation
 const MAX_ITEMS: usize = 4;
@@ -18,8 +26,8 @@ const DEFAULT_SEPARATOR: &str = " > ";
 
 /// Create the document context breadcrumb section
 ///
-/// This section queries the context provider system to get the current
-/// scope hierarchy and renders it as a breadcrumb in the statusline.
+/// This section uses cached context from `CursorContextUpdated` events
+/// and renders it as a breadcrumb in the statusline.
 ///
 /// Priority is set low (10) so it renders early on the left side.
 #[must_use]
@@ -34,39 +42,36 @@ pub fn create_context_section() -> StatuslineSection {
 
 /// Render the context breadcrumb
 ///
-/// Gets the current context from the context provider system and formats
+/// Uses cached context from `CursorContextUpdated` events and formats
 /// it as a breadcrumb with smart truncation.
 fn render_breadcrumb(ctx: &SectionRenderContext) -> SectionContent {
-    // Check if we have buffer content
+    // Check if we have an active buffer
     let Some(buffer_id) = ctx.active_buffer_id else {
         return SectionContent::hidden();
     };
 
-    let Some(content) = ctx.buffer_content else {
-        return SectionContent::hidden();
-    };
-
-    // Get cursor position
-    let Some(cursor_row) = ctx.cursor_row else {
-        return SectionContent::hidden();
-    };
-
-    let Some(cursor_col) = ctx.cursor_col else {
-        return SectionContent::hidden();
-    };
-
-    // Query context from provider registry at cursor position
-    let Some(hierarchy) = ctx
+    // Get cached cursor context from the statusline manager
+    let result = ctx
         .plugin_state
-        .get_context(buffer_id, cursor_row, cursor_col, content)
-    else {
-        return SectionContent::hidden();
-    };
+        .with::<Arc<SharedStatuslineManager>, _, _>(|manager| {
+            let cached = manager.get_cached_cursor_context()?;
 
-    // Format breadcrumb with smart truncation
-    let breadcrumb = format_breadcrumb(&hierarchy, DEFAULT_SEPARATOR, MAX_ITEMS, MAX_ITEM_LEN);
+            // Verify context is for current buffer
+            if cached.buffer_id != buffer_id {
+                return None;
+            }
 
-    SectionContent::new(breadcrumb)
+            // Get the hierarchy from cached context and format breadcrumb
+            cached.context.as_ref().map(|hierarchy| {
+                format_breadcrumb(hierarchy, DEFAULT_SEPARATOR, MAX_ITEMS, MAX_ITEM_LEN)
+            })
+        })
+        .flatten();
+
+    match result {
+        Some(breadcrumb) if !breadcrumb.is_empty() => SectionContent::new(breadcrumb),
+        _ => SectionContent::hidden(),
+    }
 }
 
 /// Format a context hierarchy as a breadcrumb string

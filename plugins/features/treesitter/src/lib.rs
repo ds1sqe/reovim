@@ -26,7 +26,6 @@ pub mod manager;
 pub mod parser;
 pub mod queries;
 pub mod registry;
-pub mod stage;
 pub mod state;
 pub mod syntax;
 pub mod text_objects;
@@ -45,7 +44,6 @@ pub use {
     parser::BufferParser,
     queries::{QueryCache, QueryType},
     registry::{LanguageRegistry, LanguageSupport, RegisteredLanguage},
-    stage::TreesitterRenderStage,
     state::SharedTreesitterManager,
     theme::TreesitterTheme,
 };
@@ -96,10 +94,6 @@ impl Plugin for TreesitterPlugin {
             command::id::CommandId,
             keys,
         };
-
-        // Register render stage for syntax highlighting
-        let stage = Arc::new(TreesitterRenderStage::new(Arc::clone(&self.manager)));
-        ctx.register_render_stage(stage);
 
         // Register navigation commands
         let _ = ctx.register_command(command::JumpToParentScope);

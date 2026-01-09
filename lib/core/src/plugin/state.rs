@@ -467,22 +467,37 @@ impl PluginStateRegistry {
         let providers = self.context_providers.read().unwrap().clone();
 
         for provider in &providers {
-            if provider.supports_buffer(buffer_id)
-                && let Some(ctx) = provider.get_context(buffer_id, line, col, content)
-            {
-                tracing::trace!(
+            let supports = provider.supports_buffer(buffer_id);
+            tracing::debug!(
+                provider = provider.name(),
+                buffer_id,
+                supports,
+                "Checking context provider"
+            );
+
+            if supports {
+                if let Some(ctx) = provider.get_context(buffer_id, line, col, content) {
+                    tracing::debug!(
+                        provider = provider.name(),
+                        buffer_id,
+                        line,
+                        col,
+                        items = ctx.items.len(),
+                        "Context resolved"
+                    );
+                    return Some(ctx);
+                }
+                tracing::debug!(
                     provider = provider.name(),
-                    buffer_id = buffer_id,
-                    line = line,
-                    col = col,
-                    items = ctx.items.len(),
-                    "Context resolved"
+                    buffer_id,
+                    line,
+                    col,
+                    "Context provider returned None"
                 );
-                return Some(ctx);
             }
         }
 
-        tracing::trace!(buffer_id = buffer_id, line = line, col = col, "No context provider found");
+        tracing::debug!(buffer_id, line, col, "No context provider found result");
         None
     }
 

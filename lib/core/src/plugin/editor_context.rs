@@ -83,6 +83,8 @@ pub struct EditorContext {
     pub cursor_col: u16,
     /// Active buffer's cursor row position
     pub cursor_row: u16,
+    /// Active buffer's content (for context providers that need it)
+    pub active_buffer_content: Option<String>,
 
     // === Theme/Display ===
     /// Current color mode (`TrueColor`, `Color256`, `Color16`)
@@ -127,6 +129,7 @@ impl EditorContext {
             active_window_height: 0,
             cursor_col: 0,
             cursor_row: 0,
+            active_buffer_content: None,
             color_mode,
             pending_keys: String::new(),
         }
@@ -176,6 +179,13 @@ impl EditorContext {
     pub const fn with_cursor(mut self, col: u16, row: u16) -> Self {
         self.cursor_col = col;
         self.cursor_row = row;
+        self
+    }
+
+    /// Set buffer content (builder pattern)
+    #[must_use]
+    pub fn with_buffer_content(mut self, content: Option<String>) -> Self {
+        self.active_buffer_content = content;
         self
     }
 

@@ -1545,6 +1545,7 @@ dependencies = [
  "reovim-lang-toml",
  "reovim-plugin-cmdline-completion",
  "reovim-plugin-completion",
+ "reovim-plugin-context",
  "reovim-plugin-explorer",
  "reovim-plugin-health-check",
  "reovim-plugin-lsp",
@@ -1556,6 +1557,7 @@ dependencies = [
  "reovim-plugin-range-finder",
  "reovim-plugin-settings-menu",
  "reovim-plugin-statusline",
+ "reovim-plugin-sticky-context",
  "reovim-plugin-treesitter",
  "reovim-plugin-which-key",
  "reovim-sys",
@@ -1579,6 +1581,7 @@ dependencies = [
  "reovim-lang-python",
  "reovim-lang-rust",
  "reovim-lang-toml",
+ "reovim-plugin-context",
  "reovim-plugin-treesitter",
  "tempfile",
  "tree-sitter",
@@ -1728,6 +1731,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-plugin-context"
+version = "0.8.0"
+dependencies = [
+ "arc-swap",
+ "reovim-core",
+ "reovim-plugin-treesitter",
+ "tracing",
+]
+
+[[package]]
 name = "reovim-plugin-explorer"
 version = "0.8.0"
 dependencies = [
@@ -1832,6 +1845,16 @@ name = "reovim-plugin-statusline"
 version = "0.8.0"
 dependencies = [
  "reovim-core",
+ "reovim-plugin-context",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-plugin-sticky-context"
+version = "0.8.0"
+dependencies = [
+ "reovim-core",
+ "reovim-plugin-context",
  "tracing",
 ]
 

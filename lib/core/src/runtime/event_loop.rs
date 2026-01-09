@@ -12,6 +12,7 @@ use crate::{
         InputEventBroker, ModeEvent, RenderEvent, RuntimeEvent, RuntimeEventPayload, SettingsEvent,
         SyntaxEvent, TerminateHandler, TextInputEvent, WindowEvent,
     },
+    event_bus::ViewportScrolled,
     modd::{EditMode, ModeState, SubMode},
 };
 
@@ -107,6 +108,17 @@ impl Runtime {
             if let Some(buffer_id) = self.create_buffer_from_file(&path) {
                 // Update active buffer to the newly created one
                 self.screen.set_editor_buffer(buffer_id);
+
+                // Emit initial ViewportScrolled to trigger context computation
+                if let Some(viewport_info) = self.screen.get_viewport_info(buffer_id) {
+                    self.event_bus.emit(ViewportScrolled {
+                        window_id: viewport_info.window_id,
+                        buffer_id: viewport_info.buffer_id,
+                        top_line: viewport_info.top_line,
+                        bottom_line: viewport_info.bottom_line,
+                    });
+                    tracing::debug!(buffer_id, "init: emitted initial ViewportScrolled");
+                }
             } else {
                 // File failed to load, create empty buffer
                 let mut buffer = Buffer::empty(0);
@@ -229,6 +241,17 @@ impl Runtime {
             if let Some(buffer_id) = self.create_buffer_from_file(&path) {
                 // Update active buffer to the newly created one
                 self.screen.set_editor_buffer(buffer_id);
+
+                // Emit initial ViewportScrolled to trigger context computation
+                if let Some(viewport_info) = self.screen.get_viewport_info(buffer_id) {
+                    self.event_bus.emit(ViewportScrolled {
+                        window_id: viewport_info.window_id,
+                        buffer_id: viewport_info.buffer_id,
+                        top_line: viewport_info.top_line,
+                        bottom_line: viewport_info.bottom_line,
+                    });
+                    tracing::debug!(buffer_id, "init: emitted initial ViewportScrolled");
+                }
             } else {
                 // File failed to load, create empty buffer with path
                 let mut buffer = Buffer::empty(0);

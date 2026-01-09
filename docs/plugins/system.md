@@ -1168,28 +1168,33 @@ Fuzzy finder:
 
 ### TreesitterPlugin (`reovim-plugin-treesitter`)
 
-Syntax highlighting infrastructure using buffer-centric architecture (Helix-inspired):
+Syntax highlighting and context detection infrastructure using buffer-centric architecture (Helix-inspired):
 
 **Plugin Components:**
-- `TreesitterPlugin` - Main plugin, registers SyntaxFactory
+- `TreesitterPlugin` - Main plugin, registers SyntaxFactory and context provider
 - `TreesitterSyntaxFactory` - Creates TreeSitterSyntax for buffers
 - `TreeSitterSyntax` - Per-buffer syntax provider (implements `SyntaxProvider`)
-- `SharedTreesitterManager` - Shared state for language registry and queries
+- `SharedTreesitterManager` - Shared state for language registry, queries, and tree storage
+- `TreesitterContextProvider` - AST-based scope detection for context queries
 - `LanguageRegistry` - Dynamic language registration
-- `BufferParser` - Per-buffer incremental parser
 - `Highlighter` - Query execution and highlight generation
 - `TextObjectResolver` - Semantic text object bounds
 
-**Architecture:**
+**Unified Tree Storage Architecture:**
 ```
-Buffer -> syntax: Option<Box<dyn SyntaxProvider>>
-                              │
-                              ▼
-                    TreeSitterSyntax (plugin)
-                    ├── parser: Parser
-                    ├── tree: Option<Tree>
-                    ├── query: Arc<Query>  (pre-compiled)
-                    └── highlighter: Highlighter
+┌─────────────────────────────────────────────────────────────────┐
+│                      TreesitterManager                          │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ trees: HashMap<buffer_id, Tree>   ← single source       │   │
+│  │ sources: HashMap<buffer_id, String>                     │   │
+│  │ buffer_languages: HashMap<buffer_id, String>            │   │
+│  └─────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+         ▲                                    ▲
+         │ set_tree()                         │ get_tree()
+         │                                    │
+    TreeSitterSyntax                  TreesitterContextProvider
+    (parse() writes)                  (get_context() reads)
 ```
 
 **SyntaxFactory Registration:**
@@ -1201,6 +1206,10 @@ fn init_state(&self, registry: &PluginStateRegistry) {
     // Register factory for runtime to use
     let factory = TreesitterSyntaxFactory::new(Arc::clone(&manager));
     registry.set_syntax_factory(Arc::new(factory));
+
+    // Register context provider for scope detection
+    let context_provider = TreesitterContextProvider::new(Arc::clone(&manager));
+    registry.register_context_provider(Arc::new(context_provider));
 }
 ```
 
@@ -1214,15 +1223,16 @@ pub trait LanguageSupport: Send + Sync + 'static {
     fn folds_query(&self) -> Option<&'static str> { None }
     fn textobjects_query(&self) -> Option<&'static str> { None }
     fn decorations_query(&self) -> Option<&'static str> { None }
+    fn context_query(&self) -> Option<&'static str> { None }  // For scope detection
 }
 ```
 
 **Data Flow:**
-1. **File Open**: Runtime calls `syntax_factory.create_syntax(path, content)`
+1. **File Open**: Runtime calls `syntax_factory.create_syntax(buffer_id, path, content)`
 2. **Attach**: Runtime calls `buffer.attach_syntax(syntax)`
-3. **Parse**: `syntax.parse(content)` builds initial tree
-4. **Render**: `RenderData::from_buffer()` calls `syntax.highlight_range()`
-5. **Display**: Highlights applied to framebuffer during render
+3. **Parse**: `syntax.parse(content)` builds tree and syncs to manager
+4. **Highlight**: `RenderData::from_buffer()` calls `syntax.highlight_range()`
+5. **Context**: `ContextPlugin` queries `TreesitterContextProvider.get_context()`
 
 ## Language Plugins (in plugins/languages/)
 
@@ -1330,6 +1340,66 @@ bus.emit(ProgressComplete {
 
 **Position Options:**
 - `TopRight` (default), `TopLeft`, `BottomRight`, `BottomLeft`, `TopCenter`, `BottomCenter`
+
+### ContextPlugin (`reovim-plugin-context`)
+
+Event-driven context computation for scope hierarchy detection.
+
+**Plugin Components:**
+- `ContextPlugin` - Main plugin, subscribes to core events and emits context events
+- `ContextManager` - Caches context and tracks position changes
+- `CachedContext` - Cached context with position tracking
+
+**Architecture:**
+```
+Core Events                    Context Plugin                      Consumers
+─────────────────────────────────────────────────────────────────────────────
+BufferModified ──────────►│                         │
+CursorMoved ─────────────►│    ContextPlugin        │──► CursorContextUpdated ──► Statusline
+ViewportScrolled ────────►│                         │──► ViewportContextUpdated ──► StickyContext
+```
+
+**Events:**
+```rust
+// Emitted when cursor context changes
+pub struct CursorContextUpdated {
+    pub buffer_id: usize,
+    pub line: u32,
+    pub col: u32,
+    pub context: Option<ContextHierarchy>,
+}
+
+// Emitted when viewport context changes (for sticky headers)
+pub struct ViewportContextUpdated {
+    pub window_id: usize,
+    pub buffer_id: usize,
+    pub top_line: u32,
+    pub context: Option<ContextHierarchy>,
+}
+```
+
+### StickyContextPlugin (`reovim-plugin-sticky-context`)
+
+VS Code-style sticky scroll headers showing enclosing scopes at viewport top.
+
+**Plugin Components:**
+- `StickyContextPlugin` - Main plugin, subscribes to `ViewportContextUpdated`
+- `SharedStickyContextState` - Thread-safe state storage
+- `StickyContextWindow` - `PluginWindow` implementation (z-order 125)
+
+**Visual:**
+```
+╔════════════════════════════════════════════════════════╗
+║ impl Screen > fn render_windows                        ║  ◄── Sticky overlay
+╚════════════════════════════════════════════════════════╝
+        for window in &self.windows {                       ◄── Viewport content
+            if window.visible {
+```
+
+**Settings:**
+- `sticky_headers_enabled` - Enable/disable sticky headers (default: true)
+- `sticky_headers_max_count` - Maximum headers to show (default: 3)
+- `sticky_headers_show_separator` - Show separator line (default: true)
 
 ## Unified Command-Event Pattern (Recommended)
 

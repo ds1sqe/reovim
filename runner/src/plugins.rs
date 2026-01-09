@@ -12,12 +12,13 @@ use reovim_core::plugin::{
 // External plugin crates
 use {
     reovim_plugin_cmdline_completion::CmdlineCompletionPlugin,
-    reovim_plugin_completion::CompletionPlugin, reovim_plugin_explorer::ExplorerPlugin,
-    reovim_plugin_health_check::HealthCheckPlugin, reovim_plugin_lsp::LspPlugin,
-    reovim_plugin_microscope::MicroscopePlugin, reovim_plugin_notification::NotificationPlugin,
-    reovim_plugin_pair::PairPlugin, reovim_plugin_pickers::PickersPlugin,
-    reovim_plugin_profiles::ProfilesPlugin, reovim_plugin_range_finder::RangeFinderPlugin,
-    reovim_plugin_settings_menu::SettingsMenuPlugin, reovim_plugin_statusline::StatuslinePlugin,
+    reovim_plugin_completion::CompletionPlugin, reovim_plugin_context::ContextPlugin,
+    reovim_plugin_explorer::ExplorerPlugin, reovim_plugin_health_check::HealthCheckPlugin,
+    reovim_plugin_lsp::LspPlugin, reovim_plugin_microscope::MicroscopePlugin,
+    reovim_plugin_notification::NotificationPlugin, reovim_plugin_pair::PairPlugin,
+    reovim_plugin_pickers::PickersPlugin, reovim_plugin_profiles::ProfilesPlugin,
+    reovim_plugin_range_finder::RangeFinderPlugin, reovim_plugin_settings_menu::SettingsMenuPlugin,
+    reovim_plugin_statusline::StatuslinePlugin, reovim_plugin_sticky_context::StickyContextPlugin,
     reovim_plugin_treesitter::TreesitterPlugin, reovim_plugin_which_key::WhichKeyPlugin,
 };
 
@@ -40,6 +41,8 @@ impl PluginTuple for AllPlugins {
 
         // Statusline extension (load early so other plugins can register sections)
         loader.add(StatuslinePlugin::new());
+        // Sticky context headers
+        loader.add(StickyContextPlugin::new());
         // Notification system
         loader.add(NotificationPlugin::new());
 
@@ -58,6 +61,8 @@ impl PluginTuple for AllPlugins {
 
         // Treesitter infrastructure (must come before language plugins)
         loader.add(TreesitterPlugin::new());
+        // Context plugin (event-driven context for statusline and sticky headers)
+        loader.add(ContextPlugin::new());
 
         // Language plugins
         loader.add(RustPlugin);
@@ -87,6 +92,8 @@ pub fn default_plugins() -> impl IntoIterator<Item = Box<dyn Plugin>> {
         Box::new(WindowPlugin),
         // Statusline extension (load early so other plugins can register sections)
         Box::new(StatuslinePlugin::new()),
+        // Sticky context headers
+        Box::new(StickyContextPlugin::new()),
         // Notification system
         Box::new(NotificationPlugin::new()),
         Box::new(RangeFinderPlugin::new()),
@@ -102,6 +109,8 @@ pub fn default_plugins() -> impl IntoIterator<Item = Box<dyn Plugin>> {
         Box::new(WhichKeyPlugin),
         // Treesitter infrastructure (must come before language plugins)
         Box::new(TreesitterPlugin::new()),
+        // Context plugin (event-driven context for statusline and sticky headers)
+        Box::new(ContextPlugin::new()),
         // Language support
         Box::new(RustPlugin),
         Box::new(CPlugin),
@@ -132,6 +141,8 @@ pub fn create_plugin_loader() -> PluginLoader {
     loader.add_plugins(DefaultPlugins);
     // Statusline extension (load early so other plugins can register sections)
     loader.add(StatuslinePlugin::new());
+    // Sticky context headers
+    loader.add(StickyContextPlugin::new());
     // Notification system
     loader.add(NotificationPlugin::new());
     // Add external plugin crates
@@ -148,6 +159,8 @@ pub fn create_plugin_loader() -> PluginLoader {
     loader.add(WhichKeyPlugin);
     // Treesitter infrastructure
     loader.add(TreesitterPlugin::new());
+    // Context plugin (event-driven context)
+    loader.add(ContextPlugin::new());
     // Language plugins
     loader.add(RustPlugin);
     loader.add(CPlugin);

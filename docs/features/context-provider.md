@@ -14,13 +14,58 @@ The system consists of:
 
 ## Architecture
 
+### Event-Driven Context Flow
+
+The context system uses an event-driven architecture for efficient updates:
+
+```
+Core Events                    Context Plugin                      Consumers
+─────────────────────────────────────────────────────────────────────────────
+                          ┌─────────────────────────┐
+BufferModified ──────────►│                         │
+CursorMoved ─────────────►│    ContextPlugin        │
+ViewportScrolled ────────►│                         │
+                          │  - Subscribe core events│
+                          │  - Query treesitter     │──► CursorContextUpdated ──► Statusline
+                          │  - Cache results        │
+                          │  - Compute context      │──► ViewportContextUpdated ──► StickyContext
+                          │  - Emit context events  │
+                          └─────────────────────────┘
+```
+
+### Unified Treesitter Parsing
+
+The treesitter system uses a unified tree storage for both syntax highlighting and context queries:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      TreesitterManager                          │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ trees: HashMap<buffer_id, Tree>   ← single source       │   │
+│  │ sources: HashMap<buffer_id, String>                     │   │
+│  │ buffer_languages: HashMap<buffer_id, String>            │   │
+│  └─────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+         ▲                                    ▲
+         │ set_tree()                         │ get_tree()
+         │                                    │
+    TreeSitterSyntax                  TreesitterContextProvider
+    (parse() writes)                  (get_context() reads)
+```
+
+**Key Points:**
+- `TreeSitterSyntax` syncs its parse tree to `TreesitterManager` after every parse
+- `TreesitterContextProvider` reads trees from the shared manager
+- No duplicate parsing - both highlighting and context use the same tree
+
+### Provider Registry
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    PluginStateRegistry                      │
 │  ┌───────────────────────────────────────────────────────┐  │
 │  │ Context Provider Registry (Vec<ContextProvider>)      │  │
-│  │  - MarkdownContextProvider (priority: markdown)       │  │
-│  │  - TreesitterContextProvider (priority: code)         │  │
+│  │  - TreesitterContextProvider (all languages)          │  │
 │  │  - Future: LSPContextProvider, etc.                   │  │
 │  └───────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
@@ -32,9 +77,9 @@ The system consists of:
                 ┌──────────────────────┐
                 │  ContextHierarchy    │
                 │  items: Vec<...>     │
-                │  - File              │
-                │    - Section         │
-                │      - Subsection    │
+                │  - Module            │
+                │    - Impl/Class      │
+                │      - Function      │
                 └──────────────────────┘
 ```
 
@@ -200,14 +245,24 @@ Jump between scopes with keyboard shortcuts:
 - Uses `RequestCursorMove` event to jump to scope start lines
 - Works across all languages with context providers
 
-### 3. Future: Sticky Headers (Issue #88)
+### 3. Sticky Headers (Issue #88)
 
-Display enclosing scope headers at viewport top (like LSP breadcrumb but as overlay).
+Display enclosing scope headers at viewport top (like VS Code's sticky scroll).
 
-**Planned approach:**
-- Query context hierarchy on scroll/buffer change
-- Render as overlay window at top of viewport
-- Pin first N items from hierarchy as sticky headers
+**Implementation:**
+- `ContextPlugin` subscribes to `ViewportScrolled` events
+- On scroll, queries `TreesitterContextProvider` for context at viewport top line
+- Emits `ViewportContextUpdated` event with context hierarchy
+- `StickyContextPlugin` subscribes and renders header overlay
+
+**Architecture:**
+```
+ViewportScrolled ──► ContextPlugin ──► ViewportContextUpdated ──► StickyContextPlugin
+                          │                                              │
+                          ▼                                              ▼
+              TreesitterContextProvider                         Render overlay window
+                (get_context at top_line)                       with scope headers
+```
 
 ## Performance Considerations
 
@@ -273,4 +328,4 @@ Test with real markdown/code files to verify correct hierarchy detection at vari
 - Markdown: [#131 Markdown Provider](https://github.com/ds1sqe/reovim/issues/131)
 - Treesitter: [#132 Treesitter Provider](https://github.com/ds1sqe/reovim/issues/132)
 - Statusline: [#133 Statusline Integration](https://github.com/ds1sqe/reovim/issues/133)
-- Future: [#88 Sticky Headers Overlay](https://github.com/ds1sqe/reovim/issues/88)
+- Sticky Headers: [#88 Sticky Headers Overlay](https://github.com/ds1sqe/reovim/issues/88)

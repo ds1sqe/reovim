@@ -1,0 +1,18 @@
+[package]
+name = "reovim-plugin-context"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+reovim-core = { path = "../../../lib/core" }
+reovim-plugin-treesitter = { path = "../treesitter" }
+arc-swap = "1.7"
+tracing = "0.1"
+
+[dev-dependencies]
+
+[lints]
+workspace = true

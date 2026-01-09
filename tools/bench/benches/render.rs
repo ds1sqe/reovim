@@ -7,10 +7,18 @@
 //! - render_data_*: Real render pipeline benchmarks (RenderData::from_buffer with syntax)
 //! - event_bus_*: Event bus dispatch latency benchmarks (Issue #86)
 //! - treesitter_*: Query compilation time benchmarks (Issue #86)
+//! - context_*: Context plugin caching and event benchmarks (Issue #88)
 
 mod bench_modules;
 
 use {criterion::Criterion, std::time::Duration};
+
+use bench_modules::context::{
+    bench_cache_invalidation, bench_context_hierarchy_clone, bench_context_manager_read,
+    bench_context_manager_write, bench_cursor_change_detection,
+    bench_cursor_context_event_dispatch, bench_full_context_cycle, bench_viewport_change_detection,
+    bench_viewport_context_event_dispatch,
+};
 
 use bench_modules::event_bus::{
     bench_blocking_handler, bench_dispatch_consumed, bench_dispatch_handler_count,
@@ -81,6 +89,22 @@ fn treesitter_init_benches(c: &mut Criterion) {
     bench_all_languages_registration(c);
 }
 
+/// Context plugin benchmarks (Issue #88)
+///
+/// These benchmarks measure the performance of the context caching and event system.
+/// Use these to ensure context updates don't introduce latency.
+fn context_benches(c: &mut Criterion) {
+    bench_context_manager_read(c);
+    bench_context_manager_write(c);
+    bench_cursor_change_detection(c);
+    bench_viewport_change_detection(c);
+    bench_cache_invalidation(c);
+    bench_cursor_context_event_dispatch(c);
+    bench_viewport_context_event_dispatch(c);
+    bench_full_context_cycle(c);
+    bench_context_hierarchy_clone(c);
+}
+
 fn main() {
     let mut criterion = Criterion::default()
         .measurement_time(Duration::from_secs(1))
@@ -93,6 +117,7 @@ fn main() {
     event_bus_benches(&mut criterion);
     treesitter_init_benches(&mut criterion);
     bottleneck_benches(&mut criterion);
+    context_benches(&mut criterion);
 
     criterion.final_summary();
 }

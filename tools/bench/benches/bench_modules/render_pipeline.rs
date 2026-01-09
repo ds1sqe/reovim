@@ -55,12 +55,13 @@ fn create_buffer_with_syntax(
     content: &str,
     filename: &str,
 ) -> Buffer {
-    let mut buffer = Buffer::empty(0);
+    let buffer_id = 0;
+    let mut buffer = Buffer::empty(buffer_id);
     buffer.set_content(content);
 
     // Attach syntax provider
     let factory = TreesitterSyntaxFactory::new(Arc::clone(manager));
-    if let Some(mut syntax) = factory.create_syntax(filename, content) {
+    if let Some(mut syntax) = factory.create_syntax(buffer_id, filename, content) {
         syntax.parse(content);
         buffer.attach_syntax(syntax);
     }

@@ -48,6 +48,20 @@ pub trait LanguageSupport: Send + Sync + 'static {
     fn injections_query(&self) -> Option<&'static str> {
         None
     }
+
+    /// Context query for scope detection (optional)
+    ///
+    /// Used by the context plugin to detect enclosing scopes for sticky headers
+    /// and statusline breadcrumbs. Returns tree-sitter query patterns that capture
+    /// context-relevant nodes (e.g., functions, classes, headings).
+    ///
+    /// # Example
+    ///
+    /// Rust: `(function_item) @context (impl_item) @context (struct_item) @context`
+    /// Markdown: `(atx_heading) @context`
+    fn context_query(&self) -> Option<&'static str> {
+        None
+    }
 }
 
 /// A registered language with all its data
@@ -103,6 +117,11 @@ impl RegisteredLanguage {
     /// Get injections query
     pub fn injections_query(&self) -> Option<&'static str> {
         self.support.injections_query()
+    }
+
+    /// Get context query
+    pub fn context_query(&self) -> Option<&'static str> {
+        self.support.context_query()
     }
 }
 

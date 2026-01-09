@@ -4,10 +4,7 @@
 
 use std::{collections::HashMap, sync::Arc, time::Instant};
 
-use {
-    reovim_core::{folding::FoldRange, highlight::Highlight},
-    tree_sitter::{Query, Tree},
-};
+use tree_sitter::{Query, Tree};
 
 use crate::{
     highlighter::Highlighter,
@@ -19,7 +16,7 @@ use crate::{
 
 /// Manages treesitter state for all buffers
 pub struct TreesitterManager {
-    /// Per-buffer parser state
+    /// Per-buffer parser state (legacy, used for fold computation)
     parsers: HashMap<usize, BufferParser>,
     /// Language registry for language detection
     registry: LanguageRegistry,
@@ -31,6 +28,10 @@ pub struct TreesitterManager {
     pending_parses: HashMap<usize, Instant>,
     /// Source content cache for context providers
     source_cache: HashMap<usize, String>,
+    /// Synced trees from TreeSitterSyntax (primary source for context queries)
+    trees: HashMap<usize, Tree>,
+    /// Buffer ID to language ID mapping (for buffers with synced trees)
+    buffer_languages: HashMap<usize, String>,
 }
 
 impl Default for TreesitterManager {
@@ -53,6 +54,8 @@ impl TreesitterManager {
             highlighter: Highlighter::new(),
             pending_parses: HashMap::new(),
             source_cache: HashMap::new(),
+            trees: HashMap::new(),
+            buffer_languages: HashMap::new(),
         }
     }
 
@@ -85,41 +88,6 @@ impl TreesitterManager {
             tracing::warn!(buffer_id, language_id = %language_id, "Failed to create parser");
             None
         }
-    }
-
-    /// Parse buffer content and return highlights
-    ///
-    /// Performs a full parse and generates highlights for the visible range.
-    pub fn parse_and_highlight(
-        &mut self,
-        buffer_id: usize,
-        content: &str,
-        start_line: u32,
-        end_line: u32,
-    ) -> Vec<Highlight> {
-        // Cache the source content for context providers
-        self.source_cache.insert(buffer_id, content.to_string());
-
-        // Extract language_id and parse tree in a block to release parser borrow
-        let (language_id, tree) = {
-            let Some(parser) = self.parsers.get_mut(&buffer_id) else {
-                return Vec::new();
-            };
-            let language_id = parser.language_id().to_string();
-            let Some(tree) = parser.parse_full(content) else {
-                return Vec::new();
-            };
-            (language_id, tree.clone())
-        };
-
-        // Get or compile the query (lazy compilation)
-        let Some(query) = self.get_or_compile_query(&language_id, QueryType::Highlights) else {
-            return Vec::new();
-        };
-
-        // Generate highlights
-        self.highlighter
-            .highlight_range(&tree, &query, content, start_line, end_line)
     }
 
     /// Schedule a buffer for reparsing (with debounce)
@@ -156,6 +124,11 @@ impl TreesitterManager {
     /// Get the language ID for a buffer
     #[must_use]
     pub fn buffer_language(&self, buffer_id: usize) -> Option<String> {
+        // Primary: check synced buffer languages
+        if let Some(lang) = self.buffer_languages.get(&buffer_id) {
+            return Some(lang.clone());
+        }
+        // Fallback: legacy BufferParser
         self.parsers
             .get(&buffer_id)
             .map(|p| p.language_id().to_string())
@@ -166,6 +139,8 @@ impl TreesitterManager {
         self.parsers.remove(&buffer_id);
         self.pending_parses.remove(&buffer_id);
         self.source_cache.remove(&buffer_id);
+        self.trees.remove(&buffer_id);
+        self.buffer_languages.remove(&buffer_id);
     }
 
     /// Check if there are any pending parses
@@ -185,9 +160,32 @@ impl TreesitterManager {
     }
 
     /// Get the parsed tree for a buffer
+    ///
+    /// First checks the synced trees from TreeSitterSyntax, then falls back to
+    /// legacy BufferParser trees.
     #[must_use]
     pub fn get_tree(&self, buffer_id: usize) -> Option<&Tree> {
+        // Primary: check synced trees from TreeSitterSyntax
+        if let Some(tree) = self.trees.get(&buffer_id) {
+            return Some(tree);
+        }
+        // Fallback: legacy BufferParser
         self.parsers.get(&buffer_id).and_then(|p| p.tree())
+    }
+
+    /// Store a synced tree from TreeSitterSyntax
+    ///
+    /// Called by TreeSitterSyntax after parsing to sync the tree for context queries.
+    pub fn set_tree(&mut self, buffer_id: usize, language_id: &str, tree: Tree) {
+        self.trees.insert(buffer_id, tree);
+        self.buffer_languages
+            .insert(buffer_id, language_id.to_string());
+        tracing::debug!(buffer_id, language_id, "Synced tree to manager");
+    }
+
+    /// Store source content for a buffer (used by context providers)
+    pub fn set_source(&mut self, buffer_id: usize, content: String) {
+        self.source_cache.insert(buffer_id, content);
     }
 
     /// Get the cached source content for a buffer
@@ -212,6 +210,7 @@ impl TreesitterManager {
             QueryType::TextObjects => registered.textobjects_query(),
             QueryType::Decorations => registered.decorations_query(),
             QueryType::Injections => registered.injections_query(),
+            QueryType::Context => registered.context_query(),
         }?;
 
         self.queries
@@ -242,6 +241,7 @@ impl TreesitterManager {
                 QueryType::TextObjects,
                 QueryType::Decorations,
                 QueryType::Injections,
+                QueryType::Context,
             ] {
                 if self.get_or_compile_query(lang_id, query_type).is_some() {
                     count += 1;
@@ -273,95 +273,5 @@ impl TreesitterManager {
     #[must_use]
     pub fn get_language(&self, id: &str) -> Option<Arc<RegisteredLanguage>> {
         self.registry.get(id)
-    }
-
-    /// Compute fold ranges for a buffer
-    ///
-    /// Uses treesitter fold queries to identify foldable regions.
-    pub fn compute_fold_ranges(&mut self, buffer_id: usize, content: &str) -> Vec<FoldRange> {
-        use {reovim_core::folding::FoldKind, tree_sitter::StreamingIterator};
-
-        // Extract language_id and parse tree in a block to release parser borrow
-        let (language_id, tree) = {
-            let Some(parser) = self.parsers.get_mut(&buffer_id) else {
-                return Vec::new();
-            };
-            let language_id = parser.language_id().to_string();
-            let Some(tree) = parser.parse_full(content) else {
-                return Vec::new();
-            };
-            (language_id, tree.clone())
-        };
-
-        // Get or compile the query (lazy compilation)
-        let Some(query) = self.get_or_compile_query(&language_id, QueryType::Folds) else {
-            return Vec::new();
-        };
-
-        let mut ranges = Vec::new();
-        let mut cursor = tree_sitter::QueryCursor::new();
-        let mut matches = cursor.matches(&query, tree.root_node(), content.as_bytes());
-
-        #[allow(clippy::cast_possible_truncation)]
-        while let Some(match_) = matches.next() {
-            for capture in match_.captures {
-                let node = capture.node;
-                let start_line = node.start_position().row as u32;
-                let end_line = node.end_position().row as u32;
-
-                // Only include folds that span multiple lines
-                if end_line <= start_line {
-                    continue;
-                }
-
-                // Get preview text (first line of the folded region)
-                let preview = content
-                    .lines()
-                    .nth(start_line as usize)
-                    .unwrap_or("")
-                    .trim()
-                    .to_string();
-
-                ranges.push(FoldRange::new(start_line, end_line, FoldKind::Block, preview));
-            }
-        }
-
-        // Sort by start line and remove duplicates
-        ranges.sort_by_key(|r| (r.start_line, r.end_line));
-        ranges.dedup_by(|a, b| a.start_line == b.start_line && a.end_line == b.end_line);
-
-        ranges
-    }
-
-    /// Perform incremental parse and return highlights
-    pub fn parse_incremental_and_highlight(
-        &mut self,
-        buffer_id: usize,
-        content: &str,
-        edit: &crate::edit::BufferEdit,
-        start_line: u32,
-        end_line: u32,
-    ) -> Vec<Highlight> {
-        // Extract language_id and parse tree in a block to release parser borrow
-        let (language_id, tree) = {
-            let Some(parser) = self.parsers.get_mut(&buffer_id) else {
-                return Vec::new();
-            };
-            let language_id = parser.language_id().to_string();
-            let input_edit = edit.to_input_edit();
-            let Some(tree) = parser.parse_incremental(content, &input_edit) else {
-                return Vec::new();
-            };
-            (language_id, tree.clone())
-        };
-
-        // Get or compile the query (lazy compilation)
-        let Some(query) = self.get_or_compile_query(&language_id, QueryType::Highlights) else {
-            return Vec::new();
-        };
-
-        // Generate highlights
-        self.highlighter
-            .highlight_range(&tree, &query, content, start_line, end_line)
     }
 }

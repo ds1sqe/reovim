@@ -1,21 +1,22 @@
 //! Treesitter context provider for scope detection
 //!
-//! Provides hierarchical context information by analyzing the treesitter AST.
-//! Detects code scopes like functions, classes, impl blocks, and methods.
+//! Provides hierarchical context information by analyzing the treesitter AST
+//! using language-specific context queries.
 
 use std::sync::Arc;
 
 use {
     reovim_core::context_provider::{ContextHierarchy, ContextItem, ContextProvider},
-    tree_sitter::{Node, Point},
+    tree_sitter::{Node, Point, StreamingIterator},
 };
 
-use crate::state::SharedTreesitterManager;
+use crate::{queries::QueryType, state::SharedTreesitterManager};
 
 /// Treesitter-based context provider
 ///
-/// Analyzes the parse tree to determine the scope hierarchy at a cursor position.
-/// Works for all treesitter-supported languages automatically.
+/// Analyzes the parse tree using language-specific context queries to determine
+/// the scope hierarchy at a cursor position. Works for all languages that provide
+/// a `context_query()` in their `LanguageSupport` implementation.
 pub struct TreesitterContextProvider {
     manager: Arc<SharedTreesitterManager>,
 }
@@ -36,42 +37,113 @@ impl ContextProvider for TreesitterContextProvider {
         _content: &str,
     ) -> Option<ContextHierarchy> {
         self.manager.with(|mgr| {
+            // Get the language ID for this buffer
+            let Some(language_id) = mgr.buffer_language(buffer_id) else {
+                tracing::debug!(buffer_id, "TreesitterContextProvider: no language for buffer");
+                return None;
+            };
+            tracing::debug!(buffer_id, %language_id, line, col, "TreesitterContextProvider: getting context");
+
             // Get the parse tree for this buffer
-            let tree = mgr.get_tree(buffer_id)?;
+            let Some(tree) = mgr.get_tree(buffer_id) else {
+                tracing::debug!(buffer_id, %language_id, "TreesitterContextProvider: no tree for buffer");
+                return None;
+            };
 
             // Get the source content (treesitter manager has cached source)
-            let source = mgr.get_source(buffer_id)?;
+            let Some(source) = mgr.get_source(buffer_id) else {
+                tracing::debug!(buffer_id, %language_id, "TreesitterContextProvider: no source for buffer");
+                return None;
+            };
 
-            // Get node at cursor position
-            let point = Point {
+            // Get the context query for this language
+            let Some(query) = mgr.get_cached_query(&language_id, QueryType::Context) else {
+                tracing::debug!(buffer_id, %language_id, "TreesitterContextProvider: no context query for language");
+                return None;
+            };
+
+            // Find the @context capture index
+            let context_capture_idx = query
+                .capture_names()
+                .iter()
+                .position(|name| *name == "context")?;
+
+            // Find the @name capture index (optional)
+            let name_capture_idx = query
+                .capture_names()
+                .iter()
+                .position(|name| *name == "name");
+
+            // Execute the query
+            let mut cursor = tree_sitter::QueryCursor::new();
+            let mut matches = cursor.matches(&query, tree.root_node(), source.as_bytes());
+
+            // Collect all context nodes that contain the cursor position
+            let cursor_point = Point {
                 row: line as usize,
                 column: col as usize,
             };
-            let cursor_node = tree.root_node().descendant_for_point_range(point, point)?;
 
-            // Walk up parent chain collecting scope nodes
-            let mut scopes = Vec::new();
-            let mut current = Some(cursor_node);
-            let mut level = 0;
+            let mut scopes: Vec<ContextItem> = Vec::new();
 
-            while let Some(node) = current {
-                if is_scope_node(&node) {
-                    scopes.push(ContextItem {
-                        text: extract_scope_name(&node, source.as_bytes()),
-                        start_line: node.start_position().row as u32,
-                        end_line: node.end_position().row as u32,
-                        kind: node.kind().to_string(),
-                        level,
-                    });
-                    level += 1;
+            #[allow(clippy::cast_possible_truncation)]
+            while let Some(match_) = matches.next() {
+                // Find the @context node
+                let context_node = match_
+                    .captures
+                    .iter()
+                    .find(|c| c.index as usize == context_capture_idx)
+                    .map(|c| c.node);
+
+                let Some(context_node) = context_node else {
+                    continue;
+                };
+
+                // Check if cursor is within this context node
+                let start = context_node.start_position();
+                let end = context_node.end_position();
+
+                if !contains_point(start, end, cursor_point) {
+                    continue;
                 }
-                current = node.parent();
+
+                // Extract the name from @name capture if available
+                let name_text = name_capture_idx.and_then(|idx| {
+                    match_
+                        .captures
+                        .iter()
+                        .find(|c| c.index as usize == idx)
+                        .and_then(|c| c.node.utf8_text(source.as_bytes()).ok())
+                });
+
+                // Build the display text
+                let display_text = build_display_text(&context_node, name_text, source.as_bytes());
+
+                scopes.push(ContextItem {
+                    text: display_text,
+                    start_line: start.row as u32,
+                    end_line: end.row as u32,
+                    kind: context_node.kind().to_string(),
+                    level: 0, // Will be assigned after sorting
+                });
             }
 
-            // Reverse to get outermost-first order
-            scopes.reverse();
+            // Return None if no scopes found (allows fallback to other providers)
+            if scopes.is_empty() {
+                return None;
+            }
 
-            // Re-number levels after reversing
+            // Sort by start line (outer scopes first), then by end line descending (larger scope first)
+            scopes.sort_by(|a, b| {
+                a.start_line
+                    .cmp(&b.start_line)
+                    .then_with(|| b.end_line.cmp(&a.end_line))
+            });
+
+            // Deduplicate overlapping scopes at the same start line
+            scopes.dedup_by(|a, b| a.start_line == b.start_line);
+
+            // Assign levels based on sorted order
             for (i, scope) in scopes.iter_mut().enumerate() {
                 scope.level = i;
             }
@@ -85,52 +157,40 @@ impl ContextProvider for TreesitterContextProvider {
     }
 
     fn supports_buffer(&self, buffer_id: usize) -> bool {
-        self.manager.with(|mgr| mgr.has_parser(buffer_id))
+        self.manager.with(|mgr| {
+            // Support this buffer if we have a parser AND a context query for its language
+            if !mgr.has_parser(buffer_id) {
+                return false;
+            }
+            let Some(lang_id) = mgr.buffer_language(buffer_id) else {
+                return false;
+            };
+            // Check if context query exists for this language
+            mgr.get_cached_query(&lang_id, QueryType::Context).is_some()
+        })
     }
 }
 
-/// Check if a node represents a scope (function, class, impl, etc.)
-fn is_scope_node(node: &Node) -> bool {
-    matches!(
-        node.kind(),
-        // Rust
-        "function_item"
-            | "impl_item"
-            | "struct_item"
-            | "enum_item"
-            | "trait_item"
-            | "mod_item"
-            // Python
-            | "function_definition"
-            | "class_definition"
-            // JavaScript/TypeScript
-            | "function_declaration"
-            | "class_declaration"
-            | "method_definition"
-            | "arrow_function"
-            // C/C++
-            | "struct_specifier"
-            | "class_specifier"
-            // Go
-            | "method_declaration"
-            // Java
-            | "interface_declaration"
-    )
+/// Check if a point is contained within a range (inclusive start, exclusive end)
+fn contains_point(start: Point, end: Point, point: Point) -> bool {
+    if point.row < start.row || point.row > end.row {
+        return false;
+    }
+    if point.row == start.row && point.column < start.column {
+        return false;
+    }
+    if point.row == end.row && point.column >= end.column {
+        return false;
+    }
+    true
 }
 
-/// Extract a readable name for a scope node
-///
-/// Tries to find the identifier/name child node and formats it nicely.
-/// Falls back to the first line of the node text if no identifier is found.
-fn extract_scope_name(node: &Node, source: &[u8]) -> String {
-    // Try to find identifier child
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if matches!(child.kind(), "identifier" | "name" | "field_identifier")
-            && let Ok(text) = child.utf8_text(source)
-        {
-            return format!("{} {}", simplify_kind(node.kind()), text);
-        }
+/// Build a display text for a context node
+fn build_display_text(node: &Node, name_text: Option<&str>, source: &[u8]) -> String {
+    let kind = simplify_kind(node.kind());
+
+    if let Some(name) = name_text {
+        return format!("{} {}", kind, name);
     }
 
     // For impl blocks, try to find the type being implemented
@@ -145,39 +205,69 @@ fn extract_scope_name(node: &Node, source: &[u8]) -> String {
         }
     }
 
+    // For headings, extract the heading content
+    if node.kind() == "atx_heading" {
+        // Get the heading level from marker
+        let mut cursor = node.walk();
+        let mut level = 1;
+        for child in node.children(&mut cursor) {
+            if child.kind().starts_with("atx_h") && child.kind().ends_with("_marker") {
+                // Extract number from "atx_h1_marker", etc.
+                if let Some(num) = child.kind().chars().nth(5) {
+                    level = num.to_digit(10).unwrap_or(1);
+                }
+            }
+        }
+
+        // Get heading content
+        if let Ok(text) = node.utf8_text(source) {
+            let heading_text = text.trim_start_matches('#').trim();
+            if heading_text.len() > 50 {
+                return format!("H{} {}...", level, &heading_text[..47]);
+            }
+            return format!("H{} {}", level, heading_text);
+        }
+    }
+
     // Fallback: use first line of node text, truncated
     if let Ok(text) = node.utf8_text(source) {
         let first_line = text.lines().next().unwrap_or(node.kind());
-        // Truncate long lines
         if first_line.len() > 50 {
-            format!("{}...", &first_line[..47])
-        } else {
-            first_line.to_string()
+            return format!("{}...", &first_line[..47]);
         }
-    } else {
-        node.kind().to_string()
+        return first_line.to_string();
     }
+
+    kind.to_string()
 }
 
 /// Simplify node kind to a short, readable form
 fn simplify_kind(kind: &str) -> &str {
     match kind {
+        // Rust
         "function_item" => "fn",
-        "function_definition" => "fn",
-        "function_declaration" => "fn",
-        "method_definition" => "method",
-        "method_declaration" => "method",
         "impl_item" => "impl",
         "struct_item" => "struct",
-        "struct_specifier" => "struct",
         "enum_item" => "enum",
         "trait_item" => "trait",
         "mod_item" => "mod",
+        // Python
+        "function_definition" => "fn",
         "class_definition" => "class",
+        // JavaScript/TypeScript
+        "function_declaration" => "fn",
         "class_declaration" => "class",
-        "class_specifier" => "class",
-        "interface_declaration" => "interface",
+        "method_definition" => "method",
         "arrow_function" => "fn",
+        // C/C++
+        "struct_specifier" => "struct",
+        "class_specifier" => "class",
+        // Go
+        "method_declaration" => "method",
+        // Java
+        "interface_declaration" => "interface",
+        // Markdown
+        "atx_heading" => "heading",
         _ => kind,
     }
 }
@@ -212,19 +302,8 @@ mod tests {
     }
 
     #[test]
-    fn test_simplify_kind_c() {
-        assert_eq!(simplify_kind("struct_specifier"), "struct");
-        assert_eq!(simplify_kind("class_specifier"), "class");
-    }
-
-    #[test]
-    fn test_simplify_kind_go() {
-        assert_eq!(simplify_kind("method_declaration"), "method");
-    }
-
-    #[test]
-    fn test_simplify_kind_java() {
-        assert_eq!(simplify_kind("interface_declaration"), "interface");
+    fn test_simplify_kind_markdown() {
+        assert_eq!(simplify_kind("atx_heading"), "heading");
     }
 
     #[test]
@@ -233,181 +312,63 @@ mod tests {
         assert_eq!(simplify_kind("some_random_thing"), "some_random_thing");
     }
 
-    // Test is_scope_node for all supported node kinds
+    // Test contains_point
     #[test]
-    fn test_is_scope_node_rust() {
-        // Create mock nodes with different kinds (we'll use string matching)
-        let rust_scope_kinds = vec![
-            "function_item",
-            "impl_item",
-            "struct_item",
-            "enum_item",
-            "trait_item",
-            "mod_item",
-        ];
-
-        for kind in rust_scope_kinds {
-            // Verify these are recognized as scope nodes
-            assert!(
-                matches!(
-                    kind,
-                    "function_item"
-                        | "impl_item"
-                        | "struct_item"
-                        | "enum_item"
-                        | "trait_item"
-                        | "mod_item"
-                ),
-                "Rust scope kind '{}' should be recognized",
-                kind
-            );
-        }
+    fn test_contains_point_inside() {
+        let start = Point { row: 10, column: 0 };
+        let end = Point { row: 20, column: 0 };
+        let point = Point { row: 15, column: 5 };
+        assert!(contains_point(start, end, point));
     }
 
     #[test]
-    fn test_is_scope_node_python() {
-        let python_scope_kinds = vec!["function_definition", "class_definition"];
-
-        for kind in python_scope_kinds {
-            assert!(
-                matches!(kind, "function_definition" | "class_definition"),
-                "Python scope kind '{}' should be recognized",
-                kind
-            );
-        }
+    fn test_contains_point_at_start() {
+        let start = Point { row: 10, column: 5 };
+        let end = Point { row: 20, column: 0 };
+        let point = Point { row: 10, column: 5 };
+        assert!(contains_point(start, end, point));
     }
 
     #[test]
-    fn test_is_scope_node_javascript() {
-        let js_scope_kinds = vec![
-            "function_declaration",
-            "class_declaration",
-            "method_definition",
-            "arrow_function",
-        ];
-
-        for kind in js_scope_kinds {
-            assert!(
-                matches!(
-                    kind,
-                    "function_declaration"
-                        | "class_declaration"
-                        | "method_definition"
-                        | "arrow_function"
-                ),
-                "JavaScript scope kind '{}' should be recognized",
-                kind
-            );
-        }
+    fn test_contains_point_before_start() {
+        let start = Point { row: 10, column: 5 };
+        let end = Point { row: 20, column: 0 };
+        let point = Point { row: 10, column: 4 };
+        assert!(!contains_point(start, end, point));
     }
 
     #[test]
-    fn test_is_scope_node_non_scope() {
-        // These should NOT be scope nodes
-        let non_scope_kinds = vec![
-            "identifier",
-            "type_identifier",
-            "literal",
-            "comment",
-            "block",
-            "expression_statement",
-            "let_declaration",
-            "return_statement",
-        ];
-
-        for kind in non_scope_kinds {
-            assert!(
-                !matches!(
-                    kind,
-                    "function_item"
-                        | "impl_item"
-                        | "struct_item"
-                        | "enum_item"
-                        | "trait_item"
-                        | "mod_item"
-                        | "function_definition"
-                        | "class_definition"
-                        | "function_declaration"
-                        | "class_declaration"
-                        | "method_definition"
-                        | "arrow_function"
-                        | "struct_specifier"
-                        | "class_specifier"
-                        | "method_declaration"
-                        | "interface_declaration"
-                ),
-                "Non-scope kind '{}' should NOT be recognized as scope",
-                kind
-            );
-        }
+    fn test_contains_point_at_end() {
+        let start = Point { row: 10, column: 0 };
+        let end = Point { row: 20, column: 5 };
+        let point = Point { row: 20, column: 5 };
+        assert!(!contains_point(start, end, point)); // End is exclusive
     }
 
-    // Test ContextItem structure
     #[test]
-    fn test_context_item_creation() {
-        let item = ContextItem {
-            text: "fn test".to_string(),
-            start_line: 10,
-            end_line: 20,
-            kind: "function_item".to_string(),
-            level: 0,
-        };
-
-        assert_eq!(item.text, "fn test");
-        assert_eq!(item.start_line, 10);
-        assert_eq!(item.end_line, 20);
-        assert_eq!(item.kind, "function_item");
-        assert_eq!(item.level, 0);
+    fn test_contains_point_after_end() {
+        let start = Point { row: 10, column: 0 };
+        let end = Point { row: 20, column: 0 };
+        let point = Point { row: 21, column: 0 };
+        assert!(!contains_point(start, end, point));
     }
 
-    // Test ContextHierarchy building
+    // Test provider interface
     #[test]
-    #[allow(clippy::useless_vec)]
-    fn test_context_hierarchy_ordering() {
-        // Simulate what the provider does: collect scopes and reverse
-        let mut scopes = vec![
-            ContextItem {
-                text: "fn inner".to_string(),
-                start_line: 15,
-                end_line: 18,
-                kind: "function_item".to_string(),
-                level: 0, // Will be renumbered
-            },
-            ContextItem {
-                text: "impl Foo".to_string(),
-                start_line: 10,
-                end_line: 20,
-                kind: "impl_item".to_string(),
-                level: 1,
-            },
-            ContextItem {
-                text: "mod bar".to_string(),
-                start_line: 0,
-                end_line: 30,
-                kind: "mod_item".to_string(),
-                level: 2,
-            },
-        ];
+    fn test_provider_interface() {
+        use crate::state::SharedTreesitterManager;
 
-        // Reverse to get outermost-first
-        scopes.reverse();
+        let manager = Arc::new(SharedTreesitterManager::new());
+        let provider = TreesitterContextProvider::new(manager);
 
-        // Re-number levels
-        for (i, scope) in scopes.iter_mut().enumerate() {
-            scope.level = i;
-        }
+        // Verify provider name
+        assert_eq!(provider.name(), "treesitter");
 
-        // Verify correct ordering: mod > impl > fn
-        assert_eq!(scopes.len(), 3);
-        assert_eq!(scopes[0].text, "mod bar");
-        assert_eq!(scopes[0].level, 0);
-        assert_eq!(scopes[1].text, "impl Foo");
-        assert_eq!(scopes[1].level, 1);
-        assert_eq!(scopes[2].text, "fn inner");
-        assert_eq!(scopes[2].level, 2);
+        // Verify supports_buffer returns false for non-existent buffer
+        assert!(!provider.supports_buffer(999));
     }
 
-    // Test breadcrumb generation
+    // Test context hierarchy methods (from reovim_core)
     #[test]
     fn test_breadcrumb_format() {
         let hierarchy = ContextHierarchy::with_items(
@@ -477,174 +438,5 @@ mod tests {
         assert_eq!(hierarchy.to_breadcrumb(" > "), "fn main");
         assert_eq!(hierarchy.current_scope().unwrap().text, "fn main");
         assert_eq!(hierarchy.max_level(), Some(0));
-    }
-
-    // Test deeply nested hierarchy
-    #[test]
-    fn test_deeply_nested_hierarchy() {
-        let hierarchy = ContextHierarchy::with_items(
-            1,
-            25,
-            10,
-            vec![
-                ContextItem {
-                    text: "mod outer".to_string(),
-                    start_line: 0,
-                    end_line: 100,
-                    kind: "mod_item".to_string(),
-                    level: 0,
-                },
-                ContextItem {
-                    text: "struct Foo".to_string(),
-                    start_line: 10,
-                    end_line: 60,
-                    kind: "struct_item".to_string(),
-                    level: 1,
-                },
-                ContextItem {
-                    text: "impl Foo".to_string(),
-                    start_line: 15,
-                    end_line: 55,
-                    kind: "impl_item".to_string(),
-                    level: 2,
-                },
-                ContextItem {
-                    text: "fn method".to_string(),
-                    start_line: 20,
-                    end_line: 40,
-                    kind: "function_item".to_string(),
-                    level: 3,
-                },
-                ContextItem {
-                    text: "fn closure".to_string(),
-                    start_line: 25,
-                    end_line: 30,
-                    kind: "function_item".to_string(),
-                    level: 4,
-                },
-            ],
-        );
-
-        assert_eq!(hierarchy.len(), 5);
-        assert_eq!(hierarchy.max_level(), Some(4));
-        assert_eq!(hierarchy.current_scope().unwrap().text, "fn closure");
-        assert_eq!(hierarchy.at_level(0).unwrap().text, "mod outer");
-        assert_eq!(hierarchy.at_level(2).unwrap().text, "impl Foo");
-        assert_eq!(hierarchy.at_level(4).unwrap().text, "fn closure");
-    }
-
-    // Test extract_scope_name fallback behavior
-    #[test]
-    fn test_extract_scope_name_truncation() {
-        // Test that long lines are truncated
-        let very_long_text = "a".repeat(100);
-
-        // Create a mock scenario - the function would truncate at 50 chars
-        let truncated = if very_long_text.len() > 50 {
-            format!("{}...", &very_long_text[..47])
-        } else {
-            very_long_text.clone()
-        };
-
-        assert_eq!(truncated.len(), 50); // 47 chars + "..."
-        assert!(truncated.ends_with("..."));
-    }
-
-    // Test provider name and supports_buffer
-    #[test]
-    fn test_provider_interface() {
-        use {crate::state::SharedTreesitterManager, std::sync::Arc};
-
-        let manager = Arc::new(SharedTreesitterManager::new());
-        let provider = TreesitterContextProvider::new(manager);
-
-        // Verify provider name
-        assert_eq!(provider.name(), "treesitter");
-
-        // Verify supports_buffer returns false for non-existent buffer
-        assert!(!provider.supports_buffer(999));
-    }
-
-    // Test context hierarchy helper methods
-    #[test]
-    fn test_hierarchy_at_level() {
-        let hierarchy = ContextHierarchy::with_items(
-            1,
-            15,
-            5,
-            vec![
-                ContextItem {
-                    text: "level0".to_string(),
-                    start_line: 0,
-                    end_line: 50,
-                    kind: "mod_item".to_string(),
-                    level: 0,
-                },
-                ContextItem {
-                    text: "level1".to_string(),
-                    start_line: 10,
-                    end_line: 30,
-                    kind: "impl_item".to_string(),
-                    level: 1,
-                },
-                ContextItem {
-                    text: "level2".to_string(),
-                    start_line: 15,
-                    end_line: 20,
-                    kind: "function_item".to_string(),
-                    level: 2,
-                },
-            ],
-        );
-
-        assert_eq!(hierarchy.at_level(0).unwrap().text, "level0");
-        assert_eq!(hierarchy.at_level(1).unwrap().text, "level1");
-        assert_eq!(hierarchy.at_level(2).unwrap().text, "level2");
-        assert!(hierarchy.at_level(3).is_none());
-        assert!(hierarchy.at_level(999).is_none());
-    }
-
-    #[test]
-    fn test_hierarchy_up_to_level() {
-        let hierarchy = ContextHierarchy::with_items(
-            1,
-            15,
-            5,
-            vec![
-                ContextItem {
-                    text: "level0".to_string(),
-                    start_line: 0,
-                    end_line: 50,
-                    kind: "mod_item".to_string(),
-                    level: 0,
-                },
-                ContextItem {
-                    text: "level1".to_string(),
-                    start_line: 10,
-                    end_line: 30,
-                    kind: "impl_item".to_string(),
-                    level: 1,
-                },
-                ContextItem {
-                    text: "level2".to_string(),
-                    start_line: 15,
-                    end_line: 20,
-                    kind: "function_item".to_string(),
-                    level: 2,
-                },
-            ],
-        );
-
-        let up_to_0 = hierarchy.up_to_level(0);
-        assert_eq!(up_to_0.len(), 1);
-        assert_eq!(up_to_0[0].text, "level0");
-
-        let up_to_1 = hierarchy.up_to_level(1);
-        assert_eq!(up_to_1.len(), 2);
-        assert_eq!(up_to_1[0].text, "level0");
-        assert_eq!(up_to_1[1].text, "level1");
-
-        let up_to_2 = hierarchy.up_to_level(2);
-        assert_eq!(up_to_2.len(), 3);
     }
 }

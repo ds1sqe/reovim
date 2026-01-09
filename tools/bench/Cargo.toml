@@ -9,6 +9,7 @@ repository.workspace = true
 [dependencies]
 reovim-core = { path = "../../lib/core" }
 reovim-plugin-treesitter = { path = "../../plugins/features/treesitter" }
+reovim-plugin-context = { path = "../../plugins/features/context" }
 reovim-lang-markdown = { path = "../../plugins/languages/markdown" }
 reovim-lang-rust = { path = "../../plugins/languages/rust" }
 reovim-lang-c = { path = "../../plugins/languages/c" }

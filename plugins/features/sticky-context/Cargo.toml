@@ -1,0 +1,9 @@
+[package]
+name = "reovim-plugin-sticky-context"
+version = "0.8.0"
+edition = "2021"
+
+[dependencies]
+reovim-core = { path = "../../../lib/core" }
+reovim-plugin-context = { path = "../context" }
+tracing = "0.1"

@@ -14,7 +14,7 @@ use crate::{
     },
     command_line::{ExCommand, SetOption},
     event::{CommandEvent, MouseButton, MouseEvent, MouseEventKind, VisualTextObjectAction},
-    event_bus::BufferModification,
+    event_bus::{BufferModification, ViewportScrolled},
     highlight::Theme,
     modd::{ComponentId, ModeState, SubMode},
     screen::{NavigateDirection, Position, SplitDirection, window::Anchor},
@@ -32,6 +32,22 @@ impl Runtime {
             buffer_id,
             modification: BufferModification::FullReplace,
         });
+    }
+
+    /// Check and emit viewport scroll events
+    ///
+    /// Call this after cursor movement to detect if the viewport needs to scroll.
+    /// Emits `ViewportScrolled` events for any windows that scrolled.
+    pub(crate) fn emit_viewport_scrolls(&mut self) {
+        let scrolls = self.screen.update_viewport_scrolls(&self.buffers);
+        for scroll_info in scrolls {
+            self.emit_event(ViewportScrolled {
+                window_id: scroll_info.window_id,
+                buffer_id: scroll_info.buffer_id,
+                top_line: scroll_info.top_line,
+                bottom_line: scroll_info.bottom_line,
+            });
+        }
     }
 
     /// Delete a semantic text object using plugin state's text object source
@@ -410,6 +426,8 @@ impl Runtime {
                     from: (cursor_before.y as usize, cursor_before.x as usize),
                     to: (cursor_after.y as usize, cursor_after.x as usize),
                 });
+                // Check if viewport needs to scroll and emit ViewportScrolled events
+                self.emit_viewport_scrolls();
             }
 
             // Check if command is text-modifying for treesitter reparse

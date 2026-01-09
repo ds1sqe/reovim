@@ -102,13 +102,19 @@ pub trait SyntaxFactory: Send + Sync {
     /// Create a syntax provider for the given file
     ///
     /// # Arguments
+    /// * `buffer_id` - ID of the buffer this syntax is for
     /// * `file_path` - Path to the file being opened
     /// * `content` - Initial content of the file
     ///
     /// # Returns
     /// Some(syntax) if a language was detected and a provider was created,
     /// None if the file type is not supported.
-    fn create_syntax(&self, file_path: &str, content: &str) -> Option<Box<dyn SyntaxProvider>>;
+    fn create_syntax(
+        &self,
+        buffer_id: usize,
+        file_path: &str,
+        content: &str,
+    ) -> Option<Box<dyn SyntaxProvider>>;
 
     /// Check if this factory supports the given file
     fn supports_file(&self, file_path: &str) -> bool;

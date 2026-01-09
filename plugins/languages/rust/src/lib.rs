@@ -41,6 +41,10 @@ impl LanguageSupport for RustLanguage {
     fn injections_query(&self) -> Option<&'static str> {
         Some(include_str!("queries/injections.scm"))
     }
+
+    fn context_query(&self) -> Option<&'static str> {
+        Some(include_str!("queries/context.scm"))
+    }
 }
 
 /// Rust language plugin

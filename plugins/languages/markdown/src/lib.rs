@@ -3,7 +3,6 @@
 // markdown/mod.rs removed - dead code (obsolete LanguageRenderer implementation)
 
 mod config;
-mod context;
 
 pub mod decorator;
 pub mod factory;
@@ -24,7 +23,7 @@ use {
     reovim_plugin_treesitter::{LanguageSupport, RegisterLanguage, TreesitterPlugin},
 };
 
-use {context::MarkdownContextProvider, factory::MarkdownDecorationFactory};
+use factory::MarkdownDecorationFactory;
 
 /// Markdown language support
 pub struct MarkdownLanguage;
@@ -52,6 +51,10 @@ impl LanguageSupport for MarkdownLanguage {
 
     fn injections_query(&self) -> Option<&'static str> {
         Some(include_str!("queries/injections.scm"))
+    }
+
+    fn context_query(&self) -> Option<&'static str> {
+        Some(include_str!("queries/context.scm"))
     }
 }
 
@@ -110,21 +113,14 @@ impl Plugin for MarkdownPlugin {
         registry.set_decoration_factory(MarkdownDecorationFactory::shared());
     }
 
-    fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {
+    fn subscribe(&self, bus: &EventBus, _state: Arc<PluginStateRegistry>) {
         // Register both markdown and markdown_inline languages
+        // Context is now provided via TreesitterContextProvider using context_query()
         bus.emit(RegisterLanguage {
             language: Arc::new(MarkdownLanguage),
         });
         bus.emit(RegisterLanguage {
             language: Arc::new(MarkdownInlineLanguage),
         });
-
-        // Register context provider
-        if let Some(provider) = MarkdownContextProvider::new() {
-            state.register_context_provider(Arc::new(provider));
-            tracing::debug!("MarkdownPlugin: registered context provider");
-        } else {
-            tracing::warn!("MarkdownPlugin: failed to create context provider");
-        }
     }
 }
