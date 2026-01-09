@@ -29,6 +29,8 @@ pub struct TreesitterManager {
     highlighter: Highlighter,
     /// Pending reparse requests (`buffer_id` -> timestamp)
     pending_parses: HashMap<usize, Instant>,
+    /// Source content cache for context providers
+    source_cache: HashMap<usize, String>,
 }
 
 impl Default for TreesitterManager {
@@ -50,6 +52,7 @@ impl TreesitterManager {
             queries: QueryCache::new(),
             highlighter: Highlighter::new(),
             pending_parses: HashMap::new(),
+            source_cache: HashMap::new(),
         }
     }
 
@@ -94,6 +97,9 @@ impl TreesitterManager {
         start_line: u32,
         end_line: u32,
     ) -> Vec<Highlight> {
+        // Cache the source content for context providers
+        self.source_cache.insert(buffer_id, content.to_string());
+
         // Extract language_id and parse tree in a block to release parser borrow
         let (language_id, tree) = {
             let Some(parser) = self.parsers.get_mut(&buffer_id) else {
@@ -159,6 +165,7 @@ impl TreesitterManager {
     pub fn remove_buffer(&mut self, buffer_id: usize) {
         self.parsers.remove(&buffer_id);
         self.pending_parses.remove(&buffer_id);
+        self.source_cache.remove(&buffer_id);
     }
 
     /// Check if there are any pending parses
@@ -181,6 +188,15 @@ impl TreesitterManager {
     #[must_use]
     pub fn get_tree(&self, buffer_id: usize) -> Option<&Tree> {
         self.parsers.get(&buffer_id).and_then(|p| p.tree())
+    }
+
+    /// Get the cached source content for a buffer
+    ///
+    /// Returns the source text that was last parsed for this buffer.
+    /// Used by context providers to analyze buffer content.
+    #[must_use]
+    pub fn get_source(&self, buffer_id: usize) -> Option<&str> {
+        self.source_cache.get(&buffer_id).map(String::as_str)
     }
 
     /// Get or compile a query for a language (lazy compilation)

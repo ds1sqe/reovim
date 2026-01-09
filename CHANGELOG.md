@@ -20,6 +20,12 @@ All notable changes to Reovim will be documented in this file.
 
 ### Added
 
+- **TreesitterContextProvider** - AST-based scope detection for breadcrumb navigation (#132)
+  - Detects code hierarchy (functions, classes, impl blocks, methods) by analyzing treesitter parse tree
+  - Multi-language support: Rust, Python, JavaScript, C, C++, Go, Java
+  - Provides context at cursor position: e.g., `> mod.rs > impl Screen > fn render_windows`
+  - Phase 3 of context provider system, enables statusline breadcrumb integration
+
 - **Core ContextProvider trait and registry** (Issue #130) - Foundation for plugin-based context/scope detection
   - `ContextProvider` trait with `get_context()`, `name()`, `supports_buffer()` methods
   - `ContextItem` struct for representing individual context levels (text, line range, kind, level)

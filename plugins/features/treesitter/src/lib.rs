@@ -15,6 +15,7 @@ use {
     tokio::sync::mpsc,
 };
 
+pub mod context;
 pub mod edit;
 pub mod events;
 pub mod factory;
@@ -31,6 +32,7 @@ pub mod text_objects;
 pub mod theme;
 
 pub use {
+    context::TreesitterContextProvider,
     edit::BufferEdit,
     events::{
         HighlightsReady, ParseCompleted, ParseRequest, RegisterLanguage, TreesitterFoldRanges,
@@ -106,7 +108,14 @@ impl Plugin for TreesitterPlugin {
             Arc::new(crate::factory::TreesitterSyntaxFactory::new(Arc::clone(&self.manager)));
         registry.set_syntax_factory(factory);
 
-        tracing::debug!("TreesitterPlugin: initialized state with syntax factory");
+        // Register the context provider for scope detection
+        let context_provider =
+            Arc::new(crate::context::TreesitterContextProvider::new(Arc::clone(&self.manager)));
+        registry.register_context_provider(context_provider);
+
+        tracing::debug!(
+            "TreesitterPlugin: initialized state with syntax factory and context provider"
+        );
     }
 
     fn subscribe(&self, bus: &EventBus, state: Arc<PluginStateRegistry>) {
