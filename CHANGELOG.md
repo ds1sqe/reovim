@@ -27,6 +27,15 @@ All notable changes to Reovim will be documented in this file.
   - Multi-provider registry in `PluginStateRegistry` with priority-based resolution
   - Enables future implementations: markdown headings, treesitter AST nodes, LSP symbols
 
+- **Markdown Context Provider** (Issue #131) - Detect heading hierarchy in markdown files
+  - `MarkdownContextProvider` implementation with tree-sitter parsing
+  - Supports H1-H6 ATX-style headings (`#`, `##`, `###`, etc.)
+  - Smart caching with content hash for performance (>95% cache hit rate)
+  - Stack-based hierarchy algorithm for nested headings
+  - Returns breadcrumb format: `> CLAUDE.md > Architecture > Workspace Structure`
+  - Extended `ContextProvider` trait API to pass `content: &str` parameter
+  - 7 comprehensive unit tests covering edge cases
+
 - **File explorer visual enhancements** (Issue #127) - nvim-tree style coloring and tree structure
   - **Dedicated FileExplorerStyles** in theme system with distinct colors for each file category:
     - Directories: blue (bold)

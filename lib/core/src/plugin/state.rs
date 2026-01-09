@@ -455,18 +455,20 @@ impl PluginStateRegistry {
     /// * `buffer_id` - Buffer to query
     /// * `line` - Line number (0-indexed)
     /// * `col` - Column number (0-indexed)
+    /// * `content` - Buffer content as string
     #[must_use]
     pub fn get_context(
         &self,
         buffer_id: usize,
         line: u32,
         col: u32,
+        content: &str,
     ) -> Option<crate::context_provider::ContextHierarchy> {
         let providers = self.context_providers.read().unwrap().clone();
 
         for provider in &providers {
             if provider.supports_buffer(buffer_id)
-                && let Some(ctx) = provider.get_context(buffer_id, line, col)
+                && let Some(ctx) = provider.get_context(buffer_id, line, col, content)
             {
                 tracing::trace!(
                     provider = provider.name(),

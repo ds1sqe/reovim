@@ -22,8 +22,14 @@
 //! struct MyContextProvider;
 //!
 //! impl ContextProvider for MyContextProvider {
-//!     fn get_context(&self, buffer_id: usize, line: u32, col: u32) -> Option<ContextHierarchy> {
-//!         // Analyze buffer and return hierarchy
+//!     fn get_context(
+//!         &self,
+//!         buffer_id: usize,
+//!         line: u32,
+//!         col: u32,
+//!         content: &str,
+//!     ) -> Option<ContextHierarchy> {
+//!         // Analyze buffer content and return hierarchy
 //!         Some(ContextHierarchy::with_items(
 //!             buffer_id, line, col,
 //!             vec![
@@ -52,7 +58,8 @@
 //! registry.register_context_provider(Arc::new(MyContextProvider));
 //!
 //! // Query context
-//! if let Some(ctx) = registry.get_context(buffer_id, line, col) {
+//! let content = "...";  // Get buffer content
+//! if let Some(ctx) = registry.get_context(buffer_id, line, col, content) {
 //!     let breadcrumb = ctx.to_breadcrumb(" > ");
 //!     println!("Context: {}", breadcrumb);
 //! }
@@ -224,10 +231,17 @@ pub trait ContextProvider: Send + Sync + 'static {
     /// * `buffer_id` - Buffer to query
     /// * `line` - Line number (0-indexed)
     /// * `col` - Column number (0-indexed)
+    /// * `content` - Buffer content as string
     ///
     /// # Returns
     /// Some(hierarchy) if context can be determined, None otherwise
-    fn get_context(&self, buffer_id: usize, line: u32, col: u32) -> Option<ContextHierarchy>;
+    fn get_context(
+        &self,
+        buffer_id: usize,
+        line: u32,
+        col: u32,
+        content: &str,
+    ) -> Option<ContextHierarchy>;
 
     /// Provider name for debugging/logging
     fn name(&self) -> &'static str;
@@ -513,6 +527,7 @@ mod tests {
                 buffer_id: usize,
                 line: u32,
                 _col: u32,
+                _content: &str,
             ) -> Option<ContextHierarchy> {
                 if buffer_id == 1 && (10..20).contains(&line) {
                     Some(ContextHierarchy::with_items(
@@ -548,16 +563,16 @@ mod tests {
         assert!(!provider.supports_buffer(2));
 
         // Should return context for lines 10-19
-        let ctx = provider.get_context(1, 15, 0);
+        let ctx = provider.get_context(1, 15, 0, "");
         assert!(ctx.is_some());
         let ctx = ctx.unwrap();
         assert_eq!(ctx.items.len(), 1);
         assert_eq!(ctx.items[0].text, "test_context");
 
         // Should return None outside range
-        assert!(provider.get_context(1, 5, 0).is_none());
-        assert!(provider.get_context(1, 25, 0).is_none());
-        assert!(provider.get_context(2, 15, 0).is_none());
+        assert!(provider.get_context(1, 5, 0, "").is_none());
+        assert!(provider.get_context(1, 25, 0, "").is_none());
+        assert!(provider.get_context(2, 15, 0, "").is_none());
     }
 
     // Test provider registry integration
@@ -572,6 +587,7 @@ mod tests {
                 buffer_id: usize,
                 line: u32,
                 col: u32,
+                _content: &str,
             ) -> Option<ContextHierarchy> {
                 Some(ContextHierarchy::with_items(
                     buffer_id,
@@ -601,6 +617,7 @@ mod tests {
                 buffer_id: usize,
                 line: u32,
                 col: u32,
+                _content: &str,
             ) -> Option<ContextHierarchy> {
                 Some(ContextHierarchy::with_items(
                     buffer_id,
@@ -630,17 +647,17 @@ mod tests {
         registry.register_context_provider(Arc::new(Provider2));
 
         // Query buffer 1 - should get provider1
-        let ctx = registry.get_context(1, 10, 0);
+        let ctx = registry.get_context(1, 10, 0, "");
         assert!(ctx.is_some());
         assert_eq!(ctx.unwrap().items[0].text, "provider1");
 
         // Query buffer 2 - should get provider2
-        let ctx = registry.get_context(2, 10, 0);
+        let ctx = registry.get_context(2, 10, 0, "");
         assert!(ctx.is_some());
         assert_eq!(ctx.unwrap().items[0].text, "provider2");
 
         // Query buffer 3 - no provider supports it
-        let ctx = registry.get_context(3, 10, 0);
+        let ctx = registry.get_context(3, 10, 0, "");
         assert!(ctx.is_none());
     }
 
@@ -656,6 +673,7 @@ mod tests {
                 buffer_id: usize,
                 line: u32,
                 col: u32,
+                _content: &str,
             ) -> Option<ContextHierarchy> {
                 Some(ContextHierarchy::with_items(
                     buffer_id,
@@ -685,6 +703,7 @@ mod tests {
                 buffer_id: usize,
                 line: u32,
                 col: u32,
+                _content: &str,
             ) -> Option<ContextHierarchy> {
                 Some(ContextHierarchy::with_items(
                     buffer_id,
@@ -714,7 +733,7 @@ mod tests {
         registry.register_context_provider(Arc::new(LowPriority));
 
         // Should get high priority provider
-        let ctx = registry.get_context(1, 10, 0);
+        let ctx = registry.get_context(1, 10, 0, "");
         assert!(ctx.is_some());
         assert_eq!(ctx.unwrap().items[0].text, "high");
     }
