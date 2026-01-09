@@ -24,6 +24,7 @@
 //! ```
 
 pub mod command;
+pub mod context_section;
 pub mod section;
 pub mod state;
 
@@ -108,6 +109,50 @@ impl Plugin for StatuslinePlugin {
     }
 
     fn subscribe(&self, bus: &EventBus, _state: Arc<PluginStateRegistry>) {
+        use reovim_core::option::{
+            OptionCategory, OptionConstraint, OptionSpec, OptionValue, RegisterOption,
+        };
+
+        // Register settings
+        bus.emit(RegisterOption::new(
+            OptionSpec::new(
+                "context_breadcrumb_enabled",
+                "Show context breadcrumb in statusline",
+                OptionValue::Bool(true),
+            )
+            .with_category(OptionCategory::Display)
+            .with_section("Statusline")
+            .with_display_order(50),
+        ));
+
+        bus.emit(RegisterOption::new(
+            OptionSpec::new(
+                "context_separator",
+                "Context breadcrumb separator",
+                OptionValue::String(" > ".into()),
+            )
+            .with_category(OptionCategory::Display)
+            .with_section("Statusline")
+            .with_display_order(51),
+        ));
+
+        bus.emit(RegisterOption::new(
+            OptionSpec::new(
+                "context_max_items",
+                "Maximum breadcrumb items",
+                OptionValue::Integer(4),
+            )
+            .with_category(OptionCategory::Display)
+            .with_section("Statusline")
+            .with_display_order(52)
+            .with_constraint(OptionConstraint::range(1, 10)),
+        ));
+
+        // Auto-register context breadcrumb section
+        bus.emit(StatuslineSectionRegister {
+            section: context_section::create_context_section(),
+        });
+
         // Subscribe to section registration events
         let manager = Arc::clone(&self.manager);
         bus.subscribe::<StatuslineSectionRegister, _>(100, move |event, ctx| {

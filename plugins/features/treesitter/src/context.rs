@@ -28,7 +28,13 @@ impl TreesitterContextProvider {
 }
 
 impl ContextProvider for TreesitterContextProvider {
-    fn get_context(&self, buffer_id: usize, line: u32, col: u32, _content: &str) -> Option<ContextHierarchy> {
+    fn get_context(
+        &self,
+        buffer_id: usize,
+        line: u32,
+        col: u32,
+        _content: &str,
+    ) -> Option<ContextHierarchy> {
         self.manager.with(|mgr| {
             // Get the parse tree for this buffer
             let tree = mgr.get_tree(buffer_id)?;

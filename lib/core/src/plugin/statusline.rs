@@ -50,6 +50,14 @@ pub struct StatuslineRenderContext<'a> {
     pub screen_width: u16,
     /// Current row of the status line
     pub status_row: u16,
+    /// Active buffer ID (if any buffer is open)
+    pub active_buffer_id: Option<usize>,
+    /// Active buffer content (if any buffer is open)
+    pub buffer_content: Option<String>,
+    /// Cursor row in active buffer (if any buffer is open)
+    pub cursor_row: Option<u32>,
+    /// Cursor column in active buffer (if any buffer is open)
+    pub cursor_col: Option<u32>,
 }
 
 /// A rendered section ready for display

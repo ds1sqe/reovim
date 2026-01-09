@@ -115,6 +115,10 @@ impl StatuslineSectionProvider for SharedStatuslineManager {
 
         let section_ctx = SectionRenderContext {
             plugin_state: ctx.plugin_state,
+            active_buffer_id: ctx.active_buffer_id,
+            buffer_content: ctx.buffer_content.as_deref(),
+            cursor_row: ctx.cursor_row,
+            cursor_col: ctx.cursor_col,
         };
 
         inner

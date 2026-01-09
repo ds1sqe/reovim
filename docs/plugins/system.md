@@ -1255,6 +1255,16 @@ pub trait StatuslineSectionProvider: Send + Sync + 'static {
     fn render_sections(&self, ctx: &StatuslineRenderContext) -> Vec<RenderedSection>;
 }
 
+pub struct StatuslineRenderContext<'a> {
+    pub plugin_state: &'a PluginStateRegistry,
+    pub screen_width: u16,
+    pub status_row: u16,
+    pub active_buffer_id: Option<usize>,     // Active buffer ID (if any)
+    pub buffer_content: Option<String>,       // Active buffer content (if any)
+    pub cursor_row: Option<u32>,              // Cursor row in active buffer (if any)
+    pub cursor_col: Option<u32>,              // Cursor column in active buffer (if any)
+}
+
 pub struct RenderedSection {
     pub text: String,
     pub style: Option<Style>,

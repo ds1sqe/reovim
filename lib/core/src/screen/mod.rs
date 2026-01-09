@@ -2178,10 +2178,25 @@ impl Screen {
         // === Plugin sections ===
         // Get sections from provider (if any)
         let plugin_sections = plugin_state.statusline_provider().map(|provider| {
+            let (active_buffer_id, buffer_content, cursor_row, cursor_col) =
+                current_buffer.map_or((None, None, None, None), |buf| {
+                    let snapshot = crate::buffer::BufferSnapshot::from_buffer(buf);
+                    (
+                        Some(buf.id),
+                        Some(snapshot.content()),
+                        Some(u32::from(buf.cur.y)),
+                        Some(u32::from(buf.cur.x)),
+                    )
+                });
+
             let ctx = StatuslineRenderContext {
                 plugin_state,
                 screen_width: self.size.width,
                 status_row: y,
+                active_buffer_id,
+                buffer_content,
+                cursor_row,
+                cursor_col,
             };
             let mut sections = provider.render_sections(&ctx);
 

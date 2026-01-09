@@ -15,6 +15,7 @@ use {
     tokio::sync::mpsc,
 };
 
+pub mod command;
 pub mod context;
 pub mod edit;
 pub mod events;
@@ -32,6 +33,7 @@ pub mod text_objects;
 pub mod theme;
 
 pub use {
+    command::{JumpToNextScope, JumpToParentScope, JumpToPrevScope},
     context::TreesitterContextProvider,
     edit::BufferEdit,
     events::{
@@ -89,11 +91,41 @@ impl Plugin for TreesitterPlugin {
     }
 
     fn build(&self, ctx: &mut PluginContext) {
+        use reovim_core::{
+            bind::{CommandRef, KeymapScope},
+            command::id::CommandId,
+            keys,
+        };
+
         // Register render stage for syntax highlighting
         let stage = Arc::new(TreesitterRenderStage::new(Arc::clone(&self.manager)));
         ctx.register_render_stage(stage);
 
-        tracing::debug!("TreesitterPlugin: registered render stage");
+        // Register navigation commands
+        let _ = ctx.register_command(command::JumpToParentScope);
+        let _ = ctx.register_command(command::JumpToPrevScope);
+        let _ = ctx.register_command(command::JumpToNextScope);
+
+        // Bind keys in normal mode
+        ctx.bind_key_scoped(
+            KeymapScope::editor_normal(),
+            keys!['g' 'u'],
+            CommandRef::Registered(CommandId::new("jump_to_parent_scope")),
+        );
+
+        ctx.bind_key_scoped(
+            KeymapScope::editor_normal(),
+            keys!['[' 's'],
+            CommandRef::Registered(CommandId::new("jump_to_prev_scope")),
+        );
+
+        ctx.bind_key_scoped(
+            KeymapScope::editor_normal(),
+            keys![']' 's'],
+            CommandRef::Registered(CommandId::new("jump_to_next_scope")),
+        );
+
+        tracing::debug!("TreesitterPlugin: registered render stage and navigation commands");
     }
 
     fn init_state(&self, registry: &PluginStateRegistry) {
@@ -207,6 +239,41 @@ impl Plugin for TreesitterPlugin {
                     });
                 }
                 EventResult::Handled
+            });
+        }
+
+        // === Navigation command handlers ===
+
+        // Jump to parent scope
+        {
+            let _state = Arc::clone(&state);
+            bus.subscribe::<command::JumpToParentScope, _>(100, move |_event, _ctx| {
+                // TODO: Implement full parent scope navigation
+                // Need to:
+                // 1. Get active buffer ID and cursor position from runtime state
+                // 2. Get buffer content
+                // 3. Query context from provider registry
+                // 4. Find parent scope (second-to-last item)
+                // 5. Emit RequestCursorMove to parent start line
+                EventResult::NotHandled
+            });
+        }
+
+        // Jump to previous scope
+        {
+            let _state = Arc::clone(&state);
+            bus.subscribe::<command::JumpToPrevScope, _>(100, move |_event, _ctx| {
+                // TODO: Implement - find nearest scope header above cursor
+                EventResult::NotHandled
+            });
+        }
+
+        // Jump to next scope
+        {
+            let _state = Arc::clone(&state);
+            bus.subscribe::<command::JumpToNextScope, _>(100, move |_event, _ctx| {
+                // TODO: Implement - find nearest scope header below cursor
+                EventResult::NotHandled
             });
         }
 

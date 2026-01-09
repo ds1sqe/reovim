@@ -42,6 +42,22 @@ All notable changes to Reovim will be documented in this file.
   - Extended `ContextProvider` trait API to pass `content: &str` parameter
   - 7 comprehensive unit tests covering edge cases
 
+- **Context breadcrumb in statusline** (Issue #133) - Shows current scope hierarchy in statusline
+  - Displays breadcrumb like: ` > CLAUDE.md > Section > Subsection > `
+  - Works with markdown headings via `MarkdownContextProvider`
+  - Works with code scopes via `TreesitterContextProvider` (Rust, Python, JS, C, etc.)
+  - Smart truncation for long names and deep nesting
+  - Settings: `context_breadcrumb_enabled`, `context_separator`, `context_max_items`
+  - Extended `StatuslineRenderContext` to include active buffer content, ID, and cursor position
+  - Completes Epic #129 (Context Provider Trait System)
+
+- **Scope navigation commands** (Issue #133) - Jump between scope headers with keyboard shortcuts
+  - `gu` - Jump to parent scope (go up)
+  - `[s` - Jump to previous scope header (placeholder - TODO)
+  - `]s` - Jump to next scope header (placeholder - TODO)
+  - Works across all languages with context providers
+  - Commands registered in treesitter plugin with keybindings
+
 - **File explorer visual enhancements** (Issue #127) - nvim-tree style coloring and tree structure
   - **Dedicated FileExplorerStyles** in theme system with distinct colors for each file category:
     - Directories: blue (bold)
