@@ -85,8 +85,24 @@ impl CommandHandler {
     }
 
     /// Lookup a binding with fallback support
+    /// Also checks runtime mode if different from local mode (handles race conditions
+    /// where focus change hasn't propagated to `local_mode` yet)
     fn lookup_binding(&self, keys: &KeySequence) -> Option<&KeyMapInner> {
-        self.keymap.lookup_binding(&self.local_mode, keys)
+        // First try local mode
+        if let Some(inner) = self.keymap.lookup_binding(&self.local_mode, keys) {
+            return Some(inner);
+        }
+
+        // If local mode failed and runtime mode is different, try runtime mode
+        // This is a defensive fallback for edge cases where local_mode hasn't synced yet
+        {
+            let runtime_mode = self.mode_rx.borrow();
+            if runtime_mode.interactor_id != self.local_mode.interactor_id {
+                return self.keymap.lookup_binding(&runtime_mode, keys);
+            }
+        }
+
+        None
     }
 
     /// Check if keys are a valid prefix (with fallback support)
@@ -503,25 +519,11 @@ impl CommandHandler {
                                     }
                                 }
 
-                                // Handle backspace in Normal/Visual/Explorer modes
-                                if key_str == "Backspace" {
-                                    let mode = self.current_mode();
-                                    if Self::is_backspace_editable_mode(mode) {
-                                        if !self.pending_keys.is_empty() {
-                                            // Remove last keystroke from pending
-                                            self.pending_keys.pop();
-                                            self.dispatcher
-                                                .send_pending_keys(self.pending_display())
-                                                .await;
-                                        }
-                                        // Decrement scope - no dispatch for Backspace in editable mode
-                                        if let Some(scope) = self.current_scope.take() {
-                                            scope.decrement();
-                                        }
-                                        // In Normal/Visual/Explorer, ignore backspace (don't add to pending)
-                                        continue;
-                                    }
-                                }
+                                // NOTE: Backspace handling moved to AFTER the normal keybinding lookup.
+                                // This ensures that plugins (like explorer) that bind Backspace get
+                                // their bindings checked first, before applying editor-specific behavior.
+                                // The editor-specific "edit pending keys" is now a FALLBACK in the
+                                // "no command found" section at line ~710.
 
                                 // Handle operator-pending mode (d, y, c + motion or text object)
                                 // BUT: First check if there's a registered command for this key
@@ -677,9 +679,23 @@ impl CommandHandler {
                                         .send_pending_keys(self.pending_display())
                                         .await;
                                 } else {
-                                    // No keybinding found - handle Tab fallback in insert mode
+                                    // No keybinding found - handle fallbacks
                                     let mode = self.current_mode();
-                                    if mode.is_insert() && key_str == "Tab" {
+
+                                    // Backspace fallback: Edit pending keys in editor Normal/Visual mode
+                                    // This is checked AFTER keybinding lookup, so plugin bindings take precedence
+                                    if key_str == "Backspace" && Self::is_backspace_editable_mode(mode) {
+                                        // Only in editor mode, remove last keystroke from pending
+                                        let is_editor = mode.interactor_id.0 == "editor";
+                                        if is_editor && !self.pending_keys.is_empty() {
+                                            self.pending_keys.pop();
+                                            self.dispatcher
+                                                .send_pending_keys(self.pending_display())
+                                                .await;
+                                        }
+                                        // For non-editor modes with no binding, just ignore the Backspace
+                                    } else if mode.is_insert() && key_str == "Tab" {
+                                        // Tab fallback in insert mode
                                         self.pending_keys.clear();
                                         self.dispatcher.send_focus_insert_char('\t', self.current_scope.take()).await;
                                         self.dispatcher

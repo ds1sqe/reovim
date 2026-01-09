@@ -6,6 +6,24 @@ All notable changes to Reovim will be documented in this file.
 
 ### Added
 
+- **% motion for matching bracket navigation** (Issue #123) - Jump between matching brackets
+  - Supports `()`, `[]`, `{}` bracket pairs
+  - Vim-compatible behavior: cursor on bracket jumps to match, otherwise searches forward on line
+  - Inclusive motion for operator support (`d%`, `y%`, `c%`)
+  - Added `Motion::MatchingBracket` variant to core motion system
+  - Added `CursorMatchingBracketCommand` with `%` keybinding
+
+- **Backtick auto-pair completion** (Issue #124) - Auto-close backticks when typing
+  - Typing `` ` `` now auto-completes to ``` `` ``` with cursor between
+  - Useful for markdown inline code, JavaScript template literals, shell command substitution
+  - Added to pair plugin rainbow bracket highlighting
+
+- **Explorer backspace and dot navigation** (Issue #128) - Navigate directories with Backspace and dot
+  - `<Backspace>` in explorer navigates up to parent directory (changes root)
+  - `.` sets current selection as new root directory
+  - Matches nvim-tree behavior (navigate up with backspace, set root with dot)
+  - Backspace still works for text deletion in input mode (create/rename/filter)
+
 - **Sticky context headers** (Issue #88) - Overlay at viewport top showing enclosing scopes
   - Displays 1-3 parent scope headers as user scrolls through files
   - Works with both markdown headings and code scopes (functions, classes, impl blocks)

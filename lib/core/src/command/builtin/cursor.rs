@@ -351,6 +351,45 @@ impl CommandTrait for GotoFirstLineCommand {
     }
 }
 
+/// Jump to matching bracket (vim's % motion)
+#[derive(Debug, Clone)]
+pub struct CursorMatchingBracketCommand;
+
+impl CommandTrait for CursorMatchingBracketCommand {
+    fn name(&self) -> &'static str {
+        "cursor_matching_bracket"
+    }
+
+    fn description(&self) -> &'static str {
+        "Jump to matching bracket"
+    }
+
+    fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
+        let (new_pos, new_desired_col) = calculate_motion_with_desired_col(
+            &ctx.buffer.contents,
+            ctx.buffer.cur,
+            ctx.buffer.desired_col,
+            Motion::MatchingBracket,
+            1,
+        );
+        ctx.buffer.cur = new_pos;
+        ctx.buffer.desired_col = new_desired_col;
+        CommandResult::NeedsRender
+    }
+
+    fn clone_box(&self) -> Box<dyn CommandTrait> {
+        Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn is_jump(&self) -> bool {
+        true
+    }
+}
+
 /// Go to last line (or line N with count)
 #[derive(Debug, Clone)]
 pub struct GotoLastLineCommand;

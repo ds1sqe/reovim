@@ -540,3 +540,45 @@ async fn test_auto_pair_curly_braces() {
     result.assert_buffer_contains("{}");
     eprintln!("Buffer content: {}", result.buffer_content);
 }
+
+#[tokio::test]
+async fn test_auto_pair_backticks() {
+    // Test auto-pair for backticks (Issue #124)
+    // Useful for markdown inline code, JS template literals, shell command substitution
+    let result = ServerTest::new()
+        .await
+        .with_content("")
+        .with_keys("i`") // Enter insert mode and type '`'
+        .run()
+        .await;
+
+    result.assert_buffer_contains("``");
+    eprintln!("Buffer content: {}", result.buffer_content);
+}
+
+#[tokio::test]
+async fn test_backtick_rainbow_highlighting() {
+    // Test that backticks get rainbow bracket highlighting
+    let mut result = ServerTest::new()
+        .await
+        .with_content("`code`")
+        .with_keys("l") // Move inside
+        .run()
+        .await;
+
+    let snap = result.visual_snapshot().await;
+    let cursor = &snap.cursor;
+    eprintln!("Cursor: {cursor:?}");
+
+    let open = get_content_cell(&snap, 0, 0).unwrap();
+    let close = get_content_cell(&snap, 5, 0).unwrap();
+
+    eprintln!("Open backtick: {open:?}");
+    eprintln!("Close backtick: {close:?}");
+
+    assert_eq!(open.char, '`', "Expected '`' at position 0");
+    assert_eq!(close.char, '`', "Expected '`' at position 5");
+    assert!(open.fg.is_some(), "Open backtick should be highlighted");
+    assert!(close.fg.is_some(), "Close backtick should be highlighted");
+    assert_eq!(open.fg, close.fg, "Backtick pair should have same color");
+}

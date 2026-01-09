@@ -462,19 +462,61 @@ impl ExplorerState {
         }
     }
 
-    /// Go to parent directory of current selection
+    /// Go to parent directory (change root to parent and position cursor on old root)
+    ///
+    /// This implements nvim-tree style navigation:
+    /// 1. Change explorer root to parent directory
+    /// 2. Position cursor on the directory we just came from
     pub fn go_to_parent(&mut self) {
-        if let Some(current) = self.current_node()
-            && let Some(parent_path) = current.path.parent()
-        {
-            // Find the parent in the visible nodes and move cursor to it
-            let nodes = self.visible_nodes();
-            for (i, node) in nodes.iter().enumerate() {
-                if node.path == parent_path {
-                    self.cursor_index = i;
-                    return;
-                }
+        let current_root = self.tree.root_path().to_path_buf();
+
+        // Get parent of current root
+        let Some(parent_path) = current_root.parent() else {
+            // Already at filesystem root
+            self.message = Some("Already at root".to_string());
+            return;
+        };
+
+        // Remember the old root name to find it after changing root
+        let old_root_name = current_root.clone();
+
+        // Change root to parent directory
+        if let Err(e) = self.set_root(parent_path.to_path_buf()) {
+            self.message = Some(format!("Failed to navigate to parent: {e}"));
+            return;
+        }
+
+        // Find the old root directory in the new view and position cursor on it
+        let nodes = self.visible_nodes();
+        for (i, node) in nodes.iter().enumerate() {
+            if node.path == old_root_name {
+                self.cursor_index = i;
+                return;
             }
+        }
+    }
+
+    /// Change root to currently selected directory
+    ///
+    /// If the current selection is a directory, make it the new root.
+    /// If it's a file, use its parent directory as the new root.
+    pub fn change_root_to_current(&mut self) {
+        let Some(current) = self.current_node() else {
+            return;
+        };
+
+        let new_root = if current.is_dir() {
+            current.path.clone()
+        } else {
+            // For files, use the parent directory
+            match current.path.parent() {
+                Some(parent) => parent.to_path_buf(),
+                None => return,
+            }
+        };
+
+        if let Err(e) = self.set_root(new_root) {
+            self.message = Some(format!("Failed to change root: {e}"));
         }
     }
 

@@ -11,6 +11,7 @@ use crate::state::BracketInfo;
 /// Bracket pair definition
 /// Note: `<` and `>` are intentionally excluded as they're commonly used in
 /// operators (`->`, `=>`, `<=`, `>=`, `<<`, `>>`) rather than as brackets.
+/// Note: Backticks are excluded because symmetric pairs cause issues with auto-pair.
 const BRACKET_PAIRS: [(char, char); 3] = [('(', ')'), ('[', ']'), ('{', '}')];
 
 /// Compute bracket depths for all brackets in content
@@ -28,7 +29,7 @@ pub fn compute_bracket_depths(content: &str) -> HashMap<(usize, usize), BracketI
     let mut result = HashMap::new();
 
     // Stacks for each bracket type, storing (line, col, depth)
-    let mut stacks: [Vec<(usize, usize, usize)>; 3] = [Vec::new(), Vec::new(), Vec::new()];
+    let mut stacks: [Vec<(usize, usize, usize)>; 4] = [Vec::new(), Vec::new(), Vec::new(), Vec::new()];
 
     for (line_idx, line) in content.lines().enumerate() {
         for (col_idx, ch) in line.chars().enumerate() {

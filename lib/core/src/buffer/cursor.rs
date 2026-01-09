@@ -148,9 +148,158 @@ pub fn calculate_motion_with_desired_col(
             }
             new_desired_col = None;
         }
+        Motion::MatchingBracket => {
+            // Jump to matching bracket (vim's % motion)
+            if let Some(new_pos) = find_matching_bracket(contents, pos) {
+                pos = new_pos;
+            }
+            new_desired_col = None;
+        }
     }
 
     (pos, new_desired_col)
+}
+
+/// Bracket pairs for matching
+const BRACKET_PAIRS: [(char, char); 3] = [('(', ')'), ('[', ']'), ('{', '}')];
+
+/// Find matching bracket for the character at cursor position
+///
+/// Implements vim's % motion:
+/// 1. If cursor is on a bracket, find its match
+/// 2. If cursor is not on a bracket, search forward on the current line
+///    for a bracket, then find its match
+#[allow(clippy::cast_possible_truncation)]
+fn find_matching_bracket(
+    contents: &[crate::buffer::Line],
+    pos: Position,
+) -> Option<Position> {
+    // Get the character at cursor position
+    let line = contents.get(pos.y as usize)?;
+    let chars: Vec<char> = line.inner.chars().collect();
+    let cursor_char = chars.get(pos.x as usize).copied();
+
+    // Check if cursor is on a bracket
+    if let Some(ch) = cursor_char
+        && let Some(result) = try_match_bracket_at(contents, pos, ch)
+    {
+        return Some(result);
+    }
+
+    // Cursor not on a bracket - search forward on current line
+    for (offset, &ch) in chars.iter().enumerate().skip(pos.x as usize + 1) {
+        let search_pos = Position { x: offset as u16, y: pos.y };
+        if let Some(result) = try_match_bracket_at(contents, search_pos, ch) {
+            return Some(result);
+        }
+    }
+
+    None
+}
+
+/// Try to find matching bracket for a character at given position
+#[allow(clippy::cast_possible_truncation)]
+fn try_match_bracket_at(
+    contents: &[crate::buffer::Line],
+    pos: Position,
+    ch: char,
+) -> Option<Position> {
+    for (open, close) in BRACKET_PAIRS {
+        if ch == open {
+            return find_forward_match(contents, pos, open, close);
+        } else if ch == close {
+            return find_backward_match(contents, pos, open, close);
+        }
+    }
+    None
+}
+
+/// Find matching closing bracket by scanning forward
+#[allow(clippy::cast_possible_truncation)]
+fn find_forward_match(
+    contents: &[crate::buffer::Line],
+    start: Position,
+    open: char,
+    close: char,
+) -> Option<Position> {
+    let mut depth = 1;
+    let mut y = start.y as usize;
+    let mut x = start.x as usize + 1; // Start after the opening bracket
+
+    while y < contents.len() {
+        let line = &contents[y];
+        let chars: Vec<char> = line.inner.chars().collect();
+
+        while x < chars.len() {
+            let ch = chars[x];
+            if ch == open {
+                depth += 1;
+            } else if ch == close {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(Position { x: x as u16, y: y as u16 });
+                }
+            }
+            x += 1;
+        }
+
+        y += 1;
+        x = 0;
+    }
+
+    None // No match found
+}
+
+/// Find matching opening bracket by scanning backward
+#[allow(clippy::cast_possible_truncation)]
+fn find_backward_match(
+    contents: &[crate::buffer::Line],
+    start: Position,
+    open: char,
+    close: char,
+) -> Option<Position> {
+    let mut depth = 1;
+    let mut y = start.y as usize;
+    let start_x = start.x as usize;
+
+    // Handle first line specially (start before the closing bracket)
+    if let Some(line) = contents.get(y) {
+        let chars: Vec<char> = line.inner.chars().collect();
+        if start_x > 0 {
+            for x in (0..start_x).rev() {
+                let ch = chars[x];
+                if ch == close {
+                    depth += 1;
+                } else if ch == open {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(Position { x: x as u16, y: y as u16 });
+                    }
+                }
+            }
+        }
+    }
+
+    // Continue scanning previous lines
+    while y > 0 {
+        y -= 1;
+        let line = &contents[y];
+        let chars: Vec<char> = line.inner.chars().collect();
+
+        for x in (0..chars.len()).rev() {
+            let ch = chars[x];
+            if ch == close {
+                depth += 1;
+            } else if ch == open {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(Position { x: x as u16, y: y as u16 });
+                }
+            }
+        }
+    }
+
+    None // No match found
 }
 
 /// Move forward to start of next word, crossing line boundaries

@@ -31,6 +31,10 @@ pub enum Motion {
         line: u32,
         column: u32,
     },
+
+    // Bracket matching
+    /// Jump to matching bracket (%, vim-style)
+    MatchingBracket,
 }
 
 impl Motion {
@@ -49,9 +53,10 @@ impl Motion {
     /// operations. In vim:
     /// - `$` (`LineEnd`) and `e` (`WordEnd`) are inclusive
     /// - `w` (`WordForward`) and `b` (`WordBackward`) are exclusive
+    /// - `%` (`MatchingBracket`) is inclusive
     #[must_use]
     pub const fn is_inclusive(&self) -> bool {
-        matches!(self, Self::LineEnd | Self::WordEnd)
+        matches!(self, Self::LineEnd | Self::WordEnd | Self::MatchingBracket)
     }
 
     /// Parse a key string into a motion
@@ -69,6 +74,7 @@ impl Motion {
             "$" => Some(Self::LineEnd),
             "G" => Some(Self::DocumentEnd),
             "gg" => Some(Self::DocumentStart),
+            "%" => Some(Self::MatchingBracket),
             _ => None,
         }
     }

@@ -12,9 +12,15 @@
 //! - Round brackets: `(` `)`
 //! - Square brackets: `[` `]`
 //! - Curly brackets: `{` `}`
+//! - Backticks: `` ` `` (for markdown code, template literals)
+//! - Single quotes: `'`
+//! - Double quotes: `"`
 //!
 //! Note: Angle brackets `<>` are intentionally excluded as they conflict with
 //! operators (`->`, `=>`, `<=`, `>=`, `<<`, `>>`) in most languages.
+//!
+//! Symmetric pairs (backticks, quotes) use a tracking mechanism to prevent
+//! infinite recursion when auto-inserting the closing character.
 //!
 //! # Highlighting Behavior
 //!
@@ -34,7 +40,13 @@ pub mod rainbow;
 pub mod stage;
 pub mod state;
 
-use std::{any::TypeId, sync::Arc};
+use std::{
+    any::TypeId,
+    sync::{
+        Arc,
+        atomic::{AtomicU8, Ordering},
+    },
+};
 
 use reovim_core::{
     event_bus::{
@@ -45,6 +57,24 @@ use reovim_core::{
 };
 
 use {stage::PairRenderStage, state::SharedPairState};
+
+/// Tracks the last auto-inserted character to prevent infinite recursion with symmetric pairs.
+/// Uses a simple encoding: 0 = none, 1 = backtick, 2 = single quote, 3 = double quote
+static LAST_AUTO_INSERT: AtomicU8 = AtomicU8::new(0);
+
+fn char_to_code(c: &str) -> u8 {
+    match c {
+        "`" => 1,
+        "'" => 2,
+        "\"" => 3,
+        _ => 0,
+    }
+}
+
+fn is_last_auto_insert(c: &str) -> bool {
+    let code = char_to_code(c);
+    code != 0 && LAST_AUTO_INSERT.swap(0, Ordering::SeqCst) == code
+}
 
 /// Pair plugin for bracket matching, rainbow coloring, and auto-pair insertion
 pub struct PairPlugin {
@@ -124,13 +154,27 @@ impl Plugin for PairPlugin {
         // Auto-pair insertion: when an opening bracket is typed, insert the closing one
         bus.subscribe::<BufferModified, _>(90, move |event, ctx| {
             if let BufferModification::Insert { text, .. } = &event.modification {
+                // For symmetric pairs (`, ', "), check if this is our own auto-inserted character
+                // to prevent infinite recursion
+                if is_last_auto_insert(text) {
+                    tracing::trace!(
+                        buffer_id = event.buffer_id,
+                        text = text,
+                        "PairPlugin: skipping auto-insert for our own symmetric pair"
+                    );
+                    return EventResult::Handled;
+                }
+
                 // Only handle single-character insertions of opening brackets
-                let close = match text.as_str() {
-                    "(" => Some(")"),
-                    "[" => Some("]"),
-                    "{" => Some("}"),
+                let (close, is_symmetric) = match text.as_str() {
+                    "(" => (Some(")"), false),
+                    "[" => (Some("]"), false),
+                    "{" => (Some("}"), false),
+                    "`" => (Some("`"), true),
+                    "'" => (Some("'"), true),
+                    "\"" => (Some("\""), true),
                     // Note: < is intentionally excluded as it's ambiguous (less-than vs angle bracket)
-                    _ => None,
+                    _ => (None, false),
                 };
 
                 if let Some(closing) = close {
@@ -138,8 +182,14 @@ impl Plugin for PairPlugin {
                         buffer_id = event.buffer_id,
                         open = text,
                         close = closing,
+                        is_symmetric = is_symmetric,
                         "PairPlugin: auto-inserting closing bracket"
                     );
+
+                    // For symmetric pairs, track that we're inserting to prevent recursion
+                    if is_symmetric {
+                        LAST_AUTO_INSERT.store(char_to_code(closing), Ordering::SeqCst);
+                    }
 
                     // Insert the closing bracket and move cursor back
                     ctx.emit(RequestInsertText {

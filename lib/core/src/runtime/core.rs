@@ -316,7 +316,10 @@ impl Runtime {
                 .subscribe::<RequestFocusChange, _>(100, move |event, _ctx| {
                     let current_mode = mode_tx.borrow().clone();
                     let new_mode = current_mode.set_interactor_id(event.target);
-                    // Send through event loop to properly update runtime.mode_state
+                    // Immediately update mode_tx so CommandHandler sees the new mode
+                    // before processing subsequent keys (fixes race condition)
+                    let _ = mode_tx.send(new_mode.clone());
+                    // Also send through event loop to update runtime.mode_state
                     let _ = hi_tx.try_send(RuntimeEvent::mode_change(new_mode));
                     tracing::info!(
                         "Runtime: Requesting focus change to component '{}'",
@@ -330,11 +333,15 @@ impl Runtime {
         // HIGH PRIORITY: Mode changes are user-visible and should be processed immediately
         {
             use crate::event_bus::{EventResult, core_events::RequestModeChange};
+            let mode_tx = runtime.mode_tx.clone();
             let hi_tx = runtime.hi_tx.clone();
             runtime
                 .event_bus
                 .subscribe::<RequestModeChange, _>(100, move |event, _ctx| {
-                    // Send through event loop to properly update runtime.mode_state
+                    // Immediately update mode_tx so CommandHandler sees the new mode
+                    // before processing subsequent keys (fixes race condition)
+                    let _ = mode_tx.send(event.mode.clone());
+                    // Also send through event loop to update runtime.mode_state
                     let _ = hi_tx.try_send(RuntimeEvent::mode_change(event.mode.clone()));
                     tracing::info!(
                         "Runtime: Requesting mode change to interactor='{}', edit_mode={:?}, sub_mode={:?}",

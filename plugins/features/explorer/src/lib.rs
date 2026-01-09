@@ -54,7 +54,8 @@ pub mod command_id {
     pub const PAGE_DOWN: CommandId = CommandId::new("explorer_page_down");
     pub const GOTO_FIRST: CommandId = CommandId::new("explorer_goto_first");
     pub const GOTO_LAST: CommandId = CommandId::new("explorer_goto_last");
-    pub const GO_TO_PARENT: CommandId = CommandId::new("explorer_go_to_parent");
+    pub const GO_TO_PARENT: CommandId = CommandId::new("explorer_goto_parent");
+    pub const CHANGE_ROOT: CommandId = CommandId::new("explorer_change_root");
 
     // Tree operations
     pub const TOGGLE_NODE: CommandId = CommandId::new("explorer_toggle_node");
@@ -98,10 +99,10 @@ pub mod command_id {
 
 // Plugin unified command-event types
 pub use command::{
-    ExplorerCancelInput, ExplorerClearFilter, ExplorerClose, ExplorerCloseParent,
-    ExplorerClosePopup, ExplorerConfirmInput, ExplorerCopyPath, ExplorerCreateDir,
-    ExplorerCreateFile, ExplorerCursorDown, ExplorerCursorUp, ExplorerCut, ExplorerDelete,
-    ExplorerExitVisual, ExplorerFocusEditor, ExplorerGoToParent, ExplorerGotoFirst,
+    ExplorerCancelInput, ExplorerChangeRoot, ExplorerClearFilter, ExplorerClose,
+    ExplorerCloseParent, ExplorerClosePopup, ExplorerConfirmInput, ExplorerCopyPath,
+    ExplorerCreateDir, ExplorerCreateFile, ExplorerCursorDown, ExplorerCursorUp, ExplorerCut,
+    ExplorerDelete, ExplorerExitVisual, ExplorerFocusEditor, ExplorerGoToParent, ExplorerGotoFirst,
     ExplorerGotoLast, ExplorerInputBackspace, ExplorerInputChar, ExplorerOpenNode,
     ExplorerPageDown, ExplorerPageUp, ExplorerPaste, ExplorerRefresh, ExplorerRename,
     ExplorerSelectAll, ExplorerShowInfo, ExplorerStartFilter, ExplorerToggle, ExplorerToggleHidden,
@@ -293,11 +294,27 @@ impl ExplorerPlugin {
         });
 
         // Handle backspace from runtime (PluginBackspace event)
+        // In input mode: delete character from input buffer
+        // In normal mode: navigate to parent directory
         let state_clone = Arc::clone(state);
         bus.subscribe_targeted::<PluginBackspace, _>(COMPONENT_ID, 100, move |_event, ctx| {
-            state_clone.with_mut::<ExplorerState, _, _>(|s| {
-                s.input_backspace();
-            });
+            let is_input_mode = state_clone
+                .with::<ExplorerState, _, _>(|s| s.is_input_mode())
+                .unwrap_or(false);
+
+            if is_input_mode {
+                // In input mode, handle as text backspace
+                state_clone.with_mut::<ExplorerState, _, _>(|s| {
+                    s.input_backspace();
+                });
+            } else {
+                // In normal mode, navigate to parent directory
+                state_clone.with_mut::<ExplorerState, _, _>(|s| {
+                    s.go_to_parent();
+                    s.update_scroll();
+                    s.sync_popup();
+                });
+            }
             ctx.request_render();
             EventResult::Handled
         });
@@ -343,6 +360,12 @@ impl ExplorerPlugin {
 
         subscribe_state!(bus, state, ExplorerGoToParent, ExplorerState, |s| {
             s.go_to_parent();
+            s.update_scroll();
+            s.sync_popup();
+        });
+
+        subscribe_state!(bus, state, ExplorerChangeRoot, ExplorerState, |s| {
+            s.change_root_to_current();
             s.update_scroll();
             s.sync_popup();
         });
@@ -803,6 +826,7 @@ impl ExplorerPlugin {
         let _ = ctx.register_command(ExplorerGotoFirst);
         let _ = ctx.register_command(ExplorerGotoLast);
         let _ = ctx.register_command(ExplorerGoToParent);
+        let _ = ctx.register_command(ExplorerChangeRoot);
     }
 
     fn register_tree_commands(&self, ctx: &PluginContext) {
@@ -902,6 +926,16 @@ impl ExplorerPlugin {
             explorer_normal.clone(),
             keys!['-'],
             CommandRef::Registered(command_id::GO_TO_PARENT),
+        );
+        ctx.bind_key_scoped(
+            explorer_normal.clone(),
+            keys![Backspace],
+            CommandRef::Registered(command_id::GO_TO_PARENT),
+        );
+        ctx.bind_key_scoped(
+            explorer_normal.clone(),
+            keys!['.'],
+            CommandRef::Registered(command_id::CHANGE_ROOT),
         );
 
         // Tree operations / Input confirmation

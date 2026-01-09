@@ -24,6 +24,7 @@ use crate::{
             CursorLeftCommand,
             CursorLineEndCommand,
             CursorLineStartCommand,
+            CursorMatchingBracketCommand,
             CursorRightCommand,
             CursorUpCommand,
             CursorWordBackwardCommand,
@@ -248,6 +249,7 @@ impl CorePlugin {
         let _ = ctx.register_command(CursorWordForwardCommand);
         let _ = ctx.register_command(CursorWordBackwardCommand);
         let _ = ctx.register_command(CursorWordEndCommand);
+        let _ = ctx.register_command(CursorMatchingBracketCommand);
         let _ = ctx.register_command(GotoFirstLineCommand);
         let _ = ctx.register_command(GotoLastLineCommand);
     }
@@ -415,6 +417,11 @@ impl CorePlugin {
             editor_normal.clone(),
             keys!['G'],
             CommandRef::Registered(CommandId::new("goto_last_line")),
+        );
+        ctx.bind_key_scoped(
+            editor_normal.clone(),
+            keys!['%'],
+            CommandRef::Registered(CommandId::new("cursor_matching_bracket")),
         );
 
         // === Mode switching ===
