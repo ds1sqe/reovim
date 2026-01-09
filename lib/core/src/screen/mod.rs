@@ -1080,6 +1080,7 @@ impl Screen {
             active_anchor_y,
             active_gutter_width,
             active_scroll_y,
+            active_height,
             cursor_col,
             cursor_row,
         ) = self
@@ -1094,9 +1095,18 @@ impl Screen {
                 let sign_width = win.sign_column_mode.effective_width(true);
                 let gutter_width = sign_width + line_num_width;
                 let scroll_y = win.buffer_anchor().map_or(0, |a| a.y);
-                Some((win.anchor.x, win.anchor.y, gutter_width, scroll_y, buf.cur.x, buf.cur.y))
+                let height = win.height;
+                Some((
+                    win.anchor.x,
+                    win.anchor.y,
+                    gutter_width,
+                    scroll_y,
+                    height,
+                    buf.cur.x,
+                    buf.cur.y,
+                ))
             })
-            .unwrap_or((0, 0, 0, 0, 0, 0));
+            .unwrap_or((0, 0, 0, 0, 0, 0, 0));
 
         // Build editor context for window providers
         let editor_ctx = crate::plugin::EditorContext::new(
@@ -1111,7 +1121,13 @@ impl Screen {
         )
         .with_left_offset(left_offset)
         .with_pending_keys(pending_keys)
-        .with_active_window(active_anchor_x, active_anchor_y, active_gutter_width, active_scroll_y)
+        .with_active_window(
+            active_anchor_x,
+            active_anchor_y,
+            active_gutter_width,
+            active_scroll_y,
+            active_height,
+        )
         .with_cursor(cursor_col, cursor_row);
 
         // Sort all windows by z-order

@@ -28,6 +28,8 @@ pub enum Direction {
     Forward,
     /// Search backward from cursor
     Backward,
+    /// Search both directions from cursor
+    Both,
 }
 
 // === Navigation commands with buffer context ===
@@ -53,7 +55,7 @@ impl CommandTrait for JumpSearch {
     }
 
     fn description(&self) -> &'static str {
-        "Multi-char search in current buffer (s key)"
+        "Multi-char search in both directions (s key)"
     }
 
     fn execute(&self, ctx: &mut ExecutionContext) -> CommandResult {
@@ -71,7 +73,7 @@ impl CommandTrait for JumpSearch {
             cursor_line,
             cursor_col,
             lines,
-            direction: Direction::Forward,
+            direction: Direction::Both,
             operator_context: ctx.operator_context.map(Into::into),
         }))
     }

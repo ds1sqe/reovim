@@ -4,6 +4,19 @@ All notable changes to Reovim will be documented in this file.
 
 ## [Unreleased]
 
+### Enhanced
+
+- **Bidirectional multi-char search** (Issue #125) - `s` key now searches both directions simultaneously
+  - Added `Direction::Both` variant to support bidirectional search
+  - Labels prioritize by distance (Manhattan distance from cursor)
+  - Closest matches get simpler labels (s, f, n, j, k...)
+  - Works with operators: `dsab` deletes to closest match in either direction
+
+- **Viewport-limited jump labels** (Issue #126) - Range-finder labels now only appear within visible viewport
+  - Added `active_window_height` field to EditorContext
+  - Jump labels filtered by viewport boundaries in render
+  - Dramatically reduces visual clutter in large files (100+ matches → ~50 visible labels)
+  - Labels update automatically when scrolling
 ### Added
 
 - **File explorer visual enhancements** (Issue #127) - nvim-tree style coloring and tree structure
