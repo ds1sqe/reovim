@@ -4,6 +4,14 @@ All notable changes to Reovim will be documented in this file.
 
 ## [Unreleased]
 
+### Enhanced
+
+- **Bidirectional multi-char search** (Issue #125) - `s` key now searches both directions simultaneously
+  - Added `Direction::Both` variant to support bidirectional search
+  - Labels prioritize by distance (Manhattan distance from cursor)
+  - Closest matches get simpler labels (s, f, n, j, k...)
+  - Works with operators: `dsab` deletes to closest match in either direction
+
 ### Changed
 
 - **reo-cli**: Changed default output format for `keys` command from `plain_text` to `raw_ansi` for better visual feedback (Issue #134)

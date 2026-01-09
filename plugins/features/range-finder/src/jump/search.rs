@@ -107,6 +107,10 @@ pub fn find_matches(
                 Direction::Backward => {
                     line_num < cursor_line || (line_num == cursor_line && col_num < cursor_col)
                 }
+                Direction::Both => {
+                    // Include all matches except cursor position
+                    !(line_num == cursor_line && col_num == cursor_col)
+                }
             };
 
             if include {
