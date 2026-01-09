@@ -37,6 +37,7 @@ use crate::{
     bind::KeyMap,
     command::CommandRegistry,
     completion::SharedCompletionFactory,
+    context_provider::SharedContextProvider,
     decoration::SharedDecorationFactory,
     event::RuntimeEvent,
     render::{RenderStage, RenderStageRegistry},
@@ -89,6 +90,8 @@ pub struct PluginStateRegistry {
     pending_keys: RwLock<String>,
     /// Statusline section provider (used by statusline plugin)
     statusline_provider: RwLock<Option<SharedStatuslineSectionProvider>>,
+    /// Context providers for scope detection (provided by plugins)
+    context_providers: RwLock<Vec<SharedContextProvider>>,
 }
 
 impl std::fmt::Debug for PluginStateRegistry {
@@ -110,6 +113,7 @@ impl std::fmt::Debug for PluginStateRegistry {
         let has_command_registry = self.command_registry.read().is_ok_and(|r| r.is_some());
         let pending_keys_len = self.pending_keys.read().map_or(0, |k| k.len());
         let has_statusline_provider = self.statusline_provider.read().is_ok_and(|p| p.is_some());
+        let context_providers_count = self.context_providers.read().map_or(0, |p| p.len());
         f.debug_struct("PluginStateRegistry")
             .field("state_count", &count)
             .field("has_visibility_source", &has_visibility)
@@ -128,6 +132,7 @@ impl std::fmt::Debug for PluginStateRegistry {
             .field("has_command_registry", &has_command_registry)
             .field("pending_keys_len", &pending_keys_len)
             .field("has_statusline_provider", &has_statusline_provider)
+            .field("context_providers_count", &context_providers_count)
             .finish()
     }
 }
@@ -154,6 +159,7 @@ impl PluginStateRegistry {
             command_registry: RwLock::new(None),
             pending_keys: RwLock::new(String::new()),
             statusline_provider: RwLock::new(None),
+            context_providers: RwLock::new(Vec::new()),
         }
     }
 
@@ -421,6 +427,78 @@ impl PluginStateRegistry {
     #[must_use]
     pub fn animation_state(&self) -> Option<Arc<TokioRwLock<AnimationState>>> {
         self.animation_state.read().unwrap().clone()
+    }
+
+    /// Register a context provider
+    ///
+    /// Providers are queried in registration order. The first provider
+    /// that supports the buffer and returns a result is used.
+    pub fn register_context_provider(&self, provider: SharedContextProvider) {
+        tracing::debug!(provider = provider.name(), "Registering context provider");
+        self.context_providers.write().unwrap().push(provider);
+    }
+
+    /// Get all registered context providers
+    ///
+    /// Returns a cloned vector of all providers.
+    #[must_use]
+    pub fn context_providers(&self) -> Vec<SharedContextProvider> {
+        self.context_providers.read().unwrap().clone()
+    }
+
+    /// Query context at a cursor position
+    ///
+    /// Tries all registered providers in order until one returns a result.
+    /// Returns None if no provider supports the buffer or can determine context.
+    ///
+    /// # Arguments
+    /// * `buffer_id` - Buffer to query
+    /// * `line` - Line number (0-indexed)
+    /// * `col` - Column number (0-indexed)
+    /// * `content` - Buffer content as string
+    #[must_use]
+    pub fn get_context(
+        &self,
+        buffer_id: usize,
+        line: u32,
+        col: u32,
+        content: &str,
+    ) -> Option<crate::context_provider::ContextHierarchy> {
+        let providers = self.context_providers.read().unwrap().clone();
+
+        for provider in &providers {
+            let supports = provider.supports_buffer(buffer_id);
+            tracing::debug!(
+                provider = provider.name(),
+                buffer_id,
+                supports,
+                "Checking context provider"
+            );
+
+            if supports {
+                if let Some(ctx) = provider.get_context(buffer_id, line, col, content) {
+                    tracing::debug!(
+                        provider = provider.name(),
+                        buffer_id,
+                        line,
+                        col,
+                        items = ctx.items.len(),
+                        "Context resolved"
+                    );
+                    return Some(ctx);
+                }
+                tracing::debug!(
+                    provider = provider.name(),
+                    buffer_id,
+                    line,
+                    col,
+                    "Context provider returned None"
+                );
+            }
+        }
+
+        tracing::debug!(buffer_id, line, col, "No context provider found result");
+        None
     }
 
     /// Register a new plugin state

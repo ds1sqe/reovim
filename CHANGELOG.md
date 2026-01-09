@@ -4,6 +4,17 @@ All notable changes to Reovim will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Sticky context headers** (Issue #88) - Overlay at viewport top showing enclosing scopes
+  - Displays 1-3 parent scope headers as user scrolls through files
+  - Works with both markdown headings and code scopes (functions, classes, impl blocks)
+  - Uses same ContextProvider infrastructure as statusline breadcrumbs (#130, #131, #132)
+  - Buffer content passed via EditorContext (same pattern as #133) for markdown support
+  - Settings: `sticky_headers_enabled`, `sticky_headers_max_count`, `sticky_headers_show_separator`
+  - z-order 125 overlay window using PluginWindow trait
+  - Auto-queries context at top visible line
+
 ### Enhanced
 
 - **Bidirectional multi-char search** (Issue #125) - `s` key now searches both directions simultaneously
@@ -17,7 +28,46 @@ All notable changes to Reovim will be documented in this file.
   - Jump labels filtered by viewport boundaries in render
   - Dramatically reduces visual clutter in large files (100+ matches → ~50 visible labels)
   - Labels update automatically when scrolling
+
 ### Added
+
+- **TreesitterContextProvider** - AST-based scope detection for breadcrumb navigation (#132)
+  - Detects code hierarchy (functions, classes, impl blocks, methods) by analyzing treesitter parse tree
+  - Multi-language support: Rust, Python, JavaScript, C, C++, Go, Java
+  - Provides context at cursor position: e.g., `> mod.rs > impl Screen > fn render_windows`
+  - Phase 3 of context provider system, enables statusline breadcrumb integration
+
+- **Core ContextProvider trait and registry** (Issue #130) - Foundation for plugin-based context/scope detection
+  - `ContextProvider` trait with `get_context()`, `name()`, `supports_buffer()` methods
+  - `ContextItem` struct for representing individual context levels (text, line range, kind, level)
+  - `ContextHierarchy` struct with helper methods (`to_breadcrumb()`, `current_scope()`, `at_level()`)
+  - Multi-provider registry in `PluginStateRegistry` with priority-based resolution
+  - Enables future implementations: markdown headings, treesitter AST nodes, LSP symbols
+
+- **Markdown Context Provider** (Issue #131) - Detect heading hierarchy in markdown files
+  - `MarkdownContextProvider` implementation with tree-sitter parsing
+  - Supports H1-H6 ATX-style headings (`#`, `##`, `###`, etc.)
+  - Smart caching with content hash for performance (>95% cache hit rate)
+  - Stack-based hierarchy algorithm for nested headings
+  - Returns breadcrumb format: `> CLAUDE.md > Architecture > Workspace Structure`
+  - Extended `ContextProvider` trait API to pass `content: &str` parameter
+  - 7 comprehensive unit tests covering edge cases
+
+- **Context breadcrumb in statusline** (Issue #133) - Shows current scope hierarchy in statusline
+  - Displays breadcrumb like: ` > CLAUDE.md > Section > Subsection > `
+  - Works with markdown headings via `MarkdownContextProvider`
+  - Works with code scopes via `TreesitterContextProvider` (Rust, Python, JS, C, etc.)
+  - Smart truncation for long names and deep nesting
+  - Settings: `context_breadcrumb_enabled`, `context_separator`, `context_max_items`
+  - Extended `StatuslineRenderContext` to include active buffer content, ID, and cursor position
+  - Completes Epic #129 (Context Provider Trait System)
+
+- **Scope navigation commands** (Issue #133) - Jump between scope headers with keyboard shortcuts
+  - `gu` - Jump to parent scope (go up)
+  - `[s` - Jump to previous scope header (placeholder - TODO)
+  - `]s` - Jump to next scope header (placeholder - TODO)
+  - Works across all languages with context providers
+  - Commands registered in treesitter plugin with keybindings
 
 - **File explorer visual enhancements** (Issue #127) - nvim-tree style coloring and tree structure
   - **Dedicated FileExplorerStyles** in theme system with distinct colors for each file category:

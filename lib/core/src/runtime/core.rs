@@ -19,7 +19,7 @@ use {
         event::RuntimeEvent,
         event_bus::{
             BufferClosed, DynEvent, EventBus, EventResult, EventSender, FileOpened, HandlerContext,
-            core_events::ModeChanged,
+            ViewportScrolled, core_events::ModeChanged,
         },
         highlight::{ColorMode, HighlightStore, Theme},
         indent::IndentAnalyzer,
@@ -927,7 +927,7 @@ impl Runtime {
 
                 // Try to create syntax provider from factory (if available)
                 if let Some(factory) = self.plugin_state.syntax_factory()
-                    && let Some(mut syntax) = factory.create_syntax(path, &content)
+                    && let Some(mut syntax) = factory.create_syntax(id, path, &content)
                 {
                     // Do initial parse
                     syntax.parse(&content);
@@ -1099,6 +1099,17 @@ impl Runtime {
             self.screen.set_editor_buffer(id);
             self.showing_landing_page = false;
             self.landing_state = None;
+
+            // Emit initial ViewportScrolled to trigger context computation
+            if let Some(viewport_info) = self.screen.get_viewport_info(id) {
+                self.event_bus.emit(ViewportScrolled {
+                    window_id: viewport_info.window_id,
+                    buffer_id: viewport_info.buffer_id,
+                    top_line: viewport_info.top_line,
+                    bottom_line: viewport_info.bottom_line,
+                });
+                debug!(id, "open_file: emitted initial ViewportScrolled");
+            }
         } else {
             debug!(path, "open_file: failed to create buffer");
         }

@@ -25,6 +25,8 @@ use crate::{
 /// Supports language injections (e.g., code blocks in markdown) via the
 /// injection manager.
 pub struct TreeSitterSyntax {
+    /// Buffer ID this syntax provider is for (used for syncing tree to manager)
+    buffer_id: usize,
     /// Language identifier (e.g., "rust", "python")
     language_id: String,
     /// Tree-sitter parser instance
@@ -37,7 +39,7 @@ pub struct TreeSitterSyntax {
     highlighter: Highlighter,
     /// Injection manager for embedded languages (uses RwLock for thread-safe interior mutability)
     injection_manager: RwLock<InjectionManager>,
-    /// Shared manager for injection lookups (languages, queries)
+    /// Shared manager for injection lookups (languages, queries) and tree syncing
     manager: Option<Arc<SharedTreesitterManager>>,
 }
 
@@ -45,6 +47,7 @@ impl TreeSitterSyntax {
     /// Create a new tree-sitter syntax provider
     ///
     /// # Arguments
+    /// * `buffer_id` - Buffer ID this syntax is for
     /// * `language` - Tree-sitter language grammar
     /// * `language_id` - Language identifier string
     /// * `query` - Pre-compiled highlights query (Arc for cheap sharing)
@@ -52,6 +55,7 @@ impl TreeSitterSyntax {
     /// # Returns
     /// Some(syntax) if parser setup succeeds, None otherwise
     pub fn new(
+        buffer_id: usize,
         language: &tree_sitter::Language,
         language_id: &str,
         query: Arc<Query>,
@@ -60,6 +64,7 @@ impl TreeSitterSyntax {
         parser.set_language(language).ok()?;
 
         Some(Self {
+            buffer_id,
             language_id: language_id.to_string(),
             parser,
             tree: None,
@@ -73,15 +78,17 @@ impl TreeSitterSyntax {
     /// Create a new tree-sitter syntax provider with injection support
     ///
     /// # Arguments
+    /// * `buffer_id` - Buffer ID this syntax is for
     /// * `language` - Tree-sitter language grammar
     /// * `language_id` - Language identifier string
     /// * `query` - Pre-compiled highlights query
     /// * `injection_query` - Optional pre-compiled injection query
-    /// * `manager` - Shared manager for injection lookups
+    /// * `manager` - Shared manager for injection lookups and tree syncing
     ///
     /// # Returns
     /// Some(syntax) if parser setup succeeds, None otherwise
     pub fn with_injections(
+        buffer_id: usize,
         language: &tree_sitter::Language,
         language_id: &str,
         query: Arc<Query>,
@@ -92,6 +99,7 @@ impl TreeSitterSyntax {
         parser.set_language(language).ok()?;
 
         Some(Self {
+            buffer_id,
             language_id: language_id.to_string(),
             parser,
             tree: None,
@@ -166,6 +174,14 @@ impl SyntaxProvider for TreeSitterSyntax {
     fn parse(&mut self, content: &str) {
         self.tree = self.parser.parse(content, None);
 
+        // Sync tree to manager for context queries
+        if let (Some(tree), Some(manager)) = (&self.tree, &self.manager) {
+            manager.with_mut(|m| {
+                m.set_tree(self.buffer_id, &self.language_id, tree.clone());
+                m.set_source(self.buffer_id, content.to_string());
+            });
+        }
+
         // Invalidate injection regions since the tree changed
         self.injection_manager.write().unwrap().invalidate();
     }
@@ -185,6 +201,14 @@ impl SyntaxProvider for TreeSitterSyntax {
 
         // Re-parse with the old tree for incremental parsing
         self.tree = self.parser.parse(content, self.tree.as_ref());
+
+        // Sync tree to manager for context queries
+        if let (Some(tree), Some(manager)) = (&self.tree, &self.manager) {
+            manager.with_mut(|m| {
+                m.set_tree(self.buffer_id, &self.language_id, tree.clone());
+                m.set_source(self.buffer_id, content.to_string());
+            });
+        }
 
         // Invalidate injection regions since the tree changed
         self.injection_manager.write().unwrap().invalidate();

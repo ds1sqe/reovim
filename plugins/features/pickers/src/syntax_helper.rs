@@ -16,7 +16,8 @@ pub fn compute_styled_lines(
     lines: &[String],
 ) -> Option<Vec<Vec<StyledSpan>>> {
     // Create syntax provider for this file
-    let mut syntax = factory.create_syntax(file_path, content)?;
+    // Use buffer_id 0 since this is just for preview rendering (not tracked)
+    let mut syntax = factory.create_syntax(0, file_path, content)?;
 
     // Parse and saturate language injections (markdown code blocks, etc.)
     syntax.parse(content);

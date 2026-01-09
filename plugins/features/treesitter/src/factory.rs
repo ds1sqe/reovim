@@ -25,7 +25,12 @@ impl TreesitterSyntaxFactory {
 }
 
 impl SyntaxFactory for TreesitterSyntaxFactory {
-    fn create_syntax(&self, file_path: &str, _content: &str) -> Option<Box<dyn SyntaxProvider>> {
+    fn create_syntax(
+        &self,
+        buffer_id: usize,
+        file_path: &str,
+        _content: &str,
+    ) -> Option<Box<dyn SyntaxProvider>> {
         self.manager.with(|manager| {
             // Detect language from file extension
             let language_id = manager.registry().detect_language(file_path)?;
@@ -40,17 +45,15 @@ impl SyntaxFactory for TreesitterSyntaxFactory {
             let injection_query = manager.get_cached_query(&language_id, QueryType::Injections);
 
             // Create syntax provider - use injection-aware version if available
-            let syntax = if injection_query.is_some() {
-                TreeSitterSyntax::with_injections(
-                    registered.language(),
-                    &language_id,
-                    query,
-                    injection_query,
-                    Arc::clone(&self.manager),
-                )?
-            } else {
-                TreeSitterSyntax::new(registered.language(), &language_id, query)?
-            };
+            // Always pass manager for tree syncing to context provider
+            let syntax = TreeSitterSyntax::with_injections(
+                buffer_id,
+                registered.language(),
+                &language_id,
+                query,
+                injection_query,
+                Arc::clone(&self.manager),
+            )?;
 
             Some(Box::new(syntax) as Box<dyn SyntaxProvider>)
         })

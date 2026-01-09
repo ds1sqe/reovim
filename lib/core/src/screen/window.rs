@@ -1257,10 +1257,12 @@ impl Window {
     }
 
     /// Update `buffer_anchor` to keep cursor visible within the viewport
-    pub fn update_scroll(&mut self, cursor_y: u16) {
+    ///
+    /// Returns `true` if the viewport scrolled (anchor changed), `false` otherwise.
+    pub fn update_scroll(&mut self, cursor_y: u16) -> bool {
         let visible_height = self.height;
         let Some(mut buffer_anchor) = self.buffer_anchor() else {
-            return;
+            return false;
         };
         let scroll_offset = buffer_anchor.y;
 
@@ -1268,12 +1270,27 @@ impl Window {
         if cursor_y < scroll_offset {
             buffer_anchor.y = cursor_y;
             self.set_buffer_anchor(buffer_anchor);
+            true
         }
         // Scroll down if cursor is below visible area
         else if cursor_y >= scroll_offset + visible_height {
             buffer_anchor.y = cursor_y.saturating_sub(visible_height) + 1;
             self.set_buffer_anchor(buffer_anchor);
+            true
+        } else {
+            false
         }
+    }
+
+    /// Get the viewport bounds (`top_line`, `bottom_line`) for this window
+    ///
+    /// Returns (`top_line`, `bottom_line`) where both are 0-indexed buffer line numbers.
+    /// `bottom_line` is the last visible line (inclusive).
+    #[must_use]
+    pub fn viewport_bounds(&self) -> (u32, u32) {
+        let top_line = self.buffer_anchor().map_or(0, |a| u32::from(a.y));
+        let bottom_line = top_line + u32::from(self.height).saturating_sub(1);
+        (top_line, bottom_line)
     }
 
     /// Get the width of the line number gutter (including separator)

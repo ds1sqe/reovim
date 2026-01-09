@@ -52,6 +52,10 @@ impl LanguageSupport for MarkdownLanguage {
     fn injections_query(&self) -> Option<&'static str> {
         Some(include_str!("queries/injections.scm"))
     }
+
+    fn context_query(&self) -> Option<&'static str> {
+        Some(include_str!("queries/context.scm"))
+    }
 }
 
 /// Markdown inline language support
@@ -111,6 +115,7 @@ impl Plugin for MarkdownPlugin {
 
     fn subscribe(&self, bus: &EventBus, _state: Arc<PluginStateRegistry>) {
         // Register both markdown and markdown_inline languages
+        // Context is now provided via TreesitterContextProvider using context_query()
         bus.emit(RegisterLanguage {
             language: Arc::new(MarkdownLanguage),
         });

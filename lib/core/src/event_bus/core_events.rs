@@ -229,6 +229,29 @@ impl Event for ScreenResized {
     }
 }
 
+/// Viewport scrolled (window anchor changed)
+///
+/// Emitted when a window's visible viewport changes due to scrolling.
+/// Plugins can subscribe to this event to update viewport-dependent UI
+/// (e.g., sticky context headers).
+#[derive(Debug, Clone, Copy)]
+pub struct ViewportScrolled {
+    /// ID of the window that scrolled
+    pub window_id: usize,
+    /// ID of the buffer being viewed
+    pub buffer_id: usize,
+    /// First visible line (0-indexed)
+    pub top_line: u32,
+    /// Last visible line (0-indexed)
+    pub bottom_line: u32,
+}
+
+impl Event for ViewportScrolled {
+    fn priority(&self) -> u32 {
+        priority::NORMAL
+    }
+}
+
 /// Request to change the focused component
 ///
 /// Plugins emit this event to request focus change. The runtime subscribes

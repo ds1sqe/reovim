@@ -22,6 +22,8 @@ pub enum QueryType {
     Decorations,
     /// Language injections (embedded code in markdown, etc.)
     Injections,
+    /// Context/scope detection (functions, classes, headings)
+    Context,
 }
 
 /// Cache key for compiled queries

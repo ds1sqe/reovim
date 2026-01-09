@@ -13,6 +13,14 @@ pub use reovim_core::plugin::PluginStateRegistry;
 pub struct SectionRenderContext<'a> {
     /// Plugin state registry for accessing plugin state
     pub plugin_state: &'a PluginStateRegistry,
+    /// Active buffer ID (if any buffer is open)
+    pub active_buffer_id: Option<usize>,
+    /// Active buffer content (if any buffer is open)
+    pub buffer_content: Option<&'a str>,
+    /// Cursor row in active buffer (if any buffer is open)
+    pub cursor_row: Option<u32>,
+    /// Cursor column in active buffer (if any buffer is open)
+    pub cursor_col: Option<u32>,
 }
 
 /// Content returned by a section render callback

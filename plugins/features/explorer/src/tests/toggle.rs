@@ -27,6 +27,7 @@ fn mock_editor_context() -> EditorContext {
         active_window_height: 0,
         cursor_col: 0,
         cursor_row: 0,
+        active_buffer_content: None,
         color_mode: reovim_core::highlight::ColorMode::TrueColor,
         pending_keys: String::new(),
     }

@@ -109,6 +109,19 @@ pub struct Position {
     pub y: u16,
 }
 
+/// Information about a viewport scroll event
+#[derive(Debug, Clone, Copy)]
+pub struct ViewportScrollInfo {
+    /// Window that scrolled
+    pub window_id: usize,
+    /// Buffer being viewed
+    pub buffer_id: usize,
+    /// First visible line (0-indexed)
+    pub top_line: u32,
+    /// Last visible line (0-indexed)
+    pub bottom_line: u32,
+}
+
 pub struct Screen {
     size: ScreenSize,
     out_stream: Box<dyn Write>,
@@ -122,6 +135,8 @@ pub struct Screen {
     window_buffers: std::collections::BTreeMap<usize, usize>,
     /// Frame renderer for buffered rendering (always Some after initialization)
     frame_renderer: Option<FrameRenderer>,
+    /// Pending viewport scroll events to be emitted by the runtime
+    pending_viewport_scrolls: Vec<ViewportScrollInfo>,
 }
 
 impl Default for Screen {
@@ -177,6 +192,7 @@ impl Default for Screen {
             next_window_id: 1, // Next window will be ID 1
             window_buffers,
             frame_renderer: Some(FrameRenderer::new(columns, rows)),
+            pending_viewport_scrolls: Vec::new(),
         }
     }
 }
@@ -237,6 +253,7 @@ impl Screen {
             next_window_id: 1,
             window_buffers,
             frame_renderer: Some(FrameRenderer::new(width, height)),
+            pending_viewport_scrolls: Vec::new(),
         }
     }
 
@@ -396,6 +413,68 @@ impl Screen {
             }
             buf.to_annotated_ascii(&config)
         })
+    }
+
+    /// Take pending viewport scroll events
+    ///
+    /// Returns scroll events that occurred during the last render and clears the pending list.
+    /// The runtime should call this after rendering to emit `ViewportScrolled` events.
+    pub fn take_viewport_scrolls(&mut self) -> Vec<ViewportScrollInfo> {
+        std::mem::take(&mut self.pending_viewport_scrolls)
+    }
+
+    /// Check and update viewport scroll positions
+    ///
+    /// Call this after cursor movement to detect if the viewport needs to scroll.
+    /// Returns scroll events for any windows that scrolled.
+    pub fn update_viewport_scrolls(
+        &mut self,
+        buffers: &std::collections::BTreeMap<usize, Buffer>,
+    ) -> Vec<ViewportScrollInfo> {
+        let mut scrolls = Vec::new();
+
+        for win in &mut self.windows {
+            if let Some(buffer_id) = win.buffer_id()
+                && let Some(buf) = buffers.get(&buffer_id)
+            {
+                let effective_cursor_y = if win.is_active {
+                    buf.cur.y
+                } else {
+                    win.cursor.y
+                };
+                let scrolled = win.update_scroll(effective_cursor_y);
+                if scrolled {
+                    let (top_line, bottom_line) = win.viewport_bounds();
+                    scrolls.push(ViewportScrollInfo {
+                        window_id: win.id,
+                        buffer_id,
+                        top_line,
+                        bottom_line,
+                    });
+                }
+            }
+        }
+
+        scrolls
+    }
+
+    /// Get current viewport info for a buffer (for initial context requests)
+    ///
+    /// Returns viewport info for the window displaying the given buffer, if any.
+    #[must_use]
+    pub fn get_viewport_info(&self, buffer_id: usize) -> Option<ViewportScrollInfo> {
+        self.windows
+            .iter()
+            .find(|w| w.buffer_id() == Some(buffer_id))
+            .map(|win| {
+                let (top_line, bottom_line) = win.viewport_bounds();
+                ViewportScrollInfo {
+                    window_id: win.id,
+                    buffer_id,
+                    top_line,
+                    bottom_line,
+                }
+            })
     }
 
     /// Render with bundled state
@@ -1057,6 +1136,9 @@ impl Screen {
             self.update_window_layouts();
         }
 
+        // Clear pending scroll events from previous frame
+        self.pending_viewport_scrolls.clear();
+
         // Update scroll positions BEFORE cloning windows
         for win in &mut self.windows {
             if let Some(buffer_id) = win.buffer_id()
@@ -1067,7 +1149,16 @@ impl Screen {
                 } else {
                     win.cursor.y
                 };
-                win.update_scroll(effective_cursor_y);
+                let scrolled = win.update_scroll(effective_cursor_y);
+                if scrolled {
+                    let (top_line, bottom_line) = win.viewport_bounds();
+                    self.pending_viewport_scrolls.push(ViewportScrollInfo {
+                        window_id: win.id,
+                        buffer_id,
+                        top_line,
+                        bottom_line,
+                    });
+                }
             }
         }
 
@@ -1083,6 +1174,7 @@ impl Screen {
             active_height,
             cursor_col,
             cursor_row,
+            active_buffer_content,
         ) = self
             .windows
             .iter()
@@ -1096,6 +1188,9 @@ impl Screen {
                 let gutter_width = sign_width + line_num_width;
                 let scroll_y = win.buffer_anchor().map_or(0, |a| a.y);
                 let height = win.height;
+                // Get buffer content for context providers (e.g., sticky headers)
+                let snapshot = crate::buffer::BufferSnapshot::from_buffer(buf);
+                let content = snapshot.content();
                 Some((
                     win.anchor.x,
                     win.anchor.y,
@@ -1104,9 +1199,10 @@ impl Screen {
                     height,
                     buf.cur.x,
                     buf.cur.y,
+                    Some(content),
                 ))
             })
-            .unwrap_or((0, 0, 0, 0, 0, 0, 0));
+            .unwrap_or((0, 0, 0, 0, 0, 0, 0, None));
 
         // Build editor context for window providers
         let editor_ctx = crate::plugin::EditorContext::new(
@@ -1128,7 +1224,8 @@ impl Screen {
             active_scroll_y,
             active_height,
         )
-        .with_cursor(cursor_col, cursor_row);
+        .with_cursor(cursor_col, cursor_row)
+        .with_buffer_content(active_buffer_content);
 
         // Sort all windows by z-order
         windows_to_render.sort_by_key(|w| w.z_order);
@@ -2178,10 +2275,25 @@ impl Screen {
         // === Plugin sections ===
         // Get sections from provider (if any)
         let plugin_sections = plugin_state.statusline_provider().map(|provider| {
+            let (active_buffer_id, buffer_content, cursor_row, cursor_col) =
+                current_buffer.map_or((None, None, None, None), |buf| {
+                    let snapshot = crate::buffer::BufferSnapshot::from_buffer(buf);
+                    (
+                        Some(buf.id),
+                        Some(snapshot.content()),
+                        Some(u32::from(buf.cur.y)),
+                        Some(u32::from(buf.cur.x)),
+                    )
+                });
+
             let ctx = StatuslineRenderContext {
                 plugin_state,
                 screen_width: self.size.width,
                 status_row: y,
+                active_buffer_id,
+                buffer_content,
+                cursor_row,
+                cursor_col,
             };
             let mut sections = provider.render_sections(&ctx);
 
