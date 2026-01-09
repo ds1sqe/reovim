@@ -17,7 +17,15 @@ All notable changes to Reovim will be documented in this file.
   - Jump labels filtered by viewport boundaries in render
   - Dramatically reduces visual clutter in large files (100+ matches → ~50 visible labels)
   - Labels update automatically when scrolling
+
 ### Added
+
+- **Core ContextProvider trait and registry** (Issue #130) - Foundation for plugin-based context/scope detection
+  - `ContextProvider` trait with `get_context()`, `name()`, `supports_buffer()` methods
+  - `ContextItem` struct for representing individual context levels (text, line range, kind, level)
+  - `ContextHierarchy` struct with helper methods (`to_breadcrumb()`, `current_scope()`, `at_level()`)
+  - Multi-provider registry in `PluginStateRegistry` with priority-based resolution
+  - Enables future implementations: markdown headings, treesitter AST nodes, LSP symbols
 
 - **File explorer visual enhancements** (Issue #127) - nvim-tree style coloring and tree structure
   - **Dedicated FileExplorerStyles** in theme system with distinct colors for each file category:

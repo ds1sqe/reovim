@@ -20,6 +20,7 @@ pub mod compositor;
 pub mod config;
 pub mod constants;
 pub mod content;
+pub mod context_provider;
 pub mod event;
 pub mod filetype;
 pub mod folding;
