@@ -4,6 +4,11 @@ All notable changes to Reovim will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **reo-cli**: Changed default output format for `keys` command from `plain_text` to `raw_ansi` for better visual feedback (Issue #134)
+- **reo-cli**: Added `--format` flag to `keys` command to allow choosing output format (raw_ansi, plain_text, cell_grid)
+
 ## [0.8.0] - 2026-01-09
 
 ### Fixed

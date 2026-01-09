@@ -146,7 +146,9 @@ The `reo-cli` tool provides command-line access to reovim servers.
 reo-cli list
 
 # Inject keys and show status
-reo-cli keys 'iHello<Esc>'
+reo-cli keys 'iHello<Esc>'               # Default: colored output
+reo-cli keys --format plain_text 'gg'    # Plain text output
+reo-cli keys --format cell_grid 'gg'     # JSON cell grid
 
 # Get screen content
 reo-cli screen
