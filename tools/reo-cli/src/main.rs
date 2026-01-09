@@ -52,6 +52,10 @@ enum Commands {
     Keys {
         /// Key sequence (e.g., "iHello<Esc>")
         keys: String,
+
+        /// Output format (`raw_ansi`, `plain_text`, `cell_grid`)
+        #[arg(long, default_value = "raw_ansi")]
+        format: String,
     },
 
     /// Get selection state
@@ -203,9 +207,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let command = cli.command.unwrap();
 
     // Keys command: inject keys then show status
-    if let Commands::Keys { ref keys } = command {
+    if let Commands::Keys {
+        ref keys,
+        ref format,
+    } = command
+    {
         commands::cmd_keys(&mut client, keys).await?;
-        return show_status(&mut client).await;
+        return show_status(&mut client, format).await;
     }
 
     // All other commands - return JSON
@@ -246,9 +254,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Show default status: screen capture, mode, and cursor
-async fn show_status(client: &mut client::ReoClient) -> Result<(), Box<dyn std::error::Error>> {
+async fn show_status(
+    client: &mut client::ReoClient,
+    format: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     // Get screen capture
-    let capture = commands::cmd_screen_content(client, "plain_text").await?;
+    let capture = commands::cmd_screen_content(client, format).await?;
     if let Some(content) = capture.get("content").and_then(Value::as_str) {
         println!("{content}");
     }

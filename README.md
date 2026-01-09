@@ -143,8 +143,13 @@ A CLI client tool is available for interacting with the server:
 # List running servers
 reo-cli list
 
-# Inject keys and show status (screen + mode + cursor)
+# Inject keys and show status (colored output by default)
 reo-cli keys 'iHello<Esc>'
+
+# Choose output format
+reo-cli keys --format plain_text 'gg'     # Plain text
+reo-cli keys --format raw_ansi 'gg'       # ANSI colors (default)
+reo-cli keys --format cell_grid 'gg'      # JSON cell grid
 
 # Connect to custom address
 reo-cli --tcp localhost:9000 keys 'j'

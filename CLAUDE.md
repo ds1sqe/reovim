@@ -86,7 +86,8 @@ cargo run -p reo-cli -- list
 cargo run -- --server Cargo.toml &  # Note: prints "Listening on 127.0.0.1:12521"
 
 # Do testing with reo-cli
-cargo run -p reo-cli -- keys 'gg'
+cargo run -p reo-cli -- keys 'gg'  # Default: raw_ansi (colored output)
+cargo run -p reo-cli -- keys --format plain_text 'gg'  # Plain text output
 
 # Kill ONLY the server you just started
 cargo run -p reo-cli -- --tcp 127.0.0.1:12521 kill
@@ -143,8 +144,10 @@ cargo run -- --listen-tcp 9000
 
 # Run reo-cli client
 cargo run -p reo-cli -- list              # List running servers
-cargo run -p reo-cli -- keys 'iHello<Esc>'  # Inject keys, show status (screen + mode + cursor)
+cargo run -p reo-cli -- keys 'iHello<Esc>'  # Inject keys, show status (colored output by default)
 cargo run -p reo-cli -- --tcp 127.0.0.1:12522 keys 'j'  # Connect to specific server
+cargo run -p reo-cli -- keys --format plain_text 'gg'  # Plain text output
+cargo run -p reo-cli -- keys --format cell_grid 'gg'  # JSON cell grid
 cargo run -p reo-cli -- -i                # Interactive REPL mode
 
 # View logs (timestamped files)
