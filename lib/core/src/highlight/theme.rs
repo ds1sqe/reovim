@@ -253,6 +253,31 @@ pub struct VirtualTextStyles {
     pub hint: Style,
 }
 
+/// File explorer styles for visual file type differentiation
+#[derive(Debug, Clone)]
+pub struct FileExplorerStyles {
+    /// Directory style (blue/cyan)
+    pub directory: Style,
+    /// Source code files (.rs, .py, .js, etc.)
+    pub source_file: Style,
+    /// Configuration files (.toml, .yaml, .json)
+    pub config_file: Style,
+    /// Documentation files (.md, README)
+    pub doc_file: Style,
+    /// Data files (.csv, .sql, .db)
+    pub data_file: Style,
+    /// Media files (images, audio, video)
+    pub media_file: Style,
+    /// Special files (LICENSE, .gitignore)
+    pub special_file: Style,
+    /// Lock files (Cargo.lock, package-lock.json)
+    pub lock_file: Style,
+    /// Executable files (shell scripts, binaries)
+    pub executable_file: Style,
+    /// Hidden files (starting with .)
+    pub hidden_file: Style,
+}
+
 // ============================================================================
 // Main Theme Struct
 // ============================================================================
@@ -277,6 +302,7 @@ pub struct Theme {
     pub semantic: SemanticStyles,
     pub leap: LeapStyles,
     pub virtual_text: VirtualTextStyles,
+    pub file_explorer: FileExplorerStyles,
 }
 
 impl Default for Theme {
@@ -352,6 +378,11 @@ impl Theme {
             r: 198,
             g: 120,
             b: 221,
+        };
+        let orange = Color::Rgb {
+            r: 209,
+            g: 154,
+            b: 102,
         };
 
         Self {
@@ -493,6 +524,22 @@ impl Theme {
                 warn: Style::new().fg(yellow).italic(),
                 info: Style::new().fg(blue).italic(),
                 hint: Style::new().fg(fg_dark).italic(),
+            },
+            file_explorer: FileExplorerStyles {
+                directory: Style::new().fg(blue).bold(),
+                source_file: Style::new().fg(orange),
+                config_file: Style::new().fg(fg_dark),
+                doc_file: Style::new().fg(cyan),
+                data_file: Style::new().fg(magenta),
+                media_file: Style::new().fg(Color::Rgb {
+                    r: 233,
+                    g: 30,
+                    b: 99,
+                }), // Pink for media
+                special_file: Style::new().fg(yellow),
+                lock_file: Style::new().fg(yellow).dim(),
+                executable_file: Style::new().fg(green),
+                hidden_file: Style::new().fg(fg_dark).dim(),
             },
         }
     }
@@ -662,6 +709,26 @@ impl Theme {
                 warn: Style::new().fg(Color::DarkYellow).italic(),
                 info: Style::new().fg(Color::DarkBlue).italic(),
                 hint: Style::new().fg(Color::Grey).italic(),
+            },
+            file_explorer: FileExplorerStyles {
+                directory: Style::new().fg(Color::Blue).bold(),
+                source_file: Style::new().fg(Color::Rgb {
+                    r: 184,
+                    g: 121,
+                    b: 73,
+                }), // Orange
+                config_file: Style::new().fg(Color::Grey),
+                doc_file: Style::new().fg(Color::DarkCyan),
+                data_file: Style::new().fg(Color::DarkMagenta),
+                media_file: Style::new().fg(Color::Rgb {
+                    r: 197,
+                    g: 46,
+                    b: 110,
+                }), // Pink for media
+                special_file: Style::new().fg(Color::Yellow),
+                lock_file: Style::new().fg(Color::DarkYellow),
+                executable_file: Style::new().fg(Color::Green),
+                hidden_file: Style::new().fg(Color::Grey).dim(),
             },
         }
     }
@@ -893,6 +960,22 @@ impl Theme {
                 warn: Style::new().fg(yellow).italic(),
                 info: Style::new().fg(blue).italic(),
                 hint: Style::new().fg(fg_dark).italic(),
+            },
+            file_explorer: FileExplorerStyles {
+                directory: Style::new().fg(blue).bold(),
+                source_file: Style::new().fg(orange),
+                config_file: Style::new().fg(fg_dark),
+                doc_file: Style::new().fg(cyan),
+                data_file: Style::new().fg(magenta),
+                media_file: Style::new().fg(Color::Rgb {
+                    r: 255,
+                    g: 92,
+                    b: 127,
+                }), // Pink for media
+                special_file: Style::new().fg(yellow),
+                lock_file: Style::new().fg(yellow).dim(),
+                executable_file: Style::new().fg(green),
+                hidden_file: Style::new().fg(fg_dark).dim(),
             },
         }
     }

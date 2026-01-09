@@ -38,6 +38,22 @@ pub struct ExplorerState {
     pub visible: bool,
     /// File details popup state
     pub popup: FileDetailsPopup,
+    /// Enable file type syntax coloring
+    pub enable_colors: bool,
+    /// Tree drawing style for visual hierarchy
+    pub tree_style: TreeStyle,
+}
+
+/// Tree drawing style for visual hierarchy
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum TreeStyle {
+    /// No tree lines, just indentation with spaces
+    None,
+    /// Simple ASCII indentation with ">" character
+    Simple,
+    /// Box-drawing characters (│, ├, └) for visual hierarchy
+    #[default]
+    BoxDrawing,
 }
 
 /// Input mode for file operations
@@ -128,6 +144,8 @@ impl ExplorerState {
             selection: ExplorerSelection::default(),
             visible: false,
             popup: FileDetailsPopup::default(),
+            enable_colors: true,               // Enable colors by default
+            tree_style: TreeStyle::BoxDrawing, // Use box-drawing by default
         })
     }
 
