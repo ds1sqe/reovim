@@ -36,5 +36,14 @@
 (pipe_table_header) @decoration.table.header
 (pipe_table_delimiter_row) @decoration.table.delimiter
 
+; Horizontal rules (thematic breaks) for visual enhancement
+(thematic_break) @decoration.horizontal_rule
+
+; Blockquotes for styling
+(block_quote) @decoration.blockquote
+(block_quote_marker) @decoration.blockquote.marker
+; Continuation markers on subsequent lines of blockquotes (only inside block_quote)
+(block_quote (paragraph (inline (block_continuation) @decoration.blockquote.marker)))
+
 ; NOTE: Inline elements (emphasis, strong_emphasis, inline_link) are in
 ; INLINE_LANGUAGE, not LANGUAGE. See treesitter/grammar.rs for dual-grammar support.

@@ -4,7 +4,34 @@ All notable changes to Reovim will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Enhanced Markdown Decorations** (Epic #89) - Complete markdown rendering overhaul
+  - **Phase 1: Heading Decorations** (#90)
+    - Heading indentation by level (H1=0, H2=1 space, H3=2 spaces, etc.)
+    - Inline code span background styling with backtick concealment
+    - Link background styling for distinct link appearance
+    - Strikethrough styling with `~~` marker concealment
+  - **Phase 2: Horizontal Rules and Blockquotes** (#91)
+    - Horizontal rules: `---`/`***`/`___` → full-width `────────` line
+    - Blockquotes: `>` → `│ ` vertical bar with background color
+  - **Phase 3: Table Border Decorations** (#92)
+    - Visual unicode borders (─│┌┐└┘├┤┬┴┼) around markdown tables
+    - Cells expand to uniform width with proper padding
+    - New `MarkdownTableBorderStage` render stage
+    - `virtual_lines` system in RenderData for rendering lines above/below content
+
 ### Fixed
+
+- **Cursor no longer moves into padding areas in decorated tables** (#89)
+  - Added `col_mapping` to `DecorationKind::Conceal` for buffer→visual column translation
+  - Position-based mapping algorithm that skips padding areas
+  - Cursor stays on content characters, jumps directly to trailing space/pipe
+
+- **Visual mode now disables decorations on selected lines** (#89)
+  - Replaced single-line `is_insert_mode` with `skip_decoration_lines: HashSet<usize>`
+  - In visual mode, all selected lines show raw markdown (like insert mode)
+  - Works with visual (`v`), visual line (`V`), and visual block (`Ctrl-V`) modes
 
 - **Multiple Conceal decorations per line now render correctly** (Issue #143)
   - Changed from single-index iterator to multi-decoration lookup

@@ -152,6 +152,7 @@ fn test_fold_render_stage_no_folds() {
         decorations: vec![Vec::new(); 3],
         signs: vec![None; 3],
         virtual_texts: vec![None; 3],
+        virtual_lines: std::collections::BTreeMap::new(),
         buffer_id: 1,
         window_id: 0,
         window_bounds: reovim_core::render::Bounds {
@@ -161,6 +162,7 @@ fn test_fold_render_stage_no_folds() {
             height: 24,
         },
         cursor: (0, 0),
+        skip_decoration_lines: std::collections::HashSet::new(),
     };
 
     // Create render context
@@ -210,6 +212,7 @@ fn test_fold_render_stage_with_collapsed_fold() {
         decorations: vec![Vec::new(); 5],
         signs: vec![None; 5],
         virtual_texts: vec![None; 5],
+        virtual_lines: std::collections::BTreeMap::new(),
         buffer_id: 1,
         window_id: 0,
         window_bounds: reovim_core::render::Bounds {
@@ -219,6 +222,7 @@ fn test_fold_render_stage_with_collapsed_fold() {
             height: 24,
         },
         cursor: (0, 0),
+        skip_decoration_lines: std::collections::HashSet::new(),
     };
 
     let theme = Theme::default();
@@ -277,6 +281,7 @@ fn test_fold_render_stage_multiple_folds() {
         decorations: vec![Vec::new(); 9],
         signs: vec![None; 9],
         virtual_texts: vec![None; 9],
+        virtual_lines: std::collections::BTreeMap::new(),
         buffer_id: 2,
         window_id: 0,
         window_bounds: reovim_core::render::Bounds {
@@ -286,6 +291,7 @@ fn test_fold_render_stage_multiple_folds() {
             height: 24,
         },
         cursor: (0, 0),
+        skip_decoration_lines: std::collections::HashSet::new(),
     };
 
     let theme = Theme::default();

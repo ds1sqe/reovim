@@ -134,7 +134,14 @@ impl MarkdownDecorator {
 
                     if (1..=6).contains(&level) {
                         let idx = level - 1;
+                        // Add indentation based on level (H1=0, H2=1 space, H3=2 spaces, etc.)
+                        let indent = if level > 1 {
+                            " ".repeat((level - 1) * self.config.headings.indent_per_level as usize)
+                        } else {
+                            String::new()
+                        };
                         let icon = self.config.headings.icons[idx];
+                        let replacement = format!("{indent}{icon}");
                         let style = Some(self.config.headings.styles[idx].clone());
 
                         let start = node.start_position();
@@ -147,7 +154,7 @@ impl MarkdownDecorator {
                                 end.row as u32,
                                 end.column as u32 + 1, // +1 for space after marker
                             ),
-                            icon,
+                            replacement,
                             style,
                         ));
                     }
@@ -338,12 +345,28 @@ impl MarkdownDecorator {
         let mut cursor = tree_sitter::QueryCursor::new();
         let mut matches = cursor.matches(&self.block_query, tree.root_node(), content.as_bytes());
 
+        // Track delimiter rows for box-drawing
+        let mut delimiter_rows: Vec<u32> = Vec::new();
+        let mut table_ranges: Vec<(u32, u32)> = Vec::new(); // (start_line, end_line)
+
         while let Some(match_) = matches.next() {
             for capture in match_.captures {
                 let capture_name = &self.block_query.capture_names()[capture.index as usize];
                 let node = capture.node;
 
                 match *capture_name {
+                    "decoration.table" => {
+                        let start_line = node.start_position().row as u32;
+                        // end_position is exclusive, so subtract 1 to get the actual last row
+                        // But check if the end column is 0 (meaning the node ends at start of next line)
+                        let end_pos = node.end_position();
+                        let end_line = if end_pos.column == 0 && end_pos.row > 0 {
+                            (end_pos.row - 1) as u32
+                        } else {
+                            end_pos.row as u32
+                        };
+                        table_ranges.push((start_line, end_line));
+                    }
                     "decoration.table.header" => {
                         if let Some(bg_style) = &self.config.tables.header_background {
                             let start_line = node.start_position().row as u32;
@@ -355,6 +378,7 @@ impl MarkdownDecorator {
                     }
                     "decoration.table.delimiter" => {
                         let start_line = node.start_position().row as u32;
+                        delimiter_rows.push(start_line);
                         decorations.push(Decoration::single_line_background(
                             start_line,
                             self.config.tables.delimiter_style.clone(),
@@ -365,14 +389,247 @@ impl MarkdownDecorator {
             }
         }
 
+        // Add box-drawing decorations if enabled
+        if self.config.tables.borders.use_box_drawing {
+            decorations.extend(self.render_table_borders(content, &table_ranges, &delimiter_rows));
+        }
+
         decorations
     }
 
-    /// Generate inline decorations (emphasis, links)
+    /// Analyze table structure to find column positions
+    ///
+    /// Returns the pipe positions from the delimiter row (most reliable reference)
+    /// as these define the canonical column boundaries.
+    fn analyze_table_columns(
+        &self,
+        lines: &[&str],
+        start_line: u32,
+        end_line: u32,
+        delimiter_rows: &[u32],
+    ) -> Vec<u32> {
+        // Find the delimiter row for this table to get canonical column positions
+        let delimiter_line = delimiter_rows
+            .iter()
+            .find(|&&row| row >= start_line && row <= end_line)
+            .copied();
+
+        let reference_line = if let Some(delim) = delimiter_line {
+            delim
+        } else {
+            // Fallback to header row if no delimiter found
+            start_line
+        };
+
+        let line_idx = reference_line as usize;
+        if line_idx >= lines.len() {
+            return Vec::new();
+        }
+
+        // Get pipe positions from reference line
+        lines[line_idx]
+            .char_indices()
+            .filter_map(|(idx, c)| if c == '|' { Some(idx as u32) } else { None })
+            .collect()
+    }
+
+    /// Generate box-drawing border decorations for tables
+    ///
+    /// Uses a multi-pass algorithm:
+    /// 1. Analyze table structure to find column positions and widths
+    /// 2. Generate decorations for each row type (header, delimiter, data)
+    ///
+    /// Note: Top/bottom borders (┌───┐ / └───┘) require virtual text support
+    /// which is not yet implemented in the core decoration system.
+    #[allow(clippy::cast_possible_truncation)]
+    fn render_table_borders(
+        &self,
+        content: &str,
+        table_ranges: &[(u32, u32)],
+        delimiter_rows: &[u32],
+    ) -> Vec<Decoration> {
+        let mut decorations = Vec::new();
+        let lines: Vec<&str> = content.lines().collect();
+        let chars = &self.config.tables.borders.chars;
+        let style = &self.config.tables.borders.style;
+
+        for &(start_line, end_line) in table_ranges {
+            // Pass 1: Analyze table structure
+            let canonical_pipes =
+                self.analyze_table_columns(&lines, start_line, end_line, delimiter_rows);
+
+            if canonical_pipes.is_empty() {
+                continue;
+            }
+
+            let is_delimiter = |line: u32| delimiter_rows.contains(&line);
+
+            // Pass 2: Generate decorations for each row
+            for line_num in start_line..=end_line {
+                let line_idx = line_num as usize;
+                if line_idx >= lines.len() {
+                    continue;
+                }
+                let line = lines[line_idx];
+
+                // Get actual pipe positions for this line
+                let line_pipes: Vec<u32> = line
+                    .char_indices()
+                    .filter_map(|(idx, c)| if c == '|' { Some(idx as u32) } else { None })
+                    .collect();
+
+                // Replace each pipe with appropriate box-drawing character
+                for (pipe_idx, &pipe_col) in line_pipes.iter().enumerate() {
+                    let is_first_pipe = pipe_idx == 0;
+                    let is_last_pipe = pipe_idx == line_pipes.len() - 1;
+
+                    let replacement_char = if is_delimiter(line_num) {
+                        // Delimiter row uses T-junctions and cross
+                        if is_first_pipe {
+                            chars.left_tee
+                        } else if is_last_pipe {
+                            chars.right_tee
+                        } else {
+                            chars.cross
+                        }
+                    } else {
+                        // Header and data rows use vertical bars
+                        chars.vertical
+                    };
+
+                    decorations.push(Decoration::conceal(
+                        Span::single_line(line_num, pipe_col, pipe_col + 1),
+                        replacement_char.to_string(),
+                        Some(style.clone()),
+                    ));
+                }
+
+                // Replace dashes and colons in delimiter row with horizontal lines
+                if is_delimiter(line_num) {
+                    for (char_idx, c) in line.char_indices() {
+                        if c == '-' || c == ':' {
+                            decorations.push(Decoration::conceal(
+                                Span::single_line(line_num, char_idx as u32, char_idx as u32 + 1),
+                                chars.horizontal.to_string(),
+                                Some(style.clone()),
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+
+        decorations
+    }
+
+    /// Generate horizontal rule decorations
+    #[allow(clippy::cast_possible_truncation)]
+    fn render_horizontal_rules(&self, tree: &Tree, content: &str) -> Vec<Decoration> {
+        if !self.config.horizontal_rules.enabled {
+            return Vec::new();
+        }
+
+        let mut decorations = Vec::new();
+        let mut cursor = tree_sitter::QueryCursor::new();
+        let mut matches = cursor.matches(&self.block_query, tree.root_node(), content.as_bytes());
+
+        while let Some(match_) = matches.next() {
+            for capture in match_.captures {
+                let capture_name = &self.block_query.capture_names()[capture.index as usize];
+
+                if *capture_name == "decoration.horizontal_rule" {
+                    let node = capture.node;
+                    let start = node.start_position();
+                    // Get the actual text length (--- or *** or ___)
+                    let text_len = node
+                        .utf8_text(content.as_bytes())
+                        .map(|s| s.trim_end().len())
+                        .unwrap_or(3);
+
+                    // Create the replacement string
+                    let rule_char = self.config.horizontal_rules.character;
+                    let width = self.config.horizontal_rules.min_width as usize;
+                    let replacement: String = std::iter::repeat_n(rule_char, width).collect();
+
+                    // Use single-line span to avoid multi-line issues
+                    decorations.push(Decoration::conceal(
+                        Span::single_line(
+                            start.row as u32,
+                            start.column as u32,
+                            start.column as u32 + text_len as u32,
+                        ),
+                        replacement,
+                        Some(self.config.horizontal_rules.style.clone()),
+                    ));
+                }
+            }
+        }
+
+        decorations
+    }
+
+    /// Generate blockquote decorations
+    #[allow(clippy::cast_possible_truncation)]
+    fn render_blockquotes(&self, tree: &Tree, content: &str) -> Vec<Decoration> {
+        if !self.config.blockquotes.enabled {
+            return Vec::new();
+        }
+
+        let mut decorations = Vec::new();
+        let mut cursor = tree_sitter::QueryCursor::new();
+        let mut matches = cursor.matches(&self.block_query, tree.root_node(), content.as_bytes());
+
+        while let Some(match_) = matches.next() {
+            for capture in match_.captures {
+                let capture_name = &self.block_query.capture_names()[capture.index as usize];
+                let node = capture.node;
+
+                match *capture_name {
+                    "decoration.blockquote" => {
+                        // Apply background to entire blockquote
+                        if let Some(bg_style) = &self.config.blockquotes.background {
+                            let start_line = node.start_position().row as u32;
+                            let end_line = node.end_position().row as u32;
+                            decorations.push(Decoration::line_background(
+                                start_line,
+                                end_line,
+                                bg_style.clone(),
+                            ));
+                        }
+                    }
+                    "decoration.blockquote.marker" => {
+                        let start = node.start_position();
+                        let end = node.end_position();
+
+                        decorations.push(Decoration::conceal(
+                            Span::new(
+                                start.row as u32,
+                                start.column as u32,
+                                end.row as u32,
+                                end.column as u32,
+                            ),
+                            self.config.blockquotes.marker,
+                            Some(self.config.blockquotes.marker_style.clone()),
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        decorations
+    }
+
+    /// Generate inline decorations (emphasis, links, code spans, strikethrough)
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::too_many_lines)]
     fn render_inline(&self, content: &str) -> Vec<Decoration> {
-        if !self.config.inline.conceal_emphasis && !self.config.inline.conceal_links {
+        // Early return if no inline features enabled
+        if !self.config.inline.conceal_emphasis
+            && !self.config.inline.conceal_links
+            && !self.config.inline.conceal_code_span
+            && !self.config.inline.conceal_strikethrough
+        {
             return Vec::new();
         }
 
@@ -483,7 +740,11 @@ impl MarkdownDecorator {
                                         end.column as u32,
                                     ),
                                 });
-                                // Apply link style
+                                // Apply link style with optional background
+                                let mut link_style = self.config.inline.link_style.clone();
+                                if let Some(bg) = &self.config.inline.link_background {
+                                    link_style = link_style.merge(bg);
+                                }
                                 decorations.push(Decoration::inline_style(
                                     Span::new(
                                         text_start.row as u32,
@@ -491,10 +752,70 @@ impl MarkdownDecorator {
                                         text_end.row as u32,
                                         text_end.column as u32,
                                     ),
-                                    self.config.inline.link_style.clone(),
+                                    link_style,
                                 ));
                             }
                         }
+                    }
+                    "decoration.code_span" if self.config.inline.conceal_code_span => {
+                        // Hide opening backtick
+                        decorations.push(Decoration::Hide {
+                            span: Span::new(
+                                start.row as u32,
+                                start.column as u32,
+                                start.row as u32,
+                                start.column as u32 + 1,
+                            ),
+                        });
+                        // Hide closing backtick
+                        decorations.push(Decoration::Hide {
+                            span: Span::new(
+                                end.row as u32,
+                                end.column as u32 - 1,
+                                end.row as u32,
+                                end.column as u32,
+                            ),
+                        });
+                        // Apply code span style to content
+                        decorations.push(Decoration::inline_style(
+                            Span::new(
+                                start.row as u32,
+                                start.column as u32 + 1,
+                                end.row as u32,
+                                end.column as u32 - 1,
+                            ),
+                            self.config.inline.code_span_style.clone(),
+                        ));
+                    }
+                    "decoration.strikethrough" if self.config.inline.conceal_strikethrough => {
+                        // Hide opening ~~ markers
+                        decorations.push(Decoration::Hide {
+                            span: Span::new(
+                                start.row as u32,
+                                start.column as u32,
+                                start.row as u32,
+                                start.column as u32 + 2,
+                            ),
+                        });
+                        // Hide closing ~~ markers
+                        decorations.push(Decoration::Hide {
+                            span: Span::new(
+                                end.row as u32,
+                                end.column as u32 - 2,
+                                end.row as u32,
+                                end.column as u32,
+                            ),
+                        });
+                        // Apply strikethrough style
+                        decorations.push(Decoration::inline_style(
+                            Span::new(
+                                start.row as u32,
+                                start.column as u32 + 2,
+                                end.row as u32,
+                                end.column as u32 - 2,
+                            ),
+                            self.config.inline.strikethrough_style.clone(),
+                        ));
                     }
                     _ => {}
                 }
@@ -568,6 +889,8 @@ impl DecorationProvider for MarkdownDecorator {
         decorations.extend(self.render_lists(tree, content));
         decorations.extend(self.render_code_blocks(tree, content));
         decorations.extend(self.render_tables(tree, content));
+        decorations.extend(self.render_horizontal_rules(tree, content));
+        decorations.extend(self.render_blockquotes(tree, content));
         decorations.extend(self.render_inline(content));
 
         decorations
@@ -658,5 +981,118 @@ mod tests {
             .count();
 
         assert!(hide_count >= 4, "Should have at least 4 Hide decorations, got {hide_count}");
+    }
+
+    #[test]
+    fn test_decorator_generates_horizontal_rule_decorations() {
+        let mut decorator = MarkdownDecorator::new().expect("Failed to create decorator");
+        let content = "Some text.\n\n---\n\nMore text.\n";
+
+        decorator.refresh(content);
+
+        let decorations = decorator.decoration_range(content, 0, 5);
+
+        println!("Generated {} decorations:", decorations.len());
+        for d in &decorations {
+            println!("  {d:?}");
+        }
+
+        // Should have horizontal rule conceal with ─ characters
+        let has_hr = decorations.iter().any(
+            |d| matches!(d, Decoration::Conceal { replacement, .. } if replacement.contains('─')),
+        );
+        assert!(has_hr, "Should have horizontal rule decoration");
+    }
+
+    #[test]
+    fn test_decorator_generates_blockquote_decorations() {
+        let mut decorator = MarkdownDecorator::new().expect("Failed to create decorator");
+        let content = "> This is a quote.\n> Second line.\n";
+
+        decorator.refresh(content);
+
+        let decorations = decorator.decoration_range(content, 0, 2);
+
+        println!("Generated {} decorations:", decorations.len());
+        for d in &decorations {
+            println!("  {d:?}");
+        }
+
+        // Should have blockquote marker replacements (one per line)
+        let marker_count = decorations.iter().filter(|d| {
+            matches!(d, Decoration::Conceal { replacement, .. } if replacement.contains('│'))
+        }).count();
+        assert!(
+            marker_count >= 2,
+            "Should have at least 2 blockquote markers, got {marker_count}"
+        );
+    }
+
+    #[test]
+    fn test_decorator_generates_table_border_decorations() {
+        let mut decorator = MarkdownDecorator::new().expect("Failed to create decorator");
+        let content = "| A | B |\n|---|---|\n| 1 | 2 |\n";
+
+        decorator.refresh(content);
+
+        let decorations = decorator.decoration_range(content, 0, 3);
+
+        println!("Content:");
+        for (i, line) in content.lines().enumerate() {
+            println!("  row {}: {:?}", i, line);
+        }
+
+        println!("\nGenerated {} decorations:", decorations.len());
+        for d in &decorations {
+            println!("  {d:?}");
+        }
+
+        // Count vertical pipe replacements (│)
+        let vertical_count = decorations
+            .iter()
+            .filter(|d| matches!(d, Decoration::Conceal { replacement, .. } if replacement == "│"))
+            .count();
+
+        // Count T-junction replacements (├, ┤, ┼)
+        let junction_count = decorations
+            .iter()
+            .filter(|d| {
+                matches!(d, Decoration::Conceal { replacement, .. } if
+                    replacement == "├" || replacement == "┤" || replacement == "┼")
+            })
+            .count();
+
+        // Count horizontal dash replacements (─)
+        let horizontal_count = decorations
+            .iter()
+            .filter(|d| matches!(d, Decoration::Conceal { replacement, .. } if replacement == "─"))
+            .count();
+
+        println!(
+            "\nCounts: vertical={}, junction={}, horizontal={}",
+            vertical_count, junction_count, horizontal_count
+        );
+
+        // Row 0 (| A | B |): 3 pipes -> 3 │
+        // Row 1 (|---|---|): 3 pipes -> ├, ┼, ┤ (3 junctions), plus 6 dashes -> 6 ─
+        // Row 2 (| 1 | 2 |): 3 pipes -> 3 │
+        // Total: 6 │, 3 junctions, 6 ─
+        // Note: Top/bottom borders require virtual text support (not yet implemented)
+
+        assert!(
+            vertical_count >= 6,
+            "Should have at least 6 vertical pipes (│), got {}",
+            vertical_count
+        );
+        assert!(
+            junction_count >= 3,
+            "Should have at least 3 junctions (├/┼/┤), got {}",
+            junction_count
+        );
+        assert!(
+            horizontal_count >= 6,
+            "Should have at least 6 horizontal dashes (─), got {}",
+            horizontal_count
+        );
     }
 }
