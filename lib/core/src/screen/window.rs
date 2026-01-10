@@ -1,13 +1,14 @@
 //! Window rendering module
 
+mod viewport;
+
 use crate::{
     buffer::{Buffer, SelectionMode, SelectionOps},
     content::WindowContentSource,
     decoration::{Decoration, DecorationStore},
     frame::FrameBuffer,
     highlight::{
-        ColorMode, Highlight, HighlightGroup, HighlightStore, Span, Style, Theme,
-        store::LineHighlight,
+        Highlight, HighlightGroup, HighlightStore, Span, Style, Theme, store::LineHighlight,
     },
     indent::IndentAnalyzer,
     modd::EditMode,
@@ -18,17 +19,6 @@ use super::{
     Position,
     border::{BorderConfig, BorderInsets, WindowAdjacency},
 };
-
-/// Scrollbar rendering state
-#[derive(Debug, Clone, Copy)]
-pub struct ScrollbarState {
-    /// Whether scrollbar should be displayed
-    pub enabled: bool,
-    /// Start row of the thumb (0-indexed, relative to viewport)
-    pub thumb_start: u16,
-    /// End row of the thumb (exclusive)
-    pub thumb_end: u16,
-}
 
 /// Represents top left corner position
 #[derive(Clone, Copy, Debug, Default)]
@@ -178,26 +168,6 @@ impl Window {
         }
     }
 
-    /// Get buffer anchor from content source (if applicable)
-    #[must_use]
-    pub const fn buffer_anchor(&self) -> Option<Anchor> {
-        match &self.source {
-            WindowContentSource::FileBuffer { buffer_anchor, .. }
-            | WindowContentSource::PluginBuffer { buffer_anchor, .. } => Some(*buffer_anchor),
-        }
-    }
-
-    /// Set buffer anchor in content source (if applicable)
-    #[allow(clippy::missing_const_for_fn)]
-    pub fn set_buffer_anchor(&mut self, new_anchor: Anchor) {
-        match &mut self.source {
-            WindowContentSource::FileBuffer { buffer_anchor, .. }
-            | WindowContentSource::PluginBuffer { buffer_anchor, .. } => {
-                *buffer_anchor = new_anchor;
-            }
-        }
-    }
-
     /// Set buffer ID in content source (if applicable)
     pub const fn set_buffer_id(&mut self, new_buffer_id: usize) {
         match &mut self.source {
@@ -205,71 +175,6 @@ impl Window {
             | WindowContentSource::PluginBuffer { buffer_id, .. } => {
                 *buffer_id = new_buffer_id;
             }
-        }
-    }
-
-    /// Render line number for a row
-    #[must_use]
-    pub fn render_line_number(
-        &self,
-        row: u16,
-        cursor_y: u16,
-        num_width: usize,
-        theme: &Theme,
-        color_mode: ColorMode,
-    ) -> String {
-        let Some(line_number) = &self.line_number else {
-            return String::new();
-        };
-        if !line_number.show {
-            return String::new();
-        }
-
-        let is_current_line = row == cursor_y;
-        let line_num_style = if !self.is_active {
-            &theme.gutter.inactive_line_number
-        } else if is_current_line {
-            &theme.gutter.current_line_number
-        } else {
-            &theme.gutter.line_number
-        };
-
-        // Active windows use configured mode, inactive always use absolute
-        let num_str = if self.is_active {
-            match line_number.mode() {
-                LineNumberMode::Absolute => format!("{}", row + 1),
-                LineNumberMode::Relative => {
-                    let rel = (i32::from(row) - i32::from(cursor_y)).abs();
-                    format!("{rel}")
-                }
-                LineNumberMode::Hybrid => {
-                    if is_current_line {
-                        format!("{}", row + 1)
-                    } else {
-                        let rel = (i32::from(row) - i32::from(cursor_y)).abs();
-                        format!("{rel}")
-                    }
-                }
-            }
-        } else {
-            format!("{}", row + 1)
-        };
-
-        format!(
-            "{}{num_str:>num_width$}{} ",
-            line_num_style.to_ansi_start(color_mode),
-            Style::ansi_reset()
-        )
-    }
-
-    /// Get the effective cursor Y position for rendering
-    /// Active window uses buffer cursor, inactive uses stored window cursor
-    #[must_use]
-    pub const fn effective_cursor_y(&self, buf: &Buffer) -> u16 {
-        if self.is_active {
-            buf.cur.y
-        } else {
-            self.cursor.y
         }
     }
 
@@ -307,254 +212,6 @@ impl Window {
                 ))
             }
         }
-    }
-
-    /// Apply indent guides to line content
-    #[allow(clippy::cast_possible_truncation)]
-    fn apply_indent_guides(
-        content: &str,
-        buf: &Buffer,
-        row: u16,
-        cursor_y: u16,
-        indent_analyzer: &IndentAnalyzer,
-        theme: &Theme,
-        color_mode: ColorMode,
-    ) -> String {
-        if !indent_analyzer.is_enabled() {
-            return content.to_string();
-        }
-
-        // Get cursor's indent level for active guide highlight
-        let cursor_indent = if row == cursor_y {
-            Some(indent_analyzer.indent_level(content))
-        } else {
-            buf.contents
-                .get(cursor_y as usize)
-                .map(|l| indent_analyzer.indent_level(&l.inner))
-        };
-
-        let guides = indent_analyzer.guides_for_line(content, cursor_indent);
-        if guides.is_empty() {
-            return content.to_string();
-        }
-
-        let mut result = String::new();
-        let chars: Vec<char> = content.chars().collect();
-        let mut col = 0u32;
-        let mut guide_idx = 0;
-        let tab_size = indent_analyzer.tab_size;
-
-        // Process leading whitespace with guide injection
-        for &ch in &chars {
-            if ch != ' ' && ch != '\t' {
-                break;
-            }
-
-            if guide_idx < guides.len() && guides[guide_idx].column == col {
-                let style = if guides[guide_idx].active {
-                    &theme.indent.active
-                } else {
-                    &theme.indent.guide
-                };
-                result.push_str(&style.to_ansi_start(color_mode));
-                result.push(indent_analyzer.guide_char);
-                result.push_str(Style::ansi_reset());
-                guide_idx += 1;
-            } else {
-                result.push(ch);
-            }
-
-            col += if ch == '\t' { tab_size } else { 1 };
-        }
-
-        // Append the rest of the line (non-whitespace)
-        let whitespace_chars = content
-            .chars()
-            .take_while(|&c| c == ' ' || c == '\t')
-            .count();
-        if whitespace_chars < chars.len() {
-            let start_idx = content
-                .char_indices()
-                .nth(whitespace_chars)
-                .map_or(0, |(i, _)| i);
-            result.push_str(&content[start_idx..]);
-        }
-
-        result
-    }
-
-    /// Render a fold marker line
-    #[allow(clippy::too_many_arguments)]
-    fn render_fold_marker_line(
-        &self,
-        row: u16,
-        cursor_y: u16,
-        hidden_count: u32,
-        preview: &str,
-        num_width: usize,
-        theme: &Theme,
-        color_mode: ColorMode,
-    ) -> String {
-        let head = self.render_line_number(row, cursor_y, num_width, theme, color_mode);
-        let fold_text = format!("+-- {hidden_count} lines: {preview} ---");
-        let fold_style = &theme.fold.marker;
-        let styled_fold =
-            format!("{}{}{}", fold_style.to_ansi_start(color_mode), fold_text, Style::ansi_reset());
-        head + &styled_fold
-    }
-
-    /// Render a normal content line
-    #[allow(clippy::cast_possible_truncation)]
-    #[allow(clippy::too_many_arguments)]
-    fn render_content_line(
-        &self,
-        row: u16,
-        buf: &Buffer,
-        highlight_store: &HighlightStore,
-        visual_highlight: Option<&Highlight>,
-        is_block_mode: bool,
-        num_width: usize,
-        indent_analyzer: &IndentAnalyzer,
-        theme: &Theme,
-        color_mode: ColorMode,
-    ) -> String {
-        let Some(content) = buf.contents.get(row as usize) else {
-            return String::new();
-        };
-
-        let cursor_y = self.effective_cursor_y(buf);
-        let head = self.render_line_number(row, cursor_y, num_width, theme, color_mode);
-
-        // Get highlights for this line
-        let line_len = content.inner.chars().count() as u32;
-        let mut line_highlights =
-            highlight_store.get_line_highlights(buf.id, u32::from(row), line_len);
-
-        // Add visual selection highlight if applicable
-        if let Some(visual_hl) = visual_highlight {
-            let cols = if is_block_mode {
-                visual_hl.span.cols_for_line_block(u32::from(row), line_len)
-            } else {
-                visual_hl.span.cols_for_line(u32::from(row), line_len)
-            };
-            if let Some((start, end)) = cols
-                && start < end
-            {
-                line_highlights =
-                    self.merge_visual_highlight(line_highlights, start, end, &visual_hl.style);
-            }
-        }
-
-        // Apply indent guides
-        let line_with_guides = Self::apply_indent_guides(
-            &content.inner,
-            buf,
-            row,
-            cursor_y,
-            indent_analyzer,
-            theme,
-            color_mode,
-        );
-
-        let styled_content =
-            self.render_styled_line(&line_with_guides, &line_highlights, color_mode);
-        head + &styled_content
-    }
-
-    #[must_use]
-    #[allow(clippy::cast_possible_truncation)]
-    #[allow(clippy::cast_sign_loss)]
-    #[allow(clippy::cast_precision_loss)]
-    #[allow(clippy::too_many_lines)]
-    #[allow(clippy::cognitive_complexity)]
-    pub fn render(
-        &self,
-        buf: &Buffer,
-        highlight_store: &HighlightStore,
-        color_mode: ColorMode,
-        theme: &Theme,
-        visibility_source: &dyn BufferVisibilitySource,
-        indent_analyzer: &IndentAnalyzer,
-    ) -> Vec<String> {
-        let mut lines: Vec<String> = Vec::new();
-
-        // Calculate line number width for alignment
-        let total_lines = buf.contents.len();
-        let num_width =
-            if self.line_number.as_ref().is_some_and(LineNumber::is_shown) && total_lines > 0 {
-                (total_lines as f64).log10().floor() as usize + 1
-            } else {
-                1
-            };
-
-        // Compute scrollbar state
-        let scrollbar = self.compute_scrollbar_state(total_lines);
-
-        // Get effective cursor position (buffer cursor for active, window cursor for inactive)
-        let cursor_y = self.effective_cursor_y(buf);
-
-        // Build visual selection highlight
-        let visual_highlight = Self::build_visual_highlight(buf, theme);
-        let is_block_mode = buf.selection.active && buf.selection_mode() == SelectionMode::Block;
-
-        // Track buffer line position, accounting for folds
-        let mut buffer_row = self.buffer_anchor().map_or(0, |a| a.y);
-        let mut display_rows_rendered = 0u16;
-
-        while display_rows_rendered < self.height && (buffer_row as usize) < buf.contents.len() {
-            let row = buffer_row;
-
-            // Check if this line is hidden (e.g., inside a collapsed fold)
-            if visibility_source.is_hidden(buf.id, VisibilityQuery::Line(u32::from(row))) {
-                buffer_row += 1;
-                continue;
-            }
-
-            // Check if this line has a visibility marker (e.g., fold marker)
-            let visibility_marker =
-                visibility_source.get_marker(buf.id, VisibilityQuery::Line(u32::from(row)));
-
-            let line_out = if let Some(marker) = visibility_marker {
-                self.render_fold_marker_line(
-                    row,
-                    cursor_y,
-                    marker.hidden_count,
-                    &marker.preview,
-                    num_width,
-                    theme,
-                    color_mode,
-                )
-            } else {
-                self.render_content_line(
-                    row,
-                    buf,
-                    highlight_store,
-                    visual_highlight.as_ref(),
-                    is_block_mode,
-                    num_width,
-                    indent_analyzer,
-                    theme,
-                    color_mode,
-                )
-            };
-
-            // Append scrollbar character
-            let scrollbar_char =
-                Self::render_scrollbar_char(display_rows_rendered, scrollbar, theme, color_mode);
-            lines.push(line_out + &scrollbar_char);
-            buffer_row += 1;
-            display_rows_rendered += 1;
-        }
-
-        // Fill remaining display rows with empty lines (with scrollbar)
-        while display_rows_rendered < self.height {
-            let scrollbar_char =
-                Self::render_scrollbar_char(display_rows_rendered, scrollbar, theme, color_mode);
-            lines.push(scrollbar_char);
-            display_rows_rendered += 1;
-        }
-
-        lines
     }
 
     /// Merge visual selection highlight with existing highlights
@@ -641,59 +298,6 @@ impl Window {
                     end_col: end,
                     style: visual_style.clone(),
                 });
-            }
-        }
-
-        result
-    }
-
-    /// Render a line with highlight ranges
-    #[allow(clippy::cast_possible_truncation)]
-    #[allow(clippy::unused_self)]
-    fn render_styled_line(
-        &self,
-        line: &str,
-        highlights: &[crate::highlight::store::LineHighlight],
-        color_mode: ColorMode,
-    ) -> String {
-        if highlights.is_empty() {
-            return line.to_string();
-        }
-
-        let mut result = String::new();
-        let chars: Vec<char> = line.chars().collect();
-        let mut current_col: u32 = 0;
-        let mut hl_idx = 0;
-
-        while (current_col as usize) < chars.len() {
-            // Find if current position is in a highlight
-            while hl_idx < highlights.len() && highlights[hl_idx].end_col <= current_col {
-                hl_idx += 1;
-            }
-
-            if hl_idx < highlights.len() && highlights[hl_idx].start_col <= current_col {
-                // We're inside a highlight
-                let hl = &highlights[hl_idx];
-                result.push_str(&hl.style.to_ansi_start(color_mode));
-
-                while current_col < hl.end_col && (current_col as usize) < chars.len() {
-                    result.push(chars[current_col as usize]);
-                    current_col += 1;
-                }
-
-                result.push_str(Style::ansi_reset());
-            } else {
-                // Not in a highlight, output until next highlight or end
-                let next_start = if hl_idx < highlights.len() {
-                    highlights[hl_idx].start_col
-                } else {
-                    chars.len() as u32
-                };
-
-                while current_col < next_start && (current_col as usize) < chars.len() {
-                    result.push(chars[current_col as usize]);
-                    current_col += 1;
-                }
             }
         }
 
@@ -1256,43 +860,6 @@ impl Window {
             })
     }
 
-    /// Update `buffer_anchor` to keep cursor visible within the viewport
-    ///
-    /// Returns `true` if the viewport scrolled (anchor changed), `false` otherwise.
-    pub fn update_scroll(&mut self, cursor_y: u16) -> bool {
-        let visible_height = self.height;
-        let Some(mut buffer_anchor) = self.buffer_anchor() else {
-            return false;
-        };
-        let scroll_offset = buffer_anchor.y;
-
-        // Scroll up if cursor is above visible area
-        if cursor_y < scroll_offset {
-            buffer_anchor.y = cursor_y;
-            self.set_buffer_anchor(buffer_anchor);
-            true
-        }
-        // Scroll down if cursor is below visible area
-        else if cursor_y >= scroll_offset + visible_height {
-            buffer_anchor.y = cursor_y.saturating_sub(visible_height) + 1;
-            self.set_buffer_anchor(buffer_anchor);
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Get the viewport bounds (`top_line`, `bottom_line`) for this window
-    ///
-    /// Returns (`top_line`, `bottom_line`) where both are 0-indexed buffer line numbers.
-    /// `bottom_line` is the last visible line (inclusive).
-    #[must_use]
-    pub fn viewport_bounds(&self) -> (u32, u32) {
-        let top_line = self.buffer_anchor().map_or(0, |a| u32::from(a.y));
-        let bottom_line = top_line + u32::from(self.height).saturating_sub(1);
-        (top_line, bottom_line)
-    }
-
     /// Get the width of the line number gutter (including separator)
     #[must_use]
     #[allow(clippy::cast_possible_truncation)]
@@ -1388,69 +955,6 @@ impl Window {
             y: clamped_y,
         })
     }
-
-    /// Compute scrollbar state based on buffer content and viewport
-    #[must_use]
-    #[allow(clippy::cast_possible_truncation)]
-    #[allow(clippy::cast_precision_loss)]
-    #[allow(clippy::cast_sign_loss)]
-    pub fn compute_scrollbar_state(&self, total_lines: usize) -> ScrollbarState {
-        if !self.scrollbar_enabled || total_lines == 0 || self.height == 0 {
-            return ScrollbarState {
-                enabled: false,
-                thumb_start: 0,
-                thumb_end: 0,
-            };
-        }
-
-        let viewport_height = f64::from(self.height);
-        let total = total_lines as f64;
-        let scroll_offset = f64::from(self.buffer_anchor().map_or(0, |a| a.y));
-
-        // Thumb size proportional to visible portion (minimum 1 row)
-        let thumb_size = ((viewport_height / total) * viewport_height).max(1.0);
-
-        // Thumb position based on scroll position
-        // When scroll_offset = 0, thumb_start = 0
-        // When scroll_offset = total_lines - viewport_height, thumb_start = viewport_height - thumb_size
-        let scroll_range = (total - viewport_height).max(0.0);
-        let thumb_pos = if scroll_range > 0.0 {
-            (scroll_offset / scroll_range) * (viewport_height - thumb_size)
-        } else {
-            0.0
-        };
-
-        ScrollbarState {
-            enabled: true,
-            thumb_start: thumb_pos.floor() as u16,
-            thumb_end: (thumb_pos + thumb_size).ceil() as u16,
-        }
-    }
-
-    /// Render a scrollbar character for a given row
-    #[must_use]
-    fn render_scrollbar_char(
-        row: u16,
-        scrollbar: ScrollbarState,
-        theme: &Theme,
-        color_mode: ColorMode,
-    ) -> String {
-        if !scrollbar.enabled {
-            return String::new();
-        }
-
-        let is_thumb = row >= scrollbar.thumb_start && row < scrollbar.thumb_end;
-        let style = if is_thumb {
-            &theme.scrollbar.thumb
-        } else {
-            &theme.scrollbar.track
-        };
-
-        // Use block characters for the scrollbar
-        let ch = if is_thumb { '█' } else { '▕' };
-
-        format!("{}{}{}", style.to_ansi_start(color_mode), ch, Style::ansi_reset())
-    }
 }
 
 #[cfg(test)]
@@ -1478,37 +982,5 @@ pub mod tests {
             desired_col: None,
             border_config: None,
         }
-    }
-
-    #[test]
-    fn test_update_scroll_cursor_in_view() {
-        let mut win = create_test_window(10);
-        win.update_scroll(5); // cursor at line 5, viewport 0-9
-        assert_eq!(win.buffer_anchor().map_or(0, |a| a.y), 0); // no scroll needed
-    }
-
-    #[test]
-    fn test_update_scroll_cursor_below_viewport() {
-        let mut win = create_test_window(10);
-        win.update_scroll(15); // cursor at line 15, viewport 0-9
-        assert_eq!(win.buffer_anchor().map_or(0, |a| a.y), 6); // scroll to show cursor at bottom
-    }
-
-    #[test]
-    fn test_update_scroll_cursor_above_viewport() {
-        let mut win = create_test_window(10);
-        win.set_buffer_anchor(Anchor { x: 0, y: 20 }); // viewport starts at line 20
-        win.update_scroll(5); // cursor at line 5
-        assert_eq!(win.buffer_anchor().map_or(0, |a| a.y), 5); // scroll up to cursor
-    }
-
-    #[test]
-    fn test_update_scroll_cursor_at_viewport_edge() {
-        let mut win = create_test_window(10);
-        win.update_scroll(9); // cursor at last visible line
-        assert_eq!(win.buffer_anchor().map_or(0, |a| a.y), 0); // still in view
-
-        win.update_scroll(10); // cursor just below viewport
-        assert_eq!(win.buffer_anchor().map_or(0, |a| a.y), 1); // scroll by 1
     }
 }
