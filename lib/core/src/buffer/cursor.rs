@@ -170,10 +170,7 @@ const BRACKET_PAIRS: [(char, char); 3] = [('(', ')'), ('[', ']'), ('{', '}')];
 /// 2. If cursor is not on a bracket, search forward on the current line
 ///    for a bracket, then find its match
 #[allow(clippy::cast_possible_truncation)]
-fn find_matching_bracket(
-    contents: &[crate::buffer::Line],
-    pos: Position,
-) -> Option<Position> {
+fn find_matching_bracket(contents: &[crate::buffer::Line], pos: Position) -> Option<Position> {
     // Get the character at cursor position
     let line = contents.get(pos.y as usize)?;
     let chars: Vec<char> = line.inner.chars().collect();
@@ -188,7 +185,10 @@ fn find_matching_bracket(
 
     // Cursor not on a bracket - search forward on current line
     for (offset, &ch) in chars.iter().enumerate().skip(pos.x as usize + 1) {
-        let search_pos = Position { x: offset as u16, y: pos.y };
+        let search_pos = Position {
+            x: offset as u16,
+            y: pos.y,
+        };
         if let Some(result) = try_match_bracket_at(contents, search_pos, ch) {
             return Some(result);
         }
@@ -237,7 +237,10 @@ fn find_forward_match(
             } else if ch == close {
                 depth -= 1;
                 if depth == 0 {
-                    return Some(Position { x: x as u16, y: y as u16 });
+                    return Some(Position {
+                        x: x as u16,
+                        y: y as u16,
+                    });
                 }
             }
             x += 1;
@@ -273,7 +276,10 @@ fn find_backward_match(
                 } else if ch == open {
                     depth -= 1;
                     if depth == 0 {
-                        return Some(Position { x: x as u16, y: y as u16 });
+                        return Some(Position {
+                            x: x as u16,
+                            y: y as u16,
+                        });
                     }
                 }
             }
@@ -293,7 +299,10 @@ fn find_backward_match(
             } else if ch == open {
                 depth -= 1;
                 if depth == 0 {
-                    return Some(Position { x: x as u16, y: y as u16 });
+                    return Some(Position {
+                        x: x as u16,
+                        y: y as u16,
+                    });
                 }
             }
         }

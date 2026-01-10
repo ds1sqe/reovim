@@ -4,6 +4,14 @@ All notable changes to Reovim will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Multiple Conceal decorations per line now render correctly** (Issue #143)
+  - Changed from single-index iterator to multi-decoration lookup
+  - Now finds ALL decorations covering each character position
+  - Conceal decorations can now apply background styles when both are present
+  - Enables proper rendering of markdown table pipes and other multi-conceal scenarios
+
 ### Added
 
 - **% motion for matching bracket navigation** (Issue #123) - Jump between matching brackets
