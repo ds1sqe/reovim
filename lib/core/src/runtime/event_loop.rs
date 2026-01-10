@@ -2,10 +2,7 @@
 
 use std::sync::Arc;
 
-use std::time::Duration;
-
 use crate::{
-    animation::{AnimatedStyle, Effect, EffectId, EffectTarget},
     buffer::{Buffer, SelectionOps, TextOps},
     event::{
         BufferEvent, CommandHandler, EditingEvent, FileEvent, HighlightEvent, InputEvent,
@@ -13,7 +10,7 @@ use crate::{
         SyntaxEvent, TerminateHandler, TextInputEvent, WindowEvent,
     },
     event_bus::ViewportScrolled,
-    modd::{EditMode, ModeState, SubMode},
+    modd::{ModeState, SubMode},
 };
 
 use super::Runtime;
@@ -26,12 +23,44 @@ impl Runtime {
     #[allow(clippy::single_match_else)]
     #[allow(clippy::collapsible_if)]
     #[allow(clippy::match_same_arms)]
-    pub async fn init(mut self) {
+    pub async fn init(self) {
         tracing::info!("Runtime initializing");
 
+        // Create terminal-based input broker
+        let input_broker = InputEventBroker::with_event_sender(self.hi_tx.clone());
+
+        self.init_common(input_broker).await;
+    }
+
+    /// Initialize and run the editor with a custom key source.
+    ///
+    /// Used for server mode where keys are injected via `ChannelKeySource`
+    /// instead of reading from the terminal.
+    #[allow(clippy::missing_panics_doc)]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::future_not_send)]
+    pub async fn init_with_key_source<K: crate::io::input::KeySource + 'static>(
+        self,
+        key_source: K,
+    ) {
+        tracing::info!("Runtime initializing (server mode)");
+
+        // Create key-source-based input broker
+        let input_broker = InputEventBroker::with_key_source(key_source);
+
+        self.init_common(input_broker).await;
+    }
+
+    /// Common initialization logic shared by `init()` and `init_with_key_source()`
+    #[allow(clippy::missing_panics_doc)]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::future_not_send)]
+    async fn init_common<K: crate::io::input::KeySource + 'static>(
+        mut self,
+        input_broker: InputEventBroker<K>,
+    ) {
         // STEP 1: Set up input handlers FIRST (before file loading)
         // HIGH PRIORITY: User input events go through the high-priority channel
-        let input_broker = InputEventBroker::with_event_sender(self.hi_tx.clone());
 
         // Command handler for key-to-command translation
         // Pass mode receiver so CommandHandler can read mode from Runtime (single source of truth)
@@ -147,139 +176,6 @@ impl Runtime {
         self.run_event_loop().await;
 
         tracing::debug!("Event loop ended, finalizing screen");
-        let _ = self.screen.finalize();
-    }
-
-    /// Initialize and run the editor with a custom key source.
-    ///
-    /// Used for server mode where keys are injected via `ChannelKeySource`
-    /// instead of reading from the terminal.
-    #[allow(clippy::missing_panics_doc)]
-    #[allow(clippy::too_many_lines)]
-    #[allow(clippy::future_not_send)]
-    pub async fn init_with_key_source<K: crate::io::input::KeySource + 'static>(
-        mut self,
-        key_source: K,
-    ) {
-        tracing::info!("Runtime initializing (server mode)");
-
-        // STEP 1: Set up input handlers FIRST (before file loading)
-        let input_broker = crate::event::InputEventBroker::with_key_source(key_source);
-
-        // Command handler for key-to-command translation
-        // HIGH PRIORITY: Commands are user-initiated and must be processed immediately
-        let mode_rx = self.subscribe_mode();
-        let mut command_hdr = crate::event::CommandHandler::new(
-            self.hi_tx.clone(),
-            mode_rx,
-            self.keymap.clone(),
-            Arc::clone(&self.command_registry),
-            Arc::clone(&self.interactor_registry),
-        );
-        // HIGH PRIORITY: Terminate handler processes Ctrl+D kill signal
-        let mut terminate_hdr = crate::event::TerminateHandler::new(self.hi_tx.clone());
-
-        input_broker.key_broker.enlist(&mut command_hdr);
-        input_broker.key_broker.enlist(&mut terminate_hdr);
-
-        tokio::spawn(async move { command_hdr.run().await });
-        tokio::spawn(async move { terminate_hdr.run().await });
-        tokio::spawn(async move { input_broker.subscribe().await });
-
-        // STEP 2: Spawn EventBus event processor on dedicated OS thread
-        // Uses std::thread to avoid tokio scheduler starvation under parallel load (#85)
-        // LOW PRIORITY: EventBus processor sends render signals which are background events
-        if let Some(mut event_rx) = self.event_bus.take_receiver() {
-            let event_bus = Arc::clone(&self.event_bus);
-            let lo_tx = self.lo_tx.clone();
-            std::thread::spawn(move || {
-                while let Some(mut event) = event_rx.blocking_recv() {
-                    let event_type = event.type_name();
-                    // Extract scope from event for lifecycle tracking
-                    let scope = event.take_scope();
-
-                    let sender = event_bus.sender();
-                    let mut ctx =
-                        crate::event_bus::HandlerContext::new(&sender).with_scope(scope.clone());
-                    let _ = event_bus.dispatch(&event, &mut ctx);
-
-                    // Decrement scope AFTER dispatch completes
-                    if let Some(scope) = scope {
-                        scope.decrement();
-                    }
-
-                    // If any handler requested a render, send RenderSignal to main loop
-                    // LOW PRIORITY: Render signals are background events
-                    if ctx.render_requested() {
-                        tracing::info!("==> Render requested by event: {}", event_type);
-                        let _ = lo_tx.try_send(RuntimeEvent::render_signal());
-                    }
-                }
-            });
-        }
-
-        // STEP 3: Let queued events process (RegisterLanguage events from subscribe phase)
-        tokio::task::yield_now().await;
-
-        // STEP 4: Boot phase - plugins can do post-EventBus initialization
-        // Languages are now registered, syntax providers can be created
-        // Make inner_event_tx available to plugins for background tasks (e.g., completion saturator)
-        // LOW PRIORITY: Plugin background tasks use the low-priority channel
-        self.plugin_state.set_inner_event_tx(self.lo_tx.clone());
-        tracing::debug!("Boot phase starting with {} plugins", self.plugins.len());
-        for plugin in &self.plugins {
-            let plugin_id = plugin.id();
-            tracing::debug!(plugin = %plugin_id, "Booting plugin");
-            // LOW PRIORITY: Plugin boot events are background operations
-            plugin.boot(&self.event_bus, Arc::clone(&self.plugin_state), Some(self.lo_tx.clone()));
-        }
-        tracing::debug!("Boot phase complete");
-
-        // STEP 5: Load file AFTER languages are registered
-        if let Some(path) = self.initial_file.clone() {
-            // Use create_buffer_from_file which handles treesitter parsing and decorations
-            if let Some(buffer_id) = self.create_buffer_from_file(&path) {
-                // Update active buffer to the newly created one
-                self.screen.set_editor_buffer(buffer_id);
-
-                // Emit initial ViewportScrolled to trigger context computation
-                if let Some(viewport_info) = self.screen.get_viewport_info(buffer_id) {
-                    self.event_bus.emit(ViewportScrolled {
-                        window_id: viewport_info.window_id,
-                        buffer_id: viewport_info.buffer_id,
-                        top_line: viewport_info.top_line,
-                        bottom_line: viewport_info.bottom_line,
-                    });
-                    tracing::debug!(buffer_id, "init: emitted initial ViewportScrolled");
-                }
-            } else {
-                // File failed to load, create empty buffer with path
-                let mut buffer = Buffer::empty(0);
-                buffer.file_path = Some(path);
-                self.buffers.insert(0, buffer);
-            }
-        } else {
-            // Show landing page when no file is opened (unified with regular mode)
-            let mut buffer = Buffer::empty(0);
-            let landing_state = crate::landing::LandingState::new(
-                self.screen.width(),
-                self.screen.height().saturating_sub(1), // Reserve status line
-            );
-            let landing_content =
-                landing_state.generate(self.screen.width(), self.screen.height().saturating_sub(1));
-            buffer.set_content(&landing_content);
-            self.landing_state = Some(landing_state);
-            self.showing_landing_page = true;
-            self.buffers.insert(0, buffer);
-        }
-
-        // STEP 6: Initial render
-        self.render();
-
-        tracing::debug!("Entering event loop (server mode)");
-        self.run_event_loop().await;
-
-        tracing::debug!("Event loop ended (server mode)");
         let _ = self.screen.finalize();
     }
 
@@ -470,43 +366,6 @@ impl Runtime {
             if self.idle_shimmer_active {
                 self.stop_idle_shimmer();
             }
-        }
-    }
-
-    /// Start the idle shimmer effect on the status line
-    fn start_idle_shimmer(&mut self) {
-        use crate::animation::{SweepConfig, UiElementId};
-
-        let Some(handle) = self.plugin_state.animation_handle() else {
-            return;
-        };
-
-        // Create a sweep effect: 2 second period, 20% width glow, 40% intensity
-        let sweep = SweepConfig::new(2000, 0.2, 0.4);
-
-        // Create shimmer effect with sweep
-        let shimmer_effect = Effect::new(
-            EffectId::new(0), // ID assigned by handle.start()
-            EffectTarget::UiElement(UiElementId::StatusLine),
-            AnimatedStyle::new(), // Base style, shimmer comes from sweep
-        )
-        .with_sweep(sweep)
-        .with_priority(50); // Lower priority than mode flash
-
-        if handle.start(shimmer_effect).is_some() {
-            self.idle_shimmer_active = true;
-            tracing::debug!("Started idle shimmer effect");
-        }
-    }
-
-    /// Stop the idle shimmer effect
-    fn stop_idle_shimmer(&mut self) {
-        use crate::animation::UiElementId;
-
-        if let Some(handle) = self.plugin_state.animation_handle() {
-            handle.stop_target(EffectTarget::UiElement(UiElementId::StatusLine));
-            self.idle_shimmer_active = false;
-            tracing::debug!("Stopped idle shimmer effect");
         }
     }
 
@@ -864,281 +723,6 @@ impl Runtime {
         result
     }
 
-    /// Handle an RPC request from server mode
-    #[allow(clippy::too_many_lines)]
-    #[allow(clippy::missing_panics_doc)]
-    fn handle_rpc_request(
-        &mut self,
-        id: u64,
-        method: &str,
-        params: &serde_json::Value,
-    ) -> crate::rpc::RpcResponse {
-        use crate::rpc::{RpcError, RpcResponse, methods};
-
-        // Helper to extract buffer_id from params
-        #[allow(clippy::cast_possible_truncation)]
-        let get_buffer_id = |params: &serde_json::Value, default: usize| -> usize {
-            params
-                .get("buffer_id")
-                .and_then(serde_json::Value::as_u64)
-                .map_or(default, |v| v as usize)
-        };
-
-        // First, try plugin-registered RPC handlers
-        let rpc_ctx = crate::rpc::RpcHandlerContext::new(
-            &self.plugin_state,
-            &self.mode_state,
-            self.active_buffer_id(),
-        );
-        if let Some(result) = self.rpc_handler_registry.dispatch(method, params, &rpc_ctx) {
-            return match result {
-                crate::rpc::RpcResult::Success(value) => RpcResponse::success(id, value),
-                crate::rpc::RpcResult::Error { code, message } => {
-                    RpcResponse::error(id, RpcError::new(code, message))
-                }
-            };
-        }
-
-        // Fall back to core RPC handlers
-        match method {
-            methods::STATE_MODE => {
-                let snapshot = self.mode_snapshot();
-                RpcResponse::success(id, serde_json::to_value(snapshot).unwrap())
-            }
-            methods::STATE_CURSOR => {
-                let buffer_id = get_buffer_id(params, self.active_buffer_id());
-                self.cursor_snapshot(buffer_id).map_or_else(
-                    || RpcResponse::error(id, RpcError::buffer_not_found(buffer_id)),
-                    |snapshot| RpcResponse::success(id, serde_json::to_value(snapshot).unwrap()),
-                )
-            }
-            methods::STATE_SELECTION => {
-                let buffer_id = get_buffer_id(params, self.active_buffer_id());
-                self.selection_snapshot(buffer_id).map_or_else(
-                    || RpcResponse::error(id, RpcError::buffer_not_found(buffer_id)),
-                    |snapshot| RpcResponse::success(id, serde_json::to_value(snapshot).unwrap()),
-                )
-            }
-            methods::STATE_SCREEN => {
-                let snapshot = self.screen_snapshot();
-                RpcResponse::success(id, serde_json::to_value(snapshot).unwrap())
-            }
-            methods::STATE_SCREEN_CONTENT => {
-                // Note: Full screen content capture is handled at the server level
-                // via FrameBufferHandle. Return dimensions for now.
-                let snapshot = crate::rpc::ScreenContentSnapshot {
-                    width: self.screen.width(),
-                    height: self.screen.height(),
-                    format: crate::rpc::ScreenFormat::PlainText,
-                    content: String::new(), // Populated by server layer
-                };
-                RpcResponse::success(id, serde_json::to_value(snapshot).unwrap())
-            }
-            methods::STATE_TELESCOPE => {
-                // Telescope is now a plugin - state query is handled by the plugin
-                // Return inactive state as the base response
-                let response = serde_json::json!({
-                    "active": false,
-                    "query": "",
-                    "selected_index": 0,
-                    "item_count": 0,
-                    "picker_name": "",
-                    "title": "",
-                    "selected_item": null,
-                });
-                RpcResponse::success(id, response)
-            }
-            methods::STATE_MICROSCOPE => {
-                // Microscope is a plugin - state query is handled by the plugin
-                // Return inactive state as the base response
-                let response = serde_json::json!({
-                    "active": false,
-                    "query": "",
-                    "selected_index": 0,
-                    "item_count": 0,
-                    "picker_name": "",
-                    "title": "",
-                    "selected_item": null,
-                    "prompt_mode": "Insert",
-                });
-                RpcResponse::success(id, response)
-            }
-            methods::STATE_WINDOWS => {
-                let snapshot = self.windows_snapshot();
-                RpcResponse::success(id, serde_json::to_value(snapshot).unwrap())
-            }
-            methods::STATE_VISUAL_SNAPSHOT => {
-                // Return visual snapshot with cell grid and layer info
-                self.visual_snapshot().map_or_else(
-                    || {
-                        RpcResponse::error(
-                            id,
-                            RpcError::internal_error("frame renderer not enabled"),
-                        )
-                    },
-                    |snapshot| RpcResponse::success(id, serde_json::to_value(snapshot).unwrap()),
-                )
-            }
-            methods::STATE_ASCII_ART => {
-                // Return ASCII art representation of the screen
-                let annotated = params
-                    .get("annotated")
-                    .and_then(serde_json::Value::as_bool)
-                    .unwrap_or(false);
-
-                let cursor_pos = self
-                    .buffers
-                    .get(&self.active_buffer_id())
-                    .map(|b| (b.cur.x, b.cur.y));
-
-                let content = if annotated {
-                    self.screen.to_annotated_ascii(cursor_pos)
-                } else {
-                    self.screen.to_ascii()
-                };
-
-                content.map_or_else(
-                    || {
-                        RpcResponse::error(
-                            id,
-                            RpcError::internal_error("frame renderer not enabled"),
-                        )
-                    },
-                    |content| RpcResponse::success(id, serde_json::json!({ "content": content })),
-                )
-            }
-            methods::STATE_LAYER_INFO => {
-                // Return layer visibility information
-                // Plugin windows provide their own z-order during rendering
-                let layers = vec![
-                    crate::visual::LayerInfo {
-                        name: "base".to_string(),
-                        z_order: 0,
-                        visible: true,
-                        bounds: crate::visual::BoundsInfo::new(
-                            0,
-                            0,
-                            self.screen.width(),
-                            self.screen.height(),
-                        ),
-                    },
-                    crate::visual::LayerInfo {
-                        name: "editor".to_string(),
-                        z_order: 2,
-                        visible: true,
-                        bounds: crate::visual::BoundsInfo::new(
-                            0,
-                            1,
-                            self.screen.width(),
-                            self.screen.height().saturating_sub(2),
-                        ),
-                    },
-                ];
-                RpcResponse::success(id, serde_json::to_value(layers).unwrap())
-            }
-            methods::INPUT_KEYS => {
-                // Key injection is handled at the server level via ChannelKeySource
-                // This handler is a fallback that returns an error
-                RpcResponse::error(
-                    id,
-                    RpcError::internal_error("input/keys must be handled at server level"),
-                )
-            }
-            methods::COMMAND_EXECUTE => {
-                // Direct command execution by command ID
-                let command_name = params.get("command").and_then(serde_json::Value::as_str);
-                #[allow(clippy::cast_possible_truncation)]
-                let count = params
-                    .get("count")
-                    .and_then(serde_json::Value::as_u64)
-                    .map(|v| v as usize);
-
-                command_name.map_or_else(
-                    || RpcResponse::error(id, RpcError::invalid_params("missing 'command' field")),
-                    |name| {
-                        // TODO: Full implementation needs command lookup
-                        RpcResponse::success(
-                            id,
-                            serde_json::json!({
-                                "executed": false,
-                                "message": format!("Command execution for '{}' (count: {:?}) - not yet implemented", name, count)
-                            }),
-                        )
-                    },
-                )
-            }
-            methods::BUFFER_LIST => {
-                let snapshots = self.buffer_list_snapshot();
-                RpcResponse::success(id, serde_json::to_value(snapshots).unwrap())
-            }
-            methods::BUFFER_GET_CONTENT => {
-                let buffer_id = get_buffer_id(params, self.active_buffer_id());
-                self.buffer_content(buffer_id).map_or_else(
-                    || RpcResponse::error(id, RpcError::buffer_not_found(buffer_id)),
-                    |content| RpcResponse::success(id, serde_json::json!({ "content": content })),
-                )
-            }
-            methods::BUFFER_SET_CONTENT => {
-                let buffer_id = get_buffer_id(params, self.active_buffer_id());
-                let content = params.get("content").and_then(serde_json::Value::as_str);
-
-                match (self.buffers.get_mut(&buffer_id), content) {
-                    (Some(buffer), Some(content)) => {
-                        buffer.set_content(content);
-                        // Clear landing page flag when buffer content is set via RPC
-                        self.showing_landing_page = false;
-                        self.landing_state = None;
-                        self.request_render();
-                        RpcResponse::ok(id)
-                    }
-                    (None, _) => RpcResponse::error(id, RpcError::buffer_not_found(buffer_id)),
-                    (_, None) => {
-                        RpcResponse::error(id, RpcError::invalid_params("missing 'content' field"))
-                    }
-                }
-            }
-            methods::BUFFER_OPEN_FILE => {
-                let path = params.get("path").and_then(serde_json::Value::as_str);
-                path.map_or_else(
-                    || RpcResponse::error(id, RpcError::invalid_params("missing 'path' field")),
-                    |path| {
-                        self.open_file(path);
-                        self.request_render();
-                        RpcResponse::success(
-                            id,
-                            serde_json::json!({ "buffer_id": self.active_buffer_id() }),
-                        )
-                    },
-                )
-            }
-            methods::EDITOR_RESIZE => {
-                let width = params.get("width").and_then(serde_json::Value::as_u64);
-                let height = params.get("height").and_then(serde_json::Value::as_u64);
-
-                match (width, height) {
-                    (Some(w), Some(h)) => {
-                        #[allow(clippy::cast_possible_truncation)]
-                        {
-                            self.screen.resize(w as u16, h as u16);
-                            self.request_render();
-                        }
-                        RpcResponse::ok(id)
-                    }
-                    _ => RpcResponse::error(
-                        id,
-                        RpcError::invalid_params("missing 'width' or 'height' field"),
-                    ),
-                }
-            }
-            methods::EDITOR_QUIT => {
-                // Note: This doesn't actually quit - the caller needs to check response
-                // and send KillSignal separately if needed
-                RpcResponse::ok(id)
-            }
-            _ => RpcResponse::error(id, RpcError::method_not_found(method)),
-        }
-    }
-
     /// Handle mode change events
     #[allow(clippy::collapsible_if)]
     pub(crate) fn handle_mode_change(&mut self, new_mode: ModeState) {
@@ -1190,158 +774,6 @@ impl Runtime {
         // Use set_mode to broadcast via watch channel
         self.set_mode(new_mode);
         self.request_render();
-    }
-
-    /// Trigger visual animation effects when mode changes
-    ///
-    /// Creates a brief status line flash effect to visually indicate mode transitions.
-    /// The effect is a bright flash that fades to the mode's background color.
-    fn trigger_mode_animation(&self, new_mode: &ModeState) {
-        use crate::animation::UiElementId;
-
-        // Get animation handle from plugin state
-        let Some(handle) = self.plugin_state.animation_handle() else {
-            return;
-        };
-
-        // Get the new mode's background color for the flash effect
-        let mode_color = self.get_mode_bg_color(new_mode);
-
-        // Create a bright flash color (boost the mode color towards white)
-        let flash_color = Self::brighten_color(mode_color, 0.6);
-
-        // Create a status line flash effect: bright flash → mode color
-        // This provides a "glowing" indication of mode change
-        let flash_effect = Effect::new(
-            EffectId::new(0), // ID will be assigned by handle.start()
-            EffectTarget::UiElement(UiElementId::StatusLine),
-            AnimatedStyle::transition_bg(
-                flash_color,
-                mode_color,
-                250, // 250ms duration for smooth fade
-            ),
-        )
-        .with_duration(Duration::from_millis(250));
-
-        // Start the flash effect
-        if let Some(id) = handle.start(flash_effect) {
-            tracing::debug!("Started status line flash animation with effect id {:?}", id);
-        }
-    }
-
-    /// Brighten a color by blending it towards white
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    fn brighten_color(color: reovim_sys::style::Color, intensity: f32) -> reovim_sys::style::Color {
-        use reovim_sys::style::Color;
-
-        // Extract RGB components
-        let (r, g, b) = match color {
-            Color::Rgb { r, g, b } => (r, g, b),
-            Color::AnsiValue(n) => Self::ansi_to_rgb(n),
-            Color::Black => (0, 0, 0),
-            Color::DarkGrey | Color::Reset => (128, 128, 128),
-            Color::Red => (255, 0, 0),
-            Color::DarkRed => (139, 0, 0),
-            Color::Green => (0, 255, 0),
-            Color::DarkGreen => (0, 100, 0),
-            Color::Yellow => (255, 255, 0),
-            Color::DarkYellow => (128, 128, 0),
-            Color::Blue => (0, 0, 255),
-            Color::DarkBlue => (0, 0, 139),
-            Color::Magenta => (255, 0, 255),
-            Color::DarkMagenta => (139, 0, 139),
-            Color::Cyan => (0, 255, 255),
-            Color::DarkCyan => (0, 139, 139),
-            Color::White => (255, 255, 255),
-            Color::Grey => (192, 192, 192),
-        };
-
-        // Blend towards white using mul_add for better precision
-        let blend = |c: u8| -> u8 {
-            let f = f32::from(c) / 255.0;
-            let brightened = (1.0 - f).mul_add(intensity, f);
-            (brightened.min(1.0) * 255.0) as u8
-        };
-
-        Color::Rgb {
-            r: blend(r),
-            g: blend(g),
-            b: blend(b),
-        }
-    }
-
-    /// Convert ANSI 256 color to RGB
-    const fn ansi_to_rgb(n: u8) -> (u8, u8, u8) {
-        match n {
-            0 => (0, 0, 0),
-            1 => (128, 0, 0),
-            2 => (0, 128, 0),
-            3 => (128, 128, 0),
-            4 => (0, 0, 128),
-            5 => (128, 0, 128),
-            6 => (0, 128, 128),
-            7 => (192, 192, 192),
-            8 => (128, 128, 128),
-            9 => (255, 0, 0),
-            10 => (0, 255, 0),
-            11 => (255, 255, 0),
-            12 => (0, 0, 255),
-            13 => (255, 0, 255),
-            14 => (0, 255, 255),
-            15 => (255, 255, 255),
-            16..=231 => {
-                let idx = n - 16;
-                let r = (idx / 36) % 6;
-                let g = (idx / 6) % 6;
-                let b = idx % 6;
-                let r_val = if r == 0 { 0 } else { 55 + r * 40 };
-                let g_val = if g == 0 { 0 } else { 55 + g * 40 };
-                let b_val = if b == 0 { 0 } else { 55 + b * 40 };
-                (r_val, g_val, b_val)
-            }
-            232..=255 => {
-                let gray = 8 + (n - 232) * 10;
-                (gray, gray, gray)
-            }
-        }
-    }
-
-    /// Get the background color for a mode from the theme
-    fn get_mode_bg_color(&self, mode: &ModeState) -> reovim_sys::style::Color {
-        let mode_styles = &self.theme.statusline.mode;
-
-        // Check sub-modes first
-        match &mode.sub_mode {
-            SubMode::Command => {
-                return mode_styles
-                    .command
-                    .bg
-                    .unwrap_or(reovim_sys::style::Color::Blue);
-            }
-            SubMode::OperatorPending { .. } => {
-                return mode_styles
-                    .operator_pending
-                    .bg
-                    .unwrap_or(reovim_sys::style::Color::Yellow);
-            }
-            SubMode::Interactor(_) | SubMode::None => {}
-        }
-
-        // Then check edit mode
-        match &mode.edit_mode {
-            EditMode::Normal => mode_styles
-                .normal
-                .bg
-                .unwrap_or(reovim_sys::style::Color::Blue),
-            EditMode::Insert(_) => mode_styles
-                .insert
-                .bg
-                .unwrap_or(reovim_sys::style::Color::Green),
-            EditMode::Visual(_) => mode_styles
-                .visual
-                .bg
-                .unwrap_or(reovim_sys::style::Color::Magenta),
-        }
     }
 
     /// Handle interactor input events by routing to the active interactor
@@ -1434,183 +866,6 @@ impl Runtime {
         tracing::info!("==> Dispatch result for plugin path: {:?}", dispatch_result);
         if ctx.render_requested() {
             self.request_render();
-        }
-    }
-
-    /// Trigger yank blink animation for the yanked region
-    ///
-    /// Creates a brief flash effect on the yanked text range to provide visual feedback.
-    #[allow(clippy::cast_possible_truncation)]
-    pub(crate) fn trigger_yank_animation(
-        &self,
-        buffer_id: usize,
-        start_pos: crate::screen::Position,
-        motion: crate::motion::Motion,
-        count: usize,
-        _line_count: usize,
-    ) {
-        use crate::buffer::calculate_motion;
-
-        let Some(buffer) = self.buffers.get(&buffer_id) else {
-            return;
-        };
-
-        // Calculate the target position
-        let target = calculate_motion(&buffer.contents, start_pos, motion, count);
-
-        // For linewise motions, animate entire lines
-        if motion.is_linewise() {
-            let start_line = start_pos.y.min(target.y);
-            let end_line = start_pos.y.max(target.y);
-
-            // Get the length of the last line for end column
-            #[allow(clippy::cast_possible_truncation)]
-            let end_col = buffer
-                .contents
-                .get(end_line as usize)
-                .map_or(0, |line| line.inner.len() as u16);
-
-            self.trigger_yank_range_animation(
-                buffer_id,
-                crate::screen::Position {
-                    x: 0,
-                    y: start_line,
-                },
-                crate::screen::Position {
-                    x: end_col,
-                    y: end_line,
-                },
-            );
-        } else {
-            // For characterwise motions, use position-based range
-            let (start, end) =
-                if start_pos.y < target.y || (start_pos.y == target.y && start_pos.x <= target.x) {
-                    (start_pos, target)
-                } else {
-                    (target, start_pos)
-                };
-
-            // Adjust end for inclusive motions
-            let end = if motion.is_inclusive() {
-                crate::screen::Position {
-                    x: end.x.saturating_add(1),
-                    y: end.y,
-                }
-            } else {
-                end
-            };
-
-            self.trigger_yank_range_animation(buffer_id, start, end);
-        }
-    }
-
-    /// Trigger yank blink animation for a specific range
-    #[allow(clippy::cast_possible_truncation)]
-    pub(crate) fn trigger_yank_range_animation(
-        &self,
-        buffer_id: usize,
-        start: crate::screen::Position,
-        end: crate::screen::Position,
-    ) {
-        let Some(handle) = self.plugin_state.animation_handle() else {
-            return;
-        };
-
-        // Create a brief flash effect on the yanked range
-        // Use a semi-transparent yellow/gold color for yank highlight
-        let yank_color = reovim_sys::style::Color::Rgb {
-            r: 255,
-            g: 220,
-            b: 100,
-        };
-        let transparent = reovim_sys::style::Color::Rgb {
-            r: 40,
-            g: 40,
-            b: 50,
-        };
-
-        // Create cell region effect
-        let yank_effect = Effect::new(
-            EffectId::new(0),
-            EffectTarget::CellRegion {
-                buffer_id,
-                start_line: u32::from(start.y),
-                start_col: u32::from(start.x),
-                end_line: u32::from(end.y),
-                end_col: u32::from(end.x),
-            },
-            AnimatedStyle::transition_bg(yank_color, transparent, 200),
-        )
-        .with_duration(Duration::from_millis(200))
-        .with_priority(100); // High priority for yank feedback
-
-        if let Some(id) = handle.start(yank_effect) {
-            tracing::debug!(
-                "Started yank blink animation with effect id {:?} for range {:?}-{:?}",
-                id,
-                start,
-                end
-            );
-        }
-    }
-
-    /// Trigger a paste animation to highlight the pasted region
-    ///
-    /// Creates a pulsing cyan effect that oscillates between bright and dark cyan
-    /// over 600ms (2 complete pulse cycles). This provides visual feedback when
-    /// text is pasted, similar to the yank animation but with a different color
-    /// and animation type.
-    ///
-    /// # Arguments
-    /// * `buffer_id` - The buffer where paste occurred
-    /// * `start` - Starting position of the pasted region
-    /// * `end` - Ending position of the pasted region
-    #[allow(clippy::cast_possible_truncation)]
-    pub(crate) fn trigger_paste_animation(
-        &self,
-        buffer_id: usize,
-        start: crate::screen::Position,
-        end: crate::screen::Position,
-    ) {
-        let Some(handle) = self.plugin_state.animation_handle() else {
-            return;
-        };
-
-        // Bright cyan for paste highlight
-        let paste_bright = reovim_sys::style::Color::Rgb {
-            r: 100,
-            g: 220,
-            b: 255,
-        };
-        // Darker cyan for pulse low point
-        let paste_dark = reovim_sys::style::Color::Rgb {
-            r: 50,
-            g: 110,
-            b: 150,
-        };
-
-        // Create pulse effect (cyan oscillation, 300ms period)
-        let paste_effect = Effect::new(
-            EffectId::new(0),
-            EffectTarget::CellRegion {
-                buffer_id,
-                start_line: u32::from(start.y),
-                start_col: u32::from(start.x),
-                end_line: u32::from(end.y),
-                end_col: u32::from(end.x),
-            },
-            AnimatedStyle::pulse_bg(paste_bright, paste_dark, 300),
-        )
-        .with_duration(Duration::from_millis(600)) // 2 full pulse cycles
-        .with_priority(100); // High priority for paste feedback
-
-        if let Some(id) = handle.start(paste_effect) {
-            tracing::debug!(
-                "Started paste pulse animation with effect id {:?} for range {:?}-{:?}",
-                id,
-                start,
-                end
-            );
         }
     }
 }
