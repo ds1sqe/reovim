@@ -344,45 +344,12 @@ Reovim is a Rust-based neovim-like text editor built with async tokio runtime an
 
 1.92 (Rust 2024 edition)
 
-### Performance (v0.6.0)
-
-v0.6.0 uses diff-based rendering via FrameBuffer, trading per-render overhead for zero flickering:
-
-| Metric | v0.5.0 | v0.6.0 |
-|--------|--------|--------|
-| Window render (10 lines) | 1.63 µs | 10.15 µs |
-| Full screen render | 14.50 µs | 62.41 µs |
-| Char insert RTT | 55 µs | 108 µs |
-| Move down RTT | 751 µs | 806 µs |
-| Throughput | ~144k/sec | ~18k/sec |
-
-**Key benefit**: Only changed cells sent to terminal, eliminating flickering.
-
 ## Release Process
 
-### Version Bump
-
-Use the bump-version script to update version across the workspace:
-
-```bash
-./scripts/bump-version.sh 0.X.Y
-```
-
-This script:
-- Updates `version` in workspace `Cargo.toml`
-- Updates `reovim-core` and `reovim-sys` dependency versions
-- Runs `cargo check` to verify
-
-### Release Checklist
-
-1. Bump version using `./scripts/bump-version.sh X.Y.Z`
-2. Update `CHANGELOG.md` with new version entry
-3. Run `cargo build` and `cargo clippy` (zero warnings required)
-4. Run `cargo test`
 
 ### Git Commits
 
-**IMPORTANT**: Claude should NEVER handle git commits. The user will manage ALL git operations. Claude must not have any "opinion" about when or how to commit - only create proposals and let the user decide.
+**IMPORTANT**: Claude should NEVER handle git commits. The user will manage ALL git operations. Claude must not have any "opinion" about when or how to commit - only create proposals and let the user decide. And Never add emoji on below
 
 **Changelog Convention**: Every feature, fix, or notable change MUST include an update to `CHANGELOG.md` under the `[Unreleased]` section before proposing a commit.
 
@@ -395,14 +362,10 @@ For any changes, Claude should create a proposal file at `tmp/<feature-name>-com
 ### Ready-to-Take-Off & Request-for-Landing
 
 **Ready-to-Take-Off (Start of Work):**
-1. Read `tmp/*` for context from previous sessions
+1. Use `gh issue` for view issues or Read `tmp/*` for context from previous sessions
 2. Check `git worktree list` for active branches
 3. Check `git status` for uncommitted work
 4. Understand the task and plan implementation
-5. **Suggest a runway (branch)** for the work:
-   - `develop` - Upstream, main development branch
-   - `feat/*` - Feature branches
-   - `fix/*` - Bug fix branches
 
 **Request-for-Landing (End of Work):**
 1. **Sync with upstream (CRUCIAL)**:
@@ -465,70 +428,3 @@ For in-depth information, see:
 - [docs/plugins/system.md](./docs/plugins/system.md) - Plugin development with unified pattern
 - [docs/guides/development.md](./docs/guides/development.md) - Development guide
 - [docs/guides/testing.md](./docs/guides/testing.md) - Testing guide
-
-### Creating Plugin Commands (Modern Pattern)
-
-When adding new plugin commands, use the unified command-event pattern:
-
-**Zero-sized commands:**
-```rust
-use reovim_core::declare_event_command;
-
-declare_event_command! {
-    MyAction,
-    id: "my_action",
-    description: "Perform my action",
-}
-```
-
-**Counted commands (with repeat count):**
-```rust
-use reovim_core::declare_counted_event_command;
-
-declare_counted_event_command! {
-    MyMove,
-    id: "my_move",
-    description: "Move by count",
-}
-```
-
-**Commands with custom data:**
-```rust
-#[derive(Debug, Clone, Copy)]
-pub struct MyInputChar {
-    pub c: char,
-}
-
-impl Event for MyInputChar {
-    fn priority(&self) -> u32 { 100 }
-}
-```
-
-See `plugins/features/explorer/src/command.rs` for a complete example with all three patterns.
-
-### Registering Plugin Settings (Extensible Settings System)
-
-Plugins can register settings to appear in the settings menu using `RegisterSettingSection` and `RegisterOption` events:
-
-```rust
-use reovim_core::option::{
-    RegisterSettingSection, RegisterOption, OptionSpec, OptionValue,
-    OptionCategory, OptionConstraint,
-};
-
-fn subscribe(&self, bus: &EventBus, _state: Arc<PluginStateRegistry>) {
-    // Register a settings section (optional - auto-created from category if omitted)
-    bus.emit(RegisterSettingSection::new("my_plugin", "My Plugin")
-        .with_description("Plugin settings")
-        .with_order(100));  // Core sections use 0-50
-
-    // Register options
-    bus.emit(RegisterOption::new(
-        OptionSpec::new("enabled", "Enable feature", OptionValue::Bool(true))
-            .with_section("My Plugin")
-            .with_display_order(10),
-    ));
-}
-```
-
-See `lib/core/src/plugin/builtin/core.rs` for a complete example of registering core settings.
