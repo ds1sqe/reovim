@@ -325,7 +325,7 @@ impl SplitNode {
     }
 }
 
-use super::border::WindowAdjacency;
+use super::super::border::WindowAdjacency;
 
 /// Compute adjacency information for a window
 ///

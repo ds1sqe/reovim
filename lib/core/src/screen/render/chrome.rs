@@ -1,23 +1,28 @@
-//! Status line rendering for the editor
+//! Chrome rendering for the editor (status line, tab line, command line)
 //!
-//! This module contains the status line rendering logic, including:
-//! - Powerline-style separator rendering
-//! - Animation effects (sweep glow, mode flash)
-//! - Plugin-provided sections
-//! - Position and mode indicators
+//! This module contains rendering logic for the "chrome" - the UI elements
+//! surrounding the editor content:
+//! - Status line (mode, file name, position, plugin sections)
+//! - Tab line (when multiple tabs are open)
+//! - Command line (when in command mode)
 
 use crate::{
     buffer::Buffer,
+    command_line::CommandLine,
     frame::FrameBuffer,
     highlight::{ColorMode, Style, Theme},
     modd::ModeState,
     plugin::{SectionAlignment, StatuslineRenderContext},
 };
 
-use super::Screen;
+use super::super::Screen;
+
+// =============================================================================
+// Status Line
+// =============================================================================
 
 /// Result of querying status line animation effects
-pub(super) struct StatusLineAnimationInfo {
+pub(in crate::screen) struct StatusLineAnimationInfo {
     /// Resolved style from the animation (if bg/fg transition active)
     pub style: Option<Style>,
     /// Sweep configuration for position-based glow (if sweep active)
@@ -30,7 +35,7 @@ impl Screen {
     #[allow(clippy::too_many_arguments)]
     #[allow(clippy::similar_names)]
     #[allow(clippy::too_many_lines)]
-    pub(super) fn render_status_line_to_buffer(
+    pub(in crate::screen) fn render_status_line_to_buffer(
         &self,
         buffer: &mut FrameBuffer,
         mode: &ModeState,
@@ -294,7 +299,7 @@ impl Screen {
     }
 
     /// Create a separator style that transitions between two backgrounds
-    pub(super) fn create_separator_style(from: &Style, to: &Style) -> Style {
+    pub(in crate::screen) fn create_separator_style(from: &Style, to: &Style) -> Style {
         // For powerline separators, fg is the "from" background, bg is the "to" background
         Style::new().fg_opt(from.bg).bg_opt(to.bg)
     }
@@ -304,7 +309,7 @@ impl Screen {
     /// Queries the animation state for active effects targeting `UiElement::StatusLine`
     /// and returns both the resolved style and sweep configuration if present.
     /// Uses non-blocking `try_read()` to avoid blocking the render loop.
-    pub(super) fn get_animation_info(
+    pub(in crate::screen) fn get_animation_info(
         plugin_state: &std::sync::Arc<crate::plugin::PluginStateRegistry>,
     ) -> StatusLineAnimationInfo {
         use crate::animation::{EffectTarget, UiElementId};
@@ -349,7 +354,7 @@ impl Screen {
 
     /// Brighten a color for sweep glow effect
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    pub(super) fn brighten_color_for_sweep(
+    pub(in crate::screen) fn brighten_color_for_sweep(
         color: reovim_sys::style::Color,
         intensity: f32,
     ) -> reovim_sys::style::Color {
@@ -392,7 +397,7 @@ impl Screen {
     }
 
     /// Convert ANSI 256 color to RGB (for sweep effect)
-    pub(super) const fn sweep_ansi_to_rgb(n: u8) -> (u8, u8, u8) {
+    pub(in crate::screen) const fn sweep_ansi_to_rgb(n: u8) -> (u8, u8, u8) {
         match n {
             0 => (0, 0, 0),
             1 => (128, 0, 0),
@@ -428,7 +433,7 @@ impl Screen {
     }
 
     /// Apply sweep glow to a style at a given position
-    pub(super) fn apply_sweep_to_style(
+    pub(in crate::screen) fn apply_sweep_to_style(
         base_style: &Style,
         sweep: &crate::animation::SweepConfig,
         position: f32,
@@ -450,8 +455,96 @@ impl Screen {
     }
 }
 
+// =============================================================================
+// Tab Line
+// =============================================================================
+
+impl Screen {
+    /// Render tab line to frame buffer
+    ///
+    /// Displays tabs when multiple tabs are open. Shows active tab with
+    /// highlighted style and inactive tabs with dimmed style.
+    pub(in crate::screen) fn render_tab_line_to_buffer(
+        &self,
+        buffer: &mut FrameBuffer,
+        _color_mode: ColorMode,
+        theme: &Theme,
+    ) {
+        let tabs = self.tab_manager().tab_info();
+        if tabs.len() <= 1 {
+            return;
+        }
+
+        let mut x = 0u16;
+        for tab in &tabs {
+            let style = if tab.is_active {
+                &theme.tab.active
+            } else {
+                &theme.tab.inactive
+            };
+
+            let label = format!(" {} ", tab.label);
+            for ch in label.chars() {
+                if x < buffer.width() {
+                    buffer.put_char(x, 0, ch, style);
+                    x += 1;
+                }
+            }
+        }
+
+        // Fill rest with tab fill style
+        let fill_style = &theme.tab.fill;
+        while x < buffer.width() {
+            buffer.put_char(x, 0, ' ', fill_style);
+            x += 1;
+        }
+    }
+}
+
+// =============================================================================
+// Command Line
+// =============================================================================
+
+impl Screen {
+    /// Render command line to frame buffer
+    ///
+    /// Displays the command prompt (":") followed by user input on the
+    /// bottom line of the screen.
+    #[allow(clippy::cast_possible_truncation)]
+    pub(in crate::screen) fn render_command_line_to_buffer(
+        &self,
+        buffer: &mut FrameBuffer,
+        cmd_line: &CommandLine,
+        theme: &Theme,
+    ) {
+        let y = self.size.height.saturating_sub(1);
+        let style = &theme.base.default;
+
+        // Write colon prompt
+        buffer.put_char(0, y, ':', style);
+
+        // Write command text
+        for (i, ch) in cmd_line.input.chars().enumerate() {
+            let x = 1 + i as u16;
+            if x < buffer.width() {
+                buffer.put_char(x, y, ch, style);
+            }
+        }
+
+        // Clear rest of line
+        let input_len = cmd_line.input.len() as u16;
+        for x in (1 + input_len)..buffer.width() {
+            buffer.put_char(x, y, ' ', style);
+        }
+    }
+}
+
+// =============================================================================
+// Style Extension Trait
+// =============================================================================
+
 /// Extension trait for Style to allow optional color setting (used in screen rendering)
-pub(super) trait StyleExt {
+pub(in crate::screen) trait StyleExt {
     fn fg_opt(self, color: Option<reovim_sys::style::Color>) -> Self;
     fn bg_opt(self, color: Option<reovim_sys::style::Color>) -> Self;
 }

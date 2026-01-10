@@ -1,7 +1,7 @@
 #![allow(clippy::missing_errors_doc)]
 
 pub mod border;
-mod render_pipeline;
+mod render;
 
 /// Z-order constants for core rendering layers
 ///
@@ -58,7 +58,6 @@ use {
         buffer::Buffer,
         command::terminal::{Clear, ClearType},
         component::RenderState,
-        content::WindowContentSource,
         frame::{FrameBuffer, FrameRenderer},
         highlight::Theme,
         modd::ComponentId,
@@ -72,27 +71,27 @@ use {
         collections::BTreeMap,
         io::{self, Write},
     },
-    window::{Anchor, LineNumber, SignColumnMode, Window},
+    window::{SignColumnMode, Window},
 };
 
-pub mod cmdline;
 pub mod cusor;
 pub mod layout;
-pub mod separators;
-pub mod split;
-pub mod statusline;
-pub mod tab;
-pub mod tabline;
 pub mod window;
 
 pub use {
     border::{BorderConfig, BorderMode, BorderStyle, WindowAdjacency},
-    layout::{LayoutManager, WindowType, is_plugin_window_id, plugin_window_id},
-    split::{
-        NavigateDirection, SplitDirection, SplitNode, WindowLayout, WindowRect, compute_adjacency,
-        compute_all_adjacencies,
+    layout::{
+        LayoutManager, WindowType, is_plugin_window_id, plugin_window_id,
+        split::{
+            NavigateDirection, SplitDirection, SplitNode, WindowLayout, WindowRect,
+            compute_adjacency, compute_all_adjacencies,
+        },
+        tab::{TabInfo, TabManager, TabPage},
     },
-    tab::{TabInfo, TabManager, TabPage},
+    window::{
+        WindowId,
+        store::{CloseResult, WindowStore},
+    },
 };
 
 pub struct ScreenSize {
@@ -122,14 +121,9 @@ pub struct ViewportScrollInfo {
 pub struct Screen {
     size: ScreenSize,
     out_stream: Box<dyn Write>,
-    windows: Vec<Window>,
+    /// Centralized window store - single source of truth for windows, tabs, and buffer mappings
+    window_store: WindowStore,
     layout: LayoutManager,
-    /// Tab manager for split windows and tabs
-    tab_manager: TabManager,
-    /// Next available window ID
-    next_window_id: usize,
-    /// Mapping from `window_id` to `buffer_id`
-    window_buffers: std::collections::BTreeMap<usize, usize>,
     /// Frame renderer for buffered rendering (always Some after initialization)
     frame_renderer: Option<FrameRenderer>,
     /// Pending viewport scroll events to be emitted by the runtime
@@ -140,42 +134,11 @@ impl Default for Screen {
     fn default() -> Self {
         let stdout = io::stdout();
         let (columns, rows) = size().expect("failed to get screen size on screen creation");
-        let mut windows = Vec::new();
-        let anchor = Anchor { x: 0, y: 0 };
         let editor_height = rows.saturating_sub(1); // Reserve last row for status line
 
-        // Initial window ID is 0
-        let initial_window_id = 0;
-
-        windows.push(Window {
-            id: initial_window_id,
-            source: WindowContentSource::FileBuffer {
-                buffer_id: 0,
-                buffer_anchor: Anchor { x: 0, y: 0 },
-            },
-            anchor,
-            width: columns,
-            height: editor_height,
-            z_order: 100, // Editor windows are in 100-199 range
-            is_active: true,
-            is_floating: false,
-            line_number: Some(LineNumber::default()),
-            scrollbar_enabled: false,
-            sign_column_mode: SignColumnMode::Yes(2),
-            cursor: Position { x: 0, y: 0 },
-            desired_col: None,
-            border_config: None,
-        });
-
+        // Create window store with initial window
+        let window_store = WindowStore::new(0, columns, editor_height);
         let layout = LayoutManager::new(columns, editor_height);
-
-        // Initialize tab manager with the first window
-        let mut tab_manager = TabManager::new();
-        tab_manager.init_with_window(initial_window_id);
-
-        // Initial window -> buffer mapping
-        let mut window_buffers = std::collections::BTreeMap::new();
-        window_buffers.insert(initial_window_id, 0);
 
         Self {
             size: ScreenSize {
@@ -183,11 +146,8 @@ impl Default for Screen {
                 height: rows,
             },
             out_stream: Box::new(stdout),
-            windows,
+            window_store,
             layout,
-            tab_manager,
-            next_window_id: 1, // Next window will be ID 1
-            window_buffers,
             frame_renderer: Some(FrameRenderer::new(columns, rows)),
             pending_viewport_scrolls: Vec::new(),
         }
@@ -198,49 +158,17 @@ impl Screen {
     /// Create a new Screen with a custom writer (useful for testing/benchmarking)
     #[must_use]
     pub fn with_writer<W: Write + 'static>(writer: W, width: u16, height: u16) -> Self {
-        let anchor = Anchor { x: 0, y: 0 };
         let editor_height = height.saturating_sub(1);
 
-        let initial_window_id = 0;
-
-        let windows = vec![Window {
-            id: initial_window_id,
-            source: WindowContentSource::FileBuffer {
-                buffer_id: 0,
-                buffer_anchor: Anchor { x: 0, y: 0 },
-            },
-            anchor,
-            width,
-            height: editor_height,
-            z_order: 100, // Editor windows are in 100-199 range
-            is_active: true,
-            is_floating: false,
-            line_number: Some(LineNumber::default()),
-            scrollbar_enabled: false,
-            sign_column_mode: SignColumnMode::Yes(2),
-            cursor: Position { x: 0, y: 0 },
-            desired_col: None,
-            border_config: None,
-        }];
-
+        // Create window store with initial window
+        let window_store = WindowStore::new(0, width, editor_height);
         let layout = LayoutManager::new(width, editor_height);
-
-        // Initialize tab manager with the first window
-        let mut tab_manager = TabManager::new();
-        tab_manager.init_with_window(initial_window_id);
-
-        // Initial window -> buffer mapping
-        let mut window_buffers = std::collections::BTreeMap::new();
-        window_buffers.insert(initial_window_id, 0);
 
         Self {
             size: ScreenSize { height, width },
             out_stream: Box::new(writer),
-            windows,
+            window_store,
             layout,
-            tab_manager,
-            next_window_id: 1,
-            window_buffers,
             frame_renderer: Some(FrameRenderer::new(width, height)),
             pending_viewport_scrolls: Vec::new(),
         }
@@ -299,13 +227,13 @@ impl Screen {
 
         // Debug: log the updated window positions
         tracing::debug!(screen_width = width, screen_height = height, "Screen resized");
-        for win in &self.windows {
+        for win in self.window_store.iter() {
             tracing::debug!(
-                window_id = win.id,
-                anchor_x = win.anchor.x,
-                anchor_y = win.anchor.y,
-                win_width = win.width,
-                win_height = win.height,
+                window_id = win.id.raw(),
+                x = win.bounds.x,
+                y = win.bounds.y,
+                win_width = win.bounds.width,
+                win_height = win.bounds.height,
                 "Window layout after resize"
             );
         }
@@ -325,36 +253,28 @@ impl Screen {
     /// window (highest z-order).
     #[must_use]
     pub fn window_at_position(&self, x: u16, y: u16) -> Option<usize> {
-        // Find all windows containing this position, sorted by z-order (highest first)
-        self.windows
-            .iter()
-            .filter(|w| w.contains_screen_position(x, y))
-            .max_by_key(|w| w.z_order)
-            .map(|w| w.id)
+        self.window_store
+            .window_at_position(x, y)
+            .map(|id| id.raw())
     }
 
     /// Get a reference to a window by ID
     #[must_use]
     pub fn window(&self, window_id: usize) -> Option<&Window> {
-        self.windows.iter().find(|w| w.id == window_id)
+        self.window_store.get(WindowId::new(window_id))
     }
 
     /// Get a mutable reference to a window by ID
     pub fn window_mut(&mut self, window_id: usize) -> Option<&mut Window> {
-        self.windows.iter_mut().find(|w| w.id == window_id)
+        self.window_store.get_mut(WindowId::new(window_id))
     }
 
     /// Set the active window by ID
     ///
     /// Returns true if the window was found and activated, false otherwise.
     pub fn set_active_window(&mut self, window_id: usize) -> bool {
-        let found = self.windows.iter().any(|w| w.id == window_id);
-        if found {
-            for w in &mut self.windows {
-                w.is_active = w.id == window_id;
-            }
-        }
-        found
+        self.window_store
+            .set_active_window(WindowId::new(window_id))
     }
 
     /// Enable frame buffer capture and return a handle for external readers
@@ -422,20 +342,20 @@ impl Screen {
     ) -> Vec<ViewportScrollInfo> {
         let mut scrolls = Vec::new();
 
-        for win in &mut self.windows {
+        for win in self.window_store.iter_mut() {
             if let Some(buffer_id) = win.buffer_id()
                 && let Some(buf) = buffers.get(&buffer_id)
             {
                 let effective_cursor_y = if win.is_active {
                     buf.cur.y
                 } else {
-                    win.cursor.y
+                    win.viewport.cursor.y
                 };
                 let scrolled = win.update_scroll(effective_cursor_y);
                 if scrolled {
                     let (top_line, bottom_line) = win.viewport_bounds();
                     scrolls.push(ViewportScrollInfo {
-                        window_id: win.id,
+                        window_id: win.id.raw(),
                         buffer_id,
                         top_line,
                         bottom_line,
@@ -452,13 +372,13 @@ impl Screen {
     /// Returns viewport info for the window displaying the given buffer, if any.
     #[must_use]
     pub fn get_viewport_info(&self, buffer_id: usize) -> Option<ViewportScrollInfo> {
-        self.windows
+        self.window_store
             .iter()
             .find(|w| w.buffer_id() == Some(buffer_id))
             .map(|win| {
                 let (top_line, bottom_line) = win.viewport_bounds();
                 ViewportScrollInfo {
-                    window_id: win.id,
+                    window_id: win.id.raw(),
                     buffer_id,
                     top_line,
                     bottom_line,
@@ -495,25 +415,25 @@ impl Screen {
     }
 
     pub fn set_number(&mut self, enabled: bool) {
-        for window in &mut self.windows {
+        for window in self.window_store.iter_mut() {
             window.set_number(enabled);
         }
     }
 
     pub fn set_relative_number(&mut self, enabled: bool) {
-        for window in &mut self.windows {
+        for window in self.window_store.iter_mut() {
             window.set_relative_number(enabled);
         }
     }
 
     pub fn set_sign_column_mode(&mut self, mode: SignColumnMode) {
-        for window in &mut self.windows {
-            window.sign_column_mode = mode;
+        for window in self.window_store.iter_mut() {
+            window.config.sign_column_mode = mode;
         }
     }
 
     pub fn set_scrollbar(&mut self, enabled: bool) {
-        for window in &mut self.windows {
+        for window in self.window_store.iter_mut() {
             window.set_scrollbar(enabled);
         }
     }
@@ -566,55 +486,36 @@ impl Screen {
 
     /// Set the buffer ID for the editor window (legacy - use `set_window_buffer` for splits)
     pub fn set_editor_buffer(&mut self, buffer_id: usize) {
-        // Set buffer for active window
-        if let Some(window_id) = self.tab_manager.active_window_id() {
-            self.window_buffers.insert(window_id, buffer_id);
-            // Update the Window struct
-            for win in &mut self.windows {
-                if win.id == window_id {
-                    win.set_buffer_id(buffer_id);
-                    break;
-                }
-            }
-        }
+        self.window_store.set_active_buffer(buffer_id);
     }
 
     /// Set the buffer ID for a specific window
     pub fn set_window_buffer(&mut self, window_id: usize, buffer_id: usize) {
-        self.window_buffers.insert(window_id, buffer_id);
-        for win in &mut self.windows {
-            if win.id == window_id {
-                win.set_buffer_id(buffer_id);
-                break;
-            }
-        }
+        self.window_store
+            .set_window_buffer(WindowId::new(window_id), buffer_id);
     }
 
     /// Get the buffer ID for the active window
     #[must_use]
     pub fn active_buffer_id(&self) -> Option<usize> {
-        self.tab_manager
-            .active_window_id()
-            .and_then(|wid| self.window_buffers.get(&wid).copied())
+        self.window_store.active_buffer_id()
     }
 
     /// Get the active window ID
     #[must_use]
     pub fn active_window_id(&self) -> Option<usize> {
-        self.tab_manager.active_window_id()
+        self.window_store.active_window_id().map(|id| id.raw())
     }
 
     /// Get a reference to the active window
     #[must_use]
     pub fn active_window(&self) -> Option<&Window> {
-        let active_id = self.active_window_id()?;
-        self.windows.iter().find(|w| w.id == active_id)
+        self.window_store.active_window()
     }
 
     /// Get a mutable reference to the active window
     pub fn active_window_mut(&mut self) -> Option<&mut Window> {
-        let active_id = self.active_window_id()?;
-        self.windows.iter_mut().find(|w| w.id == active_id)
+        self.window_store.active_window_mut()
     }
 
     /// Save cursor from buffer to active window.
@@ -630,11 +531,11 @@ impl Screen {
         let buffer_id = window.buffer_id()?;
         let buffer = buffers.get(&buffer_id)?;
 
-        window.cursor = buffer.cur;
-        window.desired_col = buffer.desired_col;
+        window.viewport.cursor = buffer.cur;
+        window.viewport.desired_col = buffer.desired_col;
 
         tracing::debug!(
-            "[CURSOR_SYNC] SAVE: win={} buffer.cur=({},{}) -> window.cursor",
+            "[CURSOR_SYNC] SAVE: win={} buffer.cur=({},{}) -> window.viewport.cursor",
             active_id,
             buffer.cur.x,
             buffer.cur.y,
@@ -660,59 +561,23 @@ impl Screen {
         window_id: usize,
         buffers: &mut BTreeMap<usize, Buffer>,
     ) -> Option<usize> {
-        let current_active = self.active_window_id();
-
-        // Early return if same window (no-op)
-        if current_active == Some(window_id) {
-            return None;
-        }
-
-        // Step 1: Save cursor to old window
-        self.save_cursor_to_active_window(buffers);
-
-        // Step 2: Update is_active flags
-        for window in &mut self.windows {
-            window.is_active = window.id == window_id;
-        }
-        if let Some(tab) = self.tab_manager.active_tab_mut() {
-            tab.active_window_id = window_id;
-        }
-
-        // Step 3: Load cursor from new window into buffer
-        let new_window_data = self
-            .windows
-            .iter()
-            .find(|w| w.id == window_id)
-            .map(|w| (w.buffer_id(), w.cursor, w.desired_col));
-
-        if let Some((Some(buffer_id), cursor, desired_col)) = new_window_data
-            && let Some(buffer) = buffers.get_mut(&buffer_id)
-        {
-            buffer.cur = cursor;
-            buffer.desired_col = desired_col;
-            tracing::debug!(
-                "[CURSOR_SYNC] LOAD: win={} window.cursor=({},{}) -> buffer.cur",
-                window_id,
-                cursor.x,
-                cursor.y,
-            );
-        }
-
-        current_active
+        self.window_store
+            .switch_active_window(WindowId::new(window_id), buffers)
+            .map(|id| id.raw())
     }
 
     /// Get the number of windows in the active tab
     #[must_use]
     pub fn window_count(&self) -> usize {
-        self.tab_manager
-            .active_tab()
-            .map_or(0, tab::TabPage::window_count)
+        self.window_store.window_count()
     }
 
-    /// Get a reference to all windows
+    /// Get all windows as a Vec (for compatibility)
+    ///
+    /// Note: This clones windows. Prefer iterating with `window_store.iter()` when possible.
     #[must_use]
-    pub fn windows(&self) -> &[Window] {
-        &self.windows
+    pub fn windows(&self) -> Vec<Window> {
+        self.window_store.windows_vec()
     }
 
     /// Collect all renderables as `Windows` (editor windows + overlays)
@@ -725,7 +590,7 @@ impl Screen {
     fn collect_all_windows(&self) -> Vec<Window> {
         // Phase 2: Just return clones of editor windows
         // Phase 3 will add overlay collection here
-        self.windows.clone()
+        self.window_store.windows_vec()
     }
 
     /// Render all registered plugin windows
@@ -779,73 +644,16 @@ impl Screen {
     /// Update window layouts based on current layout manager state and split tree
     fn update_window_layouts(&mut self) {
         let editor_layout = self.layout.editor_layout();
-
-        // Account for tab line height (1 row when multiple tabs exist)
         let tab_offset = self.tab_line_height();
 
-        // Get the editor area rect, adjusted for tab line
         let editor_rect = WindowRect::new(
             editor_layout.anchor.x,
-            editor_layout.anchor.y + tab_offset,
+            editor_layout.anchor.y,
             editor_layout.width,
-            editor_layout.height.saturating_sub(tab_offset),
+            editor_layout.height,
         );
 
-        // Calculate window layouts from the active tab's split tree
-        if let Some(tab) = self.tab_manager.active_tab() {
-            let layouts = tab.calculate_layouts(editor_rect);
-            let active_window_id = tab.active_window_id;
-
-            // Preserve window state before rebuilding
-            let old_state: std::collections::HashMap<
-                usize,
-                (Position, Option<u16>, Option<Anchor>),
-            > = self
-                .windows
-                .iter()
-                .map(|w| (w.id, (w.cursor, w.desired_col, w.buffer_anchor())))
-                .collect();
-
-            // Rebuild the windows vec from split tree layouts
-            self.windows.clear();
-            for layout in &layouts {
-                let buffer_id = self
-                    .window_buffers
-                    .get(&layout.window_id)
-                    .copied()
-                    .unwrap_or(0);
-
-                // Try to preserve state from previous window, otherwise use defaults
-                let (cursor, desired_col, buffer_anchor) =
-                    old_state.get(&layout.window_id).copied().map_or(
-                        (Position { x: 0, y: 0 }, None, Anchor { x: 0, y: 0 }),
-                        |(c, d, a)| (c, d, a.unwrap_or(Anchor { x: 0, y: 0 })),
-                    );
-
-                self.windows.push(Window {
-                    id: layout.window_id,
-                    source: WindowContentSource::FileBuffer {
-                        buffer_id,
-                        buffer_anchor,
-                    },
-                    anchor: Anchor {
-                        x: layout.rect.x,
-                        y: layout.rect.y,
-                    },
-                    width: layout.rect.width,
-                    height: layout.rect.height,
-                    z_order: 100, // Editor windows are in 100-199 range
-                    is_active: layout.window_id == active_window_id,
-                    is_floating: false,
-                    line_number: Some(LineNumber::default()),
-                    scrollbar_enabled: false,
-                    sign_column_mode: SignColumnMode::Yes(2),
-                    cursor,
-                    desired_col,
-                    border_config: None,
-                });
-            }
-        }
+        self.window_store.update_layouts(editor_rect, tab_offset);
     }
 
     // === Window Split Operations ===
@@ -854,82 +662,32 @@ impl Screen {
     ///
     /// Returns the new window ID if successful
     pub fn split_window(&mut self, direction: SplitDirection) -> Option<usize> {
-        let new_window_id = self.next_window_id;
-        self.next_window_id += 1;
-
-        // Save the current window's cursor to copy to the new window
-        let parent_cursor = self
-            .active_window()
-            .map_or((Position { x: 0, y: 0 }, None), |w| (w.cursor, w.desired_col));
-
-        if let Some(tab) = self.tab_manager.active_tab_mut() {
-            // Get the current window's buffer to clone into the new window
-            let current_buffer_id = self
-                .window_buffers
-                .get(&tab.active_window_id)
-                .copied()
-                .unwrap_or(0);
-
-            tab.split(new_window_id, direction);
-            self.window_buffers.insert(new_window_id, current_buffer_id);
-            self.update_window_layouts();
-
-            // Copy parent's cursor to the new window
-            if let Some(new_win) = self.windows.iter_mut().find(|w| w.id == new_window_id) {
-                new_win.cursor = parent_cursor.0;
-                new_win.desired_col = parent_cursor.1;
-            }
-
-            Some(new_window_id)
-        } else {
-            None
-        }
+        let new_id = self.window_store.split(direction)?;
+        self.update_window_layouts();
+        Some(new_id.raw())
     }
 
     /// Close the active window
     ///
     /// Returns true if the last window in the last tab was closed (editor should quit)
     pub fn close_window(&mut self) -> bool {
-        if let Some(tab) = self.tab_manager.active_tab_mut() {
-            let closing_window_id = tab.active_window_id;
-            let is_last_window = tab.close_window(closing_window_id);
-
-            // Remove window from buffer mapping
-            self.window_buffers.remove(&closing_window_id);
-
-            if is_last_window && !self.tab_manager.close_tab() {
-                // Last window in last tab - return true to signal quit
-                return true;
-            }
-
-            self.update_window_layouts();
-        }
-        false
+        let result = self.window_store.close();
+        self.update_window_layouts();
+        result == CloseResult::ShouldQuit
     }
 
     /// Close all windows except the active one
     pub fn close_other_windows(&mut self) {
-        if let Some(tab) = self.tab_manager.active_tab_mut() {
-            let active_id = tab.active_window_id;
-            let all_ids: Vec<usize> = tab.window_ids();
-
-            // Remove all other windows from buffer mapping
-            for &id in &all_ids {
-                if id != active_id {
-                    self.window_buffers.remove(&id);
-                }
-            }
-
-            // Reset the split tree to just the active window
-            tab.root = SplitNode::leaf(active_id);
-            self.update_window_layouts();
-        }
+        self.window_store.close_others();
+        self.update_window_layouts();
     }
 
     /// Update `is_active` flag on all windows based on active window ID
     pub fn update_window_active_state(&mut self) {
-        if let Some(active_id) = self.tab_manager.active_window_id() {
-            for window in &mut self.windows {
+        // WindowStore handles this internally via update_active_state()
+        // This method is kept for API compatibility
+        if let Some(active_id) = self.window_store.active_window_id() {
+            for window in self.window_store.iter_mut() {
                 window.is_active = window.id == active_id;
             }
         }
@@ -941,42 +699,30 @@ impl Screen {
     /// `None` if navigation stayed within editor windows.
     /// Plugin windows handle their own focus via event bus.
     pub fn navigate_window(&mut self, direction: NavigateDirection) -> Option<bool> {
-        // Calculate layouts for navigation
-        if let Some(tab) = self.tab_manager.active_tab() {
-            let editor_layout = self.layout.editor_layout();
-            let editor_rect = WindowRect::new(
-                editor_layout.anchor.x,
-                editor_layout.anchor.y,
-                editor_layout.width,
-                editor_layout.height,
-            );
-            let layouts = tab.calculate_layouts(editor_rect);
-
-            // If a plugin has focus, unfocus it and focus the editor
-            if self.layout.has_plugin_focus() {
-                self.focus_editor();
-                self.update_window_active_state();
-                return Some(false);
-            }
-
-            // Navigate between editor windows
-            let current_id = tab.active_window_id;
-            if let Some(next_id) = split::find_adjacent_window(current_id, direction, &layouts) {
-                if let Some(tab_mut) = self.tab_manager.active_tab_mut() {
-                    tab_mut.active_window_id = next_id;
-                }
-                self.update_window_active_state();
-            }
+        // If a plugin has focus, unfocus it and focus the editor
+        if self.layout.has_plugin_focus() {
+            self.focus_editor();
+            self.update_window_active_state();
+            return Some(false);
         }
+
+        // Calculate editor rect for navigation
+        let editor_layout = self.layout.editor_layout();
+        let editor_rect = WindowRect::new(
+            editor_layout.anchor.x,
+            editor_layout.anchor.y,
+            editor_layout.width,
+            editor_layout.height,
+        );
+
+        self.window_store.navigate(direction, editor_rect);
         None
     }
 
     /// Equalize window sizes
     pub fn equalize_windows(&mut self) {
-        if let Some(tab) = self.tab_manager.active_tab_mut() {
-            tab.equalize();
-            self.update_window_layouts();
-        }
+        self.window_store.equalize();
+        self.update_window_layouts();
     }
 
     /// Resize the active window in the specified direction
@@ -986,21 +732,14 @@ impl Screen {
     /// - Positive delta increases size in that direction
     /// - Negative delta decreases size
     pub fn resize_window(&mut self, direction: SplitDirection, delta: f32) {
-        if let Some(tab) = self.tab_manager.active_tab_mut() {
-            tab.adjust_ratio_in_direction(direction, delta);
-            self.update_window_layouts();
-        }
+        self.window_store.resize(direction, delta);
+        self.update_window_layouts();
     }
 
     /// Swap the active window with the window in the given direction
     ///
     /// Returns true if a swap occurred
     pub fn swap_window(&mut self, direction: NavigateDirection) -> bool {
-        let Some(tab) = self.tab_manager.active_tab() else {
-            return false;
-        };
-
-        // Calculate layouts for navigation
         let editor_layout = self.layout.editor_layout();
         let editor_rect = WindowRect::new(
             editor_layout.anchor.x,
@@ -1008,31 +747,12 @@ impl Screen {
             editor_layout.width,
             editor_layout.height,
         );
-        let layouts = tab.calculate_layouts(editor_rect);
-        let current_id = tab.active_window_id;
 
-        // Find adjacent window
-        let Some(target_id) = split::find_adjacent_window(current_id, direction, &layouts) else {
-            return false;
-        };
-
-        // Swap window IDs in the split tree
-        if let Some(tab_mut) = self.tab_manager.active_tab_mut()
-            && tab_mut.root.swap_windows(current_id, target_id)
-        {
-            // Also swap buffer assignments
-            let buf_a = self.window_buffers.get(&current_id).copied();
-            let buf_b = self.window_buffers.get(&target_id).copied();
-            if let Some(buf_a) = buf_a {
-                self.window_buffers.insert(target_id, buf_a);
-            }
-            if let Some(buf_b) = buf_b {
-                self.window_buffers.insert(current_id, buf_b);
-            }
+        let swapped = self.window_store.swap(direction, editor_rect);
+        if swapped {
             self.update_window_layouts();
-            return true;
         }
-        false
+        swapped
     }
 
     // === Tab Operations ===
@@ -1041,11 +761,10 @@ impl Screen {
     ///
     /// Returns the new tab ID
     pub fn new_tab(&mut self, buffer_id: usize) -> usize {
-        let new_window_id = self.next_window_id;
-        self.next_window_id += 1;
-
-        self.window_buffers.insert(new_window_id, buffer_id);
-        let tab_id = self.tab_manager.new_tab(new_window_id);
+        let editor_layout = self.layout.editor_layout();
+        let tab_id =
+            self.window_store
+                .new_tab(buffer_id, editor_layout.width, editor_layout.height);
         self.update_window_layouts();
         tab_id
     }
@@ -1054,14 +773,8 @@ impl Screen {
     ///
     /// Returns true if the last tab was closed (editor should quit)
     pub fn close_tab(&mut self) -> bool {
-        // Remove window buffers for all windows in the current tab
-        if let Some(tab) = self.tab_manager.active_tab() {
-            for &window_id in &tab.window_ids() {
-                self.window_buffers.remove(&window_id);
-            }
-        }
-
-        if self.tab_manager.close_tab() {
+        let has_more = self.window_store.close_tab();
+        if has_more {
             self.update_window_layouts();
             false
         } else {
@@ -1071,43 +784,43 @@ impl Screen {
 
     /// Switch to next tab
     pub fn next_tab(&mut self) {
-        self.tab_manager.next_tab();
+        self.window_store.next_tab();
         self.update_window_layouts();
     }
 
     /// Switch to previous tab
     pub fn prev_tab(&mut self) {
-        self.tab_manager.prev_tab();
+        self.window_store.prev_tab();
         self.update_window_layouts();
     }
 
     /// Go to a specific tab by index
     pub fn goto_tab(&mut self, index: usize) {
-        self.tab_manager.goto_tab(index);
+        self.window_store.goto_tab(index);
         self.update_window_layouts();
     }
 
     /// Get tab information for display
     #[must_use]
     pub fn tab_info(&self) -> Vec<TabInfo> {
-        self.tab_manager.tab_info()
+        self.window_store.tab_info()
     }
 
     /// Get the number of tabs
     #[must_use]
     pub fn tab_count(&self) -> usize {
-        self.tab_manager.tab_count()
+        self.window_store.tab_count()
     }
 
     /// Get a reference to the tab manager
     #[must_use]
     pub const fn tab_manager(&self) -> &TabManager {
-        &self.tab_manager
+        self.window_store.tab_manager()
     }
 
     /// Get the Y offset for the editor area (1 if tabs are shown, 0 otherwise)
     #[must_use]
     fn tab_line_height(&self) -> u16 {
-        u16::from(self.tab_manager.tab_count() > 1)
+        u16::from(self.window_store.tab_count() > 1)
     }
 }

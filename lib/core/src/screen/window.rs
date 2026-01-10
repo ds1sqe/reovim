@@ -1,5 +1,6 @@
 //! Window rendering module
 
+pub mod store;
 mod viewport;
 
 use crate::{
@@ -16,36 +17,117 @@ use crate::{
 };
 
 use super::{
-    Position,
+    Position, WindowRect,
     border::{BorderConfig, BorderInsets, WindowAdjacency},
 };
 
-/// Represents top left corner position
+/// Unique identifier for a window
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct WindowId(pub usize);
+
+impl WindowId {
+    /// Create a new window ID
+    #[must_use]
+    pub const fn new(id: usize) -> Self {
+        Self(id)
+    }
+
+    /// Get the raw ID value
+    #[must_use]
+    pub const fn raw(&self) -> usize {
+        self.0
+    }
+}
+
+impl From<usize> for WindowId {
+    fn from(id: usize) -> Self {
+        Self(id)
+    }
+}
+
+impl From<WindowId> for usize {
+    fn from(id: WindowId) -> Self {
+        id.0
+    }
+}
+
+impl std::fmt::Display for WindowId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+/// Represents top left corner position (used for scroll position)
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Anchor {
     pub x: u16,
     pub y: u16,
 }
 
+/// Viewport state: scroll position + cursor positioning
+///
+/// Groups all "view into buffer" state together:
+/// - Where we're scrolled to (scroll)
+/// - Where the cursor is saved (for inactive windows)
+/// - Preferred column for vertical movement
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Viewport {
+    /// Scroll position (top-left visible position in buffer)
+    pub scroll: Anchor,
+    /// Saved cursor position (for inactive windows)
+    pub cursor: Position,
+    /// Preferred column for vertical movement (j/k)
+    pub desired_col: Option<u16>,
+}
+
+/// Window configuration: UI display settings
+///
+/// Groups optional editor features that can be configured per-window.
+#[derive(Clone, Debug)]
+pub struct WindowConfig {
+    /// Line number display configuration
+    pub line_number: Option<LineNumber>,
+    /// Whether to show scrollbar
+    pub scrollbar_enabled: bool,
+    /// Sign column display mode
+    pub sign_column_mode: SignColumnMode,
+    /// Border configuration for this window
+    pub border_config: Option<BorderConfig>,
+}
+
+impl Default for WindowConfig {
+    fn default() -> Self {
+        Self {
+            line_number: Some(LineNumber::default()),
+            scrollbar_enabled: false,
+            sign_column_mode: SignColumnMode::Yes(2),
+            border_config: None,
+        }
+    }
+}
+
 /// Window is a unified renderable element
 ///
 /// All things that render to screen (editor windows, overlays, plugin UIs)
 /// are represented as Windows with different content sources.
+///
+/// Window fields are organized into semantic groups:
+/// - Identity: `id`, `source`
+/// - Layout: `bounds`, `z_order`
+/// - State: `is_active`, `is_floating`
+/// - Viewport: scroll position, cursor, `desired_col`
+/// - Config: line numbers, scrollbar, sign column, border
 #[derive(Clone)]
 pub struct Window {
     // Identity
     /// Unique identifier for this window
-    pub id: usize,
+    pub id: WindowId,
     /// Source of content for this window
     pub source: WindowContentSource,
 
     // Layout
-    /// Where this window's top left is positioned on the screen
-    pub anchor: Anchor,
-    /// Window width
-    pub width: u16,
-    /// Window height
-    pub height: u16,
+    /// Window bounds (position and size)
+    pub bounds: WindowRect,
     /// Z-order for layered rendering (higher = on top)
     pub z_order: u16,
 
@@ -55,19 +137,13 @@ pub struct Window {
     /// Whether this window is a floating window
     pub is_floating: bool,
 
-    // Editor features (may be None for overlay windows)
-    /// Line number display configuration
-    pub line_number: Option<LineNumber>,
-    /// Whether to show scrollbar
-    pub scrollbar_enabled: bool,
-    /// Sign column display mode
-    pub sign_column_mode: SignColumnMode,
-    /// Per-window cursor position
-    pub cursor: Position,
-    /// Track preferred column for vertical movement (j/k)
-    pub desired_col: Option<u16>,
-    /// Border configuration for this window
-    pub border_config: Option<BorderConfig>,
+    // Viewport: scroll + cursor positioning
+    /// Viewport state (scroll position, saved cursor, preferred column)
+    pub viewport: Viewport,
+
+    // Config: editor feature settings
+    /// Window configuration (line numbers, scrollbar, sign column, border)
+    pub config: WindowConfig,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -317,7 +393,7 @@ impl Window {
         num_width: usize,
         theme: &Theme,
     ) -> u16 {
-        let Some(line_number) = &self.line_number else {
+        let Some(line_number) = &self.config.line_number else {
             return 0;
         };
         if !line_number.show {
@@ -420,7 +496,13 @@ impl Window {
     #[allow(clippy::cast_sign_loss)]
     #[allow(clippy::cast_precision_loss)]
     fn compute_line_number_width(&self, total_lines: usize) -> usize {
-        if self.line_number.as_ref().is_some_and(LineNumber::is_shown) && total_lines > 0 {
+        if self
+            .config
+            .line_number
+            .as_ref()
+            .is_some_and(LineNumber::is_shown)
+            && total_lines > 0
+        {
             (total_lines as f64).log10().floor() as usize + 1
         } else {
             1
@@ -441,7 +523,7 @@ impl Window {
     ) {
         let gutter_width = self.render_line_number_to_buffer(
             buffer,
-            self.anchor.x,
+            self.bounds.x,
             screen_y,
             row,
             cursor_y,
@@ -450,7 +532,7 @@ impl Window {
         );
         let fold_style = &theme.fold.marker;
         let fold_text = "+-- folded ---";
-        let mut col = self.anchor.x + gutter_width;
+        let mut col = self.bounds.x + gutter_width;
         for ch in fold_text.chars() {
             if col < buffer.width() {
                 buffer.put_char(col, screen_y, ch, fold_style);
@@ -470,9 +552,9 @@ impl Window {
     ) {
         let tilde_style = &theme.gutter.line_number;
         let mut display_row = start_display_row;
-        while display_row < self.height {
-            let screen_y = self.anchor.y + display_row;
-            buffer.put_char(self.anchor.x, screen_y, '~', tilde_style);
+        while display_row < self.bounds.height {
+            let screen_y = self.bounds.y + display_row;
+            buffer.put_char(self.bounds.x, screen_y, '~', tilde_style);
             display_row += 1;
         }
     }
@@ -540,7 +622,7 @@ impl Window {
         if let Some(Decoration::LineBackground { style, .. }) = line_bg {
             // Fill line with background color (after gutter)
             let content_start = col;
-            let content_end = x + self.width;
+            let content_end = x + self.bounds.width;
             for bg_col in content_start..content_end {
                 buffer.put_char(bg_col, y, ' ', style);
             }
@@ -692,7 +774,7 @@ impl Window {
         default_style: &Style,
     ) -> u16 {
         let mut col = x;
-        let max_col = x + self.width;
+        let max_col = x + self.bounds.width;
 
         for (eff_idx, ch) in effective_content.chars().enumerate() {
             if col >= max_col {
@@ -767,7 +849,7 @@ impl Window {
         let mut buffer_row = self.buffer_anchor().map_or(0, |a| a.y);
         let mut display_row = 0u16;
 
-        while display_row < self.height && (buffer_row as usize) < buf.contents.len() {
+        while display_row < self.bounds.height && (buffer_row as usize) < buf.contents.len() {
             let row = buffer_row;
 
             // Check if this line is hidden (e.g., inside a collapsed fold)
@@ -780,7 +862,7 @@ impl Window {
             let visibility_marker =
                 visibility_source.get_marker(buf.id, VisibilityQuery::Line(u32::from(row)));
 
-            let screen_y = self.anchor.y + display_row;
+            let screen_y = self.bounds.y + display_row;
 
             if visibility_marker.is_some() {
                 // Render fold marker
@@ -789,18 +871,18 @@ impl Window {
                 );
             } else {
                 // Render normal content line
-                if screen_y == self.anchor.y {
+                if screen_y == self.bounds.y {
                     tracing::info!(
                         "render line: window.id={}, anchor.x={}, anchor.y={}, screen_y={}",
                         self.id,
-                        self.anchor.x,
-                        self.anchor.y,
+                        self.bounds.x,
+                        self.bounds.y,
                         screen_y
                     );
                 }
                 self.render_content_line_to_buffer(
                     buffer,
-                    self.anchor.x,
+                    self.bounds.x,
                     screen_y,
                     row,
                     cursor_y,
@@ -825,13 +907,13 @@ impl Window {
     }
 
     pub fn set_number(&mut self, enabled: bool) {
-        if let Some(line_number) = &mut self.line_number {
+        if let Some(line_number) = &mut self.config.line_number {
             line_number.set_number(enabled);
         }
     }
 
     pub fn set_relative_number(&mut self, enabled: bool) {
-        if let Some(line_number) = &mut self.line_number {
+        if let Some(line_number) = &mut self.config.line_number {
             line_number.set_relative_number(enabled);
         }
     }
@@ -843,20 +925,21 @@ impl Window {
     #[must_use]
     pub fn content_rect(&self, adjacency: &WindowAdjacency) -> (u16, u16, u16, u16) {
         let insets = self.border_insets(adjacency);
-        let x = self.anchor.x + insets.left;
-        let y = self.anchor.y + insets.top;
-        let width = self.width.saturating_sub(insets.horizontal());
-        let height = self.height.saturating_sub(insets.vertical());
+        let x = self.bounds.x + insets.left;
+        let y = self.bounds.y + insets.top;
+        let width = self.bounds.width.saturating_sub(insets.horizontal());
+        let height = self.bounds.height.saturating_sub(insets.vertical());
         (x, y, width, height)
     }
 
     /// Get border insets for this window
     #[must_use]
     pub fn border_insets(&self, adjacency: &WindowAdjacency) -> BorderInsets {
-        self.border_config
+        self.config
+            .border_config
             .as_ref()
-            .map_or(BorderInsets::ZERO, |config| {
-                config.insets_with_context(adjacency, self.is_floating)
+            .map_or(BorderInsets::ZERO, |border| {
+                border.insets_with_context(adjacency, self.is_floating)
             })
     }
 
@@ -866,7 +949,12 @@ impl Window {
     #[allow(clippy::cast_sign_loss)]
     #[allow(clippy::cast_precision_loss)]
     pub fn line_number_width(&self, total_lines: usize) -> u16 {
-        if self.line_number.as_ref().is_some_and(LineNumber::is_shown) {
+        if self
+            .config
+            .line_number
+            .as_ref()
+            .is_some_and(LineNumber::is_shown)
+        {
             // Width of largest line number + 1 for space separator
             let digits = if total_lines == 0 {
                 1
@@ -881,16 +969,16 @@ impl Window {
 
     /// Enable or disable scrollbar
     pub const fn set_scrollbar(&mut self, enabled: bool) {
-        self.scrollbar_enabled = enabled;
+        self.config.scrollbar_enabled = enabled;
     }
 
     /// Check if a screen position is within this window's bounds
     #[must_use]
     pub const fn contains_screen_position(&self, x: u16, y: u16) -> bool {
-        x >= self.anchor.x
-            && x < self.anchor.x + self.width
-            && y >= self.anchor.y
-            && y < self.anchor.y + self.height
+        x >= self.bounds.x
+            && x < self.bounds.x + self.bounds.width
+            && y >= self.bounds.y
+            && y < self.bounds.y + self.bounds.height
     }
 
     /// Translate screen coordinates to buffer position
@@ -918,24 +1006,27 @@ impl Window {
         }
 
         // Calculate window-relative position
-        let window_x = screen_x - self.anchor.x;
-        let window_y = screen_y - self.anchor.y;
+        let window_x = screen_x - self.bounds.x;
+        let window_y = screen_y - self.bounds.y;
 
         // Calculate gutter width (line numbers + sign column)
         let line_num_width = self.line_number_width(buffer_line_count);
-        let sign_width = self.sign_column_mode.effective_width(has_signs);
+        let sign_width = self.config.sign_column_mode.effective_width(has_signs);
         let gutter_width = line_num_width + sign_width;
 
         // Check if click is in gutter area
         if window_x < gutter_width {
             // Click in gutter - treat as first column of that line
-            let buffer_y = self.buffer_anchor().map_or(0, |a| a.y) + window_y;
+            let buffer_y = self.viewport.scroll.y + window_y;
             return Some(Position { x: 0, y: buffer_y });
         }
 
         // Calculate content position (accounting for scrollbar on right)
-        let scrollbar_width = u16::from(self.scrollbar_enabled);
-        let content_width = self.width.saturating_sub(gutter_width + scrollbar_width);
+        let scrollbar_width = u16::from(self.config.scrollbar_enabled);
+        let content_width = self
+            .bounds
+            .width
+            .saturating_sub(gutter_width + scrollbar_width);
 
         // Check if click is in scrollbar area
         if window_x >= gutter_width + content_width {
@@ -944,7 +1035,7 @@ impl Window {
 
         // Calculate buffer position
         let content_x = window_x - gutter_width;
-        let buffer_y = self.buffer_anchor().map_or(0, |a| a.y) + window_y;
+        let buffer_y = self.viewport.scroll.y + window_y;
 
         // Clamp to valid buffer bounds
         let max_y = buffer_line_count.saturating_sub(1) as u16;
@@ -964,23 +1055,19 @@ pub mod tests {
     #[must_use]
     pub fn create_test_window(height: u16) -> Window {
         Window {
-            id: 0,
-            source: WindowContentSource::FileBuffer {
-                buffer_id: 0,
-                buffer_anchor: Anchor { x: 0, y: 0 },
-            },
-            anchor: Anchor { x: 0, y: 0 },
-            width: 80,
-            height,
+            id: WindowId::new(0),
+            source: WindowContentSource::FileBuffer { buffer_id: 0 },
+            bounds: WindowRect::new(0, 0, 80, height),
             z_order: 100, // Editor window z-order range
             is_active: true,
             is_floating: false,
-            line_number: Some(LineNumber::default()),
-            scrollbar_enabled: false,
-            sign_column_mode: SignColumnMode::No, // Disabled by default in tests to avoid position shifts
-            cursor: Position { x: 0, y: 0 },
-            desired_col: None,
-            border_config: None,
+            viewport: Viewport::default(),
+            config: WindowConfig {
+                line_number: Some(LineNumber::default()),
+                scrollbar_enabled: false,
+                sign_column_mode: SignColumnMode::No, // Disabled by default in tests to avoid position shifts
+                border_config: None,
+            },
         }
     }
 }

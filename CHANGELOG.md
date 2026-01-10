@@ -4,6 +4,18 @@ All notable changes to Reovim will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **Screen module reorganization** - Better separation of concerns
+  - Created `render/` submodule: chrome (status/tab/cmd line), line, pipeline, separator
+  - Created `layout/` submodule: split tree, tab management
+  - Created `WindowStore` as single source of truth for windows
+  - Simplified `Window` struct from 14 fields to 8 fields:
+    - `bounds: WindowRect` (combines x, y, width, height)
+    - `viewport: Viewport` (combines scroll, cursor, desired_col)
+    - `config: WindowConfig` (groups line_number, scrollbar, sign_column, border)
+    - `id: WindowId` (type-safe wrapper instead of raw usize)
+
 ### Added
 
 - **Enhanced Markdown Decorations** (Epic #89) - Complete markdown rendering overhaul

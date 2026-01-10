@@ -12,31 +12,27 @@ use reovim_core::{
     modd::ModeState,
     render::{RenderData, VirtualTextEntry},
     screen::{
-        Position,
-        window::{Anchor, LineNumber, SignColumnMode, Window},
+        WindowId, WindowRect,
+        window::{LineNumber, SignColumnMode, Viewport, Window, WindowConfig},
     },
     sign::Sign,
 };
 
 fn create_test_window(width: u16, height: u16) -> Window {
     Window {
-        id: 0,
-        source: WindowContentSource::FileBuffer {
-            buffer_id: 1,
-            buffer_anchor: Anchor { x: 0, y: 0 },
-        },
-        anchor: Anchor { x: 0, y: 0 },
-        width,
-        height,
+        id: WindowId::new(0),
+        source: WindowContentSource::FileBuffer { buffer_id: 1 },
+        bounds: WindowRect::new(0, 0, width, height),
         z_order: 0,
         is_active: true,
         is_floating: false,
-        line_number: Some(LineNumber::default()),
-        sign_column_mode: SignColumnMode::Yes(2),
-        scrollbar_enabled: false,
-        cursor: Position { x: 0, y: 0 },
-        desired_col: None,
-        border_config: None,
+        viewport: Viewport::default(),
+        config: WindowConfig {
+            line_number: Some(LineNumber::default()),
+            sign_column_mode: SignColumnMode::Yes(2),
+            scrollbar_enabled: false,
+            border_config: None,
+        },
     }
 }
 

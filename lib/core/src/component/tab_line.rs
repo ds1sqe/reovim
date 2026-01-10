@@ -2,7 +2,7 @@
 //!
 //! Renders the tab bar at the top of the screen when multiple tabs are open.
 
-use crate::{component::RenderContext, frame::FrameBuffer, screen::tab::TabInfo};
+use crate::{component::RenderContext, frame::FrameBuffer, screen::layout::tab::TabInfo};
 
 /// Tab line display component
 ///

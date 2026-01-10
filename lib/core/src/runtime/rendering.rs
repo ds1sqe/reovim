@@ -86,12 +86,13 @@ impl Runtime {
             .windows()
             .iter()
             .filter_map(|win| {
-                if let WindowContentSource::FileBuffer { buffer_anchor, .. } = &win.source {
+                if let WindowContentSource::FileBuffer { .. } = &win.source {
                     let buffer_id = win.buffer_id()?;
                     let line_count = self.buffers.get(&buffer_id)?.contents.len() as u16;
-                    let viewport_start = buffer_anchor.y.saturating_sub(HIGHLIGHT_PADDING);
+                    let scroll_y = win.viewport.scroll.y;
+                    let viewport_start = scroll_y.saturating_sub(HIGHLIGHT_PADDING);
                     let viewport_end =
-                        (buffer_anchor.y + win.height + HIGHLIGHT_PADDING).min(line_count);
+                        (scroll_y + win.bounds.height + HIGHLIGHT_PADDING).min(line_count);
                     Some((buffer_id, viewport_start, viewport_end))
                 } else {
                     None

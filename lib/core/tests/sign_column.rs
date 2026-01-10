@@ -9,22 +9,22 @@ fn test_sign_column_mode_configuration() {
     let mut window = common::create_test_window();
 
     // Default should be Yes(2) mode (always show with width 2)
-    assert_eq!(window.sign_column_mode, SignColumnMode::Yes(2));
-    assert_eq!(window.sign_column_mode.effective_width(true), 2);
-    assert_eq!(window.sign_column_mode.effective_width(false), 2);
+    assert_eq!(window.config.sign_column_mode, SignColumnMode::Yes(2));
+    assert_eq!(window.config.sign_column_mode.effective_width(true), 2);
+    assert_eq!(window.config.sign_column_mode.effective_width(false), 2);
 
     // Can be set to No (disabled)
-    window.sign_column_mode = SignColumnMode::No;
-    assert_eq!(window.sign_column_mode, SignColumnMode::No);
-    assert_eq!(window.sign_column_mode.effective_width(true), 0);
-    assert_eq!(window.sign_column_mode.effective_width(false), 0);
+    window.config.sign_column_mode = SignColumnMode::No;
+    assert_eq!(window.config.sign_column_mode, SignColumnMode::No);
+    assert_eq!(window.config.sign_column_mode.effective_width(true), 0);
+    assert_eq!(window.config.sign_column_mode.effective_width(false), 0);
 
     // Can be set to Yes with different widths
-    window.sign_column_mode = SignColumnMode::Yes(1);
-    assert_eq!(window.sign_column_mode.effective_width(true), 1);
+    window.config.sign_column_mode = SignColumnMode::Yes(1);
+    assert_eq!(window.config.sign_column_mode.effective_width(true), 1);
 
-    window.sign_column_mode = SignColumnMode::Yes(3);
-    assert_eq!(window.sign_column_mode.effective_width(true), 3);
+    window.config.sign_column_mode = SignColumnMode::Yes(3);
+    assert_eq!(window.config.sign_column_mode.effective_width(true), 3);
 }
 
 #[test]
@@ -32,9 +32,9 @@ fn test_sign_column_auto_mode() {
     let mut window = common::create_test_window();
 
     // Auto mode: width depends on whether signs exist
-    window.sign_column_mode = SignColumnMode::Auto;
-    assert_eq!(window.sign_column_mode.effective_width(false), 0);
-    assert_eq!(window.sign_column_mode.effective_width(true), 2);
+    window.config.sign_column_mode = SignColumnMode::Auto;
+    assert_eq!(window.config.sign_column_mode.effective_width(false), 0);
+    assert_eq!(window.config.sign_column_mode.effective_width(true), 2);
 }
 
 #[test]
@@ -42,9 +42,9 @@ fn test_sign_column_number_mode() {
     let mut window = common::create_test_window();
 
     // Number mode: signs displayed in line number column
-    window.sign_column_mode = SignColumnMode::Number;
-    assert_eq!(window.sign_column_mode.effective_width(true), 0);
-    assert_eq!(window.sign_column_mode.effective_width(false), 0);
+    window.config.sign_column_mode = SignColumnMode::Number;
+    assert_eq!(window.config.sign_column_mode.effective_width(true), 0);
+    assert_eq!(window.config.sign_column_mode.effective_width(false), 0);
 }
 
 #[test]
@@ -170,30 +170,26 @@ mod common {
     use reovim_core::{
         content::WindowContentSource,
         screen::{
-            Position,
-            window::{Anchor, SignColumnMode, Window},
+            WindowId, WindowRect,
+            window::{SignColumnMode, Viewport, Window, WindowConfig},
         },
     };
 
-    pub const fn create_test_window() -> Window {
+    pub fn create_test_window() -> Window {
         Window {
-            id: 0,
-            source: WindowContentSource::FileBuffer {
-                buffer_id: 0,
-                buffer_anchor: Anchor { x: 0, y: 0 },
-            },
-            anchor: Anchor { x: 0, y: 0 },
-            width: 80,
-            height: 24,
+            id: WindowId::new(0),
+            source: WindowContentSource::FileBuffer { buffer_id: 0 },
+            bounds: WindowRect::new(0, 0, 80, 24),
             z_order: 100,
             is_active: true,
             is_floating: false,
-            line_number: None,
-            scrollbar_enabled: false,
-            sign_column_mode: SignColumnMode::Yes(2),
-            cursor: Position { x: 0, y: 0 },
-            desired_col: None,
-            border_config: None,
+            viewport: Viewport::default(),
+            config: WindowConfig {
+                line_number: None,
+                scrollbar_enabled: false,
+                sign_column_mode: SignColumnMode::Yes(2),
+                border_config: None,
+            },
         }
     }
 }

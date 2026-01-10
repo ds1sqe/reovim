@@ -10,8 +10,8 @@ use reovim_core::{
     modd::ModeState,
     render::RenderData,
     screen::{
-        Position,
-        window::{Anchor, LineNumber, SignColumnMode, Window},
+        WindowId, WindowRect,
+        window::{LineNumber, SignColumnMode, Viewport, Window, WindowConfig},
     },
     sign::Sign,
 };
@@ -24,23 +24,19 @@ fn test_sign_visual_rendering() {
 
     // Create window with sign column enabled
     let window = Window {
-        id: 0,
-        source: WindowContentSource::FileBuffer {
-            buffer_id: 1,
-            buffer_anchor: Anchor { x: 0, y: 0 },
-        },
-        anchor: Anchor { x: 0, y: 0 },
-        width: 40,
-        height: 4,
+        id: WindowId::new(0),
+        source: WindowContentSource::FileBuffer { buffer_id: 1 },
+        bounds: WindowRect::new(0, 0, 40, 4),
         z_order: 0,
         is_active: true,
         is_floating: false,
-        line_number: Some(LineNumber::default()),
-        sign_column_mode: SignColumnMode::Yes(2), // Enable 2-char sign column
-        scrollbar_enabled: false,
-        cursor: Position { x: 0, y: 0 },
-        desired_col: None,
-        border_config: None,
+        viewport: Viewport::default(),
+        config: WindowConfig {
+            line_number: Some(LineNumber::default()),
+            sign_column_mode: SignColumnMode::Yes(2), // Enable 2-char sign column
+            scrollbar_enabled: false,
+            border_config: None,
+        },
     };
 
     // Create render data with a sign on line 1 (index 1)

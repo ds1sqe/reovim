@@ -15,8 +15,8 @@ use {
         modd::ModeState,
         render::RenderData,
         screen::{
-            Position,
-            window::{Anchor, LineNumber, SignColumnMode, Window},
+            Position, WindowId, WindowRect,
+            window::{Anchor, LineNumber, SignColumnMode, Viewport, Window, WindowConfig},
         },
         syntax::SyntaxFactory,
     },
@@ -72,23 +72,23 @@ fn create_buffer_with_syntax(
 /// Create a window at specific scroll position
 fn create_window_at_scroll(height: u16, scroll_y: u16) -> Window {
     Window {
-        id: 0,
-        source: WindowContentSource::FileBuffer {
-            buffer_id: 0,
-            buffer_anchor: Anchor { x: 0, y: scroll_y },
-        },
-        anchor: Anchor { x: 0, y: 0 },
-        width: 120,
-        height,
+        id: WindowId::new(0),
+        source: WindowContentSource::FileBuffer { buffer_id: 0 },
+        bounds: WindowRect::new(0, 0, 120, height),
         z_order: 0,
         is_active: true,
         is_floating: false,
-        line_number: Some(LineNumber::default()),
-        sign_column_mode: SignColumnMode::No,
-        scrollbar_enabled: false,
-        cursor: Position { x: 0, y: scroll_y },
-        desired_col: None,
-        border_config: None,
+        viewport: Viewport {
+            scroll: Anchor { x: 0, y: scroll_y },
+            cursor: Position { x: 0, y: scroll_y },
+            desired_col: None,
+        },
+        config: WindowConfig {
+            line_number: Some(LineNumber::default()),
+            sign_column_mode: SignColumnMode::No,
+            scrollbar_enabled: false,
+            border_config: None,
+        },
     }
 }
 

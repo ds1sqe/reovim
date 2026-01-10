@@ -166,7 +166,7 @@ impl Runtime {
             );
             let layouts = tab.calculate_layouts(editor_rect);
 
-            let Some(id) = crate::screen::split::find_adjacent_window(
+            let Some(id) = crate::screen::layout::split::find_adjacent_window(
                 tab.active_window_id,
                 direction,
                 &layouts,

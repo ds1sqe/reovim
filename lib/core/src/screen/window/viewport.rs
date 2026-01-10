@@ -8,26 +8,15 @@ use crate::buffer::Buffer;
 use super::{Anchor, Window};
 
 impl Window {
-    /// Get buffer anchor (scroll position) from content source
+    /// Get buffer anchor (scroll position) from viewport
     #[must_use]
     pub const fn buffer_anchor(&self) -> Option<Anchor> {
-        match &self.source {
-            super::WindowContentSource::FileBuffer { buffer_anchor, .. }
-            | super::WindowContentSource::PluginBuffer { buffer_anchor, .. } => {
-                Some(*buffer_anchor)
-            }
-        }
+        Some(self.viewport.scroll)
     }
 
-    /// Set buffer anchor in content source (if applicable)
-    #[allow(clippy::missing_const_for_fn)]
-    pub fn set_buffer_anchor(&mut self, new_anchor: Anchor) {
-        match &mut self.source {
-            super::WindowContentSource::FileBuffer { buffer_anchor, .. }
-            | super::WindowContentSource::PluginBuffer { buffer_anchor, .. } => {
-                *buffer_anchor = new_anchor;
-            }
-        }
+    /// Set buffer anchor (scroll position) in viewport
+    pub const fn set_buffer_anchor(&mut self, new_anchor: Anchor) {
+        self.viewport.scroll = new_anchor;
     }
 
     /// Get effective cursor Y position (active buffer cursor or window-saved cursor)
@@ -36,15 +25,15 @@ impl Window {
         if self.is_active {
             buf.cur.y
         } else {
-            self.cursor.y
+            self.viewport.cursor.y
         }
     }
 
     /// Update viewport scroll position to keep cursor visible
     ///
     /// Returns `true` if scrolling occurred, `false` if cursor was already visible.
-    pub fn update_scroll(&mut self, cursor_y: u16) -> bool {
-        let visible_height = self.height;
+    pub const fn update_scroll(&mut self, cursor_y: u16) -> bool {
+        let visible_height = self.bounds.height;
         let Some(mut buffer_anchor) = self.buffer_anchor() else {
             return false;
         };
@@ -73,37 +62,36 @@ impl Window {
     #[must_use]
     pub fn viewport_bounds(&self) -> (u32, u32) {
         let top_line = self.buffer_anchor().map_or(0, |a| u32::from(a.y));
-        let bottom_line = top_line + u32::from(self.height).saturating_sub(1);
+        let bottom_line = top_line + u32::from(self.bounds.height).saturating_sub(1);
         (top_line, bottom_line)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        super::{SignColumnMode, WindowContentSource},
-        *,
+    use {
+        super::{
+            super::{SignColumnMode, Viewport, WindowConfig, WindowContentSource},
+            *,
+        },
+        crate::screen::{WindowId, WindowRect},
     };
 
     fn create_test_window(height: u16) -> Window {
         Window {
-            id: 0,
-            source: WindowContentSource::FileBuffer {
-                buffer_id: 0,
-                buffer_anchor: Anchor { x: 0, y: 0 },
-            },
-            anchor: Anchor { x: 0, y: 0 },
-            width: 80,
-            height,
+            id: WindowId::new(0),
+            source: WindowContentSource::FileBuffer { buffer_id: 0 },
+            bounds: WindowRect::new(0, 0, 80, height),
             z_order: 0,
             is_active: true,
             is_floating: false,
-            line_number: Some(super::super::LineNumber::default()),
-            scrollbar_enabled: false,
-            sign_column_mode: SignColumnMode::Auto,
-            cursor: super::super::Position { x: 0, y: 0 },
-            desired_col: None,
-            border_config: None,
+            viewport: Viewport::default(),
+            config: WindowConfig {
+                line_number: Some(super::super::LineNumber::default()),
+                scrollbar_enabled: false,
+                sign_column_mode: SignColumnMode::Auto,
+                border_config: None,
+            },
         }
     }
 

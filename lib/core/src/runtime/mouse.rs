@@ -140,7 +140,7 @@ impl Runtime {
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let new_y = if delta > 0 {
             // Scroll down: increase anchor.y
-            let max_scroll = buffer_line_count.saturating_sub(window.height as usize);
+            let max_scroll = buffer_line_count.saturating_sub(window.bounds.height as usize);
             (current_anchor.y as usize + delta as usize).min(max_scroll) as u16
         } else {
             // Scroll up: decrease anchor.y
@@ -156,7 +156,7 @@ impl Runtime {
         // Adjust cursor if it goes off-screen
         if let Some(buffer) = self.buffers.get_mut(&buffer_id) {
             let viewport_top = new_y;
-            let viewport_bottom = new_y + window.height.saturating_sub(1);
+            let viewport_bottom = new_y + window.bounds.height.saturating_sub(1);
 
             if buffer.cur.y < viewport_top {
                 // Cursor above viewport - move to top

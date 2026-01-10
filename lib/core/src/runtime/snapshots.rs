@@ -62,13 +62,13 @@ impl Runtime {
             .windows()
             .iter()
             .map(|w| crate::rpc::WindowSnapshot {
-                id: w.id,
+                id: w.id.raw(),
                 buffer_id: w.buffer_id().unwrap_or(0),
                 buffer_anchor_x: w.buffer_anchor().map_or(0, |a| a.x),
                 buffer_anchor_y: w.buffer_anchor().map_or(0, |a| a.y),
                 is_active: w.is_active,
-                cursor_x: w.cursor.x,
-                cursor_y: w.cursor.y,
+                cursor_x: w.viewport.cursor.x,
+                cursor_y: w.viewport.cursor.y,
             })
             .collect()
     }

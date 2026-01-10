@@ -1,4 +1,12 @@
 //! Window layout management for split views
+//!
+//! This module contains layout management code including:
+//! - `LayoutManager` for managing screen layout with side panels
+//! - `split` module for binary split tree operations
+//! - `tab` module for vim-style tab management
+
+pub mod split;
+pub mod tab;
 
 use {super::window::Anchor, crate::modd::ComponentId};
 
