@@ -14,6 +14,8 @@ pub use {
     registry::RenderStageRegistry, stage::RenderStage,
 };
 
+use std::collections::{BTreeMap, HashSet};
+
 use crate::{highlight::Style, sign::LineSign};
 
 /// Data flowing through the render pipeline
@@ -39,6 +41,11 @@ pub struct RenderData {
     /// Populated by plugins via `RenderStage` transforms (e.g., LSP diagnostics)
     pub virtual_texts: Vec<Option<VirtualTextEntry>>,
 
+    /// Virtual lines to render above/below buffer lines
+    /// Key: (`line_index`, position), Value: virtual line entry
+    /// Used for table borders, decorative separators, etc.
+    pub virtual_lines: BTreeMap<(usize, VirtualLinePosition), VirtualLineEntry>,
+
     /// Metadata
     pub buffer_id: usize,
     pub window_id: usize,
@@ -46,6 +53,10 @@ pub struct RenderData {
 
     /// Cursor position (line, column) for bracket matching etc.
     pub cursor: (usize, usize),
+
+    /// Lines to skip decorations on (insert mode cursor line, visual selection lines)
+    /// Stages should check this set and avoid adding decorations to these lines
+    pub skip_decoration_lines: HashSet<usize>,
 }
 
 impl RenderData {
@@ -77,19 +88,35 @@ impl RenderData {
         let deco_start = std::time::Instant::now();
         let mut decorations = buffer.decoration_cache.get_ready_decorations(line_count);
 
-        // In insert mode, disable decorations on cursor line to show raw syntax
+        // Build set of lines to skip decorations on
+        let mut skip_decoration_lines = HashSet::new();
+
+        // In insert mode, skip cursor line
         if mode.is_insert() {
-            let cursor_line = buffer.cur.y as usize;
-            if cursor_line < decorations.len() {
-                decorations[cursor_line].clear();
+            skip_decoration_lines.insert(buffer.cur.y as usize);
+        }
+
+        // In visual mode, skip ALL selected lines
+        if mode.is_visual() && buffer.selection.active {
+            use crate::buffer::SelectionOps;
+            let (start, end) = buffer.selection_bounds();
+            for line_idx in start.y as usize..=end.y as usize {
+                skip_decoration_lines.insert(line_idx);
+            }
+        }
+
+        // Clear cached decorations for skipped lines
+        for &line_idx in &skip_decoration_lines {
+            if line_idx < decorations.len() {
+                decorations[line_idx].clear();
             }
         }
 
         tracing::trace!(
-            "[RTT] from_buffer: decoration_cache_read={:?} lines={} insert_mode={}",
+            "[RTT] from_buffer: decoration_cache_read={:?} lines={} skip_lines={}",
             deco_start.elapsed(),
             line_count,
-            mode.is_insert()
+            skip_decoration_lines.len()
         );
 
         Self {
@@ -103,6 +130,7 @@ impl RenderData {
             decorations,
             signs: vec![None; line_count],
             virtual_texts: vec![None; line_count],
+            virtual_lines: BTreeMap::new(),
             buffer_id: buffer.id,
             window_id: window.id,
             window_bounds: Bounds {
@@ -112,7 +140,32 @@ impl RenderData {
                 height: window.height,
             },
             cursor: (buffer.cur.y as usize, buffer.cur.x as usize),
+            skip_decoration_lines,
         }
+    }
+
+    /// Get column mapping for cursor line if a full-line Conceal exists with mapping
+    ///
+    /// Returns the column mapping (`buffer_col` → `visual_col`) if the cursor line has
+    /// a full-line Conceal decoration with a column mapping. This is used for
+    /// positioning the cursor correctly when decorations change column positions.
+    #[must_use]
+    pub fn cursor_col_mapping(&self) -> Option<&[u16]> {
+        let cursor_line = self.cursor.0;
+        let line_len = self.lines.get(cursor_line)?.len();
+        self.decorations.get(cursor_line)?.iter().find_map(|deco| {
+            // Check for full-line conceal with column mapping
+            if deco.start_col == 0
+                && deco.end_col >= line_len
+                && let DecorationKind::Conceal {
+                    col_mapping: Some(m),
+                    ..
+                } = &deco.kind
+            {
+                return Some(m.as_slice());
+            }
+            None
+        })
     }
 }
 
@@ -158,7 +211,13 @@ pub struct Decoration {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DecorationKind {
     /// Conceal text with replacement
-    Conceal { replacement: Option<String> },
+    Conceal {
+        replacement: Option<String>,
+        /// Optional column mapping for cursor position (`buffer_col` → `visual_col`)
+        /// When present, maps each buffer column index to its visual column in the replacement
+        /// Used for full-line conceals that change column positions (e.g., table expansion)
+        col_mapping: Option<Vec<u16>>,
+    },
     /// Background highlight
     Background { style: Style },
     /// Inline virtual text
@@ -187,6 +246,31 @@ pub struct VirtualTextEntry {
     /// Style for rendering
     pub style: Style,
     /// Priority (higher wins when multiple on same line)
+    pub priority: u32,
+}
+
+/// Position for virtual line relative to a buffer line
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum VirtualLinePosition {
+    /// Insert above the buffer line
+    Before,
+    /// Insert below the buffer line
+    After,
+}
+
+/// A virtual line entry (entire line not in buffer)
+///
+/// Used for rendering decorative elements that span full lines:
+/// - Table top/bottom borders (┌───┬───┐, └───┴───┘)
+/// - Section separators
+/// - Fold previews
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VirtualLineEntry {
+    /// Text content of the virtual line
+    pub text: String,
+    /// Style for rendering
+    pub style: Style,
+    /// Priority (higher wins on conflict at same position)
     pub priority: u32,
 }
 

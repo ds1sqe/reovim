@@ -493,6 +493,7 @@ fn create_test_render_data(line_count: usize) -> RenderData {
         decorations: vec![Vec::new(); line_count],
         signs: vec![None; line_count],
         virtual_texts: vec![None; line_count],
+        virtual_lines: std::collections::BTreeMap::new(),
         buffer_id: 1,
         window_id: 1,
         window_bounds: Bounds {
@@ -502,5 +503,6 @@ fn create_test_render_data(line_count: usize) -> RenderData {
             height: 24,
         },
         cursor: (0, 0),
+        skip_decoration_lines: std::collections::HashSet::new(),
     }
 }

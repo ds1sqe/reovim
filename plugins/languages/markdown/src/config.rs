@@ -11,6 +11,9 @@ pub struct HeadingConfig {
     pub styles: [Style; 6],
     /// Background styles for each heading level (None = no background)
     pub backgrounds: [Option<Style>; 6],
+    /// Spaces to indent per heading level (H2+)
+    /// H1 = 0 spaces, H2 = 1*indent, H3 = 2*indent, etc.
+    pub indent_per_level: u8,
 }
 
 impl Default for HeadingConfig {
@@ -78,6 +81,7 @@ impl Default for HeadingConfig {
                 None,
                 None,
             ],
+            indent_per_level: 0,
         }
     }
 }
@@ -166,6 +170,16 @@ pub struct InlineConfig {
     pub conceal_links: bool,
     /// Style for link text
     pub link_style: Style,
+    /// Optional background for links (applied in addition to link_style)
+    pub link_background: Option<Style>,
+    /// Style for inline code spans (`code`)
+    pub code_span_style: Style,
+    /// Whether to conceal the backtick markers
+    pub conceal_code_span: bool,
+    /// Style for strikethrough text (~~text~~)
+    pub strikethrough_style: Style,
+    /// Whether to conceal ~~ markers
+    pub conceal_strikethrough: bool,
 }
 
 impl Default for InlineConfig {
@@ -188,6 +202,88 @@ impl Default for InlineConfig {
                 g: 207,
                 b: 255,
             }),
+            link_background: Some(Style::new().bg(Color::Rgb {
+                r: 30,
+                g: 40,
+                b: 50,
+            })),
+            code_span_style: Style::new()
+                .bg(Color::Rgb {
+                    r: 45,
+                    g: 45,
+                    b: 55,
+                })
+                .fg(Color::Rgb {
+                    r: 230,
+                    g: 180,
+                    b: 120,
+                }),
+            conceal_code_span: true,
+            strikethrough_style: Style::new().strikethrough().dim().fg(Color::Rgb {
+                r: 140,
+                g: 140,
+                b: 160,
+            }),
+            conceal_strikethrough: true,
+        }
+    }
+}
+
+/// Box-drawing characters for table borders
+#[derive(Debug, Clone)]
+pub struct BoxDrawingChars {
+    pub top_left: char,
+    pub top_right: char,
+    pub bottom_left: char,
+    pub bottom_right: char,
+    pub horizontal: char,
+    pub vertical: char,
+    pub cross: char,
+    pub top_tee: char,
+    pub bottom_tee: char,
+    pub left_tee: char,
+    pub right_tee: char,
+}
+
+impl Default for BoxDrawingChars {
+    fn default() -> Self {
+        Self {
+            top_left: '┌',
+            top_right: '┐',
+            bottom_left: '└',
+            bottom_right: '┘',
+            horizontal: '─',
+            vertical: '│',
+            cross: '┼',
+            top_tee: '┬',
+            bottom_tee: '┴',
+            left_tee: '├',
+            right_tee: '┤',
+        }
+    }
+}
+
+/// Configuration for table border rendering with box-drawing characters
+#[derive(Debug, Clone)]
+pub struct TableBorderConfig {
+    /// Whether to use box-drawing characters for borders
+    pub use_box_drawing: bool,
+    /// Box-drawing character set
+    pub chars: BoxDrawingChars,
+    /// Style for border characters
+    pub style: Style,
+}
+
+impl Default for TableBorderConfig {
+    fn default() -> Self {
+        Self {
+            use_box_drawing: true, // Enabled by default for visual polish
+            chars: BoxDrawingChars::default(),
+            style: Style::new().dim().fg(Color::Rgb {
+                r: 80,
+                g: 80,
+                b: 100,
+            }),
         }
     }
 }
@@ -205,6 +301,8 @@ pub struct TableConfig {
     pub delimiter_style: Style,
     /// Style for cell borders (pipe characters)
     pub border_style: Style,
+    /// Box-drawing border configuration
+    pub borders: TableBorderConfig,
 }
 
 impl Default for TableConfig {
@@ -231,6 +329,67 @@ impl Default for TableConfig {
                 g: 80,
                 b: 100,
             }),
+            borders: TableBorderConfig::default(),
+        }
+    }
+}
+
+/// Configuration for horizontal rule rendering
+#[derive(Debug, Clone)]
+pub struct HorizontalRuleConfig {
+    /// Whether to render horizontal rule styling
+    pub enabled: bool,
+    /// Character to use for the rule (repeated to fill width)
+    pub character: char,
+    /// Style for the horizontal rule
+    pub style: Style,
+    /// Minimum width of the rule (in characters)
+    pub min_width: u16,
+}
+
+impl Default for HorizontalRuleConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            character: '─', // Box-drawing horizontal
+            style: Style::new().dim().fg(Color::Rgb {
+                r: 100,
+                g: 100,
+                b: 120,
+            }),
+            min_width: 40,
+        }
+    }
+}
+
+/// Configuration for blockquote rendering
+#[derive(Debug, Clone)]
+pub struct BlockquoteConfig {
+    /// Whether to render blockquote styling
+    pub enabled: bool,
+    /// Replacement character for > marker
+    pub marker: &'static str,
+    /// Style for the marker
+    pub marker_style: Style,
+    /// Optional background for the entire blockquote
+    pub background: Option<Style>,
+}
+
+impl Default for BlockquoteConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            marker: "│ ", // Vertical line + space
+            marker_style: Style::new().fg(Color::Rgb {
+                r: 100,
+                g: 140,
+                b: 180,
+            }),
+            background: Some(Style::new().bg(Color::Rgb {
+                r: 35,
+                g: 40,
+                b: 48,
+            })),
         }
     }
 }
@@ -250,6 +409,10 @@ pub struct MarkdownConfig {
     pub inline: InlineConfig,
     /// Table configuration
     pub tables: TableConfig,
+    /// Horizontal rule configuration
+    pub horizontal_rules: HorizontalRuleConfig,
+    /// Blockquote configuration
+    pub blockquotes: BlockquoteConfig,
     /// Show raw markdown on cursor line (even in normal mode)
     pub raw_on_cursor_line: bool,
 }
@@ -263,6 +426,8 @@ impl Default for MarkdownConfig {
             code_blocks: CodeBlockConfig::default(),
             inline: InlineConfig::default(),
             tables: TableConfig::default(),
+            horizontal_rules: HorizontalRuleConfig::default(),
+            blockquotes: BlockquoteConfig::default(),
             raw_on_cursor_line: false,
         }
     }

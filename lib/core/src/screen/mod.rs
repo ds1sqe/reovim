@@ -555,6 +555,56 @@ impl Screen {
         data
     }
 
+    /// Calculate adjusted scroll offset to ensure cursor is visible with virtual lines
+    ///
+    /// Virtual lines take up display rows, so we may need to scroll further to keep
+    /// the cursor visible. Returns `Some(new_offset)` if adjustment needed, `None` otherwise.
+    #[allow(clippy::cast_possible_truncation)]
+    fn calculate_scroll_adjustment_for_virtual_lines(
+        render_data: &crate::render::RenderData,
+        current_scroll: u16,
+        window_height: u16,
+        cursor_line: u16,
+    ) -> Option<u16> {
+        use crate::render::VirtualLinePosition;
+
+        // Count virtual lines in the viewport that appear at or before cursor
+        let mut display_rows_used = 0u16;
+        let scroll_start = current_scroll as usize;
+        let cursor_idx = cursor_line as usize;
+
+        // Count ALL display rows from scroll to cursor (don't return early)
+        for line_idx in scroll_start..=cursor_idx {
+            // Count Before virtual lines
+            if render_data
+                .virtual_lines
+                .contains_key(&(line_idx, VirtualLinePosition::Before))
+            {
+                display_rows_used += 1;
+            }
+
+            // Count the buffer line itself
+            display_rows_used += 1;
+
+            // Count After virtual lines (except for cursor line - it's after cursor)
+            if line_idx < cursor_idx
+                && render_data
+                    .virtual_lines
+                    .contains_key(&(line_idx, VirtualLinePosition::After))
+            {
+                display_rows_used += 1;
+            }
+        }
+
+        // AFTER counting everything, check if adjustment needed
+        if display_rows_used > window_height {
+            let overshoot = display_rows_used - window_height;
+            Some(current_scroll + overshoot)
+        } else {
+            None
+        }
+    }
+
     /// Render pipeline data to frame buffer
     #[allow(clippy::too_many_arguments)]
     #[allow(clippy::cast_possible_truncation)]
@@ -567,7 +617,7 @@ impl Screen {
         theme: &Theme,
         buffer: &Buffer,
     ) {
-        use crate::render::{DecorationKind, LineVisibility};
+        use crate::render::{DecorationKind, LineVisibility, VirtualLinePosition};
 
         // Get effective cursor position (active window uses buffer cursor, inactive uses window cursor)
         let cursor_y = if window.is_active {
@@ -637,6 +687,32 @@ impl Screen {
         let start_line = scroll_offset as usize;
         for (idx, line) in render_data.lines.iter().enumerate().skip(start_line) {
             let line_idx = idx;
+            if display_row >= window.height {
+                break;
+            }
+
+            // Render virtual lines BEFORE this buffer line
+            if let Some(vl) = render_data
+                .virtual_lines
+                .get(&(line_idx, VirtualLinePosition::Before))
+            {
+                if display_row >= window.height {
+                    break;
+                }
+                let screen_y = window.anchor.y + display_row;
+                let gutter_total = sign_column_width + num_width as u16 + 1; // +1 for padding
+                let mut col = window.anchor.x + gutter_total;
+                let max_col = window.anchor.x + window.width;
+                for ch in vl.text.chars() {
+                    if col >= max_col {
+                        break;
+                    }
+                    frame_buffer.put_char(col, screen_y, ch, &vl.style);
+                    col += 1;
+                }
+                display_row += 1;
+            }
+
             if display_row >= window.height {
                 break;
             }
@@ -819,7 +895,7 @@ impl Screen {
 
                         // Handle conceal decorations (with optional background style)
                         if let Some(deco) = conceal_deco
-                            && let DecorationKind::Conceal { replacement } = &deco.kind
+                            && let DecorationKind::Conceal { replacement, .. } = &deco.kind
                         {
                             // Only output replacement at start of decoration span
                             if char_idx == deco.start_col
@@ -978,6 +1054,28 @@ impl Screen {
 
                     display_row += 1;
                 }
+            }
+
+            // Render virtual lines AFTER this buffer line
+            if let Some(vl) = render_data
+                .virtual_lines
+                .get(&(line_idx, VirtualLinePosition::After))
+            {
+                if display_row >= window.height {
+                    continue;
+                }
+                let screen_y = window.anchor.y + display_row;
+                let gutter_total = sign_column_width + num_width as u16 + 1;
+                let mut col = window.anchor.x + gutter_total;
+                let max_col = window.anchor.x + window.width;
+                for ch in vl.text.chars() {
+                    if col >= max_col {
+                        break;
+                    }
+                    frame_buffer.put_char(col, screen_y, ch, &vl.style);
+                    col += 1;
+                }
+                display_row += 1;
             }
         }
 
@@ -1227,7 +1325,7 @@ impl Screen {
         windows_to_render.sort_by_key(|w| w.z_order);
 
         // Render all windows
-        for win in &windows_to_render {
+        for win in &mut windows_to_render {
             // Handle PluginBuffer windows differently
             if let crate::content::WindowContentSource::PluginBuffer { provider, .. } = &win.source
             {
@@ -1321,6 +1419,32 @@ impl Screen {
                 );
                 let pipeline_time = pipeline_start.elapsed();
 
+                // Adjust scroll if virtual lines would push cursor off-screen
+                let current_scroll = win.buffer_anchor().map_or(0, |a| a.y);
+                if let Some(new_scroll) = Self::calculate_scroll_adjustment_for_virtual_lines(
+                    &render_data,
+                    current_scroll,
+                    win.height,
+                    buf.cur.y,
+                ) {
+                    // Update both the cloned window and the original
+                    if let Some(mut anchor) = win.buffer_anchor() {
+                        anchor.y = new_scroll;
+                        win.set_buffer_anchor(anchor);
+                    }
+                    if let Some(editor_idx) = editor_win_idx
+                        && let Some(mut anchor) = self.windows[editor_idx].buffer_anchor()
+                    {
+                        anchor.y = new_scroll;
+                        self.windows[editor_idx].set_buffer_anchor(anchor);
+                    }
+                    tracing::trace!(
+                        "[VLINE] adjusted scroll: {} -> {} for virtual lines",
+                        current_scroll,
+                        new_scroll
+                    );
+                }
+
                 // Render pipeline data to frame buffer
                 let fb_start = std::time::Instant::now();
                 self.render_data_to_framebuffer(&render_data, win, buffer, theme, buf);
@@ -1332,15 +1456,43 @@ impl Screen {
 
                 // Calculate cursor position only for the ACTIVE window (and if editor is focused)
                 if win.is_active {
+                    use crate::render::VirtualLinePosition;
+
                     let line_num_width = win.line_number_width(buf.contents.len());
                     // Use max width for cursor position (assume signs present in auto mode)
                     let sign_width = win.sign_column_mode.effective_width(true);
-                    let cursor_x = win.anchor.x + sign_width + line_num_width + buf.cur.x;
+
+                    // Apply column mapping for decorated lines (e.g., table expansion)
+                    let visual_cursor_col = render_data
+                        .cursor_col_mapping()
+                        .and_then(|mapping| mapping.get(buf.cur.x as usize).copied())
+                        .unwrap_or(buf.cur.x);
+                    let cursor_x = win.anchor.x + sign_width + line_num_width + visual_cursor_col;
+
+                    // Calculate virtual line offset for cursor position
+                    // Virtual lines rendered BEFORE buffer lines shift the cursor down
+                    let scroll_offset = win.buffer_anchor().map_or(0, |a| a.y);
+                    let cursor_buffer_line = buf.cur.y;
+
+                    // Count virtual lines that appear visually before the cursor line
+                    // - Before: renders before line N, count if N <= cursor
+                    // - After: renders after line N, count if N < cursor (before cursor line)
+                    let virtual_line_offset: u16 = render_data
+                        .virtual_lines
+                        .keys()
+                        .filter(|(line_idx, pos)| {
+                            let line = *line_idx as u16;
+                            line >= scroll_offset
+                                && match pos {
+                                    VirtualLinePosition::Before => line <= cursor_buffer_line,
+                                    VirtualLinePosition::After => line < cursor_buffer_line,
+                                }
+                        })
+                        .count() as u16;
+
                     let cursor_y = win.anchor.y
-                        + buf
-                            .cur
-                            .y
-                            .saturating_sub(win.buffer_anchor().map_or(0, |a| a.y));
+                        + cursor_buffer_line.saturating_sub(scroll_offset)
+                        + virtual_line_offset;
                     cursor_pos = Some((cursor_x, cursor_y));
                 }
             }

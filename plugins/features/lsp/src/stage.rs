@@ -436,6 +436,7 @@ mod tests {
             decorations: vec![Vec::new(); line_count],
             signs: vec![None; line_count],
             virtual_texts: vec![None; line_count],
+            virtual_lines: std::collections::BTreeMap::new(),
             buffer_id: 1,
             window_id: 1,
             window_bounds: Bounds {
@@ -445,6 +446,7 @@ mod tests {
                 height: 24,
             },
             cursor: (0, 0),
+            skip_decoration_lines: std::collections::HashSet::new(),
         }
     }
 

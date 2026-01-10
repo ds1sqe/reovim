@@ -360,6 +360,7 @@ fn update_decorations(
                         end_col: span.end_col as usize,
                         kind: DecorationKind::Conceal {
                             replacement: Some(replacement),
+                            col_mapping: None,
                         },
                     });
                     // If there's a style, also add it as a background decoration
@@ -378,7 +379,10 @@ fn update_decorations(
                     line_decorations[line_idx].push(Decoration {
                         start_col: span.start_col as usize,
                         end_col: span.end_col as usize,
-                        kind: DecorationKind::Conceal { replacement: None },
+                        kind: DecorationKind::Conceal {
+                            replacement: None,
+                            col_mapping: None,
+                        },
                     });
                 }
             }

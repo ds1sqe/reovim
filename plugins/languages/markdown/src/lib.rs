@@ -23,7 +23,7 @@ use {
     reovim_plugin_treesitter::{LanguageSupport, RegisterLanguage, TreesitterPlugin},
 };
 
-use factory::MarkdownDecorationFactory;
+use {factory::MarkdownDecorationFactory, stage::MarkdownTableBorderStage};
 
 /// Markdown language support
 pub struct MarkdownLanguage;
@@ -104,8 +104,9 @@ impl Plugin for MarkdownPlugin {
         vec![TypeId::of::<TreesitterPlugin>()]
     }
 
-    fn build(&self, _ctx: &mut PluginContext) {
-        // No commands to register
+    fn build(&self, ctx: &mut PluginContext) {
+        // Register render stage for table borders (virtual lines)
+        ctx.register_render_stage(Arc::new(MarkdownTableBorderStage::new()));
     }
 
     fn init_state(&self, registry: &PluginStateRegistry) {

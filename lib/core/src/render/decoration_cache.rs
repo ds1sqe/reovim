@@ -189,6 +189,7 @@ mod tests {
             end_col: end,
             kind: DecorationKind::Conceal {
                 replacement: Some("...".to_string()),
+                col_mapping: None,
             },
         }
     }
