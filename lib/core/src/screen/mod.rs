@@ -567,7 +567,7 @@ impl Screen {
         theme: &Theme,
         buffer: &Buffer,
     ) {
-        use crate::render::LineVisibility;
+        use crate::render::{DecorationKind, LineVisibility};
 
         // Get effective cursor position (active window uses buffer cursor, inactive uses window cursor)
         let cursor_y = if window.is_active {
@@ -783,7 +783,6 @@ impl Screen {
                     // Get syntax highlights and decorations for this line
                     let line_highlights = render_data.highlights.get(line_idx);
                     let line_decorations = render_data.decorations.get(line_idx);
-                    let mut current_deco_idx = 0usize;
                     let mut char_idx = 0usize;
                     let chars: Vec<char> = line.chars().collect();
 
@@ -792,61 +791,60 @@ impl Screen {
                             break;
                         }
 
-                        // Check for decorations at current position
+                        // Find ALL decorations that cover current position
                         #[allow(clippy::option_if_let_else)]
-                        let decoration = if let Some(decorations) = line_decorations {
-                            // Advance past decorations that end before current position
-                            while current_deco_idx < decorations.len()
-                                && decorations[current_deco_idx].end_col <= char_idx
-                            {
-                                current_deco_idx += 1;
-                            }
-                            // Check if current position is within a decoration
-                            if current_deco_idx < decorations.len()
-                                && decorations[current_deco_idx].start_col <= char_idx
-                            {
-                                Some(&decorations[current_deco_idx])
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        };
-
-                        // Handle conceal/hide decorations
-                        if let Some(deco) = decoration {
-                            use crate::render::DecorationKind;
-                            match &deco.kind {
-                                DecorationKind::Conceal { replacement } => {
-                                    // Only output replacement at start of decoration span
-                                    if char_idx == deco.start_col
-                                        && let Some(repl) = replacement
-                                    {
-                                        // Output replacement text
-                                        for repl_ch in repl.chars() {
-                                            if col >= window.anchor.x + window.width {
-                                                break;
+                        let (conceal_deco, background_deco) =
+                            if let Some(decorations) = line_decorations {
+                                let mut conceal: Option<&crate::render::Decoration> = None;
+                                let mut background: Option<&crate::render::Decoration> = None;
+                                for deco in decorations {
+                                    if deco.start_col <= char_idx && char_idx < deco.end_col {
+                                        match &deco.kind {
+                                            DecorationKind::Conceal { .. } if conceal.is_none() => {
+                                                conceal = Some(deco);
                                             }
-                                            frame_buffer.put_char(
-                                                col,
-                                                screen_y,
-                                                repl_ch,
-                                                &theme.base.default,
-                                            );
-                                            col += 1;
+                                            DecorationKind::Background { .. }
+                                                if background.is_none() =>
+                                            {
+                                                background = Some(deco);
+                                            }
+                                            _ => {}
                                         }
                                     }
-                                    // Hide decorations (replacement=None) output nothing
-                                    // Skip the concealed character
-                                    char_idx += 1;
-                                    continue;
                                 }
-                                DecorationKind::Background { .. }
-                                | DecorationKind::VirtualText { .. } => {
-                                    // These don't affect character output, just style
-                                    // Fall through to normal rendering
+                                (conceal, background)
+                            } else {
+                                (None, None)
+                            };
+
+                        // Handle conceal decorations (with optional background style)
+                        if let Some(deco) = conceal_deco
+                            && let DecorationKind::Conceal { replacement } = &deco.kind
+                        {
+                            // Only output replacement at start of decoration span
+                            if char_idx == deco.start_col
+                                && let Some(repl) = replacement
+                            {
+                                // Use background style if present, otherwise default
+                                let style = background_deco
+                                    .and_then(|d| match &d.kind {
+                                        DecorationKind::Background { style } => Some(style),
+                                        _ => None,
+                                    })
+                                    .unwrap_or(&theme.base.default);
+                                // Output replacement text
+                                for repl_ch in repl.chars() {
+                                    if col >= window.anchor.x + window.width {
+                                        break;
+                                    }
+                                    frame_buffer.put_char(col, screen_y, repl_ch, style);
+                                    col += 1;
                                 }
                             }
+                            // Hide decorations (replacement=None) output nothing
+                            // Skip the concealed character
+                            char_idx += 1;
+                            continue;
                         }
 
                         let ch = chars[char_idx];
@@ -896,12 +894,10 @@ impl Screen {
 
                         let style = if is_selected {
                             &theme.selection.visual
-                        } else if let Some(deco) = decoration {
+                        } else if let Some(deco) = background_deco {
                             // Check for background decoration
                             #[allow(clippy::option_if_let_else)]
-                            if let crate::render::DecorationKind::Background { style: deco_style } =
-                                &deco.kind
-                            {
+                            if let DecorationKind::Background { style: deco_style } = &deco.kind {
                                 // Merge decoration background with syntax highlight foreground
                                 // This allows code blocks to have both background tint AND syntax colors
                                 if let Some(hl) = line_highlights
