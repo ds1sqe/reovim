@@ -133,6 +133,18 @@ pub use crate::printk::__log;
 pub use crate::{pr_debug, pr_err, pr_info, pr_trace, pr_warn};
 
 // ============================================================================
+// Module System (api/)
+// ============================================================================
+
+pub use super::module::{ModuleError, ModuleId};
+
+// ============================================================================
+// Syntax Mechanism (api/)
+// ============================================================================
+
+pub use super::syntax::SyntaxHighlight;
+
+// ============================================================================
 // Sync Primitives (from arch)
 // ============================================================================
 
@@ -180,5 +192,35 @@ mod tests {
         // Verify printk macros work via v1
         pr_info!("test message");
         pr_debug!("debug: {}", 42);
+    }
+
+    #[test]
+    fn test_module_types_accessible() {
+        // Verify ModuleId and ModuleError are accessible
+        let id = ModuleId::new("test-module");
+        assert_eq!(id.as_str(), "test-module");
+
+        let _err: ModuleError = ModuleError::NotFound("test".into());
+    }
+
+    #[test]
+    fn test_syntax_trait_accessible() {
+        // Verify SyntaxHighlight trait is accessible
+        fn _accepts_highlight<T: SyntaxHighlight>(_: T) {}
+
+        // The trait is available for implementation by drivers
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        enum TestHL {
+            Keyword,
+        }
+
+        impl SyntaxHighlight for TestHL {
+            fn category(&self) -> &'static str {
+                "keyword"
+            }
+        }
+
+        let hl = TestHL::Keyword;
+        assert_eq!(hl.category(), "keyword");
     }
 }
