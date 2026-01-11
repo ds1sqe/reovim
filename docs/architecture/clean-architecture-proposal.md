@@ -3025,10 +3025,12 @@ pub use reovim_drivers_input as input;
 ### 9.3 Breaking Change Policy
 
 ```
-v0.7.x: Add new crates alongside old (lib/arch, lib/kernel)
-v0.8.x: Deprecate lib/core, add warnings
-v0.9.x: Remove lib/core, lib/sys
-v1.0.0: Stable release with new architecture
+Legacy crates (lib/core, lib/sys, plugins):     v0.8.x
+New arch crates (lib/arch, lib/kernel, lib/drivers/*): v0.9.0-dev → v0.9.x
+
+v0.8.x: Legacy crates - stable, maintenance only
+v0.9.x: New architecture - Phase 2-6 development
+v1.0.0: Stable release with new architecture, legacy deprecated
 ```
 
 ---

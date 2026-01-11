@@ -1528,7 +1528,7 @@ dependencies = [
 
 [[package]]
 name = "reovim"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "chrono",
  "clap",
@@ -1569,11 +1569,14 @@ dependencies = [
 
 [[package]]
 name = "reovim-arch"
-version = "0.8.0"
+version = "0.9.0-dev"
+dependencies = [
+ "crossterm",
+]
 
 [[package]]
 name = "reovim-bench"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "criterion",
  "reovim-core",
@@ -1593,7 +1596,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-core"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "arboard",
  "arc-swap",
@@ -1623,56 +1626,56 @@ dependencies = [
 
 [[package]]
 name = "reovim-driver-display"
-version = "0.8.0"
+version = "0.9.0-dev"
 dependencies = [
  "reovim-kernel",
 ]
 
 [[package]]
 name = "reovim-driver-input"
-version = "0.8.0"
+version = "0.9.0-dev"
 dependencies = [
  "reovim-kernel",
 ]
 
 [[package]]
 name = "reovim-driver-lsp"
-version = "0.8.0"
+version = "0.9.0-dev"
 dependencies = [
  "reovim-kernel",
 ]
 
 [[package]]
 name = "reovim-driver-net"
-version = "0.8.0"
+version = "0.9.0-dev"
 dependencies = [
  "reovim-kernel",
 ]
 
 [[package]]
 name = "reovim-driver-syntax"
-version = "0.8.0"
+version = "0.9.0-dev"
 dependencies = [
  "reovim-kernel",
 ]
 
 [[package]]
 name = "reovim-driver-vfs"
-version = "0.8.0"
+version = "0.9.0-dev"
 dependencies = [
  "reovim-kernel",
 ]
 
 [[package]]
 name = "reovim-kernel"
-version = "0.8.0"
+version = "0.9.0-dev"
 dependencies = [
  "reovim-arch",
 ]
 
 [[package]]
 name = "reovim-lang-bash"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "reovim-core",
  "reovim-plugin-treesitter",
@@ -1681,7 +1684,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-lang-c"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "reovim-core",
  "reovim-plugin-treesitter",
@@ -1690,7 +1693,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-lang-javascript"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "reovim-core",
  "reovim-plugin-treesitter",
@@ -1699,7 +1702,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-lang-json"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "reovim-core",
  "reovim-plugin-treesitter",
@@ -1708,7 +1711,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-lang-markdown"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "reovim-core",
  "reovim-plugin-treesitter",
@@ -1719,7 +1722,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-lang-python"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "reovim-core",
  "reovim-plugin-treesitter",
@@ -1728,7 +1731,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-lang-rust"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "reovim-core",
  "reovim-plugin-treesitter",
@@ -1738,7 +1741,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-lang-toml"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "reovim-core",
  "reovim-plugin-treesitter",
@@ -1747,7 +1750,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-lsp"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "arc-swap",
  "futures",
@@ -1764,7 +1767,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-plugin-cmdline-completion"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "arc-swap",
  "reovim-core",
@@ -1773,7 +1776,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-plugin-completion"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "arc-swap",
  "futures",
@@ -1785,7 +1788,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-plugin-context"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "arc-swap",
  "reovim-core",
@@ -1795,7 +1798,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-plugin-explorer"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "reovim-core",
  "reovim-sys",
@@ -1805,7 +1808,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-plugin-health-check"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "reovim-core",
  "reovim-sys",
@@ -1814,7 +1817,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-plugin-lsp"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "arc-swap",
  "dirs",
@@ -1831,7 +1834,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-plugin-microscope"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "ignore",
  "nucleo",
@@ -1843,7 +1846,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-plugin-notification"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "reovim-core",
  "reovim-sys",
@@ -1853,7 +1856,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-plugin-pair"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "reovim-core",
  "tracing",
@@ -1861,7 +1864,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-plugin-pickers"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "ignore",
  "reovim-core",
@@ -1871,7 +1874,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-plugin-profiles"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "reovim-core",
  "tracing",
@@ -1879,7 +1882,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-plugin-range-finder"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "reovim-core",
  "tracing",
@@ -1887,7 +1890,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-plugin-settings-menu"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "reovim-core",
  "tracing",
@@ -1895,7 +1898,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-plugin-statusline"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "reovim-core",
  "reovim-plugin-context",
@@ -1913,7 +1916,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-plugin-treesitter"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "reovim-core",
  "reovim-sys",
@@ -1924,7 +1927,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-plugin-which-key"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "arc-swap",
  "reovim-core",
@@ -1935,7 +1938,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-sys"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "crossterm",
 ]

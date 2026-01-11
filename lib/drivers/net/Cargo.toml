@@ -1,6 +1,6 @@
 [package]
 name = "reovim-driver-net"
-version.workspace = true
+version = "0.9.0-dev"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -14,4 +14,4 @@ workspace = true
 
 [dependencies]
 # Only depends on kernel layer
-reovim-kernel = { path = "../../kernel", version = "0.8.0" }
+reovim-kernel = { path = "../../kernel", version = "0.9.0-dev" }
