@@ -12,9 +12,13 @@ categories.workspace = true
 [lints]
 workspace = true
 
-# Traits have no dependencies (std only)
-# Platform implementations use crossterm
+# Platform-optimized primitives and abstractions
 [dependencies]
+# Lock-free data structures for hot paths
+arc-swap = "1.8"
+
+# Faster synchronization primitives
+parking_lot = "0.12.3"
 
 [target.'cfg(unix)'.dependencies]
 crossterm.workspace = true

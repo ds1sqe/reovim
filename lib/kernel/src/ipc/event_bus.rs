@@ -45,7 +45,7 @@
 
 use std::{any::TypeId, collections::HashMap, sync::Arc};
 
-use {arc_swap::ArcSwap, parking_lot::Mutex};
+use reovim_arch::sync::{ArcSwap, Mutex};
 
 use super::{
     event::{DynEvent, Event, EventResult},
@@ -318,8 +318,9 @@ impl EventBus {
 
         for mut event in events {
             let scope = event.take_scope();
-            let result = self.dispatch(&event);
-            tracing::trace!(event_type = event.type_name(), ?result, "processed queued event");
+            let _result = self.dispatch(&event);
+            // TODO: Replace with pr_trace!() once printk is implemented
+            // pr_trace!("processed queued event: {} -> {:?}", event.type_name(), result);
             if let Some(scope) = scope {
                 scope.decrement();
             }
