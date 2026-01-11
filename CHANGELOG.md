@@ -8,6 +8,26 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 2.8: Module & Syntax API** (Issue #173) - Kernel API extensions for Phase 3
+  - `ModuleId` struct - Unique identifier for loadable modules
+    - Convention: kebab-case names (e.g., "lang-rust", "feat-completion")
+    - `new()`, `as_str()` const methods
+    - Implements `Clone`, `Eq`, `Hash`, `Display`
+  - `ModuleError` enum - Module lifecycle errors (7 variants)
+    - `LoadFailed` - Failed to load shared object
+    - `NoEntryPoint` - Module missing entry function
+    - `InitFailed` - Initialization failed
+    - `IncompatibleVersion` - API version mismatch
+    - `InUse` - Module in use by another module
+    - `NotLoaded` - Module not currently loaded
+    - `NotFound` - Module file not found
+    - Implements `Display` and `std::error::Error`
+  - `SyntaxHighlight` trait - Mechanism for syntax highlight categories
+    - Kernel provides mechanism (trait), drivers provide policy (enum)
+    - Bounds: `Debug + Copy + Eq + Hash + Send + Sync + 'static`
+    - Single method: `fn category(&self) -> &'static str`
+  - 6 unit tests + 2 API integration tests
+
 - **Phase 2.7: Printk Module** (Issue #168) - Kernel printk/ logging subsystem
   - `Level` enum - Log severity levels (Error, Warn, Info, Debug, Trace)
     - Ordered by severity for filtering (Error < Warn < Info < Debug < Trace)

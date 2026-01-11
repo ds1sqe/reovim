@@ -30,6 +30,8 @@
 
 mod buffer_manager;
 mod context;
+mod module;
+mod syntax;
 mod version;
 
 // ============================================================================
