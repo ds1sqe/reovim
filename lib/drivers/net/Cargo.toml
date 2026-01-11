@@ -1,0 +1,17 @@
+[package]
+name = "reovim-driver-net"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Network driver for reovim (RPC server, transports)"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Only depends on kernel layer
+reovim-kernel = { path = "../../kernel", version = "0.8.0" }

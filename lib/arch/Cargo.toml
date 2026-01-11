@@ -1,0 +1,16 @@
+[package]
+name = "reovim-arch"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Platform abstraction layer for reovim (Linux arch/ equivalent)"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+# NO DEPENDENCIES - this layer depends only on std
+[dependencies]

@@ -1,0 +1,17 @@
+[package]
+name = "reovim-driver-vfs"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Virtual filesystem driver for reovim"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Only depends on kernel layer
+reovim-kernel = { path = "../../kernel", version = "0.8.0" }
