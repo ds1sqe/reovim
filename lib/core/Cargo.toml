@@ -12,7 +12,15 @@ categories.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = []
+# Enable kernel-migration to use new architecture re-exports
+# This will become the default in v0.9.x and lib/core will be removed in v1.0.0
+kernel-migration = ["dep:reovim-kernel"]
+
 [dependencies]
+# New architecture (optional, enabled via kernel-migration feature)
+reovim-kernel = { workspace = true, optional = true }
 reovim-sys.workspace = true
 futures.workspace = true
 futures-timer.workspace = true

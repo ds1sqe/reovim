@@ -10,6 +10,19 @@ keywords.workspace = true
 categories.workspace = true
 readme = "../README.md"
 
+[features]
+default = []
+# Enable new driver architecture (Phase 3+)
+# This will become the default in v0.9.x
+use-new-drivers = [
+    "dep:reovim-driver-display",
+    "dep:reovim-driver-input",
+    "dep:reovim-driver-syntax",
+    "dep:reovim-driver-lsp",
+    "dep:reovim-driver-net",
+    "dep:reovim-driver-vfs",
+]
+
 [dependencies]
 futures.workspace = true
 futures-timer.workspace = true
@@ -46,6 +59,14 @@ reovim-lang-json.workspace = true
 reovim-lang-toml.workspace = true
 reovim-lang-markdown.workspace = true
 reovim-lang-bash.workspace = true
+
+# New architecture drivers (optional, enabled via use-new-drivers feature)
+reovim-driver-display = { workspace = true, optional = true }
+reovim-driver-input = { workspace = true, optional = true }
+reovim-driver-syntax = { workspace = true, optional = true }
+reovim-driver-lsp = { workspace = true, optional = true }
+reovim-driver-net = { workspace = true, optional = true }
+reovim-driver-vfs = { workspace = true, optional = true }
 
 # Logging
 tracing.workspace = true

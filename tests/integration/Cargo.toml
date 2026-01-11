@@ -1,0 +1,28 @@
+[package]
+name = "reovim-integration-tests"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Integration tests for reovim architecture"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+# Architecture layers
+reovim-arch.workspace = true
+reovim-kernel.workspace = true
+
+# Driver crates
+reovim-driver-display.workspace = true
+reovim-driver-input.workspace = true
+reovim-driver-syntax.workspace = true
+reovim-driver-lsp.workspace = true
+reovim-driver-net.workspace = true
+reovim-driver-vfs.workspace = true
+
+[[test]]
+name = "architecture_smoke"
+path = "architecture_smoke.rs"

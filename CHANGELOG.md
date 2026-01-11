@@ -26,6 +26,14 @@ All notable changes to Reovim will be documented in this file.
   - Dependency graph enforced: arch → kernel → drivers
   - `lib/drivers/syntax` has NO tree-sitter dependency (trait definitions only)
 
+- **Phase 0: Migration Infrastructure** (Issue #153) - Tooling for gradual migration
+  - Added `kernel-migration` feature flag to `lib/core` for new architecture re-exports
+  - Added `use-new-drivers` feature flag to `runner` for driver architecture
+  - Created `docs/migration/kernel.md` with API mappings and migration guide
+  - Documented deprecation timeline: v0.8.x (deprecate) → v0.9.x (remove) → v1.0.0 (stable)
+  - Created `tests/integration/` with smoke tests for architecture layers
+  - 10 smoke tests verify dependency hierarchy and crate compilation
+
 - **Enhanced Markdown Decorations** (Epic #89) - Complete markdown rendering overhaul
   - **Phase 1: Heading Decorations** (#90)
     - Heading indentation by level (H1=0, H2=1 space, H3=2 spaces, etc.)

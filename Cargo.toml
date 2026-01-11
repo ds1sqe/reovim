@@ -24,6 +24,9 @@ members = [
     # Plugins
     "plugins/features/*",
     "plugins/languages/*",
+
+    # Integration tests
+    "tests/integration",
 ]
 default-members = ["runner/"]
 resolver = "2"
