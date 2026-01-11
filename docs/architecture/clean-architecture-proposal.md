@@ -1377,6 +1377,30 @@ impl TextObjectEngine {
 }
 ```
 
+**Design Note: Virtual Text / Decoration Compatibility**
+
+The `core/` module operates exclusively on **buffer positions** (actual text content), not
+visual/screen positions. This is intentional:
+
+```
+Buffer:     let x = 5;
+Visual:     let x: i32 = 5;   // ": i32" is virtual text (type hint)
+                ^^^^^ not in buffer, handled by render Stage 4
+```
+
+- **MotionEngine**: Calculates positions in actual buffer content
+- **TextObjectEngine**: Finds ranges in actual buffer content
+- **Virtual text**: Handled in render pipeline (Stage 4: Decorations)
+
+This separation ensures:
+1. Motions operate on real text (`w` jumps to next real word, not virtual text)
+2. Text objects select real content (operators act on buffer, not decorations)
+3. The kernel provides "mechanisms"; rendering provides "visual policies"
+
+Position mapping between buffer and visual coordinates is handled by the display
+driver (`lib/drivers/display/`), not the kernel. See Stage 4 in the rendering
+pipeline (section 5.3) for decoration/virtual text application.
+
 #### 4.2.6 Kernel API (`api/`)
 
 **Linux Equivalent:** `include/linux/` (stable interfaces)
