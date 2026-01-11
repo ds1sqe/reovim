@@ -8,6 +8,27 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 2.2: IPC Module** (Issue #160) - Kernel ipc/ subsystem
+  - `Event` trait - Minimal requirements for IPC events (priority, batchable)
+  - `DynEvent` - Type-erased event wrapper with TypeId-based downcasting
+  - `EventResult` - Handler return type (Handled, Consumed, NotHandled)
+  - `EventBus` - Type-erased pub/sub dispatch with ArcSwap lock-free reads
+    - `subscribe<E, F>(priority, handler)` - Register typed handler with priority
+    - `emit<E>(event)` - Synchronous dispatch to all handlers
+    - `emit_async<E>(event)` - Queue for deferred processing
+    - `emit_scoped<E>(event, scope)` - Emit with lifecycle tracking
+    - `process_queue()` - Drain async queue
+  - `EventScope` - GC-like synchronization for event lifecycle
+    - Atomic counter with Condvar-based waiting
+    - `wait()` / `wait_timeout()` for blocking synchronization
+    - `DEFAULT_TIMEOUT = 3s` (production-proven value)
+  - `Subscription` - RAII handle with automatic unsubscribe on drop
+  - Channel abstractions (std::sync::mpsc wrappers):
+    - `channel<T>()` - Unbounded MPSC
+    - `bounded<T>(capacity)` - Bounded MPSC with backpressure
+    - `oneshot<T>()` - Single-use request/response
+  - 85 IPC unit tests + 24 doctests
+
 - **Phase 2.1: Memory Management Module** (Issue #159) - Kernel mm/ subsystem
   - `BufferId` - Unique buffer identifier with atomic counter generation
   - `Position` - Text position with `line` and `column` fields (0-indexed, usize)

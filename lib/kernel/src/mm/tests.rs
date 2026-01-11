@@ -35,7 +35,7 @@ mod buffer_id_tests {
     #[test]
     fn test_display() {
         let id = BufferId::from_raw(123);
-        assert_eq!(format!("{}", id), "Buffer(123)");
+        assert_eq!(format!("{id}"), "Buffer(123)");
     }
 
     #[test]
@@ -98,7 +98,7 @@ mod position_tests {
     fn test_display() {
         let pos = Position::new(0, 5);
         // Display uses 1-indexed for human readability
-        assert_eq!(format!("{}", pos), "1:6");
+        assert_eq!(format!("{pos}"), "1:6");
     }
 
     #[test]
@@ -472,7 +472,7 @@ mod buffer_tests {
                 let pos = Position::new(line, col);
                 let byte = buf.position_to_byte(pos);
                 let back = buf.byte_to_position(byte);
-                assert_eq!(pos, back, "Roundtrip failed for {:?}", pos);
+                assert_eq!(pos, back, "Roundtrip failed for {pos:?}");
             }
         }
     }
