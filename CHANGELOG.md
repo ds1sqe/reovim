@@ -18,6 +18,14 @@ All notable changes to Reovim will be documented in this file.
 
 ### Added
 
+- **Phase 0: Architecture Skeleton** (Issue #152) - Foundation for Linux-inspired architecture
+  - Created `lib/arch/` - Platform abstraction layer (no dependencies)
+  - Created `lib/kernel/` - Core mechanisms layer (depends only on arch)
+  - Created `lib/drivers/` - 6 driver crates (display, input, syntax, lsp, net, vfs)
+  - All crates are empty skeletons that compile with zero warnings
+  - Dependency graph enforced: arch → kernel → drivers
+  - `lib/drivers/syntax` has NO tree-sitter dependency (trait definitions only)
+
 - **Enhanced Markdown Decorations** (Epic #89) - Complete markdown rendering overhaul
   - **Phase 1: Heading Decorations** (#90)
     - Heading indentation by level (H1=0, H2=1 space, H3=2 spaces, etc.)

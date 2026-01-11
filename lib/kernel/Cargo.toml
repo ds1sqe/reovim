@@ -1,0 +1,17 @@
+[package]
+name = "reovim-kernel"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Core kernel mechanisms for reovim (Linux kernel/ equivalent)"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Only depends on arch layer
+reovim-arch = { path = "../arch", version = "0.8.0" }

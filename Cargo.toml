@@ -1,5 +1,30 @@
 [workspace]
-members = ["lib/*", "runner/", "tools/*", "plugins/features/*", "plugins/languages/*"]
+members = [
+    # Existing lib crates
+    "lib/core",
+    "lib/sys",
+    "lib/lsp",
+
+    # New architecture layers
+    "lib/arch",
+    "lib/kernel",
+
+    # New driver crates
+    "lib/drivers/display",
+    "lib/drivers/input",
+    "lib/drivers/syntax",
+    "lib/drivers/lsp",
+    "lib/drivers/net",
+    "lib/drivers/vfs",
+
+    # Runner and tools
+    "runner/",
+    "tools/*",
+
+    # Plugins
+    "plugins/features/*",
+    "plugins/languages/*",
+]
 default-members = ["runner/"]
 resolver = "2"
 
@@ -50,6 +75,18 @@ chrono = "0.4"
 reovim-core = { path = "./lib/core", version = "0.8.0" }
 reovim-sys = { path = "./lib/sys", version = "0.8.0" }
 reovim-lsp = { path = "./lib/lsp", version = "0.8.0" }
+
+# new architecture crates
+reovim-arch = { path = "./lib/arch", version = "0.8.0" }
+reovim-kernel = { path = "./lib/kernel", version = "0.8.0" }
+
+# new driver crates
+reovim-driver-display = { path = "./lib/drivers/display", version = "0.8.0" }
+reovim-driver-input = { path = "./lib/drivers/input", version = "0.8.0" }
+reovim-driver-syntax = { path = "./lib/drivers/syntax", version = "0.8.0" }
+reovim-driver-lsp = { path = "./lib/drivers/lsp", version = "0.8.0" }
+reovim-driver-net = { path = "./lib/drivers/net", version = "0.8.0" }
+reovim-driver-vfs = { path = "./lib/drivers/vfs", version = "0.8.0" }
 
 # plugins
 reovim-plugin-range-finder = { path = "./plugins/features/range-finder", version = "0.8.0" }
