@@ -40,7 +40,7 @@
 
 use std::{sync::mpsc, time::Duration};
 
-use parking_lot::Mutex;
+use reovim_arch::sync::Mutex;
 
 // ============================================================================
 // Unbounded Channel

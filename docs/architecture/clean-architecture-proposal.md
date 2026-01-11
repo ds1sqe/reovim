@@ -138,6 +138,21 @@ Following Linux kernel philosophy:
    - Lock-free where possible
    - Cache-friendly data structures
 
+6. **Kernel Purity**
+   - Kernel uses minimal external dependencies (pure Rust where possible)
+   - Kernel provides data structures and accessors
+   - Drivers/modules handle format-specific concerns (serialization, I/O formats)
+   - Example: Kernel's `Snapshot` provides `lines()`, `cursor()` accessors;
+     driver layer handles JSON serialization for file storage
+
+7. **Linux-Aligned printk**
+   - Kernel has its own `printk/` subsystem (like Linux `kernel/printk/`)
+   - Kernel defines `Logger` trait (mechanism), drivers implement (policy)
+   - Zero external dependencies in kernel - std only
+   - External deps (tracing, etc.) belong in `drivers/log`, not kernel
+   - Arch layer provides sync primitives only, NOT logging
+   - Macros: `pr_err!()`, `pr_warn!()`, `pr_info!()`, `pr_debug!()`
+
 ---
 
 ## 3. Architecture Overview
@@ -218,12 +233,19 @@ Following Linux kernel philosophy:
 │  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘        │
 │                                                                            │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   block/    │  │    api/     │  │   debug/    │  │   panic/    │        │
+│  │   block/    │  │    api/     │  │  printk/    │  │   panic/    │        │
 │  │  ─────────  │  │  ─────────  │  │  ─────────  │  │  ─────────  │        │
-│  │  undo       │  │  stable     │  │  trace      │  │  handler    │        │
-│  │  history    │  │  versioned  │  │  metrics    │  │  recovery   │        │
-│  │  transaction│  │  compat     │  │  profiler   │  │  dump       │        │
+│  │  undo       │  │  stable     │  │  Logger     │  │  handler    │        │
+│  │  history    │  │  versioned  │  │  pr_err!    │  │  recovery   │        │
+│  │  transaction│  │  compat     │  │  pr_info!   │  │  kpanic!    │        │
 │  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘        │
+│                                                                            │
+│  ┌─────────────┐                                                           │
+│  │   debug/    │                                                           │
+│  │  ─────────  │                                                           │
+│  │  metrics    │                                                           │
+│  │  profiler   │                                                           │
+│  └─────────────┘                                                           │
 └────────────────────────────────────────────────────────────────────────────┘
                                      │
                         ═════════════╪═════════════ Arch Interface
@@ -667,9 +689,15 @@ lib/kernel/
     │   ├── journal.rs         # Write-ahead log
     │   └── snapshot.rs        # Buffer snapshots
     │
-    ├── debug/                  # Debug/tracing subsystem
+    ├── printk/                 # Kernel logging (like Linux kernel/printk/)
+    │   ├── mod.rs             # Public API, re-exports
+    │   ├── level.rs           # Level enum (Error, Warn, Info, Debug, Trace)
+    │   ├── record.rs          # Record struct (level, message, file, line)
+    │   ├── logger.rs          # Logger trait, NopLogger
+    │   └── macros.rs          # pr_err!, pr_warn!, pr_info!, pr_debug!
+    │
+    ├── debug/                  # Debug utilities (separate from logging)
     │   ├── mod.rs
-    │   ├── trace.rs           # Tracing infrastructure
     │   ├── metrics.rs         # Performance metrics
     │   ├── profiler.rs        # Built-in profiler
     │   └── dump.rs            # State dumping
@@ -2897,9 +2925,14 @@ pub use unix::UnixTerminal as PlatformTerminal;
 - Define command traits
 
 **2.4 Block Operations (block/)**
-- Extract `UndoTree`
-- Extract transaction system
-- Extract history
+- Extract `UndoTree` with branching support (vim-style)
+  - Store cursor position (before/after) in each UndoNode for restore
+  - Configurable max_nodes limit (default: 10000)
+- Extract `Transaction` for grouping edits atomically
+- Extract `History` for change logging with timestamps
+- Extract `Snapshot` for buffer state capture
+  - Pure Rust accessors: `lines()`, `cursor()`, `timestamp()`
+  - Serialization handled by driver layer (kernel purity principle)
 
 **2.5 Scheduler (sched/)**
 - Extract runtime loop

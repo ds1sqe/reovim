@@ -44,7 +44,7 @@ use std::{
     },
 };
 
-use parking_lot::Mutex;
+use reovim_arch::sync::Mutex;
 
 /// Unique identifier for a subscription.
 ///

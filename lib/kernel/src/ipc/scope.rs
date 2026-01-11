@@ -48,7 +48,7 @@ use std::{
     time::Duration,
 };
 
-use parking_lot::{Condvar, Mutex};
+use reovim_arch::sync::{Condvar, Mutex};
 
 /// Unique identifier for an `EventScope`.
 ///

@@ -31,6 +31,7 @@
 //! - **Windows**: Stub implementation (todo!() for all methods)
 
 pub mod error;
+pub mod sync;
 pub mod traits;
 
 // Re-export all public types from traits
