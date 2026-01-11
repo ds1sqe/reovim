@@ -50,7 +50,7 @@
 //! # Example
 //!
 //! ```
-//! use reovim_kernel::ipc::{EventBus, Event, EventResult, EventScope};
+//! use reovim_kernel::api::v1::*;
 //!
 //! // Define an event
 //! #[derive(Debug)]

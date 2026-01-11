@@ -13,7 +13,7 @@
 //! # Example
 //!
 //! ```
-//! use reovim_kernel::ipc::{Event, DynEvent, EventResult};
+//! use reovim_kernel::api::v1::*;
 //!
 //! #[derive(Debug)]
 //! struct BufferChanged {
@@ -177,7 +177,7 @@ impl DynEvent {
     /// # Example
     ///
     /// ```
-    /// use reovim_kernel::ipc::{Event, DynEvent};
+    /// use reovim_kernel::api::v1::*;
     ///
     /// #[derive(Debug)]
     /// struct MyEvent;
@@ -203,7 +203,7 @@ impl DynEvent {
     /// # Example
     ///
     /// ```
-    /// use reovim_kernel::ipc::{DynEvent, Event, EventScope};
+    /// use reovim_kernel::api::v1::*;
     ///
     /// #[derive(Debug)]
     /// struct MyEvent;
@@ -268,7 +268,7 @@ impl DynEvent {
     /// # Example
     ///
     /// ```
-    /// use reovim_kernel::ipc::{DynEvent, Event};
+    /// use reovim_kernel::api::v1::*;
     ///
     /// #[derive(Debug)]
     /// struct MyEvent { value: i32 }
@@ -317,7 +317,7 @@ impl DynEvent {
     /// # Example
     ///
     /// ```
-    /// use reovim_kernel::ipc::{DynEvent, Event};
+    /// use reovim_kernel::api::v1::*;
     ///
     /// #[derive(Debug, PartialEq)]
     /// struct MyEvent { value: i32 }

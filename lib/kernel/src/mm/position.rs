@@ -11,7 +11,7 @@
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::mm::Position;
+/// use reovim_kernel::api::v1::*;
 ///
 /// let pos = Position::new(5, 10);
 /// assert_eq!(pos.line, 5);
@@ -88,7 +88,7 @@ impl std::fmt::Display for Position {
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::mm::{Cursor, Position};
+/// use reovim_kernel::api::v1::*;
 ///
 /// let mut cursor = Cursor::new(Position::new(0, 5));
 ///

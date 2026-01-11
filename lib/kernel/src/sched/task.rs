@@ -9,7 +9,7 @@
 //! # Example
 //!
 //! ```
-//! use reovim_kernel::sched::{Task, Priority};
+//! use reovim_kernel::api::v1::*;
 //!
 //! // Create a task with default (normal) priority
 //! let task = Task::new(|| {
@@ -36,7 +36,7 @@ use std::{
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::sched::TaskId;
+/// use reovim_kernel::api::v1::*;
 ///
 /// let id1 = TaskId::new();
 /// let id2 = TaskId::new();
@@ -210,7 +210,7 @@ pub type BoxedTask = Box<dyn FnOnce() + Send + 'static>;
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::sched::{Task, Priority, TaskState};
+/// use reovim_kernel::api::v1::*;
 ///
 /// // Create a high-priority task with a name
 /// let mut task = Task::with_priority(Priority::HIGH, || println!("Hello!"))

@@ -15,7 +15,7 @@
 //! # Example
 //!
 //! ```
-//! use reovim_kernel::sched::{Executor, WorkQueue, Task};
+//! use reovim_kernel::api::v1::*;
 //! use std::sync::Arc;
 //!
 //! let queue = Arc::new(WorkQueue::new());

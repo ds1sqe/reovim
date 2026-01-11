@@ -12,6 +12,10 @@ categories.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = []
+unstable-api = []
+
 [dependencies]
 # Only depends on arch layer (Rule 2: kernel/ depends only on arch/)
 reovim-arch = { path = "../arch", version = "0.9.0-dev" }

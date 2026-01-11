@@ -24,7 +24,7 @@ use super::{level::Level, record::Record};
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::printk::{Logger, Level, Record};
+/// use reovim_kernel::api::v1::*;
 ///
 /// struct StderrLogger;
 ///
@@ -139,7 +139,7 @@ static NOP_LOGGER: NopLogger = NopLogger;
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::printk::{Logger, Level, Record, set_logger};
+/// use reovim_kernel::api::v1::*;
 ///
 /// struct MyLogger;
 ///
@@ -170,7 +170,7 @@ pub fn set_logger(logger: &'static dyn Logger) -> Result<(), SetLoggerError> {
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::printk::{logger, Level};
+/// use reovim_kernel::api::v1::*;
 ///
 /// // Before set_logger() is called, returns NopLogger
 /// assert!(!logger().enabled(Level::Error));

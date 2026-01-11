@@ -24,7 +24,7 @@ const BRACKET_PAIRS: [(char, char); 3] = [('(', ')'), ('[', ']'), ('{', '}')];
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::core::{Motion, Direction, WordBoundary, LinePosition};
+/// use reovim_kernel::api::v1::*;
 ///
 /// // Character motion (h, l)
 /// let left = Motion::Char(Direction::Backward);
@@ -125,8 +125,7 @@ impl Motion {
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::core::{MotionEngine, Motion, Direction};
-/// use reovim_kernel::mm::{Buffer, Cursor, Position};
+/// use reovim_kernel::api::v1::*;
 ///
 /// let buffer = Buffer::from_string("hello world");
 /// let cursor = Cursor::new(Position::new(0, 0));

@@ -20,7 +20,7 @@ use std::collections::HashMap;
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::core::YankType;
+/// use reovim_kernel::api::v1::*;
 ///
 /// // yw yanks characterwise
 /// let char_yank = YankType::Characterwise;
@@ -112,7 +112,7 @@ impl Default for RegisterContent {
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::core::{RegisterBank, RegisterContent, YankType};
+/// use reovim_kernel::api::v1::*;
 ///
 /// let mut bank = RegisterBank::new();
 ///

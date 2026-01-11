@@ -22,8 +22,7 @@ use crate::mm::{BufferId, Position};
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::core::Mark;
-/// use reovim_kernel::mm::{BufferId, Position};
+/// use reovim_kernel::api::v1::*;
 ///
 /// let mark = Mark {
 ///     position: Position::new(10, 5),
@@ -56,7 +55,7 @@ impl Mark {
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::core::SpecialMark;
+/// use reovim_kernel::api::v1::*;
 ///
 /// // Jump to last position before current jump
 /// let last_jump = SpecialMark::LastJump; // ''
@@ -93,8 +92,7 @@ pub enum SpecialMark {
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::core::{MarkBank, Mark, SpecialMark};
-/// use reovim_kernel::mm::{BufferId, Position};
+/// use reovim_kernel::api::v1::*;
 ///
 /// let mut marks = MarkBank::new();
 ///

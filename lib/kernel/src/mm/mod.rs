@@ -24,7 +24,7 @@
 //! # Example
 //!
 //! ```
-//! use reovim_kernel::mm::{Buffer, Position, Edit};
+//! use reovim_kernel::api::v1::*;
 //!
 //! // Create a buffer from text
 //! let mut buf = Buffer::from_string("Hello\nWorld");

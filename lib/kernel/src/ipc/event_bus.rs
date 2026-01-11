@@ -25,7 +25,7 @@
 //! # Example
 //!
 //! ```
-//! use reovim_kernel::ipc::{EventBus, Event, EventResult};
+//! use reovim_kernel::api::v1::*;
 //!
 //! #[derive(Debug)]
 //! struct BufferChanged { buffer_id: u64 }
@@ -129,7 +129,7 @@ impl EventBus {
     /// # Example
     ///
     /// ```
-    /// use reovim_kernel::ipc::{EventBus, Event, EventResult};
+    /// use reovim_kernel::api::v1::*;
     ///
     /// #[derive(Debug)]
     /// struct MyEvent { value: i32 }
@@ -212,7 +212,7 @@ impl EventBus {
     /// # Example
     ///
     /// ```
-    /// use reovim_kernel::ipc::{EventBus, Event, EventResult};
+    /// use reovim_kernel::api::v1::*;
     ///
     /// #[derive(Debug)]
     /// struct MyEvent;
@@ -236,7 +236,7 @@ impl EventBus {
     /// # Example
     ///
     /// ```
-    /// use reovim_kernel::ipc::{EventBus, Event, EventResult, EventScope};
+    /// use reovim_kernel::api::v1::*;
     ///
     /// #[derive(Debug)]
     /// struct MyEvent;
@@ -268,7 +268,7 @@ impl EventBus {
     /// # Example
     ///
     /// ```
-    /// use reovim_kernel::ipc::{EventBus, Event, EventResult};
+    /// use reovim_kernel::api::v1::*;
     ///
     /// #[derive(Debug)]
     /// struct MyEvent;

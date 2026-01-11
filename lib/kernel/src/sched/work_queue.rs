@@ -15,7 +15,7 @@
 //! # Example
 //!
 //! ```
-//! use reovim_kernel::sched::{WorkQueue, Task};
+//! use reovim_kernel::api::v1::*;
 //!
 //! let queue = WorkQueue::new();
 //!

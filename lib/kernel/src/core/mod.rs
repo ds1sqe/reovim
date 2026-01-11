@@ -21,8 +21,7 @@
 //! # Example
 //!
 //! ```
-//! use reovim_kernel::core::{Motion, Direction, MotionEngine};
-//! use reovim_kernel::mm::{Buffer, Cursor, Position};
+//! use reovim_kernel::api::v1::*;
 //!
 //! let buffer = Buffer::from_string("hello world");
 //! let cursor = Cursor::new(Position::new(0, 0));
@@ -33,7 +32,7 @@
 //!     &cursor,
 //!     Motion::Word {
 //!         direction: Direction::Forward,
-//!         boundary: reovim_kernel::core::WordBoundary::Word,
+//!         boundary: WordBoundary::Word,
 //!         end: false,
 //!     },
 //!     1,

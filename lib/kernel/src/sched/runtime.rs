@@ -16,7 +16,7 @@
 //! # Example
 //!
 //! ```
-//! use reovim_kernel::sched::{Runtime, RuntimeState};
+//! use reovim_kernel::api::v1::*;
 //!
 //! let mut runtime = Runtime::new();
 //! runtime.boot();
@@ -62,7 +62,7 @@ pub const DEFAULT_BATCH_SIZE: usize = 16;
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::sched::{Runtime, RuntimeConfig};
+/// use reovim_kernel::api::v1::*;
 ///
 /// let config = RuntimeConfig {
 ///     work_queue_capacity: 2048,

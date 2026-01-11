@@ -19,7 +19,7 @@
 //! # Example
 //!
 //! ```
-//! use reovim_kernel::ipc::{channel, bounded, oneshot};
+//! use reovim_kernel::api::v1::*;
 //!
 //! // Unbounded channel
 //! let (tx, rx) = channel::<i32>();
@@ -178,7 +178,7 @@ impl<T> std::fmt::Debug for Receiver<T> {
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::ipc::channel;
+/// use reovim_kernel::api::v1::*;
 ///
 /// let (tx, rx) = channel::<i32>();
 /// tx.send(42).unwrap();
@@ -313,7 +313,7 @@ impl<T> std::fmt::Debug for BoundedReceiver<T> {
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::ipc::bounded;
+/// use reovim_kernel::api::v1::*;
 ///
 /// let (tx, rx) = bounded::<i32>(2);
 /// tx.send(1).unwrap();
@@ -422,7 +422,7 @@ impl<T> std::fmt::Debug for OneshotReceiver<T> {
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::ipc::oneshot;
+/// use reovim_kernel::api::v1::*;
 /// use std::thread;
 ///
 /// let (tx, rx) = oneshot::<String>();
