@@ -359,6 +359,10 @@ For any changes, Claude should create a proposal file at `tmp/<feature-name>-com
 - Verification checklist
 - Git commands for user to run
 
+### Pull Requests
+
+When creating PRs with `gh pr create`, do NOT add promotional footers like "Generated with Claude Code" or similar. Keep the PR body clean and professional with only relevant technical content.
+
 ### Ready-to-Take-Off & Request-for-Landing
 
 **Ready-to-Take-Off (Start of Work):**

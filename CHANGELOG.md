@@ -8,6 +8,18 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 2.1: Memory Management Module** (Issue #159) - Kernel mm/ subsystem
+  - `BufferId` - Unique buffer identifier with atomic counter generation
+  - `Position` - Text position with `line` and `column` fields (0-indexed, usize)
+  - `Cursor` - Cursor state with position, selection anchor, and preferred column
+  - `Edit` - Insert/Delete operations with position for undo/redo support
+  - `Buffer` - Line-based text storage with Vec<String> backend
+    - Constructors: `new()`, `from_string()`, `with_id()`
+    - Line access: `line()`, `line_count()`, `line_len()`, `lines()`, `content()`
+    - Edit operations: `insert()`, `insert_at()`, `delete()`, `delete_at()`, `delete_range()`
+    - Position conversion: `position_to_byte()`, `byte_to_position()` (for tree-sitter)
+  - 59 unit tests + 6 doctests covering all functionality
+
 - **Phase 1: Platform Traits and Unix Backend** (Issue #156) - Architecture layer implementation
   - Defined platform-agnostic traits in `lib/arch/src/traits.rs`:
     - `Terminal` trait - terminal I/O abstraction (size, raw mode, cursor, screen, mouse)
