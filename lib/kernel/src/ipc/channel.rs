@@ -49,8 +49,14 @@ use reovim_arch::sync::Mutex;
 /// Sender for unbounded MPSC channel.
 ///
 /// Cloning creates a new sender to the same channel.
-#[derive(Clone)]
 pub struct Sender<T>(mpsc::Sender<T>);
+
+// Manual Clone impl because mpsc::Sender<T> is Clone without requiring T: Clone
+impl<T> Clone for Sender<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
 
 /// Receiver for unbounded MPSC channel.
 ///
@@ -189,8 +195,14 @@ pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
 // ============================================================================
 
 /// Sender for bounded MPSC channel.
-#[derive(Clone)]
 pub struct BoundedSender<T>(mpsc::SyncSender<T>);
+
+// Manual Clone impl because mpsc::SyncSender<T> is Clone without requiring T: Clone
+impl<T> Clone for BoundedSender<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
 
 /// Receiver for bounded MPSC channel (same as unbounded).
 pub struct BoundedReceiver<T>(mpsc::Receiver<T>);
