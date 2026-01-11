@@ -13,6 +13,7 @@
 //! - `core`: Core primitives (motion, text objects, commands)
 //! - `block`: Block operations (undo, transactions)
 //! - `api`: Stable kernel API (Linux: `include/linux/`)
+//! - `printk`: Kernel logging (Linux: `kernel/printk/`)
 //! - `debug`: Tracing and metrics
 //! - `panic`: Panic handling and recovery
 
@@ -23,6 +24,7 @@ pub mod debug;
 pub mod ipc;
 pub mod mm;
 pub mod panic;
+pub mod printk;
 pub mod sched;
 
 // Re-export arch for convenience

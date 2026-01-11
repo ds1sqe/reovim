@@ -8,6 +8,30 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 2.3: Printk Module** (Issue #168) - Kernel printk/ logging subsystem
+  - `Level` enum - Log severity levels (Error, Warn, Info, Debug, Trace)
+    - Ordered by severity for filtering (Error < Warn < Info < Debug < Trace)
+    - `FromStr` trait for parsing from strings (case-insensitive)
+    - `Display` trait for string output (uppercase: "ERROR", "WARN", etc.)
+  - `Record<'a>` - Log record with message and metadata
+    - Lifetime-bound to avoid allocations during logging
+    - Fields: level, message, module_path, file, line
+    - Builder pattern with `const fn` methods
+  - `Logger` trait - Kernel mechanism for logging (Send + Sync)
+    - `log(&self, record: &Record)` - Log a record
+    - `flush(&self)` - Flush buffered output
+    - `enabled(&self, level: Level) -> bool` - Level filtering
+  - `NopLogger` - Default no-op logger (all levels disabled)
+  - Global logger storage with `OnceLock`:
+    - `set_logger(&'static dyn Logger)` - One-time initialization
+    - `logger()` - Get current logger (falls back to NopLogger)
+    - `flush()` - Flush global logger
+  - Logging macros with level-gated formatting:
+    - `pr_err!`, `pr_warn!`, `pr_info!`, `pr_debug!`, `pr_trace!`
+    - Level check before `format_args!` evaluation (zero allocation when disabled)
+    - Captures `module_path!()`, `file!()`, `line!()` at call site
+  - 25 unit tests + 32 doctests
+
 - **Phase 2.2: IPC Module** (Issue #160) - Kernel ipc/ subsystem
   - `Event` trait - Minimal requirements for IPC events (priority, batchable)
   - `DynEvent` - Type-erased event wrapper with TypeId-based downcasting
