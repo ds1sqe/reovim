@@ -31,6 +31,7 @@ pub struct StickyContextPlugin {
 
 impl StickyContextPlugin {
     /// Create a new sticky context plugin
+    #[must_use]
     pub fn new() -> Self {
         Self {
             state: Arc::new(StickyContextState::new()),
@@ -69,7 +70,7 @@ impl Plugin for StickyContextPlugin {
 
     fn subscribe(&self, bus: &EventBus, _state: Arc<PluginStateRegistry>) {
         // Register settings
-        self.register_settings(bus);
+        Self::register_settings(bus);
 
         // Subscribe to viewport context updates from context plugin
         let plugin_state = Arc::clone(&self.state);
@@ -97,7 +98,7 @@ impl Plugin for StickyContextPlugin {
 
 impl StickyContextPlugin {
     /// Register plugin settings
-    fn register_settings(&self, bus: &EventBus) {
+    fn register_settings(bus: &EventBus) {
         use reovim_core::option::{OptionCategory, OptionSpec, OptionValue, RegisterOption};
 
         // Enable/disable sticky headers

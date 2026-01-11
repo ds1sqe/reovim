@@ -1,9 +1,21 @@
 [package]
 name = "reovim-plugin-sticky-context"
-version = "0.8.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Sticky context headers plugin for reovim"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
-reovim-core = { path = "../../../lib/core" }
-reovim-plugin-context = { path = "../context" }
-tracing = "0.1"
+reovim-core.workspace = true
+reovim-plugin-context.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+
+[lints]
+workspace = true

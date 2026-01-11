@@ -59,11 +59,17 @@ CRATES=(
     "plugins/features/explorer"
     "plugins/features/notification"
     "plugins/features/pair"
-    "plugins/features/statusline"
     "plugins/features/which-key"
     "plugins/features/profiles"
     "plugins/features/health-check"
     "plugins/features/cmdline-completion"
+
+    # Feature plugins - tier 1.5 (depend on treesitter)
+    "plugins/features/context"
+
+    # Feature plugins - tier 1.6 (depend on context)
+    "plugins/features/sticky-context"
+    "plugins/features/statusline"
 
     # Language plugins (all depend on treesitter)
     "plugins/languages/rust"
@@ -100,11 +106,17 @@ NAMES=(
     "reovim-plugin-explorer"
     "reovim-plugin-notification"
     "reovim-plugin-pair"
-    "reovim-plugin-statusline"
     "reovim-plugin-which-key"
     "reovim-plugin-profiles"
     "reovim-plugin-health-check"
     "reovim-plugin-cmdline-completion"
+
+    # Feature plugins - tier 1.5 (depend on treesitter)
+    "reovim-plugin-context"
+
+    # Feature plugins - tier 1.6 (depend on context)
+    "reovim-plugin-sticky-context"
+    "reovim-plugin-statusline"
 
     # Language plugins
     "reovim-lang-rust"

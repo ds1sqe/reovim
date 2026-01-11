@@ -3,14 +3,18 @@ name = "reovim-plugin-context"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+authors.workspace = true
 license.workspace = true
+description = "Context provider plugin for reovim"
 repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
-reovim-core = { path = "../../../lib/core" }
-reovim-plugin-treesitter = { path = "../treesitter" }
+reovim-core.workspace = true
+reovim-plugin-treesitter.workspace = true
 arc-swap = "1.7"
-tracing = "0.1"
+tracing.workspace = true
 
 [dev-dependencies]
 

@@ -17,7 +17,7 @@ pub struct StickyContextWindow {
 
 impl StickyContextWindow {
     /// Create a new sticky context window
-    pub fn new(state: Arc<StickyContextState>) -> Self {
+    pub const fn new(state: Arc<StickyContextState>) -> Self {
         Self { state }
     }
 }
@@ -40,8 +40,8 @@ impl PluginWindow for StickyContextWindow {
         // Position: overlay at top of active window
         // Height: will be determined during render based on context depth
         // Start with max possible height
-        let max_height =
-            self.state.max_lines() as u16 + if self.state.show_separator() { 1 } else { 0 };
+        #[allow(clippy::cast_possible_truncation)] // max_lines is always small (1-5)
+        let max_height = self.state.max_lines() as u16 + u16::from(self.state.show_separator());
 
         Some(WindowConfig {
             bounds: Rect::new(

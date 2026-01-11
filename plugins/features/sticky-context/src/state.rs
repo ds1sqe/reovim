@@ -27,7 +27,7 @@ pub struct CachedViewportContext {
 
 impl StickyContextState {
     /// Create new sticky context state with defaults
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             enabled: RwLock::new(true),
             max_lines: RwLock::new(3),

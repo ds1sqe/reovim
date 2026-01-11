@@ -14,7 +14,7 @@ workspace = true
 
 [dependencies]
 reovim-core.workspace = true
-reovim-plugin-context = { path = "../context" }
+reovim-plugin-context.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
