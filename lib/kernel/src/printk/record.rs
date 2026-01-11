@@ -16,7 +16,7 @@ use super::level::Level;
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::printk::{Level, Record};
+/// use reovim_kernel::api::v1::*;
 ///
 /// let record = Record::builder(Level::Info)
 ///     .message("buffer opened")
@@ -44,7 +44,7 @@ impl<'a> Record<'a> {
     /// # Example
     ///
     /// ```
-    /// use reovim_kernel::printk::{Level, Record};
+    /// use reovim_kernel::api::v1::*;
     ///
     /// let record = Record::builder(Level::Error)
     ///     .message("something went wrong")
@@ -93,7 +93,7 @@ impl<'a> Record<'a> {
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::printk::{Level, Record};
+/// use reovim_kernel::api::v1::*;
 ///
 /// let record = Record::builder(Level::Debug)
 ///     .message("entering function")

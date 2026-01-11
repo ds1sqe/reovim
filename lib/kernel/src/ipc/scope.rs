@@ -20,7 +20,7 @@
 //! # Example
 //!
 //! ```
-//! use reovim_kernel::ipc::EventScope;
+//! use reovim_kernel::api::v1::*;
 //! use std::time::Duration;
 //!
 //! let scope = EventScope::new();
@@ -108,7 +108,7 @@ struct ScopeInner {
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::ipc::EventScope;
+/// use reovim_kernel::api::v1::*;
 /// use std::thread;
 /// use std::time::Duration;
 ///
@@ -228,7 +228,7 @@ impl EventScope {
     /// # Example
     ///
     /// ```
-    /// use reovim_kernel::ipc::EventScope;
+    /// use reovim_kernel::api::v1::*;
     /// use std::time::Duration;
     ///
     /// let scope = EventScope::new();

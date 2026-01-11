@@ -14,7 +14,7 @@
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::pr_err;
+/// use reovim_kernel::api::v1::pr_err;
 ///
 /// let buffer_id = 42;
 /// pr_err!("failed to save buffer {}", buffer_id);
@@ -23,9 +23,9 @@
 #[macro_export]
 macro_rules! pr_err {
     ($($arg:tt)*) => {
-        if $crate::printk::logger().enabled($crate::printk::Level::Error) {
-            $crate::printk::__log(
-                $crate::printk::Level::Error,
+        if $crate::api::v1::logger().enabled($crate::api::v1::Level::Error) {
+            $crate::api::v1::__log(
+                $crate::api::v1::Level::Error,
                 module_path!(),
                 file!(),
                 line!(),
@@ -43,7 +43,7 @@ macro_rules! pr_err {
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::pr_warn;
+/// use reovim_kernel::api::v1::pr_warn;
 ///
 /// let path = "/tmp/file.txt";
 /// pr_warn!("file {} not found, using default", path);
@@ -52,9 +52,9 @@ macro_rules! pr_err {
 #[macro_export]
 macro_rules! pr_warn {
     ($($arg:tt)*) => {
-        if $crate::printk::logger().enabled($crate::printk::Level::Warn) {
-            $crate::printk::__log(
-                $crate::printk::Level::Warn,
+        if $crate::api::v1::logger().enabled($crate::api::v1::Level::Warn) {
+            $crate::api::v1::__log(
+                $crate::api::v1::Level::Warn,
                 module_path!(),
                 file!(),
                 line!(),
@@ -71,7 +71,7 @@ macro_rules! pr_warn {
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::pr_info;
+/// use reovim_kernel::api::v1::pr_info;
 ///
 /// pr_info!("editor started");
 /// pr_info!("opened {} buffers", 3);
@@ -79,9 +79,9 @@ macro_rules! pr_warn {
 #[macro_export]
 macro_rules! pr_info {
     ($($arg:tt)*) => {
-        if $crate::printk::logger().enabled($crate::printk::Level::Info) {
-            $crate::printk::__log(
-                $crate::printk::Level::Info,
+        if $crate::api::v1::logger().enabled($crate::api::v1::Level::Info) {
+            $crate::api::v1::__log(
+                $crate::api::v1::Level::Info,
                 module_path!(),
                 file!(),
                 line!(),
@@ -99,7 +99,7 @@ macro_rules! pr_info {
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::pr_debug;
+/// use reovim_kernel::api::v1::pr_debug;
 ///
 /// let cursor_pos = (10, 5);
 /// pr_debug!("cursor moved to {:?}", cursor_pos);
@@ -108,9 +108,9 @@ macro_rules! pr_info {
 #[macro_export]
 macro_rules! pr_debug {
     ($($arg:tt)*) => {
-        if $crate::printk::logger().enabled($crate::printk::Level::Debug) {
-            $crate::printk::__log(
-                $crate::printk::Level::Debug,
+        if $crate::api::v1::logger().enabled($crate::api::v1::Level::Debug) {
+            $crate::api::v1::__log(
+                $crate::api::v1::Level::Debug,
                 module_path!(),
                 file!(),
                 line!(),
@@ -128,7 +128,7 @@ macro_rules! pr_debug {
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::pr_trace;
+/// use reovim_kernel::api::v1::pr_trace;
 ///
 /// pr_trace!("processing event");
 /// pr_trace!("loop iteration {}", 42);
@@ -136,9 +136,9 @@ macro_rules! pr_debug {
 #[macro_export]
 macro_rules! pr_trace {
     ($($arg:tt)*) => {
-        if $crate::printk::logger().enabled($crate::printk::Level::Trace) {
-            $crate::printk::__log(
-                $crate::printk::Level::Trace,
+        if $crate::api::v1::logger().enabled($crate::api::v1::Level::Trace) {
+            $crate::api::v1::__log(
+                $crate::api::v1::Level::Trace,
                 module_path!(),
                 file!(),
                 line!(),

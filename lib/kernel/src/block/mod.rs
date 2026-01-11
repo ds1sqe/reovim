@@ -19,8 +19,7 @@
 //! # Example
 //!
 //! ```
-//! use reovim_kernel::block::{Transaction, UndoTree};
-//! use reovim_kernel::mm::{Edit, Position};
+//! use reovim_kernel::api::v1::*;
 //!
 //! // Create an undo tree
 //! let mut tree = UndoTree::new();

@@ -73,7 +73,7 @@
 //! ## Setting a Logger (Driver Layer)
 //!
 //! ```
-//! use reovim_kernel::printk::{Logger, Level, Record, set_logger};
+//! use reovim_kernel::api::v1::*;
 //!
 //! struct StderrLogger;
 //!

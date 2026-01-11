@@ -16,7 +16,7 @@ static NEXT_BUFFER_ID: AtomicUsize = AtomicUsize::new(0);
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::mm::BufferId;
+/// use reovim_kernel::api::v1::*;
 ///
 /// let id1 = BufferId::new();
 /// let id2 = BufferId::new();

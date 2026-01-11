@@ -17,7 +17,7 @@ use super::direction::WordBoundary;
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::core::{TextObject, WordBoundary};
+/// use reovim_kernel::api::v1::*;
 ///
 /// // Delete inner word: diw
 /// let inner_word = TextObject::InnerWord(WordBoundary::Word);
@@ -142,8 +142,7 @@ impl TextObject {
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::core::{TextObjectEngine, TextObject, WordBoundary};
-/// use reovim_kernel::mm::{Buffer, Position};
+/// use reovim_kernel::api::v1::*;
 ///
 /// let buffer = Buffer::from_string("hello world");
 /// let pos = Position::new(0, 0);

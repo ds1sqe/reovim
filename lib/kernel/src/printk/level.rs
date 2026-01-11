@@ -27,7 +27,7 @@ use std::{fmt, str::FromStr};
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::printk::Level;
+/// use reovim_kernel::api::v1::*;
 /// use std::str::FromStr;
 ///
 /// let level = Level::Info;
@@ -87,7 +87,7 @@ impl Level {
     /// # Example
     ///
     /// ```
-    /// use reovim_kernel::printk::Level;
+    /// use reovim_kernel::api::v1::*;
     ///
     /// assert_eq!(Level::Error.as_str(), "ERROR");
     /// assert_eq!(Level::Warn.as_str(), "WARN");
@@ -111,7 +111,7 @@ impl Level {
     /// # Example
     ///
     /// ```
-    /// use reovim_kernel::printk::Level;
+    /// use reovim_kernel::api::v1::*;
     ///
     /// assert!(Level::Error.is_at_least(Level::Info));   // Error is more severe
     /// assert!(Level::Info.is_at_least(Level::Info));    // Same level
@@ -143,7 +143,7 @@ impl FromStr for Level {
     /// # Example
     ///
     /// ```
-    /// use reovim_kernel::printk::Level;
+    /// use reovim_kernel::api::v1::*;
     /// use std::str::FromStr;
     ///
     /// assert_eq!(Level::from_str("error"), Ok(Level::Error));

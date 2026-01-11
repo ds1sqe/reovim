@@ -151,6 +151,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::clone_on_copy)] // Intentionally testing Clone impl
     fn test_clone_and_copy() {
         let state = RuntimeState::Running;
         let cloned = state.clone();

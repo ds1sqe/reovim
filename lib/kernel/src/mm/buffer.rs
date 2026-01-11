@@ -21,7 +21,7 @@ use super::{BufferId, Cursor, Edit, Position};
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::mm::{Buffer, Position};
+/// use reovim_kernel::api::v1::*;
 ///
 /// let mut buf = Buffer::from_string("Hello\nWorld");
 /// assert_eq!(buf.line_count(), 2);

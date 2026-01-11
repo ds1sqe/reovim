@@ -32,7 +32,7 @@
 //! # Example
 //!
 //! ```
-//! use reovim_kernel::sched::{Runtime, RuntimeState, Task, Priority};
+//! use reovim_kernel::api::v1::*;
 //!
 //! // Create and boot runtime
 //! let mut runtime = Runtime::new();
@@ -63,7 +63,7 @@
 //! marked as such and counted in statistics.
 //!
 //! ```
-//! use reovim_kernel::sched::Runtime;
+//! use reovim_kernel::api::v1::*;
 //!
 //! let mut runtime = Runtime::new();
 //! runtime.boot();

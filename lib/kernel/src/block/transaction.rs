@@ -13,8 +13,7 @@ use crate::mm::Edit;
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::block::Transaction;
-/// use reovim_kernel::mm::{Edit, Position};
+/// use reovim_kernel::api::v1::*;
 ///
 /// let mut txn = Transaction::new();
 /// txn.push(Edit::insert(Position::new(0, 0), "Hello"));

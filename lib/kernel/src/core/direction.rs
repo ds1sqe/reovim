@@ -10,7 +10,7 @@
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::core::Direction;
+/// use reovim_kernel::api::v1::*;
 ///
 /// let forward = Direction::Forward;  // h, j, w, }, f
 /// let backward = Direction::Backward; // l, k, b, {, F
@@ -57,7 +57,7 @@ impl Direction {
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::core::WordBoundary;
+/// use reovim_kernel::api::v1::*;
 ///
 /// // Given text: "hello-world foo"
 /// // Word boundaries: hello | - | world | foo
@@ -92,7 +92,7 @@ impl WordBoundary {
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::core::LinePosition;
+/// use reovim_kernel::api::v1::*;
 ///
 /// // Given line: "  hello world  "
 /// //             ^  ^          ^ ^

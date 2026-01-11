@@ -30,8 +30,7 @@ use {
 /// # Example
 ///
 /// ```
-/// use reovim_kernel::block::Snapshot;
-/// use reovim_kernel::mm::Buffer;
+/// use reovim_kernel::api::v1::*;
 ///
 /// // Create a buffer with some content
 /// let mut buffer = Buffer::from_string("Hello, World!");
