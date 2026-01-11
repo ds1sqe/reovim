@@ -8,7 +8,7 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
-- **Phase 2.3: Printk Module** (Issue #168) - Kernel printk/ logging subsystem
+- **Phase 2.7: Printk Module** (Issue #168) - Kernel printk/ logging subsystem
   - `Level` enum - Log severity levels (Error, Warn, Info, Debug, Trace)
     - Ordered by severity for filtering (Error < Warn < Info < Debug < Trace)
     - `FromStr` trait for parsing from strings (case-insensitive)
@@ -31,6 +31,70 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
     - Level check before `format_args!` evaluation (zero allocation when disabled)
     - Captures `module_path!()`, `file!()`, `line!()` at call site
   - 25 unit tests + 32 doctests
+
+- **Phase 2.5: Scheduler Module** (Issue #163) - Kernel sched/ subsystem
+  - `RuntimeState` - Lifecycle state machine (Booting/Running/Stopping/Emergency)
+  - `TaskId` - Unique task identifier with atomic counter generation
+  - `Priority` - Task execution priority (CRITICAL=0, HIGH=50, NORMAL=100, LOW=200, IDLE=1000)
+  - `TaskState` - Execution state enum (Pending, Running, Completed, Failed)
+  - `Task` - Deferred work unit with priority, name, and panic-safe execution
+  - `WorkQueue` - Bounded FIFO task queue with overflow detection
+    - `push(task) -> bool` - Non-blocking, returns false on overflow
+    - `try_pop()` / `drain()` - Task retrieval
+    - `dropped_count()` - Track overflow statistics
+  - `PriorityQueue` - Priority-ordered event queue using BinaryHeap
+    - Min-heap behavior (lower priority value = processed first)
+    - FIFO ordering for same-priority events via sequence number
+  - `Executor` - Synchronous task executor with `catch_unwind` panic handling
+    - `tick()` - Process batch of tasks with panic isolation
+    - `execute_task()` - Single task execution with error recovery
+  - `Runtime` - Main event loop coordinator
+    - `boot()` / `shutdown()` / `emergency_stop()` - Lifecycle control
+    - `tick() -> bool` - Single event loop iteration
+    - `schedule_work()` / `schedule_task()` - Deferred task scheduling
+    - `queue_event()` - Priority-ordered event dispatch
+    - `stats()` - Runtime statistics (executed, failed, dropped)
+  - `RuntimeConfig` - Builder pattern for runtime customization
+  - `RuntimeCommand` - External control channel (Shutdown, Emergency, ScheduleTask)
+  - 67 sched unit tests + 6 doctests
+
+- **Phase 2.4: Block Operations Module** (Issue #162) - Kernel block/ subsystem
+  - `Transaction` - Groups multiple edits for atomic undo/redo
+    - `new()`, `push()` - Create and add edits
+    - `edits()`, `is_empty()` - Accessors
+  - `UndoTree` - Branching undo history with cursor position tracking
+    - `new()`, `push()` - Create and record edits with cursor positions
+    - `undo()`, `redo()` - Navigate history
+    - `branch_count()`, `current_branch()` - Branch management
+  - `UndoResult` - Undo/redo result with edits and cursor position
+  - `UndoNode` - Node in undo tree with parent/children links
+  - `History` - Change log with timestamps
+    - `record()`, `entries()`, `clear()` - History management
+  - `HistoryEntry` - Single history entry with timestamp
+  - `Snapshot` - Buffer state capture for restore
+    - `capture()`, `restore()` - State management
+  - 32 unit tests + 4 doctests
+
+- **Phase 2.3: Core Primitives Module** (Issue #161) - Kernel core/ subsystem
+  - `Direction` enum - Forward/Backward movement direction
+  - `WordBoundary` enum - Word/BigWord boundary types
+  - `LinePosition` enum - Start/FirstNonBlank/End/LastNonBlank positions
+  - `Motion` enum - All motion types (Char, Line, Word, Paragraph, FindChar, etc.)
+  - `MotionEngine` - Pure cursor movement calculations
+    - `calculate()` - Apply motion to cursor position
+    - No side effects, returns new position
+  - `TextObject` enum - Inner/Around text objects (Word, Bracket, Quote, etc.)
+  - `TextObjectEngine` - Text object range calculations
+    - `range()` - Calculate start/end positions for text object
+  - `RegisterBank` - Yank/paste storage (without clipboard integration)
+    - Named registers (a-z), numbered registers (0-9)
+    - `get()`, `set()`, `append()` operations
+  - `RegisterContent` - Register value with yank type
+  - `YankType` - Char/Line/Block yank modes
+  - `Mark` - Single bookmark with position and metadata
+  - `MarkBank` - Mark storage with named marks (a-z, A-Z)
+  - `SpecialMark` - Special marks (LastChange, LastJump, etc.)
+  - 44 unit tests + 5 doctests
 
 - **Phase 2.2: IPC Module** (Issue #160) - Kernel ipc/ subsystem
   - `Event` trait - Minimal requirements for IPC events (priority, batchable)
@@ -86,6 +150,10 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
   - All crates are empty skeletons that compile with zero warnings
   - Dependency graph enforced: arch → kernel → drivers
   - `lib/drivers/syntax` has NO tree-sitter dependency (trait definitions only)
+
+### Fixed
+
+- **IPC Channel Clone** - Fixed `Sender<T>` and `BoundedSender<T>` Clone impl to not require `T: Clone` (matching std::sync::mpsc behavior)
 
 ---
 
