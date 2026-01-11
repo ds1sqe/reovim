@@ -1,5 +1,16 @@
 //! Unix/Linux platform implementation.
 //!
 //! Linux equivalent: `arch/x86/`, `arch/arm64/`, etc.
+//!
+//! This module provides Unix-specific implementations of the platform traits
+//! using crossterm as the underlying terminal library.
 
-// Placeholder module - implementations will be added in Phase 1
+mod convert;
+mod input;
+mod signal;
+mod terminal;
+
+pub use convert::{convert_event, convert_key_code, convert_key_event, convert_modifiers};
+pub use input::UnixInputSource;
+pub use signal::UnixSignalHandler;
+pub use terminal::UnixTerminal;

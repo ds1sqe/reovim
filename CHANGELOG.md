@@ -18,6 +18,20 @@ All notable changes to Reovim will be documented in this file.
 
 ### Added
 
+- **Phase 1: Platform Traits and Unix Backend** (Issue #156) - Architecture layer implementation
+  - Defined platform-agnostic traits in `lib/arch/src/traits.rs`:
+    - `Terminal` trait - terminal I/O abstraction (size, raw mode, cursor, screen, mouse)
+    - `InputSource` trait - input event polling and reading
+    - `SignalHandler` trait - signal registration (resize, interrupt, suspend)
+  - Platform-agnostic types: `TerminalSize`, `KeyEvent`, `KeyCode`, `Modifiers`, `MouseEvent`, `InputEvent`, `ClearType`, `RawModeGuard`
+  - Unix backend (`lib/arch/src/unix/`) using crossterm:
+    - `UnixTerminal` - full Terminal trait implementation
+    - `UnixInputSource` - event polling and reading
+    - `UnixSignalHandler` - signal handler placeholder (crossterm handles signals internally)
+    - Type conversion functions from crossterm types
+  - Windows stubs (`lib/arch/src/windows/`) - all methods return `todo!()`
+  - Platform-specific type aliases: `PlatformTerminal`, `PlatformInputSource`, `PlatformSignalHandler`
+
 - **Phase 0: Architecture Skeleton** (Issue #152) - Foundation for Linux-inspired architecture
   - Created `lib/arch/` - Platform abstraction layer (no dependencies)
   - Created `lib/kernel/` - Core mechanisms layer (depends only on arch)
