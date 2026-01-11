@@ -53,7 +53,9 @@ mod position;
 #[cfg(test)]
 mod tests;
 
-pub use buffer::Buffer;
-pub use buffer_id::BufferId;
-pub use edit::Edit;
-pub use position::{Cursor, Position};
+pub use {
+    buffer::Buffer,
+    buffer_id::BufferId,
+    edit::Edit,
+    position::{Cursor, Position},
+};

@@ -15,3 +15,12 @@ workspace = true
 [dependencies]
 # Only depends on arch layer
 reovim-arch = { path = "../arch", version = "0.9.0-dev" }
+
+# Lock-free data structures for hot paths
+arc-swap = "1.8"
+
+# Faster synchronization primitives
+parking_lot = "0.12.3"
+
+# Logging/tracing
+tracing.workspace = true
