@@ -8,6 +8,43 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 4.3-4.5: Module System Runner** (Issues #192, #193, #194) - Module loading infrastructure
+  - New directory: `runner/src/module/` - Policy layer for module management
+  - `ModuleLoader` - Static and dynamic module loading
+    - `register_static<M: Module>()` - Compile-time module registration
+    - `load_dynamic(path)` - Runtime loading via `libloading`
+    - `load_by_name(name)` - Search-path-based loading
+    - API version checking before instantiation (prevents ABI mismatch)
+    - Opaque `*mut c_void` pointers for FFI safety (not fat pointers)
+  - `ModuleHandle` - Unified wrapper for static/dynamic modules
+    - FFI trampolines for `init()`, `exit()`, `destroy()`
+    - Null pointer validation before FFI calls (defense-in-depth)
+    - SAFETY comments documenting all unsafe code
+  - `ModuleRegistry` - Lifecycle management with dependency resolution
+    - `init_all(ctx)` - Initialize all modules in dependency order
+    - `shutdown()` - Reverse-order shutdown
+    - `unload(id)` - Safe unload with dependent checking
+    - `reload_atomic(id, ctx)` - TOCTOU-safe hot reload
+    - Linux-style deferred probing with 3 retry passes
+    - Thread-safe via single `Mutex<ModuleRegistryInner>`
+  - `resolve_dependencies()` - Kahn's algorithm for topological sort
+    - Cycle detection with clear error messages
+    - Self-referential dependency detection
+    - Optional dependency handling
+    - Reverse dependency map for safe unload
+  - `HotReloadManager` - File watching for development (feature-gated)
+    - `watch(path, id)` / `unwatch(path)` - File monitoring via `notify`
+    - `process_events()` - Event collection with deduplication
+    - Atomic reload via registry (prevents TOCTOU races)
+    - Feature gate: `hot-reload = ["dep:notify"]`
+  - `PluginFromModule` - Adapter bridging module system to existing plugins
+  - Discovery functions - XDG-compliant search paths
+    - `/usr/lib/reovim/modules`, `/usr/local/lib/reovim/modules`
+    - `~/.local/share/reovim/modules`
+    - Cross-platform: `.so` (Linux), `.dylib` (macOS), `.dll` (Windows)
+  - 34 tests across all components
+  - Known limitations tracked in Issue #197
+
 - **Phase 4.2: Module Macros** (Issue #191) - `declare_module!` proc-macro for FFI-safe module entry points
   - New crate: `reovim-module-macros` - First proc-macro crate in the project
   - `declare_module!(ModuleType)` macro - Generates FFI-safe entry points

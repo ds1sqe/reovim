@@ -21,6 +21,23 @@ pub fn data_dir() -> PathBuf {
         .join("reovim")
 }
 
+/// Get the XDG cache directory for reovim (~/.cache/reovim)
+#[must_use]
+#[allow(dead_code)] // Will be used by module system
+pub fn cache_dir() -> PathBuf {
+    // Follow XDG Base Directory spec
+    // $XDG_CACHE_HOME defaults to $HOME/.cache
+    std::env::var("XDG_CACHE_HOME")
+        .map_or_else(
+            |_| {
+                let home = std::env::var("HOME").expect("HOME environment variable not set");
+                PathBuf::from(home).join(".cache")
+            },
+            PathBuf::from,
+        )
+        .join("reovim")
+}
+
 /// Get the servers directory for port files (~/.local/share/reovim/servers)
 #[must_use]
 pub fn servers_dir() -> PathBuf {
@@ -112,6 +129,12 @@ mod tests {
     #[test]
     fn test_data_dir_contains_reovim() {
         let dir = data_dir();
+        assert!(dir.ends_with("reovim"));
+    }
+
+    #[test]
+    fn test_cache_dir_contains_reovim() {
+        let dir = cache_dir();
         assert!(dir.ends_with("reovim"));
     }
 

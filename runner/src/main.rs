@@ -9,6 +9,8 @@ use {
 
 mod dirs;
 mod logging;
+#[allow(unsafe_code)]
+mod module;
 mod plugins;
 mod server;
 
