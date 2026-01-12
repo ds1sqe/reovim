@@ -131,7 +131,7 @@ pub trait SyntaxDriver: Send + Sync {
 mod tests {
     use {super::*, crate::highlight::HighlightGroup};
 
-    /// A minimal test implementation of SyntaxDriver.
+    /// A minimal test implementation of `SyntaxDriver`.
     struct TestDriver {
         language: String,
         parsed: bool,
