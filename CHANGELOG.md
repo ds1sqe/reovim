@@ -8,6 +8,36 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 4.2: Module Macros** (Issue #191) - `declare_module!` proc-macro for FFI-safe module entry points
+  - New crate: `reovim-module-macros` - First proc-macro crate in the project
+  - `declare_module!(ModuleType)` macro - Generates FFI-safe entry points
+    - `REOVIM_MODULE_API_VERSION` - Static symbol for pre-load version checking (like Linux `vermagic`)
+    - `reovim_module_probe()` - Returns `ModuleProbe` metadata without full instantiation (like `.modinfo`)
+    - `reovim_module_entry()` - Creates module instance, returns thin pointer (`*mut c_void`)
+    - `reovim_module_init()` - Init trampoline with panic safety (`catch_unwind`)
+    - `reovim_module_exit()` - Exit trampoline with panic safety
+    - `reovim_module_destroy()` - Cleanup trampoline, null-safe
+  - `ModuleProbe` struct - FFI-safe metadata container
+    - `#[repr(C)]` with fixed-size arrays (no pointers) - 216 bytes total
+    - `id: [u8; 64]` - Module ID (null-terminated, max 63 chars)
+    - `name: [u8; 128]` - Module name (null-terminated, max 127 chars)
+    - `version: Version`, `api_version: Version` - Version info
+    - `new()` - const fn for static initialization
+    - `id_str()`, `name_str()` - String slice accessors
+    - Copy trait - safe to return by value across FFI
+  - `Version` struct - Added `#[repr(C)]` for FFI safety (12 bytes)
+  - FFI safety features:
+    - Thin pointers (`*mut c_void`) instead of fat pointers (`*mut dyn Trait`)
+    - `catch_unwind` in all trampolines to prevent panic across FFI boundary
+    - Module owns all allocations (create/destroy pattern)
+    - Return codes: 0=Success, 1=Defer, -1=Failed, -2=Panic
+  - Linux kernel-inspired design:
+    - Static version check before any function calls (like `vermagic`)
+    - Probe function for metadata discovery (like `.modinfo` section)
+    - Entry/exit pattern (like `module_init`/`module_exit`)
+  - 11 integration tests + 7 unit tests for ModuleProbe
+  - Exported from `reovim_kernel::api::v1::ModuleProbe`
+
 - **Phase 4.1: Module System** (Issue #190) - Kernel API Module trait and context
   - `Module` trait - Core module interface (Send + Sync + 'static, dyn-compatible)
     - `id()`, `name()`, `version()` - Module identity

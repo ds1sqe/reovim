@@ -139,3 +139,71 @@ impl fmt::Debug for ModuleContext {
             .finish()
     }
 }
+
+impl Default for ModuleContext {
+    /// Create a default `ModuleContext` for testing purposes.
+    ///
+    /// Uses stub implementations and temporary directories.
+    /// Should only be used in tests where context fields are not accessed.
+    fn default() -> Self {
+        Self {
+            kernel: KernelContext::default(),
+            data_dir: PathBuf::from("/tmp/reovim-test/data"),
+            cache_dir: PathBuf::from("/tmp/reovim-test/cache"),
+        }
+    }
+}
+
+impl Default for KernelContext {
+    /// Create a default `KernelContext` for testing purposes.
+    ///
+    /// Uses stub implementations. Should only be used in tests.
+    fn default() -> Self {
+        use crate::core::{MotionEngine, TextObjectEngine};
+
+        Self {
+            event_bus: Arc::new(crate::ipc::EventBus::new()),
+            buffers: Arc::new(StubBufferManager),
+            motion: Arc::new(MotionEngine),
+            text_objects: Arc::new(TextObjectEngine),
+        }
+    }
+}
+
+/// Stub buffer manager for testing.
+///
+/// This implementation does nothing and returns empty/None for all operations.
+/// Used only for tests where the buffer manager is not actually accessed.
+struct StubBufferManager;
+
+impl BufferManager for StubBufferManager {
+    fn get(
+        &self,
+        _id: crate::mm::BufferId,
+    ) -> Option<Arc<reovim_arch::sync::RwLock<crate::mm::Buffer>>> {
+        None
+    }
+
+    fn create(&self) -> crate::mm::BufferId {
+        crate::mm::BufferId::new()
+    }
+
+    fn register(&self, _buffer: crate::mm::Buffer) -> crate::mm::BufferId {
+        crate::mm::BufferId::new()
+    }
+
+    fn unregister(
+        &self,
+        id: crate::mm::BufferId,
+    ) -> Result<crate::mm::Buffer, super::buffer_manager::BufferError> {
+        Err(super::buffer_manager::BufferError::NotFound(id))
+    }
+
+    fn list(&self) -> Vec<crate::mm::BufferId> {
+        Vec::new()
+    }
+
+    fn count(&self) -> usize {
+        0
+    }
+}

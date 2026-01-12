@@ -138,7 +138,7 @@ pub use crate::{pr_debug, pr_err, pr_info, pr_trace, pr_warn};
 
 pub use super::module::{
     CommandRegistration, EventHandlerRegistration, KeybindingRegistration, Module, ModuleError,
-    ModuleId, ModuleInfo, ModuleState, ProbeResult, RegistrationFlags,
+    ModuleId, ModuleInfo, ModuleProbe, ModuleState, ProbeResult, RegistrationFlags,
 };
 
 // ============================================================================

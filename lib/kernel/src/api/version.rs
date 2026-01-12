@@ -13,6 +13,12 @@ use std::fmt;
 ///
 /// Provides type-safe version handling with named fields instead of tuples.
 ///
+/// # FFI Safety
+///
+/// This type is `#[repr(C)]` for predictable memory layout across dynamic
+/// library boundaries. This ensures the struct can be safely passed to/from
+/// dynamically loaded modules.
+///
 /// # Ordering
 ///
 /// Versions are ordered lexicographically by (major, minor, patch):
@@ -34,6 +40,7 @@ use std::fmt;
 /// versions.sort();
 /// assert_eq!(versions[0], Version::new(1, 0, 0));
 /// ```
+#[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Version {
     /// Major version - breaking changes increment this.
@@ -343,5 +350,13 @@ mod tests {
 
         assert_eq!(v1.min(v2), v1);
         assert_eq!(v1.max(v2), v2);
+    }
+
+    #[test]
+    fn test_version_is_repr_c() {
+        // Verify Version has predictable FFI-safe layout
+        // 3 * u32 = 12 bytes, aligned to 4 bytes
+        assert_eq!(std::mem::size_of::<Version>(), 12);
+        assert_eq!(std::mem::align_of::<Version>(), 4);
     }
 }
