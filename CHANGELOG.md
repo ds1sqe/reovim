@@ -8,6 +8,52 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 4.1: Module System** (Issue #190) - Kernel API Module trait and context
+  - `Module` trait - Core module interface (Send + Sync + 'static, dyn-compatible)
+    - `id()`, `name()`, `version()` - Module identity
+    - `init()` → `ProbeResult`, `exit()` → `Result<(), ModuleError>` - Lifecycle
+    - `dependencies()`, `optional_dependencies()` - Dependency declarations
+    - `commands()`, `keybindings()`, `event_handlers()` - Registration methods
+    - `save_state()`, `restore_state()` - Hot reload support with versioning
+    - Thread safety documented: `&mut self` for lifecycle, `&self` for queries
+  - `ProbeResult` enum - Linux-inspired deferred probing pattern
+    - `Success` - Module initialized successfully
+    - `Defer(String)` - Retry later (like Linux `-EPROBE_DEFER`)
+    - `Failed(ModuleError)` - Initialization failed permanently
+  - `ModuleState` enum - Module lifecycle state machine
+    - `Loaded`, `Initializing`, `Running`, `Unloading`, `Failed(String)`
+    - `can_transition_to()` - State transition validation
+  - `ModuleId` struct - Type-safe module identifier with `Cow<'static, str>`
+    - `new()` - Zero-cost static IDs (const fn)
+    - `from_string()` - Runtime/dynamic IDs
+    - `is_static()`, `is_dynamic()` - ID type queries
+  - `ModuleInfo` struct - Module metadata container
+    - `from_module()` - Extract info from any `&dyn Module`
+  - `ModuleError` enum (7 variants) - Comprehensive error handling
+    - `LoadFailed`, `NoEntryPoint`, `InitFailed` - Loading errors
+    - `IncompatibleVersion`, `InUse`, `NotLoaded`, `NotFound` - State errors
+  - `RegistrationFlags` struct - Registration behavior control
+    - `required`, `deferrable`, `early`, `fallback` flags
+    - Chainable builders: `set_required()`, `set_deferrable()`, etc.
+    - Query methods: `is_required()`, `is_deferrable()`, etc.
+  - `CommandRegistration` struct - Command declaration with builders
+    - `with_name()`, `with_description()`, `with_category()` - Metadata
+    - `with_count()`, `with_motion()`, `with_text_modifying()` - Capabilities
+    - `with_depends_on()`, `with_flags()` - Dependencies and behavior
+  - `KeybindingRegistration` struct - Key binding declaration
+    - `with_priority()`, `with_modes()`, `with_disabled()` - Configuration
+  - `EventHandlerRegistration` struct - Event handler declaration
+    - `with_priority()`, `core_priority()` - Priority management (clamped 0-100)
+    - `with_filter()`, `with_once()` - Event filtering
+  - `ModuleContext` struct - Module-specific runtime context
+    - `kernel` - Reference to `KernelContext` for core services
+    - `data_dir`, `cache_dir` - Module-specific storage paths
+  - `Version` struct enhancements
+    - Added `PartialOrd`, `Ord` derives for version comparison/sorting
+    - Tests for ordering, sorting, min/max operations
+  - 35+ unit tests covering all types and edge cases
+  - Linux kernel pattern adherence: probe/defer, mechanism vs policy split
+
 - **Phase 3.7: Log Driver** (Issue #180) - Driver layer Logger implementation
   - `TracingLogger` struct - Implements kernel `Logger` trait
     - Zero-sized type (ZST) - all state in global tracing subscriber

@@ -12,7 +12,29 @@ use std::fmt;
 /// Semantic version representation.
 ///
 /// Provides type-safe version handling with named fields instead of tuples.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+///
+/// # Ordering
+///
+/// Versions are ordered lexicographically by (major, minor, patch):
+/// - `1.0.0 < 1.0.1 < 1.1.0 < 2.0.0`
+///
+/// This allows version comparison and sorting:
+///
+/// ```
+/// use reovim_kernel::api::v1::Version;
+///
+/// assert!(Version::new(1, 0, 0) < Version::new(1, 0, 1));
+/// assert!(Version::new(1, 2, 0) < Version::new(2, 0, 0));
+///
+/// let mut versions = vec![
+///     Version::new(2, 0, 0),
+///     Version::new(1, 0, 1),
+///     Version::new(1, 0, 0),
+/// ];
+/// versions.sort();
+/// assert_eq!(versions[0], Version::new(1, 0, 0));
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Version {
     /// Major version - breaking changes increment this.
     pub major: u32,
@@ -274,5 +296,52 @@ mod tests {
             provided: Version::new(1, 0, 0),
         };
         assert!(err.to_string().contains("minor version too new"));
+    }
+
+    #[test]
+    fn test_version_ordering() {
+        // Patch ordering
+        assert!(Version::new(1, 0, 0) < Version::new(1, 0, 1));
+        assert!(Version::new(1, 0, 1) < Version::new(1, 0, 2));
+
+        // Minor ordering
+        assert!(Version::new(1, 0, 9) < Version::new(1, 1, 0));
+        assert!(Version::new(1, 1, 0) < Version::new(1, 2, 0));
+
+        // Major ordering
+        assert!(Version::new(1, 9, 9) < Version::new(2, 0, 0));
+        assert!(Version::new(2, 0, 0) < Version::new(3, 0, 0));
+
+        // Equal versions
+        assert!(Version::new(1, 2, 3) == Version::new(1, 2, 3));
+        assert!(Version::new(1, 2, 3) <= Version::new(1, 2, 3));
+        assert!(Version::new(1, 2, 3) >= Version::new(1, 2, 3));
+    }
+
+    #[test]
+    fn test_version_sorting() {
+        let mut versions = [
+            Version::new(2, 0, 0),
+            Version::new(1, 0, 1),
+            Version::new(1, 0, 0),
+            Version::new(1, 1, 0),
+            Version::new(0, 1, 0),
+        ];
+        versions.sort();
+
+        assert_eq!(versions[0], Version::new(0, 1, 0));
+        assert_eq!(versions[1], Version::new(1, 0, 0));
+        assert_eq!(versions[2], Version::new(1, 0, 1));
+        assert_eq!(versions[3], Version::new(1, 1, 0));
+        assert_eq!(versions[4], Version::new(2, 0, 0));
+    }
+
+    #[test]
+    fn test_version_min_max() {
+        let v1 = Version::new(1, 0, 0);
+        let v2 = Version::new(2, 0, 0);
+
+        assert_eq!(v1.min(v2), v1);
+        assert_eq!(v1.max(v2), v2);
     }
 }

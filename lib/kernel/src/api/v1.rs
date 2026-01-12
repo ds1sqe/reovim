@@ -39,7 +39,7 @@ pub use super::version::{
 
 pub use super::{
     buffer_manager::{BufferError, BufferManager},
-    context::KernelContext,
+    context::{KernelContext, ModuleContext},
 };
 
 // ============================================================================
@@ -136,7 +136,10 @@ pub use crate::{pr_debug, pr_err, pr_info, pr_trace, pr_warn};
 // Module System (api/)
 // ============================================================================
 
-pub use super::module::{ModuleError, ModuleId};
+pub use super::module::{
+    CommandRegistration, EventHandlerRegistration, KeybindingRegistration, Module, ModuleError,
+    ModuleId, ModuleInfo, ModuleState, ProbeResult, RegistrationFlags,
+};
 
 // ============================================================================
 // Syntax Mechanism (api/)
