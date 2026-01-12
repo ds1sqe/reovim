@@ -14,6 +14,7 @@ workspace = true
 
 [dependencies]
 reovim-sys.workspace = true
+reovim-driver-net = { path = "../drivers/net", version = "0.9.0-dev" }
 futures.workspace = true
 futures-timer.workspace = true
 tokio.workspace = true

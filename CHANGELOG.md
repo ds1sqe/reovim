@@ -8,6 +8,35 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 3.5 + 4-6: Network Driver** (Issue #178) - Driver layer RPC server infrastructure
+  - `NetError` enum (12 variants) - Comprehensive network error handling
+    - `BindFailed`, `AcceptFailed` - Connection establishment errors
+    - `ConnectionClosed`, `NotInitialized`, `AlreadyListening` - State errors
+    - `Io`, `ReadFailed`, `WriteFailed` - I/O operation errors
+    - `PortExhausted`, `InvalidAddress` - Address/port errors
+    - `JsonError`, `InvalidMessage` - Serialization errors
+  - `NetDriver` trait - Network driver lifecycle management
+    - `init()`, `shutdown()`, `is_listening()` - Driver lifecycle
+    - `listen()` - Start listening on transport config
+    - `local_addr()` - Get bound TCP address
+    - `register_handler()` - Register RPC handlers
+  - `TransportListener` trait - Connection acceptance abstraction
+    - `bind()`, `accept()`, `local_addr()`
+  - `TransportConnection` trait - Read/write message abstraction
+    - `read_line()`, `write_line()`, `close()`
+  - `PortAllocator` trait - Multi-instance port allocation
+    - `default_port()` (12521), `port_range()`, `allocate()`, `is_port_available()`
+  - `TransportConfig` enum - Transport selection (Stdio, UnixSocket, TCP)
+    - Factory methods: `unix_socket()`, `tcp()`, `tcp_localhost()`
+    - Constants: `DEFAULT_PORT` (12521), `MAX_PORT` (12530)
+  - JSON-RPC 2.0 message types:
+    - `RpcRequest`, `RpcResponse`, `RpcNotification`, `RpcError`
+    - `RpcHandler` trait, `RpcResult` enum, `RpcHandlerContext`
+    - Error code constants: `PARSE_ERROR`, `INVALID_REQUEST`, `METHOD_NOT_FOUND`, etc.
+    - Method constants (`methods::INPUT_KEYS`, etc.) and notification constants
+  - Core migration: `lib/core` now imports types from driver (dependency inversion)
+  - 25 unit tests
+
 - **Phase 3.4: LSP Driver Types** (Issue #177) - Driver layer LSP client infrastructure
   - `LspError` enum (9 variants) - Comprehensive LSP error handling
     - `SpawnFailed` - Failed to spawn language server process

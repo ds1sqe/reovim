@@ -12,14 +12,21 @@ pub mod handler;
 pub mod server;
 pub mod state;
 pub mod transport;
-pub mod types;
+
+// Re-export types from driver (Phase 4-6 migration)
+pub use reovim_driver_net::{
+    BUFFER_NOT_FOUND, COMMAND_NOT_FOUND, INTERNAL_ERROR, INVALID_KEY_NOTATION, INVALID_PARAMS,
+    INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR, RpcError, RpcNotification, RpcRequest,
+    RpcResponse, TransportConfig, methods, notifications,
+};
+
+// Keep core-specific types (richer context for plugins)
+pub use handler::{RpcHandler, RpcHandlerContext, RpcHandlerRegistry, RpcResult};
 
 pub use {
-    handler::{RpcHandler, RpcHandlerContext, RpcHandlerRegistry, RpcResult},
     server::{RpcServer, ServerConfig},
     state::*,
-    transport::{TransportClient, TransportConfig, TransportConnection, TransportListener},
-    types::*,
+    transport::{TransportClient, TransportConnection, TransportListener},
 };
 
 // Re-export key notation parser from testing module

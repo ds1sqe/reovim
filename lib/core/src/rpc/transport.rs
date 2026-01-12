@@ -12,39 +12,8 @@ use tokio::{
     net::{TcpListener, TcpStream, UnixListener, UnixStream},
 };
 
-/// Transport configuration
-#[derive(Debug, Clone)]
-pub enum TransportConfig {
-    /// Use stdin/stdout for communication
-    Stdio,
-    /// Listen on Unix socket at the given path
-    UnixSocket { path: PathBuf },
-    /// Listen on TCP at the given address
-    Tcp { host: String, port: u16 },
-}
-
-impl TransportConfig {
-    /// Create Unix socket config
-    #[must_use]
-    pub fn unix_socket(path: impl Into<PathBuf>) -> Self {
-        Self::UnixSocket { path: path.into() }
-    }
-
-    /// Create TCP config
-    #[must_use]
-    pub fn tcp(host: impl Into<String>, port: u16) -> Self {
-        Self::Tcp {
-            host: host.into(),
-            port,
-        }
-    }
-
-    /// Create TCP config with default host (localhost)
-    #[must_use]
-    pub fn tcp_localhost(port: u16) -> Self {
-        Self::tcp("127.0.0.1", port)
-    }
-}
+// Use TransportConfig from driver
+pub use reovim_driver_net::TransportConfig;
 
 /// Read half of a transport connection
 pub struct TransportReader {
@@ -327,6 +296,8 @@ impl TransportClient {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
 
     #[test]
