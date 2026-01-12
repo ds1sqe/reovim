@@ -8,6 +8,37 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 3.2: Input Driver Traits** (Issue #175) - Driver layer input handling interfaces
+  - `KeyCode` enum (56 variants) - Platform-agnostic key codes
+    - Printable: `Char(char)` for all Unicode characters
+    - Function keys: `F(u8)` for F1-F24
+    - Navigation: `Up`, `Down`, `Left`, `Right`, `Home`, `End`, `PageUp`, `PageDown`
+    - Editing: `Backspace`, `Delete`, `Insert`, `Tab`, `BackTab`, `Enter`, `Escape`
+    - Special: `Null`, `CapsLock`, `ScrollLock`, `NumLock`, `PrintScreen`, `Pause`, `Menu`, `KeypadBegin`
+    - Media: `MediaPlay`, `MediaPause`, `MediaPlayPause`, `MediaStop`, `MediaNext`, `MediaPrevious`, etc.
+    - Modifiers: `Left/RightShift`, `Left/RightCtrl`, `Left/RightAlt`, `Left/RightSuper`, `Left/RightHyper`, `Left/RightMeta`
+    - ISO: `IsoLevel3Shift` (`AltGr`), `IsoLevel5Shift`
+  - `Modifiers` bitflags - Combinable key modifiers (SHIFT, CTRL, ALT, SUPER, HYPER, META)
+  - `KeyEventKind` enum (Press, Repeat, Release) - Key event lifecycle
+  - `KeyEvent` struct - Complete key event with code, modifiers, and kind
+    - Constructors: `new()`, `with_modifiers()`, `full()`
+    - Checkers: `is_press()`, `is_release()`, `is_repeat()`
+  - `KeymapResult<T>` enum - Multi-key sequence lookup result (Match, Prefix, None)
+    - Methods: `is_match()`, `is_prefix()`, `is_none()`, `into_option()`, `map()`, `unwrap()`
+  - `MouseButton` enum (Left, Right, Middle)
+  - `MouseEventKind` enum (Down, Up, Drag, Moved, ScrollUp/Down/Left/Right)
+  - `MouseEvent` struct - Mouse event with position and modifiers
+    - Checkers: `is_down()`, `is_up()`, `is_scroll()`, `is_drag()`, `is_moved()`
+  - `InputDriver` trait - Input subsystem lifecycle (init, start, stop, inject_key, inject_mouse)
+  - `KeyHandler` trait - Key event handler with priority ordering
+  - `KeyHandlerResult` enum (Consumed, Pending, Ignored)
+  - `HandlerPriority` type with constants: INTERCEPT (1000), MODAL (500), NORMAL (0), FALLBACK (-500)
+  - `KeymapRegistry<A>` trait - Generic keymap binding/lookup (bind, unbind, lookup, is_prefix, scopes)
+  - `ClipboardProvider` trait - System clipboard abstraction (read, write, is_available)
+  - `InputError` and `ClipboardError` - Comprehensive error types
+  - Bidirectional `From` conversions between `reovim_arch` and driver types
+  - 31 unit tests + 4 doctests
+
 - **Phase 3.1: Syntax Driver Traits** (Issue #174) - Driver layer syntax highlighting interfaces
   - `HighlightGroup` enum (31 variants) - Syntax category policy implementing kernel's `SyntaxHighlight`
     - Keywords: `Keyword`, `KeywordControl`, `KeywordOperator`, `KeywordFunction`, `KeywordType`
