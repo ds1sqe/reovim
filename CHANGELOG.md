@@ -8,6 +8,36 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 3.7: Log Driver** (Issue #180) - Driver layer Logger implementation
+  - `TracingLogger` struct - Implements kernel `Logger` trait
+    - Zero-sized type (ZST) - all state in global tracing subscriber
+    - Maps kernel `Record` to tracing events with metadata (module_path, file, line)
+    - Efficient `enabled()` check before message formatting
+    - Send + Sync for thread-safe logging
+  - `LogConfig` struct - Logging configuration with defaults
+    - `level` - Minimum log level (default: Info)
+    - `output` - Where logs go (Stderr, Stdout, File)
+    - `format` - Message format (Plain, Json, Pretty)
+    - `file_path` - File path for File output
+    - `rotation` - File rotation policy (Never, Daily, Hourly)
+  - `LogOutput` enum - Output destination selection
+    - `Stderr` (default), `Stdout`, `File`
+  - `LogFormat` enum - Message formatting options
+    - `Plain` - Standard `[LEVEL] file:line message` format
+    - `Json` - Structured JSON output for log aggregation
+    - `Pretty` - Colorized terminal output for development
+  - `RotationPolicy` enum - Log file rotation
+    - `Never`, `Daily`, `Hourly`
+  - `init_logging()` function - Tracing subscriber setup
+    - REOVIM_LOG environment variable support (takes precedence)
+    - Non-blocking file writes via `tracing-appender`
+    - ANSI color control for terminal vs file output
+  - `LogError` enum - Initialization error handling
+    - `MissingFilePath`, `InvalidFilter`, `SetGlobalDefault`, `Io`
+  - Level mapping utilities: `to_tracing_level()`, `from_tracing_level()`
+  - Re-exports kernel types: `Level`, `Logger`, `set_logger`
+  - 19 unit tests
+
 - **Phase 3.6: VFS Driver** (Issue #179) - Driver layer Virtual Filesystem traits
   - `VfsError` enum (12 variants) - Comprehensive filesystem error handling
     - `NotFound`, `PermissionDenied`, `AlreadyExists` - Common filesystem errors
