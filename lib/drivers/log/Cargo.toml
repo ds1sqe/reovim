@@ -1,0 +1,22 @@
+[package]
+name = "reovim-driver-log"
+version = "0.9.0-dev"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Logging driver for reovim (bridges kernel printk to tracing)"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Kernel layer (Logger trait)
+reovim-kernel = { path = "../../kernel", version = "0.9.0-dev" }
+
+# Tracing ecosystem
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json", "time"] }
+tracing-appender = "0.2"

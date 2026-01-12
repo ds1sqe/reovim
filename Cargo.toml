@@ -16,6 +16,7 @@ members = [
     "lib/drivers/lsp",
     "lib/drivers/net",
     "lib/drivers/vfs",
+    "lib/drivers/log",
 
     # Runner and tools
     "runner/",
@@ -87,6 +88,7 @@ reovim-driver-syntax = { path = "./lib/drivers/syntax", version = "0.9.0-dev" }
 reovim-driver-lsp = { path = "./lib/drivers/lsp", version = "0.9.0-dev" }
 reovim-driver-net = { path = "./lib/drivers/net", version = "0.9.0-dev" }
 reovim-driver-vfs = { path = "./lib/drivers/vfs", version = "0.9.0-dev" }
+reovim-driver-log = { path = "./lib/drivers/log", version = "0.9.0-dev" }
 
 # plugins
 reovim-plugin-range-finder = { path = "./plugins/features/range-finder", version = "0.8.1" }
