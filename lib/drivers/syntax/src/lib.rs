@@ -2,22 +2,105 @@
 //!
 //! **IMPORTANT:** This crate defines ONLY the trait interface for syntax
 //! highlighting. It does NOT depend on tree-sitter or any parsing library.
-//! Those are implementation details of language modules (plugins/languages/*).
+//! Those are implementation details of language modules (`plugins/languages/*`).
+//!
+//! # Design Philosophy
+//!
+//! This crate follows the Linux kernel "mechanism vs policy" principle:
+//!
+//! - **Kernel provides MECHANISM**: The [`SyntaxHighlight`] trait in `reovim-kernel`
+//!   defines HOW highlights are categorized (abstract interface).
+//! - **Driver provides POLICY**: The [`HighlightGroup`] enum here defines WHAT
+//!   categories exist (specific implementation).
 //!
 //! # Architecture
 //!
 //! ```text
-//! lib/drivers/syntax/     <-- Trait definitions (this crate)
+//! lib/kernel/api/syntax.rs  <-- SyntaxHighlight trait (mechanism)
 //!        ^
+//!        |  implements
 //!        |
-//! plugins/languages/*     <-- Implementations (tree-sitter, etc.)
+//! lib/drivers/syntax/       <-- HighlightGroup, SyntaxDriver (policy)
+//!        ^
+//!        |  implements
+//!        |
+//! plugins/features/treesitter/  <-- Tree-sitter based implementations
 //! ```
 //!
 //! # Components
 //!
-//! - `SyntaxDriver` trait (parsing, highlighting)
-//! - `LanguageRegistry` (language discovery)
-//! - Highlight cache infrastructure
+//! - [`SyntaxDriver`] - Main parsing and highlighting interface
+//! - [`SyntaxDriverFactory`] - Creates drivers for languages
+//! - [`LanguageRegistry`] - Language detection and metadata
+//! - [`SyntaxCache`] - Highlight result caching
+//! - [`HighlightGroup`] - Highlight categories (implements kernel's `SyntaxHighlight`)
+//! - [`HighlightSpan`] - A highlighted byte range
+//! - [`SyntaxEdit`] - Edit description for incremental parsing
+//! - [`FoldRange`], [`FoldKind`] - Foldable code regions
+//! - [`Injection`] - Embedded language regions
+//! - [`LanguageInfo`], [`CommentTokens`] - Language metadata
+//!
+//! # Example
+//!
+//! ```ignore
+//! use reovim_driver_syntax::*;
+//!
+//! // Factory creates drivers for supported languages
+//! let factory: Box<dyn SyntaxDriverFactory> = get_factory();
+//!
+//! // Create driver for Rust
+//! let mut driver = factory.create("rust").unwrap();
+//!
+//! // Parse content
+//! driver.parse("fn main() { println!(\"Hello\"); }");
+//!
+//! // Get highlights for rendering
+//! let highlights = driver.highlights(0..100);
+//! for span in highlights {
+//!     println!("{:?}: {}", span.byte_range(), span.group.category());
+//! }
+//! ```
+//!
+//! # NO tree-sitter dependency!
+//!
+//! This crate must NOT depend on tree-sitter or any parsing library.
+//! Tree-sitter is an implementation detail of language modules.
 
-// Placeholder - SyntaxDriver trait will be added in Phase 3
-// NO tree-sitter imports allowed here!
+// ============================================================================
+// Modules
+// ============================================================================
+
+mod cache;
+mod driver;
+mod edit;
+mod error;
+mod factory;
+mod fold;
+mod highlight;
+mod injection;
+mod registry;
+
+// ============================================================================
+// Re-exports
+// ============================================================================
+
+// Core traits
+pub use {
+    cache::SyntaxCache, driver::SyntaxDriver, factory::SyntaxDriverFactory,
+    registry::LanguageRegistry,
+};
+
+// Types
+pub use {
+    edit::SyntaxEdit,
+    fold::{FoldKind, FoldRange},
+    highlight::{HighlightGroup, HighlightSpan},
+    injection::Injection,
+    registry::{CommentTokens, LanguageInfo},
+};
+
+// Error types
+pub use error::ModuleError;
+
+// Re-export kernel trait for convenience
+pub use reovim_kernel::api::v1::SyntaxHighlight;
