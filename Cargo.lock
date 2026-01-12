@@ -1648,7 +1648,10 @@ dependencies = [
 name = "reovim-driver-lsp"
 version = "0.9.0-dev"
 dependencies = [
+ "lsp-types",
  "reovim-kernel",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

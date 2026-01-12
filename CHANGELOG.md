@@ -8,6 +8,37 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 3.4: LSP Driver Types** (Issue #177) - Driver layer LSP client infrastructure
+  - `LspError` enum (9 variants) - Comprehensive LSP error handling
+    - `SpawnFailed` - Failed to spawn language server process
+    - `TransportError` - I/O error on server communication
+    - `ServerError` - Error response from language server
+    - `Timeout` - Request timed out
+    - `ChannelClosed` - Response channel closed unexpectedly
+    - `Serialization` - JSON serialization/deserialization error
+    - `NotInitialized` - Server not yet initialized
+    - `ServerNotRunning` - Server process not running
+    - `InvalidResponse` - Invalid response format from server
+  - `LspRequest` enum (7 core variants) - Request types with oneshot response channels
+    - Notifications: `DidOpen`, `DidChange`, `DidClose`, `Shutdown`
+    - Requests: `GotoDefinition`, `References`, `Hover`
+    - Uses kernel's `OneshotSender` for async responses
+    - Custom Debug impl hides response channels and large content
+  - `LspResponse` enum - Unified response type for generic handling
+    - Variants: `Definition`, `References`, `Hover`, `DocumentSymbol`, `Completion`, `SignatureHelp`, `CodeAction`, `Rename`, `WorkspaceSymbol`, `Formatting`, `Empty`
+    - `is_empty()` const method for response checking
+  - `DiagnosticCache` - Lock-free diagnostic storage using kernel's `ArcSwap`
+    - `BufferDiagnostics` struct with version tracking
+    - Methods: `store()`, `get()`, `get_all()`, `remove()`, `clear()`, `has()`, `len()`
+    - Follows mechanism/policy principle (kernel provides `ArcSwap`, driver implements cache policy)
+  - `LspServerConfig` - Server spawn configuration with factory methods
+    - Factories: `rust_analyzer()`, `clangd()`, `pylsp()`, `typescript()`, `custom()`
+    - Builder: `with_args()` for additional arguments
+    - `uri_from_path()` helper for URI conversion
+  - Re-exports essential `lsp-types` (v0.97): `Position`, `Range`, `Uri`, `Diagnostic`, `GotoDefinitionResponse`, `Hover`, `CompletionResponse`, `CodeActionResponse`, etc.
+  - **Types only** - Concrete `LspClient` implementation in Phase 4
+  - 33 unit tests
+
 - **Phase 3.3: Display Driver Traits** (Issue #176) - Driver layer display/rendering interfaces
   - `DisplayDriver` trait - Terminal lifecycle and rendering abstraction
     - `init()`, `shutdown()`, `is_initialized()` - Driver lifecycle
