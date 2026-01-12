@@ -8,6 +8,42 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 3.6: VFS Driver** (Issue #179) - Driver layer Virtual Filesystem traits
+  - `VfsError` enum (12 variants) - Comprehensive filesystem error handling
+    - `NotFound`, `PermissionDenied`, `AlreadyExists` - Common filesystem errors
+    - `NotADirectory`, `NotAFile`, `IsADirectory` - Type mismatch errors
+    - `DirectoryNotEmpty`, `InvalidPath`, `PathTooLong` - Path errors
+    - `ReadOnlyFilesystem`, `NotSupported`, `Io` - System errors
+  - `VfsDriver` trait - Core filesystem operations (Send + Sync)
+    - `read()`, `write()`, `delete()`, `rename()`, `copy()` - File operations
+    - `list_dir()`, `create_dir()`, `create_dir_all()` - Directory operations
+    - `exists()`, `is_file()`, `is_dir()`, `metadata()` - Queries
+    - `canonicalize()`, `read_to_string()`, `write_str()` - Utilities
+    - Complete `std::fs` replacement mapping documented in trait docs
+  - `FileHandle` trait - Streaming file I/O with seek support
+    - `read()`, `write()`, `seek()`, `flush()` - Core operations
+    - `read_exact()`, `read_to_end()`, `write_all()` - Convenience methods
+    - `sync_all()`, `metadata()`, `position()`, `size()` - Extended API
+  - `FileWatcher` trait - File change monitoring (inotify equivalent)
+    - `watch()`, `unwatch()`, `poll_events()`, `has_events()`
+  - `PathNormalizer` trait - Cross-platform path manipulation
+    - `normalize()`, `canonicalize()`, `is_absolute()`, `join()`
+    - `file_name()`, `extension()`, `stem()`, `parent()`
+    - `strip_prefix()`, `relative_to()`, `starts_with()`, `ends_with()`
+    - `StandardPathNormalizer` implementation
+  - `FileMetadata` struct - File information with builder pattern
+    - `file()`, `directory()`, `symlink()` constructors
+    - `with_modified()`, `with_permissions()`, `with_readonly()` builders
+  - `FilePermissions` struct - Unix-style mode bits (0o755, 0o644)
+    - Permission bit constants: `OWNER_READ`, `GROUP_WRITE`, etc.
+    - `is_readable()`, `is_writable()`, `is_executable()` checks
+  - `WatchEvent` enum - File change events
+    - `Created`, `Modified`, `Deleted`, `Renamed`, `MetadataChanged`, `Error`
+  - `OpenOptions` struct - File opening configuration with builders
+  - `SeekFrom` enum - Seek position with `std::io::SeekFrom` conversions
+  - `DirEntry` struct - Directory entry with convenience constructors
+  - 52 unit tests
+
 - **Phase 3.5 + 4-6: Network Driver** (Issue #178) - Driver layer RPC server infrastructure
   - `NetError` enum (12 variants) - Comprehensive network error handling
     - `BindFailed`, `AcceptFailed` - Connection establishment errors
