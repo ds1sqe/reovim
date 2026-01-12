@@ -2,12 +2,87 @@
 //!
 //! Linux equivalent: `fs/`
 //!
-//! Provides filesystem abstraction for file operations and watching.
+//! # Architecture
+//!
+//! ```text
+//! ┌─────────────────────────────────────────────────────────────┐
+//! │                         VFS Layer                           │
+//! │                                                             │
+//! │  ┌─────────────────┐  ┌─────────────────┐                   │
+//! │  │   VfsDriver     │  │  PathNormalizer │                   │
+//! │  │ (filesystem     │  │ (path utilities)│                   │
+//! │  │  operations)    │  │                 │                   │
+//! │  └────────┬────────┘  └─────────────────┘                   │
+//! │           │                                                 │
+//! │           ├──────────────────┐                              │
+//! │           │                  │                              │
+//! │           ▼                  ▼                              │
+//! │  ┌─────────────────┐  ┌─────────────────┐                   │
+//! │  │   FileHandle    │  │   FileWatcher   │                   │
+//! │  │ (streaming I/O) │  │ (change events) │                   │
+//! │  └─────────────────┘  └─────────────────┘                   │
+//! │                                                             │
+//! └─────────────────────────────────────────────────────────────┘
+//!                              │
+//!                              │ (implementations in runner/ or plugins/)
+//!                              ▼
+//!              ┌───────────────────────────────┐
+//!              │      Concrete VFS Impls       │
+//!              │  - StandardVfs (std::fs)      │
+//!              │  - RemoteVfs (future)         │
+//!              │  - MemoryVfs (testing)        │
+//!              └───────────────────────────────┘
+//! ```
 //!
 //! # Components
 //!
-//! - Local filesystem operations
-//! - File watcher integration
-//! - Path normalization
+//! - [`VfsDriver`] - Main filesystem operations trait
+//! - [`FileHandle`] - Open file streaming operations
+//! - [`FileWatcher`] - File change monitoring
+//! - [`PathNormalizer`] - Cross-platform path handling
+//! - [`FileMetadata`] - File information
+//! - [`FilePermissions`] - Unix-style permissions
+//! - [`VfsError`] - Error types
+//!
+//! # Migration Note
+//!
+//! This driver is designed to replace ALL `std::fs` usage in the codebase.
+//! When `lib/core` is removed, all filesystem access will go through VFS.
+//!
+//! See the `VfsDriver` trait documentation for the complete replacement mapping.
+//!
+//! # Example
+//!
+//! ```ignore
+//! use reovim_driver_vfs::{VfsDriver, OpenOptions, VfsError};
+//! use std::path::Path;
+//!
+//! fn read_file(vfs: &dyn VfsDriver, path: &Path) -> Result<String, VfsError> {
+//!     vfs.read_to_string(path)
+//! }
+//!
+//! fn write_file(vfs: &dyn VfsDriver, path: &Path, content: &str) -> Result<(), VfsError> {
+//!     vfs.write_str(path, content)
+//! }
+//! ```
 
-// Placeholder - VfsDriver trait will be added in Phase 3
+mod error;
+mod metadata;
+mod path;
+mod traits;
+mod watch;
+
+// Re-export error types
+pub use error::VfsError;
+
+// Re-export metadata types
+pub use metadata::{FileMetadata, FilePermissions};
+
+// Re-export path types
+pub use path::{PathNormalizer, StandardPathNormalizer};
+
+// Re-export watch types
+pub use watch::{WatchEvent, WatchHandle, WatchId};
+
+// Re-export traits and related types
+pub use traits::{DirEntry, FileHandle, FileWatcher, OpenOptions, SeekFrom, VfsDriver};
