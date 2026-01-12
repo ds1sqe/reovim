@@ -8,6 +8,37 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 3.1: Syntax Driver Traits** (Issue #174) - Driver layer syntax highlighting interfaces
+  - `HighlightGroup` enum (31 variants) - Syntax category policy implementing kernel's `SyntaxHighlight`
+    - Keywords: `Keyword`, `KeywordControl`, `KeywordOperator`, `KeywordFunction`, `KeywordType`
+    - Types: `Type`, `TypeBuiltin`
+    - Functions: `Function`, `FunctionBuiltin`, `FunctionMacro`, `Method`
+    - Variables: `Variable`, `VariableBuiltin`, `Parameter`, `Field`, `Constant`
+    - Literals: `String`, `StringEscape`, `Character`, `Number`, `Boolean`
+    - Comments: `Comment`, `CommentDoc`
+    - Punctuation: `Punctuation`, `PunctuationBracket`, `PunctuationDelimiter`
+    - Operators: `Operator`
+    - Diagnostics: `Error`, `Warning`, `Info`, `Hint`
+    - Special: `Custom = 255`
+    - Classification methods: `is_keyword()`, `is_type()`, `is_function()`, etc.
+  - `HighlightSpan` struct - Byte-based highlight ranges with group
+  - `SyntaxEdit` struct - Incremental parsing edit info (mirrors tree-sitter's InputEdit)
+    - Constructors: `new()`, `insert()`, `delete()`
+    - Analysis: `affected_range()`, `byte_delta()`, `is_insert()`, `is_delete()`, `is_replace()`
+  - `FoldRange` + `FoldKind` - Code folding support
+    - `FoldKind`: Function, Class, Import, Comment, Block
+    - `FoldRange`: line-based ranges with preview text
+  - `Injection` struct - Embedded language regions for injections
+  - `LanguageInfo` + `CommentTokens` - Language metadata (extensions, MIME types, comment syntax)
+  - `SyntaxDriver` trait - Main parsing/highlighting interface (Send + Sync)
+    - `parse()`, `update()`, `highlights()`, `injections()`, `folds()`, `indent_for()`
+  - `SyntaxDriverFactory` trait - Creates drivers for languages
+  - `LanguageRegistry` trait - Language detection and metadata
+  - `SyntaxCache` trait - Highlight result caching
+  - Re-exports `ModuleError` from kernel for consistency
+  - **NO tree-sitter dependency** - Trait definitions only
+  - 60 unit tests + 8 doctests
+
 - **Phase 2.8: Module & Syntax API** (Issue #173) - Kernel API extensions for Phase 3
   - `ModuleId` struct - Unique identifier for loadable modules
     - Convention: kebab-case names (e.g., "lang-rust", "feat-completion")
