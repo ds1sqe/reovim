@@ -8,6 +8,48 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 3.3: Display Driver Traits** (Issue #176) - Driver layer display/rendering interfaces
+  - `DisplayDriver` trait - Terminal lifecycle and rendering abstraction
+    - `init()`, `shutdown()`, `is_initialized()` - Driver lifecycle
+    - `frame_buffer()`, `frame_buffer_mut()` - Frame buffer access
+    - `render()`, `invalidate()` - Diff-based rendering
+    - `resize()`, `size()` - Terminal size management
+    - `cursor_position()`, `set_cursor_position()`, `hide_cursor()`, `show_cursor()`
+    - `color_mode()`, `set_color_mode()` - Runtime color mode switching
+    - `capabilities()` - Terminal feature detection
+    - `execute_commands()` - Direct render command execution
+  - `WindowManager` trait - Window splits, tabs, and layout management
+    - `active_window()`, `set_active_window()` - Focus management
+    - `create_window()`, `close_window()`, `split()` - Window lifecycle
+    - `bounds()`, `navigate()`, `swap()` - Layout operations
+    - `window_ids()`, `window_count()`, `equalize()`, `resize_window()`
+  - `Compositor` trait - Z-ordered element rendering
+    - `register()`, `unregister()`, `get()`, `get_mut()` - Element management
+    - `set_z_order()`, `bring_to_front()`, `send_to_back()` - Z-order control
+    - `render_order()`, `render()` - Rendering pipeline
+    - `hit_test()`, `keyboard_target()` - Input routing
+  - `DisplayCapabilities` struct - Terminal feature detection
+    - `color_mode` - Detected color rendering mode
+    - `supports_underline_color`, `supports_extended_underlines` - ANSI 58 / Kitty extensions
+    - `supports_mouse`, `supports_kitty_graphics`, `supports_sixel` - Input/graphics support
+    - `detect()` - Auto-detection from environment
+  - `RenderCommand` enum - Terminal render operations
+    - `MoveTo`, `Print`, `SetStyle`, `ResetStyle`
+    - `ClearToEndOfLine`, `ClearLine`, `ClearRect`
+    - `ShowCursor`, `HideCursor`
+  - `DisplayError` enum - Display operation errors
+    - `NotInitialized`, `InvalidSize`, `RenderFailed`, `WindowNotFound`
+    - `Io`, `CompositorError`, `CursorOutOfBounds`
+  - Window management types:
+    - `WindowId` - Unique window identifier
+    - `SplitDirection` (Horizontal, Vertical) - Split layout direction
+    - `NavigateDirection` (Left, Down, Up, Right) - Window navigation
+    - `TerminalSize` - Width/height with validity check
+    - `Rect` - Window bounds with containment check
+  - **Staged migration architecture**: Re-exports from `reovim-core` (Cell, FrameBuffer, Style, Attributes, Color, ColorMode, ZGroup, ZOrder, Composable, ComposableId) with TODO markers for Phase 5-6 type migration
+  - `ZGroup` values verified: Base=0, Sidebar=100, Editor=200, Floating=300, Overlay=400, Popup=500, Panel=600, Modal=700, Alert=800
+  - 4 unit tests (ZGroup values, WindowId, TerminalSize, Rect)
+
 - **Phase 3.2: Input Driver Traits** (Issue #175) - Driver layer input handling interfaces
   - `KeyCode` enum (56 variants) - Platform-agnostic key codes
     - Printable: `Char(char)` for all Unicode characters

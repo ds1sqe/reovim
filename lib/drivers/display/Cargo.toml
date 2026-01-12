@@ -13,5 +13,13 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
-# Only depends on kernel layer
+# Kernel layer
 reovim-kernel = { path = "../../kernel", version = "0.9.0-dev" }
+
+# Syntax driver (for HighlightGroup if needed)
+reovim-driver-syntax = { path = "../syntax", version = "0.9.0-dev" }
+
+# TODO(Phase 5-6): Remove this dependency after migrating types to this crate.
+# Currently re-exporting Cell, Style, Color, FrameBuffer, ZGroup, ZOrder from core.
+# After migration, core will depend on this driver instead.
+reovim-core = { path = "../../core" }
