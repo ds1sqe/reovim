@@ -8,6 +8,7 @@ members = [
     # New architecture layers
     "lib/arch",
     "lib/kernel",
+    "lib/module-macros",
 
     # New driver crates
     "lib/drivers/display",
@@ -80,6 +81,7 @@ reovim-lsp = { path = "./lib/lsp", version = "0.8.1" }
 # new architecture crates
 reovim-arch = { path = "./lib/arch", version = "0.9.0-dev" }
 reovim-kernel = { path = "./lib/kernel", version = "0.9.0-dev" }
+reovim-module-macros = { path = "./lib/module-macros", version = "0.9.0-dev" }
 
 # new driver crates
 reovim-driver-display = { path = "./lib/drivers/display", version = "0.9.0-dev" }
