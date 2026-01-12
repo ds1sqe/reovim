@@ -10,7 +10,18 @@ keywords.workspace = true
 categories.workspace = true
 readme = "../README.md"
 
+[features]
+default = []
+hot-reload = ["dep:notify"]
+
 [dependencies]
+# Module system
+reovim-kernel.workspace = true
+reovim-arch.workspace = true
+libloading = "0.8"
+
+# Hot reload (optional)
+notify = { version = "6.1", optional = true }
 futures.workspace = true
 futures-timer.workspace = true
 tokio.workspace = true
