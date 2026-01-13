@@ -15,6 +15,19 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 5.6: Compositor Implementation** (Issue #205) - Z-ordered layer management for display driver
+  - **Display Driver Compositor** (`lib/drivers/display/src/compositor/`):
+    - `Bounds` - Rectangular region with half-open interval contains/overlaps semantics
+    - `ZGroup` enum - 9 major z-order categories (Base=0 through Alert=800)
+    - `ZOrder` - Fine-grained ordering with group, sub_order, and GLOBAL sequence counter
+    - `ComposableId` - Unique identifier for composable elements (6 variants)
+    - `Composable` trait - Interface for renderable elements (8 methods)
+    - `LayerCompositor` - Concrete compositor with registration, z-order management, hit testing
+    - `Compositor` trait - Abstract interface for compositor implementations
+  - Key features: lazy render order caching, focus management, keyboard target finding
+  - 35 comprehensive tests covering all edge cases
+  - Zero clippy warnings (pedantic + nursery)
+
 - **Phase 5.2: Infrastructure Glue Code** (Issue #201) - Concrete implementations connecting kernel to drivers
   - **Runner Infrastructure** (`runner/src/`):
     - `SimpleBufferManager` - Thread-safe buffer storage implementing `BufferManager` trait

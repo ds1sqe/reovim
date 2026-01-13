@@ -58,8 +58,11 @@ pub use window::{NavigateDirection, Rect, SplitDirection, TerminalSize, WindowId
 // Traits
 pub use traits::{DisplayDriver, WindowManager};
 
-// Compositor (trait + re-exports from core)
-pub use compositor::{Composable, ComposableId, Compositor, ZGroup, ZOrder};
+// Compositor (local implementation)
+pub use compositor::{
+    Bounds, Composable, ComposableId, Compositor, CompositorEntry, FrameBuffer, LayerCompositor,
+    Style, ZGroup, ZOrder,
+};
 
 // ============================================================================
 // TODO(Phase 5-6): Type Migration
@@ -78,6 +81,6 @@ pub use compositor::{Composable, ComposableId, Compositor, ZGroup, ZOrder};
 // ============================================================================
 
 pub use reovim_core::{
-    frame::{Cell, FrameBuffer},
-    highlight::{Attributes, Color, ColorMode, Style},
+    frame::Cell,
+    highlight::{Attributes, Color, ColorMode},
 };
