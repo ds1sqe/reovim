@@ -15,6 +15,31 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 5.10: Config & Options System** (Issue #209) - Kernel mechanism for configuration and editor options
+  - **Option Registry** (`lib/kernel/src/core/option.rs`):
+    - `OptionValue` enum - Type-safe values (Bool, Integer, String, Choice)
+    - `OptionScope` enum - Scope granularity (Global, Buffer, Window)
+    - `OptionScopeId` - Runtime scope identifier for access operations
+    - `OptionConstraint` - Validation rules (min/max, string length)
+    - `OptionSpec` - Complete option specification with metadata and aliases
+    - `OptionRegistry` - Thread-safe storage with scope-aware resolution
+    - Scope fallback: Window → Buffer → Global → Default
+  - **Config System** (`lib/kernel/src/core/config.rs`):
+    - `ConfigValue` enum - Hierarchical config values (Bool, Integer, String, Array, Table)
+    - `Config` - Thread-safe key-value storage with bulk operations
+    - `ConfigPaths` - XDG-compliant path resolution (config_dir, data_dir, cache_dir)
+  - **Option Events** (`lib/kernel/src/ipc/events/kernel.rs`):
+    - `OptionChanged` - Emitted when option value changes
+    - `OptionReset` - Emitted when option reset to default
+    - `ChangeSource` - Origin tracking (UserCommand, Plugin, Config, etc.)
+  - **API Integration**:
+    - All types exported through `api::v1`
+    - `KernelContext.options` field for registry access
+    - `KernelContextBuilder` updated in runner
+  - Follows mechanism vs policy principle (kernel provides storage, modules register options)
+  - 41 tests, zero clippy warnings (pedantic + nursery)
+  - Part of Epic #150 (Project Kernel)
+
 - **Phase 5.9: Display Pipeline Implementation** (Issue #208) - Comprehensive rendering pipeline for display driver
   - **Frame Module** (`lib/drivers/display/src/frame/`):
     - `Cell` struct - Character + style + width with wide character support (CJK, fullwidth)

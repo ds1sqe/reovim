@@ -41,9 +41,11 @@
 //! assert_eq!(new_pos, Some(Position::new(0, 6)));
 //! ```
 
+mod config;
 mod direction;
 mod mark;
 mod motion;
+mod option;
 mod register;
 mod textobj;
 
@@ -61,3 +63,12 @@ pub use register::{RegisterBank, RegisterContent, YankType};
 
 // Re-export text object types
 pub use textobj::{TextObject, TextObjectEngine};
+
+// Re-export option types
+pub use option::{
+    ConstraintError, OptionConstraint, OptionError, OptionRegistry, OptionScope, OptionScopeId,
+    OptionSpec, OptionValue, SetResult,
+};
+
+// Re-export config types
+pub use config::{Config, ConfigError, ConfigPaths, ConfigValue};

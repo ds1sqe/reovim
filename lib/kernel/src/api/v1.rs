@@ -107,6 +107,15 @@ pub use crate::core::{RegisterBank, RegisterContent, YankType};
 // Marks
 pub use crate::core::{Mark, MarkBank, MarkResult, SpecialMark};
 
+// Options
+pub use crate::core::{
+    ConstraintError, OptionConstraint, OptionError, OptionRegistry, OptionScope, OptionScopeId,
+    OptionSpec, OptionValue, SetResult,
+};
+
+// Config
+pub use crate::core::{Config, ConfigError, ConfigPaths, ConfigValue};
+
 // ============================================================================
 // Block Operations (block/)
 // ============================================================================

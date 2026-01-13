@@ -35,7 +35,8 @@ mod syntax;
 mod traits;
 mod undo_manager;
 mod version;
-mod window_manager;
+// Note: pub(crate) to allow core/option.rs to access WindowId
+pub(crate) mod window_manager;
 
 // ============================================================================
 // Public modules
