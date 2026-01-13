@@ -357,6 +357,54 @@ impl Debug for DynEvent {
 //
 // No manual unsafe impl needed - Rust derives these automatically.
 
+// ============================================================================
+// Built-in Events
+// ============================================================================
+
+use crate::mm::BufferId;
+
+/// Cache update notification event.
+///
+/// Emitted when a cache (e.g., syntax highlights) has been updated for a buffer.
+/// Drivers can subscribe to this event to trigger re-renders or other updates.
+///
+/// # Example
+///
+/// ```ignore
+/// use reovim_kernel::api::v1::*;
+///
+/// let bus = EventBus::new();
+///
+/// bus.subscribe::<CacheUpdated, _>(100, |event| {
+///     println!("Cache updated for buffer {:?}: {:?}", event.buffer_id, event.kind);
+///     EventResult::Handled
+/// });
+/// ```
+#[derive(Debug, Clone)]
+pub struct CacheUpdated {
+    /// The buffer whose cache was updated.
+    pub buffer_id: BufferId,
+    /// What kind of cache was updated.
+    pub kind: CacheKind,
+}
+
+impl Event for CacheUpdated {
+    fn priority(&self) -> u32 {
+        50 // Core priority
+    }
+}
+
+/// The kind of cache that was updated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CacheKind {
+    /// Syntax highlighting cache.
+    Highlights,
+    /// Decorations cache (diagnostics, git markers, etc.).
+    Decorations,
+    /// Both highlights and decorations.
+    Both,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

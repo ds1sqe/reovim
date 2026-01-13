@@ -15,6 +15,41 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 5.5: Buffer & Memory Management Completion** (Issue #204) - Core mm/ subsystem infrastructure
+  - **Line Caching** (`lib/kernel/src/mm/cache.rs`):
+    - `LineCache<T>` - Lock-free cache using ArcSwap for RCU pattern
+    - Hash-based validation for cache invalidation
+    - Thread-safe concurrent reads without blocking
+  - **Selection State** (`lib/kernel/src/mm/selection.rs`):
+    - `Selection` struct for visual mode state tracking
+    - `SelectionMode` enum: Character, Line, Block (vim's v/V/Ctrl-V)
+    - Bounds calculation with forward/backward normalization
+  - **Buffer Snapshot** (`lib/kernel/src/mm/snapshot.rs`):
+    - `BufferSnapshot` - Read-only buffer capture for concurrent access
+    - Text extraction with position clamping
+    - Selection query methods
+  - **Word Boundary Detection** (`lib/kernel/src/mm/word.rs`):
+    - `CharKind` enum: Word, Punctuation, Whitespace
+    - `WordType` enum: Small (w/b/e) vs Big (W/B/E)
+    - Functions: `word_start`, `word_end`, `word_bounds`, `next_word_start`, `next_word_end`
+  - **Delimiter Matching** (`lib/kernel/src/mm/delimiter.rs`):
+    - `find_delimiter_pair()` - Find matching symmetric/asymmetric delimiters
+    - `find_matching_delimiter()` - vim's `%` command support
+    - Depth-counting for nested brackets
+  - **Background Task Scheduler** (`lib/kernel/src/mm/saturator.rs`):
+    - `Saturator` - Priority-based background work processor
+    - `RequestPriority`: High (viewport) vs Low (off-screen)
+    - `EventScope` integration for lifecycle tracking
+  - **IPC Events** (`lib/kernel/src/ipc/event.rs`):
+    - `CacheUpdated` event for cache invalidation notification
+    - `CacheKind` enum: Highlights, Decorations, Both
+  - **Buffer Extensions** (`lib/kernel/src/mm/buffer.rs`):
+    - Added `selection` field and accessors
+    - Added `file_path` field and accessors
+    - Added `line_hash()` for cache validation
+  - All types exported via `reovim_kernel::api::v1::*`
+  - 79 new tests, zero warnings
+
 - **Phase 5.2: Infrastructure Glue Code** (Issue #201) - Concrete implementations connecting kernel to drivers
   - **Runner Infrastructure** (`runner/src/`):
     - `SimpleBufferManager` - Thread-safe buffer storage implementing `BufferManager` trait

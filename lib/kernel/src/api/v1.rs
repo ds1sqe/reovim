@@ -48,14 +48,37 @@ pub use super::{
 
 pub use crate::mm::{Buffer, BufferId, Cursor, Edit, Position};
 
+// Selection types
+pub use crate::mm::{Selection, SelectionMode};
+
+// Snapshot for lock-free buffer access
+pub use crate::mm::BufferSnapshot;
+
+// Word boundary detection
+pub use crate::mm::{
+    CharKind, WordType, char_kind, next_word_end, next_word_start, word_bounds, word_end,
+    word_start,
+};
+
+// Delimiter matching
+pub use crate::mm::{find_delimiter_pair, find_matching_delimiter};
+
+// Line caching
+pub use crate::mm::LineCache;
+
+// Background task scheduler
+pub use crate::mm::{
+    RequestPriority, SaturationRequest, SaturatorConfig, SaturatorHandle, spawn_saturator,
+};
+
 // ============================================================================
 // IPC (ipc/)
 // ============================================================================
 
 // Event types
 pub use crate::ipc::{
-    DEFAULT_TIMEOUT, DynEvent, Event, EventBus, EventResult, EventScope, ScopeId, Subscription,
-    SubscriptionId,
+    CacheKind, CacheUpdated, DEFAULT_TIMEOUT, DynEvent, Event, EventBus, EventResult, EventScope,
+    ScopeId, Subscription, SubscriptionId,
 };
 
 // Channel types

@@ -47,8 +47,14 @@
 
 mod buffer;
 mod buffer_id;
+mod cache;
+mod delimiter;
 mod edit;
 mod position;
+mod saturator;
+mod selection;
+mod snapshot;
+mod word;
 
 #[cfg(test)]
 mod tests;
@@ -56,6 +62,17 @@ mod tests;
 pub use {
     buffer::Buffer,
     buffer_id::BufferId,
+    cache::LineCache,
+    delimiter::{find_delimiter_pair, find_matching_delimiter},
     edit::Edit,
     position::{Cursor, Position},
+    saturator::{
+        RequestPriority, SaturationRequest, SaturatorConfig, SaturatorHandle, spawn_saturator,
+    },
+    selection::{Selection, SelectionMode},
+    snapshot::BufferSnapshot,
+    word::{
+        CharKind, WordType, char_kind, next_word_end, next_word_start, word_bounds, word_end,
+        word_start,
+    },
 };
