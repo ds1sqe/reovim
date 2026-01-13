@@ -43,6 +43,17 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
   - 169 tests (338% of 50+ target)
   - Zero clippy warnings (pedantic + nursery)
 
+- **Phase 5.8: Runtime & Event Loop Consolidation** (Issue #207) - Event handler modules
+  - **New Policy Modules** (`modules/`):
+    - `buffer-ops` - Subscribes to BufferCreated, BufferModified, BufferClosed, BufferSwitched
+    - `window-ops` - Subscribes to WindowCreated, WindowClosed, WindowFocused, ViewportScrolled
+    - `mode-manager` - Subscribes to ModeChanged
+  - All modules use `subscribe_with_context()` with priority levels (CORE/NORMAL/LOW)
+  - RAII pattern for subscription lifecycle (stored in `Vec<Subscription>`)
+  - Registered and initialized in runner (main.rs, server.rs)
+  - Part of concept-extraction strategy: fresh implementations in modules/
+  - Part of Epic #150 (Project Kernel)
+
 - **Phase 5.7: Language Plugin Conversion to SyntaxDriver** (Issue #206) - All language plugins use new driver API
   - **New `register()` API**: All 8 language plugins converted to use `TreeSitterDriverFactory::register()`
     - JSON (json, jsonc) - 4 tests
@@ -118,6 +129,28 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
     - Added `line_hash()` for cache validation
   - All types exported via `reovim_kernel::api::v1::*`
   - 79 new tests, zero warnings
+
+- **Phase 5.3: EventBus Consolidation - Kernel Foundation** (Issue #202) - Kernel EventBus enhancements and event definitions
+  - **Kernel API Enhancements** (`lib/kernel/src/ipc/`):
+    - `HandlerContext` - Dual emission modes (collect for tests, direct for runtime)
+    - `TargetedEvent` trait - Component-targeted event dispatch with `&str` target
+    - `subscribe_with_context()` - Context-aware handler registration
+    - `subscribe_targeted()` - Automatic filtering by target component
+    - `new_with_channel()` / `sender()` / `take_receiver()` - Channel-based processor pattern
+    - `DispatchResult` - Captures handler side effects (render/quit requests, emitted events)
+  - **Event Definitions** (`lib/kernel/src/ipc/events/`):
+    - 14 kernel events: `BufferCreated`, `BufferClosed`, `BufferModified`, `BufferSwitched`, `BufferSaved`, `CursorMoved`, `ModeChanged`, `WindowCreated`, `WindowClosed`, `WindowFocused`, `ViewportScrolled`, `FileOpened`, `FileTypeChanged`, `Shutdown`
+    - 4 driver events: `DisplayResized`, `FrameRendered`, `KeyInput`, `MouseInput`
+    - `Modification` enum (Insert/Delete/Replace/FullReplace)
+    - `KeyCode`, `Modifiers`, `MouseEvent`, `MouseButton` input types
+    - Priority constants: `CRITICAL` (0), `CORE` (10), `NORMAL` (50), `PLUGIN` (100), `LOW` (200)
+  - **Bridge Layer** (`lib/core/src/event_bus/mod.rs`):
+    - `kernel_events` module re-exports kernel event types
+    - `driver_events` module re-exports driver event types
+    - Enables gradual migration from lib/core to kernel EventBus
+  - 60+ new tests for context handlers, targeted events, and channel patterns
+  - Zero warnings (clippy pedantic + nursery)
+  - Part of Epic #150 (Project Kernel)
 
 - **Phase 5.2: Infrastructure Glue Code** (Issue #201) - Concrete implementations connecting kernel to drivers
   - **Runner Infrastructure** (`runner/src/`):

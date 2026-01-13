@@ -77,9 +77,13 @@ pub use crate::mm::{
 
 // Event types
 pub use crate::ipc::{
-    CacheKind, CacheUpdated, DEFAULT_TIMEOUT, DynEvent, Event, EventBus, EventResult, EventScope,
-    ScopeId, Subscription, SubscriptionId,
+    CacheKind, CacheUpdated, DEFAULT_TIMEOUT, DispatchResult, DynEvent, Event, EventBus,
+    EventResult, EventScope, EventSender, HandlerContext, ScopeId, Subscription, SubscriptionId,
+    TargetedEvent,
 };
+
+// Event definitions (kernel and driver events)
+pub use crate::ipc::events;
 
 // Channel types
 pub use crate::ipc::{

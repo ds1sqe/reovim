@@ -1,0 +1,13 @@
+[package]
+name = "reovim-module-mode-manager"
+version = "0.9.0-dev"
+edition = "2024"
+rust-version = "1.92"
+description = "Mode state management module for reovim"
+license = "AGPL-3.0-only"
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+reovim-kernel = { path = "../../lib/kernel" }

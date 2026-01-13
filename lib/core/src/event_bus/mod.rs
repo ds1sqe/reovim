@@ -49,6 +49,31 @@ pub use {
     scope::{EventScope, ScopeId},
 };
 
+// ============================================================================
+// Kernel Event Types (Bridge Layer)
+// ============================================================================
+//
+// Re-export kernel event types for gradual migration.
+// Kernel events represent mechanism-level notifications (what happened).
+// Policy events (Request*) remain in core_events.rs.
+
+/// Kernel event definitions (mechanism layer)
+pub mod kernel_events {
+    pub use reovim_kernel::api::v1::events::kernel::{
+        BufferClosed, BufferCreated, BufferModified, BufferSaved, BufferSwitched, CursorMoved,
+        FileOpened, FileTypeChanged, ModeChanged, Modification, Shutdown, ViewportScrolled,
+        WindowClosed, WindowCreated, WindowFocused, priority,
+    };
+}
+
+/// Driver event definitions (hardware/service layer)
+pub mod driver_events {
+    pub use reovim_kernel::api::v1::events::driver::{
+        DisplayResized, FrameRendered, KeyCode, KeyInput, Modifiers, MouseButton, MouseEvent,
+        MouseInput,
+    };
+}
+
 /// Marker trait for events that can be sent through the event bus
 ///
 /// All events must be Send + Sync + 'static for thread-safety.

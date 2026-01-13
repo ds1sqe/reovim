@@ -28,6 +28,9 @@ use {
     tokio::sync::mpsc,
 };
 
+// Kernel module system integration
+use crate::module::{ModuleRegistry, register_defaults};
+
 /// Shared state for connection management in persistent server mode
 struct ConnectionState {
     /// Sender for responses to the current active connection
@@ -71,6 +74,30 @@ pub async fn run_server(
 
     // Create channels for key injection
     let (key_tx, key_source) = ChannelKeySource::new();
+
+    // Initialize kernel module system
+    // This sets up the policy modules (keymap, operators, commands) and
+    // event handler modules (buffer-ops, window-ops, mode-manager)
+    let module_registry = ModuleRegistry::new();
+    if let Err(e) = register_defaults(&module_registry) {
+        tracing::warn!("Failed to register default modules: {}", e);
+    } else {
+        // Initialize all registered modules
+        let data_dir = crate::dirs::data_dir();
+        let cache_dir = crate::dirs::cache_dir();
+        let kernel_ctx = crate::context::build_default_kernel_context();
+        let module_ctx = crate::context::build_module_context(
+            kernel_ctx,
+            "__runtime__", // Special ID for runtime-level context
+            &data_dir,
+            &cache_dir,
+        );
+        if let Err(e) = module_registry.init_all(&module_ctx) {
+            tracing::warn!("Failed to initialize modules: {}", e);
+        } else {
+            tracing::info!("Kernel module system initialized");
+        }
+    }
 
     // Create runtime with the screen and all plugins
     // Frame buffer rendering is enabled by default
