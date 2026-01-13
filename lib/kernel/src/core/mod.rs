@@ -43,6 +43,7 @@
 
 mod config;
 mod direction;
+mod jumplist;
 mod mark;
 mod motion;
 mod option;
@@ -51,6 +52,9 @@ mod textobj;
 
 // Re-export direction types
 pub use direction::{Direction, LinePosition, WordBoundary};
+
+// Re-export jumplist types
+pub use jumplist::{JumpEntry, Jumplist, MAX_JUMPLIST_SIZE};
 
 // Re-export mark types
 pub use mark::{Mark, MarkBank, MarkResult, SpecialMark};

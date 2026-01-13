@@ -2000,6 +2000,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-module-options"
+version = "0.9.0-dev"
+dependencies = [
+ "reovim-kernel",
+]
+
+[[package]]
 name = "reovim-module-window-ops"
 version = "0.9.0-dev"
 dependencies = [

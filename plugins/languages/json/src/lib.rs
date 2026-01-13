@@ -68,6 +68,38 @@ impl LanguageSupport for JsonLanguage {
     }
 }
 
+/// JSON language plugin
+pub struct JsonPlugin;
+
+impl Plugin for JsonPlugin {
+    fn id(&self) -> PluginId {
+        PluginId::new("reovim:lang-json")
+    }
+
+    fn name(&self) -> &'static str {
+        "JSON Language"
+    }
+
+    fn description(&self) -> &'static str {
+        "JSON language support with syntax highlighting"
+    }
+
+    fn dependencies(&self) -> Vec<TypeId> {
+        vec![TypeId::of::<TreesitterPlugin>()]
+    }
+
+    fn build(&self, _ctx: &mut PluginContext) {
+        // No commands to register
+    }
+
+    fn subscribe(&self, bus: &EventBus, _state: Arc<PluginStateRegistry>) {
+        // Register this language with treesitter
+        bus.emit(RegisterLanguage {
+            language: Arc::new(JsonLanguage),
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use {super::*, reovim_driver_syntax::SyntaxDriverFactory};
@@ -115,37 +147,5 @@ mod tests {
 
         assert_eq!(factory.detect_language("test.json"), Some("json".to_string()));
         assert_eq!(factory.detect_language("test.jsonc"), Some("json".to_string()));
-    }
-}
-
-/// JSON language plugin
-pub struct JsonPlugin;
-
-impl Plugin for JsonPlugin {
-    fn id(&self) -> PluginId {
-        PluginId::new("reovim:lang-json")
-    }
-
-    fn name(&self) -> &'static str {
-        "JSON Language"
-    }
-
-    fn description(&self) -> &'static str {
-        "JSON language support with syntax highlighting"
-    }
-
-    fn dependencies(&self) -> Vec<TypeId> {
-        vec![TypeId::of::<TreesitterPlugin>()]
-    }
-
-    fn build(&self, _ctx: &mut PluginContext) {
-        // No commands to register
-    }
-
-    fn subscribe(&self, bus: &EventBus, _state: Arc<PluginStateRegistry>) {
-        // Register this language with treesitter
-        bus.emit(RegisterLanguage {
-            language: Arc::new(JsonLanguage),
-        });
     }
 }

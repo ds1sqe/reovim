@@ -76,6 +76,38 @@ impl LanguageSupport for CLanguage {
     }
 }
 
+/// C language plugin
+pub struct CPlugin;
+
+impl Plugin for CPlugin {
+    fn id(&self) -> PluginId {
+        PluginId::new("reovim:lang-c")
+    }
+
+    fn name(&self) -> &'static str {
+        "C Language"
+    }
+
+    fn description(&self) -> &'static str {
+        "C language support with syntax highlighting and semantic analysis"
+    }
+
+    fn dependencies(&self) -> Vec<TypeId> {
+        vec![TypeId::of::<TreesitterPlugin>()]
+    }
+
+    fn build(&self, _ctx: &mut PluginContext) {
+        // No commands to register
+    }
+
+    fn subscribe(&self, bus: &EventBus, _state: Arc<PluginStateRegistry>) {
+        // Register this language with treesitter
+        bus.emit(RegisterLanguage {
+            language: Arc::new(CLanguage),
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use {super::*, reovim_driver_syntax::SyntaxDriverFactory};
@@ -119,37 +151,5 @@ mod tests {
 
         assert_eq!(factory.detect_language("main.c"), Some("c".to_string()));
         assert_eq!(factory.detect_language("header.h"), Some("c".to_string()));
-    }
-}
-
-/// C language plugin
-pub struct CPlugin;
-
-impl Plugin for CPlugin {
-    fn id(&self) -> PluginId {
-        PluginId::new("reovim:lang-c")
-    }
-
-    fn name(&self) -> &'static str {
-        "C Language"
-    }
-
-    fn description(&self) -> &'static str {
-        "C language support with syntax highlighting and semantic analysis"
-    }
-
-    fn dependencies(&self) -> Vec<TypeId> {
-        vec![TypeId::of::<TreesitterPlugin>()]
-    }
-
-    fn build(&self, _ctx: &mut PluginContext) {
-        // No commands to register
-    }
-
-    fn subscribe(&self, bus: &EventBus, _state: Arc<PluginStateRegistry>) {
-        // Register this language with treesitter
-        bus.emit(RegisterLanguage {
-            language: Arc::new(CLanguage),
-        });
     }
 }

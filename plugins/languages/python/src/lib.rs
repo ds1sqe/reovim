@@ -76,6 +76,38 @@ impl LanguageSupport for PythonLanguage {
     }
 }
 
+/// Python language plugin
+pub struct PythonPlugin;
+
+impl Plugin for PythonPlugin {
+    fn id(&self) -> PluginId {
+        PluginId::new("reovim:lang-python")
+    }
+
+    fn name(&self) -> &'static str {
+        "Python Language"
+    }
+
+    fn description(&self) -> &'static str {
+        "Python language support with syntax highlighting and semantic analysis"
+    }
+
+    fn dependencies(&self) -> Vec<TypeId> {
+        vec![TypeId::of::<TreesitterPlugin>()]
+    }
+
+    fn build(&self, _ctx: &mut PluginContext) {
+        // No commands to register
+    }
+
+    fn subscribe(&self, bus: &EventBus, _state: Arc<PluginStateRegistry>) {
+        // Register this language with treesitter
+        bus.emit(RegisterLanguage {
+            language: Arc::new(PythonLanguage),
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use {super::*, reovim_driver_syntax::SyntaxDriverFactory};
@@ -120,37 +152,5 @@ mod tests {
         assert_eq!(factory.detect_language("app.py"), Some("python".to_string()));
         assert_eq!(factory.detect_language("types.pyi"), Some("python".to_string()));
         assert_eq!(factory.detect_language("script.pyw"), Some("python".to_string()));
-    }
-}
-
-/// Python language plugin
-pub struct PythonPlugin;
-
-impl Plugin for PythonPlugin {
-    fn id(&self) -> PluginId {
-        PluginId::new("reovim:lang-python")
-    }
-
-    fn name(&self) -> &'static str {
-        "Python Language"
-    }
-
-    fn description(&self) -> &'static str {
-        "Python language support with syntax highlighting and semantic analysis"
-    }
-
-    fn dependencies(&self) -> Vec<TypeId> {
-        vec![TypeId::of::<TreesitterPlugin>()]
-    }
-
-    fn build(&self, _ctx: &mut PluginContext) {
-        // No commands to register
-    }
-
-    fn subscribe(&self, bus: &EventBus, _state: Arc<PluginStateRegistry>) {
-        // Register this language with treesitter
-        bus.emit(RegisterLanguage {
-            language: Arc::new(PythonLanguage),
-        });
     }
 }

@@ -95,6 +95,9 @@ pub use crate::ipc::{
 // Core Primitives (core/)
 // ============================================================================
 
+// Jumplist
+pub use crate::core::{JumpEntry, Jumplist, MAX_JUMPLIST_SIZE};
+
 // Motion
 pub use crate::core::{Direction, LinePosition, Motion, MotionEngine, WordBoundary};
 

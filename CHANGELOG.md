@@ -15,6 +15,41 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 5.12: Remaining Core Directories Assessment** (Issue #211) - Concept extraction for remaining lib/core directories
+  - **Jumplist** (`lib/kernel/src/core/jumplist.rs`):
+    - `Jumplist` struct - Circular buffer with current index for Ctrl-O/Ctrl-I navigation
+    - `JumpEntry` struct - Buffer ID + position for jump history
+    - Push with truncation, backward/forward navigation, duplicate suppression
+    - Exported via `api::v1` module
+    - 14 tests (11 unit + 3 doc tests)
+  - **Filetype Detection** (`lib/drivers/vfs/src/filetype.rs`):
+    - `FiletypeInfo` struct - ID, display name, optional icon
+    - `FiletypeRegistry` - Extension + filename maps with case-insensitive detection
+    - Global registry via `OnceLock` for lazy initialization
+    - 40+ file type mappings (Rust, Python, JS/TS, C/C++, Go, etc.)
+    - 13 unit tests + 2 doc tests
+  - **Interactor System** (`modules/keymap/src/interactor.rs`):
+    - `InteractorConfig` - Input routing policy (keymap vs char input)
+    - `InteractorRegistry` - Component configuration registry
+    - `ComponentId` - Built-in (EDITOR, WINDOW) and custom identifiers
+    - Policy separation: input routing decisions in modules, not kernel
+    - 11 unit tests + 3 doc tests
+  - **Options Module** (`modules/options/`):
+    - New module for editor settings policy
+    - `VirtualEditMode` enum - None, All, Block, Insert, OneMore
+    - `VirtualEditConfig` - Mode configuration
+    - `EditorSettings` - Container for settings
+    - Module trait implementation with proper lifecycle
+    - 14 unit tests + 1 doc test
+  - **Verifications**:
+    - Keystroke/KeyEvent: Verified in `drivers/input/` with full arch conversion
+    - Render pipeline: Verified in `drivers/display/src/render/`
+    - Modifier system: Verified mechanism in display driver compositor
+    - Visual mode: Verified in `kernel/mm/selection.rs` (SelectionMode enum)
+  - **Deferred** to future issue:
+    - Buffer provider system (complex async patterns) - documented in `docs/architecture/future/buffer-provider.md`
+  - Zero clippy warnings, all tests pass
+
 - **Phase 5.11: Display Builder & Additional Components** (Issue #210) - Component registration and visual extensions
   - **Display Builder System** (`lib/drivers/display/src/builder/`):
     - `DisplayRegistry` - Central registry for component visual representation

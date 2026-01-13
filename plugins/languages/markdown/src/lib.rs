@@ -138,6 +138,48 @@ impl LanguageSupport for MarkdownInlineLanguage {
     }
 }
 
+/// Markdown language plugin
+pub struct MarkdownPlugin;
+
+impl Plugin for MarkdownPlugin {
+    fn id(&self) -> PluginId {
+        PluginId::new("reovim:lang-markdown")
+    }
+
+    fn name(&self) -> &'static str {
+        "Markdown Language"
+    }
+
+    fn description(&self) -> &'static str {
+        "Markdown language support with syntax highlighting and decorations"
+    }
+
+    fn dependencies(&self) -> Vec<TypeId> {
+        vec![TypeId::of::<TreesitterPlugin>()]
+    }
+
+    fn build(&self, ctx: &mut PluginContext) {
+        // Register render stage for table borders (virtual lines)
+        ctx.register_render_stage(Arc::new(MarkdownTableBorderStage::new()));
+    }
+
+    fn init_state(&self, registry: &PluginStateRegistry) {
+        // Register the decoration factory for markdown files
+        registry.set_decoration_factory(MarkdownDecorationFactory::shared());
+    }
+
+    fn subscribe(&self, bus: &EventBus, _state: Arc<PluginStateRegistry>) {
+        // Register both markdown and markdown_inline languages
+        // Context is now provided via TreesitterContextProvider using context_query()
+        bus.emit(RegisterLanguage {
+            language: Arc::new(MarkdownLanguage),
+        });
+        bus.emit(RegisterLanguage {
+            language: Arc::new(MarkdownInlineLanguage),
+        });
+    }
+}
+
 #[cfg(test)]
 mod register_tests {
     use {super::*, reovim_driver_syntax::SyntaxDriverFactory};
@@ -204,47 +246,5 @@ mod register_tests {
         // (it's only used via injection)
         let extensions = factory.extensions_for("markdown_inline");
         assert!(extensions.is_empty());
-    }
-}
-
-/// Markdown language plugin
-pub struct MarkdownPlugin;
-
-impl Plugin for MarkdownPlugin {
-    fn id(&self) -> PluginId {
-        PluginId::new("reovim:lang-markdown")
-    }
-
-    fn name(&self) -> &'static str {
-        "Markdown Language"
-    }
-
-    fn description(&self) -> &'static str {
-        "Markdown language support with syntax highlighting and decorations"
-    }
-
-    fn dependencies(&self) -> Vec<TypeId> {
-        vec![TypeId::of::<TreesitterPlugin>()]
-    }
-
-    fn build(&self, ctx: &mut PluginContext) {
-        // Register render stage for table borders (virtual lines)
-        ctx.register_render_stage(Arc::new(MarkdownTableBorderStage::new()));
-    }
-
-    fn init_state(&self, registry: &PluginStateRegistry) {
-        // Register the decoration factory for markdown files
-        registry.set_decoration_factory(MarkdownDecorationFactory::shared());
-    }
-
-    fn subscribe(&self, bus: &EventBus, _state: Arc<PluginStateRegistry>) {
-        // Register both markdown and markdown_inline languages
-        // Context is now provided via TreesitterContextProvider using context_query()
-        bus.emit(RegisterLanguage {
-            language: Arc::new(MarkdownLanguage),
-        });
-        bus.emit(RegisterLanguage {
-            language: Arc::new(MarkdownInlineLanguage),
-        });
     }
 }

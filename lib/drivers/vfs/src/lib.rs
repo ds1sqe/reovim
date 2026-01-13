@@ -67,6 +67,7 @@
 //! ```
 
 mod error;
+mod filetype;
 mod metadata;
 mod path;
 mod traits;
@@ -74,6 +75,9 @@ mod watch;
 
 // Re-export error types
 pub use error::VfsError;
+
+// Re-export filetype types
+pub use filetype::{FiletypeInfo, FiletypeRegistry, detect_filetype, filetype_id, global_registry};
 
 // Re-export metadata types
 pub use metadata::{FileMetadata, FilePermissions};
