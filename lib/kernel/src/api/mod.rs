@@ -32,7 +32,10 @@ mod buffer_manager;
 mod context;
 mod module;
 mod syntax;
+mod traits;
+mod undo_manager;
 mod version;
+mod window_manager;
 
 // ============================================================================
 // Public modules

@@ -91,6 +91,21 @@ impl ModuleRegistry {
         Ok(id)
     }
 
+    /// Register a boxed module (does not initialize).
+    ///
+    /// Use this when you have a `Box<dyn Module>` instead of a concrete type.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if module with same ID already exists.
+    pub fn register_boxed(&self, module: Box<dyn Module>) -> Result<ModuleId, ModuleError> {
+        let mut inner = self.inner.lock();
+        let id = inner.loader.register_static_boxed(module)?;
+        inner.states.insert(id.clone(), ModuleState::Loaded);
+        drop(inner);
+        Ok(id)
+    }
+
     /// Load a dynamic module from path.
     ///
     /// # Safety

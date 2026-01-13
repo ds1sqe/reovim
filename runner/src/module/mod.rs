@@ -64,6 +64,8 @@
     clippy::similar_names
 )]
 mod adapter;
+#[allow(dead_code)]
+mod defaults;
 #[allow(
     dead_code,
     clippy::missing_const_for_fn,
@@ -123,6 +125,8 @@ mod hot_reload;
 // They are not yet consumed from main.rs, hence the allow(unused)
 #[allow(unused_imports)]
 pub use adapter::PluginFromModule;
+#[allow(unused_imports)]
+pub use defaults::register_defaults;
 #[allow(unused_imports)]
 pub use dependency::{DependencyOrder, resolve_dependencies};
 #[allow(unused_imports)]

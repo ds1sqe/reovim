@@ -26,6 +26,9 @@ members = [
     # Plugins
     "plugins/features/*",
     "plugins/languages/*",
+
+    # Policy modules (Mechanism vs Policy architecture)
+    "modules/*",
 ]
 default-members = ["runner/"]
 resolver = "2"
@@ -120,6 +123,12 @@ reovim-lang-json = { path = "./plugins/languages/json", version = "0.8.1" }
 reovim-lang-toml = { path = "./plugins/languages/toml", version = "0.8.1" }
 reovim-lang-markdown = { path = "./plugins/languages/markdown", version = "0.8.1" }
 reovim-lang-bash = { path = "./plugins/languages/bash", version = "0.8.1" }
+
+# Policy modules (Mechanism vs Policy architecture)
+reovim-module-keymap = { path = "./modules/keymap", version = "0.9.0-dev" }
+reovim-module-operators = { path = "./modules/operators", version = "0.9.0-dev" }
+reovim-module-commands = { path = "./modules/commands", version = "0.9.0-dev" }
+reovim-module-defaults = { path = "./modules/defaults", version = "0.9.0-dev" }
 
 # CLI
 clap = { version = "4", features = ["derive"] }

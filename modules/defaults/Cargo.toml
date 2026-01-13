@@ -1,0 +1,17 @@
+[package]
+name = "reovim-module-defaults"
+version = "0.9.0-dev"
+edition.workspace = true
+license.workspace = true
+description = "Default module bundle for reovim - aggregates keymap, operators, commands"
+readme = "README.md"
+repository.workspace = true
+
+[dependencies]
+reovim-kernel = { workspace = true }
+reovim-module-keymap = { path = "../keymap" }
+reovim-module-operators = { path = "../operators" }
+reovim-module-commands = { path = "../commands" }
+
+[lints]
+workspace = true

@@ -89,6 +89,33 @@ pub use crate::block::{
 };
 
 // ============================================================================
+// Undo Manager (api/)
+// ============================================================================
+
+pub use super::undo_manager::{UndoError, UndoManager};
+
+// ============================================================================
+// Window Manager (api/)
+// ============================================================================
+
+pub use super::window_manager::{Viewport, Window, WindowError, WindowId, WindowManager};
+
+// ============================================================================
+// Policy Interface Traits (api/)
+// ============================================================================
+
+// Operator trait and types
+pub use super::traits::{Operator, OperatorContext, OperatorError, Range};
+
+// Keymap trait and types
+pub use super::traits::{
+    KeyCode, KeyEvent, KeybindingInfo, KeymapProvider, KeymapResult, Modifiers,
+};
+
+// Command handler trait and types
+pub use super::traits::{CommandContext, CommandError, CommandHandler};
+
+// ============================================================================
 // Scheduler (sched/)
 // ============================================================================
 

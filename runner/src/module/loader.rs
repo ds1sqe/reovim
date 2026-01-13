@@ -74,6 +74,32 @@ impl ModuleLoader {
         Ok(id)
     }
 
+    /// Register a boxed module.
+    ///
+    /// Use this when you have a `Box<dyn Module>` instead of a concrete type.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if module with same ID already exists.
+    pub fn register_static_boxed(
+        &mut self,
+        module: Box<dyn Module>,
+    ) -> Result<ModuleId, ModuleError> {
+        let id = module.id();
+
+        if self.modules.contains_key(&id) {
+            return Err(ModuleError::LoadFailed(format!(
+                "module '{}' already loaded",
+                id.as_str()
+            )));
+        }
+
+        let handle = ModuleHandle::from_boxed(module);
+        self.modules.insert(id.clone(), handle);
+        tracing::debug!(module = %id, "registered boxed module");
+        Ok(id)
+    }
+
     /// Load dynamic module from path.
     ///
     /// # Safety

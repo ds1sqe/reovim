@@ -4,8 +4,10 @@
 
 use std::{fmt, path::PathBuf, sync::Arc};
 
+use reovim_arch::sync::RwLock;
+
 use crate::{
-    core::{MotionEngine, TextObjectEngine},
+    core::{MarkBank, MotionEngine, RegisterBank, TextObjectEngine},
     ipc::EventBus,
 };
 
@@ -46,6 +48,10 @@ pub struct KernelContext {
     pub motion: Arc<MotionEngine>,
     /// Text object calculation engine.
     pub text_objects: Arc<TextObjectEngine>,
+    /// Register storage for yank/paste operations.
+    pub registers: Arc<RwLock<RegisterBank>>,
+    /// Mark storage for bookmark operations.
+    pub marks: Arc<RwLock<MarkBank>>,
 }
 
 impl KernelContext {
@@ -55,12 +61,16 @@ impl KernelContext {
         buffers: Arc<dyn BufferManager>,
         motion: Arc<MotionEngine>,
         text_objects: Arc<TextObjectEngine>,
+        registers: Arc<RwLock<RegisterBank>>,
+        marks: Arc<RwLock<MarkBank>>,
     ) -> Self {
         Self {
             event_bus,
             buffers,
             motion,
             text_objects,
+            registers,
+            marks,
         }
     }
 }
@@ -72,6 +82,8 @@ impl fmt::Debug for KernelContext {
             .field("buffers", &"Arc<dyn BufferManager>")
             .field("motion", &"Arc<MotionEngine>")
             .field("text_objects", &"Arc<TextObjectEngine>")
+            .field("registers", &"Arc<RwLock<RegisterBank>>")
+            .field("marks", &"Arc<RwLock<MarkBank>>")
             .finish()
     }
 }
@@ -222,13 +234,15 @@ impl Default for KernelContext {
     ///
     /// Uses stub implementations. Should only be used in tests.
     fn default() -> Self {
-        use crate::core::{MotionEngine, TextObjectEngine};
+        use crate::core::{MarkBank, MotionEngine, RegisterBank, TextObjectEngine};
 
         Self {
             event_bus: Arc::new(crate::ipc::EventBus::new()),
             buffers: Arc::new(StubBufferManager),
             motion: Arc::new(MotionEngine),
             text_objects: Arc::new(TextObjectEngine),
+            registers: Arc::new(RwLock::new(RegisterBank::new())),
+            marks: Arc::new(RwLock::new(MarkBank::new())),
         }
     }
 }

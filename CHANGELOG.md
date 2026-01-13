@@ -15,6 +15,40 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 5.1: Mechanism vs Policy Refactoring** (Issue #200) - FOUNDATION for Phase 5
+  - Core principle: "Provide mechanism, not policy" - kernel provides WHAT, modules decide HOW
+  - **Kernel Mechanisms** (`lib/kernel/src/api/`):
+    - `KernelContext` - Service object pattern for module access to kernel APIs
+      - `buffers: Arc<BufferManager>` - Buffer lifecycle management
+      - `motion: MotionEngine` - Position calculation
+      - `text_objects: TextObjectEngine` - Range calculation
+      - `registers: Arc<RwLock<RegisterBank>>` - Register storage
+      - `marks: Arc<RwLock<MarkBank>>` - Mark storage
+    - `RegisterBank` - Named register storage with default register
+    - `MarkBank` - Mark storage (local and global marks)
+    - `UndoManager` trait - Undo/redo mechanism contract
+    - `WindowManager` trait - Window lifecycle (CRITICAL: NO position fields)
+      - Position is POLICY decided by LayoutPolicy in modules/layout/
+  - **Policy Interface Traits** (`lib/kernel/src/api/traits.rs`):
+    - `Operator` trait - Contract for operator implementations (delete, yank, change)
+    - `KeymapProvider` trait - Contract for keymap modules (key-to-action mapping)
+    - `CommandHandler` trait - Contract for ex-command handlers (:w, :q, etc.)
+  - **Policy Modules** (`modules/`):
+    - `modules/keymap/` - Vim keybindings (normal, insert, visual, operator-pending)
+    - `modules/operators/` - Delete, Yank, Change operator implementations
+    - `modules/commands/` - Ex commands (:w, :q, :wq)
+    - `modules/defaults/` - Bundle aggregator for all default modules
+  - **Module System Extensions**:
+    - `ModuleHandle::from_boxed()` - Create handle from `Box<dyn Module>`
+    - `ModuleLoader::register_static_boxed()` - Register boxed modules
+    - `ModuleRegistry::register_boxed()` - Registry method for boxed modules
+    - `register_defaults()` - Function to register all default policy modules
+  - **API Boundary Enforcement**:
+    - Only `pub mod api;` exposed from kernel (compile-time enforced)
+    - All modules import ONLY from `reovim_kernel::api::v1::*`
+    - API boundary test in `lib/kernel/tests/api_boundary_test.rs`
+  - 44 new tests across kernel and modules
+
 - **Phase 4.6: Module System Improvements** (Issue #197)
   - Dynamic modules can now declare dependencies via `ModuleProbe` struct
     - `required_deps`: up to 8 required dependencies

@@ -1,0 +1,14 @@
+[package]
+name = "reovim-module-keymap"
+version = "0.9.0-dev"
+edition = "2024"
+rust-version = "1.92"
+description = "Vim keybindings module for reovim"
+license = "AGPL-3.0-only"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+reovim-kernel = { path = "../../lib/kernel" }
+reovim-module-macros = { path = "../../lib/module-macros" }

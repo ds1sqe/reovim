@@ -115,6 +115,29 @@ impl ModuleHandle {
         }
     }
 
+    /// Create a handle from an already-boxed module.
+    ///
+    /// Use this when you have a `Box<dyn Module>` instead of a concrete type.
+    pub fn from_boxed(module: Box<dyn Module>) -> Self {
+        let probe = ModuleProbe::new(
+            module.id().as_str(),
+            module.name(),
+            module.version(),
+            module.api_version(),
+        );
+        let id = module.id();
+
+        Self {
+            id,
+            probe,
+            static_module: Some(module),
+            dynamic_ptr: None,
+            library: None,
+            path: None,
+            ffi: None,
+        }
+    }
+
     /// Create a handle for a dynamic (runtime loaded) module.
     ///
     /// # Safety

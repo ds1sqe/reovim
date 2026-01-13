@@ -1,0 +1,14 @@
+[package]
+name = "reovim-module-commands"
+version = "0.9.0-dev"
+edition.workspace = true
+license.workspace = true
+description = "Ex-commands (:w, :q, :set) for reovim - POLICY module"
+readme = "README.md"
+repository.workspace = true
+
+[dependencies]
+reovim-kernel = { workspace = true }
+
+[lints]
+workspace = true
