@@ -23,3 +23,6 @@ reovim-driver-syntax = { path = "../syntax", version = "0.9.0-dev" }
 # Currently re-exporting Cell, Style, Color, FrameBuffer, ZGroup, ZOrder from core.
 # After migration, core will depend on this driver instead.
 reovim-core = { path = "../../core" }
+
+# Unicode width detection for wide characters (CJK, emoji)
+unicode-width = "0.2"

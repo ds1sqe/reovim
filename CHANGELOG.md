@@ -15,6 +15,34 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 5.7: Display Pipeline Implementation** (Issue #208) - Comprehensive rendering pipeline for display driver
+  - **Frame Module** (`lib/drivers/display/src/frame/`):
+    - `Cell` struct - Character + style + width with wide character support (CJK, fullwidth)
+    - `FrameBuffer` - 2D cell grid with efficient get/set, resize, fill_rect, write_str
+    - `FrameRenderer` - Double-buffer with cell-by-cell diff algorithm
+    - `FrameBufferHandle` - Thread-safe RPC capture using `Arc<RwLock<FrameBuffer>>`
+  - **Policy Contracts** (`lib/drivers/display/src/policy.rs`):
+    - `LayoutPolicy` trait - Window arrangement mechanism (policy in modules/layout/)
+    - `FocusPolicy` trait - Directional navigation mechanism
+    - `WindowView` struct - Positioned window (window_id + bounds)
+    - `SingleWindowLayout` and `DefaultFocusPolicy` - Minimal defaults
+  - **Screen & Window Rendering**:
+    - `Screen` struct - Terminal surface management (resize, clear, flush, capture)
+    - `WindowRenderer` - Window content → cells conversion with line numbers
+    - `LineNumberMode` - None, Absolute, Relative, Hybrid line number display
+  - **Border Rendering** (`lib/drivers/display/src/border.rs`):
+    - `BorderStyle` enum - None, Single, Double, Rounded, Bold (4 styles + none)
+    - `BorderChars` - Full set including T-junctions for adjacent windows
+    - `WindowAdjacency` - Detect adjacent windows for proper T-junction rendering
+  - **Render Pipeline** (`lib/drivers/display/src/render/`):
+    - `RenderData` - Intermediate representation with highlights, decorations
+    - `RenderContext` - Viewport and cursor info for render stages
+    - `RenderStage` trait - Extensible pipeline stage interface
+    - Line, chrome (tabline/statusline), separator rendering functions
+  - Key patterns: style batching, reset-before-set (prevents style bleed), continuation cells
+  - 169 tests (338% of 50+ target)
+  - Zero clippy warnings (pedantic + nursery)
+
 - **Phase 5.6: Compositor Implementation** (Issue #205) - Z-ordered layer management for display driver
   - **Display Driver Compositor** (`lib/drivers/display/src/compositor/`):
     - `Bounds` - Rectangular region with half-open interval contains/overlaps semantics

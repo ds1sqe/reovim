@@ -1785,6 +1785,7 @@ dependencies = [
  "reovim-core",
  "reovim-driver-syntax",
  "reovim-kernel",
+ "unicode-width",
 ]
 
 [[package]]
