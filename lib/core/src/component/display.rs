@@ -10,7 +10,7 @@ use std::{collections::BTreeMap, sync::Arc};
 use crate::{
     buffer::Buffer,
     command_line::CommandLine,
-    decoration::{DecorationStore, LanguageRendererRegistry},
+    decoration::DecorationStore,
     highlight::{ColorMode, HighlightStore, Theme},
     indent::IndentAnalyzer,
     modd::ModeState,
@@ -50,8 +50,6 @@ pub struct RenderState<'a> {
     pub modifier_registry: Option<&'a ModifierRegistry>,
     /// Decoration store for language-specific decorations
     pub decoration_store: Option<&'a DecorationStore>,
-    /// Language renderer registry for decoration generation
-    pub renderer_registry: Option<&'a LanguageRendererRegistry>,
     /// Render stage registry for pipeline transformations
     pub render_stages: &'a std::sync::Arc<std::sync::RwLock<crate::render::RenderStageRegistry>>,
     /// Display registry for plugin-provided display information

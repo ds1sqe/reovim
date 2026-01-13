@@ -13,3 +13,4 @@ tree-sitter-rust = "0.24"
 
 [dev-dependencies]
 tree-sitter = "0.26"
+reovim-driver-syntax.workspace = true

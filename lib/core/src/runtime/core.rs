@@ -14,7 +14,7 @@ use {
         command_line::CommandLine,
         config::ProfileManager,
         constants::{EVENT_CHANNEL_CAPACITY, HI_PRIORITY_CHANNEL_CAPACITY},
-        decoration::{DecorationStore, LanguageRendererRegistry},
+        decoration::DecorationStore,
         event::RuntimeEvent,
         event_bus::{
             DynEvent, EventBus, EventResult, EventSender, HandlerContext, ViewportScrolled,
@@ -85,8 +85,6 @@ pub struct Runtime {
     pub modifier_registry: ModifierRegistry,
     /// Decoration store for language-specific visual decorations
     pub decoration_store: DecorationStore,
-    /// Language renderer registry for decoration generation
-    pub renderer_registry: LanguageRendererRegistry,
     /// Event bus for type-erased plugin events
     pub event_bus: Arc<EventBus>,
     /// Plugin state registry for plugin-owned state
@@ -276,7 +274,6 @@ impl Runtime {
             render_pending: false,
             modifier_registry,
             decoration_store: DecorationStore::new(),
-            renderer_registry: LanguageRendererRegistry::new(),
             event_bus,
             plugin_state,
             rpc_handler_registry,

@@ -77,8 +77,10 @@
 //! ```
 
 mod channel;
+mod context;
 mod event;
 mod event_bus;
+pub mod events;
 mod scope;
 mod subscription;
 
@@ -88,11 +90,14 @@ pub use channel::{
     Sender, TryRecvError, TrySendError, bounded, channel, oneshot,
 };
 
+// Re-export context types
+pub use context::{DispatchResult, HandlerContext};
+
 // Re-export event types
-pub use event::{DynEvent, Event, EventResult};
+pub use event::{CacheKind, CacheUpdated, DynEvent, Event, EventResult, TargetedEvent};
 
 // Re-export event bus
-pub use event_bus::EventBus;
+pub use event_bus::{EventBus, EventSender};
 
 // Re-export scope types
 pub use scope::{DEFAULT_TIMEOUT, EventScope, ScopeId};

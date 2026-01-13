@@ -15,6 +15,143 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 5.9: Display Pipeline Implementation** (Issue #208) - Comprehensive rendering pipeline for display driver
+  - **Frame Module** (`lib/drivers/display/src/frame/`):
+    - `Cell` struct - Character + style + width with wide character support (CJK, fullwidth)
+    - `FrameBuffer` - 2D cell grid with efficient get/set, resize, fill_rect, write_str
+    - `FrameRenderer` - Double-buffer with cell-by-cell diff algorithm
+    - `FrameBufferHandle` - Thread-safe RPC capture using `Arc<RwLock<FrameBuffer>>`
+  - **Policy Contracts** (`lib/drivers/display/src/policy.rs`):
+    - `LayoutPolicy` trait - Window arrangement mechanism (policy in modules/layout/)
+    - `FocusPolicy` trait - Directional navigation mechanism
+    - `WindowView` struct - Positioned window (window_id + bounds)
+    - `SingleWindowLayout` and `DefaultFocusPolicy` - Minimal defaults
+  - **Screen & Window Rendering**:
+    - `Screen` struct - Terminal surface management (resize, clear, flush, capture)
+    - `WindowRenderer` - Window content → cells conversion with line numbers
+    - `LineNumberMode` - None, Absolute, Relative, Hybrid line number display
+  - **Border Rendering** (`lib/drivers/display/src/border.rs`):
+    - `BorderStyle` enum - None, Single, Double, Rounded, Bold (4 styles + none)
+    - `BorderChars` - Full set including T-junctions for adjacent windows
+    - `WindowAdjacency` - Detect adjacent windows for proper T-junction rendering
+  - **Render Pipeline** (`lib/drivers/display/src/render/`):
+    - `RenderData` - Intermediate representation with highlights, decorations
+    - `RenderContext` - Viewport and cursor info for render stages
+    - `RenderStage` trait - Extensible pipeline stage interface
+    - Line, chrome (tabline/statusline), separator rendering functions
+  - Key patterns: style batching, reset-before-set (prevents style bleed), continuation cells
+  - 169 tests (338% of 50+ target)
+  - Zero clippy warnings (pedantic + nursery)
+
+- **Phase 5.8: Runtime & Event Loop Consolidation** (Issue #207) - Event handler modules
+  - **New Policy Modules** (`modules/`):
+    - `buffer-ops` - Subscribes to BufferCreated, BufferModified, BufferClosed, BufferSwitched
+    - `window-ops` - Subscribes to WindowCreated, WindowClosed, WindowFocused, ViewportScrolled
+    - `mode-manager` - Subscribes to ModeChanged
+  - All modules use `subscribe_with_context()` with priority levels (CORE/NORMAL/LOW)
+  - RAII pattern for subscription lifecycle (stored in `Vec<Subscription>`)
+  - Registered and initialized in runner (main.rs, server.rs)
+  - Part of concept-extraction strategy: fresh implementations in modules/
+  - Part of Epic #150 (Project Kernel)
+
+- **Phase 5.7: Language Plugin Conversion to SyntaxDriver** (Issue #206) - All language plugins use new driver API
+  - **New `register()` API**: All 8 language plugins converted to use `TreeSitterDriverFactory::register()`
+    - JSON (json, jsonc) - 4 tests
+    - TOML (toml) - 4 tests
+    - Bash (sh, bash, zsh, bashrc, zshrc, profile) - 4 tests
+    - C (c, h) - 4 tests
+    - JavaScript (js, jsx, mjs, cjs) - 4 tests
+    - Python (py, pyi, pyw) - 4 tests
+    - Rust (rs) - 6 tests (includes injection query for doc comments)
+    - Markdown (md, markdown) - 6 tests (dual grammar with inline injection)
+  - **Injection Support**: `TreeSitterDriver::injections()` implementation
+    - Handles `@injection.language` captures (Markdown code blocks)
+    - Handles `#set! injection.language` properties (Rust doc comments)
+    - Returns `Vec<Injection>` with byte ranges and positions
+  - **Dual Grammar**: Markdown registers both `markdown` and `markdown_inline` languages
+    - Block grammar: Document structure (headings, lists, code blocks)
+    - Inline grammar: Inline formatting (bold, italic, links) - injected only
+  - **Test Coverage**: 36 new unit tests across all language plugins
+    - Registration verification (`factory.supports()`)
+    - Driver creation (`factory.create()`)
+    - Basic highlighting (`driver.parse()` + `highlights()`)
+    - File extension detection (`factory.detect_language()`)
+  - **Backward Compatibility**: Legacy `LanguageSupport` API preserved during migration
+  - **Technical Notes**:
+    - Factory uses interior mutability (RwLock) so `register()` takes `&self`
+    - All queries (highlights, folds, injections) cached via QueryCache
+    - Clippy-clean with zero warnings
+
+- **Phase 5.6: Compositor Implementation** (Issue #205) - Z-ordered layer management for display driver
+  - **Display Driver Compositor** (`lib/drivers/display/src/compositor/`):
+    - `Bounds` - Rectangular region with half-open interval contains/overlaps semantics
+    - `ZGroup` enum - 9 major z-order categories (Base=0 through Alert=800)
+    - `ZOrder` - Fine-grained ordering with group, sub_order, and GLOBAL sequence counter
+    - `ComposableId` - Unique identifier for composable elements (6 variants)
+    - `Composable` trait - Interface for renderable elements (8 methods)
+    - `LayerCompositor` - Concrete compositor with registration, z-order management, hit testing
+    - `Compositor` trait - Abstract interface for compositor implementations
+  - Key features: lazy render order caching, focus management, keyboard target finding
+  - 35 comprehensive tests covering all edge cases
+  - Zero clippy warnings (pedantic + nursery)
+
+- **Phase 5.5: Buffer & Memory Management Completion** (Issue #204) - Core mm/ subsystem infrastructure
+  - **Line Caching** (`lib/kernel/src/mm/cache.rs`):
+    - `LineCache<T>` - Lock-free cache using ArcSwap for RCU pattern
+    - Hash-based validation for cache invalidation
+    - Thread-safe concurrent reads without blocking
+  - **Selection State** (`lib/kernel/src/mm/selection.rs`):
+    - `Selection` struct for visual mode state tracking
+    - `SelectionMode` enum: Character, Line, Block (vim's v/V/Ctrl-V)
+    - Bounds calculation with forward/backward normalization
+  - **Buffer Snapshot** (`lib/kernel/src/mm/snapshot.rs`):
+    - `BufferSnapshot` - Read-only buffer capture for concurrent access
+    - Text extraction with position clamping
+    - Selection query methods
+  - **Word Boundary Detection** (`lib/kernel/src/mm/word.rs`):
+    - `CharKind` enum: Word, Punctuation, Whitespace
+    - `WordType` enum: Small (w/b/e) vs Big (W/B/E)
+    - Functions: `word_start`, `word_end`, `word_bounds`, `next_word_start`, `next_word_end`
+  - **Delimiter Matching** (`lib/kernel/src/mm/delimiter.rs`):
+    - `find_delimiter_pair()` - Find matching symmetric/asymmetric delimiters
+    - `find_matching_delimiter()` - vim's `%` command support
+    - Depth-counting for nested brackets
+  - **Background Task Scheduler** (`lib/kernel/src/mm/saturator.rs`):
+    - `Saturator` - Priority-based background work processor
+    - `RequestPriority`: High (viewport) vs Low (off-screen)
+    - `EventScope` integration for lifecycle tracking
+  - **IPC Events** (`lib/kernel/src/ipc/event.rs`):
+    - `CacheUpdated` event for cache invalidation notification
+    - `CacheKind` enum: Highlights, Decorations, Both
+  - **Buffer Extensions** (`lib/kernel/src/mm/buffer.rs`):
+    - Added `selection` field and accessors
+    - Added `file_path` field and accessors
+    - Added `line_hash()` for cache validation
+  - All types exported via `reovim_kernel::api::v1::*`
+  - 79 new tests, zero warnings
+
+- **Phase 5.3: EventBus Consolidation - Kernel Foundation** (Issue #202) - Kernel EventBus enhancements and event definitions
+  - **Kernel API Enhancements** (`lib/kernel/src/ipc/`):
+    - `HandlerContext` - Dual emission modes (collect for tests, direct for runtime)
+    - `TargetedEvent` trait - Component-targeted event dispatch with `&str` target
+    - `subscribe_with_context()` - Context-aware handler registration
+    - `subscribe_targeted()` - Automatic filtering by target component
+    - `new_with_channel()` / `sender()` / `take_receiver()` - Channel-based processor pattern
+    - `DispatchResult` - Captures handler side effects (render/quit requests, emitted events)
+  - **Event Definitions** (`lib/kernel/src/ipc/events/`):
+    - 14 kernel events: `BufferCreated`, `BufferClosed`, `BufferModified`, `BufferSwitched`, `BufferSaved`, `CursorMoved`, `ModeChanged`, `WindowCreated`, `WindowClosed`, `WindowFocused`, `ViewportScrolled`, `FileOpened`, `FileTypeChanged`, `Shutdown`
+    - 4 driver events: `DisplayResized`, `FrameRendered`, `KeyInput`, `MouseInput`
+    - `Modification` enum (Insert/Delete/Replace/FullReplace)
+    - `KeyCode`, `Modifiers`, `MouseEvent`, `MouseButton` input types
+    - Priority constants: `CRITICAL` (0), `CORE` (10), `NORMAL` (50), `PLUGIN` (100), `LOW` (200)
+  - **Bridge Layer** (`lib/core/src/event_bus/mod.rs`):
+    - `kernel_events` module re-exports kernel event types
+    - `driver_events` module re-exports driver event types
+    - Enables gradual migration from lib/core to kernel EventBus
+  - 60+ new tests for context handlers, targeted events, and channel patterns
+  - Zero warnings (clippy pedantic + nursery)
+  - Part of Epic #150 (Project Kernel)
+
 - **Phase 5.2: Infrastructure Glue Code** (Issue #201) - Concrete implementations connecting kernel to drivers
   - **Runner Infrastructure** (`runner/src/`):
     - `SimpleBufferManager` - Thread-safe buffer storage implementing `BufferManager` trait
@@ -587,6 +724,22 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
   - All crates are empty skeletons that compile with zero warnings
   - Dependency graph enforced: arch → kernel → drivers
   - `lib/drivers/syntax` has NO tree-sitter dependency (trait definitions only)
+
+### Removed
+
+- **Phase 5.4: Tree-sitter Removal from Core** (Issue #203) - Kernel purity achieved
+  - Removed 8 tree-sitter dependencies from `lib/core/Cargo.toml`:
+    - `tree-sitter`, `tree-sitter-rust`, `tree-sitter-c`, `tree-sitter-javascript`
+    - `tree-sitter-python`, `tree-sitter-json`, `tree-sitter-toml-ng`, `tree-sitter-md`
+  - Removed dead code that was never implemented:
+    - `LanguageId` enum - Language type identifier
+    - `DecorationContext` struct - Tree-sitter decoration context
+    - `LanguageRenderer` trait - Decoration rendering contract
+    - `LanguageRendererRegistry` - Registry for language renderers
+  - Deleted `lib/core/src/decoration/registry.rs` entirely
+  - Cleaned up runtime references (`renderer_registry` field)
+  - Active `DecorationProvider` system remains intact (tree-sitter agnostic)
+  - Tree-sitter now lives only in plugins where it belongs
 
 ### Fixed
 

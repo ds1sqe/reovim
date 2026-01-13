@@ -303,7 +303,7 @@ pub enum KeymapResult {
 /// Information about a keybinding.
 #[derive(Debug, Clone)]
 pub struct KeybindingInfo {
-    /// Key sequence string (e.g., "dd", "<C-w>h").
+    /// Key sequence string (e.g., "dd", "`<C-w>h`").
     pub keys: String,
     /// Command identifier.
     pub command_id: String,

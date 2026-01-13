@@ -32,12 +32,18 @@
 // Modules
 // ============================================================================
 
+mod border;
 mod capabilities;
 mod command;
 mod compositor;
 mod error;
+mod frame;
+mod policy;
+mod render;
+mod screen;
 mod traits;
 mod window;
+mod window_renderer;
 
 // ============================================================================
 // Re-exports
@@ -58,26 +64,45 @@ pub use window::{NavigateDirection, Rect, SplitDirection, TerminalSize, WindowId
 // Traits
 pub use traits::{DisplayDriver, WindowManager};
 
-// Compositor (trait + re-exports from core)
-pub use compositor::{Composable, ComposableId, Compositor, ZGroup, ZOrder};
+// Compositor (local implementation)
+pub use compositor::{
+    Bounds, Composable, ComposableId, Compositor, CompositorEntry, LayerCompositor, ZGroup, ZOrder,
+};
+
+// Frame types (Phase 5 - NEW local implementations)
+pub use frame::{Cell, FrameBuffer, FrameBufferHandle, FrameRenderer, char_width};
+
+// Policy traits (Phase 5 - Mechanism vs Policy separation)
+pub use policy::{DefaultFocusPolicy, FocusPolicy, LayoutPolicy, SingleWindowLayout, WindowView};
+
+// Screen management (Phase 5 - Terminal surface)
+pub use screen::Screen;
+
+// Window rendering (Phase 5 - Window content to cells)
+pub use window_renderer::{LineNumberMode, RenderContent, WindowRenderer, WindowRendererConfig};
+
+// Border rendering (Phase 5 - Window decoration)
+pub use border::{
+    BorderChars, BorderMode, BorderStyle, Corner, WindowAdjacency, inner_bounds, render_border,
+    render_border_simple,
+};
+
+// Render pipeline (Phase 6 - Composable rendering)
+pub use render::{
+    GutterDecoration, InlineDecoration, RenderContext, RenderData, RenderStage, SeparatorChars,
+    TabInfo, execute_pipeline, execute_pipeline_sorted, render_grid_separators, render_hseparator,
+    render_intersection, render_line, render_line_simple, render_statusline,
+    render_statusline_simple, render_tabline, render_vseparator,
+};
 
 // ============================================================================
-// TODO(Phase 5-6): Type Migration
+// Style and Color Types (temporary re-exports from reovim-core)
 // ============================================================================
 //
-// After type migration, these will be local definitions:
-//   - Cell, FrameBuffer → from crate::cell, crate::buffer
-//   - Style, Attributes, Color, ColorMode → from crate::style, crate::color
-//   - ZGroup, ZOrder, Composable, ComposableId → from crate::compositor (already exported above)
-//
-// For now, re-export from lib/core to maintain type compatibility.
-// When migration happens:
-//   1. Move type definitions from lib/core to this crate
+// TODO(Phase 5-6): After type migration completes:
+//   1. Move Style, Attributes, Color, ColorMode definitions to this crate
 //   2. Update lib/core to import FROM this driver
 //   3. Remove reovim-core dependency from this crate's Cargo.toml
 // ============================================================================
 
-pub use reovim_core::{
-    frame::{Cell, FrameBuffer},
-    highlight::{Attributes, Color, ColorMode, Style},
-};
+pub use reovim_core::highlight::{Attributes, Color, ColorMode, Style};
