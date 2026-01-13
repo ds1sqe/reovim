@@ -48,16 +48,44 @@ use std::{any::TypeId, collections::HashMap, sync::Arc};
 use reovim_arch::sync::{ArcSwap, Mutex};
 
 use super::{
-    event::{DynEvent, Event, EventResult},
+    channel::{BoundedReceiver, BoundedSender, bounded},
+    context::{DispatchResult, HandlerContext},
+    event::{DynEvent, Event, EventResult, TargetedEvent},
     scope::EventScope,
     subscription::{Subscription, SubscriptionId},
 };
 
-/// Handler function type for event dispatch.
+/// Handler function type for simple event dispatch (no context).
 ///
 /// Handlers receive a reference to the `DynEvent` and return an `EventResult`.
 /// The handler must downcast to the specific event type internally.
 type HandlerFn = Arc<dyn Fn(&DynEvent) -> EventResult + Send + Sync>;
+
+/// Handler function type for context-aware event dispatch.
+///
+/// Handlers receive both the event and a mutable `HandlerContext` that allows
+/// emitting new events, requesting renders, etc.
+///
+/// Uses Higher-Ranked Trait Bounds (HRTB) to work with any `HandlerContext` lifetime.
+type ContextHandlerFn =
+    Arc<dyn for<'a> Fn(&DynEvent, &mut HandlerContext<'a>) -> EventResult + Send + Sync>;
+
+/// Type of handler function (simple or context-aware).
+enum HandlerType {
+    /// Simple handler: `Fn(&E) -> EventResult`
+    Simple(HandlerFn),
+    /// Context-aware handler: `Fn(&E, &mut HandlerContext) -> EventResult`
+    WithContext(ContextHandlerFn),
+}
+
+impl Clone for HandlerType {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Simple(h) => Self::Simple(h.clone()),
+            Self::WithContext(h) => Self::WithContext(h.clone()),
+        }
+    }
+}
 
 /// Registered handler with metadata.
 struct RegisteredHandler {
@@ -67,8 +95,19 @@ struct RegisteredHandler {
     /// Handler priority (lower = earlier dispatch).
     priority: u32,
 
-    /// The handler function.
-    handler: HandlerFn,
+    /// The handler function (simple or context-aware).
+    handler: HandlerType,
+}
+
+/// Optional channel for dedicated processor thread pattern.
+///
+/// Used when the `EventBus` is created with `new_with_channel()`.
+struct ChannelInner {
+    /// Sender side (cloneable)
+    tx: BoundedSender<DynEvent>,
+
+    /// Receiver side (only accessible once via `take_receiver()`)
+    rx: Mutex<Option<BoundedReceiver<DynEvent>>>,
 }
 
 /// Internal state for `EventBus`.
@@ -79,6 +118,53 @@ struct EventBusInner {
 
     /// Async event queue for `emit_async()`.
     queue: Mutex<Vec<DynEvent>>,
+
+    /// Optional channel for dedicated processor thread.
+    channel: Option<ChannelInner>,
+}
+
+/// Cloneable sender handle for emitting events via channel.
+///
+/// Obtained from `EventBus::sender()` when the bus is created with
+/// `new_with_channel()`.
+///
+/// # Thread Safety
+///
+/// `EventSender` is `Clone`, `Send`, and `Sync`. Multiple threads can
+/// send events concurrently.
+#[derive(Clone)]
+pub struct EventSender {
+    tx: BoundedSender<DynEvent>,
+}
+
+impl EventSender {
+    /// Send an event (blocking if channel is full).
+    ///
+    /// This will block if the channel is full until space is available.
+    pub fn send<E: Event>(&self, event: E) {
+        let _ = self.tx.send(DynEvent::new(event));
+    }
+
+    /// Try to send an event without blocking.
+    ///
+    /// Returns immediately even if the channel is full.
+    pub fn try_send<E: Event>(&self, event: E) {
+        let _ = self.tx.try_send(DynEvent::new(event));
+    }
+
+    /// Send a pre-boxed dynamic event.
+    pub fn send_dyn(&self, event: DynEvent) {
+        let _ = self.tx.try_send(event);
+    }
+
+    /// Send an event with scope tracking.
+    ///
+    /// The scope is incremented before sending.
+    pub fn send_scoped<E: Event>(&self, event: E, scope: &EventScope) {
+        scope.increment();
+        let dyn_event = DynEvent::new(event).with_scope(scope.clone());
+        let _ = self.tx.try_send(dyn_event);
+    }
 }
 
 /// Type-erased event bus for pub/sub communication.
@@ -97,6 +183,11 @@ struct EventBusInner {
 ///
 /// Handlers are called in priority order (lower priority number = earlier).
 /// For handlers with the same priority, registration order is preserved.
+///
+/// # Two Usage Patterns
+///
+/// 1. **Simple/Tests**: Use `new()` with `emit_async()` and `process_queue()`
+/// 2. **Runtime**: Use `new_with_channel()` with `sender()` and `take_receiver()`
 #[derive(Clone)]
 pub struct EventBus {
     inner: Arc<EventBusInner>,
@@ -104,14 +195,108 @@ pub struct EventBus {
 
 impl EventBus {
     /// Create a new empty event bus.
+    ///
+    /// This creates an `EventBus` without a channel. Use `emit_async()` and
+    /// `process_queue()` for deferred event processing.
+    ///
+    /// For runtime integration with a dedicated processor thread, use
+    /// `new_with_channel()` instead.
     #[must_use]
     pub fn new() -> Self {
         Self {
             inner: Arc::new(EventBusInner {
                 handlers: ArcSwap::from_pointee(HashMap::new()),
                 queue: Mutex::new(Vec::new()),
+                channel: None,
             }),
         }
+    }
+
+    /// Create an event bus with a channel for dedicated processor thread.
+    ///
+    /// This is the preferred constructor for runtime integration where events
+    /// are processed by a dedicated OS thread using `blocking_recv()`.
+    ///
+    /// # Arguments
+    ///
+    /// * `capacity` - Bounded channel capacity (typically 1024)
+    ///
+    /// # Usage Pattern
+    ///
+    /// ```ignore
+    /// let bus = EventBus::new_with_channel(1024);
+    ///
+    /// // Get sender for emitting events
+    /// let sender = bus.sender().unwrap();
+    ///
+    /// // Take receiver for processor thread
+    /// let mut receiver = bus.take_receiver().unwrap();
+    ///
+    /// // Spawn processor thread
+    /// std::thread::spawn(move || {
+    ///     while let Some(event) = receiver.blocking_recv() {
+    ///         // Process event
+    ///     }
+    /// });
+    ///
+    /// // Emit events from anywhere
+    /// sender.send(MyEvent { ... });
+    /// ```
+    #[must_use]
+    pub fn new_with_channel(capacity: usize) -> Self {
+        let (tx, rx) = bounded(capacity);
+        Self {
+            inner: Arc::new(EventBusInner {
+                handlers: ArcSwap::from_pointee(HashMap::new()),
+                queue: Mutex::new(Vec::new()),
+                channel: Some(ChannelInner {
+                    tx,
+                    rx: Mutex::new(Some(rx)),
+                }),
+            }),
+        }
+    }
+
+    /// Get a cloneable sender for emitting events via channel.
+    ///
+    /// Returns `None` if the `EventBus` was created without a channel.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let bus = EventBus::new_with_channel(1024);
+    /// let sender = bus.sender().expect("bus has channel");
+    ///
+    /// sender.try_send(MyEvent { ... });
+    /// ```
+    #[must_use]
+    pub fn sender(&self) -> Option<EventSender> {
+        self.inner
+            .channel
+            .as_ref()
+            .map(|c| EventSender { tx: c.tx.clone() })
+    }
+
+    /// Take the receiver for the dedicated processor thread.
+    ///
+    /// Can only be called once. Subsequent calls return `None`.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let bus = EventBus::new_with_channel(1024);
+    /// let receiver = bus.take_receiver().expect("bus has channel");
+    ///
+    /// // Spawn processor thread
+    /// std::thread::spawn(move || {
+    ///     while let Some(event) = receiver.blocking_recv() {
+    ///         // Process event
+    ///     }
+    /// });
+    /// ```
+    #[must_use]
+    pub fn take_receiver(&self) -> Option<BoundedReceiver<DynEvent>> {
+        self.inner.channel.as_ref()?.rx.lock().take()
     }
 
     /// Subscribe a handler for events of type `E`.
@@ -166,7 +351,7 @@ impl EventBus {
         let registered = RegisteredHandler {
             id: sub_id,
             priority,
-            handler: wrapped_handler,
+            handler: HandlerType::Simple(wrapped_handler),
         };
 
         // RCU update: clone, modify, swap
@@ -196,6 +381,136 @@ impl EventBus {
         };
 
         Subscription::new::<E>(sub_id, unsubscribe)
+    }
+
+    /// Subscribe a context-aware handler for events of type `E`.
+    ///
+    /// Similar to `subscribe`, but the handler receives a `HandlerContext`
+    /// that allows emitting new events, requesting renders, etc.
+    ///
+    /// # Arguments
+    ///
+    /// * `priority` - Handler priority (lower = called earlier)
+    /// * `handler` - Function called for each event, with access to context
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use reovim_kernel::api::v1::*;
+    ///
+    /// #[derive(Debug)]
+    /// struct MyEvent { value: i32 }
+    /// impl Event for MyEvent {}
+    ///
+    /// #[derive(Debug)]
+    /// struct FollowUpEvent;
+    /// impl Event for FollowUpEvent {}
+    ///
+    /// let bus = EventBus::new();
+    ///
+    /// let sub = bus.subscribe_with_context::<MyEvent, _>(100, |event, ctx| {
+    ///     // Emit a follow-up event
+    ///     ctx.emit(FollowUpEvent);
+    ///     // Request render
+    ///     ctx.request_render();
+    ///     EventResult::Handled
+    /// });
+    /// ```
+    pub fn subscribe_with_context<E, F>(&self, priority: u32, handler: F) -> Subscription
+    where
+        E: Event,
+        F: Fn(&E, &mut HandlerContext) -> EventResult + Send + Sync + 'static,
+    {
+        let type_id = TypeId::of::<E>();
+        let sub_id = SubscriptionId::new();
+
+        // Wrap handler to downcast from DynEvent
+        let wrapped_handler: ContextHandlerFn = Arc::new(move |dyn_event: &DynEvent, ctx| {
+            dyn_event
+                .downcast_ref::<E>()
+                .map_or(EventResult::NotHandled, |e| handler(e, ctx))
+        });
+
+        let registered = RegisteredHandler {
+            id: sub_id,
+            priority,
+            handler: HandlerType::WithContext(wrapped_handler),
+        };
+
+        // RCU update: clone, modify, swap
+        self.inner.handlers.rcu(|current| {
+            let mut new_map = (**current).clone();
+            let handlers = new_map.entry(type_id).or_default();
+            handlers.push(registered.clone());
+            handlers.sort_by_key(|h| h.priority);
+            new_map
+        });
+
+        // Create unsubscribe closure
+        let inner = Arc::clone(&self.inner);
+        let unsubscribe = move || {
+            inner.handlers.rcu(|current| {
+                let mut new_map = (**current).clone();
+                if let Some(handlers) = new_map.get_mut(&type_id) {
+                    handlers.retain(|h| h.id != sub_id);
+                    if handlers.is_empty() {
+                        new_map.remove(&type_id);
+                    }
+                }
+                new_map
+            });
+        };
+
+        Subscription::new::<E>(sub_id, unsubscribe)
+    }
+
+    /// Subscribe a handler for targeted events, filtering by target.
+    ///
+    /// The handler is only called when `event.target()` matches the
+    /// specified target string.
+    ///
+    /// # Arguments
+    ///
+    /// * `target` - Target string to filter events
+    /// * `priority` - Handler priority (lower = called earlier)
+    /// * `handler` - Function called for matching events
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use reovim_kernel::api::v1::*;
+    ///
+    /// #[derive(Debug)]
+    /// struct PluginInput {
+    ///     target: &'static str,
+    ///     value: i32,
+    /// }
+    /// impl Event for PluginInput {}
+    /// impl TargetedEvent for PluginInput {
+    ///     fn target(&self) -> &str { self.target }
+    /// }
+    ///
+    /// let bus = EventBus::new();
+    ///
+    /// // Only receives events where target == "my_plugin"
+    /// let sub = bus.subscribe_targeted::<PluginInput, _>("my_plugin", 100, |event, ctx| {
+    ///     println!("My plugin received: {}", event.value);
+    ///     EventResult::Handled
+    /// });
+    /// ```
+    pub fn subscribe_targeted<E, F>(&self, target: &str, priority: u32, handler: F) -> Subscription
+    where
+        E: TargetedEvent,
+        F: Fn(&E, &mut HandlerContext) -> EventResult + Send + Sync + 'static,
+    {
+        let target = target.to_owned();
+        self.subscribe_with_context::<E, _>(priority, move |event, ctx| {
+            if event.target() == target {
+                handler(event, ctx)
+            } else {
+                EventResult::NotHandled
+            }
+        })
     }
 
     /// Emit an event synchronously.
@@ -343,9 +658,14 @@ impl EventBus {
         };
 
         let mut result = EventResult::NotHandled;
+        // Create a temporary context for context-aware handlers
+        let mut temp_ctx = HandlerContext::new();
 
         for handler in handlers {
-            let handler_result = (handler.handler)(event);
+            let handler_result = match &handler.handler {
+                HandlerType::Simple(h) => h(event),
+                HandlerType::WithContext(h) => h(event, &mut temp_ctx),
+            };
 
             match handler_result {
                 EventResult::Consumed => {
@@ -361,6 +681,64 @@ impl EventBus {
         }
 
         result
+    }
+
+    /// Dispatch an event with handler context.
+    ///
+    /// This allows handlers to emit new events, request renders, etc.
+    /// Returns a `DispatchResult` containing the event result and any
+    /// side effects (emitted events, render requests).
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let mut ctx = HandlerContext::new().with_scope(Some(scope));
+    /// let result = bus.dispatch_with_context(&event, &mut ctx);
+    ///
+    /// if result.render_requested {
+    ///     // Handle render request
+    /// }
+    ///
+    /// // Process emitted events
+    /// for event in result.emitted_events {
+    ///     bus.dispatch(&event);
+    /// }
+    /// ```
+    pub fn dispatch_with_context(
+        &self,
+        event: &DynEvent,
+        ctx: &mut HandlerContext,
+    ) -> DispatchResult {
+        // Lock-free read of handlers
+        let handlers = self.inner.handlers.load();
+        let type_id = event.type_id();
+
+        let Some(handlers) = handlers.get(&type_id) else {
+            return DispatchResult::not_handled();
+        };
+
+        let mut result = EventResult::NotHandled;
+
+        for handler in handlers {
+            let handler_result = match &handler.handler {
+                HandlerType::Simple(h) => h(event),
+                HandlerType::WithContext(h) => h(event, ctx),
+            };
+
+            match handler_result {
+                EventResult::Consumed => {
+                    return DispatchResult::new(EventResult::Consumed, ctx);
+                }
+                EventResult::Handled => {
+                    result = EventResult::Handled;
+                }
+                EventResult::NotHandled => {
+                    // Continue to next handler
+                }
+            }
+        }
+
+        DispatchResult::new(result, ctx)
     }
 
     /// Get the number of handlers registered for a specific event type.
@@ -755,5 +1133,164 @@ mod tests {
     fn test_event_bus_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<EventBus>();
+    }
+
+    // ========== Channel tests ==========
+
+    #[test]
+    fn test_event_bus_new_with_channel() {
+        let bus = EventBus::new_with_channel(16);
+        assert!(bus.sender().is_some());
+        assert!(bus.take_receiver().is_some());
+        // Second take returns None
+        assert!(bus.take_receiver().is_none());
+    }
+
+    #[test]
+    fn test_event_bus_no_channel_no_sender() {
+        let bus = EventBus::new();
+        assert!(bus.sender().is_none());
+        assert!(bus.take_receiver().is_none());
+    }
+
+    #[test]
+    fn test_event_sender_try_send() {
+        let bus = EventBus::new_with_channel(16);
+        let sender = bus.sender().unwrap();
+        let receiver = bus.take_receiver().unwrap();
+
+        sender.try_send(TestEvent { value: 42 });
+
+        // Try receive
+        let event = receiver.try_recv().unwrap();
+        assert_eq!(event.downcast_ref::<TestEvent>().unwrap().value, 42);
+    }
+
+    #[test]
+    fn test_event_sender_send_scoped() {
+        let bus = EventBus::new_with_channel(16);
+        let sender = bus.sender().unwrap();
+        let receiver = bus.take_receiver().unwrap();
+        let scope = EventScope::new();
+
+        assert_eq!(scope.in_flight(), 0);
+        sender.send_scoped(TestEvent { value: 42 }, &scope);
+        assert_eq!(scope.in_flight(), 1);
+
+        let event = receiver.try_recv().unwrap();
+        assert!(event.scope().is_some());
+    }
+
+    #[test]
+    fn test_event_sender_clone() {
+        let bus = EventBus::new_with_channel(16);
+        let sender1 = bus.sender().unwrap();
+        let sender2 = sender1.clone();
+        let receiver = bus.take_receiver().unwrap();
+
+        sender1.try_send(TestEvent { value: 1 });
+        sender2.try_send(TestEvent { value: 2 });
+
+        let _ = receiver.try_recv().unwrap();
+        let _ = receiver.try_recv().unwrap();
+    }
+
+    #[test]
+    fn test_event_sender_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<EventSender>();
+    }
+
+    // ========== Context handler tests ==========
+
+    #[test]
+    fn test_subscribe_with_context() {
+        let bus = EventBus::new();
+        let render_requested = Arc::new(AtomicU32::new(0));
+        let render_copy = render_requested.clone();
+
+        let _sub = bus.subscribe_with_context::<TestEvent, _>(100, move |_event, ctx| {
+            ctx.request_render();
+            render_copy.fetch_add(1, Ordering::SeqCst);
+            EventResult::Handled
+        });
+
+        let mut ctx = HandlerContext::new();
+        let event = DynEvent::new(TestEvent { value: 42 });
+        let result = bus.dispatch_with_context(&event, &mut ctx);
+
+        assert_eq!(result.result, EventResult::Handled);
+        assert!(result.render_requested);
+        assert_eq!(render_requested.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_subscribe_with_context_emit() {
+        #[derive(Debug)]
+        struct FollowUpEvent;
+        impl Event for FollowUpEvent {}
+
+        let bus = EventBus::new();
+
+        let _sub = bus.subscribe_with_context::<TestEvent, _>(100, move |_event, ctx| {
+            ctx.emit(FollowUpEvent);
+            EventResult::Handled
+        });
+
+        let mut ctx = HandlerContext::new();
+        let event = DynEvent::new(TestEvent { value: 42 });
+        let result = bus.dispatch_with_context(&event, &mut ctx);
+
+        assert_eq!(result.emitted_events.len(), 1);
+    }
+
+    // ========== Targeted event tests ==========
+
+    #[test]
+    fn test_subscribe_targeted() {
+        #[derive(Debug)]
+        struct TargetedTestEvent {
+            target: &'static str,
+            #[allow(dead_code)]
+            value: i32,
+        }
+        impl Event for TargetedTestEvent {}
+        impl TargetedEvent for TargetedTestEvent {
+            fn target(&self) -> &str {
+                self.target
+            }
+        }
+
+        let bus = EventBus::new();
+        let called = Arc::new(AtomicU32::new(0));
+        let called_copy = called.clone();
+
+        let _sub = bus.subscribe_targeted::<TargetedTestEvent, _>(
+            "my_plugin",
+            100,
+            move |_event, _ctx| {
+                called_copy.fetch_add(1, Ordering::SeqCst);
+                EventResult::Handled
+            },
+        );
+
+        // Event with matching target - should be handled
+        let mut ctx = HandlerContext::new();
+        let event = DynEvent::new(TargetedTestEvent {
+            target: "my_plugin",
+            value: 42,
+        });
+        let result = bus.dispatch_with_context(&event, &mut ctx);
+        assert_eq!(result.result, EventResult::Handled);
+        assert_eq!(called.load(Ordering::SeqCst), 1);
+
+        // Event with different target - should NOT be handled
+        let event2 = DynEvent::new(TargetedTestEvent {
+            target: "other_plugin",
+            value: 100,
+        });
+        let result2 = bus.dispatch_with_context(&event2, &mut ctx);
+        assert_eq!(result2.result, EventResult::NotHandled);
+        assert_eq!(called.load(Ordering::SeqCst), 1); // Count unchanged
     }
 }

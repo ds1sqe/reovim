@@ -1759,6 +1759,7 @@ dependencies = [
  "nucleo",
  "regex",
  "reovim-driver-net",
+ "reovim-kernel",
  "reovim-sys",
  "serde",
  "serde_json",

@@ -62,6 +62,12 @@ use super::scope::EventScope;
 /// Events can opt into batching for future optimization. When `batchable()`
 /// returns `true`, the event bus may combine multiple events of the same type
 /// into a single dispatch when under load.
+///
+/// # Targeted Events
+///
+/// For events that target specific components, implement [`TargetedEvent`]
+/// in addition to `Event`. This allows using `EventBus::subscribe_targeted()`
+/// for automatic filtering by target.
 pub trait Event: Send + Sync + Debug + 'static {
     /// Priority for handler dispatch ordering.
     ///
@@ -82,6 +88,44 @@ pub trait Event: Send + Sync + Debug + 'static {
     fn batchable(&self) -> bool {
         false
     }
+}
+
+/// Marker trait for events that target a specific component.
+///
+/// Events implementing this trait have a `target` field that specifies
+/// which component should handle the event. This enables `EventBus::subscribe_targeted()`
+/// to automatically filter events by target.
+///
+/// # Design Note
+///
+/// The kernel uses `&str` for target identifiers (mechanism), not `ComponentId`
+/// (which is a policy-level type in lib/core). Modules convert their
+/// `ComponentId` to `&str` when interacting with the kernel API.
+///
+/// # Example
+///
+/// ```
+/// use reovim_kernel::api::v1::*;
+///
+/// #[derive(Debug)]
+/// struct PluginTextInput {
+///     target: &'static str,
+///     c: char,
+/// }
+///
+/// impl Event for PluginTextInput {}
+///
+/// impl TargetedEvent for PluginTextInput {
+///     fn target(&self) -> &str {
+///         self.target
+///     }
+/// }
+/// ```
+pub trait TargetedEvent: Event {
+    /// Get the target component identifier for this event.
+    ///
+    /// Used by `EventBus::subscribe_targeted()` to filter events.
+    fn target(&self) -> &str;
 }
 
 /// Result of handling an event.
@@ -393,6 +437,19 @@ mod tests {
     struct OtherEvent;
     impl Event for OtherEvent {}
 
+    #[derive(Debug, PartialEq)]
+    struct TargetedTestEvent {
+        target: &'static str,
+        #[allow(dead_code)] // Used in test assertions via Debug
+        value: i32,
+    }
+    impl Event for TargetedTestEvent {}
+    impl TargetedEvent for TargetedTestEvent {
+        fn target(&self) -> &str {
+            self.target
+        }
+    }
+
     // ========== Event trait tests ==========
 
     #[test]
@@ -423,6 +480,27 @@ mod tests {
     fn test_event_custom_batchable() {
         let event = HighPriorityEvent;
         assert!(event.batchable());
+    }
+
+    // ========== TargetedEvent tests ==========
+
+    #[test]
+    fn test_targeted_event_target() {
+        let event = TargetedTestEvent {
+            target: "my_plugin",
+            value: 42,
+        };
+        assert_eq!(event.target(), "my_plugin");
+    }
+
+    #[test]
+    fn test_targeted_event_is_also_event() {
+        let event = TargetedTestEvent {
+            target: "component",
+            value: 100,
+        };
+        // TargetedEvent also implements Event
+        assert_eq!(event.priority(), 100); // default priority
     }
 
     // ========== EventResult tests ==========

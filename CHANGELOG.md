@@ -15,6 +15,28 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 5.3: EventBus Consolidation - Kernel Foundation** (Issue #202) - Kernel EventBus enhancements and event definitions
+  - **Kernel API Enhancements** (`lib/kernel/src/ipc/`):
+    - `HandlerContext` - Dual emission modes (collect for tests, direct for runtime)
+    - `TargetedEvent` trait - Component-targeted event dispatch with `&str` target
+    - `subscribe_with_context()` - Context-aware handler registration
+    - `subscribe_targeted()` - Automatic filtering by target component
+    - `new_with_channel()` / `sender()` / `take_receiver()` - Channel-based processor pattern
+    - `DispatchResult` - Captures handler side effects (render/quit requests, emitted events)
+  - **Event Definitions** (`lib/kernel/src/ipc/events/`):
+    - 14 kernel events: `BufferCreated`, `BufferClosed`, `BufferModified`, `BufferSwitched`, `BufferSaved`, `CursorMoved`, `ModeChanged`, `WindowCreated`, `WindowClosed`, `WindowFocused`, `ViewportScrolled`, `FileOpened`, `FileTypeChanged`, `Shutdown`
+    - 4 driver events: `DisplayResized`, `FrameRendered`, `KeyInput`, `MouseInput`
+    - `Modification` enum (Insert/Delete/Replace/FullReplace)
+    - `KeyCode`, `Modifiers`, `MouseEvent`, `MouseButton` input types
+    - Priority constants: `CRITICAL` (0), `CORE` (10), `NORMAL` (50), `PLUGIN` (100), `LOW` (200)
+  - **Bridge Layer** (`lib/core/src/event_bus/mod.rs`):
+    - `kernel_events` module re-exports kernel event types
+    - `driver_events` module re-exports driver event types
+    - Enables gradual migration from lib/core to kernel EventBus
+  - 60+ new tests for context handlers, targeted events, and channel patterns
+  - Zero warnings (clippy pedantic + nursery)
+  - Part of Epic #150 (Project Kernel)
+
 - **Phase 5.2: Infrastructure Glue Code** (Issue #201) - Concrete implementations connecting kernel to drivers
   - **Runner Infrastructure** (`runner/src/`):
     - `SimpleBufferManager` - Thread-safe buffer storage implementing `BufferManager` trait
