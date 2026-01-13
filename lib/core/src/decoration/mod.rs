@@ -7,27 +7,23 @@
 //!
 //! The decoration system is built around a trait-based API:
 //!
-//! - **`LanguageRenderer`**: Trait that language modules implement to provide
+//! - **`DecorationProvider`**: Trait that language modules implement to provide
 //!   decorations for their file types.
 //! - **`DecorationStore`**: Per-buffer storage for decorations with efficient
 //!   line-based lookup.
-//! - **`LanguageRendererRegistry`**: Central registry for language renderers
-//!   enabling dynamic dispatch.
 //!
 //! ## Usage
 //!
-//! Language modules (e.g., `language/markdown`) implement `LanguageRenderer`
-//! and register with the registry. The runtime queries the registry to get
-//! the appropriate renderer for each buffer.
+//! Language modules (e.g., `language/markdown`) implement `DecorationProvider`
+//! and register with the plugin state registry. The runtime queries the registry
+//! to get the appropriate provider for each buffer.
 
 mod provider;
-mod registry;
 mod store;
 mod types;
 
 pub use {
     provider::{DecorationFactory, DecorationProvider, SharedDecorationFactory},
-    registry::LanguageRendererRegistry,
     store::{BufferDecorations, DecorationRef, DecorationStore},
-    types::{Decoration, DecorationContext, DecorationGroup, LanguageId, LanguageRenderer},
+    types::{Decoration, DecorationGroup},
 };

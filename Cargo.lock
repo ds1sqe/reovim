@@ -1766,14 +1766,6 @@ dependencies = [
  "tokio",
  "toml 0.8.23",
  "tracing",
- "tree-sitter",
- "tree-sitter-c 0.24.1",
- "tree-sitter-javascript 0.25.0",
- "tree-sitter-json",
- "tree-sitter-md",
- "tree-sitter-python 0.25.0",
- "tree-sitter-rust",
- "tree-sitter-toml-ng",
  "unicode-width",
  "walkdir",
 ]
@@ -1861,7 +1853,7 @@ version = "0.8.1"
 dependencies = [
  "reovim-core",
  "reovim-plugin-treesitter",
- "tree-sitter-c 0.23.4",
+ "tree-sitter-c",
 ]
 
 [[package]]
@@ -1870,7 +1862,7 @@ version = "0.8.1"
 dependencies = [
  "reovim-core",
  "reovim-plugin-treesitter",
- "tree-sitter-javascript 0.23.1",
+ "tree-sitter-javascript",
 ]
 
 [[package]]
@@ -1899,7 +1891,7 @@ version = "0.8.1"
 dependencies = [
  "reovim-core",
  "reovim-plugin-treesitter",
- "tree-sitter-python 0.23.6",
+ "tree-sitter-python",
 ]
 
 [[package]]
@@ -2778,30 +2770,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "tree-sitter-c"
-version = "0.24.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a3aad8f0129083a59fe8596157552d2bb7148c492d44c21558d68ca1c722707"
-dependencies = [
- "cc",
- "tree-sitter-language",
-]
-
-[[package]]
 name = "tree-sitter-javascript"
 version = "0.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf40bf599e0416c16c125c3cec10ee5ddc7d1bb8b0c60fa5c4de249ad34dc1b1"
-dependencies = [
- "cc",
- "tree-sitter-language",
-]
-
-[[package]]
-name = "tree-sitter-javascript"
-version = "0.25.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68204f2abc0627a90bdf06e605f5c470aa26fdcb2081ea553a04bdad756693f5"
 dependencies = [
  "cc",
  "tree-sitter-language",
@@ -2838,16 +2810,6 @@ name = "tree-sitter-python"
 version = "0.23.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d065aaa27f3aaceaf60c1f0e0ac09e1cb9eb8ed28e7bcdaa52129cffc7f4b04"
-dependencies = [
- "cc",
- "tree-sitter-language",
-]
-
-[[package]]
-name = "tree-sitter-python"
-version = "0.25.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6bf85fd39652e740bf60f46f4cda9492c3a9ad75880575bf14960f775cb74a1c"
 dependencies = [
  "cc",
  "tree-sitter-language",

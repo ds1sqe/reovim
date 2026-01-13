@@ -24,7 +24,6 @@ impl Runtime {
             indent_analyzer: &self.indent_analyzer,
             modifier_registry: Some(&self.modifier_registry),
             decoration_store: Some(&self.decoration_store),
-            renderer_registry: Some(&self.renderer_registry),
             render_stages: &self.render_stages,
             display_registry: &self.display_registry,
         };

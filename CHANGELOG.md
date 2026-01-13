@@ -588,6 +588,22 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
   - Dependency graph enforced: arch → kernel → drivers
   - `lib/drivers/syntax` has NO tree-sitter dependency (trait definitions only)
 
+### Removed
+
+- **Phase 5.4: Tree-sitter Removal from Core** (Issue #203) - Kernel purity achieved
+  - Removed 8 tree-sitter dependencies from `lib/core/Cargo.toml`:
+    - `tree-sitter`, `tree-sitter-rust`, `tree-sitter-c`, `tree-sitter-javascript`
+    - `tree-sitter-python`, `tree-sitter-json`, `tree-sitter-toml-ng`, `tree-sitter-md`
+  - Removed dead code that was never implemented:
+    - `LanguageId` enum - Language type identifier
+    - `DecorationContext` struct - Tree-sitter decoration context
+    - `LanguageRenderer` trait - Decoration rendering contract
+    - `LanguageRendererRegistry` - Registry for language renderers
+  - Deleted `lib/core/src/decoration/registry.rs` entirely
+  - Cleaned up runtime references (`renderer_registry` field)
+  - Active `DecorationProvider` system remains intact (tree-sitter agnostic)
+  - Tree-sitter now lives only in plugins where it belongs
+
 ### Fixed
 
 - **IPC Channel Clone** - Fixed `Sender<T>` and `BoundedSender<T>` Clone impl to not require `T: Clone` (matching std::sync::mpsc behavior)
