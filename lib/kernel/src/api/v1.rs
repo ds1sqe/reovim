@@ -165,8 +165,8 @@ mod tests {
 
     #[test]
     fn test_api_version() {
-        assert_eq!(API_VERSION, Version::new(1, 0, 0));
-        assert_eq!(API_VERSION_STR, "1.0.0");
+        assert_eq!(API_VERSION, Version::new(0, 2, 0));
+        assert_eq!(API_VERSION_STR, "0.2.0");
     }
 
     #[test]

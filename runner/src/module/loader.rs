@@ -15,7 +15,10 @@ use {
 
 use super::{
     discovery::{default_search_paths, discover_modules, find_module},
-    handle::{DestroyFn, EntryFn, ExitFn, FfiSymbols, InitFn, ModuleHandle, ProbeFn},
+    handle::{
+        DestroyFn, EntryFn, ExitFn, FfiSymbols, FreeStateFn, InitFn, ModuleHandle, ProbeFn,
+        RestoreStateFn, SaveStateFn, SupportsHotReloadFn,
+    },
 };
 
 /// Module loader supporting static and dynamic loading.
@@ -142,6 +145,16 @@ impl ModuleLoader {
                 .get(b"reovim_module_destroy")
                 .map_err(|e| ModuleError::NoEntryPoint(e.to_string()))?;
 
+            // 5b. Optional hot reload symbols (Phase 4.6)
+            let supports_hot_reload_fn: Option<Symbol<SupportsHotReloadFn>> =
+                library.get(b"reovim_module_supports_hot_reload").ok();
+            let save_state_fn: Option<Symbol<SaveStateFn>> =
+                library.get(b"reovim_module_save_state").ok();
+            let restore_state_fn: Option<Symbol<RestoreStateFn>> =
+                library.get(b"reovim_module_restore_state").ok();
+            let free_state_fn: Option<Symbol<FreeStateFn>> =
+                library.get(b"reovim_module_free_state").ok();
+
             // 6. Create module instance (returns OPAQUE thin pointer)
             let module_ptr = entry_fn();
             if module_ptr.is_null() {
@@ -157,6 +170,10 @@ impl ModuleLoader {
                 init: *init_fn,
                 exit: *exit_fn,
                 destroy: *destroy_fn,
+                supports_hot_reload: supports_hot_reload_fn.map(|s| *s),
+                save_state: save_state_fn.map(|s| *s),
+                restore_state: restore_state_fn.map(|s| *s),
+                free_state: free_state_fn.map(|s| *s),
             };
 
             // 8. Create handle with OPAQUE pointer

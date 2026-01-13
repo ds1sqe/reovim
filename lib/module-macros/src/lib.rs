@@ -116,6 +116,7 @@ use {
 /// - `-1`: Failed/Error
 /// - `-2`: Panic occurred
 #[proc_macro]
+#[allow(clippy::too_many_lines)] // FFI codegen requires many trampolines
 pub fn declare_module(input: TokenStream) -> TokenStream {
     let module_type = parse_macro_input!(input as Ident);
 
@@ -157,13 +158,39 @@ pub fn declare_module(input: TokenStream) -> TokenStream {
                 use ::reovim_kernel::api::v1::Module;
                 temp.api_version()
             };
+            let required_deps = {
+                use ::reovim_kernel::api::v1::Module;
+                temp.dependencies()
+            };
+            let optional_deps = {
+                use ::reovim_kernel::api::v1::Module;
+                temp.optional_dependencies()
+            };
 
-            ::reovim_kernel::api::v1::ModuleProbe::new(
+            // Build probe with all metadata
+            let mut probe = ::reovim_kernel::api::v1::ModuleProbe::new(
                 id.as_str(),
                 name,
                 version,
                 api_version,
-            )
+            );
+
+            // Add rustc version for ABI compatibility checking
+            // RUSTC_VERSION is set by build.rs or defaults to rustc_version crate
+            const RUSTC_VERSION: &str = env!("CARGO_PKG_RUST_VERSION");
+            probe = probe.with_rustc_version(RUSTC_VERSION);
+
+            // Add required dependencies (up to 8)
+            for (i, dep) in required_deps.iter().take(8).enumerate() {
+                probe = probe.with_required_dep(i, dep.as_str());
+            }
+
+            // Add optional dependencies (up to 8)
+            for (i, dep) in optional_deps.iter().take(8).enumerate() {
+                probe = probe.with_optional_dep(i, dep.as_str());
+            }
+
+            probe
         }
 
         // ====================================================================
@@ -265,6 +292,130 @@ pub fn declare_module(input: TokenStream) -> TokenStream {
                 // catch_unwind for Drop impl panic safety
                 let _ = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
                     drop(::std::boxed::Box::from_raw(module as *mut #module_type));
+                }));
+            }
+        }
+
+        // ====================================================================
+        // Hot Reload Trampolines (Phase 4.6 addition)
+        // ====================================================================
+
+        /// Check if module supports hot reload.
+        ///
+        /// # Returns
+        /// - 1: Supports hot reload
+        /// - 0: Does not support hot reload
+        /// - -1: Panic occurred
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_module_supports_hot_reload(
+            module: *const ::std::ffi::c_void,
+        ) -> i32 {
+            if module.is_null() {
+                return 0;
+            }
+            let result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &*(module as *const #module_type);
+                use ::reovim_kernel::api::v1::Module;
+                module.supports_hot_reload()
+            }));
+
+            match result {
+                Ok(true) => 1,
+                Ok(false) => 0,
+                Err(_) => -1, // Panic
+            }
+        }
+
+        /// Save module state for hot reload.
+        ///
+        /// # Returns
+        /// - 0: Success (state written to out_ptr/out_len)
+        /// - 1: No state to save (out_ptr is null, out_len is 0)
+        /// - -1: Panic occurred
+        ///
+        /// # Safety
+        /// - Caller must call reovim_module_free_state() on returned pointer
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_module_save_state(
+            module: *const ::std::ffi::c_void,
+            out_ptr: *mut *mut u8,
+            out_len: *mut usize,
+        ) -> i32 {
+            if module.is_null() || out_ptr.is_null() || out_len.is_null() {
+                return -1;
+            }
+
+            let result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &*(module as *const #module_type);
+                use ::reovim_kernel::api::v1::Module;
+                module.save_state()
+            }));
+
+            match result {
+                Ok(Some(data)) => {
+                    let len = data.len();
+                    let ptr = ::std::boxed::Box::into_raw(data) as *mut u8;
+                    *out_ptr = ptr;
+                    *out_len = len;
+                    0 // Success
+                }
+                Ok(None) => {
+                    *out_ptr = ::std::ptr::null_mut();
+                    *out_len = 0;
+                    1 // No state
+                }
+                Err(_) => -1, // Panic
+            }
+        }
+
+        /// Restore module state after hot reload.
+        ///
+        /// # Returns
+        /// - 0: Success
+        /// - -1: Error
+        /// - -2: Panic occurred
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_module_restore_state(
+            module: *mut ::std::ffi::c_void,
+            data: *const u8,
+            len: usize,
+        ) -> i32 {
+            if module.is_null() || (len > 0 && data.is_null()) {
+                return -1;
+            }
+
+            let result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let module = &mut *(module as *mut #module_type);
+                let slice = if len > 0 {
+                    ::std::slice::from_raw_parts(data, len)
+                } else {
+                    &[]
+                };
+                use ::reovim_kernel::api::v1::Module;
+                module.restore_state(slice)
+            }));
+
+            match result {
+                Ok(Ok(())) => 0,
+                Ok(Err(_)) => -1,
+                Err(_) => -2, // Panic
+            }
+        }
+
+        /// Free state buffer allocated by save_state.
+        ///
+        /// # Safety
+        /// - `ptr` must be from reovim_module_save_state() or null
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn reovim_module_free_state(
+            ptr: *mut u8,
+            len: usize,
+        ) {
+            if !ptr.is_null() && len > 0 {
+                let _ = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                    drop(::std::boxed::Box::from_raw(
+                        ::std::slice::from_raw_parts_mut(ptr, len)
+                    ));
                 }));
             }
         }

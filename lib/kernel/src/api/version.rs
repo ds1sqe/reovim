@@ -76,11 +76,12 @@ impl fmt::Display for Version {
 
 /// Current API version.
 ///
-/// This is the first stable release of the kernel API.
-pub const API_VERSION: Version = Version::new(1, 0, 0);
+/// This is a pre-release API (0.x.y). Breaking changes may occur between minor versions.
+/// Phase 4.6 bumped from 0.1.0 to 0.2.0 for ABI-breaking `ModuleProbe` extensions.
+pub const API_VERSION: Version = Version::new(0, 2, 0);
 
 /// Current API version as a string.
-pub const API_VERSION_STR: &str = "1.0.0";
+pub const API_VERSION_STR: &str = "0.2.0";
 
 // ============================================================================
 // Error Types
@@ -158,7 +159,7 @@ impl std::error::Error for VersionError {}
 /// use reovim_kernel::api::v1::{check_api_version, Version};
 ///
 /// // Check if kernel provides compatible API
-/// let result = check_api_version(Version::new(1, 0, 0));
+/// let result = check_api_version(Version::new(0, 2, 0));
 /// assert!(result.is_ok());
 /// ```
 pub const fn check_api_version(required: Version) -> Result<(), VersionError> {
@@ -235,8 +236,8 @@ mod tests {
 
     #[test]
     fn test_api_version_constants() {
-        assert_eq!(API_VERSION, Version::new(1, 0, 0));
-        assert_eq!(API_VERSION_STR, "1.0.0");
+        assert_eq!(API_VERSION, Version::new(0, 2, 0));
+        assert_eq!(API_VERSION_STR, "0.2.0");
     }
 
     #[test]
@@ -269,12 +270,17 @@ mod tests {
 
     #[test]
     fn test_check_api_version_compatible() {
-        assert!(check_api_version(Version::new(1, 0, 0)).is_ok());
+        // Exact match
+        assert!(check_api_version(Version::new(0, 2, 0)).is_ok());
+        // Older minor versions are compatible
+        assert!(check_api_version(Version::new(0, 1, 0)).is_ok());
+        assert!(check_api_version(Version::new(0, 0, 0)).is_ok());
     }
 
     #[test]
     fn test_check_api_version_major_mismatch() {
-        let result = check_api_version(Version::new(2, 0, 0));
+        // API is 0.2.0, requesting 1.0.0 should fail with major mismatch
+        let result = check_api_version(Version::new(1, 0, 0));
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert_eq!(err.kind, VersionErrorKind::MajorMismatch);
@@ -282,7 +288,8 @@ mod tests {
 
     #[test]
     fn test_check_api_version_minor_too_new() {
-        let result = check_api_version(Version::new(1, 5, 0));
+        // API is 0.2.0, requesting 0.5.0 should fail (minor too new)
+        let result = check_api_version(Version::new(0, 5, 0));
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert_eq!(err.kind, VersionErrorKind::MinorTooNew);
