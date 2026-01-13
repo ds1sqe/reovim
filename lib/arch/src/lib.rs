@@ -10,6 +10,8 @@
 //!
 //! - `traits`: Platform-agnostic trait definitions and types
 //! - `error`: Error types for arch operations
+//! - `sync`: Synchronization primitives (`RwLock`, `Mutex`)
+//! - `dirs`: Platform-specific directory paths
 //! - `unix`: Unix/Linux implementation using crossterm (cfg(unix))
 //! - `windows`: Windows implementation stubs (cfg(windows))
 //!
@@ -30,6 +32,7 @@
 //! - **Unix/Linux/macOS**: Full support via crossterm
 //! - **Windows**: Stub implementation (todo!() for all methods)
 
+pub mod dirs;
 pub mod error;
 pub mod sync;
 pub mod traits;

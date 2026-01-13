@@ -47,9 +47,11 @@ pub mod api;
 
 pub(crate) mod block;
 pub(crate) mod core;
+#[allow(dead_code)] // Infrastructure for future use
 pub(crate) mod debug;
 pub(crate) mod ipc;
 pub(crate) mod mm;
+#[allow(dead_code)] // Infrastructure for future use
 pub(crate) mod panic;
 pub(crate) mod printk;
 pub(crate) mod sched;

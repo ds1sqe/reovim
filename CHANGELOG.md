@@ -15,6 +15,24 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 5.2: Infrastructure Glue Code** (Issue #201) - Concrete implementations connecting kernel to drivers
+  - **Runner Infrastructure** (`runner/src/`):
+    - `SimpleBufferManager` - Thread-safe buffer storage implementing `BufferManager` trait
+    - `StandardVfs` - Zero-sized VFS driver wrapping `std::fs` (17 methods)
+    - `KernelContextBuilder` - Builder pattern for kernel context assembly
+  - **Kernel debug/ Subsystem** (`lib/kernel/src/debug/`):
+    - `TracePoint` + `TraceSink` - Runtime-toggleable trace points (Linux `kernel/trace/` inspired)
+    - `Counter` + `Histogram` + `MetricsRegistry` - Lock-free metrics with atomic operations
+    - `ProfileGuard` - RAII scope timing with automatic histogram recording
+  - **Kernel panic/ Subsystem** (`lib/kernel/src/panic/`):
+    - `install_panic_handler()` - Custom panic handler with recovery callbacks
+    - `save_buffer_for_recovery()` - Emergency buffer state preservation
+    - `CrashReport` - Structured crash reports with backtrace and version info
+  - **Arch Layer Extensions** (`lib/arch/`):
+    - `dirs` module wrapping `dirs` crate for kernel purity (platform-specific paths)
+  - 28 new tests across all components
+  - Zero warnings (clippy pedantic + nursery)
+
 - **Phase 5.1: Mechanism vs Policy Refactoring** (Issue #200) - FOUNDATION for Phase 5
   - Core principle: "Provide mechanism, not policy" - kernel provides WHAT, modules decide HOW
   - **Kernel Mechanisms** (`lib/kernel/src/api/`):
