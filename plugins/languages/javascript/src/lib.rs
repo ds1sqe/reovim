@@ -1,4 +1,15 @@
 //! JavaScript language support for reovim
+//!
+//! This plugin provides JavaScript syntax highlighting via tree-sitter.
+//!
+//! # New API (Issue #206)
+//!
+//! Use `register()` to register with `TreeSitterDriverFactory`:
+//!
+//! ```ignore
+//! use reovim_lang_javascript::register;
+//! register(&factory);
+//! ```
 
 use std::{any::TypeId, sync::Arc};
 
@@ -7,8 +18,34 @@ use {
         event_bus::EventBus,
         plugin::{Plugin, PluginContext, PluginId, PluginStateRegistry},
     },
-    reovim_plugin_treesitter::{LanguageSupport, RegisterLanguage, TreesitterPlugin},
+    reovim_plugin_treesitter::{
+        LanguageConfig, LanguageSupport, RegisterLanguage, TreeSitterDriverFactory,
+        TreesitterPlugin,
+    },
 };
+
+// ============================================================================
+// New API (Issue #206)
+// ============================================================================
+
+/// Register JavaScript language with the driver factory.
+///
+/// This is the new API for Issue #206. Call this during plugin initialization
+/// to register JavaScript language support with the `TreeSitterDriverFactory`.
+pub fn register(factory: &TreeSitterDriverFactory) {
+    factory.register(LanguageConfig {
+        id: "javascript",
+        language: tree_sitter_javascript::LANGUAGE.into(),
+        highlights_query: include_str!("queries/highlights.scm"),
+        folds_query: Some(include_str!("queries/folds.scm")),
+        injections_query: None,
+        extensions: &["js", "jsx", "mjs", "cjs"],
+    });
+}
+
+// ============================================================================
+// Legacy API (kept for backward compatibility during migration)
+// ============================================================================
 
 /// JavaScript language support
 pub struct JavaScriptLanguage;
@@ -36,6 +73,54 @@ impl LanguageSupport for JavaScriptLanguage {
 
     fn textobjects_query(&self) -> Option<&'static str> {
         Some(include_str!("queries/textobjects.scm"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use {super::*, reovim_driver_syntax::SyntaxDriverFactory};
+
+    #[test]
+    fn test_javascript_registration() {
+        let factory = TreeSitterDriverFactory::new();
+        register(&factory);
+
+        assert!(factory.supports("javascript"));
+        assert_eq!(factory.language_count(), 1);
+    }
+
+    #[test]
+    fn test_javascript_driver_creation() {
+        let factory = TreeSitterDriverFactory::new();
+        register(&factory);
+
+        let driver = factory.create("javascript");
+        assert!(driver.is_some());
+        assert_eq!(driver.unwrap().language(), "javascript");
+    }
+
+    #[test]
+    fn test_javascript_highlighting() {
+        let factory = TreeSitterDriverFactory::new();
+        register(&factory);
+
+        let mut driver = factory.create("javascript").unwrap();
+        driver.parse("const x = 42; function foo() { return x; }");
+
+        assert!(driver.is_parsed());
+        let highlights = driver.highlights(0..43);
+        assert!(!highlights.is_empty());
+    }
+
+    #[test]
+    fn test_javascript_file_extensions() {
+        let factory = TreeSitterDriverFactory::new();
+        register(&factory);
+
+        assert_eq!(factory.detect_language("app.js"), Some("javascript".to_string()));
+        assert_eq!(factory.detect_language("app.jsx"), Some("javascript".to_string()));
+        assert_eq!(factory.detect_language("app.mjs"), Some("javascript".to_string()));
+        assert_eq!(factory.detect_language("app.cjs"), Some("javascript".to_string()));
     }
 }
 

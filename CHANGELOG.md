@@ -15,6 +15,34 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 5.7: Language Plugin Conversion to SyntaxDriver** (Issue #206) - All language plugins use new driver API
+  - **New `register()` API**: All 8 language plugins converted to use `TreeSitterDriverFactory::register()`
+    - JSON (json, jsonc) - 4 tests
+    - TOML (toml) - 4 tests
+    - Bash (sh, bash, zsh, bashrc, zshrc, profile) - 4 tests
+    - C (c, h) - 4 tests
+    - JavaScript (js, jsx, mjs, cjs) - 4 tests
+    - Python (py, pyi, pyw) - 4 tests
+    - Rust (rs) - 6 tests (includes injection query for doc comments)
+    - Markdown (md, markdown) - 6 tests (dual grammar with inline injection)
+  - **Injection Support**: `TreeSitterDriver::injections()` implementation
+    - Handles `@injection.language` captures (Markdown code blocks)
+    - Handles `#set! injection.language` properties (Rust doc comments)
+    - Returns `Vec<Injection>` with byte ranges and positions
+  - **Dual Grammar**: Markdown registers both `markdown` and `markdown_inline` languages
+    - Block grammar: Document structure (headings, lists, code blocks)
+    - Inline grammar: Inline formatting (bold, italic, links) - injected only
+  - **Test Coverage**: 36 new unit tests across all language plugins
+    - Registration verification (`factory.supports()`)
+    - Driver creation (`factory.create()`)
+    - Basic highlighting (`driver.parse()` + `highlights()`)
+    - File extension detection (`factory.detect_language()`)
+  - **Backward Compatibility**: Legacy `LanguageSupport` API preserved during migration
+  - **Technical Notes**:
+    - Factory uses interior mutability (RwLock) so `register()` takes `&self`
+    - All queries (highlights, folds, injections) cached via QueryCache
+    - Clippy-clean with zero warnings
+
 - **Phase 5.2: Infrastructure Glue Code** (Issue #201) - Concrete implementations connecting kernel to drivers
   - **Runner Infrastructure** (`runner/src/`):
     - `SimpleBufferManager` - Thread-safe buffer storage implementing `BufferManager` trait

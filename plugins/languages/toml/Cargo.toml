@@ -10,3 +10,6 @@ repository.workspace = true
 reovim-core.workspace = true
 reovim-plugin-treesitter.workspace = true
 tree-sitter-toml-ng = "0.7"
+
+[dev-dependencies]
+reovim-driver-syntax.workspace = true

@@ -9,6 +9,7 @@ repository.workspace = true
 [dependencies]
 reovim-core.workspace = true
 reovim-sys.workspace = true
+reovim-driver-syntax.workspace = true
 tracing.workspace = true
 tokio.workspace = true
 
