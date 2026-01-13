@@ -9,7 +9,7 @@ use crate::{
     ipc::EventBus,
 };
 
-use super::buffer_manager::BufferManager;
+use super::{buffer_manager::BufferManager, module::ModuleId};
 
 // ============================================================================
 // KernelContext
@@ -116,6 +116,11 @@ pub struct ModuleContext {
     ///
     /// e.g., `~/.cache/reovim/modules/<module-id>/`
     pub cache_dir: PathBuf,
+    /// Optional dependencies that were successfully loaded (Phase 4.6 addition).
+    ///
+    /// Populated by the module registry before calling `init()`.
+    /// Use `has_optional_dep()` or `optional_deps()` to query.
+    loaded_optional_deps: Vec<ModuleId>,
 }
 
 impl ModuleContext {
@@ -126,7 +131,63 @@ impl ModuleContext {
             kernel,
             data_dir,
             cache_dir,
+            loaded_optional_deps: Vec::new(),
         }
+    }
+
+    /// Create a module context with optional dependencies info.
+    #[must_use]
+    pub const fn with_optional_deps(
+        kernel: KernelContext,
+        data_dir: PathBuf,
+        cache_dir: PathBuf,
+        loaded_optional_deps: Vec<ModuleId>,
+    ) -> Self {
+        Self {
+            kernel,
+            data_dir,
+            cache_dir,
+            loaded_optional_deps,
+        }
+    }
+
+    /// Check if an optional dependency was loaded.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use reovim_kernel::api::v1::{ModuleContext, ModuleId};
+    ///
+    /// fn init(ctx: &ModuleContext) {
+    ///     if ctx.has_optional_dep(&ModuleId::new("lsp")) {
+    ///         // Enable LSP integration
+    ///     }
+    /// }
+    /// ```
+    #[must_use]
+    pub fn has_optional_dep(&self, id: &ModuleId) -> bool {
+        self.loaded_optional_deps.iter().any(|dep| dep == id)
+    }
+
+    /// Get all loaded optional dependencies.
+    ///
+    /// Returns a slice of `ModuleId`s for optional dependencies that were
+    /// successfully loaded before this module's initialization.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use reovim_kernel::api::v1::ModuleContext;
+    ///
+    /// fn init(ctx: &ModuleContext) {
+    ///     for dep in ctx.optional_deps() {
+    ///         println!("Optional dep available: {}", dep.as_str());
+    ///     }
+    /// }
+    /// ```
+    #[must_use]
+    pub fn optional_deps(&self) -> &[ModuleId] {
+        &self.loaded_optional_deps
     }
 }
 
@@ -136,6 +197,7 @@ impl fmt::Debug for ModuleContext {
             .field("kernel", &self.kernel)
             .field("data_dir", &self.data_dir)
             .field("cache_dir", &self.cache_dir)
+            .field("loaded_optional_deps", &self.loaded_optional_deps)
             .finish()
     }
 }
@@ -150,6 +212,7 @@ impl Default for ModuleContext {
             kernel: KernelContext::default(),
             data_dir: PathBuf::from("/tmp/reovim-test/data"),
             cache_dir: PathBuf::from("/tmp/reovim-test/cache"),
+            loaded_optional_deps: Vec::new(),
         }
     }
 }

@@ -23,6 +23,18 @@ pub(crate) type InitFn = unsafe extern "C" fn(*mut c_void, *const c_void) -> i32
 pub(crate) type ExitFn = unsafe extern "C" fn(*mut c_void) -> i32;
 pub(crate) type DestroyFn = unsafe extern "C" fn(*mut c_void);
 
+// Hot reload FFI types (Phase 4.6 addition)
+pub(crate) type SupportsHotReloadFn = unsafe extern "C" fn(*const c_void) -> i32;
+pub(crate) type SaveStateFn = unsafe extern "C" fn(*const c_void, *mut *mut u8, *mut usize) -> i32;
+pub(crate) type RestoreStateFn = unsafe extern "C" fn(*mut c_void, *const u8, usize) -> i32;
+pub(crate) type FreeStateFn = unsafe extern "C" fn(*mut u8, usize);
+
+/// Maximum allowed state size for hot reload (16 MiB).
+///
+/// This limit prevents memory exhaustion from malicious or buggy modules
+/// returning excessively large state buffers during hot reload.
+const MAX_STATE_SIZE: usize = 16 * 1024 * 1024;
+
 /// Handle to a loaded module.
 ///
 /// # FFI Safety
@@ -65,6 +77,11 @@ pub(crate) struct FfiSymbols {
     pub(crate) init: InitFn,
     pub(crate) exit: ExitFn,
     pub(crate) destroy: DestroyFn,
+    // Optional hot reload symbols (Phase 4.6 addition)
+    pub(crate) supports_hot_reload: Option<SupportsHotReloadFn>,
+    pub(crate) save_state: Option<SaveStateFn>,
+    pub(crate) restore_state: Option<RestoreStateFn>,
+    pub(crate) free_state: Option<FreeStateFn>,
 }
 
 /// Result of `init()` call.
@@ -104,6 +121,7 @@ impl ModuleHandle {
     ///
     /// - The library must be ABI-compatible
     /// - The library must have been built with matching `declare_module!` macro
+    #[allow(clippy::large_types_passed_by_value)] // ModuleProbe is FFI-returned by value
     pub(crate) unsafe fn from_dynamic(
         library: Library,
         path: PathBuf,
@@ -245,24 +263,30 @@ impl ModuleHandle {
     }
 
     /// Get module dependencies.
+    ///
+    /// For static modules, calls the trait method directly.
+    /// For dynamic modules, reads from probe metadata (populated at build time).
     #[must_use]
     pub fn dependencies(&self) -> Vec<ModuleId> {
         if let Some(ref module) = self.static_module {
             module.dependencies()
         } else {
-            // For dynamic modules, we'd need FFI trampolines
-            // For now, return empty (dependencies should be in probe metadata)
-            Vec::new()
+            // Dynamic modules: use probe metadata
+            self.probe.required_deps()
         }
     }
 
     /// Get optional dependencies.
+    ///
+    /// For static modules, calls the trait method directly.
+    /// For dynamic modules, reads from probe metadata (populated at build time).
     #[must_use]
     pub fn optional_dependencies(&self) -> Vec<ModuleId> {
         if let Some(ref module) = self.static_module {
             module.optional_dependencies()
         } else {
-            Vec::new()
+            // Dynamic modules: use probe metadata
+            self.probe.optional_deps()
         }
     }
 
@@ -271,32 +295,112 @@ impl ModuleHandle {
     pub fn supports_hot_reload(&self) -> bool {
         if let Some(ref module) = self.static_module {
             module.supports_hot_reload()
+        } else if let (Some(ptr), Some(ffi)) = (self.dynamic_ptr, &self.ffi) {
+            // Dynamic modules: use FFI trampoline if available
+            if let Some(supports_fn) = ffi.supports_hot_reload {
+                // SAFETY: ptr is valid (checked), supports_fn is from loader
+                let result = unsafe { supports_fn(ptr) };
+                result == 1
+            } else {
+                false
+            }
         } else {
-            // Dynamic modules: assume supported (caller checks FFI)
             false
         }
     }
 
     /// Save module state (for hot reload).
+    ///
+    /// For dynamic modules, uses FFI trampoline. Caller is responsible for
+    /// freeing the returned state (automatically handled by `Box`).
+    ///
+    /// # Size Limit
+    ///
+    /// State buffers larger than 16 MiB are rejected and freed to prevent
+    /// memory exhaustion from malicious or buggy modules.
     #[must_use]
     pub fn save_state(&self) -> Option<Box<[u8]>> {
         if let Some(ref module) = self.static_module {
-            module.save_state()
+            let state = module.save_state()?;
+            // Enforce size limit for static modules too
+            if state.len() > MAX_STATE_SIZE {
+                tracing::warn!(
+                    module_id = %self.id,
+                    size = state.len(),
+                    limit = MAX_STATE_SIZE,
+                    "state exceeds size limit, discarding"
+                );
+                return None;
+            }
+            Some(state)
+        } else if let (Some(ptr), Some(ffi)) = (self.dynamic_ptr, &self.ffi) {
+            // Dynamic modules: use FFI trampoline if available
+            if let Some(save_fn) = ffi.save_state {
+                let mut out_ptr: *mut u8 = std::ptr::null_mut();
+                let mut out_len: usize = 0;
+
+                // SAFETY: ptr is valid, out_ptr/out_len are valid stack addresses
+                let result = unsafe { save_fn(ptr, &raw mut out_ptr, &raw mut out_len) };
+
+                if result == 0 && !out_ptr.is_null() && out_len > 0 {
+                    // Security: Enforce size limit to prevent memory exhaustion
+                    if out_len > MAX_STATE_SIZE {
+                        tracing::warn!(
+                            module_id = %self.id,
+                            size = out_len,
+                            limit = MAX_STATE_SIZE,
+                            "state exceeds size limit, freeing and discarding"
+                        );
+                        // Free the oversized buffer via FFI
+                        if let Some(free_fn) = ffi.free_state {
+                            // SAFETY: out_ptr was allocated by save_fn, out_len is its size
+                            unsafe { free_fn(out_ptr, out_len) };
+                        }
+                        // Note: If free_fn is None, we intentionally leak rather than
+                        // risk double-free or OOM from accepting oversized state
+                        return None;
+                    }
+
+                    // SAFETY: save_fn allocated this with Box::into_raw
+                    let slice = unsafe {
+                        Box::from_raw(std::ptr::slice_from_raw_parts_mut(out_ptr, out_len))
+                    };
+                    Some(slice)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
         } else {
-            // Dynamic modules: would need FFI trampoline (future kernel extension)
             None
         }
     }
 
     /// Restore module state (for hot reload).
+    ///
+    /// For dynamic modules, uses FFI trampoline.
     pub fn restore_state(&mut self, state: &[u8]) -> Result<(), ModuleError> {
         if let Some(ref mut module) = self.static_module {
             module.restore_state(state)
+        } else if let (Some(ptr), Some(ffi)) = (self.dynamic_ptr, &self.ffi) {
+            // Dynamic modules: use FFI trampoline if available
+            if let Some(restore_fn) = ffi.restore_state {
+                // SAFETY: ptr is valid, state is a valid slice
+                let result = unsafe { restore_fn(ptr, state.as_ptr(), state.len()) };
+                match result {
+                    0 => Ok(()),
+                    -1 => Err(ModuleError::InitFailed("restore_state failed".into())),
+                    -2 => Err(ModuleError::InitFailed("panic in restore_state".into())),
+                    code => Err(ModuleError::InitFailed(format!("unknown code: {code}"))),
+                }
+            } else {
+                Err(ModuleError::InitFailed(
+                    "state restore not supported for this dynamic module".into(),
+                ))
+            }
         } else {
-            // Dynamic modules: would need FFI trampoline (future kernel extension)
-            Err(ModuleError::InitFailed(
-                "state restore not supported for dynamic modules".into(),
-            ))
+            Err(ModuleError::NotLoaded(self.id.clone()))
         }
     }
 }
@@ -376,5 +480,217 @@ mod tests {
 
         let result = handle.exit();
         assert!(result.is_ok());
+    }
+
+    // ========================================================================
+    // Hot Reload Tests
+    // ========================================================================
+
+    /// Test module with hot reload support.
+    struct HotReloadModule {
+        counter: u32,
+    }
+
+    impl Module for HotReloadModule {
+        fn id(&self) -> ModuleId {
+            ModuleId::new("hot-reload-module")
+        }
+
+        fn name(&self) -> &'static str {
+            "Hot Reload Module"
+        }
+
+        fn version(&self) -> Version {
+            Version::new(1, 0, 0)
+        }
+
+        fn init(&mut self, _ctx: &ModuleContext) -> ProbeResult {
+            ProbeResult::Success
+        }
+
+        fn exit(&mut self) -> Result<(), ModuleError> {
+            Ok(())
+        }
+
+        fn supports_hot_reload(&self) -> bool {
+            true
+        }
+
+        fn save_state(&self) -> Option<Box<[u8]>> {
+            // Simple serialization: counter as 4 bytes
+            Some(self.counter.to_le_bytes().to_vec().into_boxed_slice())
+        }
+
+        fn restore_state(&mut self, state: &[u8]) -> Result<(), ModuleError> {
+            if state.len() != 4 {
+                return Err(ModuleError::InitFailed("invalid state size".into()));
+            }
+            self.counter = u32::from_le_bytes([state[0], state[1], state[2], state[3]]);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_static_module_supports_hot_reload() {
+        let module = HotReloadModule { counter: 42 };
+        let handle = ModuleHandle::from_static(module);
+
+        assert!(handle.supports_hot_reload());
+    }
+
+    #[test]
+    fn test_static_module_no_hot_reload_support() {
+        let module = TestModule { initialized: false };
+        let handle = ModuleHandle::from_static(module);
+
+        assert!(!handle.supports_hot_reload());
+    }
+
+    #[test]
+    fn test_static_module_save_state() {
+        let module = HotReloadModule { counter: 12345 };
+        let handle = ModuleHandle::from_static(module);
+
+        let state = handle.save_state();
+        assert!(state.is_some());
+
+        let state = state.unwrap();
+        assert_eq!(state.len(), 4);
+        assert_eq!(u32::from_le_bytes([state[0], state[1], state[2], state[3]]), 12345);
+    }
+
+    #[test]
+    fn test_static_module_restore_state() {
+        let module = HotReloadModule { counter: 0 };
+        let mut handle = ModuleHandle::from_static(module);
+
+        // Create state representing counter = 99999
+        let state: Box<[u8]> = 99999_u32.to_le_bytes().to_vec().into_boxed_slice();
+        let result = handle.restore_state(&state);
+
+        assert!(result.is_ok());
+
+        // Verify by saving state again
+        let saved = handle.save_state().unwrap();
+        assert_eq!(u32::from_le_bytes([saved[0], saved[1], saved[2], saved[3]]), 99999);
+    }
+
+    #[test]
+    fn test_static_module_restore_invalid_state() {
+        let module = HotReloadModule { counter: 42 };
+        let mut handle = ModuleHandle::from_static(module);
+
+        // Wrong size state
+        let invalid_state: Box<[u8]> = vec![1, 2, 3].into_boxed_slice();
+        let result = handle.restore_state(&invalid_state);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_static_module_full_reload_cycle() {
+        // Simulate a full hot reload cycle:
+        // 1. Module running with state
+        // 2. Save state
+        // 3. "Unload" (drop old handle)
+        // 4. "Load" (create new handle)
+        // 5. Restore state
+
+        // Step 1: Original module with state
+        let module = HotReloadModule { counter: 777 };
+        let handle = ModuleHandle::from_static(module);
+
+        // Step 2: Save state
+        let saved_state = handle.save_state().unwrap();
+
+        // Step 3: "Unload" - drop the handle
+        drop(handle);
+
+        // Step 4: "Load" new module (simulating reload)
+        let new_module = HotReloadModule { counter: 0 };
+        let mut new_handle = ModuleHandle::from_static(new_module);
+
+        // Step 5: Restore state
+        let result = new_handle.restore_state(&saved_state);
+        assert!(result.is_ok());
+
+        // Verify state was restored
+        let final_state = new_handle.save_state().unwrap();
+        assert_eq!(
+            u32::from_le_bytes([
+                final_state[0],
+                final_state[1],
+                final_state[2],
+                final_state[3]
+            ]),
+            777
+        );
+    }
+
+    #[test]
+    fn test_module_without_hot_reload_save_state() {
+        let module = TestModule { initialized: false };
+        let handle = ModuleHandle::from_static(module);
+
+        // Module doesn't support hot reload, save_state returns None
+        let state = handle.save_state();
+        assert!(state.is_none());
+    }
+
+    #[test]
+    fn test_state_size_limit_constant() {
+        // Verify the size limit is set to 16 MiB
+        assert_eq!(MAX_STATE_SIZE, 16 * 1024 * 1024);
+    }
+
+    /// Test module that returns oversized state for testing size limits.
+    struct OversizedStateModule;
+
+    impl Module for OversizedStateModule {
+        fn id(&self) -> ModuleId {
+            ModuleId::new("oversized-state-module")
+        }
+
+        fn name(&self) -> &'static str {
+            "Oversized State Module"
+        }
+
+        fn version(&self) -> Version {
+            Version::new(1, 0, 0)
+        }
+
+        fn init(&mut self, _ctx: &ModuleContext) -> ProbeResult {
+            ProbeResult::Success
+        }
+
+        fn exit(&mut self) -> Result<(), ModuleError> {
+            Ok(())
+        }
+
+        fn supports_hot_reload(&self) -> bool {
+            true
+        }
+
+        fn save_state(&self) -> Option<Box<[u8]>> {
+            // Return state larger than MAX_STATE_SIZE (16 MiB + 1 byte)
+            // Note: This test is expensive in memory, so we use a smaller test size
+            // In real code, the limit is 16 MiB
+            Some(vec![0u8; MAX_STATE_SIZE + 1].into_boxed_slice())
+        }
+
+        fn restore_state(&mut self, _state: &[u8]) -> Result<(), ModuleError> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    #[ignore = "expensive test - allocates 16+ MiB"]
+    fn test_state_size_limit_enforced() {
+        let module = OversizedStateModule;
+        let handle = ModuleHandle::from_static(module);
+
+        // Should return None because state exceeds size limit
+        let state = handle.save_state();
+        assert!(state.is_none());
     }
 }

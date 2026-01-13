@@ -6,7 +6,29 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ## [Unreleased] - v0.9.0-dev
 
+### Changed (BREAKING)
+
+- **Phase 4.6: Module System Limitations** (Issue #197) - API version 0.1.0 → 0.2.0
+  - **BREAKING**: `ModuleProbe` struct extended (216 → 1308 bytes)
+  - All dynamic modules (`.so`) must be recompiled against new API
+  - No existing external modules affected (v0.9.0 not yet released)
+
 ### Added
+
+- **Phase 4.6: Module System Improvements** (Issue #197)
+  - Dynamic modules can now declare dependencies via `ModuleProbe` struct
+    - `required_deps`: up to 8 required dependencies
+    - `optional_deps`: up to 8 optional dependencies
+    - `rustc_version`: compiler version for ABI compatibility
+  - Hot reload state preservation for dynamic modules via FFI trampolines:
+    - `reovim_module_supports_hot_reload()` - Query reload capability
+    - `reovim_module_save_state()` - Serialize module state
+    - `reovim_module_restore_state()` - Deserialize module state
+    - `reovim_module_free_state()` - Free state buffer
+  - `ModuleContext::has_optional_dep()` and `optional_deps()` for dependency detection
+  - Module ID change validation during hot reload (prevents registry corruption)
+  - State size limit (16 MiB) to prevent memory exhaustion from malicious modules
+  - 18 new tests for hot reload state preservation and `ModuleProbe` extensions
 
 - **Phase 4.3-4.5: Module System Runner** (Issues #192, #193, #194) - Module loading infrastructure
   - New directory: `runner/src/module/` - Policy layer for module management

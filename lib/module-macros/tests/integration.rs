@@ -450,8 +450,10 @@ fn test_thin_pointer_size() {
 #[test]
 fn test_probe_struct_ffi_safe() {
     // Verify ModuleProbe has expected size for FFI
-    // id: 64 + name: 128 + version: 12 + api_version: 12 = 216
-    assert_eq!(std::mem::size_of::<ModuleProbe>(), 216);
+    // id: 64 + name: 128 + version: 12 + api_version: 12 + rustc_version: 64
+    // + required_deps_count: 1 + required_deps: 512 + optional_deps_count: 1
+    // + optional_deps: 512 + padding: 2 = 1308
+    assert_eq!(std::mem::size_of::<ModuleProbe>(), 1308);
 }
 
 // ============================================================================

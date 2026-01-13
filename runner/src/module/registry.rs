@@ -372,6 +372,16 @@ impl ModuleRegistry {
                 ModuleError::LoadFailed("cannot reload static module or missing path".into())
             })?;
 
+        // 2.5. Save state before unloading (Phase 4.6 addition)
+        let saved_state = inner
+            .loader
+            .modules
+            .get(id)
+            .and_then(super::handle::ModuleHandle::save_state);
+        if saved_state.is_some() {
+            tracing::debug!(module = %id, "saved state for hot reload");
+        }
+
         // 3. Unload the module
         if let Some(handle) = inner.loader.modules.get_mut(id) {
             handle.exit()?;
@@ -386,11 +396,38 @@ impl ModuleRegistry {
         // 4. Reload from same path
         // SAFETY: Caller ensures shared library is ABI-compatible
         let new_id = unsafe { inner.loader.load_dynamic(&path)? };
+
+        // 4.5. Validate ID didn't change (Phase 4.6 addition)
+        if &new_id != id {
+            // Cleanup the incorrectly-loaded module
+            inner.loader.modules.remove(&new_id);
+            return Err(ModuleError::LoadFailed(format!(
+                "module ID changed during reload: expected '{}', got '{}'",
+                id.as_str(),
+                new_id.as_str()
+            )));
+        }
+
         inner.states.insert(new_id.clone(), ModuleState::Loaded);
 
         // 5. Reinitialize
         match inner.init_single(&new_id, ctx) {
             Ok(super::handle::InitResult::Success) => {
+                // 5.5. Restore state after successful init (Phase 4.6 addition)
+                if let Some(state) = saved_state
+                    && let Some(handle) = inner.loader.modules.get_mut(&new_id)
+                {
+                    if let Err(e) = handle.restore_state(&state) {
+                        tracing::warn!(
+                            module = %new_id,
+                            error = %e,
+                            "failed to restore state after hot reload"
+                        );
+                    } else {
+                        tracing::debug!(module = %new_id, "restored state after hot reload");
+                    }
+                }
+
                 tracing::info!(module = %new_id, "hot reload successful");
                 Ok(())
             }
