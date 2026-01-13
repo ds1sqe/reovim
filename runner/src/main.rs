@@ -163,6 +163,24 @@ async fn main() -> Result<(), io::Error> {
     screen.initialize()?;
     tracing::info!("==> Screen initialized: width={}, height={}", screen.width(), screen.height());
 
+    // Initialize kernel module system
+    tracing::info!("==> Initializing kernel module system");
+    let module_registry = module::ModuleRegistry::new();
+    if let Err(e) = module::register_defaults(&module_registry) {
+        tracing::warn!("Failed to register default modules: {}", e);
+    } else {
+        let data_dir = dirs::data_dir();
+        let cache_dir = dirs::cache_dir();
+        let kernel_ctx = context::build_default_kernel_context();
+        let module_ctx =
+            context::build_module_context(kernel_ctx, "__runtime__", &data_dir, &cache_dir);
+        if let Err(e) = module_registry.init_all(&module_ctx) {
+            tracing::warn!("Failed to initialize modules: {}", e);
+        } else {
+            tracing::info!("==> Kernel module system initialized");
+        }
+    }
+
     tracing::info!("==> Creating runtime with plugins");
     let mut runtime = Runtime::with_plugins(screen, AllPlugins)
         .with_file(cli.file)

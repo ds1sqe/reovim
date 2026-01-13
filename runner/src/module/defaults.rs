@@ -1,6 +1,6 @@
 //! Default module registration.
 //!
-//! Registers the bundled policy modules (keymap, operators, commands).
+//! Registers the bundled policy modules (keymap, operators, commands, buffer-ops, etc.).
 //!
 //! # Architecture
 //!
@@ -8,11 +8,20 @@
 //! - **keymap**: Vim keybindings (which keys trigger which actions)
 //! - **operators**: Vim operators (d, y, c behavior)
 //! - **commands**: Ex commands (:w, :q, :wq)
+//! - **buffer-ops**: Buffer lifecycle event handlers
+//! - **window-ops**: Window lifecycle event handlers
+//! - **mode-manager**: Mode state transition handlers
 //!
 //! The kernel provides the mechanisms (motion calculation, buffer operations),
 //! these modules decide HOW those mechanisms are used.
 
 use {reovim_kernel::api::v1::ModuleError, reovim_module_defaults::DefaultsModule};
+
+// Event handler modules (Phase 2 of runtime consolidation)
+use {
+    reovim_module_buffer_ops::BufferOps, reovim_module_mode_manager::ModeManager,
+    reovim_module_window_ops::WindowOps,
+};
 
 use super::ModuleRegistry;
 
@@ -23,6 +32,9 @@ use super::ModuleRegistry;
 /// - `operators`: Vim operators (delete, yank, change)
 /// - `commands`: Ex commands (write, quit)
 /// - `defaults`: Bundle aggregator
+/// - `buffer-ops`: Buffer lifecycle event handlers
+/// - `window-ops`: Window lifecycle event handlers
+/// - `mode-manager`: Mode state transition handlers
 ///
 /// # Errors
 ///
@@ -39,7 +51,20 @@ pub fn register_defaults(registry: &ModuleRegistry) -> Result<(), ModuleError> {
 
     // Register the bundle module
     registry.register(DefaultsModule)?;
-    tracing::info!("registered {} default modules", 4);
+
+    // Register event handler modules (Phase 2 of runtime consolidation)
+    // These modules subscribe to kernel EventBus events and coordinate
+    // editor behavior across buffer, window, and mode state changes.
+    registry.register(BufferOps::new())?;
+    tracing::debug!("registered buffer-ops module");
+
+    registry.register(WindowOps::new())?;
+    tracing::debug!("registered window-ops module");
+
+    registry.register(ModeManager::new())?;
+    tracing::debug!("registered mode-manager module");
+
+    tracing::info!("registered {} default modules", 7);
 
     Ok(())
 }
@@ -62,6 +87,10 @@ mod tests {
         assert!(ids.iter().any(|id| id.as_str() == "operators"));
         assert!(ids.iter().any(|id| id.as_str() == "commands"));
         assert!(ids.iter().any(|id| id.as_str() == "defaults"));
+        // Event handler modules (Phase 2)
+        assert!(ids.iter().any(|id| id.as_str() == "buffer-ops"));
+        assert!(ids.iter().any(|id| id.as_str() == "window-ops"));
+        assert!(ids.iter().any(|id| id.as_str() == "mode-manager"));
     }
 
     #[test]

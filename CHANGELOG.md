@@ -15,6 +15,17 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 5.8: Runtime & Event Loop Consolidation** (Issue #207) - Event handler modules
+  - **New Policy Modules** (`modules/`):
+    - `buffer-ops` - Subscribes to BufferCreated, BufferModified, BufferClosed, BufferSwitched
+    - `window-ops` - Subscribes to WindowCreated, WindowClosed, WindowFocused, ViewportScrolled
+    - `mode-manager` - Subscribes to ModeChanged
+  - All modules use `subscribe_with_context()` with priority levels (CORE/NORMAL/LOW)
+  - RAII pattern for subscription lifecycle (stored in `Vec<Subscription>`)
+  - Registered and initialized in runner (main.rs, server.rs)
+  - Part of concept-extraction strategy: fresh implementations in modules/
+  - Part of Epic #150 (Project Kernel)
+
 - **Phase 5.3: EventBus Consolidation - Kernel Foundation** (Issue #202) - Kernel EventBus enhancements and event definitions
   - **Kernel API Enhancements** (`lib/kernel/src/ipc/`):
     - `HandlerContext` - Dual emission modes (collect for tests, direct for runtime)
