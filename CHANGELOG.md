@@ -15,6 +15,36 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 5.13: Layout Module** (Issue #212) - Window tiling and focus navigation policy module
+  - **TilingLayout** (`modules/layout/src/tiling.rs`):
+    - Implements `LayoutPolicy` trait from display driver
+    - Binary split tree for window arrangement (horizontal/vertical splits)
+    - Configurable gaps between windows
+    - Operations: split_horizontal, split_vertical, close_window, close_others, resize
+  - **VimFocusPolicy** (`modules/layout/src/focus.rs`):
+    - Implements `FocusPolicy` trait from display driver
+    - Directional navigation (hjkl) with edge alignment preference
+    - Focus cycling (w/W) with forward/backward wrapping
+    - Distance-based window selection when no aligned windows
+  - **SplitTree** (`modules/layout/src/split.rs`):
+    - Binary tree structure for split management (SplitNode enum)
+    - Bounds calculation with customizable split ratios
+    - Window insertion/removal with automatic rebalancing
+    - External ID management for runtime integration
+  - **Module Keybindings** (37 window mode bindings):
+    - Navigation: h/j/k/l and arrow keys for directional focus
+    - Cycling: w/W for forward/backward window cycling
+    - Splitting: s (horizontal), v (vertical), n (new buffer)
+    - Closing: c/q (current), o (others)
+    - Resizing: +/- (height), </> (width), = (equalize), _/| (maximize)
+    - Movement: H/J/K/L (move window), r/R (rotate), x (swap)
+    - Tab: T (move to new tab) - future support placeholder
+  - **Architecture**:
+    - Pure policy implementation (mechanism in display driver)
+    - Uses only `api::v1` public APIs (kernel purity maintained)
+    - Clear separation: split tree (data) / tiling (layout) / focus (navigation)
+  - 57 unit tests, 100% pass rate, zero clippy warnings
+
 - **Phase 5.12: Remaining Core Directories Assessment** (Issue #211) - Concept extraction for remaining lib/core directories
   - **Jumplist** (`lib/kernel/src/core/jumplist.rs`):
     - `Jumplist` struct - Circular buffer with current index for Ctrl-O/Ctrl-I navigation
