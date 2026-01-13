@@ -27,9 +27,13 @@
 use {reovim_kernel::api::v1::*, reovim_module_macros::declare_module};
 
 mod insert;
+mod interactor;
 mod normal;
 mod operator_pending;
 mod visual;
+
+// Re-export interactor types
+pub use interactor::{ComponentId, InteractorConfig, InteractorRegistry};
 
 /// Vim keybindings module.
 ///

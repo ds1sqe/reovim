@@ -47,8 +47,9 @@ pub use {
         MouseInput,
     },
     kernel::{
-        BufferClosed, BufferCreated, BufferModified, BufferSaved, BufferSwitched, CursorMoved,
-        FileOpened, FileTypeChanged, ModeChanged, Modification, Shutdown, ViewportScrolled,
-        WindowClosed, WindowCreated, WindowFocused, priority,
+        BufferClosed, BufferCreated, BufferModified, BufferSaved, BufferSwitched, ChangeSource,
+        CursorMoved, FileOpened, FileTypeChanged, ModeChanged, Modification, OptionChanged,
+        OptionReset, Shutdown, ViewportScrolled, WindowClosed, WindowCreated, WindowFocused,
+        priority,
     },
 };

@@ -1,0 +1,20 @@
+[package]
+name = "reovim-plugin-landing"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Landing page plugin with animated ASCII lion mascot for reovim"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-core.workspace = true
+reovim-sys.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]

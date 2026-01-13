@@ -7,7 +7,7 @@ use std::{fmt, path::PathBuf, sync::Arc};
 use reovim_arch::sync::RwLock;
 
 use crate::{
-    core::{MarkBank, MotionEngine, RegisterBank, TextObjectEngine},
+    core::{MarkBank, MotionEngine, OptionRegistry, RegisterBank, TextObjectEngine},
     ipc::EventBus,
 };
 
@@ -52,6 +52,8 @@ pub struct KernelContext {
     pub registers: Arc<RwLock<RegisterBank>>,
     /// Mark storage for bookmark operations.
     pub marks: Arc<RwLock<MarkBank>>,
+    /// Option registry for editor settings.
+    pub options: Arc<OptionRegistry>,
 }
 
 impl KernelContext {
@@ -63,6 +65,7 @@ impl KernelContext {
         text_objects: Arc<TextObjectEngine>,
         registers: Arc<RwLock<RegisterBank>>,
         marks: Arc<RwLock<MarkBank>>,
+        options: Arc<OptionRegistry>,
     ) -> Self {
         Self {
             event_bus,
@@ -71,6 +74,7 @@ impl KernelContext {
             text_objects,
             registers,
             marks,
+            options,
         }
     }
 }
@@ -84,6 +88,7 @@ impl fmt::Debug for KernelContext {
             .field("text_objects", &"Arc<TextObjectEngine>")
             .field("registers", &"Arc<RwLock<RegisterBank>>")
             .field("marks", &"Arc<RwLock<MarkBank>>")
+            .field("options", &"Arc<OptionRegistry>")
             .finish()
     }
 }
@@ -243,6 +248,7 @@ impl Default for KernelContext {
             text_objects: Arc::new(TextObjectEngine),
             registers: Arc::new(RwLock::new(RegisterBank::new())),
             marks: Arc::new(RwLock::new(MarkBank::new())),
+            options: Arc::new(OptionRegistry::new()),
         }
     }
 }

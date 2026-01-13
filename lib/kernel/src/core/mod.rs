@@ -41,14 +41,20 @@
 //! assert_eq!(new_pos, Some(Position::new(0, 6)));
 //! ```
 
+mod config;
 mod direction;
+mod jumplist;
 mod mark;
 mod motion;
+mod option;
 mod register;
 mod textobj;
 
 // Re-export direction types
 pub use direction::{Direction, LinePosition, WordBoundary};
+
+// Re-export jumplist types
+pub use jumplist::{JumpEntry, Jumplist, MAX_JUMPLIST_SIZE};
 
 // Re-export mark types
 pub use mark::{Mark, MarkBank, MarkResult, SpecialMark};
@@ -61,3 +67,12 @@ pub use register::{RegisterBank, RegisterContent, YankType};
 
 // Re-export text object types
 pub use textobj::{TextObject, TextObjectEngine};
+
+// Re-export option types
+pub use option::{
+    ConstraintError, OptionConstraint, OptionError, OptionRegistry, OptionScope, OptionScopeId,
+    OptionSpec, OptionValue, SetResult,
+};
+
+// Re-export config types
+pub use config::{Config, ConfigError, ConfigPaths, ConfigValue};

@@ -8,7 +8,7 @@ use {
     reovim_arch::sync::RwLock,
     reovim_kernel::api::v1::{
         BufferManager, EventBus, KernelContext, MarkBank, ModuleContext, ModuleId, MotionEngine,
-        RegisterBank, TextObjectEngine,
+        OptionRegistry, RegisterBank, TextObjectEngine,
     },
     std::{path::Path, sync::Arc},
 };
@@ -34,6 +34,7 @@ pub struct KernelContextBuilder {
     text_objects: Option<Arc<TextObjectEngine>>,
     registers: Option<Arc<RwLock<RegisterBank>>>,
     marks: Option<Arc<RwLock<MarkBank>>>,
+    options: Option<Arc<OptionRegistry>>,
 }
 
 impl KernelContextBuilder {
@@ -47,6 +48,7 @@ impl KernelContextBuilder {
             text_objects: None,
             registers: None,
             marks: None,
+            options: None,
         }
     }
 
@@ -92,6 +94,13 @@ impl KernelContextBuilder {
         self
     }
 
+    /// Set the option registry.
+    #[must_use]
+    pub fn options(mut self, registry: Arc<OptionRegistry>) -> Self {
+        self.options = Some(registry);
+        self
+    }
+
     /// Build `KernelContext` with defaults for any unset fields.
     #[must_use]
     pub fn build(self) -> KernelContext {
@@ -106,6 +115,8 @@ impl KernelContextBuilder {
                 .unwrap_or_else(|| Arc::new(RwLock::new(RegisterBank::new()))),
             self.marks
                 .unwrap_or_else(|| Arc::new(RwLock::new(MarkBank::new()))),
+            self.options
+                .unwrap_or_else(|| Arc::new(OptionRegistry::new())),
         )
     }
 }

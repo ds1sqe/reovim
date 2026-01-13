@@ -68,6 +68,38 @@ impl LanguageSupport for TomlLanguage {
     }
 }
 
+/// TOML language plugin
+pub struct TomlPlugin;
+
+impl Plugin for TomlPlugin {
+    fn id(&self) -> PluginId {
+        PluginId::new("reovim:lang-toml")
+    }
+
+    fn name(&self) -> &'static str {
+        "TOML Language"
+    }
+
+    fn description(&self) -> &'static str {
+        "TOML language support with syntax highlighting"
+    }
+
+    fn dependencies(&self) -> Vec<TypeId> {
+        vec![TypeId::of::<TreesitterPlugin>()]
+    }
+
+    fn build(&self, _ctx: &mut PluginContext) {
+        // No commands to register
+    }
+
+    fn subscribe(&self, bus: &EventBus, _state: Arc<PluginStateRegistry>) {
+        // Register this language with treesitter
+        bus.emit(RegisterLanguage {
+            language: Arc::new(TomlLanguage),
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use {super::*, reovim_driver_syntax::SyntaxDriverFactory};
@@ -114,37 +146,5 @@ version = "1.0""#,
         register(&factory);
 
         assert_eq!(factory.detect_language("Cargo.toml"), Some("toml".to_string()));
-    }
-}
-
-/// TOML language plugin
-pub struct TomlPlugin;
-
-impl Plugin for TomlPlugin {
-    fn id(&self) -> PluginId {
-        PluginId::new("reovim:lang-toml")
-    }
-
-    fn name(&self) -> &'static str {
-        "TOML Language"
-    }
-
-    fn description(&self) -> &'static str {
-        "TOML language support with syntax highlighting"
-    }
-
-    fn dependencies(&self) -> Vec<TypeId> {
-        vec![TypeId::of::<TreesitterPlugin>()]
-    }
-
-    fn build(&self, _ctx: &mut PluginContext) {
-        // No commands to register
-    }
-
-    fn subscribe(&self, bus: &EventBus, _state: Arc<PluginStateRegistry>) {
-        // Register this language with treesitter
-        bus.emit(RegisterLanguage {
-            language: Arc::new(TomlLanguage),
-        });
     }
 }

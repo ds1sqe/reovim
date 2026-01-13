@@ -95,6 +95,9 @@ pub use crate::ipc::{
 // Core Primitives (core/)
 // ============================================================================
 
+// Jumplist
+pub use crate::core::{JumpEntry, Jumplist, MAX_JUMPLIST_SIZE};
+
 // Motion
 pub use crate::core::{Direction, LinePosition, Motion, MotionEngine, WordBoundary};
 
@@ -106,6 +109,15 @@ pub use crate::core::{RegisterBank, RegisterContent, YankType};
 
 // Marks
 pub use crate::core::{Mark, MarkBank, MarkResult, SpecialMark};
+
+// Options
+pub use crate::core::{
+    ConstraintError, OptionConstraint, OptionError, OptionRegistry, OptionScope, OptionScopeId,
+    OptionSpec, OptionValue, SetResult,
+};
+
+// Config
+pub use crate::core::{Config, ConfigError, ConfigPaths, ConfigValue};
 
 // ============================================================================
 // Block Operations (block/)

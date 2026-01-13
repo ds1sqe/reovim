@@ -15,6 +15,131 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 5.13: Layout Module** (Issue #212) - Window tiling and focus navigation policy module
+  - **TilingLayout** (`modules/layout/src/tiling.rs`):
+    - Implements `LayoutPolicy` trait from display driver
+    - Binary split tree for window arrangement (horizontal/vertical splits)
+    - Configurable gaps between windows
+    - Operations: split_horizontal, split_vertical, close_window, close_others, resize
+  - **VimFocusPolicy** (`modules/layout/src/focus.rs`):
+    - Implements `FocusPolicy` trait from display driver
+    - Directional navigation (hjkl) with edge alignment preference
+    - Focus cycling (w/W) with forward/backward wrapping
+    - Distance-based window selection when no aligned windows
+  - **SplitTree** (`modules/layout/src/split.rs`):
+    - Binary tree structure for split management (SplitNode enum)
+    - Bounds calculation with customizable split ratios
+    - Window insertion/removal with automatic rebalancing
+    - External ID management for runtime integration
+  - **Module Keybindings** (37 window mode bindings):
+    - Navigation: h/j/k/l and arrow keys for directional focus
+    - Cycling: w/W for forward/backward window cycling
+    - Splitting: s (horizontal), v (vertical), n (new buffer)
+    - Closing: c/q (current), o (others)
+    - Resizing: +/- (height), </> (width), = (equalize), _/| (maximize)
+    - Movement: H/J/K/L (move window), r/R (rotate), x (swap)
+    - Tab: T (move to new tab) - future support placeholder
+  - **Architecture**:
+    - Pure policy implementation (mechanism in display driver)
+    - Uses only `api::v1` public APIs (kernel purity maintained)
+    - Clear separation: split tree (data) / tiling (layout) / focus (navigation)
+  - 57 unit tests, 100% pass rate, zero clippy warnings
+
+- **Phase 5.12: Remaining Core Directories Assessment** (Issue #211) - Concept extraction for remaining lib/core directories
+  - **Jumplist** (`lib/kernel/src/core/jumplist.rs`):
+    - `Jumplist` struct - Circular buffer with current index for Ctrl-O/Ctrl-I navigation
+    - `JumpEntry` struct - Buffer ID + position for jump history
+    - Push with truncation, backward/forward navigation, duplicate suppression
+    - Exported via `api::v1` module
+    - 14 tests (11 unit + 3 doc tests)
+  - **Filetype Detection** (`lib/drivers/vfs/src/filetype.rs`):
+    - `FiletypeInfo` struct - ID, display name, optional icon
+    - `FiletypeRegistry` - Extension + filename maps with case-insensitive detection
+    - Global registry via `OnceLock` for lazy initialization
+    - 40+ file type mappings (Rust, Python, JS/TS, C/C++, Go, etc.)
+    - 13 unit tests + 2 doc tests
+  - **Interactor System** (`modules/keymap/src/interactor.rs`):
+    - `InteractorConfig` - Input routing policy (keymap vs char input)
+    - `InteractorRegistry` - Component configuration registry
+    - `ComponentId` - Built-in (EDITOR, WINDOW) and custom identifiers
+    - Policy separation: input routing decisions in modules, not kernel
+    - 11 unit tests + 3 doc tests
+  - **Options Module** (`modules/options/`):
+    - New module for editor settings policy
+    - `VirtualEditMode` enum - None, All, Block, Insert, OneMore
+    - `VirtualEditConfig` - Mode configuration
+    - `EditorSettings` - Container for settings
+    - Module trait implementation with proper lifecycle
+    - 14 unit tests + 1 doc test
+  - **Verifications**:
+    - Keystroke/KeyEvent: Verified in `drivers/input/` with full arch conversion
+    - Render pipeline: Verified in `drivers/display/src/render/`
+    - Modifier system: Verified mechanism in display driver compositor
+    - Visual mode: Verified in `kernel/mm/selection.rs` (SelectionMode enum)
+  - **Deferred** to future issue:
+    - Buffer provider system (complex async patterns) - documented in `docs/architecture/future/buffer-provider.md`
+  - Zero clippy warnings, all tests pass
+
+- **Phase 5.11: Display Builder & Additional Components** (Issue #210) - Component registration and visual extensions
+  - **Display Builder System** (`lib/drivers/display/src/builder/`):
+    - `DisplayRegistry` - Central registry for component visual representation
+    - `DisplayInfoBuilder` - Fluent builder pattern for registration with static/dynamic display
+    - `ComponentId` - Unique identifier (u64 newtype) for registry lookups
+    - `DisplayInfo` - Static display data (display_string, icon, style)
+    - Mode icons (NORMAL, INSERT, VISUAL, etc.) and UI component icons
+  - **Decoration System** (`lib/drivers/display/src/decoration/`):
+    - `Decoration` enum - 4 variants (Conceal, LineBackground, Hide, InlineStyle)
+    - `DecorationGroup` - Priority-based layering (Language=0 → Visual=40)
+    - `DecorationProvider` trait - Plugin interface for decoration sources
+    - `BufferDecorations` and `DecorationStore` - Per-buffer storage with priority sorting
+    - `ConcealedLine` - Result type with column mappings for cursor positioning
+    - `apply_conceals()` - Text replacement with bidirectional column mapping
+  - **Style System Extension** (`lib/drivers/display/src/style/`):
+    - `ThemeProvider` trait - Flexible string-based style lookups
+    - `ThemeManager` - Runtime theme switching with style overrides
+    - `CoreThemeAdapter` - Bridges existing Theme system (18 group mappings)
+    - `IconDef` - Three-variant icons (nerd/unicode/ascii)
+    - `IconProvider` trait and `IconRegistry` - Priority-based icon lookup
+    - `BuiltinFileIconProvider` - Default file/folder icons
+  - **UI Primitives** (`lib/drivers/display/src/ui/`):
+    - `display_width()` - Unicode-aware width calculation (CJK=2, zero-width=0)
+    - `truncate_end()` / `truncate_start()` - Text truncation with ellipsis
+    - `align()`, `pad_left()`, `pad_right()` - Text alignment utilities
+    - `wrap_text()` - Word wrapping with CJK support
+  - **Landing Page Plugin** (`plugins/features/landing/`):
+    - `LandingPlugin` - Plugin trait implementation with PluginWindow
+    - `AsciiSprite` - Animation controller (Once, Loop, PingPong modes)
+    - Three responsive variants: Large (roar), Medium (sleep), Small (breathing)
+    - Help text and version display
+  - Key patterns: mechanism vs policy separation, provider traits, priority systems
+  - 250 tests (234 display + 16 landing)
+  - Zero clippy warnings (pedantic + nursery)
+
+- **Phase 5.10: Config & Options System** (Issue #209) - Kernel mechanism for configuration and editor options
+  - **Option Registry** (`lib/kernel/src/core/option.rs`):
+    - `OptionValue` enum - Type-safe values (Bool, Integer, String, Choice)
+    - `OptionScope` enum - Scope granularity (Global, Buffer, Window)
+    - `OptionScopeId` - Runtime scope identifier for access operations
+    - `OptionConstraint` - Validation rules (min/max, string length)
+    - `OptionSpec` - Complete option specification with metadata and aliases
+    - `OptionRegistry` - Thread-safe storage with scope-aware resolution
+    - Scope fallback: Window → Buffer → Global → Default
+  - **Config System** (`lib/kernel/src/core/config.rs`):
+    - `ConfigValue` enum - Hierarchical config values (Bool, Integer, String, Array, Table)
+    - `Config` - Thread-safe key-value storage with bulk operations
+    - `ConfigPaths` - XDG-compliant path resolution (config_dir, data_dir, cache_dir)
+  - **Option Events** (`lib/kernel/src/ipc/events/kernel.rs`):
+    - `OptionChanged` - Emitted when option value changes
+    - `OptionReset` - Emitted when option reset to default
+    - `ChangeSource` - Origin tracking (UserCommand, Plugin, Config, etc.)
+  - **API Integration**:
+    - All types exported through `api::v1`
+    - `KernelContext.options` field for registry access
+    - `KernelContextBuilder` updated in runner
+  - Follows mechanism vs policy principle (kernel provides storage, modules register options)
+  - 41 tests, zero clippy warnings (pedantic + nursery)
+  - Part of Epic #150 (Project Kernel)
+
 - **Phase 5.9: Display Pipeline Implementation** (Issue #208) - Comprehensive rendering pipeline for display driver
   - **Frame Module** (`lib/drivers/display/src/frame/`):
     - `Cell` struct - Character + style + width with wide character support (CJK, fullwidth)

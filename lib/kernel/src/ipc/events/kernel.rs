@@ -287,6 +287,77 @@ pub struct FileTypeChanged {
 impl Event for FileTypeChanged {}
 
 // =============================================================================
+// Option Events
+// =============================================================================
+
+/// Source of an option value change.
+///
+/// Indicates how an option was modified, useful for handlers
+/// that need to distinguish user commands from programmatic changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ChangeSource {
+    /// Changed via `:set` command by the user.
+    #[default]
+    UserCommand,
+    /// Changed programmatically by a plugin/module.
+    Plugin,
+    /// Loaded from configuration file.
+    Config,
+    /// Set to default during initialization.
+    Default,
+    /// Changed via settings menu/UI.
+    SettingsMenu,
+    /// Changed via RPC (server mode).
+    Rpc,
+}
+
+/// An option value changed.
+///
+/// Emitted after any option value is modified via `OptionRegistry::set()`.
+/// Handlers can react to option changes (e.g., re-render, update state).
+///
+/// # Example
+///
+/// ```ignore
+/// use reovim_kernel::api::v1::{EventBus, EventResult, events::kernel::OptionChanged};
+///
+/// let bus = EventBus::new();
+/// bus.subscribe::<OptionChanged, _>(100, |event| {
+///     println!("Option '{}' changed from {} to {}",
+///         event.name, event.old_value, event.new_value);
+///     EventResult::Handled
+/// });
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OptionChanged {
+    /// Full option name that changed.
+    pub name: String,
+    /// Previous value.
+    pub old_value: String,
+    /// New value.
+    pub new_value: String,
+    /// Source of the change.
+    pub source: ChangeSource,
+}
+
+impl Event for OptionChanged {}
+
+/// An option was reset to its default value.
+///
+/// Emitted when an option is reset via `:set option&` or `OptionRegistry::reset()`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OptionReset {
+    /// Option name that was reset.
+    pub name: String,
+    /// Previous value (before reset).
+    pub old_value: String,
+    /// Default value (after reset).
+    pub default_value: String,
+}
+
+impl Event for OptionReset {}
+
+// =============================================================================
 // Lifecycle Events
 // =============================================================================
 

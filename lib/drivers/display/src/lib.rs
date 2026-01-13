@@ -33,15 +33,19 @@
 // ============================================================================
 
 mod border;
+pub mod builder;
 mod capabilities;
 mod command;
 mod compositor;
+pub mod decoration;
 mod error;
 mod frame;
 mod policy;
 mod render;
 mod screen;
+pub mod style;
 mod traits;
+pub mod ui;
 mod window;
 mod window_renderer;
 
@@ -106,3 +110,36 @@ pub use render::{
 // ============================================================================
 
 pub use reovim_core::highlight::{Attributes, Color, ColorMode, Style};
+
+// ============================================================================
+// Display Builder (Phase 5.11 - Component display registration)
+// ============================================================================
+
+pub use builder::{ComponentId, DisplayInfo, DisplayInfoBuilder, DisplayRegistry};
+
+// ============================================================================
+// Decoration System (Phase 5.11 - Concealment, highlighting, selection)
+// ============================================================================
+
+pub use decoration::{
+    BufferDecorations, ConcealedLine, Decoration, DecorationGroup, DecorationProvider,
+    DecorationProviderFactory, DecorationRef, DecorationStore, Span, apply_conceals,
+    display_to_source_col, source_to_display_col,
+};
+
+// ============================================================================
+// Style System (Phase 5.11 - Themes and Icons)
+// ============================================================================
+
+pub use style::{
+    BuiltinFileIconProvider, BuiltinTheme, CoreThemeAdapter, IconDef, IconProvider, IconRegistry,
+    IconSet, ThemeManager, ThemeProvider,
+};
+
+// ============================================================================
+// UI Primitives (Phase 5.11 - Unicode-aware text utilities)
+// ============================================================================
+
+pub use ui::{
+    Alignment, align, display_width, pad_left, pad_right, truncate_end, truncate_start, wrap_text,
+};

@@ -20,9 +20,9 @@
 use std::sync::Arc;
 
 use reovim_kernel::api::v1::{
-    events::kernel::{priority, BufferClosed, BufferCreated, BufferModified, BufferSwitched},
-    pr_info, EventResult, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Subscription,
-    Version,
+    EventResult, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Subscription, Version,
+    events::kernel::{BufferClosed, BufferCreated, BufferModified, BufferSwitched, priority},
+    pr_info,
 };
 
 /// Buffer operations module.
@@ -81,11 +81,7 @@ impl Module for BufferOps {
         // Priority: NORMAL (50) - content change, standard priority
         let sub_modified =
             bus.subscribe_with_context::<BufferModified, _>(priority::NORMAL, |event, _ctx| {
-                pr_info!(
-                    "Buffer {} modified: {:?}",
-                    event.buffer_id,
-                    event.modification
-                );
+                pr_info!("Buffer {} modified: {:?}", event.buffer_id, event.modification);
                 // Future: Trigger treesitter reparse, update dirty flags
                 EventResult::Handled
             });
@@ -111,10 +107,7 @@ impl Module for BufferOps {
             });
         self.subscriptions.push(sub_switched);
 
-        pr_info!(
-            "BufferOps module initialized with {} subscriptions",
-            self.subscriptions.len()
-        );
+        pr_info!("BufferOps module initialized with {} subscriptions", self.subscriptions.len());
         ProbeResult::Success
     }
 
