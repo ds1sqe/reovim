@@ -15,8 +15,10 @@ use {
     tokio::sync::mpsc,
 };
 
+pub mod capture_mapper;
 pub mod command;
 pub mod context;
+pub mod driver_factory;
 pub mod edit;
 pub mod events;
 pub mod factory;
@@ -28,12 +30,15 @@ pub mod queries;
 pub mod registry;
 pub mod state;
 pub mod syntax;
+pub mod syntax_driver;
 pub mod text_objects;
 pub mod theme;
 
 pub use {
+    capture_mapper::CaptureMapper,
     command::{JumpToNextScope, JumpToParentScope, JumpToPrevScope},
     context::TreesitterContextProvider,
+    driver_factory::{LanguageConfig, TreeSitterDriverFactory},
     edit::BufferEdit,
     events::{
         HighlightsReady, ParseCompleted, ParseRequest, RegisterLanguage, TreesitterFoldRanges,
@@ -45,6 +50,7 @@ pub use {
     queries::{QueryCache, QueryType},
     registry::{LanguageRegistry, LanguageSupport, RegisteredLanguage},
     state::SharedTreesitterManager,
+    syntax_driver::TreeSitterDriver,
     theme::TreesitterTheme,
 };
 

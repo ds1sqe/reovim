@@ -35,16 +35,6 @@ walkdir = "2.5"
 # RPC (Server mode)
 serde_json = "1.0"
 
-# Treesitter
-tree-sitter = "0.26"
-tree-sitter-rust = "0.24"
-tree-sitter-c = "0.24"
-tree-sitter-javascript = "0.25"
-tree-sitter-python = "0.25"
-tree-sitter-json = "0.24"
-tree-sitter-toml-ng = "0.7"
-tree-sitter-md = "0.5"
-
 [dev-dependencies]
 tempfile = "3"
 regex = "1"  # For ANSI stripping in tests

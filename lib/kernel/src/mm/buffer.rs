@@ -4,7 +4,9 @@
 //! text as lines and provides efficient operations for insertion,
 //! deletion, and navigation.
 
-use super::{BufferId, Cursor, Edit, Position};
+use std::hash::{Hash, Hasher};
+
+use super::{BufferId, Cursor, Edit, Position, Selection};
 
 /// A text buffer with line-based storage.
 ///
@@ -41,6 +43,10 @@ pub struct Buffer {
     cursor: Cursor,
     /// Whether the buffer has unsaved modifications.
     modified: bool,
+    /// Selection state for visual mode.
+    selection: Selection,
+    /// File path associated with this buffer.
+    file_path: Option<String>,
 }
 
 impl Buffer {
@@ -52,6 +58,8 @@ impl Buffer {
             lines: Vec::new(),
             cursor: Cursor::origin(),
             modified: false,
+            selection: Selection::new(),
+            file_path: None,
         }
     }
 
@@ -65,6 +73,8 @@ impl Buffer {
             lines: Vec::new(),
             cursor: Cursor::origin(),
             modified: false,
+            selection: Selection::new(),
+            file_path: None,
         }
     }
 
@@ -84,6 +94,8 @@ impl Buffer {
             lines,
             cursor: Cursor::origin(),
             modified: false,
+            selection: Selection::new(),
+            file_path: None,
         }
     }
 
@@ -128,6 +140,57 @@ impl Buffer {
     /// Mark the buffer as modified or unmodified.
     pub const fn set_modified(&mut self, modified: bool) {
         self.modified = modified;
+    }
+
+    // === Selection ===
+
+    /// Get the selection state.
+    #[must_use]
+    pub const fn selection(&self) -> Selection {
+        self.selection
+    }
+
+    /// Get a mutable reference to selection state.
+    pub const fn selection_mut(&mut self) -> &mut Selection {
+        &mut self.selection
+    }
+
+    // === File Path ===
+
+    /// Get the file path associated with this buffer.
+    #[must_use]
+    pub fn file_path(&self) -> Option<&str> {
+        self.file_path.as_deref()
+    }
+
+    /// Set the file path for this buffer.
+    pub fn set_file_path(&mut self, path: Option<String>) {
+        self.file_path = path;
+    }
+
+    // === Line Hashing ===
+
+    /// Compute hash of a line for cache validation.
+    ///
+    /// Uses `DefaultHasher` for speed over cryptographic strength.
+    /// Returns `None` if line index is out of bounds.
+    #[must_use]
+    pub fn line_hash(&self, line_idx: usize) -> Option<u64> {
+        use std::collections::hash_map::DefaultHasher;
+
+        self.line(line_idx).map(|line| {
+            let mut hasher = DefaultHasher::new();
+            line.hash(&mut hasher);
+            hasher.finish()
+        })
+    }
+
+    /// Get all line hashes (for saturator requests).
+    #[must_use]
+    pub fn line_hashes(&self) -> Vec<u64> {
+        (0..self.line_count())
+            .filter_map(|idx| self.line_hash(idx))
+            .collect()
     }
 
     // === Line Access ===

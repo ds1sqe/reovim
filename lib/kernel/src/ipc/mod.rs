@@ -89,7 +89,7 @@ pub use channel::{
 };
 
 // Re-export event types
-pub use event::{DynEvent, Event, EventResult};
+pub use event::{CacheKind, CacheUpdated, DynEvent, Event, EventResult};
 
 // Re-export event bus
 pub use event_bus::EventBus;

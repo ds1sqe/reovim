@@ -12,3 +12,6 @@ reovim-plugin-treesitter.workspace = true
 tree-sitter = "0.26"
 tree-sitter-md = "0.5"
 tracing.workspace = true
+
+[dev-dependencies]
+reovim-driver-syntax.workspace = true
