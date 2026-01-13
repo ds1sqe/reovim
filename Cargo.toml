@@ -113,6 +113,7 @@ reovim-plugin-profiles = { path = "./plugins/features/profiles", version = "0.8.
 reovim-plugin-health-check = { path = "./plugins/features/health-check", version = "0.8.1" }
 reovim-plugin-cmdline-completion = { path = "./plugins/features/cmdline-completion", version = "0.8.1" }
 reovim-plugin-context = { path = "./plugins/features/context", version = "0.8.1" }
+reovim-plugin-landing = { path = "./plugins/features/landing", version = "0.8.1" }
 
 # language plugins
 reovim-lang-rust = { path = "./plugins/languages/rust", version = "0.8.1" }

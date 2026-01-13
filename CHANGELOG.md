@@ -15,6 +15,41 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 5.11: Display Builder & Additional Components** (Issue #210) - Component registration and visual extensions
+  - **Display Builder System** (`lib/drivers/display/src/builder/`):
+    - `DisplayRegistry` - Central registry for component visual representation
+    - `DisplayInfoBuilder` - Fluent builder pattern for registration with static/dynamic display
+    - `ComponentId` - Unique identifier (u64 newtype) for registry lookups
+    - `DisplayInfo` - Static display data (display_string, icon, style)
+    - Mode icons (NORMAL, INSERT, VISUAL, etc.) and UI component icons
+  - **Decoration System** (`lib/drivers/display/src/decoration/`):
+    - `Decoration` enum - 4 variants (Conceal, LineBackground, Hide, InlineStyle)
+    - `DecorationGroup` - Priority-based layering (Language=0 → Visual=40)
+    - `DecorationProvider` trait - Plugin interface for decoration sources
+    - `BufferDecorations` and `DecorationStore` - Per-buffer storage with priority sorting
+    - `ConcealedLine` - Result type with column mappings for cursor positioning
+    - `apply_conceals()` - Text replacement with bidirectional column mapping
+  - **Style System Extension** (`lib/drivers/display/src/style/`):
+    - `ThemeProvider` trait - Flexible string-based style lookups
+    - `ThemeManager` - Runtime theme switching with style overrides
+    - `CoreThemeAdapter` - Bridges existing Theme system (18 group mappings)
+    - `IconDef` - Three-variant icons (nerd/unicode/ascii)
+    - `IconProvider` trait and `IconRegistry` - Priority-based icon lookup
+    - `BuiltinFileIconProvider` - Default file/folder icons
+  - **UI Primitives** (`lib/drivers/display/src/ui/`):
+    - `display_width()` - Unicode-aware width calculation (CJK=2, zero-width=0)
+    - `truncate_end()` / `truncate_start()` - Text truncation with ellipsis
+    - `align()`, `pad_left()`, `pad_right()` - Text alignment utilities
+    - `wrap_text()` - Word wrapping with CJK support
+  - **Landing Page Plugin** (`plugins/features/landing/`):
+    - `LandingPlugin` - Plugin trait implementation with PluginWindow
+    - `AsciiSprite` - Animation controller (Once, Loop, PingPong modes)
+    - Three responsive variants: Large (roar), Medium (sleep), Small (breathing)
+    - Help text and version display
+  - Key patterns: mechanism vs policy separation, provider traits, priority systems
+  - 250 tests (234 display + 16 landing)
+  - Zero clippy warnings (pedantic + nursery)
+
 - **Phase 5.10: Config & Options System** (Issue #209) - Kernel mechanism for configuration and editor options
   - **Option Registry** (`lib/kernel/src/core/option.rs`):
     - `OptionValue` enum - Type-safe values (Bool, Integer, String, Choice)

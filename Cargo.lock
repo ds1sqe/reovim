@@ -2057,6 +2057,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-plugin-landing"
+version = "0.8.1"
+dependencies = [
+ "reovim-core",
+ "reovim-sys",
+ "tracing",
+]
+
+[[package]]
 name = "reovim-plugin-lsp"
 version = "0.8.1"
 dependencies = [
