@@ -1,4 +1,15 @@
 //! Rust language support for reovim
+//!
+//! This plugin provides Rust syntax highlighting via tree-sitter.
+//!
+//! # New API (Issue #206)
+//!
+//! Use `register()` to register with `TreeSitterDriverFactory`:
+//!
+//! ```ignore
+//! use reovim_lang_rust::register;
+//! register(&factory);
+//! ```
 
 use std::{any::TypeId, sync::Arc};
 
@@ -7,8 +18,34 @@ use {
         event_bus::EventBus,
         plugin::{Plugin, PluginContext, PluginId, PluginStateRegistry},
     },
-    reovim_plugin_treesitter::{LanguageSupport, RegisterLanguage, TreesitterPlugin},
+    reovim_plugin_treesitter::{
+        LanguageConfig, LanguageSupport, RegisterLanguage, TreeSitterDriverFactory,
+        TreesitterPlugin,
+    },
 };
+
+// ============================================================================
+// New API (Issue #206)
+// ============================================================================
+
+/// Register Rust language with the driver factory.
+///
+/// This is the new API for Issue #206. Call this during plugin initialization
+/// to register Rust language support with the `TreeSitterDriverFactory`.
+pub fn register(factory: &TreeSitterDriverFactory) {
+    factory.register(LanguageConfig {
+        id: "rust",
+        language: tree_sitter_rust::LANGUAGE.into(),
+        highlights_query: include_str!("queries/highlights.scm"),
+        folds_query: Some(include_str!("queries/folds.scm")),
+        injections_query: Some(include_str!("queries/injections.scm")),
+        extensions: &["rs"],
+    });
+}
+
+// ============================================================================
+// Legacy API (kept for backward compatibility during migration)
+// ============================================================================
 
 /// Rust language support
 pub struct RustLanguage;
@@ -81,7 +118,10 @@ impl Plugin for RustPlugin {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, reovim_plugin_treesitter::LanguageSupport};
+    use {
+        super::*, reovim_driver_syntax::SyntaxDriverFactory,
+        reovim_plugin_treesitter::LanguageSupport,
+    };
 
     #[test]
     fn test_highlights_query_compiles() {
@@ -100,5 +140,55 @@ mod tests {
         for name in q.capture_names() {
             println!("Capture: {}", name);
         }
+    }
+
+    #[test]
+    fn test_rust_registration() {
+        let factory = TreeSitterDriverFactory::new();
+        register(&factory);
+
+        assert!(factory.supports("rust"));
+        assert_eq!(factory.language_count(), 1);
+    }
+
+    #[test]
+    fn test_rust_driver_creation() {
+        let factory = TreeSitterDriverFactory::new();
+        register(&factory);
+
+        let driver = factory.create("rust");
+        assert!(driver.is_some());
+        assert_eq!(driver.unwrap().language(), "rust");
+    }
+
+    #[test]
+    fn test_rust_highlighting() {
+        let factory = TreeSitterDriverFactory::new();
+        register(&factory);
+
+        let mut driver = factory.create("rust").unwrap();
+        driver.parse("fn main() { println!(\"Hello\"); }");
+
+        assert!(driver.is_parsed());
+        let highlights = driver.highlights(0..35);
+        assert!(!highlights.is_empty());
+    }
+
+    #[test]
+    fn test_rust_file_extensions() {
+        let factory = TreeSitterDriverFactory::new();
+        register(&factory);
+
+        assert_eq!(factory.detect_language("main.rs"), Some("rust".to_string()));
+    }
+
+    #[test]
+    fn test_rust_has_injections() {
+        let factory = TreeSitterDriverFactory::new();
+        register(&factory);
+
+        let driver = factory.create("rust").unwrap();
+        // Rust driver should support injections (for doc comments)
+        assert!(driver.language() == "rust");
     }
 }

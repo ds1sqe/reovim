@@ -115,7 +115,53 @@ pub enum HighlightGroup {
     /// Hint highlights
     Hint = 30,
 
-    // === Special (255) ===
+    // === Namespace/Module (31) ===
+    /// Namespace or module names
+    Namespace = 31,
+
+    // === Constructor (32) ===
+    /// Constructor calls/definitions
+    Constructor = 32,
+
+    // === Label (33) ===
+    /// Labels (lifetimes in Rust, goto labels)
+    Label = 33,
+
+    // === Attribute (34) ===
+    /// Attributes, decorators, annotations
+    Attribute = 34,
+
+    // === Tag (35) ===
+    /// HTML/XML tags
+    Tag = 35,
+
+    // === Markup (36-44) ===
+    /// Markup headings (# in markdown)
+    MarkupHeading = 36,
+    /// Bold text
+    MarkupBold = 37,
+    /// Italic text
+    MarkupItalic = 38,
+    /// Strikethrough text
+    MarkupStrikethrough = 39,
+    /// Links
+    MarkupLink = 40,
+    /// Link URLs
+    MarkupLinkUrl = 41,
+    /// List markers
+    MarkupList = 42,
+    /// Raw/code blocks
+    MarkupRaw = 43,
+    /// Inline code
+    MarkupRawInline = 44,
+
+    // === Embedded/Injection (45-46) ===
+    /// Embedded language regions (injections)
+    Embedded = 45,
+    /// Special tokens
+    Special = 46,
+
+    // === Custom (255) ===
     /// Custom highlight (for extensions)
     Custom = 255,
 }
@@ -154,6 +200,22 @@ impl SyntaxHighlight for HighlightGroup {
             Self::Warning => "diagnostic.warning",
             Self::Info => "diagnostic.info",
             Self::Hint => "diagnostic.hint",
+            Self::Namespace => "namespace",
+            Self::Constructor => "constructor",
+            Self::Label => "label",
+            Self::Attribute => "attribute",
+            Self::Tag => "tag",
+            Self::MarkupHeading => "markup.heading",
+            Self::MarkupBold => "markup.bold",
+            Self::MarkupItalic => "markup.italic",
+            Self::MarkupStrikethrough => "markup.strikethrough",
+            Self::MarkupLink => "markup.link",
+            Self::MarkupLinkUrl => "markup.link.url",
+            Self::MarkupList => "markup.list",
+            Self::MarkupRaw => "markup.raw",
+            Self::MarkupRawInline => "markup.raw.inline",
+            Self::Embedded => "embedded",
+            Self::Special => "special",
             Self::Custom => "custom",
         }
     }
@@ -222,6 +284,23 @@ impl HighlightGroup {
     #[must_use]
     pub const fn is_diagnostic(self) -> bool {
         matches!(self, Self::Error | Self::Warning | Self::Info | Self::Hint)
+    }
+
+    /// Check if this is a markup category.
+    #[must_use]
+    pub const fn is_markup(self) -> bool {
+        matches!(
+            self,
+            Self::MarkupHeading
+                | Self::MarkupBold
+                | Self::MarkupItalic
+                | Self::MarkupStrikethrough
+                | Self::MarkupLink
+                | Self::MarkupLinkUrl
+                | Self::MarkupList
+                | Self::MarkupRaw
+                | Self::MarkupRawInline
+        )
     }
 }
 
@@ -304,6 +383,24 @@ mod tests {
         assert_eq!(HighlightGroup::Comment.category(), "comment");
         assert_eq!(HighlightGroup::Error.category(), "diagnostic.error");
         assert_eq!(HighlightGroup::Custom.category(), "custom");
+
+        // New categories (Issue #206)
+        assert_eq!(HighlightGroup::Namespace.category(), "namespace");
+        assert_eq!(HighlightGroup::Constructor.category(), "constructor");
+        assert_eq!(HighlightGroup::Label.category(), "label");
+        assert_eq!(HighlightGroup::Attribute.category(), "attribute");
+        assert_eq!(HighlightGroup::Tag.category(), "tag");
+        assert_eq!(HighlightGroup::MarkupHeading.category(), "markup.heading");
+        assert_eq!(HighlightGroup::MarkupBold.category(), "markup.bold");
+        assert_eq!(HighlightGroup::MarkupItalic.category(), "markup.italic");
+        assert_eq!(HighlightGroup::MarkupStrikethrough.category(), "markup.strikethrough");
+        assert_eq!(HighlightGroup::MarkupLink.category(), "markup.link");
+        assert_eq!(HighlightGroup::MarkupLinkUrl.category(), "markup.link.url");
+        assert_eq!(HighlightGroup::MarkupList.category(), "markup.list");
+        assert_eq!(HighlightGroup::MarkupRaw.category(), "markup.raw");
+        assert_eq!(HighlightGroup::MarkupRawInline.category(), "markup.raw.inline");
+        assert_eq!(HighlightGroup::Embedded.category(), "embedded");
+        assert_eq!(HighlightGroup::Special.category(), "special");
     }
 
     #[test]
@@ -375,6 +472,21 @@ mod tests {
         assert!(HighlightGroup::Info.is_diagnostic());
         assert!(HighlightGroup::Hint.is_diagnostic());
         assert!(!HighlightGroup::Keyword.is_diagnostic());
+    }
+
+    #[test]
+    fn test_highlight_group_is_markup() {
+        assert!(HighlightGroup::MarkupHeading.is_markup());
+        assert!(HighlightGroup::MarkupBold.is_markup());
+        assert!(HighlightGroup::MarkupItalic.is_markup());
+        assert!(HighlightGroup::MarkupStrikethrough.is_markup());
+        assert!(HighlightGroup::MarkupLink.is_markup());
+        assert!(HighlightGroup::MarkupLinkUrl.is_markup());
+        assert!(HighlightGroup::MarkupList.is_markup());
+        assert!(HighlightGroup::MarkupRaw.is_markup());
+        assert!(HighlightGroup::MarkupRawInline.is_markup());
+        assert!(!HighlightGroup::Keyword.is_markup());
+        assert!(!HighlightGroup::String.is_markup());
     }
 
     #[test]
