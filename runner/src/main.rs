@@ -7,12 +7,18 @@ use {
     std::io::{self, IsTerminal},
 };
 
+#[allow(dead_code)] // Infrastructure for kernel integration
+mod buffer_manager;
+#[allow(dead_code)] // Infrastructure for kernel integration
+mod context;
 mod dirs;
 mod logging;
 #[allow(unsafe_code)]
 mod module;
 mod plugins;
 mod server;
+#[allow(dead_code)] // Infrastructure for kernel integration
+mod vfs;
 
 use plugins::AllPlugins;
 

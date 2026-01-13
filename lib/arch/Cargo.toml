@@ -20,5 +20,8 @@ arc-swap = "1.8"
 # Faster synchronization primitives
 parking_lot = "0.12.3"
 
+# Platform-specific directory paths (XDG on Unix, AppData on Windows)
+dirs = "5.0"
+
 [target.'cfg(unix)'.dependencies]
 crossterm.workspace = true
