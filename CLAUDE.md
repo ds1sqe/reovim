@@ -209,15 +209,33 @@ tail -f $(ls -t ~/.local/share/reovim/reovim-*.log | head -1)
 
 ## Architecture
 
-Reovim is a Rust-based neovim-like text editor built with async tokio runtime and crossterm for terminal handling.
+Reovim is a Rust-based neovim-like text editor following a **Linux kernel-inspired architecture** with clear separation between kernel mechanisms, drivers, and loadable modules.
+
+### Design Principles
+
+**Mechanism vs Policy**: The kernel provides WHAT can be done (syscalls, traits), modules decide HOW to do it (keybindings, behavior). See [mechanism-vs-policy.md](./docs/architecture/mechanism-vs-policy.md).
+
+**Kernel Purity**: Zero external syntax dependencies in kernel. All tree-sitter lives in plugins, not kernel.
+
+**API Boundary**: Modules use ONLY `reovim_kernel::api::*`. Kernel internals are `pub(crate)` (compile-time enforced).
 
 ### Workspace Structure
 
-- `runner/` - Main binary crate that bootstraps the editor and loads plugins
+**New Architecture (v0.9.0+):**
+- `lib/kernel/` (reovim-kernel) - Core mechanisms: mm/, ipc/, core/, block/, sched/, api/
+- `lib/drivers/` - Service adapters: syntax/, input/, display/, lsp/, net/, vfs/, log/
+- `lib/arch/` (reovim-arch) - Platform abstraction: unix/, windows/
+- `lib/module-macros/` - `declare_module!` proc-macro for FFI entry points
+- `runner/src/module/` - Module loader, registry, hot reload
+
+**Legacy (v0.8.x, being migrated):**
 - `lib/core/` (reovim-core) - Core editor logic: runtime, buffers, events, screen rendering
 - `lib/sys/` (reovim-sys) - Re-exports crossterm for terminal abstraction
+
+**Plugins and Tools:**
 - `plugins/features/` - Feature plugins (range-finder, treesitter, completion, explorer, telescope)
 - `plugins/languages/` - Language support plugins (rust, c, javascript, python, json, toml, markdown)
+- `modules/` - Policy modules (keymap, motions, operators, layout, options)
 - `tools/perf-report/` - Performance report generator CLI
 - `tools/reo-cli/` - CLI client for server mode
 - `tools/bench/` - Performance benchmarks (criterion)
@@ -288,13 +306,14 @@ Reovim is a Rust-based neovim-like text editor built with async tokio runtime an
 - `EventBus` - Publish/subscribe event system for plugin communication
 - Plugins are loaded by `runner/src/plugins.rs`
 
-**Unified Command-Event Pattern** (v0.6.22+):
+**Unified Command-Event Pattern** (v0.6.22+, legacy):
 - Single type serves as both CommandTrait and Event implementation
 - Macros: `declare_event_command!` (zero-sized), `declare_counted_event_command!` (with count)
 - Benefits: 50% fewer types, ~20 lines less boilerplate per command
 - All feature plugins migrated (Fold, Settings, Completion, Explorer, Telescope)
 - Example: `ExplorerRefresh` (not `ExplorerRefreshCommand` + `ExplorerRefreshEvent`)
-- See: `docs/reference/commands.md`, `docs/plugins/system.md`, `docs/events/overview.md`
+- Note: Will be superseded by the new Module system (v0.9.0+) with `declare_module!` macro
+- See: `docs/reference/commands.md`, `docs/archive/plugins/system.md`
 
 **Treesitter Plugin** (`plugins/features/treesitter/`):
 - Syntax highlighting via tree-sitter parsing
@@ -426,9 +445,21 @@ Check `git worktree list` to see active worktrees. Common setup:
 ## Detailed Documentation
 
 For in-depth information, see:
-- [docs/architecture/overview.md](./docs/architecture/overview.md) - Full architecture overview
-- [docs/events/overview.md](./docs/events/overview.md) - Event flow details and unified pattern
-- [docs/reference/commands.md](./docs/reference/commands.md) - Command system and unified pattern macros
-- [docs/plugins/system.md](./docs/plugins/system.md) - Plugin development with unified pattern
+
+**Architecture (v0.9.0+ kernel-based):**
+- [docs/architecture/overview.md](./docs/architecture/overview.md) - Layer diagram, Linux mapping, crate deps
+- [docs/architecture/kernel.md](./docs/architecture/kernel.md) - Kernel subsystems: mm/, ipc/, core/, block/, sched/
+- [docs/architecture/drivers.md](./docs/architecture/drivers.md) - Driver layer: syntax/, input/, display/, lsp/, net/
+- [docs/architecture/modules.md](./docs/architecture/modules.md) - Module trait, declare_module!, loader, registry
+- [docs/architecture/mechanism-vs-policy.md](./docs/architecture/mechanism-vs-policy.md) - Core design principle
+- [docs/architecture/module-mode-inheritance.md](./docs/architecture/module-mode-inheritance.md) - Mode system with inheritance
+
+**Guides and Reference:**
 - [docs/guides/development.md](./docs/guides/development.md) - Development guide
 - [docs/guides/testing.md](./docs/guides/testing.md) - Testing guide
+- [docs/guides/configuration.md](./docs/guides/configuration.md) - Editor settings
+- [docs/reference/commands.md](./docs/reference/commands.md) - Command system
+- [docs/reference/server-mode.md](./docs/reference/server-mode.md) - RPC server mode
+
+**Archive (v0.8.x legacy, being phased out):**
+- [docs/archive/](./docs/archive/) - Legacy documentation for lib/core

@@ -1,124 +1,189 @@
 # Architecture Overview
 
-This document provides a high-level overview of the reovim editor architecture.
+Reovim follows a **Linux kernel-inspired architecture** with clear separation between kernel mechanisms, drivers, and loadable modules.
 
-## Design Goals
-
-- **Fastest-reaction editor**: Minimal latency and instant response to user input
-- **Scalability**: Architecture designed to handle large files and complex operations
-- **Async-first**: Non-blocking I/O using tokio runtime
-
-## Workspace Structure
+## Layer Diagram
 
 ```
-reovim/
-├── runner/                 # Binary crate - editor entry point
-├── lib/core/               # reovim-core - core editor logic
-├── lib/sys/                # reovim-sys - terminal abstraction (crossterm)
-├── plugins/features/       # External feature plugins
-│   ├── completion/         # reovim-plugin-completion
-│   ├── explorer/           # reovim-plugin-explorer
-│   ├── health-check/       # reovim-plugin-health-check
-│   ├── lsp/                # reovim-plugin-lsp
-│   ├── microscope/         # reovim-plugin-microscope (fuzzy finder)
-│   ├── notification/       # reovim-plugin-notification
-│   ├── pair/               # reovim-plugin-pair
-│   ├── pickers/            # reovim-plugin-pickers
-│   ├── profiles/           # reovim-plugin-profiles
-│   ├── range-finder/       # reovim-plugin-range-finder (jump/fold)
-│   ├── settings-menu/      # reovim-plugin-settings-menu
-│   ├── statusline/         # reovim-plugin-statusline
-│   ├── treesitter/         # reovim-plugin-treesitter
-│   └── which-key/          # reovim-plugin-which-key
-├── plugins/languages/      # Language plugins
-│   ├── rust/               # reovim-lang-rust
-│   ├── c/                  # reovim-lang-c
-│   ├── javascript/         # reovim-lang-javascript
-│   ├── python/             # reovim-lang-python
-│   ├── json/               # reovim-lang-json
-│   ├── toml/               # reovim-lang-toml
-│   └── markdown/           # reovim-lang-markdown
-└── tools/
-    ├── perf-report/        # Performance report generator
-    ├── reo-cli/            # CLI client for server mode
-    └── bench/              # Performance benchmarks (criterion)
+┌─────────────────────────────────────────────────────────────────┐
+│                         MODULES                                 │
+│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐   │
+│  │ keymap  │ │ motions │ │operators│ │ layout  │ │ options │   │
+│  └────┬────┘ └────┬────┘ └────┬────┘ └────┬────┘ └────┬────┘   │
+│       │           │           │           │           │         │
+│       └───────────┴───────────┼───────────┴───────────┘         │
+│                               │                                 │
+│                    use reovim_kernel::api::*                    │
+└───────────────────────────────┼─────────────────────────────────┘
+                                │
+┌───────────────────────────────┼─────────────────────────────────┐
+│                         KERNEL API                              │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │  pub mod api { KernelContext, traits, types, module }   │    │
+│  └─────────────────────────────────────────────────────────┘    │
+└───────────────────────────────┼─────────────────────────────────┘
+                                │
+┌───────────────────────────────┼─────────────────────────────────┐
+│                      KERNEL (lib/kernel)                        │
+│  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐        │
+│  │  mm/   │ │  ipc/  │ │ core/  │ │ block/ │ │ sched/ │        │
+│  │ Buffer │ │EventBus│ │ Motion │ │UndoTree│ │Runtime │        │
+│  │Position│ │ Scope  │ │TextObj │ │  Txn   │ │WorkQue │        │
+│  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘        │
+│                                                                 │
+│  ┌────────┐ ┌────────┐                                          │
+│  │printk/ │ │ debug/ │                                          │
+│  │ Logger │ │ Panic  │                                          │
+│  └────────┘ └────────┘                                          │
+└───────────────────────────────┼─────────────────────────────────┘
+                                │
+┌───────────────────────────────┼─────────────────────────────────┐
+│                      DRIVERS (lib/drivers)                      │
+│  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐        │
+│  │syntax/ │ │ input/ │ │display/│ │  lsp/  │ │  net/  │        │
+│  │Syntax  │ │Keyboard│ │ Frame  │ │  LSP   │ │  RPC   │        │
+│  │Driver  │ │ Mouse  │ │Composit│ │ Client │ │ Server │        │
+│  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘        │
+│                                                                 │
+│  ┌────────┐ ┌────────┐                                          │
+│  │  vfs/  │ │  log/  │                                          │
+│  │  VFS   │ │Tracing │                                          │
+│  └────────┘ └────────┘                                          │
+└───────────────────────────────┼─────────────────────────────────┘
+                                │
+┌───────────────────────────────┼─────────────────────────────────┐
+│                        ARCH (lib/arch)                          │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │  Platform Traits: Terminal, FileSystem, Process, Time   │    │
+│  ├─────────────────────────────────────────────────────────┤    │
+│  │  unix/    │  windows/   │  (future: wasm/, embedded/)   │    │
+│  └─────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-## Dependency Graph
+## Linux Kernel Mapping
+
+| Linux | Reovim | Purpose |
+|-------|--------|---------|
+| `arch/` | `lib/arch/` | Platform abstraction (Unix, Windows) |
+| `kernel/` | `lib/kernel/` | Core mechanisms (no policy) |
+| `drivers/` | `lib/drivers/*` | Hardware/service adapters |
+| `fs/` | `lib/drivers/vfs/` | Virtual filesystem |
+| Loadable Modules | `modules/`, `plugins/` | Dynamic policy modules |
+
+## Design Principles
+
+### 1. Mechanism vs Policy
+
+- **Kernel** provides WHAT can be done (service objects via `sys.*`, traits)
+- **Modules** decide HOW to do it (keybindings, behavior)
+
+See: [Mechanism vs Policy](./mechanism-vs-policy.md)
+
+### 2. Kernel Purity
+
+- Zero external syntax dependencies in kernel
+- Zero logging dependencies (uses internal printk)
+- All tree-sitter in plugins, not kernel
+
+### 3. API Boundary
+
+- Modules use ONLY `reovim_kernel::api::*`
+- Kernel internals are `pub(crate)` (private)
+- Compile-time enforcement
+
+### 4. Driver Abstraction
+
+- Kernel defines traits, drivers implement
+- Multiple implementations possible (e.g., different terminals)
+- Hot-swappable at runtime
+
+## Crate Dependency Graph
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                          RUNNER                              │
-│                         (reovim)                             │
-└──────────────────────────────────────────────────────────────┘
-        │                    │                    │
-        ▼                    ▼                    ▼
-┌──────────────┐   ┌──────────────────┐   ┌──────────────────┐
-│    CORE      │◄──│ Feature Plugins  │   │ Language Plugins │
-│(reovim-core) │   │ (range-finder,   │   │ (rust, c, js,    │
-└──────────────┘   │ microscope, lsp) │   │  python, etc.)   │
-        │          └──────────────────┘   └──────────────────┘
-        ▼
-┌──────────────┐
-│     SYS      │
-│(reovim-sys)  │
-└──────────────┘
-        │
-        ▼
-   crossterm
+lib/arch          ← Platform traits (no deps)
+    │
+    ▼
+lib/kernel        ← Core mechanisms (depends on arch)
+    │
+    ├──▶ lib/drivers/*   ← Service adapters
+    │
+    └──▶ lib/module-macros  ← declare_module! proc-macro
+            │
+            ▼
+        runner/src/module/  ← Module loader, registry
+            │
+            ▼
+        modules/            ← Policy modules (keymap, motions, etc.)
+        plugins/            ← Feature plugins (treesitter, lsp, etc.)
 ```
 
-## Crate Responsibilities
-
-| Crate | Purpose |
-|-------|---------|
-| `runner` | Bootstrap editor, parse CLI args, configure plugins (AllPlugins), invoke runtime |
-| `reovim-core` | Runtime, buffers, events, screen, commands, plugin system, DefaultPlugins |
-| `reovim-sys` | Re-exports crossterm for terminal I/O |
-| `reovim-plugin-*` | External feature plugins (range-finder, microscope, lsp, completion, explorer, etc.) |
-| `reovim-lang-*` | Language support plugins (syntax highlighting, queries) |
-
-## Core Architecture Pattern
-
-The editor follows a **central runtime event loop** pattern with async tokio tasks:
+## Source Layout
 
 ```
-main.rs
-  │
-  ▼
-Runtime::init() ──────────────────────────────────┐
-  │                                               │
-  ├── Screen (terminal output)                    │
-  ├── Buffers (text storage)                      │
-  ├── CommandRegistry (trait-based commands)      │
-  ├── dual mpsc channels (hi/lo priority)         │
-  ├── watch channel (ModeState broadcast)         │
-  │                                               │
-  └── spawned async tasks:                        │
-      ├── InputEventBroker (reads terminal)       │
-      ├── KeyEventBroker (broadcasts keys)        │
-      ├── CommandHandler (keys → commands)        │
-      ├── CompletionHandler (async completion)    │
-      └── TerminateHandler (Ctrl+C)               │
-                                                  │
-      ◄─────────── event loop ────────────────────┘
+lib/
+├── arch/                    # Platform abstraction
+│   ├── src/traits.rs        # Terminal, FileSystem, Process traits
+│   ├── src/unix/            # Unix implementation
+│   └── src/windows/         # Windows implementation
+│
+├── kernel/                  # Core kernel
+│   └── src/
+│       ├── api/             # PUBLIC interface
+│       │   ├── v1.rs        # Stable API re-exports
+│       │   ├── module.rs    # Module trait, registrations
+│       │   ├── context.rs   # KernelContext, ModuleContext
+│       │   └── version.rs   # Version types
+│       │
+│       ├── mm/              # Memory management
+│       │   ├── buffer.rs    # Buffer storage
+│       │   ├── position.rs  # Position types
+│       │   └── edit.rs      # Edit operations
+│       │
+│       ├── ipc/             # Inter-process communication
+│       │   ├── event_bus.rs # Pub/sub event system
+│       │   └── scope.rs     # EventScope for sync
+│       │
+│       ├── core/            # Core primitives
+│       │   ├── motion.rs    # Motion types
+│       │   └── textobject.rs# TextObject types
+│       │
+│       ├── block/           # Block operations
+│       │   ├── undo.rs      # UndoTree
+│       │   └── transaction.rs
+│       │
+│       ├── sched/           # Scheduler
+│       │   ├── runtime.rs   # Event loop
+│       │   └── workqueue.rs # Async tasks
+│       │
+│       └── printk/          # Kernel logging
+│           └── logger.rs    # Logger trait
+│
+├── drivers/                 # Driver implementations
+│   ├── syntax/              # SyntaxDriver trait
+│   ├── input/               # InputDriver trait
+│   ├── display/             # DisplayDriver trait
+│   ├── lsp/                 # LSP client types
+│   ├── net/                 # RPC server
+│   ├── vfs/                 # Virtual filesystem
+│   └── log/                 # Tracing logger
+│
+└── module-macros/           # Proc-macro crate
+    └── src/lib.rs           # declare_module!
+
+runner/
+└── src/
+    └── module/              # Module system (runner layer)
+        ├── loader.rs        # Static + dynamic loading
+        ├── registry.rs      # Dependency resolution
+        ├── handle.rs        # FFI trampolines
+        └── hot_reload.rs    # File watching
 ```
 
-## Key Dependencies
+## Related Documents
 
-| Dependency | Purpose |
-|------------|---------|
-| `tokio` | Async runtime |
-| `crossterm` | Terminal I/O |
-| `futures` | Async utilities |
-| `nucleo` | Fuzzy matching (for microscope) |
-| `parking_lot` | Synchronization primitives |
-| `tree-sitter` | Incremental parsing |
-
-## Related Documentation
-
-- [Runtime](./runtime.md) - Central event loop and state
-- [Buffer](./buffer.md) - Text storage and cursor
-- [Screen](./screen.md) - Terminal rendering
-- [Plugins](./plugins.md) - Plugin system
-- [Features](./features.md) - Feature modules
+- [Mechanism vs Policy](./mechanism-vs-policy.md) - Core principle
+- [Module-Mode Inheritance](./module-mode-inheritance.md) - Mode system
+- [Kernel Subsystems](./kernel.md) - Kernel internals
+- [Driver Layer](./drivers.md) - Driver implementations
+- [Module System](./modules.md) - Dynamic modules

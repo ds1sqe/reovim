@@ -1,63 +1,29 @@
 # Reovim Documentation
 
-Welcome to the reovim documentation. This guide is organized by topic for easy navigation.
+Welcome to the Reovim documentation. This guide covers the new **Linux kernel-inspired architecture**.
 
 ## Quick Links
 
-- [Architecture Overview](./architecture/overview.md) - System design and structure
-- [Plugin Tutorial](./plugins/tutorial.md) - Create your first plugin
+- [Architecture Overview](./architecture/overview.md) - System design and layer diagram
+- [Mechanism vs Policy](./architecture/mechanism-vs-policy.md) - Core design principle
+- [Module System](./architecture/modules.md) - Dynamic module loading
 - [Configuration Guide](./guides/configuration.md) - Editor settings
-- [Troubleshooting](./guides/troubleshooting.md) - Common issues and solutions
 
 ## Documentation Structure
 
 ### [Architecture](./architecture/)
 
-Core system design and components.
+New kernel-based architecture (v0.9.0+).
 
 | Document | Description |
 |----------|-------------|
-| [Overview](./architecture/overview.md) | High-level architecture |
-| [Runtime](./architecture/runtime.md) | Central event loop |
-| [Buffer](./architecture/buffer.md) | Text storage and syntax |
-| [Screen](./architecture/screen.md) | Terminal rendering |
-| [Plugins](./architecture/plugins.md) | Plugin system architecture |
-| [Features](./architecture/features.md) | Feature modules |
-
-### [Events](./events/)
-
-Event system and communication.
-
-| Document | Description |
-|----------|-------------|
-| [Overview](./events/overview.md) | Event system overview |
-| [Event Bus](./events/eventbus.md) | Type-erased event system |
-| [Runtime Events](./events/runtime-events.md) | RuntimeEventPayload |
-| [Patterns](./events/patterns.md) | Event design patterns |
-| [Handlers](./events/handlers.md) | Event handlers |
-| [Keybindings](./events/keybindings.md) | Key binding system |
-
-### [Rendering](./rendering/)
-
-Render pipeline and plugin UI systems.
-
-| Document | Description |
-|----------|-------------|
-| [Overview](./rendering/overview.md) | Rendering system overview |
-| [Pipeline](./rendering/pipeline.md) | Data transformation stages |
-| [UI Systems](./rendering/ui-systems.md) | Plugin UI rendering |
-| [Custom Stages](./rendering/custom-stages.md) | Extending the pipeline |
-
-### [Plugins](./plugins/)
-
-Plugin development guides.
-
-| Document | Description |
-|----------|-------------|
-| [Overview](./plugins/overview.md) | Plugin development overview |
-| [Tutorial](./plugins/tutorial.md) | Beginner guide |
-| [Advanced](./plugins/advanced.md) | Advanced patterns |
-| [System](./plugins/system.md) | Full API reference |
+| [Overview](./architecture/overview.md) | Layer diagram, Linux mapping, crate deps |
+| [Kernel](./architecture/kernel.md) | mm/, ipc/, core/, block/, sched/, api/ |
+| [Drivers](./architecture/drivers.md) | syntax/, input/, display/, lsp/, net/, vfs/ |
+| [Modules](./architecture/modules.md) | Module trait, FFI, loader, registry |
+| [Mechanism vs Policy](./architecture/mechanism-vs-policy.md) | Kernel = WHAT, Modules = HOW |
+| [Module-Mode Inheritance](./architecture/module-mode-inheritance.md) | Mode system with inheritance |
+| [Clean Architecture Proposal](./architecture/clean-architecture-proposal.md) | Original proposal |
 
 ### [Guides](./guides/)
 
@@ -66,9 +32,9 @@ User and developer guides.
 | Document | Description |
 |----------|-------------|
 | [Configuration](./guides/configuration.md) | Editor settings |
-| [Troubleshooting](./guides/troubleshooting.md) | Common issues |
 | [Development](./guides/development.md) | Development setup |
 | [Testing](./guides/testing.md) | Testing guide |
+| [Troubleshooting](./guides/troubleshooting.md) | Common issues |
 
 ### [Reference](./reference/)
 
@@ -80,37 +46,34 @@ API and command reference.
 | [Server Mode](./reference/server-mode.md) | RPC server |
 | [Text Objects](./reference/text-objects.md) | Vim text objects |
 
-### [Features](./features/)
+### [Archive](./archive/)
 
-Feature-specific documentation.
-
-| Document | Description |
-|----------|-------------|
-| [Syntax Highlighting](./features/syntax-highlighting.md) | Treesitter integration |
-| [Saturator](./features/saturator.md) | Background processing |
-| [Color System](./features/color-system.md) | Color handling |
-| [Decoration System](./features/decoration-system.md) | Language decorations |
-| [Animation System](./features/animation-system.md) | Visual effects |
-| [Diagnostics](./features/diagnostics.md) | LSP diagnostics |
-| [Window/Buffer](./features/window-buffer.md) | Window management |
+Legacy documentation for `lib/core` (v0.8.x). These will be removed after Phase 6.
 
 ## Suggested Reading Order
+
+### For Module Developers
+
+1. [Architecture Overview](./architecture/overview.md) - Understand the layers
+2. [Mechanism vs Policy](./architecture/mechanism-vs-policy.md) - Design principle
+3. [Module System](./architecture/modules.md) - Create modules
+4. [Module-Mode Inheritance](./architecture/module-mode-inheritance.md) - Mode handling
+
+### For Core Contributors
+
+1. [Architecture Overview](./architecture/overview.md) - System design
+2. [Kernel Subsystems](./architecture/kernel.md) - Internal structure
+3. [Driver Layer](./architecture/drivers.md) - Driver implementations
+4. [Development Guide](./guides/development.md) - Build and test
 
 ### For Users
 
 1. [Configuration](./guides/configuration.md) - Set up your editor
 2. [Troubleshooting](./guides/troubleshooting.md) - Fix common issues
 
-### For Plugin Developers
+## Version Notes
 
-1. [Plugin Tutorial](./plugins/tutorial.md) - Create your first plugin
-2. [Event Patterns](./events/patterns.md) - Design plugin events
-3. [UI Systems](./rendering/ui-systems.md) - Add plugin UI
-4. [Plugin Advanced](./plugins/advanced.md) - Advanced techniques
-
-### For Core Contributors
-
-1. [Architecture Overview](./architecture/overview.md) - System design
-2. [Runtime](./architecture/runtime.md) - Event loop
-3. [Events Overview](./events/overview.md) - Event flow
-4. [Development](./guides/development.md) - Build and test
+| Version | Architecture | Documentation |
+|---------|--------------|---------------|
+| v0.9.0+ | `lib/kernel` + `lib/drivers` + modules | This documentation |
+| v0.8.x | `lib/core` (legacy) | See `archive/` |
