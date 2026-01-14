@@ -14,7 +14,7 @@ cargo build --workspace
 echo -e "\033[0;32m✓ Build succeeded\033[0m"
 
 echo -e "\033[1;33m==> Running clippy...\033[0m"
-cargo clippy --workspace -- -D warnings
+cargo +nightly clippy --all-targets --all-features --workspace -- -D warnings
 echo -e "\033[0;32m✓ Clippy passed\033[0m"
 
 echo -e "\033[1;33m==> Running tests...\033[0m"

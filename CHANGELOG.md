@@ -15,6 +15,44 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 6.0: Protocol Crate** (Issue #223) - Shared RPC types for client-server communication
+  - **New `lib/protocol/` crate** (`reovim-protocol`):
+    - Versioned module structure (`v1/`) for protocol evolution
+    - Zero kernel dependency - standalone with serde serialization
+  - **RPC Message Types** (`v1/messages.rs`):
+    - `RpcRequest`, `RpcResponse`, `RpcNotification`, `RpcError`
+    - JSON-RPC 2.0 compatible structure
+  - **Shared Types** (`v1/types.rs`):
+    - `Position`, `BufferId`, `WindowId` - Editor identifiers
+    - `SelectionMode`, `ScreenFormat` - Display enums
+    - `ModeInfo`, `CursorInfo`, `SelectionInfo` - State snapshots
+    - `BufferInfo`, `ScreenInfo`, `WindowInfo`, `CellInfo` - UI snapshots
+  - **Typed Params** (`v1/params.rs`):
+    - `InputKeysParams`, `CommandExecuteParams`, `EditorResizeParams`
+    - `BufferGetContentParams`, `BufferSetContentParams`, `BufferOpenFileParams`
+  - **Typed Results** (`v1/results.rs`):
+    - `ScreenContentResult`, `BufferListResult`, `BufferContentResult`
+    - `WindowsResult`, `OkResult`
+  - **Input Event Types** (`v1/input.rs`):
+    - `Input` enum with variants: Key, Click, Scroll, Resize, Focus, Paste, Attach, Detach, Ping, Pong
+    - `KeyEvent`, `KeyCode`, `KeyEventKind`, `Modifiers` - Keyboard types
+    - `ClickEvent`, `ClickKind`, `MouseButton` - Mouse click types
+    - `ScrollEvent`, `ScrollDirection` - Mouse scroll types
+    - `ResizeEvent` - Terminal resize
+    - `FocusEvent`, `FocusKind` - Terminal focus
+    - `PasteEvent` - Bracketed paste
+    - `AttachEvent`, `DetachEvent`, `DetachReason` - Session management
+    - `PingEvent`, `PongEvent` - Connection health monitoring
+  - **Method/Notification Constants** (`v1/methods.rs`, `v1/notifications.rs`):
+    - Type-safe method names: `state/*`, `buffer/*`, `input/*`, `command/*`, `editor/*`
+    - Notification names: `screen_update`, `mode_changed`, `buffer_modified`
+  - **Codec Module** (`v1/codec.rs`):
+    - JSON encoding/decoding utilities
+    - Line-delimited message framing
+  - **Net Driver Integration** (`lib/drivers/net/`):
+    - Re-exports protocol types
+    - Removed duplicate `codes.rs` and `rpc.rs` modules
+
 - **Phase 5.16: Archive Legacy Code** (Issue #215) - Clean workspace with only new kernel-driver-module architecture
   - **Archived to `archive/`**:
     - `lib/core/` - Legacy buffer, cursor, mode, events (~54,000 lines)
