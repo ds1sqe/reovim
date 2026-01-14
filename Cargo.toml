@@ -22,6 +22,7 @@ members = [
 
     # Runner and tools
     "runner/",
+    "runner-new/",
     "tools/*",
 
     # Plugins

@@ -1,0 +1,25 @@
+[package]
+name = "runner-new"
+version = "0.9.0-dev"
+edition = "2024"
+rust-version = "1.92"
+description = "New architecture runner for reovim with clean mode/command system"
+license = "AGPL-3.0-only"
+
+[lib]
+name = "runner_new"
+path = "src/lib.rs"
+
+[dependencies]
+reovim-kernel = { path = "../lib/kernel" }
+reovim-driver-command = { path = "../lib/drivers/command" }
+reovim-driver-display = { path = "../lib/drivers/display" }
+reovim-driver-input = { path = "../lib/drivers/input" }
+
+# Editor module is a dev-dependency for the demo example
+# (avoids cyclic dependency since editor module depends on runner-new)
+[dev-dependencies]
+reovim-module-editor = { path = "../modules/editor" }
+
+[lints]
+workspace = true

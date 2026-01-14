@@ -15,6 +15,31 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 5.15: New Runner and Editor Module** (Issue #214) - Clean architecture runner with editor module demonstrating mechanism/policy separation
+  - **runner-new crate** (`runner-new/`) - New runner implementing clean architecture:
+    - `AppState` - Combines KernelContext with runtime state (mode_stack, active_buffer, pending_keys)
+    - `InputFallbackHandler` trait - Mechanism for delegating unmatched keys to policy
+    - `FallbackResult` enum - Handled, Ignored, or Beep
+    - `ModeRegistry` - Stores Mode + ModeDisplay + ModeInput for each mode
+    - `CommandRegistry` - Stores CommandHandler implementations by CommandId
+    - `KeymapRegistry` - Maps (ModeId, KeySequence) → CommandId with prefix detection
+    - `EventLoop<F>` - Generic event loop with key dispatch, command execution, fallback delegation
+    - `NoOpFallback`, `BeepFallback` - Default fallback handler implementations
+  - **editor module** (`modules/editor/`) - Policy implementation for basic editing:
+    - `EditorMode` enum - Normal and Insert modes
+    - Implements `Mode`, `ModeDisplay`, `ModeInput` traits
+    - Cursor commands: cursor-up, cursor-down, cursor-left, cursor-right
+    - Mode commands: enter-insert, enter-insert-append, exit-to-normal
+    - `EditorFallbackHandler` - Character insertion in Insert mode, beep in Normal mode
+  - **Architecture demonstration** (`runner-new/examples/demo.rs`):
+    - Shows complete wiring of modes, commands, keybindings, and fallback handler
+    - Verifies mechanism/policy separation works end-to-end
+  - **Documentation updates** (`docs/architecture/`):
+    - Fixed `EventBus.publish()` → `EventBus.emit()` in kernel.md
+    - Added accurate v1 API exports documentation
+    - Added command/ driver section to drivers.md
+    - Updated input/ and display/ driver docs with ModeInput, ModeDisplay, KeySequence
+
 - **Phase 5.14: Kernel-Driver Architecture** (Issue #213) - Clean mechanism/policy separation following Linux kernel principles
   - **Kernel Mode Types** (`lib/kernel/src/core/mode.rs`):
     - `Mode` trait - Identity-only trait for modes (no behavior)

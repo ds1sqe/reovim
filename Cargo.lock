@@ -1974,6 +1974,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-module-editor"
+version = "0.9.0-dev"
+dependencies = [
+ "reovim-driver-command",
+ "reovim-driver-display",
+ "reovim-driver-input",
+ "reovim-kernel",
+ "runner-new",
+]
+
+[[package]]
 name = "reovim-module-example"
 version = "0.9.0-dev"
 dependencies = [
@@ -2223,6 +2234,17 @@ name = "reovim-sys"
 version = "0.8.1"
 dependencies = [
  "crossterm",
+]
+
+[[package]]
+name = "runner-new"
+version = "0.9.0-dev"
+dependencies = [
+ "reovim-driver-command",
+ "reovim-driver-display",
+ "reovim-driver-input",
+ "reovim-kernel",
+ "reovim-module-editor",
 ]
 
 [[package]]
