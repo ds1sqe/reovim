@@ -15,10 +15,32 @@ name = "reovim"
 path = "src/main.rs"
 
 [dependencies]
+# Kernel and drivers
 reovim-kernel = { path = "../lib/kernel" }
 reovim-driver-command = { path = "../lib/drivers/command" }
 reovim-driver-display = { path = "../lib/drivers/display" }
 reovim-driver-input = { path = "../lib/drivers/input" }
+
+# Protocol (shared RPC types)
+reovim-protocol = { path = "../lib/protocol" }
+
+# Platform abstraction (provides arc-swap, parking_lot)
+reovim-arch = { path = "../lib/arch" }
+
+# Async runtime for multi-threaded server
+tokio = { workspace = true }
+
+# Serialization
+serde_json = "1.0"
+
+# Async utilities (for BoxFuture)
+futures = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# CLI argument parsing
+clap = { workspace = true }
 
 # Editor module is a dev-dependency for the demo example
 # (avoids cyclic dependency since editor module depends on runner-new)

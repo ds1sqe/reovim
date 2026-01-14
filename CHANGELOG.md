@@ -15,6 +15,40 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 6.1: Server Infrastructure** (Issue #220) - Headless editor server with tmux-style session model
+  - **Server Module** (`runner/src/server.rs`):
+    - `Server` struct - Main server coordinating sessions, transport, and RPC dispatch
+    - `ServerConfig` - Builder-pattern configuration (port, host, session_name)
+    - TCP accept loop with per-client task spawning
+    - Graceful shutdown via `AtomicBool` flag
+  - **Session Module** (`runner/src/session/`):
+    - `SessionId` and `ClientId` - Strongly-typed identifiers
+    - `SessionState` - Combines `AppState` with registries
+    - `Session` - Thread-safe state access via `tokio::sync::RwLock`
+    - `SessionRegistry` - Lock-free session lookup using `ArcSwap` (RCU pattern)
+  - **Client Module** (`runner/src/client/`):
+    - `Client` - Per-connection state with `Mutex<WriteHalf>` for responses
+    - `ClientRegistry` - Per-session client tracking
+  - **Transport Module** (`runner/src/transport/`):
+    - `TcpTransport` - TCP listener with port fallback (12521-12530)
+    - Multi-instance support for development/debugging
+  - **RPC Module** (`runner/src/rpc/`):
+    - `RpcDispatcher` - Function-pointer based method routing
+    - `RpcContext` - Handler context with session reference
+    - MVP handlers: `input/keys`, `state/mode`, `state/cursor`, `server/kill`
+  - **Driver Trait Updates**:
+    - Added `Send + Sync` bounds to `ModeDisplay` trait
+    - Added `Send + Sync` bounds to `ModeInput` trait
+  - **CLI Entry Point** (`runner/src/main.rs`):
+    - `--server` flag for default TCP server
+    - `--listen-tcp <PORT>` for custom port
+    - Uses `clap` for argument parsing
+  - **Concurrency Model** (from `docs/reference/concurrency.md`):
+    - Level 0: Lock-free (ArcSwap, AtomicU64)
+    - Level 1: Per-session (RwLock)
+    - Level 2: Per-client (Mutex)
+  - 86 tests, zero clippy warnings
+
 - **Phase 6.0: Protocol Crate** (Issue #223) - Shared RPC types for client-server communication
   - **New `lib/protocol/` crate** (`reovim-protocol`):
     - Versioned module structure (`v1/`) for protocol evolution

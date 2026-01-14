@@ -97,6 +97,11 @@ impl CursorStyle {
 /// This trait separates display concerns from mode identity. The kernel's
 /// `Mode` trait provides identity only; this trait adds display behavior.
 ///
+/// # Thread Safety
+///
+/// This trait requires `Send + Sync` to allow modes to be used in
+/// multi-threaded server contexts (tokio runtime).
+///
 /// # Example
 ///
 /// ```ignore
@@ -114,7 +119,7 @@ impl CursorStyle {
 ///     }
 /// }
 /// ```
-pub trait ModeDisplay {
+pub trait ModeDisplay: Send + Sync {
     /// Get the cursor style for this mode.
     ///
     /// The cursor style provides visual feedback about the current mode.

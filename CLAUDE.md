@@ -234,7 +234,7 @@ When creating PRs with `gh pr create`, do NOT add promotional footers like "Gene
      - Acceptance criteria and test targets
 
 4. **Plan Polish - Round 1**:
-   - Launch **multiple `deep-explorer` agents IN PARALLEL** (triple-check pattern)
+   - Launch **multiple `deep-explorer` agents IN PARALLEL with Context** (triple-check pattern)
    - Each agent reviews plan for enhancements and missing details
    - Incorporate all feedback into plan
 
@@ -267,13 +267,14 @@ When creating PRs with `gh pr create`, do NOT add promotional footers like "Gene
 3. **Triple Deep-Explorer Review** (parallel agents):
    | Agent | Focus |
    |-------|-------|
-   | 1 | Plan comparison |
-   | 2 | Issue requirements |
+   | 1 | Plan / Issue requirements compare & Documentation Quality |
+   | 2 | Test Coverage & Test Quality|
    | 3 | Code quality & Linux/Unix philosophy |
 
    Agent 3 checks: Mechanism vs Policy, Do one thing well, Composability, Separation of concerns, API purity, Simplicity
 
    **Grading:** A+ (exceeds) / A (perfect) / B (minor fixes) / C (significant) / F (major)
+   - Create review report from agent at `tmp/{ISSUE_NUMBER}-review-{ROUND}.md`
    - **Must achieve A or A+ from ALL THREE agents**
    - If ANY agent gives below A → fix all issues → go back to Step 2
    - Loop until ALL agents give A or A+
