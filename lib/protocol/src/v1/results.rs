@@ -104,6 +104,56 @@ pub struct ModuleLoadResult {
     pub module: ModuleInfo,
 }
 
+/// Status of key lookup in keymap.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum KeyStatus {
+    /// Keys matched a binding and command was executed.
+    Executed,
+    /// Keys are a prefix of a binding, waiting for more.
+    Pending,
+    /// Keys don't match any binding.
+    NotFound,
+}
+
+/// Result for `input/keys` method.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InputKeysResult {
+    /// Whether the operation succeeded.
+    pub ok: bool,
+    /// Status of key lookup.
+    pub status: KeyStatus,
+}
+
+impl InputKeysResult {
+    /// Create result for executed command.
+    #[must_use]
+    pub const fn executed() -> Self {
+        Self {
+            ok: true,
+            status: KeyStatus::Executed,
+        }
+    }
+
+    /// Create result for pending key sequence.
+    #[must_use]
+    pub const fn pending() -> Self {
+        Self {
+            ok: true,
+            status: KeyStatus::Pending,
+        }
+    }
+
+    /// Create result for unbound keys.
+    #[must_use]
+    pub const fn not_found() -> Self {
+        Self {
+            ok: true,
+            status: KeyStatus::NotFound,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use {super::*, crate::v1::types::Position};
@@ -235,5 +285,43 @@ mod tests {
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("\"module\""));
         assert!(json.contains("\"id\":\"hot-reload-demo\""));
+    }
+
+    #[test]
+    fn test_key_status_serialization() {
+        assert_eq!(serde_json::to_string(&KeyStatus::Executed).unwrap(), "\"executed\"");
+        assert_eq!(serde_json::to_string(&KeyStatus::Pending).unwrap(), "\"pending\"");
+        assert_eq!(serde_json::to_string(&KeyStatus::NotFound).unwrap(), "\"not_found\"");
+    }
+
+    #[test]
+    fn test_input_keys_result_constructors() {
+        let executed = InputKeysResult::executed();
+        assert!(executed.ok);
+        assert_eq!(executed.status, KeyStatus::Executed);
+
+        let pending = InputKeysResult::pending();
+        assert!(pending.ok);
+        assert_eq!(pending.status, KeyStatus::Pending);
+
+        let not_found = InputKeysResult::not_found();
+        assert!(not_found.ok);
+        assert_eq!(not_found.status, KeyStatus::NotFound);
+    }
+
+    #[test]
+    fn test_input_keys_result_serialization() {
+        let result = InputKeysResult::executed();
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("\"ok\":true"));
+        assert!(json.contains("\"status\":\"executed\""));
+
+        let result = InputKeysResult::pending();
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("\"status\":\"pending\""));
+
+        let result = InputKeysResult::not_found();
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("\"status\":\"not_found\""));
     }
 }

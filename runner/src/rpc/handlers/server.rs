@@ -22,13 +22,17 @@ use super::super::dispatcher::{HandlerFuture, RpcContext};
 /// ```json
 /// {"jsonrpc": "2.0", "id": 1, "result": {"ok": true}}
 /// ```
+///
+/// # Panics
+///
+/// This function will not panic as `OkResult` serialization is infallible.
 #[must_use]
 pub fn server_kill(ctx: RpcContext, _params: serde_json::Value) -> HandlerFuture {
     Box::pin(async move {
         // Request the session to quit
         ctx.session.request_quit().await;
 
-        Ok(serde_json::to_value(OkResult::new()).unwrap_or_default())
+        Ok(serde_json::to_value(OkResult::new()).expect("OkResult serialization cannot fail"))
     })
 }
 

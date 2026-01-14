@@ -4,7 +4,7 @@
 
 use {
     reovim_driver_input::KeySequence,
-    reovim_protocol::v1::{InputKeysParams, RpcError},
+    reovim_protocol::v1::{InputKeysParams, InputKeysResult, RpcError},
 };
 
 use {
@@ -34,6 +34,10 @@ use {
 /// - `"executed"`: Keys matched a binding and the command was executed
 /// - `"pending"`: Keys are a prefix of a binding, waiting for more keys
 /// - `"not_found"`: Keys don't match any binding
+///
+/// # Panics
+///
+/// This function will not panic as `InputKeysResult` serialization is infallible.
 #[must_use]
 pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
     Box::pin(async move {
@@ -50,21 +54,18 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
         let lookup_result = ctx.session.lookup_keys(&mode, &keys).await;
 
         // Process based on lookup result
-        let status = match &lookup_result {
+        let result = match &lookup_result {
             KeyLookupResult::Found(cmd_id) => {
                 // Execute the command
                 let cmd_ctx = reovim_driver_command::CommandContext::default();
                 ctx.session.execute_command(cmd_id, &cmd_ctx).await;
-                "executed"
+                InputKeysResult::executed()
             }
-            KeyLookupResult::Prefix => "pending",
-            KeyLookupResult::NotFound => "not_found",
+            KeyLookupResult::Prefix => InputKeysResult::pending(),
+            KeyLookupResult::NotFound => InputKeysResult::not_found(),
         };
 
-        Ok(serde_json::json!({
-            "ok": true,
-            "status": status
-        }))
+        Ok(serde_json::to_value(result).expect("InputKeysResult serialization cannot fail"))
     })
 }
 

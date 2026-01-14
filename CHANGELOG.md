@@ -15,6 +15,26 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 6.1.3: Protocol Type Safety** (Issue #220 continued)
+  - **Type-Safe RPC Results** (`lib/protocol/src/v1/results.rs`):
+    - `KeyStatus` enum with `Executed`, `Pending`, `NotFound` variants
+    - `InputKeysResult` struct with typed constructors (`executed()`, `pending()`, `not_found()`)
+    - Snake_case JSON serialization via `#[serde(rename_all = "snake_case")]`
+  - **Notification Convenience Methods** (`lib/protocol/src/v1/notifications.rs`):
+    - `into_notification()` method for all 4 payload types
+    - `ModeChangedPayload`, `CursorMovedPayload`, `BufferModifiedPayload`, `RenderCompletePayload`
+    - Direct conversion to `RpcNotification` without manual construction
+  - **Handler Improvements** (`runner/src/rpc/handlers/`):
+    - `input/keys` now returns typed `InputKeysResult` instead of ad-hoc JSON
+    - `state/cursor` now retrieves actual cursor position from active buffer
+    - Fixed silent error suppression: `.unwrap_or_default()` → `.expect()` in 3 handlers
+  - **Stub Handlers** (`runner/src/rpc/handlers/stub.rs`):
+    - 10 stub handlers for unimplemented RPC methods (state/*, editor/*)
+    - Explicit "not implemented" errors via `RpcError::method_not_found()`
+    - Macro-based generation for consistency
+  - 14 RPC methods registered (4 implemented + 10 stubs)
+  - 91 protocol tests, 171 runner tests, zero clippy warnings
+
 - **Phase 6.1.2: Server Module Management** (Issue #220 continued)
   - **Module Infrastructure** (`runner/src/module/`):
     - `ModuleLoader` - Static and dynamic module loading via `libloading`

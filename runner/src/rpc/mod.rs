@@ -34,7 +34,11 @@ pub mod handlers;
 
 pub use dispatcher::{HandlerFn, HandlerFuture, RpcContext, RpcDispatcher, RpcResult};
 
-use reovim_protocol::v1::{INPUT_KEYS, SERVER_KILL, STATE_CURSOR, STATE_MODE};
+use reovim_protocol::v1::{
+    EDITOR_QUIT, EDITOR_RESIZE, INPUT_KEYS, SERVER_KILL, STATE_ASCII_ART, STATE_CURSOR,
+    STATE_LAYER_INFO, STATE_MICROSCOPE, STATE_MODE, STATE_SCREEN, STATE_SELECTION, STATE_TELESCOPE,
+    STATE_VISUAL_SNAPSHOT, STATE_WINDOWS,
+};
 
 /// Create a dispatcher with all default handlers registered.
 #[must_use]
@@ -44,9 +48,23 @@ pub fn create_default_dispatcher() -> RpcDispatcher {
     // Input methods
     dispatcher.register(INPUT_KEYS, handlers::input_keys);
 
-    // State methods
+    // State methods (implemented)
     dispatcher.register(STATE_MODE, handlers::state_mode);
     dispatcher.register(STATE_CURSOR, handlers::state_cursor);
+
+    // State methods (stubs)
+    dispatcher.register(STATE_SELECTION, handlers::state_selection);
+    dispatcher.register(STATE_SCREEN, handlers::state_screen);
+    dispatcher.register(STATE_WINDOWS, handlers::state_windows);
+    dispatcher.register(STATE_TELESCOPE, handlers::state_telescope);
+    dispatcher.register(STATE_MICROSCOPE, handlers::state_microscope);
+    dispatcher.register(STATE_VISUAL_SNAPSHOT, handlers::state_visual_snapshot);
+    dispatcher.register(STATE_ASCII_ART, handlers::state_ascii_art);
+    dispatcher.register(STATE_LAYER_INFO, handlers::state_layer_info);
+
+    // Editor methods (stubs)
+    dispatcher.register(EDITOR_RESIZE, handlers::editor_resize);
+    dispatcher.register(EDITOR_QUIT, handlers::editor_quit);
 
     // Server methods
     dispatcher.register(SERVER_KILL, handlers::server_kill);
@@ -62,11 +80,20 @@ mod tests {
     fn test_create_default_dispatcher() {
         let dispatcher = create_default_dispatcher();
 
+        // Implemented handlers
         assert!(dispatcher.has_method(INPUT_KEYS));
         assert!(dispatcher.has_method(STATE_MODE));
         assert!(dispatcher.has_method(STATE_CURSOR));
         assert!(dispatcher.has_method(SERVER_KILL));
 
-        assert_eq!(dispatcher.method_count(), 4);
+        // Stub handlers
+        assert!(dispatcher.has_method(STATE_SELECTION));
+        assert!(dispatcher.has_method(STATE_SCREEN));
+        assert!(dispatcher.has_method(STATE_WINDOWS));
+        assert!(dispatcher.has_method(EDITOR_RESIZE));
+        assert!(dispatcher.has_method(EDITOR_QUIT));
+
+        // 4 implemented + 10 stubs = 14 total
+        assert_eq!(dispatcher.method_count(), 14);
     }
 }

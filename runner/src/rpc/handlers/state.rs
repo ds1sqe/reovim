@@ -21,6 +21,10 @@ use super::super::dispatcher::{HandlerFuture, RpcContext};
 /// ```json
 /// {"jsonrpc": "2.0", "id": 1, "result": {"focus": "Editor", "edit_mode": "Normal", ...}}
 /// ```
+///
+/// # Panics
+///
+/// This function will not panic as `ModeInfo` serialization is infallible.
 #[must_use]
 pub fn state_mode(ctx: RpcContext, _params: serde_json::Value) -> HandlerFuture {
     Box::pin(async move {
@@ -40,7 +44,7 @@ pub fn state_mode(ctx: RpcContext, _params: serde_json::Value) -> HandlerFuture 
             display,
         };
 
-        Ok(serde_json::to_value(mode_info).unwrap_or_default())
+        Ok(serde_json::to_value(mode_info).expect("ModeInfo serialization cannot fail"))
     })
 }
 
@@ -59,6 +63,10 @@ pub fn state_mode(ctx: RpcContext, _params: serde_json::Value) -> HandlerFuture 
 /// ```json
 /// {"jsonrpc": "2.0", "id": 1, "result": {"line": 0, "column": 0}}
 /// ```
+///
+/// # Panics
+///
+/// This function will not panic as `CursorInfo` serialization is infallible.
 #[must_use]
 pub fn state_cursor(ctx: RpcContext, _params: serde_json::Value) -> HandlerFuture {
     Box::pin(async move {
@@ -67,13 +75,22 @@ pub fn state_cursor(ctx: RpcContext, _params: serde_json::Value) -> HandlerFutur
         let cursor = ctx
             .session
             .with_state(|state| {
-                // TODO: Get actual cursor position from active buffer when implemented
-                let _ = state.app.active_buffer;
+                // Get active buffer and retrieve cursor position
+                if let Some(buffer_id) = state.app.active_buffer
+                    && let Some(buffer_arc) = state.app.kernel.buffers.get(buffer_id)
+                {
+                    let pos = buffer_arc.read().position();
+                    return CursorInfo {
+                        line: pos.line,
+                        column: pos.column,
+                    };
+                }
+                // Fallback when no active buffer
                 CursorInfo { line: 0, column: 0 }
             })
             .await;
 
-        Ok(serde_json::to_value(cursor).unwrap_or_default())
+        Ok(serde_json::to_value(cursor).expect("CursorInfo serialization cannot fail"))
     })
 }
 
