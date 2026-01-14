@@ -69,6 +69,41 @@ impl OkResult {
     }
 }
 
+/// Information about a loaded module.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModuleInfo {
+    /// Unique module identifier.
+    pub id: String,
+    /// Human-readable module name.
+    pub name: String,
+    /// Module version string (e.g., "1.0.0").
+    pub version: String,
+    /// Current module state.
+    pub state: String,
+    /// Path to the module (for dynamic modules).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    /// Whether this is a statically linked module.
+    pub is_static: bool,
+    /// List of module dependencies.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dependencies: Vec<String>,
+}
+
+/// Result for `module/list` method.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModuleListResult {
+    /// List of all loaded modules.
+    pub modules: Vec<ModuleInfo>,
+}
+
+/// Result for `module/load` method.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModuleLoadResult {
+    /// Information about the loaded module.
+    pub module: ModuleInfo,
+}
+
 #[cfg(test)]
 mod tests {
     use {super::*, crate::v1::types::Position};
@@ -129,5 +164,76 @@ mod tests {
         let result = OkResult::new();
         let json = serde_json::to_string(&result).unwrap();
         assert_eq!(json, r#"{"ok":true}"#);
+    }
+
+    #[test]
+    fn test_module_info() {
+        let info = ModuleInfo {
+            id: "example-module".to_string(),
+            name: "Example Module".to_string(),
+            version: "1.0.0".to_string(),
+            state: "Running".to_string(),
+            path: Some("/usr/lib/reovim/modules/libexample.so".to_string()),
+            is_static: false,
+            dependencies: vec!["core".to_string()],
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(json.contains("\"id\":\"example-module\""));
+        assert!(json.contains("\"is_static\":false"));
+        assert!(json.contains("\"dependencies\":[\"core\"]"));
+    }
+
+    #[test]
+    fn test_module_info_static_no_deps() {
+        let info = ModuleInfo {
+            id: "builtin-module".to_string(),
+            name: "Builtin Module".to_string(),
+            version: "0.9.0".to_string(),
+            state: "Running".to_string(),
+            path: None,
+            is_static: true,
+            dependencies: vec![],
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(json.contains("\"is_static\":true"));
+        // path and dependencies should be skipped when empty/None
+        assert!(!json.contains("\"path\""));
+        assert!(!json.contains("\"dependencies\""));
+    }
+
+    #[test]
+    fn test_module_list_result() {
+        let result = ModuleListResult {
+            modules: vec![ModuleInfo {
+                id: "module-a".to_string(),
+                name: "Module A".to_string(),
+                version: "1.0.0".to_string(),
+                state: "Running".to_string(),
+                path: None,
+                is_static: true,
+                dependencies: vec![],
+            }],
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("\"modules\""));
+        assert!(json.contains("\"id\":\"module-a\""));
+    }
+
+    #[test]
+    fn test_module_load_result() {
+        let result = ModuleLoadResult {
+            module: ModuleInfo {
+                id: "hot-reload-demo".to_string(),
+                name: "Hot Reload Demo".to_string(),
+                version: "0.9.0-dev".to_string(),
+                state: "Loaded".to_string(),
+                path: Some("/tmp/libhot_reload_demo.so".to_string()),
+                is_static: false,
+                dependencies: vec![],
+            },
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("\"module\""));
+        assert!(json.contains("\"id\":\"hot-reload-demo\""));
     }
 }

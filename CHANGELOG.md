@@ -15,6 +15,37 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 6.1.2: Server Module Management** (Issue #220 continued)
+  - **Module Infrastructure** (`runner/src/module/`):
+    - `ModuleLoader` - Static and dynamic module loading via `libloading`
+    - `ModuleRegistry` - Module state tracking and dependency resolution
+    - `ModuleHandle` - FFI symbol trampolines for lifecycle calls
+    - `ModuleConfig` - TOML configuration for search paths and auto-loading
+    - Kahn's algorithm for topological sort of dependencies
+    - Platform-aware module discovery (`.so`, `.dylib`, `.dll`)
+  - **RPC Protocol Types** (`lib/protocol/src/v1/`):
+    - `module/load`, `module/unload`, `module/reload`, `module/list` method constants
+    - `ModuleLoadParams`, `ModuleUnloadParams`, `ModuleReloadParams` param types
+    - `ModuleInfo`, `ModuleListResult`, `ModuleLoadResult` result types
+  - **Server Integration**:
+    - `ModuleRegistry` integrated into `SessionState` (per-session module ownership)
+    - `ServerConfig.modules` for config-based module loading
+    - `with_modules_from_config()` for loading `~/.config/reovim/config.toml`
+  - **Hot Reload Demo Module** (`modules/hot-reload-demo/`):
+    - Working example demonstrating FFI workflow and hot reload
+    - State preservation with version-compatible binary format
+    - Counter commands: `demo:increment`, `demo:decrement`, `demo:show`, `demo:reset`
+    - 11 unit tests verifying hot reload cycle
+  - **Integration Tests** (`runner/tests/module_loading.rs`):
+    - 15 tests exercising real FFI loading via `libloading`
+    - Tests for probe, init/exit lifecycle, state preservation
+    - Error handling for version mismatch, corrupt data, null pointers
+  - **Documentation** (`docs/guides/module-development.md`):
+    - Complete guide for FFI workflow and hot reload
+    - RPC commands reference
+    - Configuration guide
+  - 185 tests total, zero clippy warnings
+
 - **Phase 6.1.1: Server Enhancements** (Issue #220 continued)
   - **Transport Abstraction** (`runner/src/transport/`):
     - `TransportReader`/`TransportWriter` - Unified reader/writer for TCP, Unix, and Stdio

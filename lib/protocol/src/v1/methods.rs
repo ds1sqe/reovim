@@ -77,6 +77,20 @@ pub const EDITOR_QUIT: &str = "editor/quit";
 /// Kill the server.
 pub const SERVER_KILL: &str = "server/kill";
 
+// Module methods
+
+/// Load a module from a path.
+pub const MODULE_LOAD: &str = "module/load";
+
+/// Unload a module by ID.
+pub const MODULE_UNLOAD: &str = "module/unload";
+
+/// Hot reload a module by ID.
+pub const MODULE_RELOAD: &str = "module/reload";
+
+/// List all loaded modules.
+pub const MODULE_LIST: &str = "module/list";
+
 #[cfg(test)]
 mod tests {
     use super::*;

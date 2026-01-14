@@ -27,11 +27,16 @@ reovim-protocol = { path = "../lib/protocol" }
 # Platform abstraction (provides arc-swap, parking_lot)
 reovim-arch = { path = "../lib/arch" }
 
+# Dynamic library loading for runtime modules
+libloading = "0.8"
+
 # Async runtime for multi-threaded server
 tokio = { workspace = true }
 
 # Serialization
+serde = { workspace = true }
 serde_json = "1.0"
+toml = { workspace = true }
 
 # Async utilities (for BoxFuture)
 futures = { workspace = true }
@@ -46,6 +51,9 @@ clap = { workspace = true }
 # (avoids cyclic dependency since editor module depends on runner-new)
 [dev-dependencies]
 reovim-module-editor = { path = "../modules/editor" }
+# Hot reload demo module for integration tests
+# This ensures the cdylib is built when running `cargo test`
+reovim-module-hot-reload-demo = { path = "../modules/hot-reload-demo" }
 tempfile = "3.10"
 
 [lints]

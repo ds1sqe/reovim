@@ -1,0 +1,19 @@
+[package]
+name = "reovim-module-hot-reload-demo"
+version = "0.9.0-dev"
+edition = "2024"
+rust-version = "1.92"
+description = "Demo module for hot reload functionality"
+license = "AGPL-3.0-only"
+
+[lib]
+# cdylib for dynamic loading, rlib for static linking in tests
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+reovim-kernel = { workspace = true }
+reovim-module-macros = { workspace = true }
+tracing = { workspace = true }
+
+[lints]
+workspace = true

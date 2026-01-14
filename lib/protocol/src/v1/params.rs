@@ -10,7 +10,7 @@ use super::types::ScreenFormat;
 /// Parameters for `input/keys` method.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InputKeysParams {
-    /// Key sequence in vim notation (e.g., "iHello<Esc>").
+    /// Key sequence in vim notation (e.g., `iHello<Esc>`).
     pub keys: String,
 }
 
@@ -82,6 +82,27 @@ pub struct EditorResizeParams {
     pub height: u16,
 }
 
+/// Parameters for `module/load` method.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModuleLoadParams {
+    /// Path to the module shared library.
+    pub path: String,
+}
+
+/// Parameters for `module/unload` method.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModuleUnloadParams {
+    /// Module ID to unload.
+    pub id: String,
+}
+
+/// Parameters for `module/reload` method.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModuleReloadParams {
+    /// Module ID to reload.
+    pub id: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -132,5 +153,32 @@ mod tests {
         let json = serde_json::to_string(&params).unwrap();
         assert!(json.contains("\"width\":120"));
         assert!(json.contains("\"height\":40"));
+    }
+
+    #[test]
+    fn test_module_load_params() {
+        let params = ModuleLoadParams {
+            path: "/usr/lib/reovim/modules/libexample.so".to_string(),
+        };
+        let json = serde_json::to_string(&params).unwrap();
+        assert!(json.contains("\"path\":\"/usr/lib/reovim/modules/libexample.so\""));
+    }
+
+    #[test]
+    fn test_module_unload_params() {
+        let params = ModuleUnloadParams {
+            id: "example-module".to_string(),
+        };
+        let json = serde_json::to_string(&params).unwrap();
+        assert!(json.contains("\"id\":\"example-module\""));
+    }
+
+    #[test]
+    fn test_module_reload_params() {
+        let params = ModuleReloadParams {
+            id: "hot-reload-demo".to_string(),
+        };
+        let json = serde_json::to_string(&params).unwrap();
+        assert!(json.contains("\"id\":\"hot-reload-demo\""));
     }
 }

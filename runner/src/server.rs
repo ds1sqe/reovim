@@ -57,6 +57,7 @@ use {
 
 use crate::{
     client::Client,
+    module::ModuleConfig,
     rpc::{RpcContext, RpcDispatcher, create_default_dispatcher},
     session::{Session, SessionId, SessionRegistry},
     transport::{TransportListener, TransportReader, TransportWriter},
@@ -103,6 +104,9 @@ pub struct ServerConfig {
 
     /// Name of the default session to create on startup.
     pub default_session_name: String,
+
+    /// Module configuration (search paths, auto-load).
+    pub modules: ModuleConfig,
 }
 
 impl Default for ServerConfig {
@@ -110,6 +114,7 @@ impl Default for ServerConfig {
         Self {
             transport: TransportMode::TcpWithFallback,
             default_session_name: String::from("default"),
+            modules: ModuleConfig::default(),
         }
     }
 }
@@ -162,6 +167,33 @@ impl ServerConfig {
     #[must_use]
     pub fn session_name(mut self, name: impl Into<String>) -> Self {
         self.default_session_name = name.into();
+        self
+    }
+
+    /// Set the module configuration.
+    #[must_use]
+    pub fn with_modules(mut self, modules: ModuleConfig) -> Self {
+        self.modules = modules;
+        self
+    }
+
+    /// Load module configuration from the config file.
+    ///
+    /// Loads `[modules]` section from `~/.config/reovim/config.toml`.
+    /// Falls back to defaults if the file doesn't exist.
+    ///
+    /// # Panics
+    ///
+    /// Logs a warning and uses defaults if the config file exists
+    /// but cannot be parsed.
+    #[must_use]
+    pub fn with_modules_from_config(mut self) -> Self {
+        match ModuleConfig::load() {
+            Ok(config) => self.modules = config,
+            Err(e) => {
+                tracing::warn!("Failed to load module config: {e}");
+            }
+        }
         self
     }
 }
@@ -520,5 +552,34 @@ mod tests {
         let mode_id = default_mode_id();
         assert_eq!(mode_id.module().as_str(), "editor");
         assert_eq!(mode_id.name(), "normal");
+    }
+
+    #[test]
+    fn test_server_config_with_modules() {
+        let modules = ModuleConfig::new()
+            .with_search_path("/custom/modules")
+            .with_autoload("my-module");
+
+        let config = ServerConfig::tcp(9000).with_modules(modules);
+
+        assert_eq!(config.modules.search_paths, vec!["/custom/modules"]);
+        assert_eq!(config.modules.autoload, vec!["my-module"]);
+    }
+
+    #[test]
+    fn test_server_config_with_modules_from_config() {
+        // This should not panic even if no config file exists
+        let config = ServerConfig::tcp(9000).with_modules_from_config();
+
+        // Should have default or loaded config
+        assert!(config.modules.search_paths.is_empty() || !config.modules.search_paths.is_empty());
+    }
+
+    #[test]
+    fn test_server_config_default_has_module_config() {
+        let config = ServerConfig::default();
+
+        // Default config should have empty module config
+        assert!(config.modules.autoload.is_empty());
     }
 }

@@ -78,6 +78,7 @@ mod app;
 pub mod client;
 mod event_loop;
 mod fallback;
+pub mod module;
 pub mod notification;
 pub mod registry;
 pub mod rpc;

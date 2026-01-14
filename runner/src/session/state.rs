@@ -10,6 +10,7 @@ use {
 
 use crate::{
     AppState,
+    module::ModuleRegistry,
     registry::{CommandRegistry, KeyLookupResult, KeymapRegistry, ModeRegistry},
 };
 
@@ -18,7 +19,7 @@ use crate::{
 /// This is the complete state for a single editing session. Each session
 /// (like tmux sessions) has its own `SessionState` with independent:
 /// - Kernel context (buffers, events, options)
-/// - Mode/command/keymap registries
+/// - Mode/command/keymap/module registries
 /// - Runtime state (active buffer, pending keys)
 ///
 /// # Thread Safety
@@ -39,7 +40,6 @@ use crate::{
 /// // Process keys through the session state
 /// let result = state.lookup_keys(&mode_id, &key_sequence);
 /// ```
-#[derive(Debug)]
 pub struct SessionState {
     /// Application state (kernel + runtime state).
     pub app: AppState,
@@ -52,6 +52,12 @@ pub struct SessionState {
 
     /// Registry of keybindings.
     pub keymap_registry: KeymapRegistry,
+
+    /// Registry of loaded modules (static and dynamic).
+    ///
+    /// Each session owns its own module set, enabling per-session
+    /// module loading and isolation (similar to Linux process contexts).
+    pub module_registry: ModuleRegistry,
 }
 
 impl SessionState {
@@ -68,6 +74,7 @@ impl SessionState {
             mode_registry: ModeRegistry::new(),
             command_registry: CommandRegistry::new(),
             keymap_registry: KeymapRegistry::new(),
+            module_registry: ModuleRegistry::new(),
         }
     }
 
@@ -82,13 +89,21 @@ impl SessionState {
         mode_registry: ModeRegistry,
         command_registry: CommandRegistry,
         keymap_registry: KeymapRegistry,
+        module_registry: ModuleRegistry,
     ) -> Self {
         Self {
             app: AppState::new(kernel, initial_mode),
             mode_registry,
             command_registry,
             keymap_registry,
+            module_registry,
         }
+    }
+
+    /// Get a reference to the module registry.
+    #[must_use]
+    pub const fn module_registry(&self) -> &ModuleRegistry {
+        &self.module_registry
     }
 
     /// Get the current mode ID.
@@ -155,7 +170,18 @@ mod tests {
         assert!(state.mode_registry.is_empty());
         assert!(state.command_registry.is_empty());
         assert!(state.keymap_registry.is_empty());
+        assert!(state.module_registry.is_empty());
         assert_eq!(state.current_mode().name(), "normal");
+    }
+
+    #[test]
+    fn test_session_state_module_registry_accessor() {
+        let kernel = KernelContext::default();
+        let state = SessionState::new(kernel, test_mode_id());
+
+        // Verify we can access the module registry
+        assert!(state.module_registry().is_empty());
+        assert_eq!(state.module_registry().len(), 0);
     }
 
     #[test]
