@@ -21,4 +21,8 @@ echo -e "\033[1;33m==> Running tests...\033[0m"
 cargo test --workspace
 echo -e "\033[0;32m✓ All tests passed\033[0m"
 
+echo -e "\033[1;33m==> Running doc tests...\033[0m"
+cargo test --doc --workspace
+echo -e "\033[0;32m✓ Doc tests passed\033[0m"
+
 echo -e "\033[1;32m==> All checks passed!\033[0m"
