@@ -17,7 +17,7 @@ use {
     reovim_driver_input::KeyEvent,
 };
 
-use crate::{
+use super::{
     AppState,
     fallback::{FallbackResult, InputFallbackHandler},
     registry::{CommandRegistry, KeyLookupResult, KeymapRegistry, ModeRegistry},

@@ -53,14 +53,18 @@
 //! ```
 
 mod id;
+mod notify;
 mod registry;
 #[allow(clippy::module_inception)]
 mod session;
+mod snapshot;
 mod state;
 
 pub use {
     id::{ClientId, SessionId},
+    notify::emit_state_changes,
     registry::SessionRegistry,
     session::Session,
+    snapshot::StateSnapshot,
     state::SessionState,
 };

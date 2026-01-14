@@ -15,6 +15,29 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 6.1.4: Handler Completion & Server Reorganization** (Issue #220 continued)
+  - **Directory Reorganization**:
+    - Moved all server-specific code under `runner/src/server/` for future client modes
+    - Reorganized `rpc/` to `server/rpc/`, `session/` to `server/session/`, etc.
+    - Re-exports maintained in `lib.rs` for backwards compatibility
+  - **10 New RPC Handlers** (`runner/src/server/rpc/handlers/`):
+    - `command/execute` - Execute ex-commands by name lookup
+    - `buffer/get_content` - Get buffer content (supports buffer_id or active buffer)
+    - `buffer/set_content` - Replace buffer content
+    - `buffer/list` - List all open buffers with metadata
+    - `buffer/open_file` - Open file into new buffer
+    - `state/screen_content` - Screen visualization in plain_text/raw_ansi/cell_grid formats
+    - `module/list` - List loaded modules with state and dependencies
+    - `module/load` - Load dynamic module from path (unsafe FFI)
+    - `module/unload` - Unload module (checks dependencies)
+    - `module/reload` - Atomic hot reload with state preservation
+  - **Notification Emission System** (`runner/src/server/session/`):
+    - `StateSnapshot` - Captures mode, cursor, buffer state for change detection
+    - `emit_state_changes()` - Broadcasts mode_changed, cursor_moved, buffer_modified
+    - Integrated into `input/keys` handler for automatic notification on state changes
+  - 24 RPC methods registered (14 implemented + 10 stubs)
+  - 188 runner tests, zero clippy warnings
+
 - **Phase 6.1.3: Protocol Type Safety** (Issue #220 continued)
   - **Type-Safe RPC Results** (`lib/protocol/src/v1/results.rs`):
     - `KeyStatus` enum with `Executed`, `Pending`, `NotFound` variants

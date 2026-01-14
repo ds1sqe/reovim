@@ -9,7 +9,10 @@ use {
 
 use {
     super::super::dispatcher::{HandlerFuture, RpcContext},
-    crate::registry::KeyLookupResult,
+    crate::{
+        registry::KeyLookupResult,
+        session::{StateSnapshot, emit_state_changes},
+    },
 };
 
 /// Handler for `input/keys` method.
@@ -49,6 +52,9 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
         let keys = KeySequence::parse(&params.keys)
             .ok_or_else(|| RpcError::invalid_params("Invalid key notation"))?;
 
+        // Capture state BEFORE processing (for notification emission)
+        let before = ctx.session.with_state(StateSnapshot::capture).await;
+
         // Get current mode and look up keys
         let mode = ctx.session.current_mode().await;
         let lookup_result = ctx.session.lookup_keys(&mode, &keys).await;
@@ -64,6 +70,10 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
             KeyLookupResult::Prefix => InputKeysResult::pending(),
             KeyLookupResult::NotFound => InputKeysResult::not_found(),
         };
+
+        // Capture state AFTER and emit notifications for any changes
+        let after = ctx.session.with_state(StateSnapshot::capture).await;
+        emit_state_changes(&ctx.session, &before, &after).await;
 
         Ok(serde_json::to_value(result).expect("InputKeysResult serialization cannot fail"))
     })

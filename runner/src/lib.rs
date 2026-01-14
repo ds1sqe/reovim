@@ -11,49 +11,33 @@
 //!
 //! ```text
 //! runner/
-//! ├── app.rs           - AppState (kernel + runtime state)
-//! ├── server.rs        - Server and ServerConfig (main entry)
-//! ├── fallback.rs      - InputFallbackHandler trait (mechanism)
-//! ├── event_loop.rs    - Synchronous event loop (for embedded use)
-//! ├── session/
-//! │   ├── id.rs        - SessionId, ClientId types
-//! │   ├── state.rs     - SessionState (AppState + Registries)
-//! │   ├── session.rs   - Session (async-safe state access)
-//! │   └── registry.rs  - SessionRegistry (lock-free)
-//! ├── client/
-//! │   ├── client.rs    - Client (per-connection state)
-//! │   └── registry.rs  - ClientRegistry (per-session)
-//! ├── transport/
-//! │   └── tcp.rs       - TCP transport with port fallback
-//! ├── rpc/
-//! │   ├── dispatcher.rs - RPC method routing
-//! │   └── handlers/     - Method handlers (input, state, server)
-//! └── registry/
-//!     ├── mode.rs      - ModeRegistry
-//!     ├── command.rs   - CommandRegistry
-//!     └── keymap.rs    - KeymapRegistry
+//! ├── lib.rs           - Re-exports from server/
+//! ├── main.rs          - Entry point
+//! └── server/          - ALL server-specific code
+//!     ├── mod.rs       - Server struct and config
+//!     ├── app.rs       - AppState (kernel + runtime state)
+//!     ├── event_loop.rs - Synchronous event loop
+//!     ├── fallback.rs  - InputFallbackHandler trait
+//!     ├── notification.rs - NotificationBroadcaster
+//!     ├── session/     - Session management
+//!     ├── client/      - Client connections
+//!     ├── transport/   - Transport layer (TCP, Unix, Stdio)
+//!     ├── registry/    - Mode, Command, Keymap registries
+//!     ├── module/      - Module system
+//!     └── rpc/         - RPC dispatcher + handlers
 //! ```
 //!
 //! # Example - Server Mode
 //!
 //! ```ignore
-//! use runner::session::{Session, SessionId, SessionRegistry};
-//! use reovim_kernel::api::v1::{KernelContext, ModeId, ModuleId};
+//! use runner::server::{Server, ServerConfig};
 //!
-//! // Create session registry
-//! let registry = SessionRegistry::new();
-//!
-//! // Create and register a session
-//! let session = Session::new(
-//!     SessionId::new("default"),
-//!     KernelContext::default(),
-//!     ModeId::new(ModuleId::new("editor"), "normal"),
-//! );
-//! registry.insert(session);
-//!
-//! // Lock-free session lookup
-//! if let Some(session) = registry.get(&SessionId::default()) {
-//!     let mode = session.current_mode().await;
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     let config = ServerConfig::default();
+//!     let server = Server::new(config);
+//!     server.run().await?;
+//!     Ok(())
 //! }
 //! ```
 //!
@@ -74,22 +58,31 @@
 //! event_loop.run()?;
 //! ```
 
-mod app;
-pub mod client;
-mod event_loop;
-mod fallback;
-pub mod module;
-pub mod notification;
-pub mod registry;
-pub mod rpc;
+// All server-specific code lives in the server module
 pub mod server;
-pub mod session;
-pub mod transport;
 
-pub use {
-    app::AppState,
-    event_loop::{EventLoop, EventLoopError},
-    fallback::{BeepFallback, FallbackResult, InputFallbackHandler, NoOpFallback},
-    notification::NotificationBroadcaster,
-    server::{Server, ServerConfig, TransportMode},
+// Re-exports for backwards compatibility and convenience
+pub use server::{
+    // Core types
+    AppState,
+    // Fallback handlers
+    BeepFallback,
+    EventLoop,
+    EventLoopError,
+    FallbackResult,
+    InputFallbackHandler,
+    NoOpFallback,
+    NotificationBroadcaster,
+    Server,
+    ServerConfig,
+    TransportMode,
 };
+
+// Re-export submodules for backwards compatibility
+pub use server::{client, module, notification, registry, session, transport};
+
+// Backwards compat: allow `runner::fallback::*`
+pub mod fallback {
+    //! Fallback handlers for unhandled input.
+    pub use crate::server::fallback::*;
+}

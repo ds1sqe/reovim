@@ -42,6 +42,26 @@
 //! }
 //! ```
 
+// Submodules - all server-specific code lives here
+mod app;
+pub mod client;
+mod event_loop;
+pub mod fallback;
+pub mod module;
+pub mod notification;
+pub mod registry;
+pub mod rpc;
+pub mod session;
+pub mod transport;
+
+// Re-exports for public API
+pub use {
+    app::AppState,
+    event_loop::{EventLoop, EventLoopError},
+    fallback::{BeepFallback, FallbackResult, InputFallbackHandler, NoOpFallback},
+    notification::NotificationBroadcaster,
+};
+
 use std::{
     path::PathBuf,
     sync::{
@@ -55,7 +75,7 @@ use {
     reovim_protocol::v1::{RpcError, RpcRequest, RpcResponse},
 };
 
-use crate::{
+use {
     client::Client,
     module::ModuleConfig,
     rpc::{RpcContext, RpcDispatcher, create_default_dispatcher},

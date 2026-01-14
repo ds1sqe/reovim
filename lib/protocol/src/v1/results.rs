@@ -42,6 +42,13 @@ pub struct BufferContentResult {
     pub content: String,
 }
 
+/// Result for `buffer/open_file` method.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BufferOpenResult {
+    /// ID of the opened buffer.
+    pub buffer_id: usize,
+}
+
 /// Result for `state/windows` method.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WindowsResult {
