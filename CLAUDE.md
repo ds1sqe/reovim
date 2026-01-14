@@ -48,31 +48,43 @@ Reovim is a Rust-based neovim-like text editor following a **Linux kernel-inspir
 
 ### Workspace Structure
 
-**New Architecture (v0.9.0+):**
+**Kernel Layer:**
 - `lib/kernel/` (reovim-kernel) - Core mechanisms: mm/, ipc/, core/, block/, sched/, api/
-- `lib/drivers/` - Service adapters: syntax/, input/, display/, lsp/, net/, vfs/, log/
+
+**Driver Layer:**
+- `lib/drivers/command/` - Command trait and registry
+- `lib/drivers/display/` - Terminal rendering, style, decorations
+- `lib/drivers/input/` - Key events and input parsing
+- `lib/drivers/syntax/` - Tree-sitter integration
+- `lib/drivers/lsp/` - Language server protocol client
+- `lib/drivers/net/` - Network transport (TCP, Unix socket)
+- `lib/drivers/vfs/` - Virtual filesystem operations
+- `lib/drivers/log/` - Logging infrastructure
+
+**Platform Abstraction:**
 - `lib/arch/` (reovim-arch) - Platform abstraction: unix/, windows/
 - `lib/module-macros/` - `declare_module!` proc-macro for FFI entry points
-- `runner/src/module/` - Module loader, registry, hot reload
-- `modules/` - Policy modules (keymap, motions, operators, layout, options)
 
-**Plugins and Tools:**
-- `plugins/features/` - Feature plugins (range-finder, treesitter, completion, explorer, telescope)
-- `plugins/languages/` - Language support plugins (rust, c, javascript, python, json, toml, markdown)
+**Runner:**
+- `runner/` (reovim) - Event loop, registries, application state
+
+**Policy Modules:**
+- `modules/` - Policy modules (editor, keymap, operators, layout, options, etc.)
+
+**Tools:**
 - `tools/perf-report/` - Performance report generator CLI
 - `tools/reo-cli/` - CLI client for server mode
-- `tools/bench/` - Performance benchmarks (criterion)
 - `perf/` - Versioned performance reports (PERF-{version}.md)
 
-**Legacy**: `lib/core/` is being migrated to the kernel architecture. See `docs/archive/` for legacy internals.
+**Archive (legacy reference only):**
+- `archive/` - Pre-v0.9.0 legacy code (lib/core, lib/sys, lib/lsp, plugins, old runner)
 
 ### Key Dependencies
 
 - `tokio` - Async runtime
-- `crossterm` (via reovim-sys) - Terminal I/O
+- `crossterm` (via reovim-arch) - Terminal I/O
 - `futures`/`futures-timer` - Async utilities
-- `criterion` - Benchmarking framework
-- `nucleo` - Fuzzy matching for telescope
+- `tracing` - Logging and diagnostics
 
 ### Minimum Rust Version
 
@@ -143,7 +155,7 @@ cargo run
 cargo test
 
 # Run tests for a specific crate
-cargo test -p reovim-core
+cargo test -p reovim-kernel
 
 # Check code without building
 cargo check
@@ -154,14 +166,8 @@ cargo fmt
 # Run clippy
 cargo clippy
 
-# Run benchmarks + generate report (unified command)
+# Generate performance report
 cargo run -p perf-report -- bench -v X.Y.Z
-
-# Run benchmarks only
-cargo bench -p reovim-bench
-
-# Generate report from existing benchmark data
-cargo run -p perf-report -- update -v X.Y.Z
 
 # Run in server mode (TCP on 127.0.0.1:12521, or next available port)
 cargo run -- --server
@@ -314,8 +320,9 @@ For in-depth information, see:
 - [docs/reference/commands.md](./docs/reference/commands.md) - Command system
 - [docs/reference/server-mode.md](./docs/reference/server-mode.md) - RPC server mode
 
-**Archive (v0.8.x legacy, being phased out):**
-- [docs/archive/](./docs/archive/) - Legacy documentation for lib/core
+**Archive (v0.8.x legacy reference):**
+- [docs/archive/](./docs/archive/) - Legacy documentation
+- [archive/](./archive/) - Archived legacy code (lib/core, lib/sys, lib/lsp, plugins)
 
 ## Logs and Debugging
 

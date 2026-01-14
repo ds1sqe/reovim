@@ -6,6 +6,7 @@ Drivers (`lib/drivers/*`) implement traits defined by the kernel. Each driver is
 
 | Driver | Crate | Purpose |
 |--------|-------|---------|
+| `command/` | `reovim-driver-command` | Command traits and execution |
 | `syntax/` | `reovim-driver-syntax` | Syntax highlighting abstraction |
 | `input/` | `reovim-driver-input` | Keyboard, mouse, clipboard |
 | `display/` | `reovim-driver-display` | Frame buffer, compositor |
@@ -13,6 +14,58 @@ Drivers (`lib/drivers/*`) implement traits defined by the kernel. Each driver is
 | `net/` | `reovim-driver-net` | RPC server, transports |
 | `vfs/` | `reovim-driver-vfs` | Virtual filesystem |
 | `log/` | `reovim-driver-log` | Logger implementation (tracing) |
+
+---
+
+## command/ - Command Driver
+
+Command traits and execution infrastructure.
+
+```rust
+// lib/drivers/command/src/
+
+/// Command metadata (identity, description, arguments)
+pub trait Command {
+    fn id(&self) -> CommandId;
+    fn description(&self) -> &'static str;
+    fn args(&self) -> Vec<ArgSpec>;
+}
+
+/// Command execution (takes KernelContext)
+pub trait CommandHandler: Command + Send + Sync {
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult;
+}
+
+/// Argument specification
+pub struct ArgSpec {
+    pub name: &'static str,
+    pub kind: ArgKind,
+    pub description: &'static str,
+    pub required: bool,
+}
+
+pub enum ArgKind {
+    Count,     // Numeric count (e.g., 3j)
+    Register,  // Register name (e.g., "a)
+    Motion,    // Motion argument
+    String,    // String argument
+}
+
+/// Command execution context (parsed arguments)
+pub struct CommandContext {
+    count: Option<usize>,
+    register: Option<char>,
+    // ...
+}
+
+/// Command execution result
+pub enum CommandResult {
+    Success,
+    Error(String),
+    Quit,
+    ForceQuit,
+}
+```
 
 ---
 
@@ -87,12 +140,35 @@ pub trait ClipboardDriver: Send + Sync {
 pub struct KeyEvent {
     pub code: KeyCode,
     pub modifiers: Modifiers,
+    pub kind: KeyEventKind,  // Press, Release, Repeat
+}
+
+impl KeyEvent {
+    pub fn new(code: KeyCode) -> Self;
+    pub fn with_modifiers(code: KeyCode, modifiers: Modifiers) -> Self;
+    pub fn is_press(&self) -> bool;  // Check if this is a key press
 }
 
 pub struct MouseEvent {
     pub kind: MouseEventKind,
     pub position: (u16, u16),
     pub modifiers: Modifiers,
+}
+
+// Key sequence for multi-key bindings (e.g., "gg", "<C-w>h")
+pub struct KeySequence {
+    keys: Vec<KeyEvent>,
+}
+
+impl KeySequence {
+    pub fn parse(s: &str) -> Option<Self>;  // Parse "gg", "<C-w>h", etc.
+    pub fn push(&mut self, key: KeyEvent);
+    pub fn starts_with(&self, other: &Self) -> bool;
+}
+
+// Mode behavior trait
+pub trait ModeInput {
+    fn accepts_char_input(&self) -> bool;  // Does this mode accept character input?
 }
 ```
 
@@ -129,10 +205,16 @@ pub struct Style {
 }
 
 pub enum CursorStyle {
-    Block,
-    Line,
-    Underline,
+    Block,      // Normal mode (vim)
+    Bar,        // Insert mode (vim) - thin vertical line
+    Underline,  // Replace mode
     Hidden,
+}
+
+// Mode display behavior trait
+pub trait ModeDisplay {
+    fn cursor_style(&self) -> CursorStyle;  // Cursor shape for this mode
+    fn status_text(&self) -> &'static str;   // Status line text (e.g., "NORMAL", "INSERT")
 }
 ```
 

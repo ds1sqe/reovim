@@ -8,6 +8,64 @@
 use std::{io, time::Duration};
 
 // =============================================================================
+// Color
+// =============================================================================
+
+/// Platform-agnostic color representation.
+///
+/// Supports ANSI 16 colors, 256-color palette, and 24-bit true color (RGB).
+/// This mirrors the color capabilities of modern terminals.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum Color {
+    /// Terminal default (reset color).
+    #[default]
+    Reset,
+    /// Black (ANSI 0).
+    Black,
+    /// Dark red (ANSI 1).
+    DarkRed,
+    /// Dark green (ANSI 2).
+    DarkGreen,
+    /// Dark yellow (ANSI 3).
+    DarkYellow,
+    /// Dark blue (ANSI 4).
+    DarkBlue,
+    /// Dark magenta (ANSI 5).
+    DarkMagenta,
+    /// Dark cyan (ANSI 6).
+    DarkCyan,
+    /// Grey/light gray (ANSI 7).
+    Grey,
+    /// Dark grey (ANSI 8).
+    DarkGrey,
+    /// Red (ANSI 9).
+    Red,
+    /// Green (ANSI 10).
+    Green,
+    /// Yellow (ANSI 11).
+    Yellow,
+    /// Blue (ANSI 12).
+    Blue,
+    /// Magenta (ANSI 13).
+    Magenta,
+    /// Cyan (ANSI 14).
+    Cyan,
+    /// White (ANSI 15).
+    White,
+    /// 256-color palette value (0-255).
+    AnsiValue(u8),
+    /// 24-bit true color (RGB).
+    Rgb {
+        /// Red component (0-255).
+        r: u8,
+        /// Green component (0-255).
+        g: u8,
+        /// Blue component (0-255).
+        b: u8,
+    },
+}
+
+// =============================================================================
 // Terminal Size
 // =============================================================================
 

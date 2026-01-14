@@ -5,7 +5,7 @@
 
 use std::{any::Any, sync::Arc};
 
-use reovim_core::highlight::Style;
+use crate::highlight::Style;
 
 /// Display information for a component or mode.
 ///

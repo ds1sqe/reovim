@@ -1,17 +1,9 @@
 //! Display driver traits.
 
 use crate::{
-    DisplayCapabilities, DisplayError, NavigateDirection, Rect, RenderCommand, SplitDirection,
-    TerminalSize, WindowId,
+    DisplayCapabilities, DisplayError, FrameBuffer, NavigateDirection, Rect, RenderCommand,
+    SplitDirection, TerminalSize, WindowId, highlight::ColorMode,
 };
-
-// TODO(Phase 5-6): Move FrameBuffer from lib/core/src/frame/ to lib/drivers/display/src/buffer.rs
-// After move, use local definition instead
-use reovim_core::frame::FrameBuffer;
-
-// TODO(Phase 5-6): Move ColorMode from lib/core/src/highlight/ to lib/drivers/display/src/color.rs
-// After move, use local definition instead
-use reovim_core::highlight::ColorMode;
 
 /// Display driver for terminal operations.
 ///

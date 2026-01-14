@@ -2,8 +2,8 @@
 
 use super::{Bounds, ZGroup, ZOrder};
 
-// Re-export types from core during transition
-pub use reovim_core::{frame::FrameBuffer, highlight::Style};
+// Local types from this crate
+pub use crate::{frame::FrameBuffer, highlight::Style};
 
 /// Unique identifier for composable elements.
 ///

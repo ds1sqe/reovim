@@ -3,7 +3,7 @@
 //! Decorations are visual modifications applied to text regions, such as
 //! hiding text, replacing text with styled alternatives, or adding backgrounds.
 
-use reovim_core::highlight::Style;
+use crate::highlight::Style;
 
 /// Span representing a region in the buffer.
 ///

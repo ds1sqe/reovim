@@ -79,8 +79,15 @@ event_bus.subscribe::<BufferChanged>(|event| {
     // Handle buffer change
 });
 
-// Publish events
-event_bus.publish(BufferChanged { buffer_id });
+// Emit events (not "publish")
+event_bus.emit(BufferChanged { buffer_id });
+
+// Emit with scope tracking
+let scope = EventScope::new();
+event_bus.emit_scoped(BufferChanged { buffer_id }, &scope);
+
+// Async emit (fire-and-forget)
+event_bus.emit_async(BufferChanged { buffer_id });
 ```
 
 ### EventScope
@@ -255,15 +262,40 @@ pub mod version;   // Version types
 ### v1.rs - Stable API
 
 ```rust
-// Re-exports for modules to use
-pub use crate::mm::{Buffer, Position, Range, Edit};
-pub use crate::ipc::{EventBus, EventScope};
-pub use crate::core::{Motion, TextObject};
-pub use crate::block::{UndoTree, Transaction};
+// Memory Management (mm/)
+pub use crate::mm::{Buffer, BufferId, Position, Edit, Cursor, WindowId};
+pub use crate::mm::{Selection, SelectionMode, BufferSnapshot};
 
-// Module system
+// IPC (ipc/)
+pub use crate::ipc::{EventBus, EventScope, Event, DynEvent};
+pub use crate::ipc::events;  // Access kernel events: events::ModeChanged, etc.
+
+// Core Primitives (core/)
+pub use crate::core::{Motion, TextObject, MotionEngine, TextObjectEngine};
+pub use crate::core::{Mode, ModeId, ModeStack, CommandId};  // Mode/command identity
+pub use crate::core::{RegisterBank, MarkBank, Jumplist};
+
+// Block Operations (block/)
+pub use crate::block::{UndoTree, Transaction, History};
+
+// Module System (api/)
 pub use crate::api::module::{Module, ModuleId, ModuleProbe};
 pub use crate::api::context::{KernelContext, ModuleContext};
+
+// Sync Primitives (from reovim-arch)
+pub use reovim_arch::sync::{Mutex, RwLock, ArcSwap};
+```
+
+**Important**: Access events via `reovim_kernel::api::v1::events`:
+
+```rust
+use reovim_kernel::api::v1::events::ModeChanged;
+
+// Emit a mode change event
+ctx.event_bus.emit(ModeChanged {
+    from: "normal".to_string(),
+    to: "insert".to_string(),
+});
 ```
 
 ### Module Trait

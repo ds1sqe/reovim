@@ -2,10 +2,13 @@
 
 use {
     crate::traits::{
-        ClearType, InputEvent, KeyCode, KeyEvent, KeyEventKind, KeyEventState, Modifiers,
+        ClearType, Color, InputEvent, KeyCode, KeyEvent, KeyEventKind, KeyEventState, Modifiers,
         MouseButton, MouseEvent, MouseEventKind, TerminalSize,
     },
-    crossterm::event::{self as ct_event, Event as CtEvent},
+    crossterm::{
+        event::{self as ct_event, Event as CtEvent},
+        style::Color as CtColor,
+    },
 };
 
 /// Convert a crossterm event to our `InputEvent`.
@@ -202,6 +205,58 @@ pub const fn convert_clear_type(ct: ClearType) -> crossterm::terminal::ClearType
         ClearType::CurrentLine => CtClear::CurrentLine,
         ClearType::UntilNewLine => CtClear::UntilNewLine,
         ClearType::Purge => CtClear::Purge,
+    }
+}
+
+/// Convert crossterm `Color` to our `Color`.
+#[must_use]
+pub const fn convert_color_from_crossterm(color: CtColor) -> Color {
+    match color {
+        CtColor::Reset => Color::Reset,
+        CtColor::Black => Color::Black,
+        CtColor::DarkRed => Color::DarkRed,
+        CtColor::DarkGreen => Color::DarkGreen,
+        CtColor::DarkYellow => Color::DarkYellow,
+        CtColor::DarkBlue => Color::DarkBlue,
+        CtColor::DarkMagenta => Color::DarkMagenta,
+        CtColor::DarkCyan => Color::DarkCyan,
+        CtColor::Grey => Color::Grey,
+        CtColor::DarkGrey => Color::DarkGrey,
+        CtColor::Red => Color::Red,
+        CtColor::Green => Color::Green,
+        CtColor::Yellow => Color::Yellow,
+        CtColor::Blue => Color::Blue,
+        CtColor::Magenta => Color::Magenta,
+        CtColor::Cyan => Color::Cyan,
+        CtColor::White => Color::White,
+        CtColor::AnsiValue(n) => Color::AnsiValue(n),
+        CtColor::Rgb { r, g, b } => Color::Rgb { r, g, b },
+    }
+}
+
+/// Convert our `Color` to crossterm `Color`.
+#[must_use]
+pub const fn convert_color_to_crossterm(color: Color) -> CtColor {
+    match color {
+        Color::Reset => CtColor::Reset,
+        Color::Black => CtColor::Black,
+        Color::DarkRed => CtColor::DarkRed,
+        Color::DarkGreen => CtColor::DarkGreen,
+        Color::DarkYellow => CtColor::DarkYellow,
+        Color::DarkBlue => CtColor::DarkBlue,
+        Color::DarkMagenta => CtColor::DarkMagenta,
+        Color::DarkCyan => CtColor::DarkCyan,
+        Color::Grey => CtColor::Grey,
+        Color::DarkGrey => CtColor::DarkGrey,
+        Color::Red => CtColor::Red,
+        Color::Green => CtColor::Green,
+        Color::Yellow => CtColor::Yellow,
+        Color::Blue => CtColor::Blue,
+        Color::Magenta => CtColor::Magenta,
+        Color::Cyan => CtColor::Cyan,
+        Color::White => CtColor::White,
+        Color::AnsiValue(n) => CtColor::AnsiValue(n),
+        Color::Rgb { r, g, b } => CtColor::Rgb { r, g, b },
     }
 }
 

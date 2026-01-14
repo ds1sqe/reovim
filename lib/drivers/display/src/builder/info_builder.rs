@@ -5,7 +5,7 @@
 
 use std::{any::Any, sync::Arc};
 
-use reovim_core::highlight::Style;
+use crate::highlight::Style;
 
 use super::{
     registry::DisplayRegistry,

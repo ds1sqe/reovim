@@ -158,7 +158,7 @@ impl DisplayRegistry {
 
 #[cfg(test)]
 mod tests {
-    use reovim_core::highlight::Style;
+    use crate::highlight::Style;
 
     use super::*;
 
