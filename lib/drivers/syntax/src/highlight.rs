@@ -1,32 +1,48 @@
 //! Syntax highlight categories and spans.
 //!
 //! This module defines the highlight types used by syntax drivers.
-//! The [`HighlightGroup`] enum implements the kernel's [`SyntaxHighlight`]
-//! trait to provide category names for theme mapping.
+//! The [`HighlightGroup`] enum implements [`SyntaxHighlight`] trait
+//! to provide category names for theme mapping.
 
-use std::ops::Range;
+use std::{fmt::Debug, hash::Hash, ops::Range};
 
-use reovim_kernel::api::v1::SyntaxHighlight;
+// ============================================================================
+// SyntaxHighlight Trait
+// ============================================================================
+
+/// Trait for syntax highlight categories.
+///
+/// This trait defines the interface for highlight types. Types implementing
+/// this trait can be used by the syntax highlighting system.
+///
+/// # Example
+///
+/// ```
+/// use reovim_driver_syntax::{SyntaxHighlight, HighlightGroup};
+///
+/// let group = HighlightGroup::Keyword;
+/// assert_eq!(group.category(), "keyword");
+/// ```
+pub trait SyntaxHighlight: Debug + Copy + Eq + Hash + Send + Sync + 'static {
+    /// Returns the category name for this highlight.
+    ///
+    /// Category names should be lowercase, dot-separated identifiers
+    /// (e.g., "keyword", "function.builtin", "string.escape").
+    fn category(&self) -> &'static str;
+}
 
 /// Syntax highlight categories.
 ///
 /// This enum defines all supported highlight groups for syntax highlighting.
-/// It implements the kernel's [`SyntaxHighlight`] trait to provide
-/// category names that themes can use for color mapping.
-///
-/// # Design
-///
-/// This is POLICY (what categories exist) implementing kernel's MECHANISM
-/// (how highlights work). The driver decides which specific categories
-/// to support, while the kernel defines the abstract interface.
+/// It implements [`SyntaxHighlight`] trait to provide category names that
+/// themes can use for color mapping.
 ///
 /// Uses `#[repr(u8)]` for compact storage.
 ///
 /// # Example
 ///
 /// ```
-/// use reovim_driver_syntax::HighlightGroup;
-/// use reovim_kernel::api::v1::SyntaxHighlight;
+/// use reovim_driver_syntax::{HighlightGroup, SyntaxHighlight};
 ///
 /// let group = HighlightGroup::Keyword;
 /// assert_eq!(group.category(), "keyword");

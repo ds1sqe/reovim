@@ -40,6 +40,7 @@ mod compositor;
 pub mod decoration;
 mod error;
 mod frame;
+mod mode;
 mod policy;
 mod render;
 mod screen;
@@ -67,6 +68,9 @@ pub use window::{NavigateDirection, Rect, SplitDirection, TerminalSize, WindowId
 
 // Traits
 pub use traits::{DisplayDriver, WindowManager};
+
+// Mode display (Phase 6 - Kernel-driver architecture)
+pub use mode::{CursorStyle, ModeDisplay};
 
 // Compositor (local implementation)
 pub use compositor::{

@@ -45,6 +45,7 @@ mod config;
 mod direction;
 mod jumplist;
 mod mark;
+mod mode;
 mod motion;
 mod option;
 mod register;
@@ -76,3 +77,6 @@ pub use option::{
 
 // Re-export config types
 pub use config::{Config, ConfigError, ConfigPaths, ConfigValue};
+
+// Re-export mode types
+pub use mode::{CommandId, Mode, ModeId, ModeStack};

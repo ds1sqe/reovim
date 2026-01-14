@@ -44,7 +44,7 @@ use std::{borrow::Cow, collections::HashMap, fmt};
 
 use reovim_arch::sync::RwLock;
 
-use crate::{api::window_manager::WindowId, mm::BufferId};
+use crate::mm::{BufferId, WindowId};
 
 // ============================================================================
 // OptionValue - Type-safe option values

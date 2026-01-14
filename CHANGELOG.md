@@ -15,6 +15,57 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 5.14: Kernel-Driver Architecture** (Issue #213) - Clean mechanism/policy separation following Linux kernel principles
+  - **Kernel Mode Types** (`lib/kernel/src/core/mode.rs`):
+    - `Mode` trait - Identity-only trait for modes (no behavior)
+    - `ModeId` struct - Namespaced mode identifier (module + name)
+    - `CommandId` struct - Namespaced command identifier (module + name)
+    - `ModeStack` - Push/pop mode switching stack
+    - All types exported via `api::v1` module
+  - **Kernel Cleanup** - Removed policy types from kernel:
+    - Deleted: `api/traits.rs` (Operator, KeymapProvider, CommandHandler)
+    - Deleted: `api/undo_manager.rs` (policy, moves to runner)
+    - Deleted: `api/window_manager.rs` (policy, except WindowId)
+    - Deleted: `api/syntax.rs` (moved to syntax driver)
+    - Kept: `api/buffer_manager.rs` (mechanism - pure storage interface)
+  - **WindowId Relocation** (`lib/kernel/src/mm/window_id.rs`):
+    - Moved WindowId from api/ to mm/ (alongside BufferId)
+    - Pure identity type (u64 wrapper) stays in kernel
+  - **Display Driver Mode Types** (`lib/drivers/display/src/mode.rs`):
+    - `ModeDisplay` trait - How modes affect display (cursor style, status)
+    - `CursorStyle` enum - Block, Bar, Underline, Hidden
+  - **Input Driver Mode Types** (`lib/drivers/input/src/mode.rs`):
+    - `ModeInput` trait - How modes handle input (accepts_char_input)
+    - `KeySequence` struct - Multi-key binding sequences (e.g., "gg", "\<C-w\>h")
+    - `Keybinding` struct - Maps keys in mode to command
+  - **Command Driver** (`lib/drivers/command/`) - New crate:
+    - `Command` trait - Self-describing command metadata
+    - `CommandHandler` trait - Command execution
+    - `ArgSpec`, `ArgKind`, `ArgValue` - Argument system
+    - `CommandContext` - Context carrying command inputs
+    - `CommandResult` - Execution result enum
+  - **Example Module** (`modules/example/`) - Architecture demonstration:
+    - Shows correct Mode, ModeDisplay, ModeInput implementation
+    - Shows Command/CommandHandler pattern
+    - Reference implementation for future modules
+  - **Operators Module Refactor** (`modules/operators/`):
+    - Moved `Operator` trait from kernel to operators module
+    - Created `types.rs` with OperatorContext, Range types
+    - Pure policy implementation (no kernel dependency on policy)
+  - **Commands Module Refactor** (`modules/commands/`):
+    - Moved `CommandHandler` trait from kernel to commands module
+    - Created `types.rs` with CommandContext, CommandError types
+    - Pure policy implementation
+  - **Syntax Driver Update** (`lib/drivers/syntax/`):
+    - Moved `SyntaxHighlight` trait from kernel to syntax driver
+    - Added tree-sitter integration with `ts_node_matches_query`
+    - Driver provides trait contract, implementations in modules
+  - **Architecture Verification**:
+    - Kernel has ONLY mechanism types (identities, storage interfaces)
+    - Drivers define trait contracts for services
+    - Modules implement policy (keybindings, operators, commands)
+    - Zero kernel dependencies on drivers or modules
+
 - **Phase 5.13: Layout Module** (Issue #212) - Window tiling and focus navigation policy module
   - **TilingLayout** (`modules/layout/src/tiling.rs`):
     - Implements `LayoutPolicy` trait from display driver

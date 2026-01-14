@@ -1,0 +1,17 @@
+[package]
+name = "reovim-driver-command"
+version = "0.9.0-dev"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Command driver for reovim (command execution framework)"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Kernel layer (for CommandId, KernelContext)
+reovim-kernel = { path = "../../kernel", version = "0.9.0-dev" }

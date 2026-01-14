@@ -2,7 +2,7 @@
 //!
 //! Reference: `lib/core/src/command_line/ex_command.rs` (concept-extraction, not migration)
 
-use reovim_kernel::api::v1::{CommandContext, CommandError, CommandHandler};
+use crate::{CommandContext, CommandError, CommandHandler};
 
 /// Write command - save the buffer to disk.
 ///

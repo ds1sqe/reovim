@@ -1,0 +1,22 @@
+[package]
+name = "reovim-module-example"
+version = "0.9.0-dev"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Example module demonstrating the kernel-driver architecture"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Kernel layer (for Mode, ModeId, CommandId, KernelContext)
+reovim-kernel = { path = "../../lib/kernel", version = "0.9.0-dev" }
+
+# Driver layers
+reovim-driver-display = { path = "../../lib/drivers/display", version = "0.9.0-dev" }
+reovim-driver-input = { path = "../../lib/drivers/input", version = "0.9.0-dev" }
+reovim-driver-command = { path = "../../lib/drivers/command", version = "0.9.0-dev" }
