@@ -38,7 +38,7 @@ pub enum FallbackResult {
 /// # Example
 ///
 /// ```ignore
-/// use runner_new::{AppState, InputFallbackHandler, FallbackResult};
+/// use runner::{AppState, InputFallbackHandler, FallbackResult};
 /// use reovim_driver_input::KeyEvent;
 ///
 /// struct MyFallback;

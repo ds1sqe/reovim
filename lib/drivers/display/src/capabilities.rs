@@ -1,8 +1,6 @@
 //! Terminal capability detection.
 
-// TODO(Phase 5-6): Move ColorMode from lib/core/src/highlight/color.rs to lib/drivers/display/src/color.rs
-// After move, import from local module instead of reovim_core
-use reovim_core::highlight::ColorMode;
+use crate::highlight::ColorMode;
 
 /// Terminal display capabilities.
 ///

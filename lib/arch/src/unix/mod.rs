@@ -11,7 +11,10 @@ mod signal;
 mod terminal;
 
 pub use {
-    convert::{convert_event, convert_key_code, convert_key_event, convert_modifiers},
+    convert::{
+        convert_color_from_crossterm, convert_color_to_crossterm, convert_event, convert_key_code,
+        convert_key_event, convert_modifiers,
+    },
     input::UnixInputSource,
     signal::UnixSignalHandler,
     terminal::UnixTerminal,

@@ -70,7 +70,7 @@ impl KeyLookupResult {
 /// # Example
 ///
 /// ```ignore
-/// use runner_new::registry::{KeymapRegistry, KeyLookupResult};
+/// use runner::registry::{KeymapRegistry, KeyLookupResult};
 /// use reovim_driver_input::KeySequence;
 ///
 /// let mut registry = KeymapRegistry::new();

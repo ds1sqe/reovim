@@ -1,92 +1,24 @@
 #!/usr/bin/env bash
-# Check script: Run all tests and clippy for the entire workspace
-# Usage: ./scripts/check.sh [--quick]
-#
-# Options:
-#   --quick    Skip slow tests and benchmarks, only run essential checks
+set -euo pipefail
 
-set -e
+echo -e "\033[1;33m==> Formatting code with nightly...\033[0m"
+cargo +nightly fmt --all
+echo -e "\033[0;32m✓ Code formatted\033[0m"
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+echo -e "\033[1;33m==> Checking code formatting...\033[0m"
+cargo +nightly fmt --all -- --check
+echo -e "\033[0;32m✓ Code formatting OK\033[0m"
 
-print_step() {
-    echo -e "\n${YELLOW}==> $1${NC}"
-}
+echo -e "\033[1;33m==> Building workspace...\033[0m"
+cargo build --workspace
+echo -e "\033[0;32m✓ Build succeeded\033[0m"
 
-print_success() {
-    echo -e "${GREEN}✓ $1${NC}"
-}
+echo -e "\033[1;33m==> Running clippy...\033[0m"
+cargo clippy --workspace -- -D warnings
+echo -e "\033[0;32m✓ Clippy passed\033[0m"
 
-print_error() {
-    echo -e "${RED}✗ $1${NC}"
-}
+echo -e "\033[1;33m==> Running tests...\033[0m"
+cargo test --workspace
+echo -e "\033[0;32m✓ All tests passed\033[0m"
 
-QUICK_MODE=false
-if [[ "$1" == "--quick" ]]; then
-    QUICK_MODE=true
-fi
-
-# Step 1: Format all workspaces with nightly
-print_step "Formatting code with nightly..."
-if cargo +nightly fmt --all; then
-    print_success "Code formatted"
-else
-    print_error "Code formatting failed"
-    exit 1
-fi
-
-# Step 2: Format check
-print_step "Checking code formatting..."
-if cargo fmt --check; then
-    print_success "Code formatting OK"
-else
-    print_error "Code formatting issues found. Run 'cargo fmt' to fix."
-    exit 1
-fi
-
-# Step 3: Build
-print_step "Building workspace..."
-if cargo build --workspace; then
-    print_success "Build succeeded"
-else
-    print_error "Build failed"
-    exit 1
-fi
-
-# Step 4: Clippy on all targets
-# Uses workspace lint configuration from Cargo.toml
-# (clippy::all = "deny", clippy::pedantic/nursery = "warn")
-print_step "Running clippy on all workspace targets..."
-if cargo clippy --workspace --all-targets; then
-    print_success "Clippy passed"
-else
-    print_error "Clippy found errors"
-    exit 1
-fi
-
-# Step 5: Tests
-print_step "Running tests..."
-if cargo test --workspace; then
-    print_success "All tests passed"
-else
-    print_error "Tests failed"
-    exit 1
-fi
-
-# Step 6: Doc tests (optional in quick mode)
-if [[ "$QUICK_MODE" == false ]]; then
-    print_step "Running doc tests..."
-    if cargo test --doc --workspace; then
-        print_success "Doc tests passed"
-    else
-        print_error "Doc tests failed"
-        exit 1
-    fi
-fi
-
-echo -e "\n${GREEN}========================================${NC}"
-echo -e "${GREEN}All checks passed!${NC}"
-echo -e "${GREEN}========================================${NC}"
+echo -e "\033[1;32m==> All checks passed!\033[0m"

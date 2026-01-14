@@ -24,7 +24,7 @@ use {
             ExitToNormal, all_commands,
         },
     },
-    runner_new::{
+    runner::{
         AppState, EventLoop,
         registry::{CommandRegistry, KeymapRegistry, ModeEntry, ModeRegistry},
     },

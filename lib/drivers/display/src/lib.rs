@@ -5,20 +5,16 @@
 //! # Architecture
 //!
 //! This crate defines trait interfaces for display operations.
-//! Types are re-exported from `reovim-core` during the staged migration.
+//! Style types (`Style`, `Attributes`, `ColorMode`) are owned by this crate.
+//! `Color` comes from `reovim-arch` (platform abstraction layer).
 //!
 //! ```text
-//! lib/drivers/display/      <-- Traits (this crate)
+//! lib/drivers/display/      <-- Traits + Style types (this crate)
 //!        ^
-//!        |  re-exports types from (Phase 3.3)
+//!        |  uses Color from
 //!        |
-//! lib/core/                 <-- Cell, Style, FrameBuffer, ZGroup, ZOrder
+//! lib/arch/                 <-- Platform-agnostic Color type
 //! ```
-//!
-//! # Migration Path
-//!
-//! - **Phase 3.3 (current)**: Re-export types from `reovim-core`
-//! - **Phase 5-6 (future)**: Types move to this crate, `lib/core` imports from here
 //!
 //! # Components
 //!
@@ -27,6 +23,7 @@
 //! - [`Compositor`] - Z-order layer management
 //! - [`DisplayCapabilities`] - Terminal feature detection
 //! - [`RenderCommand`] - Render operation commands
+//! - [`Style`], [`Attributes`], [`ColorMode`] - Text styling
 
 // ============================================================================
 // Modules
@@ -40,6 +37,7 @@ mod compositor;
 pub mod decoration;
 mod error;
 mod frame;
+mod highlight;
 mod mode;
 mod policy;
 mod render;
@@ -104,16 +102,17 @@ pub use render::{
 };
 
 // ============================================================================
-// Style and Color Types (temporary re-exports from reovim-core)
+// Style and Color Types (owned by this crate)
 // ============================================================================
 //
-// TODO(Phase 5-6): After type migration completes:
-//   1. Move Style, Attributes, Color, ColorMode definitions to this crate
-//   2. Update lib/core to import FROM this driver
-//   3. Remove reovim-core dependency from this crate's Cargo.toml
+// Style types are defined locally in highlight.rs.
+// Color comes from reovim-arch (platform abstraction layer).
 // ============================================================================
 
-pub use reovim_core::highlight::{Attributes, Color, ColorMode, Style};
+pub use {
+    highlight::{Attributes, ColorMode, Style, downgrade_color},
+    reovim_arch::Color,
+};
 
 // ============================================================================
 // Display Builder (Phase 5.11 - Component display registration)
@@ -136,8 +135,8 @@ pub use decoration::{
 // ============================================================================
 
 pub use style::{
-    BuiltinFileIconProvider, BuiltinTheme, CoreThemeAdapter, IconDef, IconProvider, IconRegistry,
-    IconSet, ThemeManager, ThemeProvider,
+    BuiltinFileIconProvider, BuiltinTheme, IconDef, IconProvider, IconRegistry, IconSet,
+    ThemeManager, ThemeProvider,
 };
 
 // ============================================================================

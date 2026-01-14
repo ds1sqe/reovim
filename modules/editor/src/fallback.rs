@@ -6,7 +6,7 @@
 
 use {
     reovim_driver_input::{KeyCode, KeyEvent},
-    runner_new::{AppState, FallbackResult, InputFallbackHandler},
+    runner::{AppState, FallbackResult, InputFallbackHandler},
 };
 
 use super::mode::EditorMode;
@@ -26,7 +26,7 @@ use super::mode::EditorMode;
 ///
 /// ```ignore
 /// use reovim_module_editor::EditorFallbackHandler;
-/// use runner_new::EventLoop;
+/// use runner::EventLoop;
 ///
 /// let fallback = EditorFallbackHandler;
 /// let event_loop = EventLoop::new(app, modes, commands, keymaps, fallback);

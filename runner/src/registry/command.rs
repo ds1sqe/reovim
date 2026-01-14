@@ -21,7 +21,7 @@ use crate::AppState;
 /// # Example
 ///
 /// ```ignore
-/// use runner_new::registry::CommandRegistry;
+/// use runner::registry::CommandRegistry;
 /// use std::sync::Arc;
 ///
 /// let mut registry = CommandRegistry::new();

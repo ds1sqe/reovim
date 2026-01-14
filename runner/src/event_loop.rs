@@ -55,8 +55,8 @@ impl std::error::Error for EventLoopError {}
 /// # Example
 ///
 /// ```ignore
-/// use runner_new::{AppState, EventLoop, NoOpFallback};
-/// use runner_new::registry::{ModeRegistry, CommandRegistry, KeymapRegistry};
+/// use runner::{AppState, EventLoop, NoOpFallback};
+/// use runner::registry::{ModeRegistry, CommandRegistry, KeymapRegistry};
 ///
 /// let app = AppState::new(kernel, initial_mode);
 /// let mut event_loop = EventLoop::new(

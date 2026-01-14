@@ -1,4 +1,4 @@
-//! New Architecture Runner for Reovim
+//! Reovim Runner - Event Loop and Registry System
 //!
 //! This crate provides a clean architecture runner using the kernel-driver
 //! type system from issue #213. It implements the "mechanism vs policy"
@@ -10,7 +10,7 @@
 //! # Architecture
 //!
 //! ```text
-//! runner-new/
+//! runner/
 //! ├── app.rs           - AppState (kernel + runtime state)
 //! ├── fallback.rs      - InputFallbackHandler trait (mechanism)
 //! ├── event_loop.rs    - Main event loop
@@ -23,8 +23,8 @@
 //! # Example
 //!
 //! ```ignore
-//! use runner_new::{AppState, EventLoop, registry::*};
-//! use runner_new::fallback::NoOpFallback;
+//! use runner::{AppState, EventLoop, registry::*};
+//! use runner::fallback::NoOpFallback;
 //!
 //! let app = AppState::new(kernel_context);
 //! let mut event_loop = EventLoop::new(

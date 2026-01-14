@@ -11,10 +11,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use {
-    crate::{command::RenderCommand, compositor::Style},
-    reovim_core::highlight::ColorMode,
-};
+use crate::{command::RenderCommand, compositor::Style, highlight::ColorMode};
 
 use super::buffer::FrameBuffer;
 

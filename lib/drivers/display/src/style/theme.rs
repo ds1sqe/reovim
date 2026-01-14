@@ -1,16 +1,13 @@
 //! Theme provider trait for style lookups.
 //!
 //! Defines the interface for theme implementations and provides
-//! built-in themes and adapters.
+//! built-in themes.
 
 use std::sync::Arc;
 
-use reovim_core::highlight::Style;
+use crate::highlight::Style;
 
 /// Theme provides styles for highlight groups.
-///
-/// Named `ThemeProvider` to avoid conflict with the existing
-/// `reovim_core::highlight::Theme` struct.
 ///
 /// # Example
 ///
@@ -83,86 +80,20 @@ impl BuiltinTheme {
 
 /// Simple implementation of built-in themes.
 ///
-/// For now, this delegates to the existing Theme system in reovim-core.
-/// In future phases, theme definitions will move here.
+/// Theme definitions are self-contained in this crate.
 struct SimpleBuiltinTheme {
     variant: BuiltinTheme,
 }
 
 impl ThemeProvider for SimpleBuiltinTheme {
     fn get_style(&self, _group: &str) -> Option<Style> {
-        // TODO: Implement actual theme lookups
+        // TODO: Implement actual theme lookups with full style definitions
         // For now, return None to use default styles
         None
     }
 
     fn name(&self) -> &str {
         self.variant.name()
-    }
-}
-
-/// Adapter to wrap the existing `reovim_core::highlight::Theme` as a `ThemeProvider`.
-///
-/// This provides compatibility with the existing theme system during migration.
-pub struct CoreThemeAdapter {
-    inner: reovim_core::highlight::Theme,
-    name: String,
-}
-
-impl CoreThemeAdapter {
-    /// Create a new adapter wrapping a core theme.
-    #[must_use]
-    pub fn new(theme: reovim_core::highlight::Theme, name: impl Into<String>) -> Self {
-        Self {
-            inner: theme,
-            name: name.into(),
-        }
-    }
-
-    /// Get a reference to the inner theme.
-    #[must_use]
-    pub const fn inner(&self) -> &reovim_core::highlight::Theme {
-        &self.inner
-    }
-}
-
-impl ThemeProvider for CoreThemeAdapter {
-    fn get_style(&self, group: &str) -> Option<Style> {
-        // Map common group names to theme fields
-        // This is a simplified mapping; full implementation would be more comprehensive
-        match group {
-            "normal" | "default" => Some(self.inner.base.default.clone()),
-            "cursor_line" => Some(self.inner.base.cursor_line.clone()),
-            "command_line" => Some(self.inner.base.command_line.clone()),
-            "line_number" => Some(self.inner.gutter.line_number.clone()),
-            "current_line_number" => Some(self.inner.gutter.current_line_number.clone()),
-            "visual" => Some(self.inner.selection.visual.clone()),
-            "search" | "search_match" => Some(self.inner.search.match_highlight.clone()),
-            "inc_search" => Some(self.inner.search.inc_search.clone()),
-            "diagnostic_error" => Some(self.inner.diagnostic.error.clone()),
-            "diagnostic_warn" | "diagnostic_warning" => Some(self.inner.diagnostic.warn.clone()),
-            "diagnostic_info" => Some(self.inner.diagnostic.info.clone()),
-            "diagnostic_hint" => Some(self.inner.diagnostic.hint.clone()),
-            "statusline_normal" => Some(self.inner.statusline.mode.normal.clone()),
-            "statusline_insert" => Some(self.inner.statusline.mode.insert.clone()),
-            "statusline_visual" => Some(self.inner.statusline.mode.visual.clone()),
-            "statusline_command" => Some(self.inner.statusline.mode.command.clone()),
-            "popup" | "popup_normal" => Some(self.inner.popup.normal.clone()),
-            "popup_selected" => Some(self.inner.popup.selected.clone()),
-            "popup_match" => Some(self.inner.popup.match_fg.clone()),
-            "tab_active" => Some(self.inner.tab.active.clone()),
-            "tab_inactive" => Some(self.inner.tab.inactive.clone()),
-            "window_separator" => Some(self.inner.window.separator.clone()),
-            _ => None,
-        }
-    }
-
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn default_style(&self) -> Style {
-        self.inner.base.default.clone()
     }
 }
 
@@ -187,15 +118,5 @@ mod tests {
     fn test_builtin_theme_all() {
         let all = BuiltinTheme::all();
         assert_eq!(all.len(), 3);
-    }
-
-    #[test]
-    fn test_core_theme_adapter() {
-        let core_theme = reovim_core::highlight::Theme::default();
-        let adapter = CoreThemeAdapter::new(core_theme, "test-theme");
-
-        assert_eq!(adapter.name(), "test-theme");
-        assert!(adapter.get_style("normal").is_some());
-        assert!(adapter.get_style("nonexistent_group").is_none());
     }
 }

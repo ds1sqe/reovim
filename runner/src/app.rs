@@ -23,7 +23,7 @@ use {
 /// # Example
 ///
 /// ```ignore
-/// use runner_new::AppState;
+/// use runner::AppState;
 /// use reovim_kernel::api::v1::{KernelContext, ModeId, ModuleId};
 ///
 /// let kernel = KernelContext::default();

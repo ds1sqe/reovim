@@ -5,7 +5,7 @@
 
 #![allow(clippy::cast_possible_truncation)]
 
-use reovim_core::highlight::Style;
+use crate::highlight::Style;
 
 use super::types::{Decoration, Span};
 

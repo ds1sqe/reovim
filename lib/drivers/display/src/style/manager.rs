@@ -4,7 +4,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reovim_core::highlight::Style;
+use crate::highlight::Style;
 
 use super::theme::ThemeProvider;
 
@@ -123,7 +123,7 @@ impl ThemeManager {
 
 #[cfg(test)]
 mod tests {
-    use reovim_core::highlight::Color;
+    use reovim_arch::Color;
 
     use super::{super::theme::BuiltinTheme, *};
 

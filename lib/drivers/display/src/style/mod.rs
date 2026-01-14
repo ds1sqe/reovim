@@ -57,5 +57,5 @@ pub use {
         BuiltinFileIconProvider, IconDef, IconProvider, IconRegistry, IconSet, file_icons, ui_icons,
     },
     manager::ThemeManager,
-    theme::{BuiltinTheme, CoreThemeAdapter, ThemeProvider},
+    theme::{BuiltinTheme, ThemeProvider},
 };

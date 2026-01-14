@@ -15,6 +15,31 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 5.16: Archive Legacy Code** (Issue #215) - Clean workspace with only new kernel-driver-module architecture
+  - **Archived to `archive/`**:
+    - `lib/core/` - Legacy buffer, cursor, mode, events (~54,000 lines)
+    - `lib/sys/` - Legacy system utilities (~2,000 lines)
+    - `lib/lsp/` - Legacy LSP client (~3,000 lines)
+    - `runner/` - Old runner (~5,000 lines)
+    - `tools/bench/` - Legacy benchmarks (~3,000 lines)
+    - `plugins/` - 26 legacy plugins (~20,000 lines)
+    - `scripts/check.sh` - Old check script
+    - `Cargo.toml.legacy` - Old workspace manifest (for reference)
+  - **Display Driver Independence** (`lib/drivers/display/`):
+    - Inlined `Style`, `Attributes`, `ColorMode` types from lib/core
+    - Added `Color` type to lib/arch (platform abstraction)
+    - Removed dependency on reovim-core
+    - Display driver now self-contained with all style types
+  - **Runner Promotion** (`runner/`):
+    - Renamed `runner-new/` to `runner/`
+    - Package renamed to `reovim` (binary: `reovim`)
+    - Updated all references in modules and documentation
+  - **Workspace Cleanup**:
+    - Removed all legacy crates from workspace members
+    - Removed all plugin dependencies
+    - Updated version to 0.9.0-dev
+    - Created new `scripts/check.sh` for clean workspace
+
 - **Phase 5.15: New Runner and Editor Module** (Issue #214) - Clean architecture runner with editor module demonstrating mechanism/policy separation
   - **runner-new crate** (`runner-new/`) - New runner implementing clean architecture:
     - `AppState` - Combines KernelContext with runtime state (mode_stack, active_buffer, pending_keys)

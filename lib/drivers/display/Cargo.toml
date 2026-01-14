@@ -16,10 +16,8 @@ workspace = true
 # Kernel layer
 reovim-kernel = { path = "../../kernel", version = "0.9.0-dev" }
 
-# TODO(Phase 5-6): Remove this dependency after migrating types to this crate.
-# Currently re-exporting Cell, Style, Color, FrameBuffer, ZGroup, ZOrder from core.
-# After migration, core will depend on this driver instead.
-reovim-core = { path = "../../core" }
+# Platform abstraction (provides Color type)
+reovim-arch = { path = "../../arch", version = "0.9.0-dev" }
 
 # Unicode width detection for wide characters (CJK, emoji)
 unicode-width = "0.2"

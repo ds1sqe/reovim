@@ -86,7 +86,7 @@ impl std::fmt::Debug for ModeEntry {
 /// # Example
 ///
 /// ```ignore
-/// use runner_new::registry::{ModeRegistry, ModeEntry};
+/// use runner::registry::{ModeRegistry, ModeEntry};
 /// use std::sync::Arc;
 ///
 /// let mut registry = ModeRegistry::new();
