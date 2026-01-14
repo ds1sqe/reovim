@@ -104,59 +104,63 @@ Reovim can run as a JSON-RPC 2.0 server for programmatic control, enabling integ
 
 ```bash
 # Start server (TCP on 127.0.0.1:12521 by default)
-reovim --server
-
-# With a file
-reovim --server myfile.txt
+reovim server
 
 # Custom TCP port
-reovim --server --listen-tcp 9000
+reovim server --tcp 9000
 
 # Unix socket
-reovim --listen-socket /tmp/reovim.sock
+reovim server --socket /tmp/reovim.sock
 
 # Stdio transport (for process piping)
-reovim --stdio
-
-# Dual output: render to terminal while serving RPC
-reovim --server --terminal
+reovim server --stdio
 ```
 
 **Server Options:**
 | Flag | Description |
 |------|-------------|
-| `--server` | Start in server mode (TCP on 127.0.0.1:12521) |
-| `--test` | Exit when all clients disconnect (for testing/CI) |
-| `--stdio` | Use stdio instead of TCP (for process piping, always one-shot) |
-| `--listen-socket <PATH>` | Listen on Unix socket |
-| `--listen-tcp <PORT>` | Listen on custom TCP port |
-| `--listen-host <HOST>` | Bind to specific host (default: 127.0.0.1) |
-| `--terminal` | Also render to terminal in server mode |
+| `--tcp <PORT>` | Listen on custom TCP port (default: 12521) |
+| `--socket <PATH>` | Listen on Unix socket |
+| `--stdio` | Use stdio instead of TCP (for process piping) |
 
 **Default port:** `12521` (derived from ASCII: 'r'×100 + 'e'×10 + 'o')
 
-#### reo-cli Client
+#### CLI Client
 
-A CLI client tool is available for interacting with the server:
+The built-in CLI client provides command-line access to running servers:
 
 ```bash
 # List running servers
-reo-cli list
+reovim cli list
 
-# Inject keys and show status (colored output by default)
-reo-cli keys 'iHello<Esc>'
+# Inject keys
+reovim cli keys 'iHello<Esc>'
 
-# Choose output format
-reo-cli keys --format plain_text 'gg'     # Plain text
-reo-cli keys --format raw_ansi 'gg'       # ANSI colors (default)
-reo-cli keys --format cell_grid 'gg'      # JSON cell grid
+# Query state
+reovim cli mode                           # Get current mode
+reovim cli cursor                         # Get cursor position
+
+# JSON output format
+reovim cli --format json mode
 
 # Connect to custom address
-reo-cli --tcp localhost:9000 keys 'j'
-reo-cli --socket /tmp/reovim.sock keys 'j'
+reovim cli --tcp localhost:9000 keys 'j'
+reovim cli --socket /tmp/reovim.sock keys 'j'
 
 # Interactive REPL
-reo-cli --interactive
+reovim cli -i
+```
+
+#### TUI Client
+
+Connect to a running server with a full terminal UI:
+
+```bash
+# Auto-discover and connect
+reovim tui
+
+# Connect to specific server
+reovim tui --tcp 127.0.0.1:12521
 ```
 
 ### Key Bindings
@@ -232,7 +236,7 @@ Most movement commands support a numeric prefix (e.g., `5j` moves down 5 lines).
 ┌─I/O─────────────────────────────────────────────────────────┐
 │  ┌──────────────┐                        ┌──────────────┐   │
 │  │    CLIENT    │                        │   TERMINAL   │   │
-│  │  (reo-cli)   │                        │  (crossterm) │   │
+│  │  (cli/tui)   │                        │  (crossterm) │   │
 │  └──────────────┘                        └──────────────┘   │
 └───────┬────────────────────────────────────────────┬────────┘
         │ input                               output │

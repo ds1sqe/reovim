@@ -15,6 +15,34 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 6.2/6.3: TUI and CLI Clients** (Issues #221, #222)
+  - **TUI Client** (`runner/src/client/tui/`):
+    - Terminal user interface mode via `reovim tui`
+    - Connect via TCP or Unix socket with auto-discovery
+    - Real-time terminal input handling with vim key notation
+    - ANSI content rendering from server
+    - Terminal resize support with server notification
+    - Cursor positioning from server state
+    - Quit via Ctrl+C or Ctrl+Q
+  - **CLI Client** (`runner/src/client/cli/`):
+    - Command-line interface via `reovim cli`
+    - Server discovery via `list` command (scans ports 12521-12530)
+    - Key injection via `keys <sequence>` command
+    - State queries: `mode`, `cursor`, `screen`, `content`
+    - Buffer operations: `buffers`, `buffer [id]`, `open <path>`
+    - Module operations: `modules`, `load`, `unload`, `reload`
+    - Server control: `resize`, `kill`
+    - Raw JSON-RPC via `raw <json>`
+    - Output formats: plain text (default) or JSON (`--format json`)
+    - Interactive REPL mode (`-i` or `--repl`)
+  - **Common Layer** (`runner/src/client/common/`):
+    - `ConnectionConfig` - TCP and Unix socket connection configuration
+    - `Connection` - Buffered async I/O for both transport types
+    - `RpcClient` - JSON-RPC request/response handling with error types
+    - `ServerInfo` - Discovered server metadata including PID (Linux)
+    - `discovery` - Port scanning and process detection via /proc
+  - 217 tests, zero clippy warnings
+
 - **Phase 6.1.4: Handler Completion & Server Reorganization** (Issue #220 continued)
   - **Directory Reorganization**:
     - Moved all server-specific code under `runner/src/server/` for future client modes

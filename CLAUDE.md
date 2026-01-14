@@ -73,7 +73,6 @@ Reovim is a Rust-based neovim-like text editor following a **Linux kernel-inspir
 
 **Tools:**
 - `tools/perf-report/` - Performance report generator CLI
-- `tools/reo-cli/` - CLI client for server mode
 - `perf/` - Versioned performance reports (PERF-{version}.md)
 
 **Archive (legacy reference only):**
@@ -133,10 +132,10 @@ nursery = "deny"
 - Any command that terminates reovim processes you didn't start
 
 **Safe workflow for testing:**
-1. **Before starting a server**: Run `reo-cli list` to see existing servers
-2. **Start your server**: Note the PID/port from stderr output or `reo-cli list`
+1. **Before starting a server**: Run `reovim cli list` to see existing servers
+2. **Start your server**: Note the PID/port from stderr output or `reovim cli list`
 3. **Track your servers**: Keep a list of PIDs you started in this session
-4. **After testing**: Only kill the specific server(s) YOU started: `reo-cli --tcp 127.0.0.1:<PORT> kill`
+4. **After testing**: Only kill the specific server(s) YOU started: `reovim cli --tcp 127.0.0.1:<PORT> kill`
 5. **Never assume**: Don't kill servers just because they exist - they might be from another session
 
 ## Build Commands
@@ -170,25 +169,30 @@ cargo clippy
 cargo run -p perf-report -- bench -v X.Y.Z
 
 # Run in server mode (TCP on 127.0.0.1:12521, or next available port)
-cargo run -- --server
+cargo run -- server
 # Server prints "Listening on 127.0.0.1:<PORT>" to stderr
 
 # Run server with stdio transport
-cargo run -- --stdio
+cargo run -- server --stdio
 
 # Run server on Unix socket
-cargo run -- --listen-socket /tmp/reovim.sock
+cargo run -- server --socket /tmp/reovim.sock
 
 # Run server on custom TCP port
-cargo run -- --listen-tcp 9000
+cargo run -- server --tcp 9000
 
-# Run reo-cli client
-cargo run -p reo-cli -- list              # List running servers
-cargo run -p reo-cli -- keys 'iHello<Esc>'  # Inject keys, show status (colored output by default)
-cargo run -p reo-cli -- --tcp 127.0.0.1:12522 keys 'j'  # Connect to specific server
-cargo run -p reo-cli -- keys --format plain_text 'gg'  # Plain text output
-cargo run -p reo-cli -- keys --format cell_grid 'gg'  # JSON cell grid
-cargo run -p reo-cli -- -i                # Interactive REPL mode
+# Run CLI client
+cargo run -- cli list                     # List running servers
+cargo run -- cli keys 'iHello<Esc>'       # Inject keys
+cargo run -- cli --tcp 127.0.0.1:12522 keys 'j'  # Connect to specific server
+cargo run -- cli mode                     # Get current mode
+cargo run -- cli cursor                   # Get cursor position
+cargo run -- cli --format json mode       # JSON output format
+cargo run -- cli -i                       # Interactive REPL mode
+
+# Run TUI client (connects to running server)
+cargo run -- tui                          # Auto-discover server
+cargo run -- tui --tcp 127.0.0.1:12521    # Connect to specific server
 ```
 
 ## Git Commits
@@ -234,15 +238,15 @@ When creating PRs with `gh pr create`, do NOT add promotional footers like "Gene
      - Acceptance criteria and test targets
 
 4. **Plan Polish - Round 1**:
-   - Launch **multiple `deep-explorer` agents IN PARALLEL with Context** (triple-check pattern)
+   - Launch **Triple-Review** agents and **deep-explorer** IN PARALLEL with Context
    - Each agent reviews plan for enhancements and missing details
    - Incorporate all feedback into plan
 
 5. **Plan Polish - Round 2**:
-   - Launch **multiple `deep-explorer` agents IN PARALLEL** again
+   - Launch **Triple-Review** agents and **deep-explorer** IN PARALLEL with Context again
    - Focus on: missing parts, edge cases, architectural concerns
    - **Keep iterating until issues are ZERO**
-   - Only proceed to implementation when plan is fully validated
+   - **IMPORTANT** Only proceed to implementation when plan is fully validated
 
 **Plan File Instructions:**
 - Add to every plan: **"Never stop until ALL phases are FULLY FINISHED."**
@@ -380,10 +384,10 @@ reovim --log=none myfile.txt
 reovim --log=off myfile.txt
 
 # Server mode with stderr logging (for debugging)
-cargo run -- --server --log=-
+cargo run -- server --log=-
 
 # Server mode with custom log file
-cargo run -- --server --log=/tmp/reovim-server.log
+cargo run -- server --log=/tmp/reovim-server.log
 
 # LSP JSON-RPC message logging (for debugging LSP issues)
 reovim --lsp-log=default myfile.rs              # Timestamped lsp-*.log in data dir (trace level)
@@ -391,7 +395,7 @@ reovim --lsp-log=/tmp/lsp.log myfile.rs         # Custom path (trace level)
 reovim --lsp-log=default:debug myfile.rs        # Default path with debug level
 reovim --lsp-log=/tmp/lsp.log:info myfile.rs    # Custom path with info level
 # LSP log levels: error, warn, info, debug, trace (default: trace)
-cargo run -- --server --log=/tmp/main.log --lsp-log=/tmp/lsp.log  # Both logs
+cargo run -- server --log=/tmp/main.log --lsp-log=/tmp/lsp.log  # Both logs
 
 # View logs (timestamped files)
 tail -f ~/.local/share/reovim/reovim-*.log
@@ -424,10 +428,10 @@ Use `REOVIM_LOG=debug` to enable debug logging in spawned server processes.
 **When debugging in background:** Always specify a log file output instead of stderr:
 ```bash
 # GOOD: Use a specific log file
-REOVIM_LOG=debug cargo run -- --server --log=/tmp/reovim-debug.log file.txt &
+REOVIM_LOG=debug cargo run -- server --log=/tmp/reovim-debug.log &
 
 # BAD: Don't use stderr (--log=-) for background processes
-REOVIM_LOG=debug cargo run -- --server --log=- file.txt &  # Output gets mixed up
+REOVIM_LOG=debug cargo run -- server --log=- &  # Output gets mixed up
 ```
 Then monitor the log file:
 ```bash

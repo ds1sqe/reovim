@@ -196,28 +196,40 @@ timeout = 100
 ## Command Line Options
 
 ```bash
-reovim [OPTIONS] [FILE]...
+reovim <COMMAND>
 
-Options:
-  --server              Run in server mode (TCP)
-  --stdio               Run in server mode (stdio)
-  --listen-tcp PORT     Server mode on custom port
-  --listen-socket PATH  Server mode on Unix socket
-  --log PATH            Log file path (-, stderr, none, off, or path)
-  --lsp-log PATH        LSP JSON-RPC log path
-  -h, --help            Show help
+Commands:
+  server    Start headless server
+  tui       Connect with terminal UI
+  cli       Execute commands
+
+Server options:
+  --tcp <PORT>      Listen on custom TCP port (default: 12521)
+  --socket <PATH>   Listen on Unix socket
+  --stdio           Use stdio transport
+
+Client options (tui/cli):
+  --tcp <ADDR>      Connect via TCP (e.g., 127.0.0.1:12521)
+  --socket <PATH>   Connect via Unix socket
 ```
 
 **Examples:**
 ```bash
-# Open file
-reovim myfile.txt
+# Start server
+reovim server
 
-# Server mode on custom port
-reovim --listen-tcp 9000 --server
+# Server on custom port
+reovim server --tcp 9000
+
+# Connect TUI client
+reovim tui
+
+# CLI commands
+reovim cli list
+reovim cli keys 'iHello<Esc>'
 
 # Debug logging
-REOVIM_LOG=debug reovim --log=/tmp/reovim.log myfile.txt
+REOVIM_LOG=debug reovim server --log=/tmp/reovim.log
 ```
 
 ## Settings Menu

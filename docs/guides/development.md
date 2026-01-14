@@ -29,7 +29,7 @@ cargo test
 cargo fmt && cargo clippy
 ```
 
-For the full command reference including server mode, reo-cli, benchmarks, and debugging options, see [CLAUDE.md](../../CLAUDE.md#build-commands).
+For the full command reference including server mode, CLI client, benchmarks, and debugging options, see [CLAUDE.md](../../CLAUDE.md#build-commands).
 
 ## Code Standards
 
@@ -98,7 +98,6 @@ reovim/
 │       └── markdown/       # Markdown support
 ├── tools/
 │   ├── perf-report/        # Performance report generator
-│   ├── reo-cli/            # CLI client for server mode
 │   └── bench/              # Performance benchmarks (criterion)
 └── perf/                   # Versioned performance reports
 ```

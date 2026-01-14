@@ -40,19 +40,19 @@ lib/core/src/
 
 ## Integration Testing
 
-Reovim includes an end-to-end integration test system that uses the server mode (`--server --test`) to verify key input → expected output behavior by spawning a real server process.
+Reovim includes an end-to-end integration test system that uses server mode to verify key input → expected output behavior by spawning a real server process.
 
 ### Architecture
 
 ```
 ServerTestHarness
-├── Spawns: reovim --server --test --listen-tcp <port>
+├── Spawns: reovim server --tcp <port>
 ├── TestClient (TCP connection via JSON-RPC)
 └── Auto-cleanup on Drop
 
 Test Flow:
 ┌─────────────┐     JSON-RPC      ┌─────────────────────────┐
-│ TestClient  │ ────────────────→ │ reovim --server --test  │
+│ TestClient  │ ────────────────→ │    reovim server        │
 │             │                   │                         │
 │ keys()      │  input/keys       │  ChannelKeySource       │
 │ mode()      │  state/mode       │  Runtime                │
@@ -445,18 +445,18 @@ This approach ensures:
 - **Parallel-safe** - Multiple test processes can run simultaneously
 - **Cross-process safe** - Works correctly with `cargo test` parallelism
 - Tests don't interfere with manually started debug servers
-- `reo-cli list` only shows regular servers (not test instances)
+- `reovim cli list` only shows regular servers (not test instances)
 
 ### How It Works
 
-1. `ServerTest::new()` spawns `reovim --server --test --listen-tcp 0`
-2. Server binds to port 0, OS assigns an available port
+1. `ServerTest::new()` spawns `reovim server --tcp <port>`
+2. Server binds to specified port (tests use atomic counter for unique ports)
 3. Server prints `Listening on 127.0.0.1:<port>` to stderr
 4. Test harness reads stderr to discover the actual port
 5. `TestClient` connects via TCP and sends commands
 6. Keys are injected with 1ms delay between each (for mode propagation)
 7. After keys, 50ms delay allows processing before querying state
-8. Server auto-exits when client disconnects (test mode)
+8. Test cleans up server via kill command
 
 ## Current Test Coverage
 
