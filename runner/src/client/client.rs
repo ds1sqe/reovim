@@ -5,35 +5,37 @@
 
 use std::sync::Arc;
 
-use tokio::{
-    io::{AsyncWriteExt, BufWriter},
-    net::tcp::OwnedWriteHalf,
-    sync::Mutex,
+use crate::{
+    session::{ClientId, SessionId},
+    transport::TransportWriter,
 };
-
-use crate::session::{ClientId, SessionId};
 
 /// A connected client.
 ///
 /// Represents a single client connection to the server. Each client:
 /// - Has a unique [`ClientId`]
-/// - Is attached to a [`Session`] via [`SessionId`]
+/// - Is attached to a session via [`SessionId`]
 /// - Owns a writer for sending responses
 ///
 /// # Thread Safety
 ///
-/// The writer is wrapped in `tokio::sync::Mutex` to allow concurrent
-/// access from different tasks (e.g., event broadcasts). This matches
-/// the lock hierarchy in `docs/reference/concurrency.md`:
+/// The [`TransportWriter`] uses an internal `tokio::sync::Mutex` for thread-safe
+/// concurrent writes. This matches the lock hierarchy in `docs/reference/concurrency.md`:
 /// Level 2 (Per-Client) - `Mutex<WriteHalf>`.
+///
+/// # Transport Support
+///
+/// The client works with any transport type (TCP, Unix socket, Stdio)
+/// through the generic `TransportWriter` abstraction.
 ///
 /// # Example
 ///
 /// ```ignore
 /// use runner::client::Client;
 /// use runner::session::{ClientId, SessionId};
+/// use runner::transport::TransportWriter;
 ///
-/// // Create client from TCP connection
+/// // Create client from any transport
 /// let client = Client::new(ClientId::new(1), SessionId::default(), writer);
 ///
 /// // Send a response
@@ -46,10 +48,11 @@ pub struct Client {
     /// Session this client is attached to.
     session_id: SessionId,
 
-    /// Buffered writer for sending responses.
+    /// Writer for sending responses.
     ///
-    /// Protected by mutex to allow concurrent sends from different tasks.
-    writer: Mutex<BufWriter<OwnedWriteHalf>>,
+    /// Supports TCP, Unix socket, and Stdio transports.
+    /// Has internal locking for thread-safe concurrent sends.
+    writer: TransportWriter,
 }
 
 impl Client {
@@ -59,13 +62,13 @@ impl Client {
     ///
     /// * `id` - Unique client ID (from `SessionRegistry::next_client_id()`)
     /// * `session_id` - The session this client is attached to
-    /// * `writer` - The TCP write half for this connection
+    /// * `writer` - The transport writer for this connection
     #[must_use]
-    pub fn new(id: ClientId, session_id: SessionId, writer: OwnedWriteHalf) -> Arc<Self> {
+    pub fn new(id: ClientId, session_id: SessionId, writer: TransportWriter) -> Arc<Self> {
         Arc::new(Self {
             id,
             session_id,
-            writer: Mutex::new(BufWriter::new(writer)),
+            writer,
         })
     }
 
@@ -89,21 +92,7 @@ impl Client {
     ///
     /// Returns an error if writing fails.
     pub async fn send_line(&self, line: &str) -> std::io::Result<()> {
-        let mut writer = self.writer.lock().await;
-        writer.write_all(line.as_bytes()).await?;
-        writer.write_all(b"\n").await?;
-        writer.flush().await
-    }
-
-    /// Send raw bytes to the client.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if writing fails.
-    pub async fn send_bytes(&self, data: &[u8]) -> std::io::Result<()> {
-        let mut writer = self.writer.lock().await;
-        writer.write_all(data).await?;
-        writer.flush().await
+        self.writer.write_line(line).await
     }
 }
 

@@ -8,7 +8,8 @@ use super::super::dispatcher::{HandlerFuture, RpcContext};
 
 /// Handler for `server/kill` method.
 ///
-/// Requests the server to shut down gracefully.
+/// Requests the server to shut down gracefully by setting the session's
+/// quit flag. The server will exit after completing any pending operations.
 ///
 /// # Request
 ///
@@ -22,21 +23,20 @@ use super::super::dispatcher::{HandlerFuture, RpcContext};
 /// {"jsonrpc": "2.0", "id": 1, "result": {"ok": true}}
 /// ```
 #[must_use]
-pub fn server_kill(_ctx: RpcContext, _params: serde_json::Value) -> HandlerFuture {
-    Box::pin(async move { Ok(handle_server_kill()) })
-}
+pub fn server_kill(ctx: RpcContext, _params: serde_json::Value) -> HandlerFuture {
+    Box::pin(async move {
+        // Request the session to quit
+        ctx.session.request_quit().await;
 
-fn handle_server_kill() -> serde_json::Value {
-    // For MVP, just acknowledge the kill request
-    // The actual shutdown will be handled by the server
-    serde_json::to_value(OkResult::new()).expect("OkResult serialization should never fail")
+        Ok(serde_json::to_value(OkResult::new()).unwrap_or_default())
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use {
         super::*,
-        crate::session::{Session, SessionId},
+        crate::session::{ClientId, Session, SessionId},
         reovim_kernel::api::v1::{KernelContext, ModeId, ModuleId},
         std::sync::Arc,
     };
@@ -52,7 +52,10 @@ mod tests {
     #[tokio::test]
     async fn test_server_kill_handler() {
         let session = test_session();
-        let ctx = RpcContext { session };
+        let ctx = RpcContext {
+            session,
+            client_id: ClientId::new(1),
+        };
 
         let result = server_kill(ctx, serde_json::json!({})).await;
 

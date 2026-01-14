@@ -15,6 +15,33 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 6.1.1: Server Enhancements** (Issue #220 continued)
+  - **Transport Abstraction** (`runner/src/transport/`):
+    - `TransportReader`/`TransportWriter` - Unified reader/writer for TCP, Unix, and Stdio
+    - `TransportListener` - Accept loop abstraction for TCP and Unix sockets
+    - Enum-based polymorphism for zero-cost abstraction
+  - **Unix Socket Transport**:
+    - `--listen-socket /tmp/reovim.sock` CLI option
+    - Auto-cleanup of stale socket files
+  - **Stdio Transport**:
+    - `--stdio` CLI option for process embedding
+    - Single-client mode for parent process communication
+  - **Notification System** (`runner/src/notification.rs`):
+    - `NotificationBroadcaster` - Session-wide notification broadcasts
+    - `broadcast_to_session()` - Send to all clients
+    - `broadcast_except()` - Send to all except triggering client
+  - **Session Client Tracking**:
+    - `ClientRegistry` per session for connected client management
+    - Client registration/deregistration on connect/disconnect
+  - **RpcContext Enhancement**:
+    - Added `client_id` field for per-client operations
+  - **Handler Integration**:
+    - `state/mode` - Queries real mode from session state
+    - `state/cursor` - Queries real cursor position
+    - `input/keys` - Full keymap lookup and command execution
+    - `server/kill` - Triggers session quit via `request_quit()`
+  - 107 tests, zero clippy warnings
+
 - **Phase 6.1: Server Infrastructure** (Issue #220) - Headless editor server with tmux-style session model
   - **Server Module** (`runner/src/server.rs`):
     - `Server` struct - Main server coordinating sessions, transport, and RPC dispatch

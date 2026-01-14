@@ -42,14 +42,12 @@
 //! }
 //! ```
 
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
-
-use tokio::{
-    io::{AsyncBufReadExt, BufReader},
-    net::TcpStream,
+use std::{
+    path::PathBuf,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use {
@@ -61,17 +59,47 @@ use crate::{
     client::Client,
     rpc::{RpcContext, RpcDispatcher, create_default_dispatcher},
     session::{Session, SessionId, SessionRegistry},
-    transport::TcpTransport,
+    transport::{TransportListener, TransportReader, TransportWriter},
 };
+
+/// Transport configuration for the server.
+///
+/// Determines how the server accepts client connections.
+#[derive(Debug, Clone, Default)]
+pub enum TransportMode {
+    /// TCP with automatic port fallback (12521-12530).
+    ///
+    /// Allows multiple reovim servers to run concurrently.
+    #[default]
+    TcpWithFallback,
+
+    /// TCP on a specific port.
+    Tcp {
+        /// Port to bind to.
+        port: u16,
+    },
+
+    /// Unix socket at a specific path.
+    ///
+    /// Efficient for local IPC, commonly used for editor embedding.
+    #[cfg(unix)]
+    UnixSocket {
+        /// Path to the socket file.
+        path: PathBuf,
+    },
+
+    /// Stdio transport (stdin/stdout).
+    ///
+    /// For process embedding - the parent process communicates
+    /// directly via stdin/stdout. Single client only.
+    Stdio,
+}
 
 /// Server configuration.
 #[derive(Debug, Clone)]
 pub struct ServerConfig {
-    /// TCP port to listen on. If `None`, use default with fallback.
-    pub port: Option<u16>,
-
-    /// Host to bind to. Defaults to "127.0.0.1" (localhost only).
-    pub host: String,
+    /// Transport mode (TCP, Unix socket, or Stdio).
+    pub transport: TransportMode,
 
     /// Name of the default session to create on startup.
     pub default_session_name: String,
@@ -80,8 +108,7 @@ pub struct ServerConfig {
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
-            port: None,
-            host: String::from("127.0.0.1"),
+            transport: TransportMode::TcpWithFallback,
             default_session_name: String::from("default"),
         }
     }
@@ -94,18 +121,41 @@ impl ServerConfig {
         Self::default()
     }
 
-    /// Set the TCP port to listen on.
+    /// Create a config for TCP with automatic port fallback.
     #[must_use]
-    pub const fn port(mut self, port: u16) -> Self {
-        self.port = Some(port);
-        self
+    pub fn tcp_with_fallback() -> Self {
+        Self {
+            transport: TransportMode::TcpWithFallback,
+            ..Self::default()
+        }
     }
 
-    /// Set the host to bind to.
+    /// Create a config for TCP on a specific port.
     #[must_use]
-    pub fn host(mut self, host: impl Into<String>) -> Self {
-        self.host = host.into();
-        self
+    pub fn tcp(port: u16) -> Self {
+        Self {
+            transport: TransportMode::Tcp { port },
+            ..Self::default()
+        }
+    }
+
+    /// Create a config for Unix socket.
+    #[cfg(unix)]
+    #[must_use]
+    pub fn unix_socket(path: impl Into<PathBuf>) -> Self {
+        Self {
+            transport: TransportMode::UnixSocket { path: path.into() },
+            ..Self::default()
+        }
+    }
+
+    /// Create a config for Stdio transport.
+    #[must_use]
+    pub fn stdio() -> Self {
+        Self {
+            transport: TransportMode::Stdio,
+            ..Self::default()
+        }
     }
 
     /// Set the default session name.
@@ -163,35 +213,54 @@ impl Server {
 
     /// Run the server.
     ///
-    /// This method:
-    /// 1. Binds the TCP transport
-    /// 2. Creates the default session
-    /// 3. Accepts connections in a loop
-    /// 4. Spawns a task for each client
+    /// Dispatches to the appropriate transport handler based on configuration:
+    /// - `TcpWithFallback`: TCP with automatic port fallback
+    /// - `Tcp`: TCP on specific port
+    /// - `UnixSocket`: Unix domain socket
+    /// - `Stdio`: Standard input/output
     ///
     /// # Errors
     ///
     /// Returns an error if binding fails.
     pub async fn run(&self) -> std::io::Result<()> {
-        // Bind TCP transport
-        let transport = if let Some(port) = self.config.port {
-            TcpTransport::bind_port(port).await?
-        } else {
-            TcpTransport::bind_with_fallback().await?
-        };
-
-        // Print listening address to stderr (like tmux)
-        eprintln!("Listening on {}", transport.local_addr());
-
         // Create default session
         let default_session_id = SessionId::new(self.config.default_session_name.as_str());
         self.ensure_default_session(&default_session_id);
 
+        match &self.config.transport {
+            TransportMode::TcpWithFallback => {
+                let listener = TransportListener::bind_tcp_with_fallback().await?;
+                self.run_listener(listener, &default_session_id).await
+            }
+            TransportMode::Tcp { port } => {
+                let listener = TransportListener::bind_tcp(*port).await?;
+                self.run_listener(listener, &default_session_id).await
+            }
+            #[cfg(unix)]
+            TransportMode::UnixSocket { path } => {
+                let listener = TransportListener::bind_unix(path)?;
+                self.run_listener(listener, &default_session_id).await
+            }
+            TransportMode::Stdio => self.run_stdio(&default_session_id).await,
+        }
+    }
+
+    /// Run the server with a listener transport (TCP or Unix socket).
+    ///
+    /// Accepts connections in a loop and spawns a task for each client.
+    async fn run_listener(
+        &self,
+        listener: TransportListener,
+        default_session_id: &SessionId,
+    ) -> std::io::Result<()> {
+        // Print listening address to stderr (like tmux)
+        eprintln!("Listening on {}", listener.local_addr_string());
+
         // Accept loop
         while !self.shutdown.load(Ordering::Relaxed) {
-            match transport.accept().await {
-                Ok((stream, addr)) => {
-                    tracing::info!("New connection from {addr}");
+            match listener.accept().await {
+                Ok((reader, writer)) => {
+                    tracing::info!("New connection");
 
                     // Generate unique client ID
                     let client_id = self.sessions.next_client_id();
@@ -199,16 +268,12 @@ impl Server {
                     // Clone Arcs for the spawned task
                     let sessions = Arc::clone(&self.sessions);
                     let dispatcher = Arc::clone(&self.dispatcher);
-                    let default_session_id = default_session_id.clone();
+                    let session_id = default_session_id.clone();
 
                     // Spawn client handler task
                     tokio::spawn(async move {
                         if let Err(e) = handle_client(
-                            stream,
-                            client_id,
-                            default_session_id,
-                            sessions,
-                            dispatcher,
+                            reader, writer, client_id, session_id, sessions, dispatcher,
                         )
                         .await
                         {
@@ -224,6 +289,34 @@ impl Server {
         }
 
         tracing::info!("Server shutting down");
+        Ok(())
+    }
+
+    /// Run the server with Stdio transport.
+    ///
+    /// Handles a single client via stdin/stdout. Returns when stdin closes (EOF).
+    async fn run_stdio(&self, default_session_id: &SessionId) -> std::io::Result<()> {
+        tracing::info!("Running in stdio mode");
+
+        // Create stdio reader/writer
+        let reader = TransportReader::from_stdio();
+        let writer = TransportWriter::from_stdio();
+
+        // Generate client ID
+        let client_id = self.sessions.next_client_id();
+
+        // Handle the single client directly (no spawn)
+        handle_client(
+            reader,
+            writer,
+            client_id,
+            default_session_id.clone(),
+            Arc::clone(&self.sessions),
+            Arc::clone(&self.dispatcher),
+        )
+        .await?;
+
+        tracing::info!("Stdio client disconnected");
         Ok(())
     }
 
@@ -269,17 +362,23 @@ const fn default_mode_id() -> ModeId {
 ///
 /// Reads JSON-RPC requests line by line, dispatches them, and sends responses.
 /// Runs until the client disconnects or an error occurs.
+///
+/// # Arguments
+///
+/// * `reader` - Transport reader for receiving requests
+/// * `writer` - Transport writer for sending responses
+/// * `client_id` - Unique identifier for this client
+/// * `session_id` - Session to attach the client to
+/// * `sessions` - Session registry for looking up sessions
+/// * `dispatcher` - RPC dispatcher for handling requests
 async fn handle_client(
-    stream: TcpStream,
+    mut reader: TransportReader,
+    writer: TransportWriter,
     client_id: crate::session::ClientId,
     session_id: SessionId,
     sessions: Arc<SessionRegistry>,
     dispatcher: Arc<RpcDispatcher>,
 ) -> std::io::Result<()> {
-    // Split the stream for concurrent read/write
-    let (reader, writer) = stream.into_split();
-    let mut reader = BufReader::new(reader);
-
     // Get or create the session
     let session = sessions.get_or_create(&session_id, || {
         Session::new(session_id.clone(), KernelContext::default(), default_mode_id())
@@ -288,21 +387,21 @@ async fn handle_client(
     // Create the client (owns the writer)
     let client = Client::new(client_id, session_id, writer);
 
+    // Register client with session for notifications
+    session.clients().insert(&client);
+
     // Create RPC context
     let ctx = RpcContext {
         session: Arc::clone(&session),
+        client_id,
     };
 
     // Read loop
-    let mut line = String::new();
     loop {
-        line.clear();
-        let bytes_read = reader.read_line(&mut line).await?;
-
-        if bytes_read == 0 {
+        let Some(line) = reader.read_line().await? else {
             // EOF - client disconnected
             break;
-        }
+        };
 
         let line = line.trim();
         if line.is_empty() {
@@ -333,6 +432,9 @@ async fn handle_client(
         }
     }
 
+    // Cleanup: remove client from session
+    session.clients().remove(&client_id);
+
     Ok(())
 }
 
@@ -343,20 +445,46 @@ mod tests {
     #[test]
     fn test_server_config_default() {
         let config = ServerConfig::default();
-        assert!(config.port.is_none());
-        assert_eq!(config.host, "127.0.0.1");
+        assert!(matches!(config.transport, TransportMode::TcpWithFallback));
         assert_eq!(config.default_session_name, "default");
     }
 
     #[test]
-    fn test_server_config_builder() {
-        let config = ServerConfig::new()
-            .port(9000)
-            .host("0.0.0.0")
-            .session_name("my-session");
+    fn test_server_config_tcp_with_fallback() {
+        let config = ServerConfig::tcp_with_fallback();
+        assert!(matches!(config.transport, TransportMode::TcpWithFallback));
+    }
 
-        assert_eq!(config.port, Some(9000));
-        assert_eq!(config.host, "0.0.0.0");
+    #[test]
+    fn test_server_config_tcp() {
+        let config = ServerConfig::tcp(9000);
+        match config.transport {
+            TransportMode::Tcp { port } => assert_eq!(port, 9000),
+            _ => panic!("Expected TransportMode::Tcp"),
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_server_config_unix_socket() {
+        let config = ServerConfig::unix_socket("/tmp/test.sock");
+        match &config.transport {
+            TransportMode::UnixSocket { path } => {
+                assert_eq!(path.to_str().unwrap(), "/tmp/test.sock");
+            }
+            _ => panic!("Expected TransportMode::UnixSocket"),
+        }
+    }
+
+    #[test]
+    fn test_server_config_stdio() {
+        let config = ServerConfig::stdio();
+        assert!(matches!(config.transport, TransportMode::Stdio));
+    }
+
+    #[test]
+    fn test_server_config_session_name() {
+        let config = ServerConfig::tcp(9000).session_name("my-session");
         assert_eq!(config.default_session_name, "my-session");
     }
 

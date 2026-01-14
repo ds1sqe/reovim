@@ -46,7 +46,7 @@ impl CommandRegistry {
 
     /// Register a command handler.
     ///
-    /// The command's ID is obtained from the handler via [`CommandHandler::id()`].
+    /// The command's ID is obtained from the handler via its `id()` method.
     /// If a command with the same ID already exists, it is replaced.
     pub fn register(&mut self, handler: Arc<dyn CommandHandler>) {
         let id = handler.id();

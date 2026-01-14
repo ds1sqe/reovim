@@ -46,6 +46,7 @@ clap = { workspace = true }
 # (avoids cyclic dependency since editor module depends on runner-new)
 [dev-dependencies]
 reovim-module-editor = { path = "../modules/editor" }
+tempfile = "3.10"
 
 [lints]
 workspace = true

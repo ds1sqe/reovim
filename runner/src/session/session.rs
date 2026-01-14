@@ -15,7 +15,10 @@ use {
 
 use {
     super::{id::SessionId, state::SessionState},
-    crate::registry::{CommandRegistry, KeyLookupResult, KeymapRegistry, ModeRegistry},
+    crate::{
+        client::ClientRegistry,
+        registry::{CommandRegistry, KeyLookupResult, KeymapRegistry, ModeRegistry},
+    },
 };
 
 /// A named editing session with thread-safe state access.
@@ -25,6 +28,7 @@ use {
 /// - Kernel context (buffers, events, options)
 /// - Mode/command/keymap registries
 /// - Runtime state (active buffer, pending keys)
+/// - Client registry (connected clients for notifications)
 ///
 /// Multiple clients can attach to the same session and share state (like tmux).
 ///
@@ -34,8 +38,12 @@ use {
 /// - Multiple concurrent readers (state queries)
 /// - Single writer (key processing, state mutations)
 ///
+/// The [`ClientRegistry`] uses lock-free `ArcSwap` internally, so client
+/// lookup and iteration don't block state access.
+///
 /// This matches the lock hierarchy in `docs/reference/concurrency.md`:
-/// Level 1 (Per-Session) - `RwLock<SessionState>`.
+/// - Level 0 (Lock-Free): Client lookup via `ArcSwap`
+/// - Level 1 (Per-Session): `RwLock<SessionState>`
 ///
 /// # Example
 ///
@@ -52,8 +60,10 @@ use {
 /// // Concurrent read access
 /// let mode = session.current_mode().await;
 ///
-/// // Exclusive write access for key processing
-/// session.process_key(&key).await;
+/// // Broadcast to all clients (lock-free)
+/// for client in session.clients().iter() {
+///     client.send_line(r#"{"method":"notify"}"#).await?;
+/// }
 /// ```
 pub struct Session {
     /// Session identifier.
@@ -66,6 +76,12 @@ pub struct Session {
     /// 2. Provides async-aware fair scheduling
     /// 3. Allows concurrent read access for queries
     state: RwLock<SessionState>,
+
+    /// Connected clients registry.
+    ///
+    /// Uses lock-free `ArcSwap` for client lookup and broadcast iteration.
+    /// Clients are added when they connect and removed on disconnect.
+    clients: ClientRegistry,
 }
 
 impl Session {
@@ -75,6 +91,7 @@ impl Session {
         Arc::new(Self {
             id,
             state: RwLock::new(SessionState::new(kernel, initial_mode)),
+            clients: ClientRegistry::new(),
         })
     }
 
@@ -97,6 +114,7 @@ impl Session {
                 command_registry,
                 keymap_registry,
             )),
+            clients: ClientRegistry::new(),
         })
     }
 
@@ -104,6 +122,17 @@ impl Session {
     #[must_use]
     pub const fn id(&self) -> &SessionId {
         &self.id
+    }
+
+    /// Get the client registry.
+    ///
+    /// Use this to:
+    /// - Add/remove clients on connect/disconnect
+    /// - Iterate over clients for broadcast notifications
+    /// - Look up specific clients by ID
+    #[must_use]
+    pub const fn clients(&self) -> &ClientRegistry {
+        &self.clients
     }
 
     /// Get the current mode ID.

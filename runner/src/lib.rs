@@ -78,6 +78,7 @@ mod app;
 pub mod client;
 mod event_loop;
 mod fallback;
+pub mod notification;
 pub mod registry;
 pub mod rpc;
 pub mod server;
@@ -88,5 +89,6 @@ pub use {
     app::AppState,
     event_loop::{EventLoop, EventLoopError},
     fallback::{BeepFallback, FallbackResult, InputFallbackHandler, NoOpFallback},
-    server::{Server, ServerConfig},
+    notification::NotificationBroadcaster,
+    server::{Server, ServerConfig, TransportMode},
 };

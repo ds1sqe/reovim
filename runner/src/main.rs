@@ -4,7 +4,7 @@
 //!
 //! # Server Mode
 //!
-//! Start the server to accept JSON-RPC connections over TCP:
+//! Start the server to accept JSON-RPC connections:
 //!
 //! ```sh
 //! # Default: TCP on 127.0.0.1:12521 (with port fallback)
@@ -12,6 +12,12 @@
 //!
 //! # Custom TCP port
 //! cargo run -- --listen-tcp 9000
+//!
+//! # Unix socket (for local IPC)
+//! cargo run -- --listen-socket /tmp/reovim.sock
+//!
+//! # Stdio (for process embedding)
+//! cargo run -- --stdio
 //! ```
 //!
 //! # Architecture
@@ -30,7 +36,7 @@
 //! cargo run --example demo
 //! ```
 
-use std::process;
+use std::{path::PathBuf, process};
 
 use {
     clap::Parser,
@@ -50,16 +56,29 @@ struct Args {
     /// Start server on specific TCP port
     #[arg(long, value_name = "PORT")]
     listen_tcp: Option<u16>,
+
+    /// Start server on Unix socket
+    #[cfg(unix)]
+    #[arg(long, value_name = "PATH")]
+    listen_socket: Option<PathBuf>,
+
+    /// Start server in stdio mode (single client, for embedding)
+    #[arg(long)]
+    stdio: bool,
 }
 
 fn main() {
     let args = Args::parse();
 
     // Determine if we should run in server mode
-    let server_mode = args.server || args.listen_tcp.is_some();
+    #[cfg(unix)]
+    let server_mode =
+        args.server || args.listen_tcp.is_some() || args.listen_socket.is_some() || args.stdio;
+    #[cfg(not(unix))]
+    let server_mode = args.server || args.listen_tcp.is_some() || args.stdio;
 
     if server_mode {
-        run_server(args.listen_tcp);
+        run_server(&args);
     } else {
         print_usage();
     }
@@ -72,21 +91,41 @@ fn print_usage() {
     println!("Policy modules (keymap, editor, etc.) provide the actual behavior.");
     println!();
     println!("Server mode:");
-    println!("    reovim --server              # Start TCP server (default port: 12521)");
-    println!("    reovim --listen-tcp 9000     # Start on custom port");
+    println!("    reovim --server                      # Start TCP server (default port: 12521)");
+    println!("    reovim --listen-tcp 9000             # Start on custom TCP port");
+    #[cfg(unix)]
+    println!("    reovim --listen-socket /tmp/r.sock   # Start on Unix socket");
+    println!("    reovim --stdio                       # Start in stdio mode (for embedding)");
     println!();
     println!("Demo mode:");
-    println!("    cargo run --example demo     # See the architecture in action");
+    println!("    cargo run --example demo             # See the architecture in action");
     println!();
     println!("Use --help for more options.");
 }
 
-fn run_server(port: Option<u16>) {
-    // Build config using builder pattern
-    let mut config = ServerConfig::new();
-    if let Some(p) = port {
-        config = config.port(p);
-    }
+// Clippy suggests map_or_else but it doesn't work well with multi-branch if-else chains
+#[allow(clippy::option_if_let_else)]
+fn run_server(args: &Args) {
+    // Build config based on transport mode
+    #[cfg(unix)]
+    let config = if let Some(ref path) = args.listen_socket {
+        ServerConfig::unix_socket(path)
+    } else if args.stdio {
+        ServerConfig::stdio()
+    } else if let Some(port) = args.listen_tcp {
+        ServerConfig::tcp(port)
+    } else {
+        ServerConfig::tcp_with_fallback()
+    };
+
+    #[cfg(not(unix))]
+    let config = if args.stdio {
+        ServerConfig::stdio()
+    } else if let Some(port) = args.listen_tcp {
+        ServerConfig::tcp(port)
+    } else {
+        ServerConfig::tcp_with_fallback()
+    };
 
     // Create server
     let server = Server::new(config);

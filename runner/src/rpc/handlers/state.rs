@@ -8,7 +8,7 @@ use super::super::dispatcher::{HandlerFuture, RpcContext};
 
 /// Handler for `state/mode` method.
 ///
-/// Returns the current mode information.
+/// Returns the current mode information from the session state.
 ///
 /// # Request
 ///
@@ -22,21 +22,26 @@ use super::super::dispatcher::{HandlerFuture, RpcContext};
 /// {"jsonrpc": "2.0", "id": 1, "result": {"focus": "Editor", "edit_mode": "Normal", ...}}
 /// ```
 #[must_use]
-pub fn state_mode(_ctx: RpcContext, _params: serde_json::Value) -> HandlerFuture {
-    Box::pin(async move { Ok(handle_state_mode()) })
-}
+pub fn state_mode(ctx: RpcContext, _params: serde_json::Value) -> HandlerFuture {
+    Box::pin(async move {
+        // Get the current mode from session state
+        let mode_id = ctx.session.current_mode().await;
 
-fn handle_state_mode() -> serde_json::Value {
-    // For MVP, return a default mode info
-    // Full mode tracking will be implemented later
-    let mode_info = ModeInfo {
-        focus: "Editor".to_string(),
-        edit_mode: "Normal".to_string(),
-        sub_mode: "None".to_string(),
-        display: "NORMAL".to_string(),
-    };
+        // Get the display text from mode registry
+        let display = ctx
+            .session
+            .with_state(|state| state.mode_registry.status_text(&mode_id).to_string())
+            .await;
 
-    serde_json::to_value(mode_info).expect("ModeInfo serialization should never fail")
+        let mode_info = ModeInfo {
+            focus: "Editor".to_string(),
+            edit_mode: mode_id.name().to_string(),
+            sub_mode: "None".to_string(),
+            display,
+        };
+
+        Ok(serde_json::to_value(mode_info).unwrap_or_default())
+    })
 }
 
 /// Handler for `state/cursor` method.
@@ -55,23 +60,28 @@ fn handle_state_mode() -> serde_json::Value {
 /// {"jsonrpc": "2.0", "id": 1, "result": {"line": 0, "column": 0}}
 /// ```
 #[must_use]
-pub fn state_cursor(_ctx: RpcContext, _params: serde_json::Value) -> HandlerFuture {
-    Box::pin(async move { Ok(handle_state_cursor()) })
-}
+pub fn state_cursor(ctx: RpcContext, _params: serde_json::Value) -> HandlerFuture {
+    Box::pin(async move {
+        // Query cursor position from session state
+        // Falls back to (0, 0) if no active buffer
+        let cursor = ctx
+            .session
+            .with_state(|state| {
+                // TODO: Get actual cursor position from active buffer when implemented
+                let _ = state.app.active_buffer;
+                CursorInfo { line: 0, column: 0 }
+            })
+            .await;
 
-fn handle_state_cursor() -> serde_json::Value {
-    // For MVP, return default cursor position
-    // Full cursor tracking will be implemented later
-    let cursor = CursorInfo { line: 0, column: 0 };
-
-    serde_json::to_value(cursor).expect("CursorInfo serialization should never fail")
+        Ok(serde_json::to_value(cursor).unwrap_or_default())
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use {
         super::*,
-        crate::session::{Session, SessionId},
+        crate::session::{ClientId, Session, SessionId},
         reovim_kernel::api::v1::{KernelContext, ModeId, ModuleId},
         std::sync::Arc,
     };
@@ -87,7 +97,10 @@ mod tests {
     #[tokio::test]
     async fn test_state_mode_handler() {
         let session = test_session();
-        let ctx = RpcContext { session };
+        let ctx = RpcContext {
+            session,
+            client_id: ClientId::new(1),
+        };
 
         let result = state_mode(ctx, serde_json::json!({})).await;
 
@@ -99,7 +112,10 @@ mod tests {
     #[tokio::test]
     async fn test_state_cursor_handler() {
         let session = test_session();
-        let ctx = RpcContext { session };
+        let ctx = RpcContext {
+            session,
+            client_id: ClientId::new(1),
+        };
 
         let result = state_cursor(ctx, serde_json::json!({})).await;
 

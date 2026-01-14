@@ -124,7 +124,7 @@ impl KeymapRegistry {
     /// # Arguments
     ///
     /// * `mode` - The mode in which this binding is active
-    /// * `keys` - Key sequence string (e.g., "gg", "<C-w>h")
+    /// * `keys` - Key sequence string (e.g., "gg", "`<C-w>`h")
     /// * `command` - The command to execute
     pub fn register_str(&mut self, mode: ModeId, keys: &str, command: CommandId) -> bool {
         KeySequence::parse(keys).is_some_and(|seq| {
