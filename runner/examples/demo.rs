@@ -63,7 +63,7 @@ fn main() {
     mode_registry.register(
         ModeEntry::new(normal.clone())
             .with_display(normal.clone())
-            .with_input(normal.clone()),
+            .with_input(normal),
     );
     mode_registry.register(
         ModeEntry::new(insert.clone())

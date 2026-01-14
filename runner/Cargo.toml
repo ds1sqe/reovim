@@ -15,15 +15,46 @@ name = "reovim"
 path = "src/main.rs"
 
 [dependencies]
+# Kernel and drivers
 reovim-kernel = { path = "../lib/kernel" }
 reovim-driver-command = { path = "../lib/drivers/command" }
 reovim-driver-display = { path = "../lib/drivers/display" }
 reovim-driver-input = { path = "../lib/drivers/input" }
 
+# Protocol (shared RPC types)
+reovim-protocol = { path = "../lib/protocol" }
+
+# Platform abstraction (provides arc-swap, parking_lot)
+reovim-arch = { path = "../lib/arch" }
+
+# Dynamic library loading for runtime modules
+libloading = "0.8"
+
+# Async runtime for multi-threaded server
+tokio = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = "1.0"
+toml = { workspace = true }
+
+# Async utilities (for BoxFuture)
+futures = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# CLI argument parsing
+clap = { workspace = true }
+
 # Editor module is a dev-dependency for the demo example
 # (avoids cyclic dependency since editor module depends on runner-new)
 [dev-dependencies]
 reovim-module-editor = { path = "../modules/editor" }
+# Hot reload demo module for integration tests
+# This ensures the cdylib is built when running `cargo test`
+reovim-module-hot-reload-demo = { path = "../modules/hot-reload-demo" }
+tempfile = "3.10"
 
 [lints]
 workspace = true

@@ -15,6 +15,179 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 6.1.4: Handler Completion & Server Reorganization** (Issue #220 continued)
+  - **Directory Reorganization**:
+    - Moved all server-specific code under `runner/src/server/` for future client modes
+    - Reorganized `rpc/` to `server/rpc/`, `session/` to `server/session/`, etc.
+    - Re-exports maintained in `lib.rs` for backwards compatibility
+  - **10 New RPC Handlers** (`runner/src/server/rpc/handlers/`):
+    - `command/execute` - Execute ex-commands by name lookup
+    - `buffer/get_content` - Get buffer content (supports buffer_id or active buffer)
+    - `buffer/set_content` - Replace buffer content
+    - `buffer/list` - List all open buffers with metadata
+    - `buffer/open_file` - Open file into new buffer
+    - `state/screen_content` - Screen visualization in plain_text/raw_ansi/cell_grid formats
+    - `module/list` - List loaded modules with state and dependencies
+    - `module/load` - Load dynamic module from path (unsafe FFI)
+    - `module/unload` - Unload module (checks dependencies)
+    - `module/reload` - Atomic hot reload with state preservation
+  - **Notification Emission System** (`runner/src/server/session/`):
+    - `StateSnapshot` - Captures mode, cursor, buffer state for change detection
+    - `emit_state_changes()` - Broadcasts mode_changed, cursor_moved, buffer_modified
+    - Integrated into `input/keys` handler for automatic notification on state changes
+  - 24 RPC methods registered (14 implemented + 10 stubs)
+  - 188 runner tests, zero clippy warnings
+
+- **Phase 6.1.3: Protocol Type Safety** (Issue #220 continued)
+  - **Type-Safe RPC Results** (`lib/protocol/src/v1/results.rs`):
+    - `KeyStatus` enum with `Executed`, `Pending`, `NotFound` variants
+    - `InputKeysResult` struct with typed constructors (`executed()`, `pending()`, `not_found()`)
+    - Snake_case JSON serialization via `#[serde(rename_all = "snake_case")]`
+  - **Notification Convenience Methods** (`lib/protocol/src/v1/notifications.rs`):
+    - `into_notification()` method for all 4 payload types
+    - `ModeChangedPayload`, `CursorMovedPayload`, `BufferModifiedPayload`, `RenderCompletePayload`
+    - Direct conversion to `RpcNotification` without manual construction
+  - **Handler Improvements** (`runner/src/rpc/handlers/`):
+    - `input/keys` now returns typed `InputKeysResult` instead of ad-hoc JSON
+    - `state/cursor` now retrieves actual cursor position from active buffer
+    - Fixed silent error suppression: `.unwrap_or_default()` → `.expect()` in 3 handlers
+  - **Stub Handlers** (`runner/src/rpc/handlers/stub.rs`):
+    - 10 stub handlers for unimplemented RPC methods (state/*, editor/*)
+    - Explicit "not implemented" errors via `RpcError::method_not_found()`
+    - Macro-based generation for consistency
+  - 14 RPC methods registered (4 implemented + 10 stubs)
+  - 91 protocol tests, 171 runner tests, zero clippy warnings
+
+- **Phase 6.1.2: Server Module Management** (Issue #220 continued)
+  - **Module Infrastructure** (`runner/src/module/`):
+    - `ModuleLoader` - Static and dynamic module loading via `libloading`
+    - `ModuleRegistry` - Module state tracking and dependency resolution
+    - `ModuleHandle` - FFI symbol trampolines for lifecycle calls
+    - `ModuleConfig` - TOML configuration for search paths and auto-loading
+    - Kahn's algorithm for topological sort of dependencies
+    - Platform-aware module discovery (`.so`, `.dylib`, `.dll`)
+  - **RPC Protocol Types** (`lib/protocol/src/v1/`):
+    - `module/load`, `module/unload`, `module/reload`, `module/list` method constants
+    - `ModuleLoadParams`, `ModuleUnloadParams`, `ModuleReloadParams` param types
+    - `ModuleInfo`, `ModuleListResult`, `ModuleLoadResult` result types
+  - **Server Integration**:
+    - `ModuleRegistry` integrated into `SessionState` (per-session module ownership)
+    - `ServerConfig.modules` for config-based module loading
+    - `with_modules_from_config()` for loading `~/.config/reovim/config.toml`
+  - **Hot Reload Demo Module** (`modules/hot-reload-demo/`):
+    - Working example demonstrating FFI workflow and hot reload
+    - State preservation with version-compatible binary format
+    - Counter commands: `demo:increment`, `demo:decrement`, `demo:show`, `demo:reset`
+    - 11 unit tests verifying hot reload cycle
+  - **Integration Tests** (`runner/tests/module_loading.rs`):
+    - 15 tests exercising real FFI loading via `libloading`
+    - Tests for probe, init/exit lifecycle, state preservation
+    - Error handling for version mismatch, corrupt data, null pointers
+  - **Documentation** (`docs/guides/module-development.md`):
+    - Complete guide for FFI workflow and hot reload
+    - RPC commands reference
+    - Configuration guide
+  - 185 tests total, zero clippy warnings
+
+- **Phase 6.1.1: Server Enhancements** (Issue #220 continued)
+  - **Transport Abstraction** (`runner/src/transport/`):
+    - `TransportReader`/`TransportWriter` - Unified reader/writer for TCP, Unix, and Stdio
+    - `TransportListener` - Accept loop abstraction for TCP and Unix sockets
+    - Enum-based polymorphism for zero-cost abstraction
+  - **Unix Socket Transport**:
+    - `--listen-socket /tmp/reovim.sock` CLI option
+    - Auto-cleanup of stale socket files
+  - **Stdio Transport**:
+    - `--stdio` CLI option for process embedding
+    - Single-client mode for parent process communication
+  - **Notification System** (`runner/src/notification.rs`):
+    - `NotificationBroadcaster` - Session-wide notification broadcasts
+    - `broadcast_to_session()` - Send to all clients
+    - `broadcast_except()` - Send to all except triggering client
+  - **Session Client Tracking**:
+    - `ClientRegistry` per session for connected client management
+    - Client registration/deregistration on connect/disconnect
+  - **RpcContext Enhancement**:
+    - Added `client_id` field for per-client operations
+  - **Handler Integration**:
+    - `state/mode` - Queries real mode from session state
+    - `state/cursor` - Queries real cursor position
+    - `input/keys` - Full keymap lookup and command execution
+    - `server/kill` - Triggers session quit via `request_quit()`
+  - 107 tests, zero clippy warnings
+
+- **Phase 6.1: Server Infrastructure** (Issue #220) - Headless editor server with tmux-style session model
+  - **Server Module** (`runner/src/server.rs`):
+    - `Server` struct - Main server coordinating sessions, transport, and RPC dispatch
+    - `ServerConfig` - Builder-pattern configuration (port, host, session_name)
+    - TCP accept loop with per-client task spawning
+    - Graceful shutdown via `AtomicBool` flag
+  - **Session Module** (`runner/src/session/`):
+    - `SessionId` and `ClientId` - Strongly-typed identifiers
+    - `SessionState` - Combines `AppState` with registries
+    - `Session` - Thread-safe state access via `tokio::sync::RwLock`
+    - `SessionRegistry` - Lock-free session lookup using `ArcSwap` (RCU pattern)
+  - **Client Module** (`runner/src/client/`):
+    - `Client` - Per-connection state with `Mutex<WriteHalf>` for responses
+    - `ClientRegistry` - Per-session client tracking
+  - **Transport Module** (`runner/src/transport/`):
+    - `TcpTransport` - TCP listener with port fallback (12521-12530)
+    - Multi-instance support for development/debugging
+  - **RPC Module** (`runner/src/rpc/`):
+    - `RpcDispatcher` - Function-pointer based method routing
+    - `RpcContext` - Handler context with session reference
+    - MVP handlers: `input/keys`, `state/mode`, `state/cursor`, `server/kill`
+  - **Driver Trait Updates**:
+    - Added `Send + Sync` bounds to `ModeDisplay` trait
+    - Added `Send + Sync` bounds to `ModeInput` trait
+  - **CLI Entry Point** (`runner/src/main.rs`):
+    - `--server` flag for default TCP server
+    - `--listen-tcp <PORT>` for custom port
+    - Uses `clap` for argument parsing
+  - **Concurrency Model** (from `docs/reference/concurrency.md`):
+    - Level 0: Lock-free (ArcSwap, AtomicU64)
+    - Level 1: Per-session (RwLock)
+    - Level 2: Per-client (Mutex)
+  - 86 tests, zero clippy warnings
+
+- **Phase 6.0: Protocol Crate** (Issue #223) - Shared RPC types for client-server communication
+  - **New `lib/protocol/` crate** (`reovim-protocol`):
+    - Versioned module structure (`v1/`) for protocol evolution
+    - Zero kernel dependency - standalone with serde serialization
+  - **RPC Message Types** (`v1/messages.rs`):
+    - `RpcRequest`, `RpcResponse`, `RpcNotification`, `RpcError`
+    - JSON-RPC 2.0 compatible structure
+  - **Shared Types** (`v1/types.rs`):
+    - `Position`, `BufferId`, `WindowId` - Editor identifiers
+    - `SelectionMode`, `ScreenFormat` - Display enums
+    - `ModeInfo`, `CursorInfo`, `SelectionInfo` - State snapshots
+    - `BufferInfo`, `ScreenInfo`, `WindowInfo`, `CellInfo` - UI snapshots
+  - **Typed Params** (`v1/params.rs`):
+    - `InputKeysParams`, `CommandExecuteParams`, `EditorResizeParams`
+    - `BufferGetContentParams`, `BufferSetContentParams`, `BufferOpenFileParams`
+  - **Typed Results** (`v1/results.rs`):
+    - `ScreenContentResult`, `BufferListResult`, `BufferContentResult`
+    - `WindowsResult`, `OkResult`
+  - **Input Event Types** (`v1/input.rs`):
+    - `Input` enum with variants: Key, Click, Scroll, Resize, Focus, Paste, Attach, Detach, Ping, Pong
+    - `KeyEvent`, `KeyCode`, `KeyEventKind`, `Modifiers` - Keyboard types
+    - `ClickEvent`, `ClickKind`, `MouseButton` - Mouse click types
+    - `ScrollEvent`, `ScrollDirection` - Mouse scroll types
+    - `ResizeEvent` - Terminal resize
+    - `FocusEvent`, `FocusKind` - Terminal focus
+    - `PasteEvent` - Bracketed paste
+    - `AttachEvent`, `DetachEvent`, `DetachReason` - Session management
+    - `PingEvent`, `PongEvent` - Connection health monitoring
+  - **Method/Notification Constants** (`v1/methods.rs`, `v1/notifications.rs`):
+    - Type-safe method names: `state/*`, `buffer/*`, `input/*`, `command/*`, `editor/*`
+    - Notification names: `screen_update`, `mode_changed`, `buffer_modified`
+  - **Codec Module** (`v1/codec.rs`):
+    - JSON encoding/decoding utilities
+    - Line-delimited message framing
+  - **Net Driver Integration** (`lib/drivers/net/`):
+    - Re-exports protocol types
+    - Removed duplicate `codes.rs` and `rpc.rs` modules
+
 - **Phase 5.16: Archive Legacy Code** (Issue #215) - Clean workspace with only new kernel-driver-module architecture
   - **Archived to `archive/`**:
     - `lib/core/` - Legacy buffer, cursor, mode, events (~54,000 lines)

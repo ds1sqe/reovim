@@ -234,7 +234,7 @@ When creating PRs with `gh pr create`, do NOT add promotional footers like "Gene
      - Acceptance criteria and test targets
 
 4. **Plan Polish - Round 1**:
-   - Launch **multiple `deep-explorer` agents IN PARALLEL** (triple-check pattern)
+   - Launch **multiple `deep-explorer` agents IN PARALLEL with Context** (triple-check pattern)
    - Each agent reviews plan for enhancements and missing details
    - Incorporate all feedback into plan
 
@@ -264,16 +264,17 @@ When creating PRs with `gh pr create`, do NOT add promotional footers like "Gene
 2. **Run Full Check** → `./scripts/check.sh`
    - Format, build, clippy (zero warnings), all tests must pass
 
-3. **Triple Deep-Explorer Review** (parallel agents):
+3. **Triple Review** (use `/triple-review` or launch agents manually):
    | Agent | Focus |
    |-------|-------|
-   | 1 | Plan comparison |
-   | 2 | Issue requirements |
-   | 3 | Code quality & Linux/Unix philosophy |
+   | `review-requirements` | Plan compliance, documentation quality |
+   | `review-tests` | Test coverage, test quality, anti-patterns |
+   | `review-architecture` | Unix philosophy, code quality, safety |
 
    Agent 3 checks: Mechanism vs Policy, Do one thing well, Composability, Separation of concerns, API purity, Simplicity
 
    **Grading:** A+ (exceeds) / A (perfect) / B (minor fixes) / C (significant) / F (major)
+   - Each agent writes review to `tmp/{ISSUE_NUMBER}-review-round{N}-{requirements|tests|architecture}.md`
    - **Must achieve A or A+ from ALL THREE agents**
    - If ANY agent gives below A → fix all issues → go back to Step 2
    - Loop until ALL agents give A or A+
@@ -300,6 +301,39 @@ The `tmp/` directory is used for communication between Claude sessions:
 ### Git Worktrees
 
 Use `git worktree list` to see active worktrees. Each issue typically gets its own worktree (e.g., `reovim-{ISSUE_NUMBER}`).
+
+## Claude Agents & Skills
+
+Custom agents and skills in `.claude/` provide specialized workflows for this project.
+
+### Available Agents
+
+| Agent | Purpose | When to Use |
+|-------|---------|-------------|
+| `deep-explorer` | Elite codebase exploration | Understanding architecture, tracing dependencies, mapping patterns |
+| `review-requirements` | Plan/docs compliance review | Request-for-Landing Agent 1 of 3 |
+| `review-tests` | Test coverage/quality audit | Request-for-Landing Agent 2 of 3 |
+| `review-architecture` | Unix philosophy/code quality | Request-for-Landing Agent 3 of 3 |
+
+### Available Skills
+
+| Skill | Command | Purpose |
+|-------|---------|---------|
+| `triple-review` | `/triple-review [issue]` | Launch all 3 review agents in parallel for RFL |
+
+### Agent Files
+
+```
+.claude/
+├── agents/
+│   ├── deep-explorer.md         # Codebase exploration (red)
+│   ├── review-requirements.md   # Plan compliance (blue)
+│   ├── review-tests.md          # Test quality (green)
+│   └── review-architecture.md   # Unix philosophy (yellow)
+└── skills/
+    └── triple-review/
+        └── SKILL.md             # /triple-review command
+```
 
 ## Detailed Documentation
 

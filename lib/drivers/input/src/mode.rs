@@ -61,6 +61,11 @@ use {
 /// This trait separates input concerns from mode identity. The kernel's
 /// `Mode` trait provides identity only; this trait adds input behavior.
 ///
+/// # Thread Safety
+///
+/// This trait requires `Send + Sync` to allow modes to be used in
+/// multi-threaded server contexts (tokio runtime).
+///
 /// # Example
 ///
 /// ```ignore
@@ -74,7 +79,7 @@ use {
 ///     }
 /// }
 /// ```
-pub trait ModeInput {
+pub trait ModeInput: Send + Sync {
     /// Check if this mode accepts character input directly.
     ///
     /// When `true`, character keys that don't match any keybinding
