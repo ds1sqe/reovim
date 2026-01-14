@@ -15,7 +15,7 @@
 //! │                          │                                  │
 //! │  ┌───────────────────────▼───────────────────────────────┐  │
 //! │  │  ████████████ pub mod api ████████████████████████    │  │
-//! │  │  KernelContext   traits::*   types::*   module::*     │  │
+//! │  │  KernelContext   mode::*   module::*                  │  │
 //! │  └───────────────────────────────────────────────────────┘  │
 //! └─────────────────────────────────────────────────────────────┘
 //!                            │
@@ -23,7 +23,7 @@
 //!                            ▼
 //! ┌─────────────────────────────────────────────────────────────┐
 //! │  MODULES                                                    │
-//! │  use reovim_kernel::api::{KernelContext, traits::*, ...};   │
+//! │  use reovim_kernel::api::{Mode, ModeId, CommandId, ...};    │
 //! │  // Cannot import kernel internals - won't compile          │
 //! └─────────────────────────────────────────────────────────────┘
 //! ```
@@ -47,17 +47,38 @@ fn api_boundary_enforced() {
 }
 
 #[test]
-fn kernel_context_accessible() {
-    // KernelContext should be accessible via api::v1
-    let ctx = KernelContext::default();
-    assert!(ctx.buffers.count() == 0);
-}
-
-#[test]
 fn module_types_accessible() {
     // Module system types should be accessible
     let id = ModuleId::new("test-module");
     assert_eq!(id.as_str(), "test-module");
+}
+
+#[test]
+fn mode_types_accessible() {
+    // Mode identity types should be accessible via api::v1
+    let module = ModuleId::new("test");
+    let mode_id = ModeId::new(module.clone(), "normal");
+    let cmd_id = CommandId::new(module, "test-cmd");
+
+    assert_eq!(mode_id.name(), "normal");
+    assert_eq!(cmd_id.name(), "test-cmd");
+}
+
+#[test]
+fn mode_stack_accessible() {
+    // ModeStack should be accessible via api::v1
+    let module = ModuleId::new("test");
+    let normal = ModeId::new(module.clone(), "normal");
+    let insert = ModeId::new(module, "insert");
+
+    let mut stack = ModeStack::new(normal.clone());
+    assert_eq!(stack.current(), &normal);
+
+    stack.push(insert.clone());
+    assert_eq!(stack.current(), &insert);
+
+    stack.pop();
+    assert_eq!(stack.current(), &normal);
 }
 
 #[test]
@@ -91,42 +112,27 @@ fn text_object_engine_accessible() {
 }
 
 #[test]
-fn undo_types_accessible() {
-    // Undo types should be accessible via api::v1
+fn undo_tree_accessible() {
+    // UndoTree should be accessible via api::v1
     let tree = UndoTree::new();
-    let err: UndoError = UndoError::NothingToUndo;
     assert!(!tree.can_undo());
-    assert_eq!(err.to_string(), "nothing to undo");
 }
 
 #[test]
-fn window_types_accessible() {
-    // Window types should be accessible via api::v1
-    let id = WindowId::new();
-    let buffer_id = BufferId::new();
-    let window = Window::new(id, buffer_id);
-    assert_eq!(window.buffer_id, buffer_id);
-
-    // Viewport is mechanism (what lines are visible)
-    let viewport = Viewport::new(0, 50);
-    assert_eq!(viewport.top_line, 0);
-    assert_eq!(viewport.height, 50);
+fn window_id_accessible() {
+    // WindowId (identity only) should be accessible via api::v1
+    let id1 = WindowId::new();
+    let id2 = WindowId::new();
+    assert_ne!(id1, id2);
 }
 
 #[test]
-fn policy_traits_accessible() {
-    // Policy interface traits should be accessible via api::v1
-    fn _accepts_operator<T: Operator>(_: T) {}
-    fn _accepts_keymap<T: KeymapProvider>(_: T) {}
-    fn _accepts_command<T: CommandHandler>(_: T) {}
-
-    // Range type for operators
-    let range = Range::new(Position::new(0, 0), Position::new(1, 5));
-    assert!(!range.is_empty());
-
-    // KeyEvent for keymap
-    let key = KeyEvent::char('j');
-    assert_eq!(key.code, KeyCode::Char('j'));
+fn buffer_types_accessible() {
+    // Buffer types should be accessible via api::v1
+    let id = BufferId::new();
+    let buf = Buffer::from_string("Hello\nWorld");
+    assert_eq!(buf.line_count(), 2);
+    _ = id; // Verify type compiles
 }
 
 #[test]
@@ -144,4 +150,34 @@ fn sync_primitives_accessible() {
 
     let value = Arc::new(RwLock::new(42));
     assert_eq!(*value.read(), 42);
+}
+
+// ============================================================================
+// Mode trait tests
+// ============================================================================
+
+/// A test mode implementation to verify the Mode trait is accessible.
+struct TestMode {
+    id: ModeId,
+}
+
+impl Mode for TestMode {
+    fn id(&self) -> ModeId {
+        self.id.clone()
+    }
+}
+
+#[test]
+fn mode_trait_accessible() {
+    let module = ModuleId::new("test");
+    let mode = TestMode {
+        id: ModeId::new(module, "test-mode"),
+    };
+
+    // Mode trait is accessible
+    assert_eq!(mode.id().name(), "test-mode");
+
+    // Mode can be used as trait object
+    let mode_ref: &dyn Mode = &mode;
+    assert_eq!(mode_ref.id().name(), "test-mode");
 }

@@ -11,6 +11,7 @@ members = [
     "lib/module-macros",
 
     # New driver crates
+    "lib/drivers/command",
     "lib/drivers/display",
     "lib/drivers/input",
     "lib/drivers/syntax",
@@ -87,6 +88,7 @@ reovim-kernel = { path = "./lib/kernel", version = "0.9.0-dev" }
 reovim-module-macros = { path = "./lib/module-macros", version = "0.9.0-dev" }
 
 # new driver crates
+reovim-driver-command = { path = "./lib/drivers/command", version = "0.9.0-dev" }
 reovim-driver-display = { path = "./lib/drivers/display", version = "0.9.0-dev" }
 reovim-driver-input = { path = "./lib/drivers/input", version = "0.9.0-dev" }
 reovim-driver-syntax = { path = "./lib/drivers/syntax", version = "0.9.0-dev" }
@@ -126,6 +128,7 @@ reovim-lang-markdown = { path = "./plugins/languages/markdown", version = "0.8.1
 reovim-lang-bash = { path = "./plugins/languages/bash", version = "0.8.1" }
 
 # Policy modules (Mechanism vs Policy architecture)
+reovim-module-example = { path = "./modules/example", version = "0.9.0-dev" }
 reovim-module-keymap = { path = "./modules/keymap", version = "0.9.0-dev" }
 reovim-module-operators = { path = "./modules/operators", version = "0.9.0-dev" }
 reovim-module-commands = { path = "./modules/commands", version = "0.9.0-dev" }

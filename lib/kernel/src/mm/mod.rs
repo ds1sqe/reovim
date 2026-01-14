@@ -54,6 +54,7 @@ mod position;
 mod saturator;
 mod selection;
 mod snapshot;
+mod window_id;
 mod word;
 
 #[cfg(test)]
@@ -71,6 +72,7 @@ pub use {
     },
     selection::{Selection, SelectionMode},
     snapshot::BufferSnapshot,
+    window_id::WindowId,
     word::{
         CharKind, WordType, char_kind, next_word_end, next_word_start, word_bounds, word_end,
         word_start,

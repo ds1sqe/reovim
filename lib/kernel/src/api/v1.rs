@@ -34,19 +34,16 @@ pub use super::version::{
 };
 
 // ============================================================================
-// Context & Manager
+// Context
 // ============================================================================
 
-pub use super::{
-    buffer_manager::{BufferError, BufferManager},
-    context::{KernelContext, ModuleContext},
-};
+pub use super::context::{KernelContext, ModuleContext};
 
 // ============================================================================
 // Memory Management (mm/)
 // ============================================================================
 
-pub use crate::mm::{Buffer, BufferId, Cursor, Edit, Position};
+pub use crate::mm::{Buffer, BufferId, Cursor, Edit, Position, WindowId};
 
 // Selection types
 pub use crate::mm::{Selection, SelectionMode};
@@ -119,6 +116,9 @@ pub use crate::core::{
 // Config
 pub use crate::core::{Config, ConfigError, ConfigPaths, ConfigValue};
 
+// Mode and Command identity types
+pub use crate::core::{CommandId, Mode, ModeId, ModeStack};
+
 // ============================================================================
 // Block Operations (block/)
 // ============================================================================
@@ -127,32 +127,13 @@ pub use crate::block::{
     History, HistoryEntry, Snapshot, Transaction, UndoNode, UndoResult, UndoTree,
 };
 
-// ============================================================================
-// Undo Manager (api/)
-// ============================================================================
+// BufferManager is MECHANISM (pure storage interface, like Linux page cache)
+// It stays in kernel - no I/O policy, just storage lifecycle
+pub use super::buffer_manager::{BufferError, BufferManager};
 
-pub use super::undo_manager::{UndoError, UndoManager};
-
-// ============================================================================
-// Window Manager (api/)
-// ============================================================================
-
-pub use super::window_manager::{Viewport, Window, WindowError, WindowId, WindowManager};
-
-// ============================================================================
-// Policy Interface Traits (api/)
-// ============================================================================
-
-// Operator trait and types
-pub use super::traits::{Operator, OperatorContext, OperatorError, Range};
-
-// Keymap trait and types
-pub use super::traits::{
-    KeyCode, KeyEvent, KeybindingInfo, KeymapProvider, KeymapResult, Modifiers,
-};
-
-// Command handler trait and types
-pub use super::traits::{CommandContext, CommandError, CommandHandler};
+// Note: UndoManager, WindowManager, and policy traits (Operator,
+// KeymapProvider, CommandHandler) have been moved out of the kernel to follow
+// the "mechanism vs policy" principle. See lib/drivers/ for driver-level traits.
 
 // ============================================================================
 // Scheduler (sched/)
@@ -207,11 +188,7 @@ pub use super::module::{
     ModuleId, ModuleInfo, ModuleProbe, ModuleState, ProbeResult, RegistrationFlags,
 };
 
-// ============================================================================
-// Syntax Mechanism (api/)
-// ============================================================================
-
-pub use super::syntax::SyntaxHighlight;
+// Note: SyntaxHighlight trait has been moved to lib/drivers/syntax/
 
 // ============================================================================
 // Sync Primitives (from arch)
@@ -273,23 +250,24 @@ mod tests {
     }
 
     #[test]
-    fn test_syntax_trait_accessible() {
-        // Verify SyntaxHighlight trait is accessible
-        fn _accepts_highlight<T: SyntaxHighlight>(_: T) {}
+    fn test_mode_types_accessible() {
+        // Verify Mode types are accessible
+        let module = ModuleId::new("test");
+        let mode_id = ModeId::new(module.clone(), "normal");
+        let cmd_id = CommandId::new(module, "test-cmd");
 
-        // The trait is available for implementation by drivers
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-        enum TestHL {
-            Keyword,
-        }
+        assert_eq!(mode_id.name(), "normal");
+        assert_eq!(cmd_id.name(), "test-cmd");
 
-        impl SyntaxHighlight for TestHL {
-            fn category(&self) -> &'static str {
-                "keyword"
-            }
-        }
+        let stack = ModeStack::new(mode_id.clone());
+        assert_eq!(stack.current(), &mode_id);
+    }
 
-        let hl = TestHL::Keyword;
-        assert_eq!(hl.category(), "keyword");
+    #[test]
+    fn test_window_id_accessible() {
+        // Verify WindowId is accessible via mm
+        let id1 = WindowId::new();
+        let id2 = WindowId::new();
+        assert_ne!(id1, id2);
     }
 }

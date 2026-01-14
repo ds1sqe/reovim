@@ -28,15 +28,19 @@
 // Internal modules (not directly exposed)
 // ============================================================================
 
+// Buffer manager trait (mechanism) - used by KernelContext
 mod buffer_manager;
 mod context;
-mod module;
-mod syntax;
-mod traits;
-mod undo_manager;
+// Note: pub(crate) to allow core/mode.rs to access ModuleId
+pub(crate) mod module;
 mod version;
-// Note: pub(crate) to allow core/option.rs to access WindowId
-pub(crate) mod window_manager;
+
+// Note: The following modules have been removed as part of the kernel-driver
+// architecture cleanup (Issue #213):
+// - traits.rs - Operator, KeymapProvider, CommandHandler moved to drivers
+// - syntax.rs - SyntaxHighlight moved to lib/drivers/syntax/
+// - undo_manager.rs - UndoManager trait moved to runner
+// - window_manager.rs - WindowId moved to mm/, WindowManager to runner
 
 // ============================================================================
 // Public modules

@@ -8,19 +8,15 @@
 //!
 //! This crate follows the Linux kernel "mechanism vs policy" principle:
 //!
-//! - **Kernel provides MECHANISM**: The [`SyntaxHighlight`] trait in `reovim-kernel`
-//!   defines HOW highlights are categorized (abstract interface).
-//! - **Driver provides POLICY**: The [`HighlightGroup`] enum here defines WHAT
+//! - **Driver provides MECHANISM**: The [`SyntaxHighlight`] trait defines HOW
+//!   highlights are categorized (abstract interface).
+//! - **Driver provides POLICY**: The [`HighlightGroup`] enum defines WHAT
 //!   categories exist (specific implementation).
 //!
 //! # Architecture
 //!
 //! ```text
-//! lib/kernel/api/syntax.rs  <-- SyntaxHighlight trait (mechanism)
-//!        ^
-//!        |  implements
-//!        |
-//! lib/drivers/syntax/       <-- HighlightGroup, SyntaxDriver (policy)
+//! lib/drivers/syntax/           <-- SyntaxHighlight trait, HighlightGroup, SyntaxDriver
 //!        ^
 //!        |  implements
 //!        |
@@ -33,7 +29,7 @@
 //! - [`SyntaxDriverFactory`] - Creates drivers for languages
 //! - [`LanguageRegistry`] - Language detection and metadata
 //! - [`SyntaxCache`] - Highlight result caching
-//! - [`HighlightGroup`] - Highlight categories (implements kernel's `SyntaxHighlight`)
+//! - [`HighlightGroup`] - Highlight categories (implements `SyntaxHighlight`)
 //! - [`HighlightSpan`] - A highlighted byte range
 //! - [`SyntaxEdit`] - Edit description for incremental parsing
 //! - [`FoldRange`], [`FoldKind`] - Foldable code regions
@@ -102,5 +98,5 @@ pub use {
 // Error types
 pub use error::ModuleError;
 
-// Re-export kernel trait for convenience
-pub use reovim_kernel::api::v1::SyntaxHighlight;
+// SyntaxHighlight trait (defined in this crate)
+pub use highlight::SyntaxHighlight;

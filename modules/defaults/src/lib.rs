@@ -23,9 +23,11 @@
 //! ```
 
 use reovim_kernel::api::v1::{
-    CommandHandler, KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, Operator,
-    ProbeResult, Version,
+    KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
 };
+
+// Import traits from their respective modules (mechanism vs policy)
+use {reovim_module_commands::CommandHandler, reovim_module_operators::Operator};
 
 // Re-export sub-modules for direct access
 pub use {

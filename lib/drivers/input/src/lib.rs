@@ -50,6 +50,7 @@
 mod convert;
 mod error;
 mod key;
+mod mode;
 mod mouse;
 mod traits;
 
@@ -67,3 +68,6 @@ pub use traits::{
     ClipboardProvider, HandlerPriority, InputDriver, KeyHandler, KeyHandlerResult, KeymapRegistry,
     priority,
 };
+
+// Re-export mode types (Phase 6 - Kernel-driver architecture)
+pub use mode::{KeySequence, Keybinding, ModeInput};

@@ -9,8 +9,8 @@
 //!
 //! # Mechanism vs Policy
 //!
-//! - **Mechanism (Kernel)**: `Operator` trait, `Range`, `OperatorContext`
-//! - **Policy (This Module)**: Which operators exist, what they do
+//! - **Mechanism (Kernel)**: Buffer management, position types, register storage
+//! - **Policy (This Module)**: `Operator` trait, `Range`, what operators do
 //!
 //! # Example
 //!
@@ -26,11 +26,13 @@
 
 mod change;
 mod delete;
+mod types;
 mod yank;
 
-use reovim_kernel::api::v1::{
-    Module, ModuleContext, ModuleError, ModuleId, Operator, ProbeResult, Version,
-};
+use reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version};
+
+// Re-export operator types
+pub use types::{Operator, OperatorContext, OperatorError, Range};
 
 pub use {change::ChangeOperator, delete::DeleteOperator, yank::YankOperator};
 

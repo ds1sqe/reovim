@@ -9,8 +9,8 @@
 //!
 //! # Mechanism vs Policy
 //!
-//! - **Mechanism (Kernel)**: `CommandHandler` trait, `CommandContext`
-//! - **Policy (This Module)**: Which commands exist, what they do
+//! - **Mechanism (Kernel)**: Buffer management, position types
+//! - **Policy (This Module)**: `CommandHandler` trait, what commands do
 //!
 //! # Example
 //!
@@ -25,11 +25,13 @@
 //! ```
 
 mod quit;
+mod types;
 mod write;
 
-use reovim_kernel::api::v1::{
-    CommandHandler, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
-};
+use reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version};
+
+// Re-export command types
+pub use types::{CommandContext, CommandError, CommandHandler, Range};
 
 pub use {
     quit::QuitCommand,
