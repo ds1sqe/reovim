@@ -253,6 +253,17 @@ impl<F: InputFallbackHandler> EventLoop<F> {
                 tracing::debug!(?action, "Undo action requested");
                 self.last_error = None;
             }
+            CommandResult::UndotreeAction(action) => {
+                // Undotree visualization actions are handled by the runner.
+                // The undotree module provides the command infrastructure and
+                // rendering logic. Full panel integration pending layout/window
+                // system completion.
+                //
+                // Current state: Types and rendering are complete, panel
+                // management deferred to runner enhancement (#249).
+                tracing::info!(?action, "Undotree action requested");
+                self.last_error = None;
+            }
         }
     }
 

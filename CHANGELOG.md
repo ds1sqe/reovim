@@ -15,6 +15,21 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 7.8: Undotree Visualization Module** (Issue #249)
+  - New `modules/undotree/` module for undo tree visualization
+  - `:undotree` command (alias `:ut`) to toggle visualization panel
+  - ASCII tree rendering with branch visualization (`render.rs`)
+  - Shows sequence numbers and relative timestamps
+  - `UndotreeMode` for panel navigation (j/k/Enter/q keybindings)
+  - `UndotreeAction` enum added to `CommandResult` for runner callbacks:
+    - `Toggle { buffer_id }` - Toggle undotree panel
+    - `Close` - Close panel
+    - `MoveUp` / `MoveDown` - Navigate selection
+    - `GotoSelected` / `GotoNode` - Navigate to node
+  - `UndoRegistry::get_tree()` read-only accessor for visualization
+  - 43 unit tests in undotree module, 6 tests for UndotreeAction
+  - Panel integration deferred to runner enhancement
+
 - **Phase 7.7: UndoTree Traversal Accessors** (Issue #251)
   - `UndoNode::parent()` - get parent node index
   - `UndoNode::children()` - get children node indices

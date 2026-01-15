@@ -56,6 +56,15 @@ impl UndoRegistry {
         self.trees.entry(buffer_id).or_default()
     }
 
+    /// Get a read-only reference to the undo tree for a buffer.
+    ///
+    /// Returns `None` if no undo history exists for the buffer.
+    /// Use this for visualization features like `:undotree` panel.
+    #[must_use]
+    pub fn get_tree(&self, buffer_id: BufferId) -> Option<&UndoTree> {
+        self.trees.get(&buffer_id)
+    }
+
     /// Undo the last change for a buffer.
     ///
     /// Returns the edits to apply and cursor position, or `None` if
@@ -263,5 +272,33 @@ mod tests {
 
         assert!(!registry.has_history(buffer_id));
         assert_eq!(registry.buffer_count(), 0);
+    }
+
+    #[test]
+    fn test_get_tree_existing_buffer() {
+        let mut registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(1);
+
+        // Record an edit to create the tree
+        let edit = Edit::insert(Position::new(0, 0), "hello");
+        registry.record(buffer_id, vec![edit], Position::new(0, 0), Position::new(0, 5));
+
+        // get_tree should return Some
+        let tree = registry.get_tree(buffer_id);
+        assert!(tree.is_some());
+
+        // Verify we can read tree properties
+        let tree = tree.unwrap();
+        assert_eq!(tree.node_count(), 2); // root + 1 edit
+    }
+
+    #[test]
+    fn test_get_tree_nonexistent_buffer() {
+        let registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(999);
+
+        // get_tree should return None for nonexistent buffer
+        let tree = registry.get_tree(buffer_id);
+        assert!(tree.is_none());
     }
 }

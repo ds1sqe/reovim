@@ -388,6 +388,11 @@ pub enum CommandResult {
     /// This follows the callback pattern where commands declare WHAT they want
     /// (intent), and the runner decides HOW to execute it (policy).
     UndoAction(UndoAction),
+    /// Command requests an undotree visualization action.
+    ///
+    /// This follows the same callback pattern as `UndoAction`, where commands
+    /// declare intent and the runner handles execution.
+    UndotreeAction(UndotreeAction),
 }
 
 /// Undo/redo action intent returned by commands.
@@ -401,6 +406,28 @@ pub enum UndoAction {
     Undo { count: usize },
     /// Request to redo the specified number of changes.
     Redo { count: usize },
+}
+
+/// Undotree visualization action intent returned by commands.
+///
+/// Commands return this to request undotree operations. The runner
+/// handles the actual panel creation, navigation, and tree traversal,
+/// maintaining separation of concerns between command (policy) and
+/// runner (mechanism).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UndotreeAction {
+    /// Toggle undotree panel for the specified buffer.
+    Toggle { buffer_id: usize },
+    /// Close undotree panel.
+    Close,
+    /// Navigate to a specific node in the undotree.
+    GotoNode { node_index: usize },
+    /// Go to the currently selected node.
+    GotoSelected,
+    /// Move selection up (toward parent).
+    MoveUp,
+    /// Move selection down (toward child).
+    MoveDown,
 }
 
 impl CommandResult {
@@ -426,6 +453,12 @@ impl CommandResult {
     #[must_use]
     pub const fn is_undo_action(&self) -> bool {
         matches!(self, Self::UndoAction(_))
+    }
+
+    /// Check if the result is an undotree action.
+    #[must_use]
+    pub const fn is_undotree_action(&self) -> bool {
+        matches!(self, Self::UndotreeAction(_))
     }
 
     /// Create an error result.
@@ -556,6 +589,64 @@ mod tests {
         assert_eq!(undo, UndoAction::Undo { count: 5 });
         assert_eq!(redo, UndoAction::Redo { count: 2 });
         assert_ne!(undo, redo);
+    }
+
+    #[test]
+    fn test_undotree_action_toggle() {
+        let action = UndotreeAction::Toggle { buffer_id: 42 };
+        assert_eq!(action, UndotreeAction::Toggle { buffer_id: 42 });
+
+        let result = CommandResult::UndotreeAction(action);
+        assert!(result.is_undotree_action());
+        assert!(!result.is_success());
+        assert!(!result.is_error());
+        assert!(!result.is_quit());
+        assert!(!result.is_undo_action());
+    }
+
+    #[test]
+    fn test_undotree_action_close() {
+        let action = UndotreeAction::Close;
+        let result = CommandResult::UndotreeAction(action);
+        assert!(result.is_undotree_action());
+    }
+
+    #[test]
+    fn test_undotree_action_goto_node() {
+        let action = UndotreeAction::GotoNode { node_index: 5 };
+        assert_eq!(action, UndotreeAction::GotoNode { node_index: 5 });
+    }
+
+    #[test]
+    fn test_undotree_action_navigation() {
+        // Test all navigation variants
+        let goto_selected = UndotreeAction::GotoSelected;
+        let move_up = UndotreeAction::MoveUp;
+        let move_down = UndotreeAction::MoveDown;
+
+        // They should all be distinct
+        assert_ne!(goto_selected, move_up);
+        assert_ne!(move_up, move_down);
+        assert_ne!(goto_selected, move_down);
+    }
+
+    #[test]
+    fn test_undotree_action_all_variants() {
+        // Verify all variants can be constructed and compared
+        let variants = [
+            UndotreeAction::Toggle { buffer_id: 0 },
+            UndotreeAction::Close,
+            UndotreeAction::GotoNode { node_index: 0 },
+            UndotreeAction::GotoSelected,
+            UndotreeAction::MoveUp,
+            UndotreeAction::MoveDown,
+        ];
+
+        // Each variant wrapped in CommandResult should be an undotree action
+        for action in variants {
+            let result = CommandResult::UndotreeAction(action);
+            assert!(result.is_undotree_action());
+        }
     }
 
     #[test]
