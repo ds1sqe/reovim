@@ -15,6 +15,42 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 7.5-6: Insert Mode & Delete Operations** (Issues #233, #234, #231)
+  - **Insert Mode Character Input** (`modules/editor/src/fallback.rs`):
+    - `EditorFallbackHandler` now inserts characters in Insert mode
+    - Handles printable characters, Tab (with expandtab/tabstop options), Enter
+    - Non-printable keys in Insert mode are ignored
+    - Normal mode unmatched keys beep
+  - **Mode Entry Commands** (`modules/editor/src/command.rs`):
+    - `EnterInsertModeAppend` (a) - Insert after cursor
+    - `EnterInsertFirstNonBlank` (I) - Insert at first non-blank
+    - `EnterInsertEndOfLine` (A) - Insert at end of line
+    - `OpenLineBelow` (o) - Open line below and enter insert
+    - `OpenLineAbove` (O) - Open line above and enter insert
+  - **Insert Mode Edit Commands**:
+    - `InsertNewline` - Enter key in insert mode
+    - `InsertTab` - Tab key with expandtab/tabstop option support
+  - **Delete Operations**:
+    - `DeleteChar` (x) - Delete character under cursor
+    - `DeleteCharBefore` (X) - Delete character before cursor (backspace in Normal)
+    - `DeleteLine` (dd) - Delete current line(s) with count support
+    - `DeleteToEndOfLine` (D) - Delete from cursor to end of line
+    - `JoinLines` (J) - Join current line with next, preserving Vim semantics
+  - **Display Line Motions** (`modules/editor/src/display_lines.rs`):
+    - `CursorDisplayDown` (gj) - Move down one display line
+    - `CursorDisplayUp` (gk) - Move up one display line
+    - Handles wrapped lines based on terminal width (default 80)
+    - `display_line_count()`, `display_position()`, `buffer_column()` utilities
+  - **Keybindings** (`modules/keymap/src/normal.rs`):
+    - Added gj/gk bindings for display line movement
+  - **Unit Tests**:
+    - 78 tests in editor module (cursor, display lines, fallback, mode commands)
+  - **Deferred Features** tracked in Issue #248:
+    - Count support for insert mode entry commands
+    - Autoindent on open line commands
+    - Register support for delete operations
+    - Viewport-aware terminal width for gj/gk
+
 - **Phase 7.3-4: Cursor Movement & Undo/Redo** (Issues #231, #232)
   - **Shared Infrastructure**:
     - `CommandContext.buffer_id()` - Commands can now access active buffer ID
