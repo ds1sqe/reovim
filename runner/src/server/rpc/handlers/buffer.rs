@@ -228,12 +228,17 @@ pub fn buffer_open_file(ctx: RpcContext, params: serde_json::Value) -> HandlerFu
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use {
         super::*,
-        crate::server::session::{ClientId, Session, SessionId},
+        crate::{
+            server::rpc::handlers::test_utils::test_ctx_with_session,
+            session::{Session, SessionId},
+        },
         reovim_arch::sync::RwLock,
         reovim_kernel::api::v1::{BufferError, BufferManager, KernelContext, ModeId, ModuleId},
-        std::{collections::HashMap, sync::Arc},
+        std::collections::HashMap,
     };
 
     /// Test-only buffer manager that actually stores buffers.
@@ -330,10 +335,7 @@ mod tests {
     #[tokio::test]
     async fn test_buffer_list_empty() {
         let session = test_session();
-        let ctx = RpcContext {
-            session,
-            client_id: ClientId::new(1),
-        };
+        let ctx = test_ctx_with_session(session);
 
         let result = buffer_list(ctx, serde_json::json!({})).await;
         assert!(result.is_ok());
@@ -345,10 +347,7 @@ mod tests {
     #[tokio::test]
     async fn test_buffer_list_with_buffers() {
         let (session, buffer_id) = test_session_with_buffer("Hello\nWorld").await;
-        let ctx = RpcContext {
-            session,
-            client_id: ClientId::new(1),
-        };
+        let ctx = test_ctx_with_session(session);
 
         let result = buffer_list(ctx, serde_json::json!({})).await;
         assert!(result.is_ok());
@@ -365,10 +364,7 @@ mod tests {
     #[tokio::test]
     async fn test_buffer_get_content_no_active() {
         let session = test_session();
-        let ctx = RpcContext {
-            session,
-            client_id: ClientId::new(1),
-        };
+        let ctx = test_ctx_with_session(session);
 
         // No active buffer
         let result = buffer_get_content(ctx, serde_json::json!({})).await;
@@ -378,10 +374,7 @@ mod tests {
     #[tokio::test]
     async fn test_buffer_get_content_success() {
         let (session, _buffer_id) = test_session_with_buffer("Hello, World!").await;
-        let ctx = RpcContext {
-            session,
-            client_id: ClientId::new(1),
-        };
+        let ctx = test_ctx_with_session(session);
 
         let result = buffer_get_content(ctx, serde_json::json!({})).await;
         assert!(result.is_ok());
@@ -392,10 +385,7 @@ mod tests {
     #[tokio::test]
     async fn test_buffer_get_content_with_explicit_id() {
         let (session, buffer_id) = test_session_with_buffer("Explicit ID test").await;
-        let ctx = RpcContext {
-            session,
-            client_id: ClientId::new(1),
-        };
+        let ctx = test_ctx_with_session(session);
 
         let result =
             buffer_get_content(ctx, serde_json::json!({"buffer_id": buffer_id.as_usize()})).await;
@@ -407,10 +397,7 @@ mod tests {
     #[tokio::test]
     async fn test_buffer_get_content_invalid_id() {
         let (session, _buffer_id) = test_session_with_buffer("Test").await;
-        let ctx = RpcContext {
-            session,
-            client_id: ClientId::new(1),
-        };
+        let ctx = test_ctx_with_session(session);
 
         // Use an invalid buffer ID (99999)
         let result = buffer_get_content(ctx, serde_json::json!({"buffer_id": 99999})).await;
@@ -420,10 +407,7 @@ mod tests {
     #[tokio::test]
     async fn test_buffer_set_content_no_active() {
         let session = test_session();
-        let ctx = RpcContext {
-            session,
-            client_id: ClientId::new(1),
-        };
+        let ctx = test_ctx_with_session(session);
 
         // No active buffer
         let result = buffer_set_content(ctx, serde_json::json!({"content": "test"})).await;
@@ -435,20 +419,14 @@ mod tests {
         let (session, _buffer_id) = test_session_with_buffer("Original content").await;
 
         // Set content
-        let ctx = RpcContext {
-            session: Arc::clone(&session),
-            client_id: ClientId::new(1),
-        };
+        let ctx = test_ctx_with_session(Arc::clone(&session));
         let result = buffer_set_content(ctx, serde_json::json!({"content": "New content"})).await;
         assert!(result.is_ok());
         let value = result.unwrap();
         assert!(value.get("ok").unwrap().as_bool().unwrap());
 
         // Verify the content was changed
-        let ctx2 = RpcContext {
-            session,
-            client_id: ClientId::new(1),
-        };
+        let ctx2 = test_ctx_with_session(session);
         let result2 = buffer_get_content(ctx2, serde_json::json!({})).await;
         assert!(result2.is_ok());
         let value2 = result2.unwrap();
@@ -460,17 +438,11 @@ mod tests {
         let (session, _buffer_id) = test_session_with_buffer("Original").await;
 
         // Set content
-        let ctx = RpcContext {
-            session: Arc::clone(&session),
-            client_id: ClientId::new(1),
-        };
+        let ctx = test_ctx_with_session(Arc::clone(&session));
         let _result = buffer_set_content(ctx, serde_json::json!({"content": "Modified"})).await;
 
         // Check buffer is marked as modified
-        let ctx2 = RpcContext {
-            session,
-            client_id: ClientId::new(1),
-        };
+        let ctx2 = test_ctx_with_session(session);
         let result = buffer_list(ctx2, serde_json::json!({})).await;
         let value = result.unwrap();
         let buffers = value.get("buffers").unwrap().as_array().unwrap();

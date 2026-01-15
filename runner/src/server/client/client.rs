@@ -5,10 +5,14 @@
 
 use std::sync::Arc;
 
+use tokio::sync::RwLock;
+
 use crate::{
     session::{ClientId, SessionId},
     transport::TransportWriter,
 };
+
+use super::viewport::ClientViewport;
 
 /// A connected client.
 ///
@@ -53,6 +57,13 @@ pub struct Client {
     /// Supports TCP, Unix socket, and Stdio transports.
     /// Has internal locking for thread-safe concurrent sends.
     writer: TransportWriter,
+
+    /// Per-client viewport state.
+    ///
+    /// Contains terminal dimensions, active buffer, and per-buffer cursor positions.
+    /// This is at Level 2 in the lock hierarchy - always drop this lock before
+    /// acquiring session locks.
+    viewport: RwLock<ClientViewport>,
 }
 
 impl Client {
@@ -69,6 +80,7 @@ impl Client {
             id,
             session_id,
             writer,
+            viewport: RwLock::new(ClientViewport::default()),
         })
     }
 
@@ -82,6 +94,31 @@ impl Client {
     #[must_use]
     pub const fn session_id(&self) -> &SessionId {
         &self.session_id
+    }
+
+    /// Returns a reference to the client's viewport lock.
+    ///
+    /// Use `viewport().read().await` for reading and `viewport().write().await` for writing.
+    ///
+    /// # Lock Hierarchy
+    ///
+    /// Viewport is at Level 2 in the lock hierarchy. Always drop viewport locks
+    /// before acquiring session locks:
+    ///
+    /// ```ignore
+    /// // SAFE: Read viewport, drop lock, then acquire session lock
+    /// let active_buffer = {
+    ///     let viewport = client.viewport().read().await;
+    ///     viewport.active_buffer
+    /// }; // Lock dropped here
+    ///
+    /// session.with_state_mut(|state| {
+    ///     // Session lock acquired after viewport lock released
+    /// }).await;
+    /// ```
+    #[must_use]
+    pub const fn viewport(&self) -> &RwLock<ClientViewport> {
+        &self.viewport
     }
 
     /// Send a line to the client.

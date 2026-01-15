@@ -15,6 +15,30 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 7.2: Session/Viewport Architecture** (Issue #230)
+  - **Per-Client Viewport** (`runner/src/server/client/viewport.rs`):
+    - `ClientViewport` struct with terminal dimensions, active buffer, cursor positions per buffer
+    - Level 2 lock hierarchy (viewport → session safe, session → viewport deadlock)
+    - VT100 defaults (80x24)
+    - `cursor_for_buffer()`/`set_cursor_for_buffer()` for position tracking
+    - `clear_viewports_for_closed_buffer()` for buffer close cleanup
+  - **RPC Handler Updates**:
+    - `RpcContext` now includes `client: Arc<Client>` for direct viewport access
+    - `state/cursor` reads from client's active buffer
+    - `state/screen` reads from client's viewport dimensions
+    - `editor/resize` updates client's viewport only
+    - `editor/set_active_buffer` - New handler to switch active buffer with cursor save/restore
+  - **Buffer-Scoped Notifications** (`runner/src/server/notification.rs`):
+    - `broadcast_to_buffer()` sends notifications only to clients viewing specific buffer
+    - `emit_state_changes()` uses buffer-scoped broadcasts for cursor/modified events
+    - Mode changes remain session-wide
+  - **Protocol Constants** (`lib/protocol/src/v1/methods.rs`):
+    - `EDITOR_SET_ACTIVE_BUFFER` method constant
+  - **Integration Tests** (`runner/tests/viewport_integration.rs`):
+    - Multi-client viewport independence tests
+    - Per-client resize isolation
+    - Buffer validation
+
 - **Phase 7.1: Test Infrastructure** (Issue #229)
   - **Integration Test Harness** (`runner/tests/common/`):
     - `harness.rs` - Server process spawning with OS-assigned ports, kill-on-drop cleanup

@@ -111,14 +111,19 @@ pub fn state_screen_content(ctx: RpcContext, params: serde_json::Value) -> Handl
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use {
         super::*,
-        crate::session::{ClientId, Session, SessionId},
+        crate::{
+            server::rpc::handlers::test_utils::test_ctx_with_session,
+            session::{Session, SessionId},
+        },
         reovim_arch::sync::RwLock,
         reovim_kernel::api::v1::{
             Buffer, BufferError, BufferManager, KernelContext, ModeId, ModuleId,
         },
-        std::{collections::HashMap, sync::Arc},
+        std::collections::HashMap,
     };
 
     /// Test-only buffer manager that actually stores buffers.
@@ -214,10 +219,7 @@ mod tests {
     #[tokio::test]
     async fn test_screen_content_default_format() {
         let session = test_session();
-        let ctx = RpcContext {
-            session,
-            client_id: ClientId::new(1),
-        };
+        let ctx = test_ctx_with_session(session);
 
         // Default format (plain_text)
         let result = state_screen_content(ctx, serde_json::json!({})).await;
@@ -232,10 +234,7 @@ mod tests {
     #[tokio::test]
     async fn test_screen_content_cell_grid() {
         let session = test_session();
-        let ctx = RpcContext {
-            session,
-            client_id: ClientId::new(1),
-        };
+        let ctx = test_ctx_with_session(session);
 
         let result = state_screen_content(ctx, serde_json::json!({"format": "cell_grid"})).await;
         assert!(result.is_ok());
@@ -246,10 +245,7 @@ mod tests {
     #[tokio::test]
     async fn test_screen_content_with_buffer() {
         let session = test_session_with_buffer("Hello\nWorld\nTest").await;
-        let ctx = RpcContext {
-            session,
-            client_id: ClientId::new(1),
-        };
+        let ctx = test_ctx_with_session(session);
 
         let result = state_screen_content(ctx, serde_json::json!({"format": "plain_text"})).await;
         assert!(result.is_ok());
@@ -268,10 +264,7 @@ mod tests {
     #[tokio::test]
     async fn test_screen_content_cell_grid_structure() {
         let session = test_session_with_buffer("AB\nCD").await;
-        let ctx = RpcContext {
-            session,
-            client_id: ClientId::new(1),
-        };
+        let ctx = test_ctx_with_session(session);
 
         let result = state_screen_content(ctx, serde_json::json!({"format": "cell_grid"})).await;
         assert!(result.is_ok());

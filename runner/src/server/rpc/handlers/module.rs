@@ -248,28 +248,11 @@ pub fn module_reload(ctx: RpcContext, params: serde_json::Value) -> HandlerFutur
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        crate::session::{ClientId, Session, SessionId},
-        reovim_kernel::api::v1::{KernelContext, ModeId, ModuleId as ApiModuleId},
-        std::sync::Arc,
-    };
-
-    fn test_session() -> Arc<Session> {
-        Session::new(
-            SessionId::new("test"),
-            KernelContext::default(),
-            ModeId::new(ApiModuleId::new("test"), "normal"),
-        )
-    }
+    use {super::*, crate::server::rpc::handlers::test_utils::test_ctx};
 
     #[tokio::test]
     async fn test_module_list_empty() {
-        let session = test_session();
-        let ctx = RpcContext {
-            session,
-            client_id: ClientId::new(1),
-        };
+        let ctx = test_ctx();
 
         let result = module_list(ctx, serde_json::json!({})).await;
         assert!(result.is_ok());
@@ -279,11 +262,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_module_load_invalid_path() {
-        let session = test_session();
-        let ctx = RpcContext {
-            session,
-            client_id: ClientId::new(1),
-        };
+        let ctx = test_ctx();
 
         // Non-existent path should fail
         let result = module_load(ctx, serde_json::json!({"path": "/nonexistent/module.so"})).await;
@@ -292,11 +271,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_module_unload_nonexistent() {
-        let session = test_session();
-        let ctx = RpcContext {
-            session,
-            client_id: ClientId::new(1),
-        };
+        let ctx = test_ctx();
 
         // Unloading non-existent module is idempotent (no-op, succeeds)
         let result = module_unload(ctx, serde_json::json!({"id": "nonexistent"})).await;
@@ -305,11 +280,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_module_reload_nonexistent() {
-        let session = test_session();
-        let ctx = RpcContext {
-            session,
-            client_id: ClientId::new(1),
-        };
+        let ctx = test_ctx();
 
         // Reloading non-existent module should fail
         let result = module_reload(ctx, serde_json::json!({"id": "nonexistent"})).await;

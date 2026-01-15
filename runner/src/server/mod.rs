@@ -512,6 +512,7 @@ async fn handle_client(
     let ctx = RpcContext {
         session: Arc::clone(&session),
         client_id,
+        client: Arc::clone(&client),
     };
 
     // Read loop

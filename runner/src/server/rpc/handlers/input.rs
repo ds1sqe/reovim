@@ -81,28 +81,11 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        crate::session::{ClientId, Session, SessionId},
-        reovim_kernel::api::v1::{KernelContext, ModeId, ModuleId},
-        std::sync::Arc,
-    };
-
-    fn test_session() -> Arc<Session> {
-        Session::new(
-            SessionId::new("test"),
-            KernelContext::default(),
-            ModeId::new(ModuleId::new("test"), "normal"),
-        )
-    }
+    use {super::*, crate::server::rpc::handlers::test_utils::test_ctx};
 
     #[tokio::test]
     async fn test_input_keys_handler_valid() {
-        let session = test_session();
-        let ctx = RpcContext {
-            session,
-            client_id: ClientId::new(1),
-        };
+        let ctx = test_ctx();
 
         let params = serde_json::json!({"keys": "j"});
         let result = input_keys(ctx, params).await;
@@ -115,11 +98,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_input_keys_handler_invalid_params() {
-        let session = test_session();
-        let ctx = RpcContext {
-            session,
-            client_id: ClientId::new(1),
-        };
+        let ctx = test_ctx();
 
         // Missing required field
         let params = serde_json::json!({});
@@ -130,11 +109,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_input_keys_handler_multiple_keys() {
-        let session = test_session();
-        let ctx = RpcContext {
-            session,
-            client_id: ClientId::new(1),
-        };
+        let ctx = test_ctx();
 
         let params = serde_json::json!({"keys": "jjk"});
         let result = input_keys(ctx, params).await;
@@ -146,11 +121,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_input_keys_handler_invalid_notation() {
-        let session = test_session();
-        let ctx = RpcContext {
-            session,
-            client_id: ClientId::new(1),
-        };
+        let ctx = test_ctx();
 
         // Unclosed angle bracket is invalid notation
         let params = serde_json::json!({"keys": "<Ctrl"});
@@ -161,11 +132,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_input_keys_handler_unbound_returns_not_found() {
-        let session = test_session();
-        let ctx = RpcContext {
-            session,
-            client_id: ClientId::new(1),
-        };
+        let ctx = test_ctx();
 
         // Single key with no bindings should return "not_found"
         let params = serde_json::json!({"keys": "z"});

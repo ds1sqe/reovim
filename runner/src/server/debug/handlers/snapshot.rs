@@ -229,31 +229,14 @@ pub fn debug_visual_snapshot(ctx: RpcContext, _params: serde_json::Value) -> Han
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        crate::session::{ClientId, Session, SessionId},
-        reovim_kernel::api::v1::{KernelContext, ModeId, ModuleId},
-        std::sync::Arc,
-    };
-
-    fn test_session() -> Arc<Session> {
-        Session::new(
-            SessionId::new("test"),
-            KernelContext::default(),
-            ModeId::new(ModuleId::new("test"), "normal"),
-        )
-    }
+    use {super::*, crate::server::rpc::handlers::test_utils::test_ctx};
 
     #[tokio::test]
     async fn test_debug_visual_snapshot() {
         // Initialize infrastructure
         super::super::super::infrastructure::init_server_start();
 
-        let session = test_session();
-        let ctx = RpcContext {
-            session,
-            client_id: ClientId::new(1),
-        };
+        let ctx = test_ctx();
 
         let result = debug_visual_snapshot(ctx, serde_json::Value::Null).await;
         assert!(result.is_ok());

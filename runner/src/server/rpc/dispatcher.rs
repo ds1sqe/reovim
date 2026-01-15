@@ -6,13 +6,17 @@ use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
 
 use reovim_protocol::v1::{RpcError, RpcRequest, RpcResponse};
 
-use crate::session::{ClientId, Session};
+use crate::{
+    server::client::Client,
+    session::{ClientId, Session},
+};
 
 /// Context passed to RPC handlers.
 ///
 /// Contains all information needed by a handler to process a request:
 /// - The session with editor state
 /// - The client ID for targeted responses/notifications
+/// - Direct client reference for viewport access
 #[derive(Clone)]
 pub struct RpcContext {
     /// The session this request is for.
@@ -25,6 +29,11 @@ pub struct RpcContext {
     /// - Per-client state tracking
     /// - Logging and debugging
     pub client_id: ClientId,
+
+    /// Direct reference to the client (for viewport access).
+    ///
+    /// This avoids needing to look up the client from the registry on every handler call.
+    pub client: Arc<Client>,
 }
 
 /// Result type for RPC handlers.
@@ -128,7 +137,10 @@ mod tests {
         reovim_kernel::api::v1::{KernelContext, ModeId, ModuleId},
     };
 
-    use crate::session::{ClientId, Session, SessionId};
+    use crate::{
+        server::transport::TransportWriter,
+        session::{ClientId, Session, SessionId},
+    };
 
     fn echo_handler(_ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
         Box::pin(async move { Ok(params) })
@@ -146,15 +158,23 @@ mod tests {
         )
     }
 
+    /// Create a test client with a stdio writer (for unit tests).
+    fn test_client(session_id: SessionId, client_id: ClientId) -> Arc<Client> {
+        Client::new(client_id, session_id, TransportWriter::from_stdio())
+    }
+
     #[tokio::test]
     async fn test_dispatcher_dispatch_success() {
         let mut dispatcher = RpcDispatcher::new();
         dispatcher.register("echo", echo_handler);
 
         let session = test_session();
+        let client_id = ClientId::new(1);
+        let client = test_client(session.id().clone(), client_id);
         let ctx = RpcContext {
             session,
-            client_id: ClientId::new(1),
+            client_id,
+            client,
         };
 
         let request = RpcRequest::new(1, "echo", serde_json::json!({"key": "value"}));
@@ -171,9 +191,12 @@ mod tests {
         dispatcher.register("error", error_handler);
 
         let session = test_session();
+        let client_id = ClientId::new(1);
+        let client = test_client(session.id().clone(), client_id);
         let ctx = RpcContext {
             session,
-            client_id: ClientId::new(1),
+            client_id,
+            client,
         };
 
         let request = RpcRequest::new(1, "error", serde_json::json!({}));
@@ -187,9 +210,12 @@ mod tests {
     async fn test_dispatcher_method_not_found() {
         let dispatcher = RpcDispatcher::new();
         let session = test_session();
+        let client_id = ClientId::new(1);
+        let client = test_client(session.id().clone(), client_id);
         let ctx = RpcContext {
             session,
-            client_id: ClientId::new(1),
+            client_id,
+            client,
         };
 
         let request = RpcRequest::new(1, "unknown", serde_json::json!({}));
@@ -206,9 +232,12 @@ mod tests {
         dispatcher.register("notify", echo_handler);
 
         let session = test_session();
+        let client_id = ClientId::new(1);
+        let client = test_client(session.id().clone(), client_id);
         let ctx = RpcContext {
             session,
-            client_id: ClientId::new(1),
+            client_id,
+            client,
         };
 
         let request = RpcRequest::notification("notify", serde_json::json!({}));
