@@ -110,6 +110,12 @@ pub mod server;
 // Client modules (TUI and CLI)
 pub mod client;
 
+// Buffer manager implementation
+pub mod buffer_manager;
+
+// Re-export SimpleBufferManager
+pub use buffer_manager::SimpleBufferManager;
+
 // Re-exports for backwards compatibility and convenience
 pub use server::{
     // Core types

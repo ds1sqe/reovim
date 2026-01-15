@@ -15,6 +15,38 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 7.1: Test Infrastructure** (Issue #229)
+  - **Integration Test Harness** (`runner/tests/common/`):
+    - `harness.rs` - Server process spawning with OS-assigned ports, kill-on-drop cleanup
+    - `integration.rs` - Fluent builder API for single-client tests:
+      - `IntegrationTest::new().with_buffer("text").send_keys("dd").run().await`
+      - Temp file creation for buffer initialization
+      - Key sequence parsing with delays
+    - `multi_client.rs` - Multi-client test utilities:
+      - `MultiClientTest::with_clients(n)` - Spawn n clients against shared server
+      - `TestClient` - Per-client wrapper with cursor/buffer queries
+    - `assertions.rs` - Type-safe assertion utilities:
+      - `assert_buffer_eq!`, `assert_buffer_contains!` macros
+      - `assert_cursor!`, `assert_mode!`, `assert_register!` macros
+      - Clean failure messages with expected/actual values
+    - `mod.rs` - Public re-exports for test modules
+  - **Buffer Manager** (`runner/src/buffer_manager.rs`):
+    - `SimpleBufferManager` - Real buffer storage implementation
+    - `real_kernel_context()` - Creates working KernelContext for server
+    - Replaces stub implementation that didn't persist buffers
+  - **Ported Test Suites** (61 tests, all `#[ignore]` pending module loading):
+    - `operators.rs` - 18 tests: dd, x, dw, d$, dj, db, 5dd, 3x operators
+    - `registers.rs` - Register tests (yy, yw, named registers)
+    - `undo_redo.rs` - 8 tests: u, Ctrl-R, multiple undo/redo
+    - `cursor_movement.rs` - 18 tests: hjkl, 0$, gg/G, w/b/e, boundaries
+    - `edge_cases.rs` - 14 tests: empty buffer, Unicode, single char, special chars
+    - `multi_client_tests.rs` - 3 tests: concurrent client operations
+  - **Documentation** (`docs/guides/testing.md`):
+    - Phase 7 Integration Tests section with architecture diagram
+    - API reference for IntegrationTest and MultiClientTest
+    - Test organization and running instructions
+  - Tests compile and pass (ignored tests await module loading)
+
 - **Phase 6.5: Debug RPC Endpoints** (Issue #227)
   - **Debug API** (`lib/kernel/src/api/debug.rs`):
     - `KernelStateSnapshot` - Buffer count, buffer IDs, event handlers

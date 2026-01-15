@@ -156,6 +156,13 @@ cargo test
 # Run tests for a specific crate
 cargo test -p reovim-kernel
 
+# Run integration tests (currently ignored, pending module loading)
+cargo test --test operators --ignored
+cargo test --test cursor_movement --ignored
+
+# Run all ignored integration tests
+cargo test --ignored
+
 # Check code without building
 cargo check
 
@@ -437,3 +444,36 @@ Then monitor the log file:
 ```bash
 tail -f /tmp/reovim-debug.log
 ```
+
+### Integration Test Infrastructure
+
+Phase 7 integration tests use a fluent builder API in `runner/tests/common/`:
+
+```rust
+// Single-client test example
+let result = IntegrationTest::new()
+    .await
+    .with_buffer("hello world")
+    .send_keys("dw")
+    .run()
+    .await;
+result.assert_buffer_eq("world");
+
+// Multi-client test example
+MultiClientTest::with_clients(2)
+    .await
+    .run(|mut clients| async move {
+        clients[0].send_keys("ihello<Esc>").await.unwrap();
+        let content = clients[1].get_buffer().await.unwrap();
+        assert!(content.contains("hello"));
+    })
+    .await;
+```
+
+**Key components:**
+- `TestServerHarness` - Spawns server on OS-assigned port, auto-cleanup via Drop
+- `IntegrationTest` - Fluent builder for single-client tests, temp file cleanup
+- `MultiClientTest` - Multi-client concurrent testing
+- `TestResult` - Assertions: `assert_buffer_eq!`, `assert_cursor!`, `assert_mode!`
+
+**Note:** Integration tests are `#[ignore]` pending module loading. Run with `cargo test --ignored`.

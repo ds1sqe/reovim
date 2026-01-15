@@ -433,6 +433,166 @@ lib/core/tests/
 4. **Use `with_content()` for cursor tests** - Need text to move through
 5. **Tests run in parallel** - Each spawns its own server on an OS-assigned port
 
+## Phase 7 Integration Tests (runner/tests/)
+
+Phase 7 introduces a comprehensive integration test framework in `runner/tests/` that tests the complete editor through RPC, using subprocess-based test isolation.
+
+### Architecture
+
+```
+IntegrationTest (Builder)
+├── TestServerHarness
+│   ├── Spawns: reovim server --tcp 0 (OS-assigned port)
+│   ├── Parses port from stderr
+│   └── kill_on_drop(true) for cleanup
+├── RpcClient (TCP JSON-RPC connection)
+└── TestResult (captures final state)
+
+Test Flow:
+┌──────────────────┐     JSON-RPC      ┌─────────────────────────┐
+│ IntegrationTest  │ ────────────────→ │    reovim server        │
+│                  │                   │                         │
+│ with_buffer()    │  buffer/set       │  Buffer state           │
+│ send_keys()      │  input/keys       │  Key processing         │
+│ run() → Result   │  state/* queries  │  Mode, cursor, etc.     │
+└──────────────────┘ ←──────────────── └─────────────────────────┘
+                       TestResult
+```
+
+### IntegrationTest Builder
+
+The fluent builder pattern makes tests readable and maintainable:
+
+```rust
+mod common;
+use common::IntegrationTest;
+
+#[tokio::test]
+async fn test_delete_line() {
+    let result = IntegrationTest::new()
+        .await
+        .with_buffer("line 1\nline 2\nline 3")  // Set initial content
+        .send_keys("jdd")                        // Move down, delete line
+        .run()
+        .await;
+
+    result.assert_buffer_eq("line 1\nline 3");
+    result.assert_cursor(1, 0);
+}
+```
+
+#### Builder Methods
+
+| Method | Description |
+|--------|-------------|
+| `new().await` | Spawn server, create test instance |
+| `with_buffer(content)` | Set initial buffer content |
+| `with_cursor_at(line, col)` | Set initial cursor position |
+| `send_keys(keys)` | Queue key sequence (can chain multiple) |
+| `run().await` | Execute test, return `TestResult` |
+
+#### TestResult Assertions
+
+| Method | Description |
+|--------|-------------|
+| `assert_buffer_eq(expected)` | Buffer exactly matches |
+| `assert_buffer_contains(text)` | Buffer contains substring |
+| `assert_cursor(line, col)` | Cursor at position (0-indexed) |
+| `assert_mode(mode)` | Editor in specified mode |
+| `assert_register(name, content)` | Register contains expected text |
+
+### Multi-Client Tests
+
+For concurrent client testing:
+
+```rust
+use common::MultiClientTest;
+
+#[tokio::test]
+async fn test_two_clients_see_changes() {
+    MultiClientTest::with_clients(2)
+        .await
+        .run(|mut clients| async move {
+            // Client 0 makes a change
+            clients[0].send_keys("ihello<Esc>").await.unwrap();
+
+            // Client 1 should see it
+            let content = clients[1].get_buffer().await.unwrap();
+            assert!(content.contains("hello"));
+        })
+        .await;
+}
+```
+
+### Test File Organization
+
+```
+runner/tests/
+├── common/
+│   ├── mod.rs              # Re-exports + demo module helpers
+│   ├── harness.rs          # TestServerHarness (subprocess management)
+│   ├── integration.rs      # IntegrationTest builder + TestResult
+│   ├── multi_client.rs     # MultiClientTest + TestClient
+│   └── assertions.rs       # Assertion macros
+├── operators.rs            # dd, yy, p, P, cw, cc, x, etc. (28 tests)
+├── registers.rs            # Register operations (5 tests)
+├── undo_redo.rs            # u, Ctrl-R (8 tests)
+├── cursor_movement.rs      # hjkl, 0$, gg/G, w/b/e (17 tests)
+├── edge_cases.rs           # Empty buffer, Unicode, boundaries (10 tests)
+├── multi_client_tests.rs   # Concurrent client tests (3 tests)
+└── module_loading.rs       # Hot reload module tests
+```
+
+### Running Phase 7 Tests
+
+```bash
+# Run all runner integration tests
+cargo test -p reovim
+
+# Run specific test file
+cargo test -p reovim --test operators
+cargo test -p reovim --test cursor_movement
+
+# Run single test
+cargo test -p reovim --test operators test_dd_deletes_line
+
+# Run with output
+cargo test -p reovim -- --nocapture
+```
+
+### Writing New Tests
+
+1. **Create test file** in `runner/tests/` (flat structure)
+2. **Import common utilities**:
+   ```rust
+   mod common;
+   use common::IntegrationTest;
+   ```
+3. **Use async test**:
+   ```rust
+   #[tokio::test]
+   async fn test_your_feature() {
+       let result = IntegrationTest::new()
+           .await
+           .with_buffer("test content")
+           .send_keys("your keys")
+           .run()
+           .await;
+
+       result.assert_buffer_eq("expected");
+   }
+   ```
+
+### Key Differences from lib/core Tests
+
+| Aspect | lib/core Tests | runner/tests |
+|--------|----------------|--------------|
+| Location | `lib/core/tests/` | `runner/tests/` |
+| Builder | `ServerTest` | `IntegrationTest` |
+| Binary | Release build required | Debug or release |
+| Port | Atomic counter | OS-assigned (port 0) |
+| Cleanup | `kill()` call | `kill_on_drop(true)` |
+
 ### Port Allocation
 
 Integration tests use **OS-assigned ports** (port 0) for collision-free parallel execution:
@@ -478,6 +638,19 @@ This approach ensures:
 
 **Unit Tests: 213**
 **Integration Tests: 40** (basic_editing: 10, mode_switching: 8, resize: 5, visual_snapshot: 17)
+
+### Phase 7 Integration Tests (runner/tests/)
+
+| Test File | Coverage Area | Tests |
+|-----------|--------------|-------|
+| `operators.rs` | dd, yy, p, P, cw, cc, x, dw, yw, counts | 28 |
+| `cursor_movement.rs` | hjkl, 0$^, gg/G, w/b/e, boundaries | 17 |
+| `edge_cases.rs` | Empty buffer, Unicode, special chars | 10 |
+| `undo_redo.rs` | u, Ctrl-R, multiple undo/redo | 8 |
+| `registers.rs` | Named registers, unnamed, append | 5 |
+| `multi_client_tests.rs` | Concurrent clients, shared state | 3 |
+
+**Phase 7 Integration Tests: 71**
 
 ## Writing Tests
 
