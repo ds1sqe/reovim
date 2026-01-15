@@ -156,6 +156,13 @@ cargo test
 # Run tests for a specific crate
 cargo test -p reovim-kernel
 
+# Run integration tests (currently ignored, pending module loading)
+cargo test --test operators --ignored
+cargo test --test cursor_movement --ignored
+
+# Run all ignored integration tests
+cargo test --ignored
+
 # Check code without building
 cargo check
 
@@ -199,29 +206,86 @@ cargo run -- tui --tcp 127.0.0.1:12521    # Connect to specific server
 
 **IMPORTANT**: Claude should NEVER handle git commits. The user will manage ALL git operations. Claude must not have any "opinion" about when or how to commit - only create proposals and let the user decide.
 
+**MANDATORY: Issue Tracking**
+- **ALL code work MUST have a GitHub issue for tracking**
+- **REFUSE to start ANY implementation without an issue number**
+- **REFUSE any git operations (commit, push, PR) without an associated issue number**
+- **PRs without an associated issue will be REJECTED**
+- If user requests a feature/fix without an issue → ask to create one first
+- If no issue exists, create one with `gh issue create` before proceeding
+- Reference the issue in commit messages: `type(scope): description (#ISSUE_NUMBER)`
+
+**Issue Title Format:**
+```
+type: short description
+```
+- **Types**: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`, `proposal`
+- Examples:
+  - `feat: add insert mode character input`
+  - `fix: cursor not updating after delete`
+  - `chore: rename agents to NASA theme`
+  - `docs: update architecture overview`
+  - `proposal: new buffer management API`
+
+**Issue Body Format:**
+```markdown
+## Summary
+[1-3 sentences describing what and why]
+
+## Changes
+[Bullet list of planned changes]
+
+## Why
+[Motivation/context for this work]
+
+## Related
+- Part of #EPIC_NUMBER (if applicable)
+- Depends on #ISSUE (if applicable)
+```
+
 **Forbidden in commits/docs:**
 - Emoji
 - `Co-Authored-By: Claude ... <noreply@anthropic.com>`
 - Any Claude/Anthropic advertisement or promotional content
 
+**Commit Message Format:**
+```
+type(scope): short description (#ISSUE_NUMBER)
+
+Detailed body explaining what and why.
+
+- Bullet points for key changes
+- Can be multi-line
+
+Refs #ISSUE_NUMBER, Parts of #EPIC_NUMBER
+```
+
+- **Header**: `type(scope): description (#NUM)` - issue number in parentheses
+- **Body**: What changed and why, bullet points for clarity
+- **Footer**: `Refs #NUM` for the issue, `Parts of #NUM` for parent epic
+- **Types**: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`
+- **IMPORTANT**: Lines starting with `#` are comments in git and will be stripped. Use plain text headers (e.g., `Section:`) instead of markdown `## Section`.
+
 **Changelog Convention**: Every feature, fix, or notable change MUST include an update to `CHANGELOG.md` under the `[Unreleased]` section before proposing a commit.
 
-For any changes, Claude should create a proposal file at `tmp/<feature-name>-commit.md` with:
-- Proposed commit message
-- List of files changed (including `CHANGELOG.md`)
-- Verification checklist
-- Git commands for user to run
+For any changes, Claude should create:
+1. **`tmp/commit.sh`** - Executable script with git commands
+2. Optionally **`tmp/<feature-name>-commit.md`** for complex commits with:
+   - Proposed commit message
+   - List of files changed (including `CHANGELOG.md`)
+   - Verification checklist
 
 ### Pull Requests
 
 When creating PRs with `gh pr create`, do NOT add promotional footers like "Generated with Claude Code" or similar. Keep the PR body clean and professional with only relevant technical content.
 
-### Ready-to-Take-Off & Request-for-Landing
+### Launch Sequence & Final Approach
 
-**Ready-to-Take-Off (Start of Work):**
+**Launch Sequence (Start of Work):**
+
 1. **Gather Context**:
    - Check Epic #150 and related issues via `gh issue view 150` and linked issues
-   - Read `tmp/*` for context from previous sessions
+   - Read `tmp/{ISSUE}/*` for context from previous sessions
    - Check recent git logs: `git log --oneline -20`
    - Launch `deep-explorer` agent for codebase understanding if needed
 
@@ -237,22 +301,24 @@ When creating PRs with `gh pr create`, do NOT add promotional footers like "Gene
      - Reference to related issues and dependencies
      - Acceptance criteria and test targets
 
-4. **Plan Polish - Round 1**:
-   - Launch **Triple-Review** agents and **deep-explorer** IN PARALLEL with Context
+4. **Countdown - Go Poll Round 1**:
+   - Launch all three agents and **deep-explorer** IN PARALLEL in `countdown` mode
    - Each agent reviews plan for enhancements and missing details
    - Incorporate all feedback into plan
 
-5. **Plan Polish - Round 2**:
-   - Launch **Triple-Review** agents and **deep-explorer** IN PARALLEL with Context again
+5. **Countdown - Go Poll Round 2**:
+   - Launch agents again in `countdown` mode
    - Focus on: missing parts, edge cases, architectural concerns
-   - **Keep iterating until issues are ZERO**
+   - **Keep iterating until all agents report GO**
    - **IMPORTANT** Only proceed to implementation when plan is fully validated
 
 **Plan File Instructions:**
 - Add to every plan: **"Never stop until ALL phases are FULLY FINISHED."**
-- Include a **Final Procedure** section at the end referencing the Request-for-Landing workflow below
+- Include a **Final Procedure** section at the end referencing Final Approach below
 
-**Request-for-Landing (End of Work):**
+**Final Approach (End of Work):**
+
+Use `/final-approach [issue]` or run manually:
 
 1. **Sync with upstream (CRUCIAL)**:
    ```bash
@@ -268,28 +334,36 @@ When creating PRs with `gh pr create`, do NOT add promotional footers like "Gene
 2. **Run Full Check** → `./scripts/check.sh`
    - Format, build, clippy (zero warnings), all tests must pass
 
-3. **Triple Review** (use `/triple-review` or launch agents manually):
-   | Agent | Focus |
-   |-------|-------|
-   | `review-requirements` | Plan compliance, documentation quality |
-   | `review-tests` | Test coverage, test quality, anti-patterns |
-   | `review-architecture` | Unix philosophy, code quality, safety |
+3. **Go Poll** (agents in `reentry` mode):
+   | Agent | Focus | Call |
+   |-------|-------|------|
+   | `mission-control` | Plan compliance, documentation | *"Mission Control: GO"* |
+   | `telemetry` | Test coverage, test quality | *"Telemetry: GO"* |
+   | `flight-director` | Unix philosophy, code quality | *"Flight Director: GO"* |
 
-   Agent 3 checks: Mechanism vs Policy, Do one thing well, Composability, Separation of concerns, API purity, Simplicity
+   Flight Director checks: Mechanism vs Policy, Do one thing well, Composability, Separation of concerns, API purity, Simplicity
 
-   **Grading:** A+ (exceeds) / A (perfect) / B (minor fixes) / C (significant) / F (major)
-   - Each agent writes review to `tmp/{ISSUE_NUMBER}-review-round{N}-{requirements|tests|architecture}.md`
+   **Grading:** A+ (exceeds) / A (go for landing) / B (minor fixes) / C (significant) / F (no-go)
+   - Each agent writes to `tmp/{ISSUE}/landing/round-{N}/{agent}.md`
    - **Must achieve A or A+ from ALL THREE agents**
-   - If ANY agent gives below A → fix all issues → go back to Step 2
-   - Loop until ALL agents give A or A+
+   - If ANY agent reports NO-GO → fix issues → go back to Step 2
+   - Loop until all agents report GO
 
-4. **Update CHANGELOG.md** with correct phase number (match issue title)
+4. **Create Landing Document** at `tmp/{ISSUE}/landing.md`:
+   - **Section 1: Go Poll Summary**
+     - Final grades table (all three agents) with links to detailed reports
+     - Files changed (new/modified with LOC)
+     - Highlights from each agent
+   - **Section 2: Verification Checklist**
+     - `./scripts/check.sh` passed
+     - CHANGELOG.md updated
+     - All agents reported GO
+   - **Section 3: Commit**
+     - Commit message
+     - Files to stage
+     - Git commands for user
 
-5. **Create Commit Proposal** at `tmp/{ISSUE_NUMBER}-commit.md`:
-   - Commit message
-   - Files to stage (include CHANGELOG.md)
-   - Verification checklist
-   - Git commands for user
+5. **Update CHANGELOG.md** with correct phase number (match issue title)
 
 6. **(Optional) Generate performance report** for version releases:
    ```bash
@@ -312,18 +386,26 @@ Custom agents and skills in `.claude/` provide specialized workflows for this pr
 
 ### Available Agents
 
-| Agent | Purpose | When to Use |
-|-------|---------|-------------|
-| `deep-explorer` | Elite codebase exploration | Understanding architecture, tracing dependencies, mapping patterns |
-| `review-requirements` | Plan/docs compliance review | Request-for-Landing Agent 1 of 3 |
-| `review-tests` | Test coverage/quality audit | Request-for-Landing Agent 2 of 3 |
-| `review-architecture` | Unix philosophy/code quality | Request-for-Landing Agent 3 of 3 |
+| Agent | Purpose | Modes |
+|-------|---------|-------|
+| `deep-explorer` | Codebase exploration | Understanding architecture, tracing dependencies, mapping patterns |
+| `mission-control` | Plans, specs, documentation | countdown, orbit, reentry, ground-ops |
+| `telemetry` | Test coverage & quality | countdown, orbit, reentry, ground-ops |
+| `flight-director` | Unix philosophy & code quality | countdown, orbit, reentry, ground-ops |
+
+**Agent Modes:**
+- **countdown**: T-minus checks before launch (validate plan)
+- **orbit**: In-flight monitoring (Claude uses, asks user when blocked)
+- **reentry**: Final Approach review (Go Poll for landing)
+- **ground-ops**: General ground support (design help, strategy advice)
+
+**Deferral Policy:** Deferrals are OK if tracking issue exists (e.g., #248). No grade penalty for properly documented deferrals.
 
 ### Available Skills
 
 | Skill | Command | Purpose |
 |-------|---------|---------|
-| `triple-review` | `/triple-review [issue]` | Launch all 3 review agents in parallel for RFL |
+| `final-approach` | `/final-approach [issue]` | Landing sequence with Go Poll (3 agents in reentry mode) |
 
 ### Agent Files
 
@@ -331,12 +413,28 @@ Custom agents and skills in `.claude/` provide specialized workflows for this pr
 .claude/
 ├── agents/
 │   ├── deep-explorer.md         # Codebase exploration (red)
-│   ├── review-requirements.md   # Plan compliance (blue)
-│   ├── review-tests.md          # Test quality (green)
-│   └── review-architecture.md   # Unix philosophy (yellow)
+│   ├── mission-control.md       # Plans, specs, docs (blue)
+│   ├── telemetry.md             # Test coverage & quality (green)
+│   └── flight-director.md       # Unix philosophy & code quality (yellow)
 └── skills/
-    └── triple-review/
-        └── SKILL.md             # /triple-review command
+    └── final-approach/
+        └── SKILL.md             # /final-approach command
+```
+
+### Output Structure
+
+```
+tmp/{ISSUE}/
+├── countdown/           # Plan review (before coding)
+│   └── round-{N}/
+│       ├── mission-control.md
+│       ├── telemetry.md
+│       └── flight-director.md
+└── landing/             # Landing review (before merge)
+    └── round-{N}/
+        ├── mission-control.md
+        ├── telemetry.md
+        └── flight-director.md
 ```
 
 ## Detailed Documentation
@@ -345,21 +443,28 @@ For in-depth information, see:
 
 **Architecture (v0.9.0+ kernel-based):**
 - [docs/architecture/overview.md](./docs/architecture/overview.md) - Layer diagram, Linux mapping, crate deps
-- [docs/architecture/kernel.md](./docs/architecture/kernel.md) - Kernel subsystems: mm/, ipc/, core/, block/, sched/
-- [docs/architecture/drivers.md](./docs/architecture/drivers.md) - Driver layer: syntax/, input/, display/, lsp/, net/
-- [docs/architecture/modules.md](./docs/architecture/modules.md) - Module trait, declare_module!, loader, registry
-- [docs/architecture/mechanism-vs-policy.md](./docs/architecture/mechanism-vs-policy.md) - Core design principle
-- [docs/architecture/module-mode-inheritance.md](./docs/architecture/module-mode-inheritance.md) - Mode system with inheritance
+- [docs/architecture/kernel/overview.md](./docs/architecture/kernel/overview.md) - Kernel subsystems: mm/, ipc/, core/, block/, sched/
+- [docs/architecture/drivers/overview.md](./docs/architecture/drivers/overview.md) - Driver layer: syntax/, input/, display/, lsp/, net/
+- [docs/architecture/modules/overview.md](./docs/architecture/modules/overview.md) - Module trait, declare_module!, loader, registry
+- [docs/contributing/philosophy/mechanism-vs-policy.md](./docs/contributing/philosophy/mechanism-vs-policy.md) - Core design principle
+- [docs/architecture/modules/mode-inheritance.md](./docs/architecture/modules/mode-inheritance.md) - Mode system with inheritance
 
-**Guides and Reference:**
-- [docs/guides/development.md](./docs/guides/development.md) - Development guide
-- [docs/guides/testing.md](./docs/guides/testing.md) - Testing guide
-- [docs/guides/configuration.md](./docs/guides/configuration.md) - Editor settings
-- [docs/reference/commands.md](./docs/reference/commands.md) - Command system
-- [docs/reference/server-mode.md](./docs/reference/server-mode.md) - RPC server mode
+**Contributing:**
+- [docs/contributing/getting-started.md](./docs/contributing/getting-started.md) - Development setup
+- [docs/contributing/guides/testing.md](./docs/contributing/guides/testing.md) - Testing guide
 
-**Archive (v0.8.x legacy reference):**
-- [docs/archive/](./docs/archive/) - Legacy documentation
+**User Guide:**
+- [docs/user-guide/configuration.md](./docs/user-guide/configuration.md) - Editor settings
+- [docs/user-guide/commands.md](./docs/user-guide/commands.md) - Command system
+- [docs/user-guide/server-mode.md](./docs/user-guide/server-mode.md) - RPC server mode
+
+**Heritage (foundational documents):**
+- [docs/heritage/project-kernel-phases.md](./docs/heritage/project-kernel-phases.md) - Epic #150 phase history
+- [docs/heritage/legacy-memorial.md](./docs/heritage/legacy-memorial.md) - Patterns learned from v0.8.x
+- [docs/heritage/clean-architecture-proposal.md](./docs/heritage/clean-architecture-proposal.md) - Original architecture proposal
+
+**Archive (v0.8.x legacy code):**
+- [archive/docs/](./archive/docs/) - Legacy documentation
 - [archive/](./archive/) - Archived legacy code (lib/core, lib/sys, lib/lsp, plugins)
 
 ## Logs and Debugging
@@ -437,3 +542,36 @@ Then monitor the log file:
 ```bash
 tail -f /tmp/reovim-debug.log
 ```
+
+### Integration Test Infrastructure
+
+Phase 7 integration tests use a fluent builder API in `runner/tests/common/`:
+
+```rust
+// Single-client test example
+let result = IntegrationTest::new()
+    .await
+    .with_buffer("hello world")
+    .send_keys("dw")
+    .run()
+    .await;
+result.assert_buffer_eq("world");
+
+// Multi-client test example
+MultiClientTest::with_clients(2)
+    .await
+    .run(|mut clients| async move {
+        clients[0].send_keys("ihello<Esc>").await.unwrap();
+        let content = clients[1].get_buffer().await.unwrap();
+        assert!(content.contains("hello"));
+    })
+    .await;
+```
+
+**Key components:**
+- `TestServerHarness` - Spawns server on OS-assigned port, auto-cleanup via Drop
+- `IntegrationTest` - Fluent builder for single-client tests, temp file cleanup
+- `MultiClientTest` - Multi-client concurrent testing
+- `TestResult` - Assertions: `assert_buffer_eq!`, `assert_cursor!`, `assert_mode!`
+
+**Note:** Integration tests are `#[ignore]` pending module loading. Run with `cargo test --ignored`.

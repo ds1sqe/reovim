@@ -1,9 +1,31 @@
-//! Common test utilities for module integration tests.
+//! Common test utilities for integration tests.
 //!
-//! Provides helper functions for locating the demo module .so file
-//! and setting up test fixtures.
+//! This module provides:
+//! - `IntegrationTest`: Fluent builder for single-client tests
+//! - `MultiClientTest`: Builder for concurrent multi-client tests
+//! - Assertion macros for buffer, cursor, register, and mode verification
+//! - Helper functions for locating demo modules
+
+// Allow unused code in test utilities - each test file uses different subsets
+#![allow(dead_code)]
+#![allow(unused_imports)]
+
+mod assertions;
+mod harness;
+mod integration;
+mod multi_client;
 
 use std::path::PathBuf;
+
+pub use {
+    harness::TestServerHarness,
+    integration::{IntegrationTest, RegisterInfo, TestResult},
+    multi_client::{MultiClientTest, TestClient},
+};
+
+// ============================================================================
+// Demo Module Helpers (for module_loading.rs tests)
+// ============================================================================
 
 /// Get the path to the demo module shared library.
 ///

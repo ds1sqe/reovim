@@ -3,6 +3,15 @@
 //! This handler provides the policy for unmatched keys:
 //! - In Insert mode: Insert the character into the buffer
 //! - In Normal mode: Beep (invalid key)
+//!
+//! # Design Philosophy
+//!
+//! The fallback handler is a **policy** component. The event loop (mechanism)
+//! doesn't know about Insert mode or character insertion - it just delegates
+//! to this handler when a key doesn't match any binding.
+//!
+//! Tab, Enter, Backspace, and Delete are NOT handled here because they have
+//! explicit keybindings to commands in insert mode (see keymap/insert.rs).
 
 use {
     reovim_driver_input::{KeyCode, KeyEvent},
@@ -41,17 +50,17 @@ impl InputFallbackHandler for EditorFallbackHandler {
         // Check if we're in Insert mode
         if *mode_id == EditorMode::INSERT_ID {
             // Try to extract a printable character
-            if let Some(_ch) = key_to_char(&key) {
-                // TODO: Actually insert the character into the buffer
-                // For now, just return Handled to verify the wiring works
-                //
-                // Full implementation would be:
-                // if let Some(buffer_id) = app.active_buffer {
-                //     if let Some(buffer) = app.kernel.buffers.get(buffer_id) {
-                //         buffer.write().insert(&_ch.to_string());
-                //     }
-                // }
-
+            if let Some(ch) = key_to_char(&key) {
+                // Insert the character into the active buffer
+                if let Some(buffer_id) = app.active_buffer
+                    && let Some(buffer_arc) = app.kernel.buffers.get(buffer_id)
+                {
+                    let mut buffer = buffer_arc.write();
+                    // Insert character at cursor position
+                    // Note: Edit is returned but not used yet - undo tracking is Phase 4
+                    let _edit = buffer.insert(&ch.to_string());
+                    drop(buffer);
+                }
                 return FallbackResult::Handled;
             }
 

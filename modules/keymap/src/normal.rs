@@ -30,6 +30,17 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
             .with_category("motion")
             .with_description("Move cursor right"),
         // ====================================================================
+        // Display line movement (gj/gk)
+        // ====================================================================
+        KeybindingRegistration::new("gj", "cursor-display-down")
+            .with_modes(&["normal"])
+            .with_category("motion")
+            .with_description("Move cursor down one display line"),
+        KeybindingRegistration::new("gk", "cursor-display-up")
+            .with_modes(&["normal"])
+            .with_category("motion")
+            .with_description("Move cursor up one display line"),
+        // ====================================================================
         // Word motions
         // ====================================================================
         KeybindingRegistration::new("w", "word-forward")

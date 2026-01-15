@@ -14,10 +14,13 @@ mod server;
 mod state;
 pub mod stub;
 
+#[cfg(test)]
+pub mod test_utils;
+
 pub use {
     buffer::{buffer_get_content, buffer_list, buffer_open_file, buffer_set_content},
     command::command_execute,
-    editor::{editor_quit, editor_resize},
+    editor::{editor_quit, editor_resize, editor_set_active_buffer},
     input::input_keys,
     module::{module_list, module_load, module_reload, module_unload},
     screen::state_screen_content,

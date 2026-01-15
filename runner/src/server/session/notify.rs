@@ -16,9 +16,18 @@ use {
 ///
 /// Compares `before` and `after` snapshots and broadcasts appropriate
 /// notifications for any differences:
-/// - `notify/mode_changed` when mode changes
-/// - `notify/cursor_moved` when cursor position changes
-/// - `notify/buffer_modified` when buffer modified flag changes
+/// - `notify/mode_changed` when mode changes (session-wide broadcast)
+/// - `notify/cursor_moved` when cursor position changes (buffer-scoped broadcast)
+/// - `notify/buffer_modified` when buffer modified flag changes (buffer-scoped broadcast)
+///
+/// # Buffer-Scoped Notifications
+///
+/// Cursor and buffer-modified notifications are sent only to clients viewing
+/// the affected buffer. This is more efficient than session-wide broadcasts
+/// and prevents irrelevant notifications (e.g., a client viewing buffer A
+/// doesn't need cursor updates for buffer B).
+///
+/// Mode changes remain session-wide since mode is shared across all clients.
 ///
 /// # Arguments
 ///
@@ -30,7 +39,7 @@ use {
 ///
 /// This function will not panic as notification serialization is infallible.
 pub async fn emit_state_changes(session: &Session, before: &StateSnapshot, after: &StateSnapshot) {
-    // Mode changed
+    // Mode changed - broadcast to ALL clients (mode is session-wide)
     if before.mode != after.mode {
         let mode_info = session
             .with_state(|state| {
@@ -50,7 +59,7 @@ pub async fn emit_state_changes(session: &Session, before: &StateSnapshot, after
         NotificationBroadcaster::broadcast_to_session(session, &json).await;
     }
 
-    // Cursor moved
+    // Cursor moved - broadcast only to clients viewing this buffer
     if let (Some(buffer_id), Some(pos)) = (after.active_buffer, after.cursor)
         && before.cursor != after.cursor
     {
@@ -63,10 +72,10 @@ pub async fn emit_state_changes(session: &Session, before: &StateSnapshot, after
         };
         let json = serde_json::to_string(&payload.into_notification())
             .expect("notification serialization cannot fail");
-        NotificationBroadcaster::broadcast_to_session(session, &json).await;
+        NotificationBroadcaster::broadcast_to_buffer(session, buffer_id, &json).await;
     }
 
-    // Buffer modified flag changed
+    // Buffer modified flag changed - broadcast only to clients viewing this buffer
     if let Some(buffer_id) = after.active_buffer
         && before.modified != after.modified
     {
@@ -76,7 +85,7 @@ pub async fn emit_state_changes(session: &Session, before: &StateSnapshot, after
         };
         let json = serde_json::to_string(&payload.into_notification())
             .expect("notification serialization cannot fail");
-        NotificationBroadcaster::broadcast_to_session(session, &json).await;
+        NotificationBroadcaster::broadcast_to_buffer(session, buffer_id, &json).await;
     }
 }
 

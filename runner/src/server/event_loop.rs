@@ -246,6 +246,13 @@ impl<F: InputFallbackHandler> EventLoop<F> {
             CommandResult::Quit | CommandResult::ForceQuit => {
                 self.app.request_quit();
             }
+            CommandResult::UndoAction(action) => {
+                // Undo/redo actions are handled by SessionState which has access
+                // to the UndoRegistry. EventLoop delegates to session handler.
+                // For now, log the action - full handling in Phase 3 (#232).
+                tracing::debug!(?action, "Undo action requested");
+                self.last_error = None;
+            }
         }
     }
 

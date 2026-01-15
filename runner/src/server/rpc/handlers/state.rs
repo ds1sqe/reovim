@@ -55,7 +55,12 @@ pub fn state_mode(ctx: RpcContext, _params: serde_json::Value) -> HandlerFuture 
 
 /// Handler for `state/cursor` method.
 ///
-/// Returns the cursor position in the active buffer.
+/// Returns the cursor position in this client's active buffer.
+///
+/// # Per-Client Viewport
+///
+/// This handler reads from the client's viewport to determine the active buffer,
+/// allowing different clients to view different buffers simultaneously.
 ///
 /// # Request
 ///
@@ -75,13 +80,19 @@ pub fn state_mode(ctx: RpcContext, _params: serde_json::Value) -> HandlerFuture 
 #[must_use]
 pub fn state_cursor(ctx: RpcContext, _params: serde_json::Value) -> HandlerFuture {
     Box::pin(async move {
+        // Read client's active buffer from viewport (Level 2 lock)
+        let active_buffer = {
+            let viewport = ctx.client.viewport().read().await;
+            viewport.active_buffer
+        }; // Lock dropped before acquiring session lock
+
         // Query cursor position from session state
         // Falls back to (0, 0) if no active buffer
         let cursor = ctx
             .session
             .with_state(|state| {
-                // Get active buffer and retrieve cursor position
-                if let Some(buffer_id) = state.app.active_buffer
+                // Get cursor from client's active buffer
+                if let Some(buffer_id) = active_buffer
                     && let Some(buffer_arc) = state.app.kernel.buffers.get(buffer_id)
                 {
                     let pos = buffer_arc.read().position();
@@ -101,7 +112,12 @@ pub fn state_cursor(ctx: RpcContext, _params: serde_json::Value) -> HandlerFutur
 
 /// Handler for `state/screen` method.
 ///
-/// Returns the current screen/viewport information.
+/// Returns the current screen/viewport information for this client.
+///
+/// # Per-Client Viewport
+///
+/// This handler reads from the client's viewport, allowing each client to have
+/// independent terminal dimensions and active buffer.
 ///
 /// # Request
 ///
@@ -121,16 +137,17 @@ pub fn state_cursor(ctx: RpcContext, _params: serde_json::Value) -> HandlerFutur
 #[must_use]
 pub fn state_screen(ctx: RpcContext, _params: serde_json::Value) -> HandlerFuture {
     Box::pin(async move {
-        let screen_info = ctx
-            .session
-            .with_state(|state| ScreenInfo {
-                width: state.app.terminal_width,
-                height: state.app.terminal_height,
-                active_buffer_id: state.app.active_buffer.map_or(0, BufferId::as_usize),
+        // Read screen info from client's viewport (Level 2 lock)
+        let screen_info = {
+            let viewport = ctx.client.viewport().read().await;
+            ScreenInfo {
+                width: viewport.terminal_width,
+                height: viewport.terminal_height,
+                active_buffer_id: viewport.active_buffer.map_or(0, BufferId::as_usize),
                 active_window_id: None,
                 window_count: 1,
-            })
-            .await;
+            }
+        }; // Lock dropped
 
         Ok(serde_json::to_value(screen_info).expect("ScreenInfo serialization cannot fail"))
     })
@@ -206,28 +223,19 @@ pub fn state_selection(ctx: RpcContext, _params: serde_json::Value) -> HandlerFu
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        crate::session::{ClientId, Session, SessionId},
-        reovim_kernel::api::v1::{KernelContext, ModeId, ModuleId},
-        std::sync::Arc,
-    };
+    use super::*;
 
-    fn test_session() -> Arc<Session> {
-        Session::new(
-            SessionId::new("test"),
-            KernelContext::default(),
-            ModeId::new(ModuleId::new("test"), "normal"),
-        )
-    }
+    use crate::{
+        server::rpc::{
+            RpcContext,
+            handlers::test_utils::{test_client, test_ctx, test_session},
+        },
+        session::ClientId,
+    };
 
     #[tokio::test]
     async fn test_state_mode_handler() {
-        let session = test_session();
-        let ctx = RpcContext {
-            session,
-            client_id: ClientId::new(1),
-        };
+        let ctx = test_ctx();
 
         let result = state_mode(ctx, serde_json::json!({})).await;
 
@@ -238,11 +246,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_state_cursor_handler() {
-        let session = test_session();
-        let ctx = RpcContext {
-            session,
-            client_id: ClientId::new(1),
-        };
+        let ctx = test_ctx();
 
         let result = state_cursor(ctx, serde_json::json!({})).await;
 
@@ -254,17 +258,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_state_screen_returns_dimensions() {
-        let session = test_session();
-        let ctx = RpcContext {
-            session,
-            client_id: ClientId::new(1),
-        };
+        let ctx = test_ctx();
 
         let result = state_screen(ctx, serde_json::json!({})).await;
 
         assert!(result.is_ok());
         let value = result.unwrap();
-        // Default terminal size is 80x24
+        // Default viewport size is 80x24 (VT100 defaults)
         assert_eq!(value.get("width").and_then(serde_json::Value::as_u64), Some(80));
         assert_eq!(value.get("height").and_then(serde_json::Value::as_u64), Some(24));
         assert_eq!(
@@ -283,17 +283,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_state_screen_no_active_buffer() {
-        let session = test_session();
-        let ctx = RpcContext {
-            session,
-            client_id: ClientId::new(1),
-        };
+        let ctx = test_ctx();
 
         let result = state_screen(ctx, serde_json::json!({})).await;
         assert!(result.is_ok());
 
         let value = result.unwrap();
-        // No active buffer should return buffer_id = 0
+        // No active buffer in viewport should return buffer_id = 0
         assert_eq!(
             value
                 .get("active_buffer_id")
@@ -305,18 +301,20 @@ mod tests {
     #[tokio::test]
     async fn test_state_screen_after_resize() {
         let session = test_session();
+        let client_id = ClientId::new(1);
+        let client = test_client(session.id().clone(), client_id);
 
-        // Resize the terminal
-        session
-            .with_state_mut(|state| {
-                state.app.terminal_width = 200;
-                state.app.terminal_height = 50;
-            })
-            .await;
+        // Resize the client's viewport
+        {
+            let mut viewport = client.viewport().write().await;
+            viewport.terminal_width = 200;
+            viewport.terminal_height = 50;
+        }
 
         let ctx = RpcContext {
             session,
-            client_id: ClientId::new(1),
+            client_id,
+            client,
         };
 
         let result = state_screen(ctx, serde_json::json!({})).await;

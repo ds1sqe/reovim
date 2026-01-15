@@ -3,15 +3,26 @@
 //! This module provides the basic commands for editor operation:
 //! - Cursor movement: up, down, left, right
 //! - Mode switching: enter insert, exit to normal
+//!
+//! # Cursor Movement Philosophy
+//!
+//! Cursor movement commands follow Vim semantics:
+//! - j/k (down/up) preserve the "preferred column" - the column the user
+//!   intended, even if shorter lines force temporary repositioning
+//! - h/l (left/right) clear the preferred column
+//! - Movements clamp to valid positions (no-op at boundaries)
 
 use {
     reovim_driver_command::{
-        ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
+        ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult, UndoAction,
     },
-    reovim_kernel::api::v1::{CommandId, KernelContext, events::ModeChanged},
+    reovim_kernel::api::v1::{
+        CommandId, KernelContext, Position,
+        events::{CursorMoved, ModeChanged},
+    },
 };
 
-use super::mode::EDITOR_MODULE;
+use super::{display_lines, mode::EDITOR_MODULE};
 
 // =============================================================================
 // Cursor Movement Commands
@@ -40,9 +51,46 @@ impl Command for CursorUp {
 }
 
 impl CommandHandler for CursorUp {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement actual cursor movement in Phase 4
-        // For now, just return success to verify the wiring works
+    #[allow(clippy::cast_possible_truncation)] // Line/column numbers won't exceed u32::MAX
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        let count = args.count().unwrap_or(1);
+        let (old_pos, new_pos) = {
+            let mut buffer = buffer_arc.write();
+            let old_pos = buffer.position();
+
+            // Calculate new line (saturating sub to handle boundary)
+            let new_line = old_pos.line.saturating_sub(count);
+
+            // If already at top, no-op
+            if new_line == old_pos.line && old_pos.line == 0 {
+                return CommandResult::Success;
+            }
+
+            // Get line length for column clamping
+            let line_len = buffer.line_len(new_line).unwrap_or(0);
+            let new_col = old_pos.column.min(line_len);
+
+            let new_pos = Position::new(new_line, new_col);
+            buffer.set_position(new_pos);
+            drop(buffer);
+            (old_pos, new_pos)
+        };
+
+        // Emit CursorMoved event (buffer lock released)
+        ctx.event_bus.emit(CursorMoved {
+            buffer_id: buffer_id.as_usize() as u64,
+            from: (old_pos.line as u32, old_pos.column as u32),
+            to: (new_pos.line as u32, new_pos.column as u32),
+        });
+
         CommandResult::Success
     }
 }
@@ -70,8 +118,48 @@ impl Command for CursorDown {
 }
 
 impl CommandHandler for CursorDown {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement actual cursor movement in Phase 4
+    #[allow(clippy::cast_possible_truncation)] // Line/column numbers won't exceed u32::MAX
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        let count = args.count().unwrap_or(1);
+        let (old_pos, new_pos) = {
+            let mut buffer = buffer_arc.write();
+            let old_pos = buffer.position();
+            let line_count = buffer.line_count();
+
+            // Calculate new line (clamped to last line)
+            let max_line = line_count.saturating_sub(1);
+            let new_line = (old_pos.line + count).min(max_line);
+
+            // If already at bottom, no-op
+            if new_line == old_pos.line && old_pos.line == max_line {
+                return CommandResult::Success;
+            }
+
+            // Get line length for column clamping
+            let line_len = buffer.line_len(new_line).unwrap_or(0);
+            let new_col = old_pos.column.min(line_len);
+
+            let new_pos = Position::new(new_line, new_col);
+            buffer.set_position(new_pos);
+            drop(buffer);
+            (old_pos, new_pos)
+        };
+
+        // Emit CursorMoved event (buffer lock released)
+        ctx.event_bus.emit(CursorMoved {
+            buffer_id: buffer_id.as_usize() as u64,
+            from: (old_pos.line as u32, old_pos.column as u32),
+            to: (new_pos.line as u32, new_pos.column as u32),
+        });
+
         CommandResult::Success
     }
 }
@@ -99,8 +187,42 @@ impl Command for CursorLeft {
 }
 
 impl CommandHandler for CursorLeft {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement actual cursor movement in Phase 4
+    #[allow(clippy::cast_possible_truncation)] // Line/column numbers won't exceed u32::MAX
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        let count = args.count().unwrap_or(1);
+        let (old_pos, new_pos) = {
+            let mut buffer = buffer_arc.write();
+            let old_pos = buffer.position();
+
+            // Calculate new column (saturating sub to handle boundary)
+            let new_col = old_pos.column.saturating_sub(count);
+
+            // If already at left edge, no-op
+            if new_col == old_pos.column && old_pos.column == 0 {
+                return CommandResult::Success;
+            }
+
+            let new_pos = Position::new(old_pos.line, new_col);
+            buffer.set_position(new_pos);
+            drop(buffer);
+            (old_pos, new_pos)
+        };
+
+        // Emit CursorMoved event (buffer lock released)
+        ctx.event_bus.emit(CursorMoved {
+            buffer_id: buffer_id.as_usize() as u64,
+            from: (old_pos.line as u32, old_pos.column as u32),
+            to: (new_pos.line as u32, new_pos.column as u32),
+        });
+
         CommandResult::Success
     }
 }
@@ -128,8 +250,297 @@ impl Command for CursorRight {
 }
 
 impl CommandHandler for CursorRight {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement actual cursor movement in Phase 4
+    #[allow(clippy::cast_possible_truncation)] // Line/column numbers won't exceed u32::MAX
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        let count = args.count().unwrap_or(1);
+        let (old_pos, new_pos) = {
+            let mut buffer = buffer_arc.write();
+            let old_pos = buffer.position();
+
+            // Get current line length for boundary check
+            let line_len = buffer.line_len(old_pos.line).unwrap_or(0);
+
+            // Calculate new column (clamped to line length)
+            let new_col = (old_pos.column + count).min(line_len);
+
+            // If already at right edge, no-op
+            if new_col == old_pos.column && old_pos.column == line_len {
+                return CommandResult::Success;
+            }
+
+            let new_pos = Position::new(old_pos.line, new_col);
+            buffer.set_position(new_pos);
+            drop(buffer);
+            (old_pos, new_pos)
+        };
+
+        // Emit CursorMoved event (buffer lock released)
+        ctx.event_bus.emit(CursorMoved {
+            buffer_id: buffer_id.as_usize() as u64,
+            from: (old_pos.line as u32, old_pos.column as u32),
+            to: (new_pos.line as u32, new_pos.column as u32),
+        });
+
+        CommandResult::Success
+    }
+}
+
+// =============================================================================
+// Display Line Movement Commands
+// =============================================================================
+
+/// Move cursor down one display line (gj).
+///
+/// When text wraps across multiple terminal lines, this moves down one
+/// visual line rather than one buffer line. On unwrapped lines, behaves
+/// like regular `j`.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CursorDisplayDown;
+
+impl Command for CursorDisplayDown {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "cursor-display-down")
+    }
+
+    fn description(&self) -> &'static str {
+        "Move cursor down one display line"
+    }
+
+    fn args(&self) -> Vec<ArgSpec> {
+        vec![ArgSpec::optional(
+            "count",
+            ArgKind::Count,
+            "Number of display lines",
+        )]
+    }
+}
+
+impl CommandHandler for CursorDisplayDown {
+    #[allow(clippy::cast_possible_truncation)]
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        // Terminal width: use 80 as default
+        // Note: In the future, this could be retrieved from session state
+        // or passed through CommandContext. See issue #248 for tracking.
+        let terminal_width = 80;
+
+        let count = args.count().unwrap_or(1);
+        let (old_pos, new_pos) = {
+            let mut buffer = buffer_arc.write();
+            let old_pos = buffer.position();
+            let line_count = buffer.line_count();
+
+            // Get current line content
+            let current_line = buffer.line(old_pos.line).unwrap_or("");
+            let display_lines_in_current =
+                display_lines::display_line_count(current_line, terminal_width);
+            let (current_display_line, display_col) =
+                display_lines::display_position(old_pos.column, terminal_width);
+
+            // Calculate how many display lines we can move within this buffer line
+            let remaining_display_lines =
+                display_lines_in_current.saturating_sub(current_display_line + 1);
+
+            let new_pos = if count <= remaining_display_lines {
+                // Stay on same buffer line, move to next display line
+                let target_display_line = current_display_line + count;
+                let new_col =
+                    display_lines::buffer_column(target_display_line, display_col, terminal_width);
+                // Clamp to line length
+                let line_len = current_line.chars().count();
+                let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
+                Position::new(old_pos.line, clamped_col)
+            } else {
+                // Need to move to next buffer line(s)
+                let mut lines_to_move = count - remaining_display_lines;
+                let mut new_line = old_pos.line + 1;
+
+                while lines_to_move > 0 && new_line < line_count {
+                    let line = buffer.line(new_line).unwrap_or("");
+                    let display_count = display_lines::display_line_count(line, terminal_width);
+
+                    if lines_to_move <= display_count {
+                        // Target is within this line
+                        let target_display = lines_to_move - 1;
+                        let new_col = display_lines::buffer_column(
+                            target_display,
+                            display_col,
+                            terminal_width,
+                        );
+                        let line_len = line.chars().count();
+                        let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
+                        buffer.set_position(Position::new(new_line, clamped_col));
+                        drop(buffer);
+
+                        ctx.event_bus.emit(CursorMoved {
+                            buffer_id: buffer_id.as_usize() as u64,
+                            from: (old_pos.line as u32, old_pos.column as u32),
+                            to: (new_line as u32, clamped_col as u32),
+                        });
+
+                        return CommandResult::Success;
+                    }
+                    lines_to_move -= display_count;
+                    new_line += 1;
+                }
+
+                // Reached end of buffer - go to last line, last display line
+                let last_line = line_count.saturating_sub(1);
+                let last_content = buffer.line(last_line).unwrap_or("");
+                let last_display_count =
+                    display_lines::display_line_count(last_content, terminal_width);
+                let target_display = last_display_count.saturating_sub(1);
+                let new_col =
+                    display_lines::buffer_column(target_display, display_col, terminal_width);
+                let line_len = last_content.chars().count();
+                let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
+                Position::new(last_line, clamped_col)
+            };
+
+            buffer.set_position(new_pos);
+            drop(buffer);
+            (old_pos, new_pos)
+        };
+
+        ctx.event_bus.emit(CursorMoved {
+            buffer_id: buffer_id.as_usize() as u64,
+            from: (old_pos.line as u32, old_pos.column as u32),
+            to: (new_pos.line as u32, new_pos.column as u32),
+        });
+
+        CommandResult::Success
+    }
+}
+
+/// Move cursor up one display line (gk).
+///
+/// When text wraps across multiple terminal lines, this moves up one
+/// visual line rather than one buffer line. On unwrapped lines, behaves
+/// like regular `k`.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CursorDisplayUp;
+
+impl Command for CursorDisplayUp {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "cursor-display-up")
+    }
+
+    fn description(&self) -> &'static str {
+        "Move cursor up one display line"
+    }
+
+    fn args(&self) -> Vec<ArgSpec> {
+        vec![ArgSpec::optional(
+            "count",
+            ArgKind::Count,
+            "Number of display lines",
+        )]
+    }
+}
+
+impl CommandHandler for CursorDisplayUp {
+    #[allow(clippy::cast_possible_truncation)]
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        // Terminal width: use 80 as default
+        // Note: In the future, this could be retrieved from session state
+        // or passed through CommandContext. See issue #248 for tracking.
+        let terminal_width = 80;
+
+        let count = args.count().unwrap_or(1);
+        let (old_pos, new_pos) = {
+            let mut buffer = buffer_arc.write();
+            let old_pos = buffer.position();
+
+            // Get current line content
+            let current_line = buffer.line(old_pos.line).unwrap_or("");
+            let (current_display_line, display_col) =
+                display_lines::display_position(old_pos.column, terminal_width);
+
+            let new_pos = if count <= current_display_line {
+                // Stay on same buffer line, move to previous display line
+                let target_display_line = current_display_line - count;
+                let new_col =
+                    display_lines::buffer_column(target_display_line, display_col, terminal_width);
+                // Clamp to line length
+                let line_len = current_line.chars().count();
+                let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
+                Position::new(old_pos.line, clamped_col)
+            } else {
+                // Need to move to previous buffer line(s)
+                let mut lines_to_move = count - current_display_line;
+                let mut new_line = old_pos.line;
+
+                while lines_to_move > 0 && new_line > 0 {
+                    new_line -= 1;
+                    let line = buffer.line(new_line).unwrap_or("");
+                    let display_count = display_lines::display_line_count(line, terminal_width);
+
+                    if lines_to_move <= display_count {
+                        // Target is within this line (from bottom)
+                        let target_display = display_count - lines_to_move;
+                        let new_col = display_lines::buffer_column(
+                            target_display,
+                            display_col,
+                            terminal_width,
+                        );
+                        let line_len = line.chars().count();
+                        let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
+                        buffer.set_position(Position::new(new_line, clamped_col));
+                        drop(buffer);
+
+                        ctx.event_bus.emit(CursorMoved {
+                            buffer_id: buffer_id.as_usize() as u64,
+                            from: (old_pos.line as u32, old_pos.column as u32),
+                            to: (new_line as u32, clamped_col as u32),
+                        });
+
+                        return CommandResult::Success;
+                    }
+                    lines_to_move -= display_count;
+                }
+
+                // Reached beginning of buffer - go to first line, first display line
+                let first_content = buffer.line(0).unwrap_or("");
+                let new_col = display_lines::buffer_column(0, display_col, terminal_width);
+                let line_len = first_content.chars().count();
+                let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
+                Position::new(0, clamped_col)
+            };
+
+            buffer.set_position(new_pos);
+            drop(buffer);
+            (old_pos, new_pos)
+        };
+
+        ctx.event_bus.emit(CursorMoved {
+            buffer_id: buffer_id.as_usize() as u64,
+            from: (old_pos.line as u32, old_pos.column as u32),
+            to: (new_pos.line as u32, new_pos.column as u32),
+        });
+
         CommandResult::Success
     }
 }
@@ -167,13 +578,13 @@ impl CommandHandler for EnterInsertMode {
     }
 }
 
-/// Enter insert mode (after cursor, append).
+/// Enter insert mode after cursor (a).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct EnterInsertModeAppend;
 
 impl Command for EnterInsertModeAppend {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "enter-insert-append")
+        CommandId::new(EDITOR_MODULE, "enter-insert-after")
     }
 
     fn description(&self) -> &'static str {
@@ -182,8 +593,21 @@ impl Command for EnterInsertModeAppend {
 }
 
 impl CommandHandler for EnterInsertModeAppend {
-    fn execute(&self, ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Move cursor right first, then enter insert mode
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        // Move cursor right first, then enter insert mode
+        if let Some(buffer_id) = args.buffer_id()
+            && let Some(buffer_arc) = ctx.buffers.get(buffer_id)
+        {
+            let mut buffer = buffer_arc.write();
+            let pos = buffer.position();
+            let line_len = buffer.line_len(pos.line).unwrap_or(0);
+            // Move right only if not at end of line
+            if pos.column < line_len {
+                buffer.set_position(Position::new(pos.line, pos.column + 1));
+            }
+            drop(buffer);
+        }
+
         ctx.event_bus.emit(ModeChanged {
             from: "normal".to_string(),
             to: "insert".to_string(),
@@ -193,27 +617,694 @@ impl CommandHandler for EnterInsertModeAppend {
     }
 }
 
-/// Exit to normal mode.
+/// Exit to normal mode (Escape from insert mode).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ExitToNormal;
 
 impl Command for ExitToNormal {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "exit-to-normal")
+        CommandId::new(EDITOR_MODULE, "exit-insert")
     }
 
     fn description(&self) -> &'static str {
-        "Exit to normal mode"
+        "Exit insert mode and return to normal mode"
     }
 }
 
 impl CommandHandler for ExitToNormal {
-    fn execute(&self, ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        // Move cursor left one position when exiting insert mode (Vim behavior)
+        if let Some(buffer_id) = args.buffer_id()
+            && let Some(buffer_arc) = ctx.buffers.get(buffer_id)
+        {
+            let mut buffer = buffer_arc.write();
+            let pos = buffer.position();
+            if pos.column > 0 {
+                buffer.set_position(Position::new(pos.line, pos.column - 1));
+            }
+            drop(buffer);
+        }
+
         ctx.event_bus.emit(ModeChanged {
             from: "insert".to_string(),
             to: "normal".to_string(),
         });
 
+        CommandResult::Success
+    }
+}
+
+// =============================================================================
+// Insert Mode Edit Commands
+// =============================================================================
+
+/// Insert a newline at cursor position (Enter in insert mode).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct InsertNewline;
+
+impl Command for InsertNewline {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "insert-newline")
+    }
+
+    fn description(&self) -> &'static str {
+        "Insert newline at cursor position"
+    }
+}
+
+impl CommandHandler for InsertNewline {
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        let mut buffer = buffer_arc.write();
+        // Insert newline splits the line at cursor position
+        let _edit = buffer.insert("\n");
+        drop(buffer);
+
+        CommandResult::Success
+    }
+}
+
+/// Insert a tab at cursor position (Tab in insert mode).
+///
+/// Respects `expandtab` and `tabstop` options.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct InsertTab;
+
+impl Command for InsertTab {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "insert-tab")
+    }
+
+    fn description(&self) -> &'static str {
+        "Insert tab at cursor position"
+    }
+}
+
+impl CommandHandler for InsertTab {
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        use reovim_kernel::api::v1::OptionScopeId;
+
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        // Get options (with defaults). Use buffer-local scope if available.
+        let scope = OptionScopeId::Buffer(buffer_id);
+        let expandtab = ctx
+            .options
+            .get("expandtab", scope)
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+        let tabstop = ctx
+            .options
+            .get("tabstop", scope)
+            .and_then(|v| v.as_int())
+            .map_or(4, |n| n.max(1) as usize);
+
+        let text = if expandtab {
+            " ".repeat(tabstop)
+        } else {
+            "\t".to_string()
+        };
+
+        let mut buffer = buffer_arc.write();
+        let _edit = buffer.insert(&text);
+        drop(buffer);
+
+        CommandResult::Success
+    }
+}
+
+// =============================================================================
+// Mode Entry Commands (Phase 2)
+// =============================================================================
+
+/// Enter insert mode at first non-blank character (I).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct EnterInsertFirstNonBlank;
+
+impl Command for EnterInsertFirstNonBlank {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "enter-insert-bol")
+    }
+
+    fn description(&self) -> &'static str {
+        "Enter insert mode at first non-blank character"
+    }
+}
+
+impl CommandHandler for EnterInsertFirstNonBlank {
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        if let Some(buffer_id) = args.buffer_id()
+            && let Some(buffer_arc) = ctx.buffers.get(buffer_id)
+        {
+            let mut buffer = buffer_arc.write();
+            let pos = buffer.position();
+
+            // Find first non-blank character on current line
+            let first_non_blank = buffer
+                .line(pos.line)
+                .map_or(0, |line| line.chars().position(|c| !c.is_whitespace()).unwrap_or(0));
+
+            buffer.set_position(Position::new(pos.line, first_non_blank));
+            drop(buffer);
+        }
+
+        ctx.event_bus.emit(ModeChanged {
+            from: "normal".to_string(),
+            to: "insert".to_string(),
+        });
+
+        CommandResult::Success
+    }
+}
+
+/// Enter insert mode at end of line (A).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct EnterInsertEndOfLine;
+
+impl Command for EnterInsertEndOfLine {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "enter-insert-eol")
+    }
+
+    fn description(&self) -> &'static str {
+        "Enter insert mode at end of line"
+    }
+}
+
+impl CommandHandler for EnterInsertEndOfLine {
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        if let Some(buffer_id) = args.buffer_id()
+            && let Some(buffer_arc) = ctx.buffers.get(buffer_id)
+        {
+            let mut buffer = buffer_arc.write();
+            let pos = buffer.position();
+
+            // Move cursor to end of current line
+            let line_len = buffer.line_len(pos.line).unwrap_or(0);
+            buffer.set_position(Position::new(pos.line, line_len));
+            drop(buffer);
+        }
+
+        ctx.event_bus.emit(ModeChanged {
+            from: "normal".to_string(),
+            to: "insert".to_string(),
+        });
+
+        CommandResult::Success
+    }
+}
+
+/// Open line below and enter insert mode (o).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct OpenLineBelow;
+
+impl Command for OpenLineBelow {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "open-line-below")
+    }
+
+    fn description(&self) -> &'static str {
+        "Open line below and enter insert mode"
+    }
+}
+
+impl CommandHandler for OpenLineBelow {
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        let mut buffer = buffer_arc.write();
+        let pos = buffer.position();
+
+        // Move to end of current line
+        let line_len = buffer.line_len(pos.line).unwrap_or(0);
+        buffer.set_position(Position::new(pos.line, line_len));
+
+        // Insert newline (creates new line below)
+        let _edit = buffer.insert("\n");
+        // Cursor is now at start of new line
+        drop(buffer);
+
+        ctx.event_bus.emit(ModeChanged {
+            from: "normal".to_string(),
+            to: "insert".to_string(),
+        });
+
+        CommandResult::Success
+    }
+}
+
+/// Open line above and enter insert mode (O).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct OpenLineAbove;
+
+impl Command for OpenLineAbove {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "open-line-above")
+    }
+
+    fn description(&self) -> &'static str {
+        "Open line above and enter insert mode"
+    }
+}
+
+impl CommandHandler for OpenLineAbove {
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        let mut buffer = buffer_arc.write();
+        let pos = buffer.position();
+
+        // Move to start of current line
+        buffer.set_position(Position::new(pos.line, 0));
+
+        // Insert newline before current line content
+        let _edit = buffer.insert("\n");
+
+        // Move cursor up to the new empty line
+        buffer.set_position(Position::new(pos.line, 0));
+        drop(buffer);
+
+        ctx.event_bus.emit(ModeChanged {
+            from: "normal".to_string(),
+            to: "insert".to_string(),
+        });
+
+        CommandResult::Success
+    }
+}
+
+// =============================================================================
+// Undo/Redo Commands
+// =============================================================================
+
+/// Undo the last change.
+///
+/// Returns an `UndoAction` intent for the runner to handle. The runner
+/// maintains per-buffer undo trees and applies the actual undo operation.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct UndoCommand;
+
+impl Command for UndoCommand {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "undo")
+    }
+
+    fn description(&self) -> &'static str {
+        "Undo the last change"
+    }
+
+    fn args(&self) -> Vec<ArgSpec> {
+        vec![ArgSpec::optional(
+            "count",
+            ArgKind::Count,
+            "Number of changes to undo",
+        )]
+    }
+
+    fn names(&self) -> &[&'static str] {
+        &["u", "undo"]
+    }
+}
+
+impl CommandHandler for UndoCommand {
+    fn execute(&self, _ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let count = args.count().unwrap_or(1);
+        CommandResult::UndoAction(UndoAction::Undo { count })
+    }
+}
+
+/// Redo the last undone change.
+///
+/// Returns an `UndoAction` intent for the runner to handle.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RedoCommand;
+
+impl Command for RedoCommand {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "redo")
+    }
+
+    fn description(&self) -> &'static str {
+        "Redo the last undone change"
+    }
+
+    fn args(&self) -> Vec<ArgSpec> {
+        vec![ArgSpec::optional(
+            "count",
+            ArgKind::Count,
+            "Number of changes to redo",
+        )]
+    }
+
+    fn names(&self) -> &[&'static str] {
+        &["redo"]
+    }
+}
+
+impl CommandHandler for RedoCommand {
+    fn execute(&self, _ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let count = args.count().unwrap_or(1);
+        CommandResult::UndoAction(UndoAction::Redo { count })
+    }
+}
+
+// =============================================================================
+// Delete Commands (Phase 3)
+// =============================================================================
+
+/// Delete character under cursor (x).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DeleteChar;
+
+impl Command for DeleteChar {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "delete-char")
+    }
+
+    fn description(&self) -> &'static str {
+        "Delete character under cursor"
+    }
+
+    fn args(&self) -> Vec<ArgSpec> {
+        vec![ArgSpec::optional(
+            "count",
+            ArgKind::Count,
+            "Number of characters to delete",
+        )]
+    }
+}
+
+impl CommandHandler for DeleteChar {
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        let count = args.count().unwrap_or(1);
+        let mut buffer = buffer_arc.write();
+        let pos = buffer.position();
+        let line_len = buffer.line_len(pos.line).unwrap_or(0);
+
+        // Can't delete on empty line or at end of line
+        if line_len == 0 || pos.column >= line_len {
+            return CommandResult::Success; // No-op
+        }
+
+        // Delete up to end of line
+        let chars_to_delete = count.min(line_len - pos.column);
+        if chars_to_delete > 0 {
+            let _edit = buffer.delete(chars_to_delete);
+        }
+        drop(buffer);
+
+        CommandResult::Success
+    }
+}
+
+/// Delete character before cursor (X).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DeleteCharBefore;
+
+impl Command for DeleteCharBefore {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "delete-char-before")
+    }
+
+    fn description(&self) -> &'static str {
+        "Delete character before cursor"
+    }
+
+    fn args(&self) -> Vec<ArgSpec> {
+        vec![ArgSpec::optional(
+            "count",
+            ArgKind::Count,
+            "Number of characters to delete",
+        )]
+    }
+}
+
+impl CommandHandler for DeleteCharBefore {
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        let count = args.count().unwrap_or(1);
+        let mut buffer = buffer_arc.write();
+        let pos = buffer.position();
+
+        // Can't delete before column 0
+        if pos.column == 0 {
+            // In insert mode, join with previous line
+            if pos.line > 0 {
+                let prev_line_len = buffer.line_len(pos.line - 1).unwrap_or(0);
+                let new_pos = Position::new(pos.line - 1, prev_line_len);
+                buffer.set_position(new_pos);
+                let _edit = buffer.delete(1); // Delete the newline
+            }
+            drop(buffer);
+            return CommandResult::Success;
+        }
+
+        let chars_to_delete = count.min(pos.column);
+        let new_col = pos.column - chars_to_delete;
+        let delete_pos = Position::new(pos.line, new_col);
+
+        buffer.set_position(delete_pos);
+        let _edit = buffer.delete(chars_to_delete);
+        drop(buffer);
+
+        CommandResult::Success
+    }
+}
+
+/// Delete current line (dd).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DeleteLine;
+
+impl Command for DeleteLine {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "delete-line")
+    }
+
+    fn description(&self) -> &'static str {
+        "Delete current line"
+    }
+
+    fn args(&self) -> Vec<ArgSpec> {
+        vec![ArgSpec::optional(
+            "count",
+            ArgKind::Count,
+            "Number of lines to delete",
+        )]
+    }
+}
+
+impl CommandHandler for DeleteLine {
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        let count = args.count().unwrap_or(1);
+        let mut buffer = buffer_arc.write();
+        let start_line = buffer.position().line;
+        let line_count = buffer.line_count();
+
+        if line_count == 0 {
+            return CommandResult::Success;
+        }
+
+        // Calculate lines to delete
+        let lines_to_delete = count.min(line_count.saturating_sub(start_line));
+        if lines_to_delete == 0 {
+            return CommandResult::Success;
+        }
+
+        // Delete range: from start of first line to start of line after deleted range
+        let start = Position::new(start_line, 0);
+
+        // Calculate total characters to delete (including newlines)
+        let mut chars_to_delete = 0;
+        for i in 0..lines_to_delete {
+            let line_idx = start_line + i;
+            if line_idx < line_count {
+                let line_len = buffer.line_len(line_idx).unwrap_or(0);
+                chars_to_delete += line_len;
+                // Add 1 for newline unless it's the last line
+                if line_idx + 1 < line_count {
+                    chars_to_delete += 1;
+                }
+            }
+        }
+
+        // Handle deleting last line(s) - need to also delete preceding newline
+        let end_line = start_line + lines_to_delete;
+        if end_line >= line_count && start_line > 0 {
+            // We're deleting to end of buffer, so delete preceding newline too
+            let new_start =
+                Position::new(start_line - 1, buffer.line_len(start_line - 1).unwrap_or(0));
+            buffer.set_position(new_start);
+            let _edit = buffer.delete(chars_to_delete + 1); // +1 for preceding newline
+        } else {
+            buffer.set_position(start);
+            let _edit = buffer.delete(chars_to_delete);
+        }
+
+        // Move cursor to first non-blank of remaining line
+        let new_line_count = buffer.line_count();
+        let new_line = start_line.min(new_line_count.saturating_sub(1));
+        let first_non_blank = buffer
+            .line(new_line)
+            .map_or(0, |line| line.chars().position(|c| !c.is_whitespace()).unwrap_or(0));
+        buffer.set_position(Position::new(new_line, first_non_blank));
+        drop(buffer);
+
+        CommandResult::Success
+    }
+}
+
+/// Delete to end of line (D).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DeleteToEndOfLine;
+
+impl Command for DeleteToEndOfLine {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "delete-to-eol")
+    }
+
+    fn description(&self) -> &'static str {
+        "Delete to end of line"
+    }
+}
+
+impl CommandHandler for DeleteToEndOfLine {
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        let mut buffer = buffer_arc.write();
+        let pos = buffer.position();
+        let line_len = buffer.line_len(pos.line).unwrap_or(0);
+
+        // Nothing to delete if at or past end of line
+        if pos.column >= line_len {
+            return CommandResult::Success;
+        }
+
+        // Delete from cursor to end of line (not including newline)
+        let chars_to_delete = line_len - pos.column;
+        let _edit = buffer.delete(chars_to_delete);
+        drop(buffer);
+
+        CommandResult::Success
+    }
+}
+
+/// Join current line with next line (J).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct JoinLines;
+
+impl Command for JoinLines {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "join-lines")
+    }
+
+    fn description(&self) -> &'static str {
+        "Join current line with next line"
+    }
+
+    fn args(&self) -> Vec<ArgSpec> {
+        vec![ArgSpec::optional(
+            "count",
+            ArgKind::Count,
+            "Number of lines to join",
+        )]
+    }
+}
+
+impl CommandHandler for JoinLines {
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        let count = args.count().unwrap_or(1);
+        let mut buffer = buffer_arc.write();
+        let current_line = buffer.position().line;
+        let mut line_count = buffer.line_count();
+
+        for _ in 0..count {
+            // Can't join if on last line
+            if current_line + 1 >= line_count {
+                break;
+            }
+
+            // Move to end of current line
+            let line_len = buffer.line_len(current_line).unwrap_or(0);
+            buffer.set_position(Position::new(current_line, line_len));
+
+            // Delete newline (joins the lines)
+            let _edit = buffer.delete(1);
+
+            // Delete leading whitespace of what was the next line
+            let new_line_content = buffer.line(current_line).unwrap_or("");
+            let after_join = &new_line_content[line_len..];
+            let leading_ws = after_join.chars().take_while(|c| c.is_whitespace()).count();
+
+            if leading_ws > 0 {
+                let _edit = buffer.delete(leading_ws);
+            }
+
+            // Insert single space between joined content (Vim behavior)
+            // Only if there's content after the join point
+            if buffer.line_len(current_line).unwrap_or(0) > line_len {
+                let _edit = buffer.insert(" ");
+            }
+
+            // Update line count for next iteration
+            line_count = buffer.line_count();
+        }
+
+        drop(buffer);
         CommandResult::Success
     }
 }
@@ -228,13 +1319,34 @@ impl CommandHandler for ExitToNormal {
 #[must_use]
 pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
     vec![
+        // Cursor movement
         Box::new(CursorUp),
         Box::new(CursorDown),
         Box::new(CursorLeft),
         Box::new(CursorRight),
+        // Display line movement
+        Box::new(CursorDisplayDown),
+        Box::new(CursorDisplayUp),
+        // Mode switching
         Box::new(EnterInsertMode),
         Box::new(EnterInsertModeAppend),
+        Box::new(EnterInsertFirstNonBlank),
+        Box::new(EnterInsertEndOfLine),
+        Box::new(OpenLineBelow),
+        Box::new(OpenLineAbove),
         Box::new(ExitToNormal),
+        // Insert mode edits
+        Box::new(InsertNewline),
+        Box::new(InsertTab),
+        // Delete operations
+        Box::new(DeleteChar),
+        Box::new(DeleteCharBefore),
+        Box::new(DeleteLine),
+        Box::new(DeleteToEndOfLine),
+        Box::new(JoinLines),
+        // Undo/redo
+        Box::new(UndoCommand),
+        Box::new(RedoCommand),
     ]
 }
 
@@ -249,19 +1361,129 @@ pub fn cursor_commands() -> Vec<Box<dyn CommandHandler>> {
     ]
 }
 
+/// Get display line movement commands (gj, gk).
+#[must_use]
+pub fn display_line_commands() -> Vec<Box<dyn CommandHandler>> {
+    vec![Box::new(CursorDisplayDown), Box::new(CursorDisplayUp)]
+}
+
 /// Get all mode switching commands.
 #[must_use]
 pub fn mode_commands() -> Vec<Box<dyn CommandHandler>> {
     vec![
         Box::new(EnterInsertMode),
         Box::new(EnterInsertModeAppend),
+        Box::new(EnterInsertFirstNonBlank),
+        Box::new(EnterInsertEndOfLine),
+        Box::new(OpenLineBelow),
+        Box::new(OpenLineAbove),
         Box::new(ExitToNormal),
     ]
 }
 
+/// Get all insert mode edit commands.
+#[must_use]
+pub fn insert_edit_commands() -> Vec<Box<dyn CommandHandler>> {
+    vec![Box::new(InsertNewline), Box::new(InsertTab)]
+}
+
+/// Get all delete commands.
+#[must_use]
+pub fn delete_commands() -> Vec<Box<dyn CommandHandler>> {
+    vec![
+        Box::new(DeleteChar),
+        Box::new(DeleteCharBefore),
+        Box::new(DeleteLine),
+        Box::new(DeleteToEndOfLine),
+        Box::new(JoinLines),
+    ]
+}
+
+/// Get all undo/redo commands.
+#[must_use]
+pub fn undo_commands() -> Vec<Box<dyn CommandHandler>> {
+    vec![Box::new(UndoCommand), Box::new(RedoCommand)]
+}
+
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {
+        super::*,
+        reovim_driver_command::ArgValue,
+        reovim_kernel::api::v1::{
+            Buffer, BufferError, BufferId, BufferManager, EventBus, MarkBank, MotionEngine,
+            OptionRegistry, RegisterBank, RwLock, TextObjectEngine,
+        },
+        std::{collections::HashMap, sync::Arc},
+    };
+
+    /// Test buffer manager that actually stores buffers.
+    struct TestBufferManager {
+        buffers: RwLock<HashMap<BufferId, Arc<RwLock<Buffer>>>>,
+    }
+
+    impl TestBufferManager {
+        fn new() -> Self {
+            Self {
+                buffers: RwLock::new(HashMap::new()),
+            }
+        }
+    }
+
+    impl BufferManager for TestBufferManager {
+        fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
+            self.buffers.read().get(&id).cloned()
+        }
+
+        fn create(&self) -> BufferId {
+            let id = BufferId::new();
+            let buffer = Arc::new(RwLock::new(Buffer::new()));
+            self.buffers.write().insert(id, buffer);
+            id
+        }
+
+        fn register(&self, buffer: Buffer) -> BufferId {
+            let id = BufferId::new();
+            let buffer = Arc::new(RwLock::new(buffer));
+            self.buffers.write().insert(id, buffer);
+            id
+        }
+
+        fn unregister(&self, id: BufferId) -> Result<Buffer, BufferError> {
+            self.buffers
+                .write()
+                .remove(&id)
+                .map_or(Err(BufferError::NotFound(id)), |arc_buffer| {
+                    Arc::try_unwrap(arc_buffer)
+                        .map_or_else(|arc| Ok(arc.read().clone()), |rwlock| Ok(rwlock.into_inner()))
+                })
+        }
+
+        fn list(&self) -> Vec<BufferId> {
+            self.buffers.read().keys().copied().collect()
+        }
+
+        fn count(&self) -> usize {
+            self.buffers.read().len()
+        }
+    }
+
+    /// Create a `KernelContext` with a real buffer manager for testing.
+    fn create_test_context() -> KernelContext {
+        KernelContext::new(
+            Arc::new(EventBus::new()),
+            Arc::new(TestBufferManager::new()),
+            Arc::new(MotionEngine),
+            Arc::new(TextObjectEngine),
+            Arc::new(RwLock::new(RegisterBank::new())),
+            Arc::new(RwLock::new(MarkBank::new())),
+            Arc::new(OptionRegistry::default()),
+        )
+    }
+
+    // =========================================================================
+    // Command ID Tests
+    // =========================================================================
 
     #[test]
     fn test_cursor_up_id() {
@@ -297,14 +1519,18 @@ mod tests {
     #[test]
     fn test_enter_insert_append_id() {
         let cmd = EnterInsertModeAppend;
-        assert_eq!(cmd.id().name(), "enter-insert-append");
+        assert_eq!(cmd.id().name(), "enter-insert-after");
     }
 
     #[test]
     fn test_exit_to_normal_id() {
         let cmd = ExitToNormal;
-        assert_eq!(cmd.id().name(), "exit-to-normal");
+        assert_eq!(cmd.id().name(), "exit-insert");
     }
+
+    // =========================================================================
+    // Command Args Tests
+    // =========================================================================
 
     #[test]
     fn test_cursor_commands_have_count_arg() {
@@ -319,7 +1545,8 @@ mod tests {
     #[test]
     fn test_all_commands_count() {
         let cmds = all_commands();
-        assert_eq!(cmds.len(), 7);
+        // 4 cursor + 2 display + 7 mode + 2 insert-edit + 5 delete + 2 undo = 22
+        assert_eq!(cmds.len(), 22);
     }
 
     #[test]
@@ -329,23 +1556,466 @@ mod tests {
     }
 
     #[test]
-    fn test_mode_commands_count() {
-        let cmds = mode_commands();
-        assert_eq!(cmds.len(), 3);
+    fn test_display_line_commands_count() {
+        let cmds = display_line_commands();
+        assert_eq!(cmds.len(), 2);
     }
 
     #[test]
-    fn test_command_execute_returns_success() {
+    fn test_mode_commands_count() {
+        let cmds = mode_commands();
+        assert_eq!(cmds.len(), 7);
+    }
+
+    // =========================================================================
+    // Cursor Commands Without Buffer ID (Error Handling)
+    // =========================================================================
+
+    #[test]
+    fn test_cursor_up_no_buffer_id_returns_error() {
         let mut ctx = KernelContext::default();
         let args = CommandContext::new();
+        let result = CursorUp.execute(&mut ctx, &args);
+        assert!(result.is_error());
+    }
 
-        // All commands should return Success for now
-        assert_eq!(CursorUp.execute(&mut ctx, &args), CommandResult::Success);
-        assert_eq!(CursorDown.execute(&mut ctx, &args), CommandResult::Success);
-        assert_eq!(CursorLeft.execute(&mut ctx, &args), CommandResult::Success);
-        assert_eq!(CursorRight.execute(&mut ctx, &args), CommandResult::Success);
+    #[test]
+    fn test_cursor_down_no_buffer_id_returns_error() {
+        let mut ctx = KernelContext::default();
+        let args = CommandContext::new();
+        let result = CursorDown.execute(&mut ctx, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_cursor_left_no_buffer_id_returns_error() {
+        let mut ctx = KernelContext::default();
+        let args = CommandContext::new();
+        let result = CursorLeft.execute(&mut ctx, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_cursor_right_no_buffer_id_returns_error() {
+        let mut ctx = KernelContext::default();
+        let args = CommandContext::new();
+        let result = CursorRight.execute(&mut ctx, &args);
+        assert!(result.is_error());
+    }
+
+    // =========================================================================
+    // Cursor Commands With Invalid Buffer ID (Error Handling)
+    // =========================================================================
+
+    #[test]
+    fn test_cursor_up_invalid_buffer_returns_error() {
+        let mut ctx = KernelContext::default();
+        let mut args = CommandContext::new();
+        args.set("buffer_id", ArgValue::BufferId(999));
+        let result = CursorUp.execute(&mut ctx, &args);
+        assert!(result.is_error());
+    }
+
+    // =========================================================================
+    // Cursor Movement Tests (With Valid Buffer)
+    // =========================================================================
+
+    fn setup_buffer_context() -> (KernelContext, BufferId) {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("line one\nline two\nline three");
+        let buffer_id = ctx.buffers.register(buffer);
+        (ctx, buffer_id)
+    }
+
+    #[test]
+    fn test_cursor_down_moves_cursor() {
+        let (mut ctx, buffer_id) = setup_buffer_context();
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = CursorDown.execute(&mut ctx, &args);
+        assert!(result.is_success());
+
+        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let pos = buffer.read().position();
+        assert_eq!(pos.line, 1);
+        assert_eq!(pos.column, 0);
+    }
+
+    #[test]
+    fn test_cursor_up_moves_cursor() {
+        let (mut ctx, buffer_id) = setup_buffer_context();
+        // First move down, then test up
+        {
+            let buffer = ctx.buffers.get(buffer_id).unwrap();
+            buffer.write().set_position(Position::new(2, 0));
+        }
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = CursorUp.execute(&mut ctx, &args);
+        assert!(result.is_success());
+
+        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let pos = buffer.read().position();
+        assert_eq!(pos.line, 1);
+    }
+
+    #[test]
+    fn test_cursor_right_moves_cursor() {
+        let (mut ctx, buffer_id) = setup_buffer_context();
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = CursorRight.execute(&mut ctx, &args);
+        assert!(result.is_success());
+
+        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let pos = buffer.read().position();
+        assert_eq!(pos.line, 0);
+        assert_eq!(pos.column, 1);
+    }
+
+    #[test]
+    fn test_cursor_left_moves_cursor() {
+        let (mut ctx, buffer_id) = setup_buffer_context();
+        // First move right, then test left
+        {
+            let buffer = ctx.buffers.get(buffer_id).unwrap();
+            buffer.write().set_position(Position::new(0, 5));
+        }
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = CursorLeft.execute(&mut ctx, &args);
+        assert!(result.is_success());
+
+        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let pos = buffer.read().position();
+        assert_eq!(pos.column, 4);
+    }
+
+    // =========================================================================
+    // Count Argument Tests
+    // =========================================================================
+
+    #[test]
+    fn test_cursor_down_count_respected() {
+        let (mut ctx, buffer_id) = setup_buffer_context();
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(2));
+
+        let result = CursorDown.execute(&mut ctx, &args);
+        assert!(result.is_success());
+
+        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let pos = buffer.read().position();
+        assert_eq!(pos.line, 2); // Moved down 2 lines
+    }
+
+    #[test]
+    fn test_cursor_right_count_respected() {
+        let (mut ctx, buffer_id) = setup_buffer_context();
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(3));
+
+        let result = CursorRight.execute(&mut ctx, &args);
+        assert!(result.is_success());
+
+        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let pos = buffer.read().position();
+        assert_eq!(pos.column, 3);
+    }
+
+    // =========================================================================
+    // Boundary Tests
+    // =========================================================================
+
+    #[test]
+    fn test_cursor_up_at_line_zero_is_noop() {
+        let (mut ctx, buffer_id) = setup_buffer_context();
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        // Cursor starts at (0, 0), should stay there
+        let result = CursorUp.execute(&mut ctx, &args);
+        assert!(result.is_success());
+
+        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let pos = buffer.read().position();
+        assert_eq!(pos.line, 0);
+    }
+
+    #[test]
+    fn test_cursor_down_at_eof_is_noop() {
+        let (mut ctx, buffer_id) = setup_buffer_context();
+        // Move to last line
+        {
+            let buffer = ctx.buffers.get(buffer_id).unwrap();
+            buffer.write().set_position(Position::new(2, 0));
+        }
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = CursorDown.execute(&mut ctx, &args);
+        assert!(result.is_success());
+
+        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let pos = buffer.read().position();
+        assert_eq!(pos.line, 2); // Stayed at last line
+    }
+
+    #[test]
+    fn test_cursor_left_at_col_zero_is_noop() {
+        let (mut ctx, buffer_id) = setup_buffer_context();
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        // Cursor starts at column 0
+        let result = CursorLeft.execute(&mut ctx, &args);
+        assert!(result.is_success());
+
+        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let pos = buffer.read().position();
+        assert_eq!(pos.column, 0);
+    }
+
+    #[test]
+    fn test_cursor_right_at_eol_is_noop() {
+        let (mut ctx, buffer_id) = setup_buffer_context();
+        // Move to end of line
+        {
+            let buffer = ctx.buffers.get(buffer_id).unwrap();
+            buffer.write().set_position(Position::new(0, 8)); // "line one" is 8 chars
+        }
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = CursorRight.execute(&mut ctx, &args);
+        assert!(result.is_success());
+
+        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let pos = buffer.read().position();
+        assert_eq!(pos.column, 8); // Stayed at EOL
+    }
+
+    // =========================================================================
+    // Mode Commands Tests
+    // =========================================================================
+
+    #[test]
+    fn test_mode_commands_execute_success() {
+        let mut ctx = create_test_context();
+        let args = CommandContext::new();
+
+        // Mode commands don't require buffer_id
         assert_eq!(EnterInsertMode.execute(&mut ctx, &args), CommandResult::Success);
         assert_eq!(EnterInsertModeAppend.execute(&mut ctx, &args), CommandResult::Success);
         assert_eq!(ExitToNormal.execute(&mut ctx, &args), CommandResult::Success);
+    }
+
+    // =========================================================================
+    // Edge Case Tests
+    // =========================================================================
+
+    #[test]
+    fn test_cursor_movement_empty_buffer() {
+        let mut ctx = create_test_context();
+        let buffer = Buffer::new(); // Empty buffer
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        // All movements should succeed (no-op on empty buffer)
+        assert!(CursorDown.execute(&mut ctx, &args).is_success());
+        assert!(CursorUp.execute(&mut ctx, &args).is_success());
+        assert!(CursorLeft.execute(&mut ctx, &args).is_success());
+        assert!(CursorRight.execute(&mut ctx, &args).is_success());
+    }
+
+    #[test]
+    fn test_cursor_movement_single_line() {
+        let mut ctx = create_test_context();
+        let buffer = Buffer::from_string("single line");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        // Up/down should be no-op
+        assert!(CursorDown.execute(&mut ctx, &args).is_success());
+        assert!(CursorUp.execute(&mut ctx, &args).is_success());
+
+        // Left/right should work
+        assert!(CursorRight.execute(&mut ctx, &args).is_success());
+        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        assert_eq!(buffer.read().position().column, 1);
+    }
+
+    // =========================================================================
+    // Undo/Redo Command Tests
+    // =========================================================================
+
+    #[test]
+    fn test_undo_command_id() {
+        let cmd = UndoCommand;
+        assert_eq!(cmd.id().module(), &EDITOR_MODULE);
+        assert_eq!(cmd.id().name(), "undo");
+    }
+
+    #[test]
+    fn test_redo_command_id() {
+        let cmd = RedoCommand;
+        assert_eq!(cmd.id().module(), &EDITOR_MODULE);
+        assert_eq!(cmd.id().name(), "redo");
+    }
+
+    #[test]
+    fn test_undo_command_names() {
+        let cmd = UndoCommand;
+        let names = cmd.names();
+        assert!(names.contains(&"u"));
+        assert!(names.contains(&"undo"));
+    }
+
+    #[test]
+    fn test_redo_command_names() {
+        let cmd = RedoCommand;
+        let names = cmd.names();
+        assert!(names.contains(&"redo"));
+    }
+
+    #[test]
+    fn test_undo_command_returns_undo_action() {
+        let mut ctx = KernelContext::default();
+        let args = CommandContext::new();
+
+        let result = UndoCommand.execute(&mut ctx, &args);
+        assert!(result.is_undo_action());
+
+        match result {
+            CommandResult::UndoAction(UndoAction::Undo { count }) => {
+                assert_eq!(count, 1); // Default count is 1
+            }
+            _ => panic!("Expected UndoAction::Undo"),
+        }
+    }
+
+    #[test]
+    fn test_redo_command_returns_undo_action() {
+        let mut ctx = KernelContext::default();
+        let args = CommandContext::new();
+
+        let result = RedoCommand.execute(&mut ctx, &args);
+        assert!(result.is_undo_action());
+
+        match result {
+            CommandResult::UndoAction(UndoAction::Redo { count }) => {
+                assert_eq!(count, 1);
+            }
+            _ => panic!("Expected UndoAction::Redo"),
+        }
+    }
+
+    #[test]
+    fn test_undo_command_respects_count() {
+        let mut ctx = KernelContext::default();
+        let mut args = CommandContext::new();
+        args.set("count", ArgValue::Count(5));
+
+        let result = UndoCommand.execute(&mut ctx, &args);
+
+        match result {
+            CommandResult::UndoAction(UndoAction::Undo { count }) => {
+                assert_eq!(count, 5);
+            }
+            _ => panic!("Expected UndoAction::Undo"),
+        }
+    }
+
+    #[test]
+    fn test_redo_command_respects_count() {
+        let mut ctx = KernelContext::default();
+        let mut args = CommandContext::new();
+        args.set("count", ArgValue::Count(3));
+
+        let result = RedoCommand.execute(&mut ctx, &args);
+
+        match result {
+            CommandResult::UndoAction(UndoAction::Redo { count }) => {
+                assert_eq!(count, 3);
+            }
+            _ => panic!("Expected UndoAction::Redo"),
+        }
+    }
+
+    #[test]
+    fn test_undo_command_zero_count_defaults_to_one() {
+        let mut ctx = KernelContext::default();
+        let mut args = CommandContext::new();
+        args.set("count", ArgValue::Count(0));
+
+        let result = UndoCommand.execute(&mut ctx, &args);
+
+        // Zero count should be interpreted as 0 (caller's responsibility to handle)
+        match result {
+            CommandResult::UndoAction(UndoAction::Undo { count }) => {
+                assert_eq!(count, 0);
+            }
+            _ => panic!("Expected UndoAction::Undo"),
+        }
+    }
+
+    #[test]
+    fn test_undo_commands_helper_returns_two_commands() {
+        let cmds = undo_commands();
+        assert_eq!(cmds.len(), 2);
+    }
+
+    #[test]
+    fn test_undo_command_has_count_arg() {
+        let cmd = UndoCommand;
+        let args = cmd.args();
+        assert!(!args.is_empty());
+        assert_eq!(args[0].name, "count");
+        assert_eq!(args[0].kind, ArgKind::Count);
+    }
+
+    #[test]
+    fn test_redo_command_has_count_arg() {
+        let cmd = RedoCommand;
+        let args = cmd.args();
+        assert!(!args.is_empty());
+        assert_eq!(args[0].name, "count");
+        assert_eq!(args[0].kind, ArgKind::Count);
+    }
+
+    #[test]
+    fn test_undo_command_does_not_require_buffer_id() {
+        // Undo commands return intent, they don't directly access the buffer
+        let mut ctx = KernelContext::default();
+        let args = CommandContext::new();
+
+        // Should NOT return an error, should return UndoAction
+        let result = UndoCommand.execute(&mut ctx, &args);
+        assert!(!result.is_error());
+        assert!(result.is_undo_action());
+    }
+
+    #[test]
+    fn test_redo_command_does_not_require_buffer_id() {
+        let mut ctx = KernelContext::default();
+        let args = CommandContext::new();
+
+        let result = RedoCommand.execute(&mut ctx, &args);
+        assert!(!result.is_error());
+        assert!(result.is_undo_action());
     }
 }

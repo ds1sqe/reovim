@@ -38,28 +38,11 @@ pub fn server_kill(ctx: RpcContext, _params: serde_json::Value) -> HandlerFuture
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        crate::session::{ClientId, Session, SessionId},
-        reovim_kernel::api::v1::{KernelContext, ModeId, ModuleId},
-        std::sync::Arc,
-    };
-
-    fn test_session() -> Arc<Session> {
-        Session::new(
-            SessionId::new("test"),
-            KernelContext::default(),
-            ModeId::new(ModuleId::new("test"), "normal"),
-        )
-    }
+    use {super::*, crate::server::rpc::handlers::test_utils::test_ctx};
 
     #[tokio::test]
     async fn test_server_kill_handler() {
-        let session = test_session();
-        let ctx = RpcContext {
-            session,
-            client_id: ClientId::new(1),
-        };
+        let ctx = test_ctx();
 
         let result = server_kill(ctx, serde_json::json!({})).await;
 

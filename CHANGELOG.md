@@ -15,6 +15,121 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 7.5-6: Insert Mode & Delete Operations** (Issues #233, #234, #231)
+  - **Insert Mode Character Input** (`modules/editor/src/fallback.rs`):
+    - `EditorFallbackHandler` now inserts characters in Insert mode
+    - Handles printable characters, Tab (with expandtab/tabstop options), Enter
+    - Non-printable keys in Insert mode are ignored
+    - Normal mode unmatched keys beep
+  - **Mode Entry Commands** (`modules/editor/src/command.rs`):
+    - `EnterInsertModeAppend` (a) - Insert after cursor
+    - `EnterInsertFirstNonBlank` (I) - Insert at first non-blank
+    - `EnterInsertEndOfLine` (A) - Insert at end of line
+    - `OpenLineBelow` (o) - Open line below and enter insert
+    - `OpenLineAbove` (O) - Open line above and enter insert
+  - **Insert Mode Edit Commands**:
+    - `InsertNewline` - Enter key in insert mode
+    - `InsertTab` - Tab key with expandtab/tabstop option support
+  - **Delete Operations**:
+    - `DeleteChar` (x) - Delete character under cursor
+    - `DeleteCharBefore` (X) - Delete character before cursor (backspace in Normal)
+    - `DeleteLine` (dd) - Delete current line(s) with count support
+    - `DeleteToEndOfLine` (D) - Delete from cursor to end of line
+    - `JoinLines` (J) - Join current line with next, preserving Vim semantics
+  - **Display Line Motions** (`modules/editor/src/display_lines.rs`):
+    - `CursorDisplayDown` (gj) - Move down one display line
+    - `CursorDisplayUp` (gk) - Move up one display line
+    - Handles wrapped lines based on terminal width (default 80)
+    - `display_line_count()`, `display_position()`, `buffer_column()` utilities
+  - **Keybindings** (`modules/keymap/src/normal.rs`):
+    - Added gj/gk bindings for display line movement
+  - **Unit Tests**:
+    - 78 tests in editor module (cursor, display lines, fallback, mode commands)
+  - **Deferred Features** tracked in Issue #248:
+    - Count support for insert mode entry commands
+    - Autoindent on open line commands
+    - Register support for delete operations
+    - Viewport-aware terminal width for gj/gk
+
+- **Phase 7.3-4: Cursor Movement & Undo/Redo** (Issues #231, #232)
+  - **Shared Infrastructure**:
+    - `CommandContext.buffer_id()` - Commands can now access active buffer ID
+    - `CommandContext.set_buffer_id()` - Runner sets buffer ID before command dispatch
+    - `ArgKind::BufferId` / `ArgValue::BufferId(usize)` - New argument type for buffer IDs
+    - `CommandRegistry::execute()` auto-populates buffer ID from `AppState.active_buffer`
+  - **Cursor Movement Commands** (`modules/editor/src/command.rs`):
+    - `CursorUp` (k) - Move cursor up with count support
+    - `CursorDown` (j) - Move cursor down with count support
+    - `CursorLeft` (h) - Move cursor left with count support
+    - `CursorRight` (l) - Move cursor right with count support
+    - All commands emit `CursorMoved` events for event subscribers
+    - Boundary handling (no-op at edges), column clamping to line length
+  - **Undo/Redo Framework** (Runner-Side Callback Pattern):
+    - `UndoAction` enum: `Undo { count }`, `Redo { count }`
+    - `CommandResult::UndoAction(action)` - Commands declare undo intent
+    - `UndoRegistry` (`runner/src/undo_registry.rs`) - Per-buffer undo tree storage
+    - `UndoCommand` (u) - Returns `UndoAction::Undo` for runner to handle
+    - `RedoCommand` (C-r) - Returns `UndoAction::Redo` for runner to handle
+  - **Unit Tests**:
+    - 65 tests in editor module (cursor commands, undo/redo commands)
+    - 11 tests in UndoRegistry (buffer isolation, undo/redo operations)
+
+- **Phase 7.2: Session/Viewport Architecture** (Issue #230)
+  - **Per-Client Viewport** (`runner/src/server/client/viewport.rs`):
+    - `ClientViewport` struct with terminal dimensions, active buffer, cursor positions per buffer
+    - Level 2 lock hierarchy (viewport → session safe, session → viewport deadlock)
+    - VT100 defaults (80x24)
+    - `cursor_for_buffer()`/`set_cursor_for_buffer()` for position tracking
+    - `clear_viewports_for_closed_buffer()` for buffer close cleanup
+  - **RPC Handler Updates**:
+    - `RpcContext` now includes `client: Arc<Client>` for direct viewport access
+    - `state/cursor` reads from client's active buffer
+    - `state/screen` reads from client's viewport dimensions
+    - `editor/resize` updates client's viewport only
+    - `editor/set_active_buffer` - New handler to switch active buffer with cursor save/restore
+  - **Buffer-Scoped Notifications** (`runner/src/server/notification.rs`):
+    - `broadcast_to_buffer()` sends notifications only to clients viewing specific buffer
+    - `emit_state_changes()` uses buffer-scoped broadcasts for cursor/modified events
+    - Mode changes remain session-wide
+  - **Protocol Constants** (`lib/protocol/src/v1/methods.rs`):
+    - `EDITOR_SET_ACTIVE_BUFFER` method constant
+  - **Integration Tests** (`runner/tests/viewport_integration.rs`):
+    - Multi-client viewport independence tests
+    - Per-client resize isolation
+    - Buffer validation
+
+- **Phase 7.1: Test Infrastructure** (Issue #229)
+  - **Integration Test Harness** (`runner/tests/common/`):
+    - `harness.rs` - Server process spawning with OS-assigned ports, kill-on-drop cleanup
+    - `integration.rs` - Fluent builder API for single-client tests:
+      - `IntegrationTest::new().with_buffer("text").send_keys("dd").run().await`
+      - Temp file creation for buffer initialization
+      - Key sequence parsing with delays
+    - `multi_client.rs` - Multi-client test utilities:
+      - `MultiClientTest::with_clients(n)` - Spawn n clients against shared server
+      - `TestClient` - Per-client wrapper with cursor/buffer queries
+    - `assertions.rs` - Type-safe assertion utilities:
+      - `assert_buffer_eq!`, `assert_buffer_contains!` macros
+      - `assert_cursor!`, `assert_mode!`, `assert_register!` macros
+      - Clean failure messages with expected/actual values
+    - `mod.rs` - Public re-exports for test modules
+  - **Buffer Manager** (`runner/src/buffer_manager.rs`):
+    - `SimpleBufferManager` - Real buffer storage implementation
+    - `real_kernel_context()` - Creates working KernelContext for server
+    - Replaces stub implementation that didn't persist buffers
+  - **Ported Test Suites** (61 tests, all `#[ignore]` pending module loading):
+    - `operators.rs` - 18 tests: dd, x, dw, d$, dj, db, 5dd, 3x operators
+    - `registers.rs` - Register tests (yy, yw, named registers)
+    - `undo_redo.rs` - 8 tests: u, Ctrl-R, multiple undo/redo
+    - `cursor_movement.rs` - 18 tests: hjkl, 0$, gg/G, w/b/e, boundaries
+    - `edge_cases.rs` - 14 tests: empty buffer, Unicode, single char, special chars
+    - `multi_client_tests.rs` - 3 tests: concurrent client operations
+  - **Documentation** (`docs/guides/testing.md`):
+    - Phase 7 Integration Tests section with architecture diagram
+    - API reference for IntegrationTest and MultiClientTest
+    - Test organization and running instructions
+  - Tests compile and pass (ignored tests await module loading)
+
 - **Phase 6.5: Debug RPC Endpoints** (Issue #227)
   - **Debug API** (`lib/kernel/src/api/debug.rs`):
     - `KernelStateSnapshot` - Buffer count, buffer IDs, event handlers

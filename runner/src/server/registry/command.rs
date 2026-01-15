@@ -69,6 +69,10 @@ impl CommandRegistry {
     ///
     /// Returns `None` if the command isn't registered.
     ///
+    /// The active buffer ID from `AppState` is automatically populated
+    /// into the `CommandContext` before execution, allowing commands to
+    /// know which buffer they should operate on.
+    ///
     /// # Arguments
     ///
     /// * `id` - The command ID to execute
@@ -87,9 +91,14 @@ impl CommandRegistry {
         args: &CommandContext,
     ) -> Option<CommandResult> {
         self.handlers.get(id).map(|handler| {
+            // Clone args and populate buffer ID from AppState
+            let mut ctx = args.clone();
+            if let Some(buffer_id) = app.active_buffer {
+                ctx.set_buffer_id(buffer_id);
+            }
             // Note: CommandHandler::execute takes &mut KernelContext,
             // we extract it from AppState
-            handler.execute(&mut app.kernel, args)
+            handler.execute(&mut app.kernel, &ctx)
         })
     }
 

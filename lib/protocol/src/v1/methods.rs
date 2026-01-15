@@ -69,6 +69,9 @@ pub const STATE_LAYER_INFO: &str = "state/layer_info";
 /// Resize the editor.
 pub const EDITOR_RESIZE: &str = "editor/resize";
 
+/// Set the active buffer for a client.
+pub const EDITOR_SET_ACTIVE_BUFFER: &str = "editor/set_active_buffer";
+
 /// Quit the editor.
 pub const EDITOR_QUIT: &str = "editor/quit";
 

@@ -36,10 +36,10 @@ pub use dispatcher::{HandlerFn, HandlerFuture, RpcContext, RpcDispatcher, RpcRes
 
 use reovim_protocol::v1::{
     BUFFER_GET_CONTENT, BUFFER_LIST, BUFFER_OPEN_FILE, BUFFER_SET_CONTENT, COMMAND_EXECUTE,
-    EDITOR_QUIT, EDITOR_RESIZE, INPUT_KEYS, MODULE_LIST, MODULE_LOAD, MODULE_RELOAD, MODULE_UNLOAD,
-    SERVER_KILL, STATE_ASCII_ART, STATE_CURSOR, STATE_LAYER_INFO, STATE_MICROSCOPE, STATE_MODE,
-    STATE_SCREEN, STATE_SCREEN_CONTENT, STATE_SELECTION, STATE_TELESCOPE, STATE_VISUAL_SNAPSHOT,
-    STATE_WINDOWS,
+    EDITOR_QUIT, EDITOR_RESIZE, EDITOR_SET_ACTIVE_BUFFER, INPUT_KEYS, MODULE_LIST, MODULE_LOAD,
+    MODULE_RELOAD, MODULE_UNLOAD, SERVER_KILL, STATE_ASCII_ART, STATE_CURSOR, STATE_LAYER_INFO,
+    STATE_MICROSCOPE, STATE_MODE, STATE_SCREEN, STATE_SCREEN_CONTENT, STATE_SELECTION,
+    STATE_TELESCOPE, STATE_VISUAL_SNAPSHOT, STATE_WINDOWS,
 };
 
 use super::debug;
@@ -76,9 +76,10 @@ pub fn create_default_dispatcher() -> RpcDispatcher {
     dispatcher.register(STATE_ASCII_ART, handlers::state_ascii_art);
     dispatcher.register(STATE_LAYER_INFO, handlers::state_layer_info);
 
-    // Editor methods (stubs)
+    // Editor methods
     dispatcher.register(EDITOR_RESIZE, handlers::editor_resize);
     dispatcher.register(EDITOR_QUIT, handlers::editor_quit);
+    dispatcher.register(EDITOR_SET_ACTIVE_BUFFER, handlers::editor_set_active_buffer);
 
     // Module methods
     dispatcher.register(MODULE_LIST, handlers::module_list);
@@ -131,14 +132,15 @@ mod tests {
         assert!(dispatcher.has_method(MODULE_UNLOAD));
         assert!(dispatcher.has_method(MODULE_RELOAD));
 
-        // Editor handlers (stubs)
+        // Editor handlers
         assert!(dispatcher.has_method(EDITOR_RESIZE));
         assert!(dispatcher.has_method(EDITOR_QUIT));
+        assert!(dispatcher.has_method(EDITOR_SET_ACTIVE_BUFFER));
 
         // Server handlers
         assert!(dispatcher.has_method(SERVER_KILL));
 
-        // 14 implemented + 10 stubs + 11 debug (2 info + 4 inspect + 2 metrics + 2 log + 1 snapshot) = 35 total
-        assert_eq!(dispatcher.method_count(), 35);
+        // 15 implemented + 9 stubs + 11 debug (2 info + 4 inspect + 2 metrics + 2 log + 1 snapshot) = 36 total
+        assert_eq!(dispatcher.method_count(), 36);
     }
 }

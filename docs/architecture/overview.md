@@ -7,9 +7,9 @@ Reovim follows a **Linux kernel-inspired architecture** with clear separation be
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         MODULES                                 │
-│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐   │
-│  │ keymap  │ │ motions │ │operators│ │ layout  │ │ options │   │
-│  └────┬────┘ └────┬────┘ └────┬────┘ └────┬────┘ └────┬────┘   │
+│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐    │
+│  │ keymap  │ │ motions │ │operators│ │ layout  │ │ options │    │
+│  └────┬────┘ └────┬────┘ └────┬────┘ └────┬────┘ └────┬────┘    │
 │       │           │           │           │           │         │
 │       └───────────┴───────────┼───────────┴───────────┘         │
 │                               │                                 │
@@ -25,11 +25,11 @@ Reovim follows a **Linux kernel-inspired architecture** with clear separation be
                                 │
 ┌───────────────────────────────┼─────────────────────────────────┐
 │                      KERNEL (lib/kernel)                        │
-│  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐        │
-│  │  mm/   │ │  ipc/  │ │ core/  │ │ block/ │ │ sched/ │        │
-│  │ Buffer │ │EventBus│ │ Motion │ │UndoTree│ │Runtime │        │
-│  │Position│ │ Scope  │ │TextObj │ │  Txn   │ │WorkQue │        │
-│  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘        │
+│  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐         │
+│  │  mm/   │ │  ipc/  │ │ core/  │ │ block/ │ │ sched/ │         │
+│  │ Buffer │ │EventBus│ │ Motion │ │UndoTree│ │Runtime │         │
+│  │Position│ │ Scope  │ │TextObj │ │  Txn   │ │WorkQue │         │
+│  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘         │
 │                                                                 │
 │  ┌────────┐ ┌────────┐                                          │
 │  │printk/ │ │ debug/ │                                          │
@@ -39,11 +39,11 @@ Reovim follows a **Linux kernel-inspired architecture** with clear separation be
                                 │
 ┌───────────────────────────────┼─────────────────────────────────┐
 │                      DRIVERS (lib/drivers)                      │
-│  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐        │
-│  │syntax/ │ │ input/ │ │display/│ │  lsp/  │ │  net/  │        │
-│  │Syntax  │ │Keyboard│ │ Frame  │ │  LSP   │ │  RPC   │        │
-│  │Driver  │ │ Mouse  │ │Composit│ │ Client │ │ Server │        │
-│  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘        │
+│  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐         │
+│  │syntax/ │ │ input/ │ │display/│ │  lsp/  │ │  net/  │         │
+│  │Syntax  │ │Keyboard│ │ Frame  │ │  LSP   │ │  RPC   │         │
+│  │Driver  │ │ Mouse  │ │Composit│ │ Client │ │ Server │         │
+│  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘         │
 │                                                                 │
 │  ┌────────┐ ┌────────┐                                          │
 │  │  vfs/  │ │  log/  │                                          │

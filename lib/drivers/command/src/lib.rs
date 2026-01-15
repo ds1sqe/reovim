@@ -58,7 +58,7 @@
 //! ```
 
 use {
-    reovim_kernel::api::v1::{CommandId, KernelContext},
+    reovim_kernel::api::v1::{BufferId, CommandId, KernelContext},
     std::collections::HashMap,
 };
 
@@ -237,6 +237,8 @@ pub enum ArgKind {
     String,
     /// Bang modifier (e.g., `!` in `:q!`).
     Bang,
+    /// Buffer identifier (set by runner before command execution).
+    BufferId,
 }
 
 /// Argument value parsed from user input.
@@ -256,6 +258,8 @@ pub enum ArgValue {
     String(String),
     /// A bang modifier.
     Bang(bool),
+    /// A buffer identifier (raw usize, converted to `BufferId` by helper).
+    BufferId(usize),
 }
 
 // ============================================================================
@@ -342,6 +346,26 @@ impl CommandContext {
             _ => None,
         }
     }
+
+    /// Get the active buffer ID, if present.
+    ///
+    /// The buffer ID is set by the runner before command execution
+    /// to indicate which buffer the command should operate on.
+    #[must_use]
+    pub fn buffer_id(&self) -> Option<BufferId> {
+        match self.args.get("buffer_id") {
+            Some(ArgValue::BufferId(id)) => Some(BufferId::from_raw(*id)),
+            _ => None,
+        }
+    }
+
+    /// Set the active buffer ID.
+    ///
+    /// Called by the runner before dispatching a command.
+    pub fn set_buffer_id(&mut self, id: BufferId) {
+        self.args
+            .insert("buffer_id", ArgValue::BufferId(id.as_usize()));
+    }
 }
 
 // ============================================================================
@@ -359,6 +383,24 @@ pub enum CommandResult {
     Quit,
     /// Command requests editor to quit without saving.
     ForceQuit,
+    /// Command requests an undo/redo action to be performed by the runner.
+    ///
+    /// This follows the callback pattern where commands declare WHAT they want
+    /// (intent), and the runner decides HOW to execute it (policy).
+    UndoAction(UndoAction),
+}
+
+/// Undo/redo action intent returned by commands.
+///
+/// Commands return this to request undo/redo operations. The runner
+/// handles the actual undo tree manipulation, maintaining separation
+/// of concerns between command (policy) and runner (mechanism).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UndoAction {
+    /// Request to undo the specified number of changes.
+    Undo { count: usize },
+    /// Request to redo the specified number of changes.
+    Redo { count: usize },
 }
 
 impl CommandResult {
@@ -378,6 +420,12 @@ impl CommandResult {
     #[must_use]
     pub const fn is_quit(&self) -> bool {
         matches!(self, Self::Quit | Self::ForceQuit)
+    }
+
+    /// Check if the result is an undo/redo action.
+    #[must_use]
+    pub const fn is_undo_action(&self) -> bool {
+        matches!(self, Self::UndoAction(_))
     }
 
     /// Create an error result.
@@ -476,6 +524,38 @@ mod tests {
     fn test_command_result_quit() {
         assert!(CommandResult::Quit.is_quit());
         assert!(CommandResult::ForceQuit.is_quit());
+    }
+
+    #[test]
+    fn test_command_result_undo_action() {
+        let undo = CommandResult::UndoAction(UndoAction::Undo { count: 1 });
+        assert!(undo.is_undo_action());
+        assert!(!undo.is_success());
+        assert!(!undo.is_error());
+        assert!(!undo.is_quit());
+
+        let redo = CommandResult::UndoAction(UndoAction::Redo { count: 3 });
+        assert!(redo.is_undo_action());
+    }
+
+    #[test]
+    fn test_command_context_buffer_id() {
+        let mut ctx = CommandContext::new();
+        assert!(ctx.buffer_id().is_none());
+
+        let id = BufferId::from_raw(42);
+        ctx.set_buffer_id(id);
+        assert_eq!(ctx.buffer_id(), Some(BufferId::from_raw(42)));
+    }
+
+    #[test]
+    fn test_undo_action_variants() {
+        let undo = UndoAction::Undo { count: 5 };
+        let redo = UndoAction::Redo { count: 2 };
+
+        assert_eq!(undo, UndoAction::Undo { count: 5 });
+        assert_eq!(redo, UndoAction::Redo { count: 2 });
+        assert_ne!(undo, redo);
     }
 
     #[test]

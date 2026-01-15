@@ -53,31 +53,14 @@ pub fn debug_handlers(_ctx: RpcContext, _params: serde_json::Value) -> HandlerFu
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        crate::session::{ClientId, Session, SessionId},
-        reovim_kernel::api::v1::{KernelContext, ModeId, ModuleId},
-        std::sync::Arc,
-    };
-
-    fn test_session() -> Arc<Session> {
-        Session::new(
-            SessionId::new("test"),
-            KernelContext::default(),
-            ModeId::new(ModuleId::new("test"), "normal"),
-        )
-    }
+    use {super::*, crate::server::rpc::handlers::test_utils::test_ctx};
 
     #[tokio::test]
     async fn test_debug_metrics() {
         // Initialize start time for uptime
         super::super::super::infrastructure::init_server_start();
 
-        let session = test_session();
-        let ctx = RpcContext {
-            session,
-            client_id: ClientId::new(1),
-        };
+        let ctx = test_ctx();
 
         let result = debug_metrics(ctx, serde_json::Value::Null).await;
         assert!(result.is_ok());
@@ -90,11 +73,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_debug_handlers() {
-        let session = test_session();
-        let ctx = RpcContext {
-            session,
-            client_id: ClientId::new(1),
-        };
+        let ctx = test_ctx();
 
         let result = debug_handlers(ctx, serde_json::Value::Null).await;
         assert!(result.is_ok());

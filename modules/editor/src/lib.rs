@@ -31,6 +31,7 @@
 //! ```
 
 pub mod command;
+pub mod display_lines;
 mod fallback;
 mod mode;
 

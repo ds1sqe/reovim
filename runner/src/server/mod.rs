@@ -112,9 +112,15 @@ use std::{
 };
 
 use {
-    reovim_kernel::api::v1::{KernelContext, ModeId, ModuleId},
+    reovim_arch::sync::RwLock,
+    reovim_kernel::api::v1::{
+        EventBus, KernelContext, MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry,
+        RegisterBank, TextObjectEngine,
+    },
     reovim_protocol::v1::{RpcError, RpcRequest, RpcResponse},
 };
+
+use crate::buffer_manager::SimpleBufferManager;
 
 use {
     client::Client,
@@ -436,7 +442,7 @@ impl Server {
     /// Ensure the default session exists.
     fn ensure_default_session(&self, id: &SessionId) {
         self.sessions.get_or_create(id, || {
-            Session::new(id.clone(), KernelContext::default(), default_mode_id())
+            Session::new(id.clone(), real_kernel_context(), default_mode_id())
         });
     }
 }
@@ -452,6 +458,22 @@ impl Default for Server {
 /// Uses "editor:normal" as the initial mode.
 const fn default_mode_id() -> ModeId {
     ModeId::new(ModuleId::new("editor"), "normal")
+}
+
+/// Create a real `KernelContext` with working buffer management.
+///
+/// Unlike `KernelContext::default()` which uses stubs, this creates
+/// a fully functional kernel context suitable for actual editing.
+fn real_kernel_context() -> KernelContext {
+    KernelContext::new(
+        Arc::new(EventBus::new()),
+        Arc::new(SimpleBufferManager::new()),
+        Arc::new(MotionEngine),
+        Arc::new(TextObjectEngine),
+        Arc::new(RwLock::new(RegisterBank::new())),
+        Arc::new(RwLock::new(MarkBank::new())),
+        Arc::new(OptionRegistry::new()),
+    )
 }
 
 /// Handle a single client connection.
@@ -477,7 +499,7 @@ async fn handle_client(
 ) -> std::io::Result<()> {
     // Get or create the session
     let session = sessions.get_or_create(&session_id, || {
-        Session::new(session_id.clone(), KernelContext::default(), default_mode_id())
+        Session::new(session_id.clone(), real_kernel_context(), default_mode_id())
     });
 
     // Create the client (owns the writer)
@@ -490,6 +512,7 @@ async fn handle_client(
     let ctx = RpcContext {
         session: Arc::clone(&session),
         client_id,
+        client: Arc::clone(&client),
     };
 
     // Read loop

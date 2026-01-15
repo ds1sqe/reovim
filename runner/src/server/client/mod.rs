@@ -48,5 +48,10 @@
 #[allow(clippy::module_inception)]
 mod client;
 mod registry;
+mod viewport;
 
-pub use {client::Client, registry::ClientRegistry};
+pub use {
+    client::Client,
+    registry::ClientRegistry,
+    viewport::{ClientViewport, clear_viewports_for_closed_buffer},
+};

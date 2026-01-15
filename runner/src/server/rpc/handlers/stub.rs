@@ -37,28 +37,11 @@ stub_handler!(state_layer_info, "state/layer_info");
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        crate::session::{ClientId, Session, SessionId},
-        reovim_kernel::api::v1::{KernelContext, ModeId, ModuleId},
-        std::sync::Arc,
-    };
-
-    fn test_session() -> Arc<Session> {
-        Session::new(
-            SessionId::new("test"),
-            KernelContext::default(),
-            ModeId::new(ModuleId::new("test"), "normal"),
-        )
-    }
+    use {super::*, crate::server::rpc::handlers::test_utils::test_ctx};
 
     #[tokio::test]
     async fn test_stub_handlers_return_error() {
-        let session = test_session();
-        let ctx = RpcContext {
-            session,
-            client_id: ClientId::new(1),
-        };
+        let ctx = test_ctx();
 
         // Test one stub handler to verify the pattern works
         let result = state_windows(ctx, serde_json::json!({})).await;
