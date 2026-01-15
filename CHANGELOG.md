@@ -60,7 +60,16 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
     - `reovim cli log-level` - Current log level
     - `reovim cli log-tail -n 50` - Last 50 log entries
     - `reovim cli snapshot` - Full debug snapshot (JSON)
-  - 252 tests, zero clippy warnings
+  - **Enhancement: Tracing Integration**:
+    - `LogBufferLayer` - Custom tracing Layer for log capture to ring buffer
+    - Initialized in `debug::init()` with `tracing_subscriber::registry()`
+    - Enables `debug/log_tail` to return actual server logs
+  - **Enhancement: Integration Tests** (`runner/tests/debug_integration.rs`):
+    - 23 integration tests covering all 11 debug endpoints
+    - Value verification tests (version format, uptime behavior)
+    - Edge case tests (count=0, large count, default count)
+    - Error path tests (unknown method handling)
+  - 304 tests, zero clippy warnings
 
 - **Phase 6.4: CLI/Server Integration Fixes** (Issue #226)
   - **Fixed:** Stub handlers blocking CLI commands (`screen`, `resize`)

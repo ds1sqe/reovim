@@ -43,6 +43,7 @@ futures = { workspace = true }
 
 # Logging
 tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 # CLI argument parsing
 clap = { workspace = true }

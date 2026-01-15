@@ -51,6 +51,7 @@ use {
         DEBUG_METRICS, DEBUG_MODE_STACK, DEBUG_REGISTERS, DEBUG_UPTIME, DEBUG_VERSION,
         DEBUG_VISUAL_SNAPSHOT,
     },
+    tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt},
 };
 
 /// Register all debug handlers with the dispatcher.
@@ -85,9 +86,18 @@ pub fn register_handlers(dispatcher: &mut RpcDispatcher) {
 /// This function should be called once when the server starts.
 /// It initializes:
 /// - Server start time for uptime tracking
-/// - Handler metrics collection (TODO)
-/// - Log ring buffer (TODO)
+/// - Tracing subscriber with `LogBufferLayer` for log capture
+/// - Handler metrics collection
+/// - Log ring buffer
 pub fn init() {
+    // Initialize tracing subscriber with LogBufferLayer.
+    // This captures log events to the ring buffer for debug/log_tail.
+    // Uses try_init() to avoid panic if subscriber already set.
+    let _ = tracing_subscriber::registry()
+        .with(infrastructure::LogBufferLayer)
+        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
+        .try_init();
+
     infrastructure::init_server_start();
 }
 
