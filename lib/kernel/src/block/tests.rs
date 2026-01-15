@@ -358,6 +358,345 @@ mod undo_tree_tests {
         assert!(!tree.can_redo());
         assert_eq!(tree.node_count(), 1);
     }
+
+    // === Traversal Accessor Tests ===
+
+    // --- node() accessor tests ---
+
+    #[test]
+    fn test_node_accessor_valid_index() {
+        let mut tree = UndoTree::new();
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+
+        assert!(tree.node(0).expect("root").is_root());
+        assert!(!tree.node(1).expect("node 1").is_root());
+    }
+
+    #[test]
+    fn test_node_accessor_boundary_cases() {
+        let tree = UndoTree::new();
+
+        // Root always accessible
+        assert!(tree.node(0).is_some());
+
+        // Just past end
+        assert!(tree.node(tree.node_count()).is_none());
+
+        // Way past end
+        assert!(tree.node(usize::MAX).is_none());
+    }
+
+    #[test]
+    fn test_node_accessor_after_modifications() {
+        let mut tree = UndoTree::new();
+
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+        tree.push(
+            vec![Edit::insert(Position::new(0, 1), "B")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+
+        // All nodes accessible
+        assert!(tree.node(0).is_some());
+        assert!(tree.node(1).is_some());
+        assert!(tree.node(2).is_some());
+        assert!(tree.node(3).is_none());
+
+        // Verify relationships
+        let node_a = tree.node(1).unwrap();
+        assert_eq!(node_a.parent(), Some(0));
+        assert_eq!(node_a.children(), &[2]);
+    }
+
+    // --- node_indices() tests ---
+
+    #[test]
+    fn test_node_indices_empty_tree() {
+        let tree = UndoTree::new();
+        let indices: Vec<_> = tree.node_indices().collect();
+        assert_eq!(indices, vec![0]); // Only root
+    }
+
+    #[test]
+    fn test_node_indices_with_branches() {
+        let mut tree = UndoTree::new();
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+        tree.push(
+            vec![Edit::insert(Position::new(0, 1), "B")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+
+        let indices: Vec<_> = tree.node_indices().collect();
+        assert_eq!(indices, vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn test_node_indices_all_valid() {
+        let mut tree = UndoTree::new();
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+        tree.push(
+            vec![Edit::insert(Position::new(0, 1), "B")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+        tree.undo();
+        tree.push(
+            vec![Edit::insert(Position::new(0, 1), "C")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+
+        // All indices from node_indices() should be valid
+        for idx in tree.node_indices() {
+            assert!(tree.node(idx).is_some(), "Index {idx} should be valid");
+        }
+
+        // Count matches node_count()
+        assert_eq!(tree.node_indices().count(), tree.node_count());
+    }
+
+    // --- active_branch_at() tests ---
+
+    #[test]
+    fn test_active_branch_at_with_branches() {
+        let mut tree = UndoTree::new();
+
+        // Create branching: root -> A -> [B, C]
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+        tree.push(
+            vec![Edit::insert(Position::new(0, 1), "B")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+        tree.undo();
+        tree.push(
+            vec![Edit::insert(Position::new(0, 1), "C")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+        tree.undo();
+
+        // Active branch at A should be 1 (C, the most recently created branch)
+        let active = tree.active_branch_at(1);
+        assert!(active.is_some());
+        assert_eq!(active.unwrap(), 1);
+    }
+
+    #[test]
+    fn test_active_branch_at_edge_cases() {
+        let tree = UndoTree::new();
+
+        // Invalid index returns None
+        assert!(tree.active_branch_at(999).is_none());
+
+        // Root has no active branch initially (no children)
+        // active_branches[0] exists but node has no children
+        let root = tree.node(0).unwrap();
+        assert!(root.children().is_empty());
+    }
+
+    #[test]
+    fn test_active_branch_after_switch() {
+        let mut tree = UndoTree::new();
+
+        // Create: root -> A -> [B, C]
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+        tree.push(
+            vec![Edit::insert(Position::new(0, 1), "B")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+        tree.undo();
+        tree.push(
+            vec![Edit::insert(Position::new(0, 1), "C")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+        tree.undo();
+
+        // Switch to first branch (B)
+        tree.switch_branch(0);
+        assert_eq!(tree.active_branch_at(1), Some(0));
+
+        // Switch to second branch (C)
+        tree.switch_branch(1);
+        assert_eq!(tree.active_branch_at(1), Some(1));
+    }
+
+    // --- parent() and children() tests ---
+
+    #[test]
+    fn test_undo_node_parent_accessor() {
+        let mut tree = UndoTree::new();
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+
+        // Root has no parent
+        assert!(tree.node(0).unwrap().parent().is_none());
+
+        // Node 1's parent is root
+        assert_eq!(tree.node(1).unwrap().parent(), Some(0));
+    }
+
+    #[test]
+    fn test_undo_node_children_accessor() {
+        let mut tree = UndoTree::new();
+
+        // Create: root -> A -> [B, C]
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+        tree.push(
+            vec![Edit::insert(Position::new(0, 1), "B")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+        tree.undo();
+        tree.push(
+            vec![Edit::insert(Position::new(0, 1), "C")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+
+        // Root has 1 child (A)
+        assert_eq!(tree.node(0).unwrap().children(), &[1]);
+
+        // A has 2 children (B, C)
+        assert_eq!(tree.node(1).unwrap().children(), &[2, 3]);
+
+        // Leaf nodes have empty children
+        assert!(tree.node(2).unwrap().children().is_empty());
+        assert!(tree.node(3).unwrap().children().is_empty());
+    }
+
+    // --- Invariant tests ---
+
+    #[test]
+    fn test_tree_structure_invariants() {
+        let mut tree = UndoTree::new();
+
+        // Build complex tree
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+        tree.push(
+            vec![Edit::insert(Position::new(0, 1), "B")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+        tree.undo();
+        tree.push(
+            vec![Edit::insert(Position::new(0, 1), "C")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+
+        // Invariant: parent-child relationships are bidirectional
+        for index in tree.node_indices() {
+            let node = tree.node(index).unwrap();
+
+            // If has parent, parent's children includes this node
+            if let Some(parent_idx) = node.parent() {
+                let parent = tree.node(parent_idx).unwrap();
+                assert!(
+                    parent.children().contains(&index),
+                    "Node {index} has parent {parent_idx}, but parent doesn't list it"
+                );
+            }
+
+            // All children have this node as parent
+            for &child_idx in node.children() {
+                let child = tree.node(child_idx).unwrap();
+                assert_eq!(
+                    child.parent(),
+                    Some(index),
+                    "Node {index} lists {child_idx} as child, but child's parent doesn't match"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_accessors_after_pruning() {
+        let mut tree = UndoTree::with_max_nodes(5);
+
+        // Create more nodes than max, forcing pruning
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+
+        // Create branches from A
+        for c in ['B', 'C', 'D', 'E', 'F'] {
+            tree.push(
+                vec![Edit::insert(Position::new(0, 1), c.to_string())],
+                Position::new(0, 1),
+                Position::new(0, 2),
+            );
+            tree.undo();
+        }
+
+        // Stay on last branch
+        tree.push(
+            vec![Edit::insert(Position::new(0, 1), "G")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+
+        // Should have pruned
+        assert!(tree.node_count() <= 5);
+
+        // All returned indices should be valid
+        for index in tree.node_indices() {
+            assert!(tree.node(index).is_some(), "node_indices() returned invalid index {index}");
+        }
+
+        // Current node always accessible
+        let current_idx = tree.current_index();
+        assert!(tree.node(current_idx).is_some());
+
+        // Verify invariants still hold after pruning
+        for index in tree.node_indices() {
+            let node = tree.node(index).unwrap();
+            if let Some(parent_idx) = node.parent() {
+                assert!(tree.node(parent_idx).is_some());
+            }
+        }
+    }
 }
 
 // === History Tests ===

@@ -15,6 +15,15 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 7.7: UndoTree Traversal Accessors** (Issue #251)
+  - `UndoNode::parent()` - get parent node index
+  - `UndoNode::children()` - get children node indices
+  - `UndoTree::node()` - get node by index
+  - `UndoTree::node_indices()` - iterate all node indices
+  - `UndoTree::active_branch_at()` - get active branch at a node
+  - Enables #249 (Vim-style :undotree visualization)
+  - 15 unit tests covering boundaries, invariants, and pruning
+
 - **Phase 7.5-6: Insert Mode & Delete Operations** (Issues #233, #234, #231)
   - **Insert Mode Character Input** (`modules/editor/src/fallback.rs`):
     - `EditorFallbackHandler` now inserts characters in Insert mode
