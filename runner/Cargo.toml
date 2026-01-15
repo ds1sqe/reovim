@@ -43,9 +43,13 @@ futures = { workspace = true }
 
 # Logging
 tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 # CLI argument parsing
 clap = { workspace = true }
+
+# Terminal handling for TUI client
+crossterm = { workspace = true }
 
 # Editor module is a dev-dependency for the demo example
 # (avoids cyclic dependency since editor module depends on runner-new)

@@ -91,6 +91,41 @@ pub const MODULE_RELOAD: &str = "module/reload";
 /// List all loaded modules.
 pub const MODULE_LIST: &str = "module/list";
 
+// Debug methods
+
+/// Get server version information.
+pub const DEBUG_VERSION: &str = "debug/version";
+
+/// Get server uptime.
+pub const DEBUG_UPTIME: &str = "debug/uptime";
+
+/// Get kernel state summary.
+pub const DEBUG_KERNEL_STATE: &str = "debug/kernel_state";
+
+/// Get register contents.
+pub const DEBUG_REGISTERS: &str = "debug/registers";
+
+/// Get mark contents.
+pub const DEBUG_MARKS: &str = "debug/marks";
+
+/// Get mode stack.
+pub const DEBUG_MODE_STACK: &str = "debug/mode_stack";
+
+/// Get performance metrics.
+pub const DEBUG_METRICS: &str = "debug/metrics";
+
+/// Get per-handler statistics.
+pub const DEBUG_HANDLERS: &str = "debug/handlers";
+
+/// Get or set log level.
+pub const DEBUG_LOG_LEVEL: &str = "debug/log_level";
+
+/// Get recent log entries.
+pub const DEBUG_LOG_TAIL: &str = "debug/log_tail";
+
+/// Get full debug snapshot for AI/tooling.
+pub const DEBUG_VISUAL_SNAPSHOT: &str = "debug/visual_snapshot";
+
 #[cfg(test)]
 mod tests {
     use super::*;

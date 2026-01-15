@@ -199,6 +199,26 @@ pub use reovim_arch::sync::{
 };
 
 // ============================================================================
+// Debug (api/debug.rs)
+// ============================================================================
+
+pub use super::debug::{
+    // Snapshot types
+    KernelStateSnapshot,
+    MarkSnapshot,
+    MarksSnapshot,
+    ModeStackSnapshot,
+    RegisterSnapshot,
+    RegistersSnapshot,
+    YankTypeSnapshot,
+    // Snapshot functions
+    snapshot_kernel_state,
+    snapshot_marks,
+    snapshot_mode_stack,
+    snapshot_registers,
+};
+
+// ============================================================================
 // Tests
 // ============================================================================
 

@@ -6,13 +6,13 @@ Reovim can run as a JSON-RPC 2.0 server for programmatic control, enabling integ
 
 ```bash
 # Start server on default port (12521)
-reovim --server
+reovim server
 
-# Start server with a file
-reovim --server myfile.txt
+# Connect with CLI client
+reovim cli keys 'iHello<Esc>'
 
-# Connect with reo-cli
-reo-cli keys 'iHello<Esc>'
+# Connect with TUI client
+reovim tui
 ```
 
 ## Transport Options
@@ -21,19 +21,16 @@ reo-cli keys 'iHello<Esc>'
 
 ```bash
 # Default: 127.0.0.1:12521
-reovim --server
+reovim server
 
 # Custom port
-reovim --listen-tcp 9000
-
-# Custom host and port
-reovim --listen-host 0.0.0.0 --listen-tcp 9000
+reovim server --tcp 9000
 ```
 
 ### Unix Socket
 
 ```bash
-reovim --listen-socket /tmp/reovim.sock
+reovim server --socket /tmp/reovim.sock
 ```
 
 ### Stdio
@@ -41,7 +38,7 @@ reovim --listen-socket /tmp/reovim.sock
 For process piping and subprocess communication:
 
 ```bash
-reovim --stdio
+reovim server --stdio
 ```
 
 Note: `--stdio` mode always exits when the connection closes (one-shot mode).
@@ -72,25 +69,24 @@ Port files are automatically removed when the server exits cleanly.
 ### Listing Running Servers
 
 ```bash
-$ reo-cli list
-PID      PORT   ADDRESS
-123456   12521  127.0.0.1:12521
-123789   12522  127.0.0.1:12522
+$ reovim cli list
+127.0.0.1:12521 (pid: 123456)
+127.0.0.1:12522 (pid: 123789)
 ```
 
 ### Auto-Discovery
 
-When using `reo-cli` without specifying a server:
+When using CLI/TUI without specifying a server:
 - **Single server**: Connects automatically
-- **Multiple servers**: Prompts for selection
+- **Multiple servers**: Connects to first found
 - **No servers**: Returns an error
 
 ```bash
-# Auto-connect to single server
-reo-cli keys 'j'
+# Auto-connect to available server
+reovim cli keys 'j'
 
 # Specify server explicitly
-reo-cli --tcp 127.0.0.1:12522 keys 'j'
+reovim cli --tcp 127.0.0.1:12522 keys 'j'
 ```
 
 ## Server Modes
@@ -100,91 +96,80 @@ reo-cli --tcp 127.0.0.1:12522 keys 'j'
 Server runs indefinitely, accepting multiple sequential connections:
 
 ```bash
-reovim --server
+reovim server
 ```
 
 Clients can connect, disconnect, and reconnect without restarting the server.
-
-### Test Mode
-
-Server exits when all clients disconnect. Useful for CI/testing:
-
-```bash
-reovim --server --test
-```
-
-### Dual Output Mode
-
-Render to terminal while serving RPC:
-
-```bash
-reovim --server --terminal
-```
-
-This allows visual monitoring while the server handles RPC requests.
 
 ## Server Options Reference
 
 | Flag | Description |
 |------|-------------|
-| `--server` | Start in server mode (TCP on 127.0.0.1:12521) |
-| `--test` | Exit when all clients disconnect |
+| `--tcp <PORT>` | Listen on custom TCP port (default: 12521) |
+| `--socket <PATH>` | Listen on Unix socket |
 | `--stdio` | Use stdio transport (always one-shot) |
-| `--listen-socket <PATH>` | Listen on Unix socket |
-| `--listen-tcp <PORT>` | Listen on custom TCP port |
-| `--listen-host <HOST>` | Bind to specific host (default: 127.0.0.1) |
-| `--terminal` | Also render to terminal in server mode |
 
-## reo-cli Client
+## CLI Client
 
-The `reo-cli` tool provides command-line access to reovim servers.
+The built-in CLI client provides command-line access to reovim servers.
 
 ### Commands
 
 ```bash
 # List running servers
-reo-cli list
+reovim cli list
 
-# Inject keys and show status
-reo-cli keys 'iHello<Esc>'               # Default: colored output
-reo-cli keys --format plain_text 'gg'    # Plain text output
-reo-cli keys --format cell_grid 'gg'     # JSON cell grid
+# Inject keys
+reovim cli keys 'iHello<Esc>'
 
-# Get screen content
-reo-cli screen
+# Query state
+reovim cli mode                           # Get current mode
+reovim cli cursor                         # Get cursor position
 
-# Get screen dimensions
-reo-cli screen-size
+# JSON output format
+reovim cli --format json mode
 
 # Kill server
-reo-cli kill
+reovim cli kill
 
 # Interactive REPL mode
-reo-cli -i
+reovim cli -i
 ```
 
 ### Connection Options
 
 ```bash
 # TCP connection (explicit)
-reo-cli --tcp localhost:12521 keys 'j'
+reovim cli --tcp localhost:12521 keys 'j'
 
 # Unix socket connection
-reo-cli --socket /tmp/reovim.sock keys 'j'
+reovim cli --socket /tmp/reovim.sock keys 'j'
 ```
 
 ### Interactive REPL
 
 ```bash
-$ reo-cli -i
+$ reovim cli -i
 reovim> keys iHello<Esc>
-Mode: Normal
-Cursor: (0, 5)
-reovim> screen
-Hello
-~
-~
+ok: true
+reovim> mode
+Mode: NORMAL
+reovim> cursor
+Cursor: line 0, column 5
 reovim> quit
+```
+
+## TUI Client
+
+Connect to a running server with a full terminal UI:
+
+```bash
+# Auto-discover and connect
+reovim tui
+
+# Connect to specific server
+reovim tui --tcp 127.0.0.1:12521
+reovim tui --socket /tmp/reovim.sock
 ```
 
 ## JSON-RPC Protocol
@@ -243,20 +228,21 @@ reovim> quit
 
 ```bash
 #!/bin/bash
-# Start server in test mode
-reovim --server --test testfile.txt &
+# Start server
+reovim server &
+SERVER_PID=$!
 sleep 1
 
 # Run test sequence
-reo-cli keys 'iTest content<Esc>'
-reo-cli keys ':w<CR>'
+reovim cli keys 'iTest content<Esc>'
 
-# Verify content
-if reo-cli screen | grep -q "Test content"; then
+# Verify mode
+if reovim cli mode | grep -q "NORMAL"; then
   echo "PASS"
 fi
 
-# Server exits automatically after disconnect
+# Clean up
+reovim cli kill
 ```
 
 ### IDE Integration
@@ -282,22 +268,21 @@ def send_keys(keys):
 ### Scripting
 
 ```bash
-# Open file and navigate to line 100
-reo-cli keys ':e myfile.rs<CR>'
-reo-cli keys '100gg'
+# Navigate and edit
+reovim cli keys '100gg'
 
 # Search and replace
-reo-cli keys ':%s/foo/bar/g<CR>'
+reovim cli keys ':%s/foo/bar/g<CR>'
 
 # Save and quit
-reo-cli keys ':wq<CR>'
+reovim cli keys ':wq<CR>'
 ```
 
 ## Troubleshooting
 
 ### Connection Refused
 
-1. Check if server is running: `reo-cli list`
+1. Check if server is running: `reovim cli list`
 2. Verify port: Server prints `Listening on <host>:<port>` on startup
 3. Check firewall/network settings if connecting remotely
 
@@ -333,7 +318,8 @@ The default port `12521` is derived from ASCII: `'r'×100 + 'e'×10 + 'o' = 114�
 
 ### Source Files
 
-- `lib/core/src/rpc/` - RPC server implementation
-- `runner/src/server.rs` - Server startup and port management
-- `runner/src/dirs.rs` - Port file management
-- `tools/reo-cli/` - CLI client implementation
+- `runner/src/server/` - Server implementation (RPC, sessions, transports)
+- `runner/src/client/` - Client implementations (TUI, CLI, common layer)
+- `runner/src/client/common/` - Shared connection, RPC, and discovery
+- `runner/src/client/tui/` - Terminal UI client
+- `runner/src/client/cli/` - Command-line client

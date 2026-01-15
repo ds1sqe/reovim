@@ -16,9 +16,9 @@ use {
 use {
     super::{id::SessionId, state::SessionState},
     crate::{
-        client::ClientRegistry,
         module::ModuleRegistry,
         registry::{CommandRegistry, KeyLookupResult, KeymapRegistry, ModeRegistry},
+        server::client::ClientRegistry,
     },
 };
 

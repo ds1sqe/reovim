@@ -42,9 +42,50 @@
 //! }
 //! ```
 
+use clap::Args;
+
+/// Server mode CLI arguments.
+///
+/// These arguments configure how the server listens for connections.
+#[derive(Args, Debug, Clone)]
+pub struct SrvArgs {
+    /// Start server on specific TCP port.
+    #[arg(short, long, value_name = "PORT")]
+    pub tcp: Option<u16>,
+
+    /// Start server on Unix socket.
+    #[cfg(unix)]
+    #[arg(short, long, value_name = "PATH")]
+    pub socket: Option<std::path::PathBuf>,
+
+    /// Start server in stdio mode (single client, for embedding).
+    #[arg(long)]
+    pub stdio: bool,
+}
+
+impl SrvArgs {
+    /// Convert arguments to `ServerConfig`.
+    #[must_use]
+    pub fn into_config(self) -> ServerConfig {
+        #[cfg(unix)]
+        if let Some(path) = self.socket {
+            return ServerConfig::unix_socket(path);
+        }
+
+        if self.stdio {
+            ServerConfig::stdio()
+        } else if let Some(port) = self.tcp {
+            ServerConfig::tcp(port)
+        } else {
+            ServerConfig::tcp_with_fallback()
+        }
+    }
+}
+
 // Submodules - all server-specific code lives here
 mod app;
 pub mod client;
+pub mod debug;
 mod event_loop;
 pub mod fallback;
 pub mod module;
@@ -275,6 +316,9 @@ impl Server {
     ///
     /// Returns an error if binding fails.
     pub async fn run(&self) -> std::io::Result<()> {
+        // Initialize debug infrastructure (uptime tracking, etc.)
+        debug::init();
+
         // Create default session
         let default_session_id = SessionId::new(self.config.default_session_name.as_str());
         self.ensure_default_session(&default_session_id);

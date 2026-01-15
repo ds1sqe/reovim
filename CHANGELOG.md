@@ -15,6 +15,123 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 6.5: Debug RPC Endpoints** (Issue #227)
+  - **Debug API** (`lib/kernel/src/api/debug.rs`):
+    - `KernelStateSnapshot` - Buffer count, buffer IDs, event handlers
+    - `RegisterSnapshot`/`RegistersSnapshot` - Register contents with yank type
+    - `MarkSnapshot`/`MarksSnapshot` - Local, global, and special marks
+    - `ModeStackSnapshot` - Current mode and full mode stack
+    - `snapshot_kernel_state()`, `snapshot_registers()`, `snapshot_marks()`, `snapshot_mode_stack()`
+    - Pure extraction functions (mechanism) - no serde dependency
+  - **Debug Infrastructure** (`runner/src/server/debug/infrastructure/`):
+    - `uptime.rs` - Server start time with `OnceLock<Instant>` for uptime tracking
+    - `metrics.rs` - `HandlerMetrics` with relaxed atomics (~30-40ns overhead per request)
+    - `RequestTimer` - RAII timer for automatic request duration recording
+    - `log_buffer.rs` - `LogRingBuffer` (1000 entry capacity) for recent log capture
+    - `LogEntry` - Timestamp, level, target, message with ISO 8601 formatting
+  - **Debug RPC Handlers** (`runner/src/server/debug/handlers/`):
+    - `debug/version` - Server version info (git hash, build date)
+    - `debug/uptime` - Server uptime in seconds
+    - `debug/kernel_state` - Kernel summary (buffer count, event handlers)
+    - `debug/registers` - Register contents (unnamed and named a-z)
+    - `debug/marks` - Mark contents (local, global, special)
+    - `debug/mode_stack` - Current mode and full stack
+    - `debug/metrics` - Performance stats (uptime, total requests)
+    - `debug/handlers` - Per-handler call counts and latency
+    - `debug/log_level` - Current log level
+    - `debug/log_tail` - Recent log entries (default 100)
+    - `debug/visual_snapshot` - Comprehensive AI-friendly state dump
+  - **Protocol Types** (`lib/protocol/src/v1/debug.rs`):
+    - `VersionResult`, `UptimeResult`, `KernelStateResult`
+    - `RegisterEntry`, `RegistersResult`, `MarkEntry`, `MarksResult`
+    - `ModeStackResult`, `MetricEntry`, `MetricsResult`
+    - `HandlerMetricEntry`, `HandlersResult`
+    - `LogLevelResult`, `LogEntryResult`, `LogTailResult`
+    - `VisualSnapshotResult` with server/editor/buffers/ui/vim/metrics sections
+  - **CLI Commands** (`runner/src/client/cli/`):
+    - `reovim cli version` - Server version info
+    - `reovim cli uptime` - Server uptime
+    - `reovim cli kernel-state` - Kernel summary
+    - `reovim cli registers` - Register contents
+    - `reovim cli marks` - Mark contents
+    - `reovim cli mode-stack` - Mode stack
+    - `reovim cli metrics` - Performance stats
+    - `reovim cli handlers` - Handler stats
+    - `reovim cli log-level` - Current log level
+    - `reovim cli log-tail -n 50` - Last 50 log entries
+    - `reovim cli snapshot` - Full debug snapshot (JSON)
+  - **Enhancement: Tracing Integration**:
+    - `LogBufferLayer` - Custom tracing Layer for log capture to ring buffer
+    - Initialized in `debug::init()` with `tracing_subscriber::registry()`
+    - Enables `debug/log_tail` to return actual server logs
+  - **Enhancement: Integration Tests** (`runner/tests/debug_integration.rs`):
+    - 23 integration tests covering all 11 debug endpoints
+    - Value verification tests (version format, uptime behavior)
+    - Edge case tests (count=0, large count, default count)
+    - Error path tests (unknown method handling)
+  - 304 tests, zero clippy warnings
+
+- **Phase 6.4: CLI/Server Integration Fixes** (Issue #226)
+  - **Fixed:** Stub handlers blocking CLI commands (`screen`, `resize`)
+    - Implemented `state/screen` handler returning viewport dimensions
+    - Implemented `editor/resize` handler with validation
+    - Implemented `editor/quit` handler for graceful shutdown
+    - Added terminal size tracking to `AppState` (width/height fields)
+  - **Added:** Missing CLI subcommands: `selection`, `quit`, `set-content`
+  - **Added:** RPC timeout protection (30 second default)
+    - New `RpcClientError::Timeout` variant
+    - Uses `tokio::time::timeout` wrapper
+  - **Fixed:** Buffer operations now emit state change notifications
+    - `buffer/set_content` emits notifications via StateSnapshot pattern
+    - `buffer/open_file` emits notifications via StateSnapshot pattern
+  - **Improved:** Output formatter uses typed protocol responses
+    - Type-safe deserialization for `ModeInfo`, `CursorInfo`, `ScreenInfo`
+    - Supports `ScreenContentResult` with ANSI passthrough
+    - Command-aware formatting via `format_output_for_command`
+  - **Added:** TUI Notification Listening (Issue 3)
+    - **Connection Split Infrastructure** (`runner/src/client/common/`):
+      - `ConnectionReader`/`ConnectionWriter` - Split halves for concurrent operation
+      - `Connection::split()` - Split connection into reader/writer
+      - `RpcWriter` - Async request writer with ID generation
+      - `RpcClient::into_split()` - Split RPC client for TUI use
+    - **Concurrent TUI Architecture** (`runner/src/client/tui/app.rs`):
+      - Background notification listener task with `tokio::spawn`
+      - `tokio::select!` main loop with dual event sources
+      - `crossterm::event::EventStream` for async terminal input
+      - `tokio::sync::mpsc` channel for server message passing
+      - Fire-and-forget request pattern (avoids deadlocks)
+    - **Notification Handlers**: MODE_CHANGED, CURSOR_MOVED, BUFFER_MODIFIED, RENDER_COMPLETE
+    - **Integration Tests**: `test_rpc_client_into_split`, `test_notification_listener_reads_messages`
+  - 285 unit tests + 28 integration/module tests, zero clippy warnings
+
+- **Phase 6.2/6.3: TUI and CLI Clients** (Issues #221, #222)
+  - **TUI Client** (`runner/src/client/tui/`):
+    - Terminal user interface mode via `reovim tui`
+    - Connect via TCP or Unix socket with auto-discovery
+    - Real-time terminal input handling with vim key notation
+    - ANSI content rendering from server
+    - Terminal resize support with server notification
+    - Cursor positioning from server state
+    - Quit via Ctrl+C or Ctrl+Q
+  - **CLI Client** (`runner/src/client/cli/`):
+    - Command-line interface via `reovim cli`
+    - Server discovery via `list` command (scans ports 12521-12530)
+    - Key injection via `keys <sequence>` command
+    - State queries: `mode`, `cursor`, `screen`, `content`
+    - Buffer operations: `buffers`, `buffer [id]`, `open <path>`
+    - Module operations: `modules`, `load`, `unload`, `reload`
+    - Server control: `resize`, `kill`
+    - Raw JSON-RPC via `raw <json>`
+    - Output formats: plain text (default) or JSON (`--format json`)
+    - Interactive REPL mode (`-i` or `--repl`)
+  - **Common Layer** (`runner/src/client/common/`):
+    - `ConnectionConfig` - TCP and Unix socket connection configuration
+    - `Connection` - Buffered async I/O for both transport types
+    - `RpcClient` - JSON-RPC request/response handling with error types
+    - `ServerInfo` - Discovered server metadata including PID (Linux)
+    - `discovery` - Port scanning and process detection via /proc
+  - 217 tests, zero clippy warnings
+
 - **Phase 6.1.4: Handler Completion & Server Reorganization** (Issue #220 continued)
   - **Directory Reorganization**:
     - Moved all server-specific code under `runner/src/server/` for future client modes

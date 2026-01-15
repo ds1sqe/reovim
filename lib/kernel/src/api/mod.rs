@@ -31,6 +31,7 @@
 // Buffer manager trait (mechanism) - used by KernelContext
 mod buffer_manager;
 mod context;
+mod debug;
 // Note: pub(crate) to allow core/mode.rs to access ModuleId
 pub(crate) mod module;
 mod version;

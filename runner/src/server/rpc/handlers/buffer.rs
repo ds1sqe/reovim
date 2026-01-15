@@ -10,7 +10,10 @@ use {
     },
 };
 
-use super::super::dispatcher::{HandlerFuture, RpcContext};
+use {
+    super::super::dispatcher::{HandlerFuture, RpcContext},
+    crate::session::{StateSnapshot, emit_state_changes},
+};
 
 /// Handler for `buffer/get_content` method.
 ///
@@ -85,6 +88,9 @@ pub fn buffer_set_content(ctx: RpcContext, params: serde_json::Value) -> Handler
         let params: BufferSetContentParams =
             serde_json::from_value(params).map_err(|e| RpcError::invalid_params(e.to_string()))?;
 
+        // Capture state before modification
+        let before = ctx.session.with_state(StateSnapshot::capture).await;
+
         ctx.session
             .with_state_mut(|state| {
                 let buffer_id = params
@@ -105,6 +111,10 @@ pub fn buffer_set_content(ctx: RpcContext, params: serde_json::Value) -> Handler
                 Ok(())
             })
             .await?;
+
+        // Capture state after modification and emit changes
+        let after = ctx.session.with_state(StateSnapshot::capture).await;
+        emit_state_changes(&ctx.session, &before, &after).await;
 
         Ok(serde_json::to_value(OkResult::new()).expect("OkResult serialization cannot fail"))
     })
@@ -190,6 +200,9 @@ pub fn buffer_open_file(ctx: RpcContext, params: serde_json::Value) -> HandlerFu
         let content = std::fs::read_to_string(&params.path)
             .map_err(|e| RpcError::internal_error(format!("Failed to read file: {e}")))?;
 
+        // Capture state before modification
+        let before = ctx.session.with_state(StateSnapshot::capture).await;
+
         // Create buffer and register
         let buffer_id = ctx
             .session
@@ -201,6 +214,10 @@ pub fn buffer_open_file(ctx: RpcContext, params: serde_json::Value) -> HandlerFu
                 id
             })
             .await;
+
+        // Capture state after modification and emit changes
+        let after = ctx.session.with_state(StateSnapshot::capture).await;
+        emit_state_changes(&ctx.session, &before, &after).await;
 
         Ok(serde_json::to_value(BufferOpenResult {
             buffer_id: buffer_id.as_usize(),

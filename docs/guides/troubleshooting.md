@@ -172,13 +172,13 @@ Log levels: `error`, `warn`, `info`, `debug`, `trace`
 
 ### 6. Server Mode Connection Issues
 
-**Symptom:** `reo-cli` can't connect to server.
+**Symptom:** CLI/TUI client can't connect to server.
 
 **Solutions:**
 
 1. **List running servers:**
    ```bash
-   cargo run -p reo-cli -- list
+   cargo run -- cli list
    ```
 
 2. **Check server is listening:**
@@ -194,7 +194,7 @@ Log levels: `error`, `warn`, `info`, `debug`, `trace`
 
 4. **Connect to specific port:**
    ```bash
-   cargo run -p reo-cli -- --tcp 127.0.0.1:12522 keys 'j'
+   cargo run -- cli --tcp 127.0.0.1:12522 keys 'j'
    ```
 
 5. **Clean up stale port files:**
@@ -313,10 +313,10 @@ grep "\[RTT\]" /tmp/render.log
 
 ```bash
 # Server
-reovim --server --log=/tmp/server.log
+cargo run -- server --log=/tmp/server.log
 
 # Client
-cargo run -p reo-cli -- keys 'itest<Esc>'
+cargo run -- cli keys 'itest<Esc>'
 grep "RPC" /tmp/server.log
 ```
 

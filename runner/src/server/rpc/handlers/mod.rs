@@ -6,6 +6,7 @@
 
 mod buffer;
 mod command;
+mod editor;
 mod input;
 mod module;
 mod screen;
@@ -16,13 +17,14 @@ pub mod stub;
 pub use {
     buffer::{buffer_get_content, buffer_list, buffer_open_file, buffer_set_content},
     command::command_execute,
+    editor::{editor_quit, editor_resize},
     input::input_keys,
     module::{module_list, module_load, module_reload, module_unload},
     screen::state_screen_content,
     server::server_kill,
-    state::{state_cursor, state_mode},
+    state::{state_cursor, state_mode, state_screen, state_selection},
     stub::{
-        editor_quit, editor_resize, state_ascii_art, state_layer_info, state_microscope,
-        state_screen, state_selection, state_telescope, state_visual_snapshot, state_windows,
+        state_ascii_art, state_layer_info, state_microscope, state_telescope,
+        state_visual_snapshot, state_windows,
     },
 };
