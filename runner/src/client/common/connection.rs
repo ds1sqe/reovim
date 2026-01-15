@@ -1,6 +1,9 @@
 //! Connection handling for outbound client connections.
 //!
 //! Supports TCP and Unix socket connections to a reovim server.
+//!
+//! For concurrent reading and writing (e.g., TUI notification handling),
+//! use [`Connection::split`] to get separate reader/writer handles.
 
 use std::{io, path::PathBuf};
 
@@ -190,6 +193,115 @@ impl Connection {
         }
 
         Ok(line)
+    }
+
+    /// Split connection into separate reader and writer handles.
+    ///
+    /// Use this for concurrent reading and writing, e.g., when the TUI
+    /// needs to listen for notifications while also sending requests.
+    #[must_use]
+    pub fn split(self) -> (ConnectionReader, ConnectionWriter) {
+        match self.inner {
+            ConnectionInner::Tcp { reader, writer } => (
+                ConnectionReader {
+                    inner: ReaderInner::Tcp(reader),
+                },
+                ConnectionWriter {
+                    inner: WriterInner::Tcp(writer),
+                },
+            ),
+            #[cfg(unix)]
+            ConnectionInner::Unix { reader, writer } => (
+                ConnectionReader {
+                    inner: ReaderInner::Unix(reader),
+                },
+                ConnectionWriter {
+                    inner: WriterInner::Unix(writer),
+                },
+            ),
+        }
+    }
+}
+
+/// Reader half of a split connection.
+///
+/// Created by [`Connection::split`]. Can be moved to a separate task
+/// for concurrent notification listening.
+pub struct ConnectionReader {
+    inner: ReaderInner,
+}
+
+enum ReaderInner {
+    Tcp(BufReader<tokio::net::tcp::OwnedReadHalf>),
+    #[cfg(unix)]
+    Unix(BufReader<tokio::net::unix::OwnedReadHalf>),
+}
+
+impl ConnectionReader {
+    /// Read a line from the server.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if read fails or connection closed.
+    pub async fn read_line(&mut self) -> io::Result<String> {
+        let mut line = String::new();
+        let bytes_read = match &mut self.inner {
+            ReaderInner::Tcp(reader) => reader.read_line(&mut line).await?,
+            #[cfg(unix)]
+            ReaderInner::Unix(reader) => reader.read_line(&mut line).await?,
+        };
+
+        if bytes_read == 0 {
+            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "Connection closed"));
+        }
+
+        // Remove trailing newline
+        if line.ends_with('\n') {
+            line.pop();
+            if line.ends_with('\r') {
+                line.pop();
+            }
+        }
+
+        Ok(line)
+    }
+}
+
+/// Writer half of a split connection.
+///
+/// Created by [`Connection::split`]. Used for sending requests
+/// while a separate task handles incoming notifications.
+pub struct ConnectionWriter {
+    inner: WriterInner,
+}
+
+enum WriterInner {
+    Tcp(BufWriter<tokio::net::tcp::OwnedWriteHalf>),
+    #[cfg(unix)]
+    Unix(BufWriter<tokio::net::unix::OwnedWriteHalf>),
+}
+
+impl ConnectionWriter {
+    /// Write a line to the server (appends newline).
+    ///
+    /// # Errors
+    ///
+    /// Returns error if write fails.
+    pub async fn write_line(&mut self, line: &str) -> io::Result<()> {
+        match &mut self.inner {
+            WriterInner::Tcp(writer) => {
+                writer.write_all(line.as_bytes()).await?;
+                writer.write_all(b"\n").await?;
+                writer.flush().await?;
+            }
+            #[cfg(unix)]
+            WriterInner::Unix(writer) => {
+                writer.write_all(line.as_bytes()).await?;
+                writer.write_all(b"\n").await?;
+                writer.flush().await?;
+            }
+        }
+        Ok(())
     }
 }
 

@@ -12,7 +12,7 @@ use {
     serde_json::Value,
 };
 
-use super::connection::{Connection, ConnectionConfig};
+use super::connection::{Connection, ConnectionConfig, ConnectionReader, ConnectionWriter};
 
 /// Default RPC call timeout (30 seconds).
 const RPC_TIMEOUT_SECS: u64 = 30;
@@ -73,6 +73,52 @@ pub enum ServerMessage {
     Response(RpcResponse),
     /// Server-initiated notification.
     Notification(RpcNotification),
+}
+
+/// Writer half of a split RPC client.
+///
+/// Created by [`RpcClient::into_split`]. Used for sending requests
+/// while a separate task handles incoming messages via [`ConnectionReader`].
+pub struct RpcWriter {
+    writer: ConnectionWriter,
+    next_id: AtomicU64,
+}
+
+impl RpcWriter {
+    /// Send a request without waiting for response.
+    ///
+    /// Returns the request ID that can be used to correlate responses.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if serialization or write fails.
+    pub async fn send_request(
+        &mut self,
+        method: &str,
+        params: Value,
+    ) -> Result<u64, RpcClientError> {
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        let request = RpcRequest::new(id, method, params);
+        let json = serde_json::to_string(&request)?;
+        self.writer.write_line(&json).await?;
+        Ok(id)
+    }
+
+    /// Send a notification (no response expected).
+    ///
+    /// # Errors
+    ///
+    /// Returns error if serialization or write fails.
+    pub async fn send_notification(
+        &mut self,
+        method: &str,
+        params: Value,
+    ) -> Result<(), RpcClientError> {
+        let notification = RpcNotification::new(method, params);
+        let json = serde_json::to_string(&notification)?;
+        self.writer.write_line(&json).await?;
+        Ok(())
+    }
 }
 
 /// JSON-RPC client for reovim server.
@@ -199,6 +245,27 @@ impl RpcClient {
         }
 
         Ok(response.result.unwrap_or(Value::Null))
+    }
+
+    /// Split client into reader and writer for concurrent operation.
+    ///
+    /// Use this when you need to:
+    /// - Listen for notifications in a background task
+    /// - Send requests from the main task
+    /// - Handle both concurrently (e.g., TUI client)
+    ///
+    /// Returns the connection reader (for spawning a notification listener)
+    /// and an RPC writer (for sending requests).
+    #[must_use]
+    pub fn into_split(self) -> (ConnectionReader, RpcWriter) {
+        let (reader, writer) = self.connection.split();
+        (
+            reader,
+            RpcWriter {
+                writer,
+                next_id: self.next_id,
+            },
+        )
     }
 }
 

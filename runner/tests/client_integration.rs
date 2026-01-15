@@ -179,6 +179,186 @@ async fn test_rpc_cursor_position() {
     server.shutdown();
 }
 
+#[tokio::test]
+async fn test_rpc_client_into_split() {
+    let server = TestServer::spawn().await;
+    let config = server.config();
+
+    // Connect and get initial state before split
+    let mut client = RpcClient::connect(&config)
+        .await
+        .expect("Should connect to server");
+
+    // Get initial mode to verify connection works
+    let mode = client
+        .call("state/mode", json!({}))
+        .await
+        .expect("Initial state/mode should succeed");
+    assert!(mode.get("display").is_some(), "Should have mode info");
+
+    // Split the client
+    let (mut reader, mut writer) = client.into_split();
+
+    // Send a request via the writer
+    let request_id = writer
+        .send_request("state/cursor", json!({}))
+        .await
+        .expect("Should send request");
+    assert!(request_id > 0, "Request ID should be positive");
+
+    // Read the response via the reader
+    let line = reader.read_line().await.expect("Should read response");
+    let response: serde_json::Value = serde_json::from_str(&line).expect("Should parse JSON");
+
+    // Verify we got a response with cursor info
+    assert!(
+        response.get("result").is_some() || response.get("error").is_some(),
+        "Should have result or error"
+    );
+
+    server.shutdown();
+}
+
+#[tokio::test]
+async fn test_connection_reader_writer_independence() {
+    use {
+        runner::client::common::ConnectionConfig,
+        tokio::{
+            io::{AsyncBufReadExt, AsyncWriteExt},
+            net::TcpListener,
+        },
+    };
+
+    // Create a simple echo server for testing
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+
+    let server_handle = tokio::spawn(async move {
+        let (socket, _) = listener.accept().await.unwrap();
+        let (read_half, mut write_half) = socket.into_split();
+        let mut reader = tokio::io::BufReader::new(read_half);
+        let mut line = String::new();
+
+        // Echo back what we receive
+        while let Ok(n) = reader.read_line(&mut line).await {
+            if n == 0 {
+                break;
+            }
+            write_half.write_all(line.as_bytes()).await.unwrap();
+            line.clear();
+        }
+    });
+
+    // Connect and split
+    let config = ConnectionConfig::tcp("127.0.0.1", addr.port());
+    let connection = runner::client::common::Connection::connect(&config)
+        .await
+        .expect("Should connect");
+
+    let (mut reader, mut writer) = connection.split();
+
+    // Write some data
+    writer
+        .write_line("test message")
+        .await
+        .expect("Should write");
+
+    // Read the echo
+    let response = reader.read_line().await.expect("Should read");
+    assert_eq!(response, "test message");
+
+    server_handle.abort();
+}
+
+/// Test that TUI can connect and receive initial state.
+#[tokio::test]
+async fn test_tui_connect_gets_initial_state() {
+    let server = TestServer::spawn().await;
+    let config = server.config();
+
+    // Connect using RpcClient (same path TuiApp uses)
+    let mut client = RpcClient::connect(&config).await.expect("Should connect");
+
+    // Get initial mode
+    let mode = client
+        .call("state/mode", json!({}))
+        .await
+        .expect("Should get mode");
+    assert!(mode.get("display").is_some(), "Mode should have display field");
+
+    // Get initial cursor
+    let cursor = client
+        .call("state/cursor", json!({}))
+        .await
+        .expect("Should get cursor");
+    assert!(cursor.get("line").is_some(), "Cursor should have line");
+    assert!(cursor.get("column").is_some(), "Cursor should have column");
+
+    // Split for concurrent operation (same as TuiApp)
+    let (_reader, mut writer) = client.into_split();
+
+    // Verify writer can send requests
+    let id = writer
+        .send_request("state/mode", json!({}))
+        .await
+        .expect("Should send request");
+    assert!(id > 0, "Request ID should be positive");
+
+    server.shutdown();
+}
+
+/// Test notification listener reads messages correctly.
+#[tokio::test]
+async fn test_notification_listener_reads_messages() {
+    use {
+        reovim_protocol::v1::{RpcNotification, RpcResponse},
+        runner::client::common::ServerMessage,
+        tokio::sync::mpsc,
+    };
+
+    let server = TestServer::spawn().await;
+    let config = server.config();
+
+    let client = RpcClient::connect(&config).await.expect("Should connect");
+
+    let (reader, mut writer) = client.into_split();
+
+    // Create channel for messages
+    let (tx, mut rx) = mpsc::channel(16);
+
+    // Spawn listener (simplified version of TuiApp's listener)
+    let listener = tokio::spawn(async move {
+        let mut reader = reader;
+        loop {
+            let Ok(line) = reader.read_line().await else {
+                break;
+            };
+
+            if let Ok(notification) = serde_json::from_str::<RpcNotification>(&line) {
+                let _ = tx.send(ServerMessage::Notification(notification)).await;
+            } else if let Ok(response) = serde_json::from_str::<RpcResponse>(&line) {
+                let _ = tx.send(ServerMessage::Response(response)).await;
+            }
+        }
+    });
+
+    // Send a request and verify we get a response through the channel
+    writer
+        .send_request("state/mode", json!({}))
+        .await
+        .expect("Should send");
+
+    // Wait for response with timeout
+    let msg = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+        .await
+        .expect("Should receive within timeout")
+        .expect("Channel should not be closed");
+    assert!(matches!(msg, ServerMessage::Response(_)), "Should receive a response");
+
+    listener.abort();
+    server.shutdown();
+}
+
 #[cfg(test)]
 mod common {
     use super::*;

@@ -79,7 +79,21 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
     - Type-safe deserialization for `ModeInfo`, `CursorInfo`, `ScreenInfo`
     - Supports `ScreenContentResult` with ANSI passthrough
     - Command-aware formatting via `format_output_for_command`
-  - 26 tests for Issue #226, 244 total unit tests passing
+  - **Added:** TUI Notification Listening (Issue 3)
+    - **Connection Split Infrastructure** (`runner/src/client/common/`):
+      - `ConnectionReader`/`ConnectionWriter` - Split halves for concurrent operation
+      - `Connection::split()` - Split connection into reader/writer
+      - `RpcWriter` - Async request writer with ID generation
+      - `RpcClient::into_split()` - Split RPC client for TUI use
+    - **Concurrent TUI Architecture** (`runner/src/client/tui/app.rs`):
+      - Background notification listener task with `tokio::spawn`
+      - `tokio::select!` main loop with dual event sources
+      - `crossterm::event::EventStream` for async terminal input
+      - `tokio::sync::mpsc` channel for server message passing
+      - Fire-and-forget request pattern (avoids deadlocks)
+    - **Notification Handlers**: MODE_CHANGED, CURSOR_MOVED, BUFFER_MODIFIED, RENDER_COMPLETE
+    - **Integration Tests**: `test_rpc_client_into_split`, `test_notification_listener_reads_messages`
+  - 285 unit tests + 28 integration/module tests, zero clippy warnings
 
 - **Phase 6.2/6.3: TUI and CLI Clients** (Issues #221, #222)
   - **TUI Client** (`runner/src/client/tui/`):
