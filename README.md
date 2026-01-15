@@ -232,67 +232,48 @@ Most movement commands support a numeric prefix (e.g., `5j` moves down 5 lines).
 
 ## Architecture
 
+Reovim follows a **Linux kernel-inspired architecture** with clear separation between mechanisms and policies.
+
 ```
-┌─I/O─────────────────────────────────────────────────────────┐
-│  ┌──────────────┐                        ┌──────────────┐   │
-│  │    CLIENT    │                        │   TERMINAL   │   │
-│  │  (cli/tui)   │                        │  (crossterm) │   │
-│  └──────────────┘                        └──────────────┘   │
-└───────┬────────────────────────────────────────────┬────────┘
-        │ input                               output │
-        ▼                                            ▲
-┌──────────────────┐                       ┌─────────┴──────────┐
-│ InputEventBroker │                       │    FrameBuffer     │
-│  (async reader)  │                       │  (diff rendering)  │
-└────────┬─────────┘                       └──────────▲─────────┘
-         │                                            │
-         ▼                                            │
-┌──────────────────┐                       ┌──────────┴─────────┐
-│  KeyEventBroker  │                       │  LayerCompositor   │
-│   (broadcast)    │                       │ (editor/overlays)  │
-└────────┬─────────┘                       └──────────▲─────────┘
-         │                                            ¦
-       ┌─┴──────────────┐                             ¦
-       ▼                ▼                             ¦
-┌──────────────┐ ┌──────────────┐                     ¦
-│CommandHandler│ │PluginHandlers│                     ¦
-│(keys→command)│ │  (EventBus)  │ ◀───────────────┐  ¦
-└──────┬───────┘ └──────┬───────┘                  │  ¦
-       │                │                          │  ¦
-       └───────┬────────┘                          │  ¦
-               ▼                                   │  ¦
-┌─────────────────────────────┐                    │  ¦
-│      PRIORITY CHANNELS      │                    │  ¦
-│  hi: user input (64)        │                    │  ¦
-│  lo: background (255)       │                    │  ¦
-└─────────────┬───────────────┘                    │  ¦
-              ▼                                    ▼  ¦
-┌─────────────────────────────┐  ┌────────────────────────────┐
-│          RUNTIME            │  │           PLUGINS          │
-│ ┌───────┐ ┌──────┐ ┌──────┐ │  │ Feature: range-finder,     │
-│ │Buffers│ │Screen│ │ Cmds │ │  │   microscope, lsp,         │
-│ └───────┘ └──────┘ └──────┘ │  │   completion, explorer     │
-│ ┌──────┐                    │  │ Languages: rust, c, js,    │
-│ │ Mode │                    │  │   python, json, toml, md   │
-│ └──────┘                    │  └────────────────────────────┘
-└──────────────┬──────────────┘                       ¦
-               └-----─────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  RUNNER (runner/)                              APPLICATION  │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
+│  │   Server    │  │   Client    │  │   Event Loop        │  │
+│  │  (RPC/TCP)  │  │  (CLI/TUI)  │  │   Module Loader     │  │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
+├─────────────────────────────────────────────────────────────┤
+│  MODULES (modules/)                             POLICY      │
+│  Keymap, Operators, Layout, Options, Mode-Manager           │
+│  → Decide HOW things behave (keybindings, defaults)         │
+├─────────────────────────────────────────────────────────────┤
+│  DRIVERS (lib/drivers/)                         MECHANISM   │
+│  syntax/, input/, display/, lsp/, net/, vfs/, command/      │
+│  → Provide services, define trait contracts                 │
+├─────────────────────────────────────────────────────────────┤
+│  KERNEL (lib/kernel/)                           MECHANISM   │
+│  mm/ (Buffer, Position), ipc/ (EventBus), core/ (Mode)      │
+│  block/ (UndoTree), sched/ (Runtime), api/ (public API)     │
+│  → Core primitives, WHAT can be done                        │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-- `reovim` (RUNNER) - Main binary, plugin loading
-- `reovim-core` (CORE) - Runtime, buffers, events, screen, commands
-- `reovim-sys` (SYS) - System abstraction layer (crossterm re-exports)
+**Crate Structure:**
+- `reovim` (runner/) - Main binary, server/client modes, module loading
+- `reovim-kernel` (lib/kernel/) - Core mechanisms: buffers, events, modes, undo
+- `reovim-driver-*` (lib/drivers/) - Services: syntax, input, display, LSP, network
+- `reovim-module-*` (modules/) - Policy modules: keymap, operators, layout
 
-**Key Design:**
-- **Priority channels** separate user input (hi) from background tasks (lo) for ~1000x latency improvement
-- **Diff-based rendering** sends only changed cells to terminal (zero flickering)
-- **EventBus** enables plugin-to-plugin communication without core modifications
+**Key Design Principles:**
+- **Mechanism vs Policy** - Kernel provides WHAT (traits), modules decide HOW (behavior)
+- **API Boundary** - Modules use ONLY `reovim_kernel::api::*` (compile-time enforced)
+- **Zero external deps in kernel** - Tree-sitter lives in drivers, not kernel
+- **Multi-client support** - Server mode with per-client viewports and independent cursors
 
 ## Performance
 
 Run benchmarks:
 ```bash
-cargo bench -p reovim-core
+cargo bench -p reovim-kernel
 ```
 
 Generate performance report:
@@ -304,23 +285,29 @@ See [perf/](./perf/) for versioned benchmark results.
 
 ## Documentation
 
-- [Architecture](./docs/architecture/overview.md) - System design and component overview
-- [Event System](./docs/events/overview.md) - Input handling and event flow
-- [Commands](./docs/reference/commands.md) - Command system and keybindings
-- [Plugin System](./docs/plugins/system.md) - Plugin architecture and development
-- [Rendering](./docs/rendering/overview.md) - Rendering systems guide
-- [Render Pipeline](./docs/rendering/pipeline.md) - Render stages and data flow
-- [Diagnostics](./docs/features/diagnostics.md) - Sign column and virtual text configuration
-- [Text Objects](./docs/reference/text-objects.md) - Delimiter and semantic text objects
-- [Server Mode](./docs/reference/server-mode.md) - RPC server and multi-instance support
-- [Window & Buffer](./docs/features/window-buffer.md) - Window architecture
-- [Animation System](./docs/features/animation-system.md) - Visual effects and animations
-- [Decoration System](./docs/features/decoration-system.md) - Language-aware decorations
-- [Saturator](./docs/features/saturator.md) - Background task architecture
-- [Color System](./docs/features/color-system.md) - Color palette design
-- [Syntax Highlighting](./docs/features/syntax-highlighting.md) - Rust AST taxonomy
-- [Development](./docs/guides/development.md) - Setup and contributing
-- [Testing](./docs/guides/testing.md) - Running and writing tests
+**Architecture (v0.9.0+):**
+- [Architecture Overview](./docs/architecture/overview.md) - Layer diagram, Linux mapping
+- [Kernel Overview](./docs/architecture/kernel/overview.md) - Core subsystems: mm/, ipc/, core/, block/
+- [Driver Overview](./docs/architecture/drivers/overview.md) - Services: syntax, input, display, LSP
+- [Module System](./docs/architecture/modules/overview.md) - Module trait, registration
+- [Runner Overview](./docs/architecture/runner/overview.md) - Server/client architecture
+
+**Contributing:**
+- [Getting Started](./docs/contributing/getting-started.md) - Development setup
+- [Mechanism vs Policy](./docs/contributing/philosophy/mechanism-vs-policy.md) - Core design principle
+- [Linux Architecture](./docs/contributing/philosophy/linux-architecture.md) - Kernel design mapping
+- [Module Development](./docs/contributing/guides/module-development.md) - Creating modules
+- [Testing](./docs/contributing/guides/testing.md) - Testing guide and patterns
+
+**User Guide:**
+- [Configuration](./docs/user-guide/configuration.md) - Editor settings
+- [Commands](./docs/user-guide/commands.md) - Command system and keybindings
+- [Text Objects](./docs/user-guide/text-objects.md) - Delimiter and semantic text objects
+- [Server Mode](./docs/user-guide/server-mode.md) - RPC server usage
+- [Troubleshooting](./docs/user-guide/troubleshooting.md) - Common issues
+
+**Archive (v0.8.x legacy):**
+- [Legacy Documentation](./archive/docs/) - Pre-v0.9.0 documentation
 
 ## License
 

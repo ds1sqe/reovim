@@ -227,6 +227,7 @@ Refs #ISSUE_NUMBER, Parts of #EPIC_NUMBER
 - **Body**: What changed and why, bullet points for clarity
 - **Footer**: `Refs #NUM` for the issue, `Parts of #NUM` for parent epic
 - **Types**: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`
+- **IMPORTANT**: Lines starting with `#` are comments in git and will be stripped. Use plain text headers (e.g., `Section:`) instead of markdown `## Section`.
 
 **Changelog Convention**: Every feature, fix, or notable change MUST include an update to `CHANGELOG.md` under the `[Unreleased]` section before proposing a commit.
 
@@ -377,21 +378,28 @@ For in-depth information, see:
 
 **Architecture (v0.9.0+ kernel-based):**
 - [docs/architecture/overview.md](./docs/architecture/overview.md) - Layer diagram, Linux mapping, crate deps
-- [docs/architecture/kernel.md](./docs/architecture/kernel.md) - Kernel subsystems: mm/, ipc/, core/, block/, sched/
-- [docs/architecture/drivers.md](./docs/architecture/drivers.md) - Driver layer: syntax/, input/, display/, lsp/, net/
-- [docs/architecture/modules.md](./docs/architecture/modules.md) - Module trait, declare_module!, loader, registry
-- [docs/architecture/mechanism-vs-policy.md](./docs/architecture/mechanism-vs-policy.md) - Core design principle
-- [docs/architecture/module-mode-inheritance.md](./docs/architecture/module-mode-inheritance.md) - Mode system with inheritance
+- [docs/architecture/kernel/overview.md](./docs/architecture/kernel/overview.md) - Kernel subsystems: mm/, ipc/, core/, block/, sched/
+- [docs/architecture/drivers/overview.md](./docs/architecture/drivers/overview.md) - Driver layer: syntax/, input/, display/, lsp/, net/
+- [docs/architecture/modules/overview.md](./docs/architecture/modules/overview.md) - Module trait, declare_module!, loader, registry
+- [docs/contributing/philosophy/mechanism-vs-policy.md](./docs/contributing/philosophy/mechanism-vs-policy.md) - Core design principle
+- [docs/architecture/modules/mode-inheritance.md](./docs/architecture/modules/mode-inheritance.md) - Mode system with inheritance
 
-**Guides and Reference:**
-- [docs/guides/development.md](./docs/guides/development.md) - Development guide
-- [docs/guides/testing.md](./docs/guides/testing.md) - Testing guide
-- [docs/guides/configuration.md](./docs/guides/configuration.md) - Editor settings
-- [docs/reference/commands.md](./docs/reference/commands.md) - Command system
-- [docs/reference/server-mode.md](./docs/reference/server-mode.md) - RPC server mode
+**Contributing:**
+- [docs/contributing/getting-started.md](./docs/contributing/getting-started.md) - Development setup
+- [docs/contributing/guides/testing.md](./docs/contributing/guides/testing.md) - Testing guide
 
-**Archive (v0.8.x legacy reference):**
-- [docs/archive/](./docs/archive/) - Legacy documentation
+**User Guide:**
+- [docs/user-guide/configuration.md](./docs/user-guide/configuration.md) - Editor settings
+- [docs/user-guide/commands.md](./docs/user-guide/commands.md) - Command system
+- [docs/user-guide/server-mode.md](./docs/user-guide/server-mode.md) - RPC server mode
+
+**Heritage (foundational documents):**
+- [docs/heritage/project-kernel-phases.md](./docs/heritage/project-kernel-phases.md) - Epic #150 phase history
+- [docs/heritage/legacy-memorial.md](./docs/heritage/legacy-memorial.md) - Patterns learned from v0.8.x
+- [docs/heritage/clean-architecture-proposal.md](./docs/heritage/clean-architecture-proposal.md) - Original architecture proposal
+
+**Archive (v0.8.x legacy code):**
+- [archive/docs/](./archive/docs/) - Legacy documentation
 - [archive/](./archive/) - Archived legacy code (lib/core, lib/sys, lib/lsp, plugins)
 
 ## Logs and Debugging
