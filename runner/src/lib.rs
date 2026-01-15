@@ -113,8 +113,14 @@ pub mod client;
 // Buffer manager implementation
 pub mod buffer_manager;
 
+// Undo registry for per-buffer undo trees
+pub mod undo_registry;
+
 // Re-export SimpleBufferManager
 pub use buffer_manager::SimpleBufferManager;
+
+// Re-export UndoRegistry
+pub use undo_registry::UndoRegistry;
 
 // Re-exports for backwards compatibility and convenience
 pub use server::{

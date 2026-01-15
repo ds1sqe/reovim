@@ -15,6 +15,29 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 7.3-4: Cursor Movement & Undo/Redo** (Issues #231, #232)
+  - **Shared Infrastructure**:
+    - `CommandContext.buffer_id()` - Commands can now access active buffer ID
+    - `CommandContext.set_buffer_id()` - Runner sets buffer ID before command dispatch
+    - `ArgKind::BufferId` / `ArgValue::BufferId(usize)` - New argument type for buffer IDs
+    - `CommandRegistry::execute()` auto-populates buffer ID from `AppState.active_buffer`
+  - **Cursor Movement Commands** (`modules/editor/src/command.rs`):
+    - `CursorUp` (k) - Move cursor up with count support
+    - `CursorDown` (j) - Move cursor down with count support
+    - `CursorLeft` (h) - Move cursor left with count support
+    - `CursorRight` (l) - Move cursor right with count support
+    - All commands emit `CursorMoved` events for event subscribers
+    - Boundary handling (no-op at edges), column clamping to line length
+  - **Undo/Redo Framework** (Runner-Side Callback Pattern):
+    - `UndoAction` enum: `Undo { count }`, `Redo { count }`
+    - `CommandResult::UndoAction(action)` - Commands declare undo intent
+    - `UndoRegistry` (`runner/src/undo_registry.rs`) - Per-buffer undo tree storage
+    - `UndoCommand` (u) - Returns `UndoAction::Undo` for runner to handle
+    - `RedoCommand` (C-r) - Returns `UndoAction::Redo` for runner to handle
+  - **Unit Tests**:
+    - 65 tests in editor module (cursor commands, undo/redo commands)
+    - 11 tests in UndoRegistry (buffer isolation, undo/redo operations)
+
 - **Phase 7.2: Session/Viewport Architecture** (Issue #230)
   - **Per-Client Viewport** (`runner/src/server/client/viewport.rs`):
     - `ClientViewport` struct with terminal dimensions, active buffer, cursor positions per buffer
