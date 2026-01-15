@@ -4,7 +4,9 @@
 
 use {
     reovim_kernel::api::v1::BufferId,
-    reovim_protocol::v1::{CursorInfo, ModeInfo, ScreenInfo},
+    reovim_protocol::v1::{
+        CursorInfo, ModeInfo, Position, ScreenInfo, SelectionInfo, SelectionMode,
+    },
 };
 
 use super::super::dispatcher::{HandlerFuture, RpcContext};
@@ -131,6 +133,74 @@ pub fn state_screen(ctx: RpcContext, _params: serde_json::Value) -> HandlerFutur
             .await;
 
         Ok(serde_json::to_value(screen_info).expect("ScreenInfo serialization cannot fail"))
+    })
+}
+
+/// Handler for `state/selection` method.
+///
+/// Returns the current selection state.
+///
+/// # Request
+///
+/// ```json
+/// {"jsonrpc": "2.0", "id": 1, "method": "state/selection", "params": {}}
+/// ```
+///
+/// # Response
+///
+/// ```json
+/// {"jsonrpc": "2.0", "id": 1, "result": {"active": false, "mode": "character", ...}}
+/// ```
+///
+/// # Panics
+///
+/// This function will not panic as `SelectionInfo` serialization is infallible.
+#[must_use]
+pub fn state_selection(ctx: RpcContext, _params: serde_json::Value) -> HandlerFuture {
+    Box::pin(async move {
+        let selection_info = ctx
+            .session
+            .with_state(|state| {
+                // Check if we have an active buffer with a selection
+                if let Some(buffer_id) = state.app.active_buffer
+                    && let Some(buffer_arc) = state.app.kernel.buffers.get(buffer_id)
+                {
+                    let buffer = buffer_arc.read();
+                    let selection = buffer.selection();
+
+                    // Check if selection is active
+                    if selection.is_active() {
+                        let anchor = selection.anchor;
+                        let cursor_pos = buffer.position();
+
+                        return SelectionInfo {
+                            active: true,
+                            mode: match selection.mode() {
+                                reovim_kernel::api::v1::SelectionMode::Character => {
+                                    SelectionMode::Character
+                                }
+                                reovim_kernel::api::v1::SelectionMode::Line => SelectionMode::Line,
+                                reovim_kernel::api::v1::SelectionMode::Block => {
+                                    SelectionMode::Block
+                                }
+                            },
+                            anchor: Position::new(anchor.line, anchor.column),
+                            cursor: Position::new(cursor_pos.line, cursor_pos.column),
+                        };
+                    }
+                }
+
+                // No selection active
+                SelectionInfo {
+                    active: false,
+                    mode: SelectionMode::Character,
+                    anchor: Position::new(0, 0),
+                    cursor: Position::new(0, 0),
+                }
+            })
+            .await;
+
+        Ok(serde_json::to_value(selection_info).expect("SelectionInfo serialization cannot fail"))
     })
 }
 

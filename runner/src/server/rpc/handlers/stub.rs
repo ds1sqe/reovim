@@ -28,7 +28,6 @@ macro_rules! stub_handler {
 }
 
 // State methods (not yet implemented)
-stub_handler!(state_selection, "state/selection");
 stub_handler!(state_windows, "state/windows");
 stub_handler!(state_telescope, "state/telescope");
 stub_handler!(state_microscope, "state/microscope");
@@ -62,7 +61,7 @@ mod tests {
         };
 
         // Test one stub handler to verify the pattern works
-        let result = state_selection(ctx, serde_json::json!({})).await;
+        let result = state_windows(ctx, serde_json::json!({})).await;
         assert!(result.is_err());
 
         let err = result.unwrap_err();

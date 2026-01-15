@@ -196,3 +196,112 @@ pub async fn cmd_module_unload(client: &mut RpcClient, id: &str) -> Result<Value
 pub async fn cmd_module_reload(client: &mut RpcClient, id: &str) -> Result<Value, RpcClientError> {
     client.call("module/reload", json!({ "id": id })).await
 }
+
+// ============================================================================
+// Debug Commands
+// ============================================================================
+
+/// Get server version information.
+///
+/// # Errors
+///
+/// Returns error if RPC call fails.
+pub async fn cmd_version(client: &mut RpcClient) -> Result<Value, RpcClientError> {
+    client.call("debug/version", json!({})).await
+}
+
+/// Get server uptime.
+///
+/// # Errors
+///
+/// Returns error if RPC call fails.
+pub async fn cmd_uptime(client: &mut RpcClient) -> Result<Value, RpcClientError> {
+    client.call("debug/uptime", json!({})).await
+}
+
+/// Get kernel state summary.
+///
+/// # Errors
+///
+/// Returns error if RPC call fails.
+pub async fn cmd_kernel_state(client: &mut RpcClient) -> Result<Value, RpcClientError> {
+    client.call("debug/kernel_state", json!({})).await
+}
+
+/// Get register contents.
+///
+/// # Errors
+///
+/// Returns error if RPC call fails.
+pub async fn cmd_registers(client: &mut RpcClient) -> Result<Value, RpcClientError> {
+    client.call("debug/registers", json!({})).await
+}
+
+/// Get mark contents.
+///
+/// # Errors
+///
+/// Returns error if RPC call fails.
+pub async fn cmd_marks(client: &mut RpcClient) -> Result<Value, RpcClientError> {
+    client.call("debug/marks", json!({})).await
+}
+
+/// Get mode stack.
+///
+/// # Errors
+///
+/// Returns error if RPC call fails.
+pub async fn cmd_mode_stack(client: &mut RpcClient) -> Result<Value, RpcClientError> {
+    client.call("debug/mode_stack", json!({})).await
+}
+
+/// Get performance metrics.
+///
+/// # Errors
+///
+/// Returns error if RPC call fails.
+pub async fn cmd_metrics(client: &mut RpcClient) -> Result<Value, RpcClientError> {
+    client.call("debug/metrics", json!({})).await
+}
+
+/// Get handler statistics.
+///
+/// # Errors
+///
+/// Returns error if RPC call fails.
+pub async fn cmd_handlers(client: &mut RpcClient) -> Result<Value, RpcClientError> {
+    client.call("debug/handlers", json!({})).await
+}
+
+/// Get or set log level.
+///
+/// # Errors
+///
+/// Returns error if RPC call fails.
+pub async fn cmd_log_level(
+    client: &mut RpcClient,
+    level: Option<&str>,
+) -> Result<Value, RpcClientError> {
+    let params = level.map_or_else(|| json!({}), |l| json!({ "level": l }));
+    client.call("debug/log_level", params).await
+}
+
+/// Get recent log entries.
+///
+/// # Errors
+///
+/// Returns error if RPC call fails.
+pub async fn cmd_log_tail(client: &mut RpcClient, count: usize) -> Result<Value, RpcClientError> {
+    client
+        .call("debug/log_tail", json!({ "count": count }))
+        .await
+}
+
+/// Get full debug snapshot.
+///
+/// # Errors
+///
+/// Returns error if RPC call fails.
+pub async fn cmd_snapshot(client: &mut RpcClient) -> Result<Value, RpcClientError> {
+    client.call("debug/visual_snapshot", json!({})).await
+}

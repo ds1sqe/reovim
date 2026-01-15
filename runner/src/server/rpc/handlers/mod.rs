@@ -22,9 +22,9 @@ pub use {
     module::{module_list, module_load, module_reload, module_unload},
     screen::state_screen_content,
     server::server_kill,
-    state::{state_cursor, state_mode, state_screen},
+    state::{state_cursor, state_mode, state_screen, state_selection},
     stub::{
-        state_ascii_art, state_layer_info, state_microscope, state_selection, state_telescope,
+        state_ascii_art, state_layer_info, state_microscope, state_telescope,
         state_visual_snapshot, state_windows,
     },
 };

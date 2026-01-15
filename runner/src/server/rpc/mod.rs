@@ -42,6 +42,8 @@ use reovim_protocol::v1::{
     STATE_WINDOWS,
 };
 
+use super::debug;
+
 /// Create a dispatcher with all default handlers registered.
 #[must_use]
 pub fn create_default_dispatcher() -> RpcDispatcher {
@@ -86,6 +88,9 @@ pub fn create_default_dispatcher() -> RpcDispatcher {
 
     // Server methods
     dispatcher.register(SERVER_KILL, handlers::server_kill);
+
+    // Debug methods
+    debug::register_handlers(&mut dispatcher);
 
     dispatcher
 }
@@ -133,7 +138,7 @@ mod tests {
         // Server handlers
         assert!(dispatcher.has_method(SERVER_KILL));
 
-        // 14 implemented + 10 stubs = 24 total
-        assert_eq!(dispatcher.method_count(), 24);
+        // 14 implemented + 10 stubs + 11 debug (2 info + 4 inspect + 2 metrics + 2 log + 1 snapshot) = 35 total
+        assert_eq!(dispatcher.method_count(), 35);
     }
 }

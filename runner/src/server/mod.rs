@@ -85,6 +85,7 @@ impl SrvArgs {
 // Submodules - all server-specific code lives here
 mod app;
 pub mod client;
+pub mod debug;
 mod event_loop;
 pub mod fallback;
 pub mod module;
@@ -315,6 +316,9 @@ impl Server {
     ///
     /// Returns an error if binding fails.
     pub async fn run(&self) -> std::io::Result<()> {
+        // Initialize debug infrastructure (uptime tracking, etc.)
+        debug::init();
+
         // Create default session
         let default_session_id = SessionId::new(self.config.default_session_name.as_str());
         self.ensure_default_session(&default_session_id);

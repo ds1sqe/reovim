@@ -132,6 +132,37 @@ pub enum CliAction {
         /// The content to set.
         content: String,
     },
+
+    // Debug commands
+    /// Get server version information.
+    Version,
+    /// Get server uptime.
+    Uptime,
+    /// Get kernel state summary.
+    KernelState,
+    /// Get register contents.
+    Registers,
+    /// Get mark contents.
+    Marks,
+    /// Get mode stack.
+    ModeStack,
+    /// Get performance metrics.
+    Metrics,
+    /// Get handler statistics.
+    Handlers,
+    /// Get or set log level.
+    LogLevel {
+        /// New log level to set (omit to get current).
+        level: Option<String>,
+    },
+    /// Get recent log entries.
+    LogTail {
+        /// Number of entries to return (default: 50).
+        #[arg(short, long, default_value = "50")]
+        count: usize,
+    },
+    /// Get full debug snapshot (JSON).
+    Snapshot,
 }
 
 #[cfg(test)]

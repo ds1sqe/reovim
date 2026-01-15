@@ -252,6 +252,20 @@ fn run_cli(config: &ConnectionConfig, action: &CliAction, format: &str) {
             CliAction::SetContent { content } => {
                 cmd::cmd_buffer_set_content(&mut client, content, None).await
             }
+            // Debug commands
+            CliAction::Version => cmd::cmd_version(&mut client).await,
+            CliAction::Uptime => cmd::cmd_uptime(&mut client).await,
+            CliAction::KernelState => cmd::cmd_kernel_state(&mut client).await,
+            CliAction::Registers => cmd::cmd_registers(&mut client).await,
+            CliAction::Marks => cmd::cmd_marks(&mut client).await,
+            CliAction::ModeStack => cmd::cmd_mode_stack(&mut client).await,
+            CliAction::Metrics => cmd::cmd_metrics(&mut client).await,
+            CliAction::Handlers => cmd::cmd_handlers(&mut client).await,
+            CliAction::LogLevel { level } => {
+                cmd::cmd_log_level(&mut client, level.as_deref()).await
+            }
+            CliAction::LogTail { count } => cmd::cmd_log_tail(&mut client, *count).await,
+            CliAction::Snapshot => cmd::cmd_snapshot(&mut client).await,
         };
 
         match result {

@@ -4,6 +4,7 @@
 //! and method/notification constants for protocol version 1.
 
 pub mod codes;
+pub mod debug;
 pub mod input;
 pub mod messages;
 pub mod methods;
@@ -15,6 +16,7 @@ pub mod types;
 // Re-export commonly used items
 pub use {
     codes::*,
+    debug::*,
     input::*,
     messages::{RpcError, RpcNotification, RpcRequest, RpcResponse},
     methods::*,

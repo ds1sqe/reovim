@@ -15,6 +15,53 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 6.5: Debug RPC Endpoints** (Issue #227)
+  - **Debug API** (`lib/kernel/src/api/debug.rs`):
+    - `KernelStateSnapshot` - Buffer count, buffer IDs, event handlers
+    - `RegisterSnapshot`/`RegistersSnapshot` - Register contents with yank type
+    - `MarkSnapshot`/`MarksSnapshot` - Local, global, and special marks
+    - `ModeStackSnapshot` - Current mode and full mode stack
+    - `snapshot_kernel_state()`, `snapshot_registers()`, `snapshot_marks()`, `snapshot_mode_stack()`
+    - Pure extraction functions (mechanism) - no serde dependency
+  - **Debug Infrastructure** (`runner/src/server/debug/infrastructure/`):
+    - `uptime.rs` - Server start time with `OnceLock<Instant>` for uptime tracking
+    - `metrics.rs` - `HandlerMetrics` with relaxed atomics (~30-40ns overhead per request)
+    - `RequestTimer` - RAII timer for automatic request duration recording
+    - `log_buffer.rs` - `LogRingBuffer` (1000 entry capacity) for recent log capture
+    - `LogEntry` - Timestamp, level, target, message with ISO 8601 formatting
+  - **Debug RPC Handlers** (`runner/src/server/debug/handlers/`):
+    - `debug/version` - Server version info (git hash, build date)
+    - `debug/uptime` - Server uptime in seconds
+    - `debug/kernel_state` - Kernel summary (buffer count, event handlers)
+    - `debug/registers` - Register contents (unnamed and named a-z)
+    - `debug/marks` - Mark contents (local, global, special)
+    - `debug/mode_stack` - Current mode and full stack
+    - `debug/metrics` - Performance stats (uptime, total requests)
+    - `debug/handlers` - Per-handler call counts and latency
+    - `debug/log_level` - Current log level
+    - `debug/log_tail` - Recent log entries (default 100)
+    - `debug/visual_snapshot` - Comprehensive AI-friendly state dump
+  - **Protocol Types** (`lib/protocol/src/v1/debug.rs`):
+    - `VersionResult`, `UptimeResult`, `KernelStateResult`
+    - `RegisterEntry`, `RegistersResult`, `MarkEntry`, `MarksResult`
+    - `ModeStackResult`, `MetricEntry`, `MetricsResult`
+    - `HandlerMetricEntry`, `HandlersResult`
+    - `LogLevelResult`, `LogEntryResult`, `LogTailResult`
+    - `VisualSnapshotResult` with server/editor/buffers/ui/vim/metrics sections
+  - **CLI Commands** (`runner/src/client/cli/`):
+    - `reovim cli version` - Server version info
+    - `reovim cli uptime` - Server uptime
+    - `reovim cli kernel-state` - Kernel summary
+    - `reovim cli registers` - Register contents
+    - `reovim cli marks` - Mark contents
+    - `reovim cli mode-stack` - Mode stack
+    - `reovim cli metrics` - Performance stats
+    - `reovim cli handlers` - Handler stats
+    - `reovim cli log-level` - Current log level
+    - `reovim cli log-tail -n 50` - Last 50 log entries
+    - `reovim cli snapshot` - Full debug snapshot (JSON)
+  - 252 tests, zero clippy warnings
+
 - **Phase 6.4: CLI/Server Integration Fixes** (Issue #226)
   - **Fixed:** Stub handlers blocking CLI commands (`screen`, `resize`)
     - Implemented `state/screen` handler returning viewport dimensions
