@@ -4,7 +4,12 @@
 
 use std::fmt::Write;
 
-use serde_json::Value;
+use {
+    reovim_protocol::v1::{
+        BufferInfo, BufferListResult, CursorInfo, ModeInfo, ScreenContentResult, ScreenInfo,
+    },
+    serde_json::Value,
+};
 
 /// Output format.
 #[derive(Debug, Clone, Copy, Default)]
@@ -23,6 +28,70 @@ pub fn format_output(value: &Value, format: OutputFormat) -> String {
         OutputFormat::Plain => format_plain(value),
         OutputFormat::Json => format_json(value),
     }
+}
+
+/// Format a JSON value for output with command context.
+///
+/// Uses typed deserialization based on the command to provide better formatting.
+#[must_use]
+pub fn format_output_for_command(value: &Value, format: OutputFormat, command: &str) -> String {
+    match format {
+        OutputFormat::Plain => format_plain_for_command(value, command),
+        OutputFormat::Json => format_json(value),
+    }
+}
+
+/// Format as plain text with command context for typed deserialization.
+fn format_plain_for_command(value: &Value, command: &str) -> String {
+    match command {
+        "mode" => {
+            if let Ok(mode) = serde_json::from_value::<ModeInfo>(value.clone()) {
+                return format!("Mode: {}", mode.display);
+            }
+        }
+        "cursor" => {
+            if let Ok(cursor) = serde_json::from_value::<CursorInfo>(value.clone()) {
+                return format!("Cursor: line {}, column {}", cursor.line, cursor.column);
+            }
+        }
+        "screen" => {
+            if let Ok(screen) = serde_json::from_value::<ScreenInfo>(value.clone()) {
+                return format!("Screen: {}x{}", screen.width, screen.height);
+            }
+        }
+        "content" => {
+            // Handle screen content - return raw content (may contain ANSI)
+            if let Ok(content) = serde_json::from_value::<ScreenContentResult>(value.clone()) {
+                return content.content;
+            }
+        }
+        "buffers" => {
+            if let Ok(result) = serde_json::from_value::<BufferListResult>(value.clone()) {
+                return format_buffer_list_typed(&result.buffers);
+            }
+        }
+        _ => {}
+    }
+    // Fallback to generic formatting
+    format_plain(value)
+}
+
+/// Format buffer list from typed data.
+fn format_buffer_list_typed(buffers: &[BufferInfo]) -> String {
+    if buffers.is_empty() {
+        return "No buffers".to_string();
+    }
+
+    let mut output = String::from("ID    Modified  Path\n");
+    output.push_str("----  --------  ----\n");
+
+    for buf in buffers {
+        let mod_str = if buf.modified { "*" } else { " " };
+        let path = buf.file_path.as_deref().unwrap_or("[No Name]");
+        let _ = writeln!(output, "{:<4}  {:<8}  {}", buf.id, mod_str, path);
+    }
+
+    output
 }
 
 /// Format as pretty JSON.
@@ -188,5 +257,77 @@ mod tests {
         let output = format_output(&value, OutputFormat::Json);
         assert!(output.contains("\"key\""));
         assert!(output.contains("\"value\""));
+    }
+
+    #[test]
+    fn test_format_mode_typed() {
+        let value = json!({
+            "focus": "Editor",
+            "edit_mode": "Normal",
+            "sub_mode": "None",
+            "display": "NORMAL"
+        });
+        let output = format_output_for_command(&value, OutputFormat::Plain, "mode");
+        assert_eq!(output, "Mode: NORMAL");
+    }
+
+    #[test]
+    fn test_format_cursor_typed() {
+        let value = json!({"line": 42, "column": 10});
+        let output = format_output_for_command(&value, OutputFormat::Plain, "cursor");
+        assert_eq!(output, "Cursor: line 42, column 10");
+    }
+
+    #[test]
+    fn test_format_screen_typed() {
+        let value = json!({
+            "width": 120,
+            "height": 40,
+            "active_buffer_id": 1,
+            "window_count": 1
+        });
+        let output = format_output_for_command(&value, OutputFormat::Plain, "screen");
+        assert_eq!(output, "Screen: 120x40");
+    }
+
+    #[test]
+    fn test_format_content_ansi() {
+        // Test raw ANSI content passthrough
+        let ansi_content = "\x1b[32mHello\x1b[0m World";
+        let value = json!({"content": ansi_content});
+        let output = format_output_for_command(&value, OutputFormat::Plain, "content");
+        assert_eq!(output, ansi_content);
+    }
+
+    #[test]
+    fn test_format_buffers_typed() {
+        let value = json!({
+            "buffers": [
+                {"id": 1, "file_path": "/tmp/test.txt", "modified": false, "line_count": 10},
+                {"id": 2, "file_path": null, "modified": true, "line_count": 5}
+            ]
+        });
+        let output = format_output_for_command(&value, OutputFormat::Plain, "buffers");
+        assert!(output.contains("/tmp/test.txt"));
+        assert!(output.contains("[No Name]"));
+        assert!(output.contains('*')); // modified indicator
+    }
+
+    #[test]
+    fn test_format_unknown_command_fallback() {
+        let value = json!({"key": "value"});
+        let output = format_output_for_command(&value, OutputFormat::Plain, "unknown");
+        // Should fall back to generic formatting
+        assert!(output.contains("key"));
+        assert!(output.contains("value"));
+    }
+
+    #[test]
+    fn test_format_json_passthrough() {
+        let value = json!({"content": "test"});
+        let output = format_output_for_command(&value, OutputFormat::Json, "content");
+        // JSON format should not do typed formatting
+        assert!(output.contains("\"content\""));
+        assert!(output.contains("\"test\""));
     }
 }

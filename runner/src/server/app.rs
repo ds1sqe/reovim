@@ -54,6 +54,20 @@ pub struct AppState {
 
     /// Whether the application is running.
     pub running: bool,
+
+    /// Terminal width in columns.
+    ///
+    /// Tracked at runtime for headless server mode. TUI clients send
+    /// `editor/resize` to update this when their terminal is resized.
+    /// Default: 80 (standard VT100 width).
+    pub terminal_width: u16,
+
+    /// Terminal height in rows.
+    ///
+    /// Tracked at runtime for headless server mode. TUI clients send
+    /// `editor/resize` to update this when their terminal is resized.
+    /// Default: 24 (standard VT100 height).
+    pub terminal_height: u16,
 }
 
 impl AppState {
@@ -71,6 +85,8 @@ impl AppState {
             active_buffer: None,
             pending_keys: KeySequence::new(),
             running: true,
+            terminal_width: 80,
+            terminal_height: 24,
         }
     }
 
@@ -139,5 +155,28 @@ mod tests {
 
         app.clear_pending_keys();
         assert!(app.pending_keys.is_empty());
+    }
+
+    #[test]
+    fn test_app_state_default_terminal_size() {
+        let kernel = KernelContext::default();
+        let app = AppState::new(kernel, test_mode_id());
+
+        // Default terminal size is 80x24 (VT100 standard)
+        assert_eq!(app.terminal_width, 80);
+        assert_eq!(app.terminal_height, 24);
+    }
+
+    #[test]
+    fn test_app_state_terminal_size_access() {
+        let kernel = KernelContext::default();
+        let mut app = AppState::new(kernel, test_mode_id());
+
+        // Verify we can read and write terminal dimensions
+        app.terminal_width = 120;
+        app.terminal_height = 40;
+
+        assert_eq!(app.terminal_width, 120);
+        assert_eq!(app.terminal_height, 40);
     }
 }

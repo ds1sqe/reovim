@@ -29,17 +29,12 @@ macro_rules! stub_handler {
 
 // State methods (not yet implemented)
 stub_handler!(state_selection, "state/selection");
-stub_handler!(state_screen, "state/screen");
 stub_handler!(state_windows, "state/windows");
 stub_handler!(state_telescope, "state/telescope");
 stub_handler!(state_microscope, "state/microscope");
 stub_handler!(state_visual_snapshot, "state/visual_snapshot");
 stub_handler!(state_ascii_art, "state/ascii_art");
 stub_handler!(state_layer_info, "state/layer_info");
-
-// Editor methods (not yet implemented)
-stub_handler!(editor_resize, "editor/resize");
-stub_handler!(editor_quit, "editor/quit");
 
 #[cfg(test)]
 mod tests {

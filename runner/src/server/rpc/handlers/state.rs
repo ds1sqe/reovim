@@ -2,7 +2,10 @@
 //!
 //! Handlers for `state/mode`, `state/cursor`, and related methods.
 
-use reovim_protocol::v1::{CursorInfo, ModeInfo};
+use {
+    reovim_kernel::api::v1::BufferId,
+    reovim_protocol::v1::{CursorInfo, ModeInfo, ScreenInfo},
+};
 
 use super::super::dispatcher::{HandlerFuture, RpcContext};
 
@@ -94,6 +97,43 @@ pub fn state_cursor(ctx: RpcContext, _params: serde_json::Value) -> HandlerFutur
     })
 }
 
+/// Handler for `state/screen` method.
+///
+/// Returns the current screen/viewport information.
+///
+/// # Request
+///
+/// ```json
+/// {"jsonrpc": "2.0", "id": 1, "method": "state/screen", "params": {}}
+/// ```
+///
+/// # Response
+///
+/// ```json
+/// {"jsonrpc": "2.0", "id": 1, "result": {"width": 80, "height": 24, "active_buffer_id": 0, "window_count": 1}}
+/// ```
+///
+/// # Panics
+///
+/// This function will not panic as `ScreenInfo` serialization is infallible.
+#[must_use]
+pub fn state_screen(ctx: RpcContext, _params: serde_json::Value) -> HandlerFuture {
+    Box::pin(async move {
+        let screen_info = ctx
+            .session
+            .with_state(|state| ScreenInfo {
+                width: state.app.terminal_width,
+                height: state.app.terminal_height,
+                active_buffer_id: state.app.active_buffer.map_or(0, BufferId::as_usize),
+                active_window_id: None,
+                window_count: 1,
+            })
+            .await;
+
+        Ok(serde_json::to_value(screen_info).expect("ScreenInfo serialization cannot fail"))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use {
@@ -140,5 +180,80 @@ mod tests {
         let value = result.unwrap();
         assert!(value.get("line").is_some());
         assert!(value.get("column").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_state_screen_returns_dimensions() {
+        let session = test_session();
+        let ctx = RpcContext {
+            session,
+            client_id: ClientId::new(1),
+        };
+
+        let result = state_screen(ctx, serde_json::json!({})).await;
+
+        assert!(result.is_ok());
+        let value = result.unwrap();
+        // Default terminal size is 80x24
+        assert_eq!(value.get("width").and_then(serde_json::Value::as_u64), Some(80));
+        assert_eq!(value.get("height").and_then(serde_json::Value::as_u64), Some(24));
+        assert_eq!(
+            value
+                .get("active_buffer_id")
+                .and_then(serde_json::Value::as_u64),
+            Some(0)
+        );
+        assert_eq!(
+            value
+                .get("window_count")
+                .and_then(serde_json::Value::as_u64),
+            Some(1)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_state_screen_no_active_buffer() {
+        let session = test_session();
+        let ctx = RpcContext {
+            session,
+            client_id: ClientId::new(1),
+        };
+
+        let result = state_screen(ctx, serde_json::json!({})).await;
+        assert!(result.is_ok());
+
+        let value = result.unwrap();
+        // No active buffer should return buffer_id = 0
+        assert_eq!(
+            value
+                .get("active_buffer_id")
+                .and_then(serde_json::Value::as_u64),
+            Some(0)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_state_screen_after_resize() {
+        let session = test_session();
+
+        // Resize the terminal
+        session
+            .with_state_mut(|state| {
+                state.app.terminal_width = 200;
+                state.app.terminal_height = 50;
+            })
+            .await;
+
+        let ctx = RpcContext {
+            session,
+            client_id: ClientId::new(1),
+        };
+
+        let result = state_screen(ctx, serde_json::json!({})).await;
+        assert!(result.is_ok());
+
+        let value = result.unwrap();
+        assert_eq!(value.get("width").and_then(serde_json::Value::as_u64), Some(200));
+        assert_eq!(value.get("height").and_then(serde_json::Value::as_u64), Some(50));
     }
 }

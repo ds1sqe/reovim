@@ -187,7 +187,7 @@ fn run_cli(config: &ConnectionConfig, action: &CliAction, format: &str) {
     use {
         cli::{
             commands as cmd,
-            output::{OutputFormat, format_cursor, format_mode, format_output},
+            output::{OutputFormat, format_output_for_command},
         },
         runner::client::common::{RpcClient, discovery},
     };
@@ -247,15 +247,25 @@ fn run_cli(config: &ConnectionConfig, action: &CliAction, format: &str) {
             }
             CliAction::Raw { json } => cmd::cmd_raw(&mut client, json).await,
             CliAction::List => unreachable!(),
+            CliAction::Selection => cmd::cmd_selection(&mut client, None).await,
+            CliAction::Quit => cmd::cmd_quit(&mut client).await,
+            CliAction::SetContent { content } => {
+                cmd::cmd_buffer_set_content(&mut client, content, None).await
+            }
         };
 
         match result {
             Ok(v) => {
-                let out = match action {
-                    CliAction::Mode => format_mode(&v),
-                    CliAction::Cursor => format_cursor(&v),
-                    _ => format_output(&v, output_fmt),
+                // Map action to command name for typed formatting
+                let command = match action {
+                    CliAction::Mode => "mode",
+                    CliAction::Cursor => "cursor",
+                    CliAction::Screen => "screen",
+                    CliAction::Content { .. } => "content",
+                    CliAction::Buffers => "buffers",
+                    _ => "",
                 };
+                let out = format_output_for_command(&v, output_fmt, command);
                 println!("{out}");
             }
             Err(e) => {

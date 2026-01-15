@@ -2,7 +2,10 @@
 //!
 //! Provides request/response handling and notification receiving.
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::{
+    sync::atomic::{AtomicU64, Ordering},
+    time::Duration,
+};
 
 use {
     reovim_protocol::v1::{RpcNotification, RpcRequest, RpcResponse},
@@ -10,6 +13,9 @@ use {
 };
 
 use super::connection::{Connection, ConnectionConfig};
+
+/// Default RPC call timeout (30 seconds).
+const RPC_TIMEOUT_SECS: u64 = 30;
 
 /// Error type for RPC client operations.
 #[derive(Debug)]
@@ -22,6 +28,8 @@ pub enum RpcClientError {
     Server { code: i32, message: String },
     /// Unexpected response (wrong ID or format).
     UnexpectedResponse(String),
+    /// RPC call timed out.
+    Timeout,
 }
 
 impl std::fmt::Display for RpcClientError {
@@ -31,6 +39,7 @@ impl std::fmt::Display for RpcClientError {
             Self::Json(e) => write!(f, "JSON error: {e}"),
             Self::Server { code, message } => write!(f, "Server error ({code}): {message}"),
             Self::UnexpectedResponse(msg) => write!(f, "Unexpected response: {msg}"),
+            Self::Timeout => write!(f, "RPC call timed out after {RPC_TIMEOUT_SECS} seconds"),
         }
     }
 }
@@ -88,9 +97,11 @@ impl RpcClient {
 
     /// Send a request and wait for response.
     ///
+    /// Times out after 30 seconds by default.
+    ///
     /// # Errors
     ///
-    /// Returns error if request fails or server returns an error.
+    /// Returns error if request fails, server returns an error, or timeout expires.
     pub async fn call(&mut self, method: &str, params: Value) -> Result<Value, RpcClientError> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
 
@@ -101,7 +112,16 @@ impl RpcClient {
         // Send request
         self.connection.write_line(&json).await?;
 
-        // Wait for response with matching ID
+        // Wait for response with timeout protection
+        tokio::time::timeout(Duration::from_secs(RPC_TIMEOUT_SECS), self.wait_for_response(id))
+            .await
+            .map_err(|_| RpcClientError::Timeout)?
+    }
+
+    /// Wait for response with matching ID.
+    ///
+    /// Internal helper that loops until a response arrives or an error occurs.
+    async fn wait_for_response(&mut self, id: u64) -> Result<Value, RpcClientError> {
         loop {
             let line = self.connection.read_line().await?;
 
@@ -194,5 +214,42 @@ mod tests {
         };
         assert!(err.to_string().contains("-32600"));
         assert!(err.to_string().contains("Invalid Request"));
+    }
+
+    #[test]
+    fn test_timeout_error_message() {
+        let err = RpcClientError::Timeout;
+        let msg = err.to_string();
+        assert!(msg.contains("timed out"), "Should mention timeout: {msg}");
+        assert!(msg.contains("30"), "Should mention 30 seconds: {msg}");
+    }
+
+    #[test]
+    fn test_timeout_constant() {
+        // Verify the timeout is 30 seconds as specified in issue #226
+        assert_eq!(RPC_TIMEOUT_SECS, 30);
+    }
+
+    #[test]
+    fn test_error_variants() {
+        // Test all error variants can be created and displayed
+        let errors: Vec<RpcClientError> = vec![
+            RpcClientError::Connection(std::io::Error::new(
+                std::io::ErrorKind::ConnectionRefused,
+                "test",
+            )),
+            RpcClientError::Json(serde_json::from_str::<()>("invalid").unwrap_err()),
+            RpcClientError::Server {
+                code: -32000,
+                message: "Test".to_string(),
+            },
+            RpcClientError::UnexpectedResponse("test".to_string()),
+            RpcClientError::Timeout,
+        ];
+
+        for err in errors {
+            // Should not panic when converting to string
+            let _ = err.to_string();
+        }
     }
 }

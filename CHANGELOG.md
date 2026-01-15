@@ -15,6 +15,25 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 6.4: CLI/Server Integration Fixes** (Issue #226)
+  - **Fixed:** Stub handlers blocking CLI commands (`screen`, `resize`)
+    - Implemented `state/screen` handler returning viewport dimensions
+    - Implemented `editor/resize` handler with validation
+    - Implemented `editor/quit` handler for graceful shutdown
+    - Added terminal size tracking to `AppState` (width/height fields)
+  - **Added:** Missing CLI subcommands: `selection`, `quit`, `set-content`
+  - **Added:** RPC timeout protection (30 second default)
+    - New `RpcClientError::Timeout` variant
+    - Uses `tokio::time::timeout` wrapper
+  - **Fixed:** Buffer operations now emit state change notifications
+    - `buffer/set_content` emits notifications via StateSnapshot pattern
+    - `buffer/open_file` emits notifications via StateSnapshot pattern
+  - **Improved:** Output formatter uses typed protocol responses
+    - Type-safe deserialization for `ModeInfo`, `CursorInfo`, `ScreenInfo`
+    - Supports `ScreenContentResult` with ANSI passthrough
+    - Command-aware formatting via `format_output_for_command`
+  - 26 tests for Issue #226, 244 total unit tests passing
+
 - **Phase 6.2/6.3: TUI and CLI Clients** (Issues #221, #222)
   - **TUI Client** (`runner/src/client/tui/`):
     - Terminal user interface mode via `reovim tui`

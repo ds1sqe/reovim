@@ -122,4 +122,62 @@ pub enum CliAction {
     },
     /// List running servers (no connection needed).
     List,
+    /// Get current selection (visual mode).
+    Selection,
+    /// Gracefully quit the editor.
+    Quit,
+    /// Set buffer content.
+    #[command(name = "set-content")]
+    SetContent {
+        /// The content to set.
+        content: String,
+    },
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    use super::*;
+
+    /// Test CLI for parsing subcommands
+    #[derive(Parser)]
+    struct TestCli {
+        #[command(subcommand)]
+        action: CliAction,
+    }
+
+    #[test]
+    fn test_cli_action_selection_parse() {
+        let cli = TestCli::try_parse_from(["test", "selection"]).unwrap();
+        assert!(matches!(cli.action, CliAction::Selection));
+    }
+
+    #[test]
+    fn test_cli_action_quit_parse() {
+        let cli = TestCli::try_parse_from(["test", "quit"]).unwrap();
+        assert!(matches!(cli.action, CliAction::Quit));
+    }
+
+    #[test]
+    fn test_cli_action_set_content_parse() {
+        let cli = TestCli::try_parse_from(["test", "set-content", "Hello World"]).unwrap();
+        match cli.action {
+            CliAction::SetContent { content } => {
+                assert_eq!(content, "Hello World");
+            }
+            _ => panic!("Expected SetContent variant"),
+        }
+    }
+
+    #[test]
+    fn test_cli_action_set_content_empty() {
+        let cli = TestCli::try_parse_from(["test", "set-content", ""]).unwrap();
+        match cli.action {
+            CliAction::SetContent { content } => {
+                assert!(content.is_empty());
+            }
+            _ => panic!("Expected SetContent variant"),
+        }
+    }
 }
