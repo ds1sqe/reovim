@@ -7,7 +7,7 @@ pub mod discovery;
 pub mod rpc;
 
 pub use {
-    connection::{Connection, ConnectionConfig},
+    connection::{Connection, ConnectionConfig, ConnectionReader, ConnectionWriter},
     discovery::{ServerInfo, list_servers},
-    rpc::{RpcClient, RpcClientError, ServerMessage},
+    rpc::{RpcClient, RpcClientError, RpcWriter, ServerMessage},
 };
