@@ -211,6 +211,23 @@ cargo run -- tui --tcp 127.0.0.1:12521    # Connect to specific server
 - `Co-Authored-By: Claude ... <noreply@anthropic.com>`
 - Any Claude/Anthropic advertisement or promotional content
 
+**Commit Message Format:**
+```
+type(scope): short description (#ISSUE_NUMBER)
+
+Detailed body explaining what and why.
+
+- Bullet points for key changes
+- Can be multi-line
+
+Refs #ISSUE_NUMBER, Parts of #EPIC_NUMBER
+```
+
+- **Header**: `type(scope): description (#NUM)` - issue number in parentheses
+- **Body**: What changed and why, bullet points for clarity
+- **Footer**: `Refs #NUM` for the issue, `Parts of #NUM` for parent epic
+- **Types**: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`
+
 **Changelog Convention**: Every feature, fix, or notable change MUST include an update to `CHANGELOG.md` under the `[Unreleased]` section before proposing a commit.
 
 For any changes, Claude should create a proposal file at `tmp/<feature-name>-commit.md` with:
@@ -290,13 +307,21 @@ When creating PRs with `gh pr create`, do NOT add promotional footers like "Gene
    - If ANY agent gives below A → fix all issues → go back to Step 2
    - Loop until ALL agents give A or A+
 
-4. **Update CHANGELOG.md** with correct phase number (match issue title)
+4. **Create Landing Document** at `tmp/{ISSUE_NUMBER}-landing.md`:
+   - **Section 1: Review Summary**
+     - Final grades table (all three agents) with links to detailed reviews
+     - Files changed (new/modified with LOC)
+     - Review highlights from each agent
+   - **Section 2: Verification Checklist**
+     - `./scripts/check.sh` passed
+     - CHANGELOG.md updated
+     - All agents gave A or A+
+   - **Section 3: Commit**
+     - Commit message
+     - Files to stage
+     - Git commands for user
 
-5. **Create Commit Proposal** at `tmp/{ISSUE_NUMBER}-commit.md`:
-   - Commit message
-   - Files to stage (include CHANGELOG.md)
-   - Verification checklist
-   - Git commands for user
+5. **Update CHANGELOG.md** with correct phase number (match issue title)
 
 6. **(Optional) Generate performance report** for version releases:
    ```bash
