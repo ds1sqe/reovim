@@ -8,25 +8,39 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Refactored
 
-- **File Splitting Epic Phase 1** ([Epic #304](https://github.com/ds1sqe/reovim/issues/304))
-  - Split `lib/protocol/src/v1/input.rs` (1,348 lines) into 6 focused modules (#301):
-    - `key.rs` - `Modifiers`, `KeyCode`, `KeyEvent` types
-    - `mouse.rs` - `ClickEvent`, `ScrollEvent` types
-    - `terminal.rs` - `ResizeEvent`, `FocusEvent`, `PasteEvent` types
-    - `session.rs` - `AttachEvent`, `DetachEvent` types
-    - `health.rs` - `PingEvent`, `PongEvent` types
-    - `mod.rs` - `Input` enum and re-exports
-  - Split `lib/kernel/src/core/option.rs` (1,487 lines) into 6 focused modules (#300):
-    - `value.rs` - `OptionValue` type-safe values
-    - `scope.rs` - `OptionScope`, `OptionScopeId` types
-    - `constraint.rs` - `OptionConstraint`, `ConstraintError` types
-    - `error.rs` - `OptionError`, `SetResult` types
-    - `spec.rs` - `OptionSpec` builder
-    - `mod.rs` - `OptionRegistry` and re-exports
-  - Split `lib/kernel/src/core/motion.rs` (1,178 lines) into 3 modules (#303):
-    - `types.rs` - `Motion` enum
-    - `engine.rs` - `MotionEngine` calculation logic
-    - `mod.rs` - Re-exports
+- **File Splitting Epic Phase 1-2** ([Epic #304](https://github.com/ds1sqe/reovim/issues/304))
+  - **Phase 1 - Low-Risk Files**:
+    - Split `lib/protocol/src/v1/input.rs` (1,348 lines) into 6 focused modules (#301):
+      - `key.rs` - `Modifiers`, `KeyCode`, `KeyEvent` types
+      - `mouse.rs` - `ClickEvent`, `ScrollEvent` types
+      - `terminal.rs` - `ResizeEvent`, `FocusEvent`, `PasteEvent` types
+      - `session.rs` - `AttachEvent`, `DetachEvent` types
+      - `health.rs` - `PingEvent`, `PongEvent` types
+      - `mod.rs` - `Input` enum and re-exports
+    - Split `lib/kernel/src/core/option.rs` (1,487 lines) into 6 focused modules (#300):
+      - `value.rs` - `OptionValue` type-safe values
+      - `scope.rs` - `OptionScope`, `OptionScopeId` types
+      - `constraint.rs` - `OptionConstraint`, `ConstraintError` types
+      - `error.rs` - `OptionError`, `SetResult` types
+      - `spec.rs` - `OptionSpec` builder
+      - `mod.rs` - `OptionRegistry` and re-exports
+    - Split `lib/kernel/src/core/motion.rs` (1,178 lines) into 3 modules (#303):
+      - `types.rs` - `Motion` enum
+      - `engine.rs` - `MotionEngine` calculation logic
+      - `mod.rs` - Re-exports
+  - **Phase 2 - Mid-Complexity Files**:
+    - Split `lib/kernel/src/api/module.rs` (1,923 lines) into 7 focused modules (#297):
+      - `id.rs` - `ModuleId` identifier type
+      - `error.rs` - `ModuleError`, `ProbeResult` types
+      - `flags.rs` - `RegistrationFlags` capability flags
+      - `state.rs` - `ModuleState`, `ModuleInfo` types
+      - `probe.rs` - `ModuleProbe` FFI-safe metadata
+      - `registration.rs` - `CommandRegistration`, `KeybindingRegistration`, `EventHandlerRegistration`
+      - `mod.rs` - `Module` trait and re-exports
+    - Split `lib/kernel/src/ipc/event_bus.rs` (1,297 lines) into 3 focused modules (#302):
+      - `handler.rs` - Handler types (`HandlerFn`, `HandlerType`, `RegisteredHandler`)
+      - `sender.rs` - `EventSender` cloneable sender handle
+      - `mod.rs` - `EventBus` core and re-exports
   - External APIs unchanged - all types re-exported from module roots
   - All tests passing with zero regressions
 
