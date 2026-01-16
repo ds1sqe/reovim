@@ -111,6 +111,30 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
     - Active window indicator at separator intersections
     - 5 unit tests for multi-window rendering
 
+- **Undotree Panel Integration** (Issue #257)
+  - **UndotreeState** (`runner/src/server/app.rs`):
+    - Tracks panel visibility, window ID, source buffer, selection, and scroll state
+    - `open()`, `close()` methods with focus restoration
+    - `set_rendered_lines()`, `rendered_lines()` for display caching
+    - 5 unit tests for undotree state management
+  - **Event Loop Handlers** (`runner/src/server/event_loop.rs`):
+    - `handle_undotree_action()` dispatches all UndotreeAction variants
+    - `toggle_undotree_panel()` creates/destroys side panel window
+    - `close_undotree_panel()` with focus restoration and mode pop
+    - `undotree_move_up()`, `undotree_move_down()` for tree navigation
+    - `undotree_goto_node()` applies undo/redo to reach target node
+    - `refresh_undotree_panel()` renders tree with selection highlighting
+  - **UndotreeModule** (`modules/undotree/src/lib.rs`):
+    - Implements `Module` trait with keybindings for undotree mode
+    - `keybindings()` returns 6 bindings for j/k/Enter/q/Esc
+    - Mode-scoped bindings only active in undotree mode
+  - **UndoRegistry Extension** (`runner/src/undo_registry.rs`):
+    - `redo_branch()` method for navigating to specific branch during GotoNode
+  - Integration with existing infrastructure:
+    - Uses WindowRegistry from Issue #276 for panel window
+    - Uses UndotreeRenderer from modules/undotree for tree visualization
+    - Uses ModeStack for undotree mode push/pop
+
 - **Visual Mode** (Issue #242)
   - **Three selection types** in `EditorMode` enum:
     - Character-wise selection (`v`) - standard visual mode

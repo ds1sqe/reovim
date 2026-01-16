@@ -1014,6 +1014,7 @@ dependencies = [
  "reovim-module-editor",
  "reovim-module-hot-reload-demo",
  "reovim-module-layout",
+ "reovim-module-undotree",
  "reovim-protocol",
  "serde",
  "serde_json",
