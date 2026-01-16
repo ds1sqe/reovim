@@ -6,8 +6,10 @@
 
 use {
     crate::UndoRegistry,
-    reovim_driver_input::KeySequence,
-    reovim_kernel::api::v1::{BufferId, KernelContext, ModeId, ModeStack},
+    reovim_arch::sync::RwLock,
+    reovim_driver_input::{FallbackContext, KeySequence},
+    reovim_kernel::api::v1::{Buffer, BufferId, Edit, KernelContext, ModeId, ModeStack, Position},
+    std::sync::Arc,
 };
 
 /// Application state combining kernel context with runtime state.
@@ -119,6 +121,31 @@ impl AppState {
     /// Clear the pending key sequence.
     pub fn clear_pending_keys(&mut self) {
         self.pending_keys.clear();
+    }
+}
+
+impl FallbackContext for AppState {
+    fn current_mode(&self) -> &ModeId {
+        self.mode_stack.current()
+    }
+
+    fn active_buffer(&self) -> Option<BufferId> {
+        self.active_buffer
+    }
+
+    fn get_buffer(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
+        self.kernel.buffers.get(id)
+    }
+
+    fn record_edit(
+        &mut self,
+        buffer_id: BufferId,
+        edits: Vec<Edit>,
+        cursor_before: Position,
+        cursor_after: Position,
+    ) {
+        self.undo_registry
+            .record(buffer_id, edits, cursor_before, cursor_after);
     }
 }
 

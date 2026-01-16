@@ -76,6 +76,39 @@ pub trait ModeInput {
 }
 ```
 
+## Fallback Handling
+
+When a key sequence doesn't match any keymap binding, the event loop delegates to a fallback handler. The input driver provides the trait interface and basic implementations.
+
+```rust
+// Context provided to fallback handlers
+pub trait FallbackContext: Send {
+    fn current_mode(&self) -> &ModeId;
+    fn active_buffer(&self) -> Option<BufferId>;
+    fn get_buffer(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>>;
+    fn record_edit(&mut self, buffer_id: BufferId, edits: Vec<Edit>,
+                   cursor_before: Position, cursor_after: Position);
+}
+
+// Result of fallback handling
+pub enum FallbackResult {
+    Handled,  // Key was processed (e.g., character inserted)
+    Ignored,  // Key was ignored
+    Beep,     // Key was invalid (show warning)
+}
+
+// Trait for handling unmatched keys
+pub trait InputFallbackHandler<C: FallbackContext>: Send + Sync {
+    fn handle_unmatched(&self, key: KeyEvent, ctx: &mut C) -> FallbackResult;
+}
+```
+
+Built-in implementations:
+- `NoOpFallback` - Ignores all unmatched keys
+- `BeepFallback` - Beeps on all unmatched keys
+
+Modules provide policy implementations (e.g., `EditorFallbackHandler` inserts characters in Insert mode).
+
 ## Related Documents
 
 - [Driver Overview](../overview.md) - Driver layer architecture

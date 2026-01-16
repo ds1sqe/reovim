@@ -87,7 +87,6 @@ mod app;
 pub mod client;
 pub mod debug;
 mod event_loop;
-pub mod fallback;
 pub mod module;
 pub mod notification;
 pub mod registry;
@@ -99,8 +98,11 @@ pub mod transport;
 pub use {
     app::AppState,
     event_loop::{EventLoop, EventLoopError},
-    fallback::{BeepFallback, FallbackResult, InputFallbackHandler, NoOpFallback},
     notification::NotificationBroadcaster,
+    // Fallback types from driver (breaking the circular dependency)
+    reovim_driver_input::{
+        BeepFallback, FallbackContext, FallbackResult, InputFallbackHandler, NoOpFallback,
+    },
 };
 
 use std::{

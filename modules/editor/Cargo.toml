@@ -14,7 +14,6 @@ reovim-kernel = { path = "../../lib/kernel" }
 reovim-driver-command = { path = "../../lib/drivers/command" }
 reovim-driver-display = { path = "../../lib/drivers/display" }
 reovim-driver-input = { path = "../../lib/drivers/input" }
-reovim = { path = "../../runner" }
 
 [lints]
 workspace = true

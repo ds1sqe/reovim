@@ -13,10 +13,8 @@
 //! Tab, Enter, Backspace, and Delete are NOT handled here because they have
 //! explicit keybindings to commands in insert mode (see keymap/insert.rs).
 
-use {
-    reovim_driver_command::CommandResult,
-    reovim_driver_input::{KeyCode, KeyEvent},
-    runner::{AppState, FallbackResult, InputFallbackHandler},
+use reovim_driver_input::{
+    FallbackContext, FallbackResult, InputFallbackHandler, KeyCode, KeyEvent, Modifiers,
 };
 
 use super::mode::EditorMode;
@@ -44,21 +42,17 @@ use super::mode::EditorMode;
 #[derive(Debug, Clone, Copy, Default)]
 pub struct EditorFallbackHandler;
 
-impl InputFallbackHandler for EditorFallbackHandler {
-    fn handle_unmatched(
-        &self,
-        key: KeyEvent,
-        app: &mut AppState,
-    ) -> (FallbackResult, Option<CommandResult>) {
-        let mode_id = app.current_mode();
+impl<C: FallbackContext> InputFallbackHandler<C> for EditorFallbackHandler {
+    fn handle_unmatched(&self, key: KeyEvent, ctx: &mut C) -> FallbackResult {
+        let mode_id = ctx.current_mode();
 
         // Check if we're in Insert mode
         if *mode_id == EditorMode::INSERT_ID {
             // Try to extract a printable character
             if let Some(ch) = key_to_char(&key) {
                 // Insert the character into the active buffer
-                if let Some(buffer_id) = app.active_buffer
-                    && let Some(buffer_arc) = app.kernel.buffers.get(buffer_id)
+                if let Some(buffer_id) = ctx.active_buffer()
+                    && let Some(buffer_arc) = ctx.get_buffer(buffer_id)
                 {
                     let mut buffer = buffer_arc.write();
                     let cursor_before = buffer.position();
@@ -67,31 +61,25 @@ impl InputFallbackHandler for EditorFallbackHandler {
                     let cursor_after = buffer.position();
                     drop(buffer);
 
-                    // Return EditAction for undo tracking
-                    return (
-                        FallbackResult::Handled,
-                        Some(CommandResult::edit_action(
-                            buffer_id,
-                            edit,
-                            cursor_before,
-                            cursor_after,
-                        )),
-                    );
+                    // Record edit for undo tracking via context
+                    ctx.record_edit(buffer_id, vec![edit], cursor_before, cursor_after);
+
+                    return FallbackResult::Handled;
                 }
-                return (FallbackResult::Handled, None);
+                return FallbackResult::Handled;
             }
 
             // Non-printable key in Insert mode - ignore it
-            return (FallbackResult::Ignored, None);
+            return FallbackResult::Ignored;
         }
 
         // In Normal mode, unmatched keys should beep
         if *mode_id == EditorMode::NORMAL_ID {
-            return (FallbackResult::Beep, None);
+            return FallbackResult::Beep;
         }
 
         // Unknown mode - ignore
-        (FallbackResult::Ignored, None)
+        FallbackResult::Ignored
     }
 }
 
@@ -109,7 +97,7 @@ fn key_to_char(key: &KeyEvent) -> Option<char> {
     match key.code {
         KeyCode::Char(ch) => {
             // Allow character with no modifiers or just shift
-            if key.modifiers.is_empty() || key.modifiers == reovim_driver_input::Modifiers::SHIFT {
+            if key.modifiers.is_empty() || key.modifiers == Modifiers::SHIFT {
                 Some(ch)
             } else {
                 None
@@ -123,56 +111,93 @@ fn key_to_char(key: &KeyEvent) -> Option<char> {
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        reovim_driver_input::{KeyCode, KeyEvent, KeyEventKind, Modifiers},
-        reovim_kernel::api::v1::KernelContext,
-    };
+    use std::{collections::HashMap, sync::Arc};
 
-    fn create_app_in_mode(mode_id: reovim_kernel::api::v1::ModeId) -> AppState {
-        let kernel = KernelContext::default();
-        AppState::new(kernel, mode_id)
+    use reovim_kernel::api::v1::{Buffer, BufferId, Edit, ModeId, Position, RwLock};
+
+    use super::*;
+
+    /// Test context that implements `FallbackContext`.
+    struct TestContext {
+        mode: ModeId,
+        active_buffer: Option<BufferId>,
+        buffers: HashMap<BufferId, Arc<RwLock<Buffer>>>,
+        recorded_edits: Vec<(BufferId, Vec<Edit>, Position, Position)>,
     }
 
-    fn create_app_normal() -> AppState {
-        create_app_in_mode(EditorMode::NORMAL_ID)
+    impl TestContext {
+        fn with_mode(mode: ModeId) -> Self {
+            Self {
+                mode,
+                active_buffer: None,
+                buffers: HashMap::new(),
+                recorded_edits: Vec::new(),
+            }
+        }
+
+        fn normal() -> Self {
+            Self::with_mode(EditorMode::NORMAL_ID)
+        }
+
+        fn insert() -> Self {
+            Self::with_mode(EditorMode::INSERT_ID)
+        }
     }
 
-    fn create_app_insert() -> AppState {
-        create_app_in_mode(EditorMode::INSERT_ID)
+    impl FallbackContext for TestContext {
+        fn current_mode(&self) -> &ModeId {
+            &self.mode
+        }
+
+        fn active_buffer(&self) -> Option<BufferId> {
+            self.active_buffer
+        }
+
+        fn get_buffer(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
+            self.buffers.get(&id).cloned()
+        }
+
+        fn record_edit(
+            &mut self,
+            buffer_id: BufferId,
+            edits: Vec<Edit>,
+            cursor_before: Position,
+            cursor_after: Position,
+        ) {
+            self.recorded_edits
+                .push((buffer_id, edits, cursor_before, cursor_after));
+        }
     }
 
     #[test]
     fn test_normal_mode_beeps() {
         let handler = EditorFallbackHandler;
-        let mut app = create_app_normal();
+        let mut ctx = TestContext::normal();
 
         let key = KeyEvent::new(KeyCode::Char('x'));
-        let (result, cmd_result) = handler.handle_unmatched(key, &mut app);
+        let result = handler.handle_unmatched(key, &mut ctx);
 
         assert_eq!(result, FallbackResult::Beep);
-        assert!(cmd_result.is_none());
     }
 
     #[test]
     fn test_insert_mode_handles_char() {
         let handler = EditorFallbackHandler;
-        let mut app = create_app_insert();
+        let mut ctx = TestContext::insert();
 
         let key = KeyEvent::new(KeyCode::Char('a'));
-        let (result, _cmd_result) = handler.handle_unmatched(key, &mut app);
+        let result = handler.handle_unmatched(key, &mut ctx);
 
         assert_eq!(result, FallbackResult::Handled);
-        // cmd_result is None because no buffer is set up
     }
 
     #[test]
     fn test_insert_mode_handles_uppercase() {
         let handler = EditorFallbackHandler;
-        let mut app = create_app_insert();
+        let mut ctx = TestContext::insert();
 
         let key = KeyEvent::with_modifiers(KeyCode::Char('A'), Modifiers::SHIFT);
-        let (result, _cmd_result) = handler.handle_unmatched(key, &mut app);
+        let result = handler.handle_unmatched(key, &mut ctx);
 
         assert_eq!(result, FallbackResult::Handled);
     }
@@ -180,22 +205,21 @@ mod tests {
     #[test]
     fn test_insert_mode_ignores_ctrl_char() {
         let handler = EditorFallbackHandler;
-        let mut app = create_app_insert();
+        let mut ctx = TestContext::insert();
 
         let key = KeyEvent::with_modifiers(KeyCode::Char('c'), Modifiers::CTRL);
-        let (result, cmd_result) = handler.handle_unmatched(key, &mut app);
+        let result = handler.handle_unmatched(key, &mut ctx);
 
         assert_eq!(result, FallbackResult::Ignored);
-        assert!(cmd_result.is_none());
     }
 
     #[test]
     fn test_insert_mode_handles_tab() {
         let handler = EditorFallbackHandler;
-        let mut app = create_app_insert();
+        let mut ctx = TestContext::insert();
 
         let key = KeyEvent::new(KeyCode::Tab);
-        let (result, _cmd_result) = handler.handle_unmatched(key, &mut app);
+        let result = handler.handle_unmatched(key, &mut ctx);
 
         assert_eq!(result, FallbackResult::Handled);
     }
@@ -203,10 +227,10 @@ mod tests {
     #[test]
     fn test_insert_mode_handles_enter() {
         let handler = EditorFallbackHandler;
-        let mut app = create_app_insert();
+        let mut ctx = TestContext::insert();
 
         let key = KeyEvent::new(KeyCode::Enter);
-        let (result, _cmd_result) = handler.handle_unmatched(key, &mut app);
+        let result = handler.handle_unmatched(key, &mut ctx);
 
         assert_eq!(result, FallbackResult::Handled);
     }
@@ -214,14 +238,13 @@ mod tests {
     #[test]
     fn test_insert_mode_ignores_special_keys() {
         let handler = EditorFallbackHandler;
-        let mut app = create_app_insert();
+        let mut ctx = TestContext::insert();
 
         // Function keys, arrow keys, etc. should be ignored
         let key = KeyEvent::new(KeyCode::F(1));
-        let (result, cmd_result) = handler.handle_unmatched(key, &mut app);
+        let result = handler.handle_unmatched(key, &mut ctx);
 
         assert_eq!(result, FallbackResult::Ignored);
-        assert!(cmd_result.is_none());
     }
 
     #[test]
@@ -244,6 +267,7 @@ mod tests {
 
     #[test]
     fn test_key_to_char_release_rejected() {
+        use reovim_driver_input::KeyEventKind;
         let key = KeyEvent::full(KeyCode::Char('a'), Modifiers::NONE, KeyEventKind::Release);
         assert_eq!(key_to_char(&key), None);
     }

@@ -14,13 +14,12 @@
 
 use {
     reovim_driver_command::{CommandContext, CommandResult, UndoAction},
-    reovim_driver_input::KeyEvent,
+    reovim_driver_input::{FallbackResult, InputFallbackHandler, KeyEvent},
     reovim_kernel::api::v1::{Edit, UndoResult},
 };
 
 use super::{
     AppState,
-    fallback::{FallbackResult, InputFallbackHandler},
     registry::{CommandRegistry, KeyLookupResult, KeymapRegistry, ModeRegistry},
 };
 
@@ -51,7 +50,7 @@ impl std::error::Error for EventLoopError {}
 ///
 /// # Type Parameter
 ///
-/// * `F` - The fallback handler type implementing [`InputFallbackHandler`]
+/// * `F` - The fallback handler type implementing [`InputFallbackHandler<AppState>`]
 ///
 /// # Example
 ///
@@ -71,7 +70,7 @@ impl std::error::Error for EventLoopError {}
 /// // Run until quit
 /// event_loop.run()?;
 /// ```
-pub struct EventLoop<F: InputFallbackHandler> {
+pub struct EventLoop<F: InputFallbackHandler<AppState>> {
     /// Application state (kernel + runtime).
     app: AppState,
 
@@ -94,7 +93,7 @@ pub struct EventLoop<F: InputFallbackHandler> {
     last_error: Option<String>,
 }
 
-impl<F: InputFallbackHandler> EventLoop<F> {
+impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
     /// Create a new event loop.
     ///
     /// # Arguments
@@ -216,13 +215,8 @@ impl<F: InputFallbackHandler> EventLoop<F> {
 
             KeyLookupResult::NotFound => {
                 // Delegate to fallback handler (MECHANISM delegates to POLICY)
-                let (result, cmd_result) =
-                    self.fallback_handler.handle_unmatched(key, &mut self.app);
-
-                // If fallback produced an edit, record it in the undo registry
-                if let Some(cmd) = cmd_result {
-                    self.handle_command_result(cmd);
-                }
+                // The handler uses ctx.record_edit() for undo tracking
+                let result = self.fallback_handler.handle_unmatched(key, &mut self.app);
 
                 match result {
                     FallbackResult::Handled | FallbackResult::Ignored => {
@@ -409,7 +403,7 @@ impl<F: InputFallbackHandler> EventLoop<F> {
     }
 }
 
-impl<F: InputFallbackHandler> std::fmt::Debug for EventLoop<F> {
+impl<F: InputFallbackHandler<AppState>> std::fmt::Debug for EventLoop<F> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("EventLoop")
             .field("app", &self.app)
