@@ -8,6 +8,29 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Refactored
 
+- **Remove Hardcoded Policy from Runner** ([Epic #284](https://github.com/ds1sqe/reovim/issues/284))
+  - **Event-Driven Mode Transitions**: Runner now subscribes to `ModeChanged` events instead of predicting mode changes from command names
+  - **Removed hardcoded command mappings**:
+    - Deleted `mode_for_command()` (20+ hardcoded command names)
+    - Deleted `is_visual_exit_command()` (9 hardcoded command names)
+    - Removed hardcoded `"reselect-last"` string check
+  - **New `CommandResult::ReselectVisual` variant** (`lib/drivers/command/src/result.rs`):
+    - Dedicated result type for `gv` command callback intent
+    - `is_reselect_visual()` helper method
+  - **Enhanced `ModeChanged` event** (`lib/kernel/src/ipc/events/kernel.rs`):
+    - Added `target_mode: Option<ModeId>` for type-safe transitions
+    - `ModeChanged::with_mode_id()` constructor for commands to specify target mode
+  - **Configurable default mode** (`runner/src/server/mod.rs`):
+    - `ServerConfig::default_mode: Option<ModeId>` field
+    - `effective_default_mode()` helper with fallback
+    - Renamed `default_mode_id()` to `fallback_default_mode()`
+  - **`LastVisualSelection` with `ModeId` storage** (`runner/src/server/app.rs`):
+    - Added `mode_id: ModeId` field to store actual mode for restoration
+    - `handle_reselect_last()` now uses stored mode instead of mapping from `SelectionMode`
+  - **Fixed mode fallback in keybindings** (`runner/src/server/module/wiring/keybindings.rs`):
+    - Uses registering module ID instead of hardcoded "editor"
+  - Follows Unix philosophy: mechanism (runner) separated from policy (modules)
+
 - **Command Driver Module Split** (Issue #273)
   - Split monolithic `lib/drivers/command/src/lib.rs` (1,350 lines) into focused submodules
   - New file structure:

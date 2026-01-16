@@ -17,72 +17,13 @@ use {
     reovim_driver_input::{FallbackResult, InputFallbackHandler, KeyCode, KeyEvent},
     reovim_kernel::{
         api::v1::{
-            CommandId, Edit, ModeId, ModuleId, Motion, MotionEngine, Position, SelectionMode,
-            UndoResult,
+            Edit, EventResult, ModeId, Motion, MotionEngine, Position, UndoResult,
+            events::ModeChanged,
         },
         profile_scope,
     },
+    std::sync::{Arc, Mutex},
 };
-
-// =============================================================================
-// Mode Transition Mapping
-// =============================================================================
-
-/// Determine the target mode for a command, if any.
-///
-/// This function maps command IDs to the mode they should transition to.
-/// Commands that don't change mode return `None`.
-///
-/// # Philosophy
-///
-/// This is MECHANISM, not policy - the mapping is defined here but the
-/// actual mode definitions come from the editor module.
-///
-/// # Note
-///
-/// Toggle commands (toggle-visual-char, etc.) are handled specially:
-/// they can either exit to normal or switch modes depending on current state.
-/// For simplicity, we don't track current mode here - the toggle commands
-/// already update the selection mode in the buffer. The `mode_stack` update
-/// happens based on `ModeChanged` events emitted by the commands.
-#[must_use]
-fn mode_for_command(cmd_id: &CommandId) -> Option<ModeId> {
-    let editor = ModuleId::new("editor");
-
-    // Visual mode entry commands
-    if cmd_id.module() == &editor {
-        let mode_name = match cmd_id.name() {
-            // Visual mode entry
-            "enter-visual" => Some("visual"),
-            "enter-visual-line" => Some("visual-line"),
-            "enter-visual-block" => Some("visual-block"),
-
-            // Visual/Insert mode exit to normal
-            "exit-visual" | "exit-insert" | "delete-selection" | "yank-selection"
-            | "indent-selection" | "dedent-selection" => Some("normal"),
-
-            // Insert mode entry
-            "enter-insert"
-            | "enter-insert-after"
-            | "enter-insert-first-non-blank"
-            | "enter-insert-end-of-line"
-            | "open-line-below"
-            | "open-line-above"
-            | "change-line"
-            | "change-to-end-of-line"
-            | "change-selection" => Some("insert"),
-
-            // Note: toggle-visual-* commands are NOT handled here because
-            // they can either exit or switch modes. They emit ModeChanged
-            // events which should be processed separately. For now, they
-            // don't trigger automatic mode stack changes.
-            _ => None,
-        };
-        mode_name.map(|name| ModeId::new(editor, name))
-    } else {
-        None
-    }
-}
 
 use super::{
     AppState,
@@ -158,6 +99,13 @@ pub struct EventLoop<F: InputFallbackHandler<AppState>> {
 
     /// Last error message (for status line).
     last_error: Option<String>,
+
+    /// Pending mode change from `ModeChanged` events.
+    ///
+    /// Commands emit `ModeChanged` events with `target_mode`. The event handler
+    /// stores the target here, and we apply it after command execution.
+    /// This enables event-driven mode transitions without hardcoded command names.
+    pending_mode_change: Arc<Mutex<Option<ModeId>>>,
 }
 
 impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
@@ -178,6 +126,23 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
         keymap_registry: KeymapRegistry,
         fallback_handler: F,
     ) -> Self {
+        // Create shared storage for pending mode changes from ModeChanged events
+        let pending_mode_change: Arc<Mutex<Option<ModeId>>> = Arc::new(Mutex::new(None));
+
+        // Subscribe to ModeChanged events to capture target_mode
+        let pending_clone = Arc::clone(&pending_mode_change);
+        app.kernel.event_bus.subscribe::<ModeChanged, _>(
+            0, // Priority 0 (highest) - mode changes should be processed first
+            move |event| {
+                if let Some(mode_id) = event.target_mode()
+                    && let Ok(mut guard) = pending_clone.lock()
+                {
+                    *guard = Some(mode_id.clone());
+                }
+                EventResult::Handled
+            },
+        );
+
         Self {
             app,
             mode_registry,
@@ -186,6 +151,7 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
             fallback_handler,
             key_reader: None,
             last_error: None,
+            pending_mode_change,
         }
     }
 
@@ -288,25 +254,30 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
                     ctx.set_buffer_id(buffer_id);
                 }
 
-                // BEFORE exit-visual: save the selection for gv
-                let is_visual_exit = Self::is_visual_exit_command(&cmd_id);
-                if is_visual_exit {
+                // Save visual selection if currently in visual mode (for gv command).
+                // We check the current mode rather than hardcoding command names that exit visual.
+                // Any command that exits visual mode will have the selection saved before execution.
+                let in_visual_mode = self.app.current_mode().name().starts_with("visual");
+                if in_visual_mode {
                     self.save_visual_selection_if_active();
+                }
+
+                // Clear pending mode change before command execution
+                if let Ok(mut guard) = self.pending_mode_change.lock() {
+                    *guard = None;
                 }
 
                 // Execute command
                 if let Some(result) = self.command_registry.execute(&cmd_id, &mut self.app, &ctx) {
                     self.handle_command_result(result);
 
-                    // Handle mode transition based on command
-                    // This updates mode_stack for commands like enter-visual, exit-insert, etc.
-                    if let Some(new_mode) = mode_for_command(&cmd_id) {
+                    // Handle mode transition from ModeChanged events
+                    // Commands emit ModeChanged::with_mode_id() which sets pending_mode_change.
+                    // This event-driven approach replaces hardcoded mode_for_command() mapping.
+                    if let Ok(mut guard) = self.pending_mode_change.lock()
+                        && let Some(new_mode) = guard.take()
+                    {
                         self.app.mode_stack.set(new_mode);
-                    }
-
-                    // AFTER reselect-last: restore the saved selection
-                    if cmd_id.name() == "reselect-last" {
-                        self.handle_reselect_last();
                     }
                 } else {
                     // Command not found in registry
@@ -600,6 +571,12 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
                 // TODO: Execute pending operator with range
                 // For now, just clear error state
                 self.last_error = None;
+            }
+            CommandResult::ReselectVisual => {
+                // The reselect-last (gv) command requests restoration of the
+                // last visual selection. Handle it here instead of checking
+                // the command name.
+                self.handle_reselect_last();
             }
         }
     }
@@ -901,30 +878,6 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
     // Visual Mode Selection Helpers
     // ========================================================================
 
-    /// Check if a command is a visual mode exit command.
-    ///
-    /// This includes explicit exit, toggle, and operator commands that exit visual mode.
-    fn is_visual_exit_command(cmd_id: &CommandId) -> bool {
-        let editor = ModuleId::new("editor");
-        if cmd_id.module() != &editor {
-            return false;
-        }
-
-        // Commands that potentially exit visual mode
-        matches!(
-            cmd_id.name(),
-            "exit-visual"
-                | "toggle-visual-char"
-                | "toggle-visual-line"
-                | "toggle-visual-block"
-                | "delete-selection"
-                | "yank-selection"
-                | "change-selection"
-                | "indent-selection"
-                | "dedent-selection"
-        )
-    }
-
     /// Save the current visual selection if one is active.
     ///
     /// Called before exit-visual commands to preserve the selection for `gv`.
@@ -945,11 +898,15 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
             return;
         }
 
+        // Capture the current mode so we can restore it on gv
+        let current_mode = self.app.current_mode().clone();
+
         let last_selection = LastVisualSelection::new(
             buffer_id,
             selection.anchor,
             buffer.position(),
             selection.mode(),
+            current_mode,
         );
         drop(buffer);
 
@@ -965,11 +922,12 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
             return;
         };
 
-        // Copy values to avoid borrow issues
+        // Clone values to avoid borrow issues
         let buffer_id = last_selection.buffer_id;
         let anchor = last_selection.anchor;
         let cursor = last_selection.cursor;
         let mode = last_selection.mode;
+        let mode_id = last_selection.mode_id.clone();
 
         // Verify the buffer still exists and is the active buffer
         // (In Vim, gv only works if you're in the same buffer)
@@ -990,14 +948,10 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
             buffer.set_position(cursor);
         }
 
-        // Transition to the appropriate visual mode
-        let editor = ModuleId::new("editor");
-        let new_mode = match mode {
-            SelectionMode::Character => ModeId::new(editor, "visual"),
-            SelectionMode::Line => ModeId::new(editor, "visual-line"),
-            SelectionMode::Block => ModeId::new(editor, "visual-block"),
-        };
-        self.app.mode_stack.set(new_mode);
+        // Transition to the stored visual mode
+        // Using the stored mode_id instead of deriving from SelectionMode
+        // removes hardcoded "editor" module assumption
+        self.app.mode_stack.set(mode_id);
     }
 }
 
@@ -1259,84 +1213,6 @@ mod tests {
     // Mode Transition Tests
     // =========================================================================
 
-    fn editor_command_id(name: &'static str) -> CommandId {
-        CommandId::new(ModuleId::new("editor"), name)
-    }
-
-    fn editor_mode_id(name: &'static str) -> ModeId {
-        ModeId::new(ModuleId::new("editor"), name)
-    }
-
-    #[test]
-    fn test_mode_for_command_visual_entry() {
-        assert_eq!(
-            mode_for_command(&editor_command_id("enter-visual")),
-            Some(editor_mode_id("visual"))
-        );
-        assert_eq!(
-            mode_for_command(&editor_command_id("enter-visual-line")),
-            Some(editor_mode_id("visual-line"))
-        );
-        assert_eq!(
-            mode_for_command(&editor_command_id("enter-visual-block")),
-            Some(editor_mode_id("visual-block"))
-        );
-    }
-
-    #[test]
-    fn test_mode_for_command_visual_exit() {
-        assert_eq!(
-            mode_for_command(&editor_command_id("exit-visual")),
-            Some(editor_mode_id("normal"))
-        );
-    }
-
-    #[test]
-    fn test_mode_for_command_insert_entry() {
-        assert_eq!(
-            mode_for_command(&editor_command_id("enter-insert")),
-            Some(editor_mode_id("insert"))
-        );
-        assert_eq!(
-            mode_for_command(&editor_command_id("enter-insert-after")),
-            Some(editor_mode_id("insert"))
-        );
-        assert_eq!(
-            mode_for_command(&editor_command_id("open-line-below")),
-            Some(editor_mode_id("insert"))
-        );
-    }
-
-    #[test]
-    fn test_mode_for_command_insert_exit() {
-        assert_eq!(
-            mode_for_command(&editor_command_id("exit-insert")),
-            Some(editor_mode_id("normal"))
-        );
-    }
-
-    #[test]
-    fn test_mode_for_command_change_enters_insert() {
-        assert_eq!(
-            mode_for_command(&editor_command_id("change-line")),
-            Some(editor_mode_id("insert"))
-        );
-        assert_eq!(
-            mode_for_command(&editor_command_id("change-to-end-of-line")),
-            Some(editor_mode_id("insert"))
-        );
-    }
-
-    #[test]
-    fn test_mode_for_command_unknown_returns_none() {
-        assert_eq!(mode_for_command(&editor_command_id("cursor-up")), None);
-        assert_eq!(mode_for_command(&editor_command_id("delete-line")), None);
-        assert_eq!(mode_for_command(&test_command_id("some-command")), None);
-    }
-
-    #[test]
-    fn test_mode_for_command_non_editor_module() {
-        let other_cmd = CommandId::new(ModuleId::new("other"), "enter-visual");
-        assert_eq!(mode_for_command(&other_cmd), None);
-    }
+    // Note: mode_for_command tests and helpers removed as part of Epic #284.
+    // Mode transitions are now event-driven via ModeChanged events with target_mode.
 }

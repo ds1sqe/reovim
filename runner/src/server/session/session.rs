@@ -289,6 +289,12 @@ impl Session {
                 // This result type signals the range but execution happens elsewhere.
                 None
             }
+            CommandResult::ReselectVisual => {
+                // Reselect-last (gv) command requests restoration of last visual selection.
+                // The actual restoration is handled by the message loop which has access
+                // to the last_visual_selection state.
+                None
+            }
         }
     }
 

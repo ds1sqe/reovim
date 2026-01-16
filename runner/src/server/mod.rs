@@ -127,6 +127,7 @@ impl SrvArgs {
             transport,
             default_session_name: String::from("default"),
             modules,
+            default_mode: None,
         }
     }
 }
@@ -226,6 +227,11 @@ pub struct ServerConfig {
 
     /// Module configuration (search paths, auto-load).
     pub modules: ModuleConfig,
+
+    /// Default mode ID for new sessions.
+    ///
+    /// If None, falls back to "editor:normal".
+    pub default_mode: Option<ModeId>,
 }
 
 impl Default for ServerConfig {
@@ -234,6 +240,7 @@ impl Default for ServerConfig {
             transport: TransportMode::TcpWithFallback,
             default_session_name: String::from("default"),
             modules: ModuleConfig::default(),
+            default_mode: None,
         }
     }
 }
@@ -314,6 +321,23 @@ impl ServerConfig {
             }
         }
         self
+    }
+
+    /// Set the default mode for new sessions.
+    #[must_use]
+    pub fn with_default_mode(mut self, mode: ModeId) -> Self {
+        self.default_mode = Some(mode);
+        self
+    }
+
+    /// Get the effective default mode.
+    ///
+    /// Returns the configured default mode, or falls back to "editor:normal".
+    #[must_use]
+    pub fn effective_default_mode(&self) -> ModeId {
+        self.default_mode
+            .clone()
+            .unwrap_or_else(fallback_default_mode)
     }
 }
 
@@ -430,11 +454,18 @@ impl Server {
                     let sessions = Arc::clone(&self.sessions);
                     let dispatcher = Arc::clone(&self.dispatcher);
                     let session_id = default_session_id.clone();
+                    let default_mode = self.config.effective_default_mode();
 
                     // Spawn client handler task
                     tokio::spawn(async move {
                         if let Err(e) = handle_client(
-                            reader, writer, client_id, session_id, sessions, dispatcher,
+                            reader,
+                            writer,
+                            client_id,
+                            session_id,
+                            sessions,
+                            dispatcher,
+                            default_mode,
                         )
                         .await
                         {
@@ -467,6 +498,7 @@ impl Server {
         let client_id = self.sessions.next_client_id();
 
         // Handle the single client directly (no spawn)
+        let default_mode = self.config.effective_default_mode();
         handle_client(
             reader,
             writer,
@@ -474,6 +506,7 @@ impl Server {
             default_session_id.clone(),
             Arc::clone(&self.sessions),
             Arc::clone(&self.dispatcher),
+            default_mode,
         )
         .await?;
 
@@ -560,8 +593,9 @@ impl Server {
 
     /// Ensure the default session exists.
     fn ensure_default_session(&self, id: &SessionId) {
+        let default_mode = self.config.effective_default_mode();
         self.sessions.get_or_create(id, || {
-            Session::new(id.clone(), real_kernel_context(), default_mode_id(), standard_vfs())
+            Session::new(id.clone(), real_kernel_context(), default_mode, standard_vfs())
         });
     }
 }
@@ -572,10 +606,12 @@ impl Default for Server {
     }
 }
 
-/// Default mode ID for new sessions.
+/// Fallback default mode ID when no config-specified mode is set.
 ///
-/// Uses "editor:normal" as the initial mode.
-const fn default_mode_id() -> ModeId {
+/// Uses "editor:normal" as the default. This hardcoded value exists
+/// for backwards compatibility, but the mode should be configurable
+/// via `ServerConfig::with_default_mode()`.
+const fn fallback_default_mode() -> ModeId {
     ModeId::new(ModuleId::new("editor"), "normal")
 }
 
@@ -615,6 +651,7 @@ fn standard_vfs() -> Arc<dyn VfsDriver> {
 /// * `session_id` - Session to attach the client to
 /// * `sessions` - Session registry for looking up sessions
 /// * `dispatcher` - RPC dispatcher for handling requests
+/// * `default_mode` - Default mode ID for new sessions
 async fn handle_client(
     mut reader: TransportReader,
     writer: TransportWriter,
@@ -622,10 +659,11 @@ async fn handle_client(
     session_id: SessionId,
     sessions: Arc<SessionRegistry>,
     dispatcher: Arc<RpcDispatcher>,
+    default_mode: ModeId,
 ) -> std::io::Result<()> {
     // Get or create the session
     let session = sessions.get_or_create(&session_id, || {
-        Session::new(session_id.clone(), real_kernel_context(), default_mode_id(), standard_vfs())
+        Session::new(session_id.clone(), real_kernel_context(), default_mode, standard_vfs())
     });
 
     // Create the client (owns the writer)
@@ -761,10 +799,26 @@ mod tests {
     }
 
     #[test]
-    fn test_default_mode_id() {
-        let mode_id = default_mode_id();
+    fn test_fallback_default_mode() {
+        let mode_id = fallback_default_mode();
         assert_eq!(mode_id.module().as_str(), "editor");
         assert_eq!(mode_id.name(), "normal");
+    }
+
+    #[test]
+    fn test_effective_default_mode_fallback() {
+        let config = ServerConfig::default();
+        let mode = config.effective_default_mode();
+        assert_eq!(mode.module().as_str(), "editor");
+        assert_eq!(mode.name(), "normal");
+    }
+
+    #[test]
+    fn test_effective_default_mode_configured() {
+        let custom_mode = ModeId::new(ModuleId::new("custom"), "mode");
+        let config = ServerConfig::default().with_default_mode(custom_mode.clone());
+        let mode = config.effective_default_mode();
+        assert_eq!(mode, custom_mode);
     }
 
     #[test]

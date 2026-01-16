@@ -233,6 +233,12 @@ pub enum CommandResult {
         /// Whether this is a linewise range (affects paste behavior).
         is_linewise: bool,
     },
+    /// Command requests visual selection restoration (gv).
+    ///
+    /// The `reselect-last` command returns this to request restoration of
+    /// the last visual selection. The runner handles the actual restoration
+    /// by looking up the saved selection and entering the appropriate visual mode.
+    ReselectVisual,
 }
 
 impl CommandResult {
@@ -334,6 +340,12 @@ impl CommandResult {
     #[must_use]
     pub const fn is_operator_range(&self) -> bool {
         matches!(self, Self::OperatorRange { .. })
+    }
+
+    /// Check if the result is a reselect visual action.
+    #[must_use]
+    pub const fn is_reselect_visual(&self) -> bool {
+        matches!(self, Self::ReselectVisual)
     }
 
     /// Create an operator range result for text object commands.

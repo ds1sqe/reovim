@@ -39,7 +39,7 @@
 //! bus.emit(BufferCreated { buffer_id: 1 });
 //! ```
 
-use crate::ipc::Event;
+use crate::{core::ModeId, ipc::Event};
 
 /// Priority constants for event handlers.
 ///
@@ -190,12 +190,83 @@ impl Event for CursorMoved {}
 /// Emitted after a mode transition occurs (e.g., Normal → Insert).
 /// The mode strings are intentionally generic - policy (specific modes)
 /// is defined by the runtime and modules.
+///
+/// # Type-Safe Mode Transitions
+///
+/// When `target_mode` is set, it provides the exact `ModeId` to transition to.
+/// This enables event-driven mode transitions without hardcoding command names
+/// in the runner layer.
+///
+/// # Example
+///
+/// ```ignore
+/// // Commands emit with target_mode for type-safe transitions
+/// ctx.event_bus.emit(ModeChanged::with_mode_id("normal", editor_visual_mode));
+///
+/// // Runner subscribes and updates mode_stack from the event
+/// bus.subscribe::<ModeChanged, _>(priority::CORE, |event| {
+///     if let Some(mode_id) = event.target_mode() {
+///         app.mode_stack.set(mode_id.clone());
+///     }
+///     EventResult::Handled
+/// });
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModeChanged {
-    /// Previous mode description
+    /// Previous mode description (for display/logging).
     pub from: String,
-    /// New mode description
+    /// New mode description (for display/logging).
     pub to: String,
+    /// Target mode ID for type-safe transitions.
+    ///
+    /// When set, the runner uses this to update the mode stack instead of
+    /// predicting mode transitions based on command names.
+    target_mode: Option<ModeId>,
+}
+
+impl ModeChanged {
+    /// Create a new mode change event with string descriptions only.
+    ///
+    /// Use this for backward compatibility or when the target mode is
+    /// implicit (e.g., commands that emit events for logging only).
+    #[must_use]
+    pub fn new(from: impl Into<String>, to: impl Into<String>) -> Self {
+        Self {
+            from: from.into(),
+            to: to.into(),
+            target_mode: None,
+        }
+    }
+
+    /// Create a mode change event with a specific target mode ID.
+    ///
+    /// The runner subscribes to these events and updates the mode stack
+    /// using the provided `ModeId`, eliminating the need for hardcoded
+    /// command name mappings.
+    #[must_use]
+    pub fn with_mode_id(from: impl Into<String>, target: ModeId) -> Self {
+        let to = target.name().to_string();
+        Self {
+            from: from.into(),
+            to,
+            target_mode: Some(target),
+        }
+    }
+
+    /// Get the target mode ID, if set.
+    ///
+    /// Returns `Some(&ModeId)` when the event was created with `with_mode_id()`,
+    /// `None` for legacy events created with just string descriptions.
+    #[must_use]
+    pub const fn target_mode(&self) -> Option<&ModeId> {
+        self.target_mode.as_ref()
+    }
+
+    /// Check if this event has a type-safe target mode.
+    #[must_use]
+    pub const fn has_target_mode(&self) -> bool {
+        self.target_mode.is_some()
+    }
 }
 
 impl Event for ModeChanged {}
@@ -400,10 +471,31 @@ mod tests {
 
     #[test]
     fn test_mode_changed() {
-        let event = ModeChanged {
-            from: "Normal".to_string(),
-            to: "Insert".to_string(),
-        };
+        let event = ModeChanged::new("Normal", "Insert");
+        assert_eq!(event.from, "Normal");
+        assert_eq!(event.to, "Insert");
+        assert!(event.target_mode().is_none());
+        assert!(!event.has_target_mode());
+    }
+
+    #[test]
+    fn test_mode_changed_with_mode_id() {
+        use crate::api::ModuleId;
+
+        let module = ModuleId::new("editor");
+        let mode_id = ModeId::new(module, "visual");
+        let event = ModeChanged::with_mode_id("normal", mode_id.clone());
+
+        assert_eq!(event.from, "normal");
+        assert_eq!(event.to, "visual");
+        assert!(event.has_target_mode());
+        assert_eq!(event.target_mode(), Some(&mode_id));
+    }
+
+    #[test]
+    fn test_mode_changed_backward_compat() {
+        // Test that old-style struct initialization still works for comparison
+        let event = ModeChanged::new("Normal", "Insert");
         assert_eq!(event.from, "Normal");
         assert_eq!(event.to, "Insert");
     }
