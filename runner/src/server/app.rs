@@ -347,6 +347,93 @@ impl SearchState {
 }
 
 // ============================================================================
+// Undo Transaction Batching Infrastructure
+// ============================================================================
+
+/// Pending edits for transaction batching.
+///
+/// Accumulates consecutive edits (typically character insertions in
+/// insert mode) until a batch-breaking event occurs, then flushes
+/// them as a single undo transaction.
+///
+/// # Design Philosophy
+///
+/// In Vim, typing "hello" in insert mode and pressing Escape creates
+/// a single undo node - pressing `u` undoes all 5 characters at once.
+/// This struct enables that behavior by collecting edits during insert
+/// mode and committing them as a batch on mode exit or other break events.
+///
+/// # Batch Break Conditions
+///
+/// A batch is flushed when:
+/// - Mode changes (e.g., Escape exits insert mode)
+/// - A command is executed (e.g., Backspace, arrow keys)
+/// - The buffer changes (different buffer ID)
+///
+/// # Example
+///
+/// ```ignore
+/// // User types: ihello<Esc>
+/// // Each 'h', 'e', 'l', 'l', 'o' calls accumulate_edit()
+/// // <Esc> triggers flush_pending_edits()
+/// // Result: single undo node containing all 5 edits
+/// ```
+#[derive(Debug, Default)]
+pub struct PendingEditBatch {
+    /// Buffer this batch applies to.
+    ///
+    /// When accumulating to a different buffer, the current batch
+    /// is flushed before starting a new one.
+    buffer_id: Option<BufferId>,
+
+    /// Accumulated edits in order.
+    ///
+    /// Each edit is typically a single character insertion, but
+    /// can be any edit operation.
+    edits: Vec<Edit>,
+
+    /// Cursor position before first edit in batch.
+    ///
+    /// Captured when the batch starts (first edit accumulated).
+    /// Used as `cursor_before` when committing to undo tree.
+    cursor_before: Option<Position>,
+
+    /// Cursor position after most recent edit.
+    ///
+    /// Updated on each accumulate. Used as `cursor_after` when
+    /// committing to undo tree.
+    cursor_after: Option<Position>,
+}
+
+impl PendingEditBatch {
+    /// Create a new empty pending edit batch.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Check if the batch is empty (no pending edits).
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.edits.is_empty()
+    }
+
+    /// Get the number of pending edits.
+    #[must_use]
+    pub const fn len(&self) -> usize {
+        self.edits.len()
+    }
+
+    /// Clear the batch, resetting all fields.
+    pub fn clear(&mut self) {
+        self.buffer_id = None;
+        self.edits.clear();
+        self.cursor_before = None;
+        self.cursor_after = None;
+    }
+}
+
+// ============================================================================
 // Repeat Infrastructure
 // ============================================================================
 
@@ -510,6 +597,19 @@ pub struct AppState {
     ///
     /// Tracks the last repeatable command and any insert mode text.
     pub repeat_state: RepeatState,
+
+    /// Pending edits for transaction batching.
+    ///
+    /// Accumulates consecutive edits (typically character insertions in
+    /// insert mode) until a batch-breaking event occurs, then flushes
+    /// them as a single undo transaction.
+    ///
+    /// # Batch Break Events
+    ///
+    /// - Mode change (e.g., Escape exits insert mode)
+    /// - Any command execution (Backspace, arrow keys, etc.)
+    /// - Buffer change (editing different buffer)
+    pending_edits: PendingEditBatch,
 }
 
 impl AppState {
@@ -535,6 +635,7 @@ impl AppState {
             last_find: None,
             search: SearchState::new(),
             repeat_state: RepeatState::new(),
+            pending_edits: PendingEditBatch::new(),
         }
     }
 
@@ -624,6 +725,117 @@ impl AppState {
     pub const fn stop_insert_accumulation(&mut self) {
         self.repeat_state.stop_accumulating();
     }
+
+    // ========================================================================
+    // Undo Transaction Batching Methods
+    // ========================================================================
+
+    /// Accumulate an edit for batched undo.
+    ///
+    /// Consecutive character insertions (or other edits) can be accumulated
+    /// and later flushed as a single undo transaction. This enables Vim-like
+    /// behavior where typing "hello" in insert mode creates a single undo node.
+    ///
+    /// If the buffer changes (different `buffer_id` from current batch), the
+    /// existing batch is flushed before starting a new one.
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer_id` - The buffer being edited
+    /// * `edit` - The edit to accumulate
+    /// * `cursor_before` - Cursor position before this edit
+    /// * `cursor_after` - Cursor position after this edit
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // User types 'h' in insert mode
+    /// app.accumulate_edit(buffer_id, edit, Position::new(0, 0), Position::new(0, 1));
+    /// // User types 'i'
+    /// app.accumulate_edit(buffer_id, edit, Position::new(0, 1), Position::new(0, 2));
+    /// // User presses Escape - this triggers flush
+    /// app.flush_pending_edits();
+    /// // Result: single undo node with both edits
+    /// ```
+    pub fn accumulate_edit(
+        &mut self,
+        buffer_id: BufferId,
+        edit: Edit,
+        cursor_before: Position,
+        cursor_after: Position,
+    ) {
+        // Flush if buffer changed
+        if self
+            .pending_edits
+            .buffer_id
+            .is_some_and(|id| id != buffer_id)
+        {
+            self.flush_pending_edits();
+        }
+
+        // Start new batch if empty
+        if self.pending_edits.edits.is_empty() {
+            self.pending_edits.buffer_id = Some(buffer_id);
+            self.pending_edits.cursor_before = Some(cursor_before);
+        }
+
+        self.pending_edits.edits.push(edit);
+        self.pending_edits.cursor_after = Some(cursor_after);
+    }
+
+    /// Flush pending edits to undo registry as a single transaction.
+    ///
+    /// This commits all accumulated edits as a single undo node. If there are
+    /// no pending edits, this is a no-op (safe to call multiple times).
+    ///
+    /// Called automatically on:
+    /// - Mode change (e.g., exiting insert mode)
+    /// - Before any command execution (Backspace, arrow keys, etc.)
+    /// - Buffer change (via `accumulate_edit` when buffer differs)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Accumulated 5 character edits
+    /// app.flush_pending_edits();
+    /// // Now pressing 'u' undoes all 5 characters at once
+    /// ```
+    pub fn flush_pending_edits(&mut self) {
+        if self.pending_edits.is_empty() {
+            return;
+        }
+
+        let Some(buffer_id) = self.pending_edits.buffer_id else {
+            return;
+        };
+        let Some(cursor_before) = self.pending_edits.cursor_before else {
+            return;
+        };
+        let Some(cursor_after) = self.pending_edits.cursor_after else {
+            return;
+        };
+
+        let edits = std::mem::take(&mut self.pending_edits.edits);
+        self.undo_registry
+            .record(buffer_id, edits, cursor_before, cursor_after);
+        self.pending_edits.clear();
+    }
+
+    /// Check if there are pending edits waiting to be flushed.
+    ///
+    /// Useful for testing and debugging.
+    #[must_use]
+    pub const fn has_pending_edits(&self) -> bool {
+        !self.pending_edits.is_empty()
+    }
+
+    /// Get the number of pending edits.
+    ///
+    /// Useful for testing and debugging.
+    #[must_use]
+    pub const fn pending_edit_count(&self) -> usize {
+        self.pending_edits.len()
+    }
 }
 
 impl FallbackContext for AppState {
@@ -648,6 +860,22 @@ impl FallbackContext for AppState {
     ) {
         self.undo_registry
             .record(buffer_id, edits, cursor_before, cursor_after);
+    }
+
+    fn accumulate_edit(
+        &mut self,
+        buffer_id: BufferId,
+        edit: Edit,
+        cursor_before: Position,
+        cursor_after: Position,
+    ) {
+        // Delegate to the inherent method on AppState
+        Self::accumulate_edit(self, buffer_id, edit, cursor_before, cursor_after);
+    }
+
+    fn flush_pending_edits(&mut self) {
+        // Delegate to the inherent method on AppState
+        Self::flush_pending_edits(self);
     }
 }
 
@@ -1102,5 +1330,213 @@ mod tests {
 
         assert_eq!(app.repeat_state.insert_text, "test");
         assert!(!app.repeat_state.accumulating);
+    }
+
+    // ========================================================================
+    // PendingEditBatch Tests
+    // ========================================================================
+
+    #[test]
+    fn test_pending_edit_batch_new_is_empty() {
+        let batch = PendingEditBatch::new();
+        assert!(batch.is_empty());
+        assert_eq!(batch.len(), 0);
+        assert!(batch.buffer_id.is_none());
+    }
+
+    #[test]
+    fn test_pending_edit_batch_clear() {
+        let mut batch = PendingEditBatch::new();
+        batch.buffer_id = Some(BufferId::from_raw(1));
+        batch.edits.push(Edit::insert(Position::new(0, 0), "a"));
+        batch.cursor_before = Some(Position::new(0, 0));
+        batch.cursor_after = Some(Position::new(0, 1));
+
+        assert!(!batch.is_empty());
+
+        batch.clear();
+        assert!(batch.is_empty());
+        assert!(batch.buffer_id.is_none());
+    }
+
+    // ========================================================================
+    // AppState Undo Batching Methods Tests
+    // ========================================================================
+
+    #[test]
+    fn test_app_state_pending_edits_initially_empty() {
+        let kernel = KernelContext::default();
+        let app = AppState::new(kernel, test_mode_id());
+
+        assert!(!app.has_pending_edits());
+        assert_eq!(app.pending_edit_count(), 0);
+    }
+
+    #[test]
+    fn test_accumulate_single_edit() {
+        let kernel = KernelContext::default();
+        let mut app = AppState::new(kernel, test_mode_id());
+
+        let buffer_id = BufferId::from_raw(1);
+        let edit = Edit::insert(Position::new(0, 0), "a");
+
+        app.accumulate_edit(buffer_id, edit, Position::new(0, 0), Position::new(0, 1));
+
+        assert!(app.has_pending_edits());
+        assert_eq!(app.pending_edit_count(), 1);
+    }
+
+    #[test]
+    fn test_accumulate_multiple_edits_same_buffer() {
+        let kernel = KernelContext::default();
+        let mut app = AppState::new(kernel, test_mode_id());
+
+        let buffer_id = BufferId::from_raw(1);
+
+        // Accumulate "hello" (5 characters)
+        app.accumulate_edit(
+            buffer_id,
+            Edit::insert(Position::new(0, 0), "h"),
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+        app.accumulate_edit(
+            buffer_id,
+            Edit::insert(Position::new(0, 1), "e"),
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+        app.accumulate_edit(
+            buffer_id,
+            Edit::insert(Position::new(0, 2), "l"),
+            Position::new(0, 2),
+            Position::new(0, 3),
+        );
+        app.accumulate_edit(
+            buffer_id,
+            Edit::insert(Position::new(0, 3), "l"),
+            Position::new(0, 3),
+            Position::new(0, 4),
+        );
+        app.accumulate_edit(
+            buffer_id,
+            Edit::insert(Position::new(0, 4), "o"),
+            Position::new(0, 4),
+            Position::new(0, 5),
+        );
+
+        assert!(app.has_pending_edits());
+        assert_eq!(app.pending_edit_count(), 5);
+    }
+
+    #[test]
+    fn test_accumulate_different_buffer_flushes() {
+        let kernel = KernelContext::default();
+        let mut app = AppState::new(kernel, test_mode_id());
+
+        let buffer1 = BufferId::from_raw(1);
+        let buffer2 = BufferId::from_raw(2);
+
+        // Accumulate to buffer1
+        app.accumulate_edit(
+            buffer1,
+            Edit::insert(Position::new(0, 0), "a"),
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+        app.accumulate_edit(
+            buffer1,
+            Edit::insert(Position::new(0, 1), "b"),
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+
+        assert_eq!(app.pending_edit_count(), 2);
+
+        // Accumulate to buffer2 - should flush buffer1 first
+        app.accumulate_edit(
+            buffer2,
+            Edit::insert(Position::new(0, 0), "x"),
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+
+        // Now pending should only have 1 edit (for buffer2)
+        // The previous 2 edits for buffer1 were flushed
+        assert_eq!(app.pending_edit_count(), 1);
+
+        // Buffer1 should have undo history from the flush
+        assert!(app.undo_registry.has_history(buffer1));
+    }
+
+    #[test]
+    fn test_flush_empty_batch_no_op() {
+        let kernel = KernelContext::default();
+        let mut app = AppState::new(kernel, test_mode_id());
+
+        let buffer_id = BufferId::from_raw(1);
+
+        // Flush when empty should be safe no-op
+        app.flush_pending_edits();
+
+        // Should not create any undo history
+        assert!(!app.undo_registry.has_history(buffer_id));
+        assert!(!app.has_pending_edits());
+    }
+
+    #[test]
+    fn test_flush_creates_single_undo_node() {
+        let kernel = KernelContext::default();
+        let mut app = AppState::new(kernel, test_mode_id());
+
+        let buffer_id = BufferId::from_raw(1);
+
+        // Accumulate 3 edits
+        app.accumulate_edit(
+            buffer_id,
+            Edit::insert(Position::new(0, 0), "a"),
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+        app.accumulate_edit(
+            buffer_id,
+            Edit::insert(Position::new(0, 1), "b"),
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+        app.accumulate_edit(
+            buffer_id,
+            Edit::insert(Position::new(0, 2), "c"),
+            Position::new(0, 2),
+            Position::new(0, 3),
+        );
+
+        assert_eq!(app.pending_edit_count(), 3);
+
+        // Flush should create single undo node
+        app.flush_pending_edits();
+
+        assert!(!app.has_pending_edits());
+        assert!(app.undo_registry.has_history(buffer_id));
+
+        // Verify it's a single undo operation (one undo should undo all 3)
+        let result = app.undo_registry.undo(buffer_id);
+        assert!(result.is_some());
+        let undo_result = result.unwrap();
+        // The undo should contain 3 inverse edits (one for each accumulated edit)
+        assert_eq!(undo_result.edits.len(), 3);
+    }
+
+    #[test]
+    fn test_multiple_consecutive_flushes_safe() {
+        let kernel = KernelContext::default();
+        let mut app = AppState::new(kernel, test_mode_id());
+
+        // Multiple flushes when empty should be safe
+        app.flush_pending_edits();
+        app.flush_pending_edits();
+        app.flush_pending_edits();
+
+        assert!(!app.has_pending_edits());
     }
 }
