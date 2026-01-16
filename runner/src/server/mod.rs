@@ -542,55 +542,113 @@ impl Server {
     /// Load modules from configuration.
     ///
     /// This method:
-    /// 1. Adds search paths from `config.modules.search_paths`
-    /// 2. Loads modules from `config.modules.autoload` (unless `no_defaults` is set)
-    /// 3. Initializes all loaded modules
+    /// 1. Loads config file (respecting `REOVIM_CONFIG_DIR`)
+    /// 2. Merges file config with CLI args (CLI takes precedence)
+    /// 3. Calculates effective module list (defaults + extra - skip)
+    /// 4. Loads each module, logging warnings for failures
     ///
     /// Called automatically by `run()` before creating sessions.
     ///
-    /// # Errors
+    /// # Loading Precedence
     ///
-    /// Logs warnings for modules that fail to load but continues.
-    /// Does not return errors since module loading failures are non-fatal.
+    /// 1. CLI `--load` flags (highest priority)
+    /// 2. CLI `--no-defaults` flag
+    /// 3. Config file `[modules].autoload` (overrides defaults)
+    /// 4. Config file `[modules].extra` (adds to defaults)
+    /// 5. Config file `[modules].skip` (removes from defaults)
+    /// 6. `DEFAULT_MODULES` constant (lowest priority)
     fn load_modules(&self) {
-        // Skip if no_defaults and no autoload modules
-        if self.config.modules.should_skip_defaults() && self.config.modules.autoload.is_empty() {
-            tracing::info!("module loading skipped (--no-defaults with no --load)");
-            return;
-        }
+        // Load config file with environment override
+        let file_config = match ModuleConfig::load_with_env() {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!("Failed to load module config: {e}");
+                ModuleConfig::default()
+            }
+        };
 
-        // Get the list of modules to load
-        // Note: When no_defaults is false, default module list will be defined in #264.
-        // For now, both paths use the same autoload list.
-        let modules_to_load = self.config.modules.autoload.clone();
+        // Merge: CLI args override file config
+        let merged = self.merge_module_config(&file_config);
+
+        // Get effective list
+        let modules_to_load = if merged.should_skip_defaults() {
+            // Only CLI-specified modules when --no-defaults is set
+            self.config.modules.autoload.clone()
+        } else {
+            merged.effective_modules()
+        };
 
         if modules_to_load.is_empty() {
-            tracing::debug!("no modules to load");
+            tracing::info!("No modules to load");
             return;
         }
 
         tracing::info!(
             count = modules_to_load.len(),
             modules = ?modules_to_load,
-            "loading modules"
+            "Loading modules"
         );
 
         // Discover available modules in search paths
-        let discovered = self.module_registry.discover();
-        tracing::debug!(count = discovered.len(), "discovered module files");
+        let search_paths = merged.all_search_paths_with_env();
+        tracing::debug!(paths = ?search_paths, "Module search paths");
 
-        // TODO (#264): Load discovered modules that match autoload list
-        // For now, just log what we would load
+        let discovered = self.module_registry.discover();
+        tracing::debug!(count = discovered.len(), "Discovered module files");
+
+        // Load each module (actual loading deferred to #265)
+        // For now, log what would be loaded
         for module_id in &modules_to_load {
-            tracing::debug!(module = %module_id, "would load module");
+            // Check if module exists in discovered modules by name
+            let found = discovered.iter().any(|path| {
+                path.file_stem()
+                    .and_then(|s| s.to_str())
+                    .is_some_and(|name| name.contains(module_id))
+            });
+
+            if found {
+                tracing::debug!(module = %module_id, "Module available for loading");
+            } else {
+                tracing::warn!(module = %module_id, "Module not found in search paths");
+            }
         }
 
-        // TODO (#264): Create ModuleContext and initialize modules
+        // TODO (#265): Actually load discovered modules
         // The full implementation requires:
         // 1. Matching discovered modules to autoload list
-        // 2. Creating proper KernelContext with data/cache dirs
-        // 3. Calling self.module_registry.init_all(&ctx)
-        // 4. Wiring handlers for initialized modules
+        // 2. Creating proper ModuleContext with data/cache dirs
+        // 3. Calling self.module_registry.load_by_name(&module_id)
+        // 4. Calling self.module_registry.init_all(&ctx)
+        // 5. Wiring handlers for initialized modules
+    }
+
+    /// Merge file config with CLI arguments.
+    ///
+    /// CLI arguments take precedence over file config:
+    /// - CLI search paths are appended
+    /// - CLI autoload modules are appended
+    /// - CLI `--no-defaults` overrides file config
+    fn merge_module_config(&self, file_config: &ModuleConfig) -> ModuleConfig {
+        let mut merged = file_config.clone();
+
+        // CLI search paths are appended
+        for path in &self.config.modules.search_paths {
+            merged.search_paths.push(path.clone());
+        }
+
+        // CLI autoload modules are appended
+        for module in &self.config.modules.autoload {
+            if !merged.autoload.contains(module) {
+                merged.autoload.push(module.clone());
+            }
+        }
+
+        // CLI --no-defaults overrides
+        if self.config.modules.no_defaults {
+            merged.no_defaults = true;
+        }
+
+        merged
     }
 
     /// Ensure the default session exists.

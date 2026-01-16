@@ -53,6 +53,7 @@
 
 // Configuration stays at top level (used across sub-modules)
 mod config;
+mod defaults;
 
 // Sub-modules organized by responsibility
 mod lifecycle;
@@ -63,6 +64,8 @@ mod wiring;
 pub use {
     // Configuration
     config::{ConfigError, ModuleConfig},
+    // Defaults
+    defaults::DEFAULT_MODULES,
     // Lifecycle management
     lifecycle::{DependencyOrder, ModuleManager, resolve_dependencies},
     // Loading subsystem

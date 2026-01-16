@@ -247,6 +247,28 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
     - `dispatch()` in RPC dispatcher
   - 13 profiler tests, 9 trace driver tests
 
+- **Phase 7-A: Default Module Autoload Policy** (Issue #264)
+  - **Default Modules** (`runner/src/server/module/defaults.rs`):
+    - `DEFAULT_MODULES` constant: editor, keymap, operators, commands, mode-manager
+    - Documentation for override methods (CLI, config file, env vars)
+  - **ModuleConfig Extensions** (`runner/src/server/module/config.rs`):
+    - `extra: Vec<String>` - Add modules to default list
+    - `skip: Vec<String>` - Remove modules from default list
+    - `effective_modules()` - Calculate final module list (defaults ± extra ± skip)
+    - `load_with_env()` - Load config respecting `REOVIM_CONFIG_DIR`
+    - `all_search_paths_with_env()` - Include `REOVIM_MODULE_PATH` paths
+  - **Loading Precedence** (highest to lowest):
+    1. CLI `--load` flags
+    2. CLI `--no-defaults` flag
+    3. Config file `[modules].autoload` (overrides defaults)
+    4. Config file `[modules].extra` (adds to defaults)
+    5. Config file `[modules].skip` (removes from defaults)
+    6. Hardcoded `DEFAULT_MODULES`
+  - **Environment Variables**:
+    - `REOVIM_CONFIG_DIR` - Override config directory
+    - `REOVIM_MODULE_PATH` - Additional search paths (colon-separated)
+  - 19 unit tests for effective_modules, extra/skip, and config parsing
+
 - **Phase 7-A: Module Loading Mechanism with CLI Flags** (Issue #262)
   - **CLI Flags for Module Control**:
     - `--moddir <PATH>` - Add module search directory (repeatable)
