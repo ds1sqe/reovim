@@ -306,6 +306,11 @@ impl Session {
                 tracing::info!(?action, "Mode action requested (session)");
                 None
             }
+            CommandResult::BlockInsertAction(action) => {
+                // Block insert actions are handled by the runner event loop.
+                tracing::info!(?action, "Block insert action requested (session)");
+                None
+            }
         }
     }
 

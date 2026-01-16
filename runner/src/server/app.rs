@@ -500,6 +500,91 @@ impl RepeatState {
 }
 
 // ============================================================================
+// Block Insert Mode State
+// ============================================================================
+
+/// State for block insert mode (`I`/`A` in visual-block).
+///
+/// When active, text typed in insert mode is recorded and will be applied
+/// to all lines in the block upon exiting insert mode.
+///
+/// # Block Insert Flow
+///
+/// 1. User selects text with visual-block mode (`<C-v>`)
+/// 2. User presses `I` or `A` to start block insert
+/// 3. This state is populated with block bounds
+/// 4. User types text (shown at cursor on first line)
+/// 5. User exits insert mode (Escape, Ctrl-C, etc.)
+/// 6. Accumulated text is applied to all lines in the block
+/// 7. State is cleared
+#[derive(Debug, Clone, Default)]
+pub struct BlockInsertState {
+    /// Whether block insert is currently active.
+    pub active: bool,
+    /// First line of the block (0-indexed).
+    pub start_line: usize,
+    /// Last line of the block (0-indexed, inclusive).
+    pub end_line: usize,
+    /// Column where text will be inserted (0-indexed).
+    ///
+    /// For `I`, this is the left column of the block.
+    /// For `A`, this is the right column + 1 (after the block).
+    pub column: usize,
+    /// Whether this is an append operation (`A`) vs insert (`I`).
+    pub is_append: bool,
+}
+
+impl BlockInsertState {
+    /// Create a new inactive block insert state.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            active: false,
+            start_line: 0,
+            end_line: 0,
+            column: 0,
+            is_append: false,
+        }
+    }
+
+    /// Start a block insert operation.
+    #[allow(clippy::missing_const_for_fn)] // &mut self const fns not stable
+    pub fn start(&mut self, start_line: usize, end_line: usize, column: usize, is_append: bool) {
+        self.active = true;
+        self.start_line = start_line;
+        self.end_line = end_line;
+        self.column = column;
+        self.is_append = is_append;
+    }
+
+    /// Clear the block insert state.
+    #[allow(clippy::missing_const_for_fn)] // &mut self const fns not stable
+    pub fn clear(&mut self) {
+        self.active = false;
+        self.start_line = 0;
+        self.end_line = 0;
+        self.column = 0;
+        self.is_append = false;
+    }
+
+    /// Check if block insert is currently active.
+    #[must_use]
+    pub const fn is_active(&self) -> bool {
+        self.active
+    }
+
+    /// Get the number of lines in the block.
+    #[must_use]
+    pub const fn line_count(&self) -> usize {
+        if self.active {
+            self.end_line - self.start_line + 1
+        } else {
+            0
+        }
+    }
+}
+
+// ============================================================================
 // Visual Mode Selection Infrastructure
 // ============================================================================
 
@@ -881,6 +966,12 @@ pub struct AppState {
     /// which window displays it, which buffer's tree is shown,
     /// and navigation state within the tree.
     pub undotree_state: UndotreeState,
+
+    /// Block insert state for visual-block `I`/`A` commands.
+    ///
+    /// When block insert is active, text typed in insert mode is recorded
+    /// and applied to all lines in the block when insert mode exits.
+    pub block_insert: BlockInsertState,
 }
 
 impl AppState {
@@ -910,6 +1001,7 @@ impl AppState {
             last_visual_selection: None,
             windows: WindowRegistry::new(),
             undotree_state: UndotreeState::new(),
+            block_insert: BlockInsertState::new(),
         }
     }
 
