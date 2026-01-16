@@ -92,6 +92,17 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
   - `YankOperator`, `DeleteOperator`, `ChangeOperator` use `range.is_linewise`
   - Register content type (linewise/characterwise) determined by range flag
 
+- **Phase 7.15: Change Operator Commands** (Issue #243)
+  - `ChangeLine` command (`cc`) clears line content and enters insert mode
+  - `ChangeToEndOfLine` command (`C`) deletes from cursor to EOL and enters insert mode
+  - Count support: `3cc` changes 3 lines
+  - Deleted text stored in register (linewise for `cc`, characterwise for `C`)
+  - Returns `EditAction` for undo integration
+  - Emits `ModeChanged` event to enter insert mode
+  - Helper function: `change_commands()`
+  - 16 unit tests covering edge cases and undo integration
+  - Deferred: `c{motion}` operator-pending integration
+
 - **Phase 7.8: Undotree Visualization Module** (Issue #249)
   - New `modules/undotree/` module for undo tree visualization
   - `:undotree` command (alias `:ut`) to toggle visualization panel

@@ -1262,6 +1262,237 @@ impl CommandHandler for DeleteToEndOfLine {
     }
 }
 
+/// Change current line (cc).
+///
+/// Clears the content of the current line(s) and enters insert mode.
+/// Unlike `dd`, this keeps the line(s) but empties their content.
+/// The deleted text is stored in the register as linewise.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ChangeLine;
+
+impl Command for ChangeLine {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "change-line")
+    }
+
+    fn description(&self) -> &'static str {
+        "Change current line"
+    }
+
+    fn args(&self) -> Vec<ArgSpec> {
+        vec![ArgSpec::optional(
+            "count",
+            ArgKind::Count,
+            "Number of lines to change",
+        )]
+    }
+}
+
+impl CommandHandler for ChangeLine {
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        let count = args.count().unwrap_or(1);
+        let mut buffer = buffer_arc.write();
+        let start_line = buffer.position().line;
+        let line_count = buffer.line_count();
+
+        if line_count == 0 {
+            // Empty buffer - just enter insert mode
+            drop(buffer);
+            ctx.event_bus.emit(ModeChanged {
+                from: "normal".to_string(),
+                to: "insert".to_string(),
+            });
+            return CommandResult::Success;
+        }
+
+        // Calculate lines to change
+        let lines_to_change = count.min(line_count.saturating_sub(start_line));
+        if lines_to_change == 0 {
+            drop(buffer);
+            ctx.event_bus.emit(ModeChanged {
+                from: "normal".to_string(),
+                to: "insert".to_string(),
+            });
+            return CommandResult::Success;
+        }
+
+        // Collect text to delete for register (include newlines between lines)
+        let mut deleted_text = String::new();
+        for i in 0..lines_to_change {
+            let line_idx = start_line + i;
+            if let Some(line) = buffer.line(line_idx) {
+                deleted_text.push_str(line);
+            }
+            if i < lines_to_change - 1 {
+                deleted_text.push('\n');
+            }
+        }
+        deleted_text.push('\n'); // Linewise content ends with newline
+
+        // Store in register as linewise
+        let content = RegisterContent::linewise(deleted_text);
+        ctx.registers.write().set(content);
+
+        // For cc: if changing multiple lines, delete all but first, then clear first
+        // Single line: just clear the content
+        let cursor_before = buffer.position();
+
+        if lines_to_change == 1 {
+            // Clear the single line content
+            let line_len = buffer.line_len(start_line).unwrap_or(0);
+            if line_len > 0 {
+                buffer.set_position(Position::new(start_line, 0));
+                let edit = buffer.delete(line_len);
+                buffer.set_position(Position::new(start_line, 0));
+                let cursor_after = buffer.position();
+                drop(buffer);
+
+                ctx.event_bus.emit(ModeChanged {
+                    from: "normal".to_string(),
+                    to: "insert".to_string(),
+                });
+
+                return CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after);
+            }
+            // Line is already empty
+            drop(buffer);
+            ctx.event_bus.emit(ModeChanged {
+                from: "normal".to_string(),
+                to: "insert".to_string(),
+            });
+            return CommandResult::Success;
+        }
+
+        // Multiple lines: delete lines 2..N entirely, then clear line 1
+        // First, calculate total chars to delete from lines 2..N (including newlines)
+        let mut chars_to_delete_from_rest = 0;
+        for i in 1..lines_to_change {
+            let line_idx = start_line + i;
+            if line_idx < line_count {
+                let line_len = buffer.line_len(line_idx).unwrap_or(0);
+                chars_to_delete_from_rest += line_len;
+                // Add 1 for newline
+                if line_idx + 1 < line_count {
+                    chars_to_delete_from_rest += 1;
+                }
+            }
+        }
+
+        // Delete from end of first line (newline) to end of last changed line
+        let first_line_len = buffer.line_len(start_line).unwrap_or(0);
+        let total_delete = first_line_len + 1 + chars_to_delete_from_rest; // +1 for newline after first line
+
+        // Handle edge case: if deleting to end of buffer
+        let end_line = start_line + lines_to_change;
+        if end_line >= line_count {
+            // We're changing to end of buffer - delete including last line's content
+            // but keep one empty line
+            buffer.set_position(Position::new(start_line, 0));
+            let chars = first_line_len + chars_to_delete_from_rest + (lines_to_change - 1); // newlines between
+            let content_len = buffer.content().len();
+            let edit = buffer.delete(chars.min(content_len));
+            buffer.set_position(Position::new(start_line, 0));
+            let cursor_after = buffer.position();
+            drop(buffer);
+
+            ctx.event_bus.emit(ModeChanged {
+                from: "normal".to_string(),
+                to: "insert".to_string(),
+            });
+
+            return CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after);
+        }
+
+        // Normal case: delete all content from lines and their separating newlines
+        // Keep one line at start_line, cleared
+        buffer.set_position(Position::new(start_line, 0));
+        let edit = buffer.delete(total_delete);
+        buffer.set_position(Position::new(start_line, 0));
+        let cursor_after = buffer.position();
+        drop(buffer);
+
+        ctx.event_bus.emit(ModeChanged {
+            from: "normal".to_string(),
+            to: "insert".to_string(),
+        });
+
+        CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
+    }
+}
+
+/// Change to end of line (C).
+///
+/// Deletes from cursor to end of line and enters insert mode.
+/// The deleted text is stored in the register as characterwise.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ChangeToEndOfLine;
+
+impl Command for ChangeToEndOfLine {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "change-to-eol")
+    }
+
+    fn description(&self) -> &'static str {
+        "Change to end of line"
+    }
+}
+
+impl CommandHandler for ChangeToEndOfLine {
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        let mut buffer = buffer_arc.write();
+        let pos = buffer.position();
+        let line_len = buffer.line_len(pos.line).unwrap_or(0);
+
+        // Nothing to delete if at or past end of line - just enter insert mode
+        if pos.column >= line_len {
+            drop(buffer);
+            ctx.event_bus.emit(ModeChanged {
+                from: "normal".to_string(),
+                to: "insert".to_string(),
+            });
+            return CommandResult::Success;
+        }
+
+        // Get text to delete for register
+        let deleted_text = buffer
+            .line(pos.line)
+            .map(|line| line[pos.column..].to_string())
+            .unwrap_or_default();
+
+        // Store in register as characterwise
+        let content = RegisterContent::characterwise(deleted_text);
+        ctx.registers.write().set(content);
+
+        // Delete from cursor to end of line (not including newline)
+        let chars_to_delete = line_len - pos.column;
+        let cursor_before = buffer.position();
+        let edit = buffer.delete(chars_to_delete);
+        let cursor_after = buffer.position();
+        drop(buffer);
+
+        ctx.event_bus.emit(ModeChanged {
+            from: "normal".to_string(),
+            to: "insert".to_string(),
+        });
+
+        CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
+    }
+}
+
 /// Join current line with next line (J).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct JoinLines;
@@ -1746,6 +1977,9 @@ pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
         // Paste
         Box::new(PasteAfter),
         Box::new(PasteBefore),
+        // Change
+        Box::new(ChangeLine),
+        Box::new(ChangeToEndOfLine),
         // Undo/redo
         Box::new(UndoCommand),
         Box::new(RedoCommand),
@@ -1819,6 +2053,12 @@ pub fn yank_commands() -> Vec<Box<dyn CommandHandler>> {
 #[must_use]
 pub fn paste_commands() -> Vec<Box<dyn CommandHandler>> {
     vec![Box::new(PasteAfter), Box::new(PasteBefore)]
+}
+
+/// Get all change commands.
+#[must_use]
+pub fn change_commands() -> Vec<Box<dyn CommandHandler>> {
+    vec![Box::new(ChangeLine), Box::new(ChangeToEndOfLine)]
 }
 
 #[cfg(test)]
@@ -1961,8 +2201,8 @@ mod tests {
     #[test]
     fn test_all_commands_count() {
         let cmds = all_commands();
-        // 4 cursor + 2 display + 7 mode + 2 insert-edit + 5 delete + 1 yank + 2 paste + 2 undo = 25
-        assert_eq!(cmds.len(), 25);
+        // 4 cursor + 2 display + 7 mode + 2 insert-edit + 5 delete + 1 yank + 2 paste + 2 change + 2 undo = 27
+        assert_eq!(cmds.len(), 27);
     }
 
     #[test]
@@ -2722,5 +2962,258 @@ mod tests {
     fn test_paste_commands_count() {
         let cmds = paste_commands();
         assert_eq!(cmds.len(), 2);
+    }
+
+    // =========================================================================
+    // Change Command Tests
+    // =========================================================================
+
+    #[test]
+    fn test_change_line_command_id() {
+        let cmd = ChangeLine;
+        assert_eq!(cmd.id().module(), &EDITOR_MODULE);
+        assert_eq!(cmd.id().name(), "change-line");
+    }
+
+    #[test]
+    fn test_change_to_eol_command_id() {
+        let cmd = ChangeToEndOfLine;
+        assert_eq!(cmd.id().module(), &EDITOR_MODULE);
+        assert_eq!(cmd.id().name(), "change-to-eol");
+    }
+
+    #[test]
+    fn test_change_line_has_count_arg() {
+        let cmd = ChangeLine;
+        let args = cmd.args();
+        assert!(!args.is_empty());
+        assert_eq!(args[0].name, "count");
+        assert_eq!(args[0].kind, ArgKind::Count);
+    }
+
+    #[test]
+    fn test_change_line_no_buffer_returns_error() {
+        let mut ctx = KernelContext::default();
+        let args = CommandContext::new();
+        let result = ChangeLine.execute(&mut ctx, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_change_to_eol_no_buffer_returns_error() {
+        let mut ctx = KernelContext::default();
+        let args = CommandContext::new();
+        let result = ChangeToEndOfLine.execute(&mut ctx, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_change_line_single_line() {
+        let (mut ctx, _) = setup_buffer_context();
+
+        // Replace buffer with single line content
+        let buffer = Buffer::from_string("hello world");
+        let new_buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(new_buffer_id);
+        let result = ChangeLine.execute(&mut ctx, &args);
+        assert!(result.is_edit_action());
+
+        // Check buffer content - line should be empty
+        let buffer = ctx.buffers.get(new_buffer_id).unwrap();
+        assert_eq!(buffer.read().content(), "");
+
+        // Check register - should have deleted text as linewise
+        let registers = ctx.registers.read();
+        let content = registers.get().clone();
+        drop(registers);
+        assert!(content.is_linewise());
+        assert_eq!(content.text, "hello world\n");
+    }
+
+    #[test]
+    fn test_change_line_multi_line() {
+        let (mut ctx, buffer_id) = setup_buffer_context();
+        // setup_buffer_context gives us "line one\nline two\nline three"
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(2));
+        let result = ChangeLine.execute(&mut ctx, &args);
+        assert!(result.is_edit_action());
+
+        // Check register - should have deleted text as linewise
+        let registers = ctx.registers.read();
+        let content = registers.get().clone();
+        drop(registers);
+        assert!(content.is_linewise());
+        assert!(content.text.contains("line one"));
+        assert!(content.text.contains("line two"));
+    }
+
+    #[test]
+    fn test_change_line_empty_buffer() {
+        let mut ctx = create_test_context();
+        let buffer = Buffer::new();
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = ChangeLine.execute(&mut ctx, &args);
+        // Should succeed (enters insert mode on empty buffer)
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_change_to_eol_middle_of_line() {
+        let mut ctx = create_test_context();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        // Position cursor at column 6 (at 'w')
+        {
+            let buffer = ctx.buffers.get(buffer_id).unwrap();
+            buffer.write().set_position(Position::new(0, 6));
+        }
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = ChangeToEndOfLine.execute(&mut ctx, &args);
+        assert!(result.is_edit_action());
+
+        // Check buffer content - should have "hello "
+        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        assert_eq!(buffer.read().content(), "hello ");
+
+        // Check register - should have "world" as characterwise
+        let registers = ctx.registers.read();
+        let content = registers.get().clone();
+        drop(registers);
+        assert!(!content.is_linewise());
+        assert_eq!(content.text, "world");
+    }
+
+    #[test]
+    fn test_change_to_eol_at_start() {
+        let mut ctx = create_test_context();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = ChangeToEndOfLine.execute(&mut ctx, &args);
+        assert!(result.is_edit_action());
+
+        // Check buffer content - should be empty
+        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        assert_eq!(buffer.read().content(), "");
+
+        // Check register - should have "hello world" as characterwise
+        let registers = ctx.registers.read();
+        let content = registers.get().clone();
+        drop(registers);
+        assert!(!content.is_linewise());
+        assert_eq!(content.text, "hello world");
+    }
+
+    #[test]
+    fn test_change_to_eol_at_end_of_line() {
+        let mut ctx = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        // Position cursor at end of line
+        {
+            let buffer = ctx.buffers.get(buffer_id).unwrap();
+            buffer.write().set_position(Position::new(0, 5));
+        }
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = ChangeToEndOfLine.execute(&mut ctx, &args);
+        // Should succeed but be a no-op (just enters insert mode)
+        assert!(result.is_success());
+
+        // Buffer should be unchanged
+        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        assert_eq!(buffer.read().content(), "hello");
+    }
+
+    #[test]
+    fn test_change_commands_count() {
+        let cmds = change_commands();
+        assert_eq!(cmds.len(), 2);
+    }
+
+    #[test]
+    fn test_all_commands_includes_change() {
+        let cmds = all_commands();
+        let has_change_line = cmds
+            .iter()
+            .any(|c| c.id().module() == &EDITOR_MODULE && c.id().name() == "change-line");
+        let has_change_to_eol = cmds
+            .iter()
+            .any(|c| c.id().module() == &EDITOR_MODULE && c.id().name() == "change-to-eol");
+        assert!(has_change_line);
+        assert!(has_change_to_eol);
+    }
+
+    #[test]
+    fn test_change_line_returns_edit_action() {
+        let (mut ctx, buffer_id) = setup_buffer_context();
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = ChangeLine.execute(&mut ctx, &args);
+
+        // Verify EditAction returned for undo integration
+        assert!(result.is_edit_action());
+        if let CommandResult::EditAction(action) = result {
+            // EditAction should have non-empty edits
+            assert!(!action.edits.is_empty());
+            // Verify buffer_id is correct
+            assert_eq!(action.buffer_id, buffer_id);
+        } else {
+            panic!("Expected EditAction result");
+        }
+    }
+
+    #[test]
+    fn test_change_to_eol_returns_edit_action() {
+        let mut ctx = create_test_context();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = ChangeToEndOfLine.execute(&mut ctx, &args);
+
+        // Verify EditAction returned for undo integration
+        assert!(result.is_edit_action());
+        if let CommandResult::EditAction(action) = result {
+            // EditAction should have non-empty edits
+            assert!(!action.edits.is_empty());
+            // Verify buffer_id is correct
+            assert_eq!(action.buffer_id, buffer_id);
+        } else {
+            panic!("Expected EditAction result");
+        }
+    }
+
+    #[test]
+    fn test_change_line_cursor_position_after() {
+        let (mut ctx, buffer_id) = setup_buffer_context();
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = ChangeLine.execute(&mut ctx, &args);
+
+        // After cc, cursor should be at column 0
+        if let CommandResult::EditAction(action) = result {
+            assert_eq!(action.cursor_after.column, 0);
+        } else {
+            panic!("Expected EditAction result");
+        }
     }
 }
