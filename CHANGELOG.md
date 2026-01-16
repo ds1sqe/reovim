@@ -48,6 +48,32 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Visual Mode** (Issue #242)
+  - **Three selection types** in `EditorMode` enum:
+    - Character-wise selection (`v`) - standard visual mode
+    - Line-wise selection (`V`) - selects entire lines
+    - Block selection (`Ctrl-V`) - rectangular selection
+  - **Selection Commands** (`modules/editor/src/visual.rs`):
+    - Entry: `EnterVisualMode`, `EnterVisualLineMode`, `EnterVisualBlockMode`
+    - Exit: `ExitVisualMode` - clears selection and returns to normal
+    - Toggle: `ToggleVisualChar`, `ToggleVisualLine`, `ToggleVisualBlock`
+    - Manipulation: `SwapAnchor` (o) - swap cursor and anchor positions
+    - Restore: `ReselectLast` (gv) - restore previous selection
+  - **Visual Operators**:
+    - `DeleteSelection` (d) - delete selected text
+    - `YankSelection` (y) - copy selected text to register
+    - `ChangeSelection` (c) - delete and enter insert mode
+    - `IndentSelection` (>) - add 4 spaces to selected lines
+    - `DedentSelection` (<) - remove 4 spaces from selected lines
+  - **LastVisualSelection Tracking** (`runner/src/server/app.rs`):
+    - Persists buffer_id, anchor, cursor, mode for gv restoration
+    - Saved before exit-visual commands via `save_visual_selection_if_active()`
+  - **Mode Transitions** (`runner/src/server/event_loop.rs`):
+    - `mode_for_command()` maps visual commands to mode changes
+    - Event loop handles visual → normal transitions for operators
+  - 51 unit tests covering all commands and operators
+  - Deferred: Block mode I/A insert (requires multi-cursor support)
+
 - **Phase 7-E: Text Objects** (Issue #241)
   - **New `textobjects` module** (`modules/textobjects/`):
     - Word objects: `iw` (inner word), `aw` (a word), `iW` (inner WORD), `aW` (a WORD)

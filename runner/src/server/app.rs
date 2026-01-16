@@ -10,6 +10,7 @@ use {
     reovim_driver_input::{FallbackContext, KeySequence},
     reovim_kernel::api::v1::{
         Buffer, BufferId, Direction, Edit, KernelContext, ModeId, ModeStack, Motion, Position,
+        SelectionMode,
     },
     std::sync::Arc,
 };
@@ -497,6 +498,44 @@ impl RepeatState {
     }
 }
 
+// ============================================================================
+// Visual Mode Selection Infrastructure
+// ============================================================================
+
+/// Record of the last visual selection for `gv` (reselect) command.
+///
+/// When visual mode is exited, the selection boundaries are stored here
+/// so that `gv` can restore the exact same selection.
+#[derive(Debug, Clone, Copy)]
+pub struct LastVisualSelection {
+    /// The buffer where the selection was made.
+    pub buffer_id: BufferId,
+    /// The anchor position (where visual mode was entered).
+    pub anchor: Position,
+    /// The cursor position (where visual mode was exited).
+    pub cursor: Position,
+    /// The selection mode (Character, Line, or Block).
+    pub mode: SelectionMode,
+}
+
+impl LastVisualSelection {
+    /// Create a new last visual selection record.
+    #[must_use]
+    pub const fn new(
+        buffer_id: BufferId,
+        anchor: Position,
+        cursor: Position,
+        mode: SelectionMode,
+    ) -> Self {
+        Self {
+            buffer_id,
+            anchor,
+            cursor,
+            mode,
+        }
+    }
+}
+
 /// Application state combining kernel context with runtime state.
 ///
 /// # Design Philosophy
@@ -610,6 +649,12 @@ pub struct AppState {
     /// - Any command execution (Backspace, arrow keys, etc.)
     /// - Buffer change (editing different buffer)
     pending_edits: PendingEditBatch,
+
+    /// Last visual selection for the `gv` (reselect) command.
+    ///
+    /// When visual mode is exited, the selection is saved here so that
+    /// `gv` can restore it. This allows re-selecting the last visual area.
+    pub last_visual_selection: Option<LastVisualSelection>,
 }
 
 impl AppState {
@@ -636,6 +681,7 @@ impl AppState {
             search: SearchState::new(),
             repeat_state: RepeatState::new(),
             pending_edits: PendingEditBatch::new(),
+            last_visual_selection: None,
         }
     }
 
@@ -835,6 +881,34 @@ impl AppState {
     #[must_use]
     pub const fn pending_edit_count(&self) -> usize {
         self.pending_edits.len()
+    }
+
+    // ========================================================================
+    // Visual Selection Methods
+    // ========================================================================
+
+    /// Save the current visual selection for later reselection with `gv`.
+    ///
+    /// Called when exiting visual mode to remember the selection boundaries.
+    pub const fn save_visual_selection(&mut self, selection: LastVisualSelection) {
+        self.last_visual_selection = Some(selection);
+    }
+
+    /// Get the last visual selection, if any.
+    #[must_use]
+    pub const fn last_visual_selection(&self) -> Option<&LastVisualSelection> {
+        self.last_visual_selection.as_ref()
+    }
+
+    /// Check if there is a saved visual selection.
+    #[must_use]
+    pub const fn has_last_visual_selection(&self) -> bool {
+        self.last_visual_selection.is_some()
+    }
+
+    /// Clear the last visual selection.
+    pub const fn clear_last_visual_selection(&mut self) {
+        self.last_visual_selection = None;
     }
 }
 
@@ -1538,5 +1612,127 @@ mod tests {
         app.flush_pending_edits();
 
         assert!(!app.has_pending_edits());
+    }
+
+    // ========================================================================
+    // LastVisualSelection Tests
+    // ========================================================================
+
+    #[test]
+    fn test_last_visual_selection_new() {
+        let buffer_id = BufferId::from_raw(1);
+        let anchor = Position::new(0, 5);
+        let cursor = Position::new(2, 10);
+        let mode = SelectionMode::Character;
+
+        let selection = LastVisualSelection::new(buffer_id, anchor, cursor, mode);
+
+        assert_eq!(selection.buffer_id, buffer_id);
+        assert_eq!(selection.anchor, anchor);
+        assert_eq!(selection.cursor, cursor);
+        assert_eq!(selection.mode, mode);
+    }
+
+    #[test]
+    fn test_last_visual_selection_line_mode() {
+        let buffer_id = BufferId::from_raw(2);
+        let selection = LastVisualSelection::new(
+            buffer_id,
+            Position::new(1, 0),
+            Position::new(3, 0),
+            SelectionMode::Line,
+        );
+
+        assert_eq!(selection.mode, SelectionMode::Line);
+    }
+
+    #[test]
+    fn test_last_visual_selection_block_mode() {
+        let buffer_id = BufferId::from_raw(3);
+        let selection = LastVisualSelection::new(
+            buffer_id,
+            Position::new(0, 0),
+            Position::new(5, 10),
+            SelectionMode::Block,
+        );
+
+        assert_eq!(selection.mode, SelectionMode::Block);
+    }
+
+    #[test]
+    fn test_app_state_last_visual_selection_initially_none() {
+        let kernel = KernelContext::default();
+        let app = AppState::new(kernel, test_mode_id());
+
+        assert!(!app.has_last_visual_selection());
+        assert!(app.last_visual_selection().is_none());
+    }
+
+    #[test]
+    fn test_app_state_save_visual_selection() {
+        let kernel = KernelContext::default();
+        let mut app = AppState::new(kernel, test_mode_id());
+
+        let selection = LastVisualSelection::new(
+            BufferId::from_raw(1),
+            Position::new(0, 0),
+            Position::new(1, 5),
+            SelectionMode::Character,
+        );
+
+        app.save_visual_selection(selection);
+
+        assert!(app.has_last_visual_selection());
+        let saved = app.last_visual_selection().unwrap();
+        assert_eq!(saved.anchor, Position::new(0, 0));
+        assert_eq!(saved.cursor, Position::new(1, 5));
+    }
+
+    #[test]
+    fn test_app_state_clear_last_visual_selection() {
+        let kernel = KernelContext::default();
+        let mut app = AppState::new(kernel, test_mode_id());
+
+        let selection = LastVisualSelection::new(
+            BufferId::from_raw(1),
+            Position::new(0, 0),
+            Position::new(1, 5),
+            SelectionMode::Character,
+        );
+
+        app.save_visual_selection(selection);
+        assert!(app.has_last_visual_selection());
+
+        app.clear_last_visual_selection();
+        assert!(!app.has_last_visual_selection());
+    }
+
+    #[test]
+    fn test_app_state_save_visual_selection_overwrites() {
+        let kernel = KernelContext::default();
+        let mut app = AppState::new(kernel, test_mode_id());
+
+        let selection1 = LastVisualSelection::new(
+            BufferId::from_raw(1),
+            Position::new(0, 0),
+            Position::new(1, 5),
+            SelectionMode::Character,
+        );
+        app.save_visual_selection(selection1);
+
+        let selection2 = LastVisualSelection::new(
+            BufferId::from_raw(2),
+            Position::new(5, 0),
+            Position::new(10, 20),
+            SelectionMode::Line,
+        );
+        app.save_visual_selection(selection2);
+
+        // Should have the second selection
+        let saved = app.last_visual_selection().unwrap();
+        assert_eq!(saved.buffer_id, BufferId::from_raw(2));
+        assert_eq!(saved.anchor, Position::new(5, 0));
+        assert_eq!(saved.cursor, Position::new(10, 20));
+        assert_eq!(saved.mode, SelectionMode::Line);
     }
 }

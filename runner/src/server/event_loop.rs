@@ -16,13 +16,77 @@ use {
     reovim_driver_command::{CommandContext, CommandResult, UndoAction},
     reovim_driver_input::{FallbackResult, InputFallbackHandler, KeyCode, KeyEvent},
     reovim_kernel::{
-        api::v1::{Edit, Motion, MotionEngine, Position, UndoResult},
+        api::v1::{
+            CommandId, Edit, ModeId, ModuleId, Motion, MotionEngine, Position, SelectionMode,
+            UndoResult,
+        },
         profile_scope,
     },
 };
 
+// =============================================================================
+// Mode Transition Mapping
+// =============================================================================
+
+/// Determine the target mode for a command, if any.
+///
+/// This function maps command IDs to the mode they should transition to.
+/// Commands that don't change mode return `None`.
+///
+/// # Philosophy
+///
+/// This is MECHANISM, not policy - the mapping is defined here but the
+/// actual mode definitions come from the editor module.
+///
+/// # Note
+///
+/// Toggle commands (toggle-visual-char, etc.) are handled specially:
+/// they can either exit to normal or switch modes depending on current state.
+/// For simplicity, we don't track current mode here - the toggle commands
+/// already update the selection mode in the buffer. The `mode_stack` update
+/// happens based on `ModeChanged` events emitted by the commands.
+#[must_use]
+fn mode_for_command(cmd_id: &CommandId) -> Option<ModeId> {
+    let editor = ModuleId::new("editor");
+
+    // Visual mode entry commands
+    if cmd_id.module() == &editor {
+        let mode_name = match cmd_id.name() {
+            // Visual mode entry
+            "enter-visual" => Some("visual"),
+            "enter-visual-line" => Some("visual-line"),
+            "enter-visual-block" => Some("visual-block"),
+
+            // Visual/Insert mode exit to normal
+            "exit-visual" | "exit-insert" | "delete-selection" | "yank-selection"
+            | "indent-selection" | "dedent-selection" => Some("normal"),
+
+            // Insert mode entry
+            "enter-insert"
+            | "enter-insert-after"
+            | "enter-insert-first-non-blank"
+            | "enter-insert-end-of-line"
+            | "open-line-below"
+            | "open-line-above"
+            | "change-line"
+            | "change-to-end-of-line"
+            | "change-selection" => Some("insert"),
+
+            // Note: toggle-visual-* commands are NOT handled here because
+            // they can either exit or switch modes. They emit ModeChanged
+            // events which should be processed separately. For now, they
+            // don't trigger automatic mode stack changes.
+            _ => None,
+        };
+        mode_name.map(|name| ModeId::new(editor, name))
+    } else {
+        None
+    }
+}
+
 use super::{
     AppState,
+    app::LastVisualSelection,
     registry::{CommandRegistry, KeyLookupResult, KeymapRegistry, ModeRegistry},
 };
 
@@ -217,11 +281,33 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
                 self.app.flush_pending_edits();
 
                 // Build command context (TODO: parse count/register from pending keys)
-                let ctx = CommandContext::new();
+                let mut ctx = CommandContext::new();
+
+                // Set buffer_id in context if we have an active buffer
+                if let Some(buffer_id) = self.app.active_buffer {
+                    ctx.set_buffer_id(buffer_id);
+                }
+
+                // BEFORE exit-visual: save the selection for gv
+                let is_visual_exit = Self::is_visual_exit_command(&cmd_id);
+                if is_visual_exit {
+                    self.save_visual_selection_if_active();
+                }
 
                 // Execute command
                 if let Some(result) = self.command_registry.execute(&cmd_id, &mut self.app, &ctx) {
                     self.handle_command_result(result);
+
+                    // Handle mode transition based on command
+                    // This updates mode_stack for commands like enter-visual, exit-insert, etc.
+                    if let Some(new_mode) = mode_for_command(&cmd_id) {
+                        self.app.mode_stack.set(new_mode);
+                    }
+
+                    // AFTER reselect-last: restore the saved selection
+                    if cmd_id.name() == "reselect-last" {
+                        self.handle_reselect_last();
+                    }
                 } else {
                     // Command not found in registry
                     self.set_error(format!("Unknown command: {cmd_id}"));
@@ -810,6 +896,109 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
     pub fn keymap_registry_mut(&mut self) -> &mut KeymapRegistry {
         &mut self.keymap_registry
     }
+
+    // ========================================================================
+    // Visual Mode Selection Helpers
+    // ========================================================================
+
+    /// Check if a command is a visual mode exit command.
+    ///
+    /// This includes explicit exit, toggle, and operator commands that exit visual mode.
+    fn is_visual_exit_command(cmd_id: &CommandId) -> bool {
+        let editor = ModuleId::new("editor");
+        if cmd_id.module() != &editor {
+            return false;
+        }
+
+        // Commands that potentially exit visual mode
+        matches!(
+            cmd_id.name(),
+            "exit-visual"
+                | "toggle-visual-char"
+                | "toggle-visual-line"
+                | "toggle-visual-block"
+                | "delete-selection"
+                | "yank-selection"
+                | "change-selection"
+                | "indent-selection"
+                | "dedent-selection"
+        )
+    }
+
+    /// Save the current visual selection if one is active.
+    ///
+    /// Called before exit-visual commands to preserve the selection for `gv`.
+    fn save_visual_selection_if_active(&mut self) {
+        let Some(buffer_id) = self.app.active_buffer else {
+            return;
+        };
+
+        let Some(buffer_arc) = self.app.kernel.buffers.get(buffer_id) else {
+            return;
+        };
+
+        let buffer = buffer_arc.read();
+        let selection = buffer.selection();
+
+        // Only save if selection is active
+        if !selection.is_active() {
+            return;
+        }
+
+        let last_selection = LastVisualSelection::new(
+            buffer_id,
+            selection.anchor,
+            buffer.position(),
+            selection.mode(),
+        );
+        drop(buffer);
+
+        self.app.save_visual_selection(last_selection);
+    }
+
+    /// Handle the reselect-last (gv) command.
+    ///
+    /// Restores the saved visual selection and enters the appropriate visual mode.
+    fn handle_reselect_last(&mut self) {
+        let Some(last_selection) = self.app.last_visual_selection() else {
+            // No saved selection - nothing to do
+            return;
+        };
+
+        // Copy values to avoid borrow issues
+        let buffer_id = last_selection.buffer_id;
+        let anchor = last_selection.anchor;
+        let cursor = last_selection.cursor;
+        let mode = last_selection.mode;
+
+        // Verify the buffer still exists and is the active buffer
+        // (In Vim, gv only works if you're in the same buffer)
+        if self.app.active_buffer != Some(buffer_id) {
+            // Different buffer - switch to it first (or ignore)
+            // For now, we'll only restore in the same buffer
+            return;
+        }
+
+        let Some(buffer_arc) = self.app.kernel.buffers.get(buffer_id) else {
+            return;
+        };
+
+        // Restore the selection
+        {
+            let mut buffer = buffer_arc.write();
+            buffer.selection_mut().start(anchor, mode);
+            buffer.set_position(cursor);
+        }
+
+        // Transition to the appropriate visual mode
+        let editor = ModuleId::new("editor");
+        let new_mode = match mode {
+            SelectionMode::Character => ModeId::new(editor, "visual"),
+            SelectionMode::Line => ModeId::new(editor, "visual-line"),
+            SelectionMode::Block => ModeId::new(editor, "visual-block"),
+        };
+        self.app.mode_stack.set(new_mode);
+    }
 }
 
 impl<F: InputFallbackHandler<AppState>> std::fmt::Debug for EventLoop<F> {
@@ -1064,5 +1253,90 @@ mod tests {
         let _ = event_loop.command_registry_mut();
         let _ = event_loop.keymap_registry();
         let _ = event_loop.keymap_registry_mut();
+    }
+
+    // =========================================================================
+    // Mode Transition Tests
+    // =========================================================================
+
+    fn editor_command_id(name: &'static str) -> CommandId {
+        CommandId::new(ModuleId::new("editor"), name)
+    }
+
+    fn editor_mode_id(name: &'static str) -> ModeId {
+        ModeId::new(ModuleId::new("editor"), name)
+    }
+
+    #[test]
+    fn test_mode_for_command_visual_entry() {
+        assert_eq!(
+            mode_for_command(&editor_command_id("enter-visual")),
+            Some(editor_mode_id("visual"))
+        );
+        assert_eq!(
+            mode_for_command(&editor_command_id("enter-visual-line")),
+            Some(editor_mode_id("visual-line"))
+        );
+        assert_eq!(
+            mode_for_command(&editor_command_id("enter-visual-block")),
+            Some(editor_mode_id("visual-block"))
+        );
+    }
+
+    #[test]
+    fn test_mode_for_command_visual_exit() {
+        assert_eq!(
+            mode_for_command(&editor_command_id("exit-visual")),
+            Some(editor_mode_id("normal"))
+        );
+    }
+
+    #[test]
+    fn test_mode_for_command_insert_entry() {
+        assert_eq!(
+            mode_for_command(&editor_command_id("enter-insert")),
+            Some(editor_mode_id("insert"))
+        );
+        assert_eq!(
+            mode_for_command(&editor_command_id("enter-insert-after")),
+            Some(editor_mode_id("insert"))
+        );
+        assert_eq!(
+            mode_for_command(&editor_command_id("open-line-below")),
+            Some(editor_mode_id("insert"))
+        );
+    }
+
+    #[test]
+    fn test_mode_for_command_insert_exit() {
+        assert_eq!(
+            mode_for_command(&editor_command_id("exit-insert")),
+            Some(editor_mode_id("normal"))
+        );
+    }
+
+    #[test]
+    fn test_mode_for_command_change_enters_insert() {
+        assert_eq!(
+            mode_for_command(&editor_command_id("change-line")),
+            Some(editor_mode_id("insert"))
+        );
+        assert_eq!(
+            mode_for_command(&editor_command_id("change-to-end-of-line")),
+            Some(editor_mode_id("insert"))
+        );
+    }
+
+    #[test]
+    fn test_mode_for_command_unknown_returns_none() {
+        assert_eq!(mode_for_command(&editor_command_id("cursor-up")), None);
+        assert_eq!(mode_for_command(&editor_command_id("delete-line")), None);
+        assert_eq!(mode_for_command(&test_command_id("some-command")), None);
+    }
+
+    #[test]
+    fn test_mode_for_command_non_editor_module() {
+        let other_cmd = CommandId::new(ModuleId::new("other"), "enter-visual");
+        assert_eq!(mode_for_command(&other_cmd), None);
     }
 }

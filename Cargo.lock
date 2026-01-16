@@ -1160,6 +1160,7 @@ dependencies = [
  "reovim-driver-input",
  "reovim-driver-vfs",
  "reovim-kernel",
+ "reovim-module-operators",
 ]
 
 [[package]]
