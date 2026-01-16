@@ -8,6 +8,28 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Refactored
 
+- **File Splitting Epic Phase 1** ([Epic #304](https://github.com/ds1sqe/reovim/issues/304))
+  - Split `lib/protocol/src/v1/input.rs` (1,348 lines) into 6 focused modules (#301):
+    - `key.rs` - `Modifiers`, `KeyCode`, `KeyEvent` types
+    - `mouse.rs` - `ClickEvent`, `ScrollEvent` types
+    - `terminal.rs` - `ResizeEvent`, `FocusEvent`, `PasteEvent` types
+    - `session.rs` - `AttachEvent`, `DetachEvent` types
+    - `health.rs` - `PingEvent`, `PongEvent` types
+    - `mod.rs` - `Input` enum and re-exports
+  - Split `lib/kernel/src/core/option.rs` (1,487 lines) into 6 focused modules (#300):
+    - `value.rs` - `OptionValue` type-safe values
+    - `scope.rs` - `OptionScope`, `OptionScopeId` types
+    - `constraint.rs` - `OptionConstraint`, `ConstraintError` types
+    - `error.rs` - `OptionError`, `SetResult` types
+    - `spec.rs` - `OptionSpec` builder
+    - `mod.rs` - `OptionRegistry` and re-exports
+  - Split `lib/kernel/src/core/motion.rs` (1,178 lines) into 3 modules (#303):
+    - `types.rs` - `Motion` enum
+    - `engine.rs` - `MotionEngine` calculation logic
+    - `mod.rs` - Re-exports
+  - External APIs unchanged - all types re-exported from module roots
+  - All tests passing with zero regressions
+
 - **Remove Hardcoded Policy from Runner** ([Epic #284](https://github.com/ds1sqe/reovim/issues/284))
   - **Event-Driven Mode Transitions**: Runner now subscribes to `ModeChanged` events instead of predicting mode changes from command names
   - **Removed hardcoded command mappings**:
