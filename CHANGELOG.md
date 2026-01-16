@@ -25,7 +25,7 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
-- **Phase 7: Module Loading Mechanism with CLI Flags** (Issue #262)
+- **Phase 7-A: Module Loading Mechanism with CLI Flags** (Issue #262)
   - **CLI Flags for Module Control**:
     - `--moddir <PATH>` - Add module search directory (repeatable)
     - `--load <MODULE_ID>` - Load specific module by ID (repeatable)
@@ -48,6 +48,29 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
     - `ModuleRegistry::unload_with_cleanup()` for handler cleanup
   - 44 unit tests for new functionality
   - Deferred to #264: Default module list, config file extras, environment overrides
+
+- **Phase 7-B: VFS Integration for File Operations** (Issues #235, #236)
+  - **VFS Driver Layer** (`lib/drivers/vfs/`):
+    - `VfsDriver` trait for filesystem abstraction (17 methods)
+    - `StandardVfs` - Production implementation wrapping `std::fs`
+    - `MockVfs` - In-memory implementation for testing with call tracking
+    - `FileHandle` trait for streaming I/O operations
+    - 82 unit tests covering all VFS operations
+  - **CommandContext Enhancement** (`lib/drivers/command/`):
+    - `vfs: Option<Arc<dyn VfsDriver>>` field for command access
+    - `with_vfs()` builder, `set_vfs()` setter, `vfs()` getter
+    - 13 CommandContext tests including VFS integration
+  - **SessionState Integration** (`runner/src/server/session/`):
+    - `vfs: Arc<dyn VfsDriver>` field in SessionState
+    - `Session::execute_command()` auto-populates VFS for all commands
+    - All test utilities use MockVfs for isolation
+  - **WriteBufferCommand** (`modules/editor/src/command.rs`):
+    - `:w` / `:write` command to save buffer to file
+    - Uses VFS abstraction for testable file writes
+    - Supports optional file path argument
+    - Clears modified flag on successful write
+    - 8 comprehensive tests (error cases, happy path)
+  - Deferred: `:e` / `:edit` command (Issue #236)
 
 - **Phase 7.8: Undotree Visualization Module** (Issue #249)
   - New `modules/undotree/` module for undo tree visualization

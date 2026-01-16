@@ -55,9 +55,14 @@ mod tests {
     use {
         super::*,
         reovim_arch::sync::RwLock,
+        reovim_driver_vfs::{MockVfs, VfsDriver},
         reovim_kernel::api::v1::{Buffer, BufferError, BufferManager, KernelContext, ModuleId},
         std::{collections::HashMap, sync::Arc},
     };
+
+    fn test_vfs() -> Arc<dyn VfsDriver> {
+        Arc::new(MockVfs::new())
+    }
 
     /// Test-only buffer manager that actually stores buffers.
     struct TestBufferManager {
@@ -134,7 +139,7 @@ mod tests {
     #[test]
     fn test_snapshot_capture_empty_state() {
         let kernel = test_kernel();
-        let state = SessionState::new(kernel, test_mode_id());
+        let state = SessionState::new(kernel, test_mode_id(), test_vfs());
 
         let snapshot = StateSnapshot::capture(&state);
 
@@ -147,7 +152,7 @@ mod tests {
     #[test]
     fn test_snapshot_capture_with_buffer() {
         let kernel = test_kernel();
-        let mut state = SessionState::new(kernel, test_mode_id());
+        let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
 
         // Create and register a buffer
         let buffer = Buffer::from_string("Hello\nWorld");
@@ -166,7 +171,7 @@ mod tests {
     #[test]
     fn test_snapshot_capture_modified_buffer() {
         let kernel = test_kernel();
-        let mut state = SessionState::new(kernel, test_mode_id());
+        let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
 
         // Create buffer and mark as modified
         let mut buffer = Buffer::from_string("Test content");

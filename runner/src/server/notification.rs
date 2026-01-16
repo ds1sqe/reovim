@@ -128,15 +128,21 @@ mod tests {
             server::{client::Client, transport::TransportWriter},
             session::SessionId,
         },
+        reovim_driver_vfs::{MockVfs, VfsDriver},
         reovim_kernel::api::v1::{KernelContext, ModeId, ModuleId},
         std::sync::Arc,
     };
+
+    fn test_vfs() -> Arc<dyn VfsDriver> {
+        Arc::new(MockVfs::new())
+    }
 
     fn test_session() -> std::sync::Arc<Session> {
         Session::new(
             SessionId::new("test"),
             KernelContext::default(),
             ModeId::new(ModuleId::new("test"), "normal"),
+            test_vfs(),
         )
     }
 

@@ -10,6 +10,7 @@ use tokio::sync::RwLock;
 use {
     reovim_driver_command::{CommandContext, CommandResult, EditAction, UndoAction},
     reovim_driver_input::KeySequence,
+    reovim_driver_vfs::VfsDriver,
     reovim_kernel::api::v1::{CommandId, Edit, KernelContext, ModeId, UndoResult},
 };
 
@@ -88,20 +89,27 @@ pub struct Session {
 impl Session {
     /// Create a new session with empty registries.
     #[must_use]
-    pub fn new(id: SessionId, kernel: KernelContext, initial_mode: ModeId) -> Arc<Self> {
+    pub fn new(
+        id: SessionId,
+        kernel: KernelContext,
+        initial_mode: ModeId,
+        vfs: Arc<dyn VfsDriver>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             id,
-            state: RwLock::new(SessionState::new(kernel, initial_mode)),
+            state: RwLock::new(SessionState::new(kernel, initial_mode, vfs)),
             clients: ClientRegistry::new(),
         })
     }
 
     /// Create a new session with pre-populated registries.
     #[must_use]
+    #[allow(clippy::too_many_arguments)]
     pub fn with_registries(
         id: SessionId,
         kernel: KernelContext,
         initial_mode: ModeId,
+        vfs: Arc<dyn VfsDriver>,
         mode_registry: ModeRegistry,
         command_registry: CommandRegistry,
         keymap_registry: KeymapRegistry,
@@ -112,6 +120,7 @@ impl Session {
             state: RwLock::new(SessionState::with_registries(
                 kernel,
                 initial_mode,
+                vfs,
                 mode_registry,
                 command_registry,
                 keymap_registry,
@@ -170,12 +179,21 @@ impl Session {
     ///
     /// Acquires a write lock on the session state.
     /// Returns `None` if the command isn't registered.
+    ///
+    /// The VFS is automatically populated in the command context from
+    /// the session state, so commands have access to file operations.
     pub async fn execute_command(
         &self,
         id: &CommandId,
         args: &CommandContext,
     ) -> Option<CommandResult> {
-        self.state.write().await.execute_command(id, args)
+        let mut state = self.state.write().await;
+
+        // Create command context with VFS populated
+        let mut args_with_vfs = args.clone();
+        args_with_vfs.set_vfs(state.vfs.clone());
+
+        state.execute_command(id, &args_with_vfs)
     }
 
     /// Check if the current mode accepts character input.
@@ -324,16 +342,24 @@ impl std::fmt::Debug for Session {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, reovim_kernel::api::v1::ModuleId};
+    use {super::*, reovim_driver_vfs::MockVfs, reovim_kernel::api::v1::ModuleId};
 
     fn test_mode_id() -> ModeId {
         ModeId::new(ModuleId::new("test"), "normal")
     }
 
+    fn test_vfs() -> Arc<dyn VfsDriver> {
+        Arc::new(MockVfs::new())
+    }
+
     #[tokio::test]
     async fn test_session_new() {
-        let session =
-            Session::new(SessionId::new("test"), KernelContext::default(), test_mode_id());
+        let session = Session::new(
+            SessionId::new("test"),
+            KernelContext::default(),
+            test_mode_id(),
+            test_vfs(),
+        );
 
         assert_eq!(session.id().name(), "test");
         assert!(session.is_running().await);
@@ -341,8 +367,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_session_current_mode() {
-        let session =
-            Session::new(SessionId::new("test"), KernelContext::default(), test_mode_id());
+        let session = Session::new(
+            SessionId::new("test"),
+            KernelContext::default(),
+            test_mode_id(),
+            test_vfs(),
+        );
 
         let mode = session.current_mode().await;
         assert_eq!(mode.name(), "normal");
@@ -350,8 +380,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_session_quit() {
-        let session =
-            Session::new(SessionId::new("test"), KernelContext::default(), test_mode_id());
+        let session = Session::new(
+            SessionId::new("test"),
+            KernelContext::default(),
+            test_mode_id(),
+            test_vfs(),
+        );
 
         assert!(session.is_running().await);
         session.request_quit().await;
@@ -360,8 +394,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_session_with_state() {
-        let session =
-            Session::new(SessionId::new("test"), KernelContext::default(), test_mode_id());
+        let session = Session::new(
+            SessionId::new("test"),
+            KernelContext::default(),
+            test_mode_id(),
+            test_vfs(),
+        );
 
         let is_empty = session
             .with_state(|state| state.keymap_registry.is_empty())

@@ -200,7 +200,10 @@ impl std::fmt::Debug for SessionRegistry {
 
 #[cfg(test)]
 mod tests {
-    use reovim_kernel::api::v1::{KernelContext, ModeId, ModuleId};
+    use {
+        reovim_driver_vfs::{MockVfs, VfsDriver},
+        reovim_kernel::api::v1::{KernelContext, ModeId, ModuleId},
+    };
 
     use super::*;
 
@@ -208,8 +211,12 @@ mod tests {
         ModeId::new(ModuleId::new("test"), "normal")
     }
 
+    fn test_vfs() -> Arc<dyn VfsDriver> {
+        Arc::new(MockVfs::new())
+    }
+
     fn create_test_session(name: &str) -> Arc<Session> {
-        Session::new(SessionId::new(name), KernelContext::default(), test_mode_id())
+        Session::new(SessionId::new(name), KernelContext::default(), test_mode_id(), test_vfs())
     }
 
     #[test]

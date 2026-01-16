@@ -134,6 +134,7 @@ impl std::fmt::Debug for RpcDispatcher {
 mod tests {
     use {
         super::*,
+        reovim_driver_vfs::{MockVfs, VfsDriver},
         reovim_kernel::api::v1::{KernelContext, ModeId, ModuleId},
     };
 
@@ -150,11 +151,16 @@ mod tests {
         Box::pin(async move { Err(RpcError::internal_error("test error")) })
     }
 
+    fn test_vfs() -> Arc<dyn VfsDriver> {
+        Arc::new(MockVfs::new())
+    }
+
     fn test_session() -> Arc<Session> {
         Session::new(
             SessionId::new("test"),
             KernelContext::default(),
             ModeId::new(ModuleId::new("test"), "normal"),
+            test_vfs(),
         )
     }
 

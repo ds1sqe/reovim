@@ -20,6 +20,7 @@ use {
         CommandId, KernelContext, Position,
         events::{CursorMoved, ModeChanged},
     },
+    std::path::Path,
 };
 
 use super::{display_lines, mode::EDITOR_MODULE};
@@ -1347,6 +1348,94 @@ impl CommandHandler for JoinLines {
 }
 
 // =============================================================================
+// File Operations
+// =============================================================================
+
+/// Write buffer to file.
+///
+/// Saves the current buffer's contents to a file. If no path is provided,
+/// uses the buffer's current file path.
+///
+/// This command demonstrates VFS integration - file operations go through
+/// the VFS abstraction, enabling test isolation and future remote FS support.
+///
+/// # Arguments
+///
+/// - `file`: Optional file path to save to (defaults to buffer's path)
+///
+/// # Examples
+///
+/// - `:w` - Save to current file
+/// - `:w newfile.txt` - Save to specified file
+#[derive(Debug, Clone, Copy, Default)]
+pub struct WriteBufferCommand;
+
+impl Command for WriteBufferCommand {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "write")
+    }
+
+    fn description(&self) -> &'static str {
+        "Write buffer to file"
+    }
+
+    fn args(&self) -> Vec<ArgSpec> {
+        vec![ArgSpec::optional(
+            "file",
+            ArgKind::FilePath,
+            "Target file path (optional)",
+        )]
+    }
+
+    fn names(&self) -> &[&'static str] {
+        &["w", "write"]
+    }
+}
+
+impl CommandHandler for WriteBufferCommand {
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        // Get VFS from context
+        let Some(vfs) = args.vfs() else {
+            return CommandResult::error("VFS not available");
+        };
+
+        // Get active buffer
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        // Get content and file path from buffer, then release lock
+        let (content, buffer_file_path) = {
+            let buffer = buffer_arc.read();
+            (buffer.content(), buffer.file_path().map(String::from))
+        };
+
+        // Try to get path from args first, then from buffer
+        let file_path_str = args.string("file").map(String::from).or(buffer_file_path);
+
+        let Some(file_path_str) = file_path_str else {
+            return CommandResult::error("No file path specified");
+        };
+
+        let file_path = Path::new(&file_path_str);
+
+        // Write to file via VFS
+        match vfs.write(file_path, content.as_bytes()) {
+            Ok(()) => {
+                // Clear modified flag
+                buffer_arc.write().set_modified(false);
+                CommandResult::Success
+            }
+            Err(e) => CommandResult::error(format!("Write failed: {e}")),
+        }
+    }
+}
+
+// =============================================================================
 // Command Registration Helper
 // =============================================================================
 
@@ -1384,6 +1473,8 @@ pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
         // Undo/redo
         Box::new(UndoCommand),
         Box::new(RedoCommand),
+        // File operations
+        Box::new(WriteBufferCommand),
     ]
 }
 
@@ -1447,6 +1538,7 @@ mod tests {
     use {
         super::*,
         reovim_driver_command::ArgValue,
+        reovim_driver_vfs::VfsDriver,
         reovim_kernel::api::v1::{
             Buffer, BufferError, BufferId, BufferManager, EventBus, MarkBank, MotionEngine,
             OptionRegistry, RegisterBank, RwLock, TextObjectEngine,
@@ -1582,8 +1674,8 @@ mod tests {
     #[test]
     fn test_all_commands_count() {
         let cmds = all_commands();
-        // 4 cursor + 2 display + 7 mode + 2 insert-edit + 5 delete + 2 undo = 22
-        assert_eq!(cmds.len(), 22);
+        // 4 cursor + 2 display + 7 mode + 2 insert-edit + 5 delete + 2 undo + 1 file = 23
+        assert_eq!(cmds.len(), 23);
     }
 
     #[test]
@@ -2054,5 +2146,133 @@ mod tests {
         let result = RedoCommand.execute(&mut ctx, &args);
         assert!(!result.is_error());
         assert!(result.is_undo_action());
+    }
+
+    // =========================================================================
+    // WriteBufferCommand Tests
+    // =========================================================================
+
+    #[test]
+    fn test_write_buffer_command_id() {
+        let cmd = WriteBufferCommand;
+        assert_eq!(cmd.id().module(), &EDITOR_MODULE);
+        assert_eq!(cmd.id().name(), "write");
+    }
+
+    #[test]
+    fn test_write_buffer_command_names() {
+        let cmd = WriteBufferCommand;
+        let names = cmd.names();
+        assert!(names.contains(&"w"));
+        assert!(names.contains(&"write"));
+    }
+
+    #[test]
+    fn test_write_buffer_command_args() {
+        let cmd = WriteBufferCommand;
+        let args = cmd.args();
+        assert_eq!(args.len(), 1);
+        assert_eq!(args[0].name, "file");
+        assert_eq!(args[0].kind, ArgKind::FilePath);
+        assert!(!args[0].required);
+    }
+
+    #[test]
+    fn test_write_buffer_requires_vfs() {
+        let mut ctx = create_test_context();
+        let buffer = Buffer::from_string("test content");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        // No VFS set
+
+        let result = WriteBufferCommand.execute(&mut ctx, &args);
+        assert!(result.is_error());
+        if let CommandResult::Error(msg) = result {
+            assert!(msg.contains("VFS"));
+        }
+    }
+
+    #[test]
+    fn test_write_buffer_requires_buffer_id() {
+        use reovim_driver_vfs::MockVfs;
+
+        let mut ctx = create_test_context();
+        let vfs: Arc<dyn reovim_driver_vfs::VfsDriver> = Arc::new(MockVfs::new());
+        let args = CommandContext::new().with_vfs(vfs);
+
+        let result = WriteBufferCommand.execute(&mut ctx, &args);
+        assert!(result.is_error());
+        if let CommandResult::Error(msg) = result {
+            assert!(msg.contains("buffer"));
+        }
+    }
+
+    #[test]
+    fn test_write_buffer_requires_file_path() {
+        use reovim_driver_vfs::MockVfs;
+
+        let mut ctx = create_test_context();
+        let buffer = Buffer::from_string("test content");
+        // Buffer has no file path set
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let vfs: Arc<dyn reovim_driver_vfs::VfsDriver> = Arc::new(MockVfs::new());
+        let mut args = CommandContext::new().with_vfs(vfs);
+        args.set_buffer_id(buffer_id);
+
+        let result = WriteBufferCommand.execute(&mut ctx, &args);
+        assert!(result.is_error());
+        if let CommandResult::Error(msg) = result {
+            assert!(msg.contains("file path"));
+        }
+    }
+
+    #[test]
+    fn test_write_buffer_success_with_mock_vfs() {
+        use {reovim_driver_command::ArgValue, reovim_driver_vfs::MockVfs};
+
+        let mut ctx = create_test_context();
+        let buffer = Buffer::from_string("test content");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let vfs = Arc::new(MockVfs::new());
+        let vfs_clone: Arc<dyn reovim_driver_vfs::VfsDriver> = vfs.clone();
+
+        let mut args = CommandContext::new().with_vfs(vfs_clone);
+        args.set_buffer_id(buffer_id);
+        args.set("file", ArgValue::FilePath("/tmp/test.txt".into()));
+
+        let result = WriteBufferCommand.execute(&mut ctx, &args);
+        assert!(result.is_success());
+
+        // Verify VFS received the write
+        let content = vfs.read(Path::new("/tmp/test.txt")).unwrap();
+        assert_eq!(String::from_utf8(content).unwrap(), "test content");
+    }
+
+    #[test]
+    fn test_write_buffer_clears_modified_flag() {
+        use {reovim_driver_command::ArgValue, reovim_driver_vfs::MockVfs};
+
+        let mut ctx = create_test_context();
+        let mut buffer = Buffer::from_string("test content");
+        buffer.set_modified(true);
+        let buffer_id = ctx.buffers.register(buffer);
+
+        // Verify buffer is modified before write
+        assert!(ctx.buffers.get(buffer_id).unwrap().read().is_modified());
+
+        let vfs: Arc<dyn reovim_driver_vfs::VfsDriver> = Arc::new(MockVfs::new());
+        let mut args = CommandContext::new().with_vfs(vfs);
+        args.set_buffer_id(buffer_id);
+        args.set("file", ArgValue::FilePath("/tmp/test.txt".into()));
+
+        let result = WriteBufferCommand.execute(&mut ctx, &args);
+        assert!(result.is_success());
+
+        // Verify buffer is no longer modified
+        assert!(!ctx.buffers.get(buffer_id).unwrap().read().is_modified());
     }
 }

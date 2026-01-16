@@ -69,12 +69,20 @@
 mod error;
 mod filetype;
 mod metadata;
+mod mock;
 mod path;
+mod standard;
 mod traits;
 mod watch;
 
 // Re-export error types
 pub use error::VfsError;
+
+// Re-export VFS implementations
+pub use {
+    mock::{MockErrorKind, MockVfs},
+    standard::{StandardFileHandle, StandardVfs},
+};
 
 // Re-export filetype types
 pub use filetype::{FiletypeInfo, FiletypeRegistry, detect_filetype, filetype_id, global_registry};

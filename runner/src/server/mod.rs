@@ -164,6 +164,7 @@ use std::{
 
 use {
     reovim_arch::sync::RwLock,
+    reovim_driver_vfs::{StandardVfs, VfsDriver},
     reovim_kernel::api::v1::{
         EventBus, KernelContext, MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry,
         RegisterBank, TextObjectEngine,
@@ -560,7 +561,7 @@ impl Server {
     /// Ensure the default session exists.
     fn ensure_default_session(&self, id: &SessionId) {
         self.sessions.get_or_create(id, || {
-            Session::new(id.clone(), real_kernel_context(), default_mode_id())
+            Session::new(id.clone(), real_kernel_context(), default_mode_id(), standard_vfs())
         });
     }
 }
@@ -594,6 +595,13 @@ fn real_kernel_context() -> KernelContext {
     )
 }
 
+/// Create the standard VFS for file operations.
+///
+/// Uses the real filesystem via `std::fs`.
+fn standard_vfs() -> Arc<dyn VfsDriver> {
+    Arc::new(StandardVfs::new())
+}
+
 /// Handle a single client connection.
 ///
 /// Reads JSON-RPC requests line by line, dispatches them, and sends responses.
@@ -617,7 +625,7 @@ async fn handle_client(
 ) -> std::io::Result<()> {
     // Get or create the session
     let session = sessions.get_or_create(&session_id, || {
-        Session::new(session_id.clone(), real_kernel_context(), default_mode_id())
+        Session::new(session_id.clone(), real_kernel_context(), default_mode_id(), standard_vfs())
     });
 
     // Create the client (owns the writer)

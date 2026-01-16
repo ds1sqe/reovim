@@ -58,8 +58,9 @@
 //! ```
 
 use {
+    reovim_driver_vfs::VfsDriver,
     reovim_kernel::api::v1::{BufferId, CommandId, Edit, KernelContext, Position},
-    std::collections::HashMap,
+    std::{collections::HashMap, sync::Arc},
 };
 
 // ============================================================================
@@ -268,7 +269,8 @@ pub enum ArgValue {
 
 /// Context carrying all command inputs.
 ///
-/// Provides typed access to arguments parsed from user input.
+/// Provides typed access to arguments parsed from user input, plus
+/// optional access to the virtual filesystem for file operations.
 ///
 /// # Example
 ///
@@ -282,9 +284,23 @@ pub enum ArgValue {
 /// assert_eq!(ctx.count(), Some(5));
 /// assert_eq!(ctx.register(), Some('a'));
 /// ```
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct CommandContext {
     args: HashMap<&'static str, ArgValue>,
+    /// Optional VFS access for file operations.
+    ///
+    /// Set by the runner before dispatching commands that may need
+    /// filesystem access (e.g., `:w`, `:e`).
+    vfs: Option<Arc<dyn VfsDriver>>,
+}
+
+impl std::fmt::Debug for CommandContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CommandContext")
+            .field("args", &self.args)
+            .field("vfs", &self.vfs.as_ref().map(|_| "<VfsDriver>"))
+            .finish()
+    }
 }
 
 impl CommandContext {
@@ -365,6 +381,39 @@ impl CommandContext {
     pub fn set_buffer_id(&mut self, id: BufferId) {
         self.args
             .insert("buffer_id", ArgValue::BufferId(id.as_usize()));
+    }
+
+    /// Create a command context with VFS access.
+    ///
+    /// Builder method for creating a context with filesystem access.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let ctx = CommandContext::new().with_vfs(session_state.vfs.clone());
+    /// ```
+    #[must_use]
+    pub fn with_vfs(mut self, vfs: Arc<dyn VfsDriver>) -> Self {
+        self.vfs = Some(vfs);
+        self
+    }
+
+    /// Set the VFS for this context.
+    ///
+    /// Called by the runner before dispatching commands that need
+    /// filesystem access.
+    pub fn set_vfs(&mut self, vfs: Arc<dyn VfsDriver>) {
+        self.vfs = Some(vfs);
+    }
+
+    /// Get the VFS driver, if available.
+    ///
+    /// Returns `None` if no VFS was set for this context. Commands
+    /// that need filesystem access should check this and return an
+    /// appropriate error if VFS is unavailable.
+    #[must_use]
+    pub fn vfs(&self) -> Option<&Arc<dyn VfsDriver>> {
+        self.vfs.as_ref()
     }
 }
 
@@ -686,6 +735,41 @@ mod tests {
         let id = BufferId::from_raw(42);
         ctx.set_buffer_id(id);
         assert_eq!(ctx.buffer_id(), Some(BufferId::from_raw(42)));
+    }
+
+    #[test]
+    fn test_command_context_vfs_none_by_default() {
+        let ctx = CommandContext::new();
+        assert!(ctx.vfs().is_none());
+    }
+
+    #[test]
+    fn test_command_context_set_vfs() {
+        use reovim_driver_vfs::MockVfs;
+
+        let mut ctx = CommandContext::new();
+        let vfs: Arc<dyn VfsDriver> = Arc::new(MockVfs::new());
+        ctx.set_vfs(vfs);
+        assert!(ctx.vfs().is_some());
+    }
+
+    #[test]
+    fn test_command_context_with_vfs() {
+        use reovim_driver_vfs::MockVfs;
+
+        let vfs: Arc<dyn VfsDriver> = Arc::new(MockVfs::new());
+        let ctx = CommandContext::new().with_vfs(vfs);
+        assert!(ctx.vfs().is_some());
+    }
+
+    #[test]
+    fn test_command_context_debug_with_vfs() {
+        use reovim_driver_vfs::MockVfs;
+
+        let vfs: Arc<dyn VfsDriver> = Arc::new(MockVfs::new());
+        let ctx = CommandContext::new().with_vfs(vfs);
+        let debug_str = format!("{ctx:?}");
+        assert!(debug_str.contains("<VfsDriver>"));
     }
 
     #[test]

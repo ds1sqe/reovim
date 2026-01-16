@@ -799,6 +799,7 @@ dependencies = [
  "reovim-driver-command",
  "reovim-driver-display",
  "reovim-driver-input",
+ "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-editor",
  "reovim-module-hot-reload-demo",
@@ -826,6 +827,7 @@ dependencies = [
 name = "reovim-driver-command"
 version = "0.9.0-dev"
 dependencies = [
+ "reovim-driver-vfs",
  "reovim-kernel",
 ]
 
@@ -929,6 +931,7 @@ dependencies = [
  "reovim-driver-command",
  "reovim-driver-display",
  "reovim-driver-input",
+ "reovim-driver-vfs",
  "reovim-kernel",
 ]
 

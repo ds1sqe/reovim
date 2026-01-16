@@ -3,8 +3,11 @@
 //! `SessionState` bundles the runtime application state with the registries
 //! needed for key processing. Each session has its own isolated state.
 
+use std::sync::Arc;
+
 use {
     reovim_driver_command::{CommandContext, CommandResult},
+    reovim_driver_vfs::VfsDriver,
     reovim_kernel::api::v1::{CommandId, KernelContext, ModeId},
 };
 
@@ -44,6 +47,15 @@ pub struct SessionState {
     /// Application state (kernel + runtime state).
     pub app: AppState,
 
+    /// Virtual filesystem driver for file operations.
+    ///
+    /// Commands access files through this VFS abstraction rather than
+    /// using `std::fs` directly. This enables:
+    /// - Test isolation via `MockVfs`
+    /// - Future remote filesystem support
+    /// - Per-session working directory
+    pub vfs: Arc<dyn VfsDriver>,
+
     /// Registry of mode metadata and behavior.
     pub mode_registry: ModeRegistry,
 
@@ -67,10 +79,12 @@ impl SessionState {
     ///
     /// * `kernel` - The kernel context for this session
     /// * `initial_mode` - The mode to start in
+    /// * `vfs` - The virtual filesystem driver for file operations
     #[must_use]
-    pub fn new(kernel: KernelContext, initial_mode: ModeId) -> Self {
+    pub fn new(kernel: KernelContext, initial_mode: ModeId, vfs: Arc<dyn VfsDriver>) -> Self {
         Self {
             app: AppState::new(kernel, initial_mode),
+            vfs,
             mode_registry: ModeRegistry::new(),
             command_registry: CommandRegistry::new(),
             keymap_registry: KeymapRegistry::new(),
@@ -86,6 +100,7 @@ impl SessionState {
     pub fn with_registries(
         kernel: KernelContext,
         initial_mode: ModeId,
+        vfs: Arc<dyn VfsDriver>,
         mode_registry: ModeRegistry,
         command_registry: CommandRegistry,
         keymap_registry: KeymapRegistry,
@@ -93,6 +108,7 @@ impl SessionState {
     ) -> Self {
         Self {
             app: AppState::new(kernel, initial_mode),
+            vfs,
             mode_registry,
             command_registry,
             keymap_registry,
@@ -155,16 +171,20 @@ impl SessionState {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, reovim_kernel::api::v1::ModuleId};
+    use {super::*, reovim_driver_vfs::MockVfs, reovim_kernel::api::v1::ModuleId};
 
     fn test_mode_id() -> ModeId {
         ModeId::new(ModuleId::new("test"), "normal")
     }
 
+    fn test_vfs() -> Arc<dyn VfsDriver> {
+        Arc::new(MockVfs::new())
+    }
+
     #[test]
     fn test_session_state_new() {
         let kernel = KernelContext::default();
-        let state = SessionState::new(kernel, test_mode_id());
+        let state = SessionState::new(kernel, test_mode_id(), test_vfs());
 
         assert!(state.is_running());
         assert!(state.mode_registry.is_empty());
@@ -175,9 +195,18 @@ mod tests {
     }
 
     #[test]
+    fn test_session_state_has_vfs() {
+        let kernel = KernelContext::default();
+        let state = SessionState::new(kernel, test_mode_id(), test_vfs());
+
+        // VFS should be accessible
+        assert!(!state.vfs.exists(std::path::Path::new("/nonexistent")));
+    }
+
+    #[test]
     fn test_session_state_module_registry_accessor() {
         let kernel = KernelContext::default();
-        let state = SessionState::new(kernel, test_mode_id());
+        let state = SessionState::new(kernel, test_mode_id(), test_vfs());
 
         // Verify we can access the module registry
         assert!(state.module_registry().is_empty());
@@ -187,7 +216,7 @@ mod tests {
     #[test]
     fn test_session_state_quit() {
         let kernel = KernelContext::default();
-        let mut state = SessionState::new(kernel, test_mode_id());
+        let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
 
         assert!(state.is_running());
         state.request_quit();
@@ -197,7 +226,7 @@ mod tests {
     #[test]
     fn test_session_state_lookup_keys_empty() {
         let kernel = KernelContext::default();
-        let state = SessionState::new(kernel, test_mode_id());
+        let state = SessionState::new(kernel, test_mode_id(), test_vfs());
 
         let keys = reovim_driver_input::KeySequence::parse("j").unwrap();
         let result = state.lookup_keys(&test_mode_id(), &keys);
@@ -208,7 +237,7 @@ mod tests {
     #[test]
     fn test_session_state_mode_accepts_char_input_default() {
         let kernel = KernelContext::default();
-        let state = SessionState::new(kernel, test_mode_id());
+        let state = SessionState::new(kernel, test_mode_id(), test_vfs());
 
         // Unknown mode defaults to not accepting input
         assert!(!state.mode_accepts_char_input());
