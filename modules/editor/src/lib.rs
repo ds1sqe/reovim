@@ -34,6 +34,7 @@ pub mod command;
 pub mod display_lines;
 mod fallback;
 mod mode;
+pub mod visual;
 
 pub use {
     fallback::EditorFallbackHandler,
