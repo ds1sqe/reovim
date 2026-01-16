@@ -144,5 +144,36 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&["visual", "visual-line", "visual-block"])
             .with_category("mode")
             .with_description("Enter command mode with selection range"),
+        // ====================================================================
+        // Blocked keys (explicit no-op) - Issue #145
+        // ====================================================================
+        KeybindingRegistration::new("i", "visual-noop")
+            .with_modes(&["visual", "visual-line", "visual-block"])
+            .with_category("blocked")
+            .with_description("No-op (insert key blocked in visual mode)"),
+        KeybindingRegistration::new("a", "visual-noop")
+            .with_modes(&["visual", "visual-line", "visual-block"])
+            .with_category("blocked")
+            .with_description("No-op (append key blocked in visual mode)"),
+        // ====================================================================
+        // Visual insert commands (I/A) - Issue #145
+        // ====================================================================
+        KeybindingRegistration::new("I", "visual-insert-start")
+            .with_modes(&["visual", "visual-line"])
+            .with_category("mode")
+            .with_description("Exit visual, move to line start, enter insert"),
+        KeybindingRegistration::new("A", "visual-insert-end")
+            .with_modes(&["visual", "visual-line"])
+            .with_category("mode")
+            .with_description("Exit visual, move to line end, enter insert"),
+        // Block mode I/A - no-op until #146 implements block insert
+        KeybindingRegistration::new("I", "visual-noop")
+            .with_modes(&["visual-block"])
+            .with_category("blocked")
+            .with_description("Block insert (not yet implemented, see #146)"),
+        KeybindingRegistration::new("A", "visual-noop")
+            .with_modes(&["visual-block"])
+            .with_category("blocked")
+            .with_description("Block append (not yet implemented, see #146)"),
     ]
 }

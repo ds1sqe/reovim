@@ -764,6 +764,139 @@ impl CommandHandler for DedentSelection {
 }
 
 // =============================================================================
+// Visual Mode Key Blocking Commands
+// =============================================================================
+
+/// Explicit no-op for keys that should be blocked in visual mode.
+///
+/// In Vim, certain keys (`i`, `a`) are intentionally blocked in visual mode.
+/// Rather than relying on missing bindings, we bind them to explicit no-ops
+/// for clarity and defensive programming.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct VisualNoOp;
+
+impl Command for VisualNoOp {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "visual-noop")
+    }
+
+    fn description(&self) -> &'static str {
+        "No-op command for blocked visual mode keys"
+    }
+}
+
+impl CommandHandler for VisualNoOp {
+    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
+        // Intentional no-op - key is explicitly blocked
+        CommandResult::Success
+    }
+}
+
+/// Enter insert mode at first non-blank character (`I` in visual char/line mode).
+///
+/// In Vim's visual and visual-line modes, pressing `I` clears the selection,
+/// moves the cursor to the first non-blank character of the current line,
+/// and enters insert mode.
+///
+/// Note: Visual-block `I` (block insert) is handled by a different command
+/// in issue #146.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct VisualInsertStart;
+
+impl Command for VisualInsertStart {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "visual-insert-start")
+    }
+
+    fn description(&self) -> &'static str {
+        "Exit visual mode, move to first non-blank, enter insert mode"
+    }
+}
+
+impl CommandHandler for VisualInsertStart {
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        {
+            let mut buffer = buffer_arc.write();
+
+            // Clear selection first
+            buffer.selection_mut().clear();
+
+            // Find first non-blank character on current line
+            let pos = buffer.position();
+            let first_non_blank = buffer
+                .line(pos.line)
+                .map_or(0, |line| line.chars().position(|c| !c.is_whitespace()).unwrap_or(0));
+
+            buffer.set_position(Position::new(pos.line, first_non_blank));
+        }
+
+        // Emit mode change to Insert
+        ctx.event_bus
+            .emit(ModeChanged::with_mode_id("visual", EditorMode::INSERT_ID));
+
+        CommandResult::Success
+    }
+}
+
+/// Enter insert mode at end of line (`A` in visual char/line mode).
+///
+/// In Vim's visual and visual-line modes, pressing `A` clears the selection,
+/// moves the cursor to the end of the current line, and enters insert mode.
+///
+/// Note: Visual-block `A` (block append) is handled by a different command
+/// in issue #146.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct VisualInsertEnd;
+
+impl Command for VisualInsertEnd {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "visual-insert-end")
+    }
+
+    fn description(&self) -> &'static str {
+        "Exit visual mode, move to end of line, enter insert mode"
+    }
+}
+
+impl CommandHandler for VisualInsertEnd {
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        {
+            let mut buffer = buffer_arc.write();
+
+            // Clear selection first
+            buffer.selection_mut().clear();
+
+            // Move cursor to end of current line
+            let pos = buffer.position();
+            let line_len = buffer.line_len(pos.line).unwrap_or(0);
+            buffer.set_position(Position::new(pos.line, line_len));
+        }
+
+        // Emit mode change to Insert
+        ctx.event_bus
+            .emit(ModeChanged::with_mode_id("visual", EditorMode::INSERT_ID));
+
+        CommandResult::Success
+    }
+}
+
+// =============================================================================
 // Helper Functions
 // =============================================================================
 
@@ -807,13 +940,24 @@ pub fn visual_operator_commands() -> Vec<Box<dyn CommandHandler>> {
     ]
 }
 
-/// Get all visual mode commands (entry + exit + selection + operators).
+/// Get all visual mode key blocking commands.
+#[must_use]
+pub fn visual_key_blocking_commands() -> Vec<Box<dyn CommandHandler>> {
+    vec![
+        Box::new(VisualNoOp),
+        Box::new(VisualInsertStart),
+        Box::new(VisualInsertEnd),
+    ]
+}
+
+/// Get all visual mode commands (entry + exit + selection + operators + key blocking).
 #[must_use]
 pub fn visual_commands() -> Vec<Box<dyn CommandHandler>> {
     let mut cmds = visual_entry_commands();
     cmds.extend(visual_exit_commands());
     cmds.extend(visual_selection_commands());
     cmds.extend(visual_operator_commands());
+    cmds.extend(visual_key_blocking_commands());
     cmds
 }
 
@@ -1222,7 +1366,7 @@ mod tests {
     #[test]
     fn test_visual_commands_count() {
         let cmds = visual_commands();
-        assert_eq!(cmds.len(), 14); // 3 entry + 1 exit + 5 selection + 5 operators
+        assert_eq!(cmds.len(), 17); // 3 entry + 1 exit + 5 selection + 5 operators + 3 key blocking
     }
 
     #[test]
@@ -1523,5 +1667,185 @@ mod tests {
         let buffer = buffer_arc.read();
         assert_eq!(buffer.line_count(), 1);
         assert_eq!(buffer.lines()[0], "line three");
+    }
+
+    // ========================================================================
+    // Key Blocking Command Tests - Issue #145
+    // ========================================================================
+
+    #[test]
+    fn test_visual_noop_command_id() {
+        let cmd = VisualNoOp;
+        assert_eq!(cmd.id().name(), "visual-noop");
+        assert_eq!(cmd.id().module(), &EDITOR_MODULE);
+    }
+
+    #[test]
+    fn test_visual_noop_returns_success() {
+        let mut ctx = create_test_context();
+        let args = CommandContext::new();
+
+        // Should succeed even without a buffer
+        let result = VisualNoOp.execute(&mut ctx, &args);
+        assert_eq!(result, CommandResult::Success);
+    }
+
+    #[test]
+    fn test_visual_insert_start_command_id() {
+        let cmd = VisualInsertStart;
+        assert_eq!(cmd.id().name(), "visual-insert-start");
+        assert_eq!(cmd.id().module(), &EDITOR_MODULE);
+    }
+
+    #[test]
+    fn test_visual_insert_end_command_id() {
+        let cmd = VisualInsertEnd;
+        assert_eq!(cmd.id().name(), "visual-insert-end");
+        assert_eq!(cmd.id().module(), &EDITOR_MODULE);
+    }
+
+    #[test]
+    fn test_visual_insert_start_clears_selection() {
+        let mut ctx = create_test_context();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        // Activate selection
+        {
+            let buffer_arc = ctx.buffers.get(buffer_id).unwrap();
+            let mut buffer = buffer_arc.write();
+            buffer
+                .selection_mut()
+                .start(Position::new(0, 0), SelectionMode::Character);
+            buffer.set_position(Position::new(0, 4));
+        }
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = VisualInsertStart.execute(&mut ctx, &args);
+        assert_eq!(result, CommandResult::Success);
+
+        // Selection should be cleared
+        let buffer_arc = ctx.buffers.get(buffer_id).unwrap();
+        let buffer = buffer_arc.read();
+        assert!(!buffer.selection().is_active());
+    }
+
+    #[test]
+    fn test_visual_insert_start_moves_to_first_nonblank() {
+        let mut ctx = create_test_context();
+        let buffer = Buffer::from_string("    hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        // Start at position 10 (in "world")
+        {
+            let buffer_arc = ctx.buffers.get(buffer_id).unwrap();
+            let mut buffer = buffer_arc.write();
+            buffer.set_position(Position::new(0, 10));
+            buffer
+                .selection_mut()
+                .start(Position::new(0, 10), SelectionMode::Character);
+        }
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = VisualInsertStart.execute(&mut ctx, &args);
+        assert_eq!(result, CommandResult::Success);
+
+        // Cursor should be at first non-blank (position 4)
+        let buffer_arc = ctx.buffers.get(buffer_id).unwrap();
+        let buffer = buffer_arc.read();
+        assert_eq!(buffer.position(), Position::new(0, 4));
+    }
+
+    #[test]
+    fn test_visual_insert_start_empty_line() {
+        let mut ctx = create_test_context();
+        let buffer = Buffer::from_string("   "); // Only whitespace
+        let buffer_id = ctx.buffers.register(buffer);
+
+        {
+            let buffer_arc = ctx.buffers.get(buffer_id).unwrap();
+            let mut buffer = buffer_arc.write();
+            buffer.set_position(Position::new(0, 2));
+            buffer
+                .selection_mut()
+                .start(Position::new(0, 2), SelectionMode::Character);
+        }
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = VisualInsertStart.execute(&mut ctx, &args);
+        assert_eq!(result, CommandResult::Success);
+
+        // Cursor should be at position 0 (no non-blank found)
+        let buffer_arc = ctx.buffers.get(buffer_id).unwrap();
+        let buffer = buffer_arc.read();
+        assert_eq!(buffer.position(), Position::new(0, 0));
+    }
+
+    #[test]
+    fn test_visual_insert_end_clears_selection() {
+        let mut ctx = create_test_context();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        // Activate selection
+        {
+            let buffer_arc = ctx.buffers.get(buffer_id).unwrap();
+            let mut buffer = buffer_arc.write();
+            buffer
+                .selection_mut()
+                .start(Position::new(0, 0), SelectionMode::Character);
+            buffer.set_position(Position::new(0, 4));
+        }
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = VisualInsertEnd.execute(&mut ctx, &args);
+        assert_eq!(result, CommandResult::Success);
+
+        // Selection should be cleared
+        let buffer_arc = ctx.buffers.get(buffer_id).unwrap();
+        let buffer = buffer_arc.read();
+        assert!(!buffer.selection().is_active());
+    }
+
+    #[test]
+    fn test_visual_insert_end_moves_to_eol() {
+        let mut ctx = create_test_context();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        // Start at position 0
+        {
+            let buffer_arc = ctx.buffers.get(buffer_id).unwrap();
+            let mut buffer = buffer_arc.write();
+            buffer.set_position(Position::new(0, 0));
+            buffer
+                .selection_mut()
+                .start(Position::new(0, 0), SelectionMode::Character);
+        }
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = VisualInsertEnd.execute(&mut ctx, &args);
+        assert_eq!(result, CommandResult::Success);
+
+        // Cursor should be at end of line (position 11)
+        let buffer_arc = ctx.buffers.get(buffer_id).unwrap();
+        let buffer = buffer_arc.read();
+        assert_eq!(buffer.position(), Position::new(0, 11));
+    }
+
+    #[test]
+    fn test_visual_key_blocking_commands_count() {
+        let cmds = visual_key_blocking_commands();
+        assert_eq!(cmds.len(), 3); // VisualNoOp, VisualInsertStart, VisualInsertEnd
     }
 }
