@@ -75,9 +75,17 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
   - Explicit no-op bindings for `i`/`a` keys in all visual modes (prevent fallthrough)
   - `I` command in visual/visual-line modes: move to first non-blank, enter insert
   - `A` command in visual/visual-line modes: move to end of line, enter insert
-  - `I`/`A` in visual-block mode: explicit no-op (deferred to #146 for block insert)
   - New commands: `VisualNoOp`, `VisualInsertStart`, `VisualInsertEnd`
   - 11 unit tests for new command behavior
+
+- **Visual-Block Insert Mode** (Issue #146)
+  - `I` in visual-block mode: insert at left column of block on all selected lines
+  - `A` in visual-block mode: append at right column of block on all selected lines
+  - Text typed after `I`/`A` is applied to all lines in the block on exit
+  - New commands: `BlockInsertStart`, `BlockInsertEnd`
+  - New `CommandResult::BlockInsertAction` variant for callback pattern
+  - New `BlockInsertState` in `AppState` for tracking block bounds
+  - Runner detects insert mode exit and applies accumulated text to all block lines
 
 - **FFI Module Loading Mechanism** (Issue #290)
   - New `reovim-driver-ffi` crate for external module support

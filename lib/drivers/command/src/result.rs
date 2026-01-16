@@ -165,6 +165,55 @@ pub enum ModeAction {
 }
 
 // ============================================================================
+// Block Insert Action Type
+// ============================================================================
+
+/// Block insert action intent returned by visual-block `I`/`A` commands.
+///
+/// Commands return this to initiate block insert mode, where text typed in
+/// insert mode is applied to all lines in the block selection upon exit.
+///
+/// # Example
+///
+/// ```ignore
+/// fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+///     // User pressed `I` in visual-block mode
+///     CommandResult::BlockInsertAction(BlockInsertAction::InsertStart {
+///         start_line: 2,
+///         end_line: 5,
+///         column: 10,
+///     })
+/// }
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlockInsertAction {
+    /// Insert at the start column of each line in the block (`I` in visual-block).
+    ///
+    /// When insert mode exits, accumulated text is inserted at `column` on each
+    /// line from `start_line` to `end_line` inclusive.
+    InsertStart {
+        /// First line of the block (0-indexed).
+        start_line: usize,
+        /// Last line of the block (0-indexed, inclusive).
+        end_line: usize,
+        /// Column where text will be inserted (left edge of block).
+        column: usize,
+    },
+    /// Insert at the end column of each line in the block (`A` in visual-block).
+    ///
+    /// When insert mode exits, accumulated text is inserted after `column` on each
+    /// line from `start_line` to `end_line` inclusive.
+    InsertEnd {
+        /// First line of the block (0-indexed).
+        start_line: usize,
+        /// Last line of the block (0-indexed, inclusive).
+        end_line: usize,
+        /// Column after which text will be inserted (right edge of block + 1).
+        column: usize,
+    },
+}
+
+// ============================================================================
 // Edit Action Type
 // ============================================================================
 
@@ -329,6 +378,12 @@ pub enum CommandResult {
     /// the last visual selection. The runner handles the actual restoration
     /// by looking up the saved selection and entering the appropriate visual mode.
     ReselectVisual,
+    /// Command requests block insert mode (`I`/`A` in visual-block).
+    ///
+    /// Visual-block `I`/`A` commands return this to initiate block insert mode.
+    /// The runner stores the block bounds and enters insert mode. When insert
+    /// mode exits, the accumulated text is applied to all lines in the block.
+    BlockInsertAction(BlockInsertAction),
 }
 
 impl CommandResult {
@@ -448,6 +503,12 @@ impl CommandResult {
     #[must_use]
     pub const fn is_reselect_visual(&self) -> bool {
         matches!(self, Self::ReselectVisual)
+    }
+
+    /// Check if the result is a block insert action.
+    #[must_use]
+    pub const fn is_block_insert_action(&self) -> bool {
+        matches!(self, Self::BlockInsertAction(_))
     }
 
     /// Create an operator range result for text object commands.
@@ -867,6 +928,100 @@ mod tests {
             let result = CommandResult::ModeAction(action);
             assert!(result.is_mode_action());
             assert!(!result.is_window_action());
+        }
+    }
+
+    // ========================================================================
+    // BlockInsertAction Tests
+    // ========================================================================
+
+    #[test]
+    fn test_block_insert_action_insert_start() {
+        let action = BlockInsertAction::InsertStart {
+            start_line: 2,
+            end_line: 5,
+            column: 10,
+        };
+
+        assert_eq!(
+            action,
+            BlockInsertAction::InsertStart {
+                start_line: 2,
+                end_line: 5,
+                column: 10,
+            }
+        );
+    }
+
+    #[test]
+    fn test_block_insert_action_insert_end() {
+        let action = BlockInsertAction::InsertEnd {
+            start_line: 0,
+            end_line: 3,
+            column: 15,
+        };
+
+        assert_eq!(
+            action,
+            BlockInsertAction::InsertEnd {
+                start_line: 0,
+                end_line: 3,
+                column: 15,
+            }
+        );
+    }
+
+    #[test]
+    fn test_block_insert_action_inequality() {
+        let start = BlockInsertAction::InsertStart {
+            start_line: 0,
+            end_line: 2,
+            column: 5,
+        };
+        let end = BlockInsertAction::InsertEnd {
+            start_line: 0,
+            end_line: 2,
+            column: 5,
+        };
+
+        assert_ne!(start, end);
+    }
+
+    #[test]
+    fn test_command_result_block_insert_action() {
+        let action = BlockInsertAction::InsertStart {
+            start_line: 1,
+            end_line: 4,
+            column: 8,
+        };
+        let result = CommandResult::BlockInsertAction(action);
+
+        assert!(result.is_block_insert_action());
+        assert!(!result.is_success());
+        assert!(!result.is_error());
+        assert!(!result.is_quit());
+        assert!(!result.is_mode_action());
+        assert!(!result.is_window_action());
+    }
+
+    #[test]
+    fn test_block_insert_action_all_variants() {
+        let variants = [
+            BlockInsertAction::InsertStart {
+                start_line: 0,
+                end_line: 0,
+                column: 0,
+            },
+            BlockInsertAction::InsertEnd {
+                start_line: 0,
+                end_line: 0,
+                column: 0,
+            },
+        ];
+
+        for action in variants {
+            let result = CommandResult::BlockInsertAction(action);
+            assert!(result.is_block_insert_action());
         }
     }
 }

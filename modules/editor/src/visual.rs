@@ -19,7 +19,9 @@
 //! - `c` changes selection (delete + insert mode)
 
 use {
-    reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
+    reovim_driver_command::{
+        BlockInsertAction, Command, CommandContext, CommandHandler, CommandResult,
+    },
     reovim_kernel::api::v1::{
         CommandId, KernelContext, Position, SelectionMode, events::ModeChanged,
     },
@@ -897,6 +899,146 @@ impl CommandHandler for VisualInsertEnd {
 }
 
 // =============================================================================
+// Block Insert Mode Commands (Issue #146)
+// =============================================================================
+
+/// Start block insert at the left column (`I` in visual-block mode).
+///
+/// In Vim's visual-block mode, pressing `I` enters insert mode where text
+/// typed is applied to all lines in the block selection at the left column
+/// when insert mode is exited.
+///
+/// Returns `BlockInsertAction::InsertStart` with the block bounds, which
+/// the runner handles by storing the state and entering insert mode.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct BlockInsertStart;
+
+impl Command for BlockInsertStart {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "block-insert-start")
+    }
+
+    fn description(&self) -> &'static str {
+        "Start block insert at left column (I in visual-block)"
+    }
+}
+
+impl CommandHandler for BlockInsertStart {
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        let (start_line, end_line, column) = {
+            let mut buffer = buffer_arc.write();
+            let selection = buffer.selection();
+
+            // Must have an active block selection
+            if !selection.is_active() || !selection.mode().is_block() {
+                return CommandResult::error("No active block selection");
+            }
+
+            let cursor_pos = buffer.position();
+            let Some((top_left, bottom_right)) = selection.block_bounds(cursor_pos) else {
+                return CommandResult::error("Could not determine block bounds");
+            };
+
+            let start_line = top_left.line;
+            let end_line = bottom_right.line;
+            let column = top_left.column; // Left edge of block
+
+            // Clear selection before entering insert mode
+            buffer.selection_mut().clear();
+
+            // Position cursor at the insert column on the first line
+            buffer.set_position(Position::new(start_line, column));
+            drop(buffer);
+
+            (start_line, end_line, column)
+        };
+
+        // Return block insert action for the runner to handle
+        CommandResult::BlockInsertAction(BlockInsertAction::InsertStart {
+            start_line,
+            end_line,
+            column,
+        })
+    }
+}
+
+/// Start block insert at the right column (`A` in visual-block mode).
+///
+/// In Vim's visual-block mode, pressing `A` enters insert mode where text
+/// typed is applied to all lines in the block selection after the right column
+/// when insert mode is exited.
+///
+/// Returns `BlockInsertAction::InsertEnd` with the block bounds, which
+/// the runner handles by storing the state and entering insert mode.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct BlockInsertEnd;
+
+impl Command for BlockInsertEnd {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "block-insert-end")
+    }
+
+    fn description(&self) -> &'static str {
+        "Start block insert after right column (A in visual-block)"
+    }
+}
+
+impl CommandHandler for BlockInsertEnd {
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        let (start_line, end_line, column) = {
+            let mut buffer = buffer_arc.write();
+            let selection = buffer.selection();
+
+            // Must have an active block selection
+            if !selection.is_active() || !selection.mode().is_block() {
+                return CommandResult::error("No active block selection");
+            }
+
+            let cursor_pos = buffer.position();
+            let Some((top_left, bottom_right)) = selection.block_bounds(cursor_pos) else {
+                return CommandResult::error("Could not determine block bounds");
+            };
+
+            let start_line = top_left.line;
+            let end_line = bottom_right.line;
+            let column = bottom_right.column + 1; // After right edge of block
+
+            // Clear selection before entering insert mode
+            buffer.selection_mut().clear();
+
+            // Position cursor at the insert column on the first line
+            buffer.set_position(Position::new(start_line, column));
+            drop(buffer);
+
+            (start_line, end_line, column)
+        };
+
+        // Return block insert action for the runner to handle
+        CommandResult::BlockInsertAction(BlockInsertAction::InsertEnd {
+            start_line,
+            end_line,
+            column,
+        })
+    }
+}
+
+// =============================================================================
 // Helper Functions
 // =============================================================================
 
@@ -950,7 +1092,13 @@ pub fn visual_key_blocking_commands() -> Vec<Box<dyn CommandHandler>> {
     ]
 }
 
-/// Get all visual mode commands (entry + exit + selection + operators + key blocking).
+/// Get all block insert mode commands (I/A in visual-block).
+#[must_use]
+pub fn visual_block_insert_commands() -> Vec<Box<dyn CommandHandler>> {
+    vec![Box::new(BlockInsertStart), Box::new(BlockInsertEnd)]
+}
+
+/// Get all visual mode commands (entry + exit + selection + operators + key blocking + block insert).
 #[must_use]
 pub fn visual_commands() -> Vec<Box<dyn CommandHandler>> {
     let mut cmds = visual_entry_commands();
@@ -958,6 +1106,7 @@ pub fn visual_commands() -> Vec<Box<dyn CommandHandler>> {
     cmds.extend(visual_selection_commands());
     cmds.extend(visual_operator_commands());
     cmds.extend(visual_key_blocking_commands());
+    cmds.extend(visual_block_insert_commands());
     cmds
 }
 
@@ -1366,7 +1515,7 @@ mod tests {
     #[test]
     fn test_visual_commands_count() {
         let cmds = visual_commands();
-        assert_eq!(cmds.len(), 17); // 3 entry + 1 exit + 5 selection + 5 operators + 3 key blocking
+        assert_eq!(cmds.len(), 19); // 3 entry + 1 exit + 5 selection + 5 operators + 3 key blocking + 2 block insert
     }
 
     #[test]

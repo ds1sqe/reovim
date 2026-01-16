@@ -166,14 +166,14 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&["visual", "visual-line"])
             .with_category("mode")
             .with_description("Exit visual, move to line end, enter insert"),
-        // Block mode I/A - no-op until #146 implements block insert
-        KeybindingRegistration::new("I", "visual-noop")
+        // Block mode I/A - Issue #146
+        KeybindingRegistration::new("I", "block-insert-start")
             .with_modes(&["visual-block"])
-            .with_category("blocked")
-            .with_description("Block insert (not yet implemented, see #146)"),
-        KeybindingRegistration::new("A", "visual-noop")
+            .with_category("mode")
+            .with_description("Insert at block left column on all lines"),
+        KeybindingRegistration::new("A", "block-insert-end")
             .with_modes(&["visual-block"])
-            .with_category("blocked")
-            .with_description("Block append (not yet implemented, see #146)"),
+            .with_category("mode")
+            .with_description("Append at block right column on all lines"),
     ]
 }
