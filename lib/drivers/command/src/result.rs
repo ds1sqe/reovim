@@ -220,6 +220,19 @@ pub enum CommandResult {
     /// The runner replays the last repeatable command from `repeat_state`.
     /// This includes text-modifying commands and any accumulated insert text.
     RepeatAction,
+    /// Text object command returns a range for the pending operator.
+    ///
+    /// Text object commands (iw, aw, i", a", etc.) return this in operator-pending
+    /// mode to provide the range for the operator (d, y, c) to act upon.
+    /// The runner executes the pending operator with this range.
+    OperatorRange {
+        /// Start position of the range (inclusive).
+        start: Position,
+        /// End position of the range (exclusive).
+        end: Position,
+        /// Whether this is a linewise range (affects paste behavior).
+        is_linewise: bool,
+    },
 }
 
 impl CommandResult {
@@ -315,6 +328,22 @@ impl CommandResult {
     #[must_use]
     pub const fn is_repeat_action(&self) -> bool {
         matches!(self, Self::RepeatAction)
+    }
+
+    /// Check if the result is an operator range.
+    #[must_use]
+    pub const fn is_operator_range(&self) -> bool {
+        matches!(self, Self::OperatorRange { .. })
+    }
+
+    /// Create an operator range result for text object commands.
+    #[must_use]
+    pub const fn operator_range(start: Position, end: Position, is_linewise: bool) -> Self {
+        Self::OperatorRange {
+            start,
+            end,
+            is_linewise,
+        }
     }
 }
 
