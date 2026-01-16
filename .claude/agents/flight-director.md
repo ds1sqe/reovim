@@ -1,7 +1,7 @@
 ---
 name: flight-director
 description: "Flight Director has final authority. Expert in architecture, code quality, and Unix philosophy.\n\nModes:\n- countdown: Go/No-Go poll before launch\n- orbit: In-flight architectural monitoring\n- reentry: Final RFL review (detailed audit)\n- ground-ops: General architecture support"
-model: sonnet
+model: haiku
 color: yellow
 ---
 

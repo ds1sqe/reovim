@@ -5,6 +5,7 @@
 //! state like active buffer and mode stack.
 
 use {
+    crate::UndoRegistry,
     reovim_driver_input::KeySequence,
     reovim_kernel::api::v1::{BufferId, KernelContext, ModeId, ModeStack},
 };
@@ -68,6 +69,12 @@ pub struct AppState {
     /// `editor/resize` to update this when their terminal is resized.
     /// Default: 24 (standard VT100 height).
     pub terminal_height: u16,
+
+    /// Per-buffer undo registry.
+    ///
+    /// Maintains separate undo trees for each buffer, enabling per-buffer
+    /// undo/redo operations. Each buffer has its own isolated undo history.
+    pub undo_registry: UndoRegistry,
 }
 
 impl AppState {
@@ -87,6 +94,7 @@ impl AppState {
             running: true,
             terminal_width: 80,
             terminal_height: 24,
+            undo_registry: UndoRegistry::new(),
         }
     }
 
@@ -178,5 +186,50 @@ mod tests {
 
         assert_eq!(app.terminal_width, 120);
         assert_eq!(app.terminal_height, 40);
+    }
+
+    #[test]
+    fn test_app_state_has_undo_registry() {
+        let kernel = KernelContext::default();
+        let app = AppState::new(kernel, test_mode_id());
+
+        // AppState should initialize with empty UndoRegistry
+        assert_eq!(app.undo_registry.buffer_count(), 0);
+    }
+
+    #[test]
+    fn test_app_state_undo_registry_accessible() {
+        use reovim_kernel::api::v1::{Edit, Position};
+
+        let kernel = KernelContext::default();
+        let mut app = AppState::new(kernel, test_mode_id());
+
+        // Can call undo_registry.record()
+        let buffer_id = BufferId::from_raw(1);
+        let edit = Edit::insert(Position::new(0, 0), "hello");
+        app.undo_registry
+            .record(buffer_id, vec![edit], Position::new(0, 0), Position::new(0, 5));
+
+        assert!(app.undo_registry.has_history(buffer_id));
+    }
+
+    #[test]
+    fn test_app_state_undo_registry_per_buffer() {
+        use reovim_kernel::api::v1::{Edit, Position};
+
+        let kernel = KernelContext::default();
+        let mut app = AppState::new(kernel, test_mode_id());
+
+        let buffer1 = BufferId::from_raw(1);
+        let buffer2 = BufferId::from_raw(2);
+
+        // Record edit to buffer1
+        let edit = Edit::insert(Position::new(0, 0), "hello");
+        app.undo_registry
+            .record(buffer1, vec![edit], Position::new(0, 0), Position::new(0, 5));
+
+        // buffer1 has history, buffer2 does not (isolated)
+        assert!(app.undo_registry.has_history(buffer1));
+        assert!(!app.undo_registry.has_history(buffer2));
     }
 }

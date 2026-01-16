@@ -6,6 +6,16 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ## [Unreleased] - v0.9.0-dev
 
+### Changed
+
+- **Agent Infrastructure Optimization** (Issue #261)
+  - Review agents (mission-control, telemetry, flight-director) now use Haiku model
+  - New `oracle` agent (Opus) for planning and architecture design
+  - New `voyager` agent (Sonnet) for codebase exploration (replaces deep-explorer)
+  - A+ skip rule: agents scoring A+ are skipped in subsequent rounds
+  - New `/countdown` skill for pre-implementation validation
+  - Updated `/final-approach` skill with Haiku + A+ skip support
+
 ### Changed (BREAKING)
 
 - **Phase 4.6: Module System Limitations** (Issue #197) - API version 0.1.0 → 0.2.0
@@ -14,6 +24,39 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
   - No existing external modules affected (v0.9.0 not yet released)
 
 ### Added
+
+- **Phase 7.8: Undotree Visualization Module** (Issue #249)
+  - New `modules/undotree/` module for undo tree visualization
+  - `:undotree` command (alias `:ut`) to toggle visualization panel
+  - ASCII tree rendering with branch visualization (`render.rs`)
+  - Shows sequence numbers and relative timestamps
+  - `UndotreeMode` for panel navigation (j/k/Enter/q keybindings)
+  - `UndotreeAction` enum added to `CommandResult` for runner callbacks:
+    - `Toggle { buffer_id }` - Toggle undotree panel
+    - `Close` - Close panel
+    - `MoveUp` / `MoveDown` - Navigate selection
+    - `GotoSelected` / `GotoNode` - Navigate to node
+  - `UndoRegistry::get_tree()` read-only accessor for visualization
+  - 43 unit tests in undotree module, 6 tests for UndotreeAction
+  - Panel integration deferred to runner enhancement
+
+- **Phase 7.7: UndoTree Traversal Accessors** (Issue #251)
+  - `UndoNode::parent()` - get parent node index
+  - `UndoNode::children()` - get children node indices
+  - `UndoTree::node()` - get node by index
+  - `UndoTree::node_indices()` - iterate all node indices
+  - `UndoTree::active_branch_at()` - get active branch at a node
+  - Enables #249 (Vim-style :undotree visualization)
+  - 15 unit tests covering boundaries, invariants, and pruning
+
+- **Phase 7.4.1: Wire UndoRegistry for Edit Recording** (Issue #254)
+  - `UndoRegistry` now in `AppState` for per-buffer undo trees
+  - `CommandResult::EditAction` - commands report edits they made
+  - `FallbackHandler` signature returns `(FallbackResult, Option<CommandResult>)`
+  - 9 edit commands now return `EditAction`: InsertNewline, InsertTab, OpenLineBelow, OpenLineAbove, DeleteChar, DeleteCharBefore, DeleteLine, DeleteToEndOfLine, JoinLines
+  - Event loop and RPC handler wire up edit recording and undo/redo application
+  - `u` (undo) and `Ctrl-R` (redo) now functional with cursor position restore
+  - Deferred: Transaction batching (#255), Persistent undo (#256)
 
 - **Phase 7.5-6: Insert Mode & Delete Operations** (Issues #233, #234, #231)
   - **Insert Mode Character Input** (`modules/editor/src/fallback.rs`):

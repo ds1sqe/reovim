@@ -287,14 +287,15 @@ When creating PRs with `gh pr create`, do NOT add promotional footers like "Gene
    - Check Epic #150 and related issues via `gh issue view 150` and linked issues
    - Read `tmp/{ISSUE}/*` for context from previous sessions
    - Check recent git logs: `git log --oneline -20`
-   - Launch `deep-explorer` agent for codebase understanding if needed
+   - Launch `voyager` agent for codebase understanding if needed
 
 2. **Check Environment**:
    - Check `git worktree list` for active branches
    - Check `git status` for uncommitted work
 
 3. **Plan File Setup** (for implementation tasks):
-   - Create/update plan file at `~/.claude/plans/reovim-{ISSUE_NUMBER}-{SUBJECT}.md`
+   - Launch `oracle` agent for complex planning (uses Opus)
+   - Create/update plan file at `~/.claude/plans/reovim/{ISSUE_NUMBER}-{SUBJECT}.md`
    - Plan must be **self-contained** (works after context compact/clear)
    - Include all information needed for implementation:
      - Architecture diagrams, file locations, type definitions
@@ -302,15 +303,26 @@ When creating PRs with `gh pr create`, do NOT add promotional footers like "Gene
      - Acceptance criteria and test targets
 
 4. **Countdown - Go Poll Round 1**:
-   - Launch all three agents and **deep-explorer** IN PARALLEL in `countdown` mode
+   - Launch review agents (mission-control, telemetry, flight-director) in `countdown` mode with `model: "haiku"`
    - Each agent reviews plan for enhancements and missing details
    - Incorporate all feedback into plan
 
 5. **Countdown - Go Poll Round 2**:
    - Launch agents again in `countdown` mode
+   - Apply **A+ skip rule**: skip agents that gave A+ in round 1
    - Focus on: missing parts, edge cases, architectural concerns
-   - **Keep iterating until all agents report GO**
+   - **Keep iterating until all agents report GO (A or A+)**
    - **IMPORTANT** Only proceed to implementation when plan is fully validated
+
+**REMINDER - Countdown Procedure:**
+```
+Before ANY implementation:
+1. oracle (Opus)     → Create/refine plan
+2. mission-control   → Review plan compliance
+3. telemetry         → Review test strategy
+4. flight-director   → Review architecture
+All must GO before coding starts!
+```
 
 **Plan File Instructions:**
 - Add to every plan: **"Never stop until ALL phases are FULLY FINISHED."**
@@ -386,18 +398,21 @@ Custom agents and skills in `.claude/` provide specialized workflows for this pr
 
 ### Available Agents
 
-| Agent | Purpose | Modes |
-|-------|---------|-------|
-| `deep-explorer` | Codebase exploration | Understanding architecture, tracing dependencies, mapping patterns |
-| `mission-control` | Plans, specs, documentation | countdown, orbit, reentry, ground-ops |
-| `telemetry` | Test coverage & quality | countdown, orbit, reentry, ground-ops |
-| `flight-director` | Unix philosophy & code quality | countdown, orbit, reentry, ground-ops |
+| Agent | Model | Purpose |
+|-------|-------|---------|
+| `oracle` | Opus | Planning, architecture, complex decisions |
+| `voyager` | Sonnet | Codebase exploration, dependency tracing |
+| `mission-control` | Haiku | Plan compliance, documentation review |
+| `telemetry` | Haiku | Test coverage & quality review |
+| `flight-director` | Haiku | Unix philosophy & code quality review |
 
-**Agent Modes:**
+**Agent Modes (review agents):**
 - **countdown**: T-minus checks before launch (validate plan)
 - **orbit**: In-flight monitoring (Claude uses, asks user when blocked)
 - **reentry**: Final Approach review (Go Poll for landing)
 - **ground-ops**: General ground support (design help, strategy advice)
+
+**A+ Skip Rule:** If an agent gives A+ in round N, skip that agent in round N+1.
 
 **Deferral Policy:** Deferrals are OK if tracking issue exists (e.g., #248). No grade penalty for properly documented deferrals.
 
@@ -405,6 +420,7 @@ Custom agents and skills in `.claude/` provide specialized workflows for this pr
 
 | Skill | Command | Purpose |
 |-------|---------|---------|
+| `countdown` | `/countdown [issue]` | Pre-implementation validation with oracle (Opus) + Go Poll (Haiku) |
 | `final-approach` | `/final-approach [issue]` | Landing sequence with Go Poll (3 agents in reentry mode) |
 
 ### Agent Files
@@ -412,11 +428,14 @@ Custom agents and skills in `.claude/` provide specialized workflows for this pr
 ```
 .claude/
 ├── agents/
-│   ├── deep-explorer.md         # Codebase exploration (red)
-│   ├── mission-control.md       # Plans, specs, docs (blue)
-│   ├── telemetry.md             # Test coverage & quality (green)
-│   └── flight-director.md       # Unix philosophy & code quality (yellow)
+│   ├── oracle.md                # Planning, architecture - Opus (purple)
+│   ├── voyager.md               # Codebase exploration - Sonnet (red)
+│   ├── mission-control.md       # Plan compliance review - Haiku (blue)
+│   ├── telemetry.md             # Test coverage review - Haiku (green)
+│   └── flight-director.md       # Code quality review - Haiku (yellow)
 └── skills/
+    ├── countdown/
+    │   └── SKILL.md             # /countdown command
     └── final-approach/
         └── SKILL.md             # /final-approach command
 ```

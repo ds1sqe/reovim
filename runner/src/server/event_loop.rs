@@ -13,8 +13,9 @@
 //! The event loop contains NO business logic - it just wires things together.
 
 use {
-    reovim_driver_command::{CommandContext, CommandResult},
+    reovim_driver_command::{CommandContext, CommandResult, UndoAction},
     reovim_driver_input::KeyEvent,
+    reovim_kernel::api::v1::{Edit, UndoResult},
 };
 
 use super::{
@@ -215,7 +216,13 @@ impl<F: InputFallbackHandler> EventLoop<F> {
 
             KeyLookupResult::NotFound => {
                 // Delegate to fallback handler (MECHANISM delegates to POLICY)
-                let result = self.fallback_handler.handle_unmatched(key, &mut self.app);
+                let (result, cmd_result) =
+                    self.fallback_handler.handle_unmatched(key, &mut self.app);
+
+                // If fallback produced an edit, record it in the undo registry
+                if let Some(cmd) = cmd_result {
+                    self.handle_command_result(cmd);
+                }
 
                 match result {
                     FallbackResult::Handled | FallbackResult::Ignored => {
@@ -247,13 +254,81 @@ impl<F: InputFallbackHandler> EventLoop<F> {
                 self.app.request_quit();
             }
             CommandResult::UndoAction(action) => {
-                // Undo/redo actions are handled by SessionState which has access
-                // to the UndoRegistry. EventLoop delegates to session handler.
-                // For now, log the action - full handling in Phase 3 (#232).
-                tracing::debug!(?action, "Undo action requested");
+                self.handle_undo_action(action);
+            }
+            CommandResult::EditAction(action) => {
+                // Record edit in undo registry for later undo/redo
+                self.app.undo_registry.record(
+                    action.buffer_id,
+                    action.edits,
+                    action.cursor_before,
+                    action.cursor_after,
+                );
+                self.last_error = None;
+            }
+            CommandResult::UndotreeAction(action) => {
+                // Undotree visualization actions are handled by the runner.
+                // The undotree module provides the command infrastructure and
+                // rendering logic. Full panel integration pending layout/window
+                // system completion.
+                //
+                // Current state: Types and rendering are complete, panel
+                // management deferred to runner enhancement (#249).
+                tracing::info!(?action, "Undotree action requested");
                 self.last_error = None;
             }
         }
+    }
+
+    /// Handle an undo/redo action by applying edits from the undo registry.
+    fn handle_undo_action(&mut self, action: UndoAction) {
+        let Some(buffer_id) = self.app.active_buffer else {
+            self.set_error("No active buffer");
+            return;
+        };
+
+        match action {
+            UndoAction::Undo { count } => {
+                for _ in 0..count {
+                    if let Some(result) = self.app.undo_registry.undo(buffer_id) {
+                        self.apply_undo_result(buffer_id, result);
+                    } else {
+                        self.set_error("Already at oldest change");
+                        break;
+                    }
+                }
+            }
+            UndoAction::Redo { count } => {
+                for _ in 0..count {
+                    if let Some(result) = self.app.undo_registry.redo(buffer_id) {
+                        self.apply_undo_result(buffer_id, result);
+                    } else {
+                        self.set_error("Already at newest change");
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Apply an undo/redo result to a buffer.
+    fn apply_undo_result(&self, buffer_id: reovim_kernel::api::v1::BufferId, result: UndoResult) {
+        let Some(buffer_arc) = self.app.kernel.buffers.get(buffer_id) else {
+            return;
+        };
+
+        let mut buffer = buffer_arc.write();
+        for edit in result.edits {
+            match edit {
+                Edit::Insert { position, text } => {
+                    buffer.insert_at(position, &text);
+                }
+                Edit::Delete { position, text } => {
+                    buffer.delete_at(position, text.chars().count());
+                }
+            }
+        }
+        buffer.set_position(result.cursor);
     }
 
     /// Read next key event.

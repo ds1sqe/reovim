@@ -1,6 +1,6 @@
 ---
 name: final-approach
-description: "Final Approach - the landing sequence. Runs Go Poll with all three agents (mission-control, telemetry, flight-director) in reentry mode. Use before landing any significant implementation."
+description: "Final Approach - the landing sequence. Runs Go Poll with review agents (mission-control, telemetry, flight-director) using Haiku model. Supports A+ skip rule for efficient re-reviews."
 ---
 
 # Final Approach
@@ -19,19 +19,40 @@ Final Approach is the end-of-mission workflow:
 
 1. **Sync** - Fetch and rebase with upstream
 2. **Check** - Run `./scripts/check.sh`
-3. **Go Poll** - All three agents report status in `reentry` mode
+3. **Go Poll** - Review agents report status in `reentry` mode (Haiku)
 4. **Landing Doc** - Create summary document
 5. **Commit** - Ready for merge
 
 ## Go Poll
 
-The Go Poll launches all three agents in parallel:
+The Go Poll launches review agents (all use Haiku model for speed):
 
-| Agent | Focus | Call |
-|-------|-------|------|
-| **mission-control** | Plan compliance, docs | *"Mission Control, go."* |
-| **telemetry** | Test coverage, quality | *"Telemetry, go."* |
-| **flight-director** | Code quality, Unix philosophy | *"Flight Director, go."* |
+| Agent | Model | Focus | Call |
+|-------|-------|-------|------|
+| **mission-control** | Haiku | Plan compliance, docs | *"Mission Control, go."* |
+| **telemetry** | Haiku | Test coverage, quality | *"Telemetry, go."* |
+| **flight-director** | Haiku | Code quality, Unix philosophy | *"Flight Director, go."* |
+
+## A+ Skip Rule
+
+**If an agent gives A+ in round N, skip that agent in round N+1.**
+
+Example:
+```
+Round 1: Run all 3 agents
+  - mission-control: A+  ← Will be skipped
+  - telemetry: B
+  - flight-director: A
+
+Round 2: Skip mission-control, run telemetry + flight-director
+  - telemetry: A
+  - flight-director: A+  ← Will be skipped
+
+Round 3: Skip mission-control + flight-director, run only telemetry
+  - telemetry: A+
+
+Done: All agents at A or A+
+```
 
 ## Output Structure
 
@@ -48,7 +69,7 @@ tmp/{ISSUE}/
 
 | Grade | Meaning |
 |-------|---------|
-| **A+** | Exceeds all standards - exemplary |
+| **A+** | Exceeds all standards - exemplary (skip next round) |
 | **A** | Perfect compliance - go for landing |
 | **B** | Minor issues - quick fixes needed |
 | **C** | Significant gaps - more work required |
@@ -70,10 +91,11 @@ When invoked, you MUST:
 
 1. Determine the issue number from context (git branch, plan file, or ask user)
 2. Determine the round number (start at 1, increment for re-reviews)
-3. Create the output directory: `tmp/{ISSUE}/landing/round-{N}/`
-4. Launch ALL THREE agents IN PARALLEL using a single message with multiple Task tool calls
-5. After all agents complete, summarize the grades in a table
-6. If any grade is below A, list the blocking issues that must be fixed
+3. Check previous round grades - skip agents with A+ from prior rounds
+4. Create the output directory: `tmp/{ISSUE}/landing/round-{N}/`
+5. Launch agents IN PARALLEL using Task tool with `model: "haiku"`
+6. After all agents complete, summarize the grades in a table
+7. If any grade is below A, list the blocking issues that must be fixed
 
 Example agent prompts:
 
@@ -85,7 +107,7 @@ You are Mission Control reporting status for landing.
 
 Focus: Plan compliance and documentation quality.
 
-1. Find the plan file (check ~/.claude/plans/ or tmp/)
+1. Find the plan file (check ~/.claude/plans/reovim/ or tmp/)
 2. Verify all planned phases are implemented
 3. Audit documentation quality (module docs, API docs, guides)
 4. Check CHANGELOG.md for completeness
@@ -132,4 +154,7 @@ Write your report to: tmp/{ISSUE}/landing/round-{N}/flight-director.md
 End with: "Flight Director: GO / NO-GO" and grade (A+/A/B/C/F).
 ```
 
-CRITICAL: Launch all three agents using the Task tool with `subagent_type` set to the corresponding agent name (mission-control, telemetry, flight-director).
+CRITICAL: Launch agents using the Task tool with:
+- `subagent_type` set to the agent name (mission-control, telemetry, flight-director)
+- `model: "haiku"` for fast, efficient reviews
+- Skip agents that received A+ in previous rounds

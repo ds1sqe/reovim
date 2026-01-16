@@ -14,6 +14,7 @@
 //! explicit keybindings to commands in insert mode (see keymap/insert.rs).
 
 use {
+    reovim_driver_command::CommandResult,
     reovim_driver_input::{KeyCode, KeyEvent},
     runner::{AppState, FallbackResult, InputFallbackHandler},
 };
@@ -44,7 +45,11 @@ use super::mode::EditorMode;
 pub struct EditorFallbackHandler;
 
 impl InputFallbackHandler for EditorFallbackHandler {
-    fn handle_unmatched(&self, key: KeyEvent, app: &mut AppState) -> FallbackResult {
+    fn handle_unmatched(
+        &self,
+        key: KeyEvent,
+        app: &mut AppState,
+    ) -> (FallbackResult, Option<CommandResult>) {
         let mode_id = app.current_mode();
 
         // Check if we're in Insert mode
@@ -56,25 +61,37 @@ impl InputFallbackHandler for EditorFallbackHandler {
                     && let Some(buffer_arc) = app.kernel.buffers.get(buffer_id)
                 {
                     let mut buffer = buffer_arc.write();
+                    let cursor_before = buffer.position();
                     // Insert character at cursor position
-                    // Note: Edit is returned but not used yet - undo tracking is Phase 4
-                    let _edit = buffer.insert(&ch.to_string());
+                    let edit = buffer.insert(&ch.to_string());
+                    let cursor_after = buffer.position();
                     drop(buffer);
+
+                    // Return EditAction for undo tracking
+                    return (
+                        FallbackResult::Handled,
+                        Some(CommandResult::edit_action(
+                            buffer_id,
+                            edit,
+                            cursor_before,
+                            cursor_after,
+                        )),
+                    );
                 }
-                return FallbackResult::Handled;
+                return (FallbackResult::Handled, None);
             }
 
             // Non-printable key in Insert mode - ignore it
-            return FallbackResult::Ignored;
+            return (FallbackResult::Ignored, None);
         }
 
         // In Normal mode, unmatched keys should beep
         if *mode_id == EditorMode::NORMAL_ID {
-            return FallbackResult::Beep;
+            return (FallbackResult::Beep, None);
         }
 
         // Unknown mode - ignore
-        FallbackResult::Ignored
+        (FallbackResult::Ignored, None)
     }
 }
 
@@ -131,9 +148,10 @@ mod tests {
         let mut app = create_app_normal();
 
         let key = KeyEvent::new(KeyCode::Char('x'));
-        let result = handler.handle_unmatched(key, &mut app);
+        let (result, cmd_result) = handler.handle_unmatched(key, &mut app);
 
         assert_eq!(result, FallbackResult::Beep);
+        assert!(cmd_result.is_none());
     }
 
     #[test]
@@ -142,9 +160,10 @@ mod tests {
         let mut app = create_app_insert();
 
         let key = KeyEvent::new(KeyCode::Char('a'));
-        let result = handler.handle_unmatched(key, &mut app);
+        let (result, _cmd_result) = handler.handle_unmatched(key, &mut app);
 
         assert_eq!(result, FallbackResult::Handled);
+        // cmd_result is None because no buffer is set up
     }
 
     #[test]
@@ -153,7 +172,7 @@ mod tests {
         let mut app = create_app_insert();
 
         let key = KeyEvent::with_modifiers(KeyCode::Char('A'), Modifiers::SHIFT);
-        let result = handler.handle_unmatched(key, &mut app);
+        let (result, _cmd_result) = handler.handle_unmatched(key, &mut app);
 
         assert_eq!(result, FallbackResult::Handled);
     }
@@ -164,9 +183,10 @@ mod tests {
         let mut app = create_app_insert();
 
         let key = KeyEvent::with_modifiers(KeyCode::Char('c'), Modifiers::CTRL);
-        let result = handler.handle_unmatched(key, &mut app);
+        let (result, cmd_result) = handler.handle_unmatched(key, &mut app);
 
         assert_eq!(result, FallbackResult::Ignored);
+        assert!(cmd_result.is_none());
     }
 
     #[test]
@@ -175,7 +195,7 @@ mod tests {
         let mut app = create_app_insert();
 
         let key = KeyEvent::new(KeyCode::Tab);
-        let result = handler.handle_unmatched(key, &mut app);
+        let (result, _cmd_result) = handler.handle_unmatched(key, &mut app);
 
         assert_eq!(result, FallbackResult::Handled);
     }
@@ -186,7 +206,7 @@ mod tests {
         let mut app = create_app_insert();
 
         let key = KeyEvent::new(KeyCode::Enter);
-        let result = handler.handle_unmatched(key, &mut app);
+        let (result, _cmd_result) = handler.handle_unmatched(key, &mut app);
 
         assert_eq!(result, FallbackResult::Handled);
     }
@@ -198,9 +218,10 @@ mod tests {
 
         // Function keys, arrow keys, etc. should be ignored
         let key = KeyEvent::new(KeyCode::F(1));
-        let result = handler.handle_unmatched(key, &mut app);
+        let (result, cmd_result) = handler.handle_unmatched(key, &mut app);
 
         assert_eq!(result, FallbackResult::Ignored);
+        assert!(cmd_result.is_none());
     }
 
     #[test]

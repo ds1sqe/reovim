@@ -64,7 +64,10 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
             KeyLookupResult::Found(cmd_id) => {
                 // Execute the command
                 let cmd_ctx = reovim_driver_command::CommandContext::default();
-                ctx.session.execute_command(cmd_id, &cmd_ctx).await;
+                if let Some(cmd_result) = ctx.session.execute_command(cmd_id, &cmd_ctx).await {
+                    // Handle command result (record edits, apply undo/redo, etc.)
+                    ctx.session.handle_command_result(cmd_result).await;
+                }
                 InputKeysResult::executed()
             }
             KeyLookupResult::Prefix => InputKeysResult::pending(),

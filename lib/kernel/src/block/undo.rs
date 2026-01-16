@@ -72,6 +72,18 @@ impl UndoNode {
     pub const fn branch_count(&self) -> usize {
         self.children.len()
     }
+
+    /// Get parent node index.
+    #[must_use]
+    pub const fn parent(&self) -> Option<usize> {
+        self.parent
+    }
+
+    /// Get children node indices.
+    #[must_use]
+    pub fn children(&self) -> &[usize] {
+        &self.children
+    }
 }
 
 /// Result from an undo or redo operation.
@@ -347,6 +359,32 @@ impl UndoTree {
     #[must_use]
     pub const fn node_count(&self) -> usize {
         self.nodes.len()
+    }
+
+    /// Get node by index.
+    ///
+    /// Returns `None` if index is out of bounds.
+    #[must_use]
+    pub fn node(&self, index: usize) -> Option<&UndoNode> {
+        self.nodes.get(index)
+    }
+
+    /// Get all node indices for iteration.
+    ///
+    /// Returns a range that can be used to iterate over all valid node indices.
+    #[must_use]
+    pub const fn node_indices(&self) -> std::ops::Range<usize> {
+        0..self.nodes.len()
+    }
+
+    /// Get active branch index at a node.
+    ///
+    /// Returns the preferred child index that `redo()` would follow
+    /// from the specified node. Returns `None` if the node doesn't exist
+    /// or has no active branch set.
+    #[must_use]
+    pub fn active_branch_at(&self, node_index: usize) -> Option<usize> {
+        self.active_branches.get(node_index).copied()
     }
 
     /// Get the maximum nodes limit.
