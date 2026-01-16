@@ -16,27 +16,62 @@ use reovim_kernel::api::v1::{BufferId, KernelContext, Position};
 ///
 /// Represents a contiguous range of text in a buffer.
 /// Used by operators to know which text to act on.
+///
+/// The `is_linewise` flag indicates whether the range should be treated
+/// as spanning complete lines (e.g., `yj`, `dd`) or character positions
+/// (e.g., `yw`, `d$`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Range {
     /// Start position (inclusive).
     pub start: Position,
     /// End position (exclusive).
     pub end: Position,
+    /// Whether this range represents linewise selection.
+    ///
+    /// Linewise ranges affect paste behavior:
+    /// - `true`: Paste inserts on new lines (above/below)
+    /// - `false`: Paste inserts inline at cursor
+    pub is_linewise: bool,
 }
 
 impl Range {
-    /// Create a new range.
+    /// Create a new characterwise range (default).
     #[must_use]
     pub const fn new(start: Position, end: Position) -> Self {
-        Self { start, end }
+        Self {
+            start,
+            end,
+            is_linewise: false,
+        }
     }
 
-    /// Create a range from a single position (zero-width).
+    /// Create a new linewise range.
+    #[must_use]
+    pub const fn linewise(start: Position, end: Position) -> Self {
+        Self {
+            start,
+            end,
+            is_linewise: true,
+        }
+    }
+
+    /// Create a range from a single position (zero-width, characterwise).
     #[must_use]
     pub const fn from_position(pos: Position) -> Self {
         Self {
             start: pos,
             end: pos,
+            is_linewise: false,
+        }
+    }
+
+    /// Convert this range to linewise.
+    #[must_use]
+    pub const fn to_linewise(self) -> Self {
+        Self {
+            start: self.start,
+            end: self.end,
+            is_linewise: true,
         }
     }
 
@@ -72,6 +107,7 @@ impl Range {
             Self {
                 start: self.end,
                 end: self.start,
+                is_linewise: self.is_linewise,
             }
         } else {
             self

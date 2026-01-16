@@ -83,6 +83,15 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
   - Helper functions: `yank_commands()`, `paste_commands()`
   - 20 unit tests covering edge cases (EOF, empty buffer, empty register)
 
+- **Phase 7.9.1: Linewise Detection for Motion-based Operations** (Issue #267)
+  - `Range` struct gains `is_linewise` field for motion-determined linewise flag
+  - `Range::new()` creates characterwise ranges (default)
+  - `Range::linewise()` creates linewise ranges
+  - `Range::to_linewise()` converts existing range to linewise
+  - `Range::normalized()` preserves linewise flag when swapping start/end
+  - `YankOperator`, `DeleteOperator`, `ChangeOperator` use `range.is_linewise`
+  - Register content type (linewise/characterwise) determined by range flag
+
 - **Phase 7.8: Undotree Visualization Module** (Issue #249)
   - New `modules/undotree/` module for undo tree visualization
   - `:undotree` command (alias `:ut`) to toggle visualization panel
