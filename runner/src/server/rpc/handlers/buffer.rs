@@ -224,6 +224,12 @@ pub fn buffer_open_file(ctx: RpcContext, params: serde_json::Value) -> HandlerFu
             })
             .await;
 
+        // Also update this client's viewport to view the new buffer
+        {
+            let mut viewport = ctx.client.viewport().write().await;
+            viewport.active_buffer = Some(buffer_id);
+        }
+
         // Capture state after modification and emit changes
         let after = ctx.session.with_state(StateSnapshot::capture).await;
         emit_state_changes(&ctx.session, &before, &after).await;

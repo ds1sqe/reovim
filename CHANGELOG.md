@@ -1833,6 +1833,16 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Fixed
 
+- **E2E Validation - Runnable Editor Milestone** (Issue #265)
+  - Static module loading: Added keymap, editor, layout, undotree modules as Cargo dependencies
+  - Registry wiring: Created `build_default_registries()` and `create_session_with_defaults()`
+    to wire module commands and keybindings at session startup
+  - Fixed `buffer/open_file` handler to set `viewport.active_buffer` for per-client viewport tracking
+  - Fixed `input/keys` handler to process keys one at a time (incremental keymap lookup)
+  - Fixed `cursor-right` boundary check to clamp at `line_len - 1` (normal mode can't go past last char)
+  - Updated `test_set_active_buffer_success` test expectation for new buffer activation behavior
+  - Editor now functional: cursor movement, insert mode, delete, undo/redo all work end-to-end
+
 - **IPC Channel Clone** - Fixed `Sender<T>` and `BoundedSender<T>` Clone impl to not require `T: Clone` (matching std::sync::mpsc behavior)
 
 ---

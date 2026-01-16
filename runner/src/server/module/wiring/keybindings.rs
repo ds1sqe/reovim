@@ -146,18 +146,20 @@ pub fn wire_module_keybindings(
         };
 
         // Build the command ID
-        // Convention: if command_id doesn't contain ':', it's prefixed with module ID
+        // Convention: if command_id doesn't contain ':', it defaults to "editor" module
+        // since most commands (cursor movement, mode switching, etc.) are in the editor module.
+        // Keybinding modules (like keymap) provide bindings, editor provides commands.
         let command_id = if registration.command_id.contains(':') {
             // Already fully qualified (e.g., "editor:cursor-down")
             let parts: Vec<&str> = registration.command_id.splitn(2, ':').collect();
             if parts.len() == 2 {
                 CommandId::new(ModuleId::from_string(parts[0].to_string()), parts[1])
             } else {
-                CommandId::new(module_id.clone(), registration.command_id)
+                CommandId::new(ModuleId::new("editor"), registration.command_id)
             }
         } else {
-            // Use the registering module as the command owner
-            CommandId::new(module_id.clone(), registration.command_id)
+            // Default to editor module for unqualified commands
+            CommandId::new(ModuleId::new("editor"), registration.command_id)
         };
 
         // Determine modes to register in

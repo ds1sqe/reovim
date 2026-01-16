@@ -169,9 +169,11 @@ use {
     reovim_arch::sync::RwLock,
     reovim_driver_vfs::{StandardVfs, VfsDriver},
     reovim_kernel::api::v1::{
-        EventBus, KernelContext, MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry,
-        RegisterBank, TextObjectEngine,
+        EventBus, KernelContext, MarkBank, ModeId, Module, ModuleContext, ModuleId, MotionEngine,
+        OptionRegistry, RegisterBank, TextObjectEngine,
     },
+    reovim_module_editor::{EditorMode, command::all_commands},
+    reovim_module_keymap::KeymapModule,
     reovim_protocol::v1::{RpcError, RpcRequest, RpcResponse},
 };
 
@@ -179,7 +181,8 @@ use crate::buffer_manager::SimpleBufferManager;
 
 use {
     client::Client,
-    module::{ModuleConfig, ModuleManager},
+    module::{ModuleConfig, ModuleManager, wire_module_keybindings},
+    registry::{CommandRegistry, KeymapRegistry, ModeEntry, ModeRegistry},
     rpc::{RpcContext, RpcDispatcher, create_default_dispatcher},
     session::{Session, SessionId, SessionRegistry},
     transport::{TransportListener, TransportReader, TransportWriter},
@@ -652,12 +655,94 @@ impl Server {
     }
 
     /// Ensure the default session exists.
+    ///
+    /// Creates the session with pre-wired keybindings from default modules.
+    /// This is where module loading "meets" session creation (#265).
     fn ensure_default_session(&self, id: &SessionId) {
-        let default_mode = self.config.effective_default_mode();
-        self.sessions.get_or_create(id, || {
-            Session::new(id.clone(), real_kernel_context(), default_mode, standard_vfs())
-        });
+        self.sessions
+            .get_or_create(id, || create_session_with_defaults(id.clone()));
     }
+}
+
+/// Create a new session with default registries (modes, commands, keybindings wired).
+///
+/// This is the entry point for creating sessions that have working keybindings.
+/// Used by both `ensure_default_session()` and `handle_client()`.
+fn create_session_with_defaults(id: SessionId) -> Arc<Session> {
+    let (mode_registry, command_registry, keymap_registry, module_registry) =
+        build_default_registries();
+
+    Session::with_registries(
+        id,
+        real_kernel_context(),
+        fallback_default_mode(),
+        standard_vfs(),
+        mode_registry,
+        command_registry,
+        keymap_registry,
+        module_registry,
+    )
+}
+
+/// Build default registries with keybindings wired from default modules.
+///
+/// This is the "generation position" where modules are registered and
+/// their keybindings are wired to the session registries.
+fn build_default_registries() -> (ModeRegistry, CommandRegistry, KeymapRegistry, ModuleManager) {
+    let mut mode_registry = ModeRegistry::new();
+    let mut command_registry = CommandRegistry::new();
+    let mut keymap_registry = KeymapRegistry::new();
+    let module_manager = ModuleManager::new();
+
+    // Register editor modes (so ModeRegistry knows about them)
+    // Each mode provides Mode (identity), ModeDisplay (cursor), and ModeInput (accepts char)
+    for mode in [
+        EditorMode::Normal,
+        EditorMode::Insert,
+        EditorMode::Visual,
+        EditorMode::VisualLine,
+        EditorMode::VisualBlock,
+    ] {
+        let entry = ModeEntry::new(Arc::new(mode))
+            .with_display(Arc::new(mode))
+            .with_input(Arc::new(mode));
+        mode_registry.register(entry);
+    }
+
+    // Register editor commands (cursor movement, mode switching, editing, etc.)
+    // These are the command handlers that keybindings point to.
+    let editor_module_id = ModuleId::new("editor");
+    for cmd in all_commands() {
+        command_registry.register_for_module(cmd.into(), editor_module_id.clone());
+    }
+    tracing::info!(count = command_registry.len(), "registered editor commands");
+
+    // Create keymap module and wire its keybindings
+    let keymap_module = KeymapModule::new();
+    let module_id = keymap_module.id();
+
+    // Initialize the module (for logging purposes)
+    let ctx = ModuleContext::default();
+    let mut keymap_module_init = keymap_module;
+    let _init_result = keymap_module_init.init(&ctx);
+
+    // Wire keybindings from the keymap module
+    let keybindings = keymap_module_init.keybindings();
+    match wire_module_keybindings(&module_id, &keybindings, &mut keymap_registry) {
+        Ok(stats) => {
+            tracing::info!(
+                module = %module_id,
+                wired = stats.keybindings_wired,
+                skipped = stats.keybindings_skipped,
+                "wired keybindings"
+            );
+        }
+        Err(e) => {
+            tracing::error!(module = %module_id, error = %e, "failed to wire keybindings");
+        }
+    }
+
+    (mode_registry, command_registry, keymap_registry, module_manager)
 }
 
 impl Default for Server {
@@ -719,12 +804,11 @@ async fn handle_client(
     session_id: SessionId,
     sessions: Arc<SessionRegistry>,
     dispatcher: Arc<RpcDispatcher>,
-    default_mode: ModeId,
+    _default_mode: ModeId,
 ) -> std::io::Result<()> {
-    // Get or create the session
-    let session = sessions.get_or_create(&session_id, || {
-        Session::new(session_id.clone(), real_kernel_context(), default_mode, standard_vfs())
-    });
+    // Get or create the session with default registries (keybindings wired)
+    let session =
+        sessions.get_or_create(&session_id, || create_session_with_defaults(session_id.clone()));
 
     // Create the client (owns the writer)
     let client = Client::new(client_id, session_id, writer);
