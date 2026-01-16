@@ -10,6 +10,7 @@
 //!
 //! Future refactoring may extract these to dedicated modules.
 
+mod block_insert;
 mod edit;
 mod mode;
 mod search;
@@ -17,6 +18,7 @@ mod undo;
 mod window;
 
 pub use {
+    block_insert::BlockInsertAction,
     edit::EditAction,
     mode::ModeAction,
     search::{SearchAction, SearchDirection},
@@ -115,6 +117,13 @@ pub enum CommandResult {
     /// the last visual selection. The runner handles the actual restoration
     /// by looking up the saved selection and entering the appropriate visual mode.
     ReselectVisual,
+    /// Command requests a visual-block insert operation.
+    ///
+    /// Visual-block commands (I, A in visual-block mode) return this to
+    /// indicate a block insert operation should be performed. The runner
+    /// handles entering insert mode and replicating the inserted text
+    /// across all lines of the block when insert mode exits.
+    BlockInsertAction(BlockInsertAction),
 }
 
 impl CommandResult {
@@ -234,6 +243,12 @@ impl CommandResult {
     #[must_use]
     pub const fn is_reselect_visual(&self) -> bool {
         matches!(self, Self::ReselectVisual)
+    }
+
+    /// Check if the result is a block insert action.
+    #[must_use]
+    pub const fn is_block_insert_action(&self) -> bool {
+        matches!(self, Self::BlockInsertAction(_))
     }
 
     /// Create an operator range result for text object commands.
@@ -652,6 +667,94 @@ mod tests {
         for action in variants {
             let result = CommandResult::ModeAction(action);
             assert!(result.is_mode_action());
+            assert!(!result.is_window_action());
+        }
+    }
+
+    // ========================================================================
+    // BlockInsertAction Tests
+    // ========================================================================
+
+    #[test]
+    fn test_block_insert_action_insert_start() {
+        let action = BlockInsertAction::InsertStart {
+            start_line: 2,
+            end_line: 5,
+            column: 10,
+        };
+        let result = CommandResult::BlockInsertAction(action);
+
+        assert!(result.is_block_insert_action());
+        assert!(!result.is_success());
+        assert!(!result.is_error());
+        assert!(!result.is_mode_action());
+    }
+
+    #[test]
+    fn test_block_insert_action_insert_end() {
+        let action = BlockInsertAction::InsertEnd {
+            start_line: 0,
+            end_line: 3,
+            column: 15,
+        };
+        let result = CommandResult::BlockInsertAction(action);
+
+        assert!(result.is_block_insert_action());
+        assert!(!result.is_success());
+        assert!(!result.is_error());
+    }
+
+    #[test]
+    fn test_block_insert_action_equality() {
+        let start1 = BlockInsertAction::InsertStart {
+            start_line: 2,
+            end_line: 5,
+            column: 10,
+        };
+        let start2 = BlockInsertAction::InsertStart {
+            start_line: 2,
+            end_line: 5,
+            column: 10,
+        };
+        let start3 = BlockInsertAction::InsertStart {
+            start_line: 0,
+            end_line: 5,
+            column: 10,
+        };
+        let end1 = BlockInsertAction::InsertEnd {
+            start_line: 2,
+            end_line: 5,
+            column: 10,
+        };
+
+        // Same values should be equal
+        assert_eq!(start1, start2);
+
+        // Different values should not be equal
+        assert_ne!(start1, start3);
+        assert_ne!(start1, end1);
+    }
+
+    #[test]
+    fn test_block_insert_action_all_variants() {
+        let variants = [
+            BlockInsertAction::InsertStart {
+                start_line: 0,
+                end_line: 10,
+                column: 5,
+            },
+            BlockInsertAction::InsertEnd {
+                start_line: 0,
+                end_line: 10,
+                column: 20,
+            },
+        ];
+
+        // Each variant wrapped in CommandResult should be a block insert action
+        for action in variants {
+            let result = CommandResult::BlockInsertAction(action);
+            assert!(result.is_block_insert_action());
+            assert!(!result.is_mode_action());
             assert!(!result.is_window_action());
         }
     }

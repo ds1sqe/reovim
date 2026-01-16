@@ -8,10 +8,12 @@ use {
     reovim_kernel::api::v1::{Motion, MotionEngine, Position},
 };
 
-use super::EventLoop;
-use crate::server::{
-    AppState,
-    app::{LastFind, PendingCharOp},
+use {
+    super::EventLoop,
+    crate::server::{
+        AppState,
+        app::{LastFind, PendingCharOp},
+    },
 };
 
 impl<F: reovim_driver_input::InputFallbackHandler<AppState>> EventLoop<F> {

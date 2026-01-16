@@ -1,7 +1,9 @@
 //! Motion calculation engine.
 
-use crate::core::direction::{Direction, LinePosition, WordBoundary};
-use crate::mm::{Buffer, Cursor, Position};
+use crate::{
+    core::direction::{Direction, LinePosition, WordBoundary},
+    mm::{Buffer, Cursor, Position},
+};
 
 use super::types::Motion;
 

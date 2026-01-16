@@ -7,8 +7,13 @@ use reovim_kernel::api::v1::{
     events::{WindowClosed, WindowCreated, WindowFocused},
 };
 
-use super::EventLoop;
-use crate::server::{AppState, app::{DiffPreviewLine, UndotreeRenderLine}};
+use {
+    super::EventLoop,
+    crate::server::{
+        AppState,
+        app::{DiffPreviewLine, UndotreeRenderLine},
+    },
+};
 
 impl<F: reovim_driver_input::InputFallbackHandler<AppState>> EventLoop<F> {
     /// Handle an undotree action from undotree commands.

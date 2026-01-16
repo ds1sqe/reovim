@@ -12,5 +12,4 @@
 mod engine;
 mod types;
 
-pub use engine::MotionEngine;
-pub use types::Motion;
+pub use {engine::MotionEngine, types::Motion};

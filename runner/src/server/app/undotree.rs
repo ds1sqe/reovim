@@ -2,10 +2,7 @@
 //!
 //! Tracks the undotree panel UI: visibility, navigation, diff preview.
 
-use {
-    reovim_driver_display::WindowId,
-    reovim_kernel::api::v1::BufferId,
-};
+use {reovim_driver_display::WindowId, reovim_kernel::api::v1::BufferId};
 
 // ============================================================================
 // Undotree Panel State

@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use super::{scope::OptionScope, OptionScopeId, OptionValue};
+use super::{OptionScopeId, OptionValue, scope::OptionScope};
 
 /// Error type for option operations.
 #[derive(Debug, Clone, PartialEq, Eq)]

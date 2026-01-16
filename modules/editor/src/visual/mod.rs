@@ -26,8 +26,12 @@ mod operators;
 pub use {
     entry::{EnterVisualBlockMode, EnterVisualLineMode, EnterVisualMode},
     exit::ExitVisualMode,
-    manipulation::{ReselectLast, SwapAnchor, ToggleVisualBlock, ToggleVisualChar, ToggleVisualLine},
-    operators::{ChangeSelection, DedentSelection, DeleteSelection, IndentSelection, YankSelection},
+    manipulation::{
+        ReselectLast, SwapAnchor, ToggleVisualBlock, ToggleVisualChar, ToggleVisualLine,
+    },
+    operators::{
+        ChangeSelection, DedentSelection, DeleteSelection, IndentSelection, YankSelection,
+    },
 };
 
 use reovim_driver_command::CommandHandler;

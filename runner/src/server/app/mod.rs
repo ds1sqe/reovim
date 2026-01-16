@@ -23,9 +23,7 @@ use {
     reovim_arch::sync::RwLock,
     reovim_driver_display::WindowId,
     reovim_driver_input::{FallbackContext, KeySequence},
-    reovim_kernel::api::v1::{
-        Buffer, BufferId, Edit, KernelContext, ModeId, ModeStack, Position,
-    },
+    reovim_kernel::api::v1::{Buffer, BufferId, Edit, KernelContext, ModeId, ModeStack, Position},
     std::sync::Arc,
 };
 

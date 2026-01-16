@@ -47,11 +47,13 @@ mod spec;
 mod value;
 
 // Re-export all types for API compatibility
-pub use constraint::{ConstraintError, OptionConstraint};
-pub use error::{OptionError, SetResult};
-pub use scope::{OptionScope, OptionScopeId};
-pub use spec::OptionSpec;
-pub use value::OptionValue;
+pub use {
+    constraint::{ConstraintError, OptionConstraint},
+    error::{OptionError, SetResult},
+    scope::{OptionScope, OptionScopeId},
+    spec::OptionSpec,
+    value::OptionValue,
+};
 
 use std::collections::HashMap;
 

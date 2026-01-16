@@ -3,10 +3,7 @@
 use std::borrow::Cow;
 
 use super::{
-    constraint::OptionConstraint,
-    error::OptionError,
-    scope::OptionScope,
-    value::OptionValue,
+    constraint::OptionConstraint, error::OptionError, scope::OptionScope, value::OptionValue,
 };
 
 /// Complete specification for an editor option.

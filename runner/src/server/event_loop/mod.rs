@@ -412,6 +412,12 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
                 // the command name.
                 self.handle_reselect_last();
             }
+            CommandResult::BlockInsertAction(action) => {
+                // Visual-block insert (I/A in visual-block mode) wants to insert
+                // text across multiple lines. Full implementation TBD.
+                tracing::debug!(?action, "BlockInsertAction requested");
+                self.last_error = None;
+            }
         }
     }
 

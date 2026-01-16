@@ -25,11 +25,13 @@ mod session;
 mod terminal;
 
 // Re-export all types at module root for API compatibility
-pub use health::{PingEvent, PongEvent};
-pub use key::{KeyCode, KeyEvent, KeyEventKind, Modifiers};
-pub use mouse::{ClickEvent, ClickKind, MouseButton, ScrollDirection, ScrollEvent};
-pub use session::{AttachEvent, DetachEvent, DetachReason};
-pub use terminal::{FocusEvent, FocusKind, PasteEvent, ResizeEvent};
+pub use {
+    health::{PingEvent, PongEvent},
+    key::{KeyCode, KeyEvent, KeyEventKind, Modifiers},
+    mouse::{ClickEvent, ClickKind, MouseButton, ScrollDirection, ScrollEvent},
+    session::{AttachEvent, DetachEvent, DetachReason},
+    terminal::{FocusEvent, FocusKind, PasteEvent, ResizeEvent},
+};
 
 use serde::{Deserialize, Serialize};
 

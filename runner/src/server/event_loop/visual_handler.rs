@@ -2,8 +2,10 @@
 //!
 //! Handles saving and restoring visual selections for the `gv` command.
 
-use super::EventLoop;
-use crate::server::{AppState, app::LastVisualSelection};
+use {
+    super::EventLoop,
+    crate::server::{AppState, app::LastVisualSelection},
+};
 
 impl<F: reovim_driver_input::InputFallbackHandler<AppState>> EventLoop<F> {
     /// Save the current visual selection if one is active.

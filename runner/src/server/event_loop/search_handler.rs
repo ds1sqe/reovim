@@ -7,8 +7,10 @@ use {
     reovim_kernel::api::v1::MotionEngine,
 };
 
-use super::EventLoop;
-use crate::server::{AppState, app::SearchDirection};
+use {
+    super::EventLoop,
+    crate::server::{AppState, app::SearchDirection},
+};
 
 impl<F: reovim_driver_input::InputFallbackHandler<AppState>> EventLoop<F> {
     /// Handle a key event when in search input mode (typing pattern).
@@ -137,7 +139,10 @@ impl<F: reovim_driver_input::InputFallbackHandler<AppState>> EventLoop<F> {
     }
 
     /// Execute word search (* or #).
-    pub(super) fn execute_word_search(&mut self, direction: reovim_driver_command::SearchDirection) {
+    pub(super) fn execute_word_search(
+        &mut self,
+        direction: reovim_driver_command::SearchDirection,
+    ) {
         use crate::search::SearchEngine;
 
         let Some(buffer_id) = self.app.active_buffer else {

@@ -71,6 +71,20 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
       - `mode.rs` - `ModeAction`
       - `edit.rs` - `EditAction`
       - `mod.rs` - `CommandResult` enum and re-exports
+  - **Phase 5 - Large Editor Command Module**:
+    - Split `modules/editor/src/command.rs` (3,399 lines) into 11 focused modules:
+      - `cursor.rs` (288 lines) - `CursorUp`, `CursorDown`, `CursorLeft`, `CursorRight`
+      - `display_line.rs` (260 lines) - `CursorDisplayDown`, `CursorDisplayUp`
+      - `mode.rs` (143 lines) - `EnterInsertMode`, `EnterInsertModeAppend`, `ExitToNormal`, `EnterWindowMode`
+      - `insert_edit.rs` (101 lines) - `InsertNewline`, `InsertTab`
+      - `mode_entry.rs` (181 lines) - `EnterInsertFirstNonBlank`, `EnterInsertEndOfLine`, `OpenLineBelow`, `OpenLineAbove`
+      - `undo.rs` (85 lines) - `UndoCommand`, `RedoCommand`
+      - `delete.rs` (490 lines) - `DeleteChar`, `DeleteCharBefore`, `DeleteLine`, `DeleteToEndOfLine`, `ChangeLine`, `ChangeToEndOfLine`
+      - `replace.rs` (174 lines) - `ReplaceCharStart`, `RepeatDot`, `JoinLines`
+      - `file.rs` (97 lines) - `WriteBufferCommand`
+      - `yank.rs` (71 lines) - `YankLine`
+      - `paste.rs` (214 lines) - `PasteAfter`, `PasteBefore`
+      - `mod.rs` (1,439 lines) - Re-exports, helper functions, and comprehensive tests
   - External APIs unchanged - all types re-exported from module roots
   - All tests passing with zero regressions
 
