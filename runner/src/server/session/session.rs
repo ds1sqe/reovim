@@ -276,6 +276,12 @@ impl Session {
                 self.handle_search_action(action).await;
                 None
             }
+            CommandResult::RepeatAction => {
+                // Repeat command (.) wants to replay the last repeatable command.
+                // This is handled by the message loop which accesses repeat_state.
+                // For now, just return None - full implementation comes in Phase 5.
+                None
+            }
         }
     }
 
@@ -438,22 +444,62 @@ impl Session {
         state.app.clear_pending_keys();
     }
 
-    /// Set char-wait state for find-char commands.
+    /// Set pending char state for commands waiting for character input.
     ///
-    /// Called when a find-char command (f/F/t/T) returns `WaitingForChar`.
+    /// Called when a command (f/F/t/T or r) returns `WaitingForChar`.
     /// The next key press will provide the character argument.
-    pub async fn set_char_wait(&self, ctx: reovim_driver_command::CharWaitContext) {
-        use crate::server::app::{CharWaitState, FindType};
-
-        let find_type = match ctx.find_type {
-            reovim_driver_command::FindType::FindForward => FindType::FindForward,
-            reovim_driver_command::FindType::FindBackward => FindType::FindBackward,
-            reovim_driver_command::FindType::TillForward => FindType::TillForward,
-            reovim_driver_command::FindType::TillBackward => FindType::TillBackward,
+    ///
+    /// # Panics
+    ///
+    /// Panics if a find-char operation (`FindForward`, `FindBackward`, `TillForward`, `TillBackward`)
+    /// is missing its required `start_position`.
+    pub async fn set_pending_char(&self, ctx: reovim_driver_command::CharWaitContext) {
+        use {
+            crate::server::app::{FindType, PendingCharOp},
+            reovim_driver_command::CharWaitOp,
         };
 
         let mut state = self.state.write().await;
-        state.app.char_wait = Some(CharWaitState::new(find_type, ctx.start_position));
+
+        let pending = match ctx.op_type {
+            CharWaitOp::FindForward => {
+                let start = ctx
+                    .start_position
+                    .expect("FindForward requires start position");
+                PendingCharOp::from_find_type(FindType::FindForward, start)
+            }
+            CharWaitOp::FindBackward => {
+                let start = ctx
+                    .start_position
+                    .expect("FindBackward requires start position");
+                PendingCharOp::from_find_type(FindType::FindBackward, start)
+            }
+            CharWaitOp::TillForward => {
+                let start = ctx
+                    .start_position
+                    .expect("TillForward requires start position");
+                PendingCharOp::from_find_type(FindType::TillForward, start)
+            }
+            CharWaitOp::TillBackward => {
+                let start = ctx
+                    .start_position
+                    .expect("TillBackward requires start position");
+                PendingCharOp::from_find_type(FindType::TillBackward, start)
+            }
+            CharWaitOp::ReplaceChar => {
+                let count = ctx.count.unwrap_or(1);
+                PendingCharOp::replace_char(count)
+            }
+        };
+
+        state.app.set_pending_char(pending);
+    }
+
+    /// Set char-wait state for find-char commands.
+    ///
+    /// DEPRECATED: Use `set_pending_char` instead. Kept for backward compatibility.
+    pub async fn set_char_wait(&self, ctx: reovim_driver_command::CharWaitContext) {
+        self.set_pending_char(ctx).await;
     }
 
     /// Record an edit action in the undo registry.

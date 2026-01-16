@@ -48,6 +48,15 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
     - `ModuleRegistry::unload_with_cleanup()` for handler cleanup
   - 44 unit tests for new functionality
   - Deferred to #264: Default module list, config file extras, environment overrides
+  - **Unified Character-Waiting Infrastructure** (Merge from Phase-7-D):
+    - `PendingCharOp` enum in AppState for f/F/t/T/r character operations
+    - `CharWaitOp` enum in command driver generalizes `FindType` to include `ReplaceChar`
+    - `CharWaitContext` updated with `op_type: CharWaitOp` and unified helper methods
+    - `ReplaceCharStart` command (`r`) returns `WaitingForChar` with `ReplaceChar` op
+    - `RepeatDot` command (`.`) infrastructure with `RepeatState` tracking
+    - `CommandResult::RepeatAction` variant for repeat command handling
+    - Event loop unified `handle_pending_char()` dispatches find-char and replace-char
+    - All operators (yank, delete, change) use `range.is_linewise` for register content type
 
 - **Phase 7-B: VFS Integration for File Operations** (Issues #235, #236)
   - **VFS Driver Layer** (`lib/drivers/vfs/`):

@@ -15,7 +15,7 @@
 use {
     reovim_driver_command::{CommandContext, CommandResult, UndoAction},
     reovim_driver_input::{FallbackResult, InputFallbackHandler, KeyCode, KeyEvent},
-    reovim_kernel::api::v1::{Edit, Motion, MotionEngine, UndoResult},
+    reovim_kernel::api::v1::{Edit, Motion, MotionEngine, Position, UndoResult},
 };
 
 use super::{
@@ -192,9 +192,9 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
             return;
         }
 
-        // Check for char-wait state (f/F/t/T waiting for character)
-        if self.app.char_wait.is_some() {
-            self.handle_char_wait(key);
+        // Check for pending character operation (f/F/t/T or r waiting for character)
+        if self.app.has_pending_char() {
+            self.handle_pending_char(key);
             return;
         }
 
@@ -278,35 +278,60 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
         }
     }
 
-    /// Handle a key event when in char-wait state (f/F/t/T pending).
+    /// Handle a key event when in pending-char state (f/F/t/T or r pending).
     ///
-    /// The key provides the character argument for the find-char motion.
-    /// Escape cancels the wait without executing any motion.
-    fn handle_char_wait(&mut self, key: KeyEvent) {
-        use super::app::LastFind;
+    /// The key provides the character argument for the pending operation.
+    /// Escape cancels the wait without executing any operation.
+    fn handle_pending_char(&mut self, key: KeyEvent) {
+        use super::app::PendingCharOp;
 
-        // Take the char-wait state
-        let char_wait = self.app.char_wait.take().expect("char_wait should be Some");
+        // Take the pending-char state
+        let pending = self
+            .app
+            .take_pending_char()
+            .expect("pending_char should be Some");
 
-        // Handle escape - cancel char-wait
+        // Handle escape - cancel pending operation
         if key.code == KeyCode::Escape {
-            // Clear any pending keys and return without motion
             self.app.clear_pending_keys();
             return;
         }
 
         // Extract character from key event
         let KeyCode::Char(c) = key.code else {
-            // Non-character keys cancel char-wait (like escape)
+            // Non-character keys cancel pending operation
             self.app.clear_pending_keys();
             return;
         };
 
-        // Build and execute the find-char motion
+        match pending {
+            PendingCharOp::FindForward { start: _ }
+            | PendingCharOp::FindBackward { start: _ }
+            | PendingCharOp::TillForward { start: _ }
+            | PendingCharOp::TillBackward { start: _ } => {
+                self.execute_find_char(c, &pending);
+            }
+            PendingCharOp::ReplaceChar { count } => {
+                self.execute_replace_char(c, count);
+            }
+        }
+
+        self.app.clear_pending_keys();
+    }
+
+    /// Execute a find-char motion with the given character.
+    fn execute_find_char(&mut self, c: char, pending: &super::app::PendingCharOp) {
+        use super::app::LastFind;
+
+        let Some(find_type) = pending.find_type() else {
+            return; // Not a find-char operation
+        };
+
+        // Build the find-char motion
         let motion = Motion::FindChar {
             char: c,
-            direction: char_wait.find_type.direction(),
-            till: char_wait.find_type.is_till(),
+            direction: find_type.direction(),
+            till: find_type.is_till(),
         };
 
         // Get active buffer for motion calculation
@@ -330,12 +355,48 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
             buffer_arc.write().set_position(pos);
 
             // Update last_find for ; and , repeat
-            self.app.last_find = Some(LastFind::new(c, char_wait.find_type));
+            self.app.last_find = Some(LastFind::new(c, find_type));
         }
         // Note: If target is None (char not found), cursor doesn't move,
         // and last_find is NOT updated (per Vim behavior)
+    }
 
-        self.app.clear_pending_keys();
+    /// Execute a replace-char operation with the given character.
+    fn execute_replace_char(&mut self, c: char, count: usize) {
+        // Get active buffer
+        let Some(buffer_id) = self.app.active_buffer else {
+            self.set_error("No active buffer");
+            return;
+        };
+
+        let Some(buffer_arc) = self.app.kernel.buffers.get(buffer_id) else {
+            self.set_error("Buffer not found");
+            return;
+        };
+
+        let mut buffer = buffer_arc.write();
+        let cursor_pos = buffer.cursor().position;
+
+        // Replace count characters with c
+        let line = buffer.lines().get(cursor_pos.line).map(String::from);
+        if let Some(line) = line {
+            let start_col = cursor_pos.column;
+            let end_col = (start_col + count).min(line.len());
+
+            if start_col < line.len() {
+                // Build replacement string
+                let replacement: String = std::iter::repeat_n(c, end_col - start_col).collect();
+
+                // Delete old characters and insert new
+                let start = Position::new(cursor_pos.line, start_col);
+                let end = Position::new(cursor_pos.line, end_col);
+                buffer.delete_range(start, end);
+                buffer.insert_at(start, &replacement);
+
+                // Cursor stays at start position (Vim behavior)
+                buffer.set_position(start);
+            }
+        }
     }
 
     /// Handle command execution result.
@@ -376,18 +437,37 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
                 self.last_error = None;
             }
             CommandResult::WaitingForChar(ctx) => {
-                // Find-char command (f/F/t/T) needs a character argument.
-                // Set char-wait state so next key press completes the motion.
-                use super::app::{CharWaitState, FindType};
-
-                let find_type = match ctx.find_type {
-                    reovim_driver_command::FindType::FindForward => FindType::FindForward,
-                    reovim_driver_command::FindType::FindBackward => FindType::FindBackward,
-                    reovim_driver_command::FindType::TillForward => FindType::TillForward,
-                    reovim_driver_command::FindType::TillBackward => FindType::TillBackward,
+                // Command (f/F/t/T or r) needs a character argument.
+                // Set pending-char state so next key press completes the operation.
+                use {
+                    super::app::{FindType, PendingCharOp},
+                    reovim_driver_command::CharWaitOp,
                 };
 
-                self.app.char_wait = Some(CharWaitState::new(find_type, ctx.start_position));
+                let pending = match ctx.op_type {
+                    CharWaitOp::FindForward => {
+                        let start = ctx.start_position.expect("FindForward requires position");
+                        PendingCharOp::from_find_type(FindType::FindForward, start)
+                    }
+                    CharWaitOp::FindBackward => {
+                        let start = ctx.start_position.expect("FindBackward requires position");
+                        PendingCharOp::from_find_type(FindType::FindBackward, start)
+                    }
+                    CharWaitOp::TillForward => {
+                        let start = ctx.start_position.expect("TillForward requires position");
+                        PendingCharOp::from_find_type(FindType::TillForward, start)
+                    }
+                    CharWaitOp::TillBackward => {
+                        let start = ctx.start_position.expect("TillBackward requires position");
+                        PendingCharOp::from_find_type(FindType::TillBackward, start)
+                    }
+                    CharWaitOp::ReplaceChar => {
+                        let count = ctx.count.unwrap_or(1);
+                        PendingCharOp::replace_char(count)
+                    }
+                };
+
+                self.app.set_pending_char(pending);
                 self.last_error = None;
             }
             CommandResult::RepeatFindSame => {
@@ -402,6 +482,12 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
                 // Search commands (/, ?, n, N, *, #, :noh) return search actions.
                 // The runner handles input mode, pattern storage, and search execution.
                 self.handle_search_action(action);
+            }
+            CommandResult::RepeatAction => {
+                // Repeat command (.) wants to replay the last repeatable command.
+                // Full implementation comes in Phase 5.
+                tracing::debug!("RepeatAction requested - not yet implemented");
+                self.last_error = None;
             }
         }
     }

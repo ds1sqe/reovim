@@ -1493,6 +1493,87 @@ impl CommandHandler for ChangeToEndOfLine {
     }
 }
 
+// =============================================================================
+// Replace Commands
+// =============================================================================
+
+/// Start replace char operation (r).
+///
+/// This command signals that the next character typed should replace
+/// the character(s) under the cursor. Returns `WaitingForChar` with
+/// the `ReplaceChar` operation type.
+///
+/// Unlike `R` (replace mode), `r` is a single-character replacement:
+/// - `rx` replaces the char under cursor with 'x'
+/// - `3rx` replaces the next 3 chars with 'x'
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ReplaceCharStart;
+
+/// Repeat the last repeatable command (.).
+///
+/// This command returns `RepeatAction` which signals the runner to
+/// replay the last repeatable command from `repeat_state`. Repeatable
+/// commands include text-modifying operations like insert, delete, change.
+///
+/// # Vim Behavior
+///
+/// - `.` repeats the last change command
+/// - `3.` repeats the last change 3 times
+/// - Insert mode text is recorded and replayed
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RepeatDot;
+
+impl Command for RepeatDot {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "repeat-dot")
+    }
+
+    fn description(&self) -> &'static str {
+        "Repeat last change"
+    }
+
+    fn args(&self) -> Vec<ArgSpec> {
+        vec![ArgSpec::optional(
+            "count",
+            ArgKind::Count,
+            "Number of times to repeat",
+        )]
+    }
+}
+
+impl CommandHandler for RepeatDot {
+    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
+        // The runner handles the actual repeat logic.
+        // We just signal the intent to repeat.
+        CommandResult::RepeatAction
+    }
+}
+
+impl Command for ReplaceCharStart {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "replace-char-start")
+    }
+
+    fn description(&self) -> &'static str {
+        "Replace character under cursor"
+    }
+
+    fn args(&self) -> Vec<ArgSpec> {
+        vec![ArgSpec::optional(
+            "count",
+            ArgKind::Count,
+            "Number of characters to replace",
+        )]
+    }
+}
+
+impl CommandHandler for ReplaceCharStart {
+    fn execute(&self, _ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let count = args.count().unwrap_or(1);
+        CommandResult::waiting_for_replace_char(count)
+    }
+}
+
 /// Join current line with next line (J).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct JoinLines;
@@ -1980,6 +2061,10 @@ pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
         // Change
         Box::new(ChangeLine),
         Box::new(ChangeToEndOfLine),
+        // Replace
+        Box::new(ReplaceCharStart),
+        // Repeat
+        Box::new(RepeatDot),
         // Undo/redo
         Box::new(UndoCommand),
         Box::new(RedoCommand),
@@ -2201,8 +2286,9 @@ mod tests {
     #[test]
     fn test_all_commands_count() {
         let cmds = all_commands();
-        // 4 cursor + 2 display + 7 mode + 2 insert-edit + 5 delete + 1 yank + 2 paste + 2 change + 2 undo = 27
-        assert_eq!(cmds.len(), 27);
+        // 4 cursor + 2 display + 7 mode + 2 insert-edit + 5 delete + 1 yank + 2 paste
+        // + 2 change + 2 undo + 1 replace_char + 1 repeat + 2 change_line = 30
+        assert_eq!(cmds.len(), 30);
     }
 
     #[test]
@@ -3215,5 +3301,89 @@ mod tests {
         } else {
             panic!("Expected EditAction result");
         }
+    }
+
+    // =========================================================================
+    // Replace Char Tests
+    // =========================================================================
+
+    #[test]
+    fn test_replace_char_start_command_id() {
+        let cmd = ReplaceCharStart;
+        assert_eq!(cmd.id().name(), "replace-char-start");
+    }
+
+    #[test]
+    fn test_replace_char_start_has_count_arg() {
+        let cmd = ReplaceCharStart;
+        let args = cmd.args();
+        assert_eq!(args.len(), 1);
+        assert_eq!(args[0].name, "count");
+    }
+
+    #[test]
+    fn test_replace_char_start_returns_waiting_for_char() {
+        let (mut ctx, _buffer_id) = setup_buffer_context();
+        let args = CommandContext::new();
+        let result = ReplaceCharStart.execute(&mut ctx, &args);
+
+        assert!(result.is_waiting_for_char());
+    }
+
+    #[test]
+    fn test_replace_char_start_with_count() {
+        use reovim_driver_command::{ArgValue, CharWaitOp};
+
+        let (mut ctx, _buffer_id) = setup_buffer_context();
+        let mut args = CommandContext::new();
+        args.set("count", ArgValue::Count(3));
+        let result = ReplaceCharStart.execute(&mut ctx, &args);
+
+        if let CommandResult::WaitingForChar(char_ctx) = result {
+            assert_eq!(char_ctx.op_type, CharWaitOp::ReplaceChar);
+            assert_eq!(char_ctx.count, Some(3));
+        } else {
+            panic!("Expected WaitingForChar result");
+        }
+    }
+
+    #[test]
+    fn test_replace_char_start_default_count_is_one() {
+        let (mut ctx, _buffer_id) = setup_buffer_context();
+        let args = CommandContext::new();
+        let result = ReplaceCharStart.execute(&mut ctx, &args);
+
+        if let CommandResult::WaitingForChar(char_ctx) = result {
+            assert_eq!(char_ctx.count, Some(1));
+        } else {
+            panic!("Expected WaitingForChar result");
+        }
+    }
+
+    // =========================================================================
+    // Repeat Dot Tests
+    // =========================================================================
+
+    #[test]
+    fn test_repeat_dot_command_id() {
+        let cmd = RepeatDot;
+        assert_eq!(cmd.id().name(), "repeat-dot");
+    }
+
+    #[test]
+    fn test_repeat_dot_has_count_arg() {
+        let cmd = RepeatDot;
+        let args = cmd.args();
+        assert_eq!(args.len(), 1);
+        assert_eq!(args[0].name, "count");
+    }
+
+    #[test]
+    fn test_repeat_dot_returns_repeat_action() {
+        let (mut ctx, _buffer_id) = setup_buffer_context();
+        let args = CommandContext::new();
+        let result = RepeatDot.execute(&mut ctx, &args);
+
+        assert!(result.is_repeat_action());
     }
 }
