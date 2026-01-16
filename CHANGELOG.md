@@ -57,6 +57,20 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
       - `undotree_handler.rs` - Undotree panel methods
       - `visual_handler.rs` - Visual selection helpers
       - `mod.rs` - `EventLoop` struct, core dispatch, tests
+  - **Phase 4 - Module & Driver Files**:
+    - Split `modules/editor/src/visual.rs` (1,527 lines) into 5 focused modules (#299):
+      - `entry.rs` - `EnterVisualMode`, `EnterVisualLineMode`, `EnterVisualBlockMode`
+      - `exit.rs` - `ExitVisualMode`
+      - `manipulation.rs` - `SwapAnchor`, `ToggleVisualChar`, `ToggleVisualLine`, `ToggleVisualBlock`, `ReselectLast`
+      - `operators.rs` - `DeleteSelection`, `YankSelection`, `ChangeSelection`, `IndentSelection`, `DedentSelection`
+      - `mod.rs` - Re-exports and helper functions
+    - Split `lib/drivers/command/src/result.rs` (872 lines) into 6 focused modules (#295):
+      - `search.rs` - `SearchDirection`, `SearchAction`
+      - `undo.rs` - `UndoAction`, `UndotreeAction`
+      - `window.rs` - `WindowAction`
+      - `mode.rs` - `ModeAction`
+      - `edit.rs` - `EditAction`
+      - `mod.rs` - `CommandResult` enum and re-exports
   - External APIs unchanged - all types re-exported from module roots
   - All tests passing with zero regressions
 
