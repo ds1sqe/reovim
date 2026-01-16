@@ -257,7 +257,7 @@ Detailed body explaining what and why.
 - Bullet points for key changes
 - Can be multi-line
 
-Refs #ISSUE_NUMBER, Parts of #EPIC_NUMBER
+Closes: #ISSUE_SOLVED, Fixs: #BUG_ISSUE, Refs #ISSUE_NUMBER, Parts of #EPIC_NUMBER
 ```
 
 - **Header**: `type(scope): description (#NUM)` - issue number in parentheses
