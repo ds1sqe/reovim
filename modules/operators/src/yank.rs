@@ -76,8 +76,17 @@ impl Operator for YankOperator {
 
         // Store in register
         // For now, assume characterwise; linewise detection would come from motion context
+        // TODO: Add linewise detection based on motion type (deferred to Phase 6)
         let content = RegisterContent::characterwise(yanked_text);
-        ctx.kernel.registers.write().set(content);
+
+        // Use set_by_name which handles:
+        // - None or '"' -> unnamed register
+        // - 'a'-'z' -> named register
+        // - 'A'-'Z' -> append to named register
+        ctx.kernel
+            .registers
+            .write()
+            .set_by_name(ctx.register, content);
 
         Ok(())
     }

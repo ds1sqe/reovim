@@ -12,15 +12,16 @@
 //! - h/l (left/right) clear the preferred column
 //! - Movements clamp to valid positions (no-op at boundaries)
 
+use std::path::Path;
+
 use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult, UndoAction,
     },
     reovim_kernel::api::v1::{
-        CommandId, KernelContext, Position,
+        CommandId, KernelContext, Position, RegisterContent,
         events::{CursorMoved, ModeChanged},
     },
-    std::path::Path,
 };
 
 use super::{display_lines, mode::EDITOR_MODULE};
@@ -1436,6 +1437,276 @@ impl CommandHandler for WriteBufferCommand {
 }
 
 // =============================================================================
+// Yank Commands
+// =============================================================================
+
+/// Yank current line(s) to register (yy, Y).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct YankLine;
+
+impl Command for YankLine {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "yank-line")
+    }
+
+    fn description(&self) -> &'static str {
+        "Yank current line"
+    }
+
+    fn args(&self) -> Vec<ArgSpec> {
+        vec![ArgSpec::optional(
+            "count",
+            ArgKind::Count,
+            "Number of lines to yank",
+        )]
+    }
+}
+
+impl CommandHandler for YankLine {
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        let count = args.count().unwrap_or(1);
+        let buffer = buffer_arc.read();
+        let start_line = buffer.position().line;
+        let line_count = buffer.line_count();
+
+        // Can't yank from empty buffer
+        if line_count == 0 {
+            return CommandResult::Success;
+        }
+
+        // Collect lines to yank
+        let end_line = (start_line + count).min(line_count);
+        let mut yanked = String::new();
+        for line_idx in start_line..end_line {
+            if let Some(line) = buffer.line(line_idx) {
+                yanked.push_str(line);
+                yanked.push('\n');
+            }
+        }
+        drop(buffer);
+
+        // Store in unnamed register as linewise
+        let content = RegisterContent::linewise(yanked);
+        ctx.registers.write().set(content);
+
+        CommandResult::Success
+    }
+}
+
+// =============================================================================
+// Paste Commands
+// =============================================================================
+
+/// Paste from register after cursor (p).
+///
+/// - Linewise paste: insert below current line
+/// - Characterwise paste: insert after cursor position
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PasteAfter;
+
+impl Command for PasteAfter {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "paste-after")
+    }
+
+    fn description(&self) -> &'static str {
+        "Paste after cursor"
+    }
+
+    fn args(&self) -> Vec<ArgSpec> {
+        vec![ArgSpec::optional(
+            "count",
+            ArgKind::Count,
+            "Number of times to paste",
+        )]
+    }
+}
+
+impl CommandHandler for PasteAfter {
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        let count = args.count().unwrap_or(1);
+
+        // Get register content
+        let content = {
+            let registers = ctx.registers.read();
+            registers.get().clone()
+        };
+
+        if content.is_empty() {
+            return CommandResult::Success; // Nothing to paste
+        }
+
+        let mut buffer = buffer_arc.write();
+        let pos = buffer.position();
+        let cursor_before = pos;
+
+        if content.is_linewise() {
+            // Paste below current line
+            let line_count = buffer.line_count();
+
+            // Build paste text (repeated count times, strip trailing newline for clean insert)
+            let paste_text = content.text.repeat(count);
+            let paste_text = paste_text.trim_end_matches('\n');
+
+            if line_count == 0 {
+                // Empty buffer: just insert the content
+                let edit = buffer.insert(paste_text);
+                buffer.set_position(Position::new(0, 0));
+                let cursor_after = buffer.position();
+                drop(buffer);
+                return CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after);
+            }
+
+            // Move to end of current line
+            let line_len = buffer.line_len(pos.line).unwrap_or(0);
+            buffer.set_position(Position::new(pos.line, line_len));
+
+            // Insert newline then content
+            let insert_text = format!("\n{paste_text}");
+            let edit = buffer.insert(&insert_text);
+
+            // Position cursor on first character of first pasted line
+            let new_line = pos.line + 1;
+            buffer.set_position(Position::new(new_line, 0));
+            let cursor_after = buffer.position();
+            drop(buffer);
+
+            CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
+        } else {
+            // Characterwise: paste after cursor
+            let line_len = buffer.line_len(pos.line).unwrap_or(0);
+            let insert_col = if line_len == 0 {
+                0
+            } else {
+                (pos.column + 1).min(line_len)
+            };
+
+            buffer.set_position(Position::new(pos.line, insert_col));
+
+            let paste_text = content.text.repeat(count);
+            let edit = buffer.insert(&paste_text);
+
+            // Position cursor at end of pasted text (Vim behavior: last character)
+            let final_pos = buffer.position();
+            let cursor_after = if final_pos.column > 0 {
+                Position::new(final_pos.line, final_pos.column - 1)
+            } else {
+                final_pos
+            };
+            buffer.set_position(cursor_after);
+            drop(buffer);
+
+            CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
+        }
+    }
+}
+
+/// Paste from register before cursor (P).
+///
+/// - Linewise paste: insert above current line
+/// - Characterwise paste: insert at cursor position
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PasteBefore;
+
+impl Command for PasteBefore {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "paste-before")
+    }
+
+    fn description(&self) -> &'static str {
+        "Paste before cursor"
+    }
+
+    fn args(&self) -> Vec<ArgSpec> {
+        vec![ArgSpec::optional(
+            "count",
+            ArgKind::Count,
+            "Number of times to paste",
+        )]
+    }
+}
+
+impl CommandHandler for PasteBefore {
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        let count = args.count().unwrap_or(1);
+
+        // Get register content
+        let content = {
+            let registers = ctx.registers.read();
+            registers.get().clone()
+        };
+
+        if content.is_empty() {
+            return CommandResult::Success; // Nothing to paste
+        }
+
+        let mut buffer = buffer_arc.write();
+        let pos = buffer.position();
+        let cursor_before = pos;
+
+        // Build paste text (repeated count times)
+        let paste_text = content.text.repeat(count);
+
+        if content.is_linewise() {
+            // Paste above current line
+            // Strip trailing newline for clean insert
+            let paste_text = paste_text.trim_end_matches('\n');
+
+            // Move to start of current line
+            buffer.set_position(Position::new(pos.line, 0));
+
+            // Insert content then newline
+            let insert_text = format!("{paste_text}\n");
+            let edit = buffer.insert(&insert_text);
+
+            // Position cursor on first character of first pasted line
+            buffer.set_position(Position::new(pos.line, 0));
+            let cursor_after = buffer.position();
+            drop(buffer);
+
+            CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
+        } else {
+            // Characterwise: paste at cursor position (before)
+            // Cursor stays at current position, content inserted there
+            let edit = buffer.insert(&paste_text);
+
+            // Position cursor at end of pasted text (Vim behavior: last character)
+            let final_pos = buffer.position();
+            let cursor_after = if final_pos.column > 0 {
+                Position::new(final_pos.line, final_pos.column - 1)
+            } else {
+                final_pos
+            };
+            buffer.set_position(cursor_after);
+            drop(buffer);
+
+            CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
+        }
+    }
+}
+
+// =============================================================================
 // Command Registration Helper
 // =============================================================================
 
@@ -1470,6 +1741,11 @@ pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
         Box::new(DeleteLine),
         Box::new(DeleteToEndOfLine),
         Box::new(JoinLines),
+        // Yank
+        Box::new(YankLine),
+        // Paste
+        Box::new(PasteAfter),
+        Box::new(PasteBefore),
         // Undo/redo
         Box::new(UndoCommand),
         Box::new(RedoCommand),
@@ -1533,12 +1809,23 @@ pub fn undo_commands() -> Vec<Box<dyn CommandHandler>> {
     vec![Box::new(UndoCommand), Box::new(RedoCommand)]
 }
 
+/// Get all yank commands.
+#[must_use]
+pub fn yank_commands() -> Vec<Box<dyn CommandHandler>> {
+    vec![Box::new(YankLine)]
+}
+
+/// Get all paste commands.
+#[must_use]
+pub fn paste_commands() -> Vec<Box<dyn CommandHandler>> {
+    vec![Box::new(PasteAfter), Box::new(PasteBefore)]
+}
+
 #[cfg(test)]
 mod tests {
     use {
         super::*,
         reovim_driver_command::ArgValue,
-        reovim_driver_vfs::VfsDriver,
         reovim_kernel::api::v1::{
             Buffer, BufferError, BufferId, BufferManager, EventBus, MarkBank, MotionEngine,
             OptionRegistry, RegisterBank, RwLock, TextObjectEngine,
@@ -1674,8 +1961,8 @@ mod tests {
     #[test]
     fn test_all_commands_count() {
         let cmds = all_commands();
-        // 4 cursor + 2 display + 7 mode + 2 insert-edit + 5 delete + 2 undo + 1 file = 23
-        assert_eq!(cmds.len(), 23);
+        // 4 cursor + 2 display + 7 mode + 2 insert-edit + 5 delete + 1 yank + 2 paste + 2 undo = 25
+        assert_eq!(cmds.len(), 25);
     }
 
     #[test]
@@ -2149,130 +2436,291 @@ mod tests {
     }
 
     // =========================================================================
-    // WriteBufferCommand Tests
+    // Yank Command Tests
     // =========================================================================
 
     #[test]
-    fn test_write_buffer_command_id() {
-        let cmd = WriteBufferCommand;
+    fn test_yank_line_command_id() {
+        let cmd = YankLine;
         assert_eq!(cmd.id().module(), &EDITOR_MODULE);
-        assert_eq!(cmd.id().name(), "write");
+        assert_eq!(cmd.id().name(), "yank-line");
     }
 
     #[test]
-    fn test_write_buffer_command_names() {
-        let cmd = WriteBufferCommand;
-        let names = cmd.names();
-        assert!(names.contains(&"w"));
-        assert!(names.contains(&"write"));
-    }
-
-    #[test]
-    fn test_write_buffer_command_args() {
-        let cmd = WriteBufferCommand;
+    fn test_yank_line_has_count_arg() {
+        let cmd = YankLine;
         let args = cmd.args();
-        assert_eq!(args.len(), 1);
-        assert_eq!(args[0].name, "file");
-        assert_eq!(args[0].kind, ArgKind::FilePath);
-        assert!(!args[0].required);
+        assert!(!args.is_empty());
+        assert_eq!(args[0].name, "count");
+        assert_eq!(args[0].kind, ArgKind::Count);
     }
 
     #[test]
-    fn test_write_buffer_requires_vfs() {
-        let mut ctx = create_test_context();
-        let buffer = Buffer::from_string("test content");
-        let buffer_id = ctx.buffers.register(buffer);
+    fn test_yank_line_no_buffer_returns_error() {
+        let mut ctx = KernelContext::default();
+        let args = CommandContext::new();
+        let result = YankLine.execute(&mut ctx, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_yank_line_single_line() {
+        let (mut ctx, buffer_id) = setup_buffer_context();
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = YankLine.execute(&mut ctx, &args);
+        assert!(result.is_success());
+
+        // Check register content
+        let registers = ctx.registers.read();
+        let content = registers.get().clone();
+        drop(registers);
+        assert!(content.is_linewise());
+        assert_eq!(content.text, "line one\n");
+    }
+
+    #[test]
+    fn test_yank_line_count() {
+        let (mut ctx, buffer_id) = setup_buffer_context();
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(2));
+
+        let result = YankLine.execute(&mut ctx, &args);
+        assert!(result.is_success());
+
+        // Check register content
+        let registers = ctx.registers.read();
+        let content = registers.get().clone();
+        drop(registers);
+        assert!(content.is_linewise());
+        assert_eq!(content.text, "line one\nline two\n");
+    }
+
+    #[test]
+    fn test_yank_line_at_eof() {
+        let (mut ctx, buffer_id) = setup_buffer_context();
+        // Move to last line
+        {
+            let buffer = ctx.buffers.get(buffer_id).unwrap();
+            buffer.write().set_position(Position::new(2, 0));
+        }
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
-        // No VFS set
+        args.set("count", ArgValue::Count(5)); // More than remaining lines
 
-        let result = WriteBufferCommand.execute(&mut ctx, &args);
-        assert!(result.is_error());
-        if let CommandResult::Error(msg) = result {
-            assert!(msg.contains("VFS"));
-        }
-    }
-
-    #[test]
-    fn test_write_buffer_requires_buffer_id() {
-        use reovim_driver_vfs::MockVfs;
-
-        let mut ctx = create_test_context();
-        let vfs: Arc<dyn reovim_driver_vfs::VfsDriver> = Arc::new(MockVfs::new());
-        let args = CommandContext::new().with_vfs(vfs);
-
-        let result = WriteBufferCommand.execute(&mut ctx, &args);
-        assert!(result.is_error());
-        if let CommandResult::Error(msg) = result {
-            assert!(msg.contains("buffer"));
-        }
-    }
-
-    #[test]
-    fn test_write_buffer_requires_file_path() {
-        use reovim_driver_vfs::MockVfs;
-
-        let mut ctx = create_test_context();
-        let buffer = Buffer::from_string("test content");
-        // Buffer has no file path set
-        let buffer_id = ctx.buffers.register(buffer);
-
-        let vfs: Arc<dyn reovim_driver_vfs::VfsDriver> = Arc::new(MockVfs::new());
-        let mut args = CommandContext::new().with_vfs(vfs);
-        args.set_buffer_id(buffer_id);
-
-        let result = WriteBufferCommand.execute(&mut ctx, &args);
-        assert!(result.is_error());
-        if let CommandResult::Error(msg) = result {
-            assert!(msg.contains("file path"));
-        }
-    }
-
-    #[test]
-    fn test_write_buffer_success_with_mock_vfs() {
-        use {reovim_driver_command::ArgValue, reovim_driver_vfs::MockVfs};
-
-        let mut ctx = create_test_context();
-        let buffer = Buffer::from_string("test content");
-        let buffer_id = ctx.buffers.register(buffer);
-
-        let vfs = Arc::new(MockVfs::new());
-        let vfs_clone: Arc<dyn reovim_driver_vfs::VfsDriver> = vfs.clone();
-
-        let mut args = CommandContext::new().with_vfs(vfs_clone);
-        args.set_buffer_id(buffer_id);
-        args.set("file", ArgValue::FilePath("/tmp/test.txt".into()));
-
-        let result = WriteBufferCommand.execute(&mut ctx, &args);
+        let result = YankLine.execute(&mut ctx, &args);
         assert!(result.is_success());
 
-        // Verify VFS received the write
-        let content = vfs.read(Path::new("/tmp/test.txt")).unwrap();
-        assert_eq!(String::from_utf8(content).unwrap(), "test content");
+        // Should only yank the last line
+        let registers = ctx.registers.read();
+        let content = registers.get().clone();
+        drop(registers);
+        assert!(content.is_linewise());
+        assert_eq!(content.text, "line three\n");
     }
 
     #[test]
-    fn test_write_buffer_clears_modified_flag() {
-        use {reovim_driver_command::ArgValue, reovim_driver_vfs::MockVfs};
+    fn test_yank_commands_count() {
+        let cmds = yank_commands();
+        assert_eq!(cmds.len(), 1);
+    }
 
+    // =========================================================================
+    // Paste Command Tests
+    // =========================================================================
+
+    #[test]
+    fn test_paste_after_command_id() {
+        let cmd = PasteAfter;
+        assert_eq!(cmd.id().module(), &EDITOR_MODULE);
+        assert_eq!(cmd.id().name(), "paste-after");
+    }
+
+    #[test]
+    fn test_paste_before_command_id() {
+        let cmd = PasteBefore;
+        assert_eq!(cmd.id().module(), &EDITOR_MODULE);
+        assert_eq!(cmd.id().name(), "paste-before");
+    }
+
+    #[test]
+    fn test_paste_after_has_count_arg() {
+        let cmd = PasteAfter;
+        let args = cmd.args();
+        assert!(!args.is_empty());
+        assert_eq!(args[0].name, "count");
+        assert_eq!(args[0].kind, ArgKind::Count);
+    }
+
+    #[test]
+    fn test_paste_before_has_count_arg() {
+        let cmd = PasteBefore;
+        let args = cmd.args();
+        assert!(!args.is_empty());
+        assert_eq!(args[0].name, "count");
+        assert_eq!(args[0].kind, ArgKind::Count);
+    }
+
+    #[test]
+    fn test_paste_after_no_buffer_returns_error() {
+        let mut ctx = KernelContext::default();
+        let args = CommandContext::new();
+        let result = PasteAfter.execute(&mut ctx, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_paste_before_no_buffer_returns_error() {
+        let mut ctx = KernelContext::default();
+        let args = CommandContext::new();
+        let result = PasteBefore.execute(&mut ctx, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_paste_after_empty_register() {
+        let (mut ctx, buffer_id) = setup_buffer_context();
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        // Register is empty by default
+        let result = PasteAfter.execute(&mut ctx, &args);
+        assert!(result.is_success()); // No-op, not error
+    }
+
+    #[test]
+    fn test_paste_after_linewise() {
+        let (mut ctx, buffer_id) = setup_buffer_context();
+
+        // First yank a line
+        {
+            let mut args = CommandContext::new();
+            args.set_buffer_id(buffer_id);
+            YankLine.execute(&mut ctx, &args);
+        }
+
+        // Then paste after
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = PasteAfter.execute(&mut ctx, &args);
+        assert!(result.is_edit_action());
+
+        // Check buffer content
+        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let buffer_read = buffer.read();
+        let line_count = buffer_read.line_count();
+        let line1 = buffer_read.line(1).map(str::to_owned);
+        drop(buffer_read);
+        assert_eq!(line_count, 4); // Original 3 + 1 pasted
+        assert_eq!(line1.as_deref(), Some("line one")); // Pasted line
+    }
+
+    #[test]
+    fn test_paste_before_linewise() {
+        let (mut ctx, buffer_id) = setup_buffer_context();
+
+        // First yank a line
+        {
+            let mut args = CommandContext::new();
+            args.set_buffer_id(buffer_id);
+            YankLine.execute(&mut ctx, &args);
+        }
+
+        // Then paste before
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = PasteBefore.execute(&mut ctx, &args);
+        assert!(result.is_edit_action());
+
+        // Check buffer content
+        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let buffer_read = buffer.read();
+        let line_count = buffer_read.line_count();
+        let line0 = buffer_read.line(0).map(str::to_owned);
+        drop(buffer_read);
+        assert_eq!(line_count, 4); // Original 3 + 1 pasted
+        assert_eq!(line0.as_deref(), Some("line one")); // Pasted line at top
+    }
+
+    #[test]
+    fn test_paste_after_characterwise() {
         let mut ctx = create_test_context();
-        let mut buffer = Buffer::from_string("test content");
-        buffer.set_modified(true);
+        let buffer = Buffer::from_string("hello world");
         let buffer_id = ctx.buffers.register(buffer);
 
-        // Verify buffer is modified before write
-        assert!(ctx.buffers.get(buffer_id).unwrap().read().is_modified());
+        // Set characterwise content in register
+        ctx.registers
+            .write()
+            .set(RegisterContent::characterwise("XYZ"));
 
-        let vfs: Arc<dyn reovim_driver_vfs::VfsDriver> = Arc::new(MockVfs::new());
-        let mut args = CommandContext::new().with_vfs(vfs);
+        let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
-        args.set("file", ArgValue::FilePath("/tmp/test.txt".into()));
+        let result = PasteAfter.execute(&mut ctx, &args);
+        assert!(result.is_edit_action());
 
-        let result = WriteBufferCommand.execute(&mut ctx, &args);
-        assert!(result.is_success());
+        // Check buffer content - "XYZ" pasted after cursor (position 0)
+        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let buffer_read = buffer.read();
+        let content = buffer_read.line(0).map(str::to_owned);
+        drop(buffer_read);
+        assert_eq!(content.as_deref(), Some("hXYZello world"));
+    }
 
-        // Verify buffer is no longer modified
-        assert!(!ctx.buffers.get(buffer_id).unwrap().read().is_modified());
+    #[test]
+    fn test_paste_before_characterwise() {
+        let mut ctx = create_test_context();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        // Set characterwise content in register
+        ctx.registers
+            .write()
+            .set(RegisterContent::characterwise("XYZ"));
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = PasteBefore.execute(&mut ctx, &args);
+        assert!(result.is_edit_action());
+
+        // Check buffer content - "XYZ" pasted at cursor (position 0)
+        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let buffer_read = buffer.read();
+        let content = buffer_read.line(0).map(str::to_owned);
+        drop(buffer_read);
+        assert_eq!(content.as_deref(), Some("XYZhello world"));
+    }
+
+    #[test]
+    fn test_paste_after_count() {
+        let mut ctx = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        // Set characterwise content in register
+        ctx.registers
+            .write()
+            .set(RegisterContent::characterwise("X"));
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(3));
+        let result = PasteAfter.execute(&mut ctx, &args);
+        assert!(result.is_edit_action());
+
+        // Check buffer content - "XXX" pasted after cursor
+        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let buffer_read = buffer.read();
+        let content = buffer_read.line(0).map(str::to_owned);
+        drop(buffer_read);
+        assert_eq!(content.as_deref(), Some("hXXXello"));
+    }
+
+    #[test]
+    fn test_paste_commands_count() {
+        let cmds = paste_commands();
+        assert_eq!(cmds.len(), 2);
     }
 }

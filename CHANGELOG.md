@@ -72,6 +72,17 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
     - 8 comprehensive tests (error cases, happy path)
   - Deferred: `:e` / `:edit` command (Issue #236)
 
+- **Phase 7-D: Yank/Paste Operations** (Issue #237)
+  - `YankLine` command (`yy`, `Y`) yanks current line(s) to register as linewise
+  - `PasteAfter` command (`p`) pastes content after cursor or below line
+  - `PasteBefore` command (`P`) pastes content before cursor or above line
+  - Count support: `3yy` yanks 3 lines, `3p` pastes 3 times
+  - Linewise vs characterwise paste behavior based on register content type
+  - Empty register paste is no-op (matches Vim behavior)
+  - `YankOperator` enhanced with `set_by_name()` for named registers
+  - Helper functions: `yank_commands()`, `paste_commands()`
+  - 20 unit tests covering edge cases (EOF, empty buffer, empty register)
+
 - **Phase 7.8: Undotree Visualization Module** (Issue #249)
   - New `modules/undotree/` module for undo tree visualization
   - `:undotree` command (alias `:ut`) to toggle visualization panel

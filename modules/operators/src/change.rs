@@ -84,7 +84,12 @@ impl Operator for ChangeOperator {
         // Store in register
         // For now, assume characterwise; linewise detection would come from motion context
         let content = RegisterContent::characterwise(deleted_text);
-        ctx.kernel.registers.write().set(content);
+
+        // Use set_by_name which handles named registers (a-z) and append (A-Z)
+        ctx.kernel
+            .registers
+            .write()
+            .set_by_name(ctx.register, content);
 
         // Note: Insert mode transition is handled by the caller
         // The runner/display driver should check operator id and enter insert mode
