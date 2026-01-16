@@ -262,6 +262,43 @@ impl ModuleRegistry {
         Ok(())
     }
 
+    /// Unload module with handler cleanup.
+    ///
+    /// This method:
+    /// 1. Calls `unregister_for_module()` on all provided registries
+    /// 2. Calls the standard `unload()` method
+    ///
+    /// Use this when unloading a module that has registered handlers
+    /// (commands, keybindings, modes) to ensure proper cleanup.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if other modules depend on this one, or if
+    /// module exit fails.
+    pub fn unload_with_cleanup(
+        &self,
+        id: &ModuleId,
+        command_registry: &mut crate::server::registry::CommandRegistry,
+        keymap_registry: &mut crate::server::registry::KeymapRegistry,
+        mode_registry: &mut crate::server::registry::ModeRegistry,
+    ) -> Result<(), ModuleError> {
+        // 1. Clean up handlers from registries
+        let commands_removed = command_registry.unregister_for_module(id);
+        let keybindings_removed = keymap_registry.unregister_for_module(id);
+        let modes_removed = mode_registry.unregister_for_module(id);
+
+        tracing::debug!(
+            module = %id,
+            commands = commands_removed,
+            keybindings = keybindings_removed,
+            modes = modes_removed,
+            "cleaned up module handlers"
+        );
+
+        // 2. Unload the module itself
+        self.unload(id)
+    }
+
     /// Shutdown all modules in reverse initialization order.
     ///
     /// Always succeeds even if individual module exits fail (continues shutdown).

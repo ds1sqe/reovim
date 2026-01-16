@@ -65,6 +65,7 @@ mod handle;
 mod loader;
 #[allow(unsafe_code)]
 mod registry;
+mod wiring;
 
 // Re-exports - public API of the module system
 pub use {
@@ -76,4 +77,5 @@ pub use {
     handle::{InitResult, ModuleHandle},
     loader::ModuleLoader,
     registry::ModuleRegistry,
+    wiring::{WiringError, WiringResult, WiringStats, wire_module_keybindings},
 };
