@@ -12,3 +12,4 @@ crate-type = ["rlib"]
 [dependencies]
 reovim-kernel = { path = "../../lib/kernel" }
 reovim-driver-display = { path = "../../lib/drivers/display" }
+reovim-driver-command = { path = "../../lib/drivers/command" }

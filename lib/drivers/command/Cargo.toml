@@ -16,5 +16,6 @@ workspace = true
 # Kernel layer (for CommandId, KernelContext)
 reovim-kernel = { path = "../../kernel", version = "0.9.0-dev" }
 
-# Driver layer (for VfsDriver)
+# Driver layer (for VfsDriver, NavigateDirection)
 reovim-driver-vfs = { path = "../vfs", version = "0.9.0-dev" }
+reovim-driver-display = { path = "../display", version = "0.9.0-dev" }

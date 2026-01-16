@@ -83,6 +83,17 @@ impl UndoRegistry {
         self.trees.get_mut(&buffer_id)?.redo()
     }
 
+    /// Redo following a specific branch for a buffer.
+    ///
+    /// Like `redo()` but follows a specific branch index instead of
+    /// the default/active branch. Used for undotree navigation.
+    ///
+    /// Returns the edits to apply and cursor position, or `None` if
+    /// the branch index is invalid or there's nothing to redo.
+    pub fn redo_branch(&mut self, buffer_id: BufferId, branch_idx: usize) -> Option<UndoResult> {
+        self.trees.get_mut(&buffer_id)?.redo_branch(branch_idx)
+    }
+
     /// Record an edit transaction for a buffer.
     ///
     /// This should be called after making edits to a buffer so they can

@@ -22,6 +22,12 @@ reovim-driver-display = { path = "../lib/drivers/display" }
 reovim-driver-input = { path = "../lib/drivers/input" }
 reovim-driver-vfs = { path = "../lib/drivers/vfs" }
 
+# Layout module for window management
+reovim-module-layout = { path = "../modules/layout" }
+
+# Undotree module for rendering
+reovim-module-undotree = { path = "../modules/undotree" }
+
 # Protocol (shared RPC types)
 reovim-protocol = { path = "../lib/protocol" }
 

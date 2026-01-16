@@ -114,6 +114,25 @@ impl CommandHandler for UndotreeCloseCommand {
     }
 }
 
+/// Preview the diff of the selected undotree node.
+pub struct UndotreePreviewCommand;
+
+impl Command for UndotreePreviewCommand {
+    fn id(&self) -> CommandId {
+        CommandId::new(UNDOTREE_MODULE, "undotree-preview")
+    }
+
+    fn description(&self) -> &'static str {
+        "Preview diff of selected undotree node"
+    }
+}
+
+impl CommandHandler for UndotreePreviewCommand {
+    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
+        CommandResult::UndotreeAction(UndotreeAction::PreviewDiff)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use {super::*, reovim_kernel::api::v1::BufferId};
@@ -228,12 +247,29 @@ mod tests {
     }
 
     #[test]
+    fn test_undotree_preview_command_id() {
+        let cmd = UndotreePreviewCommand;
+        assert_eq!(cmd.id().name(), "undotree-preview");
+    }
+
+    #[test]
+    fn test_undotree_preview_command_execute() {
+        let cmd = UndotreePreviewCommand;
+        let ctx = CommandContext::new();
+        let mut kernel = KernelContext::default();
+
+        let result = cmd.execute(&mut kernel, &ctx);
+        assert!(matches!(result, CommandResult::UndotreeAction(UndotreeAction::PreviewDiff)));
+    }
+
+    #[test]
     fn test_all_commands_have_description() {
         assert!(!UndotreeCommand.description().is_empty());
         assert!(!UndotreeDownCommand.description().is_empty());
         assert!(!UndotreeUpCommand.description().is_empty());
         assert!(!UndotreeGotoCommand.description().is_empty());
         assert!(!UndotreeCloseCommand.description().is_empty());
+        assert!(!UndotreePreviewCommand.description().is_empty());
     }
 
     #[test]
@@ -244,5 +280,6 @@ mod tests {
         assert_eq!(UndotreeUpCommand.id().module(), &UNDOTREE_MODULE);
         assert_eq!(UndotreeGotoCommand.id().module(), &UNDOTREE_MODULE);
         assert_eq!(UndotreeCloseCommand.id().module(), &UNDOTREE_MODULE);
+        assert_eq!(UndotreePreviewCommand.id().module(), &UNDOTREE_MODULE);
     }
 }

@@ -71,6 +71,92 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Basic Window Management** (Issue #276)
+  - **WindowRegistry** (`runner/src/server/window.rs`):
+    - `WindowState` struct for per-window cursor position and scroll offset
+    - `WindowRegistry` manages window state, layout, and focus
+    - `create_window()`, `close_window()`, `split_horizontal()`, `split_vertical()`
+    - `focus_direction()` for hjkl navigation, `cycle_forward()`/`cycle_backward()`
+    - 15 unit tests for window management
+  - **WindowAction Command Result** (`lib/drivers/command/src/result.rs`):
+    - `WindowAction` enum: SplitHorizontal, SplitVertical, CloseWindow, CloseOthers
+    - Focus variants: FocusDirection, CycleForward, CycleBackward
+    - Resize variants: ResizeHeightIncrease/Decrease, ResizeWidthIncrease/Decrease, ResizeEqual
+    - `CommandResult::WindowAction(WindowAction)` variant
+    - `is_window_action()` helper method
+    - 6 unit tests for WindowAction
+  - **ModeAction for Mode Stack** (`lib/drivers/command/src/result.rs`):
+    - `ModeAction` enum: Push, Pop, Set for mode stack manipulation
+    - `CommandResult::ModeAction(ModeAction)` variant
+    - Used by `enter-window-mode` command to push "window" mode
+    - 5 unit tests for ModeAction
+  - **Window Commands** (`modules/layout/src/commands.rs`):
+    - 15 window command handlers using callback pattern
+    - `SplitHorizontal`, `SplitVertical`, `CloseWindow`, `CloseOthers`
+    - `FocusLeft`, `FocusRight`, `FocusUp`, `FocusDown`
+    - `CycleForward`, `CycleBackward`
+    - `ResizeHeightIncrease/Decrease`, `ResizeWidthIncrease/Decrease`, `ResizeEqual`
+    - `all_commands()` function returns all handlers
+  - **EnterWindowMode Command** (`modules/editor/src/command.rs`):
+    - Returns `ModeAction::Push("window")` to enter window mode
+    - `<C-w>` keybinding already exists in keymap module
+  - **Event Loop Integration** (`runner/src/server/event_loop.rs`):
+    - `handle_window_action()` method handles all WindowAction variants
+    - `handle_mode_action()` method handles ModeAction variants
+    - Emits `WindowCreated`, `WindowClosed`, `WindowFocused` kernel events
+  - **Multi-Window Rendering** (`runner/src/server/rpc/handlers/screen.rs`):
+    - `render_multi_window()` composes window content into screen grid
+    - `find_separators()` determines separator positions between windows
+    - Vertical (`│`) and horizontal (`─`) separator rendering
+    - Active window indicator at separator intersections
+    - 5 unit tests for multi-window rendering
+
+- **Undotree Panel Integration** (Issue #257)
+  - **UndotreeState** (`runner/src/server/app.rs`):
+    - Tracks panel visibility, window ID, source buffer, selection, and scroll state
+    - `open()`, `close()` methods with focus restoration
+    - `set_rendered_lines()`, `rendered_lines()` for display caching
+    - 5 unit tests for undotree state management
+  - **Event Loop Handlers** (`runner/src/server/event_loop.rs`):
+    - `handle_undotree_action()` dispatches all UndotreeAction variants
+    - `toggle_undotree_panel()` creates/destroys side panel window
+    - `close_undotree_panel()` with focus restoration and mode pop
+    - `undotree_move_up()`, `undotree_move_down()` for tree navigation
+    - `undotree_goto_node()` applies undo/redo to reach target node
+    - `refresh_undotree_panel()` renders tree with selection highlighting
+  - **UndotreeModule** (`modules/undotree/src/lib.rs`):
+    - Implements `Module` trait with keybindings for undotree mode
+    - `keybindings()` returns 6 bindings for j/k/Enter/q/Esc
+    - Mode-scoped bindings only active in undotree mode
+  - **UndoRegistry Extension** (`runner/src/undo_registry.rs`):
+    - `redo_branch()` method for navigating to specific branch during GotoNode
+  - Integration with existing infrastructure:
+    - Uses WindowRegistry from Issue #276 for panel window
+    - Uses UndotreeRenderer from modules/undotree for tree visualization
+    - Uses ModeStack for undotree mode push/pop
+
+- **Undotree Diff Preview** (Issue #250)
+  - **Keybinding**: `p` in undotree mode to preview diff of selected node
+  - **DiffFormatter** (`modules/undotree/src/diff.rs`):
+    - `DiffLine` and `DiffLineType` for styled diff output
+    - `format_edits_as_diff()` converts `Vec<Edit>` to unified diff format
+    - `format_edits_as_diff_with_options()` with truncation for large edits
+    - `should_summarize()` checks if edits exceed size thresholds
+    - `edit_summary()` returns edit count summary
+    - 16 unit tests for diff formatting
+  - **Preview State** (`runner/src/server/app.rs`):
+    - `DiffPreviewLine` struct for styled preview display
+    - `UndotreeState` extended with preview fields (active, node, lines)
+    - `set_preview()`, `clear_preview()`, `is_preview_active()` methods
+    - 5 unit tests for preview state management
+  - **Event Loop Handlers** (`runner/src/server/event_loop.rs`):
+    - `undotree_preview_diff()` extracts edits and formats as diff
+    - Auto-dismiss on navigation (move up/down, goto clears preview)
+    - `refresh_undotree_panel()` appends diff lines when preview active
+  - **UndotreeAction Enum** (`lib/drivers/command/src/result.rs`):
+    - `PreviewDiff` variant for preview keybinding
+    - `ClearPreview` variant for explicit dismiss
+
 - **Visual Mode** (Issue #242)
   - **Three selection types** in `EditorMode` enum:
     - Character-wise selection (`v`) - standard visual mode

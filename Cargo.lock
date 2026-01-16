@@ -1013,6 +1013,8 @@ dependencies = [
  "reovim-kernel",
  "reovim-module-editor",
  "reovim-module-hot-reload-demo",
+ "reovim-module-layout",
+ "reovim-module-undotree",
  "reovim-protocol",
  "serde",
  "serde_json",
@@ -1045,6 +1047,7 @@ dependencies = [
 name = "reovim-driver-command"
 version = "0.9.0-dev"
 dependencies = [
+ "reovim-driver-display",
  "reovim-driver-vfs",
  "reovim-kernel",
 ]
@@ -1194,6 +1197,7 @@ dependencies = [
 name = "reovim-module-layout"
 version = "0.9.0-dev"
 dependencies = [
+ "reovim-driver-command",
  "reovim-driver-display",
  "reovim-kernel",
 ]
