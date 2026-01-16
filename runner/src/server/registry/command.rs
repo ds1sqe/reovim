@@ -14,7 +14,10 @@ use std::{collections::HashMap, sync::Arc};
 
 use {
     reovim_driver_command::{CommandContext, CommandHandler, CommandResult},
-    reovim_kernel::api::v1::{CommandId, ModuleId},
+    reovim_kernel::{
+        api::v1::{CommandId, ModuleId},
+        profile_scope,
+    },
 };
 
 use crate::AppState;
@@ -145,6 +148,8 @@ impl CommandRegistry {
         app: &mut AppState,
         args: &CommandContext,
     ) -> Option<CommandResult> {
+        profile_scope!("command_execute", "runner::command");
+
         self.entries.get(id).map(|entry| {
             // Clone args and populate buffer ID from AppState
             let mut ctx = args.clone();

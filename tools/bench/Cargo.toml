@@ -1,0 +1,31 @@
+[package]
+name = "reovim-bench"
+version = "0.9.0-dev"
+edition = "2024"
+description = "Benchmarks for reovim kernel operations"
+publish = false
+
+# Library needed for Criterion benchmarks
+[lib]
+name = "reovim_bench"
+path = "src/lib.rs"
+
+[dependencies]
+# Kernel layer (for benchmarking)
+reovim-kernel = { workspace = true }
+
+[dev-dependencies]
+# Criterion benchmarking framework
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "buffer_ops"
+harness = false
+
+[[bench]]
+name = "event_dispatch"
+harness = false
+
+[[bench]]
+name = "profiler_overhead"
+harness = false
