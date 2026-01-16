@@ -8,9 +8,9 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use {
-    reovim_driver_command::{CommandContext, CommandResult},
+    reovim_driver_command::{CommandContext, CommandResult, EditAction, UndoAction},
     reovim_driver_input::KeySequence,
-    reovim_kernel::api::v1::{CommandId, KernelContext, ModeId},
+    reovim_kernel::api::v1::{CommandId, Edit, KernelContext, ModeId, UndoResult},
 };
 
 use {
@@ -207,6 +207,110 @@ impl Session {
     {
         let mut state = self.state.write().await;
         f(&mut state)
+    }
+
+    /// Handle a command result from command execution.
+    ///
+    /// This processes the result by:
+    /// - Recording edits in the undo registry for `EditAction`
+    /// - Applying undo/redo operations for `UndoAction`
+    /// - Requesting quit for `Quit`/`ForceQuit`
+    ///
+    /// Returns an error message if undo/redo fails.
+    pub async fn handle_command_result(&self, result: CommandResult) -> Option<String> {
+        match result {
+            CommandResult::Success | CommandResult::Error(_) => None,
+            CommandResult::Quit | CommandResult::ForceQuit => {
+                self.request_quit().await;
+                None
+            }
+            CommandResult::EditAction(action) => {
+                self.record_edit(action).await;
+                None
+            }
+            CommandResult::UndoAction(action) => self.handle_undo_action(action).await,
+            CommandResult::UndotreeAction(_action) => {
+                // TODO: handle undo tree action
+                None
+            }
+        }
+    }
+
+    /// Record an edit action in the undo registry.
+    ///
+    /// Called after a command or fallback handler performs an edit.
+    pub async fn record_edit(&self, action: EditAction) {
+        let mut state = self.state.write().await;
+        state.app.undo_registry.record(
+            action.buffer_id,
+            action.edits,
+            action.cursor_before,
+            action.cursor_after,
+        );
+    }
+
+    /// Handle an undo/redo action.
+    ///
+    /// Retrieves edits from the undo registry and applies them to the buffer.
+    /// Returns an error message if the operation fails.
+    pub async fn handle_undo_action(&self, action: UndoAction) -> Option<String> {
+        let mut state = self.state.write().await;
+
+        let Some(buffer_id) = state.app.active_buffer else {
+            return Some("No active buffer".to_string());
+        };
+
+        match action {
+            UndoAction::Undo { count } => {
+                for _ in 0..count {
+                    match state.app.undo_registry.undo(buffer_id) {
+                        Some(result) => {
+                            Self::apply_undo_result(&state, buffer_id, result);
+                        }
+                        None => {
+                            return Some("Already at oldest change".to_string());
+                        }
+                    }
+                }
+            }
+            UndoAction::Redo { count } => {
+                for _ in 0..count {
+                    match state.app.undo_registry.redo(buffer_id) {
+                        Some(result) => {
+                            Self::apply_undo_result(&state, buffer_id, result);
+                        }
+                        None => {
+                            return Some("Already at newest change".to_string());
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Apply an undo result to a buffer.
+    fn apply_undo_result(
+        state: &SessionState,
+        buffer_id: reovim_kernel::api::v1::BufferId,
+        result: UndoResult,
+    ) {
+        let Some(buffer_arc) = state.app.kernel.buffers.get(buffer_id) else {
+            return;
+        };
+
+        let mut buffer = buffer_arc.write();
+        for edit in result.edits {
+            match edit {
+                Edit::Insert { position, text } => {
+                    buffer.insert_at(position, &text);
+                }
+                Edit::Delete { position, text } => {
+                    buffer.delete_at(position, text.chars().count());
+                }
+            }
+        }
+        buffer.set_position(result.cursor);
     }
 }
 

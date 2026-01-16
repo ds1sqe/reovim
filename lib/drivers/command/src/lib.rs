@@ -58,7 +58,7 @@
 //! ```
 
 use {
-    reovim_kernel::api::v1::{BufferId, CommandId, KernelContext},
+    reovim_kernel::api::v1::{BufferId, CommandId, Edit, KernelContext, Position},
     std::collections::HashMap,
 };
 
@@ -393,6 +393,11 @@ pub enum CommandResult {
     /// This follows the same callback pattern as `UndoAction`, where commands
     /// declare intent and the runner handles execution.
     UndotreeAction(UndotreeAction),
+    /// Command reports edits it made to a buffer.
+    ///
+    /// The runner records these edits in the undo registry for later
+    /// undo/redo operations.
+    EditAction(EditAction),
 }
 
 /// Undo/redo action intent returned by commands.
@@ -430,6 +435,81 @@ pub enum UndotreeAction {
     MoveDown,
 }
 
+/// Edit action intent returned by commands that modify buffer content.
+///
+/// Commands return this to report edits they made. The runner records
+/// these edits in the undo registry for later undo/redo operations.
+///
+/// # Design Philosophy
+///
+/// This follows the callback pattern where commands declare WHAT they did
+/// (the edit), and the runner decides HOW to handle it (record in undo tree).
+///
+/// # Example
+///
+/// ```ignore
+/// fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+///     let buffer_id = args.buffer_id().unwrap();
+///     let buffer = ctx.buffers.get(buffer_id).unwrap();
+///
+///     let cursor_before = buffer.position();
+///     let edit = buffer.insert("hello");
+///     let cursor_after = buffer.position();
+///
+///     CommandResult::EditAction(EditAction::new(
+///         buffer_id, vec![edit], cursor_before, cursor_after
+///     ))
+/// }
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EditAction {
+    /// The buffer that was edited.
+    pub buffer_id: BufferId,
+    /// The edits that were made (in order applied).
+    pub edits: Vec<Edit>,
+    /// Cursor position before the edits were applied.
+    pub cursor_before: Position,
+    /// Cursor position after the edits were applied.
+    pub cursor_after: Position,
+}
+
+impl EditAction {
+    /// Create a new edit action.
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)] // Vec cannot be const-constructed
+    pub fn new(
+        buffer_id: BufferId,
+        edits: Vec<Edit>,
+        cursor_before: Position,
+        cursor_after: Position,
+    ) -> Self {
+        Self {
+            buffer_id,
+            edits,
+            cursor_before,
+            cursor_after,
+        }
+    }
+
+    /// Create an edit action from a single edit.
+    #[must_use]
+    pub fn single(
+        buffer_id: BufferId,
+        edit: Edit,
+        cursor_before: Position,
+        cursor_after: Position,
+    ) -> Self {
+        Self::new(buffer_id, vec![edit], cursor_before, cursor_after)
+    }
+
+    /// Check if this action has no edits (no-op).
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)] // Vec::is_empty is not const stable
+    pub fn is_empty(&self) -> bool {
+        self.edits.is_empty()
+    }
+}
+
 impl CommandResult {
     /// Check if the result is success.
     #[must_use]
@@ -460,11 +540,38 @@ impl CommandResult {
     pub const fn is_undotree_action(&self) -> bool {
         matches!(self, Self::UndotreeAction(_))
     }
+    /// Check if the result is an edit action.
+    #[must_use]
+    pub const fn is_edit_action(&self) -> bool {
+        matches!(self, Self::EditAction(_))
+    }
 
     /// Create an error result.
     #[must_use]
     pub fn error(msg: impl Into<String>) -> Self {
         Self::Error(msg.into())
+    }
+
+    /// Create an edit action result.
+    #[must_use]
+    pub fn edit_action(
+        buffer_id: BufferId,
+        edit: Edit,
+        cursor_before: Position,
+        cursor_after: Position,
+    ) -> Self {
+        Self::EditAction(EditAction::single(buffer_id, edit, cursor_before, cursor_after))
+    }
+
+    /// Create an edit action result from multiple edits.
+    #[must_use]
+    pub fn edit_actions(
+        buffer_id: BufferId,
+        edits: Vec<Edit>,
+        cursor_before: Position,
+        cursor_after: Position,
+    ) -> Self {
+        Self::EditAction(EditAction::new(buffer_id, edits, cursor_before, cursor_after))
     }
 }
 
@@ -701,5 +808,78 @@ mod tests {
         assert_eq!(cmd.description(), "A test command");
         assert_eq!(cmd.args().len(), 1);
         assert_eq!(cmd.names(), &["test", "t"]);
+    }
+
+    // EditAction tests (Phase 2)
+
+    #[test]
+    fn test_edit_action_new() {
+        let buffer_id = BufferId::from_raw(1);
+        let edit = Edit::insert(Position::new(0, 0), "hello");
+        let before = Position::new(0, 0);
+        let after = Position::new(0, 5);
+
+        let action = EditAction::new(buffer_id, vec![edit], before, after);
+
+        assert_eq!(action.buffer_id, buffer_id);
+        assert_eq!(action.edits.len(), 1);
+        assert_eq!(action.cursor_before, before);
+        assert_eq!(action.cursor_after, after);
+    }
+
+    #[test]
+    fn test_command_result_edit_action() {
+        let buffer_id = BufferId::from_raw(1);
+        let edit = Edit::insert(Position::new(0, 0), "hello");
+        let before = Position::new(0, 0);
+        let after = Position::new(0, 5);
+
+        let result = CommandResult::edit_action(buffer_id, edit, before, after);
+
+        assert!(result.is_edit_action());
+        assert!(!result.is_success());
+        assert!(!result.is_error());
+        assert!(!result.is_quit());
+    }
+
+    #[test]
+    fn test_command_result_is_edit_action() {
+        let buffer_id = BufferId::from_raw(1);
+        let edit = Edit::insert(Position::new(0, 0), "x");
+
+        let edit_result =
+            CommandResult::edit_action(buffer_id, edit, Position::new(0, 0), Position::new(0, 1));
+        let success_result = CommandResult::Success;
+        let error_result = CommandResult::error("fail");
+
+        assert!(edit_result.is_edit_action());
+        assert!(!success_result.is_edit_action());
+        assert!(!error_result.is_edit_action());
+    }
+
+    #[test]
+    fn test_edit_action_empty_edits() {
+        let buffer_id = BufferId::from_raw(1);
+        let before = Position::new(0, 0);
+        let after = Position::new(0, 0);
+
+        // Empty edits vec is valid (no-op edit)
+        let action = EditAction::new(buffer_id, vec![], before, after);
+
+        assert!(action.is_empty());
+        assert_eq!(action.edits.len(), 0);
+    }
+
+    #[test]
+    fn test_edit_action_single() {
+        let buffer_id = BufferId::from_raw(1);
+        let edit = Edit::insert(Position::new(0, 0), "hello");
+        let before = Position::new(0, 0);
+        let after = Position::new(0, 5);
+
+        let action = EditAction::single(buffer_id, edit.clone(), before, after);
+
+        assert_eq!(action.edits.len(), 1);
+        assert_eq!(action.edits[0], edit);
     }
 }

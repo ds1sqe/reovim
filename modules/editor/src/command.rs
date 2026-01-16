@@ -682,11 +682,13 @@ impl CommandHandler for InsertNewline {
         };
 
         let mut buffer = buffer_arc.write();
+        let cursor_before = buffer.position();
         // Insert newline splits the line at cursor position
-        let _edit = buffer.insert("\n");
+        let edit = buffer.insert("\n");
+        let cursor_after = buffer.position();
         drop(buffer);
 
-        CommandResult::Success
+        CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
     }
 }
 
@@ -738,10 +740,12 @@ impl CommandHandler for InsertTab {
         };
 
         let mut buffer = buffer_arc.write();
-        let _edit = buffer.insert(&text);
+        let cursor_before = buffer.position();
+        let edit = buffer.insert(&text);
+        let cursor_after = buffer.position();
         drop(buffer);
 
-        CommandResult::Success
+        CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
     }
 }
 
@@ -856,9 +860,12 @@ impl CommandHandler for OpenLineBelow {
         let line_len = buffer.line_len(pos.line).unwrap_or(0);
         buffer.set_position(Position::new(pos.line, line_len));
 
+        // Capture cursor before insert (after move to end of line)
+        let cursor_before = buffer.position();
         // Insert newline (creates new line below)
-        let _edit = buffer.insert("\n");
+        let edit = buffer.insert("\n");
         // Cursor is now at start of new line
+        let cursor_after = buffer.position();
         drop(buffer);
 
         ctx.event_bus.emit(ModeChanged {
@@ -866,7 +873,7 @@ impl CommandHandler for OpenLineBelow {
             to: "insert".to_string(),
         });
 
-        CommandResult::Success
+        CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
     }
 }
 
@@ -899,11 +906,14 @@ impl CommandHandler for OpenLineAbove {
         // Move to start of current line
         buffer.set_position(Position::new(pos.line, 0));
 
+        // Capture cursor before insert
+        let cursor_before = buffer.position();
         // Insert newline before current line content
-        let _edit = buffer.insert("\n");
+        let edit = buffer.insert("\n");
 
         // Move cursor up to the new empty line
         buffer.set_position(Position::new(pos.line, 0));
+        let cursor_after = buffer.position();
         drop(buffer);
 
         ctx.event_bus.emit(ModeChanged {
@@ -911,7 +921,7 @@ impl CommandHandler for OpenLineAbove {
             to: "insert".to_string(),
         });
 
-        CommandResult::Success
+        CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
     }
 }
 
@@ -1038,7 +1048,11 @@ impl CommandHandler for DeleteChar {
         // Delete up to end of line
         let chars_to_delete = count.min(line_len - pos.column);
         if chars_to_delete > 0 {
-            let _edit = buffer.delete(chars_to_delete);
+            let cursor_before = buffer.position();
+            let edit = buffer.delete(chars_to_delete);
+            let cursor_after = buffer.position();
+            drop(buffer);
+            return CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after);
         }
         drop(buffer);
 
@@ -1088,7 +1102,11 @@ impl CommandHandler for DeleteCharBefore {
                 let prev_line_len = buffer.line_len(pos.line - 1).unwrap_or(0);
                 let new_pos = Position::new(pos.line - 1, prev_line_len);
                 buffer.set_position(new_pos);
-                let _edit = buffer.delete(1); // Delete the newline
+                let cursor_before = buffer.position();
+                let edit = buffer.delete(1); // Delete the newline
+                let cursor_after = buffer.position();
+                drop(buffer);
+                return CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after);
             }
             drop(buffer);
             return CommandResult::Success;
@@ -1099,10 +1117,12 @@ impl CommandHandler for DeleteCharBefore {
         let delete_pos = Position::new(pos.line, new_col);
 
         buffer.set_position(delete_pos);
-        let _edit = buffer.delete(chars_to_delete);
+        let cursor_before = buffer.position();
+        let edit = buffer.delete(chars_to_delete);
+        let cursor_after = buffer.position();
         drop(buffer);
 
-        CommandResult::Success
+        CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
     }
 }
 
@@ -1171,16 +1191,17 @@ impl CommandHandler for DeleteLine {
 
         // Handle deleting last line(s) - need to also delete preceding newline
         let end_line = start_line + lines_to_delete;
-        if end_line >= line_count && start_line > 0 {
+        let edit = if end_line >= line_count && start_line > 0 {
             // We're deleting to end of buffer, so delete preceding newline too
             let new_start =
                 Position::new(start_line - 1, buffer.line_len(start_line - 1).unwrap_or(0));
             buffer.set_position(new_start);
-            let _edit = buffer.delete(chars_to_delete + 1); // +1 for preceding newline
+            buffer.delete(chars_to_delete + 1) // +1 for preceding newline
         } else {
             buffer.set_position(start);
-            let _edit = buffer.delete(chars_to_delete);
-        }
+            buffer.delete(chars_to_delete)
+        };
+        let cursor_before = start; // Before the delete, cursor was at start of deleted range
 
         // Move cursor to first non-blank of remaining line
         let new_line_count = buffer.line_count();
@@ -1189,9 +1210,10 @@ impl CommandHandler for DeleteLine {
             .line(new_line)
             .map_or(0, |line| line.chars().position(|c| !c.is_whitespace()).unwrap_or(0));
         buffer.set_position(Position::new(new_line, first_non_blank));
+        let cursor_after = buffer.position();
         drop(buffer);
 
-        CommandResult::Success
+        CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
     }
 }
 
@@ -1229,10 +1251,12 @@ impl CommandHandler for DeleteToEndOfLine {
 
         // Delete from cursor to end of line (not including newline)
         let chars_to_delete = line_len - pos.column;
-        let _edit = buffer.delete(chars_to_delete);
+        let cursor_before = buffer.position();
+        let edit = buffer.delete(chars_to_delete);
+        let cursor_after = buffer.position();
         drop(buffer);
 
-        CommandResult::Success
+        CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
     }
 }
 
@@ -1260,6 +1284,8 @@ impl Command for JoinLines {
 
 impl CommandHandler for JoinLines {
     fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        use reovim_kernel::api::v1::Edit;
+
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
@@ -1271,6 +1297,8 @@ impl CommandHandler for JoinLines {
         let mut buffer = buffer_arc.write();
         let current_line = buffer.position().line;
         let mut line_count = buffer.line_count();
+        let cursor_before = buffer.position();
+        let mut edits: Vec<Edit> = Vec::new();
 
         for _ in 0..count {
             // Can't join if on last line
@@ -1283,7 +1311,8 @@ impl CommandHandler for JoinLines {
             buffer.set_position(Position::new(current_line, line_len));
 
             // Delete newline (joins the lines)
-            let _edit = buffer.delete(1);
+            let edit = buffer.delete(1);
+            edits.push(edit);
 
             // Delete leading whitespace of what was the next line
             let new_line_content = buffer.line(current_line).unwrap_or("");
@@ -1291,21 +1320,29 @@ impl CommandHandler for JoinLines {
             let leading_ws = after_join.chars().take_while(|c| c.is_whitespace()).count();
 
             if leading_ws > 0 {
-                let _edit = buffer.delete(leading_ws);
+                let edit = buffer.delete(leading_ws);
+                edits.push(edit);
             }
 
             // Insert single space between joined content (Vim behavior)
             // Only if there's content after the join point
             if buffer.line_len(current_line).unwrap_or(0) > line_len {
-                let _edit = buffer.insert(" ");
+                let edit = buffer.insert(" ");
+                edits.push(edit);
             }
 
             // Update line count for next iteration
             line_count = buffer.line_count();
         }
 
+        let cursor_after = buffer.position();
         drop(buffer);
-        CommandResult::Success
+
+        if edits.is_empty() {
+            return CommandResult::Success;
+        }
+
+        CommandResult::edit_actions(buffer_id, edits, cursor_before, cursor_after)
     }
 }
 

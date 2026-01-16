@@ -39,6 +39,15 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
   - Enables #249 (Vim-style :undotree visualization)
   - 15 unit tests covering boundaries, invariants, and pruning
 
+- **Phase 7.4.1: Wire UndoRegistry for Edit Recording** (Issue #254)
+  - `UndoRegistry` now in `AppState` for per-buffer undo trees
+  - `CommandResult::EditAction` - commands report edits they made
+  - `FallbackHandler` signature returns `(FallbackResult, Option<CommandResult>)`
+  - 9 edit commands now return `EditAction`: InsertNewline, InsertTab, OpenLineBelow, OpenLineAbove, DeleteChar, DeleteCharBefore, DeleteLine, DeleteToEndOfLine, JoinLines
+  - Event loop and RPC handler wire up edit recording and undo/redo application
+  - `u` (undo) and `Ctrl-R` (redo) now functional with cursor position restore
+  - Deferred: Transaction batching (#255), Persistent undo (#256)
+
 - **Phase 7.5-6: Insert Mode & Delete Operations** (Issues #233, #234, #231)
   - **Insert Mode Character Input** (`modules/editor/src/fallback.rs`):
     - `EditorFallbackHandler` now inserts characters in Insert mode

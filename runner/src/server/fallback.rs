@@ -14,9 +14,7 @@
 //! characters when in Insert mode, but the event loop doesn't know about
 //! Insert mode - it just delegates to the handler.
 
-use reovim_driver_input::KeyEvent;
-
-use crate::AppState;
+use {crate::AppState, reovim_driver_command::CommandResult, reovim_driver_input::KeyEvent};
 
 /// Result of fallback key handling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,22 +33,29 @@ pub enum FallbackResult {
 /// binding. This allows different modules to provide different policies
 /// without changing the event loop.
 ///
+/// # Returns
+///
+/// A tuple of:
+/// - [`FallbackResult`] indicating how the key was handled
+/// - Optional [`CommandResult`] if the handler performed an edit (for undo tracking)
+///
 /// # Example
 ///
 /// ```ignore
 /// use runner::{AppState, InputFallbackHandler, FallbackResult};
 /// use reovim_driver_input::KeyEvent;
+/// use reovim_driver_command::CommandResult;
 ///
 /// struct MyFallback;
 ///
 /// impl InputFallbackHandler for MyFallback {
-///     fn handle_unmatched(&self, key: KeyEvent, app: &mut AppState) -> FallbackResult {
+///     fn handle_unmatched(&self, key: KeyEvent, app: &mut AppState) -> (FallbackResult, Option<CommandResult>) {
 ///         // Insert character if in insert mode
 ///         if app.current_mode().name() == "insert" {
 ///             // ... insert logic ...
-///             return FallbackResult::Handled;
+///             return (FallbackResult::Handled, Some(CommandResult::edit_action(...)));
 ///         }
-///         FallbackResult::Beep
+///         (FallbackResult::Beep, None)
 ///     }
 /// }
 /// ```
@@ -67,8 +72,13 @@ pub trait InputFallbackHandler: Send + Sync {
     ///
     /// # Returns
     ///
-    /// A [`FallbackResult`] indicating how the key was handled.
-    fn handle_unmatched(&self, key: KeyEvent, app: &mut AppState) -> FallbackResult;
+    /// A tuple containing the handling result and an optional command result
+    /// (for edits that should be recorded in the undo registry).
+    fn handle_unmatched(
+        &self,
+        key: KeyEvent,
+        app: &mut AppState,
+    ) -> (FallbackResult, Option<CommandResult>);
 }
 
 /// No-op fallback handler that ignores all unmatched keys.
@@ -78,8 +88,12 @@ pub trait InputFallbackHandler: Send + Sync {
 pub struct NoOpFallback;
 
 impl InputFallbackHandler for NoOpFallback {
-    fn handle_unmatched(&self, _key: KeyEvent, _app: &mut AppState) -> FallbackResult {
-        FallbackResult::Ignored
+    fn handle_unmatched(
+        &self,
+        _key: KeyEvent,
+        _app: &mut AppState,
+    ) -> (FallbackResult, Option<CommandResult>) {
+        (FallbackResult::Ignored, None)
     }
 }
 
@@ -90,8 +104,12 @@ impl InputFallbackHandler for NoOpFallback {
 pub struct BeepFallback;
 
 impl InputFallbackHandler for BeepFallback {
-    fn handle_unmatched(&self, _key: KeyEvent, _app: &mut AppState) -> FallbackResult {
-        FallbackResult::Beep
+    fn handle_unmatched(
+        &self,
+        _key: KeyEvent,
+        _app: &mut AppState,
+    ) -> (FallbackResult, Option<CommandResult>) {
+        (FallbackResult::Beep, None)
     }
 }
 
@@ -115,7 +133,9 @@ mod tests {
         let mut app = test_app();
         let key = KeyEvent::new(KeyCode::Char('x'));
 
-        assert_eq!(handler.handle_unmatched(key, &mut app), FallbackResult::Ignored);
+        let (result, cmd_result) = handler.handle_unmatched(key, &mut app);
+        assert_eq!(result, FallbackResult::Ignored);
+        assert!(cmd_result.is_none());
     }
 
     #[test]
@@ -124,7 +144,9 @@ mod tests {
         let mut app = test_app();
         let key = KeyEvent::new(KeyCode::Char('x'));
 
-        assert_eq!(handler.handle_unmatched(key, &mut app), FallbackResult::Beep);
+        let (result, cmd_result) = handler.handle_unmatched(key, &mut app);
+        assert_eq!(result, FallbackResult::Beep);
+        assert!(cmd_result.is_none());
     }
 
     #[test]
