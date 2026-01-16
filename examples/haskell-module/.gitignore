@@ -1,0 +1,34 @@
+# Cabal build artifacts
+dist-newstyle/
+dist/
+
+# Stack build artifacts
+.stack-work/
+
+# GHC interface files
+*.hi
+*.dyn_hi
+*.o
+*.dyn_o
+
+# Shared libraries (built artifacts)
+*.so
+*.so.*
+*.dylib
+*.dll
+
+# Static libraries
+*.a
+
+# Stub files
+*_stub.h
+
+# Cabal sandbox
+.cabal-sandbox/
+cabal.sandbox.config
+
+# Editor files
+*~
+*.swp
+.vscode/
+.idea/
