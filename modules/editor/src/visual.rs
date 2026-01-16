@@ -26,7 +26,7 @@ use {
     reovim_module_operators::{DeleteOperator, Operator, OperatorContext, Range, YankOperator},
 };
 
-use super::mode::EDITOR_MODULE;
+use super::mode::{EDITOR_MODULE, EditorMode};
 
 // =============================================================================
 // Visual Mode Entry Commands
@@ -63,11 +63,9 @@ impl CommandHandler for EnterVisualMode {
             buffer.selection_mut().start(pos, SelectionMode::Character);
         }
 
-        // Emit mode change event
-        ctx.event_bus.emit(ModeChanged {
-            from: "normal".to_string(),
-            to: "visual".to_string(),
-        });
+        // Emit mode change event with target ModeId
+        ctx.event_bus
+            .emit(ModeChanged::with_mode_id("normal", EditorMode::VISUAL_ID));
 
         CommandResult::Success
     }
@@ -104,11 +102,9 @@ impl CommandHandler for EnterVisualLineMode {
             buffer.selection_mut().start(pos, SelectionMode::Line);
         }
 
-        // Emit mode change event
-        ctx.event_bus.emit(ModeChanged {
-            from: "normal".to_string(),
-            to: "visual-line".to_string(),
-        });
+        // Emit mode change event with target ModeId
+        ctx.event_bus
+            .emit(ModeChanged::with_mode_id("normal", EditorMode::VISUAL_LINE_ID));
 
         CommandResult::Success
     }
@@ -145,11 +141,9 @@ impl CommandHandler for EnterVisualBlockMode {
             buffer.selection_mut().start(pos, SelectionMode::Block);
         }
 
-        // Emit mode change event
-        ctx.event_bus.emit(ModeChanged {
-            from: "normal".to_string(),
-            to: "visual-block".to_string(),
-        });
+        // Emit mode change event with target ModeId
+        ctx.event_bus
+            .emit(ModeChanged::with_mode_id("normal", EditorMode::VISUAL_BLOCK_ID));
 
         CommandResult::Success
     }
@@ -183,11 +177,9 @@ impl CommandHandler for ExitVisualMode {
             buffer.selection_mut().clear();
         }
 
-        // Emit mode change event
-        ctx.event_bus.emit(ModeChanged {
-            from: "visual".to_string(),
-            to: "normal".to_string(),
-        });
+        // Emit mode change event with target ModeId
+        ctx.event_bus
+            .emit(ModeChanged::with_mode_id("visual", EditorMode::NORMAL_ID));
 
         CommandResult::Success
     }
@@ -270,22 +262,20 @@ impl CommandHandler for ToggleVisualChar {
         };
 
         let mut buffer = buffer_arc.write();
-        let (from_mode, to_mode) =
+        let (from_mode, target_mode) =
             if buffer.selection().is_active() && buffer.selection().mode().is_character() {
                 // Already in character mode - exit to normal
                 buffer.selection_mut().clear();
-                ("visual", "normal")
+                ("visual", EditorMode::NORMAL_ID)
             } else {
                 // Switch to character mode
                 buffer.selection_mut().set_mode(SelectionMode::Character);
-                ("visual-line", "visual")
+                ("visual-line", EditorMode::VISUAL_ID)
             };
         drop(buffer);
 
-        ctx.event_bus.emit(ModeChanged {
-            from: from_mode.to_string(),
-            to: to_mode.to_string(),
-        });
+        ctx.event_bus
+            .emit(ModeChanged::with_mode_id(from_mode, target_mode));
 
         CommandResult::Success
     }
@@ -319,22 +309,20 @@ impl CommandHandler for ToggleVisualLine {
         };
 
         let mut buffer = buffer_arc.write();
-        let (from_mode, to_mode) =
+        let (from_mode, target_mode) =
             if buffer.selection().is_active() && buffer.selection().mode().is_line() {
                 // Already in line mode - exit to normal
                 buffer.selection_mut().clear();
-                ("visual-line", "normal")
+                ("visual-line", EditorMode::NORMAL_ID)
             } else {
                 // Switch to line mode
                 buffer.selection_mut().set_mode(SelectionMode::Line);
-                ("visual", "visual-line")
+                ("visual", EditorMode::VISUAL_LINE_ID)
             };
         drop(buffer);
 
-        ctx.event_bus.emit(ModeChanged {
-            from: from_mode.to_string(),
-            to: to_mode.to_string(),
-        });
+        ctx.event_bus
+            .emit(ModeChanged::with_mode_id(from_mode, target_mode));
 
         CommandResult::Success
     }
@@ -368,22 +356,20 @@ impl CommandHandler for ToggleVisualBlock {
         };
 
         let mut buffer = buffer_arc.write();
-        let (from_mode, to_mode) =
+        let (from_mode, target_mode) =
             if buffer.selection().is_active() && buffer.selection().mode().is_block() {
                 // Already in block mode - exit to normal
                 buffer.selection_mut().clear();
-                ("visual-block", "normal")
+                ("visual-block", EditorMode::NORMAL_ID)
             } else {
                 // Switch to block mode
                 buffer.selection_mut().set_mode(SelectionMode::Block);
-                ("visual", "visual-block")
+                ("visual", EditorMode::VISUAL_BLOCK_ID)
             };
         drop(buffer);
 
-        ctx.event_bus.emit(ModeChanged {
-            from: from_mode.to_string(),
-            to: to_mode.to_string(),
-        });
+        ctx.event_bus
+            .emit(ModeChanged::with_mode_id(from_mode, target_mode));
 
         CommandResult::Success
     }
@@ -412,10 +398,9 @@ impl Command for ReselectLast {
 
 impl CommandHandler for ReselectLast {
     fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // The actual reselection is handled by the event loop since it requires
-        // AppState.last_visual_selection. This command just signals the intent.
-        // If there's no last selection, the event loop handles it as a no-op.
-        CommandResult::Success
+        // Signal intent to restore the last visual selection.
+        // The runner handles the actual restoration since it requires AppState.
+        CommandResult::ReselectVisual
     }
 }
 
@@ -529,11 +514,9 @@ impl CommandHandler for DeleteSelection {
             buffer.set_position(cursor_pos);
         }
 
-        // Mode transition to Normal is handled by event loop
-        ctx.event_bus.emit(ModeChanged {
-            from: "visual".to_string(),
-            to: "normal".to_string(),
-        });
+        // Mode transition to Normal with target ModeId
+        ctx.event_bus
+            .emit(ModeChanged::with_mode_id("visual", EditorMode::NORMAL_ID));
 
         CommandResult::Success
     }
@@ -585,11 +568,9 @@ impl CommandHandler for YankSelection {
             buffer.selection_mut().clear();
         }
 
-        // Mode transition to Normal is handled by event loop
-        ctx.event_bus.emit(ModeChanged {
-            from: "visual".to_string(),
-            to: "normal".to_string(),
-        });
+        // Mode transition to Normal with target ModeId
+        ctx.event_bus
+            .emit(ModeChanged::with_mode_id("visual", EditorMode::NORMAL_ID));
 
         CommandResult::Success
     }
@@ -641,11 +622,9 @@ impl CommandHandler for ChangeSelection {
             buffer.set_position(cursor_pos);
         }
 
-        // Mode transition to Insert is handled by event loop
-        ctx.event_bus.emit(ModeChanged {
-            from: "visual".to_string(),
-            to: "insert".to_string(),
-        });
+        // Mode transition to Insert with target ModeId
+        ctx.event_bus
+            .emit(ModeChanged::with_mode_id("visual", EditorMode::INSERT_ID));
 
         CommandResult::Success
     }
@@ -704,10 +683,8 @@ impl CommandHandler for IndentSelection {
 
         // Mode transition to Normal is handled by event loop
         drop(buffer);
-        ctx.event_bus.emit(ModeChanged {
-            from: "visual".to_string(),
-            to: "normal".to_string(),
-        });
+        ctx.event_bus
+            .emit(ModeChanged::with_mode_id("visual", EditorMode::NORMAL_ID));
 
         CommandResult::Success
     }
@@ -779,10 +756,8 @@ impl CommandHandler for DedentSelection {
 
         // Mode transition to Normal is handled by event loop
         drop(buffer);
-        ctx.event_bus.emit(ModeChanged {
-            from: "visual".to_string(),
-            to: "normal".to_string(),
-        });
+        ctx.event_bus
+            .emit(ModeChanged::with_mode_id("visual", EditorMode::NORMAL_ID));
 
         CommandResult::Success
     }
@@ -1268,7 +1243,7 @@ mod tests {
     }
 
     #[test]
-    fn test_reselect_last_returns_success() {
+    fn test_reselect_last_returns_reselect_visual() {
         let mut ctx = create_test_context();
         let buffer = Buffer::from_string("hello world");
         let buffer_id = ctx.buffers.register(buffer);
@@ -1276,9 +1251,9 @@ mod tests {
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        // ReselectLast always returns Success (actual logic is in event loop)
+        // ReselectLast returns ReselectVisual to signal intent (actual logic is in runner)
         let result = ReselectLast.execute(&mut ctx, &args);
-        assert_eq!(result, CommandResult::Success);
+        assert_eq!(result, CommandResult::ReselectVisual);
     }
 
     // =========================================================================

@@ -24,7 +24,10 @@ use {
     },
 };
 
-use super::{display_lines, mode::EDITOR_MODULE};
+use super::{
+    display_lines,
+    mode::{EDITOR_MODULE, EditorMode},
+};
 
 // =============================================================================
 // Cursor Movement Commands
@@ -568,10 +571,8 @@ impl Command for EnterInsertMode {
 impl CommandHandler for EnterInsertMode {
     fn execute(&self, ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
         // Emit mode change event
-        ctx.event_bus.emit(ModeChanged {
-            from: "normal".to_string(),
-            to: "insert".to_string(),
-        });
+        ctx.event_bus
+            .emit(ModeChanged::with_mode_id("normal", EditorMode::INSERT_ID));
 
         // Note: The actual mode stack change happens in the runner via a callback
         // or by the caller checking the result. For now, we just emit the event.
@@ -610,10 +611,8 @@ impl CommandHandler for EnterInsertModeAppend {
             drop(buffer);
         }
 
-        ctx.event_bus.emit(ModeChanged {
-            from: "normal".to_string(),
-            to: "insert".to_string(),
-        });
+        ctx.event_bus
+            .emit(ModeChanged::with_mode_id("normal", EditorMode::INSERT_ID));
 
         CommandResult::Success
     }
@@ -647,10 +646,8 @@ impl CommandHandler for ExitToNormal {
             drop(buffer);
         }
 
-        ctx.event_bus.emit(ModeChanged {
-            from: "insert".to_string(),
-            to: "normal".to_string(),
-        });
+        ctx.event_bus
+            .emit(ModeChanged::with_mode_id("insert", EditorMode::NORMAL_ID));
 
         CommandResult::Success
     }
@@ -786,10 +783,8 @@ impl CommandHandler for EnterInsertFirstNonBlank {
             drop(buffer);
         }
 
-        ctx.event_bus.emit(ModeChanged {
-            from: "normal".to_string(),
-            to: "insert".to_string(),
-        });
+        ctx.event_bus
+            .emit(ModeChanged::with_mode_id("normal", EditorMode::INSERT_ID));
 
         CommandResult::Success
     }
@@ -823,10 +818,8 @@ impl CommandHandler for EnterInsertEndOfLine {
             drop(buffer);
         }
 
-        ctx.event_bus.emit(ModeChanged {
-            from: "normal".to_string(),
-            to: "insert".to_string(),
-        });
+        ctx.event_bus
+            .emit(ModeChanged::with_mode_id("normal", EditorMode::INSERT_ID));
 
         CommandResult::Success
     }
@@ -870,10 +863,8 @@ impl CommandHandler for OpenLineBelow {
         let cursor_after = buffer.position();
         drop(buffer);
 
-        ctx.event_bus.emit(ModeChanged {
-            from: "normal".to_string(),
-            to: "insert".to_string(),
-        });
+        ctx.event_bus
+            .emit(ModeChanged::with_mode_id("normal", EditorMode::INSERT_ID));
 
         CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
     }
@@ -918,10 +909,8 @@ impl CommandHandler for OpenLineAbove {
         let cursor_after = buffer.position();
         drop(buffer);
 
-        ctx.event_bus.emit(ModeChanged {
-            from: "normal".to_string(),
-            to: "insert".to_string(),
-        });
+        ctx.event_bus
+            .emit(ModeChanged::with_mode_id("normal", EditorMode::INSERT_ID));
 
         CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
     }
@@ -1305,10 +1294,8 @@ impl CommandHandler for ChangeLine {
         if line_count == 0 {
             // Empty buffer - just enter insert mode
             drop(buffer);
-            ctx.event_bus.emit(ModeChanged {
-                from: "normal".to_string(),
-                to: "insert".to_string(),
-            });
+            ctx.event_bus
+                .emit(ModeChanged::with_mode_id("normal", EditorMode::INSERT_ID));
             return CommandResult::Success;
         }
 
@@ -1316,10 +1303,8 @@ impl CommandHandler for ChangeLine {
         let lines_to_change = count.min(line_count.saturating_sub(start_line));
         if lines_to_change == 0 {
             drop(buffer);
-            ctx.event_bus.emit(ModeChanged {
-                from: "normal".to_string(),
-                to: "insert".to_string(),
-            });
+            ctx.event_bus
+                .emit(ModeChanged::with_mode_id("normal", EditorMode::INSERT_ID));
             return CommandResult::Success;
         }
 
@@ -1354,19 +1339,15 @@ impl CommandHandler for ChangeLine {
                 let cursor_after = buffer.position();
                 drop(buffer);
 
-                ctx.event_bus.emit(ModeChanged {
-                    from: "normal".to_string(),
-                    to: "insert".to_string(),
-                });
+                ctx.event_bus
+                    .emit(ModeChanged::with_mode_id("normal", EditorMode::INSERT_ID));
 
                 return CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after);
             }
             // Line is already empty
             drop(buffer);
-            ctx.event_bus.emit(ModeChanged {
-                from: "normal".to_string(),
-                to: "insert".to_string(),
-            });
+            ctx.event_bus
+                .emit(ModeChanged::with_mode_id("normal", EditorMode::INSERT_ID));
             return CommandResult::Success;
         }
 
@@ -1402,10 +1383,8 @@ impl CommandHandler for ChangeLine {
             let cursor_after = buffer.position();
             drop(buffer);
 
-            ctx.event_bus.emit(ModeChanged {
-                from: "normal".to_string(),
-                to: "insert".to_string(),
-            });
+            ctx.event_bus
+                .emit(ModeChanged::with_mode_id("normal", EditorMode::INSERT_ID));
 
             return CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after);
         }
@@ -1418,10 +1397,8 @@ impl CommandHandler for ChangeLine {
         let cursor_after = buffer.position();
         drop(buffer);
 
-        ctx.event_bus.emit(ModeChanged {
-            from: "normal".to_string(),
-            to: "insert".to_string(),
-        });
+        ctx.event_bus
+            .emit(ModeChanged::with_mode_id("normal", EditorMode::INSERT_ID));
 
         CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
     }
@@ -1460,10 +1437,8 @@ impl CommandHandler for ChangeToEndOfLine {
         // Nothing to delete if at or past end of line - just enter insert mode
         if pos.column >= line_len {
             drop(buffer);
-            ctx.event_bus.emit(ModeChanged {
-                from: "normal".to_string(),
-                to: "insert".to_string(),
-            });
+            ctx.event_bus
+                .emit(ModeChanged::with_mode_id("normal", EditorMode::INSERT_ID));
             return CommandResult::Success;
         }
 
@@ -1484,10 +1459,8 @@ impl CommandHandler for ChangeToEndOfLine {
         let cursor_after = buffer.position();
         drop(buffer);
 
-        ctx.event_bus.emit(ModeChanged {
-            from: "normal".to_string(),
-            to: "insert".to_string(),
-        });
+        ctx.event_bus
+            .emit(ModeChanged::with_mode_id("normal", EditorMode::INSERT_ID));
 
         CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
     }

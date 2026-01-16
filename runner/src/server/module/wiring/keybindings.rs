@@ -194,9 +194,8 @@ pub fn wire_module_keybindings(
                             ModeId::new(module_id.clone(), mode_name)
                         }
                     } else {
-                        // Common convention: "normal", "insert", etc. are from "editor" module
-                        // But for flexibility, we'll use the registering module
-                        ModeId::new(ModuleId::new("editor"), mode_name)
+                        // No explicit module prefix - use the registering module
+                        ModeId::new(module_id.clone(), mode_name)
                     }
                 })
                 .collect()
@@ -404,9 +403,9 @@ mod tests {
         let stats = result.unwrap();
         assert_eq!(stats.keybindings_wired, 1);
 
-        // Both modes should have the binding
-        let insert_mode = ModeId::new(ModuleId::new("editor"), "insert");
-        let visual_mode = ModeId::new(ModuleId::new("editor"), "visual");
+        // Both modes should have the binding - using the registering module, not hardcoded "editor"
+        let insert_mode = ModeId::new(module_id.clone(), "insert");
+        let visual_mode = ModeId::new(module_id.clone(), "visual");
 
         assert_eq!(registry.binding_count(&insert_mode), 1);
         assert_eq!(registry.binding_count(&visual_mode), 1);

@@ -506,7 +506,7 @@ impl RepeatState {
 ///
 /// When visual mode is exited, the selection boundaries are stored here
 /// so that `gv` can restore the exact same selection.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct LastVisualSelection {
     /// The buffer where the selection was made.
     pub buffer_id: BufferId,
@@ -516,22 +516,30 @@ pub struct LastVisualSelection {
     pub cursor: Position,
     /// The selection mode (Character, Line, or Block).
     pub mode: SelectionMode,
+    /// The visual mode ID to restore (editor:visual, editor:visual-line, etc.).
+    ///
+    /// Storing the actual `ModeId` removes the need for hardcoded mode mapping
+    /// from `SelectionMode` to `ModeId` in the runner.
+    pub mode_id: ModeId,
 }
 
 impl LastVisualSelection {
     /// Create a new last visual selection record.
     #[must_use]
-    pub const fn new(
+    #[allow(clippy::missing_const_for_fn)] // ModeId cannot be const-constructed
+    pub fn new(
         buffer_id: BufferId,
         anchor: Position,
         cursor: Position,
         mode: SelectionMode,
+        mode_id: ModeId,
     ) -> Self {
         Self {
             buffer_id,
             anchor,
             cursor,
             mode,
+            mode_id,
         }
     }
 }
@@ -890,7 +898,7 @@ impl AppState {
     /// Save the current visual selection for later reselection with `gv`.
     ///
     /// Called when exiting visual mode to remember the selection boundaries.
-    pub const fn save_visual_selection(&mut self, selection: LastVisualSelection) {
+    pub fn save_visual_selection(&mut self, selection: LastVisualSelection) {
         self.last_visual_selection = Some(selection);
     }
 
@@ -907,7 +915,7 @@ impl AppState {
     }
 
     /// Clear the last visual selection.
-    pub const fn clear_last_visual_selection(&mut self) {
+    pub fn clear_last_visual_selection(&mut self) {
         self.last_visual_selection = None;
     }
 }
@@ -959,6 +967,18 @@ mod tests {
 
     fn test_mode_id() -> ModeId {
         ModeId::new(ModuleId::new("test"), "normal")
+    }
+
+    fn test_visual_mode_id() -> ModeId {
+        ModeId::new(ModuleId::new("editor"), "visual")
+    }
+
+    fn test_visual_line_mode_id() -> ModeId {
+        ModeId::new(ModuleId::new("editor"), "visual-line")
+    }
+
+    fn test_visual_block_mode_id() -> ModeId {
+        ModeId::new(ModuleId::new("editor"), "visual-block")
     }
 
     #[test]
@@ -1624,13 +1644,15 @@ mod tests {
         let anchor = Position::new(0, 5);
         let cursor = Position::new(2, 10);
         let mode = SelectionMode::Character;
+        let mode_id = test_visual_mode_id();
 
-        let selection = LastVisualSelection::new(buffer_id, anchor, cursor, mode);
+        let selection = LastVisualSelection::new(buffer_id, anchor, cursor, mode, mode_id.clone());
 
         assert_eq!(selection.buffer_id, buffer_id);
         assert_eq!(selection.anchor, anchor);
         assert_eq!(selection.cursor, cursor);
         assert_eq!(selection.mode, mode);
+        assert_eq!(selection.mode_id, mode_id);
     }
 
     #[test]
@@ -1641,6 +1663,7 @@ mod tests {
             Position::new(1, 0),
             Position::new(3, 0),
             SelectionMode::Line,
+            test_visual_line_mode_id(),
         );
 
         assert_eq!(selection.mode, SelectionMode::Line);
@@ -1654,6 +1677,7 @@ mod tests {
             Position::new(0, 0),
             Position::new(5, 10),
             SelectionMode::Block,
+            test_visual_block_mode_id(),
         );
 
         assert_eq!(selection.mode, SelectionMode::Block);
@@ -1678,6 +1702,7 @@ mod tests {
             Position::new(0, 0),
             Position::new(1, 5),
             SelectionMode::Character,
+            test_visual_mode_id(),
         );
 
         app.save_visual_selection(selection);
@@ -1698,6 +1723,7 @@ mod tests {
             Position::new(0, 0),
             Position::new(1, 5),
             SelectionMode::Character,
+            test_visual_mode_id(),
         );
 
         app.save_visual_selection(selection);
@@ -1717,6 +1743,7 @@ mod tests {
             Position::new(0, 0),
             Position::new(1, 5),
             SelectionMode::Character,
+            test_visual_mode_id(),
         );
         app.save_visual_selection(selection1);
 
@@ -1725,6 +1752,7 @@ mod tests {
             Position::new(5, 0),
             Position::new(10, 20),
             SelectionMode::Line,
+            test_visual_line_mode_id(),
         );
         app.save_visual_selection(selection2);
 
