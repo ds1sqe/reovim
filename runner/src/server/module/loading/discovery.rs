@@ -110,6 +110,58 @@ pub fn find_module(search_paths: &[PathBuf], name: &str) -> Option<PathBuf> {
     None
 }
 
+/// Discover Python module files in search paths.
+///
+/// Scans all search paths for `.py` files.
+#[cfg(feature = "python")]
+#[must_use]
+#[allow(dead_code)] // Public API for external use
+pub fn discover_python_modules(search_paths: &[PathBuf]) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+
+    for path in search_paths {
+        if !path.exists() {
+            continue;
+        }
+
+        if let Ok(entries) = std::fs::read_dir(path) {
+            for entry in entries.flatten() {
+                let file_path = entry.path();
+                if file_path.extension().is_some_and(|e| e == "py") {
+                    // Skip __pycache__, __init__.py, etc.
+                    if let Some(name) = file_path.file_name().and_then(|n| n.to_str())
+                        && !name.starts_with('_')
+                    {
+                        found.push(file_path);
+                    }
+                }
+            }
+        }
+    }
+
+    found
+}
+
+/// Find a Python module by name in search paths.
+///
+/// Searches for a `.py` file matching the given module name.
+/// Returns the first match found.
+#[cfg(feature = "python")]
+#[must_use]
+#[allow(dead_code)] // Public API for external use
+pub fn find_python_module(search_paths: &[PathBuf], name: &str) -> Option<PathBuf> {
+    let filename = format!("{name}.py");
+
+    for path in search_paths {
+        let full_path = path.join(&filename);
+        if full_path.exists() {
+            return Some(full_path);
+        }
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -167,5 +219,87 @@ mod tests {
     fn test_find_module_not_found() {
         let result = find_module(&[PathBuf::from("/nonexistent")], "fake-module");
         assert!(result.is_none());
+    }
+
+    // ========================================================================
+    // Python Discovery Tests (require python feature)
+    // ========================================================================
+
+    #[cfg(feature = "python")]
+    mod python_tests {
+        use std::io::Write;
+
+        use {super::*, tempfile::TempDir};
+
+        #[test]
+        fn test_discover_python_modules_empty() {
+            let found = super::discover_python_modules(&[]);
+            assert!(found.is_empty());
+        }
+
+        #[test]
+        fn test_discover_python_modules_nonexistent_path() {
+            let found = super::discover_python_modules(&[PathBuf::from("/nonexistent/path")]);
+            assert!(found.is_empty());
+        }
+
+        #[test]
+        fn test_discover_python_modules_finds_py_files() {
+            let temp_dir = TempDir::new().unwrap();
+            let module_path = temp_dir.path().join("my_module.py");
+            std::fs::File::create(&module_path)
+                .unwrap()
+                .write_all(b"# test")
+                .unwrap();
+
+            let found = super::discover_python_modules(&[temp_dir.path().to_path_buf()]);
+            assert_eq!(found.len(), 1);
+            assert_eq!(found[0], module_path);
+        }
+
+        #[test]
+        fn test_discover_python_modules_skips_private_files() {
+            let temp_dir = TempDir::new().unwrap();
+
+            // Create regular module
+            let module_path = temp_dir.path().join("my_module.py");
+            std::fs::File::create(&module_path)
+                .unwrap()
+                .write_all(b"# test")
+                .unwrap();
+
+            // Create private files that should be skipped
+            std::fs::File::create(temp_dir.path().join("__init__.py"))
+                .unwrap()
+                .write_all(b"")
+                .unwrap();
+            std::fs::File::create(temp_dir.path().join("_private.py"))
+                .unwrap()
+                .write_all(b"")
+                .unwrap();
+
+            let found = super::discover_python_modules(&[temp_dir.path().to_path_buf()]);
+            assert_eq!(found.len(), 1);
+            assert_eq!(found[0], module_path);
+        }
+
+        #[test]
+        fn test_find_python_module_not_found() {
+            let result = super::find_python_module(&[PathBuf::from("/nonexistent")], "fake");
+            assert!(result.is_none());
+        }
+
+        #[test]
+        fn test_find_python_module_found() {
+            let temp_dir = TempDir::new().unwrap();
+            let module_path = temp_dir.path().join("my_module.py");
+            std::fs::File::create(&module_path)
+                .unwrap()
+                .write_all(b"# test")
+                .unwrap();
+
+            let result = super::find_python_module(&[temp_dir.path().to_path_buf()], "my_module");
+            assert_eq!(result, Some(module_path));
+        }
     }
 }

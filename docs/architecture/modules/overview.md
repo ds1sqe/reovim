@@ -11,6 +11,21 @@ The module system enables dynamic loading of policy modules. Implemented in Phas
 | `ModuleLoader` | `runner/src/module/loader.rs` | Static + dynamic loading |
 | `ModuleRegistry` | `runner/src/module/registry.rs` | Dependency resolution |
 | `HotReloadManager` | `runner/src/module/hot_reload.rs` | File watching |
+| `PythonModule` | `lib/drivers/ffi-python/` | Python module wrapper |
+
+## Module Types
+
+Reovim supports multiple module types:
+
+| Type | Extension | Build | Feature Flag |
+|------|-----------|-------|--------------|
+| Rust (static) | - | Compile-time | - |
+| Rust (dynamic) | `.so`/`.dylib`/`.dll` | Runtime | - |
+| C/FFI | `.so`/`.dylib`/`.dll` | Runtime | - |
+| Python | `.py` | Runtime | `python` |
+
+All module types implement the same `Module` trait and participate in the
+same lifecycle, dependency resolution, and hot reload system.
 
 ---
 
@@ -173,6 +188,10 @@ impl ModuleLoader {
     // Dynamic loading (runtime)
     pub fn load_dynamic(&mut self, path: &Path) -> Result<ModuleHandle>;
 
+    // Python loading (requires `python` feature)
+    #[cfg(feature = "python")]
+    pub fn load_python(&mut self, path: &Path) -> Result<ModuleId>;
+
     // Search path loading
     pub fn load_by_name(&mut self, name: &str) -> Result<ModuleHandle>;
 }
@@ -186,7 +205,9 @@ impl ModuleLoader {
 ~/.local/share/reovim/modules/
 ```
 
-File extensions: `.so` (Linux), `.dylib` (macOS), `.dll` (Windows)
+File extensions:
+- Native: `.so` (Linux), `.dylib` (macOS), `.dll` (Windows)
+- Python: `.py` (requires `python` feature)
 
 ---
 
@@ -403,3 +424,6 @@ declare_module!(KeymapModule);
 - [Mechanism vs Policy](../contributing/philosophy/mechanism-vs-policy.md) - Design principle
 - [Module-Mode Inheritance](./mode-inheritance.md) - Mode system
 - [Kernel Subsystems](../kernel/overview.md) - Kernel internals
+- [FFI Overview](../ffi/overview.md) - C FFI interface
+- [Python FFI](../ffi/python.md) - Python module bindings
+- [Python Modules User Guide](../../user-guide/python-modules.md) - Writing Python modules

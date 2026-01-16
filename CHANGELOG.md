@@ -85,6 +85,23 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
   - Example C module at `examples/c-module/`
   - Modules can be written in C, Haskell, or any FFI-compatible language
 
+- **Python FFI Bindings via PyO3** (Issue #293)
+  - New `reovim-driver-ffi-python` crate for Python module support
+  - Optional feature flag: `cargo build --features python`
+  - PyO3 type bindings for kernel types:
+    - `ModuleId`, `Version`, `ProbeResult` - core identity types
+    - `CommandRegistration`, `KeybindingRegistration`, `EventHandlerRegistration` - builder types
+    - `ModuleContext` - init context wrapper
+  - `PythonModule` wrapper implementing all 12 `Module` trait methods
+  - Thread-safe GIL acquisition via `Python::attach()`
+  - Python module discovery (`discover_python_modules()`) and loading (`load_python()`)
+  - Hot reload support with `pickle`-based state serialization
+  - Documentation:
+    - Architecture: `docs/architecture/ffi/python.md`
+    - User guide: `docs/user-guide/python-modules.md`
+  - Example modules: `examples/python-module/hello.py`, `examples/python-module/counter.py`
+  - 34 unit tests covering all type bindings and conversions
+
 - **Basic Window Management** (Issue #276)
   - **WindowRegistry** (`runner/src/server/window.rs`):
     - `WindowState` struct for per-window cursor position and scroll offset
