@@ -279,11 +279,11 @@ async fn test_set_active_buffer_success() {
         "Response should contain ok: true"
     );
 
-    // Verify previous_buffer_id is 0 (no previous buffer)
+    // Verify previous_buffer_id is the same buffer (since buffer/open_file also activates it)
     assert_eq!(
         result.get("previous_buffer_id").and_then(Value::as_u64),
-        Some(0),
-        "Previous buffer should be 0 when no buffer was active"
+        Some(buffer_id),
+        "Previous buffer should be the same buffer since open_file activates it"
     );
 
     server.shutdown();

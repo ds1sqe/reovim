@@ -274,11 +274,16 @@ impl CommandHandler for CursorRight {
             // Get current line length for boundary check
             let line_len = buffer.line_len(old_pos.line).unwrap_or(0);
 
-            // Calculate new column (clamped to line length)
-            let new_col = (old_pos.column + count).min(line_len);
+            // In normal mode, cursor can't go past the last character.
+            // For a line of length N, valid columns are 0..N-1.
+            // An empty line has max_col 0, but we can still be at col 0.
+            let max_col = line_len.saturating_sub(1);
+
+            // Calculate new column (clamped to max valid position)
+            let new_col = (old_pos.column + count).min(max_col);
 
             // If already at right edge, no-op
-            if new_col == old_pos.column && old_pos.column == line_len {
+            if new_col == old_pos.column && old_pos.column == max_col {
                 return CommandResult::Success;
             }
 
@@ -2534,10 +2539,11 @@ mod tests {
     #[test]
     fn test_cursor_right_at_eol_is_noop() {
         let (mut ctx, buffer_id) = setup_buffer_context();
-        // Move to end of line
+        // Move to last character of line ("line one" is 8 chars, last char at index 7)
+        // In normal mode, cursor can't go past the last character
         {
             let buffer = ctx.buffers.get(buffer_id).unwrap();
-            buffer.write().set_position(Position::new(0, 8)); // "line one" is 8 chars
+            buffer.write().set_position(Position::new(0, 7)); // 'e' in "line one"
         }
 
         let mut args = CommandContext::new();
@@ -2548,7 +2554,7 @@ mod tests {
 
         let buffer = ctx.buffers.get(buffer_id).unwrap();
         let pos = buffer.read().position();
-        assert_eq!(pos.column, 8); // Stayed at EOL
+        assert_eq!(pos.column, 7); // Stayed at last character
     }
 
     // =========================================================================
