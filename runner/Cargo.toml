@@ -6,6 +6,11 @@ rust-version = "1.92"
 description = "Linux kernel-inspired text editor with mode/command system"
 license = "AGPL-3.0-only"
 
+[features]
+default = []
+# Enable Python module support via PyO3
+python = ["dep:reovim-driver-ffi-python", "dep:pyo3"]
+
 [lib]
 name = "runner"
 path = "src/lib.rs"
@@ -41,6 +46,10 @@ reovim-arch = { path = "../lib/arch" }
 # Dynamic library loading for runtime modules
 libloading = "0.8"
 
+# Python module support (optional)
+reovim-driver-ffi-python = { path = "../lib/drivers/ffi-python", optional = true }
+pyo3 = { workspace = true, optional = true }
+
 # Async runtime for multi-threaded server
 tokio = { workspace = true }
 
@@ -73,6 +82,8 @@ reovim-module-editor = { path = "../modules/editor" }
 # This ensures the cdylib is built when running `cargo test`
 reovim-module-hot-reload-demo = { path = "../modules/hot-reload-demo" }
 tempfile = "3.10"
+# Python FFI driver for e2e tests (provides init_python)
+reovim-driver-ffi-python = { path = "../lib/drivers/ffi-python" }
 
 [lints]
 workspace = true

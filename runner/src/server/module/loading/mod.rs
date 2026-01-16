@@ -31,3 +31,7 @@ pub use {
     handle::{InitResult, ModuleHandle},
     loader::ModuleLoader,
 };
+
+#[cfg(feature = "python")]
+#[allow(unused_imports)] // Public API exports for Python module discovery
+pub use discovery::{discover_python_modules, find_python_module};
