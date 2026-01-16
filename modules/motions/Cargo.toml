@@ -1,0 +1,14 @@
+[package]
+name = "reovim-module-motions"
+version = "0.9.0-dev"
+edition.workspace = true
+license.workspace = true
+description = "Vim motions (w, b, e, 0, $, etc.) for reovim - POLICY module"
+repository.workspace = true
+
+[dependencies]
+reovim-kernel = { workspace = true }
+reovim-driver-command = { workspace = true }
+
+[lints]
+workspace = true

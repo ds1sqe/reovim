@@ -105,6 +105,14 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
   - `u` (undo) and `Ctrl-R` (redo) now functional with cursor position restore
   - Deferred: Transaction batching (#255), Persistent undo (#256)
 
+- **Phase 7.10: Word Motions** (Issue #238)
+  - New `modules/motions/` module for vim-style motion commands
+  - 8 word motion commands: `w`, `b`, `e`, `W`, `B`, `E`, `ge`, `gE`
+  - Wires kernel `MotionEngine::calculate()` to keybindings (mechanism vs policy)
+  - Count prefix support (e.g., `3w` moves 3 words forward)
+  - Cross-line word movement
+  - 22 unit tests covering all motions, errors, and edge cases
+
 - **Phase 7.5-6: Insert Mode & Delete Operations** (Issues #233, #234, #231)
   - **Insert Mode Character Input** (`modules/editor/src/fallback.rs`):
     - `EditorFallbackHandler` now inserts characters in Insert mode
