@@ -85,6 +85,23 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
   - Example C module at `examples/c-module/`
   - Modules can be written in C, Haskell, or any FFI-compatible language
 
+- **Haskell FFI Module Support** (Issue #294)
+  - Example Haskell module at `examples/haskell-module/`
+  - GHC RTS initialization via `__attribute__((constructor))` in `rts_shim.c`
+  - Pointer-based FFI alternatives for GHC limitations:
+    - `reovim_module_api_version_ptr()` - GHC can't export static symbols
+    - `reovim_module_probe()` via pointer - GHC can't return structs by value
+  - Module loader fallback support (`runner/src/server/module/loading/loader.rs`):
+    - Tries static symbol first, then pointer-based function
+  - Haskell FFI bindings library:
+    - `Reovim.FFI.Types` - Storable instances for FFI types
+    - `Reovim.FFI.Version` - Version constants and compatibility
+    - `Reovim.FFI.Probe` - ProbeBuilder pattern
+    - `Reovim.FFI.Logging` - Kernel logging imports
+    - `Reovim.Module` - ReovimModule typeclass with exception-safe wrappers
+  - Documentation at `docs/architecture/ffi/haskell.md`
+  - Demo script: `examples/haskell-module/demo.sh`
+
 - **Basic Window Management** (Issue #276)
   - **WindowRegistry** (`runner/src/server/window.rs`):
     - `WindowState` struct for per-window cursor position and scroll offset

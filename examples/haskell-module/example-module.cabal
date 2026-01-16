@@ -1,0 +1,67 @@
+cabal-version:      3.0
+name:               reovim-example-module
+version:            1.0.0
+synopsis:           Example reovim module in Haskell
+description:
+    An example module demonstrating how to write reovim modules in Haskell
+    using the FFI bindings. This module exports all required entry points
+    and can be loaded by the reovim module loader.
+license:            MIT
+license-file:       LICENSE
+author:             reovim contributors
+build-type:         Simple
+extra-doc-files:    README.md
+
+-- Common settings for all components
+common warnings
+    ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                 -Wincomplete-uni-patterns -Wmissing-export-lists
+                 -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
+
+-- The FFI library providing Haskell bindings to reovim
+library
+    import:           warnings
+    exposed-modules:
+        Reovim.FFI
+        Reovim.FFI.Types
+        Reovim.FFI.Version
+        Reovim.FFI.Probe
+        Reovim.FFI.Logging
+        Reovim.Module
+    build-depends:
+        base >= 4.16 && < 5,
+        bytestring >= 0.11 && < 0.13
+    hs-source-dirs:   .
+    default-language: GHC2021
+
+-- The example module as a shared library
+-- Note: Building as foreign library requires special handling
+foreign-library example-haskell
+    type:             native-shared
+    lib-version-info: 1:0:0
+
+    if os(windows)
+        options: standalone
+        mod-def-file: ExampleModule.def
+
+    other-modules:    ExampleModule
+    c-sources:        rts_shim.c
+    build-depends:
+        base >= 4.16 && < 5,
+        bytestring >= 0.11 && < 0.13,
+        reovim-example-module
+    hs-source-dirs:   .
+    default-language: GHC2021
+    ghc-options:      -fPIC
+
+-- FFI safety test executable
+executable test-ffi-safety
+    import:           warnings
+    main-is:          TestFFISafety.hs
+    build-depends:
+        base >= 4.16 && < 5,
+        bytestring >= 0.11 && < 0.13,
+        reovim-example-module
+    hs-source-dirs:   .
+    c-sources:        test_stubs.c
+    default-language: GHC2021

@@ -23,6 +23,12 @@ pub type InitFn = unsafe extern "C" fn(*mut c_void, *const c_void) -> i32;
 pub type ExitFn = unsafe extern "C" fn(*mut c_void) -> i32;
 pub type DestroyFn = unsafe extern "C" fn(*mut c_void);
 
+// Alternative FFI types for languages that can't return structs by value (e.g., Haskell)
+/// Alternative probe function that fills a pre-allocated buffer.
+pub type ProbePtrFn = unsafe extern "C" fn(*mut ModuleProbe);
+/// Alternative API version function that fills a pre-allocated buffer.
+pub type ApiVersionPtrFn = unsafe extern "C" fn(*mut Version);
+
 // Hot reload FFI types
 pub type SupportsHotReloadFn = unsafe extern "C" fn(*const c_void) -> i32;
 pub type SaveStateFn = unsafe extern "C" fn(*const c_void, *mut *mut u8, *mut usize) -> i32;
