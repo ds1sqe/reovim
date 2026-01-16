@@ -113,6 +113,11 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
   - Cross-line word movement
   - 22 unit tests covering all motions, errors, and edge cases
 
+- **Phase 7.11: Line Motions** (Issue #239)
+  - 5 line motion commands: `0`, `$`, `^`, `gg`, `G`
+  - Count support for `gg` and `G` (e.g., `10G` goes to line 10)
+  - 19 unit tests covering all motions and edge cases
+
 - **Phase 7.5-6: Insert Mode & Delete Operations** (Issues #233, #234, #231)
   - **Insert Mode Character Input** (`modules/editor/src/fallback.rs`):
     - `EditorFallbackHandler` now inserts characters in Insert mode

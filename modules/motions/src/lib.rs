@@ -2,7 +2,7 @@
 //!
 //! This module implements motion commands that move the cursor:
 //! - Word motions: `w`, `b`, `e`, `W`, `B`, `E`, `ge`, `gE`
-//! - Line motions: `0`, `$`, `^`, `gg`, `G` (future)
+//! - Line motions: `0`, `$`, `^`, `gg`, `G`
 //! - Find-char motions: `f`, `F`, `t`, `T`, `;`, `,` (future)
 //!
 //! # Mechanism vs Policy
@@ -22,6 +22,7 @@
 //! }
 //! ```
 
+pub mod line;
 pub mod word;
 
 use reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version};
@@ -69,5 +70,11 @@ mod tests {
     fn test_word_commands_count() {
         let cmds = word::all_commands();
         assert_eq!(cmds.len(), 8); // w, b, e, W, B, E, ge, gE
+    }
+
+    #[test]
+    fn test_line_commands_count() {
+        let cmds = line::all_commands();
+        assert_eq!(cmds.len(), 5); // 0, $, ^, gg, G
     }
 }
