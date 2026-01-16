@@ -142,6 +142,28 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
   - 13 unit tests covering all commands
   - Integration tests deferred (pending module loading infrastructure)
 
+- **Phase 7.13: Search** (Issue #246)
+  - Search infrastructure for pattern-based navigation (`/`, `?`, `n`, `N`, `*`, `#`)
+  - `SearchDirection` and `SearchAction` enums in command driver
+  - `SearchState` in AppState for pattern persistence across buffer switches
+  - `SearchEngine` in runner with regex-based pattern matching:
+    - `find_next()` - Find next match from cursor with wrap support
+    - `find_all()` - Find all matches for highlighting
+    - `word_at_cursor()` - Extract word with boundaries for `*`/`#`
+  - `CommandResult::SearchAction` variant for search intents
+  - 7 search commands in `modules/motions/src/search.rs`:
+    - `/` (SearchForward) - Enter search mode forward
+    - `?` (SearchBackward) - Enter search mode backward
+    - `n` (SearchNext) - Go to next match
+    - `N` (SearchPrevious) - Go to previous match
+    - `*` (SearchWordForward) - Search word under cursor forward
+    - `#` (SearchWordBackward) - Search word under cursor backward
+    - `:noh` (ClearSearchHighlight) - Clear search highlighting
+  - Event loop handles search input mode (buffered until Enter/Escape)
+  - 15 integration tests (pending module loading infrastructure)
+  - 13 SearchEngine unit tests (including empty buffer and wrap edge cases)
+  - 16 command unit tests covering all 7 search commands
+
 - **Phase 7.5-6: Insert Mode & Delete Operations** (Issues #233, #234, #231)
   - **Insert Mode Character Input** (`modules/editor/src/fallback.rs`):
     - `EditorFallbackHandler` now inserts characters in Insert mode

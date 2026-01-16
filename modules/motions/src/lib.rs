@@ -4,6 +4,7 @@
 //! - Word motions: `w`, `b`, `e`, `W`, `B`, `E`, `ge`, `gE`
 //! - Line motions: `0`, `$`, `^`, `gg`, `G`
 //! - Find-char motions: `f`, `F`, `t`, `T`, `;`, `,`
+//! - Search motions: `/`, `?`, `n`, `N`, `*`, `#`, `:noh`
 //!
 //! # Mechanism vs Policy
 //!
@@ -24,6 +25,7 @@
 
 pub mod find_char;
 pub mod line;
+pub mod search;
 pub mod word;
 
 use reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version};
@@ -83,5 +85,11 @@ mod tests {
     fn test_find_char_commands_count() {
         let cmds = find_char::all_commands();
         assert_eq!(cmds.len(), 6); // f, F, t, T, ;, ,
+    }
+
+    #[test]
+    fn test_search_commands_count() {
+        let cmds = search::all_commands();
+        assert_eq!(cmds.len(), 7); // /, ?, n, N, *, #, :noh
     }
 }

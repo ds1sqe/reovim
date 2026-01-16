@@ -477,6 +477,38 @@ impl CharWaitContext {
 }
 
 // ============================================================================
+// Search Types (for search commands)
+// ============================================================================
+
+/// Search direction for / and ? commands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SearchDirection {
+    /// Search forward from cursor (/)
+    #[default]
+    Forward,
+    /// Search backward from cursor (?)
+    Backward,
+}
+
+/// Search action intent returned by commands.
+///
+/// Commands return this to request search operations. The runner handles
+/// the actual search execution, input mode management, and pattern storage.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SearchAction {
+    /// Enter search input mode (/ or ?)
+    EnterSearchMode { direction: SearchDirection },
+    /// Go to next match in the same direction (n)
+    Next,
+    /// Go to previous match / reverse direction (N)
+    Previous,
+    /// Search word under cursor (* or #)
+    WordUnderCursor { direction: SearchDirection },
+    /// Clear search highlighting (:noh)
+    ClearHighlight,
+}
+
+// ============================================================================
 // CommandResult
 // ============================================================================
 
@@ -520,6 +552,12 @@ pub enum CommandResult {
     ///
     /// The runner executes `last_find.reverse_motion()` if `last_find` is set.
     RepeatFindReverse,
+    /// Command requests a search action.
+    ///
+    /// Search commands (/, ?, n, N, *, #, :noh) return this to indicate
+    /// what search operation should be performed. The runner handles
+    /// input mode, pattern storage, and search execution.
+    SearchAction(SearchAction),
 }
 
 /// Undo/redo action intent returned by commands.
@@ -672,6 +710,12 @@ impl CommandResult {
     #[must_use]
     pub const fn is_waiting_for_char(&self) -> bool {
         matches!(self, Self::WaitingForChar(_))
+    }
+
+    /// Check if the result is a search action.
+    #[must_use]
+    pub const fn is_search_action(&self) -> bool {
+        matches!(self, Self::SearchAction(_))
     }
 
     /// Create an error result.
