@@ -6,13 +6,19 @@
 //! - `ModeInput` (input driver): Whether mode accepts char input
 //!
 //! This registry stores all three aspects together for easy lookup.
+//!
+//! # Module Ownership
+//!
+//! Modes can be registered with optional module ownership via
+//! [`register_for_module`]. When a module is unloaded, all its
+//! registered modes can be removed via [`unregister_for_module`].
 
 use std::{collections::HashMap, sync::Arc};
 
 use {
     reovim_driver_display::{CursorStyle, ModeDisplay},
     reovim_driver_input::ModeInput,
-    reovim_kernel::api::v1::{Mode, ModeId},
+    reovim_kernel::api::v1::{Mode, ModeId, ModuleId},
 };
 
 /// Entry in the mode registry containing all mode aspects.
@@ -33,6 +39,11 @@ pub struct ModeEntry {
     ///
     /// `None` if the mode doesn't customize input handling.
     pub input: Option<Arc<dyn ModeInput>>,
+
+    /// The module that owns this mode (if any).
+    ///
+    /// `None` for built-in modes or modes registered without ownership.
+    owner: Option<ModuleId>,
 }
 
 impl ModeEntry {
@@ -43,6 +54,7 @@ impl ModeEntry {
             mode,
             display: None,
             input: None,
+            owner: None,
         }
     }
 
@@ -60,10 +72,23 @@ impl ModeEntry {
         self
     }
 
+    /// Set the owning module for this mode entry.
+    #[must_use]
+    pub fn with_owner(mut self, owner: ModuleId) -> Self {
+        self.owner = Some(owner);
+        self
+    }
+
     /// Get the mode's ID.
     #[must_use]
     pub fn id(&self) -> ModeId {
         self.mode.id()
+    }
+
+    /// Get the owning module ID if any.
+    #[must_use]
+    pub const fn owner(&self) -> Option<&ModuleId> {
+        self.owner.as_ref()
     }
 }
 
@@ -73,6 +98,7 @@ impl std::fmt::Debug for ModeEntry {
             .field("id", &self.mode.id())
             .field("has_display", &self.display.is_some())
             .field("has_input", &self.input.is_some())
+            .field("owner", &self.owner)
             .finish()
     }
 }
@@ -186,6 +212,18 @@ impl ModeRegistry {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.modes.is_empty()
+    }
+
+    /// Remove all modes owned by a module.
+    ///
+    /// Called when a module is being unloaded to clean up its registrations.
+    ///
+    /// Returns the number of modes that were removed.
+    pub fn unregister_for_module(&mut self, module: &ModuleId) -> usize {
+        let before = self.modes.len();
+        self.modes
+            .retain(|_, entry| entry.owner.as_ref() != Some(module));
+        before - self.modes.len()
     }
 }
 
@@ -331,5 +369,102 @@ mod tests {
         assert!(!registry.accepts_char_input(&unknown_id));
         assert_eq!(registry.cursor_style(&unknown_id), CursorStyle::Block);
         assert_eq!(registry.status_text(&unknown_id), "");
+    }
+
+    #[test]
+    fn test_mode_entry_with_owner() {
+        let mode = normal_mode();
+        let owner = ModuleId::new("my-module");
+
+        let entry = ModeEntry::new(Arc::new(mode)).with_owner(owner.clone());
+
+        assert_eq!(entry.owner(), Some(&owner));
+    }
+
+    #[test]
+    fn test_mode_entry_without_owner() {
+        let mode = normal_mode();
+        let entry = ModeEntry::new(Arc::new(mode));
+
+        assert!(entry.owner().is_none());
+    }
+
+    #[test]
+    fn test_mode_registry_unregister_for_module() {
+        let mut registry = ModeRegistry::new();
+        let owner = ModuleId::new("my-module");
+
+        // Register modes with owner
+        let normal = normal_mode();
+        let normal_id = normal.id.clone();
+        registry.register(ModeEntry::new(Arc::new(normal)).with_owner(owner.clone()));
+
+        let insert = insert_mode();
+        let insert_id = insert.id.clone();
+        registry.register(ModeEntry::new(Arc::new(insert)).with_owner(owner.clone()));
+
+        // Register one mode without owner
+        let other_mode = TestMode {
+            id: ModeId::new(ModuleId::new("test"), "visual"),
+            accepts_input: false,
+        };
+        let visual_id = other_mode.id.clone();
+        registry.register(ModeEntry::new(Arc::new(other_mode)));
+
+        assert_eq!(registry.len(), 3);
+
+        // Unregister module's modes
+        let removed = registry.unregister_for_module(&owner);
+
+        assert_eq!(removed, 2);
+        assert_eq!(registry.len(), 1);
+        assert!(!registry.contains(&normal_id));
+        assert!(!registry.contains(&insert_id));
+        assert!(registry.contains(&visual_id));
+    }
+
+    #[test]
+    fn test_mode_registry_unregister_for_module_empty() {
+        let mut registry = ModeRegistry::new();
+        let owner = ModuleId::new("my-module");
+
+        // Register mode without owner
+        registry.register(ModeEntry::new(Arc::new(normal_mode())));
+
+        // Try to unregister for a module that has no modes
+        let removed = registry.unregister_for_module(&owner);
+
+        assert_eq!(removed, 0);
+        assert_eq!(registry.len(), 1);
+    }
+
+    #[test]
+    fn test_mode_registry_multiple_modules() {
+        let mut registry = ModeRegistry::new();
+        let module_x = ModuleId::new("module-a");
+        let module_y = ModuleId::new("module-b");
+
+        let first_mode = TestMode {
+            id: ModeId::new(ModuleId::new("test"), "mode-a"),
+            accepts_input: false,
+        };
+        let first_mode_id = first_mode.id.clone();
+        registry.register(ModeEntry::new(Arc::new(first_mode)).with_owner(module_x.clone()));
+
+        let second_mode = TestMode {
+            id: ModeId::new(ModuleId::new("test"), "mode-b"),
+            accepts_input: true,
+        };
+        let second_mode_id = second_mode.id.clone();
+        registry.register(ModeEntry::new(Arc::new(second_mode)).with_owner(module_y));
+
+        assert_eq!(registry.len(), 2);
+
+        // Unload module A
+        registry.unregister_for_module(&module_x);
+
+        assert_eq!(registry.len(), 1);
+        assert!(!registry.contains(&first_mode_id));
+        assert!(registry.contains(&second_mode_id));
     }
 }

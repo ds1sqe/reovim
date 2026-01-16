@@ -5,12 +5,18 @@
 //! - **Full match**: The key sequence maps to a command
 //! - **Prefix match**: The sequence is a prefix of one or more bindings
 //! - **No match**: The sequence doesn't match anything
+//!
+//! # Module Ownership
+//!
+//! Keybindings can be registered with optional module ownership via
+//! [`register_for_module`]. When a module is unloaded, all its
+//! registered keybindings can be removed via [`unregister_for_module`].
 
 use std::collections::HashMap;
 
 use {
     reovim_driver_input::KeySequence,
-    reovim_kernel::api::v1::{CommandId, ModeId},
+    reovim_kernel::api::v1::{CommandId, ModeId, ModuleId},
 };
 
 /// Result of a keymap lookup.
@@ -61,11 +67,24 @@ impl KeyLookupResult {
     }
 }
 
+/// Entry in the keymap registry with optional ownership tracking.
+struct KeybindingEntry {
+    /// The command ID to execute.
+    command: CommandId,
+    /// The module that owns this keybinding (if any).
+    owner: Option<ModuleId>,
+}
+
 /// Registry for keybindings.
 ///
 /// Maps (mode, key sequence) pairs to command IDs. Supports multi-key
 /// sequences with prefix detection for proper handling of sequences
 /// like `gg` or `<C-w>h`.
+///
+/// # Module Ownership
+///
+/// Keybindings can be registered with module ownership via [`register_for_module`].
+/// This enables automatic cleanup when modules are unloaded.
 ///
 /// # Example
 ///
@@ -92,7 +111,7 @@ impl KeyLookupResult {
 #[derive(Default)]
 pub struct KeymapRegistry {
     /// Bindings organized by mode, then by key sequence.
-    bindings: HashMap<ModeId, HashMap<KeySequence, CommandId>>,
+    entries: HashMap<ModeId, HashMap<KeySequence, KeybindingEntry>>,
 }
 
 impl KeymapRegistry {
@@ -102,7 +121,7 @@ impl KeymapRegistry {
         Self::default()
     }
 
-    /// Register a keybinding.
+    /// Register a keybinding (without module ownership).
     ///
     /// # Arguments
     ///
@@ -113,7 +132,51 @@ impl KeymapRegistry {
     /// If a binding with the same mode and key sequence already exists,
     /// it is replaced.
     pub fn register(&mut self, mode: ModeId, keys: KeySequence, command: CommandId) {
-        self.bindings.entry(mode).or_default().insert(keys, command);
+        self.entries.entry(mode).or_default().insert(
+            keys,
+            KeybindingEntry {
+                command,
+                owner: None,
+            },
+        );
+    }
+
+    /// Register a keybinding with module ownership.
+    ///
+    /// When the owning module is unloaded, this keybinding will be automatically
+    /// deregistered via [`unregister_for_module`].
+    pub fn register_for_module(
+        &mut self,
+        mode: ModeId,
+        keys: KeySequence,
+        command: CommandId,
+        owner: ModuleId,
+    ) {
+        self.entries.entry(mode).or_default().insert(
+            keys,
+            KeybindingEntry {
+                command,
+                owner: Some(owner),
+            },
+        );
+    }
+
+    /// Remove all keybindings owned by a module.
+    ///
+    /// Called when a module is being unloaded to clean up its registrations.
+    ///
+    /// Returns the number of keybindings that were removed.
+    pub fn unregister_for_module(&mut self, module: &ModuleId) -> usize {
+        let mut removed = 0;
+        for mode_entries in self.entries.values_mut() {
+            let before = mode_entries.len();
+            mode_entries.retain(|_, entry| entry.owner.as_ref() != Some(module));
+            removed += before - mode_entries.len();
+        }
+        // Clean up empty mode maps
+        self.entries
+            .retain(|_, mode_entries| !mode_entries.is_empty());
+        removed
     }
 
     /// Register a keybinding from a string.
@@ -141,17 +204,17 @@ impl KeymapRegistry {
     /// - `NotFound` if the sequence doesn't match anything
     #[must_use]
     pub fn lookup(&self, mode: &ModeId, keys: &KeySequence) -> KeyLookupResult {
-        let Some(mode_bindings) = self.bindings.get(mode) else {
+        let Some(mode_entries) = self.entries.get(mode) else {
             return KeyLookupResult::NotFound;
         };
 
         // Check for exact match first
-        if let Some(cmd) = mode_bindings.get(keys) {
-            return KeyLookupResult::Found(cmd.clone());
+        if let Some(entry) = mode_entries.get(keys) {
+            return KeyLookupResult::Found(entry.command.clone());
         }
 
         // Check if this is a prefix of any binding
-        if Self::is_prefix_of_any(mode_bindings, keys) {
+        if Self::is_prefix_of_any(mode_entries, keys) {
             return KeyLookupResult::Prefix;
         }
 
@@ -160,10 +223,10 @@ impl KeymapRegistry {
 
     /// Check if a key sequence is a prefix of any binding in the mode.
     fn is_prefix_of_any(
-        mode_bindings: &HashMap<KeySequence, CommandId>,
+        mode_entries: &HashMap<KeySequence, KeybindingEntry>,
         keys: &KeySequence,
     ) -> bool {
-        mode_bindings
+        mode_entries
             .keys()
             .any(|binding_keys| binding_keys.starts_with(keys) && binding_keys != keys)
     }
@@ -171,40 +234,40 @@ impl KeymapRegistry {
     /// Get all bindings for a mode.
     #[must_use]
     pub fn bindings_for_mode(&self, mode: &ModeId) -> Vec<(&KeySequence, &CommandId)> {
-        self.bindings
+        self.entries
             .get(mode)
-            .map(|m| m.iter().collect())
+            .map(|m| m.iter().map(|(k, e)| (k, &e.command)).collect())
             .unwrap_or_default()
     }
 
     /// Get the number of bindings for a mode.
     #[must_use]
     pub fn binding_count(&self, mode: &ModeId) -> usize {
-        self.bindings.get(mode).map_or(0, HashMap::len)
+        self.entries.get(mode).map_or(0, HashMap::len)
     }
 
     /// Get total number of bindings across all modes.
     #[must_use]
     pub fn total_bindings(&self) -> usize {
-        self.bindings.values().map(HashMap::len).sum()
+        self.entries.values().map(HashMap::len).sum()
     }
 
     /// Get all modes that have bindings.
     pub fn modes(&self) -> impl Iterator<Item = &ModeId> {
-        self.bindings.keys()
+        self.entries.keys()
     }
 
     /// Check if the registry has any bindings.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.bindings.is_empty() || self.bindings.values().all(HashMap::is_empty)
+        self.entries.is_empty() || self.entries.values().all(HashMap::is_empty)
     }
 }
 
 impl std::fmt::Debug for KeymapRegistry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("KeymapRegistry")
-            .field("modes", &self.bindings.keys().collect::<Vec<_>>())
+            .field("modes", &self.entries.keys().collect::<Vec<_>>())
             .field("total_bindings", &self.total_bindings())
             .finish()
     }
@@ -368,5 +431,119 @@ mod tests {
         assert!(!not_found.is_prefix());
         assert!(not_found.is_not_found());
         assert!(not_found.command_id().is_none());
+    }
+
+    #[test]
+    fn test_keymap_registry_register_for_module() {
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+        let owner = ModuleId::new("my-module");
+        let keys = KeySequence::parse("j").unwrap();
+
+        registry.register_for_module(mode.clone(), keys.clone(), test_command("down"), owner);
+
+        assert_eq!(registry.binding_count(&mode), 1);
+
+        let result = registry.lookup(&mode, &keys);
+        assert!(result.is_found());
+    }
+
+    #[test]
+    fn test_keymap_registry_unregister_for_module() {
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+        let owner = ModuleId::new("my-module");
+
+        // Register keybindings for the module
+        let j = KeySequence::parse("j").unwrap();
+        let k = KeySequence::parse("k").unwrap();
+        registry.register_for_module(mode.clone(), j.clone(), test_command("down"), owner.clone());
+        registry.register_for_module(mode.clone(), k.clone(), test_command("up"), owner.clone());
+
+        // Register one without owner
+        let l = KeySequence::parse("l").unwrap();
+        registry.register(mode.clone(), l.clone(), test_command("right"));
+
+        assert_eq!(registry.binding_count(&mode), 3);
+
+        // Unregister module's keybindings
+        let removed = registry.unregister_for_module(&owner);
+
+        assert_eq!(removed, 2);
+        assert_eq!(registry.binding_count(&mode), 1);
+
+        // Module keybindings should be gone
+        assert!(registry.lookup(&mode, &j).is_not_found());
+        assert!(registry.lookup(&mode, &k).is_not_found());
+
+        // Non-owned keybinding should remain
+        assert!(registry.lookup(&mode, &l).is_found());
+    }
+
+    #[test]
+    fn test_keymap_registry_unregister_for_module_multiple_modes() {
+        let mut registry = KeymapRegistry::new();
+        let normal_mode = ModeId::new(ModuleId::new("test"), "normal");
+        let insert_mode = ModeId::new(ModuleId::new("test"), "insert");
+        let owner = ModuleId::new("my-module");
+
+        // Register in multiple modes
+        let j = KeySequence::parse("j").unwrap();
+        registry.register_for_module(normal_mode, j.clone(), test_command("down"), owner.clone());
+        registry.register_for_module(insert_mode, j, test_command("insert-j"), owner.clone());
+
+        assert_eq!(registry.total_bindings(), 2);
+
+        // Unregister all module keybindings
+        let removed = registry.unregister_for_module(&owner);
+
+        assert_eq!(removed, 2);
+        assert_eq!(registry.total_bindings(), 0);
+        assert!(registry.is_empty());
+    }
+
+    #[test]
+    fn test_keymap_registry_unregister_for_module_empty() {
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+        let owner = ModuleId::new("my-module");
+
+        // Register without owner
+        let j = KeySequence::parse("j").unwrap();
+        registry.register(mode.clone(), j, test_command("down"));
+
+        // Try to unregister for a module that has no keybindings
+        let removed = registry.unregister_for_module(&owner);
+
+        assert_eq!(removed, 0);
+        assert_eq!(registry.binding_count(&mode), 1);
+    }
+
+    #[test]
+    fn test_keymap_registry_multiple_modules() {
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+        let module_x = ModuleId::new("module-a");
+        let module_y = ModuleId::new("module-b");
+
+        let j = KeySequence::parse("j").unwrap();
+        let k = KeySequence::parse("k").unwrap();
+
+        registry.register_for_module(
+            mode.clone(),
+            j.clone(),
+            test_command("a-down"),
+            module_x.clone(),
+        );
+        registry.register_for_module(mode.clone(), k.clone(), test_command("b-up"), module_y);
+
+        assert_eq!(registry.total_bindings(), 2);
+
+        // Unload module A
+        registry.unregister_for_module(&module_x);
+
+        assert_eq!(registry.total_bindings(), 1);
+        assert!(registry.lookup(&mode, &j).is_not_found());
+        assert!(registry.lookup(&mode, &k).is_found());
     }
 }

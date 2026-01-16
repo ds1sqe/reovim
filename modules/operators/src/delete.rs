@@ -73,10 +73,18 @@ impl Operator for DeleteOperator {
             }
         }
 
-        // Store in register
-        // For now, assume characterwise; linewise detection would come from motion context
-        let content = RegisterContent::characterwise(deleted_text);
-        ctx.kernel.registers.write().set(content);
+        // Store in register - linewise if the range was linewise
+        let content = if range.is_linewise {
+            RegisterContent::linewise(deleted_text)
+        } else {
+            RegisterContent::characterwise(deleted_text)
+        };
+
+        // Use set_by_name which handles named registers (a-z) and append (A-Z)
+        ctx.kernel
+            .registers
+            .write()
+            .set_by_name(ctx.register, content);
 
         // Delete the text from buffer
         buffer.delete_range(start, end);

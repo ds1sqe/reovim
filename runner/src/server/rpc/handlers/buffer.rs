@@ -237,9 +237,14 @@ mod tests {
             session::{Session, SessionId},
         },
         reovim_arch::sync::RwLock,
+        reovim_driver_vfs::{MockVfs, VfsDriver},
         reovim_kernel::api::v1::{BufferError, BufferManager, KernelContext, ModeId, ModuleId},
         std::collections::HashMap,
     };
+
+    fn test_vfs() -> Arc<dyn VfsDriver> {
+        Arc::new(MockVfs::new())
+    }
 
     /// Test-only buffer manager that actually stores buffers.
     struct TestBufferManager {
@@ -314,6 +319,7 @@ mod tests {
             SessionId::new("test"),
             test_kernel(),
             ModeId::new(ModuleId::new("test"), "normal"),
+            test_vfs(),
         )
     }
 

@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use {
     reovim_arch::sync::RwLock,
+    reovim_driver_vfs::{MockVfs, VfsDriver},
     reovim_kernel::api::v1::{
         EventBus, KernelContext, MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry,
         RegisterBank, TextObjectEngine,
@@ -16,6 +17,12 @@ use crate::{
     session::{ClientId, Session, SessionId},
 };
 
+/// Create a mock VFS for testing.
+#[must_use]
+pub fn test_vfs() -> Arc<dyn VfsDriver> {
+    Arc::new(MockVfs::new())
+}
+
 /// Create a test session with default configuration.
 ///
 /// Uses `KernelContext::default()` which has stub implementations.
@@ -26,6 +33,7 @@ pub fn test_session() -> Arc<Session> {
         SessionId::new("test"),
         KernelContext::default(),
         ModeId::new(ModuleId::new("test"), "normal"),
+        test_vfs(),
     )
 }
 
@@ -39,6 +47,7 @@ pub fn test_session_with_buffers() -> Arc<Session> {
         SessionId::new("test"),
         real_kernel_context(),
         ModeId::new(ModuleId::new("test"), "normal"),
+        test_vfs(),
     )
 }
 

@@ -107,6 +107,9 @@
 // All server-specific code lives in the server module
 pub mod server;
 
+// Search engine for / and ? commands
+pub mod search;
+
 // Client modules (TUI and CLI)
 pub mod client;
 

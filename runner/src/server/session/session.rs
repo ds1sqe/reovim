@@ -10,6 +10,7 @@ use tokio::sync::RwLock;
 use {
     reovim_driver_command::{CommandContext, CommandResult, EditAction, UndoAction},
     reovim_driver_input::KeySequence,
+    reovim_driver_vfs::VfsDriver,
     reovim_kernel::api::v1::{CommandId, Edit, KernelContext, ModeId, UndoResult},
 };
 
@@ -88,20 +89,27 @@ pub struct Session {
 impl Session {
     /// Create a new session with empty registries.
     #[must_use]
-    pub fn new(id: SessionId, kernel: KernelContext, initial_mode: ModeId) -> Arc<Self> {
+    pub fn new(
+        id: SessionId,
+        kernel: KernelContext,
+        initial_mode: ModeId,
+        vfs: Arc<dyn VfsDriver>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             id,
-            state: RwLock::new(SessionState::new(kernel, initial_mode)),
+            state: RwLock::new(SessionState::new(kernel, initial_mode, vfs)),
             clients: ClientRegistry::new(),
         })
     }
 
     /// Create a new session with pre-populated registries.
     #[must_use]
+    #[allow(clippy::too_many_arguments)]
     pub fn with_registries(
         id: SessionId,
         kernel: KernelContext,
         initial_mode: ModeId,
+        vfs: Arc<dyn VfsDriver>,
         mode_registry: ModeRegistry,
         command_registry: CommandRegistry,
         keymap_registry: KeymapRegistry,
@@ -112,6 +120,7 @@ impl Session {
             state: RwLock::new(SessionState::with_registries(
                 kernel,
                 initial_mode,
+                vfs,
                 mode_registry,
                 command_registry,
                 keymap_registry,
@@ -170,12 +179,21 @@ impl Session {
     ///
     /// Acquires a write lock on the session state.
     /// Returns `None` if the command isn't registered.
+    ///
+    /// The VFS is automatically populated in the command context from
+    /// the session state, so commands have access to file operations.
     pub async fn execute_command(
         &self,
         id: &CommandId,
         args: &CommandContext,
     ) -> Option<CommandResult> {
-        self.state.write().await.execute_command(id, args)
+        let mut state = self.state.write().await;
+
+        // Create command context with VFS populated
+        let mut args_with_vfs = args.clone();
+        args_with_vfs.set_vfs(state.vfs.clone());
+
+        state.execute_command(id, &args_with_vfs)
     }
 
     /// Check if the current mode accepts character input.
@@ -233,7 +251,255 @@ impl Session {
                 // TODO: handle undo tree action
                 None
             }
+            CommandResult::WaitingForChar(ctx) => {
+                // Find-char command (f/F/t/T) needs a character argument.
+                // Set char-wait state so next key press completes the motion.
+                // This is handled by the message loop which checks char_wait before keymap lookup.
+                self.set_char_wait(ctx).await;
+                None
+            }
+            CommandResult::RepeatFindSame => {
+                // Repeat last find-char in the same direction (;)
+                // The actual motion execution is handled by the message loop.
+                self.execute_repeat_find(false).await;
+                None
+            }
+            CommandResult::RepeatFindReverse => {
+                // Repeat last find-char in the opposite direction (,)
+                // The actual motion execution is handled by the message loop.
+                self.execute_repeat_find(true).await;
+                None
+            }
+            CommandResult::SearchAction(action) => {
+                // Search commands (/, ?, n, N, *, #, :noh) return search actions.
+                // The runner handles input mode, pattern storage, and search execution.
+                self.handle_search_action(action).await;
+                None
+            }
+            CommandResult::RepeatAction => {
+                // Repeat command (.) wants to replay the last repeatable command.
+                // This is handled by the message loop which accesses repeat_state.
+                // For now, just return None - full implementation comes in Phase 5.
+                None
+            }
         }
+    }
+
+    /// Handle a search action from search commands.
+    async fn handle_search_action(&self, action: reovim_driver_command::SearchAction) {
+        use {crate::server::app::SearchDirection, reovim_driver_command::SearchAction};
+
+        match action {
+            SearchAction::EnterSearchMode { direction } => {
+                let dir = match direction {
+                    reovim_driver_command::SearchDirection::Forward => SearchDirection::Forward,
+                    reovim_driver_command::SearchDirection::Backward => SearchDirection::Backward,
+                };
+                self.state.write().await.app.search.start_input(dir);
+            }
+            SearchAction::Next => {
+                let (pattern, direction) = {
+                    let state = self.state.read().await;
+                    (state.app.search.pattern.clone(), state.app.search.direction)
+                };
+                if let Some(pattern) = pattern {
+                    self.execute_search(&pattern, direction).await;
+                }
+            }
+            SearchAction::Previous => {
+                let (pattern, direction) = {
+                    let state = self.state.read().await;
+                    let dir = match state.app.search.direction {
+                        SearchDirection::Forward => SearchDirection::Backward,
+                        SearchDirection::Backward => SearchDirection::Forward,
+                    };
+                    (state.app.search.pattern.clone(), dir)
+                };
+                if let Some(pattern) = pattern {
+                    self.execute_search(&pattern, direction).await;
+                }
+            }
+            SearchAction::WordUnderCursor { direction } => {
+                self.execute_word_search(direction).await;
+            }
+            SearchAction::ClearHighlight => {
+                self.state.write().await.app.search.clear_highlight();
+            }
+        }
+    }
+
+    /// Execute search with pattern and direction.
+    async fn execute_search(&self, pattern: &str, direction: crate::server::app::SearchDirection) {
+        use crate::search::{Direction, SearchEngine};
+
+        let mut state = self.state.write().await;
+
+        let Some(buffer_id) = state.app.active_buffer else {
+            return;
+        };
+
+        let Some(buffer_arc) = state.app.kernel.buffers.get(buffer_id) else {
+            return;
+        };
+
+        let search_dir = match direction {
+            crate::server::app::SearchDirection::Forward => Direction::Forward,
+            crate::server::app::SearchDirection::Backward => Direction::Backward,
+        };
+
+        let buffer = buffer_arc.read();
+        let cursor_pos = buffer.cursor().position;
+
+        if let Ok(Some(m)) = SearchEngine::find_next(&buffer, cursor_pos, pattern, search_dir, true)
+        {
+            drop(buffer);
+            buffer_arc.write().set_position(m.start);
+            state.app.search.highlight_active = true;
+        }
+    }
+
+    /// Execute word search (* or #).
+    async fn execute_word_search(&self, direction: reovim_driver_command::SearchDirection) {
+        use crate::{search::SearchEngine, server::app::SearchDirection};
+
+        // Compute word pattern and store state - all synchronous
+        let result = {
+            let mut state = self.state.write().await;
+
+            let Some(buffer_id) = state.app.active_buffer else {
+                return;
+            };
+
+            let Some(buffer_arc) = state.app.kernel.buffers.get(buffer_id) else {
+                return;
+            };
+
+            // Get cursor and word pattern from buffer, then drop buffer lock
+            let (cursor_pos, word_pattern) = {
+                let buffer = buffer_arc.read();
+                let cursor_pos = buffer.cursor().position;
+                let word_pattern = SearchEngine::word_at_cursor(&buffer, cursor_pos);
+                drop(buffer);
+                (cursor_pos, word_pattern)
+            };
+
+            let Some(word_pattern) = word_pattern else {
+                return;
+            };
+
+            // Store pattern and direction
+            state.app.search.pattern = Some(word_pattern.clone());
+            state.app.search.direction = match direction {
+                reovim_driver_command::SearchDirection::Forward => SearchDirection::Forward,
+                reovim_driver_command::SearchDirection::Backward => SearchDirection::Backward,
+            };
+
+            // cursor_pos is unused here but keeping for consistency
+            let _ = cursor_pos;
+
+            (word_pattern, state.app.search.direction)
+        };
+        // All locks released here
+
+        // Execute search - can safely await
+        self.execute_search(&result.0, result.1).await;
+    }
+
+    /// Execute a repeat find motion (; or ,).
+    async fn execute_repeat_find(&self, reverse: bool) {
+        use reovim_kernel::api::v1::MotionEngine;
+
+        let mut state = self.state.write().await;
+
+        let Some(last_find) = state.app.last_find else {
+            // No previous find to repeat
+            return;
+        };
+
+        let Some(buffer_id) = state.app.active_buffer else {
+            return;
+        };
+
+        let Some(buffer_arc) = state.app.kernel.buffers.get(buffer_id) else {
+            return;
+        };
+
+        // Get motion (same or reversed direction)
+        let motion = if reverse {
+            last_find.reverse_motion()
+        } else {
+            last_find.repeat_motion()
+        };
+
+        // Calculate and apply motion
+        let buffer = buffer_arc.read();
+        let target = MotionEngine::calculate(&buffer, buffer.cursor(), motion, 1);
+        drop(buffer);
+
+        if let Some(pos) = target {
+            buffer_arc.write().set_position(pos);
+        }
+        // Note: ; and , do NOT update last_find (per Vim behavior)
+
+        state.app.clear_pending_keys();
+    }
+
+    /// Set pending char state for commands waiting for character input.
+    ///
+    /// Called when a command (f/F/t/T or r) returns `WaitingForChar`.
+    /// The next key press will provide the character argument.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a find-char operation (`FindForward`, `FindBackward`, `TillForward`, `TillBackward`)
+    /// is missing its required `start_position`.
+    pub async fn set_pending_char(&self, ctx: reovim_driver_command::CharWaitContext) {
+        use {
+            crate::server::app::{FindType, PendingCharOp},
+            reovim_driver_command::CharWaitOp,
+        };
+
+        let mut state = self.state.write().await;
+
+        let pending = match ctx.op_type {
+            CharWaitOp::FindForward => {
+                let start = ctx
+                    .start_position
+                    .expect("FindForward requires start position");
+                PendingCharOp::from_find_type(FindType::FindForward, start)
+            }
+            CharWaitOp::FindBackward => {
+                let start = ctx
+                    .start_position
+                    .expect("FindBackward requires start position");
+                PendingCharOp::from_find_type(FindType::FindBackward, start)
+            }
+            CharWaitOp::TillForward => {
+                let start = ctx
+                    .start_position
+                    .expect("TillForward requires start position");
+                PendingCharOp::from_find_type(FindType::TillForward, start)
+            }
+            CharWaitOp::TillBackward => {
+                let start = ctx
+                    .start_position
+                    .expect("TillBackward requires start position");
+                PendingCharOp::from_find_type(FindType::TillBackward, start)
+            }
+            CharWaitOp::ReplaceChar => {
+                let count = ctx.count.unwrap_or(1);
+                PendingCharOp::replace_char(count)
+            }
+        };
+
+        state.app.set_pending_char(pending);
+    }
+
+    /// Set char-wait state for find-char commands.
+    ///
+    /// DEPRECATED: Use `set_pending_char` instead. Kept for backward compatibility.
+    pub async fn set_char_wait(&self, ctx: reovim_driver_command::CharWaitContext) {
+        self.set_pending_char(ctx).await;
     }
 
     /// Record an edit action in the undo registry.
@@ -324,16 +590,24 @@ impl std::fmt::Debug for Session {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, reovim_kernel::api::v1::ModuleId};
+    use {super::*, reovim_driver_vfs::MockVfs, reovim_kernel::api::v1::ModuleId};
 
     fn test_mode_id() -> ModeId {
         ModeId::new(ModuleId::new("test"), "normal")
     }
 
+    fn test_vfs() -> Arc<dyn VfsDriver> {
+        Arc::new(MockVfs::new())
+    }
+
     #[tokio::test]
     async fn test_session_new() {
-        let session =
-            Session::new(SessionId::new("test"), KernelContext::default(), test_mode_id());
+        let session = Session::new(
+            SessionId::new("test"),
+            KernelContext::default(),
+            test_mode_id(),
+            test_vfs(),
+        );
 
         assert_eq!(session.id().name(), "test");
         assert!(session.is_running().await);
@@ -341,8 +615,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_session_current_mode() {
-        let session =
-            Session::new(SessionId::new("test"), KernelContext::default(), test_mode_id());
+        let session = Session::new(
+            SessionId::new("test"),
+            KernelContext::default(),
+            test_mode_id(),
+            test_vfs(),
+        );
 
         let mode = session.current_mode().await;
         assert_eq!(mode.name(), "normal");
@@ -350,8 +628,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_session_quit() {
-        let session =
-            Session::new(SessionId::new("test"), KernelContext::default(), test_mode_id());
+        let session = Session::new(
+            SessionId::new("test"),
+            KernelContext::default(),
+            test_mode_id(),
+            test_vfs(),
+        );
 
         assert!(session.is_running().await);
         session.request_quit().await;
@@ -360,8 +642,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_session_with_state() {
-        let session =
-            Session::new(SessionId::new("test"), KernelContext::default(), test_mode_id());
+        let session = Session::new(
+            SessionId::new("test"),
+            KernelContext::default(),
+            test_mode_id(),
+            test_vfs(),
+        );
 
         let is_empty = session
             .with_state(|state| state.keymap_registry.is_empty())

@@ -1,0 +1,1573 @@
+# Changelog
+
+All notable changes to the **new architecture** (`lib/arch`, `lib/kernel`, `lib/drivers/*`) will be documented in this file.
+
+For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archive.md](docs/CHANGELOG-archive.md).
+
+## [Unreleased] - v0.9.0-dev
+
+### Changed
+
+- **Agent Infrastructure Optimization** (Issue #261)
+  - Review agents (mission-control, telemetry, flight-director) now use Haiku model
+  - New `oracle` agent (Opus) for planning and architecture design
+  - New `voyager` agent (Sonnet) for codebase exploration (replaces deep-explorer)
+  - A+ skip rule: agents scoring A+ are skipped in subsequent rounds
+  - New `/countdown` skill for pre-implementation validation
+  - Updated `/final-approach` skill with Haiku + A+ skip support
+
+### Changed (BREAKING)
+
+- **Phase 4.6: Module System Limitations** (Issue #197) - API version 0.1.0 → 0.2.0
+  - **BREAKING**: `ModuleProbe` struct extended (216 → 1308 bytes)
+  - All dynamic modules (`.so`) must be recompiled against new API
+  - No existing external modules affected (v0.9.0 not yet released)
+
+### Added
+
+- **Phase 7-A: Module Loading Mechanism with CLI Flags** (Issue #262)
+  - **CLI Flags for Module Control**:
+    - `--moddir <PATH>` - Add module search directory (repeatable)
+    - `--load <MODULE_ID>` - Load specific module by ID (repeatable)
+    - `--no-defaults` - Skip loading default modules
+  - **ModuleConfig Enhancement**:
+    - `no_defaults` field with serde support
+    - `with_no_defaults()` builder method
+    - `should_skip_defaults()` accessor
+  - **Registry Ownership Tracking**:
+    - `CommandRegistry::register_for_module()` / `unregister_for_module()`
+    - `KeymapRegistry::register_for_module()` / `unregister_for_module()`
+    - `ModeEntry::with_owner()` / `ModeRegistry::unregister_for_module()`
+  - **Handler Wiring Infrastructure** (`runner/src/server/module/wiring.rs`):
+    - `wire_module_keybindings()` - Wire module keybindings to registry
+    - `WiringStats` - Track wired/skipped bindings
+    - `WiringError` - Typed errors for invalid/required bindings
+  - **Server Integration**:
+    - `Server::module_registry()` accessor
+    - `Server::load_modules()` method with discovery and logging
+    - `ModuleRegistry::unload_with_cleanup()` for handler cleanup
+  - 44 unit tests for new functionality
+  - Deferred to #264: Default module list, config file extras, environment overrides
+  - **Unified Character-Waiting Infrastructure** (Merge from Phase-7-D):
+    - `PendingCharOp` enum in AppState for f/F/t/T/r character operations
+    - `CharWaitOp` enum in command driver generalizes `FindType` to include `ReplaceChar`
+    - `CharWaitContext` updated with `op_type: CharWaitOp` and unified helper methods
+    - `ReplaceCharStart` command (`r`) returns `WaitingForChar` with `ReplaceChar` op
+    - `RepeatDot` command (`.`) infrastructure with `RepeatState` tracking
+    - `CommandResult::RepeatAction` variant for repeat command handling
+    - Event loop unified `handle_pending_char()` dispatches find-char and replace-char
+    - All operators (yank, delete, change) use `range.is_linewise` for register content type
+
+- **Phase 7-B: VFS Integration for File Operations** (Issues #235, #236)
+  - **VFS Driver Layer** (`lib/drivers/vfs/`):
+    - `VfsDriver` trait for filesystem abstraction (17 methods)
+    - `StandardVfs` - Production implementation wrapping `std::fs`
+    - `MockVfs` - In-memory implementation for testing with call tracking
+    - `FileHandle` trait for streaming I/O operations
+    - 82 unit tests covering all VFS operations
+  - **CommandContext Enhancement** (`lib/drivers/command/`):
+    - `vfs: Option<Arc<dyn VfsDriver>>` field for command access
+    - `with_vfs()` builder, `set_vfs()` setter, `vfs()` getter
+    - 13 CommandContext tests including VFS integration
+  - **SessionState Integration** (`runner/src/server/session/`):
+    - `vfs: Arc<dyn VfsDriver>` field in SessionState
+    - `Session::execute_command()` auto-populates VFS for all commands
+    - All test utilities use MockVfs for isolation
+  - **WriteBufferCommand** (`modules/editor/src/command.rs`):
+    - `:w` / `:write` command to save buffer to file
+    - Uses VFS abstraction for testable file writes
+    - Supports optional file path argument
+    - Clears modified flag on successful write
+    - 8 comprehensive tests (error cases, happy path)
+  - Deferred: `:e` / `:edit` command (Issue #236)
+
+- **Phase 7-D: Yank/Paste Operations** (Issue #237)
+  - `YankLine` command (`yy`, `Y`) yanks current line(s) to register as linewise
+  - `PasteAfter` command (`p`) pastes content after cursor or below line
+  - `PasteBefore` command (`P`) pastes content before cursor or above line
+  - Count support: `3yy` yanks 3 lines, `3p` pastes 3 times
+  - Linewise vs characterwise paste behavior based on register content type
+  - Empty register paste is no-op (matches Vim behavior)
+  - `YankOperator` enhanced with `set_by_name()` for named registers
+  - Helper functions: `yank_commands()`, `paste_commands()`
+  - 20 unit tests covering edge cases (EOF, empty buffer, empty register)
+
+- **Phase 7.9.1: Linewise Detection for Motion-based Operations** (Issue #267)
+  - `Range` struct gains `is_linewise` field for motion-determined linewise flag
+  - `Range::new()` creates characterwise ranges (default)
+  - `Range::linewise()` creates linewise ranges
+  - `Range::to_linewise()` converts existing range to linewise
+  - `Range::normalized()` preserves linewise flag when swapping start/end
+  - `YankOperator`, `DeleteOperator`, `ChangeOperator` use `range.is_linewise`
+  - Register content type (linewise/characterwise) determined by range flag
+
+- **Phase 7.15: Change Operator Commands** (Issue #243)
+  - `ChangeLine` command (`cc`) clears line content and enters insert mode
+  - `ChangeToEndOfLine` command (`C`) deletes from cursor to EOL and enters insert mode
+  - Count support: `3cc` changes 3 lines
+  - Deleted text stored in register (linewise for `cc`, characterwise for `C`)
+  - Returns `EditAction` for undo integration
+  - Emits `ModeChanged` event to enter insert mode
+  - Helper function: `change_commands()`
+  - 16 unit tests covering edge cases and undo integration
+  - Deferred: `c{motion}` operator-pending integration
+
+- **Phase 7.8: Undotree Visualization Module** (Issue #249)
+  - New `modules/undotree/` module for undo tree visualization
+  - `:undotree` command (alias `:ut`) to toggle visualization panel
+  - ASCII tree rendering with branch visualization (`render.rs`)
+  - Shows sequence numbers and relative timestamps
+  - `UndotreeMode` for panel navigation (j/k/Enter/q keybindings)
+  - `UndotreeAction` enum added to `CommandResult` for runner callbacks:
+    - `Toggle { buffer_id }` - Toggle undotree panel
+    - `Close` - Close panel
+    - `MoveUp` / `MoveDown` - Navigate selection
+    - `GotoSelected` / `GotoNode` - Navigate to node
+  - `UndoRegistry::get_tree()` read-only accessor for visualization
+  - 43 unit tests in undotree module, 6 tests for UndotreeAction
+  - Panel integration deferred to runner enhancement
+
+- **Phase 7.7: UndoTree Traversal Accessors** (Issue #251)
+  - `UndoNode::parent()` - get parent node index
+  - `UndoNode::children()` - get children node indices
+  - `UndoTree::node()` - get node by index
+  - `UndoTree::node_indices()` - iterate all node indices
+  - `UndoTree::active_branch_at()` - get active branch at a node
+  - Enables #249 (Vim-style :undotree visualization)
+  - 15 unit tests covering boundaries, invariants, and pruning
+
+- **Phase 7.4.1: Wire UndoRegistry for Edit Recording** (Issue #254)
+  - `UndoRegistry` now in `AppState` for per-buffer undo trees
+  - `CommandResult::EditAction` - commands report edits they made
+  - `FallbackHandler` signature returns `(FallbackResult, Option<CommandResult>)`
+  - 9 edit commands now return `EditAction`: InsertNewline, InsertTab, OpenLineBelow, OpenLineAbove, DeleteChar, DeleteCharBefore, DeleteLine, DeleteToEndOfLine, JoinLines
+  - Event loop and RPC handler wire up edit recording and undo/redo application
+  - `u` (undo) and `Ctrl-R` (redo) now functional with cursor position restore
+  - Deferred: Transaction batching (#255), Persistent undo (#256)
+
+- **Phase 7.10: Word Motions** (Issue #238)
+  - New `modules/motions/` module for vim-style motion commands
+  - 8 word motion commands: `w`, `b`, `e`, `W`, `B`, `E`, `ge`, `gE`
+  - Wires kernel `MotionEngine::calculate()` to keybindings (mechanism vs policy)
+  - Count prefix support (e.g., `3w` moves 3 words forward)
+  - Cross-line word movement
+  - 22 unit tests covering all motions, errors, and edge cases
+
+- **Phase 7.11: Line Motions** (Issue #239)
+  - 5 line motion commands: `0`, `$`, `^`, `gg`, `G`
+  - Count support for `gg` and `G` (e.g., `10G` goes to line 10)
+  - 19 unit tests covering all motions and edge cases
+
+- **Phase 7.12a: Char-Wait Infrastructure** (Issue #240a)
+  - Runner infrastructure for find-char commands (`f`, `F`, `t`, `T`, `;`, `,`)
+  - `FindType` enum with `direction()` and `is_till()` methods
+  - `CharWaitState` struct for pending character argument
+  - `LastFind` struct with `repeat_motion()` and `reverse_motion()` for `;`/`,`
+  - `CommandResult::WaitingForChar` variant for two-phase command execution
+  - Event loop checks `char_wait` before keymap lookup
+  - Escape cancels char-wait without motion
+  - 17+ unit tests for all new types
+  - Commands deferred to #240b
+
+- **Phase 7.12b: Find-Char Commands** (Issue #240b)
+  - 6 find-char motion commands in `modules/motions/src/find_char.rs`
+  - `f{char}` (FindCharForward) - Move cursor to next occurrence of char
+  - `F{char}` (FindCharBackward) - Move cursor to previous occurrence of char
+  - `t{char}` (TillCharForward) - Move cursor to before next occurrence
+  - `T{char}` (TillCharBackward) - Move cursor to after previous occurrence
+  - `;` (RepeatFindSame) - Repeat last find in same direction
+  - `,` (RepeatFindReverse) - Repeat last find in opposite direction
+  - `CommandResult::RepeatFindSame` and `RepeatFindReverse` variants
+  - Runner `execute_repeat_find()` method for `;`/`,` execution
+  - 13 unit tests covering all commands
+  - Integration tests deferred (pending module loading infrastructure)
+
+- **Phase 7.13: Search** (Issue #246)
+  - Search infrastructure for pattern-based navigation (`/`, `?`, `n`, `N`, `*`, `#`)
+  - `SearchDirection` and `SearchAction` enums in command driver
+  - `SearchState` in AppState for pattern persistence across buffer switches
+  - `SearchEngine` in runner with regex-based pattern matching:
+    - `find_next()` - Find next match from cursor with wrap support
+    - `find_all()` - Find all matches for highlighting
+    - `word_at_cursor()` - Extract word with boundaries for `*`/`#`
+  - `CommandResult::SearchAction` variant for search intents
+  - 7 search commands in `modules/motions/src/search.rs`:
+    - `/` (SearchForward) - Enter search mode forward
+    - `?` (SearchBackward) - Enter search mode backward
+    - `n` (SearchNext) - Go to next match
+    - `N` (SearchPrevious) - Go to previous match
+    - `*` (SearchWordForward) - Search word under cursor forward
+    - `#` (SearchWordBackward) - Search word under cursor backward
+    - `:noh` (ClearSearchHighlight) - Clear search highlighting
+  - Event loop handles search input mode (buffered until Enter/Escape)
+  - 15 integration tests (pending module loading infrastructure)
+  - 13 SearchEngine unit tests (including empty buffer and wrap edge cases)
+  - 16 command unit tests covering all 7 search commands
+
+- **Phase 7.5-6: Insert Mode & Delete Operations** (Issues #233, #234, #231)
+  - **Insert Mode Character Input** (`modules/editor/src/fallback.rs`):
+    - `EditorFallbackHandler` now inserts characters in Insert mode
+    - Handles printable characters, Tab (with expandtab/tabstop options), Enter
+    - Non-printable keys in Insert mode are ignored
+    - Normal mode unmatched keys beep
+  - **Mode Entry Commands** (`modules/editor/src/command.rs`):
+    - `EnterInsertModeAppend` (a) - Insert after cursor
+    - `EnterInsertFirstNonBlank` (I) - Insert at first non-blank
+    - `EnterInsertEndOfLine` (A) - Insert at end of line
+    - `OpenLineBelow` (o) - Open line below and enter insert
+    - `OpenLineAbove` (O) - Open line above and enter insert
+  - **Insert Mode Edit Commands**:
+    - `InsertNewline` - Enter key in insert mode
+    - `InsertTab` - Tab key with expandtab/tabstop option support
+  - **Delete Operations**:
+    - `DeleteChar` (x) - Delete character under cursor
+    - `DeleteCharBefore` (X) - Delete character before cursor (backspace in Normal)
+    - `DeleteLine` (dd) - Delete current line(s) with count support
+    - `DeleteToEndOfLine` (D) - Delete from cursor to end of line
+    - `JoinLines` (J) - Join current line with next, preserving Vim semantics
+  - **Display Line Motions** (`modules/editor/src/display_lines.rs`):
+    - `CursorDisplayDown` (gj) - Move down one display line
+    - `CursorDisplayUp` (gk) - Move up one display line
+    - Handles wrapped lines based on terminal width (default 80)
+    - `display_line_count()`, `display_position()`, `buffer_column()` utilities
+  - **Keybindings** (`modules/keymap/src/normal.rs`):
+    - Added gj/gk bindings for display line movement
+  - **Unit Tests**:
+    - 78 tests in editor module (cursor, display lines, fallback, mode commands)
+  - **Deferred Features** tracked in Issue #248:
+    - Count support for insert mode entry commands
+    - Autoindent on open line commands
+    - Register support for delete operations
+    - Viewport-aware terminal width for gj/gk
+
+- **Phase 7.3-4: Cursor Movement & Undo/Redo** (Issues #231, #232)
+  - **Shared Infrastructure**:
+    - `CommandContext.buffer_id()` - Commands can now access active buffer ID
+    - `CommandContext.set_buffer_id()` - Runner sets buffer ID before command dispatch
+    - `ArgKind::BufferId` / `ArgValue::BufferId(usize)` - New argument type for buffer IDs
+    - `CommandRegistry::execute()` auto-populates buffer ID from `AppState.active_buffer`
+  - **Cursor Movement Commands** (`modules/editor/src/command.rs`):
+    - `CursorUp` (k) - Move cursor up with count support
+    - `CursorDown` (j) - Move cursor down with count support
+    - `CursorLeft` (h) - Move cursor left with count support
+    - `CursorRight` (l) - Move cursor right with count support
+    - All commands emit `CursorMoved` events for event subscribers
+    - Boundary handling (no-op at edges), column clamping to line length
+  - **Undo/Redo Framework** (Runner-Side Callback Pattern):
+    - `UndoAction` enum: `Undo { count }`, `Redo { count }`
+    - `CommandResult::UndoAction(action)` - Commands declare undo intent
+    - `UndoRegistry` (`runner/src/undo_registry.rs`) - Per-buffer undo tree storage
+    - `UndoCommand` (u) - Returns `UndoAction::Undo` for runner to handle
+    - `RedoCommand` (C-r) - Returns `UndoAction::Redo` for runner to handle
+  - **Unit Tests**:
+    - 65 tests in editor module (cursor commands, undo/redo commands)
+    - 11 tests in UndoRegistry (buffer isolation, undo/redo operations)
+
+- **Phase 7.2: Session/Viewport Architecture** (Issue #230)
+  - **Per-Client Viewport** (`runner/src/server/client/viewport.rs`):
+    - `ClientViewport` struct with terminal dimensions, active buffer, cursor positions per buffer
+    - Level 2 lock hierarchy (viewport → session safe, session → viewport deadlock)
+    - VT100 defaults (80x24)
+    - `cursor_for_buffer()`/`set_cursor_for_buffer()` for position tracking
+    - `clear_viewports_for_closed_buffer()` for buffer close cleanup
+  - **RPC Handler Updates**:
+    - `RpcContext` now includes `client: Arc<Client>` for direct viewport access
+    - `state/cursor` reads from client's active buffer
+    - `state/screen` reads from client's viewport dimensions
+    - `editor/resize` updates client's viewport only
+    - `editor/set_active_buffer` - New handler to switch active buffer with cursor save/restore
+  - **Buffer-Scoped Notifications** (`runner/src/server/notification.rs`):
+    - `broadcast_to_buffer()` sends notifications only to clients viewing specific buffer
+    - `emit_state_changes()` uses buffer-scoped broadcasts for cursor/modified events
+    - Mode changes remain session-wide
+  - **Protocol Constants** (`lib/protocol/src/v1/methods.rs`):
+    - `EDITOR_SET_ACTIVE_BUFFER` method constant
+  - **Integration Tests** (`runner/tests/viewport_integration.rs`):
+    - Multi-client viewport independence tests
+    - Per-client resize isolation
+    - Buffer validation
+
+- **Phase 7.1: Test Infrastructure** (Issue #229)
+  - **Integration Test Harness** (`runner/tests/common/`):
+    - `harness.rs` - Server process spawning with OS-assigned ports, kill-on-drop cleanup
+    - `integration.rs` - Fluent builder API for single-client tests:
+      - `IntegrationTest::new().with_buffer("text").send_keys("dd").run().await`
+      - Temp file creation for buffer initialization
+      - Key sequence parsing with delays
+    - `multi_client.rs` - Multi-client test utilities:
+      - `MultiClientTest::with_clients(n)` - Spawn n clients against shared server
+      - `TestClient` - Per-client wrapper with cursor/buffer queries
+    - `assertions.rs` - Type-safe assertion utilities:
+      - `assert_buffer_eq!`, `assert_buffer_contains!` macros
+      - `assert_cursor!`, `assert_mode!`, `assert_register!` macros
+      - Clean failure messages with expected/actual values
+    - `mod.rs` - Public re-exports for test modules
+  - **Buffer Manager** (`runner/src/buffer_manager.rs`):
+    - `SimpleBufferManager` - Real buffer storage implementation
+    - `real_kernel_context()` - Creates working KernelContext for server
+    - Replaces stub implementation that didn't persist buffers
+  - **Ported Test Suites** (61 tests, all `#[ignore]` pending module loading):
+    - `operators.rs` - 18 tests: dd, x, dw, d$, dj, db, 5dd, 3x operators
+    - `registers.rs` - Register tests (yy, yw, named registers)
+    - `undo_redo.rs` - 8 tests: u, Ctrl-R, multiple undo/redo
+    - `cursor_movement.rs` - 18 tests: hjkl, 0$, gg/G, w/b/e, boundaries
+    - `edge_cases.rs` - 14 tests: empty buffer, Unicode, single char, special chars
+    - `multi_client_tests.rs` - 3 tests: concurrent client operations
+  - **Documentation** (`docs/guides/testing.md`):
+    - Phase 7 Integration Tests section with architecture diagram
+    - API reference for IntegrationTest and MultiClientTest
+    - Test organization and running instructions
+  - Tests compile and pass (ignored tests await module loading)
+
+- **Phase 6.5: Debug RPC Endpoints** (Issue #227)
+  - **Debug API** (`lib/kernel/src/api/debug.rs`):
+    - `KernelStateSnapshot` - Buffer count, buffer IDs, event handlers
+    - `RegisterSnapshot`/`RegistersSnapshot` - Register contents with yank type
+    - `MarkSnapshot`/`MarksSnapshot` - Local, global, and special marks
+    - `ModeStackSnapshot` - Current mode and full mode stack
+    - `snapshot_kernel_state()`, `snapshot_registers()`, `snapshot_marks()`, `snapshot_mode_stack()`
+    - Pure extraction functions (mechanism) - no serde dependency
+  - **Debug Infrastructure** (`runner/src/server/debug/infrastructure/`):
+    - `uptime.rs` - Server start time with `OnceLock<Instant>` for uptime tracking
+    - `metrics.rs` - `HandlerMetrics` with relaxed atomics (~30-40ns overhead per request)
+    - `RequestTimer` - RAII timer for automatic request duration recording
+    - `log_buffer.rs` - `LogRingBuffer` (1000 entry capacity) for recent log capture
+    - `LogEntry` - Timestamp, level, target, message with ISO 8601 formatting
+  - **Debug RPC Handlers** (`runner/src/server/debug/handlers/`):
+    - `debug/version` - Server version info (git hash, build date)
+    - `debug/uptime` - Server uptime in seconds
+    - `debug/kernel_state` - Kernel summary (buffer count, event handlers)
+    - `debug/registers` - Register contents (unnamed and named a-z)
+    - `debug/marks` - Mark contents (local, global, special)
+    - `debug/mode_stack` - Current mode and full stack
+    - `debug/metrics` - Performance stats (uptime, total requests)
+    - `debug/handlers` - Per-handler call counts and latency
+    - `debug/log_level` - Current log level
+    - `debug/log_tail` - Recent log entries (default 100)
+    - `debug/visual_snapshot` - Comprehensive AI-friendly state dump
+  - **Protocol Types** (`lib/protocol/src/v1/debug.rs`):
+    - `VersionResult`, `UptimeResult`, `KernelStateResult`
+    - `RegisterEntry`, `RegistersResult`, `MarkEntry`, `MarksResult`
+    - `ModeStackResult`, `MetricEntry`, `MetricsResult`
+    - `HandlerMetricEntry`, `HandlersResult`
+    - `LogLevelResult`, `LogEntryResult`, `LogTailResult`
+    - `VisualSnapshotResult` with server/editor/buffers/ui/vim/metrics sections
+  - **CLI Commands** (`runner/src/client/cli/`):
+    - `reovim cli version` - Server version info
+    - `reovim cli uptime` - Server uptime
+    - `reovim cli kernel-state` - Kernel summary
+    - `reovim cli registers` - Register contents
+    - `reovim cli marks` - Mark contents
+    - `reovim cli mode-stack` - Mode stack
+    - `reovim cli metrics` - Performance stats
+    - `reovim cli handlers` - Handler stats
+    - `reovim cli log-level` - Current log level
+    - `reovim cli log-tail -n 50` - Last 50 log entries
+    - `reovim cli snapshot` - Full debug snapshot (JSON)
+  - **Enhancement: Tracing Integration**:
+    - `LogBufferLayer` - Custom tracing Layer for log capture to ring buffer
+    - Initialized in `debug::init()` with `tracing_subscriber::registry()`
+    - Enables `debug/log_tail` to return actual server logs
+  - **Enhancement: Integration Tests** (`runner/tests/debug_integration.rs`):
+    - 23 integration tests covering all 11 debug endpoints
+    - Value verification tests (version format, uptime behavior)
+    - Edge case tests (count=0, large count, default count)
+    - Error path tests (unknown method handling)
+  - 304 tests, zero clippy warnings
+
+- **Phase 6.4: CLI/Server Integration Fixes** (Issue #226)
+  - **Fixed:** Stub handlers blocking CLI commands (`screen`, `resize`)
+    - Implemented `state/screen` handler returning viewport dimensions
+    - Implemented `editor/resize` handler with validation
+    - Implemented `editor/quit` handler for graceful shutdown
+    - Added terminal size tracking to `AppState` (width/height fields)
+  - **Added:** Missing CLI subcommands: `selection`, `quit`, `set-content`
+  - **Added:** RPC timeout protection (30 second default)
+    - New `RpcClientError::Timeout` variant
+    - Uses `tokio::time::timeout` wrapper
+  - **Fixed:** Buffer operations now emit state change notifications
+    - `buffer/set_content` emits notifications via StateSnapshot pattern
+    - `buffer/open_file` emits notifications via StateSnapshot pattern
+  - **Improved:** Output formatter uses typed protocol responses
+    - Type-safe deserialization for `ModeInfo`, `CursorInfo`, `ScreenInfo`
+    - Supports `ScreenContentResult` with ANSI passthrough
+    - Command-aware formatting via `format_output_for_command`
+  - **Added:** TUI Notification Listening (Issue 3)
+    - **Connection Split Infrastructure** (`runner/src/client/common/`):
+      - `ConnectionReader`/`ConnectionWriter` - Split halves for concurrent operation
+      - `Connection::split()` - Split connection into reader/writer
+      - `RpcWriter` - Async request writer with ID generation
+      - `RpcClient::into_split()` - Split RPC client for TUI use
+    - **Concurrent TUI Architecture** (`runner/src/client/tui/app.rs`):
+      - Background notification listener task with `tokio::spawn`
+      - `tokio::select!` main loop with dual event sources
+      - `crossterm::event::EventStream` for async terminal input
+      - `tokio::sync::mpsc` channel for server message passing
+      - Fire-and-forget request pattern (avoids deadlocks)
+    - **Notification Handlers**: MODE_CHANGED, CURSOR_MOVED, BUFFER_MODIFIED, RENDER_COMPLETE
+    - **Integration Tests**: `test_rpc_client_into_split`, `test_notification_listener_reads_messages`
+  - 285 unit tests + 28 integration/module tests, zero clippy warnings
+
+- **Phase 6.2/6.3: TUI and CLI Clients** (Issues #221, #222)
+  - **TUI Client** (`runner/src/client/tui/`):
+    - Terminal user interface mode via `reovim tui`
+    - Connect via TCP or Unix socket with auto-discovery
+    - Real-time terminal input handling with vim key notation
+    - ANSI content rendering from server
+    - Terminal resize support with server notification
+    - Cursor positioning from server state
+    - Quit via Ctrl+C or Ctrl+Q
+  - **CLI Client** (`runner/src/client/cli/`):
+    - Command-line interface via `reovim cli`
+    - Server discovery via `list` command (scans ports 12521-12530)
+    - Key injection via `keys <sequence>` command
+    - State queries: `mode`, `cursor`, `screen`, `content`
+    - Buffer operations: `buffers`, `buffer [id]`, `open <path>`
+    - Module operations: `modules`, `load`, `unload`, `reload`
+    - Server control: `resize`, `kill`
+    - Raw JSON-RPC via `raw <json>`
+    - Output formats: plain text (default) or JSON (`--format json`)
+    - Interactive REPL mode (`-i` or `--repl`)
+  - **Common Layer** (`runner/src/client/common/`):
+    - `ConnectionConfig` - TCP and Unix socket connection configuration
+    - `Connection` - Buffered async I/O for both transport types
+    - `RpcClient` - JSON-RPC request/response handling with error types
+    - `ServerInfo` - Discovered server metadata including PID (Linux)
+    - `discovery` - Port scanning and process detection via /proc
+  - 217 tests, zero clippy warnings
+
+- **Phase 6.1.4: Handler Completion & Server Reorganization** (Issue #220 continued)
+  - **Directory Reorganization**:
+    - Moved all server-specific code under `runner/src/server/` for future client modes
+    - Reorganized `rpc/` to `server/rpc/`, `session/` to `server/session/`, etc.
+    - Re-exports maintained in `lib.rs` for backwards compatibility
+  - **10 New RPC Handlers** (`runner/src/server/rpc/handlers/`):
+    - `command/execute` - Execute ex-commands by name lookup
+    - `buffer/get_content` - Get buffer content (supports buffer_id or active buffer)
+    - `buffer/set_content` - Replace buffer content
+    - `buffer/list` - List all open buffers with metadata
+    - `buffer/open_file` - Open file into new buffer
+    - `state/screen_content` - Screen visualization in plain_text/raw_ansi/cell_grid formats
+    - `module/list` - List loaded modules with state and dependencies
+    - `module/load` - Load dynamic module from path (unsafe FFI)
+    - `module/unload` - Unload module (checks dependencies)
+    - `module/reload` - Atomic hot reload with state preservation
+  - **Notification Emission System** (`runner/src/server/session/`):
+    - `StateSnapshot` - Captures mode, cursor, buffer state for change detection
+    - `emit_state_changes()` - Broadcasts mode_changed, cursor_moved, buffer_modified
+    - Integrated into `input/keys` handler for automatic notification on state changes
+  - 24 RPC methods registered (14 implemented + 10 stubs)
+  - 188 runner tests, zero clippy warnings
+
+- **Phase 6.1.3: Protocol Type Safety** (Issue #220 continued)
+  - **Type-Safe RPC Results** (`lib/protocol/src/v1/results.rs`):
+    - `KeyStatus` enum with `Executed`, `Pending`, `NotFound` variants
+    - `InputKeysResult` struct with typed constructors (`executed()`, `pending()`, `not_found()`)
+    - Snake_case JSON serialization via `#[serde(rename_all = "snake_case")]`
+  - **Notification Convenience Methods** (`lib/protocol/src/v1/notifications.rs`):
+    - `into_notification()` method for all 4 payload types
+    - `ModeChangedPayload`, `CursorMovedPayload`, `BufferModifiedPayload`, `RenderCompletePayload`
+    - Direct conversion to `RpcNotification` without manual construction
+  - **Handler Improvements** (`runner/src/rpc/handlers/`):
+    - `input/keys` now returns typed `InputKeysResult` instead of ad-hoc JSON
+    - `state/cursor` now retrieves actual cursor position from active buffer
+    - Fixed silent error suppression: `.unwrap_or_default()` → `.expect()` in 3 handlers
+  - **Stub Handlers** (`runner/src/rpc/handlers/stub.rs`):
+    - 10 stub handlers for unimplemented RPC methods (state/*, editor/*)
+    - Explicit "not implemented" errors via `RpcError::method_not_found()`
+    - Macro-based generation for consistency
+  - 14 RPC methods registered (4 implemented + 10 stubs)
+  - 91 protocol tests, 171 runner tests, zero clippy warnings
+
+- **Phase 6.1.2: Server Module Management** (Issue #220 continued)
+  - **Module Infrastructure** (`runner/src/module/`):
+    - `ModuleLoader` - Static and dynamic module loading via `libloading`
+    - `ModuleRegistry` - Module state tracking and dependency resolution
+    - `ModuleHandle` - FFI symbol trampolines for lifecycle calls
+    - `ModuleConfig` - TOML configuration for search paths and auto-loading
+    - Kahn's algorithm for topological sort of dependencies
+    - Platform-aware module discovery (`.so`, `.dylib`, `.dll`)
+  - **RPC Protocol Types** (`lib/protocol/src/v1/`):
+    - `module/load`, `module/unload`, `module/reload`, `module/list` method constants
+    - `ModuleLoadParams`, `ModuleUnloadParams`, `ModuleReloadParams` param types
+    - `ModuleInfo`, `ModuleListResult`, `ModuleLoadResult` result types
+  - **Server Integration**:
+    - `ModuleRegistry` integrated into `SessionState` (per-session module ownership)
+    - `ServerConfig.modules` for config-based module loading
+    - `with_modules_from_config()` for loading `~/.config/reovim/config.toml`
+  - **Hot Reload Demo Module** (`modules/hot-reload-demo/`):
+    - Working example demonstrating FFI workflow and hot reload
+    - State preservation with version-compatible binary format
+    - Counter commands: `demo:increment`, `demo:decrement`, `demo:show`, `demo:reset`
+    - 11 unit tests verifying hot reload cycle
+  - **Integration Tests** (`runner/tests/module_loading.rs`):
+    - 15 tests exercising real FFI loading via `libloading`
+    - Tests for probe, init/exit lifecycle, state preservation
+    - Error handling for version mismatch, corrupt data, null pointers
+  - **Documentation** (`docs/guides/module-development.md`):
+    - Complete guide for FFI workflow and hot reload
+    - RPC commands reference
+    - Configuration guide
+  - 185 tests total, zero clippy warnings
+
+- **Phase 6.1.1: Server Enhancements** (Issue #220 continued)
+  - **Transport Abstraction** (`runner/src/transport/`):
+    - `TransportReader`/`TransportWriter` - Unified reader/writer for TCP, Unix, and Stdio
+    - `TransportListener` - Accept loop abstraction for TCP and Unix sockets
+    - Enum-based polymorphism for zero-cost abstraction
+  - **Unix Socket Transport**:
+    - `--listen-socket /tmp/reovim.sock` CLI option
+    - Auto-cleanup of stale socket files
+  - **Stdio Transport**:
+    - `--stdio` CLI option for process embedding
+    - Single-client mode for parent process communication
+  - **Notification System** (`runner/src/notification.rs`):
+    - `NotificationBroadcaster` - Session-wide notification broadcasts
+    - `broadcast_to_session()` - Send to all clients
+    - `broadcast_except()` - Send to all except triggering client
+  - **Session Client Tracking**:
+    - `ClientRegistry` per session for connected client management
+    - Client registration/deregistration on connect/disconnect
+  - **RpcContext Enhancement**:
+    - Added `client_id` field for per-client operations
+  - **Handler Integration**:
+    - `state/mode` - Queries real mode from session state
+    - `state/cursor` - Queries real cursor position
+    - `input/keys` - Full keymap lookup and command execution
+    - `server/kill` - Triggers session quit via `request_quit()`
+  - 107 tests, zero clippy warnings
+
+- **Phase 6.1: Server Infrastructure** (Issue #220) - Headless editor server with tmux-style session model
+  - **Server Module** (`runner/src/server.rs`):
+    - `Server` struct - Main server coordinating sessions, transport, and RPC dispatch
+    - `ServerConfig` - Builder-pattern configuration (port, host, session_name)
+    - TCP accept loop with per-client task spawning
+    - Graceful shutdown via `AtomicBool` flag
+  - **Session Module** (`runner/src/session/`):
+    - `SessionId` and `ClientId` - Strongly-typed identifiers
+    - `SessionState` - Combines `AppState` with registries
+    - `Session` - Thread-safe state access via `tokio::sync::RwLock`
+    - `SessionRegistry` - Lock-free session lookup using `ArcSwap` (RCU pattern)
+  - **Client Module** (`runner/src/client/`):
+    - `Client` - Per-connection state with `Mutex<WriteHalf>` for responses
+    - `ClientRegistry` - Per-session client tracking
+  - **Transport Module** (`runner/src/transport/`):
+    - `TcpTransport` - TCP listener with port fallback (12521-12530)
+    - Multi-instance support for development/debugging
+  - **RPC Module** (`runner/src/rpc/`):
+    - `RpcDispatcher` - Function-pointer based method routing
+    - `RpcContext` - Handler context with session reference
+    - MVP handlers: `input/keys`, `state/mode`, `state/cursor`, `server/kill`
+  - **Driver Trait Updates**:
+    - Added `Send + Sync` bounds to `ModeDisplay` trait
+    - Added `Send + Sync` bounds to `ModeInput` trait
+  - **CLI Entry Point** (`runner/src/main.rs`):
+    - `--server` flag for default TCP server
+    - `--listen-tcp <PORT>` for custom port
+    - Uses `clap` for argument parsing
+  - **Concurrency Model** (from `docs/reference/concurrency.md`):
+    - Level 0: Lock-free (ArcSwap, AtomicU64)
+    - Level 1: Per-session (RwLock)
+    - Level 2: Per-client (Mutex)
+  - 86 tests, zero clippy warnings
+
+- **Phase 6.0: Protocol Crate** (Issue #223) - Shared RPC types for client-server communication
+  - **New `lib/protocol/` crate** (`reovim-protocol`):
+    - Versioned module structure (`v1/`) for protocol evolution
+    - Zero kernel dependency - standalone with serde serialization
+  - **RPC Message Types** (`v1/messages.rs`):
+    - `RpcRequest`, `RpcResponse`, `RpcNotification`, `RpcError`
+    - JSON-RPC 2.0 compatible structure
+  - **Shared Types** (`v1/types.rs`):
+    - `Position`, `BufferId`, `WindowId` - Editor identifiers
+    - `SelectionMode`, `ScreenFormat` - Display enums
+    - `ModeInfo`, `CursorInfo`, `SelectionInfo` - State snapshots
+    - `BufferInfo`, `ScreenInfo`, `WindowInfo`, `CellInfo` - UI snapshots
+  - **Typed Params** (`v1/params.rs`):
+    - `InputKeysParams`, `CommandExecuteParams`, `EditorResizeParams`
+    - `BufferGetContentParams`, `BufferSetContentParams`, `BufferOpenFileParams`
+  - **Typed Results** (`v1/results.rs`):
+    - `ScreenContentResult`, `BufferListResult`, `BufferContentResult`
+    - `WindowsResult`, `OkResult`
+  - **Input Event Types** (`v1/input.rs`):
+    - `Input` enum with variants: Key, Click, Scroll, Resize, Focus, Paste, Attach, Detach, Ping, Pong
+    - `KeyEvent`, `KeyCode`, `KeyEventKind`, `Modifiers` - Keyboard types
+    - `ClickEvent`, `ClickKind`, `MouseButton` - Mouse click types
+    - `ScrollEvent`, `ScrollDirection` - Mouse scroll types
+    - `ResizeEvent` - Terminal resize
+    - `FocusEvent`, `FocusKind` - Terminal focus
+    - `PasteEvent` - Bracketed paste
+    - `AttachEvent`, `DetachEvent`, `DetachReason` - Session management
+    - `PingEvent`, `PongEvent` - Connection health monitoring
+  - **Method/Notification Constants** (`v1/methods.rs`, `v1/notifications.rs`):
+    - Type-safe method names: `state/*`, `buffer/*`, `input/*`, `command/*`, `editor/*`
+    - Notification names: `screen_update`, `mode_changed`, `buffer_modified`
+  - **Codec Module** (`v1/codec.rs`):
+    - JSON encoding/decoding utilities
+    - Line-delimited message framing
+  - **Net Driver Integration** (`lib/drivers/net/`):
+    - Re-exports protocol types
+    - Removed duplicate `codes.rs` and `rpc.rs` modules
+
+- **Phase 5.16: Archive Legacy Code** (Issue #215) - Clean workspace with only new kernel-driver-module architecture
+  - **Archived to `archive/`**:
+    - `lib/core/` - Legacy buffer, cursor, mode, events (~54,000 lines)
+    - `lib/sys/` - Legacy system utilities (~2,000 lines)
+    - `lib/lsp/` - Legacy LSP client (~3,000 lines)
+    - `runner/` - Old runner (~5,000 lines)
+    - `tools/bench/` - Legacy benchmarks (~3,000 lines)
+    - `plugins/` - 26 legacy plugins (~20,000 lines)
+    - `scripts/check.sh` - Old check script
+    - `Cargo.toml.legacy` - Old workspace manifest (for reference)
+  - **Display Driver Independence** (`lib/drivers/display/`):
+    - Inlined `Style`, `Attributes`, `ColorMode` types from lib/core
+    - Added `Color` type to lib/arch (platform abstraction)
+    - Removed dependency on reovim-core
+    - Display driver now self-contained with all style types
+  - **Runner Promotion** (`runner/`):
+    - Renamed `runner-new/` to `runner/`
+    - Package renamed to `reovim` (binary: `reovim`)
+    - Updated all references in modules and documentation
+  - **Workspace Cleanup**:
+    - Removed all legacy crates from workspace members
+    - Removed all plugin dependencies
+    - Updated version to 0.9.0-dev
+    - Created new `scripts/check.sh` for clean workspace
+
+- **Phase 5.15: New Runner and Editor Module** (Issue #214) - Clean architecture runner with editor module demonstrating mechanism/policy separation
+  - **runner-new crate** (`runner-new/`) - New runner implementing clean architecture:
+    - `AppState` - Combines KernelContext with runtime state (mode_stack, active_buffer, pending_keys)
+    - `InputFallbackHandler` trait - Mechanism for delegating unmatched keys to policy
+    - `FallbackResult` enum - Handled, Ignored, or Beep
+    - `ModeRegistry` - Stores Mode + ModeDisplay + ModeInput for each mode
+    - `CommandRegistry` - Stores CommandHandler implementations by CommandId
+    - `KeymapRegistry` - Maps (ModeId, KeySequence) → CommandId with prefix detection
+    - `EventLoop<F>` - Generic event loop with key dispatch, command execution, fallback delegation
+    - `NoOpFallback`, `BeepFallback` - Default fallback handler implementations
+  - **editor module** (`modules/editor/`) - Policy implementation for basic editing:
+    - `EditorMode` enum - Normal and Insert modes
+    - Implements `Mode`, `ModeDisplay`, `ModeInput` traits
+    - Cursor commands: cursor-up, cursor-down, cursor-left, cursor-right
+    - Mode commands: enter-insert, enter-insert-append, exit-to-normal
+    - `EditorFallbackHandler` - Character insertion in Insert mode, beep in Normal mode
+  - **Architecture demonstration** (`runner-new/examples/demo.rs`):
+    - Shows complete wiring of modes, commands, keybindings, and fallback handler
+    - Verifies mechanism/policy separation works end-to-end
+  - **Documentation updates** (`docs/architecture/`):
+    - Fixed `EventBus.publish()` → `EventBus.emit()` in kernel.md
+    - Added accurate v1 API exports documentation
+    - Added command/ driver section to drivers.md
+    - Updated input/ and display/ driver docs with ModeInput, ModeDisplay, KeySequence
+
+- **Phase 5.14: Kernel-Driver Architecture** (Issue #213) - Clean mechanism/policy separation following Linux kernel principles
+  - **Kernel Mode Types** (`lib/kernel/src/core/mode.rs`):
+    - `Mode` trait - Identity-only trait for modes (no behavior)
+    - `ModeId` struct - Namespaced mode identifier (module + name)
+    - `CommandId` struct - Namespaced command identifier (module + name)
+    - `ModeStack` - Push/pop mode switching stack
+    - All types exported via `api::v1` module
+  - **Kernel Cleanup** - Removed policy types from kernel:
+    - Deleted: `api/traits.rs` (Operator, KeymapProvider, CommandHandler)
+    - Deleted: `api/undo_manager.rs` (policy, moves to runner)
+    - Deleted: `api/window_manager.rs` (policy, except WindowId)
+    - Deleted: `api/syntax.rs` (moved to syntax driver)
+    - Kept: `api/buffer_manager.rs` (mechanism - pure storage interface)
+  - **WindowId Relocation** (`lib/kernel/src/mm/window_id.rs`):
+    - Moved WindowId from api/ to mm/ (alongside BufferId)
+    - Pure identity type (u64 wrapper) stays in kernel
+  - **Display Driver Mode Types** (`lib/drivers/display/src/mode.rs`):
+    - `ModeDisplay` trait - How modes affect display (cursor style, status)
+    - `CursorStyle` enum - Block, Bar, Underline, Hidden
+  - **Input Driver Mode Types** (`lib/drivers/input/src/mode.rs`):
+    - `ModeInput` trait - How modes handle input (accepts_char_input)
+    - `KeySequence` struct - Multi-key binding sequences (e.g., "gg", "\<C-w\>h")
+    - `Keybinding` struct - Maps keys in mode to command
+  - **Command Driver** (`lib/drivers/command/`) - New crate:
+    - `Command` trait - Self-describing command metadata
+    - `CommandHandler` trait - Command execution
+    - `ArgSpec`, `ArgKind`, `ArgValue` - Argument system
+    - `CommandContext` - Context carrying command inputs
+    - `CommandResult` - Execution result enum
+  - **Example Module** (`modules/example/`) - Architecture demonstration:
+    - Shows correct Mode, ModeDisplay, ModeInput implementation
+    - Shows Command/CommandHandler pattern
+    - Reference implementation for future modules
+  - **Operators Module Refactor** (`modules/operators/`):
+    - Moved `Operator` trait from kernel to operators module
+    - Created `types.rs` with OperatorContext, Range types
+    - Pure policy implementation (no kernel dependency on policy)
+  - **Commands Module Refactor** (`modules/commands/`):
+    - Moved `CommandHandler` trait from kernel to commands module
+    - Created `types.rs` with CommandContext, CommandError types
+    - Pure policy implementation
+  - **Syntax Driver Update** (`lib/drivers/syntax/`):
+    - Moved `SyntaxHighlight` trait from kernel to syntax driver
+    - Added tree-sitter integration with `ts_node_matches_query`
+    - Driver provides trait contract, implementations in modules
+  - **Architecture Verification**:
+    - Kernel has ONLY mechanism types (identities, storage interfaces)
+    - Drivers define trait contracts for services
+    - Modules implement policy (keybindings, operators, commands)
+    - Zero kernel dependencies on drivers or modules
+
+- **Phase 5.13: Layout Module** (Issue #212) - Window tiling and focus navigation policy module
+  - **TilingLayout** (`modules/layout/src/tiling.rs`):
+    - Implements `LayoutPolicy` trait from display driver
+    - Binary split tree for window arrangement (horizontal/vertical splits)
+    - Configurable gaps between windows
+    - Operations: split_horizontal, split_vertical, close_window, close_others, resize
+  - **VimFocusPolicy** (`modules/layout/src/focus.rs`):
+    - Implements `FocusPolicy` trait from display driver
+    - Directional navigation (hjkl) with edge alignment preference
+    - Focus cycling (w/W) with forward/backward wrapping
+    - Distance-based window selection when no aligned windows
+  - **SplitTree** (`modules/layout/src/split.rs`):
+    - Binary tree structure for split management (SplitNode enum)
+    - Bounds calculation with customizable split ratios
+    - Window insertion/removal with automatic rebalancing
+    - External ID management for runtime integration
+  - **Module Keybindings** (37 window mode bindings):
+    - Navigation: h/j/k/l and arrow keys for directional focus
+    - Cycling: w/W for forward/backward window cycling
+    - Splitting: s (horizontal), v (vertical), n (new buffer)
+    - Closing: c/q (current), o (others)
+    - Resizing: +/- (height), </> (width), = (equalize), _/| (maximize)
+    - Movement: H/J/K/L (move window), r/R (rotate), x (swap)
+    - Tab: T (move to new tab) - future support placeholder
+  - **Architecture**:
+    - Pure policy implementation (mechanism in display driver)
+    - Uses only `api::v1` public APIs (kernel purity maintained)
+    - Clear separation: split tree (data) / tiling (layout) / focus (navigation)
+  - 57 unit tests, 100% pass rate, zero clippy warnings
+
+- **Phase 5.12: Remaining Core Directories Assessment** (Issue #211) - Concept extraction for remaining lib/core directories
+  - **Jumplist** (`lib/kernel/src/core/jumplist.rs`):
+    - `Jumplist` struct - Circular buffer with current index for Ctrl-O/Ctrl-I navigation
+    - `JumpEntry` struct - Buffer ID + position for jump history
+    - Push with truncation, backward/forward navigation, duplicate suppression
+    - Exported via `api::v1` module
+    - 14 tests (11 unit + 3 doc tests)
+  - **Filetype Detection** (`lib/drivers/vfs/src/filetype.rs`):
+    - `FiletypeInfo` struct - ID, display name, optional icon
+    - `FiletypeRegistry` - Extension + filename maps with case-insensitive detection
+    - Global registry via `OnceLock` for lazy initialization
+    - 40+ file type mappings (Rust, Python, JS/TS, C/C++, Go, etc.)
+    - 13 unit tests + 2 doc tests
+  - **Interactor System** (`modules/keymap/src/interactor.rs`):
+    - `InteractorConfig` - Input routing policy (keymap vs char input)
+    - `InteractorRegistry` - Component configuration registry
+    - `ComponentId` - Built-in (EDITOR, WINDOW) and custom identifiers
+    - Policy separation: input routing decisions in modules, not kernel
+    - 11 unit tests + 3 doc tests
+  - **Options Module** (`modules/options/`):
+    - New module for editor settings policy
+    - `VirtualEditMode` enum - None, All, Block, Insert, OneMore
+    - `VirtualEditConfig` - Mode configuration
+    - `EditorSettings` - Container for settings
+    - Module trait implementation with proper lifecycle
+    - 14 unit tests + 1 doc test
+  - **Verifications**:
+    - Keystroke/KeyEvent: Verified in `drivers/input/` with full arch conversion
+    - Render pipeline: Verified in `drivers/display/src/render/`
+    - Modifier system: Verified mechanism in display driver compositor
+    - Visual mode: Verified in `kernel/mm/selection.rs` (SelectionMode enum)
+  - **Deferred** to future issue:
+    - Buffer provider system (complex async patterns) - documented in `docs/architecture/future/buffer-provider.md`
+  - Zero clippy warnings, all tests pass
+
+- **Phase 5.11: Display Builder & Additional Components** (Issue #210) - Component registration and visual extensions
+  - **Display Builder System** (`lib/drivers/display/src/builder/`):
+    - `DisplayRegistry` - Central registry for component visual representation
+    - `DisplayInfoBuilder` - Fluent builder pattern for registration with static/dynamic display
+    - `ComponentId` - Unique identifier (u64 newtype) for registry lookups
+    - `DisplayInfo` - Static display data (display_string, icon, style)
+    - Mode icons (NORMAL, INSERT, VISUAL, etc.) and UI component icons
+  - **Decoration System** (`lib/drivers/display/src/decoration/`):
+    - `Decoration` enum - 4 variants (Conceal, LineBackground, Hide, InlineStyle)
+    - `DecorationGroup` - Priority-based layering (Language=0 → Visual=40)
+    - `DecorationProvider` trait - Plugin interface for decoration sources
+    - `BufferDecorations` and `DecorationStore` - Per-buffer storage with priority sorting
+    - `ConcealedLine` - Result type with column mappings for cursor positioning
+    - `apply_conceals()` - Text replacement with bidirectional column mapping
+  - **Style System Extension** (`lib/drivers/display/src/style/`):
+    - `ThemeProvider` trait - Flexible string-based style lookups
+    - `ThemeManager` - Runtime theme switching with style overrides
+    - `CoreThemeAdapter` - Bridges existing Theme system (18 group mappings)
+    - `IconDef` - Three-variant icons (nerd/unicode/ascii)
+    - `IconProvider` trait and `IconRegistry` - Priority-based icon lookup
+    - `BuiltinFileIconProvider` - Default file/folder icons
+  - **UI Primitives** (`lib/drivers/display/src/ui/`):
+    - `display_width()` - Unicode-aware width calculation (CJK=2, zero-width=0)
+    - `truncate_end()` / `truncate_start()` - Text truncation with ellipsis
+    - `align()`, `pad_left()`, `pad_right()` - Text alignment utilities
+    - `wrap_text()` - Word wrapping with CJK support
+  - **Landing Page Plugin** (`plugins/features/landing/`):
+    - `LandingPlugin` - Plugin trait implementation with PluginWindow
+    - `AsciiSprite` - Animation controller (Once, Loop, PingPong modes)
+    - Three responsive variants: Large (roar), Medium (sleep), Small (breathing)
+    - Help text and version display
+  - Key patterns: mechanism vs policy separation, provider traits, priority systems
+  - 250 tests (234 display + 16 landing)
+  - Zero clippy warnings (pedantic + nursery)
+
+- **Phase 5.10: Config & Options System** (Issue #209) - Kernel mechanism for configuration and editor options
+  - **Option Registry** (`lib/kernel/src/core/option.rs`):
+    - `OptionValue` enum - Type-safe values (Bool, Integer, String, Choice)
+    - `OptionScope` enum - Scope granularity (Global, Buffer, Window)
+    - `OptionScopeId` - Runtime scope identifier for access operations
+    - `OptionConstraint` - Validation rules (min/max, string length)
+    - `OptionSpec` - Complete option specification with metadata and aliases
+    - `OptionRegistry` - Thread-safe storage with scope-aware resolution
+    - Scope fallback: Window → Buffer → Global → Default
+  - **Config System** (`lib/kernel/src/core/config.rs`):
+    - `ConfigValue` enum - Hierarchical config values (Bool, Integer, String, Array, Table)
+    - `Config` - Thread-safe key-value storage with bulk operations
+    - `ConfigPaths` - XDG-compliant path resolution (config_dir, data_dir, cache_dir)
+  - **Option Events** (`lib/kernel/src/ipc/events/kernel.rs`):
+    - `OptionChanged` - Emitted when option value changes
+    - `OptionReset` - Emitted when option reset to default
+    - `ChangeSource` - Origin tracking (UserCommand, Plugin, Config, etc.)
+  - **API Integration**:
+    - All types exported through `api::v1`
+    - `KernelContext.options` field for registry access
+    - `KernelContextBuilder` updated in runner
+  - Follows mechanism vs policy principle (kernel provides storage, modules register options)
+  - 41 tests, zero clippy warnings (pedantic + nursery)
+  - Part of Epic #150 (Project Kernel)
+
+- **Phase 5.9: Display Pipeline Implementation** (Issue #208) - Comprehensive rendering pipeline for display driver
+  - **Frame Module** (`lib/drivers/display/src/frame/`):
+    - `Cell` struct - Character + style + width with wide character support (CJK, fullwidth)
+    - `FrameBuffer` - 2D cell grid with efficient get/set, resize, fill_rect, write_str
+    - `FrameRenderer` - Double-buffer with cell-by-cell diff algorithm
+    - `FrameBufferHandle` - Thread-safe RPC capture using `Arc<RwLock<FrameBuffer>>`
+  - **Policy Contracts** (`lib/drivers/display/src/policy.rs`):
+    - `LayoutPolicy` trait - Window arrangement mechanism (policy in modules/layout/)
+    - `FocusPolicy` trait - Directional navigation mechanism
+    - `WindowView` struct - Positioned window (window_id + bounds)
+    - `SingleWindowLayout` and `DefaultFocusPolicy` - Minimal defaults
+  - **Screen & Window Rendering**:
+    - `Screen` struct - Terminal surface management (resize, clear, flush, capture)
+    - `WindowRenderer` - Window content → cells conversion with line numbers
+    - `LineNumberMode` - None, Absolute, Relative, Hybrid line number display
+  - **Border Rendering** (`lib/drivers/display/src/border.rs`):
+    - `BorderStyle` enum - None, Single, Double, Rounded, Bold (4 styles + none)
+    - `BorderChars` - Full set including T-junctions for adjacent windows
+    - `WindowAdjacency` - Detect adjacent windows for proper T-junction rendering
+  - **Render Pipeline** (`lib/drivers/display/src/render/`):
+    - `RenderData` - Intermediate representation with highlights, decorations
+    - `RenderContext` - Viewport and cursor info for render stages
+    - `RenderStage` trait - Extensible pipeline stage interface
+    - Line, chrome (tabline/statusline), separator rendering functions
+  - Key patterns: style batching, reset-before-set (prevents style bleed), continuation cells
+  - 169 tests (338% of 50+ target)
+  - Zero clippy warnings (pedantic + nursery)
+
+- **Phase 5.8: Runtime & Event Loop Consolidation** (Issue #207) - Event handler modules
+  - **New Policy Modules** (`modules/`):
+    - `buffer-ops` - Subscribes to BufferCreated, BufferModified, BufferClosed, BufferSwitched
+    - `window-ops` - Subscribes to WindowCreated, WindowClosed, WindowFocused, ViewportScrolled
+    - `mode-manager` - Subscribes to ModeChanged
+  - All modules use `subscribe_with_context()` with priority levels (CORE/NORMAL/LOW)
+  - RAII pattern for subscription lifecycle (stored in `Vec<Subscription>`)
+  - Registered and initialized in runner (main.rs, server.rs)
+  - Part of concept-extraction strategy: fresh implementations in modules/
+  - Part of Epic #150 (Project Kernel)
+
+- **Phase 5.7: Language Plugin Conversion to SyntaxDriver** (Issue #206) - All language plugins use new driver API
+  - **New `register()` API**: All 8 language plugins converted to use `TreeSitterDriverFactory::register()`
+    - JSON (json, jsonc) - 4 tests
+    - TOML (toml) - 4 tests
+    - Bash (sh, bash, zsh, bashrc, zshrc, profile) - 4 tests
+    - C (c, h) - 4 tests
+    - JavaScript (js, jsx, mjs, cjs) - 4 tests
+    - Python (py, pyi, pyw) - 4 tests
+    - Rust (rs) - 6 tests (includes injection query for doc comments)
+    - Markdown (md, markdown) - 6 tests (dual grammar with inline injection)
+  - **Injection Support**: `TreeSitterDriver::injections()` implementation
+    - Handles `@injection.language` captures (Markdown code blocks)
+    - Handles `#set! injection.language` properties (Rust doc comments)
+    - Returns `Vec<Injection>` with byte ranges and positions
+  - **Dual Grammar**: Markdown registers both `markdown` and `markdown_inline` languages
+    - Block grammar: Document structure (headings, lists, code blocks)
+    - Inline grammar: Inline formatting (bold, italic, links) - injected only
+  - **Test Coverage**: 36 new unit tests across all language plugins
+    - Registration verification (`factory.supports()`)
+    - Driver creation (`factory.create()`)
+    - Basic highlighting (`driver.parse()` + `highlights()`)
+    - File extension detection (`factory.detect_language()`)
+  - **Backward Compatibility**: Legacy `LanguageSupport` API preserved during migration
+  - **Technical Notes**:
+    - Factory uses interior mutability (RwLock) so `register()` takes `&self`
+    - All queries (highlights, folds, injections) cached via QueryCache
+    - Clippy-clean with zero warnings
+
+- **Phase 5.6: Compositor Implementation** (Issue #205) - Z-ordered layer management for display driver
+  - **Display Driver Compositor** (`lib/drivers/display/src/compositor/`):
+    - `Bounds` - Rectangular region with half-open interval contains/overlaps semantics
+    - `ZGroup` enum - 9 major z-order categories (Base=0 through Alert=800)
+    - `ZOrder` - Fine-grained ordering with group, sub_order, and GLOBAL sequence counter
+    - `ComposableId` - Unique identifier for composable elements (6 variants)
+    - `Composable` trait - Interface for renderable elements (8 methods)
+    - `LayerCompositor` - Concrete compositor with registration, z-order management, hit testing
+    - `Compositor` trait - Abstract interface for compositor implementations
+  - Key features: lazy render order caching, focus management, keyboard target finding
+  - 35 comprehensive tests covering all edge cases
+  - Zero clippy warnings (pedantic + nursery)
+
+- **Phase 5.5: Buffer & Memory Management Completion** (Issue #204) - Core mm/ subsystem infrastructure
+  - **Line Caching** (`lib/kernel/src/mm/cache.rs`):
+    - `LineCache<T>` - Lock-free cache using ArcSwap for RCU pattern
+    - Hash-based validation for cache invalidation
+    - Thread-safe concurrent reads without blocking
+  - **Selection State** (`lib/kernel/src/mm/selection.rs`):
+    - `Selection` struct for visual mode state tracking
+    - `SelectionMode` enum: Character, Line, Block (vim's v/V/Ctrl-V)
+    - Bounds calculation with forward/backward normalization
+  - **Buffer Snapshot** (`lib/kernel/src/mm/snapshot.rs`):
+    - `BufferSnapshot` - Read-only buffer capture for concurrent access
+    - Text extraction with position clamping
+    - Selection query methods
+  - **Word Boundary Detection** (`lib/kernel/src/mm/word.rs`):
+    - `CharKind` enum: Word, Punctuation, Whitespace
+    - `WordType` enum: Small (w/b/e) vs Big (W/B/E)
+    - Functions: `word_start`, `word_end`, `word_bounds`, `next_word_start`, `next_word_end`
+  - **Delimiter Matching** (`lib/kernel/src/mm/delimiter.rs`):
+    - `find_delimiter_pair()` - Find matching symmetric/asymmetric delimiters
+    - `find_matching_delimiter()` - vim's `%` command support
+    - Depth-counting for nested brackets
+  - **Background Task Scheduler** (`lib/kernel/src/mm/saturator.rs`):
+    - `Saturator` - Priority-based background work processor
+    - `RequestPriority`: High (viewport) vs Low (off-screen)
+    - `EventScope` integration for lifecycle tracking
+  - **IPC Events** (`lib/kernel/src/ipc/event.rs`):
+    - `CacheUpdated` event for cache invalidation notification
+    - `CacheKind` enum: Highlights, Decorations, Both
+  - **Buffer Extensions** (`lib/kernel/src/mm/buffer.rs`):
+    - Added `selection` field and accessors
+    - Added `file_path` field and accessors
+    - Added `line_hash()` for cache validation
+  - All types exported via `reovim_kernel::api::v1::*`
+  - 79 new tests, zero warnings
+
+- **Phase 5.3: EventBus Consolidation - Kernel Foundation** (Issue #202) - Kernel EventBus enhancements and event definitions
+  - **Kernel API Enhancements** (`lib/kernel/src/ipc/`):
+    - `HandlerContext` - Dual emission modes (collect for tests, direct for runtime)
+    - `TargetedEvent` trait - Component-targeted event dispatch with `&str` target
+    - `subscribe_with_context()` - Context-aware handler registration
+    - `subscribe_targeted()` - Automatic filtering by target component
+    - `new_with_channel()` / `sender()` / `take_receiver()` - Channel-based processor pattern
+    - `DispatchResult` - Captures handler side effects (render/quit requests, emitted events)
+  - **Event Definitions** (`lib/kernel/src/ipc/events/`):
+    - 14 kernel events: `BufferCreated`, `BufferClosed`, `BufferModified`, `BufferSwitched`, `BufferSaved`, `CursorMoved`, `ModeChanged`, `WindowCreated`, `WindowClosed`, `WindowFocused`, `ViewportScrolled`, `FileOpened`, `FileTypeChanged`, `Shutdown`
+    - 4 driver events: `DisplayResized`, `FrameRendered`, `KeyInput`, `MouseInput`
+    - `Modification` enum (Insert/Delete/Replace/FullReplace)
+    - `KeyCode`, `Modifiers`, `MouseEvent`, `MouseButton` input types
+    - Priority constants: `CRITICAL` (0), `CORE` (10), `NORMAL` (50), `PLUGIN` (100), `LOW` (200)
+  - **Bridge Layer** (`lib/core/src/event_bus/mod.rs`):
+    - `kernel_events` module re-exports kernel event types
+    - `driver_events` module re-exports driver event types
+    - Enables gradual migration from lib/core to kernel EventBus
+  - 60+ new tests for context handlers, targeted events, and channel patterns
+  - Zero warnings (clippy pedantic + nursery)
+  - Part of Epic #150 (Project Kernel)
+
+- **Phase 5.2: Infrastructure Glue Code** (Issue #201) - Concrete implementations connecting kernel to drivers
+  - **Runner Infrastructure** (`runner/src/`):
+    - `SimpleBufferManager` - Thread-safe buffer storage implementing `BufferManager` trait
+    - `StandardVfs` - Zero-sized VFS driver wrapping `std::fs` (17 methods)
+    - `KernelContextBuilder` - Builder pattern for kernel context assembly
+  - **Kernel debug/ Subsystem** (`lib/kernel/src/debug/`):
+    - `TracePoint` + `TraceSink` - Runtime-toggleable trace points (Linux `kernel/trace/` inspired)
+    - `Counter` + `Histogram` + `MetricsRegistry` - Lock-free metrics with atomic operations
+    - `ProfileGuard` - RAII scope timing with automatic histogram recording
+  - **Kernel panic/ Subsystem** (`lib/kernel/src/panic/`):
+    - `install_panic_handler()` - Custom panic handler with recovery callbacks
+    - `save_buffer_for_recovery()` - Emergency buffer state preservation
+    - `CrashReport` - Structured crash reports with backtrace and version info
+  - **Arch Layer Extensions** (`lib/arch/`):
+    - `dirs` module wrapping `dirs` crate for kernel purity (platform-specific paths)
+  - 28 new tests across all components
+  - Zero warnings (clippy pedantic + nursery)
+
+- **Phase 5.1: Mechanism vs Policy Refactoring** (Issue #200) - FOUNDATION for Phase 5
+  - Core principle: "Provide mechanism, not policy" - kernel provides WHAT, modules decide HOW
+  - **Kernel Mechanisms** (`lib/kernel/src/api/`):
+    - `KernelContext` - Service object pattern for module access to kernel APIs
+      - `buffers: Arc<BufferManager>` - Buffer lifecycle management
+      - `motion: MotionEngine` - Position calculation
+      - `text_objects: TextObjectEngine` - Range calculation
+      - `registers: Arc<RwLock<RegisterBank>>` - Register storage
+      - `marks: Arc<RwLock<MarkBank>>` - Mark storage
+    - `RegisterBank` - Named register storage with default register
+    - `MarkBank` - Mark storage (local and global marks)
+    - `UndoManager` trait - Undo/redo mechanism contract
+    - `WindowManager` trait - Window lifecycle (CRITICAL: NO position fields)
+      - Position is POLICY decided by LayoutPolicy in modules/layout/
+  - **Policy Interface Traits** (`lib/kernel/src/api/traits.rs`):
+    - `Operator` trait - Contract for operator implementations (delete, yank, change)
+    - `KeymapProvider` trait - Contract for keymap modules (key-to-action mapping)
+    - `CommandHandler` trait - Contract for ex-command handlers (:w, :q, etc.)
+  - **Policy Modules** (`modules/`):
+    - `modules/keymap/` - Vim keybindings (normal, insert, visual, operator-pending)
+    - `modules/operators/` - Delete, Yank, Change operator implementations
+    - `modules/commands/` - Ex commands (:w, :q, :wq)
+    - `modules/defaults/` - Bundle aggregator for all default modules
+  - **Module System Extensions**:
+    - `ModuleHandle::from_boxed()` - Create handle from `Box<dyn Module>`
+    - `ModuleLoader::register_static_boxed()` - Register boxed modules
+    - `ModuleRegistry::register_boxed()` - Registry method for boxed modules
+    - `register_defaults()` - Function to register all default policy modules
+  - **API Boundary Enforcement**:
+    - Only `pub mod api;` exposed from kernel (compile-time enforced)
+    - All modules import ONLY from `reovim_kernel::api::v1::*`
+    - API boundary test in `lib/kernel/tests/api_boundary_test.rs`
+  - 44 new tests across kernel and modules
+
+- **Phase 4.6: Module System Improvements** (Issue #197)
+  - Dynamic modules can now declare dependencies via `ModuleProbe` struct
+    - `required_deps`: up to 8 required dependencies
+    - `optional_deps`: up to 8 optional dependencies
+    - `rustc_version`: compiler version for ABI compatibility
+  - Hot reload state preservation for dynamic modules via FFI trampolines:
+    - `reovim_module_supports_hot_reload()` - Query reload capability
+    - `reovim_module_save_state()` - Serialize module state
+    - `reovim_module_restore_state()` - Deserialize module state
+    - `reovim_module_free_state()` - Free state buffer
+  - `ModuleContext::has_optional_dep()` and `optional_deps()` for dependency detection
+  - Module ID change validation during hot reload (prevents registry corruption)
+  - State size limit (16 MiB) to prevent memory exhaustion from malicious modules
+  - 18 new tests for hot reload state preservation and `ModuleProbe` extensions
+
+- **Phase 4.3-4.5: Module System Runner** (Issues #192, #193, #194) - Module loading infrastructure
+  - New directory: `runner/src/module/` - Policy layer for module management
+  - `ModuleLoader` - Static and dynamic module loading
+    - `register_static<M: Module>()` - Compile-time module registration
+    - `load_dynamic(path)` - Runtime loading via `libloading`
+    - `load_by_name(name)` - Search-path-based loading
+    - API version checking before instantiation (prevents ABI mismatch)
+    - Opaque `*mut c_void` pointers for FFI safety (not fat pointers)
+  - `ModuleHandle` - Unified wrapper for static/dynamic modules
+    - FFI trampolines for `init()`, `exit()`, `destroy()`
+    - Null pointer validation before FFI calls (defense-in-depth)
+    - SAFETY comments documenting all unsafe code
+  - `ModuleRegistry` - Lifecycle management with dependency resolution
+    - `init_all(ctx)` - Initialize all modules in dependency order
+    - `shutdown()` - Reverse-order shutdown
+    - `unload(id)` - Safe unload with dependent checking
+    - `reload_atomic(id, ctx)` - TOCTOU-safe hot reload
+    - Linux-style deferred probing with 3 retry passes
+    - Thread-safe via single `Mutex<ModuleRegistryInner>`
+  - `resolve_dependencies()` - Kahn's algorithm for topological sort
+    - Cycle detection with clear error messages
+    - Self-referential dependency detection
+    - Optional dependency handling
+    - Reverse dependency map for safe unload
+  - `HotReloadManager` - File watching for development (feature-gated)
+    - `watch(path, id)` / `unwatch(path)` - File monitoring via `notify`
+    - `process_events()` - Event collection with deduplication
+    - Atomic reload via registry (prevents TOCTOU races)
+    - Feature gate: `hot-reload = ["dep:notify"]`
+  - `PluginFromModule` - Adapter bridging module system to existing plugins
+  - Discovery functions - XDG-compliant search paths
+    - `/usr/lib/reovim/modules`, `/usr/local/lib/reovim/modules`
+    - `~/.local/share/reovim/modules`
+    - Cross-platform: `.so` (Linux), `.dylib` (macOS), `.dll` (Windows)
+  - 34 tests across all components
+  - Known limitations tracked in Issue #197
+
+- **Phase 4.2: Module Macros** (Issue #191) - `declare_module!` proc-macro for FFI-safe module entry points
+  - New crate: `reovim-module-macros` - First proc-macro crate in the project
+  - `declare_module!(ModuleType)` macro - Generates FFI-safe entry points
+    - `REOVIM_MODULE_API_VERSION` - Static symbol for pre-load version checking (like Linux `vermagic`)
+    - `reovim_module_probe()` - Returns `ModuleProbe` metadata without full instantiation (like `.modinfo`)
+    - `reovim_module_entry()` - Creates module instance, returns thin pointer (`*mut c_void`)
+    - `reovim_module_init()` - Init trampoline with panic safety (`catch_unwind`)
+    - `reovim_module_exit()` - Exit trampoline with panic safety
+    - `reovim_module_destroy()` - Cleanup trampoline, null-safe
+  - `ModuleProbe` struct - FFI-safe metadata container
+    - `#[repr(C)]` with fixed-size arrays (no pointers) - 216 bytes total
+    - `id: [u8; 64]` - Module ID (null-terminated, max 63 chars)
+    - `name: [u8; 128]` - Module name (null-terminated, max 127 chars)
+    - `version: Version`, `api_version: Version` - Version info
+    - `new()` - const fn for static initialization
+    - `id_str()`, `name_str()` - String slice accessors
+    - Copy trait - safe to return by value across FFI
+  - `Version` struct - Added `#[repr(C)]` for FFI safety (12 bytes)
+  - FFI safety features:
+    - Thin pointers (`*mut c_void`) instead of fat pointers (`*mut dyn Trait`)
+    - `catch_unwind` in all trampolines to prevent panic across FFI boundary
+    - Module owns all allocations (create/destroy pattern)
+    - Return codes: 0=Success, 1=Defer, -1=Failed, -2=Panic
+  - Linux kernel-inspired design:
+    - Static version check before any function calls (like `vermagic`)
+    - Probe function for metadata discovery (like `.modinfo` section)
+    - Entry/exit pattern (like `module_init`/`module_exit`)
+  - 11 integration tests + 7 unit tests for ModuleProbe
+  - Exported from `reovim_kernel::api::v1::ModuleProbe`
+
+- **Phase 4.1: Module System** (Issue #190) - Kernel API Module trait and context
+  - `Module` trait - Core module interface (Send + Sync + 'static, dyn-compatible)
+    - `id()`, `name()`, `version()` - Module identity
+    - `init()` → `ProbeResult`, `exit()` → `Result<(), ModuleError>` - Lifecycle
+    - `dependencies()`, `optional_dependencies()` - Dependency declarations
+    - `commands()`, `keybindings()`, `event_handlers()` - Registration methods
+    - `save_state()`, `restore_state()` - Hot reload support with versioning
+    - Thread safety documented: `&mut self` for lifecycle, `&self` for queries
+  - `ProbeResult` enum - Linux-inspired deferred probing pattern
+    - `Success` - Module initialized successfully
+    - `Defer(String)` - Retry later (like Linux `-EPROBE_DEFER`)
+    - `Failed(ModuleError)` - Initialization failed permanently
+  - `ModuleState` enum - Module lifecycle state machine
+    - `Loaded`, `Initializing`, `Running`, `Unloading`, `Failed(String)`
+    - `can_transition_to()` - State transition validation
+  - `ModuleId` struct - Type-safe module identifier with `Cow<'static, str>`
+    - `new()` - Zero-cost static IDs (const fn)
+    - `from_string()` - Runtime/dynamic IDs
+    - `is_static()`, `is_dynamic()` - ID type queries
+  - `ModuleInfo` struct - Module metadata container
+    - `from_module()` - Extract info from any `&dyn Module`
+  - `ModuleError` enum (7 variants) - Comprehensive error handling
+    - `LoadFailed`, `NoEntryPoint`, `InitFailed` - Loading errors
+    - `IncompatibleVersion`, `InUse`, `NotLoaded`, `NotFound` - State errors
+  - `RegistrationFlags` struct - Registration behavior control
+    - `required`, `deferrable`, `early`, `fallback` flags
+    - Chainable builders: `set_required()`, `set_deferrable()`, etc.
+    - Query methods: `is_required()`, `is_deferrable()`, etc.
+  - `CommandRegistration` struct - Command declaration with builders
+    - `with_name()`, `with_description()`, `with_category()` - Metadata
+    - `with_count()`, `with_motion()`, `with_text_modifying()` - Capabilities
+    - `with_depends_on()`, `with_flags()` - Dependencies and behavior
+  - `KeybindingRegistration` struct - Key binding declaration
+    - `with_priority()`, `with_modes()`, `with_disabled()` - Configuration
+  - `EventHandlerRegistration` struct - Event handler declaration
+    - `with_priority()`, `core_priority()` - Priority management (clamped 0-100)
+    - `with_filter()`, `with_once()` - Event filtering
+  - `ModuleContext` struct - Module-specific runtime context
+    - `kernel` - Reference to `KernelContext` for core services
+    - `data_dir`, `cache_dir` - Module-specific storage paths
+  - `Version` struct enhancements
+    - Added `PartialOrd`, `Ord` derives for version comparison/sorting
+    - Tests for ordering, sorting, min/max operations
+  - 35+ unit tests covering all types and edge cases
+  - Linux kernel pattern adherence: probe/defer, mechanism vs policy split
+
+- **Phase 3.7: Log Driver** (Issue #180) - Driver layer Logger implementation
+  - `TracingLogger` struct - Implements kernel `Logger` trait
+    - Zero-sized type (ZST) - all state in global tracing subscriber
+    - Maps kernel `Record` to tracing events with metadata (module_path, file, line)
+    - Efficient `enabled()` check before message formatting
+    - Send + Sync for thread-safe logging
+  - `LogConfig` struct - Logging configuration with defaults
+    - `level` - Minimum log level (default: Info)
+    - `output` - Where logs go (Stderr, Stdout, File)
+    - `format` - Message format (Plain, Json, Pretty)
+    - `file_path` - File path for File output
+    - `rotation` - File rotation policy (Never, Daily, Hourly)
+  - `LogOutput` enum - Output destination selection
+    - `Stderr` (default), `Stdout`, `File`
+  - `LogFormat` enum - Message formatting options
+    - `Plain` - Standard `[LEVEL] file:line message` format
+    - `Json` - Structured JSON output for log aggregation
+    - `Pretty` - Colorized terminal output for development
+  - `RotationPolicy` enum - Log file rotation
+    - `Never`, `Daily`, `Hourly`
+  - `init_logging()` function - Tracing subscriber setup
+    - REOVIM_LOG environment variable support (takes precedence)
+    - Non-blocking file writes via `tracing-appender`
+    - ANSI color control for terminal vs file output
+  - `LogError` enum - Initialization error handling
+    - `MissingFilePath`, `InvalidFilter`, `SetGlobalDefault`, `Io`
+  - Level mapping utilities: `to_tracing_level()`, `from_tracing_level()`
+  - Re-exports kernel types: `Level`, `Logger`, `set_logger`
+  - 19 unit tests
+
+- **Phase 3.6: VFS Driver** (Issue #179) - Driver layer Virtual Filesystem traits
+  - `VfsError` enum (12 variants) - Comprehensive filesystem error handling
+    - `NotFound`, `PermissionDenied`, `AlreadyExists` - Common filesystem errors
+    - `NotADirectory`, `NotAFile`, `IsADirectory` - Type mismatch errors
+    - `DirectoryNotEmpty`, `InvalidPath`, `PathTooLong` - Path errors
+    - `ReadOnlyFilesystem`, `NotSupported`, `Io` - System errors
+  - `VfsDriver` trait - Core filesystem operations (Send + Sync)
+    - `read()`, `write()`, `delete()`, `rename()`, `copy()` - File operations
+    - `list_dir()`, `create_dir()`, `create_dir_all()` - Directory operations
+    - `exists()`, `is_file()`, `is_dir()`, `metadata()` - Queries
+    - `canonicalize()`, `read_to_string()`, `write_str()` - Utilities
+    - Complete `std::fs` replacement mapping documented in trait docs
+  - `FileHandle` trait - Streaming file I/O with seek support
+    - `read()`, `write()`, `seek()`, `flush()` - Core operations
+    - `read_exact()`, `read_to_end()`, `write_all()` - Convenience methods
+    - `sync_all()`, `metadata()`, `position()`, `size()` - Extended API
+  - `FileWatcher` trait - File change monitoring (inotify equivalent)
+    - `watch()`, `unwatch()`, `poll_events()`, `has_events()`
+  - `PathNormalizer` trait - Cross-platform path manipulation
+    - `normalize()`, `canonicalize()`, `is_absolute()`, `join()`
+    - `file_name()`, `extension()`, `stem()`, `parent()`
+    - `strip_prefix()`, `relative_to()`, `starts_with()`, `ends_with()`
+    - `StandardPathNormalizer` implementation
+  - `FileMetadata` struct - File information with builder pattern
+    - `file()`, `directory()`, `symlink()` constructors
+    - `with_modified()`, `with_permissions()`, `with_readonly()` builders
+  - `FilePermissions` struct - Unix-style mode bits (0o755, 0o644)
+    - Permission bit constants: `OWNER_READ`, `GROUP_WRITE`, etc.
+    - `is_readable()`, `is_writable()`, `is_executable()` checks
+  - `WatchEvent` enum - File change events
+    - `Created`, `Modified`, `Deleted`, `Renamed`, `MetadataChanged`, `Error`
+  - `OpenOptions` struct - File opening configuration with builders
+  - `SeekFrom` enum - Seek position with `std::io::SeekFrom` conversions
+  - `DirEntry` struct - Directory entry with convenience constructors
+  - 52 unit tests
+
+- **Phase 3.5 + 4-6: Network Driver** (Issue #178) - Driver layer RPC server infrastructure
+  - `NetError` enum (12 variants) - Comprehensive network error handling
+    - `BindFailed`, `AcceptFailed` - Connection establishment errors
+    - `ConnectionClosed`, `NotInitialized`, `AlreadyListening` - State errors
+    - `Io`, `ReadFailed`, `WriteFailed` - I/O operation errors
+    - `PortExhausted`, `InvalidAddress` - Address/port errors
+    - `JsonError`, `InvalidMessage` - Serialization errors
+  - `NetDriver` trait - Network driver lifecycle management
+    - `init()`, `shutdown()`, `is_listening()` - Driver lifecycle
+    - `listen()` - Start listening on transport config
+    - `local_addr()` - Get bound TCP address
+    - `register_handler()` - Register RPC handlers
+  - `TransportListener` trait - Connection acceptance abstraction
+    - `bind()`, `accept()`, `local_addr()`
+  - `TransportConnection` trait - Read/write message abstraction
+    - `read_line()`, `write_line()`, `close()`
+  - `PortAllocator` trait - Multi-instance port allocation
+    - `default_port()` (12521), `port_range()`, `allocate()`, `is_port_available()`
+  - `TransportConfig` enum - Transport selection (Stdio, UnixSocket, TCP)
+    - Factory methods: `unix_socket()`, `tcp()`, `tcp_localhost()`
+    - Constants: `DEFAULT_PORT` (12521), `MAX_PORT` (12530)
+  - JSON-RPC 2.0 message types:
+    - `RpcRequest`, `RpcResponse`, `RpcNotification`, `RpcError`
+    - `RpcHandler` trait, `RpcResult` enum, `RpcHandlerContext`
+    - Error code constants: `PARSE_ERROR`, `INVALID_REQUEST`, `METHOD_NOT_FOUND`, etc.
+    - Method constants (`methods::INPUT_KEYS`, etc.) and notification constants
+  - Core migration: `lib/core` now imports types from driver (dependency inversion)
+  - 25 unit tests
+
+- **Phase 3.4: LSP Driver Types** (Issue #177) - Driver layer LSP client infrastructure
+  - `LspError` enum (9 variants) - Comprehensive LSP error handling
+    - `SpawnFailed` - Failed to spawn language server process
+    - `TransportError` - I/O error on server communication
+    - `ServerError` - Error response from language server
+    - `Timeout` - Request timed out
+    - `ChannelClosed` - Response channel closed unexpectedly
+    - `Serialization` - JSON serialization/deserialization error
+    - `NotInitialized` - Server not yet initialized
+    - `ServerNotRunning` - Server process not running
+    - `InvalidResponse` - Invalid response format from server
+  - `LspRequest` enum (7 core variants) - Request types with oneshot response channels
+    - Notifications: `DidOpen`, `DidChange`, `DidClose`, `Shutdown`
+    - Requests: `GotoDefinition`, `References`, `Hover`
+    - Uses kernel's `OneshotSender` for async responses
+    - Custom Debug impl hides response channels and large content
+  - `LspResponse` enum - Unified response type for generic handling
+    - Variants: `Definition`, `References`, `Hover`, `DocumentSymbol`, `Completion`, `SignatureHelp`, `CodeAction`, `Rename`, `WorkspaceSymbol`, `Formatting`, `Empty`
+    - `is_empty()` const method for response checking
+  - `DiagnosticCache` - Lock-free diagnostic storage using kernel's `ArcSwap`
+    - `BufferDiagnostics` struct with version tracking
+    - Methods: `store()`, `get()`, `get_all()`, `remove()`, `clear()`, `has()`, `len()`
+    - Follows mechanism/policy principle (kernel provides `ArcSwap`, driver implements cache policy)
+  - `LspServerConfig` - Server spawn configuration with factory methods
+    - Factories: `rust_analyzer()`, `clangd()`, `pylsp()`, `typescript()`, `custom()`
+    - Builder: `with_args()` for additional arguments
+    - `uri_from_path()` helper for URI conversion
+  - Re-exports essential `lsp-types` (v0.97): `Position`, `Range`, `Uri`, `Diagnostic`, `GotoDefinitionResponse`, `Hover`, `CompletionResponse`, `CodeActionResponse`, etc.
+  - **Types only** - Concrete `LspClient` implementation in Phase 4
+  - 33 unit tests
+
+- **Phase 3.3: Display Driver Traits** (Issue #176) - Driver layer display/rendering interfaces
+  - `DisplayDriver` trait - Terminal lifecycle and rendering abstraction
+    - `init()`, `shutdown()`, `is_initialized()` - Driver lifecycle
+    - `frame_buffer()`, `frame_buffer_mut()` - Frame buffer access
+    - `render()`, `invalidate()` - Diff-based rendering
+    - `resize()`, `size()` - Terminal size management
+    - `cursor_position()`, `set_cursor_position()`, `hide_cursor()`, `show_cursor()`
+    - `color_mode()`, `set_color_mode()` - Runtime color mode switching
+    - `capabilities()` - Terminal feature detection
+    - `execute_commands()` - Direct render command execution
+  - `WindowManager` trait - Window splits, tabs, and layout management
+    - `active_window()`, `set_active_window()` - Focus management
+    - `create_window()`, `close_window()`, `split()` - Window lifecycle
+    - `bounds()`, `navigate()`, `swap()` - Layout operations
+    - `window_ids()`, `window_count()`, `equalize()`, `resize_window()`
+  - `Compositor` trait - Z-ordered element rendering
+    - `register()`, `unregister()`, `get()`, `get_mut()` - Element management
+    - `set_z_order()`, `bring_to_front()`, `send_to_back()` - Z-order control
+    - `render_order()`, `render()` - Rendering pipeline
+    - `hit_test()`, `keyboard_target()` - Input routing
+  - `DisplayCapabilities` struct - Terminal feature detection
+    - `color_mode` - Detected color rendering mode
+    - `supports_underline_color`, `supports_extended_underlines` - ANSI 58 / Kitty extensions
+    - `supports_mouse`, `supports_kitty_graphics`, `supports_sixel` - Input/graphics support
+    - `detect()` - Auto-detection from environment
+  - `RenderCommand` enum - Terminal render operations
+    - `MoveTo`, `Print`, `SetStyle`, `ResetStyle`
+    - `ClearToEndOfLine`, `ClearLine`, `ClearRect`
+    - `ShowCursor`, `HideCursor`
+  - `DisplayError` enum - Display operation errors
+    - `NotInitialized`, `InvalidSize`, `RenderFailed`, `WindowNotFound`
+    - `Io`, `CompositorError`, `CursorOutOfBounds`
+  - Window management types:
+    - `WindowId` - Unique window identifier
+    - `SplitDirection` (Horizontal, Vertical) - Split layout direction
+    - `NavigateDirection` (Left, Down, Up, Right) - Window navigation
+    - `TerminalSize` - Width/height with validity check
+    - `Rect` - Window bounds with containment check
+  - **Staged migration architecture**: Re-exports from `reovim-core` (Cell, FrameBuffer, Style, Attributes, Color, ColorMode, ZGroup, ZOrder, Composable, ComposableId) with TODO markers for Phase 5-6 type migration
+  - `ZGroup` values verified: Base=0, Sidebar=100, Editor=200, Floating=300, Overlay=400, Popup=500, Panel=600, Modal=700, Alert=800
+  - 4 unit tests (ZGroup values, WindowId, TerminalSize, Rect)
+
+- **Phase 3.2: Input Driver Traits** (Issue #175) - Driver layer input handling interfaces
+  - `KeyCode` enum (56 variants) - Platform-agnostic key codes
+    - Printable: `Char(char)` for all Unicode characters
+    - Function keys: `F(u8)` for F1-F24
+    - Navigation: `Up`, `Down`, `Left`, `Right`, `Home`, `End`, `PageUp`, `PageDown`
+    - Editing: `Backspace`, `Delete`, `Insert`, `Tab`, `BackTab`, `Enter`, `Escape`
+    - Special: `Null`, `CapsLock`, `ScrollLock`, `NumLock`, `PrintScreen`, `Pause`, `Menu`, `KeypadBegin`
+    - Media: `MediaPlay`, `MediaPause`, `MediaPlayPause`, `MediaStop`, `MediaNext`, `MediaPrevious`, etc.
+    - Modifiers: `Left/RightShift`, `Left/RightCtrl`, `Left/RightAlt`, `Left/RightSuper`, `Left/RightHyper`, `Left/RightMeta`
+    - ISO: `IsoLevel3Shift` (`AltGr`), `IsoLevel5Shift`
+  - `Modifiers` bitflags - Combinable key modifiers (SHIFT, CTRL, ALT, SUPER, HYPER, META)
+  - `KeyEventKind` enum (Press, Repeat, Release) - Key event lifecycle
+  - `KeyEvent` struct - Complete key event with code, modifiers, and kind
+    - Constructors: `new()`, `with_modifiers()`, `full()`
+    - Checkers: `is_press()`, `is_release()`, `is_repeat()`
+  - `KeymapResult<T>` enum - Multi-key sequence lookup result (Match, Prefix, None)
+    - Methods: `is_match()`, `is_prefix()`, `is_none()`, `into_option()`, `map()`, `unwrap()`
+  - `MouseButton` enum (Left, Right, Middle)
+  - `MouseEventKind` enum (Down, Up, Drag, Moved, ScrollUp/Down/Left/Right)
+  - `MouseEvent` struct - Mouse event with position and modifiers
+    - Checkers: `is_down()`, `is_up()`, `is_scroll()`, `is_drag()`, `is_moved()`
+  - `InputDriver` trait - Input subsystem lifecycle (init, start, stop, inject_key, inject_mouse)
+  - `KeyHandler` trait - Key event handler with priority ordering
+  - `KeyHandlerResult` enum (Consumed, Pending, Ignored)
+  - `HandlerPriority` type with constants: INTERCEPT (1000), MODAL (500), NORMAL (0), FALLBACK (-500)
+  - `KeymapRegistry<A>` trait - Generic keymap binding/lookup (bind, unbind, lookup, is_prefix, scopes)
+  - `ClipboardProvider` trait - System clipboard abstraction (read, write, is_available)
+  - `InputError` and `ClipboardError` - Comprehensive error types
+  - Bidirectional `From` conversions between `reovim_arch` and driver types
+  - 31 unit tests + 4 doctests
+
+- **Phase 3.1: Syntax Driver Traits** (Issue #174) - Driver layer syntax highlighting interfaces
+  - `HighlightGroup` enum (31 variants) - Syntax category policy implementing kernel's `SyntaxHighlight`
+    - Keywords: `Keyword`, `KeywordControl`, `KeywordOperator`, `KeywordFunction`, `KeywordType`
+    - Types: `Type`, `TypeBuiltin`
+    - Functions: `Function`, `FunctionBuiltin`, `FunctionMacro`, `Method`
+    - Variables: `Variable`, `VariableBuiltin`, `Parameter`, `Field`, `Constant`
+    - Literals: `String`, `StringEscape`, `Character`, `Number`, `Boolean`
+    - Comments: `Comment`, `CommentDoc`
+    - Punctuation: `Punctuation`, `PunctuationBracket`, `PunctuationDelimiter`
+    - Operators: `Operator`
+    - Diagnostics: `Error`, `Warning`, `Info`, `Hint`
+    - Special: `Custom = 255`
+    - Classification methods: `is_keyword()`, `is_type()`, `is_function()`, etc.
+  - `HighlightSpan` struct - Byte-based highlight ranges with group
+  - `SyntaxEdit` struct - Incremental parsing edit info (mirrors tree-sitter's InputEdit)
+    - Constructors: `new()`, `insert()`, `delete()`
+    - Analysis: `affected_range()`, `byte_delta()`, `is_insert()`, `is_delete()`, `is_replace()`
+  - `FoldRange` + `FoldKind` - Code folding support
+    - `FoldKind`: Function, Class, Import, Comment, Block
+    - `FoldRange`: line-based ranges with preview text
+  - `Injection` struct - Embedded language regions for injections
+  - `LanguageInfo` + `CommentTokens` - Language metadata (extensions, MIME types, comment syntax)
+  - `SyntaxDriver` trait - Main parsing/highlighting interface (Send + Sync)
+    - `parse()`, `update()`, `highlights()`, `injections()`, `folds()`, `indent_for()`
+  - `SyntaxDriverFactory` trait - Creates drivers for languages
+  - `LanguageRegistry` trait - Language detection and metadata
+  - `SyntaxCache` trait - Highlight result caching
+  - Re-exports `ModuleError` from kernel for consistency
+  - **NO tree-sitter dependency** - Trait definitions only
+  - 60 unit tests + 8 doctests
+
+- **Phase 2.8: Module & Syntax API** (Issue #173) - Kernel API extensions for Phase 3
+  - `ModuleId` struct - Unique identifier for loadable modules
+    - Convention: kebab-case names (e.g., "lang-rust", "feat-completion")
+    - `new()`, `as_str()` const methods
+    - Implements `Clone`, `Eq`, `Hash`, `Display`
+  - `ModuleError` enum - Module lifecycle errors (7 variants)
+    - `LoadFailed` - Failed to load shared object
+    - `NoEntryPoint` - Module missing entry function
+    - `InitFailed` - Initialization failed
+    - `IncompatibleVersion` - API version mismatch
+    - `InUse` - Module in use by another module
+    - `NotLoaded` - Module not currently loaded
+    - `NotFound` - Module file not found
+    - Implements `Display` and `std::error::Error`
+  - `SyntaxHighlight` trait - Mechanism for syntax highlight categories
+    - Kernel provides mechanism (trait), drivers provide policy (enum)
+    - Bounds: `Debug + Copy + Eq + Hash + Send + Sync + 'static`
+    - Single method: `fn category(&self) -> &'static str`
+  - 6 unit tests + 2 API integration tests
+
+- **Phase 2.7: Printk Module** (Issue #168) - Kernel printk/ logging subsystem
+  - `Level` enum - Log severity levels (Error, Warn, Info, Debug, Trace)
+    - Ordered by severity for filtering (Error < Warn < Info < Debug < Trace)
+    - `FromStr` trait for parsing from strings (case-insensitive)
+    - `Display` trait for string output (uppercase: "ERROR", "WARN", etc.)
+  - `Record<'a>` - Log record with message and metadata
+    - Lifetime-bound to avoid allocations during logging
+    - Fields: level, message, module_path, file, line
+    - Builder pattern with `const fn` methods
+  - `Logger` trait - Kernel mechanism for logging (Send + Sync)
+    - `log(&self, record: &Record)` - Log a record
+    - `flush(&self)` - Flush buffered output
+    - `enabled(&self, level: Level) -> bool` - Level filtering
+  - `NopLogger` - Default no-op logger (all levels disabled)
+  - Global logger storage with `OnceLock`:
+    - `set_logger(&'static dyn Logger)` - One-time initialization
+    - `logger()` - Get current logger (falls back to NopLogger)
+    - `flush()` - Flush global logger
+  - Logging macros with level-gated formatting:
+    - `pr_err!`, `pr_warn!`, `pr_info!`, `pr_debug!`, `pr_trace!`
+    - Level check before `format_args!` evaluation (zero allocation when disabled)
+    - Captures `module_path!()`, `file!()`, `line!()` at call site
+  - 25 unit tests + 32 doctests
+
+- **Phase 2.5: Scheduler Module** (Issue #163) - Kernel sched/ subsystem
+  - `RuntimeState` - Lifecycle state machine (Booting/Running/Stopping/Emergency)
+  - `TaskId` - Unique task identifier with atomic counter generation
+  - `Priority` - Task execution priority (CRITICAL=0, HIGH=50, NORMAL=100, LOW=200, IDLE=1000)
+  - `TaskState` - Execution state enum (Pending, Running, Completed, Failed)
+  - `Task` - Deferred work unit with priority, name, and panic-safe execution
+  - `WorkQueue` - Bounded FIFO task queue with overflow detection
+    - `push(task) -> bool` - Non-blocking, returns false on overflow
+    - `try_pop()` / `drain()` - Task retrieval
+    - `dropped_count()` - Track overflow statistics
+  - `PriorityQueue` - Priority-ordered event queue using BinaryHeap
+    - Min-heap behavior (lower priority value = processed first)
+    - FIFO ordering for same-priority events via sequence number
+  - `Executor` - Synchronous task executor with `catch_unwind` panic handling
+    - `tick()` - Process batch of tasks with panic isolation
+    - `execute_task()` - Single task execution with error recovery
+  - `Runtime` - Main event loop coordinator
+    - `boot()` / `shutdown()` / `emergency_stop()` - Lifecycle control
+    - `tick() -> bool` - Single event loop iteration
+    - `schedule_work()` / `schedule_task()` - Deferred task scheduling
+    - `queue_event()` - Priority-ordered event dispatch
+    - `stats()` - Runtime statistics (executed, failed, dropped)
+  - `RuntimeConfig` - Builder pattern for runtime customization
+  - `RuntimeCommand` - External control channel (Shutdown, Emergency, ScheduleTask)
+  - 67 sched unit tests + 6 doctests
+
+- **Phase 2.4: Block Operations Module** (Issue #162) - Kernel block/ subsystem
+  - `Transaction` - Groups multiple edits for atomic undo/redo
+    - `new()`, `push()` - Create and add edits
+    - `edits()`, `is_empty()` - Accessors
+  - `UndoTree` - Branching undo history with cursor position tracking
+    - `new()`, `push()` - Create and record edits with cursor positions
+    - `undo()`, `redo()` - Navigate history
+    - `branch_count()`, `current_branch()` - Branch management
+  - `UndoResult` - Undo/redo result with edits and cursor position
+  - `UndoNode` - Node in undo tree with parent/children links
+  - `History` - Change log with timestamps
+    - `record()`, `entries()`, `clear()` - History management
+  - `HistoryEntry` - Single history entry with timestamp
+  - `Snapshot` - Buffer state capture for restore
+    - `capture()`, `restore()` - State management
+  - 32 unit tests + 4 doctests
+
+- **Phase 2.3: Core Primitives Module** (Issue #161) - Kernel core/ subsystem
+  - `Direction` enum - Forward/Backward movement direction
+  - `WordBoundary` enum - Word/BigWord boundary types
+  - `LinePosition` enum - Start/FirstNonBlank/End/LastNonBlank positions
+  - `Motion` enum - All motion types (Char, Line, Word, Paragraph, FindChar, etc.)
+  - `MotionEngine` - Pure cursor movement calculations
+    - `calculate()` - Apply motion to cursor position
+    - No side effects, returns new position
+  - `TextObject` enum - Inner/Around text objects (Word, Bracket, Quote, etc.)
+  - `TextObjectEngine` - Text object range calculations
+    - `range()` - Calculate start/end positions for text object
+  - `RegisterBank` - Yank/paste storage (without clipboard integration)
+    - Named registers (a-z), numbered registers (0-9)
+    - `get()`, `set()`, `append()` operations
+  - `RegisterContent` - Register value with yank type
+  - `YankType` - Char/Line/Block yank modes
+  - `Mark` - Single bookmark with position and metadata
+  - `MarkBank` - Mark storage with named marks (a-z, A-Z)
+  - `SpecialMark` - Special marks (LastChange, LastJump, etc.)
+  - 44 unit tests + 5 doctests
+
+- **Phase 2.2: IPC Module** (Issue #160) - Kernel ipc/ subsystem
+  - `Event` trait - Minimal requirements for IPC events (priority, batchable)
+  - `DynEvent` - Type-erased event wrapper with TypeId-based downcasting
+  - `EventResult` - Handler return type (Handled, Consumed, NotHandled)
+  - `EventBus` - Type-erased pub/sub dispatch with ArcSwap lock-free reads
+    - `subscribe<E, F>(priority, handler)` - Register typed handler with priority
+    - `emit<E>(event)` - Synchronous dispatch to all handlers
+    - `emit_async<E>(event)` - Queue for deferred processing
+    - `emit_scoped<E>(event, scope)` - Emit with lifecycle tracking
+    - `process_queue()` - Drain async queue
+  - `EventScope` - GC-like synchronization for event lifecycle
+    - Atomic counter with Condvar-based waiting
+    - `wait()` / `wait_timeout()` for blocking synchronization
+    - `DEFAULT_TIMEOUT = 3s` (production-proven value)
+  - `Subscription` - RAII handle with automatic unsubscribe on drop
+  - Channel abstractions (std::sync::mpsc wrappers):
+    - `channel<T>()` - Unbounded MPSC
+    - `bounded<T>(capacity)` - Bounded MPSC with backpressure
+    - `oneshot<T>()` - Single-use request/response
+  - 85 IPC unit tests + 24 doctests
+
+- **Phase 2.1: Memory Management Module** (Issue #159) - Kernel mm/ subsystem
+  - `BufferId` - Unique buffer identifier with atomic counter generation
+  - `Position` - Text position with `line` and `column` fields (0-indexed, usize)
+  - `Cursor` - Cursor state with position, selection anchor, and preferred column
+  - `Edit` - Insert/Delete operations with position for undo/redo support
+  - `Buffer` - Line-based text storage with Vec<String> backend
+    - Constructors: `new()`, `from_string()`, `with_id()`
+    - Line access: `line()`, `line_count()`, `line_len()`, `lines()`, `content()`
+    - Edit operations: `insert()`, `insert_at()`, `delete()`, `delete_at()`, `delete_range()`
+    - Position conversion: `position_to_byte()`, `byte_to_position()` (for tree-sitter)
+  - 59 unit tests + 6 doctests covering all functionality
+
+- **Phase 1: Platform Traits and Unix Backend** (Issue #156) - Architecture layer implementation
+  - Defined platform-agnostic traits in `lib/arch/src/traits.rs`:
+    - `Terminal` trait - terminal I/O abstraction (size, raw mode, cursor, screen, mouse)
+    - `InputSource` trait - input event polling and reading
+    - `SignalHandler` trait - signal registration (resize, interrupt, suspend)
+  - Platform-agnostic types: `TerminalSize`, `KeyEvent`, `KeyCode`, `Modifiers`, `MouseEvent`, `InputEvent`, `ClearType`, `RawModeGuard`
+  - Unix backend (`lib/arch/src/unix/`) using crossterm:
+    - `UnixTerminal` - full Terminal trait implementation
+    - `UnixInputSource` - event polling and reading
+    - `UnixSignalHandler` - signal handler placeholder (crossterm handles signals internally)
+    - Type conversion functions from crossterm types
+  - Windows stubs (`lib/arch/src/windows/`) - all methods return `todo!()`
+  - Platform-specific type aliases: `PlatformTerminal`, `PlatformInputSource`, `PlatformSignalHandler`
+
+- **Phase 0: Architecture Skeleton** (Issue #152) - Foundation for Linux-inspired architecture
+  - Created `lib/arch/` - Platform abstraction layer (no dependencies)
+  - Created `lib/kernel/` - Core mechanisms layer (depends only on arch)
+  - Created `lib/drivers/` - 6 driver crates (display, input, syntax, lsp, net, vfs)
+  - All crates are empty skeletons that compile with zero warnings
+  - Dependency graph enforced: arch → kernel → drivers
+  - `lib/drivers/syntax` has NO tree-sitter dependency (trait definitions only)
+
+### Removed
+
+- **Phase 5.4: Tree-sitter Removal from Core** (Issue #203) - Kernel purity achieved
+  - Removed 8 tree-sitter dependencies from `lib/core/Cargo.toml`:
+    - `tree-sitter`, `tree-sitter-rust`, `tree-sitter-c`, `tree-sitter-javascript`
+    - `tree-sitter-python`, `tree-sitter-json`, `tree-sitter-toml-ng`, `tree-sitter-md`
+  - Removed dead code that was never implemented:
+    - `LanguageId` enum - Language type identifier
+    - `DecorationContext` struct - Tree-sitter decoration context
+    - `LanguageRenderer` trait - Decoration rendering contract
+    - `LanguageRendererRegistry` - Registry for language renderers
+  - Deleted `lib/core/src/decoration/registry.rs` entirely
+  - Cleaned up runtime references (`renderer_registry` field)
+  - Active `DecorationProvider` system remains intact (tree-sitter agnostic)
+  - Tree-sitter now lives only in plugins where it belongs
+
+### Fixed
+
+- **IPC Channel Clone** - Fixed `Sender<T>` and `BoundedSender<T>` Clone impl to not require `T: Clone` (matching std::sync::mpsc behavior)
+
+---
+
+## Version History
+
+- v0.9.x - New architecture (lib/arch, lib/kernel, lib/drivers/*)
+- v0.8.x and earlier - Legacy crates (lib/core, lib/sys, plugins) - see [CHANGELOG-archive.md](docs/CHANGELOG-archive.md)

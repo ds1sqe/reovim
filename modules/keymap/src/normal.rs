@@ -67,6 +67,14 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&["normal"])
             .with_category("motion")
             .with_description("Move to end of WORD"),
+        KeybindingRegistration::new("ge", "word-end-backward")
+            .with_modes(&["normal"])
+            .with_category("motion")
+            .with_description("Move to end of previous word"),
+        KeybindingRegistration::new("gE", "word-end-backward-big")
+            .with_modes(&["normal"])
+            .with_category("motion")
+            .with_description("Move to end of previous WORD"),
         // ====================================================================
         // Line motions
         // ====================================================================

@@ -58,8 +58,9 @@
 //! ```
 
 use {
+    reovim_driver_vfs::VfsDriver,
     reovim_kernel::api::v1::{BufferId, CommandId, Edit, KernelContext, Position},
-    std::collections::HashMap,
+    std::{collections::HashMap, sync::Arc},
 };
 
 // ============================================================================
@@ -268,7 +269,8 @@ pub enum ArgValue {
 
 /// Context carrying all command inputs.
 ///
-/// Provides typed access to arguments parsed from user input.
+/// Provides typed access to arguments parsed from user input, plus
+/// optional access to the virtual filesystem for file operations.
 ///
 /// # Example
 ///
@@ -282,9 +284,23 @@ pub enum ArgValue {
 /// assert_eq!(ctx.count(), Some(5));
 /// assert_eq!(ctx.register(), Some('a'));
 /// ```
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct CommandContext {
     args: HashMap<&'static str, ArgValue>,
+    /// Optional VFS access for file operations.
+    ///
+    /// Set by the runner before dispatching commands that may need
+    /// filesystem access (e.g., `:w`, `:e`).
+    vfs: Option<Arc<dyn VfsDriver>>,
+}
+
+impl std::fmt::Debug for CommandContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CommandContext")
+            .field("args", &self.args)
+            .field("vfs", &self.vfs.as_ref().map(|_| "<VfsDriver>"))
+            .finish()
+    }
 }
 
 impl CommandContext {
@@ -366,6 +382,233 @@ impl CommandContext {
         self.args
             .insert("buffer_id", ArgValue::BufferId(id.as_usize()));
     }
+
+    /// Create a command context with VFS access.
+    ///
+    /// Builder method for creating a context with filesystem access.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let ctx = CommandContext::new().with_vfs(session_state.vfs.clone());
+    /// ```
+    #[must_use]
+    pub fn with_vfs(mut self, vfs: Arc<dyn VfsDriver>) -> Self {
+        self.vfs = Some(vfs);
+        self
+    }
+
+    /// Set the VFS for this context.
+    ///
+    /// Called by the runner before dispatching commands that need
+    /// filesystem access.
+    pub fn set_vfs(&mut self, vfs: Arc<dyn VfsDriver>) {
+        self.vfs = Some(vfs);
+    }
+
+    /// Get the VFS driver, if available.
+    ///
+    /// Returns `None` if no VFS was set for this context. Commands
+    /// that need filesystem access should check this and return an
+    /// appropriate error if VFS is unavailable.
+    #[must_use]
+    pub fn vfs(&self) -> Option<&Arc<dyn VfsDriver>> {
+        self.vfs.as_ref()
+    }
+}
+
+// ============================================================================
+// Char-Wait Types (for find-char and replace-char commands)
+// ============================================================================
+
+/// Type of find-char operation.
+///
+/// Represents the four find-char motions in Vim.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FindType {
+    /// Find character forward, cursor on char (f)
+    FindForward,
+    /// Find character backward, cursor on char (F)
+    FindBackward,
+    /// Till character forward, cursor before char (t)
+    TillForward,
+    /// Till character backward, cursor after char (T)
+    TillBackward,
+}
+
+/// Type of character-waiting operation.
+///
+/// Generalizes `FindType` to include operations beyond find-char motions.
+/// Commands return this to indicate what operation is waiting for character input.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CharWaitOp {
+    /// Find character forward, cursor on char (f)
+    FindForward,
+    /// Find character backward, cursor on char (F)
+    FindBackward,
+    /// Till character forward, cursor before char (t)
+    TillForward,
+    /// Till character backward, cursor after char (T)
+    TillBackward,
+    /// Replace character at cursor position (r{char})
+    ReplaceChar,
+}
+
+impl CharWaitOp {
+    /// Check if this is a find-char operation.
+    #[must_use]
+    pub const fn is_find_char(&self) -> bool {
+        matches!(
+            self,
+            Self::FindForward | Self::FindBackward | Self::TillForward | Self::TillBackward
+        )
+    }
+
+    /// Check if this is a replace-char operation.
+    #[must_use]
+    pub const fn is_replace_char(&self) -> bool {
+        matches!(self, Self::ReplaceChar)
+    }
+
+    /// Convert to `FindType` if this is a find-char operation.
+    #[must_use]
+    pub const fn to_find_type(&self) -> Option<FindType> {
+        match self {
+            Self::FindForward => Some(FindType::FindForward),
+            Self::FindBackward => Some(FindType::FindBackward),
+            Self::TillForward => Some(FindType::TillForward),
+            Self::TillBackward => Some(FindType::TillBackward),
+            Self::ReplaceChar => None,
+        }
+    }
+}
+
+impl From<FindType> for CharWaitOp {
+    fn from(find_type: FindType) -> Self {
+        match find_type {
+            FindType::FindForward => Self::FindForward,
+            FindType::FindBackward => Self::FindBackward,
+            FindType::TillForward => Self::TillForward,
+            FindType::TillBackward => Self::TillBackward,
+        }
+    }
+}
+
+/// Context for a command waiting for character input.
+///
+/// Commands that need a character argument return this to indicate what
+/// operation is pending. The runner uses this to set up pending-char state.
+///
+/// # Example
+///
+/// ```ignore
+/// // Find-char-forward command (f)
+/// fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+///     let pos = ctx.buffers.get(args.buffer_id().unwrap())
+///         .unwrap()
+///         .read()
+///         .position();
+///
+///     CommandResult::WaitingForChar(CharWaitContext {
+///         op_type: CharWaitOp::FindForward,
+///         count: None,
+///         start_position: Some(pos),
+///     })
+/// }
+///
+/// // Replace-char command (r)
+/// fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+///     let count = args.count().unwrap_or(1);
+///     CommandResult::WaitingForChar(CharWaitContext {
+///         op_type: CharWaitOp::ReplaceChar,
+///         count: Some(count),
+///         start_position: None,
+///     })
+/// }
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CharWaitContext {
+    /// The type of character-waiting operation.
+    pub op_type: CharWaitOp,
+    /// Count for the operation (e.g., 3rx replaces 3 chars).
+    pub count: Option<usize>,
+    /// Starting cursor position (for find-char operator range calculation).
+    ///
+    /// Required for find-char operations, not needed for replace-char.
+    pub start_position: Option<Position>,
+}
+
+impl CharWaitContext {
+    /// Create a new char-wait context for find-char operations.
+    #[must_use]
+    pub const fn find_char(find_type: FindType, start_position: Position) -> Self {
+        Self {
+            op_type: match find_type {
+                FindType::FindForward => CharWaitOp::FindForward,
+                FindType::FindBackward => CharWaitOp::FindBackward,
+                FindType::TillForward => CharWaitOp::TillForward,
+                FindType::TillBackward => CharWaitOp::TillBackward,
+            },
+            count: None,
+            start_position: Some(start_position),
+        }
+    }
+
+    /// Create a new char-wait context for replace-char operation.
+    #[must_use]
+    pub const fn replace_char(count: usize) -> Self {
+        Self {
+            op_type: CharWaitOp::ReplaceChar,
+            count: Some(count),
+            start_position: None,
+        }
+    }
+
+    /// DEPRECATED: Create a new char-wait context (backward compatibility).
+    ///
+    /// Use `find_char()` or `replace_char()` instead.
+    #[must_use]
+    pub const fn new(find_type: FindType, start_position: Position) -> Self {
+        Self::find_char(find_type, start_position)
+    }
+
+    /// Get the `FindType` if this is a find-char operation.
+    #[must_use]
+    pub const fn find_type(&self) -> Option<FindType> {
+        self.op_type.to_find_type()
+    }
+}
+
+// ============================================================================
+// Search Types (for search commands)
+// ============================================================================
+
+/// Search direction for / and ? commands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SearchDirection {
+    /// Search forward from cursor (/)
+    #[default]
+    Forward,
+    /// Search backward from cursor (?)
+    Backward,
+}
+
+/// Search action intent returned by commands.
+///
+/// Commands return this to request search operations. The runner handles
+/// the actual search execution, input mode management, and pattern storage.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SearchAction {
+    /// Enter search input mode (/ or ?)
+    EnterSearchMode { direction: SearchDirection },
+    /// Go to next match in the same direction (n)
+    Next,
+    /// Go to previous match / reverse direction (N)
+    Previous,
+    /// Search word under cursor (* or #)
+    WordUnderCursor { direction: SearchDirection },
+    /// Clear search highlighting (:noh)
+    ClearHighlight,
 }
 
 // ============================================================================
@@ -398,6 +641,31 @@ pub enum CommandResult {
     /// The runner records these edits in the undo registry for later
     /// undo/redo operations.
     EditAction(EditAction),
+    /// Command needs a character argument before it can complete.
+    ///
+    /// Find-char commands (f, F, t, T) and replace-char command (r) return
+    /// this to indicate they need the next keypress as a character argument.
+    /// The runner sets pending-char state and waits for the character input.
+    WaitingForChar(CharWaitContext),
+    /// Repeat the last find-char motion in the same direction (;).
+    ///
+    /// The runner executes `last_find.repeat_motion()` if `last_find` is set.
+    RepeatFindSame,
+    /// Repeat the last find-char motion in the opposite direction (,).
+    ///
+    /// The runner executes `last_find.reverse_motion()` if `last_find` is set.
+    RepeatFindReverse,
+    /// Command requests a search action.
+    ///
+    /// Search commands (/, ?, n, N, *, #, :noh) return this to indicate
+    /// what search operation should be performed. The runner handles
+    /// input mode, pattern storage, and search execution.
+    SearchAction(SearchAction),
+    /// Repeat the last repeatable command (.).
+    ///
+    /// The runner replays the last repeatable command from `repeat_state`.
+    /// This includes text-modifying commands and any accumulated insert text.
+    RepeatAction,
 }
 
 /// Undo/redo action intent returned by commands.
@@ -546,6 +814,18 @@ impl CommandResult {
         matches!(self, Self::EditAction(_))
     }
 
+    /// Check if the result is waiting for a character argument.
+    #[must_use]
+    pub const fn is_waiting_for_char(&self) -> bool {
+        matches!(self, Self::WaitingForChar(_))
+    }
+
+    /// Check if the result is a search action.
+    #[must_use]
+    pub const fn is_search_action(&self) -> bool {
+        matches!(self, Self::SearchAction(_))
+    }
+
     /// Create an error result.
     #[must_use]
     pub fn error(msg: impl Into<String>) -> Self {
@@ -572,6 +852,24 @@ impl CommandResult {
         cursor_after: Position,
     ) -> Self {
         Self::EditAction(EditAction::new(buffer_id, edits, cursor_before, cursor_after))
+    }
+
+    /// Create a waiting-for-char result for find-char operations.
+    #[must_use]
+    pub const fn waiting_for_char(find_type: FindType, start_position: Position) -> Self {
+        Self::WaitingForChar(CharWaitContext::find_char(find_type, start_position))
+    }
+
+    /// Create a waiting-for-char result for replace-char operation.
+    #[must_use]
+    pub const fn waiting_for_replace_char(count: usize) -> Self {
+        Self::WaitingForChar(CharWaitContext::replace_char(count))
+    }
+
+    /// Check if the result is a repeat action.
+    #[must_use]
+    pub const fn is_repeat_action(&self) -> bool {
+        matches!(self, Self::RepeatAction)
     }
 }
 
@@ -686,6 +984,41 @@ mod tests {
         let id = BufferId::from_raw(42);
         ctx.set_buffer_id(id);
         assert_eq!(ctx.buffer_id(), Some(BufferId::from_raw(42)));
+    }
+
+    #[test]
+    fn test_command_context_vfs_none_by_default() {
+        let ctx = CommandContext::new();
+        assert!(ctx.vfs().is_none());
+    }
+
+    #[test]
+    fn test_command_context_set_vfs() {
+        use reovim_driver_vfs::MockVfs;
+
+        let mut ctx = CommandContext::new();
+        let vfs: Arc<dyn VfsDriver> = Arc::new(MockVfs::new());
+        ctx.set_vfs(vfs);
+        assert!(ctx.vfs().is_some());
+    }
+
+    #[test]
+    fn test_command_context_with_vfs() {
+        use reovim_driver_vfs::MockVfs;
+
+        let vfs: Arc<dyn VfsDriver> = Arc::new(MockVfs::new());
+        let ctx = CommandContext::new().with_vfs(vfs);
+        assert!(ctx.vfs().is_some());
+    }
+
+    #[test]
+    fn test_command_context_debug_with_vfs() {
+        use reovim_driver_vfs::MockVfs;
+
+        let vfs: Arc<dyn VfsDriver> = Arc::new(MockVfs::new());
+        let ctx = CommandContext::new().with_vfs(vfs);
+        let debug_str = format!("{ctx:?}");
+        assert!(debug_str.contains("<VfsDriver>"));
     }
 
     #[test]
@@ -881,5 +1214,136 @@ mod tests {
 
         assert_eq!(action.edits.len(), 1);
         assert_eq!(action.edits[0], edit);
+    }
+
+    // CharWaitContext tests (Phase 7 - find-char infrastructure)
+
+    #[test]
+    fn test_find_type_variants() {
+        // Verify all variants can be used
+        assert_eq!(FindType::FindForward, FindType::FindForward);
+        assert_eq!(FindType::FindBackward, FindType::FindBackward);
+        assert_eq!(FindType::TillForward, FindType::TillForward);
+        assert_eq!(FindType::TillBackward, FindType::TillBackward);
+    }
+
+    #[test]
+    fn test_char_wait_context_new() {
+        let ctx = CharWaitContext::new(FindType::FindForward, Position::new(1, 5));
+        assert_eq!(ctx.find_type(), Some(FindType::FindForward));
+        assert_eq!(ctx.start_position, Some(Position::new(1, 5)));
+    }
+
+    #[test]
+    fn test_char_wait_context_find_char() {
+        let ctx = CharWaitContext::find_char(FindType::TillBackward, Position::new(2, 3));
+        assert_eq!(ctx.op_type, CharWaitOp::TillBackward);
+        assert_eq!(ctx.find_type(), Some(FindType::TillBackward));
+        assert_eq!(ctx.start_position, Some(Position::new(2, 3)));
+        assert!(ctx.count.is_none());
+    }
+
+    #[test]
+    fn test_char_wait_context_replace_char() {
+        let ctx = CharWaitContext::replace_char(3);
+        assert_eq!(ctx.op_type, CharWaitOp::ReplaceChar);
+        assert_eq!(ctx.find_type(), None);
+        assert!(ctx.start_position.is_none());
+        assert_eq!(ctx.count, Some(3));
+    }
+
+    #[test]
+    fn test_char_wait_op_is_find_char() {
+        assert!(CharWaitOp::FindForward.is_find_char());
+        assert!(CharWaitOp::FindBackward.is_find_char());
+        assert!(CharWaitOp::TillForward.is_find_char());
+        assert!(CharWaitOp::TillBackward.is_find_char());
+        assert!(!CharWaitOp::ReplaceChar.is_find_char());
+    }
+
+    #[test]
+    fn test_char_wait_op_is_replace_char() {
+        assert!(!CharWaitOp::FindForward.is_replace_char());
+        assert!(CharWaitOp::ReplaceChar.is_replace_char());
+    }
+
+    #[test]
+    fn test_char_wait_op_to_find_type() {
+        assert_eq!(CharWaitOp::FindForward.to_find_type(), Some(FindType::FindForward));
+        assert_eq!(CharWaitOp::FindBackward.to_find_type(), Some(FindType::FindBackward));
+        assert_eq!(CharWaitOp::TillForward.to_find_type(), Some(FindType::TillForward));
+        assert_eq!(CharWaitOp::TillBackward.to_find_type(), Some(FindType::TillBackward));
+        assert_eq!(CharWaitOp::ReplaceChar.to_find_type(), None);
+    }
+
+    #[test]
+    fn test_char_wait_op_from_find_type() {
+        let op: CharWaitOp = FindType::FindForward.into();
+        assert_eq!(op, CharWaitOp::FindForward);
+
+        let op: CharWaitOp = FindType::TillBackward.into();
+        assert_eq!(op, CharWaitOp::TillBackward);
+    }
+
+    #[test]
+    fn test_command_result_waiting_for_char() {
+        let result = CommandResult::waiting_for_char(FindType::TillBackward, Position::new(0, 10));
+
+        assert!(result.is_waiting_for_char());
+        assert!(!result.is_success());
+        assert!(!result.is_error());
+        assert!(!result.is_quit());
+        assert!(!result.is_undo_action());
+        assert!(!result.is_edit_action());
+    }
+
+    #[test]
+    fn test_command_result_waiting_for_replace_char() {
+        let result = CommandResult::waiting_for_replace_char(2);
+
+        assert!(result.is_waiting_for_char());
+        if let CommandResult::WaitingForChar(ctx) = result {
+            assert_eq!(ctx.op_type, CharWaitOp::ReplaceChar);
+            assert_eq!(ctx.count, Some(2));
+        } else {
+            panic!("Expected WaitingForChar");
+        }
+    }
+
+    #[test]
+    fn test_command_result_is_waiting_for_char() {
+        let wait_result =
+            CommandResult::waiting_for_char(FindType::FindForward, Position::new(0, 0));
+        let success_result = CommandResult::Success;
+        let error_result = CommandResult::error("fail");
+
+        assert!(wait_result.is_waiting_for_char());
+        assert!(!success_result.is_waiting_for_char());
+        assert!(!error_result.is_waiting_for_char());
+    }
+
+    #[test]
+    fn test_command_result_repeat_action() {
+        let result = CommandResult::RepeatAction;
+        assert!(result.is_repeat_action());
+        assert!(!result.is_success());
+        assert!(!result.is_error());
+    }
+
+    #[test]
+    fn test_char_wait_context_equality() {
+        let ctx1 = CharWaitContext::new(FindType::FindForward, Position::new(0, 5));
+        let ctx2 = CharWaitContext::new(FindType::FindForward, Position::new(0, 5));
+        let ctx3 = CharWaitContext::new(FindType::FindBackward, Position::new(0, 5));
+
+        assert_eq!(ctx1, ctx2);
+        assert_ne!(ctx1, ctx3);
+    }
+
+    #[test]
+    fn test_find_type_equality() {
+        assert_eq!(FindType::FindForward, FindType::FindForward);
+        assert_ne!(FindType::FindForward, FindType::FindBackward);
+        assert_ne!(FindType::TillForward, FindType::FindForward);
     }
 }

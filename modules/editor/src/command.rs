@@ -12,12 +12,14 @@
 //! - h/l (left/right) clear the preferred column
 //! - Movements clamp to valid positions (no-op at boundaries)
 
+use std::path::Path;
+
 use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult, UndoAction,
     },
     reovim_kernel::api::v1::{
-        CommandId, KernelContext, Position,
+        CommandId, KernelContext, Position, RegisterContent,
         events::{CursorMoved, ModeChanged},
     },
 };
@@ -1260,6 +1262,318 @@ impl CommandHandler for DeleteToEndOfLine {
     }
 }
 
+/// Change current line (cc).
+///
+/// Clears the content of the current line(s) and enters insert mode.
+/// Unlike `dd`, this keeps the line(s) but empties their content.
+/// The deleted text is stored in the register as linewise.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ChangeLine;
+
+impl Command for ChangeLine {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "change-line")
+    }
+
+    fn description(&self) -> &'static str {
+        "Change current line"
+    }
+
+    fn args(&self) -> Vec<ArgSpec> {
+        vec![ArgSpec::optional(
+            "count",
+            ArgKind::Count,
+            "Number of lines to change",
+        )]
+    }
+}
+
+impl CommandHandler for ChangeLine {
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        let count = args.count().unwrap_or(1);
+        let mut buffer = buffer_arc.write();
+        let start_line = buffer.position().line;
+        let line_count = buffer.line_count();
+
+        if line_count == 0 {
+            // Empty buffer - just enter insert mode
+            drop(buffer);
+            ctx.event_bus.emit(ModeChanged {
+                from: "normal".to_string(),
+                to: "insert".to_string(),
+            });
+            return CommandResult::Success;
+        }
+
+        // Calculate lines to change
+        let lines_to_change = count.min(line_count.saturating_sub(start_line));
+        if lines_to_change == 0 {
+            drop(buffer);
+            ctx.event_bus.emit(ModeChanged {
+                from: "normal".to_string(),
+                to: "insert".to_string(),
+            });
+            return CommandResult::Success;
+        }
+
+        // Collect text to delete for register (include newlines between lines)
+        let mut deleted_text = String::new();
+        for i in 0..lines_to_change {
+            let line_idx = start_line + i;
+            if let Some(line) = buffer.line(line_idx) {
+                deleted_text.push_str(line);
+            }
+            if i < lines_to_change - 1 {
+                deleted_text.push('\n');
+            }
+        }
+        deleted_text.push('\n'); // Linewise content ends with newline
+
+        // Store in register as linewise
+        let content = RegisterContent::linewise(deleted_text);
+        ctx.registers.write().set(content);
+
+        // For cc: if changing multiple lines, delete all but first, then clear first
+        // Single line: just clear the content
+        let cursor_before = buffer.position();
+
+        if lines_to_change == 1 {
+            // Clear the single line content
+            let line_len = buffer.line_len(start_line).unwrap_or(0);
+            if line_len > 0 {
+                buffer.set_position(Position::new(start_line, 0));
+                let edit = buffer.delete(line_len);
+                buffer.set_position(Position::new(start_line, 0));
+                let cursor_after = buffer.position();
+                drop(buffer);
+
+                ctx.event_bus.emit(ModeChanged {
+                    from: "normal".to_string(),
+                    to: "insert".to_string(),
+                });
+
+                return CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after);
+            }
+            // Line is already empty
+            drop(buffer);
+            ctx.event_bus.emit(ModeChanged {
+                from: "normal".to_string(),
+                to: "insert".to_string(),
+            });
+            return CommandResult::Success;
+        }
+
+        // Multiple lines: delete lines 2..N entirely, then clear line 1
+        // First, calculate total chars to delete from lines 2..N (including newlines)
+        let mut chars_to_delete_from_rest = 0;
+        for i in 1..lines_to_change {
+            let line_idx = start_line + i;
+            if line_idx < line_count {
+                let line_len = buffer.line_len(line_idx).unwrap_or(0);
+                chars_to_delete_from_rest += line_len;
+                // Add 1 for newline
+                if line_idx + 1 < line_count {
+                    chars_to_delete_from_rest += 1;
+                }
+            }
+        }
+
+        // Delete from end of first line (newline) to end of last changed line
+        let first_line_len = buffer.line_len(start_line).unwrap_or(0);
+        let total_delete = first_line_len + 1 + chars_to_delete_from_rest; // +1 for newline after first line
+
+        // Handle edge case: if deleting to end of buffer
+        let end_line = start_line + lines_to_change;
+        if end_line >= line_count {
+            // We're changing to end of buffer - delete including last line's content
+            // but keep one empty line
+            buffer.set_position(Position::new(start_line, 0));
+            let chars = first_line_len + chars_to_delete_from_rest + (lines_to_change - 1); // newlines between
+            let content_len = buffer.content().len();
+            let edit = buffer.delete(chars.min(content_len));
+            buffer.set_position(Position::new(start_line, 0));
+            let cursor_after = buffer.position();
+            drop(buffer);
+
+            ctx.event_bus.emit(ModeChanged {
+                from: "normal".to_string(),
+                to: "insert".to_string(),
+            });
+
+            return CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after);
+        }
+
+        // Normal case: delete all content from lines and their separating newlines
+        // Keep one line at start_line, cleared
+        buffer.set_position(Position::new(start_line, 0));
+        let edit = buffer.delete(total_delete);
+        buffer.set_position(Position::new(start_line, 0));
+        let cursor_after = buffer.position();
+        drop(buffer);
+
+        ctx.event_bus.emit(ModeChanged {
+            from: "normal".to_string(),
+            to: "insert".to_string(),
+        });
+
+        CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
+    }
+}
+
+/// Change to end of line (C).
+///
+/// Deletes from cursor to end of line and enters insert mode.
+/// The deleted text is stored in the register as characterwise.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ChangeToEndOfLine;
+
+impl Command for ChangeToEndOfLine {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "change-to-eol")
+    }
+
+    fn description(&self) -> &'static str {
+        "Change to end of line"
+    }
+}
+
+impl CommandHandler for ChangeToEndOfLine {
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        let mut buffer = buffer_arc.write();
+        let pos = buffer.position();
+        let line_len = buffer.line_len(pos.line).unwrap_or(0);
+
+        // Nothing to delete if at or past end of line - just enter insert mode
+        if pos.column >= line_len {
+            drop(buffer);
+            ctx.event_bus.emit(ModeChanged {
+                from: "normal".to_string(),
+                to: "insert".to_string(),
+            });
+            return CommandResult::Success;
+        }
+
+        // Get text to delete for register
+        let deleted_text = buffer
+            .line(pos.line)
+            .map(|line| line[pos.column..].to_string())
+            .unwrap_or_default();
+
+        // Store in register as characterwise
+        let content = RegisterContent::characterwise(deleted_text);
+        ctx.registers.write().set(content);
+
+        // Delete from cursor to end of line (not including newline)
+        let chars_to_delete = line_len - pos.column;
+        let cursor_before = buffer.position();
+        let edit = buffer.delete(chars_to_delete);
+        let cursor_after = buffer.position();
+        drop(buffer);
+
+        ctx.event_bus.emit(ModeChanged {
+            from: "normal".to_string(),
+            to: "insert".to_string(),
+        });
+
+        CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
+    }
+}
+
+// =============================================================================
+// Replace Commands
+// =============================================================================
+
+/// Start replace char operation (r).
+///
+/// This command signals that the next character typed should replace
+/// the character(s) under the cursor. Returns `WaitingForChar` with
+/// the `ReplaceChar` operation type.
+///
+/// Unlike `R` (replace mode), `r` is a single-character replacement:
+/// - `rx` replaces the char under cursor with 'x'
+/// - `3rx` replaces the next 3 chars with 'x'
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ReplaceCharStart;
+
+/// Repeat the last repeatable command (.).
+///
+/// This command returns `RepeatAction` which signals the runner to
+/// replay the last repeatable command from `repeat_state`. Repeatable
+/// commands include text-modifying operations like insert, delete, change.
+///
+/// # Vim Behavior
+///
+/// - `.` repeats the last change command
+/// - `3.` repeats the last change 3 times
+/// - Insert mode text is recorded and replayed
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RepeatDot;
+
+impl Command for RepeatDot {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "repeat-dot")
+    }
+
+    fn description(&self) -> &'static str {
+        "Repeat last change"
+    }
+
+    fn args(&self) -> Vec<ArgSpec> {
+        vec![ArgSpec::optional(
+            "count",
+            ArgKind::Count,
+            "Number of times to repeat",
+        )]
+    }
+}
+
+impl CommandHandler for RepeatDot {
+    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
+        // The runner handles the actual repeat logic.
+        // We just signal the intent to repeat.
+        CommandResult::RepeatAction
+    }
+}
+
+impl Command for ReplaceCharStart {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "replace-char-start")
+    }
+
+    fn description(&self) -> &'static str {
+        "Replace character under cursor"
+    }
+
+    fn args(&self) -> Vec<ArgSpec> {
+        vec![ArgSpec::optional(
+            "count",
+            ArgKind::Count,
+            "Number of characters to replace",
+        )]
+    }
+}
+
+impl CommandHandler for ReplaceCharStart {
+    fn execute(&self, _ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let count = args.count().unwrap_or(1);
+        CommandResult::waiting_for_replace_char(count)
+    }
+}
+
 /// Join current line with next line (J).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct JoinLines;
@@ -1347,6 +1661,364 @@ impl CommandHandler for JoinLines {
 }
 
 // =============================================================================
+// File Operations
+// =============================================================================
+
+/// Write buffer to file.
+///
+/// Saves the current buffer's contents to a file. If no path is provided,
+/// uses the buffer's current file path.
+///
+/// This command demonstrates VFS integration - file operations go through
+/// the VFS abstraction, enabling test isolation and future remote FS support.
+///
+/// # Arguments
+///
+/// - `file`: Optional file path to save to (defaults to buffer's path)
+///
+/// # Examples
+///
+/// - `:w` - Save to current file
+/// - `:w newfile.txt` - Save to specified file
+#[derive(Debug, Clone, Copy, Default)]
+pub struct WriteBufferCommand;
+
+impl Command for WriteBufferCommand {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "write")
+    }
+
+    fn description(&self) -> &'static str {
+        "Write buffer to file"
+    }
+
+    fn args(&self) -> Vec<ArgSpec> {
+        vec![ArgSpec::optional(
+            "file",
+            ArgKind::FilePath,
+            "Target file path (optional)",
+        )]
+    }
+
+    fn names(&self) -> &[&'static str] {
+        &["w", "write"]
+    }
+}
+
+impl CommandHandler for WriteBufferCommand {
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        // Get VFS from context
+        let Some(vfs) = args.vfs() else {
+            return CommandResult::error("VFS not available");
+        };
+
+        // Get active buffer
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        // Get content and file path from buffer, then release lock
+        let (content, buffer_file_path) = {
+            let buffer = buffer_arc.read();
+            (buffer.content(), buffer.file_path().map(String::from))
+        };
+
+        // Try to get path from args first, then from buffer
+        let file_path_str = args.string("file").map(String::from).or(buffer_file_path);
+
+        let Some(file_path_str) = file_path_str else {
+            return CommandResult::error("No file path specified");
+        };
+
+        let file_path = Path::new(&file_path_str);
+
+        // Write to file via VFS
+        match vfs.write(file_path, content.as_bytes()) {
+            Ok(()) => {
+                // Clear modified flag
+                buffer_arc.write().set_modified(false);
+                CommandResult::Success
+            }
+            Err(e) => CommandResult::error(format!("Write failed: {e}")),
+        }
+    }
+}
+
+// =============================================================================
+// Yank Commands
+// =============================================================================
+
+/// Yank current line(s) to register (yy, Y).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct YankLine;
+
+impl Command for YankLine {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "yank-line")
+    }
+
+    fn description(&self) -> &'static str {
+        "Yank current line"
+    }
+
+    fn args(&self) -> Vec<ArgSpec> {
+        vec![ArgSpec::optional(
+            "count",
+            ArgKind::Count,
+            "Number of lines to yank",
+        )]
+    }
+}
+
+impl CommandHandler for YankLine {
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        let count = args.count().unwrap_or(1);
+        let buffer = buffer_arc.read();
+        let start_line = buffer.position().line;
+        let line_count = buffer.line_count();
+
+        // Can't yank from empty buffer
+        if line_count == 0 {
+            return CommandResult::Success;
+        }
+
+        // Collect lines to yank
+        let end_line = (start_line + count).min(line_count);
+        let mut yanked = String::new();
+        for line_idx in start_line..end_line {
+            if let Some(line) = buffer.line(line_idx) {
+                yanked.push_str(line);
+                yanked.push('\n');
+            }
+        }
+        drop(buffer);
+
+        // Store in unnamed register as linewise
+        let content = RegisterContent::linewise(yanked);
+        ctx.registers.write().set(content);
+
+        CommandResult::Success
+    }
+}
+
+// =============================================================================
+// Paste Commands
+// =============================================================================
+
+/// Paste from register after cursor (p).
+///
+/// - Linewise paste: insert below current line
+/// - Characterwise paste: insert after cursor position
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PasteAfter;
+
+impl Command for PasteAfter {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "paste-after")
+    }
+
+    fn description(&self) -> &'static str {
+        "Paste after cursor"
+    }
+
+    fn args(&self) -> Vec<ArgSpec> {
+        vec![ArgSpec::optional(
+            "count",
+            ArgKind::Count,
+            "Number of times to paste",
+        )]
+    }
+}
+
+impl CommandHandler for PasteAfter {
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        let count = args.count().unwrap_or(1);
+
+        // Get register content
+        let content = {
+            let registers = ctx.registers.read();
+            registers.get().clone()
+        };
+
+        if content.is_empty() {
+            return CommandResult::Success; // Nothing to paste
+        }
+
+        let mut buffer = buffer_arc.write();
+        let pos = buffer.position();
+        let cursor_before = pos;
+
+        if content.is_linewise() {
+            // Paste below current line
+            let line_count = buffer.line_count();
+
+            // Build paste text (repeated count times, strip trailing newline for clean insert)
+            let paste_text = content.text.repeat(count);
+            let paste_text = paste_text.trim_end_matches('\n');
+
+            if line_count == 0 {
+                // Empty buffer: just insert the content
+                let edit = buffer.insert(paste_text);
+                buffer.set_position(Position::new(0, 0));
+                let cursor_after = buffer.position();
+                drop(buffer);
+                return CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after);
+            }
+
+            // Move to end of current line
+            let line_len = buffer.line_len(pos.line).unwrap_or(0);
+            buffer.set_position(Position::new(pos.line, line_len));
+
+            // Insert newline then content
+            let insert_text = format!("\n{paste_text}");
+            let edit = buffer.insert(&insert_text);
+
+            // Position cursor on first character of first pasted line
+            let new_line = pos.line + 1;
+            buffer.set_position(Position::new(new_line, 0));
+            let cursor_after = buffer.position();
+            drop(buffer);
+
+            CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
+        } else {
+            // Characterwise: paste after cursor
+            let line_len = buffer.line_len(pos.line).unwrap_or(0);
+            let insert_col = if line_len == 0 {
+                0
+            } else {
+                (pos.column + 1).min(line_len)
+            };
+
+            buffer.set_position(Position::new(pos.line, insert_col));
+
+            let paste_text = content.text.repeat(count);
+            let edit = buffer.insert(&paste_text);
+
+            // Position cursor at end of pasted text (Vim behavior: last character)
+            let final_pos = buffer.position();
+            let cursor_after = if final_pos.column > 0 {
+                Position::new(final_pos.line, final_pos.column - 1)
+            } else {
+                final_pos
+            };
+            buffer.set_position(cursor_after);
+            drop(buffer);
+
+            CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
+        }
+    }
+}
+
+/// Paste from register before cursor (P).
+///
+/// - Linewise paste: insert above current line
+/// - Characterwise paste: insert at cursor position
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PasteBefore;
+
+impl Command for PasteBefore {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "paste-before")
+    }
+
+    fn description(&self) -> &'static str {
+        "Paste before cursor"
+    }
+
+    fn args(&self) -> Vec<ArgSpec> {
+        vec![ArgSpec::optional(
+            "count",
+            ArgKind::Count,
+            "Number of times to paste",
+        )]
+    }
+}
+
+impl CommandHandler for PasteBefore {
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        let count = args.count().unwrap_or(1);
+
+        // Get register content
+        let content = {
+            let registers = ctx.registers.read();
+            registers.get().clone()
+        };
+
+        if content.is_empty() {
+            return CommandResult::Success; // Nothing to paste
+        }
+
+        let mut buffer = buffer_arc.write();
+        let pos = buffer.position();
+        let cursor_before = pos;
+
+        // Build paste text (repeated count times)
+        let paste_text = content.text.repeat(count);
+
+        if content.is_linewise() {
+            // Paste above current line
+            // Strip trailing newline for clean insert
+            let paste_text = paste_text.trim_end_matches('\n');
+
+            // Move to start of current line
+            buffer.set_position(Position::new(pos.line, 0));
+
+            // Insert content then newline
+            let insert_text = format!("{paste_text}\n");
+            let edit = buffer.insert(&insert_text);
+
+            // Position cursor on first character of first pasted line
+            buffer.set_position(Position::new(pos.line, 0));
+            let cursor_after = buffer.position();
+            drop(buffer);
+
+            CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
+        } else {
+            // Characterwise: paste at cursor position (before)
+            // Cursor stays at current position, content inserted there
+            let edit = buffer.insert(&paste_text);
+
+            // Position cursor at end of pasted text (Vim behavior: last character)
+            let final_pos = buffer.position();
+            let cursor_after = if final_pos.column > 0 {
+                Position::new(final_pos.line, final_pos.column - 1)
+            } else {
+                final_pos
+            };
+            buffer.set_position(cursor_after);
+            drop(buffer);
+
+            CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
+        }
+    }
+}
+
+// =============================================================================
 // Command Registration Helper
 // =============================================================================
 
@@ -1381,9 +2053,23 @@ pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
         Box::new(DeleteLine),
         Box::new(DeleteToEndOfLine),
         Box::new(JoinLines),
+        // Yank
+        Box::new(YankLine),
+        // Paste
+        Box::new(PasteAfter),
+        Box::new(PasteBefore),
+        // Change
+        Box::new(ChangeLine),
+        Box::new(ChangeToEndOfLine),
+        // Replace
+        Box::new(ReplaceCharStart),
+        // Repeat
+        Box::new(RepeatDot),
         // Undo/redo
         Box::new(UndoCommand),
         Box::new(RedoCommand),
+        // File operations
+        Box::new(WriteBufferCommand),
     ]
 }
 
@@ -1440,6 +2126,24 @@ pub fn delete_commands() -> Vec<Box<dyn CommandHandler>> {
 #[must_use]
 pub fn undo_commands() -> Vec<Box<dyn CommandHandler>> {
     vec![Box::new(UndoCommand), Box::new(RedoCommand)]
+}
+
+/// Get all yank commands.
+#[must_use]
+pub fn yank_commands() -> Vec<Box<dyn CommandHandler>> {
+    vec![Box::new(YankLine)]
+}
+
+/// Get all paste commands.
+#[must_use]
+pub fn paste_commands() -> Vec<Box<dyn CommandHandler>> {
+    vec![Box::new(PasteAfter), Box::new(PasteBefore)]
+}
+
+/// Get all change commands.
+#[must_use]
+pub fn change_commands() -> Vec<Box<dyn CommandHandler>> {
+    vec![Box::new(ChangeLine), Box::new(ChangeToEndOfLine)]
 }
 
 #[cfg(test)]
@@ -1582,8 +2286,9 @@ mod tests {
     #[test]
     fn test_all_commands_count() {
         let cmds = all_commands();
-        // 4 cursor + 2 display + 7 mode + 2 insert-edit + 5 delete + 2 undo = 22
-        assert_eq!(cmds.len(), 22);
+        // 4 cursor + 2 display + 7 mode + 2 insert-edit + 5 delete + 1 yank + 2 paste
+        // + 2 change + 2 undo + 1 replace_char + 1 repeat + 2 change_line = 30
+        assert_eq!(cmds.len(), 30);
     }
 
     #[test]
@@ -2054,5 +2759,631 @@ mod tests {
         let result = RedoCommand.execute(&mut ctx, &args);
         assert!(!result.is_error());
         assert!(result.is_undo_action());
+    }
+
+    // =========================================================================
+    // Yank Command Tests
+    // =========================================================================
+
+    #[test]
+    fn test_yank_line_command_id() {
+        let cmd = YankLine;
+        assert_eq!(cmd.id().module(), &EDITOR_MODULE);
+        assert_eq!(cmd.id().name(), "yank-line");
+    }
+
+    #[test]
+    fn test_yank_line_has_count_arg() {
+        let cmd = YankLine;
+        let args = cmd.args();
+        assert!(!args.is_empty());
+        assert_eq!(args[0].name, "count");
+        assert_eq!(args[0].kind, ArgKind::Count);
+    }
+
+    #[test]
+    fn test_yank_line_no_buffer_returns_error() {
+        let mut ctx = KernelContext::default();
+        let args = CommandContext::new();
+        let result = YankLine.execute(&mut ctx, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_yank_line_single_line() {
+        let (mut ctx, buffer_id) = setup_buffer_context();
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = YankLine.execute(&mut ctx, &args);
+        assert!(result.is_success());
+
+        // Check register content
+        let registers = ctx.registers.read();
+        let content = registers.get().clone();
+        drop(registers);
+        assert!(content.is_linewise());
+        assert_eq!(content.text, "line one\n");
+    }
+
+    #[test]
+    fn test_yank_line_count() {
+        let (mut ctx, buffer_id) = setup_buffer_context();
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(2));
+
+        let result = YankLine.execute(&mut ctx, &args);
+        assert!(result.is_success());
+
+        // Check register content
+        let registers = ctx.registers.read();
+        let content = registers.get().clone();
+        drop(registers);
+        assert!(content.is_linewise());
+        assert_eq!(content.text, "line one\nline two\n");
+    }
+
+    #[test]
+    fn test_yank_line_at_eof() {
+        let (mut ctx, buffer_id) = setup_buffer_context();
+        // Move to last line
+        {
+            let buffer = ctx.buffers.get(buffer_id).unwrap();
+            buffer.write().set_position(Position::new(2, 0));
+        }
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(5)); // More than remaining lines
+
+        let result = YankLine.execute(&mut ctx, &args);
+        assert!(result.is_success());
+
+        // Should only yank the last line
+        let registers = ctx.registers.read();
+        let content = registers.get().clone();
+        drop(registers);
+        assert!(content.is_linewise());
+        assert_eq!(content.text, "line three\n");
+    }
+
+    #[test]
+    fn test_yank_commands_count() {
+        let cmds = yank_commands();
+        assert_eq!(cmds.len(), 1);
+    }
+
+    // =========================================================================
+    // Paste Command Tests
+    // =========================================================================
+
+    #[test]
+    fn test_paste_after_command_id() {
+        let cmd = PasteAfter;
+        assert_eq!(cmd.id().module(), &EDITOR_MODULE);
+        assert_eq!(cmd.id().name(), "paste-after");
+    }
+
+    #[test]
+    fn test_paste_before_command_id() {
+        let cmd = PasteBefore;
+        assert_eq!(cmd.id().module(), &EDITOR_MODULE);
+        assert_eq!(cmd.id().name(), "paste-before");
+    }
+
+    #[test]
+    fn test_paste_after_has_count_arg() {
+        let cmd = PasteAfter;
+        let args = cmd.args();
+        assert!(!args.is_empty());
+        assert_eq!(args[0].name, "count");
+        assert_eq!(args[0].kind, ArgKind::Count);
+    }
+
+    #[test]
+    fn test_paste_before_has_count_arg() {
+        let cmd = PasteBefore;
+        let args = cmd.args();
+        assert!(!args.is_empty());
+        assert_eq!(args[0].name, "count");
+        assert_eq!(args[0].kind, ArgKind::Count);
+    }
+
+    #[test]
+    fn test_paste_after_no_buffer_returns_error() {
+        let mut ctx = KernelContext::default();
+        let args = CommandContext::new();
+        let result = PasteAfter.execute(&mut ctx, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_paste_before_no_buffer_returns_error() {
+        let mut ctx = KernelContext::default();
+        let args = CommandContext::new();
+        let result = PasteBefore.execute(&mut ctx, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_paste_after_empty_register() {
+        let (mut ctx, buffer_id) = setup_buffer_context();
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        // Register is empty by default
+        let result = PasteAfter.execute(&mut ctx, &args);
+        assert!(result.is_success()); // No-op, not error
+    }
+
+    #[test]
+    fn test_paste_after_linewise() {
+        let (mut ctx, buffer_id) = setup_buffer_context();
+
+        // First yank a line
+        {
+            let mut args = CommandContext::new();
+            args.set_buffer_id(buffer_id);
+            YankLine.execute(&mut ctx, &args);
+        }
+
+        // Then paste after
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = PasteAfter.execute(&mut ctx, &args);
+        assert!(result.is_edit_action());
+
+        // Check buffer content
+        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let buffer_read = buffer.read();
+        let line_count = buffer_read.line_count();
+        let line1 = buffer_read.line(1).map(str::to_owned);
+        drop(buffer_read);
+        assert_eq!(line_count, 4); // Original 3 + 1 pasted
+        assert_eq!(line1.as_deref(), Some("line one")); // Pasted line
+    }
+
+    #[test]
+    fn test_paste_before_linewise() {
+        let (mut ctx, buffer_id) = setup_buffer_context();
+
+        // First yank a line
+        {
+            let mut args = CommandContext::new();
+            args.set_buffer_id(buffer_id);
+            YankLine.execute(&mut ctx, &args);
+        }
+
+        // Then paste before
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = PasteBefore.execute(&mut ctx, &args);
+        assert!(result.is_edit_action());
+
+        // Check buffer content
+        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let buffer_read = buffer.read();
+        let line_count = buffer_read.line_count();
+        let line0 = buffer_read.line(0).map(str::to_owned);
+        drop(buffer_read);
+        assert_eq!(line_count, 4); // Original 3 + 1 pasted
+        assert_eq!(line0.as_deref(), Some("line one")); // Pasted line at top
+    }
+
+    #[test]
+    fn test_paste_after_characterwise() {
+        let mut ctx = create_test_context();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        // Set characterwise content in register
+        ctx.registers
+            .write()
+            .set(RegisterContent::characterwise("XYZ"));
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = PasteAfter.execute(&mut ctx, &args);
+        assert!(result.is_edit_action());
+
+        // Check buffer content - "XYZ" pasted after cursor (position 0)
+        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let buffer_read = buffer.read();
+        let content = buffer_read.line(0).map(str::to_owned);
+        drop(buffer_read);
+        assert_eq!(content.as_deref(), Some("hXYZello world"));
+    }
+
+    #[test]
+    fn test_paste_before_characterwise() {
+        let mut ctx = create_test_context();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        // Set characterwise content in register
+        ctx.registers
+            .write()
+            .set(RegisterContent::characterwise("XYZ"));
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = PasteBefore.execute(&mut ctx, &args);
+        assert!(result.is_edit_action());
+
+        // Check buffer content - "XYZ" pasted at cursor (position 0)
+        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let buffer_read = buffer.read();
+        let content = buffer_read.line(0).map(str::to_owned);
+        drop(buffer_read);
+        assert_eq!(content.as_deref(), Some("XYZhello world"));
+    }
+
+    #[test]
+    fn test_paste_after_count() {
+        let mut ctx = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        // Set characterwise content in register
+        ctx.registers
+            .write()
+            .set(RegisterContent::characterwise("X"));
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(3));
+        let result = PasteAfter.execute(&mut ctx, &args);
+        assert!(result.is_edit_action());
+
+        // Check buffer content - "XXX" pasted after cursor
+        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let buffer_read = buffer.read();
+        let content = buffer_read.line(0).map(str::to_owned);
+        drop(buffer_read);
+        assert_eq!(content.as_deref(), Some("hXXXello"));
+    }
+
+    #[test]
+    fn test_paste_commands_count() {
+        let cmds = paste_commands();
+        assert_eq!(cmds.len(), 2);
+    }
+
+    // =========================================================================
+    // Change Command Tests
+    // =========================================================================
+
+    #[test]
+    fn test_change_line_command_id() {
+        let cmd = ChangeLine;
+        assert_eq!(cmd.id().module(), &EDITOR_MODULE);
+        assert_eq!(cmd.id().name(), "change-line");
+    }
+
+    #[test]
+    fn test_change_to_eol_command_id() {
+        let cmd = ChangeToEndOfLine;
+        assert_eq!(cmd.id().module(), &EDITOR_MODULE);
+        assert_eq!(cmd.id().name(), "change-to-eol");
+    }
+
+    #[test]
+    fn test_change_line_has_count_arg() {
+        let cmd = ChangeLine;
+        let args = cmd.args();
+        assert!(!args.is_empty());
+        assert_eq!(args[0].name, "count");
+        assert_eq!(args[0].kind, ArgKind::Count);
+    }
+
+    #[test]
+    fn test_change_line_no_buffer_returns_error() {
+        let mut ctx = KernelContext::default();
+        let args = CommandContext::new();
+        let result = ChangeLine.execute(&mut ctx, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_change_to_eol_no_buffer_returns_error() {
+        let mut ctx = KernelContext::default();
+        let args = CommandContext::new();
+        let result = ChangeToEndOfLine.execute(&mut ctx, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_change_line_single_line() {
+        let (mut ctx, _) = setup_buffer_context();
+
+        // Replace buffer with single line content
+        let buffer = Buffer::from_string("hello world");
+        let new_buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(new_buffer_id);
+        let result = ChangeLine.execute(&mut ctx, &args);
+        assert!(result.is_edit_action());
+
+        // Check buffer content - line should be empty
+        let buffer = ctx.buffers.get(new_buffer_id).unwrap();
+        assert_eq!(buffer.read().content(), "");
+
+        // Check register - should have deleted text as linewise
+        let registers = ctx.registers.read();
+        let content = registers.get().clone();
+        drop(registers);
+        assert!(content.is_linewise());
+        assert_eq!(content.text, "hello world\n");
+    }
+
+    #[test]
+    fn test_change_line_multi_line() {
+        let (mut ctx, buffer_id) = setup_buffer_context();
+        // setup_buffer_context gives us "line one\nline two\nline three"
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(2));
+        let result = ChangeLine.execute(&mut ctx, &args);
+        assert!(result.is_edit_action());
+
+        // Check register - should have deleted text as linewise
+        let registers = ctx.registers.read();
+        let content = registers.get().clone();
+        drop(registers);
+        assert!(content.is_linewise());
+        assert!(content.text.contains("line one"));
+        assert!(content.text.contains("line two"));
+    }
+
+    #[test]
+    fn test_change_line_empty_buffer() {
+        let mut ctx = create_test_context();
+        let buffer = Buffer::new();
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = ChangeLine.execute(&mut ctx, &args);
+        // Should succeed (enters insert mode on empty buffer)
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_change_to_eol_middle_of_line() {
+        let mut ctx = create_test_context();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        // Position cursor at column 6 (at 'w')
+        {
+            let buffer = ctx.buffers.get(buffer_id).unwrap();
+            buffer.write().set_position(Position::new(0, 6));
+        }
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = ChangeToEndOfLine.execute(&mut ctx, &args);
+        assert!(result.is_edit_action());
+
+        // Check buffer content - should have "hello "
+        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        assert_eq!(buffer.read().content(), "hello ");
+
+        // Check register - should have "world" as characterwise
+        let registers = ctx.registers.read();
+        let content = registers.get().clone();
+        drop(registers);
+        assert!(!content.is_linewise());
+        assert_eq!(content.text, "world");
+    }
+
+    #[test]
+    fn test_change_to_eol_at_start() {
+        let mut ctx = create_test_context();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = ChangeToEndOfLine.execute(&mut ctx, &args);
+        assert!(result.is_edit_action());
+
+        // Check buffer content - should be empty
+        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        assert_eq!(buffer.read().content(), "");
+
+        // Check register - should have "hello world" as characterwise
+        let registers = ctx.registers.read();
+        let content = registers.get().clone();
+        drop(registers);
+        assert!(!content.is_linewise());
+        assert_eq!(content.text, "hello world");
+    }
+
+    #[test]
+    fn test_change_to_eol_at_end_of_line() {
+        let mut ctx = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        // Position cursor at end of line
+        {
+            let buffer = ctx.buffers.get(buffer_id).unwrap();
+            buffer.write().set_position(Position::new(0, 5));
+        }
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = ChangeToEndOfLine.execute(&mut ctx, &args);
+        // Should succeed but be a no-op (just enters insert mode)
+        assert!(result.is_success());
+
+        // Buffer should be unchanged
+        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        assert_eq!(buffer.read().content(), "hello");
+    }
+
+    #[test]
+    fn test_change_commands_count() {
+        let cmds = change_commands();
+        assert_eq!(cmds.len(), 2);
+    }
+
+    #[test]
+    fn test_all_commands_includes_change() {
+        let cmds = all_commands();
+        let has_change_line = cmds
+            .iter()
+            .any(|c| c.id().module() == &EDITOR_MODULE && c.id().name() == "change-line");
+        let has_change_to_eol = cmds
+            .iter()
+            .any(|c| c.id().module() == &EDITOR_MODULE && c.id().name() == "change-to-eol");
+        assert!(has_change_line);
+        assert!(has_change_to_eol);
+    }
+
+    #[test]
+    fn test_change_line_returns_edit_action() {
+        let (mut ctx, buffer_id) = setup_buffer_context();
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = ChangeLine.execute(&mut ctx, &args);
+
+        // Verify EditAction returned for undo integration
+        assert!(result.is_edit_action());
+        if let CommandResult::EditAction(action) = result {
+            // EditAction should have non-empty edits
+            assert!(!action.edits.is_empty());
+            // Verify buffer_id is correct
+            assert_eq!(action.buffer_id, buffer_id);
+        } else {
+            panic!("Expected EditAction result");
+        }
+    }
+
+    #[test]
+    fn test_change_to_eol_returns_edit_action() {
+        let mut ctx = create_test_context();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = ChangeToEndOfLine.execute(&mut ctx, &args);
+
+        // Verify EditAction returned for undo integration
+        assert!(result.is_edit_action());
+        if let CommandResult::EditAction(action) = result {
+            // EditAction should have non-empty edits
+            assert!(!action.edits.is_empty());
+            // Verify buffer_id is correct
+            assert_eq!(action.buffer_id, buffer_id);
+        } else {
+            panic!("Expected EditAction result");
+        }
+    }
+
+    #[test]
+    fn test_change_line_cursor_position_after() {
+        let (mut ctx, buffer_id) = setup_buffer_context();
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = ChangeLine.execute(&mut ctx, &args);
+
+        // After cc, cursor should be at column 0
+        if let CommandResult::EditAction(action) = result {
+            assert_eq!(action.cursor_after.column, 0);
+        } else {
+            panic!("Expected EditAction result");
+        }
+    }
+
+    // =========================================================================
+    // Replace Char Tests
+    // =========================================================================
+
+    #[test]
+    fn test_replace_char_start_command_id() {
+        let cmd = ReplaceCharStart;
+        assert_eq!(cmd.id().name(), "replace-char-start");
+    }
+
+    #[test]
+    fn test_replace_char_start_has_count_arg() {
+        let cmd = ReplaceCharStart;
+        let args = cmd.args();
+        assert_eq!(args.len(), 1);
+        assert_eq!(args[0].name, "count");
+    }
+
+    #[test]
+    fn test_replace_char_start_returns_waiting_for_char() {
+        let (mut ctx, _buffer_id) = setup_buffer_context();
+        let args = CommandContext::new();
+        let result = ReplaceCharStart.execute(&mut ctx, &args);
+
+        assert!(result.is_waiting_for_char());
+    }
+
+    #[test]
+    fn test_replace_char_start_with_count() {
+        use reovim_driver_command::{ArgValue, CharWaitOp};
+
+        let (mut ctx, _buffer_id) = setup_buffer_context();
+        let mut args = CommandContext::new();
+        args.set("count", ArgValue::Count(3));
+        let result = ReplaceCharStart.execute(&mut ctx, &args);
+
+        if let CommandResult::WaitingForChar(char_ctx) = result {
+            assert_eq!(char_ctx.op_type, CharWaitOp::ReplaceChar);
+            assert_eq!(char_ctx.count, Some(3));
+        } else {
+            panic!("Expected WaitingForChar result");
+        }
+    }
+
+    #[test]
+    fn test_replace_char_start_default_count_is_one() {
+        let (mut ctx, _buffer_id) = setup_buffer_context();
+        let args = CommandContext::new();
+        let result = ReplaceCharStart.execute(&mut ctx, &args);
+
+        if let CommandResult::WaitingForChar(char_ctx) = result {
+            assert_eq!(char_ctx.count, Some(1));
+        } else {
+            panic!("Expected WaitingForChar result");
+        }
+    }
+
+    // =========================================================================
+    // Repeat Dot Tests
+    // =========================================================================
+
+    #[test]
+    fn test_repeat_dot_command_id() {
+        let cmd = RepeatDot;
+        assert_eq!(cmd.id().name(), "repeat-dot");
+    }
+
+    #[test]
+    fn test_repeat_dot_has_count_arg() {
+        let cmd = RepeatDot;
+        let args = cmd.args();
+        assert_eq!(args.len(), 1);
+        assert_eq!(args[0].name, "count");
+    }
+
+    #[test]
+    fn test_repeat_dot_returns_repeat_action() {
+        let (mut ctx, _buffer_id) = setup_buffer_context();
+        let args = CommandContext::new();
+        let result = RepeatDot.execute(&mut ctx, &args);
+
+        assert!(result.is_repeat_action());
     }
 }

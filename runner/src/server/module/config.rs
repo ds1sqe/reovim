@@ -34,6 +34,7 @@ use super::discovery::default_search_paths;
 /// [modules]
 /// search_paths = ["~/.local/share/reovim/modules", "/usr/lib/reovim/modules"]
 /// autoload = ["lang-rust", "feat-completion"]
+/// no_defaults = false
 /// ```
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct ModuleConfig {
@@ -50,6 +51,13 @@ pub struct ModuleConfig {
     /// resolved automatically via topological sort.
     #[serde(default)]
     pub autoload: Vec<String>,
+
+    /// Skip loading default modules.
+    ///
+    /// When `true`, only modules specified in `autoload` (or via CLI `--load`)
+    /// are loaded. Useful for testing or minimal startup.
+    #[serde(default)]
+    pub no_defaults: bool,
 }
 
 /// Top-level configuration file structure.
@@ -185,6 +193,19 @@ impl ModuleConfig {
     pub fn with_autoload(mut self, module_id: impl Into<String>) -> Self {
         self.autoload.push(module_id.into());
         self
+    }
+
+    /// Builder: skip loading default modules.
+    #[must_use]
+    pub const fn with_no_defaults(mut self) -> Self {
+        self.no_defaults = true;
+        self
+    }
+
+    /// Check if default modules should be skipped.
+    #[must_use]
+    pub const fn should_skip_defaults(&self) -> bool {
+        self.no_defaults
     }
 }
 
@@ -350,5 +371,43 @@ theme = "dark"
         assert_eq!(autoload.len(), 2);
         assert_eq!(autoload[0], "mod-a");
         assert_eq!(autoload[1], "mod-b");
+    }
+
+    #[test]
+    fn test_no_defaults_default() {
+        let config = ModuleConfig::new();
+        assert!(!config.no_defaults);
+        assert!(!config.should_skip_defaults());
+    }
+
+    #[test]
+    fn test_no_defaults_builder() {
+        let config = ModuleConfig::new().with_no_defaults();
+        assert!(config.no_defaults);
+        assert!(config.should_skip_defaults());
+    }
+
+    #[test]
+    fn test_parse_toml_with_no_defaults() {
+        let toml_content = r#"
+[modules]
+autoload = ["my-module"]
+no_defaults = true
+"#;
+
+        let config: ConfigFile = toml::from_str(toml_content).unwrap();
+        assert!(config.modules.no_defaults);
+        assert_eq!(config.modules.autoload, vec!["my-module"]);
+    }
+
+    #[test]
+    fn test_parse_toml_no_defaults_false() {
+        let toml_content = r"
+[modules]
+no_defaults = false
+";
+
+        let config: ConfigFile = toml::from_str(toml_content).unwrap();
+        assert!(!config.modules.no_defaults);
     }
 }

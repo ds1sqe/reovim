@@ -64,6 +64,14 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&["operator-pending"])
             .with_category("motion")
             .with_description("WORD end motion"),
+        KeybindingRegistration::new("ge", "motion-word-end-backward")
+            .with_modes(&["operator-pending"])
+            .with_category("motion")
+            .with_description("Word end backward motion"),
+        KeybindingRegistration::new("gE", "motion-word-end-backward-big")
+            .with_modes(&["operator-pending"])
+            .with_category("motion")
+            .with_description("WORD end backward motion"),
         KeybindingRegistration::new("0", "motion-line-start")
             .with_modes(&["operator-pending"])
             .with_category("motion")

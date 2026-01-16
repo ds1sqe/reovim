@@ -46,7 +46,8 @@ use clap::Args;
 
 /// Server mode CLI arguments.
 ///
-/// These arguments configure how the server listens for connections.
+/// These arguments configure how the server listens for connections
+/// and how modules are loaded.
 #[derive(Args, Debug, Clone)]
 pub struct SrvArgs {
     /// Start server on specific TCP port.
@@ -61,23 +62,71 @@ pub struct SrvArgs {
     /// Start server in stdio mode (single client, for embedding).
     #[arg(long)]
     pub stdio: bool,
+
+    /// Additional module search directory (repeatable).
+    ///
+    /// Modules in these directories are discovered in addition to the
+    /// default search paths.
+    #[arg(long = "moddir", value_name = "PATH")]
+    pub module_dirs: Vec<std::path::PathBuf>,
+
+    /// Load specific module by ID (repeatable).
+    ///
+    /// Explicitly load these modules on startup. Can be combined with
+    /// `--no-defaults` to load only specific modules.
+    #[arg(long = "load", value_name = "MODULE_ID")]
+    pub load_modules: Vec<String>,
+
+    /// Skip loading default modules.
+    ///
+    /// When set, only modules specified via `--load` are loaded.
+    /// Useful for testing or minimal startup.
+    #[arg(long = "no-defaults")]
+    pub no_defaults: bool,
 }
 
 impl SrvArgs {
     /// Convert arguments to `ServerConfig`.
     #[must_use]
     pub fn into_config(self) -> ServerConfig {
-        #[cfg(unix)]
-        if let Some(path) = self.socket {
-            return ServerConfig::unix_socket(path);
+        // Build module config from CLI arguments
+        let mut modules = ModuleConfig::new();
+
+        // Add CLI-specified search paths
+        for path in self.module_dirs {
+            modules = modules.with_search_path(path.to_string_lossy().into_owned());
         }
 
-        if self.stdio {
-            ServerConfig::stdio()
-        } else if let Some(port) = self.tcp {
-            ServerConfig::tcp(port)
-        } else {
-            ServerConfig::tcp_with_fallback()
+        // Add CLI-specified modules to autoload
+        for module_id in self.load_modules {
+            modules = modules.with_autoload(module_id);
+        }
+
+        // Set no_defaults flag
+        if self.no_defaults {
+            modules = modules.with_no_defaults();
+        }
+
+        // Build transport config
+        let transport = {
+            #[cfg(unix)]
+            if let Some(path) = self.socket {
+                return ServerConfig::unix_socket(path).with_modules(modules);
+            }
+
+            if self.stdio {
+                TransportMode::Stdio
+            } else if let Some(port) = self.tcp {
+                TransportMode::Tcp { port }
+            } else {
+                TransportMode::TcpWithFallback
+            }
+        };
+
+        ServerConfig {
+            transport,
+            default_session_name: String::from("default"),
+            modules,
         }
     }
 }
@@ -115,6 +164,7 @@ use std::{
 
 use {
     reovim_arch::sync::RwLock,
+    reovim_driver_vfs::{StandardVfs, VfsDriver},
     reovim_kernel::api::v1::{
         EventBus, KernelContext, MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry,
         RegisterBank, TextObjectEngine,
@@ -126,7 +176,7 @@ use crate::buffer_manager::SimpleBufferManager;
 
 use {
     client::Client,
-    module::ModuleConfig,
+    module::{ModuleConfig, ModuleRegistry},
     rpc::{RpcContext, RpcDispatcher, create_default_dispatcher},
     session::{Session, SessionId, SessionRegistry},
     transport::{TransportListener, TransportReader, TransportWriter},
@@ -290,6 +340,9 @@ pub struct Server {
     /// RPC dispatcher (shared across all client tasks).
     dispatcher: Arc<RpcDispatcher>,
 
+    /// Module registry (holds loaded modules).
+    module_registry: Arc<ModuleRegistry>,
+
     /// Shutdown flag for graceful termination.
     shutdown: AtomicBool,
 }
@@ -302,6 +355,7 @@ impl Server {
             config,
             sessions: Arc::new(SessionRegistry::new()),
             dispatcher: Arc::new(create_default_dispatcher()),
+            module_registry: Arc::new(ModuleRegistry::new()),
             shutdown: AtomicBool::new(false),
         }
     }
@@ -326,6 +380,9 @@ impl Server {
     pub async fn run(&self) -> std::io::Result<()> {
         // Initialize debug infrastructure (uptime tracking, etc.)
         debug::init();
+
+        // Load modules from configuration
+        self.load_modules();
 
         // Create default session
         let default_session_id = SessionId::new(self.config.default_session_name.as_str());
@@ -441,10 +498,70 @@ impl Server {
         &self.sessions
     }
 
+    /// Get a reference to the module registry.
+    #[must_use]
+    pub fn module_registry(&self) -> &ModuleRegistry {
+        &self.module_registry
+    }
+
+    /// Load modules from configuration.
+    ///
+    /// This method:
+    /// 1. Adds search paths from `config.modules.search_paths`
+    /// 2. Loads modules from `config.modules.autoload` (unless `no_defaults` is set)
+    /// 3. Initializes all loaded modules
+    ///
+    /// Called automatically by `run()` before creating sessions.
+    ///
+    /// # Errors
+    ///
+    /// Logs warnings for modules that fail to load but continues.
+    /// Does not return errors since module loading failures are non-fatal.
+    fn load_modules(&self) {
+        // Skip if no_defaults and no autoload modules
+        if self.config.modules.should_skip_defaults() && self.config.modules.autoload.is_empty() {
+            tracing::info!("module loading skipped (--no-defaults with no --load)");
+            return;
+        }
+
+        // Get the list of modules to load
+        // Note: When no_defaults is false, default module list will be defined in #264.
+        // For now, both paths use the same autoload list.
+        let modules_to_load = self.config.modules.autoload.clone();
+
+        if modules_to_load.is_empty() {
+            tracing::debug!("no modules to load");
+            return;
+        }
+
+        tracing::info!(
+            count = modules_to_load.len(),
+            modules = ?modules_to_load,
+            "loading modules"
+        );
+
+        // Discover available modules in search paths
+        let discovered = self.module_registry.discover();
+        tracing::debug!(count = discovered.len(), "discovered module files");
+
+        // TODO (#264): Load discovered modules that match autoload list
+        // For now, just log what we would load
+        for module_id in &modules_to_load {
+            tracing::debug!(module = %module_id, "would load module");
+        }
+
+        // TODO (#264): Create ModuleContext and initialize modules
+        // The full implementation requires:
+        // 1. Matching discovered modules to autoload list
+        // 2. Creating proper KernelContext with data/cache dirs
+        // 3. Calling self.module_registry.init_all(&ctx)
+        // 4. Wiring handlers for initialized modules
+    }
+
     /// Ensure the default session exists.
     fn ensure_default_session(&self, id: &SessionId) {
         self.sessions.get_or_create(id, || {
-            Session::new(id.clone(), real_kernel_context(), default_mode_id())
+            Session::new(id.clone(), real_kernel_context(), default_mode_id(), standard_vfs())
         });
     }
 }
@@ -478,6 +595,13 @@ fn real_kernel_context() -> KernelContext {
     )
 }
 
+/// Create the standard VFS for file operations.
+///
+/// Uses the real filesystem via `std::fs`.
+fn standard_vfs() -> Arc<dyn VfsDriver> {
+    Arc::new(StandardVfs::new())
+}
+
 /// Handle a single client connection.
 ///
 /// Reads JSON-RPC requests line by line, dispatches them, and sends responses.
@@ -501,7 +625,7 @@ async fn handle_client(
 ) -> std::io::Result<()> {
     // Get or create the session
     let session = sessions.get_or_create(&session_id, || {
-        Session::new(session_id.clone(), real_kernel_context(), default_mode_id())
+        Session::new(session_id.clone(), real_kernel_context(), default_mode_id(), standard_vfs())
     });
 
     // Create the client (owns the writer)
@@ -670,5 +794,112 @@ mod tests {
 
         // Default config should have empty module config
         assert!(config.modules.autoload.is_empty());
+    }
+
+    #[test]
+    fn test_srv_args_into_config_default() {
+        let args = SrvArgs {
+            tcp: None,
+            #[cfg(unix)]
+            socket: None,
+            stdio: false,
+            module_dirs: vec![],
+            load_modules: vec![],
+            no_defaults: false,
+        };
+
+        let config = args.into_config();
+        assert!(matches!(config.transport, TransportMode::TcpWithFallback));
+        assert!(config.modules.search_paths.is_empty());
+        assert!(config.modules.autoload.is_empty());
+        assert!(!config.modules.no_defaults);
+    }
+
+    #[test]
+    fn test_srv_args_into_config_with_tcp() {
+        let args = SrvArgs {
+            tcp: Some(9000),
+            #[cfg(unix)]
+            socket: None,
+            stdio: false,
+            module_dirs: vec![],
+            load_modules: vec![],
+            no_defaults: false,
+        };
+
+        let config = args.into_config();
+        assert!(matches!(config.transport, TransportMode::Tcp { port: 9000 }));
+    }
+
+    #[test]
+    fn test_srv_args_into_config_with_stdio() {
+        let args = SrvArgs {
+            tcp: None,
+            #[cfg(unix)]
+            socket: None,
+            stdio: true,
+            module_dirs: vec![],
+            load_modules: vec![],
+            no_defaults: false,
+        };
+
+        let config = args.into_config();
+        assert!(matches!(config.transport, TransportMode::Stdio));
+    }
+
+    #[test]
+    fn test_srv_args_into_config_with_module_dirs() {
+        let args = SrvArgs {
+            tcp: None,
+            #[cfg(unix)]
+            socket: None,
+            stdio: false,
+            module_dirs: vec![
+                PathBuf::from("/custom/path1"),
+                PathBuf::from("/custom/path2"),
+            ],
+            load_modules: vec![],
+            no_defaults: false,
+        };
+
+        let config = args.into_config();
+        assert_eq!(config.modules.search_paths.len(), 2);
+        assert_eq!(config.modules.search_paths[0], "/custom/path1");
+        assert_eq!(config.modules.search_paths[1], "/custom/path2");
+    }
+
+    #[test]
+    fn test_srv_args_into_config_with_load_modules() {
+        let args = SrvArgs {
+            tcp: None,
+            #[cfg(unix)]
+            socket: None,
+            stdio: false,
+            module_dirs: vec![],
+            load_modules: vec!["editor".into(), "keymap".into()],
+            no_defaults: false,
+        };
+
+        let config = args.into_config();
+        assert_eq!(config.modules.autoload.len(), 2);
+        assert_eq!(config.modules.autoload[0], "editor");
+        assert_eq!(config.modules.autoload[1], "keymap");
+    }
+
+    #[test]
+    fn test_srv_args_into_config_with_no_defaults() {
+        let args = SrvArgs {
+            tcp: None,
+            #[cfg(unix)]
+            socket: None,
+            stdio: false,
+            module_dirs: vec![],
+            load_modules: vec!["my-module".into()],
+            no_defaults: true,
+        };
+
+        let config = args.into_config();
+        assert!(config.modules.no_defaults);
+        assert_eq!(config.modules.autoload, vec!["my-module"]);
     }
 }

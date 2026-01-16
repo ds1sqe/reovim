@@ -14,8 +14,8 @@
 
 use {
     reovim_driver_command::{CommandContext, CommandResult, UndoAction},
-    reovim_driver_input::{FallbackResult, InputFallbackHandler, KeyEvent},
-    reovim_kernel::api::v1::{Edit, UndoResult},
+    reovim_driver_input::{FallbackResult, InputFallbackHandler, KeyCode, KeyEvent},
+    reovim_kernel::api::v1::{Edit, Motion, MotionEngine, Position, UndoResult},
 };
 
 use super::{
@@ -179,12 +179,25 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
     /// Handle a single key event.
     ///
     /// This is the core dispatch logic:
+    /// 0. Check for char-wait state (find-char commands)
     /// 1. Add key to pending sequence
     /// 2. Look up in keymap
     /// 3. If found: execute command
     /// 4. If prefix: wait for more keys
     /// 5. If not found: delegate to fallback handler
     fn handle_key(&mut self, key: KeyEvent) {
+        // Check for search input mode (typing search pattern)
+        if self.app.search.input_active {
+            self.handle_search_input(key);
+            return;
+        }
+
+        // Check for pending character operation (f/F/t/T or r waiting for character)
+        if self.app.has_pending_char() {
+            self.handle_pending_char(key);
+            return;
+        }
+
         // Add to pending sequence
         self.app.pending_keys.push(key);
 
@@ -234,6 +247,158 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
         }
     }
 
+    /// Handle a key event when in search input mode (typing pattern).
+    ///
+    /// Keys are buffered until Enter executes the search or Escape cancels.
+    fn handle_search_input(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Escape => {
+                // Cancel search input
+                self.app.search.cancel_input();
+                self.app.clear_pending_keys();
+            }
+            KeyCode::Enter => {
+                // Complete search input and execute
+                if let Some((pattern, direction)) = self.app.search.complete_input() {
+                    self.execute_search(&pattern, direction);
+                }
+                self.app.clear_pending_keys();
+            }
+            KeyCode::Backspace => {
+                // Delete last character from input buffer
+                self.app.search.input_buffer.pop();
+            }
+            KeyCode::Char(c) => {
+                // Add character to input buffer
+                self.app.search.input_buffer.push(c);
+            }
+            _ => {
+                // Ignore other keys in search input mode
+            }
+        }
+    }
+
+    /// Handle a key event when in pending-char state (f/F/t/T or r pending).
+    ///
+    /// The key provides the character argument for the pending operation.
+    /// Escape cancels the wait without executing any operation.
+    fn handle_pending_char(&mut self, key: KeyEvent) {
+        use super::app::PendingCharOp;
+
+        // Take the pending-char state
+        let pending = self
+            .app
+            .take_pending_char()
+            .expect("pending_char should be Some");
+
+        // Handle escape - cancel pending operation
+        if key.code == KeyCode::Escape {
+            self.app.clear_pending_keys();
+            return;
+        }
+
+        // Extract character from key event
+        let KeyCode::Char(c) = key.code else {
+            // Non-character keys cancel pending operation
+            self.app.clear_pending_keys();
+            return;
+        };
+
+        match pending {
+            PendingCharOp::FindForward { start: _ }
+            | PendingCharOp::FindBackward { start: _ }
+            | PendingCharOp::TillForward { start: _ }
+            | PendingCharOp::TillBackward { start: _ } => {
+                self.execute_find_char(c, &pending);
+            }
+            PendingCharOp::ReplaceChar { count } => {
+                self.execute_replace_char(c, count);
+            }
+        }
+
+        self.app.clear_pending_keys();
+    }
+
+    /// Execute a find-char motion with the given character.
+    fn execute_find_char(&mut self, c: char, pending: &super::app::PendingCharOp) {
+        use super::app::LastFind;
+
+        let Some(find_type) = pending.find_type() else {
+            return; // Not a find-char operation
+        };
+
+        // Build the find-char motion
+        let motion = Motion::FindChar {
+            char: c,
+            direction: find_type.direction(),
+            till: find_type.is_till(),
+        };
+
+        // Get active buffer for motion calculation
+        let Some(buffer_id) = self.app.active_buffer else {
+            self.set_error("No active buffer");
+            return;
+        };
+
+        let Some(buffer_arc) = self.app.kernel.buffers.get(buffer_id) else {
+            self.set_error("Buffer not found");
+            return;
+        };
+
+        // Calculate motion target
+        let buffer = buffer_arc.read();
+        let target = MotionEngine::calculate(&buffer, buffer.cursor(), motion, 1);
+        drop(buffer);
+
+        // Apply motion if target found
+        if let Some(pos) = target {
+            buffer_arc.write().set_position(pos);
+
+            // Update last_find for ; and , repeat
+            self.app.last_find = Some(LastFind::new(c, find_type));
+        }
+        // Note: If target is None (char not found), cursor doesn't move,
+        // and last_find is NOT updated (per Vim behavior)
+    }
+
+    /// Execute a replace-char operation with the given character.
+    fn execute_replace_char(&mut self, c: char, count: usize) {
+        // Get active buffer
+        let Some(buffer_id) = self.app.active_buffer else {
+            self.set_error("No active buffer");
+            return;
+        };
+
+        let Some(buffer_arc) = self.app.kernel.buffers.get(buffer_id) else {
+            self.set_error("Buffer not found");
+            return;
+        };
+
+        let mut buffer = buffer_arc.write();
+        let cursor_pos = buffer.cursor().position;
+
+        // Replace count characters with c
+        let line = buffer.lines().get(cursor_pos.line).map(String::from);
+        if let Some(line) = line {
+            let start_col = cursor_pos.column;
+            let end_col = (start_col + count).min(line.len());
+
+            if start_col < line.len() {
+                // Build replacement string
+                let replacement: String = std::iter::repeat_n(c, end_col - start_col).collect();
+
+                // Delete old characters and insert new
+                let start = Position::new(cursor_pos.line, start_col);
+                let end = Position::new(cursor_pos.line, end_col);
+                buffer.delete_range(start, end);
+                buffer.insert_at(start, &replacement);
+
+                // Cursor stays at start position (Vim behavior)
+                buffer.set_position(start);
+            }
+        }
+    }
+
     /// Handle command execution result.
     fn handle_command_result(&mut self, result: CommandResult) {
         match result {
@@ -271,7 +436,225 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
                 tracing::info!(?action, "Undotree action requested");
                 self.last_error = None;
             }
+            CommandResult::WaitingForChar(ctx) => {
+                // Command (f/F/t/T or r) needs a character argument.
+                // Set pending-char state so next key press completes the operation.
+                use {
+                    super::app::{FindType, PendingCharOp},
+                    reovim_driver_command::CharWaitOp,
+                };
+
+                let pending = match ctx.op_type {
+                    CharWaitOp::FindForward => {
+                        let start = ctx.start_position.expect("FindForward requires position");
+                        PendingCharOp::from_find_type(FindType::FindForward, start)
+                    }
+                    CharWaitOp::FindBackward => {
+                        let start = ctx.start_position.expect("FindBackward requires position");
+                        PendingCharOp::from_find_type(FindType::FindBackward, start)
+                    }
+                    CharWaitOp::TillForward => {
+                        let start = ctx.start_position.expect("TillForward requires position");
+                        PendingCharOp::from_find_type(FindType::TillForward, start)
+                    }
+                    CharWaitOp::TillBackward => {
+                        let start = ctx.start_position.expect("TillBackward requires position");
+                        PendingCharOp::from_find_type(FindType::TillBackward, start)
+                    }
+                    CharWaitOp::ReplaceChar => {
+                        let count = ctx.count.unwrap_or(1);
+                        PendingCharOp::replace_char(count)
+                    }
+                };
+
+                self.app.set_pending_char(pending);
+                self.last_error = None;
+            }
+            CommandResult::RepeatFindSame => {
+                // Repeat last find-char in the same direction (;)
+                self.execute_repeat_find(false);
+            }
+            CommandResult::RepeatFindReverse => {
+                // Repeat last find-char in the opposite direction (,)
+                self.execute_repeat_find(true);
+            }
+            CommandResult::SearchAction(ref action) => {
+                // Search commands (/, ?, n, N, *, #, :noh) return search actions.
+                // The runner handles input mode, pattern storage, and search execution.
+                self.handle_search_action(action);
+            }
+            CommandResult::RepeatAction => {
+                // Repeat command (.) wants to replay the last repeatable command.
+                // Full implementation comes in Phase 5.
+                tracing::debug!("RepeatAction requested - not yet implemented");
+                self.last_error = None;
+            }
         }
+    }
+
+    /// Handle a search action from search commands.
+    fn handle_search_action(&mut self, action: &reovim_driver_command::SearchAction) {
+        use {crate::server::app::SearchDirection, reovim_driver_command::SearchAction};
+
+        match *action {
+            SearchAction::EnterSearchMode { direction } => {
+                let dir = match direction {
+                    reovim_driver_command::SearchDirection::Forward => SearchDirection::Forward,
+                    reovim_driver_command::SearchDirection::Backward => SearchDirection::Backward,
+                };
+                self.app.search.start_input(dir);
+                self.last_error = None;
+            }
+            SearchAction::Next => {
+                // Go to next match in same direction
+                if let Some(pattern) = self.app.search.pattern.clone() {
+                    let direction = self.app.search.direction;
+                    self.execute_search(&pattern, direction);
+                } else {
+                    self.set_error("No previous search pattern");
+                }
+            }
+            SearchAction::Previous => {
+                // Go to previous match (reverse direction)
+                if let Some(pattern) = self.app.search.pattern.clone() {
+                    let direction = match self.app.search.direction {
+                        SearchDirection::Forward => SearchDirection::Backward,
+                        SearchDirection::Backward => SearchDirection::Forward,
+                    };
+                    self.execute_search(&pattern, direction);
+                } else {
+                    self.set_error("No previous search pattern");
+                }
+            }
+            SearchAction::WordUnderCursor { direction } => {
+                self.execute_word_search(direction);
+            }
+            SearchAction::ClearHighlight => {
+                self.app.search.clear_highlight();
+                self.last_error = None;
+            }
+        }
+    }
+
+    /// Execute search with pattern and direction.
+    fn execute_search(&mut self, pattern: &str, direction: crate::server::app::SearchDirection) {
+        use crate::search::{Direction, SearchEngine};
+
+        let Some(buffer_id) = self.app.active_buffer else {
+            self.set_error("No active buffer");
+            return;
+        };
+
+        let Some(buffer_arc) = self.app.kernel.buffers.get(buffer_id) else {
+            self.set_error("Buffer not found");
+            return;
+        };
+
+        let search_dir = match direction {
+            crate::server::app::SearchDirection::Forward => Direction::Forward,
+            crate::server::app::SearchDirection::Backward => Direction::Backward,
+        };
+
+        let buffer = buffer_arc.read();
+        let cursor_pos = buffer.cursor().position;
+
+        match SearchEngine::find_next(&buffer, cursor_pos, pattern, search_dir, true) {
+            Ok(Some(m)) => {
+                let wrapped = match search_dir {
+                    Direction::Forward => m.start < cursor_pos,
+                    Direction::Backward => m.start > cursor_pos,
+                };
+                drop(buffer);
+                buffer_arc.write().set_position(m.start);
+                self.app.search.highlight_active = true;
+                self.last_error = None;
+
+                if wrapped {
+                    let msg = match search_dir {
+                        Direction::Forward => "search hit BOTTOM, continuing at TOP",
+                        Direction::Backward => "search hit TOP, continuing at BOTTOM",
+                    };
+                    tracing::info!(msg);
+                }
+            }
+            Ok(None) => {
+                self.set_error("Pattern not found");
+            }
+            Err(e) => {
+                self.set_error(e.to_string());
+            }
+        }
+    }
+
+    /// Execute word search (* or #).
+    fn execute_word_search(&mut self, direction: reovim_driver_command::SearchDirection) {
+        use crate::{search::SearchEngine, server::app::SearchDirection};
+
+        let Some(buffer_id) = self.app.active_buffer else {
+            self.set_error("No active buffer");
+            return;
+        };
+
+        let Some(buffer_arc) = self.app.kernel.buffers.get(buffer_id) else {
+            self.set_error("Buffer not found");
+            return;
+        };
+
+        let buffer = buffer_arc.read();
+        let cursor_pos = buffer.cursor().position;
+
+        let Some(word_pattern) = SearchEngine::word_at_cursor(&buffer, cursor_pos) else {
+            self.set_error("No word under cursor");
+            return;
+        };
+        drop(buffer);
+
+        // Store pattern and direction
+        self.app.search.pattern = Some(word_pattern.clone());
+        self.app.search.direction = match direction {
+            reovim_driver_command::SearchDirection::Forward => SearchDirection::Forward,
+            reovim_driver_command::SearchDirection::Backward => SearchDirection::Backward,
+        };
+
+        // Execute search
+        self.execute_search(&word_pattern, self.app.search.direction);
+    }
+
+    /// Execute a repeat find motion (; or ,).
+    fn execute_repeat_find(&mut self, reverse: bool) {
+        let Some(last_find) = self.app.last_find else {
+            // No previous find to repeat
+            return;
+        };
+
+        let Some(buffer_id) = self.app.active_buffer else {
+            self.set_error("No active buffer");
+            return;
+        };
+
+        let Some(buffer_arc) = self.app.kernel.buffers.get(buffer_id) else {
+            self.set_error("Buffer not found");
+            return;
+        };
+
+        // Get motion (same or reversed direction)
+        let motion = if reverse {
+            last_find.reverse_motion()
+        } else {
+            last_find.repeat_motion()
+        };
+
+        // Calculate and apply motion
+        let buffer = buffer_arc.read();
+        let target = MotionEngine::calculate(&buffer, buffer.cursor(), motion, 1);
+        drop(buffer);
+
+        if let Some(pos) = target {
+            buffer_arc.write().set_position(pos);
+        }
+        // Note: ; and , do NOT update last_find (per Vim behavior)
+
+        self.app.clear_pending_keys();
     }
 
     /// Handle an undo/redo action by applying edits from the undo registry.
