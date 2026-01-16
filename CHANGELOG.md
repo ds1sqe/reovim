@@ -74,6 +74,30 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
   - `FallbackContext` trait extended with `accumulate_edit()` and `flush_pending_edits()`
   - 7 new unit tests for undo batching infrastructure
 
+- **Profiling Infrastructure with Profiler Trait and Benchmark Crate** (Issue #269)
+  - **Kernel Profiler Trait** (`lib/kernel/src/debug/profiler.rs`):
+    - `Profiler` trait following Logger pattern (mechanism vs policy)
+    - `SpanId`, `SpanData` types for span metadata
+    - `ProfileScope` RAII guard for automatic timing
+    - `NopProfiler` for zero-overhead default
+    - Profiling macros: `profile_scope!`, `profile_fn!`, `profile_counter!`, `profile_histogram!`
+  - **Trace Driver** (`lib/drivers/trace/`):
+    - `TracingProfiler` implementing kernel `Profiler` trait
+    - Integration with tracing ecosystem
+    - Thread-local span stack for parent tracking
+    - Environment variable filtering via `REOVIM_PROFILE`
+  - **Benchmark Crate** (`tools/bench/`):
+    - Criterion-based micro-benchmarks
+    - Buffer operation benchmarks (insert, delete, line access)
+    - Event dispatch benchmarks (handler counts, subscription)
+    - Profiler overhead benchmarks (~24ns per scope)
+  - **Hot Path Instrumentation**:
+    - `handle_key()` in event loop
+    - `lookup()` in keymap registry
+    - `execute()` in command registry
+    - `dispatch()` in RPC dispatcher
+  - 13 profiler tests, 9 trace driver tests
+
 - **Phase 7-A: Module Loading Mechanism with CLI Flags** (Issue #262)
   - **CLI Flags for Module Control**:
     - `--moddir <PATH>` - Add module search directory (repeatable)

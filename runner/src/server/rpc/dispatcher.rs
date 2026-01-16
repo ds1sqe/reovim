@@ -4,7 +4,10 @@
 
 use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
 
-use reovim_protocol::v1::{RpcError, RpcRequest, RpcResponse};
+use {
+    reovim_kernel::profile_scope,
+    reovim_protocol::v1::{RpcError, RpcRequest, RpcResponse},
+};
 
 use crate::{
     server::client::Client,
@@ -88,6 +91,8 @@ impl RpcDispatcher {
     ///
     /// Returns a response for requests with IDs, or `None` for notifications.
     pub async fn dispatch(&self, request: RpcRequest, ctx: &RpcContext) -> Option<RpcResponse> {
+        profile_scope!("rpc_dispatch", "runner::rpc");
+
         // Notifications don't get responses
         let request_id = request.id?;
 

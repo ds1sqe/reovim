@@ -1,0 +1,21 @@
+[package]
+name = "reovim-driver-trace"
+version = "0.9.0-dev"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Tracing/profiling driver for reovim (bridges kernel Profiler trait to tracing)"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Kernel layer (Profiler trait)
+reovim-kernel = { path = "../../kernel", version = "0.9.0-dev" }
+
+# Tracing ecosystem
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }

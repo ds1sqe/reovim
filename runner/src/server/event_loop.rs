@@ -15,7 +15,10 @@
 use {
     reovim_driver_command::{CommandContext, CommandResult, UndoAction},
     reovim_driver_input::{FallbackResult, InputFallbackHandler, KeyCode, KeyEvent},
-    reovim_kernel::api::v1::{Edit, Motion, MotionEngine, Position, UndoResult},
+    reovim_kernel::{
+        api::v1::{Edit, Motion, MotionEngine, Position, UndoResult},
+        profile_scope,
+    },
 };
 
 use super::{
@@ -186,6 +189,8 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
     /// 4. If prefix: wait for more keys
     /// 5. If not found: delegate to fallback handler
     fn handle_key(&mut self, key: KeyEvent) {
+        profile_scope!("handle_key", "runner::event_loop");
+
         // Check for search input mode (typing search pattern)
         if self.app.search.input_active {
             self.handle_search_input(key);

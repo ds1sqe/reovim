@@ -16,6 +16,7 @@ members = [
     "lib/drivers/net",
     "lib/drivers/vfs",
     "lib/drivers/log",
+    "lib/drivers/trace",
 
     # Platform abstraction
     "lib/arch",
@@ -94,6 +95,7 @@ reovim-driver-lsp = { path = "./lib/drivers/lsp", version = "0.9.0-dev" }
 reovim-driver-net = { path = "./lib/drivers/net", version = "0.9.0-dev" }
 reovim-driver-vfs = { path = "./lib/drivers/vfs", version = "0.9.0-dev" }
 reovim-driver-log = { path = "./lib/drivers/log", version = "0.9.0-dev" }
+reovim-driver-trace = { path = "./lib/drivers/trace", version = "0.9.0-dev" }
 
 # Policy modules
 reovim-module-example = { path = "./modules/example", version = "0.9.0-dev" }

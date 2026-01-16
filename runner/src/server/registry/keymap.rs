@@ -16,7 +16,10 @@ use std::collections::HashMap;
 
 use {
     reovim_driver_input::KeySequence,
-    reovim_kernel::api::v1::{CommandId, ModeId, ModuleId},
+    reovim_kernel::{
+        api::v1::{CommandId, ModeId, ModuleId},
+        profile_scope,
+    },
 };
 
 /// Result of a keymap lookup.
@@ -204,6 +207,8 @@ impl KeymapRegistry {
     /// - `NotFound` if the sequence doesn't match anything
     #[must_use]
     pub fn lookup(&self, mode: &ModeId, keys: &KeySequence) -> KeyLookupResult {
+        profile_scope!("keymap_lookup", "runner::keymap");
+
         let Some(mode_entries) = self.entries.get(mode) else {
             return KeyLookupResult::NotFound;
         };

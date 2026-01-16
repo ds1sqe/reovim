@@ -219,6 +219,30 @@ pub use super::debug::{
 };
 
 // ============================================================================
+// Profiling (debug/profiler.rs)
+// ============================================================================
+
+pub use crate::debug::{
+    // Profiler trait and types
+    NopProfiler,
+    ProfileGuard,
+    ProfileScope,
+    Profiler,
+    SetProfilerError,
+    SpanData,
+    SpanId,
+    // Global profiler functions
+    profiler,
+    set_profiler,
+};
+
+// Profiling macros (re-export from crate root)
+pub use crate::{profile, profile_counter, profile_fn, profile_histogram, profile_scope};
+
+// Metrics registry (for direct histogram/counter access)
+pub use crate::debug::{Counter, Histogram, MetricsRegistry, MetricsSnapshot, metrics};
+
+// ============================================================================
 // Tests
 // ============================================================================
 
