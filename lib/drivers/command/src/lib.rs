@@ -512,6 +512,14 @@ pub enum CommandResult {
     /// the next keypress as a character argument. The runner sets char-wait
     /// state and waits for the character input.
     WaitingForChar(CharWaitContext),
+    /// Repeat the last find-char motion in the same direction (;).
+    ///
+    /// The runner executes `last_find.repeat_motion()` if `last_find` is set.
+    RepeatFindSame,
+    /// Repeat the last find-char motion in the opposite direction (,).
+    ///
+    /// The runner executes `last_find.reverse_motion()` if `last_find` is set.
+    RepeatFindReverse,
 }
 
 /// Undo/redo action intent returned by commands.

@@ -3,7 +3,7 @@
 //! This module implements motion commands that move the cursor:
 //! - Word motions: `w`, `b`, `e`, `W`, `B`, `E`, `ge`, `gE`
 //! - Line motions: `0`, `$`, `^`, `gg`, `G`
-//! - Find-char motions: `f`, `F`, `t`, `T`, `;`, `,` (future)
+//! - Find-char motions: `f`, `F`, `t`, `T`, `;`, `,`
 //!
 //! # Mechanism vs Policy
 //!
@@ -22,6 +22,7 @@
 //! }
 //! ```
 
+pub mod find_char;
 pub mod line;
 pub mod word;
 
@@ -76,5 +77,11 @@ mod tests {
     fn test_line_commands_count() {
         let cmds = line::all_commands();
         assert_eq!(cmds.len(), 5); // 0, $, ^, gg, G
+    }
+
+    #[test]
+    fn test_find_char_commands_count() {
+        let cmds = find_char::all_commands();
+        assert_eq!(cmds.len(), 6); // f, F, t, T, ;, ,
     }
 }

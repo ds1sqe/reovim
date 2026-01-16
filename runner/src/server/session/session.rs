@@ -258,7 +258,58 @@ impl Session {
                 self.set_char_wait(ctx).await;
                 None
             }
+            CommandResult::RepeatFindSame => {
+                // Repeat last find-char in the same direction (;)
+                // The actual motion execution is handled by the message loop.
+                self.execute_repeat_find(false).await;
+                None
+            }
+            CommandResult::RepeatFindReverse => {
+                // Repeat last find-char in the opposite direction (,)
+                // The actual motion execution is handled by the message loop.
+                self.execute_repeat_find(true).await;
+                None
+            }
         }
+    }
+
+    /// Execute a repeat find motion (; or ,).
+    async fn execute_repeat_find(&self, reverse: bool) {
+        use reovim_kernel::api::v1::MotionEngine;
+
+        let mut state = self.state.write().await;
+
+        let Some(last_find) = state.app.last_find else {
+            // No previous find to repeat
+            return;
+        };
+
+        let Some(buffer_id) = state.app.active_buffer else {
+            return;
+        };
+
+        let Some(buffer_arc) = state.app.kernel.buffers.get(buffer_id) else {
+            return;
+        };
+
+        // Get motion (same or reversed direction)
+        let motion = if reverse {
+            last_find.reverse_motion()
+        } else {
+            last_find.repeat_motion()
+        };
+
+        // Calculate and apply motion
+        let buffer = buffer_arc.read();
+        let target = MotionEngine::calculate(&buffer, buffer.cursor(), motion, 1);
+        drop(buffer);
+
+        if let Some(pos) = target {
+            buffer_arc.write().set_position(pos);
+        }
+        // Note: ; and , do NOT update last_find (per Vim behavior)
+
+        state.app.clear_pending_keys();
     }
 
     /// Set char-wait state for find-char commands.

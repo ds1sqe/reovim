@@ -129,6 +129,19 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
   - 17+ unit tests for all new types
   - Commands deferred to #240b
 
+- **Phase 7.12b: Find-Char Commands** (Issue #240b)
+  - 6 find-char motion commands in `modules/motions/src/find_char.rs`
+  - `f{char}` (FindCharForward) - Move cursor to next occurrence of char
+  - `F{char}` (FindCharBackward) - Move cursor to previous occurrence of char
+  - `t{char}` (TillCharForward) - Move cursor to before next occurrence
+  - `T{char}` (TillCharBackward) - Move cursor to after previous occurrence
+  - `;` (RepeatFindSame) - Repeat last find in same direction
+  - `,` (RepeatFindReverse) - Repeat last find in opposite direction
+  - `CommandResult::RepeatFindSame` and `RepeatFindReverse` variants
+  - Runner `execute_repeat_find()` method for `;`/`,` execution
+  - 13 unit tests covering all commands
+  - Integration tests deferred (pending module loading infrastructure)
+
 - **Phase 7.5-6: Insert Mode & Delete Operations** (Issues #233, #234, #231)
   - **Insert Mode Character Input** (`modules/editor/src/fallback.rs`):
     - `EditorFallbackHandler` now inserts characters in Insert mode

@@ -353,7 +353,52 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
                 self.app.char_wait = Some(CharWaitState::new(find_type, ctx.start_position));
                 self.last_error = None;
             }
+            CommandResult::RepeatFindSame => {
+                // Repeat last find-char in the same direction (;)
+                self.execute_repeat_find(false);
+            }
+            CommandResult::RepeatFindReverse => {
+                // Repeat last find-char in the opposite direction (,)
+                self.execute_repeat_find(true);
+            }
         }
+    }
+
+    /// Execute a repeat find motion (; or ,).
+    fn execute_repeat_find(&mut self, reverse: bool) {
+        let Some(last_find) = self.app.last_find else {
+            // No previous find to repeat
+            return;
+        };
+
+        let Some(buffer_id) = self.app.active_buffer else {
+            self.set_error("No active buffer");
+            return;
+        };
+
+        let Some(buffer_arc) = self.app.kernel.buffers.get(buffer_id) else {
+            self.set_error("Buffer not found");
+            return;
+        };
+
+        // Get motion (same or reversed direction)
+        let motion = if reverse {
+            last_find.reverse_motion()
+        } else {
+            last_find.repeat_motion()
+        };
+
+        // Calculate and apply motion
+        let buffer = buffer_arc.read();
+        let target = MotionEngine::calculate(&buffer, buffer.cursor(), motion, 1);
+        drop(buffer);
+
+        if let Some(pos) = target {
+            buffer_arc.write().set_position(pos);
+        }
+        // Note: ; and , do NOT update last_find (per Vim behavior)
+
+        self.app.clear_pending_keys();
     }
 
     /// Handle an undo/redo action by applying edits from the undo registry.
