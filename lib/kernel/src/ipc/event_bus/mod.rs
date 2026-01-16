@@ -43,9 +43,16 @@
 //! bus.emit(BufferChanged { buffer_id: 1 });
 //! ```
 
+mod handler;
+mod sender;
+
+pub use sender::EventSender;
+
 use std::{any::TypeId, collections::HashMap, sync::Arc};
 
 use reovim_arch::sync::{ArcSwap, Mutex};
+
+use handler::{ContextHandlerFn, HandlerFn, HandlerType, RegisteredHandler};
 
 use super::{
     channel::{BoundedReceiver, BoundedSender, bounded},
@@ -54,50 +61,6 @@ use super::{
     scope::EventScope,
     subscription::{Subscription, SubscriptionId},
 };
-
-/// Handler function type for simple event dispatch (no context).
-///
-/// Handlers receive a reference to the `DynEvent` and return an `EventResult`.
-/// The handler must downcast to the specific event type internally.
-type HandlerFn = Arc<dyn Fn(&DynEvent) -> EventResult + Send + Sync>;
-
-/// Handler function type for context-aware event dispatch.
-///
-/// Handlers receive both the event and a mutable `HandlerContext` that allows
-/// emitting new events, requesting renders, etc.
-///
-/// Uses Higher-Ranked Trait Bounds (HRTB) to work with any `HandlerContext` lifetime.
-type ContextHandlerFn =
-    Arc<dyn for<'a> Fn(&DynEvent, &mut HandlerContext<'a>) -> EventResult + Send + Sync>;
-
-/// Type of handler function (simple or context-aware).
-enum HandlerType {
-    /// Simple handler: `Fn(&E) -> EventResult`
-    Simple(HandlerFn),
-    /// Context-aware handler: `Fn(&E, &mut HandlerContext) -> EventResult`
-    WithContext(ContextHandlerFn),
-}
-
-impl Clone for HandlerType {
-    fn clone(&self) -> Self {
-        match self {
-            Self::Simple(h) => Self::Simple(h.clone()),
-            Self::WithContext(h) => Self::WithContext(h.clone()),
-        }
-    }
-}
-
-/// Registered handler with metadata.
-struct RegisteredHandler {
-    /// Unique subscription ID.
-    id: SubscriptionId,
-
-    /// Handler priority (lower = earlier dispatch).
-    priority: u32,
-
-    /// The handler function (simple or context-aware).
-    handler: HandlerType,
-}
 
 /// Optional channel for dedicated processor thread pattern.
 ///
@@ -121,50 +84,6 @@ struct EventBusInner {
 
     /// Optional channel for dedicated processor thread.
     channel: Option<ChannelInner>,
-}
-
-/// Cloneable sender handle for emitting events via channel.
-///
-/// Obtained from `EventBus::sender()` when the bus is created with
-/// `new_with_channel()`.
-///
-/// # Thread Safety
-///
-/// `EventSender` is `Clone`, `Send`, and `Sync`. Multiple threads can
-/// send events concurrently.
-#[derive(Clone)]
-pub struct EventSender {
-    tx: BoundedSender<DynEvent>,
-}
-
-impl EventSender {
-    /// Send an event (blocking if channel is full).
-    ///
-    /// This will block if the channel is full until space is available.
-    pub fn send<E: Event>(&self, event: E) {
-        let _ = self.tx.send(DynEvent::new(event));
-    }
-
-    /// Try to send an event without blocking.
-    ///
-    /// Returns immediately even if the channel is full.
-    pub fn try_send<E: Event>(&self, event: E) {
-        let _ = self.tx.try_send(DynEvent::new(event));
-    }
-
-    /// Send a pre-boxed dynamic event.
-    pub fn send_dyn(&self, event: DynEvent) {
-        let _ = self.tx.try_send(event);
-    }
-
-    /// Send an event with scope tracking.
-    ///
-    /// The scope is incremented before sending.
-    pub fn send_scoped<E: Event>(&self, event: E, scope: &EventScope) {
-        scope.increment();
-        let dyn_event = DynEvent::new(event).with_scope(scope.clone());
-        let _ = self.tx.try_send(dyn_event);
-    }
 }
 
 /// Type-erased event bus for pub/sub communication.
@@ -784,17 +703,6 @@ impl std::fmt::Debug for EventBus {
             .field("total_handlers", &self.total_handler_count())
             .field("queue_len", &self.queue_len())
             .finish()
-    }
-}
-
-// Clone the handlers map for RegisteredHandler
-impl Clone for RegisteredHandler {
-    fn clone(&self) -> Self {
-        Self {
-            id: self.id,
-            priority: self.priority,
-            handler: self.handler.clone(),
-        }
     }
 }
 

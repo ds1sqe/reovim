@@ -8,6 +8,86 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Refactored
 
+- **File Splitting Epic Phase 1-3** ([Epic #304](https://github.com/ds1sqe/reovim/issues/304))
+  - **Phase 1 - Low-Risk Files**:
+    - Split `lib/protocol/src/v1/input.rs` (1,348 lines) into 6 focused modules (#301):
+      - `key.rs` - `Modifiers`, `KeyCode`, `KeyEvent` types
+      - `mouse.rs` - `ClickEvent`, `ScrollEvent` types
+      - `terminal.rs` - `ResizeEvent`, `FocusEvent`, `PasteEvent` types
+      - `session.rs` - `AttachEvent`, `DetachEvent` types
+      - `health.rs` - `PingEvent`, `PongEvent` types
+      - `mod.rs` - `Input` enum and re-exports
+    - Split `lib/kernel/src/core/option.rs` (1,487 lines) into 6 focused modules (#300):
+      - `value.rs` - `OptionValue` type-safe values
+      - `scope.rs` - `OptionScope`, `OptionScopeId` types
+      - `constraint.rs` - `OptionConstraint`, `ConstraintError` types
+      - `error.rs` - `OptionError`, `SetResult` types
+      - `spec.rs` - `OptionSpec` builder
+      - `mod.rs` - `OptionRegistry` and re-exports
+    - Split `lib/kernel/src/core/motion.rs` (1,178 lines) into 3 modules (#303):
+      - `types.rs` - `Motion` enum
+      - `engine.rs` - `MotionEngine` calculation logic
+      - `mod.rs` - Re-exports
+  - **Phase 2 - Mid-Complexity Files**:
+    - Split `lib/kernel/src/api/module.rs` (1,923 lines) into 7 focused modules (#297):
+      - `id.rs` - `ModuleId` identifier type
+      - `error.rs` - `ModuleError`, `ProbeResult` types
+      - `flags.rs` - `RegistrationFlags` capability flags
+      - `state.rs` - `ModuleState`, `ModuleInfo` types
+      - `probe.rs` - `ModuleProbe` FFI-safe metadata
+      - `registration.rs` - `CommandRegistration`, `KeybindingRegistration`, `EventHandlerRegistration`
+      - `mod.rs` - `Module` trait and re-exports
+    - Split `lib/kernel/src/ipc/event_bus.rs` (1,297 lines) into 3 focused modules (#302):
+      - `handler.rs` - Handler types (`HandlerFn`, `HandlerType`, `RegisteredHandler`)
+      - `sender.rs` - `EventSender` cloneable sender handle
+      - `mod.rs` - `EventBus` core and re-exports
+  - **Phase 3 - High-Complexity Runner Files**:
+    - Split `runner/src/server/app.rs` (2,312 lines) into 6 focused modules (#296):
+      - `char_ops.rs` - `FindType`, `PendingCharOp`, `CharWaitState`, `LastFind`
+      - `search.rs` - `SearchDirection`, `SearchState`
+      - `repeat.rs` - `PendingEditBatch`, `RepeatState`
+      - `visual.rs` - `LastVisualSelection`
+      - `undotree.rs` - `UndotreeRenderLine`, `DiffPreviewLine`, `UndotreeState`
+      - `mod.rs` - `AppState` and re-exports
+    - Split `runner/src/server/event_loop.rs` (1,842 lines) into 7 focused modules (#298):
+      - `error.rs` - `EventLoopError`
+      - `search_handler.rs` - Search execution methods
+      - `char_handler.rs` - Character operation methods
+      - `window_handler.rs` - Window action handling
+      - `undotree_handler.rs` - Undotree panel methods
+      - `visual_handler.rs` - Visual selection helpers
+      - `mod.rs` - `EventLoop` struct, core dispatch, tests
+  - **Phase 4 - Module & Driver Files**:
+    - Split `modules/editor/src/visual.rs` (1,527 lines) into 5 focused modules (#299):
+      - `entry.rs` - `EnterVisualMode`, `EnterVisualLineMode`, `EnterVisualBlockMode`
+      - `exit.rs` - `ExitVisualMode`
+      - `manipulation.rs` - `SwapAnchor`, `ToggleVisualChar`, `ToggleVisualLine`, `ToggleVisualBlock`, `ReselectLast`
+      - `operators.rs` - `DeleteSelection`, `YankSelection`, `ChangeSelection`, `IndentSelection`, `DedentSelection`
+      - `mod.rs` - Re-exports and helper functions
+    - Split `lib/drivers/command/src/result.rs` (872 lines) into 6 focused modules (#295):
+      - `search.rs` - `SearchDirection`, `SearchAction`
+      - `undo.rs` - `UndoAction`, `UndotreeAction`
+      - `window.rs` - `WindowAction`
+      - `mode.rs` - `ModeAction`
+      - `edit.rs` - `EditAction`
+      - `mod.rs` - `CommandResult` enum and re-exports
+  - **Phase 5 - Large Editor Command Module**:
+    - Split `modules/editor/src/command.rs` (3,399 lines) into 11 focused modules:
+      - `cursor.rs` (288 lines) - `CursorUp`, `CursorDown`, `CursorLeft`, `CursorRight`
+      - `display_line.rs` (260 lines) - `CursorDisplayDown`, `CursorDisplayUp`
+      - `mode.rs` (143 lines) - `EnterInsertMode`, `EnterInsertModeAppend`, `ExitToNormal`, `EnterWindowMode`
+      - `insert_edit.rs` (101 lines) - `InsertNewline`, `InsertTab`
+      - `mode_entry.rs` (181 lines) - `EnterInsertFirstNonBlank`, `EnterInsertEndOfLine`, `OpenLineBelow`, `OpenLineAbove`
+      - `undo.rs` (85 lines) - `UndoCommand`, `RedoCommand`
+      - `delete.rs` (490 lines) - `DeleteChar`, `DeleteCharBefore`, `DeleteLine`, `DeleteToEndOfLine`, `ChangeLine`, `ChangeToEndOfLine`
+      - `replace.rs` (174 lines) - `ReplaceCharStart`, `RepeatDot`, `JoinLines`
+      - `file.rs` (97 lines) - `WriteBufferCommand`
+      - `yank.rs` (71 lines) - `YankLine`
+      - `paste.rs` (214 lines) - `PasteAfter`, `PasteBefore`
+      - `mod.rs` (1,439 lines) - Re-exports, helper functions, and comprehensive tests
+  - External APIs unchanged - all types re-exported from module roots
+  - All tests passing with zero regressions
+
 - **Remove Hardcoded Policy from Runner** ([Epic #284](https://github.com/ds1sqe/reovim/issues/284))
   - **Event-Driven Mode Transitions**: Runner now subscribes to `ModeChanged` events instead of predicting mode changes from command names
   - **Removed hardcoded command mappings**:

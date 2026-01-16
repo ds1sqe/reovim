@@ -1,121 +1,14 @@
-//! Motion calculations for cursor movement.
-//!
-//! This module provides pure motion calculations without any side effects.
-//! The `MotionEngine` calculates target positions given a buffer, cursor, and motion.
-//!
-//! # Design Philosophy
-//!
-//! This follows the Linux kernel "mechanism, not policy" principle:
-//! - The kernel provides *how* to calculate motions (mechanisms)
-//! - Modules decide *what* keys trigger which motions (policies)
+//! Motion calculation engine.
 
-use crate::mm::{Buffer, Cursor, Position};
+use crate::{
+    core::direction::{Direction, LinePosition, WordBoundary},
+    mm::{Buffer, Cursor, Position},
+};
 
-use super::direction::{Direction, LinePosition, WordBoundary};
+use super::types::Motion;
 
 /// Supported bracket pairs for % motion.
 const BRACKET_PAIRS: [(char, char); 3] = [('(', ')'), ('[', ']'), ('{', '}')];
-
-/// Motion types for cursor movement.
-///
-/// Each variant represents a different type of cursor motion that vim supports.
-/// Motions can be used with operators (d, y, c) or on their own for navigation.
-///
-/// # Example
-///
-/// ```
-/// use reovim_kernel::api::v1::*;
-///
-/// // Character motion (h, l)
-/// let left = Motion::Char(Direction::Backward);
-/// let right = Motion::Char(Direction::Forward);
-///
-/// // Word motion (w, b, e)
-/// let word_forward = Motion::Word {
-///     direction: Direction::Forward,
-///     boundary: WordBoundary::Word,
-///     end: false,
-/// };
-/// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Motion {
-    /// Character motion (h, l)
-    Char(Direction),
-
-    /// Line motion (j, k)
-    Line(Direction),
-
-    /// Word motion (w, b, e, ge, W, B, E, gE)
-    Word {
-        /// Direction of movement
-        direction: Direction,
-        /// Word boundary type (word vs WORD)
-        boundary: WordBoundary,
-        /// If true, move to end of word (e/E/ge/gE), else to start (w/W/b/B)
-        end: bool,
-    },
-
-    /// Line position (0, ^, $, g_)
-    LinePosition(LinePosition),
-
-    /// Paragraph motion ({, })
-    Paragraph(Direction),
-
-    /// Find character on line (f, F, t, T)
-    FindChar {
-        /// Character to find
-        char: char,
-        /// Direction to search
-        direction: Direction,
-        /// If true, stop before the character (t/T), else on it (f/F)
-        till: bool,
-    },
-
-    /// Jump to line (G, gg)
-    ///
-    /// - `None` - jump to last line (G) or first line (gg)
-    /// - `Some(n)` - jump to line n (1-indexed in vim, 0-indexed internally)
-    JumpLine(Option<usize>),
-
-    /// Match bracket (%)
-    MatchBracket,
-}
-
-impl Motion {
-    /// Check if this motion is linewise.
-    ///
-    /// Linewise motions operate on whole lines rather than character ranges.
-    /// This affects how operators (d, y, c) interpret the motion.
-    ///
-    /// # Example
-    ///
-    /// - `dj` deletes current line and next line (linewise)
-    /// - `dw` deletes to start of next word (characterwise)
-    #[must_use]
-    pub const fn is_linewise(&self) -> bool {
-        matches!(self, Self::Line(_) | Self::JumpLine(_) | Self::Paragraph(_))
-    }
-
-    /// Check if this motion is inclusive.
-    ///
-    /// Inclusive motions include the character at the target position.
-    /// This affects operators like delete and yank.
-    ///
-    /// # Example
-    ///
-    /// - `d$` deletes to end of line including the last character (inclusive)
-    /// - `dw` deletes to start of next word excluding the first character (exclusive)
-    #[must_use]
-    pub const fn is_inclusive(&self) -> bool {
-        matches!(
-            self,
-            Self::LinePosition(LinePosition::End | LinePosition::LastNonBlank)
-                | Self::Word { end: true, .. }
-                | Self::MatchBracket
-                | Self::FindChar { till: false, .. }
-        )
-    }
-}
 
 /// Motion calculation engine.
 ///
@@ -916,48 +809,6 @@ mod tests {
 
     fn make_cursor(line: usize, column: usize) -> Cursor {
         Cursor::new(Position::new(line, column))
-    }
-
-    #[test]
-    fn test_motion_is_linewise() {
-        assert!(Motion::Line(Direction::Forward).is_linewise());
-        assert!(Motion::Line(Direction::Backward).is_linewise());
-        assert!(Motion::JumpLine(None).is_linewise());
-        assert!(Motion::Paragraph(Direction::Forward).is_linewise());
-
-        assert!(!Motion::Char(Direction::Forward).is_linewise());
-        assert!(
-            !Motion::Word {
-                direction: Direction::Forward,
-                boundary: WordBoundary::Word,
-                end: false
-            }
-            .is_linewise()
-        );
-    }
-
-    #[test]
-    fn test_motion_is_inclusive() {
-        assert!(Motion::LinePosition(LinePosition::End).is_inclusive());
-        assert!(
-            Motion::Word {
-                direction: Direction::Forward,
-                boundary: WordBoundary::Word,
-                end: true
-            }
-            .is_inclusive()
-        );
-        assert!(Motion::MatchBracket.is_inclusive());
-
-        assert!(
-            !Motion::Word {
-                direction: Direction::Forward,
-                boundary: WordBoundary::Word,
-                end: false
-            }
-            .is_inclusive()
-        );
-        assert!(!Motion::Char(Direction::Forward).is_inclusive());
     }
 
     #[test]

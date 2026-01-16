@@ -10,287 +10,26 @@
 //!
 //! Future refactoring may extract these to dedicated modules.
 
-use {
-    crate::char_wait::{CharWaitContext, FindType},
-    reovim_driver_display::NavigateDirection,
-    reovim_kernel::api::v1::{BufferId, Edit, Position},
+mod block_insert;
+mod edit;
+mod mode;
+mod search;
+mod undo;
+mod window;
+
+pub use {
+    block_insert::BlockInsertAction,
+    edit::EditAction,
+    mode::ModeAction,
+    search::{SearchAction, SearchDirection},
+    undo::{UndoAction, UndotreeAction},
+    window::WindowAction,
 };
 
-// ============================================================================
-// Search Types (Policy-Adjacent)
-// ============================================================================
-
-/// Search direction for / and ? commands.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum SearchDirection {
-    /// Search forward from cursor (/)
-    #[default]
-    Forward,
-    /// Search backward from cursor (?)
-    Backward,
-}
-
-/// Search action intent returned by commands.
-///
-/// Commands return this to request search operations. The runner handles
-/// the actual search execution, input mode management, and pattern storage.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SearchAction {
-    /// Enter search input mode (/ or ?)
-    EnterSearchMode { direction: SearchDirection },
-    /// Go to next match in the same direction (n)
-    Next,
-    /// Go to previous match / reverse direction (N)
-    Previous,
-    /// Search word under cursor (* or #)
-    WordUnderCursor { direction: SearchDirection },
-    /// Clear search highlighting (:noh)
-    ClearHighlight,
-}
-
-// ============================================================================
-// Undo/Redo Action Types
-// ============================================================================
-
-/// Undo/redo action intent returned by commands.
-///
-/// Commands return this to request undo/redo operations. The runner
-/// handles the actual undo tree manipulation, maintaining separation
-/// of concerns between command (policy) and runner (mechanism).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UndoAction {
-    /// Request to undo the specified number of changes.
-    Undo { count: usize },
-    /// Request to redo the specified number of changes.
-    Redo { count: usize },
-}
-
-/// Undotree visualization action intent returned by commands.
-///
-/// Commands return this to request undotree operations. The runner
-/// handles the actual panel creation, navigation, and tree traversal,
-/// maintaining separation of concerns between command (policy) and
-/// runner (mechanism).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UndotreeAction {
-    /// Toggle undotree panel for the specified buffer.
-    Toggle { buffer_id: usize },
-    /// Close undotree panel.
-    Close,
-    /// Navigate to a specific node in the undotree.
-    GotoNode { node_index: usize },
-    /// Go to the currently selected node.
-    GotoSelected,
-    /// Move selection up (toward parent).
-    MoveUp,
-    /// Move selection down (toward child).
-    MoveDown,
-    /// Preview diff of the currently selected node.
-    PreviewDiff,
-    /// Clear/dismiss the diff preview.
-    ClearPreview,
-}
-
-// ============================================================================
-// Window Action Type
-// ============================================================================
-
-/// Window management action intent returned by commands.
-///
-/// Commands return this to request window operations. The runner handles
-/// the actual window creation, layout updates, and focus changes,
-/// maintaining separation of concerns between command (policy) and
-/// runner (mechanism).
-///
-/// # Example
-///
-/// ```ignore
-/// fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-///     CommandResult::WindowAction(WindowAction::SplitVertical)
-/// }
-/// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WindowAction {
-    /// Split current window horizontally (top/bottom).
-    SplitHorizontal,
-    /// Split current window vertically (left/right).
-    SplitVertical,
-    /// Close the current window.
-    CloseWindow,
-    /// Close all windows except current.
-    CloseOthers,
-    /// Focus window in the specified direction.
-    FocusDirection(NavigateDirection),
-    /// Cycle focus to the next window.
-    CycleForward,
-    /// Cycle focus to the previous window.
-    CycleBackward,
-    /// Increase window height.
-    ResizeHeightIncrease,
-    /// Decrease window height.
-    ResizeHeightDecrease,
-    /// Increase window width.
-    ResizeWidthIncrease,
-    /// Decrease window width.
-    ResizeWidthDecrease,
-    /// Equalize all window sizes.
-    ResizeEqual,
-}
-
-// ============================================================================
-// Mode Action Type
-// ============================================================================
-
-/// Mode change action intent returned by commands.
-///
-/// Commands return this to request mode changes. The runner handles the
-/// actual mode stack manipulation, maintaining separation of concerns.
-///
-/// # Example
-///
-/// ```ignore
-/// fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-///     // Enter window management mode
-///     CommandResult::ModeAction(ModeAction::Push("window".to_string()))
-/// }
-/// ```
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ModeAction {
-    /// Push a new mode onto the stack (e.g., entering window mode).
-    Push(String),
-    /// Pop the current mode from the stack (return to previous mode).
-    Pop,
-    /// Replace the current mode with a new one.
-    Set(String),
-}
-
-// ============================================================================
-// Block Insert Action Type
-// ============================================================================
-
-/// Block insert action intent returned by visual-block `I`/`A` commands.
-///
-/// Commands return this to initiate block insert mode, where text typed in
-/// insert mode is applied to all lines in the block selection upon exit.
-///
-/// # Example
-///
-/// ```ignore
-/// fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-///     // User pressed `I` in visual-block mode
-///     CommandResult::BlockInsertAction(BlockInsertAction::InsertStart {
-///         start_line: 2,
-///         end_line: 5,
-///         column: 10,
-///     })
-/// }
-/// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BlockInsertAction {
-    /// Insert at the start column of each line in the block (`I` in visual-block).
-    ///
-    /// When insert mode exits, accumulated text is inserted at `column` on each
-    /// line from `start_line` to `end_line` inclusive.
-    InsertStart {
-        /// First line of the block (0-indexed).
-        start_line: usize,
-        /// Last line of the block (0-indexed, inclusive).
-        end_line: usize,
-        /// Column where text will be inserted (left edge of block).
-        column: usize,
-    },
-    /// Insert at the end column of each line in the block (`A` in visual-block).
-    ///
-    /// When insert mode exits, accumulated text is inserted after `column` on each
-    /// line from `start_line` to `end_line` inclusive.
-    InsertEnd {
-        /// First line of the block (0-indexed).
-        start_line: usize,
-        /// Last line of the block (0-indexed, inclusive).
-        end_line: usize,
-        /// Column after which text will be inserted (right edge of block + 1).
-        column: usize,
-    },
-}
-
-// ============================================================================
-// Edit Action Type
-// ============================================================================
-
-/// Edit action intent returned by commands that modify buffer content.
-///
-/// Commands return this to report edits they made. The runner records
-/// these edits in the undo registry for later undo/redo operations.
-///
-/// # Design Philosophy
-///
-/// This follows the callback pattern where commands declare WHAT they did
-/// (the edit), and the runner decides HOW to handle it (record in undo tree).
-///
-/// # Example
-///
-/// ```ignore
-/// fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-///     let buffer_id = args.buffer_id().unwrap();
-///     let buffer = ctx.buffers.get(buffer_id).unwrap();
-///
-///     let cursor_before = buffer.position();
-///     let edit = buffer.insert("hello");
-///     let cursor_after = buffer.position();
-///
-///     CommandResult::EditAction(EditAction::new(
-///         buffer_id, vec![edit], cursor_before, cursor_after
-///     ))
-/// }
-/// ```
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EditAction {
-    /// The buffer that was edited.
-    pub buffer_id: BufferId,
-    /// The edits that were made (in order applied).
-    pub edits: Vec<Edit>,
-    /// Cursor position before the edits were applied.
-    pub cursor_before: Position,
-    /// Cursor position after the edits were applied.
-    pub cursor_after: Position,
-}
-
-impl EditAction {
-    /// Create a new edit action.
-    #[must_use]
-    #[allow(clippy::missing_const_for_fn)] // Vec cannot be const-constructed
-    pub fn new(
-        buffer_id: BufferId,
-        edits: Vec<Edit>,
-        cursor_before: Position,
-        cursor_after: Position,
-    ) -> Self {
-        Self {
-            buffer_id,
-            edits,
-            cursor_before,
-            cursor_after,
-        }
-    }
-
-    /// Create an edit action from a single edit.
-    #[must_use]
-    pub fn single(
-        buffer_id: BufferId,
-        edit: Edit,
-        cursor_before: Position,
-        cursor_after: Position,
-    ) -> Self {
-        Self::new(buffer_id, vec![edit], cursor_before, cursor_after)
-    }
-
-    /// Check if this action has no edits (no-op).
-    #[must_use]
-    #[allow(clippy::missing_const_for_fn)] // Vec::is_empty is not const stable
-    pub fn is_empty(&self) -> bool {
-        self.edits.is_empty()
-    }
-}
+use {
+    crate::char_wait::{CharWaitContext, FindType},
+    reovim_kernel::api::v1::{BufferId, Edit, Position},
+};
 
 // ============================================================================
 // CommandResult
@@ -378,11 +117,12 @@ pub enum CommandResult {
     /// the last visual selection. The runner handles the actual restoration
     /// by looking up the saved selection and entering the appropriate visual mode.
     ReselectVisual,
-    /// Command requests block insert mode (`I`/`A` in visual-block).
+    /// Command requests a visual-block insert operation.
     ///
-    /// Visual-block `I`/`A` commands return this to initiate block insert mode.
-    /// The runner stores the block bounds and enters insert mode. When insert
-    /// mode exits, the accumulated text is applied to all lines in the block.
+    /// Visual-block commands (I, A in visual-block mode) return this to
+    /// indicate a block insert operation should be performed. The runner
+    /// handles entering insert mode and replicating the inserted text
+    /// across all lines of the block when insert mode exits.
     BlockInsertAction(BlockInsertAction),
 }
 
@@ -942,15 +682,12 @@ mod tests {
             end_line: 5,
             column: 10,
         };
+        let result = CommandResult::BlockInsertAction(action);
 
-        assert_eq!(
-            action,
-            BlockInsertAction::InsertStart {
-                start_line: 2,
-                end_line: 5,
-                column: 10,
-            }
-        );
+        assert!(result.is_block_insert_action());
+        assert!(!result.is_success());
+        assert!(!result.is_error());
+        assert!(!result.is_mode_action());
     }
 
     #[test]
@@ -960,48 +697,42 @@ mod tests {
             end_line: 3,
             column: 15,
         };
-
-        assert_eq!(
-            action,
-            BlockInsertAction::InsertEnd {
-                start_line: 0,
-                end_line: 3,
-                column: 15,
-            }
-        );
-    }
-
-    #[test]
-    fn test_block_insert_action_inequality() {
-        let start = BlockInsertAction::InsertStart {
-            start_line: 0,
-            end_line: 2,
-            column: 5,
-        };
-        let end = BlockInsertAction::InsertEnd {
-            start_line: 0,
-            end_line: 2,
-            column: 5,
-        };
-
-        assert_ne!(start, end);
-    }
-
-    #[test]
-    fn test_command_result_block_insert_action() {
-        let action = BlockInsertAction::InsertStart {
-            start_line: 1,
-            end_line: 4,
-            column: 8,
-        };
         let result = CommandResult::BlockInsertAction(action);
 
         assert!(result.is_block_insert_action());
         assert!(!result.is_success());
         assert!(!result.is_error());
-        assert!(!result.is_quit());
-        assert!(!result.is_mode_action());
-        assert!(!result.is_window_action());
+    }
+
+    #[test]
+    fn test_block_insert_action_equality() {
+        let start1 = BlockInsertAction::InsertStart {
+            start_line: 2,
+            end_line: 5,
+            column: 10,
+        };
+        let start2 = BlockInsertAction::InsertStart {
+            start_line: 2,
+            end_line: 5,
+            column: 10,
+        };
+        let start3 = BlockInsertAction::InsertStart {
+            start_line: 0,
+            end_line: 5,
+            column: 10,
+        };
+        let end1 = BlockInsertAction::InsertEnd {
+            start_line: 2,
+            end_line: 5,
+            column: 10,
+        };
+
+        // Same values should be equal
+        assert_eq!(start1, start2);
+
+        // Different values should not be equal
+        assert_ne!(start1, start3);
+        assert_ne!(start1, end1);
     }
 
     #[test]
@@ -1009,19 +740,22 @@ mod tests {
         let variants = [
             BlockInsertAction::InsertStart {
                 start_line: 0,
-                end_line: 0,
-                column: 0,
+                end_line: 10,
+                column: 5,
             },
             BlockInsertAction::InsertEnd {
                 start_line: 0,
-                end_line: 0,
-                column: 0,
+                end_line: 10,
+                column: 20,
             },
         ];
 
+        // Each variant wrapped in CommandResult should be a block insert action
         for action in variants {
             let result = CommandResult::BlockInsertAction(action);
             assert!(result.is_block_insert_action());
+            assert!(!result.is_mode_action());
+            assert!(!result.is_window_action());
         }
     }
 }
