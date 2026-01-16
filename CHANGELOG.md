@@ -8,7 +8,7 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Refactored
 
-- **File Splitting Epic Phase 1-2** ([Epic #304](https://github.com/ds1sqe/reovim/issues/304))
+- **File Splitting Epic Phase 1-3** ([Epic #304](https://github.com/ds1sqe/reovim/issues/304))
   - **Phase 1 - Low-Risk Files**:
     - Split `lib/protocol/src/v1/input.rs` (1,348 lines) into 6 focused modules (#301):
       - `key.rs` - `Modifiers`, `KeyCode`, `KeyEvent` types
@@ -41,6 +41,22 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
       - `handler.rs` - Handler types (`HandlerFn`, `HandlerType`, `RegisteredHandler`)
       - `sender.rs` - `EventSender` cloneable sender handle
       - `mod.rs` - `EventBus` core and re-exports
+  - **Phase 3 - High-Complexity Runner Files**:
+    - Split `runner/src/server/app.rs` (2,312 lines) into 6 focused modules (#296):
+      - `char_ops.rs` - `FindType`, `PendingCharOp`, `CharWaitState`, `LastFind`
+      - `search.rs` - `SearchDirection`, `SearchState`
+      - `repeat.rs` - `PendingEditBatch`, `RepeatState`
+      - `visual.rs` - `LastVisualSelection`
+      - `undotree.rs` - `UndotreeRenderLine`, `DiffPreviewLine`, `UndotreeState`
+      - `mod.rs` - `AppState` and re-exports
+    - Split `runner/src/server/event_loop.rs` (1,842 lines) into 7 focused modules (#298):
+      - `error.rs` - `EventLoopError`
+      - `search_handler.rs` - Search execution methods
+      - `char_handler.rs` - Character operation methods
+      - `window_handler.rs` - Window action handling
+      - `undotree_handler.rs` - Undotree panel methods
+      - `visual_handler.rs` - Visual selection helpers
+      - `mod.rs` - `EventLoop` struct, core dispatch, tests
   - External APIs unchanged - all types re-exported from module roots
   - All tests passing with zero regressions
 
