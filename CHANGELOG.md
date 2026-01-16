@@ -6,6 +6,16 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ## [Unreleased] - v0.9.0-dev
 
+### Changed
+
+- **Agent Infrastructure Optimization** (Issue #261)
+  - Review agents (mission-control, telemetry, flight-director) now use Haiku model
+  - New `oracle` agent (Opus) for planning and architecture design
+  - New `voyager` agent (Sonnet) for codebase exploration (replaces deep-explorer)
+  - A+ skip rule: agents scoring A+ are skipped in subsequent rounds
+  - New `/countdown` skill for pre-implementation validation
+  - Updated `/final-approach` skill with Haiku + A+ skip support
+
 ### Changed (BREAKING)
 
 - **Phase 4.6: Module System Limitations** (Issue #197) - API version 0.1.0 → 0.2.0

@@ -1,7 +1,7 @@
 ---
 name: mission-control
 description: "Mission Control plans the mission. Expert in plans, specs, and documentation.\n\nModes:\n- countdown: T-minus checks before launch\n- orbit: In-flight mission monitoring\n- reentry: Final RFL review (detailed audit)\n- ground-ops: General ground support"
-model: sonnet
+model: haiku
 color: blue
 ---
 

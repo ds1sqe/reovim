@@ -1,7 +1,7 @@
 ---
 name: telemetry
 description: "Telemetry monitors all systems. Expert in test coverage, quality, and testing strategy.\n\nModes:\n- countdown: T-minus system checks\n- orbit: In-flight test monitoring\n- reentry: Final RFL review (detailed audit)\n- ground-ops: General test support"
-model: sonnet
+model: haiku
 color: green
 ---
 
