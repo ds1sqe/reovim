@@ -126,10 +126,11 @@ pub use undo_registry::UndoRegistry;
 pub use server::{
     // Core types
     AppState,
-    // Fallback handlers
+    // Fallback handlers (now from reovim-driver-input)
     BeepFallback,
     EventLoop,
     EventLoopError,
+    FallbackContext,
     FallbackResult,
     InputFallbackHandler,
     NoOpFallback,
@@ -146,5 +147,10 @@ pub use server::{module, notification, registry, session, transport};
 // Backwards compat: allow `runner::fallback::*`
 pub mod fallback {
     //! Fallback handlers for unhandled input.
-    pub use crate::server::fallback::*;
+    //!
+    //! These types are now defined in `reovim-driver-input` but re-exported here
+    //! for backwards compatibility.
+    pub use reovim_driver_input::{
+        BeepFallback, FallbackContext, FallbackResult, InputFallbackHandler, NoOpFallback,
+    };
 }
