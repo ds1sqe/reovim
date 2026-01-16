@@ -14,8 +14,8 @@
 
 use {
     reovim_driver_command::{CommandContext, CommandResult, UndoAction},
-    reovim_driver_input::{FallbackResult, InputFallbackHandler, KeyEvent},
-    reovim_kernel::api::v1::{Edit, UndoResult},
+    reovim_driver_input::{FallbackResult, InputFallbackHandler, KeyCode, KeyEvent},
+    reovim_kernel::api::v1::{Edit, Motion, MotionEngine, UndoResult},
 };
 
 use super::{
@@ -179,12 +179,19 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
     /// Handle a single key event.
     ///
     /// This is the core dispatch logic:
+    /// 0. Check for char-wait state (find-char commands)
     /// 1. Add key to pending sequence
     /// 2. Look up in keymap
     /// 3. If found: execute command
     /// 4. If prefix: wait for more keys
     /// 5. If not found: delegate to fallback handler
     fn handle_key(&mut self, key: KeyEvent) {
+        // Check for char-wait state (f/F/t/T waiting for character)
+        if self.app.char_wait.is_some() {
+            self.handle_char_wait(key);
+            return;
+        }
+
         // Add to pending sequence
         self.app.pending_keys.push(key);
 
@@ -234,6 +241,66 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
         }
     }
 
+    /// Handle a key event when in char-wait state (f/F/t/T pending).
+    ///
+    /// The key provides the character argument for the find-char motion.
+    /// Escape cancels the wait without executing any motion.
+    fn handle_char_wait(&mut self, key: KeyEvent) {
+        use super::app::LastFind;
+
+        // Take the char-wait state
+        let char_wait = self.app.char_wait.take().expect("char_wait should be Some");
+
+        // Handle escape - cancel char-wait
+        if key.code == KeyCode::Escape {
+            // Clear any pending keys and return without motion
+            self.app.clear_pending_keys();
+            return;
+        }
+
+        // Extract character from key event
+        let KeyCode::Char(c) = key.code else {
+            // Non-character keys cancel char-wait (like escape)
+            self.app.clear_pending_keys();
+            return;
+        };
+
+        // Build and execute the find-char motion
+        let motion = Motion::FindChar {
+            char: c,
+            direction: char_wait.find_type.direction(),
+            till: char_wait.find_type.is_till(),
+        };
+
+        // Get active buffer for motion calculation
+        let Some(buffer_id) = self.app.active_buffer else {
+            self.set_error("No active buffer");
+            return;
+        };
+
+        let Some(buffer_arc) = self.app.kernel.buffers.get(buffer_id) else {
+            self.set_error("Buffer not found");
+            return;
+        };
+
+        // Calculate motion target
+        let buffer = buffer_arc.read();
+        let target = MotionEngine::calculate(&buffer, buffer.cursor(), motion, 1);
+        drop(buffer);
+
+        // Apply motion if target found
+        if let Some(pos) = target {
+            buffer_arc.write().set_position(pos);
+
+            // Update last_find for ; and , repeat
+            self.app.last_find = Some(LastFind::new(c, char_wait.find_type));
+        }
+        // Note: If target is None (char not found), cursor doesn't move,
+        // and last_find is NOT updated (per Vim behavior)
+
+        self.app.clear_pending_keys();
+    }
+
     /// Handle command execution result.
     fn handle_command_result(&mut self, result: CommandResult) {
         match result {
@@ -269,6 +336,21 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
                 // Current state: Types and rendering are complete, panel
                 // management deferred to runner enhancement (#249).
                 tracing::info!(?action, "Undotree action requested");
+                self.last_error = None;
+            }
+            CommandResult::WaitingForChar(ctx) => {
+                // Find-char command (f/F/t/T) needs a character argument.
+                // Set char-wait state so next key press completes the motion.
+                use super::app::{CharWaitState, FindType};
+
+                let find_type = match ctx.find_type {
+                    reovim_driver_command::FindType::FindForward => FindType::FindForward,
+                    reovim_driver_command::FindType::FindBackward => FindType::FindBackward,
+                    reovim_driver_command::FindType::TillForward => FindType::TillForward,
+                    reovim_driver_command::FindType::TillBackward => FindType::TillBackward,
+                };
+
+                self.app.char_wait = Some(CharWaitState::new(find_type, ctx.start_position));
                 self.last_error = None;
             }
         }

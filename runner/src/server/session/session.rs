@@ -251,7 +251,32 @@ impl Session {
                 // TODO: handle undo tree action
                 None
             }
+            CommandResult::WaitingForChar(ctx) => {
+                // Find-char command (f/F/t/T) needs a character argument.
+                // Set char-wait state so next key press completes the motion.
+                // This is handled by the message loop which checks char_wait before keymap lookup.
+                self.set_char_wait(ctx).await;
+                None
+            }
         }
+    }
+
+    /// Set char-wait state for find-char commands.
+    ///
+    /// Called when a find-char command (f/F/t/T) returns `WaitingForChar`.
+    /// The next key press will provide the character argument.
+    pub async fn set_char_wait(&self, ctx: reovim_driver_command::CharWaitContext) {
+        use crate::server::app::{CharWaitState, FindType};
+
+        let find_type = match ctx.find_type {
+            reovim_driver_command::FindType::FindForward => FindType::FindForward,
+            reovim_driver_command::FindType::FindBackward => FindType::FindBackward,
+            reovim_driver_command::FindType::TillForward => FindType::TillForward,
+            reovim_driver_command::FindType::TillBackward => FindType::TillBackward,
+        };
+
+        let mut state = self.state.write().await;
+        state.app.char_wait = Some(CharWaitState::new(find_type, ctx.start_position));
     }
 
     /// Record an edit action in the undo registry.

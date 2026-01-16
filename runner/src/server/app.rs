@@ -8,9 +8,115 @@ use {
     crate::UndoRegistry,
     reovim_arch::sync::RwLock,
     reovim_driver_input::{FallbackContext, KeySequence},
-    reovim_kernel::api::v1::{Buffer, BufferId, Edit, KernelContext, ModeId, ModeStack, Position},
+    reovim_kernel::api::v1::{
+        Buffer, BufferId, Direction, Edit, KernelContext, ModeId, ModeStack, Motion, Position,
+    },
     std::sync::Arc,
 };
+
+// ============================================================================
+// Char-Wait Infrastructure
+// ============================================================================
+
+/// Type of find-char operation.
+///
+/// Represents the four find-char motions in Vim:
+/// - `f` - find forward, cursor on char
+/// - `F` - find backward, cursor on char
+/// - `t` - till forward, cursor before char
+/// - `T` - till backward, cursor after char
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FindType {
+    /// Find character forward, cursor on char (f)
+    FindForward,
+    /// Find character backward, cursor on char (F)
+    FindBackward,
+    /// Till character forward, cursor before char (t)
+    TillForward,
+    /// Till character backward, cursor after char (T)
+    TillBackward,
+}
+
+impl FindType {
+    /// Convert to kernel Direction.
+    #[must_use]
+    pub const fn direction(self) -> Direction {
+        match self {
+            Self::FindForward | Self::TillForward => Direction::Forward,
+            Self::FindBackward | Self::TillBackward => Direction::Backward,
+        }
+    }
+
+    /// Whether this is a "till" motion (stops before/after the character).
+    #[must_use]
+    pub const fn is_till(self) -> bool {
+        matches!(self, Self::TillForward | Self::TillBackward)
+    }
+}
+
+/// State for commands waiting for a character argument.
+///
+/// When a find-char command (f/F/t/T) is executed, it returns `WaitingForChar`
+/// and this state is set. The next key press provides the character argument
+/// to complete the motion.
+#[derive(Debug, Clone)]
+pub struct CharWaitState {
+    /// The type of find operation.
+    pub find_type: FindType,
+    /// Starting position for the motion (for operator range calculation).
+    pub start_position: Position,
+}
+
+impl CharWaitState {
+    /// Create a new char-wait state.
+    #[must_use]
+    pub const fn new(find_type: FindType, start_position: Position) -> Self {
+        Self {
+            find_type,
+            start_position,
+        }
+    }
+}
+
+/// Record of the last find-char operation for `;` and `,` repeat.
+///
+/// Stores the character and find type so that `;` can repeat the same
+/// find and `,` can repeat in the opposite direction.
+#[derive(Debug, Clone, Copy)]
+pub struct LastFind {
+    /// The character that was searched for.
+    pub char: char,
+    /// The type of find operation.
+    pub find_type: FindType,
+}
+
+impl LastFind {
+    /// Create a new last-find record.
+    #[must_use]
+    pub const fn new(char: char, find_type: FindType) -> Self {
+        Self { char, find_type }
+    }
+
+    /// Create the Motion for repeating in the same direction (`;`).
+    #[must_use]
+    pub const fn repeat_motion(self) -> Motion {
+        Motion::FindChar {
+            char: self.char,
+            direction: self.find_type.direction(),
+            till: self.find_type.is_till(),
+        }
+    }
+
+    /// Create the Motion for repeating in opposite direction (`,`).
+    #[must_use]
+    pub const fn reverse_motion(self) -> Motion {
+        Motion::FindChar {
+            char: self.char,
+            direction: self.find_type.direction().opposite(),
+            till: self.find_type.is_till(),
+        }
+    }
+}
 
 /// Application state combining kernel context with runtime state.
 ///
@@ -77,6 +183,18 @@ pub struct AppState {
     /// Maintains separate undo trees for each buffer, enabling per-buffer
     /// undo/redo operations. Each buffer has its own isolated undo history.
     pub undo_registry: UndoRegistry,
+
+    /// Character wait state for find-char commands (f, F, t, T).
+    ///
+    /// When Some, the next character input will be used as the argument
+    /// to complete a find-char motion rather than being processed as
+    /// a normal key event.
+    pub char_wait: Option<CharWaitState>,
+
+    /// Last find-char operation for `;` and `,` repeat commands.
+    ///
+    /// Updated each time a find-char motion successfully moves the cursor.
+    pub last_find: Option<LastFind>,
 }
 
 impl AppState {
@@ -97,6 +215,8 @@ impl AppState {
             terminal_width: 80,
             terminal_height: 24,
             undo_registry: UndoRegistry::new(),
+            char_wait: None,
+            last_find: None,
         }
     }
 
@@ -258,5 +378,138 @@ mod tests {
         // buffer1 has history, buffer2 does not (isolated)
         assert!(app.undo_registry.has_history(buffer1));
         assert!(!app.undo_registry.has_history(buffer2));
+    }
+
+    // ========================================================================
+    // Char-Wait Infrastructure Tests
+    // ========================================================================
+
+    #[test]
+    fn test_find_type_direction() {
+        assert_eq!(FindType::FindForward.direction(), Direction::Forward);
+        assert_eq!(FindType::FindBackward.direction(), Direction::Backward);
+        assert_eq!(FindType::TillForward.direction(), Direction::Forward);
+        assert_eq!(FindType::TillBackward.direction(), Direction::Backward);
+    }
+
+    #[test]
+    fn test_find_type_is_till() {
+        assert!(!FindType::FindForward.is_till());
+        assert!(!FindType::FindBackward.is_till());
+        assert!(FindType::TillForward.is_till());
+        assert!(FindType::TillBackward.is_till());
+    }
+
+    #[test]
+    fn test_char_wait_state_new() {
+        let state = CharWaitState::new(FindType::FindForward, Position::new(0, 5));
+        assert_eq!(state.find_type, FindType::FindForward);
+        assert_eq!(state.start_position, Position::new(0, 5));
+    }
+
+    #[test]
+    fn test_last_find_new() {
+        let last = LastFind::new('x', FindType::FindForward);
+        assert_eq!(last.char, 'x');
+        assert_eq!(last.find_type, FindType::FindForward);
+    }
+
+    #[test]
+    fn test_last_find_repeat_motion() {
+        let last = LastFind::new('x', FindType::FindForward);
+        let motion = last.repeat_motion();
+
+        // Should create FindChar motion with same direction
+        assert_eq!(
+            motion,
+            Motion::FindChar {
+                char: 'x',
+                direction: Direction::Forward,
+                till: false,
+            }
+        );
+    }
+
+    #[test]
+    fn test_last_find_reverse_motion() {
+        let last = LastFind::new('x', FindType::FindForward);
+        let motion = last.reverse_motion();
+
+        // Should create FindChar motion with opposite direction
+        assert_eq!(
+            motion,
+            Motion::FindChar {
+                char: 'x',
+                direction: Direction::Backward,
+                till: false,
+            }
+        );
+    }
+
+    #[test]
+    fn test_last_find_till_repeat_motion() {
+        let last = LastFind::new('.', FindType::TillForward);
+        let motion = last.repeat_motion();
+
+        assert_eq!(
+            motion,
+            Motion::FindChar {
+                char: '.',
+                direction: Direction::Forward,
+                till: true,
+            }
+        );
+    }
+
+    #[test]
+    fn test_last_find_till_reverse_motion() {
+        let last = LastFind::new('.', FindType::TillBackward);
+        let motion = last.reverse_motion();
+
+        // TillBackward reversed goes Forward
+        assert_eq!(
+            motion,
+            Motion::FindChar {
+                char: '.',
+                direction: Direction::Forward,
+                till: true,
+            }
+        );
+    }
+
+    #[test]
+    fn test_app_state_char_wait_initially_none() {
+        let kernel = KernelContext::default();
+        let app = AppState::new(kernel, test_mode_id());
+
+        assert!(app.char_wait.is_none());
+        assert!(app.last_find.is_none());
+    }
+
+    #[test]
+    fn test_app_state_char_wait_set_and_clear() {
+        let kernel = KernelContext::default();
+        let mut app = AppState::new(kernel, test_mode_id());
+
+        // Set char_wait
+        app.char_wait = Some(CharWaitState::new(FindType::FindForward, Position::new(0, 0)));
+        assert!(app.char_wait.is_some());
+
+        // Clear char_wait
+        app.char_wait = None;
+        assert!(app.char_wait.is_none());
+    }
+
+    #[test]
+    fn test_app_state_last_find_set() {
+        let kernel = KernelContext::default();
+        let mut app = AppState::new(kernel, test_mode_id());
+
+        // Set last_find
+        app.last_find = Some(LastFind::new('a', FindType::TillForward));
+
+        let last = app.last_find.unwrap();
+        assert_eq!(last.char, 'a');
+        assert_eq!(last.find_type, FindType::TillForward);
     }
 }

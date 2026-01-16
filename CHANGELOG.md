@@ -118,6 +118,17 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
   - Count support for `gg` and `G` (e.g., `10G` goes to line 10)
   - 19 unit tests covering all motions and edge cases
 
+- **Phase 7.12a: Char-Wait Infrastructure** (Issue #240a)
+  - Runner infrastructure for find-char commands (`f`, `F`, `t`, `T`, `;`, `,`)
+  - `FindType` enum with `direction()` and `is_till()` methods
+  - `CharWaitState` struct for pending character argument
+  - `LastFind` struct with `repeat_motion()` and `reverse_motion()` for `;`/`,`
+  - `CommandResult::WaitingForChar` variant for two-phase command execution
+  - Event loop checks `char_wait` before keymap lookup
+  - Escape cancels char-wait without motion
+  - 17+ unit tests for all new types
+  - Commands deferred to #240b
+
 - **Phase 7.5-6: Insert Mode & Delete Operations** (Issues #233, #234, #231)
   - **Insert Mode Character Input** (`modules/editor/src/fallback.rs`):
     - `EditorFallbackHandler` now inserts characters in Insert mode

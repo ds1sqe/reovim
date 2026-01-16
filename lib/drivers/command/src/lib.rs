@@ -418,6 +418,65 @@ impl CommandContext {
 }
 
 // ============================================================================
+// Char-Wait Types (for find-char commands)
+// ============================================================================
+
+/// Type of find-char operation.
+///
+/// Represents the four find-char motions in Vim.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FindType {
+    /// Find character forward, cursor on char (f)
+    FindForward,
+    /// Find character backward, cursor on char (F)
+    FindBackward,
+    /// Till character forward, cursor before char (t)
+    TillForward,
+    /// Till character backward, cursor after char (T)
+    TillBackward,
+}
+
+/// Context for a command waiting for character input.
+///
+/// Find-char commands return this to indicate what type of find operation
+/// is pending. The runner uses this to set up char-wait state.
+///
+/// # Example
+///
+/// ```ignore
+/// // Find-char-forward command (f)
+/// fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+///     let pos = ctx.buffers.get(args.buffer_id().unwrap())
+///         .unwrap()
+///         .read()
+///         .position();
+///
+///     CommandResult::WaitingForChar(CharWaitContext {
+///         find_type: FindType::FindForward,
+///         start_position: pos,
+///     })
+/// }
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CharWaitContext {
+    /// The type of find operation.
+    pub find_type: FindType,
+    /// Starting cursor position (for operator range calculation).
+    pub start_position: Position,
+}
+
+impl CharWaitContext {
+    /// Create a new char-wait context.
+    #[must_use]
+    pub const fn new(find_type: FindType, start_position: Position) -> Self {
+        Self {
+            find_type,
+            start_position,
+        }
+    }
+}
+
+// ============================================================================
 // CommandResult
 // ============================================================================
 
@@ -447,6 +506,12 @@ pub enum CommandResult {
     /// The runner records these edits in the undo registry for later
     /// undo/redo operations.
     EditAction(EditAction),
+    /// Command needs a character argument before it can complete.
+    ///
+    /// Find-char commands (f, F, t, T) return this to indicate they need
+    /// the next keypress as a character argument. The runner sets char-wait
+    /// state and waits for the character input.
+    WaitingForChar(CharWaitContext),
 }
 
 /// Undo/redo action intent returned by commands.
@@ -595,6 +660,12 @@ impl CommandResult {
         matches!(self, Self::EditAction(_))
     }
 
+    /// Check if the result is waiting for a character argument.
+    #[must_use]
+    pub const fn is_waiting_for_char(&self) -> bool {
+        matches!(self, Self::WaitingForChar(_))
+    }
+
     /// Create an error result.
     #[must_use]
     pub fn error(msg: impl Into<String>) -> Self {
@@ -621,6 +692,12 @@ impl CommandResult {
         cursor_after: Position,
     ) -> Self {
         Self::EditAction(EditAction::new(buffer_id, edits, cursor_before, cursor_after))
+    }
+
+    /// Create a waiting-for-char result.
+    #[must_use]
+    pub const fn waiting_for_char(find_type: FindType, start_position: Position) -> Self {
+        Self::WaitingForChar(CharWaitContext::new(find_type, start_position))
     }
 }
 
@@ -965,5 +1042,64 @@ mod tests {
 
         assert_eq!(action.edits.len(), 1);
         assert_eq!(action.edits[0], edit);
+    }
+
+    // CharWaitContext tests (Phase 7 - find-char infrastructure)
+
+    #[test]
+    fn test_find_type_variants() {
+        // Verify all variants can be used
+        assert_eq!(FindType::FindForward, FindType::FindForward);
+        assert_eq!(FindType::FindBackward, FindType::FindBackward);
+        assert_eq!(FindType::TillForward, FindType::TillForward);
+        assert_eq!(FindType::TillBackward, FindType::TillBackward);
+    }
+
+    #[test]
+    fn test_char_wait_context_new() {
+        let ctx = CharWaitContext::new(FindType::FindForward, Position::new(1, 5));
+        assert_eq!(ctx.find_type, FindType::FindForward);
+        assert_eq!(ctx.start_position, Position::new(1, 5));
+    }
+
+    #[test]
+    fn test_command_result_waiting_for_char() {
+        let result = CommandResult::waiting_for_char(FindType::TillBackward, Position::new(0, 10));
+
+        assert!(result.is_waiting_for_char());
+        assert!(!result.is_success());
+        assert!(!result.is_error());
+        assert!(!result.is_quit());
+        assert!(!result.is_undo_action());
+        assert!(!result.is_edit_action());
+    }
+
+    #[test]
+    fn test_command_result_is_waiting_for_char() {
+        let wait_result =
+            CommandResult::waiting_for_char(FindType::FindForward, Position::new(0, 0));
+        let success_result = CommandResult::Success;
+        let error_result = CommandResult::error("fail");
+
+        assert!(wait_result.is_waiting_for_char());
+        assert!(!success_result.is_waiting_for_char());
+        assert!(!error_result.is_waiting_for_char());
+    }
+
+    #[test]
+    fn test_char_wait_context_equality() {
+        let ctx1 = CharWaitContext::new(FindType::FindForward, Position::new(0, 5));
+        let ctx2 = CharWaitContext::new(FindType::FindForward, Position::new(0, 5));
+        let ctx3 = CharWaitContext::new(FindType::FindBackward, Position::new(0, 5));
+
+        assert_eq!(ctx1, ctx2);
+        assert_ne!(ctx1, ctx3);
+    }
+
+    #[test]
+    fn test_find_type_equality() {
+        assert_eq!(FindType::FindForward, FindType::FindForward);
+        assert_ne!(FindType::FindForward, FindType::FindBackward);
+        assert_ne!(FindType::TillForward, FindType::FindForward);
     }
 }
