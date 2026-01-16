@@ -96,6 +96,9 @@ pub trait FallbackContext: Send {
     ///
     /// Called by fallback handlers when they modify a buffer.
     /// This allows the runner to track edits for undo/redo.
+    ///
+    /// Use `accumulate_edit` instead for batched operations like character
+    /// insertion in insert mode.
     fn record_edit(
         &mut self,
         buffer_id: BufferId,
@@ -103,6 +106,49 @@ pub trait FallbackContext: Send {
         cursor_before: Position,
         cursor_after: Position,
     );
+
+    /// Accumulate an edit for batched undo.
+    ///
+    /// Unlike `record_edit` which immediately creates an undo node,
+    /// this method accumulates edits for later flushing as a single
+    /// transaction. Use for consecutive operations like character
+    /// insertion in insert mode.
+    ///
+    /// Call `flush_pending_edits` to commit the batch.
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer_id` - The buffer being edited
+    /// * `edit` - The edit to accumulate
+    /// * `cursor_before` - Cursor position before this edit
+    /// * `cursor_after` - Cursor position after this edit
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // In insert mode fallback handler
+    /// ctx.accumulate_edit(buffer_id, edit, cursor_before, cursor_after);
+    /// // Later, on mode change or command execution:
+    /// ctx.flush_pending_edits();
+    /// ```
+    fn accumulate_edit(
+        &mut self,
+        buffer_id: BufferId,
+        edit: Edit,
+        cursor_before: Position,
+        cursor_after: Position,
+    );
+
+    /// Flush accumulated edits as a single undo transaction.
+    ///
+    /// Commits all edits accumulated via `accumulate_edit` as a single
+    /// undo node. Safe to call when empty (no-op).
+    ///
+    /// Called automatically on:
+    /// - Mode change (e.g., exiting insert mode)
+    /// - Before command execution
+    /// - Buffer change
+    fn flush_pending_edits(&mut self);
 }
 
 /// Trait for handling unmatched key events.
@@ -219,6 +265,22 @@ mod tests {
             self.recorded_edits
                 .push((buffer_id, edits, cursor_before, cursor_after));
         }
+
+        fn accumulate_edit(
+            &mut self,
+            buffer_id: BufferId,
+            edit: Edit,
+            cursor_before: Position,
+            cursor_after: Position,
+        ) {
+            // For testing, just record immediately (no actual batching in mock)
+            self.recorded_edits
+                .push((buffer_id, vec![edit], cursor_before, cursor_after));
+        }
+
+        fn flush_pending_edits(&mut self) {
+            // No-op in mock - edits recorded immediately in accumulate_edit
+        }
     }
 
     #[test]
@@ -278,6 +340,8 @@ mod tests {
                 None
             }
             fn record_edit(&mut self, _: BufferId, _: Vec<Edit>, _: Position, _: Position) {}
+            fn accumulate_edit(&mut self, _: BufferId, _: Edit, _: Position, _: Position) {}
+            fn flush_pending_edits(&mut self) {}
         }
 
         // Same handler works with both context types

@@ -61,8 +61,9 @@ impl<C: FallbackContext> InputFallbackHandler<C> for EditorFallbackHandler {
                     let cursor_after = buffer.position();
                     drop(buffer);
 
-                    // Record edit for undo tracking via context
-                    ctx.record_edit(buffer_id, vec![edit], cursor_before, cursor_after);
+                    // Accumulate edit for batched undo tracking
+                    // (consecutive inserts become single undo node)
+                    ctx.accumulate_edit(buffer_id, edit, cursor_before, cursor_after);
 
                     return FallbackResult::Handled;
                 }
@@ -166,6 +167,22 @@ mod tests {
         ) {
             self.recorded_edits
                 .push((buffer_id, edits, cursor_before, cursor_after));
+        }
+
+        fn accumulate_edit(
+            &mut self,
+            buffer_id: BufferId,
+            edit: Edit,
+            cursor_before: Position,
+            cursor_after: Position,
+        ) {
+            // For testing, just record immediately (no actual batching in mock)
+            self.recorded_edits
+                .push((buffer_id, vec![edit], cursor_before, cursor_after));
+        }
+
+        fn flush_pending_edits(&mut self) {
+            // No-op in mock - edits recorded immediately in accumulate_edit
         }
     }
 

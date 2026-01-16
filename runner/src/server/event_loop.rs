@@ -207,6 +207,10 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
         // Look up in keymap
         match self.keymap_registry.lookup(&mode, &self.app.pending_keys) {
             KeyLookupResult::Found(cmd_id) => {
+                // Flush pending edits before command execution
+                // (any command breaks insert mode batching)
+                self.app.flush_pending_edits();
+
                 // Build command context (TODO: parse count/register from pending keys)
                 let ctx = CommandContext::new();
 

@@ -141,12 +141,18 @@ impl SessionState {
     /// Execute a command by ID.
     ///
     /// Returns `None` if the command isn't registered.
+    ///
+    /// Flushes any pending edits before execution to ensure undo batching
+    /// works correctly (commands break insert mode batches).
     #[must_use]
     pub fn execute_command(
         &mut self,
         id: &CommandId,
         args: &CommandContext,
     ) -> Option<CommandResult> {
+        // Flush pending edits before command execution
+        // (any command breaks insert mode batching)
+        self.app.flush_pending_edits();
         self.command_registry.execute(id, &mut self.app, args)
     }
 

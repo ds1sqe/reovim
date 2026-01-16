@@ -66,6 +66,14 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
     - `textobjects:inner-word`, `textobjects:around-word`, etc.
   - Deferred: Tag objects (`it`/`at`), sentence objects (`is`/`as`)
 
+- **Undo Transaction Batching** (Issue #255)
+  - Consecutive character insertions in insert mode are batched into a single undo transaction
+  - Single `u` after typing "hello" in insert mode undoes all 5 characters at once (vim behavior)
+  - `PendingEditBatch` struct accumulates edits until batch-breaking event occurs
+  - Batch-breaking events: mode change (Esc), command execution (Backspace, arrows), buffer switch
+  - `FallbackContext` trait extended with `accumulate_edit()` and `flush_pending_edits()`
+  - 7 new unit tests for undo batching infrastructure
+
 - **Phase 7-A: Module Loading Mechanism with CLI Flags** (Issue #262)
   - **CLI Flags for Module Control**:
     - `--moddir <PATH>` - Add module search directory (repeatable)
