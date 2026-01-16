@@ -489,6 +489,23 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
                 tracing::debug!("RepeatAction requested - not yet implemented");
                 self.last_error = None;
             }
+            CommandResult::OperatorRange {
+                start,
+                end,
+                is_linewise,
+            } => {
+                // Text object command returned a range for the pending operator.
+                // Execute the pending operator (d, y, c) with this range.
+                tracing::debug!(
+                    ?start,
+                    ?end,
+                    is_linewise,
+                    "OperatorRange received from text object"
+                );
+                // TODO: Execute pending operator with range
+                // For now, just clear error state
+                self.last_error = None;
+            }
         }
     }
 

@@ -282,6 +282,13 @@ impl Session {
                 // For now, just return None - full implementation comes in Phase 5.
                 None
             }
+            CommandResult::OperatorRange { .. } => {
+                // Text object commands return ranges for operator-pending mode.
+                // The actual operator execution is handled by the message loop
+                // which has access to the pending operator state.
+                // This result type signals the range but execution happens elsewhere.
+                None
+            }
         }
     }
 

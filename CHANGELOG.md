@@ -48,6 +48,24 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Phase 7-E: Text Objects** (Issue #241)
+  - **New `textobjects` module** (`modules/textobjects/`):
+    - Word objects: `iw` (inner word), `aw` (a word), `iW` (inner WORD), `aW` (a WORD)
+    - Quote objects: `i"`, `a"`, `i'`, `a'`, `` i` ``, `` a` ``
+    - Bracket objects: `i(`, `a(`, `i[`, `a[`, `i{`, `a{`, `i<`, `a<`
+    - Paragraph objects: `ip` (inner paragraph), `ap` (a paragraph)
+    - 20 command handlers using kernel's `TextObjectEngine::range()`
+    - 39 unit tests for all text object commands
+  - **CommandResult::OperatorRange** (`lib/drivers/command/`):
+    - New variant for text object commands to return ranges to operators
+    - `start`/`end` Position fields with `is_linewise` flag
+    - `is_operator_range()` and `operator_range()` helper methods
+    - Runner event loop handles OperatorRange for operator-pending execution
+  - **Keybinding Integration** (`modules/keymap/src/operator_pending.rs`):
+    - All text object keybindings updated to use fully qualified command IDs
+    - `textobjects:inner-word`, `textobjects:around-word`, etc.
+  - Deferred: Tag objects (`it`/`at`), sentence objects (`is`/`as`)
+
 - **Phase 7-A: Module Loading Mechanism with CLI Flags** (Issue #262)
   - **CLI Flags for Module Control**:
     - `--moddir <PATH>` - Add module search directory (repeatable)

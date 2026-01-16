@@ -95,150 +95,150 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
         // ====================================================================
         // Text objects - inner
         // ====================================================================
-        KeybindingRegistration::new("iw", "textobj-inner-word")
+        KeybindingRegistration::new("iw", "textobjects:inner-word")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Inner word"),
-        KeybindingRegistration::new("iW", "textobj-inner-word-big")
+        KeybindingRegistration::new("iW", "textobjects:inner-word-big")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Inner WORD"),
-        KeybindingRegistration::new("i\"", "textobj-inner-double-quote")
+        KeybindingRegistration::new("i\"", "textobjects:inner-double-quote")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Inner double quotes"),
-        KeybindingRegistration::new("i'", "textobj-inner-single-quote")
+        KeybindingRegistration::new("i'", "textobjects:inner-single-quote")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Inner single quotes"),
-        KeybindingRegistration::new("i`", "textobj-inner-backtick")
+        KeybindingRegistration::new("i`", "textobjects:inner-backtick")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Inner backticks"),
-        KeybindingRegistration::new("i(", "textobj-inner-paren")
+        KeybindingRegistration::new("i(", "textobjects:inner-paren")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Inner parentheses"),
-        KeybindingRegistration::new("i)", "textobj-inner-paren")
+        KeybindingRegistration::new("i)", "textobjects:inner-paren")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Inner parentheses"),
-        KeybindingRegistration::new("ib", "textobj-inner-paren")
+        KeybindingRegistration::new("ib", "textobjects:inner-paren")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Inner block (parentheses)"),
-        KeybindingRegistration::new("i[", "textobj-inner-bracket")
+        KeybindingRegistration::new("i[", "textobjects:inner-bracket")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Inner brackets"),
-        KeybindingRegistration::new("i]", "textobj-inner-bracket")
+        KeybindingRegistration::new("i]", "textobjects:inner-bracket")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Inner brackets"),
-        KeybindingRegistration::new("i{", "textobj-inner-brace")
+        KeybindingRegistration::new("i{", "textobjects:inner-brace")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Inner braces"),
-        KeybindingRegistration::new("i}", "textobj-inner-brace")
+        KeybindingRegistration::new("i}", "textobjects:inner-brace")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Inner braces"),
-        KeybindingRegistration::new("iB", "textobj-inner-brace")
+        KeybindingRegistration::new("iB", "textobjects:inner-brace")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Inner Block (braces)"),
-        KeybindingRegistration::new("i<", "textobj-inner-angle")
+        KeybindingRegistration::new("i<", "textobjects:inner-angle")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Inner angle brackets"),
-        KeybindingRegistration::new("i>", "textobj-inner-angle")
+        KeybindingRegistration::new("i>", "textobjects:inner-angle")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Inner angle brackets"),
-        KeybindingRegistration::new("it", "textobj-inner-tag")
+        KeybindingRegistration::new("it", "textobjects:inner-tag")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Inner tag"),
-        KeybindingRegistration::new("is", "textobj-inner-sentence")
+        KeybindingRegistration::new("is", "textobjects:inner-sentence")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Inner sentence"),
-        KeybindingRegistration::new("ip", "textobj-inner-paragraph")
+        KeybindingRegistration::new("ip", "textobjects:inner-paragraph")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Inner paragraph"),
         // ====================================================================
         // Text objects - around
         // ====================================================================
-        KeybindingRegistration::new("aw", "textobj-around-word")
+        KeybindingRegistration::new("aw", "textobjects:around-word")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Around word"),
-        KeybindingRegistration::new("aW", "textobj-around-word-big")
+        KeybindingRegistration::new("aW", "textobjects:around-word-big")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Around WORD"),
-        KeybindingRegistration::new("a\"", "textobj-around-double-quote")
+        KeybindingRegistration::new("a\"", "textobjects:around-double-quote")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Around double quotes"),
-        KeybindingRegistration::new("a'", "textobj-around-single-quote")
+        KeybindingRegistration::new("a'", "textobjects:around-single-quote")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Around single quotes"),
-        KeybindingRegistration::new("a`", "textobj-around-backtick")
+        KeybindingRegistration::new("a`", "textobjects:around-backtick")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Around backticks"),
-        KeybindingRegistration::new("a(", "textobj-around-paren")
+        KeybindingRegistration::new("a(", "textobjects:around-paren")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Around parentheses"),
-        KeybindingRegistration::new("a)", "textobj-around-paren")
+        KeybindingRegistration::new("a)", "textobjects:around-paren")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Around parentheses"),
-        KeybindingRegistration::new("ab", "textobj-around-paren")
+        KeybindingRegistration::new("ab", "textobjects:around-paren")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Around block (parentheses)"),
-        KeybindingRegistration::new("a[", "textobj-around-bracket")
+        KeybindingRegistration::new("a[", "textobjects:around-bracket")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Around brackets"),
-        KeybindingRegistration::new("a]", "textobj-around-bracket")
+        KeybindingRegistration::new("a]", "textobjects:around-bracket")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Around brackets"),
-        KeybindingRegistration::new("a{", "textobj-around-brace")
+        KeybindingRegistration::new("a{", "textobjects:around-brace")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Around braces"),
-        KeybindingRegistration::new("a}", "textobj-around-brace")
+        KeybindingRegistration::new("a}", "textobjects:around-brace")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Around braces"),
-        KeybindingRegistration::new("aB", "textobj-around-brace")
+        KeybindingRegistration::new("aB", "textobjects:around-brace")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Around Block (braces)"),
-        KeybindingRegistration::new("a<", "textobj-around-angle")
+        KeybindingRegistration::new("a<", "textobjects:around-angle")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Around angle brackets"),
-        KeybindingRegistration::new("a>", "textobj-around-angle")
+        KeybindingRegistration::new("a>", "textobjects:around-angle")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Around angle brackets"),
-        KeybindingRegistration::new("at", "textobj-around-tag")
+        KeybindingRegistration::new("at", "textobjects:around-tag")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Around tag"),
-        KeybindingRegistration::new("as", "textobj-around-sentence")
+        KeybindingRegistration::new("as", "textobjects:around-sentence")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Around sentence"),
-        KeybindingRegistration::new("ap", "textobj-around-paragraph")
+        KeybindingRegistration::new("ap", "textobjects:around-paragraph")
             .with_modes(&["operator-pending"])
             .with_category("textobj")
             .with_description("Around paragraph"),

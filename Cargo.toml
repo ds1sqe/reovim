@@ -108,6 +108,7 @@ reovim-module-mode-manager = { path = "./modules/mode-manager", version = "0.9.0
 reovim-module-layout = { path = "./modules/layout", version = "0.9.0-dev" }
 reovim-module-editor = { path = "./modules/editor", version = "0.9.0-dev" }
 reovim-module-motions = { path = "./modules/motions", version = "0.9.0-dev" }
+reovim-module-textobjects = { path = "./modules/textobjects", version = "0.9.0-dev" }
 
 # CLI
 clap = { version = "4", features = ["derive"] }
