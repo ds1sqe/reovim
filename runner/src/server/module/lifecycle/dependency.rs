@@ -10,7 +10,7 @@ use std::{
 
 use reovim_kernel::api::v1::{ModuleError, ModuleId};
 
-use super::handle::ModuleHandle;
+use crate::server::module::loading::ModuleHandle;
 
 /// Result of dependency resolution.
 #[derive(Debug, Clone)]

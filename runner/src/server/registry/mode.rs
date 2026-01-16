@@ -10,8 +10,8 @@
 //! # Module Ownership
 //!
 //! Modes can be registered with optional module ownership via
-//! [`register_for_module`]. When a module is unloaded, all its
-//! registered modes can be removed via [`unregister_for_module`].
+//! [`ModeRegistry::register_for_module`]. When a module is unloaded, all its
+//! registered modes can be removed via [`ModeRegistry::unregister_for_module`].
 
 use std::{collections::HashMap, sync::Arc};
 

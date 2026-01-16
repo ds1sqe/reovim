@@ -1,4 +1,4 @@
-//! Module registry with dependency resolution and lifecycle management.
+//! Module manager with dependency resolution and lifecycle management.
 //!
 //! Provides thread-safe module management with:
 //! - Dependency resolution (topological sort)
@@ -17,21 +17,24 @@ use {
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ModuleState},
 };
 
-use super::{dependency::resolve_dependencies, handle::InitResult, loader::ModuleLoader};
+use {
+    super::dependency::resolve_dependencies,
+    crate::server::module::loading::{InitResult, ModuleHandle, ModuleLoader},
+};
 
 /// Maximum retry passes for deferred modules (Linux uses ~8).
 const MAX_DEFER_PASSES: usize = 3;
 
-/// Module registry with dependency resolution.
+/// Module manager with dependency resolution.
 ///
 /// All mutable state is wrapped in a single Mutex for thread safety.
 /// This prevents data races on `init_order` and other fields.
-pub struct ModuleRegistry {
-    inner: Mutex<ModuleRegistryInner>,
+pub struct ModuleManager {
+    inner: Mutex<ModuleManagerInner>,
 }
 
 /// Inner state protected by mutex.
-struct ModuleRegistryInner {
+struct ModuleManagerInner {
     /// Module loader.
     loader: ModuleLoader,
 
@@ -46,24 +49,24 @@ struct ModuleRegistryInner {
     dependents: HashMap<ModuleId, HashSet<ModuleId>>,
 }
 
-impl Default for ModuleRegistry {
+impl Default for ModuleManager {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl ModuleRegistry {
-    /// Create new registry with default loader.
+impl ModuleManager {
+    /// Create new manager with default loader.
     #[must_use]
     pub fn new() -> Self {
         Self::with_loader(ModuleLoader::new())
     }
 
-    /// Create registry with custom loader.
+    /// Create manager with custom loader.
     #[must_use]
     pub fn with_loader(loader: ModuleLoader) -> Self {
         Self {
-            inner: Mutex::new(ModuleRegistryInner {
+            inner: Mutex::new(ModuleManagerInner {
                 loader,
                 states: HashMap::new(),
                 init_order: Vec::new(),
@@ -72,7 +75,7 @@ impl ModuleRegistry {
         }
     }
 
-    /// Create a thread-safe reference to this registry.
+    /// Create a thread-safe reference to this manager.
     #[must_use]
     pub fn into_arc(self) -> Arc<Self> {
         Arc::new(self)
@@ -245,7 +248,7 @@ impl ModuleRegistry {
             handle.exit()?;
         }
 
-        // Remove from registry
+        // Remove from manager
         inner.loader.modules.remove(id);
         inner.states.remove(id);
 
@@ -431,7 +434,7 @@ impl ModuleRegistry {
             .loader
             .modules
             .get(id)
-            .and_then(super::handle::ModuleHandle::save_state);
+            .and_then(ModuleHandle::save_state);
         if saved_state.is_some() {
             tracing::debug!(module = %id, "saved state for hot reload");
         }
@@ -466,7 +469,7 @@ impl ModuleRegistry {
 
         // 5. Reinitialize
         match inner.init_single(&new_id, ctx) {
-            Ok(super::handle::InitResult::Success) => {
+            Ok(InitResult::Success) => {
                 // 5.5. Restore state after successful init
                 if let Some(state) = saved_state
                     && let Some(handle) = inner.loader.modules.get_mut(&new_id)
@@ -485,7 +488,7 @@ impl ModuleRegistry {
                 tracing::info!(module = %new_id, "hot reload successful");
                 Ok(())
             }
-            Ok(super::handle::InitResult::Defer(reason)) => {
+            Ok(InitResult::Defer(reason)) => {
                 tracing::warn!(module = %new_id, reason = %reason, "hot reload deferred");
                 Err(ModuleError::InitFailed(format!("module deferred after reload: {reason}")))
             }
@@ -497,7 +500,7 @@ impl ModuleRegistry {
     }
 }
 
-impl ModuleRegistryInner {
+impl ModuleManagerInner {
     fn init_single(
         &mut self,
         id: &ModuleId,
@@ -606,42 +609,42 @@ mod tests {
 
     #[test]
     fn test_register_and_state() {
-        let registry = ModuleRegistry::new();
-        let id = registry.register(TestModule::new("test")).unwrap();
+        let manager = ModuleManager::new();
+        let id = manager.register(TestModule::new("test")).unwrap();
 
-        assert_eq!(registry.state(&id), Some(ModuleState::Loaded));
+        assert_eq!(manager.state(&id), Some(ModuleState::Loaded));
     }
 
     #[test]
     fn test_init_all() {
-        let registry = ModuleRegistry::new();
-        registry.register(TestModule::new("a")).unwrap();
-        registry
+        let manager = ModuleManager::new();
+        manager.register(TestModule::new("a")).unwrap();
+        manager
             .register(TestModule::with_deps("b", &["a"]))
             .unwrap();
 
         let ctx = ModuleContext::default();
-        registry.init_all(&ctx).unwrap();
+        manager.init_all(&ctx).unwrap();
 
-        assert_eq!(registry.state(&ModuleId::new("a")), Some(ModuleState::Running));
-        assert_eq!(registry.state(&ModuleId::new("b")), Some(ModuleState::Running));
+        assert_eq!(manager.state(&ModuleId::new("a")), Some(ModuleState::Running));
+        assert_eq!(manager.state(&ModuleId::new("b")), Some(ModuleState::Running));
     }
 
     #[test]
     fn test_init_order() {
-        let registry = ModuleRegistry::new();
-        registry.register(TestModule::new("a")).unwrap();
-        registry
+        let manager = ModuleManager::new();
+        manager.register(TestModule::new("a")).unwrap();
+        manager
             .register(TestModule::with_deps("b", &["a"]))
             .unwrap();
-        registry
+        manager
             .register(TestModule::with_deps("c", &["b"]))
             .unwrap();
 
         let ctx = ModuleContext::default();
-        registry.init_all(&ctx).unwrap();
+        manager.init_all(&ctx).unwrap();
 
-        let order = registry.init_order();
+        let order = manager.init_order();
         let a_idx = order.iter().position(|id| id.as_str() == "a").unwrap();
         let b_idx = order.iter().position(|id| id.as_str() == "b").unwrap();
         let c_idx = order.iter().position(|id| id.as_str() == "c").unwrap();
@@ -652,48 +655,48 @@ mod tests {
 
     #[test]
     fn test_unload_with_dependents_fails() {
-        let registry = ModuleRegistry::new();
-        registry.register(TestModule::new("a")).unwrap();
-        registry
+        let manager = ModuleManager::new();
+        manager.register(TestModule::new("a")).unwrap();
+        manager
             .register(TestModule::with_deps("b", &["a"]))
             .unwrap();
 
         let ctx = ModuleContext::default();
-        registry.init_all(&ctx).unwrap();
+        manager.init_all(&ctx).unwrap();
 
         // Try to unload A while B depends on it
-        let result = registry.unload(&ModuleId::new("a"));
+        let result = manager.unload(&ModuleId::new("a"));
         assert!(matches!(result, Err(ModuleError::InUse { .. })));
     }
 
     #[test]
     fn test_unload_without_dependents() {
-        let registry = ModuleRegistry::new();
-        registry.register(TestModule::new("a")).unwrap();
+        let manager = ModuleManager::new();
+        manager.register(TestModule::new("a")).unwrap();
 
         let ctx = ModuleContext::default();
-        registry.init_all(&ctx).unwrap();
+        manager.init_all(&ctx).unwrap();
 
-        let result = registry.unload(&ModuleId::new("a"));
+        let result = manager.unload(&ModuleId::new("a"));
         assert!(result.is_ok());
-        assert!(registry.state(&ModuleId::new("a")).is_none());
+        assert!(manager.state(&ModuleId::new("a")).is_none());
     }
 
     #[test]
     fn test_dependents_of() {
-        let registry = ModuleRegistry::new();
-        registry.register(TestModule::new("a")).unwrap();
-        registry
+        let manager = ModuleManager::new();
+        manager.register(TestModule::new("a")).unwrap();
+        manager
             .register(TestModule::with_deps("b", &["a"]))
             .unwrap();
-        registry
+        manager
             .register(TestModule::with_deps("c", &["a"]))
             .unwrap();
 
         let ctx = ModuleContext::default();
-        registry.init_all(&ctx).unwrap();
+        manager.init_all(&ctx).unwrap();
 
-        let deps = registry.dependents_of(&ModuleId::new("a"));
+        let deps = manager.dependents_of(&ModuleId::new("a"));
         assert_eq!(deps.len(), 2);
     }
 
@@ -728,43 +731,43 @@ mod tests {
 
         INIT_COUNT.store(0, Ordering::SeqCst);
 
-        let registry = ModuleRegistry::new();
-        registry.register(DeferringModule).unwrap();
+        let manager = ModuleManager::new();
+        manager.register(DeferringModule).unwrap();
 
         let ctx = ModuleContext::default();
-        registry.init_all(&ctx).unwrap();
+        manager.init_all(&ctx).unwrap();
 
         // Should be Running after retry
-        assert_eq!(registry.state(&ModuleId::new("deferring")), Some(ModuleState::Running));
+        assert_eq!(manager.state(&ModuleId::new("deferring")), Some(ModuleState::Running));
         // init should have been called twice
         assert_eq!(INIT_COUNT.load(Ordering::SeqCst), 2);
     }
 
     #[test]
     fn test_shutdown() {
-        let registry = ModuleRegistry::new();
-        registry.register(TestModule::new("a")).unwrap();
-        registry
+        let manager = ModuleManager::new();
+        manager.register(TestModule::new("a")).unwrap();
+        manager
             .register(TestModule::with_deps("b", &["a"]))
             .unwrap();
 
         let ctx = ModuleContext::default();
-        registry.init_all(&ctx).unwrap();
+        manager.init_all(&ctx).unwrap();
 
-        registry.shutdown();
+        manager.shutdown();
 
-        assert_eq!(registry.state(&ModuleId::new("a")), Some(ModuleState::Loaded));
-        assert_eq!(registry.state(&ModuleId::new("b")), Some(ModuleState::Loaded));
+        assert_eq!(manager.state(&ModuleId::new("a")), Some(ModuleState::Loaded));
+        assert_eq!(manager.state(&ModuleId::new("b")), Some(ModuleState::Loaded));
     }
 
     #[test]
     fn test_len_and_is_empty() {
-        let registry = ModuleRegistry::new();
-        assert!(registry.is_empty());
-        assert_eq!(registry.len(), 0);
+        let manager = ModuleManager::new();
+        assert!(manager.is_empty());
+        assert_eq!(manager.len(), 0);
 
-        registry.register(TestModule::new("a")).unwrap();
-        assert!(!registry.is_empty());
-        assert_eq!(registry.len(), 1);
+        manager.register(TestModule::new("a")).unwrap();
+        assert!(!manager.is_empty());
+        assert_eq!(manager.len(), 1);
     }
 }

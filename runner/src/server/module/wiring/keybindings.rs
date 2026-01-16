@@ -1,26 +1,6 @@
-//! Handler wiring infrastructure for modules.
+//! Keybinding wiring for modules.
 //!
-//! This module provides functions to wire module handlers (commands, keybindings)
-//! to the session registries when modules are loaded.
-//!
-//! # Architecture
-//!
-//! When a module is loaded and initialized:
-//! 1. The module's `keybindings()` method returns declarative registration metadata
-//! 2. The wiring functions convert these registrations to actual registry entries
-//! 3. Ownership is tracked so handlers can be unregistered when modules unload
-//!
-//! # Example
-//!
-//! ```ignore
-//! use runner::module::wiring::wire_module_keybindings;
-//!
-//! let module_id = ModuleId::new("my-module");
-//! let keybindings = module.keybindings();
-//!
-//! let result = wire_module_keybindings(&module_id, &keybindings, &mut keymap_registry);
-//! assert!(result.is_ok());
-//! ```
+//! Provides functions to wire module keybindings to the session registries.
 
 use std::fmt;
 

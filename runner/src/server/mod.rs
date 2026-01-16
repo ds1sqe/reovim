@@ -176,7 +176,7 @@ use crate::buffer_manager::SimpleBufferManager;
 
 use {
     client::Client,
-    module::{ModuleConfig, ModuleRegistry},
+    module::{ModuleConfig, ModuleManager},
     rpc::{RpcContext, RpcDispatcher, create_default_dispatcher},
     session::{Session, SessionId, SessionRegistry},
     transport::{TransportListener, TransportReader, TransportWriter},
@@ -341,7 +341,7 @@ pub struct Server {
     dispatcher: Arc<RpcDispatcher>,
 
     /// Module registry (holds loaded modules).
-    module_registry: Arc<ModuleRegistry>,
+    module_registry: Arc<ModuleManager>,
 
     /// Shutdown flag for graceful termination.
     shutdown: AtomicBool,
@@ -355,7 +355,7 @@ impl Server {
             config,
             sessions: Arc::new(SessionRegistry::new()),
             dispatcher: Arc::new(create_default_dispatcher()),
-            module_registry: Arc::new(ModuleRegistry::new()),
+            module_registry: Arc::new(ModuleManager::new()),
             shutdown: AtomicBool::new(false),
         }
     }
@@ -500,7 +500,7 @@ impl Server {
 
     /// Get a reference to the module registry.
     #[must_use]
-    pub fn module_registry(&self) -> &ModuleRegistry {
+    pub fn module_registry(&self) -> &ModuleManager {
         &self.module_registry
     }
 

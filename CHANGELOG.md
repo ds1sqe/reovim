@@ -23,6 +23,14 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Changed
 
+- **Phase 7-A: Module System Reorganization** (Issue #268)
+  - Reorganized `runner/src/server/module/` into three focused sub-modules:
+    - `loading/`: FFI loading subsystem (discovery, handle, loader)
+    - `lifecycle/`: State management subsystem (dependency, manager)
+    - `wiring/`: Registry integration subsystem (keybindings)
+  - Renamed `ModuleRegistry` → `ModuleManager` (deprecation alias provided)
+  - Public API unchanged - all types re-exported from `runner::module`
+
 - **Agent Infrastructure Optimization** (Issue #261)
   - Review agents (mission-control, telemetry, flight-director) now use Haiku model
   - New `oracle` agent (Opus) for planning and architecture design
