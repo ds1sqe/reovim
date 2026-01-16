@@ -6,6 +6,21 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ## [Unreleased] - v0.9.0-dev
 
+### Refactored
+
+- **Command Driver Module Split** (Issue #273)
+  - Split monolithic `lib/drivers/command/src/lib.rs` (1,350 lines) into focused submodules
+  - New file structure:
+    - `args.rs` - `ArgSpec`, `ArgKind`, `ArgValue` argument types
+    - `traits.rs` - `Command`, `CommandHandler` core traits
+    - `context.rs` - `CommandContext` execution context
+    - `char_wait.rs` - `FindType`, `CharWaitOp`, `CharWaitContext` state machine
+    - `result.rs` - `CommandResult`, `EditAction`, `UndoAction`, `UndotreeAction`, `SearchAction`
+    - `lib.rs` - Module declarations and flat re-exports only
+  - External API unchanged - all types re-exported from crate root
+  - 47 tests redistributed across modules with zero regressions
+  - Follows mechanism-vs-policy principle with policy-adjacent types documented
+
 ### Changed
 
 - **Agent Infrastructure Optimization** (Issue #261)
