@@ -14,6 +14,8 @@
 //! the runner to manage per-buffer undo trees.
 
 use {
+    crate::undo_persistence::{UndoPersistError, UndoPersistence},
+    reovim_driver_vfs::VfsDriver,
     reovim_kernel::api::v1::{BufferId, Edit, Position, UndoResult, UndoTree},
     std::collections::HashMap,
 };
@@ -113,6 +115,120 @@ impl UndoRegistry {
     #[must_use]
     pub fn buffer_count(&self) -> usize {
         self.trees.len()
+    }
+
+    // ========================================================================
+    // Persistence methods
+    // ========================================================================
+
+    /// Persist the undo tree for a buffer to disk.
+    ///
+    /// Does nothing if the buffer has no undo history.
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer_id` - The buffer whose undo tree to persist
+    /// * `buffer_path` - The file path associated with the buffer
+    /// * `persistence` - The undo persistence manager
+    /// * `vfs` - VFS driver for file operations
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if persistence fails (I/O error, serialization error).
+    pub fn persist(
+        &self,
+        buffer_id: BufferId,
+        buffer_path: &str,
+        persistence: &UndoPersistence,
+        vfs: &dyn VfsDriver,
+    ) -> Result<(), UndoPersistError> {
+        let Some(tree) = self.trees.get(&buffer_id) else {
+            // No undo history for this buffer, nothing to persist
+            return Ok(());
+        };
+
+        persistence.persist(buffer_path, tree, vfs)
+    }
+
+    /// Load the undo tree for a buffer from disk.
+    ///
+    /// If an undo file exists, it replaces any existing undo history for the buffer.
+    /// If no undo file exists, the buffer's undo history is unchanged.
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer_id` - The buffer to load undo history for
+    /// * `buffer_path` - The file path associated with the buffer
+    /// * `persistence` - The undo persistence manager
+    /// * `vfs` - VFS driver for file operations
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(true)` - Undo history was loaded from disk
+    /// * `Ok(false)` - No undo file exists, history unchanged
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the undo file exists but is corrupt or unreadable.
+    /// In this case, the caller should decide whether to:
+    /// - Log a warning and continue with a fresh undo tree
+    /// - Propagate the error
+    pub fn load(
+        &mut self,
+        buffer_id: BufferId,
+        buffer_path: &str,
+        persistence: &UndoPersistence,
+        vfs: &dyn VfsDriver,
+    ) -> Result<bool, UndoPersistError> {
+        match persistence.load(buffer_path, vfs)? {
+            Some(tree) => {
+                self.trees.insert(buffer_id, tree);
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    /// Load undo history from disk, falling back to empty on error.
+    ///
+    /// This is a convenience wrapper around [`load`](Self::load) that logs
+    /// errors but doesn't propagate them. Use this for graceful degradation.
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer_id` - The buffer to load undo history for
+    /// * `buffer_path` - The file path associated with the buffer
+    /// * `persistence` - The undo persistence manager
+    /// * `vfs` - VFS driver for file operations
+    ///
+    /// # Returns
+    ///
+    /// `true` if undo history was loaded, `false` otherwise.
+    pub fn load_graceful(
+        &mut self,
+        buffer_id: BufferId,
+        buffer_path: &str,
+        persistence: &UndoPersistence,
+        vfs: &dyn VfsDriver,
+    ) -> bool {
+        match self.load(buffer_id, buffer_path, persistence, vfs) {
+            Ok(loaded) => loaded,
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to load undo history for '{}': {}, starting fresh",
+                    buffer_path,
+                    e
+                );
+                false
+            }
+        }
+    }
+
+    /// Set the undo tree for a buffer directly.
+    ///
+    /// Used when loading from disk or restoring from backup.
+    pub fn set_tree(&mut self, buffer_id: BufferId, tree: UndoTree) {
+        self.trees.insert(buffer_id, tree);
     }
 }
 

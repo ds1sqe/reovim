@@ -27,6 +27,9 @@ pub const BUFFER_OPEN_FILE: &str = "buffer/open_file";
 /// List all buffers.
 pub const BUFFER_LIST: &str = "buffer/list";
 
+/// Write buffer to file.
+pub const BUFFER_WRITE_FILE: &str = "buffer/write_file";
+
 // State methods
 
 /// Get current mode.

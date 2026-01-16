@@ -35,11 +35,11 @@ pub mod handlers;
 pub use dispatcher::{HandlerFn, HandlerFuture, RpcContext, RpcDispatcher, RpcResult};
 
 use reovim_protocol::v1::{
-    BUFFER_GET_CONTENT, BUFFER_LIST, BUFFER_OPEN_FILE, BUFFER_SET_CONTENT, COMMAND_EXECUTE,
-    EDITOR_QUIT, EDITOR_RESIZE, EDITOR_SET_ACTIVE_BUFFER, INPUT_KEYS, MODULE_LIST, MODULE_LOAD,
-    MODULE_RELOAD, MODULE_UNLOAD, SERVER_KILL, STATE_ASCII_ART, STATE_CURSOR, STATE_LAYER_INFO,
-    STATE_MICROSCOPE, STATE_MODE, STATE_SCREEN, STATE_SCREEN_CONTENT, STATE_SELECTION,
-    STATE_TELESCOPE, STATE_VISUAL_SNAPSHOT, STATE_WINDOWS,
+    BUFFER_GET_CONTENT, BUFFER_LIST, BUFFER_OPEN_FILE, BUFFER_SET_CONTENT, BUFFER_WRITE_FILE,
+    COMMAND_EXECUTE, EDITOR_QUIT, EDITOR_RESIZE, EDITOR_SET_ACTIVE_BUFFER, INPUT_KEYS, MODULE_LIST,
+    MODULE_LOAD, MODULE_RELOAD, MODULE_UNLOAD, SERVER_KILL, STATE_ASCII_ART, STATE_CURSOR,
+    STATE_LAYER_INFO, STATE_MICROSCOPE, STATE_MODE, STATE_SCREEN, STATE_SCREEN_CONTENT,
+    STATE_SELECTION, STATE_TELESCOPE, STATE_VISUAL_SNAPSHOT, STATE_WINDOWS,
 };
 
 use super::debug;
@@ -60,6 +60,7 @@ pub fn create_default_dispatcher() -> RpcDispatcher {
     dispatcher.register(BUFFER_SET_CONTENT, handlers::buffer_set_content);
     dispatcher.register(BUFFER_LIST, handlers::buffer_list);
     dispatcher.register(BUFFER_OPEN_FILE, handlers::buffer_open_file);
+    dispatcher.register(BUFFER_WRITE_FILE, handlers::buffer_write_file);
 
     // State methods (implemented)
     dispatcher.register(STATE_MODE, handlers::state_mode);
@@ -115,6 +116,7 @@ mod tests {
         assert!(dispatcher.has_method(BUFFER_SET_CONTENT));
         assert!(dispatcher.has_method(BUFFER_LIST));
         assert!(dispatcher.has_method(BUFFER_OPEN_FILE));
+        assert!(dispatcher.has_method(BUFFER_WRITE_FILE));
 
         // State handlers (implemented)
         assert!(dispatcher.has_method(STATE_MODE));
@@ -140,7 +142,7 @@ mod tests {
         // Server handlers
         assert!(dispatcher.has_method(SERVER_KILL));
 
-        // 15 implemented + 9 stubs + 11 debug (2 info + 4 inspect + 2 metrics + 2 log + 1 snapshot) = 36 total
-        assert_eq!(dispatcher.method_count(), 36);
+        // 16 implemented + 9 stubs + 11 debug (2 info + 4 inspect + 2 metrics + 2 log + 1 snapshot) = 37 total
+        assert_eq!(dispatcher.method_count(), 37);
     }
 }

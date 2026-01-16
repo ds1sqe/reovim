@@ -5,7 +5,7 @@
 
 use {
     crate::mm::{Edit, Position},
-    std::time::Instant,
+    std::time::{Duration, Instant},
 };
 
 /// A node in the undo tree.
@@ -499,5 +499,78 @@ impl UndoTree {
         let root_cursor = self.nodes[0].cursor_after;
         *self = Self::with_max_nodes(self.max_nodes);
         self.nodes[0].cursor_after = root_cursor;
+    }
+
+    /// Reconstruct an `UndoTree` from serialized data.
+    ///
+    /// This is used by the persistence layer to restore undo history from disk.
+    /// Timestamps are reconstructed relative to "now" using the provided durations.
+    ///
+    /// # Arguments
+    ///
+    /// * `nodes_data` - Vector of tuples containing node data:
+    ///   - `Vec<Edit>`: The edits in this node
+    ///   - `Position`: Cursor before edits
+    ///   - `Position`: Cursor after edits
+    ///   - `Duration`: Relative time from tree creation
+    ///   - `Option<usize>`: Parent node index
+    ///   - `Vec<usize>`: Child node indices
+    ///   - `u64`: Sequential change number
+    /// * `current` - Index of current position in tree
+    /// * `seq_counter` - Current sequential change counter
+    /// * `max_nodes` - Maximum nodes to retain
+    /// * `active_branches` - Preferred branch at each node
+    ///
+    /// # Panics
+    ///
+    /// Panics if `nodes_data` is empty (tree must have at least a root node).
+    #[must_use]
+    #[allow(clippy::type_complexity)] // Complex tuple is intentional for persistence API
+    pub fn from_serializable(
+        nodes_data: Vec<(
+            Vec<Edit>,     // edits
+            Position,      // cursor_before
+            Position,      // cursor_after
+            Duration,      // relative_time from root
+            Option<usize>, // parent
+            Vec<usize>,    // children
+            u64,           // seq_num
+        )>,
+        current: usize,
+        seq_counter: u64,
+        max_nodes: usize,
+        active_branches: Vec<usize>,
+    ) -> Self {
+        assert!(!nodes_data.is_empty(), "UndoTree must have at least a root node");
+
+        let now = Instant::now();
+
+        let nodes: Vec<UndoNode> = nodes_data
+            .into_iter()
+            .map(
+                |(edits, cursor_before, cursor_after, relative_time, parent, children, seq_num)| {
+                    UndoNode {
+                        edits,
+                        cursor_before,
+                        cursor_after,
+                        // Reconstruct timestamp: now + relative offset
+                        // Note: For a tree loaded at time T, all nodes have timestamps
+                        // relative to T. The ordering is preserved.
+                        timestamp: now + relative_time,
+                        parent,
+                        children,
+                        seq_num,
+                    }
+                },
+            )
+            .collect();
+
+        Self {
+            nodes,
+            current,
+            seq_counter,
+            max_nodes: max_nodes.max(1), // At least 1 node
+            active_branches,
+        }
     }
 }

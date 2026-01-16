@@ -12,6 +12,7 @@ pub mod notifications;
 pub mod params;
 pub mod results;
 pub mod types;
+pub mod undo;
 
 // Re-export commonly used items
 pub use {
