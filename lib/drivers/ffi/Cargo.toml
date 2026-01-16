@@ -1,0 +1,29 @@
+[package]
+name = "reovim-driver-ffi"
+version = "0.9.0-dev"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "FFI driver for reovim (C header generation and external module support)"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+# Kernel layer (FFI types)
+reovim-kernel = { path = "../../kernel", version = "0.9.0-dev" }
+
+# FFI support
+libc = "0.2"
+
+# Logging for FFI wrappers
+tracing = "0.1"
+
+# Note: cbindgen is not used because it cannot access types from reovim-kernel.
+# The C header (include/reovim.h) is manually maintained instead.

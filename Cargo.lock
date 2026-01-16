@@ -1062,6 +1062,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-driver-ffi"
+version = "0.9.0-dev"
+dependencies = [
+ "libc",
+ "reovim-kernel",
+ "tracing",
+]
+
+[[package]]
 name = "reovim-driver-input"
 version = "0.9.0-dev"
 dependencies = [

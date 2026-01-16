@@ -71,6 +71,20 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **FFI Module Loading Mechanism** (Issue #290)
+  - New `reovim-driver-ffi` crate for external module support
+  - C header file `lib/drivers/ffi/include/reovim.h` for external modules
+  - ABI version 1.0.0 with stable struct layouts:
+    - `ReovimVersion`: 12 bytes (3 x u32)
+    - `ReovimModuleProbe`: 1308 bytes (fixed-size FFI-safe metadata)
+  - FFI service wrappers for external module use:
+    - `reovim_log_info/warn/error/debug()` - logging through tracing
+    - `reovim_abi_version()` - get kernel ABI version
+    - `reovim_abi_is_compatible()` - check version compatibility
+  - Documentation at `docs/architecture/ffi/overview.md`
+  - Example C module at `examples/c-module/`
+  - Modules can be written in C, Haskell, or any FFI-compatible language
+
 - **Basic Window Management** (Issue #276)
   - **WindowRegistry** (`runner/src/server/window.rs`):
     - `WindowState` struct for per-window cursor position and scroll offset
