@@ -218,6 +218,32 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
   - `u` (undo) and `Ctrl-R` (redo) now functional with cursor position restore
   - Deferred: Transaction batching (#255), Persistent undo (#256)
 
+- **Phase 7.4.3: Persistent Undo** (Issue #256)
+  - **Protocol Layer** (`lib/protocol/src/v1/undo.rs`):
+    - `UndoFileFormat` - Top-level format with magic bytes ("RUND"), version, metadata
+    - `SerializableUndoTree` - Tree structure with nodes, current position, seq counter
+    - `SerializableUndoNode` - Node with edits, cursors, relative timestamps, tree links
+    - `SerializableEdit` / `SerializablePosition` - Kernel type conversions
+    - `from_undo_tree()` / `to_undo_tree()` - Bidirectional conversion functions
+    - Uses `rmp-serde` for MessagePack binary serialization
+  - **Kernel Enhancement** (`lib/kernel/src/block/undo.rs`):
+    - `UndoTree::from_serializable()` - Reconstruct tree from deserialized data
+    - Timestamps converted to relative durations for cross-session compatibility
+  - **Persistence Module** (`runner/src/undo_persistence.rs`):
+    - `UndoPersistence` - Manager for undo file I/O
+    - Centralized storage at `~/.local/share/reovim/undo/`
+    - `persist()` / `load()` / `delete()` / `exists()` methods
+    - `encode_path_component()` / `decode_path_component()` - Safe filename encoding
+  - **UndoRegistry Integration** (`runner/src/undo_registry.rs`):
+    - `persist()` - Save undo tree to disk for a buffer
+    - `load()` / `load_graceful()` - Load undo tree from disk
+    - `set_tree()` - Replace buffer's undo tree (for loading)
+  - **Lifecycle Hooks**:
+    - `buffer/open_file` RPC loads undo history automatically
+    - `buffer/write_file` RPC persists undo history on save
+  - 24 unit tests covering serialization, encoding, round-trips
+  - Deferred: Transaction batching (#255)
+
 - **Phase 7.10: Word Motions** (Issue #238)
   - New `modules/motions/` module for vim-style motion commands
   - 8 word motion commands: `w`, `b`, `e`, `W`, `B`, `E`, `ge`, `gE`

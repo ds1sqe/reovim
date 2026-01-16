@@ -18,7 +18,9 @@ pub mod stub;
 pub mod test_utils;
 
 pub use {
-    buffer::{buffer_get_content, buffer_list, buffer_open_file, buffer_set_content},
+    buffer::{
+        buffer_get_content, buffer_list, buffer_open_file, buffer_set_content, buffer_write_file,
+    },
     command::command_execute,
     editor::{editor_quit, editor_resize, editor_set_active_buffer},
     input::input_keys,

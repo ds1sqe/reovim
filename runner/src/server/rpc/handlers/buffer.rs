@@ -6,7 +6,7 @@ use {
     reovim_kernel::api::v1::{Buffer, BufferId},
     reovim_protocol::v1::{
         BufferContentResult, BufferGetContentParams, BufferInfo, BufferListResult,
-        BufferOpenFileParams, BufferOpenResult, BufferSetContentParams, OkResult, RpcError,
+        BufferOpenFileParams, BufferSetContentParams, OkResult, RpcError,
     },
 };
 
@@ -173,7 +173,7 @@ pub fn buffer_list(ctx: RpcContext, _params: serde_json::Value) -> HandlerFuture
 
 /// Handler for `buffer/open_file` method.
 ///
-/// Opens a file into a new buffer.
+/// Opens a file into a new buffer and loads any existing undo history.
 ///
 /// # Request
 ///
@@ -184,7 +184,7 @@ pub fn buffer_list(ctx: RpcContext, _params: serde_json::Value) -> HandlerFuture
 /// # Response
 ///
 /// ```json
-/// {"jsonrpc": "2.0", "id": 1, "result": {"buffer_id": 1}}
+/// {"jsonrpc": "2.0", "id": 1, "result": {"buffer_id": 1, "undo_loaded": true}}
 /// ```
 ///
 /// # Panics
@@ -203,15 +203,24 @@ pub fn buffer_open_file(ctx: RpcContext, params: serde_json::Value) -> HandlerFu
         // Capture state before modification
         let before = ctx.session.with_state(StateSnapshot::capture).await;
 
-        // Create buffer and register
-        let buffer_id = ctx
+        // Create buffer, register, and load undo history
+        let (buffer_id, undo_loaded) = ctx
             .session
             .with_state_mut(|state| {
                 let mut buffer = Buffer::from_string(&content);
                 buffer.set_file_path(Some(params.path.clone()));
                 let id = state.app.kernel.buffers.register(buffer);
                 state.app.active_buffer = Some(id);
-                id
+
+                // Load undo history from disk (graceful: log errors, don't fail)
+                let loaded = state.app.undo_registry.load_graceful(
+                    id,
+                    &params.path,
+                    &state.undo_persistence,
+                    state.vfs.as_ref(),
+                );
+
+                (id, loaded)
             })
             .await;
 
@@ -219,10 +228,113 @@ pub fn buffer_open_file(ctx: RpcContext, params: serde_json::Value) -> HandlerFu
         let after = ctx.session.with_state(StateSnapshot::capture).await;
         emit_state_changes(&ctx.session, &before, &after).await;
 
-        Ok(serde_json::to_value(BufferOpenResult {
-            buffer_id: buffer_id.as_usize(),
-        })
-        .expect("BufferOpenResult serialization cannot fail"))
+        Ok(serde_json::json!({
+            "buffer_id": buffer_id.as_usize(),
+            "undo_loaded": undo_loaded
+        }))
+    })
+}
+
+/// Parameters for `buffer/write_file` method.
+#[derive(Debug, serde::Deserialize)]
+pub struct BufferWriteFileParams {
+    /// Optional buffer ID (defaults to active buffer).
+    #[serde(default)]
+    pub buffer_id: Option<usize>,
+    /// Optional file path to write to (defaults to buffer's path).
+    #[serde(default)]
+    pub path: Option<String>,
+}
+
+/// Handler for `buffer/write_file` method.
+///
+/// Writes buffer content to disk and persists undo history.
+///
+/// # Request
+///
+/// ```json
+/// {"jsonrpc": "2.0", "id": 1, "method": "buffer/write_file", "params": {}}
+/// ```
+///
+/// # Response
+///
+/// ```json
+/// {"jsonrpc": "2.0", "id": 1, "result": {"ok": true, "path": "/path/to/file", "undo_saved": true}}
+/// ```
+///
+/// # Errors
+///
+/// Returns `invalid_params` if no active buffer or buffer has no path and none provided.
+#[must_use]
+pub fn buffer_write_file(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
+    Box::pin(async move {
+        let params: BufferWriteFileParams =
+            serde_json::from_value(params).map_err(|e| RpcError::invalid_params(e.to_string()))?;
+
+        // Get buffer content, path, and buffer ID
+        let (buffer_id, content, file_path) = ctx
+            .session
+            .with_state(|state| {
+                let buffer_id = params
+                    .buffer_id
+                    .map(BufferId::from_raw)
+                    .or(state.app.active_buffer)
+                    .ok_or_else(|| RpcError::invalid_params("No active buffer"))?;
+
+                let buffer_arc = state.app.kernel.buffers.get(buffer_id).ok_or_else(|| {
+                    RpcError::invalid_params(format!("Buffer {} not found", buffer_id.as_usize()))
+                })?;
+
+                let (content, buffer_file_path) = {
+                    let buffer = buffer_arc.read();
+                    (buffer.content(), buffer.file_path().map(String::from))
+                };
+
+                // Use provided path or buffer's path
+                let file_path = params
+                    .path
+                    .clone()
+                    .or(buffer_file_path)
+                    .ok_or_else(|| RpcError::invalid_params("No file path specified"))?;
+
+                Ok((buffer_id, content, file_path))
+            })
+            .await?;
+
+        // Write file content to disk
+        std::fs::write(&file_path, &content)
+            .map_err(|e| RpcError::internal_error(format!("Failed to write file: {e}")))?;
+
+        // Persist undo history and clear modified flag
+        let undo_saved = ctx
+            .session
+            .with_state_mut(|state| {
+                // Clear modified flag
+                if let Some(buffer_arc) = state.app.kernel.buffers.get(buffer_id) {
+                    buffer_arc.write().set_modified(false);
+                }
+
+                // Persist undo history (log errors, don't fail the write)
+                match state.app.undo_registry.persist(
+                    buffer_id,
+                    &file_path,
+                    &state.undo_persistence,
+                    state.vfs.as_ref(),
+                ) {
+                    Ok(()) => true,
+                    Err(e) => {
+                        tracing::warn!("Failed to persist undo history for '{}': {}", file_path, e);
+                        false
+                    }
+                }
+            })
+            .await;
+
+        Ok(serde_json::json!({
+            "ok": true,
+            "path": file_path,
+            "undo_saved": undo_saved
+        }))
     })
 }
 

@@ -12,7 +12,7 @@ use {
 };
 
 use crate::{
-    AppState,
+    AppState, UndoPersistence,
     module::ModuleManager,
     registry::{CommandRegistry, KeyLookupResult, KeymapRegistry, ModeRegistry},
 };
@@ -70,6 +70,11 @@ pub struct SessionState {
     /// Each session owns its own module set, enabling per-session
     /// module loading and isolation (similar to Linux process contexts).
     pub module_registry: ModuleManager,
+
+    /// Undo persistence manager for disk serialization.
+    ///
+    /// Handles reading/writing undo trees to `~/.local/share/reovim/undo/`.
+    pub undo_persistence: UndoPersistence,
 }
 
 impl SessionState {
@@ -82,6 +87,11 @@ impl SessionState {
     /// * `vfs` - The virtual filesystem driver for file operations
     #[must_use]
     pub fn new(kernel: KernelContext, initial_mode: ModeId, vfs: Arc<dyn VfsDriver>) -> Self {
+        // Initialize undo persistence with platform-specific data directory
+        let data_dir = reovim_arch::dirs::data_local_dir()
+            .map_or_else(|| std::path::PathBuf::from(".reovim"), |d| d.join("reovim"));
+        let undo_persistence = UndoPersistence::new(&data_dir);
+
         Self {
             app: AppState::new(kernel, initial_mode),
             vfs,
@@ -89,6 +99,7 @@ impl SessionState {
             command_registry: CommandRegistry::new(),
             keymap_registry: KeymapRegistry::new(),
             module_registry: ModuleManager::new(),
+            undo_persistence,
         }
     }
 
@@ -106,6 +117,11 @@ impl SessionState {
         keymap_registry: KeymapRegistry,
         module_registry: ModuleManager,
     ) -> Self {
+        // Initialize undo persistence with platform-specific data directory
+        let data_dir = reovim_arch::dirs::data_local_dir()
+            .map_or_else(|| std::path::PathBuf::from(".reovim"), |d| d.join("reovim"));
+        let undo_persistence = UndoPersistence::new(&data_dir);
+
         Self {
             app: AppState::new(kernel, initial_mode),
             vfs,
@@ -113,6 +129,7 @@ impl SessionState {
             command_registry,
             keymap_registry,
             module_registry,
+            undo_persistence,
         }
     }
 
