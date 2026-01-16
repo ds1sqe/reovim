@@ -75,8 +75,8 @@ pub use context::CommandContext;
 
 // Re-export result types
 pub use result::{
-    CommandResult, EditAction, ModeAction, SearchAction, SearchDirection, UndoAction,
-    UndotreeAction, WindowAction,
+    BlockInsertAction, CommandResult, EditAction, ModeAction, SearchAction, SearchDirection,
+    UndoAction, UndotreeAction, WindowAction,
 };
 
 // Re-export traits

@@ -274,9 +274,17 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
                     // Handle mode transition from ModeChanged events
                     // Commands emit ModeChanged::with_mode_id() which sets pending_mode_change.
                     // This event-driven approach replaces hardcoded mode_for_command() mapping.
-                    if let Ok(mut guard) = self.pending_mode_change.lock()
-                        && let Some(new_mode) = guard.take()
-                    {
+                    let pending_new_mode = self
+                        .pending_mode_change
+                        .lock()
+                        .ok()
+                        .and_then(|mut guard| guard.take());
+                    if let Some(new_mode) = pending_new_mode {
+                        // Check if exiting insert mode with block insert active
+                        let old_mode = self.app.current_mode();
+                        if old_mode.name() == "insert" && self.app.block_insert.is_active() {
+                            self.apply_block_insert_text();
+                        }
                         self.app.mode_stack.set(new_mode);
                     }
                 } else {
@@ -580,6 +588,11 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
                 // last visual selection. Handle it here instead of checking
                 // the command name.
                 self.handle_reselect_last();
+            }
+            CommandResult::BlockInsertAction(action) => {
+                // Visual-block I/A commands return this to initiate block insert mode.
+                // Store the block bounds and enter insert mode.
+                self.handle_block_insert_action(action);
             }
         }
     }
@@ -1575,6 +1588,122 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
         // Using the stored mode_id instead of deriving from SelectionMode
         // removes hardcoded "editor" module assumption
         self.app.mode_stack.set(mode_id);
+    }
+
+    /// Handle a block insert action from visual-block I/A commands.
+    ///
+    /// This initiates block insert mode:
+    /// 1. Stores block bounds in `AppState`
+    /// 2. Enters insert mode
+    /// 3. Starts insert text accumulation
+    ///
+    /// When insert mode exits (via Escape, Ctrl-C, etc.), the accumulated text
+    /// will be applied to all lines in the block.
+    fn handle_block_insert_action(&mut self, action: reovim_driver_command::BlockInsertAction) {
+        use {
+            reovim_driver_command::BlockInsertAction,
+            reovim_kernel::api::v1::{ModeId, ModuleId},
+        };
+
+        let (start_line, end_line, column, is_append) = match action {
+            BlockInsertAction::InsertStart {
+                start_line,
+                end_line,
+                column,
+            } => (start_line, end_line, column, false),
+            BlockInsertAction::InsertEnd {
+                start_line,
+                end_line,
+                column,
+            } => (start_line, end_line, column, true),
+        };
+
+        // Store block insert state
+        self.app
+            .block_insert
+            .start(start_line, end_line, column, is_append);
+
+        // Enter insert mode (construct ModeId directly since runner doesn't depend on editor module)
+        let insert_mode_id = ModeId::new(ModuleId::new("editor"), "insert");
+        self.app.mode_stack.set(insert_mode_id);
+
+        // Start accumulating insert text for later application
+        self.app.repeat_state.start_accumulating();
+
+        tracing::debug!(start_line, end_line, column, is_append, "Block insert mode started");
+    }
+
+    /// Apply accumulated block insert text to all lines in the block.
+    ///
+    /// Called when exiting insert mode while block insert is active.
+    /// Applies the text typed on the first line to all lines in the block selection.
+    fn apply_block_insert_text(&mut self) {
+        // Get block insert state
+        let block_insert = &self.app.block_insert;
+        if !block_insert.is_active() {
+            return;
+        }
+
+        let start_line = block_insert.start_line;
+        let end_line = block_insert.end_line;
+        let column = block_insert.column;
+
+        // Get accumulated insert text
+        let insert_text = self.app.repeat_state.insert_text.clone();
+        if insert_text.is_empty() {
+            // No text to apply
+            self.app.block_insert.clear();
+            self.app.repeat_state.stop_accumulating();
+            return;
+        }
+
+        // Get active buffer
+        let Some(buffer_id) = self.app.active_buffer else {
+            self.app.block_insert.clear();
+            self.app.repeat_state.stop_accumulating();
+            return;
+        };
+
+        let Some(buffer_arc) = self.app.kernel.buffers.get(buffer_id) else {
+            self.app.block_insert.clear();
+            self.app.repeat_state.stop_accumulating();
+            return;
+        };
+
+        // Apply text to lines 2..=N (first line already has the text from typing)
+        // Text was already inserted on start_line, so we apply to start_line+1..=end_line
+        let mut buffer = buffer_arc.write();
+        let lines_count = buffer.lines().len();
+
+        for line_num in (start_line + 1)..=end_line {
+            if line_num >= lines_count {
+                break;
+            }
+
+            let line = buffer.lines().get(line_num).map(String::from);
+            if let Some(line) = line {
+                // Calculate insert position - clamp to line length
+                // (for both insert and append, column is the target position)
+                let insert_col = column.min(line.len());
+
+                let pos = Position::new(line_num, insert_col);
+                buffer.insert_at(pos, &insert_text);
+            }
+        }
+        drop(buffer);
+
+        tracing::debug!(
+            start_line,
+            end_line,
+            column,
+            text_len = insert_text.len(),
+            "Applied block insert text to {} lines",
+            end_line - start_line
+        );
+
+        // Clear block insert state
+        self.app.block_insert.clear();
+        self.app.repeat_state.stop_accumulating();
     }
 }
 

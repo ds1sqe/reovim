@@ -71,6 +71,22 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Visual Mode Key Blocking** (Issue #145)
+  - Explicit no-op bindings for `i`/`a` keys in all visual modes (prevent fallthrough)
+  - `I` command in visual/visual-line modes: move to first non-blank, enter insert
+  - `A` command in visual/visual-line modes: move to end of line, enter insert
+  - New commands: `VisualNoOp`, `VisualInsertStart`, `VisualInsertEnd`
+  - 11 unit tests for new command behavior
+
+- **Visual-Block Insert Mode** (Issue #146)
+  - `I` in visual-block mode: insert at left column of block on all selected lines
+  - `A` in visual-block mode: append at right column of block on all selected lines
+  - Text typed after `I`/`A` is applied to all lines in the block on exit
+  - New commands: `BlockInsertStart`, `BlockInsertEnd`
+  - New `CommandResult::BlockInsertAction` variant for callback pattern
+  - New `BlockInsertState` in `AppState` for tracking block bounds
+  - Runner detects insert mode exit and applies accumulated text to all block lines
+
 - **FFI Module Loading Mechanism** (Issue #290)
   - New `reovim-driver-ffi` crate for external module support
   - C header file `lib/drivers/ffi/include/reovim.h` for external modules
@@ -85,22 +101,22 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
   - Example C module at `examples/c-module/`
   - Modules can be written in C, Haskell, or any FFI-compatible language
 
-- **Python FFI Bindings via PyO3** (Issue #293)
-  - New `reovim-driver-ffi-python` crate for Python module support
-  - Optional feature flag: `cargo build --features python`
-  - PyO3 type bindings for kernel types:
-    - `ModuleId`, `Version`, `ProbeResult` - core identity types
-    - `CommandRegistration`, `KeybindingRegistration`, `EventHandlerRegistration` - builder types
-    - `ModuleContext` - init context wrapper
-  - `PythonModule` wrapper implementing all 12 `Module` trait methods
-  - Thread-safe GIL acquisition via `Python::attach()`
-  - Python module discovery (`discover_python_modules()`) and loading (`load_python()`)
-  - Hot reload support with `pickle`-based state serialization
-  - Documentation:
-    - Architecture: `docs/architecture/ffi/python.md`
-    - User guide: `docs/user-guide/python-modules.md`
-  - Example modules: `examples/python-module/hello.py`, `examples/python-module/counter.py`
-  - 34 unit tests covering all type bindings and conversions
+- **Haskell FFI Module Support** (Issue #294)
+  - Example Haskell module at `examples/haskell-module/`
+  - GHC RTS initialization via `__attribute__((constructor))` in `rts_shim.c`
+  - Pointer-based FFI alternatives for GHC limitations:
+    - `reovim_module_api_version_ptr()` - GHC can't export static symbols
+    - `reovim_module_probe()` via pointer - GHC can't return structs by value
+  - Module loader fallback support (`runner/src/server/module/loading/loader.rs`):
+    - Tries static symbol first, then pointer-based function
+  - Haskell FFI bindings library:
+    - `Reovim.FFI.Types` - Storable instances for FFI types
+    - `Reovim.FFI.Version` - Version constants and compatibility
+    - `Reovim.FFI.Probe` - ProbeBuilder pattern
+    - `Reovim.FFI.Logging` - Kernel logging imports
+    - `Reovim.Module` - ReovimModule typeclass with exception-safe wrappers
+  - Documentation at `docs/architecture/ffi/haskell.md`
+  - Demo script: `examples/haskell-module/demo.sh`
 
 - **Basic Window Management** (Issue #276)
   - **WindowRegistry** (`runner/src/server/window.rs`):
@@ -263,6 +279,28 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
     - `execute()` in command registry
     - `dispatch()` in RPC dispatcher
   - 13 profiler tests, 9 trace driver tests
+
+- **Phase 7-A: Default Module Autoload Policy** (Issue #264)
+  - **Default Modules** (`runner/src/server/module/defaults.rs`):
+    - `DEFAULT_MODULES` constant: editor, keymap, operators, commands, mode-manager
+    - Documentation for override methods (CLI, config file, env vars)
+  - **ModuleConfig Extensions** (`runner/src/server/module/config.rs`):
+    - `extra: Vec<String>` - Add modules to default list
+    - `skip: Vec<String>` - Remove modules from default list
+    - `effective_modules()` - Calculate final module list (defaults ± extra ± skip)
+    - `load_with_env()` - Load config respecting `REOVIM_CONFIG_DIR`
+    - `all_search_paths_with_env()` - Include `REOVIM_MODULE_PATH` paths
+  - **Loading Precedence** (highest to lowest):
+    1. CLI `--load` flags
+    2. CLI `--no-defaults` flag
+    3. Config file `[modules].autoload` (overrides defaults)
+    4. Config file `[modules].extra` (adds to defaults)
+    5. Config file `[modules].skip` (removes from defaults)
+    6. Hardcoded `DEFAULT_MODULES`
+  - **Environment Variables**:
+    - `REOVIM_CONFIG_DIR` - Override config directory
+    - `REOVIM_MODULE_PATH` - Additional search paths (colon-separated)
+  - 19 unit tests for effective_modules, extra/skip, and config parsing
 
 - **Phase 7-A: Module Loading Mechanism with CLI Flags** (Issue #262)
   - **CLI Flags for Module Control**:
@@ -1827,6 +1865,16 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
   - Tree-sitter now lives only in plugins where it belongs
 
 ### Fixed
+
+- **E2E Validation - Runnable Editor Milestone** (Issue #265)
+  - Static module loading: Added keymap, editor, layout, undotree modules as Cargo dependencies
+  - Registry wiring: Created `build_default_registries()` and `create_session_with_defaults()`
+    to wire module commands and keybindings at session startup
+  - Fixed `buffer/open_file` handler to set `viewport.active_buffer` for per-client viewport tracking
+  - Fixed `input/keys` handler to process keys one at a time (incremental keymap lookup)
+  - Fixed `cursor-right` boundary check to clamp at `line_len - 1` (normal mode can't go past last char)
+  - Updated `test_set_active_buffer_success` test expectation for new buffer activation behavior
+  - Editor now functional: cursor movement, insert mode, delete, undo/redo all work end-to-end
 
 - **IPC Channel Clone** - Fixed `Sender<T>` and `BoundedSender<T>` Clone impl to not require `T: Clone` (matching std::sync::mpsc behavior)
 

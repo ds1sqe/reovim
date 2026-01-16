@@ -10,7 +10,9 @@ use std::{
 
 use {
     libloading::{Library, Symbol},
-    reovim_kernel::api::v1::{API_VERSION, Module, ModuleError, ModuleId, Version, is_compatible},
+    reovim_kernel::api::v1::{
+        API_VERSION, Module, ModuleError, ModuleId, ModuleProbe, Version, is_compatible,
+    },
 };
 
 #[cfg(feature = "python")]
@@ -19,8 +21,8 @@ use reovim_driver_ffi_python::PythonModule;
 use super::{
     discovery::{default_search_paths, discover_modules, find_module},
     handle::{
-        DestroyFn, EntryFn, ExitFn, FfiSymbols, FreeStateFn, InitFn, ModuleHandle, ProbeFn,
-        RestoreStateFn, SaveStateFn, SupportsHotReloadFn,
+        ApiVersionPtrFn, DestroyFn, EntryFn, ExitFn, FfiSymbols, FreeStateFn, InitFn, ModuleHandle,
+        ProbeFn, ProbePtrFn, RestoreStateFn, SaveStateFn, SupportsHotReloadFn,
     },
 };
 
@@ -125,14 +127,26 @@ impl ModuleLoader {
             // 1. Load shared library
             let library = Library::new(path).map_err(|e| ModuleError::LoadFailed(e.to_string()))?;
 
-            // 2. Check API version FIRST (static symbol, fast)
-            // NOTE: Macro generates `pub static`, so Symbol returns a reference
-            let api_version: Symbol<&'static Version> =
-                library
-                    .get(b"REOVIM_MODULE_API_VERSION")
-                    .map_err(|e| ModuleError::NoEntryPoint(e.to_string()))?;
-
-            let module_api = **api_version; // Double dereference: Symbol -> & -> Version
+            // 2. Check API version FIRST
+            // Try static symbol first (fast), then fallback to pointer function (Haskell)
+            let module_api = if let Ok(api_version) =
+                library.get::<&'static Version>(b"REOVIM_MODULE_API_VERSION")
+            {
+                // NOTE: Macro generates `pub static`, so Symbol returns a reference
+                **api_version // Double dereference: Symbol -> & -> Version
+            } else if let Ok(api_version_ptr_fn) =
+                library.get::<ApiVersionPtrFn>(b"reovim_module_api_version_ptr")
+            {
+                // Fallback for languages that can't export static data (e.g., Haskell)
+                let mut version = Version::new(0, 0, 0);
+                api_version_ptr_fn(&raw mut version);
+                version
+            } else {
+                return Err(ModuleError::NoEntryPoint(
+                    "neither REOVIM_MODULE_API_VERSION nor reovim_module_api_version_ptr found"
+                        .to_string(),
+                ));
+            };
 
             // is_compatible(required, provided) - module requires, kernel provides
             if !is_compatible(module_api, API_VERSION) {
@@ -143,11 +157,18 @@ impl ModuleLoader {
             }
 
             // 3. Get module probe (metadata without instantiation)
-            let probe_fn: Symbol<ProbeFn> = library
-                .get(b"reovim_module_probe")
-                .map_err(|e| ModuleError::NoEntryPoint(e.to_string()))?;
-
-            let probe = probe_fn();
+            // Try return-by-value first, then fallback to pointer (Haskell)
+            let probe = if let Ok(probe_fn) = library.get::<ProbeFn>(b"reovim_module_probe") {
+                probe_fn()
+            } else if let Ok(probe_ptr_fn) = library.get::<ProbePtrFn>(b"reovim_module_probe") {
+                // Fallback for languages that can't return structs by value (e.g., Haskell)
+                // SAFETY: ModuleProbe is repr(C) and all-zero is a valid state
+                let mut probe: ModuleProbe = std::mem::zeroed();
+                probe_ptr_fn(&raw mut probe);
+                probe
+            } else {
+                return Err(ModuleError::NoEntryPoint("reovim_module_probe not found".to_string()));
+            };
             let id = ModuleId::from_string(probe.id_str().to_owned());
 
             // 4. Check if already loaded

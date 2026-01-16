@@ -169,9 +169,11 @@ use {
     reovim_arch::sync::RwLock,
     reovim_driver_vfs::{StandardVfs, VfsDriver},
     reovim_kernel::api::v1::{
-        EventBus, KernelContext, MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry,
-        RegisterBank, TextObjectEngine,
+        EventBus, KernelContext, MarkBank, ModeId, Module, ModuleContext, ModuleId, MotionEngine,
+        OptionRegistry, RegisterBank, TextObjectEngine,
     },
+    reovim_module_editor::{EditorMode, command::all_commands},
+    reovim_module_keymap::KeymapModule,
     reovim_protocol::v1::{RpcError, RpcRequest, RpcResponse},
 };
 
@@ -179,7 +181,8 @@ use crate::buffer_manager::SimpleBufferManager;
 
 use {
     client::Client,
-    module::{ModuleConfig, ModuleManager},
+    module::{ModuleConfig, ModuleManager, wire_module_keybindings},
+    registry::{CommandRegistry, KeymapRegistry, ModeEntry, ModeRegistry},
     rpc::{RpcContext, RpcDispatcher, create_default_dispatcher},
     session::{Session, SessionId, SessionRegistry},
     transport::{TransportListener, TransportReader, TransportWriter},
@@ -542,64 +545,204 @@ impl Server {
     /// Load modules from configuration.
     ///
     /// This method:
-    /// 1. Adds search paths from `config.modules.search_paths`
-    /// 2. Loads modules from `config.modules.autoload` (unless `no_defaults` is set)
-    /// 3. Initializes all loaded modules
+    /// 1. Loads config file (respecting `REOVIM_CONFIG_DIR`)
+    /// 2. Merges file config with CLI args (CLI takes precedence)
+    /// 3. Calculates effective module list (defaults + extra - skip)
+    /// 4. Loads each module, logging warnings for failures
     ///
     /// Called automatically by `run()` before creating sessions.
     ///
-    /// # Errors
+    /// # Loading Precedence
     ///
-    /// Logs warnings for modules that fail to load but continues.
-    /// Does not return errors since module loading failures are non-fatal.
+    /// 1. CLI `--load` flags (highest priority)
+    /// 2. CLI `--no-defaults` flag
+    /// 3. Config file `[modules].autoload` (overrides defaults)
+    /// 4. Config file `[modules].extra` (adds to defaults)
+    /// 5. Config file `[modules].skip` (removes from defaults)
+    /// 6. `DEFAULT_MODULES` constant (lowest priority)
     fn load_modules(&self) {
-        // Skip if no_defaults and no autoload modules
-        if self.config.modules.should_skip_defaults() && self.config.modules.autoload.is_empty() {
-            tracing::info!("module loading skipped (--no-defaults with no --load)");
-            return;
-        }
+        // Load config file with environment override
+        let file_config = match ModuleConfig::load_with_env() {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!("Failed to load module config: {e}");
+                ModuleConfig::default()
+            }
+        };
 
-        // Get the list of modules to load
-        // Note: When no_defaults is false, default module list will be defined in #264.
-        // For now, both paths use the same autoload list.
-        let modules_to_load = self.config.modules.autoload.clone();
+        // Merge: CLI args override file config
+        let merged = self.merge_module_config(&file_config);
+
+        // Get effective list
+        let modules_to_load = if merged.should_skip_defaults() {
+            // Only CLI-specified modules when --no-defaults is set
+            self.config.modules.autoload.clone()
+        } else {
+            merged.effective_modules()
+        };
 
         if modules_to_load.is_empty() {
-            tracing::debug!("no modules to load");
+            tracing::info!("No modules to load");
             return;
         }
 
         tracing::info!(
             count = modules_to_load.len(),
             modules = ?modules_to_load,
-            "loading modules"
+            "Loading modules"
         );
 
         // Discover available modules in search paths
-        let discovered = self.module_registry.discover();
-        tracing::debug!(count = discovered.len(), "discovered module files");
+        let search_paths = merged.all_search_paths_with_env();
+        tracing::debug!(paths = ?search_paths, "Module search paths");
 
-        // TODO (#264): Load discovered modules that match autoload list
-        // For now, just log what we would load
+        let discovered = self.module_registry.discover();
+        tracing::debug!(count = discovered.len(), "Discovered module files");
+
+        // Load each module (actual loading deferred to #265)
+        // For now, log what would be loaded
         for module_id in &modules_to_load {
-            tracing::debug!(module = %module_id, "would load module");
+            // Check if module exists in discovered modules by name
+            let found = discovered.iter().any(|path| {
+                path.file_stem()
+                    .and_then(|s| s.to_str())
+                    .is_some_and(|name| name.contains(module_id))
+            });
+
+            if found {
+                tracing::debug!(module = %module_id, "Module available for loading");
+            } else {
+                tracing::warn!(module = %module_id, "Module not found in search paths");
+            }
         }
 
-        // TODO (#264): Create ModuleContext and initialize modules
+        // TODO (#265): Actually load discovered modules
         // The full implementation requires:
         // 1. Matching discovered modules to autoload list
-        // 2. Creating proper KernelContext with data/cache dirs
-        // 3. Calling self.module_registry.init_all(&ctx)
-        // 4. Wiring handlers for initialized modules
+        // 2. Creating proper ModuleContext with data/cache dirs
+        // 3. Calling self.module_registry.load_by_name(&module_id)
+        // 4. Calling self.module_registry.init_all(&ctx)
+        // 5. Wiring handlers for initialized modules
+    }
+
+    /// Merge file config with CLI arguments.
+    ///
+    /// CLI arguments take precedence over file config:
+    /// - CLI search paths are appended
+    /// - CLI autoload modules are appended
+    /// - CLI `--no-defaults` overrides file config
+    fn merge_module_config(&self, file_config: &ModuleConfig) -> ModuleConfig {
+        let mut merged = file_config.clone();
+
+        // CLI search paths are appended
+        for path in &self.config.modules.search_paths {
+            merged.search_paths.push(path.clone());
+        }
+
+        // CLI autoload modules are appended
+        for module in &self.config.modules.autoload {
+            if !merged.autoload.contains(module) {
+                merged.autoload.push(module.clone());
+            }
+        }
+
+        // CLI --no-defaults overrides
+        if self.config.modules.no_defaults {
+            merged.no_defaults = true;
+        }
+
+        merged
     }
 
     /// Ensure the default session exists.
+    ///
+    /// Creates the session with pre-wired keybindings from default modules.
+    /// This is where module loading "meets" session creation (#265).
     fn ensure_default_session(&self, id: &SessionId) {
-        let default_mode = self.config.effective_default_mode();
-        self.sessions.get_or_create(id, || {
-            Session::new(id.clone(), real_kernel_context(), default_mode, standard_vfs())
-        });
+        self.sessions
+            .get_or_create(id, || create_session_with_defaults(id.clone()));
     }
+}
+
+/// Create a new session with default registries (modes, commands, keybindings wired).
+///
+/// This is the entry point for creating sessions that have working keybindings.
+/// Used by both `ensure_default_session()` and `handle_client()`.
+fn create_session_with_defaults(id: SessionId) -> Arc<Session> {
+    let (mode_registry, command_registry, keymap_registry, module_registry) =
+        build_default_registries();
+
+    Session::with_registries(
+        id,
+        real_kernel_context(),
+        fallback_default_mode(),
+        standard_vfs(),
+        mode_registry,
+        command_registry,
+        keymap_registry,
+        module_registry,
+    )
+}
+
+/// Build default registries with keybindings wired from default modules.
+///
+/// This is the "generation position" where modules are registered and
+/// their keybindings are wired to the session registries.
+fn build_default_registries() -> (ModeRegistry, CommandRegistry, KeymapRegistry, ModuleManager) {
+    let mut mode_registry = ModeRegistry::new();
+    let mut command_registry = CommandRegistry::new();
+    let mut keymap_registry = KeymapRegistry::new();
+    let module_manager = ModuleManager::new();
+
+    // Register editor modes (so ModeRegistry knows about them)
+    // Each mode provides Mode (identity), ModeDisplay (cursor), and ModeInput (accepts char)
+    for mode in [
+        EditorMode::Normal,
+        EditorMode::Insert,
+        EditorMode::Visual,
+        EditorMode::VisualLine,
+        EditorMode::VisualBlock,
+    ] {
+        let entry = ModeEntry::new(Arc::new(mode))
+            .with_display(Arc::new(mode))
+            .with_input(Arc::new(mode));
+        mode_registry.register(entry);
+    }
+
+    // Register editor commands (cursor movement, mode switching, editing, etc.)
+    // These are the command handlers that keybindings point to.
+    let editor_module_id = ModuleId::new("editor");
+    for cmd in all_commands() {
+        command_registry.register_for_module(cmd.into(), editor_module_id.clone());
+    }
+    tracing::info!(count = command_registry.len(), "registered editor commands");
+
+    // Create keymap module and wire its keybindings
+    let keymap_module = KeymapModule::new();
+    let module_id = keymap_module.id();
+
+    // Initialize the module (for logging purposes)
+    let ctx = ModuleContext::default();
+    let mut keymap_module_init = keymap_module;
+    let _init_result = keymap_module_init.init(&ctx);
+
+    // Wire keybindings from the keymap module
+    let keybindings = keymap_module_init.keybindings();
+    match wire_module_keybindings(&module_id, &keybindings, &mut keymap_registry) {
+        Ok(stats) => {
+            tracing::info!(
+                module = %module_id,
+                wired = stats.keybindings_wired,
+                skipped = stats.keybindings_skipped,
+                "wired keybindings"
+            );
+        }
+        Err(e) => {
+            tracing::error!(module = %module_id, error = %e, "failed to wire keybindings");
+        }
+    }
+
+    (mode_registry, command_registry, keymap_registry, module_manager)
 }
 
 impl Default for Server {
@@ -661,12 +804,11 @@ async fn handle_client(
     session_id: SessionId,
     sessions: Arc<SessionRegistry>,
     dispatcher: Arc<RpcDispatcher>,
-    default_mode: ModeId,
+    _default_mode: ModeId,
 ) -> std::io::Result<()> {
-    // Get or create the session
-    let session = sessions.get_or_create(&session_id, || {
-        Session::new(session_id.clone(), real_kernel_context(), default_mode, standard_vfs())
-    });
+    // Get or create the session with default registries (keybindings wired)
+    let session =
+        sessions.get_or_create(&session_id, || create_session_with_defaults(session_id.clone()));
 
     // Create the client (owns the writer)
     let client = Client::new(client_id, session_id, writer);
