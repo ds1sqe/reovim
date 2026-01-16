@@ -123,59 +123,103 @@ See [Phase 5 Extraction Strategy](./phase5-extraction.md) for methodology.
 
 **Goal:** Basic editor functionality - open, edit, save files with Vim-like operations.
 
-### Sprint 0: Infrastructure (Blocking)
+### Completed Foundation
 
-| Issue | Title | Status |
-|-------|-------|--------|
-| #229 | [7.1] Test Infrastructure | Pending |
-| #230 | [7.2] Session/Viewport Architecture | **Current** |
+| Issue | Title | Status | Key Files |
+|-------|-------|--------|-----------|
+| #229 | [7.1] Test Infrastructure | ✅ Done | `runner/tests/common/` |
+| #230 | [7.2] Session/Viewport | ✅ Done | `runner/src/server/session/` |
+| #231 | [7.3] Cursor Movement | ✅ Done | `modules/editor/src/command.rs` |
+| #232 | [7.4] Undo/Redo | ✅ Done | `lib/kernel/src/block/undo.rs` |
+| #233 | [7.5] Insert Mode | ✅ Done | `modules/editor/src/command.rs` |
+| #234 | [7.6] Delete Operations | ✅ Done | `modules/editor/src/command.rs` |
 
-### Sprint 1: Foundation
+### Parallel Streams (Can Start Now)
 
-| Issue | Title | Dependencies |
-|-------|-------|--------------|
-| #231 | [7.3] Cursor Movement | #230 |
-| #232 | [7.4] Undo/Redo | #230 |
+All streams below can run **in parallel** - no cross-dependencies.
 
-### Sprint 2: Basic Editing
+#### Stream A: Module System
 
-| Issue | Title | Dependencies |
-|-------|-------|--------------|
-| #233 | [7.5] Insert Mode | #231, #232 |
-| #234 | [7.6] Delete Operations | #232 |
-| #235 | [7.7] File Save | #230 (VFS) |
-| #236 | [7.8] File Open | #235 |
+| Issue | Title | Dependencies | Key Files |
+|-------|-------|--------------|-----------|
+| #262 | [7.19] Module Loading Mechanism | #230 | `runner/src/main.rs`, `runner/src/server/module/` |
+| #264 | [7.20] Default Autoload Policy | #262 | `runner/src/server/defaults.rs` |
+| #265 | [7.21] Runnable Milestone | #262, #264 | `runner/tests/e2e_smoke.rs` |
 
-### Sprint 3: Yank & Motions
+#### Stream B: File Operations
 
-| Issue | Title | Dependencies |
-|-------|-------|--------------|
-| #237 | [7.9] Yank/Paste | #234, #230 |
-| #238 | [7.10] Word Motions | #231 |
-| #239 | [7.11] Line Motions | #231 |
-| #240 | [7.12] Find-Char Motions | #231 |
+| Issue | Title | Dependencies | Key Files |
+|-------|-------|--------------|-----------|
+| #235 | [7.7] File Save | #230 | `lib/drivers/vfs/`, `modules/commands/` |
+| #236 | [7.8] File Open | #235 | `runner/src/server/rpc/` |
 
-### Sprint 4: Advanced
+#### Stream C: Motions
 
-| Issue | Title | Dependencies |
-|-------|-------|--------------|
-| #241 | [7.13] Text Objects | #238, #237 |
-| #242 | [7.14] Visual Mode | #234, #237, #230 |
-| #243 | [7.15] Change Operator | #233, #234 |
-| #244 | [7.16] Replace Operations | #233 |
-| #245 | [7.17] Repeat Command | #234 |
+| Issue | Title | Dependencies | Key Files |
+|-------|-------|--------------|-----------|
+| #238 | [7.10] Word Motions | #231 | `modules/editor/src/` |
+| #239 | [7.11] Line Motions | #231 | `modules/editor/src/` |
+| #240 | [7.12] Find-Char Motions | #231 | `modules/editor/src/` |
+| #246 | [7.18] Search | #231 | `modules/editor/src/` |
 
-### Sprint 5: Search
+#### Stream D: Operators
 
-| Issue | Title | Dependencies |
-|-------|-------|--------------|
-| #246 | [7.18] Search | #231 |
+| Issue | Title | Dependencies | Key Files |
+|-------|-------|--------------|-----------|
+| #237 | [7.9] Yank/Paste | #234 | `modules/operators/src/` |
+| #243 | [7.15] Change Operator | #233, #234 | `modules/operators/src/` |
+| #244 | [7.16] Replace Operations | #233 | `modules/operators/src/` |
+| #245 | [7.17] Repeat Command | #234 | `modules/operators/src/` |
+
+### Blocked (Need Streams Above)
+
+| Issue | Title | Blocked By | Key Files |
+|-------|-------|------------|-----------|
+| #241 | [7.13] Text Objects | #238, #237 | `modules/operators/src/` |
+| #242 | [7.14] Visual Mode | #237 | `modules/editor/src/mode.rs` |
+
+### Phase 7 Dependency Graph
+
+```
+            COMPLETED FOUNDATION
+┌─────────────────────────────────────────────────────┐
+│  #229  #230  #231  #232  #233  #234                 │
+└─────────────────────────────────────────────────────┘
+                      │
+══════════════════════╧═══════════════════════════════
+       ALL STREAMS CAN START NOW (parallel)
+┌─────────────────────────────────────────────────────┐
+│                                                     │
+│  STREAM A          STREAM B        STREAM C         │
+│  Module System     File Ops        Motions          │
+│  ────────────      ────────        ───────          │
+│  #262 Mechanism    #235 Save       #238 Word        │
+│    ↓               ↓               #239 Line        │
+│  #264 Policy       #236 Open       #240 Find-Char   │
+│    ↓                               #246 Search      │
+│  #265 Runnable                                      │
+│                                                     │
+│  STREAM D                                           │
+│  Operators                                          │
+│  ─────────                                          │
+│  #237 Yank    #243 Change   #244 Replace   #245 .   │
+│                                                     │
+└─────────────────────────────────────────────────────┘
+                      │
+══════════════════════╧═══════════════════════════════
+              BLOCKED (need streams above)
+┌─────────────────────────────────────────────────────┐
+│  #241 Text Objects    ← needs #238, #237            │
+│  #242 Visual Mode     ← needs #237                  │
+│  #265 Full E2E        ← needs ALL streams           │
+└─────────────────────────────────────────────────────┘
+```
 
 ### Phase 7 Metrics
 
-- **Issues:** 18
-- **Estimated LOC:** ~4,600
-- **Estimated Tests:** ~425+
+- **Issues:** 21 (6 done + 4 streams + 2 blocked)
+- **Estimated LOC:** ~5,200
+- **Estimated Tests:** ~450+
 
 ---
 
