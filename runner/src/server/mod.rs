@@ -143,6 +143,7 @@ pub mod registry;
 pub mod rpc;
 pub mod session;
 pub mod transport;
+pub mod window;
 
 // Re-exports for public API
 pub use {
@@ -153,6 +154,7 @@ pub use {
     reovim_driver_input::{
         BeepFallback, FallbackContext, FallbackResult, InputFallbackHandler, NoOpFallback,
     },
+    window::{WindowRegistry, WindowState},
 };
 
 use std::{

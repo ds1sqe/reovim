@@ -295,6 +295,17 @@ impl Session {
                 // to the last_visual_selection state.
                 None
             }
+            CommandResult::WindowAction(action) => {
+                // Window management actions are handled by the runner event loop.
+                // Full implementation in Phase 5 of #276.
+                tracing::info!(?action, "Window action requested (session)");
+                None
+            }
+            CommandResult::ModeAction(action) => {
+                // Mode stack actions are handled by the runner event loop.
+                tracing::info!(?action, "Mode action requested (session)");
+                None
+            }
         }
     }
 

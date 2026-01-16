@@ -44,11 +44,13 @@
 //! assert_eq!(next, Some(w2));
 //! ```
 
+pub mod commands;
 mod focus;
 mod split;
 mod tiling;
 
 pub use {
+    commands::all_commands,
     focus::VimFocusPolicy,
     split::{SplitNode, SplitTree},
     tiling::TilingLayout,

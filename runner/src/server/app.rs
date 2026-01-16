@@ -5,8 +5,9 @@
 //! state like active buffer and mode stack.
 
 use {
-    crate::UndoRegistry,
+    crate::{UndoRegistry, server::window::WindowRegistry},
     reovim_arch::sync::RwLock,
+    reovim_driver_display::WindowId,
     reovim_driver_input::{FallbackContext, KeySequence},
     reovim_kernel::api::v1::{
         Buffer, BufferId, Direction, Edit, KernelContext, ModeId, ModeStack, Motion, Position,
@@ -663,6 +664,12 @@ pub struct AppState {
     /// When visual mode is exited, the selection is saved here so that
     /// `gv` can restore it. This allows re-selecting the last visual area.
     pub last_visual_selection: Option<LastVisualSelection>,
+
+    /// Window registry for multi-window support.
+    ///
+    /// Tracks window state, layout, and focus. Each window has its own
+    /// cursor position, allowing multiple views of the same buffer.
+    pub windows: WindowRegistry,
 }
 
 impl AppState {
@@ -690,6 +697,7 @@ impl AppState {
             repeat_state: RepeatState::new(),
             pending_edits: PendingEditBatch::new(),
             last_visual_selection: None,
+            windows: WindowRegistry::new(),
         }
     }
 
@@ -778,6 +786,52 @@ impl AppState {
     /// Stop accumulating insert mode text.
     pub const fn stop_insert_accumulation(&mut self) {
         self.repeat_state.stop_accumulating();
+    }
+
+    // ========================================================================
+    // Window Management Methods
+    // ========================================================================
+
+    /// Get the currently active window ID.
+    #[must_use]
+    pub const fn active_window(&self) -> Option<WindowId> {
+        self.windows.active_window()
+    }
+
+    /// Find the first window displaying a given buffer.
+    #[must_use]
+    pub fn window_for_buffer(&self, buffer_id: BufferId) -> Option<WindowId> {
+        self.windows.windows().find(|&win_id| {
+            self.windows
+                .get(win_id)
+                .is_some_and(|state| state.buffer_id == Some(buffer_id))
+        })
+    }
+
+    /// Get the buffer displayed in a given window.
+    #[must_use]
+    pub fn buffer_for_window(&self, window_id: WindowId) -> Option<BufferId> {
+        self.windows
+            .get(window_id)
+            .and_then(|state| state.buffer_id)
+    }
+
+    /// Ensure a window exists when setting the active buffer.
+    ///
+    /// For backward compatibility with single-window usage, this creates
+    /// a window if none exist when a buffer is set as active.
+    pub fn set_active_buffer_with_window(&mut self, buffer_id: BufferId) {
+        // If no windows exist, create one
+        if self.windows.is_empty() {
+            let window_id = self.windows.create_window(Some(buffer_id));
+            self.windows.set_active_window(window_id);
+        } else if let Some(active) = self.windows.active_window() {
+            // Update the active window's buffer
+            if let Some(state) = self.windows.get_mut(active) {
+                state.buffer_id = Some(buffer_id);
+            }
+        }
+        self.active_buffer = Some(buffer_id);
     }
 
     // ========================================================================
@@ -1762,5 +1816,97 @@ mod tests {
         assert_eq!(saved.anchor, Position::new(5, 0));
         assert_eq!(saved.cursor, Position::new(10, 20));
         assert_eq!(saved.mode, SelectionMode::Line);
+    }
+
+    // ========================================================================
+    // Window Management Tests
+    // ========================================================================
+
+    #[test]
+    fn test_app_state_has_window_registry() {
+        let kernel = KernelContext::default();
+        let app = AppState::new(kernel, test_mode_id());
+
+        // Initially no windows
+        assert!(app.windows.is_empty());
+        assert!(app.active_window().is_none());
+    }
+
+    #[test]
+    fn test_app_state_active_window_initially_none() {
+        let kernel = KernelContext::default();
+        let app = AppState::new(kernel, test_mode_id());
+
+        assert!(app.active_window().is_none());
+        assert_eq!(app.windows.window_count(), 0);
+    }
+
+    #[test]
+    fn test_app_state_create_window_on_buffer_set() {
+        let kernel = KernelContext::default();
+        let mut app = AppState::new(kernel, test_mode_id());
+
+        let buffer_id = BufferId::new();
+
+        // Set active buffer with window creation
+        app.set_active_buffer_with_window(buffer_id);
+
+        // Should have created a window
+        assert_eq!(app.windows.window_count(), 1);
+        assert!(app.active_window().is_some());
+        assert_eq!(app.active_buffer, Some(buffer_id));
+
+        // The window should contain the buffer
+        let win_id = app.active_window().unwrap();
+        assert_eq!(app.buffer_for_window(win_id), Some(buffer_id));
+    }
+
+    #[test]
+    fn test_app_state_backward_compat_single_buffer() {
+        let kernel = KernelContext::default();
+        let mut app = AppState::new(kernel, test_mode_id());
+
+        // Old single-buffer workflow:
+        // 1. Create buffer
+        // 2. Set as active with window
+        // 3. Edit buffer
+
+        let buffer_id = BufferId::new();
+        app.set_active_buffer_with_window(buffer_id);
+
+        // Verify backward compatibility
+        assert_eq!(app.active_buffer, Some(buffer_id));
+        assert!(app.active_window().is_some());
+
+        // Window should have the buffer
+        let win = app.active_window().unwrap();
+        assert_eq!(app.buffer_for_window(win), Some(buffer_id));
+
+        // Set another buffer - should reuse existing window
+        let buffer_id2 = BufferId::new();
+        app.set_active_buffer_with_window(buffer_id2);
+
+        // Still one window, but with new buffer
+        assert_eq!(app.windows.window_count(), 1);
+        assert_eq!(app.active_buffer, Some(buffer_id2));
+        assert_eq!(app.buffer_for_window(win), Some(buffer_id2));
+    }
+
+    #[test]
+    fn test_app_state_window_for_buffer() {
+        let kernel = KernelContext::default();
+        let mut app = AppState::new(kernel, test_mode_id());
+
+        let buffer_id = BufferId::new();
+        app.set_active_buffer_with_window(buffer_id);
+
+        // Should find the window for this buffer
+        let found = app.window_for_buffer(buffer_id);
+        assert!(found.is_some());
+        assert_eq!(found, app.active_window());
+
+        // Should not find window for non-existent buffer
+        let other_buffer = BufferId::new();
+        assert!(app.window_for_buffer(other_buffer).is_none());
     }
 }

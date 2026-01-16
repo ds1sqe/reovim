@@ -71,6 +71,46 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Basic Window Management** (Issue #276)
+  - **WindowRegistry** (`runner/src/server/window.rs`):
+    - `WindowState` struct for per-window cursor position and scroll offset
+    - `WindowRegistry` manages window state, layout, and focus
+    - `create_window()`, `close_window()`, `split_horizontal()`, `split_vertical()`
+    - `focus_direction()` for hjkl navigation, `cycle_forward()`/`cycle_backward()`
+    - 15 unit tests for window management
+  - **WindowAction Command Result** (`lib/drivers/command/src/result.rs`):
+    - `WindowAction` enum: SplitHorizontal, SplitVertical, CloseWindow, CloseOthers
+    - Focus variants: FocusDirection, CycleForward, CycleBackward
+    - Resize variants: ResizeHeightIncrease/Decrease, ResizeWidthIncrease/Decrease, ResizeEqual
+    - `CommandResult::WindowAction(WindowAction)` variant
+    - `is_window_action()` helper method
+    - 6 unit tests for WindowAction
+  - **ModeAction for Mode Stack** (`lib/drivers/command/src/result.rs`):
+    - `ModeAction` enum: Push, Pop, Set for mode stack manipulation
+    - `CommandResult::ModeAction(ModeAction)` variant
+    - Used by `enter-window-mode` command to push "window" mode
+    - 5 unit tests for ModeAction
+  - **Window Commands** (`modules/layout/src/commands.rs`):
+    - 15 window command handlers using callback pattern
+    - `SplitHorizontal`, `SplitVertical`, `CloseWindow`, `CloseOthers`
+    - `FocusLeft`, `FocusRight`, `FocusUp`, `FocusDown`
+    - `CycleForward`, `CycleBackward`
+    - `ResizeHeightIncrease/Decrease`, `ResizeWidthIncrease/Decrease`, `ResizeEqual`
+    - `all_commands()` function returns all handlers
+  - **EnterWindowMode Command** (`modules/editor/src/command.rs`):
+    - Returns `ModeAction::Push("window")` to enter window mode
+    - `<C-w>` keybinding already exists in keymap module
+  - **Event Loop Integration** (`runner/src/server/event_loop.rs`):
+    - `handle_window_action()` method handles all WindowAction variants
+    - `handle_mode_action()` method handles ModeAction variants
+    - Emits `WindowCreated`, `WindowClosed`, `WindowFocused` kernel events
+  - **Multi-Window Rendering** (`runner/src/server/rpc/handlers/screen.rs`):
+    - `render_multi_window()` composes window content into screen grid
+    - `find_separators()` determines separator positions between windows
+    - Vertical (`│`) and horizontal (`─`) separator rendering
+    - Active window indicator at separator intersections
+    - 5 unit tests for multi-window rendering
+
 - **Visual Mode** (Issue #242)
   - **Three selection types** in `EditorMode` enum:
     - Character-wise selection (`v`) - standard visual mode

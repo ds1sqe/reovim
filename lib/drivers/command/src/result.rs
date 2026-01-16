@@ -12,6 +12,7 @@
 
 use {
     crate::char_wait::{CharWaitContext, FindType},
+    reovim_driver_display::NavigateDirection,
     reovim_kernel::api::v1::{BufferId, Edit, Position},
 };
 
@@ -84,6 +85,79 @@ pub enum UndotreeAction {
     MoveUp,
     /// Move selection down (toward child).
     MoveDown,
+}
+
+// ============================================================================
+// Window Action Type
+// ============================================================================
+
+/// Window management action intent returned by commands.
+///
+/// Commands return this to request window operations. The runner handles
+/// the actual window creation, layout updates, and focus changes,
+/// maintaining separation of concerns between command (policy) and
+/// runner (mechanism).
+///
+/// # Example
+///
+/// ```ignore
+/// fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+///     CommandResult::WindowAction(WindowAction::SplitVertical)
+/// }
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowAction {
+    /// Split current window horizontally (top/bottom).
+    SplitHorizontal,
+    /// Split current window vertically (left/right).
+    SplitVertical,
+    /// Close the current window.
+    CloseWindow,
+    /// Close all windows except current.
+    CloseOthers,
+    /// Focus window in the specified direction.
+    FocusDirection(NavigateDirection),
+    /// Cycle focus to the next window.
+    CycleForward,
+    /// Cycle focus to the previous window.
+    CycleBackward,
+    /// Increase window height.
+    ResizeHeightIncrease,
+    /// Decrease window height.
+    ResizeHeightDecrease,
+    /// Increase window width.
+    ResizeWidthIncrease,
+    /// Decrease window width.
+    ResizeWidthDecrease,
+    /// Equalize all window sizes.
+    ResizeEqual,
+}
+
+// ============================================================================
+// Mode Action Type
+// ============================================================================
+
+/// Mode change action intent returned by commands.
+///
+/// Commands return this to request mode changes. The runner handles the
+/// actual mode stack manipulation, maintaining separation of concerns.
+///
+/// # Example
+///
+/// ```ignore
+/// fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+///     // Enter window management mode
+///     CommandResult::ModeAction(ModeAction::Push("window".to_string()))
+/// }
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModeAction {
+    /// Push a new mode onto the stack (e.g., entering window mode).
+    Push(String),
+    /// Pop the current mode from the stack (return to previous mode).
+    Pop,
+    /// Replace the current mode with a new one.
+    Set(String),
 }
 
 // ============================================================================
@@ -190,6 +264,18 @@ pub enum CommandResult {
     /// This follows the same callback pattern as `UndoAction`, where commands
     /// declare intent and the runner handles execution.
     UndotreeAction(UndotreeAction),
+    /// Command requests a window management action.
+    ///
+    /// Window commands (split, focus, close) return this to indicate what
+    /// window operation should be performed. The runner handles the actual
+    /// window state management, layout updates, and focus changes.
+    WindowAction(WindowAction),
+    /// Command requests a mode change action.
+    ///
+    /// Mode commands (enter-window-mode, enter-visual, etc.) return this to
+    /// indicate what mode operation should be performed. The runner handles
+    /// the actual mode stack manipulation.
+    ModeAction(ModeAction),
     /// Command reports edits it made to a buffer.
     ///
     /// The runner records these edits in the undo registry for later
@@ -270,6 +356,18 @@ impl CommandResult {
     #[must_use]
     pub const fn is_undotree_action(&self) -> bool {
         matches!(self, Self::UndotreeAction(_))
+    }
+
+    /// Check if the result is a window action.
+    #[must_use]
+    pub const fn is_window_action(&self) -> bool {
+        matches!(self, Self::WindowAction(_))
+    }
+
+    /// Check if the result is a mode action.
+    #[must_use]
+    pub const fn is_mode_action(&self) -> bool {
+        matches!(self, Self::ModeAction(_))
     }
 
     /// Check if the result is an edit action.
@@ -579,5 +677,192 @@ mod tests {
         assert!(result.is_repeat_action());
         assert!(!result.is_success());
         assert!(!result.is_error());
+    }
+
+    #[test]
+    fn test_window_action_split() {
+        let h_split = WindowAction::SplitHorizontal;
+        let v_split = WindowAction::SplitVertical;
+
+        assert_ne!(h_split, v_split);
+
+        let result = CommandResult::WindowAction(h_split);
+        assert!(result.is_window_action());
+        assert!(!result.is_success());
+        assert!(!result.is_error());
+        assert!(!result.is_quit());
+        assert!(!result.is_undo_action());
+    }
+
+    #[test]
+    fn test_window_action_close() {
+        let close = WindowAction::CloseWindow;
+        let close_others = WindowAction::CloseOthers;
+
+        assert_ne!(close, close_others);
+
+        let result = CommandResult::WindowAction(close);
+        assert!(result.is_window_action());
+    }
+
+    #[test]
+    fn test_window_action_focus_direction() {
+        use reovim_driver_display::NavigateDirection;
+
+        let left = WindowAction::FocusDirection(NavigateDirection::Left);
+        let right = WindowAction::FocusDirection(NavigateDirection::Right);
+        let up = WindowAction::FocusDirection(NavigateDirection::Up);
+        let down = WindowAction::FocusDirection(NavigateDirection::Down);
+
+        assert_ne!(left, right);
+        assert_ne!(up, down);
+
+        let result = CommandResult::WindowAction(left);
+        assert!(result.is_window_action());
+    }
+
+    #[test]
+    fn test_window_action_cycle() {
+        let forward = WindowAction::CycleForward;
+        let backward = WindowAction::CycleBackward;
+
+        assert_ne!(forward, backward);
+
+        let result = CommandResult::WindowAction(forward);
+        assert!(result.is_window_action());
+    }
+
+    #[test]
+    fn test_window_action_resize() {
+        let variants = [
+            WindowAction::ResizeHeightIncrease,
+            WindowAction::ResizeHeightDecrease,
+            WindowAction::ResizeWidthIncrease,
+            WindowAction::ResizeWidthDecrease,
+            WindowAction::ResizeEqual,
+        ];
+
+        // Each variant should be distinct
+        for i in 0..variants.len() {
+            for j in i + 1..variants.len() {
+                assert_ne!(variants[i], variants[j]);
+            }
+        }
+
+        // Each should be a valid window action
+        for action in variants {
+            let result = CommandResult::WindowAction(action);
+            assert!(result.is_window_action());
+        }
+    }
+
+    #[test]
+    fn test_window_action_all_variants() {
+        use reovim_driver_display::NavigateDirection;
+
+        // Verify all variants can be constructed and wrapped
+        let variants = [
+            WindowAction::SplitHorizontal,
+            WindowAction::SplitVertical,
+            WindowAction::CloseWindow,
+            WindowAction::CloseOthers,
+            WindowAction::FocusDirection(NavigateDirection::Left),
+            WindowAction::CycleForward,
+            WindowAction::CycleBackward,
+            WindowAction::ResizeHeightIncrease,
+            WindowAction::ResizeHeightDecrease,
+            WindowAction::ResizeWidthIncrease,
+            WindowAction::ResizeWidthDecrease,
+            WindowAction::ResizeEqual,
+        ];
+
+        // Each variant wrapped in CommandResult should be a window action
+        for action in variants {
+            let result = CommandResult::WindowAction(action);
+            assert!(result.is_window_action());
+        }
+    }
+
+    // ========================================================================
+    // ModeAction Tests
+    // ========================================================================
+
+    #[test]
+    fn test_mode_action_push() {
+        let action = ModeAction::Push("window".to_string());
+        let result = CommandResult::ModeAction(action.clone());
+
+        assert!(result.is_mode_action());
+        assert!(!result.is_window_action());
+        assert!(!result.is_success());
+
+        // Verify the action value
+        if let ModeAction::Push(mode_name) = action {
+            assert_eq!(mode_name, "window");
+        } else {
+            panic!("Expected ModeAction::Push");
+        }
+    }
+
+    #[test]
+    fn test_mode_action_pop() {
+        let action = ModeAction::Pop;
+        let result = CommandResult::ModeAction(action);
+
+        assert!(result.is_mode_action());
+        assert!(!result.is_window_action());
+        assert!(!result.is_success());
+    }
+
+    #[test]
+    fn test_mode_action_set() {
+        let action = ModeAction::Set("insert".to_string());
+        let result = CommandResult::ModeAction(action.clone());
+
+        assert!(result.is_mode_action());
+        assert!(!result.is_window_action());
+        assert!(!result.is_success());
+
+        // Verify the action value
+        if let ModeAction::Set(mode_name) = action {
+            assert_eq!(mode_name, "insert");
+        } else {
+            panic!("Expected ModeAction::Set");
+        }
+    }
+
+    #[test]
+    fn test_mode_action_equality() {
+        let push1 = ModeAction::Push("window".to_string());
+        let push2 = ModeAction::Push("window".to_string());
+        let push3 = ModeAction::Push("insert".to_string());
+        let pop = ModeAction::Pop;
+        let set = ModeAction::Set("normal".to_string());
+
+        // Same values should be equal
+        assert_eq!(push1, push2);
+
+        // Different variants/values should not be equal
+        assert_ne!(push1, push3);
+        assert_ne!(push1, pop);
+        assert_ne!(push1, set);
+        assert_ne!(pop, set);
+    }
+
+    #[test]
+    fn test_mode_action_all_variants() {
+        // Verify all variants can be constructed and wrapped
+        let variants = [
+            ModeAction::Push("window".to_string()),
+            ModeAction::Pop,
+            ModeAction::Set("normal".to_string()),
+        ];
+
+        // Each variant wrapped in CommandResult should be a mode action
+        for action in variants {
+            let result = CommandResult::ModeAction(action);
+            assert!(result.is_mode_action());
+            assert!(!result.is_window_action());
+        }
     }
 }

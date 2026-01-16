@@ -502,6 +502,15 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
                 tracing::info!(?action, "Undotree action requested");
                 self.last_error = None;
             }
+            CommandResult::WindowAction(action) => {
+                // Window management actions are handled by the runner.
+                // Full implementation in Phase 5 of #276.
+                self.handle_window_action(action);
+            }
+            CommandResult::ModeAction(action) => {
+                // Mode stack actions are handled by the runner.
+                self.handle_mode_action(action);
+            }
             CommandResult::WaitingForChar(ctx) => {
                 // Command (f/F/t/T or r) needs a character argument.
                 // Set pending-char state so next key press completes the operation.
@@ -620,6 +629,163 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
             }
             SearchAction::ClearHighlight => {
                 self.app.search.clear_highlight();
+                self.last_error = None;
+            }
+        }
+    }
+
+    /// Handle a window action from window commands.
+    fn handle_window_action(&mut self, action: reovim_driver_command::WindowAction) {
+        use {
+            reovim_driver_command::WindowAction,
+            reovim_kernel::api::v1::events::{WindowClosed, WindowFocused},
+        };
+
+        tracing::debug!(?action, "Handling window action");
+
+        match action {
+            WindowAction::SplitHorizontal => self.handle_split(true),
+            WindowAction::SplitVertical => self.handle_split(false),
+            WindowAction::CloseWindow => {
+                let Some(active) = self.app.windows.active_window() else {
+                    self.set_error("No active window");
+                    return;
+                };
+                let window_id = active.raw() as u64;
+                if self.app.windows.close_window(active) {
+                    self.app.kernel.event_bus.emit(WindowClosed { window_id });
+                    self.last_error = None;
+                } else {
+                    self.set_error("Cannot close last window");
+                }
+            }
+            WindowAction::CloseOthers => {
+                let Some(active) = self.app.windows.active_window() else {
+                    self.set_error("No active window");
+                    return;
+                };
+                let others: Vec<_> = self
+                    .app
+                    .windows
+                    .windows()
+                    .filter(|&id| id != active)
+                    .collect();
+                for id in others {
+                    let window_id = id.raw() as u64;
+                    if self.app.windows.close_window(id) {
+                        self.app.kernel.event_bus.emit(WindowClosed { window_id });
+                    }
+                }
+                self.last_error = None;
+            }
+            WindowAction::FocusDirection(direction) => {
+                if let Some(new_focus) = self.app.windows.focus_direction(direction) {
+                    let old_focus = self.app.windows.active_window();
+                    self.app.windows.set_active_window(new_focus);
+                    self.app.kernel.event_bus.emit(WindowFocused {
+                        from: old_focus.map(|w| w.raw() as u64),
+                        to: new_focus.raw() as u64,
+                    });
+                    self.last_error = None;
+                }
+            }
+            WindowAction::CycleForward => self.handle_cycle(true),
+            WindowAction::CycleBackward => self.handle_cycle(false),
+            WindowAction::ResizeHeightIncrease
+            | WindowAction::ResizeHeightDecrease
+            | WindowAction::ResizeWidthIncrease
+            | WindowAction::ResizeWidthDecrease
+            | WindowAction::ResizeEqual => {
+                tracing::debug!(?action, "Window resize action (deferred)");
+                self.last_error = None;
+            }
+        }
+    }
+
+    /// Helper for window split operations.
+    fn handle_split(&mut self, horizontal: bool) {
+        use reovim_kernel::api::v1::events::WindowCreated;
+
+        let Some(active) = self.app.windows.active_window() else {
+            self.set_error("No active window");
+            return;
+        };
+        let buffer_id = self.app.windows.get(active).and_then(|w| w.buffer_id);
+        let new_id = if horizontal {
+            self.app.windows.split_horizontal(active)
+        } else {
+            self.app.windows.split_vertical(active)
+        };
+        let Some(new_id) = new_id else {
+            self.set_error("Failed to split window");
+            return;
+        };
+        // New window gets same buffer
+        if let Some(buffer_id) = buffer_id
+            && let Some(w) = self.app.windows.get_mut(new_id)
+        {
+            w.buffer_id = Some(buffer_id);
+        }
+        self.app.kernel.event_bus.emit(WindowCreated {
+            window_id: new_id.raw() as u64,
+        });
+        self.last_error = None;
+    }
+
+    /// Helper for window cycle operations.
+    fn handle_cycle(&mut self, forward: bool) {
+        use reovim_kernel::api::v1::events::WindowFocused;
+
+        let old_focus = self.app.windows.active_window();
+        let changed = if forward {
+            self.app.windows.cycle_forward()
+        } else {
+            self.app.windows.cycle_backward()
+        };
+        if changed {
+            if let Some(new_focus) = self.app.windows.active_window() {
+                self.app.kernel.event_bus.emit(WindowFocused {
+                    from: old_focus.map(|w| w.raw() as u64),
+                    to: new_focus.raw() as u64,
+                });
+            }
+            self.last_error = None;
+        }
+    }
+
+    /// Handle a mode action from mode-changing commands.
+    fn handle_mode_action(&mut self, action: reovim_driver_command::ModeAction) {
+        use {reovim_driver_command::ModeAction, reovim_kernel::api::v1::ModeId};
+
+        tracing::debug!(?action, "Handling mode action");
+
+        match action {
+            ModeAction::Push(mode_name) => {
+                // Push a new mode onto the stack.
+                // Mode names are typically "window", "insert", etc.
+                let mode_id = ModeId::new(
+                    reovim_kernel::api::v1::ModuleId::new("editor"),
+                    Box::leak(mode_name.clone().into_boxed_str()),
+                );
+                self.app.mode_stack.push(mode_id);
+                tracing::info!(mode = %mode_name, "Pushed mode onto stack");
+                self.last_error = None;
+            }
+            ModeAction::Pop => {
+                // Pop the current mode from the stack.
+                if let Some(popped) = self.app.mode_stack.pop() {
+                    tracing::info!(mode = %popped, "Popped mode from stack");
+                }
+                self.last_error = None;
+            }
+            ModeAction::Set(mode_name) => {
+                // Replace the current mode with a new one.
+                let mode_id = ModeId::new(
+                    reovim_kernel::api::v1::ModuleId::new("editor"),
+                    Box::leak(mode_name.clone().into_boxed_str()),
+                );
+                self.app.mode_stack.set(mode_id);
+                tracing::info!(mode = %mode_name, "Set mode on stack");
                 self.last_error = None;
             }
         }

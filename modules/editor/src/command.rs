@@ -16,7 +16,8 @@ use std::path::Path;
 
 use {
     reovim_driver_command::{
-        ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult, UndoAction,
+        ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult, ModeAction,
+        UndoAction,
     },
     reovim_kernel::api::v1::{
         CommandId, KernelContext, Position, RegisterContent,
@@ -650,6 +651,34 @@ impl CommandHandler for ExitToNormal {
             .emit(ModeChanged::with_mode_id("insert", EditorMode::NORMAL_ID));
 
         CommandResult::Success
+    }
+}
+
+/// Enter window management mode (Ctrl-W in normal mode).
+///
+/// This pushes "window" mode onto the mode stack. In window mode,
+/// subsequent keys (h/j/k/l for navigation, s/v for splits, etc.)
+/// are handled by the layout module's keybindings.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct EnterWindowMode;
+
+impl Command for EnterWindowMode {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "enter-window-mode")
+    }
+
+    fn description(&self) -> &'static str {
+        "Enter window management mode"
+    }
+}
+
+impl CommandHandler for EnterWindowMode {
+    fn execute(&self, ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
+        // Emit mode change event
+        ctx.event_bus.emit(ModeChanged::new("normal", "window"));
+
+        // Return mode action to push window mode onto stack
+        CommandResult::ModeAction(ModeAction::Push("window".to_string()))
     }
 }
 
@@ -2017,6 +2046,7 @@ pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
         Box::new(OpenLineBelow),
         Box::new(OpenLineAbove),
         Box::new(ExitToNormal),
+        Box::new(EnterWindowMode),
         // Insert mode edits
         Box::new(InsertNewline),
         Box::new(InsertTab),
@@ -2074,6 +2104,7 @@ pub fn mode_commands() -> Vec<Box<dyn CommandHandler>> {
         Box::new(OpenLineBelow),
         Box::new(OpenLineAbove),
         Box::new(ExitToNormal),
+        Box::new(EnterWindowMode),
     ]
 }
 
@@ -2259,9 +2290,9 @@ mod tests {
     #[test]
     fn test_all_commands_count() {
         let cmds = all_commands();
-        // 4 cursor + 2 display + 7 mode + 2 insert-edit + 5 delete + 1 yank + 2 paste
-        // + 2 change + 2 undo + 1 replace_char + 1 repeat + 2 change_line = 30
-        assert_eq!(cmds.len(), 30);
+        // 4 cursor + 2 display + 8 mode + 2 insert-edit + 5 delete + 1 yank + 2 paste
+        // + 2 change + 2 undo + 1 replace_char + 1 repeat + 1 write = 31
+        assert_eq!(cmds.len(), 31);
     }
 
     #[test]
@@ -2279,7 +2310,7 @@ mod tests {
     #[test]
     fn test_mode_commands_count() {
         let cmds = mode_commands();
-        assert_eq!(cmds.len(), 7);
+        assert_eq!(cmds.len(), 8);
     }
 
     // =========================================================================
