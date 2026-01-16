@@ -7,13 +7,13 @@
 //!
 //! ```text
 //! ┌─────────────────────────────────────────────────────────────────┐
-//! │                     runner/src/module/                          │
-//! │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐   │
-//! │  │ ModuleLoader │  │ModuleRegistry│  │ HotReloadManager     │   │
-//! │  │  (libloading)│  │(dep resolve) │  │ (notify, feat-gated) │   │
-//! │  └──────┬───────┘  └──────┬───────┘  └──────────┬───────────┘   │
-//! │         │                 │                     │               │
-//! │         └─────────────────┴─────────────────────┘               │
+//! │                     runner/src/server/module/                   │
+//! │  ┌──────────────────────────────────────────────────────────┐   │
+//! │  │ loading/       │ lifecycle/       │ wiring/              │   │
+//! │  │  ModuleLoader  │  ModuleManager   │  wire_keybindings    │   │
+//! │  │  ModuleHandle  │  DependencyOrder │  WiringError         │   │
+//! │  │  discovery     │  resolve_deps    │  WiringStats         │   │
+//! │  └──────────────────────────────────────────────────────────┘   │
 //! │                            │ Policy                             │
 //! └────────────────────────────┼────────────────────────────────────┘
 //!                              │
@@ -27,55 +27,55 @@
 //! └────────────────────────────────────────────────────────────────┘
 //! ```
 //!
-//! # Components
+//! # Sub-modules
 //!
-//! - [`ModuleHandle`]: Wrapper for loaded modules (static or dynamic)
-//! - [`ModuleLoader`]: Discovers and loads modules from disk
-//! - [`ModuleRegistry`]: Manages module lifecycle with dependency resolution
+//! - **loading**: FFI loading subsystem (discovery, handle, loader)
+//! - **lifecycle**: State management subsystem (dependency resolution, manager)
+//! - **wiring**: Registry integration subsystem (keybinding wiring)
 //!
 //! # Example
 //!
 //! ```ignore
-//! use runner::module::{ModuleLoader, ModuleRegistry};
+//! use runner::module::{ModuleLoader, ModuleManager};
 //!
-//! // Create registry with default loader
-//! let registry = ModuleRegistry::new();
+//! // Create manager with default loader
+//! let manager = ModuleManager::new();
 //!
 //! // Register a static module
-//! registry.register(MyModule)?;
+//! manager.register(MyModule)?;
 //!
 //! // Initialize all modules in dependency order
-//! registry.init_all(&ctx)?;
+//! manager.init_all(&ctx)?;
 //!
 //! // Shutdown in reverse order
-//! registry.shutdown();
+//! manager.shutdown();
 //! ```
 
-// Module-level lint allows:
-// - unsafe_code: FFI operations for dynamic loading require unsafe
-// - clippy lints: complexity from FFI handling and dependency resolution
+// Configuration stays at top level (used across sub-modules)
 mod config;
-#[allow(unsafe_code)]
-mod dependency;
-#[allow(unsafe_code)]
-mod discovery;
-#[allow(unsafe_code)]
-mod handle;
-#[allow(unsafe_code)]
-mod loader;
-#[allow(unsafe_code)]
-mod registry;
+
+// Sub-modules organized by responsibility
+mod lifecycle;
+mod loading;
 mod wiring;
 
 // Re-exports - public API of the module system
 pub use {
+    // Configuration
     config::{ConfigError, ModuleConfig},
-    dependency::{DependencyOrder, resolve_dependencies},
-    discovery::{
-        default_search_paths, discover_modules, find_module, library_extension, library_filename,
+    // Lifecycle management
+    lifecycle::{DependencyOrder, ModuleManager, resolve_dependencies},
+    // Loading subsystem
+    loading::{
+        InitResult, ModuleHandle, ModuleLoader, default_search_paths, discover_modules,
+        find_module, library_extension, library_filename,
     },
-    handle::{InitResult, ModuleHandle},
-    loader::ModuleLoader,
-    registry::ModuleRegistry,
+    // Wiring subsystem
     wiring::{WiringError, WiringResult, WiringStats, wire_module_keybindings},
 };
+
+// Backwards compatibility alias: ModuleRegistry -> ModuleManager
+// This allows existing code to use the old name during migration
+#[doc(hidden)]
+#[deprecated(since = "0.9.0", note = "Use ModuleManager instead")]
+pub type ModuleRegistry = ModuleManager;

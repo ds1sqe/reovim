@@ -372,12 +372,12 @@ fn test_null_pointer_handling() {
 // ============================================================================
 
 #[test]
-fn test_module_registry_operations() {
-    use runner::module::ModuleRegistry;
+fn test_module_manager_operations() {
+    use runner::module::ModuleManager;
 
-    let registry = ModuleRegistry::new();
-    assert!(registry.is_empty());
-    assert_eq!(registry.len(), 0);
+    let manager = ModuleManager::new();
+    assert!(manager.is_empty());
+    assert_eq!(manager.len(), 0);
 }
 
 #[test]

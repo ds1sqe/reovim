@@ -24,7 +24,7 @@ use std::{
 
 use serde::Deserialize;
 
-use super::discovery::default_search_paths;
+use super::loading::default_search_paths;
 
 /// Module configuration section from config file.
 ///

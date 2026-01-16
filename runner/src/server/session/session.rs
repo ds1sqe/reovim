@@ -17,7 +17,7 @@ use {
 use {
     super::{id::SessionId, state::SessionState},
     crate::{
-        module::ModuleRegistry,
+        module::ModuleManager,
         registry::{CommandRegistry, KeyLookupResult, KeymapRegistry, ModeRegistry},
         server::client::ClientRegistry,
     },
@@ -113,7 +113,7 @@ impl Session {
         mode_registry: ModeRegistry,
         command_registry: CommandRegistry,
         keymap_registry: KeymapRegistry,
-        module_registry: ModuleRegistry,
+        module_registry: ModuleManager,
     ) -> Arc<Self> {
         Arc::new(Self {
             id,

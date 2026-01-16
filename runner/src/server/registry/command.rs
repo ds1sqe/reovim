@@ -7,8 +7,8 @@
 //! # Module Ownership
 //!
 //! Commands can be registered with optional module ownership via
-//! [`register_for_module`]. When a module is unloaded, all its
-//! registered commands can be removed via [`unregister_for_module`].
+//! [`CommandRegistry::register_for_module`]. When a module is unloaded, all its
+//! registered commands can be removed via [`CommandRegistry::unregister_for_module`].
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -34,7 +34,7 @@ struct CommandEntry {
 ///
 /// # Module Ownership
 ///
-/// Commands can be registered with module ownership via [`register_for_module`].
+/// Commands can be registered with module ownership via [`Self::register_for_module`].
 /// This enables automatic cleanup when modules are unloaded.
 ///
 /// # Example
@@ -84,7 +84,7 @@ impl CommandRegistry {
     /// If a command with the same ID already exists, it is replaced.
     ///
     /// When the owning module is unloaded, this command will be automatically
-    /// deregistered via [`unregister_for_module`].
+    /// deregistered via [`Self::unregister_for_module`].
     pub fn register_for_module(&mut self, handler: Arc<dyn CommandHandler>, owner: ModuleId) {
         let id = handler.id();
         self.entries.insert(

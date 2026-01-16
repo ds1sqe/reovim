@@ -13,7 +13,7 @@ use {
 
 use crate::{
     AppState,
-    module::ModuleRegistry,
+    module::ModuleManager,
     registry::{CommandRegistry, KeyLookupResult, KeymapRegistry, ModeRegistry},
 };
 
@@ -69,7 +69,7 @@ pub struct SessionState {
     ///
     /// Each session owns its own module set, enabling per-session
     /// module loading and isolation (similar to Linux process contexts).
-    pub module_registry: ModuleRegistry,
+    pub module_registry: ModuleManager,
 }
 
 impl SessionState {
@@ -88,7 +88,7 @@ impl SessionState {
             mode_registry: ModeRegistry::new(),
             command_registry: CommandRegistry::new(),
             keymap_registry: KeymapRegistry::new(),
-            module_registry: ModuleRegistry::new(),
+            module_registry: ModuleManager::new(),
         }
     }
 
@@ -104,7 +104,7 @@ impl SessionState {
         mode_registry: ModeRegistry,
         command_registry: CommandRegistry,
         keymap_registry: KeymapRegistry,
-        module_registry: ModuleRegistry,
+        module_registry: ModuleManager,
     ) -> Self {
         Self {
             app: AppState::new(kernel, initial_mode),
@@ -118,7 +118,7 @@ impl SessionState {
 
     /// Get a reference to the module registry.
     #[must_use]
-    pub const fn module_registry(&self) -> &ModuleRegistry {
+    pub const fn module_registry(&self) -> &ModuleManager {
         &self.module_registry
     }
 

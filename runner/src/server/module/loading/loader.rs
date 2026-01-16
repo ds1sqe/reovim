@@ -237,7 +237,7 @@ impl ModuleLoader {
 
     /// Unload a module.
     ///
-    /// Note: This only removes from the loader. Use `ModuleRegistry` for
+    /// Note: This only removes from the loader. Use `ModuleManager` for
     /// proper dependency-aware unloading.
     ///
     /// # Errors

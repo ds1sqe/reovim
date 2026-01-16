@@ -9,8 +9,8 @@
 //! # Module Ownership
 //!
 //! Keybindings can be registered with optional module ownership via
-//! [`register_for_module`]. When a module is unloaded, all its
-//! registered keybindings can be removed via [`unregister_for_module`].
+//! [`KeymapRegistry::register_for_module`]. When a module is unloaded, all its
+//! registered keybindings can be removed via [`KeymapRegistry::unregister_for_module`].
 
 use std::collections::HashMap;
 
@@ -83,7 +83,7 @@ struct KeybindingEntry {
 ///
 /// # Module Ownership
 ///
-/// Keybindings can be registered with module ownership via [`register_for_module`].
+/// Keybindings can be registered with module ownership via [`Self::register_for_module`].
 /// This enables automatic cleanup when modules are unloaded.
 ///
 /// # Example
@@ -144,7 +144,7 @@ impl KeymapRegistry {
     /// Register a keybinding with module ownership.
     ///
     /// When the owning module is unloaded, this keybinding will be automatically
-    /// deregistered via [`unregister_for_module`].
+    /// deregistered via [`Self::unregister_for_module`].
     pub fn register_for_module(
         &mut self,
         mode: ModeId,
