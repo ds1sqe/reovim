@@ -135,6 +135,28 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
     - Uses UndotreeRenderer from modules/undotree for tree visualization
     - Uses ModeStack for undotree mode push/pop
 
+- **Undotree Diff Preview** (Issue #250)
+  - **Keybinding**: `p` in undotree mode to preview diff of selected node
+  - **DiffFormatter** (`modules/undotree/src/diff.rs`):
+    - `DiffLine` and `DiffLineType` for styled diff output
+    - `format_edits_as_diff()` converts `Vec<Edit>` to unified diff format
+    - `format_edits_as_diff_with_options()` with truncation for large edits
+    - `should_summarize()` checks if edits exceed size thresholds
+    - `edit_summary()` returns edit count summary
+    - 16 unit tests for diff formatting
+  - **Preview State** (`runner/src/server/app.rs`):
+    - `DiffPreviewLine` struct for styled preview display
+    - `UndotreeState` extended with preview fields (active, node, lines)
+    - `set_preview()`, `clear_preview()`, `is_preview_active()` methods
+    - 5 unit tests for preview state management
+  - **Event Loop Handlers** (`runner/src/server/event_loop.rs`):
+    - `undotree_preview_diff()` extracts edits and formats as diff
+    - Auto-dismiss on navigation (move up/down, goto clears preview)
+    - `refresh_undotree_panel()` appends diff lines when preview active
+  - **UndotreeAction Enum** (`lib/drivers/command/src/result.rs`):
+    - `PreviewDiff` variant for preview keybinding
+    - `ClearPreview` variant for explicit dismiss
+
 - **Visual Mode** (Issue #242)
   - **Three selection types** in `EditorMode` enum:
     - Character-wise selection (`v`) - standard visual mode

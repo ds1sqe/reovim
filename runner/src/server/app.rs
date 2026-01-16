@@ -560,6 +560,19 @@ pub struct UndotreeRenderLine {
     pub is_selected: bool,
 }
 
+/// A line in the diff preview display.
+#[derive(Debug, Clone)]
+pub struct DiffPreviewLine {
+    /// The text content.
+    pub text: String,
+    /// Whether this is an insertion line.
+    pub is_insert: bool,
+    /// Whether this is a deletion line.
+    pub is_delete: bool,
+    /// Whether this is a header line.
+    pub is_header: bool,
+}
+
 /// State for the undotree panel visualization.
 ///
 /// Tracks the panel's visibility, associated window, source buffer,
@@ -584,6 +597,12 @@ pub struct UndotreeState {
     previous_window_id: Option<WindowId>,
     /// Rendered lines for display (cached).
     rendered_lines: Vec<UndotreeRenderLine>,
+    /// Whether diff preview is currently active.
+    preview_active: bool,
+    /// Node index being previewed (may differ from selected).
+    preview_node: Option<usize>,
+    /// Cached diff lines for the previewed node.
+    preview_diff_lines: Vec<DiffPreviewLine>,
 }
 
 impl UndotreeState {
@@ -598,6 +617,9 @@ impl UndotreeState {
             scroll_offset: 0,
             previous_window_id: None,
             rendered_lines: Vec::new(),
+            preview_active: false,
+            preview_node: None,
+            preview_diff_lines: Vec::new(),
         }
     }
 
@@ -676,6 +698,10 @@ impl UndotreeState {
         self.selected_node = 0;
         self.scroll_offset = 0;
         self.rendered_lines.clear();
+        // Clear preview state
+        self.preview_active = false;
+        self.preview_node = None;
+        self.preview_diff_lines.clear();
         self.previous_window_id.take()
     }
 
@@ -688,6 +714,38 @@ impl UndotreeState {
     #[must_use]
     pub fn rendered_lines(&self) -> &[UndotreeRenderLine] {
         &self.rendered_lines
+    }
+
+    /// Check if preview is currently active.
+    #[must_use]
+    pub const fn is_preview_active(&self) -> bool {
+        self.preview_active
+    }
+
+    /// Get the node being previewed.
+    #[must_use]
+    pub const fn preview_node(&self) -> Option<usize> {
+        self.preview_node
+    }
+
+    /// Set preview state for a node.
+    pub fn set_preview(&mut self, node: usize, diff_lines: Vec<DiffPreviewLine>) {
+        self.preview_active = true;
+        self.preview_node = Some(node);
+        self.preview_diff_lines = diff_lines;
+    }
+
+    /// Clear preview state.
+    pub fn clear_preview(&mut self) {
+        self.preview_active = false;
+        self.preview_node = None;
+        self.preview_diff_lines.clear();
+    }
+
+    /// Get the preview diff lines.
+    #[must_use]
+    pub fn preview_diff_lines(&self) -> &[DiffPreviewLine] {
+        &self.preview_diff_lines
     }
 }
 
@@ -2150,5 +2208,104 @@ mod tests {
         // Close should return None
         let restored = state.close();
         assert!(restored.is_none());
+    }
+
+    #[test]
+    fn test_undotree_state_preview_initially_inactive() {
+        let state = UndotreeState::new();
+
+        assert!(!state.is_preview_active());
+        assert!(state.preview_node().is_none());
+        assert!(state.preview_diff_lines().is_empty());
+    }
+
+    #[test]
+    fn test_undotree_state_set_preview_activates() {
+        let mut state = UndotreeState::new();
+
+        let diff_lines = vec![
+            DiffPreviewLine {
+                text: "+hello".to_string(),
+                is_insert: true,
+                is_delete: false,
+                is_header: false,
+            },
+            DiffPreviewLine {
+                text: "-world".to_string(),
+                is_insert: false,
+                is_delete: true,
+                is_header: false,
+            },
+        ];
+
+        state.set_preview(5, diff_lines);
+
+        assert!(state.is_preview_active());
+        assert_eq!(state.preview_node(), Some(5));
+        assert_eq!(state.preview_diff_lines().len(), 2);
+    }
+
+    #[test]
+    fn test_undotree_state_clear_preview_deactivates() {
+        let mut state = UndotreeState::new();
+
+        let diff_lines = vec![DiffPreviewLine {
+            text: "+test".to_string(),
+            is_insert: true,
+            is_delete: false,
+            is_header: false,
+        }];
+
+        state.set_preview(3, diff_lines);
+        assert!(state.is_preview_active());
+
+        state.clear_preview();
+
+        assert!(!state.is_preview_active());
+        assert!(state.preview_node().is_none());
+        assert!(state.preview_diff_lines().is_empty());
+    }
+
+    #[test]
+    fn test_undotree_state_close_clears_preview() {
+        let mut state = UndotreeState::new();
+
+        let window_id = WindowId::new(42);
+        let buffer_id = BufferId::new();
+
+        state.open(window_id, buffer_id, None);
+
+        let diff_lines = vec![DiffPreviewLine {
+            text: "@@header@@".to_string(),
+            is_insert: false,
+            is_delete: false,
+            is_header: true,
+        }];
+        state.set_preview(2, diff_lines);
+
+        assert!(state.is_preview_active());
+
+        state.close();
+
+        assert!(!state.is_preview_active());
+        assert!(state.preview_node().is_none());
+        assert!(state.preview_diff_lines().is_empty());
+    }
+
+    #[test]
+    fn test_undotree_state_preview_node_tracking() {
+        let mut state = UndotreeState::new();
+
+        // Preview different nodes
+        state.set_preview(1, vec![]);
+        assert_eq!(state.preview_node(), Some(1));
+
+        state.set_preview(7, vec![]);
+        assert_eq!(state.preview_node(), Some(7));
+
+        // Selection is independent of preview
+        state.set_selected_node(3);
+        assert_eq!(state.selected_node(), 3);
+        assert_eq!(state.preview_node(), Some(7));
     }
 }

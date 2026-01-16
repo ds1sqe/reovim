@@ -12,6 +12,7 @@
 //! # Components
 //!
 //! - [`command`]: Commands for toggling and navigating the undotree panel
+//! - [`diff`]: Diff formatting for undo node edit preview
 //! - [`render`]: ASCII tree rendering with branch visualization
 //!
 //! # Example
@@ -29,6 +30,7 @@
 //! ```
 
 pub mod command;
+pub mod diff;
 pub mod mode;
 pub mod render;
 
@@ -42,7 +44,11 @@ pub const UNDOTREE_MODULE: ModuleId = ModuleId::new("undotree");
 pub use {
     command::{
         UndotreeCloseCommand, UndotreeCommand, UndotreeDownCommand, UndotreeGotoCommand,
-        UndotreeUpCommand,
+        UndotreePreviewCommand, UndotreeUpCommand,
+    },
+    diff::{
+        DiffLine, DiffLineType, DiffOptions, edit_summary, format_edits_as_diff,
+        format_edits_as_diff_with_options, should_summarize,
     },
     mode::UndotreeMode,
     render::{RenderLine, UndotreeRenderer},
@@ -118,6 +124,11 @@ pub fn keybindings() -> Vec<KeybindingRegistration> {
             .with_modes(&["undotree"])
             .with_category("action")
             .with_description("Navigate to selected node"),
+        // Preview
+        KeybindingRegistration::new("p", "undotree:undotree-preview")
+            .with_modes(&["undotree"])
+            .with_category("preview")
+            .with_description("Preview diff of selected node"),
         // Close panel
         KeybindingRegistration::new("q", "undotree:undotree-close")
             .with_modes(&["undotree"])

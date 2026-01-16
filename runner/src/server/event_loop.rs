@@ -811,6 +811,13 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
                 let selected = self.app.undotree_state.selected_node();
                 self.undotree_goto_node(selected);
             }
+            UndotreeAction::PreviewDiff => {
+                self.undotree_preview_diff();
+            }
+            UndotreeAction::ClearPreview => {
+                self.app.undotree_state.clear_preview();
+                self.refresh_undotree_panel();
+            }
         }
     }
 
@@ -935,6 +942,14 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
         // Move to parent if available
         if let Some(parent_idx) = node.parent() {
             self.app.undotree_state.set_selected_node(parent_idx);
+
+            // Clear preview when navigating away from the previewed node
+            if self.app.undotree_state.is_preview_active()
+                && self.app.undotree_state.preview_node() != Some(parent_idx)
+            {
+                self.app.undotree_state.clear_preview();
+            }
+
             tracing::debug!(
                 from = current_selection,
                 to = parent_idx,
@@ -973,6 +988,14 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
             // Use the first child (could use active branch in future)
             let child_idx = children[0];
             self.app.undotree_state.set_selected_node(child_idx);
+
+            // Clear preview when navigating away from the previewed node
+            if self.app.undotree_state.is_preview_active()
+                && self.app.undotree_state.preview_node() != Some(child_idx)
+            {
+                self.app.undotree_state.clear_preview();
+            }
+
             tracing::debug!(
                 from = current_selection,
                 to = child_idx,
@@ -995,6 +1018,9 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
         if !self.app.undotree_state.is_open() {
             return;
         }
+
+        // Clear preview before navigation
+        self.app.undotree_state.clear_preview();
 
         let Some(buffer_id) = self.app.undotree_state.source_buffer_id() else {
             return;
@@ -1101,7 +1127,7 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
         let render_lines = renderer.render(tree, selected_node);
 
         // Convert to our render line type
-        let lines: Vec<UndotreeRenderLine> = render_lines
+        let mut lines: Vec<UndotreeRenderLine> = render_lines
             .into_iter()
             .map(|rl| UndotreeRenderLine {
                 text: rl.text,
@@ -1110,8 +1136,79 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
             })
             .collect();
 
+        // If preview is active, append separator and diff lines
+        if self.app.undotree_state.is_preview_active() {
+            lines.push(UndotreeRenderLine {
+                text: String::from("─── Diff Preview ───"),
+                is_current: false,
+                is_selected: false,
+            });
+
+            for dl in self.app.undotree_state.preview_diff_lines() {
+                lines.push(UndotreeRenderLine {
+                    text: dl.text.clone(),
+                    is_current: false,
+                    // Highlight insertions and deletions
+                    is_selected: dl.is_insert || dl.is_delete,
+                });
+            }
+        }
+
         self.app.undotree_state.set_rendered_lines(lines);
         tracing::debug!("Refreshed undotree panel display");
+    }
+
+    /// Preview the diff of the currently selected undotree node.
+    ///
+    /// Extracts edits from the selected node and formats them as diff output,
+    /// displaying them in the undotree panel below the tree visualization.
+    fn undotree_preview_diff(&mut self) {
+        use {
+            super::app::DiffPreviewLine,
+            reovim_module_undotree::{DiffLineType, format_edits_as_diff},
+        };
+
+        if !self.app.undotree_state.is_open() {
+            return;
+        }
+
+        let Some(buffer_id) = self.app.undotree_state.source_buffer_id() else {
+            return;
+        };
+
+        let Some(tree) = self.app.undo_registry.get_tree(buffer_id) else {
+            return;
+        };
+
+        let selected_node = self.app.undotree_state.selected_node();
+        let Some(node) = tree.node(selected_node) else {
+            return;
+        };
+
+        // Format edits as diff
+        let edits = node.edits();
+        let diff_lines = format_edits_as_diff(edits);
+
+        // Convert to preview lines
+        let preview_lines: Vec<DiffPreviewLine> = diff_lines
+            .into_iter()
+            .map(|dl| DiffPreviewLine {
+                text: dl.text,
+                is_insert: dl.line_type == DiffLineType::Insert,
+                is_delete: dl.line_type == DiffLineType::Delete,
+                is_header: dl.line_type == DiffLineType::Header,
+            })
+            .collect();
+
+        self.app
+            .undotree_state
+            .set_preview(selected_node, preview_lines);
+
+        tracing::debug!(node = selected_node, edit_count = edits.len(), "Showing diff preview");
+
+        // Refresh display to show preview
+        self.refresh_undotree_panel();
+        self.last_error = None;
     }
 
     /// Calculate the path from root to a target node.

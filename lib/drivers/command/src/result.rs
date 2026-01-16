@@ -85,6 +85,10 @@ pub enum UndotreeAction {
     MoveUp,
     /// Move selection down (toward child).
     MoveDown,
+    /// Preview diff of the currently selected node.
+    PreviewDiff,
+    /// Clear/dismiss the diff preview.
+    ClearPreview,
 }
 
 // ============================================================================
