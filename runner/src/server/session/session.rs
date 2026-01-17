@@ -353,6 +353,18 @@ impl Session {
                 tracing::info!(?action, "Block insert action requested (session)");
                 None
             }
+            CommandResult::EnterOperatorPending {
+                operator_id,
+                register,
+            } => {
+                // Enter-operator-pending actions are handled by the event loop.
+                tracing::info!(
+                    operator_id,
+                    ?register,
+                    "Enter operator-pending action requested (session)"
+                );
+                None
+            }
         }
     }
 

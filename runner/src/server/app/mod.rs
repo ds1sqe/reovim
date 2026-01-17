@@ -18,6 +18,8 @@ pub use {
     visual::LastVisualSelection,
 };
 
+// Re-export PendingOperator (defined in this file, not a submodule)
+
 use {
     crate::{UndoRegistry, server::window::WindowRegistry},
     reovim_arch::sync::RwLock,
@@ -159,6 +161,57 @@ pub struct AppState {
     /// which window displays it, which buffer's tree is shown,
     /// and navigation state within the tree.
     pub undotree_state: UndotreeState,
+
+    /// Pending operator waiting for a motion.
+    ///
+    /// When a user presses an operator key (d, y, c) in normal mode,
+    /// the operator is stored here until a motion key is pressed to
+    /// complete the operation. The motion provides the text range,
+    /// then the operator is executed on that range.
+    pub pending_operator: Option<PendingOperator>,
+}
+
+/// Information about a pending operator waiting for a motion.
+///
+/// In vim, operators like `d`, `y`, `c` wait for a motion to define
+/// the text range they operate on. This struct captures the operator
+/// and any modifiers (count, register) while waiting.
+#[derive(Debug, Clone)]
+pub struct PendingOperator {
+    /// Operator ID: "delete", "yank", or "change".
+    pub operator_id: &'static str,
+
+    /// Count applied to the operator (e.g., `2dw` applies operator twice).
+    pub count: usize,
+
+    /// Target register for the operation.
+    pub register: Option<char>,
+}
+
+impl PendingOperator {
+    /// Create a new pending operator.
+    #[must_use]
+    pub const fn new(operator_id: &'static str) -> Self {
+        Self {
+            operator_id,
+            count: 1,
+            register: None,
+        }
+    }
+
+    /// Set the count for this operator.
+    #[must_use]
+    pub const fn with_count(mut self, count: usize) -> Self {
+        self.count = count;
+        self
+    }
+
+    /// Set the register for this operator.
+    #[must_use]
+    pub const fn with_register(mut self, register: Option<char>) -> Self {
+        self.register = register;
+        self
+    }
 }
 
 impl AppState {
@@ -188,6 +241,7 @@ impl AppState {
             last_visual_selection: None,
             windows: WindowRegistry::new(),
             undotree_state: UndotreeState::new(),
+            pending_operator: None,
         }
     }
 
@@ -250,6 +304,38 @@ impl AppState {
     #[must_use]
     pub const fn pending_char(&self) -> Option<&PendingCharOp> {
         self.pending_char.as_ref()
+    }
+
+    // ========================================================================
+    // Pending Operator Methods (for operator-motion combinations)
+    // ========================================================================
+
+    /// Set a pending operator that's waiting for a motion.
+    ///
+    /// Called when an operator key (d, y, c) is pressed in normal mode.
+    /// The operator waits for a motion to provide the text range.
+    pub const fn set_pending_operator(&mut self, op: PendingOperator) {
+        self.pending_operator = Some(op);
+    }
+
+    /// Take the pending operator, clearing it.
+    ///
+    /// Returns `Some(op)` if there was a pending operator, `None` otherwise.
+    /// Called when a motion provides a range to complete the operation.
+    pub const fn take_pending_operator(&mut self) -> Option<PendingOperator> {
+        self.pending_operator.take()
+    }
+
+    /// Check if there is a pending operator.
+    #[must_use]
+    pub const fn has_pending_operator(&self) -> bool {
+        self.pending_operator.is_some()
+    }
+
+    /// Get a reference to the pending operator, if any.
+    #[must_use]
+    pub const fn pending_operator(&self) -> Option<&PendingOperator> {
+        self.pending_operator.as_ref()
     }
 
     // ========================================================================

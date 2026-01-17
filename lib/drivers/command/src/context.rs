@@ -34,6 +34,11 @@ pub struct CommandContext {
     /// Set by the runner before dispatching commands that may need
     /// filesystem access (e.g., `:w`, `:e`).
     vfs: Option<Arc<dyn VfsDriver>>,
+    /// Current mode name (e.g., "normal", "operator-pending").
+    ///
+    /// Set by the runner before dispatching commands. Commands can use
+    /// this to adjust their behavior based on the current mode.
+    mode_name: Option<String>,
 }
 
 impl std::fmt::Debug for CommandContext {
@@ -41,6 +46,7 @@ impl std::fmt::Debug for CommandContext {
         f.debug_struct("CommandContext")
             .field("args", &self.args)
             .field("vfs", &self.vfs.as_ref().map(|_| "<VfsDriver>"))
+            .field("mode_name", &self.mode_name)
             .finish()
     }
 }
@@ -157,6 +163,36 @@ impl CommandContext {
     pub fn vfs(&self) -> Option<&Arc<dyn VfsDriver>> {
         self.vfs.as_ref()
     }
+
+    /// Set the current mode name.
+    ///
+    /// Called by the runner before dispatching commands. Commands can
+    /// use `mode_name()` to adjust behavior based on the current mode.
+    pub fn set_mode_name(&mut self, mode: impl Into<String>) {
+        self.mode_name = Some(mode.into());
+    }
+
+    /// Get the current mode name.
+    ///
+    /// Returns the mode name (e.g., "normal", "operator-pending", "insert").
+    /// Commands can use this to adjust behavior. For example, motion commands
+    /// return `CommandResult::OperatorRange` in operator-pending mode instead
+    /// of moving the cursor.
+    #[must_use]
+    pub fn mode_name(&self) -> Option<&str> {
+        self.mode_name.as_deref()
+    }
+
+    /// Check if the current mode is operator-pending.
+    ///
+    /// Convenience method for motion commands to check if they should return
+    /// a range instead of moving the cursor.
+    #[must_use]
+    pub fn is_operator_pending(&self) -> bool {
+        self.mode_name
+            .as_ref()
+            .is_some_and(|m| m == "operator-pending")
+    }
 }
 
 #[cfg(test)]
@@ -251,5 +287,30 @@ mod tests {
         let ctx = CommandContext::new().with_vfs(vfs);
         let debug_str = format!("{ctx:?}");
         assert!(debug_str.contains("<VfsDriver>"));
+    }
+
+    #[test]
+    fn test_command_context_mode_name_none_by_default() {
+        let ctx = CommandContext::new();
+        assert!(ctx.mode_name().is_none());
+    }
+
+    #[test]
+    fn test_command_context_set_mode_name() {
+        let mut ctx = CommandContext::new();
+        ctx.set_mode_name("operator-pending");
+        assert_eq!(ctx.mode_name(), Some("operator-pending"));
+    }
+
+    #[test]
+    fn test_command_context_is_operator_pending() {
+        let mut ctx = CommandContext::new();
+        assert!(!ctx.is_operator_pending());
+
+        ctx.set_mode_name("operator-pending");
+        assert!(ctx.is_operator_pending());
+
+        ctx.set_mode_name("normal");
+        assert!(!ctx.is_operator_pending());
     }
 }

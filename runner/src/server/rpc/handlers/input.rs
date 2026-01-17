@@ -154,6 +154,10 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
                         cmd_ctx.set("count", reovim_driver_command::ArgValue::Count(count));
                     }
 
+                    // Set current mode name in context for commands that need to
+                    // adjust behavior based on mode (e.g., motions in operator-pending)
+                    cmd_ctx.set_mode_name(mode_name);
+
                     // Execute the command
                     if let Some(cmd_result) = ctx.session.execute_command(cmd_id, &cmd_ctx).await {
                         ctx.session.handle_command_result(cmd_result).await;

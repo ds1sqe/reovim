@@ -22,6 +22,9 @@ use super::MOTIONS_MODULE;
 // =============================================================================
 
 /// Execute a word motion and update cursor position.
+///
+/// In operator-pending mode, returns an `OperatorRange` instead of moving the cursor.
+/// Word motions are characterwise.
 #[allow(clippy::cast_possible_truncation)]
 fn execute_word_motion(
     ctx: &KernelContext,
@@ -45,23 +48,39 @@ fn execute_word_motion(
         end,
     };
 
-    let (old_pos, new_pos) = {
-        let mut buffer = buffer_arc.write();
-        let cursor = Cursor::new(buffer.position());
-        let old_pos = cursor.position;
+    let buffer = buffer_arc.read();
+    let cursor = Cursor::new(buffer.position());
+    let old_pos = cursor.position;
 
-        let Some(new_pos) = MotionEngine::calculate(&buffer, &cursor, motion, count) else {
-            return CommandResult::Success; // No-op if motion fails
-        };
-
-        if new_pos == old_pos {
-            return CommandResult::Success; // No movement
-        }
-
-        buffer.set_position(new_pos);
+    let Some(new_pos) = MotionEngine::calculate(&buffer, &cursor, motion, count) else {
         drop(buffer);
-        (old_pos, new_pos)
+        return CommandResult::Success; // No-op if motion fails
     };
+
+    if new_pos == old_pos {
+        drop(buffer);
+        return CommandResult::Success; // No movement
+    }
+
+    drop(buffer);
+
+    // In operator-pending mode, return range for the operator
+    if args.is_operator_pending() {
+        // Determine range direction - start should be before end
+        let (start, range_end) = if direction == Direction::Forward {
+            (old_pos, new_pos)
+        } else {
+            (new_pos, old_pos)
+        };
+        // Word motions are characterwise
+        return CommandResult::operator_range(start, range_end, false);
+    }
+
+    // Normal mode: move cursor
+    {
+        let mut buffer = buffer_arc.write();
+        buffer.set_position(new_pos);
+    }
 
     // Emit CursorMoved event
     ctx.event_bus.emit(CursorMoved {

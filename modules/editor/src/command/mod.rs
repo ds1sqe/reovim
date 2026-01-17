@@ -29,6 +29,7 @@ mod file;
 mod insert_edit;
 mod mode;
 mod mode_entry;
+mod operators;
 mod paste;
 mod replace;
 mod undo;
@@ -43,8 +44,14 @@ pub use {
     display_line::{CursorDisplayDown, CursorDisplayUp},
     file::WriteBufferCommand,
     insert_edit::{InsertNewline, InsertTab},
-    mode::{EnterInsertMode, EnterInsertModeAppend, EnterWindowMode, ExitToNormal},
+    mode::{
+        EnterInsertMode, EnterInsertModeAppend, EnterWindowMode, ExitOperatorPending, ExitToNormal,
+    },
     mode_entry::{EnterInsertEndOfLine, EnterInsertFirstNonBlank, OpenLineAbove, OpenLineBelow},
+    operators::{
+        EnterChangeOperator, EnterDedentOperator, EnterDeleteOperator, EnterIndentOperator,
+        EnterYankOperator,
+    },
     paste::{PasteAfter, PasteBefore},
     replace::{JoinLines, RepeatDot, ReplaceCharStart},
     undo::{RedoCommand, UndoCommand},
@@ -80,9 +87,16 @@ pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
         Box::new(OpenLineAbove),
         Box::new(ExitToNormal),
         Box::new(EnterWindowMode),
+        Box::new(ExitOperatorPending),
         // Insert mode edits
         Box::new(InsertNewline),
         Box::new(InsertTab),
+        // Enter operator commands
+        Box::new(EnterDeleteOperator),
+        Box::new(EnterYankOperator),
+        Box::new(EnterChangeOperator),
+        Box::new(EnterIndentOperator),
+        Box::new(EnterDedentOperator),
         // Delete operations
         Box::new(DeleteChar),
         Box::new(DeleteCharBefore),
@@ -138,6 +152,7 @@ pub fn mode_commands() -> Vec<Box<dyn CommandHandler>> {
         Box::new(OpenLineAbove),
         Box::new(ExitToNormal),
         Box::new(EnterWindowMode),
+        Box::new(ExitOperatorPending),
     ]
 }
 
@@ -323,9 +338,10 @@ mod tests {
     #[test]
     fn test_all_commands_count() {
         let cmds = all_commands();
-        // 4 cursor + 2 display + 8 mode + 2 insert-edit + 5 delete + 1 yank + 2 paste
-        // + 2 change + 2 undo + 1 replace_char + 1 repeat + 1 write = 31
-        assert_eq!(cmds.len(), 31);
+        // 4 cursor + 2 display + 9 mode + 2 insert-edit + 5 enter-operator
+        // + 5 delete + 1 yank + 2 paste + 2 change + 2 undo + 1 replace_char
+        // + 1 repeat + 1 write = 37
+        assert_eq!(cmds.len(), 37);
     }
 
     #[test]
@@ -343,7 +359,7 @@ mod tests {
     #[test]
     fn test_mode_commands_count() {
         let cmds = mode_commands();
-        assert_eq!(cmds.len(), 8);
+        assert_eq!(cmds.len(), 9);
     }
 
     // =========================================================================

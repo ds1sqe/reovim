@@ -53,27 +53,35 @@ impl CommandHandler for CursorUp {
         };
 
         let count = args.count().unwrap_or(1);
-        let (old_pos, new_pos) = {
+        let buffer = buffer_arc.read();
+        let old_pos = buffer.position();
+
+        // Calculate new line (saturating sub to handle boundary)
+        let new_line = old_pos.line.saturating_sub(count);
+
+        // If already at top, no-op
+        if new_line == old_pos.line && old_pos.line == 0 {
+            return CommandResult::Success;
+        }
+
+        // Get line length for column clamping
+        let line_len = buffer.line_len(new_line).unwrap_or(0);
+        let new_col = old_pos.column.min(line_len);
+        let new_pos = Position::new(new_line, new_col);
+        drop(buffer);
+
+        // In operator-pending mode, return range for the operator
+        // j/k motions are linewise
+        if args.is_operator_pending() {
+            // k moves up, so new_pos.line < old_pos.line
+            return CommandResult::operator_range(new_pos, old_pos, true);
+        }
+
+        // Normal mode: move cursor
+        {
             let mut buffer = buffer_arc.write();
-            let old_pos = buffer.position();
-
-            // Calculate new line (saturating sub to handle boundary)
-            let new_line = old_pos.line.saturating_sub(count);
-
-            // If already at top, no-op
-            if new_line == old_pos.line && old_pos.line == 0 {
-                return CommandResult::Success;
-            }
-
-            // Get line length for column clamping
-            let line_len = buffer.line_len(new_line).unwrap_or(0);
-            let new_col = old_pos.column.min(line_len);
-
-            let new_pos = Position::new(new_line, new_col);
             buffer.set_position(new_pos);
-            drop(buffer);
-            (old_pos, new_pos)
-        };
+        }
 
         // Emit CursorMoved event (buffer lock released)
         ctx.event_bus.emit(CursorMoved {
@@ -120,29 +128,37 @@ impl CommandHandler for CursorDown {
         };
 
         let count = args.count().unwrap_or(1);
-        let (old_pos, new_pos) = {
+        let buffer = buffer_arc.read();
+        let old_pos = buffer.position();
+        let line_count = buffer.line_count();
+
+        // Calculate new line (clamped to last line)
+        let max_line = line_count.saturating_sub(1);
+        let new_line = (old_pos.line + count).min(max_line);
+
+        // If already at bottom, no-op
+        if new_line == old_pos.line && old_pos.line == max_line {
+            return CommandResult::Success;
+        }
+
+        // Get line length for column clamping
+        let line_len = buffer.line_len(new_line).unwrap_or(0);
+        let new_col = old_pos.column.min(line_len);
+        let new_pos = Position::new(new_line, new_col);
+        drop(buffer);
+
+        // In operator-pending mode, return range for the operator
+        // j/k motions are linewise
+        if args.is_operator_pending() {
+            // j moves down, so old_pos.line < new_pos.line
+            return CommandResult::operator_range(old_pos, new_pos, true);
+        }
+
+        // Normal mode: move cursor
+        {
             let mut buffer = buffer_arc.write();
-            let old_pos = buffer.position();
-            let line_count = buffer.line_count();
-
-            // Calculate new line (clamped to last line)
-            let max_line = line_count.saturating_sub(1);
-            let new_line = (old_pos.line + count).min(max_line);
-
-            // If already at bottom, no-op
-            if new_line == old_pos.line && old_pos.line == max_line {
-                return CommandResult::Success;
-            }
-
-            // Get line length for column clamping
-            let line_len = buffer.line_len(new_line).unwrap_or(0);
-            let new_col = old_pos.column.min(line_len);
-
-            let new_pos = Position::new(new_line, new_col);
             buffer.set_position(new_pos);
-            drop(buffer);
-            (old_pos, new_pos)
-        };
+        }
 
         // Emit CursorMoved event (buffer lock released)
         ctx.event_bus.emit(CursorMoved {
@@ -189,23 +205,32 @@ impl CommandHandler for CursorLeft {
         };
 
         let count = args.count().unwrap_or(1);
-        let (old_pos, new_pos) = {
+        let buffer = buffer_arc.read();
+        let old_pos = buffer.position();
+
+        // Calculate new column (saturating sub to handle boundary)
+        let new_col = old_pos.column.saturating_sub(count);
+
+        // If already at left edge, no-op
+        if new_col == old_pos.column && old_pos.column == 0 {
+            return CommandResult::Success;
+        }
+
+        let new_pos = Position::new(old_pos.line, new_col);
+        drop(buffer);
+
+        // In operator-pending mode, return range for the operator
+        // h/l motions are characterwise
+        if args.is_operator_pending() {
+            // h moves left, so new_pos.column < old_pos.column
+            return CommandResult::operator_range(new_pos, old_pos, false);
+        }
+
+        // Normal mode: move cursor
+        {
             let mut buffer = buffer_arc.write();
-            let old_pos = buffer.position();
-
-            // Calculate new column (saturating sub to handle boundary)
-            let new_col = old_pos.column.saturating_sub(count);
-
-            // If already at left edge, no-op
-            if new_col == old_pos.column && old_pos.column == 0 {
-                return CommandResult::Success;
-            }
-
-            let new_pos = Position::new(old_pos.line, new_col);
             buffer.set_position(new_pos);
-            drop(buffer);
-            (old_pos, new_pos)
-        };
+        }
 
         // Emit CursorMoved event (buffer lock released)
         ctx.event_bus.emit(CursorMoved {
@@ -252,31 +277,40 @@ impl CommandHandler for CursorRight {
         };
 
         let count = args.count().unwrap_or(1);
-        let (old_pos, new_pos) = {
+        let buffer = buffer_arc.read();
+        let old_pos = buffer.position();
+
+        // Get current line length for boundary check
+        let line_len = buffer.line_len(old_pos.line).unwrap_or(0);
+
+        // In normal mode, cursor can't go past the last character.
+        // For a line of length N, valid columns are 0..N-1.
+        // An empty line has max_col 0, but we can still be at col 0.
+        let max_col = line_len.saturating_sub(1);
+
+        // Calculate new column (clamped to max valid position)
+        let new_col = (old_pos.column + count).min(max_col);
+
+        // If already at right edge, no-op
+        if new_col == old_pos.column && old_pos.column == max_col {
+            return CommandResult::Success;
+        }
+
+        let new_pos = Position::new(old_pos.line, new_col);
+        drop(buffer);
+
+        // In operator-pending mode, return range for the operator
+        // h/l motions are characterwise
+        if args.is_operator_pending() {
+            // l moves right, so old_pos.column < new_pos.column
+            return CommandResult::operator_range(old_pos, new_pos, false);
+        }
+
+        // Normal mode: move cursor
+        {
             let mut buffer = buffer_arc.write();
-            let old_pos = buffer.position();
-
-            // Get current line length for boundary check
-            let line_len = buffer.line_len(old_pos.line).unwrap_or(0);
-
-            // In normal mode, cursor can't go past the last character.
-            // For a line of length N, valid columns are 0..N-1.
-            // An empty line has max_col 0, but we can still be at col 0.
-            let max_col = line_len.saturating_sub(1);
-
-            // Calculate new column (clamped to max valid position)
-            let new_col = (old_pos.column + count).min(max_col);
-
-            // If already at right edge, no-op
-            if new_col == old_pos.column && old_pos.column == max_col {
-                return CommandResult::Success;
-            }
-
-            let new_pos = Position::new(old_pos.line, new_col);
             buffer.set_position(new_pos);
-            drop(buffer);
-            (old_pos, new_pos)
-        };
+        }
 
         // Emit CursorMoved event (buffer lock released)
         ctx.event_bus.emit(CursorMoved {
