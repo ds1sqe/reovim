@@ -236,6 +236,108 @@ void reovim_log_error(const char* msg);
 void reovim_log_debug(const char* msg);
 
 /* ============================================================================
+ * Timer Services
+ * ============================================================================
+ *
+ * Schedule delayed and periodic work. Timers fire on the kernel's tick loop.
+ *
+ * IMPORTANT: Timer callbacks must:
+ * - Return quickly (avoid blocking operations)
+ * - Not panic (panics are caught but waste resources)
+ * - Keep user_data valid until the timer fires or is cancelled
+ */
+
+/**
+ * Timer handle returned by scheduling functions.
+ *
+ * Size: 8 bytes
+ * Alignment: 8 bytes
+ *
+ * Check handle.id != 0 to verify the timer was scheduled successfully.
+ */
+typedef struct ReovimTimerHandle {
+    /** Timer ID. 0 indicates a failed/invalid timer. */
+    uint64_t id;
+} ReovimTimerHandle;
+
+/**
+ * Timer callback function type.
+ *
+ * @param user_data  Opaque pointer passed from schedule call
+ */
+typedef void (*ReovimTimerCallback)(void* user_data);
+
+/**
+ * Schedule a one-shot timer.
+ *
+ * The callback will be invoked once after delay_ms milliseconds.
+ *
+ * @param delay_ms   Delay in milliseconds before the callback fires
+ * @param callback   Function to call when the timer fires (may be NULL)
+ * @param user_data  Opaque pointer passed to the callback
+ *
+ * @return Timer handle. Check handle.id != 0 for success.
+ *         Returns null handle (id=0) if:
+ *         - Timer wheel is not initialized
+ *         - Maximum timer limit reached
+ *         - Callback is NULL
+ */
+ReovimTimerHandle reovim_schedule_delayed(
+    uint64_t delay_ms,
+    ReovimTimerCallback callback,
+    void* user_data
+);
+
+/**
+ * Schedule a periodic timer.
+ *
+ * The callback will be invoked repeatedly at interval_ms intervals.
+ *
+ * @param interval_ms  Interval in milliseconds between callback invocations
+ * @param callback     Function to call when the timer fires (may be NULL)
+ * @param user_data    Opaque pointer passed to the callback
+ *
+ * @return Timer handle. Check handle.id != 0 for success.
+ *         Returns null handle (id=0) if:
+ *         - Timer wheel is not initialized
+ *         - Maximum timer limit reached
+ *         - Callback is NULL
+ */
+ReovimTimerHandle reovim_schedule_periodic(
+    uint64_t interval_ms,
+    ReovimTimerCallback callback,
+    void* user_data
+);
+
+/**
+ * Cancel a scheduled timer.
+ *
+ * After cancellation, the timer's callback will not be invoked.
+ * Safe to call on already-cancelled or fired timers.
+ *
+ * @param handle  Timer handle from schedule function
+ *
+ * @return true if timer was found and cancelled, false otherwise
+ */
+bool reovim_cancel_timer(ReovimTimerHandle handle);
+
+/**
+ * Check if a timer is still pending.
+ *
+ * @param handle  Timer handle to check
+ *
+ * @return true if timer is scheduled and hasn't fired yet, false otherwise
+ */
+bool reovim_timer_is_pending(ReovimTimerHandle handle);
+
+/**
+ * Get the number of currently active timers.
+ *
+ * @return Number of pending timers, or 0 if timer wheel not initialized
+ */
+size_t reovim_timer_count(void);
+
+/* ============================================================================
  * Helper Macros
  * ============================================================================ */
 

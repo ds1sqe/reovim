@@ -79,12 +79,18 @@
 //! - New types are added (backwards compatible)
 
 mod logging;
+mod timer;
 mod types;
 mod version;
 
 // Re-export FFI service functions
 pub use {
     logging::{reovim_log_debug, reovim_log_error, reovim_log_info, reovim_log_warn},
+    timer::{
+        ReovimTimerCallback, ReovimTimerHandle, init_timer_wheel, reovim_cancel_timer,
+        reovim_schedule_delayed, reovim_schedule_periodic, reovim_timer_count,
+        reovim_timer_is_pending,
+    },
     version::{ABI_VERSION, reovim_abi_is_compatible, reovim_abi_version},
 };
 

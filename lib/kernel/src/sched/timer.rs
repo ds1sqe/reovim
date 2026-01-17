@@ -387,6 +387,14 @@ impl TimerWheel {
         })
     }
 
+    /// Check if a timer is still pending (scheduled but not yet fired).
+    ///
+    /// Returns `true` if the timer exists and hasn't been cancelled or fired.
+    pub fn is_pending(&self, id: TimerId) -> bool {
+        let timers = self.timers.lock();
+        timers.get(&id).is_some_and(|entry| !entry.is_cancelled())
+    }
+
     /// Process expired timers and return tasks to execute.
     ///
     /// This should be called during each tick with the current time.
