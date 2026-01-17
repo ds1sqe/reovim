@@ -1,4 +1,9 @@
 //! Cursor movement tests (hjkl, 0$, gg/G, w/b/e).
+//!
+//! **Status**: 10 tests enabled, 7 tests require additional features
+//! (count prefix handling, motions like $, ^, w, e, G).
+//!
+//! Run `cargo test --ignored` to run the remaining ignored tests.
 
 mod common;
 use common::IntegrationTest;
@@ -8,7 +13,6 @@ use common::IntegrationTest;
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_j_moves_down() {
     let result = IntegrationTest::new()
         .await
@@ -20,7 +24,6 @@ async fn test_j_moves_down() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_k_moves_up() {
     let result = IntegrationTest::new()
         .await
@@ -32,7 +35,6 @@ async fn test_k_moves_up() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_l_moves_right() {
     let result = IntegrationTest::new()
         .await
@@ -44,7 +46,6 @@ async fn test_l_moves_right() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_h_moves_left() {
     let result = IntegrationTest::new()
         .await
@@ -84,7 +85,6 @@ async fn test_dollar_moves_to_eol() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_0_moves_to_bol() {
     let result = IntegrationTest::new()
         .await
@@ -112,7 +112,6 @@ async fn test_caret_moves_to_first_nonblank() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_gg_moves_to_first_line() {
     let result = IntegrationTest::new()
         .await
@@ -164,7 +163,6 @@ async fn test_w_moves_to_next_word() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_b_moves_to_prev_word() {
     let result = IntegrationTest::new()
         .await
@@ -192,7 +190,6 @@ async fn test_e_moves_to_end_of_word() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_j_at_last_line() {
     let result = IntegrationTest::new()
         .await
@@ -204,7 +201,6 @@ async fn test_j_at_last_line() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_h_at_bol() {
     let result = IntegrationTest::new()
         .await
@@ -216,7 +212,6 @@ async fn test_h_at_bol() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_l_at_eol() {
     let result = IntegrationTest::new()
         .await

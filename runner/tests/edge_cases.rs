@@ -1,4 +1,9 @@
 //! Edge case tests (empty buffer, Unicode, boundaries).
+//!
+//! **Status**: 9 tests enabled, 1 test requires additional features
+//! (Unicode insert handling).
+//!
+//! Run `cargo test --ignored` to run the remaining ignored tests.
 
 mod common;
 use common::IntegrationTest;
@@ -8,7 +13,6 @@ use common::IntegrationTest;
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_dd_empty_buffer() {
     let result = IntegrationTest::new()
         .await
@@ -20,7 +24,6 @@ async fn test_dd_empty_buffer() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_x_empty_buffer() {
     let result = IntegrationTest::new()
         .await
@@ -32,7 +35,6 @@ async fn test_x_empty_buffer() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_yy_empty_buffer() {
     let result = IntegrationTest::new()
         .await
@@ -48,7 +50,6 @@ async fn test_yy_empty_buffer() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_dd_emoji_line() {
     let result = IntegrationTest::new()
         .await
@@ -60,7 +61,6 @@ async fn test_dd_emoji_line() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_yy_cjk_line() {
     let result = IntegrationTest::new()
         .await
@@ -88,7 +88,6 @@ async fn test_insert_unicode() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_dd_single_char() {
     let result = IntegrationTest::new()
         .await
@@ -100,7 +99,6 @@ async fn test_dd_single_char() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_x_single_char() {
     let result = IntegrationTest::new()
         .await
@@ -116,7 +114,6 @@ async fn test_x_single_char() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_dd_line_with_tabs() {
     let result = IntegrationTest::new()
         .await
@@ -128,7 +125,6 @@ async fn test_dd_line_with_tabs() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_yy_line_with_trailing_spaces() {
     let result = IntegrationTest::new()
         .await
