@@ -25,3 +25,9 @@ dirs = "5.0"
 
 [target.'cfg(unix)'.dependencies]
 crossterm.workspace = true
+# Unix socket support for local transport
+tokio = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+# Named pipe support for local transport
+tokio = { workspace = true }

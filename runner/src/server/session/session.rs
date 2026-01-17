@@ -168,6 +168,13 @@ impl Session {
         self.state.write().await.request_quit();
     }
 
+    /// Request clients to detach (server continues running).
+    ///
+    /// Acquires a write lock on the session state.
+    pub async fn request_detach(&self) {
+        self.state.write().await.request_detach();
+    }
+
     /// Look up a key sequence in the session's keymap.
     ///
     /// Acquires a read lock on the session state.
@@ -282,6 +289,12 @@ impl Session {
             CommandResult::Success | CommandResult::Error(_) => None,
             CommandResult::Quit | CommandResult::ForceQuit => {
                 self.request_quit().await;
+                None
+            }
+            CommandResult::Detach => {
+                // Detach requests client disconnection but server continues.
+                // Note: In session context, this triggers DETACH notification.
+                self.request_detach().await;
                 None
             }
             CommandResult::EditAction(action) => {

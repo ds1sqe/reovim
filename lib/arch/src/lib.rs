@@ -49,12 +49,14 @@ pub mod windows;
 // Platform-specific type aliases for convenience
 #[cfg(unix)]
 pub use unix::{
-    UnixInputSource as PlatformInputSource, UnixSignalHandler as PlatformSignalHandler,
-    UnixTerminal as PlatformTerminal,
+    UnixInputSource as PlatformInputSource, UnixLocalListener as PlatformLocalListener,
+    UnixLocalStream as PlatformLocalStream, UnixSignalHandler as PlatformSignalHandler,
+    UnixTerminal as PlatformTerminal, process_exists,
 };
 
 #[cfg(windows)]
 pub use windows::{
-    WindowsInputSource as PlatformInputSource, WindowsSignalHandler as PlatformSignalHandler,
-    WindowsTerminal as PlatformTerminal,
+    WindowsInputSource as PlatformInputSource, WindowsLocalListener as PlatformLocalListener,
+    WindowsLocalStream as PlatformLocalStream, WindowsSignalHandler as PlatformSignalHandler,
+    WindowsTerminal as PlatformTerminal, process_exists,
 };

@@ -448,6 +448,11 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
             CommandResult::Quit | CommandResult::ForceQuit => {
                 self.app.request_quit();
             }
+            CommandResult::Detach => {
+                // Detach requests client disconnection but server continues.
+                // The broadcaster will send DETACH notification to all clients.
+                self.app.request_detach();
+            }
             CommandResult::UndoAction(action) => {
                 self.handle_undo_action(action);
             }

@@ -6,7 +6,13 @@
 //! implemented in a future phase.
 
 mod input;
+pub mod local;
 mod signal;
 mod terminal;
 
-pub use {input::WindowsInputSource, signal::WindowsSignalHandler, terminal::WindowsTerminal};
+pub use {
+    input::WindowsInputSource,
+    local::{WindowsLocalListener, WindowsLocalStream, process_exists},
+    signal::WindowsSignalHandler,
+    terminal::WindowsTerminal,
+};

@@ -11,9 +11,9 @@ use {
     reovim_protocol::v1::{
         RpcNotification, RpcResponse,
         notifications::{
-            BUFFER_MODIFIED, BufferModifiedPayload, CURSOR_MOVED, CursorMovedPayload, LOG_ENTRY,
-            LogEntryPayload, MODE_CHANGED, ModeChangedPayload, RENDER_COMPLETE,
-            RenderCompletePayload,
+            BUFFER_MODIFIED, BufferModifiedPayload, CURSOR_MOVED, CursorMovedPayload, DETACH,
+            DetachPayload, LOG_ENTRY, LogEntryPayload, MODE_CHANGED, ModeChangedPayload,
+            RENDER_COMPLETE, RenderCompletePayload,
         },
     },
     serde_json::json,
@@ -439,6 +439,21 @@ impl TuiApp {
                     }
                     tracing::trace!("Log entry received: {:?}", payload.level);
                 }
+            }
+            DETACH => {
+                // Server requested client to detach - disconnect gracefully
+                if let Ok(payload) =
+                    serde_json::from_value::<DetachPayload>(notification.params.clone())
+                {
+                    if let Some(reason) = payload.reason {
+                        tracing::info!("Detaching: {reason}");
+                    } else {
+                        tracing::info!("Detaching from server");
+                    }
+                } else {
+                    tracing::info!("Detaching from server");
+                }
+                self.running = false;
             }
             _ => {
                 tracing::debug!("Unknown notification: {}", notification.method);
