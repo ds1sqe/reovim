@@ -1,4 +1,9 @@
 //! Multi-client concurrent tests.
+//!
+//! **Status**: 1 test enabled, 2 tests require additional features
+//! (buffer sharing between clients).
+//!
+//! Run `cargo test --ignored` to run the remaining ignored tests.
 
 mod common;
 use common::MultiClientTest;
@@ -37,7 +42,6 @@ async fn test_clients_see_changes() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_three_clients_concurrent() {
     MultiClientTest::with_clients(3)
         .await

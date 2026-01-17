@@ -6,11 +6,15 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ## [Unreleased] - v0.9.0-dev
 
-### Testing
+### Added
 
-- **Undotree Panel Refresh Tests** ([#259](https://github.com/ds1sqe/reovim/issues/259))
-  - Added missing integration tests for panel refresh on undo/redo operations
-  - Tests verify panel stays open and updates when `u` or `<C-r>` is pressed
+- **tmux-like UX** ([#323](https://github.com/ds1sqe/reovim/issues/323))
+  - Running `reovim` without arguments now starts server + TUI in one command
+  - Added `reovim -d` / `--detach` flag for daemon mode (server without TUI)
+  - Added `reovim attach` subcommand to connect to existing server
+  - Server continues running after TUI exits (graceful detach)
+  - Added `Server::run_with_ready_signal()` for coordinating server startup
+  - Backwards compatible: `reovim server` and `reovim tui` still work
 
 ### Fixed
 

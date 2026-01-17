@@ -1,10 +1,9 @@
 //! Search integration tests (/, ?, n, N, *, #).
 //!
-//! **NOTE**: These tests are currently ignored because the server requires
-//! modules to be loaded for key bindings to function. The server follows
-//! a "mechanism vs policy" design where modules provide the actual editing
-//! behavior. Run with `cargo test --ignored` to run these tests when
-//! module loading is configured.
+//! **Status**: 3 tests enabled, 12 tests require additional features
+//! (search command mode, n/N commands).
+//!
+//! Run `cargo test --ignored` to run the remaining ignored tests.
 
 mod common;
 use common::IntegrationTest;
@@ -147,7 +146,6 @@ async fn test_search_word_forward() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_search_word_backward() {
     let result = IntegrationTest::new()
         .await
@@ -209,7 +207,6 @@ async fn test_search_regex_pattern() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_search_regex_word_boundary() {
     let result = IntegrationTest::new()
         .await
@@ -226,7 +223,6 @@ async fn test_search_regex_word_boundary() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_search_not_found() {
     let result = IntegrationTest::new()
         .await
