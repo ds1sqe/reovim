@@ -488,53 +488,34 @@ For in-depth information, see:
 
 ## Logs and Debugging
 
-Runtime logs are written to timestamped files in `~/.local/share/reovim/` by default (e.g., `reovim-2025-12-22-15-36-20.log`). Each instance creates a new log file with format `reovim-YYYY-MM-DD-HH-MM-SS.log`.
+### Current State (v0.9.0)
 
-### Log Output Options
+The logging system is partially implemented. The driver infrastructure exists in `lib/drivers/log/` but CLI argument wiring is pending.
 
-```bash
-# Default: timestamped file in ~/.local/share/reovim/
-reovim myfile.txt
+**What works now:**
+- Server outputs logs to stderr via tracing
+- RPC debug commands to query/control running server
 
-# Custom log file path
-reovim --log=/path/to/custom.log myfile.txt
+**Planned (not yet implemented):**
+- `--log=<path>` CLI argument
+- `--lsp-log=<path>` CLI argument
+- `REOVIM_LOG` environment variable integration
+- Timestamped log files in `~/.local/share/reovim/`
 
-# Log to stderr (useful for debugging)
-reovim --log=- myfile.txt
-reovim --log=stderr myfile.txt
+### RPC Debug Commands
 
-# Disable logging entirely
-reovim --log=none myfile.txt
-reovim --log=off myfile.txt
-
-# Server mode with stderr logging (for debugging)
-cargo run -- server --log=-
-
-# Server mode with custom log file
-cargo run -- server --log=/tmp/reovim-server.log
-
-# LSP JSON-RPC message logging (for debugging LSP issues)
-reovim --lsp-log=default myfile.rs              # Timestamped lsp-*.log in data dir (trace level)
-reovim --lsp-log=/tmp/lsp.log myfile.rs         # Custom path (trace level)
-reovim --lsp-log=default:debug myfile.rs        # Default path with debug level
-reovim --lsp-log=/tmp/lsp.log:info myfile.rs    # Custom path with info level
-# LSP log levels: error, warn, info, debug, trace (default: trace)
-cargo run -- server --log=/tmp/main.log --lsp-log=/tmp/lsp.log  # Both logs
-
-# View logs (timestamped files)
-tail -f ~/.local/share/reovim/reovim-*.log
-
-# View latest log
-tail -f $(ls -t ~/.local/share/reovim/reovim-*.log | head -1)
-```
-
-### Log Level
-
-Control log verbosity via `REOVIM_LOG` environment variable:
+Query and control logging on a running server via CLI:
 
 ```bash
-REOVIM_LOG=debug reovim myfile.txt
-REOVIM_LOG=trace reovim --log=- myfile.txt  # Debug to stderr
+# Get current log level
+reovim cli log-level
+
+# Set log level (trace, debug, info, warn, error)
+reovim cli log-level debug
+
+# Get recent log entries (default: 50)
+reovim cli log-tail
+reovim cli log-tail 100
 ```
 
 ### Debugging Flaky Tests
@@ -546,21 +527,6 @@ REOVIM_LOG=trace reovim --log=- myfile.txt  # Debug to stderr
 3. **Look for mode/state synchronization issues** - Often what appears to be a timing race is actually a missing state update
 
 **Example**: `<C-w>h` tests failed randomly because `mode_for_command()` didn't recognize `enter_window_mode`, so the local mode wasn't updated before the next key was looked up. This looked like a race condition but was actually a **missing match arm**.
-
-Use `REOVIM_LOG=debug` to enable debug logging in spawned server processes.
-
-**When debugging in background:** Always specify a log file output instead of stderr:
-```bash
-# GOOD: Use a specific log file
-REOVIM_LOG=debug cargo run -- server --log=/tmp/reovim-debug.log &
-
-# BAD: Don't use stderr (--log=-) for background processes
-REOVIM_LOG=debug cargo run -- server --log=- &  # Output gets mixed up
-```
-Then monitor the log file:
-```bash
-tail -f /tmp/reovim-debug.log
-```
 
 ### Integration Test Infrastructure
 
