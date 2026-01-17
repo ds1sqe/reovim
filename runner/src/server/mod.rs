@@ -183,9 +183,11 @@ use {
         EventBus, KernelContext, MarkBank, ModeId, Module, ModuleContext, ModuleId, MotionEngine,
         OptionRegistry, OptionScope, OptionSpec, OptionValue, RegisterBank, TextObjectEngine,
     },
+    reovim_module_commands::CommandsModule,
     reovim_module_editor::{EditorMode, command::all_commands as editor_commands},
     reovim_module_keymap::KeymapModule,
-    reovim_module_motions::{find_char, line, search as motions_search, word},
+    reovim_module_motions::{MotionsModule, find_char, line, search as motions_search, word},
+    reovim_module_operators::OperatorsModule,
     reovim_protocol::v1::{RpcError, RpcRequest, RpcResponse},
 };
 
@@ -732,6 +734,22 @@ fn build_default_registries() -> (ModeRegistry, CommandRegistry, KeymapRegistry,
     let mut command_registry = CommandRegistry::new();
     let mut keymap_registry = KeymapRegistry::new();
     let module_manager = ModuleManager::new();
+
+    // Register static modules with ModuleManager so they appear in module/list
+    // These are the core modules that provide vim-like functionality
+    if let Err(e) = module_manager.register(KeymapModule) {
+        tracing::warn!(error = %e, "failed to register keymap module");
+    }
+    if let Err(e) = module_manager.register(MotionsModule) {
+        tracing::warn!(error = %e, "failed to register motions module");
+    }
+    if let Err(e) = module_manager.register(OperatorsModule) {
+        tracing::warn!(error = %e, "failed to register operators module");
+    }
+    if let Err(e) = module_manager.register(CommandsModule) {
+        tracing::warn!(error = %e, "failed to register commands module");
+    }
+    tracing::info!(count = 4, "registered static modules");
 
     // Register editor modes (so ModeRegistry knows about them)
     // Each mode provides Mode (identity), ModeDisplay (cursor), and ModeInput (accepts char)
