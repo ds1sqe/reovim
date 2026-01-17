@@ -82,6 +82,7 @@ mod priority;
 mod runtime;
 mod state;
 mod task;
+mod timer;
 mod work_queue;
 
 // Re-export all public types
@@ -94,6 +95,7 @@ pub use {
     },
     state::RuntimeState,
     task::{BoxedTask, Priority, Task, TaskId, TaskState},
+    timer::{DEFAULT_MAX_TIMERS, TimerConfig, TimerHandle, TimerId, TimerWheel},
     work_queue::{
         DEFAULT_CAPACITY as WORK_QUEUE_DEFAULT_CAPACITY, MAX_CAPACITY as WORK_QUEUE_MAX_CAPACITY,
         WorkQueue,

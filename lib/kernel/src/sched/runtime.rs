@@ -33,7 +33,7 @@
 //! assert_eq!(runtime.state(), RuntimeState::Stopping);
 //! ```
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use {
     super::{
@@ -41,6 +41,7 @@ use {
         priority::PriorityQueue,
         state::RuntimeState,
         task::{Priority, Task},
+        timer::{DEFAULT_MAX_TIMERS, TimerHandle, TimerId, TimerWheel},
         work_queue::WorkQueue,
     },
     crate::ipc::{DynEvent, EventBus, EventScope, Receiver, Sender, channel},
@@ -68,6 +69,7 @@ pub const DEFAULT_BATCH_SIZE: usize = 16;
 ///     work_queue_capacity: 2048,
 ///     priority_queue_capacity: 512,
 ///     batch_size: 32,
+///     max_timers: 512,
 /// };
 ///
 /// let runtime = Runtime::with_config(config);
@@ -82,6 +84,9 @@ pub struct RuntimeConfig {
 
     /// Maximum tasks processed per tick.
     pub batch_size: usize,
+
+    /// Maximum concurrent timers.
+    pub max_timers: usize,
 }
 
 impl Default for RuntimeConfig {
@@ -90,6 +95,7 @@ impl Default for RuntimeConfig {
             work_queue_capacity: DEFAULT_WORK_QUEUE_CAPACITY,
             priority_queue_capacity: DEFAULT_PRIORITY_QUEUE_CAPACITY,
             batch_size: DEFAULT_BATCH_SIZE,
+            max_timers: DEFAULT_MAX_TIMERS,
         }
     }
 }
@@ -131,6 +137,12 @@ pub struct RuntimeStats {
 
     /// Total tasks that failed (error or panic).
     pub tasks_failed: u64,
+
+    /// Number of active (pending) timers.
+    pub active_timers: usize,
+
+    /// Number of timers dropped due to capacity limit.
+    pub timers_dropped: u64,
 }
 
 /// Runtime event loop coordinator.
@@ -166,6 +178,9 @@ pub struct Runtime {
     /// Work queue for deferred tasks.
     work_queue: Arc<WorkQueue>,
 
+    /// Timer wheel for delayed/periodic work.
+    timer_wheel: Arc<TimerWheel>,
+
     /// Task executor with panic handling.
     executor: Executor,
 
@@ -195,6 +210,7 @@ impl Runtime {
         let work_queue = Arc::new(WorkQueue::with_capacity(config.work_queue_capacity));
         let executor = Executor::new(Arc::clone(&work_queue)).with_batch_size(config.batch_size);
         let event_queue = PriorityQueue::with_capacity(config.priority_queue_capacity);
+        let timer_wheel = Arc::new(TimerWheel::with_max_timers(config.max_timers));
         let (command_tx, command_rx) = channel();
 
         Self {
@@ -202,6 +218,7 @@ impl Runtime {
             event_bus: Arc::new(EventBus::new()),
             event_queue,
             work_queue,
+            timer_wheel,
             executor,
             command_tx,
             command_rx,
@@ -255,9 +272,10 @@ impl Runtime {
     ///
     /// This method:
     /// 1. Processes runtime commands
-    /// 2. Dispatches events from the priority queue
-    /// 3. Executes tasks from the work queue
-    /// 4. Processes queued async events
+    /// 2. Processes expired timers (schedules their callbacks as tasks)
+    /// 3. Dispatches events from the priority queue
+    /// 4. Executes tasks from the work queue
+    /// 5. Processes queued async events
     ///
     /// Returns `true` if the runtime should continue, `false` if it should stop.
     pub fn tick(&mut self) -> bool {
@@ -275,6 +293,12 @@ impl Runtime {
 
         // Only process work when running
         if self.state.is_running() {
+            // Process timers FIRST - may schedule new work
+            let timer_tasks = self.timer_wheel.tick(std::time::Instant::now());
+            for task in timer_tasks {
+                self.work_queue.push(task);
+            }
+
             // Dispatch events from priority queue
             self.dispatch_events();
 
@@ -358,6 +382,85 @@ impl Runtime {
         self.work_queue.push(task)
     }
 
+    /// Schedule work to execute after a delay (one-shot timer).
+    ///
+    /// The callback executes once after the delay passes, on the next tick
+    /// after the deadline. Returns a handle that cancels the timer when dropped.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use reovim_kernel::api::v1::*;
+    /// use std::time::Duration;
+    ///
+    /// let mut runtime = Runtime::new();
+    /// runtime.boot();
+    ///
+    /// // Schedule work for 100ms from now
+    /// let handle = runtime.schedule_delayed(Duration::from_millis(100), || {
+    ///     println!("Delayed work executed!");
+    /// });
+    ///
+    /// // Timer will fire on the tick after 100ms passes
+    /// // Drop handle to cancel, or let it fire
+    /// ```
+    pub fn schedule_delayed<F>(&self, delay: Duration, work: F) -> TimerHandle
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        self.timer_wheel
+            .schedule_oneshot(delay, Priority::NORMAL, work)
+    }
+
+    /// Schedule work to execute periodically.
+    ///
+    /// The callback executes repeatedly at the specified interval. Returns a
+    /// handle that cancels the timer when dropped.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use reovim_kernel::api::v1::*;
+    /// use std::time::Duration;
+    ///
+    /// let mut runtime = Runtime::new();
+    /// runtime.boot();
+    ///
+    /// // Schedule periodic work every 50ms
+    /// let handle = runtime.schedule_periodic(Duration::from_millis(50), || {
+    ///     println!("Periodic work!");
+    /// });
+    ///
+    /// // Timer fires every 50ms until handle is dropped
+    /// ```
+    pub fn schedule_periodic<F>(&self, interval: Duration, work: F) -> TimerHandle
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        self.timer_wheel
+            .schedule_periodic(interval, Priority::NORMAL, work)
+    }
+
+    /// Cancel a timer by ID.
+    ///
+    /// Returns `true` if the timer was found and cancelled, `false` if it
+    /// was already cancelled or has already fired.
+    ///
+    /// Note: Timers are automatically cancelled when their [`TimerHandle`] is
+    /// dropped, so explicit cancellation is rarely needed.
+    pub fn cancel_timer(&self, id: TimerId) -> bool {
+        self.timer_wheel.cancel(id)
+    }
+
+    /// Get a reference to the timer wheel.
+    ///
+    /// This allows external code to schedule timers directly with custom
+    /// configuration.
+    #[must_use]
+    pub const fn timer_wheel(&self) -> &Arc<TimerWheel> {
+        &self.timer_wheel
+    }
+
     /// Queue an event for priority-ordered processing.
     ///
     /// Returns `false` if the queue is full.
@@ -421,7 +524,10 @@ impl Runtime {
     /// Check if the runtime is idle (no pending work).
     #[must_use]
     pub fn is_idle(&self) -> bool {
-        self.event_queue.is_empty() && self.work_queue.is_empty() && self.event_bus.queue_is_empty()
+        self.event_queue.is_empty()
+            && self.work_queue.is_empty()
+            && self.event_bus.queue_is_empty()
+            && self.timer_wheel.pending_count() == 0
     }
 
     /// Get runtime statistics.
@@ -434,6 +540,8 @@ impl Runtime {
             work_dropped: self.work_queue.dropped_count(),
             tasks_executed: self.executor.executed_count(),
             tasks_failed: self.executor.failed_count(),
+            active_timers: self.timer_wheel.pending_count(),
+            timers_dropped: self.timer_wheel.dropped_count(),
         }
     }
 
@@ -494,6 +602,7 @@ mod tests {
             work_queue_capacity: 100,
             priority_queue_capacity: 50,
             batch_size: 8,
+            max_timers: 64,
         };
         let runtime = Runtime::with_config(config);
         assert_eq!(runtime.state(), RuntimeState::Booting);

@@ -143,6 +143,7 @@ pub use crate::sched::{
     BoxedTask,
     // Configuration constants
     DEFAULT_BATCH_SIZE,
+    DEFAULT_MAX_TIMERS,
     DEFAULT_PRIORITY_QUEUE_CAPACITY,
     DEFAULT_WORK_QUEUE_CAPACITY,
     Executor,
@@ -157,6 +158,11 @@ pub use crate::sched::{
     Task,
     TaskId,
     TaskState,
+    // Timer types
+    TimerConfig,
+    TimerHandle,
+    TimerId,
+    TimerWheel,
     WORK_QUEUE_DEFAULT_CAPACITY,
     WORK_QUEUE_MAX_CAPACITY,
     WorkQueue,
