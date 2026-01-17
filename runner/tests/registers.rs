@@ -1,4 +1,9 @@
 //! Register tests (unnamed, named, yank types).
+//!
+//! **Status**: 1 test enabled, 4 tests require additional features
+//! (register content query API).
+//!
+//! Run `cargo test --ignored` to run the remaining ignored tests.
 
 mod common;
 use common::IntegrationTest;
@@ -57,7 +62,6 @@ async fn test_named_register_a() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_named_register_paste() {
     let result = IntegrationTest::new()
         .await
