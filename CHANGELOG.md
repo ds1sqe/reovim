@@ -6,6 +6,14 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ## [Unreleased] - v0.9.0-dev
 
+### Documentation
+
+- **CLAUDE.md Logging Section Update** (Issue #322)
+  - Updated "Logs and Debugging" section to reflect v0.9.0 state
+  - Documented what currently works: RPC debug commands (`log-level`, `log-tail`)
+  - Marked unimplemented features as "Planned": CLI args (`--log`, `--lsp-log`), env vars
+  - Removed outdated examples referencing non-existent CLI flags
+
 ### Refactored
 
 - **File Splitting Epic Phase 1-3** ([Epic #304](https://github.com/ds1sqe/reovim/issues/304))
