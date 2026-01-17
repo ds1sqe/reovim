@@ -16,6 +16,9 @@ mod mode;
 
 pub use {
     command::CommandRegistry,
-    keymap::{KeyLookupResult, KeymapRegistry},
+    keymap::KeymapRegistry,
     mode::{ModeEntry, ModeRegistry},
 };
+
+// Re-export KeyLookupResult from driver (moved from keymap.rs in Epic #353)
+pub use reovim_driver_input::KeyLookupResult;

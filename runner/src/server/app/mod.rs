@@ -12,7 +12,7 @@ mod undotree;
 mod visual;
 
 pub use {
-    char_ops::{CharWaitState, FindType, LastFind, PendingCharOp},
+    char_ops::{FindType, LastFind, PendingCharOp},
     cmdline::CommandLineState,
     repeat::{InsertEntryType, MAX_INSERT_COUNT, PendingEditBatch, RepeatState},
     search::{SearchDirection, SearchState},
@@ -96,15 +96,6 @@ pub struct AppState {
     /// Maintains separate undo trees for each buffer, enabling per-buffer
     /// undo/redo operations. Each buffer has its own isolated undo history.
     pub undo_registry: UndoRegistry,
-
-    /// Character wait state for find-char commands (f, F, t, T).
-    ///
-    /// When Some, the next character input will be used as the argument
-    /// to complete a find-char motion rather than being processed as
-    /// a normal key event.
-    ///
-    /// DEPRECATED: Use `pending_char` instead. Kept for backward compatibility.
-    pub char_wait: Option<CharWaitState>,
 
     /// Pending character operation.
     ///
@@ -240,7 +231,6 @@ impl AppState {
             terminal_width: 80,
             terminal_height: 24,
             undo_registry: UndoRegistry::new(),
-            char_wait: None,
             pending_char: None,
             last_find: None,
             search: SearchState::new(),
@@ -299,20 +289,12 @@ impl AppState {
     /// The next character input will be used to complete this operation.
     pub const fn set_pending_char(&mut self, op: PendingCharOp) {
         self.pending_char = Some(op);
-        // Also set char_wait for backward compatibility
-        if let Some(find_type) = op.find_type()
-            && let Some(start) = op.start_position()
-        {
-            self.char_wait = Some(CharWaitState::new(find_type, start));
-        }
     }
 
     /// Take the pending character operation, clearing it.
     ///
     /// Returns `Some(op)` if there was a pending operation, `None` otherwise.
     pub const fn take_pending_char(&mut self) -> Option<PendingCharOp> {
-        // Clear char_wait for backward compatibility
-        self.char_wait = None;
         self.pending_char.take()
     }
 
@@ -736,29 +718,6 @@ mod tests {
     // ========================================================================
 
     #[test]
-    fn test_app_state_char_wait_initially_none() {
-        let kernel = KernelContext::default();
-        let app = AppState::new(kernel, test_mode_id());
-
-        assert!(app.char_wait.is_none());
-        assert!(app.last_find.is_none());
-    }
-
-    #[test]
-    fn test_app_state_char_wait_set_and_clear() {
-        let kernel = KernelContext::default();
-        let mut app = AppState::new(kernel, test_mode_id());
-
-        // Set char_wait
-        app.char_wait = Some(CharWaitState::new(FindType::FindForward, Position::new(0, 0)));
-        assert!(app.char_wait.is_some());
-
-        // Clear char_wait
-        app.char_wait = None;
-        assert!(app.char_wait.is_none());
-    }
-
-    #[test]
     fn test_app_state_last_find_set() {
         let kernel = KernelContext::default();
         let mut app = AppState::new(kernel, test_mode_id());
@@ -793,8 +752,6 @@ mod tests {
 
         assert!(app.has_pending_char());
         assert!(app.pending_char().is_some());
-        // Backward compatibility: char_wait should also be set
-        assert!(app.char_wait.is_some());
     }
 
     #[test]
@@ -807,8 +764,6 @@ mod tests {
         let taken = app.take_pending_char();
         assert!(taken.is_some());
         assert!(!app.has_pending_char());
-        // Backward compatibility: char_wait should also be cleared
-        assert!(app.char_wait.is_none());
     }
 
     #[test]
@@ -816,12 +771,9 @@ mod tests {
         let kernel = KernelContext::default();
         let mut app = AppState::new(kernel, test_mode_id());
 
-        // Replace char doesn't set char_wait (no find_type)
         app.set_pending_char(PendingCharOp::replace_char(1));
 
         assert!(app.has_pending_char());
-        // char_wait should NOT be set for replace operations
-        assert!(app.char_wait.is_none());
     }
 
     // ========================================================================

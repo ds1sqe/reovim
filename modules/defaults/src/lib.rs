@@ -1,7 +1,8 @@
 //! Default modules bundle - POLICY aggregator.
 //!
 //! This module bundles the standard vim-like behavior modules:
-//! - `keymap` - Vim keybindings (normal, insert, visual, operator-pending)
+//! - `vim` - Vim keybindings (normal, insert, visual, operator-pending)
+//! - `keymap` - Keymap utilities (mechanism)
 //! - `operators` - Vim operators (d, y, c)
 //! - `commands` - Ex-commands (:w, :q, :wq)
 //!
@@ -32,7 +33,7 @@ use {reovim_module_commands::CommandHandler, reovim_module_operators::Operator};
 // Re-export sub-modules for direct access
 pub use {
     reovim_module_commands as commands, reovim_module_keymap as keymap,
-    reovim_module_operators as operators,
+    reovim_module_operators as operators, reovim_module_vim as vim,
 };
 
 /// Default modules bundle.
@@ -99,8 +100,8 @@ impl Module for DefaultsModule {
     }
 
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
-        // Aggregate keybindings from keymap module
-        keymap::KeymapModule.keybindings()
+        // Aggregate keybindings from vim module
+        vim::VimModule::new().keybindings()
     }
 }
 
@@ -119,7 +120,7 @@ pub fn commands() -> Vec<Box<dyn CommandHandler>> {
 /// Get all default keybindings.
 #[must_use]
 pub fn keybindings() -> Vec<KeybindingRegistration> {
-    keymap::bindings()
+    vim::bindings::all()
 }
 
 #[cfg(test)]

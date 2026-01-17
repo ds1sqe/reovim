@@ -10,13 +10,13 @@ use std::sync::RwLock;
 
 use {
     reovim_driver_input::{
-        KeyCode, KeyEvent, KeySequence, ModeKeyResolver, ModeState, ModeTransition, Modifiers,
-        ResolveContext, ResolveResult, TransitionContext,
+        KeyCode, KeyEvent, KeyLookupState, KeySequence, ModeKeyResolver, ModeState, Modifiers,
+        ResolveContext, ResolveInput, ResolveResult,
     },
-    reovim_kernel::api::v1::{CommandId, ModeId},
+    reovim_kernel::api::v1::ModeId,
 };
 
-use crate::mode::EditorMode;
+use reovim_module_editor::EditorMode;
 
 /// Vim normal mode key resolver.
 ///
@@ -72,7 +72,6 @@ pub struct VimNormalResolver {
     pending_keys: RwLock<KeySequence>,
 }
 
-#[allow(dead_code)] // Methods used in Phase 3 when wiring to EventLoop
 impl VimNormalResolver {
     /// Create a new normal mode resolver.
     #[must_use]
@@ -209,18 +208,6 @@ impl VimNormalResolver {
 
         ctx
     }
-
-    /// Create a mode transition to operator-pending mode.
-    fn enter_operator_pending(&self, operator: CommandId) -> ResolveResult {
-        let ctx = TransitionContext::with_operator(operator)
-            .count(self.take_count().unwrap_or(1))
-            .register(self.take_register().unwrap_or('\0'));
-
-        ResolveResult::ModeTransition(ModeTransition::Push {
-            mode: EditorMode::OPERATOR_PENDING_ID,
-            context: ctx,
-        })
-    }
 }
 
 impl Default for VimNormalResolver {
@@ -258,10 +245,84 @@ impl ModeKeyResolver for VimNormalResolver {
         self.push_pending_key(*key);
         let _keys = self.get_pending_keys();
 
-        // Keymap lookup would happen here via the runner's registry
-        // For now, return NotHandled to let the runner do the lookup
-        // This will be refined in Phase 3 when we integrate with the registry
+        // Legacy: return NotHandled to let the runner do the lookup
+        // Use resolve_with_keymap for keymap-aware resolution
         ResolveResult::NotHandled
+    }
+
+    /// Vim-style key resolution with keymap access.
+    ///
+    /// This method queries the keymap and applies Vim policy to determine
+    /// whether to execute immediately or wait for more keys.
+    ///
+    /// # Vim Policy
+    ///
+    /// | Lookup State | Vim Behavior |
+    /// |--------------|--------------|
+    /// | `ExactWithLonger` | `Pending` - wait for more keys (d might become dd) |
+    /// | `ExactOnly` | `Execute` - run the command immediately |
+    /// | `PrefixOnly` | `Pending` - wait for more keys |
+    /// | `NotFound` | `NotHandled` - delegate to fallback handler |
+    fn resolve_with_keymap(
+        &self,
+        key: &KeyEvent,
+        _state: &mut ModeState,
+        input: &ResolveInput<'_>,
+    ) -> ResolveResult {
+        // Handle escape - reset state and return NotHandled
+        if key.code == KeyCode::Escape {
+            self.clear_state();
+            return ResolveResult::NotHandled;
+        }
+
+        // Check for register prefix waiting for character
+        if self.is_waiting_for_register() {
+            return self.handle_register_char(key);
+        }
+
+        // Check for register prefix start
+        if Self::is_register_prefix(key) {
+            *self.pending_register.write().expect("lock poisoned") = Some('"'); // Sentinel
+            return ResolveResult::Pending;
+        }
+
+        // Check for count digit
+        if self.is_count_digit(key) {
+            self.accumulate_count(key);
+            return ResolveResult::Pending;
+        }
+
+        // Add to pending keys for lookup
+        self.push_pending_key(*key);
+        let keys = self.get_pending_keys();
+
+        // Query keymap for facts about what bindings exist
+        let lookup_state = input.keymap.query(input.mode, &keys);
+
+        // Apply Vim policy (inline match - no separate trait needed)
+        match lookup_state {
+            KeyLookupState::ExactWithLonger { .. } => {
+                // Wait for longer sequence (d might become dd)
+                // Keep pending_keys for next lookup
+                ResolveResult::Pending
+            }
+            KeyLookupState::ExactOnly(cmd) => {
+                // Execute with context containing count and register
+                let ctx = self.build_context(keys);
+                self.clear_pending_keys();
+                ResolveResult::Execute(cmd, ctx)
+            }
+            KeyLookupState::PrefixOnly => {
+                // Wait for more keys (g waiting for gg, etc.)
+                // Keep pending_keys for next lookup
+                ResolveResult::Pending
+            }
+            KeyLookupState::NotFound => {
+                // No binding found - clear keys and let runner handle
+                self.clear_pending_keys();
+                ResolveResult::NotHandled
+            }
+        }
     }
 
     fn mode_id(&self) -> &ModeId {
@@ -490,5 +551,295 @@ mod tests {
     fn test_inherits_from() {
         let resolver = VimNormalResolver::new();
         assert!(resolver.inherits_from().is_none());
+    }
+
+    // ========================================================================
+    // Keymap-aware resolution tests (Epic #353 - Mechanism/Policy separation)
+    // ========================================================================
+    //
+    // These tests verify that resolve_with_keymap correctly applies Vim policy
+    // based on the KeyLookupState returned by the keymap.
+
+    use reovim_driver_input::KeymapQuery;
+
+    use reovim_kernel::api::v1::{CommandId, ModuleId};
+
+    /// Test module ID for creating command IDs.
+    const TEST_MODULE: ModuleId = ModuleId::new("test");
+
+    /// Mock keymap that returns a configurable `KeyLookupState`.
+    struct MockKeymap {
+        response: KeyLookupState,
+    }
+
+    impl MockKeymap {
+        fn exact_only(cmd: &'static str) -> Self {
+            Self {
+                response: KeyLookupState::ExactOnly(CommandId::new(TEST_MODULE, cmd)),
+            }
+        }
+
+        fn exact_with_longer(cmd: &'static str) -> Self {
+            Self {
+                response: KeyLookupState::ExactWithLonger {
+                    exact: CommandId::new(TEST_MODULE, cmd),
+                },
+            }
+        }
+
+        fn prefix_only() -> Self {
+            Self {
+                response: KeyLookupState::PrefixOnly,
+            }
+        }
+
+        fn not_found() -> Self {
+            Self {
+                response: KeyLookupState::NotFound,
+            }
+        }
+    }
+
+    impl KeymapQuery for MockKeymap {
+        fn query(&self, _mode: &ModeId, _keys: &KeySequence) -> KeyLookupState {
+            self.response.clone()
+        }
+    }
+
+    fn resolve_input(keymap: &impl KeymapQuery) -> ResolveInput<'_> {
+        // Keys are managed by resolver, so we pass empty sequence here
+        static EMPTY_KEYS: KeySequence = KeySequence::new();
+        static MODE: ModeId = EditorMode::NORMAL_ID;
+        ResolveInput::new(&EMPTY_KEYS, &MODE, keymap)
+    }
+
+    // ------------------------------------------------------------------------
+    // Vim Policy Tests: KeyLookupState -> ResolveResult mapping
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_exact_with_longer_returns_pending() {
+        // When keymap reports ExactWithLonger (d exists and dd exists),
+        // Vim policy says wait for more keys.
+        let resolver = VimNormalResolver::new();
+        let mut state = test_state();
+        let keymap = MockKeymap::exact_with_longer("delete");
+        let input = resolve_input(&keymap);
+
+        let result = resolver.resolve_with_keymap(&key('d'), &mut state, &input);
+
+        assert!(matches!(result, ResolveResult::Pending));
+        // pending_keys should contain the key
+        assert!(!resolver.get_pending_keys().is_empty());
+    }
+
+    #[test]
+    fn test_exact_only_returns_execute() {
+        // When keymap reports ExactOnly (x exists, no xx),
+        // Vim policy says execute immediately.
+        let resolver = VimNormalResolver::new();
+        let mut state = test_state();
+        let keymap = MockKeymap::exact_only("delete-char");
+        let input = resolve_input(&keymap);
+
+        let result = resolver.resolve_with_keymap(&key('x'), &mut state, &input);
+
+        match result {
+            ResolveResult::Execute(cmd, _ctx) => {
+                assert_eq!(cmd.name(), "delete-char");
+            }
+            _ => panic!("Expected Execute, got {result:?}"),
+        }
+        // pending_keys should be cleared after execute
+        assert!(resolver.get_pending_keys().is_empty());
+    }
+
+    #[test]
+    fn test_prefix_only_returns_pending() {
+        // When keymap reports PrefixOnly (g is prefix for gg, but no binding for just g),
+        // Vim policy says wait for more keys.
+        let resolver = VimNormalResolver::new();
+        let mut state = test_state();
+        let keymap = MockKeymap::prefix_only();
+        let input = resolve_input(&keymap);
+
+        let result = resolver.resolve_with_keymap(&key('g'), &mut state, &input);
+
+        assert!(matches!(result, ResolveResult::Pending));
+        // pending_keys should contain the key
+        assert!(!resolver.get_pending_keys().is_empty());
+    }
+
+    #[test]
+    fn test_not_found_clears_and_returns_not_handled() {
+        // When keymap reports NotFound (no binding for z),
+        // Vim policy clears pending keys and returns NotHandled.
+        let resolver = VimNormalResolver::new();
+        let mut state = test_state();
+        let keymap = MockKeymap::not_found();
+        let input = resolve_input(&keymap);
+
+        let result = resolver.resolve_with_keymap(&key('z'), &mut state, &input);
+
+        assert!(matches!(result, ResolveResult::NotHandled));
+        // pending_keys should be cleared
+        assert!(resolver.get_pending_keys().is_empty());
+    }
+
+    // ------------------------------------------------------------------------
+    // Context building tests: count and register flow to Execute
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_count_flows_to_context() {
+        // Count accumulated before command should appear in Execute context.
+        let resolver = VimNormalResolver::new();
+        let mut state = test_state();
+        let keymap = MockKeymap::exact_only("cursor-down");
+        let input = resolve_input(&keymap);
+
+        // Accumulate count first
+        let _ = resolver.resolve_with_keymap(&key('3'), &mut state, &input);
+        assert_eq!(resolver.pending_count(), Some(3));
+
+        // Now press 'j' which executes
+        let result = resolver.resolve_with_keymap(&key('j'), &mut state, &input);
+
+        match result {
+            ResolveResult::Execute(_cmd, ctx) => {
+                assert_eq!(ctx.count, Some(3));
+            }
+            _ => panic!("Expected Execute, got {result:?}"),
+        }
+        // Count should be cleared after execute
+        assert!(resolver.pending_count().is_none());
+    }
+
+    #[test]
+    fn test_register_flows_to_context() {
+        // Register selected before command should appear in Execute context.
+        let resolver = VimNormalResolver::new();
+        let mut state = test_state();
+        let keymap = MockKeymap::exact_only("paste");
+        let input = resolve_input(&keymap);
+
+        // Select register first
+        let _ = resolver.resolve_with_keymap(&key('"'), &mut state, &input);
+        assert!(resolver.is_waiting_for_register());
+        let _ = resolver.resolve_with_keymap(&key('a'), &mut state, &input);
+        assert_eq!(resolver.pending_register(), Some('a'));
+
+        // Now press 'p' which executes
+        let result = resolver.resolve_with_keymap(&key('p'), &mut state, &input);
+
+        match result {
+            ResolveResult::Execute(_cmd, ctx) => {
+                assert_eq!(ctx.register, Some('a'));
+            }
+            _ => panic!("Expected Execute, got {result:?}"),
+        }
+        // Register should be cleared after execute
+        assert!(resolver.pending_register().is_none());
+    }
+
+    #[test]
+    fn test_count_and_register_together() {
+        // Both count and register should flow to context.
+        let resolver = VimNormalResolver::new();
+        let mut state = test_state();
+        let keymap = MockKeymap::exact_only("delete-word");
+        let input = resolve_input(&keymap);
+
+        // "a3 - select register 'a', then count 3
+        let _ = resolver.resolve_with_keymap(&key('"'), &mut state, &input);
+        let _ = resolver.resolve_with_keymap(&key('a'), &mut state, &input);
+        let _ = resolver.resolve_with_keymap(&key('3'), &mut state, &input);
+
+        assert_eq!(resolver.pending_register(), Some('a'));
+        assert_eq!(resolver.pending_count(), Some(3));
+
+        // Press 'w' which executes
+        let result = resolver.resolve_with_keymap(&key('w'), &mut state, &input);
+
+        match result {
+            ResolveResult::Execute(_cmd, ctx) => {
+                assert_eq!(ctx.count, Some(3));
+                assert_eq!(ctx.register, Some('a'));
+            }
+            _ => panic!("Expected Execute, got {result:?}"),
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // State management tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_escape_clears_all_state() {
+        // Escape should clear count, register, and pending keys.
+        let resolver = VimNormalResolver::new();
+        let mut state = test_state();
+        let keymap = MockKeymap::not_found();
+        let input = resolve_input(&keymap);
+
+        // Accumulate some state
+        let _ = resolver.resolve_with_keymap(&key('3'), &mut state, &input);
+        let _ = resolver.resolve_with_keymap(&key('"'), &mut state, &input);
+        let _ = resolver.resolve_with_keymap(&key('a'), &mut state, &input);
+        resolver.push_pending_key(key('d'));
+
+        assert!(resolver.pending_count().is_some());
+        assert!(resolver.pending_register().is_some());
+        assert!(!resolver.get_pending_keys().is_empty());
+
+        // Press escape
+        let result =
+            resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
+
+        assert!(matches!(result, ResolveResult::NotHandled));
+        assert!(resolver.pending_count().is_none());
+        assert!(resolver.pending_register().is_none());
+        assert!(resolver.get_pending_keys().is_empty());
+    }
+
+    #[test]
+    fn test_pending_keys_cleared_after_execute() {
+        let resolver = VimNormalResolver::new();
+        let mut state = test_state();
+        let keymap = MockKeymap::exact_only("delete-char");
+        let input = resolve_input(&keymap);
+
+        let _ = resolver.resolve_with_keymap(&key('x'), &mut state, &input);
+
+        assert!(resolver.get_pending_keys().is_empty());
+    }
+
+    #[test]
+    fn test_pending_keys_cleared_after_not_found() {
+        let resolver = VimNormalResolver::new();
+        let mut state = test_state();
+        let keymap = MockKeymap::not_found();
+        let input = resolve_input(&keymap);
+
+        let _ = resolver.resolve_with_keymap(&key('z'), &mut state, &input);
+
+        assert!(resolver.get_pending_keys().is_empty());
+    }
+
+    #[test]
+    fn test_register_sentinel_not_in_context() {
+        // The sentinel value '"' should not leak into the execute context.
+        let resolver = VimNormalResolver::new();
+        let mut state = test_state();
+        let keymap = MockKeymap::exact_only("some-cmd");
+        let input = resolve_input(&keymap);
+
+        // Start register prefix but don't complete it
+        let _ = resolver.resolve_with_keymap(&key('"'), &mut state, &input);
+        assert!(resolver.is_waiting_for_register());
+
+        // Directly test take_register filters sentinel
+        let reg = resolver.take_register();
+        assert!(reg.is_none(), "Sentinel should not be returned");
     }
 }

@@ -82,15 +82,15 @@ fn main() {
 
     // 6. Register keybindings
     //    Normal mode: vim-style navigation and mode switching
-    keymap_registry.register_str(EditorMode::NORMAL_ID, "j", CursorDown.id());
-    keymap_registry.register_str(EditorMode::NORMAL_ID, "k", CursorUp.id());
-    keymap_registry.register_str(EditorMode::NORMAL_ID, "h", CursorLeft.id());
-    keymap_registry.register_str(EditorMode::NORMAL_ID, "l", CursorRight.id());
-    keymap_registry.register_str(EditorMode::NORMAL_ID, "i", EnterInsertMode.id());
-    keymap_registry.register_str(EditorMode::NORMAL_ID, "a", EnterInsertModeAppend.id());
+    keymap_registry.register_str(&EditorMode::NORMAL_ID, "j", CursorDown.id());
+    keymap_registry.register_str(&EditorMode::NORMAL_ID, "k", CursorUp.id());
+    keymap_registry.register_str(&EditorMode::NORMAL_ID, "h", CursorLeft.id());
+    keymap_registry.register_str(&EditorMode::NORMAL_ID, "l", CursorRight.id());
+    keymap_registry.register_str(&EditorMode::NORMAL_ID, "i", EnterInsertMode.id());
+    keymap_registry.register_str(&EditorMode::NORMAL_ID, "a", EnterInsertModeAppend.id());
 
     //    Insert mode: escape to exit
-    keymap_registry.register_str(EditorMode::INSERT_ID, "<Escape>", ExitToNormal.id());
+    keymap_registry.register_str(&EditorMode::INSERT_ID, "<Escape>", ExitToNormal.id());
     println!("✓ Registered keybindings:");
     println!("  Normal: j/k/h/l (cursor), i/a (enter insert)");
     println!("  Insert: <Escape> (exit to normal)");

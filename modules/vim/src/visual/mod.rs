@@ -108,7 +108,7 @@ mod tests {
         std::{collections::HashMap, sync::Arc},
     };
 
-    use super::super::mode::EDITOR_MODULE;
+    use reovim_module_editor::EDITOR_MODULE;
 
     /// Test buffer manager that actually stores buffers.
     struct TestBufferManager {

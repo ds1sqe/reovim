@@ -62,6 +62,21 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - `reovim_timer_count()` - Get active timer count
   - Added timer types to `include/reovim.h`
 
+- Mechanism/Policy separation for key lookup (#353)
+  - `KeyLookupState` enum reports FACTS about bindings (no policy decisions)
+  - `KeyLookupPolicy` trait for interpreting lookup results
+  - `VimLookupPolicy` - wait for longer sequences (dd after d)
+  - `EagerLookupPolicy` - execute exact matches immediately
+  - `KeymapQuery` trait for resolvers to query bindings
+  - `lookup_with_policy()` method for policy-based lookup
+  - Layered bindings: User > Policy > Base (for future user overrides)
+
+- Vim policy module separation (#357)
+  - Created `modules/vim/` with VimModule for all Vim keybindings
+  - Moved bindings from keymap to vim module (normal, insert, visual, operator-pending, commandline)
+  - Made `modules/keymap/` pure mechanism (InteractorRegistry, ComponentId, InteractorConfig only)
+  - Enables future policy modules (emacs, kakoune) without kernel changes
+
 - TUI log panel for real-time log streaming (#332)
   - `debug/log_subscribe` and `debug/log_unsubscribe` RPC methods
   - Real-time `LOG_ENTRY` notifications with level filtering
@@ -101,7 +116,30 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - `ArgValue` for dynamic command arguments
   - Foundation for supporting different editing styles (Vim, Emacs, Kakoune)
 
+- User keymap configuration via `~/.config/reovim/keymap.toml` (#361)
+  - Override keybindings at User layer (highest priority)
+  - `[bindings.normal]` section for adding/overriding bindings
+  - `[remove.normal]` section for disabling bindings (e.g., disable `Q` key)
+  - Supports mode names: "normal", "insert", "visual" or full form "editor:normal"
+  - Key sequences: `"<C-s>"`, `"<Leader>ff"`, `"jk"`, etc.
+  - Command IDs: `"buffer:save"`, `"editor:cursor-down"`, etc.
+  - Validation with warnings at startup (invalid entries reported, valid applied)
+  - Part of Epic #353 mechanism/policy separation (Phase 4)
+
 ### Changed
+
+- Moved Vim policy code from editor to vim module (Epic #353)
+  - Resolvers: `VimNormalResolver`, `VimInsertResolver`, `VimOperatorPendingResolver` -> `modules/vim/src/resolvers/`
+  - Visual mode: entry, exit, manipulation, operators -> `modules/vim/src/visual/`
+  - `modules/editor/` now pure mechanism (only `ResolverRegistry`)
+  - Import from `reovim_module_vim` instead of `reovim_module_editor`
+
+- Unified resolver state management (#360)
+  - Resolvers now own pending_count, pending_register, pending_keys state
+  - `resolve_with_keymap()` queries keymap and applies Vim policy
+  - EventLoop delegates to resolver for keymap queries (no legacy fallback)
+  - VimNormalResolver and VimOperatorPendingResolver now use keymap-aware resolution
+  - Part of Epic #353 mechanism/policy separation (Phase 3)
 
 - E2E tests: Enable 9 more tests after upstream changes (#308)
   - operators.rs: 19 enabled (was 12), 9 ignored
@@ -123,6 +161,12 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - Multi-client tests now properly initialize buffers before operations (#339)
 
 ### Removed
+
+- Deprecated `char_wait` field and `CharWaitState` struct (#359)
+  - Replaced by unified `pending_char` field with `PendingCharOp` enum
+  - Removed backward compatibility shims in `set_pending_char()`/`take_pending_char()`
+  - Removed deprecated `Session::set_char_wait()` method
+  - Part of Epic #353 mechanism/policy separation cleanup
 
 ---
 

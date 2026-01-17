@@ -6,7 +6,9 @@
 use std::{collections::HashMap, sync::Arc};
 
 use {
-    reovim_driver_input::{KeyEvent, ModeKeyResolver, ModeState, ResolveResult},
+    reovim_driver_input::{
+        KeyEvent, KeymapQuery, ModeKeyResolver, ModeState, ResolveInput, ResolveResult,
+    },
     reovim_kernel::api::v1::ModeId,
 };
 
@@ -23,11 +25,12 @@ use {
 /// # Example
 ///
 /// ```ignore
-/// use editor::resolver::{ResolverRegistry, VimNormalResolver, VimInsertResolver};
+/// use reovim_module_editor::ResolverRegistry;
+/// use reovim_module_vim::{VimNormalResolver, VimInsertResolver};
 ///
 /// let mut registry = ResolverRegistry::new();
 ///
-/// // Register Vim resolvers
+/// // Register Vim resolvers (from vim module)
 /// registry.register(VimNormalResolver::new());
 /// registry.register(VimInsertResolver::new());
 ///
@@ -102,28 +105,41 @@ impl ResolverRegistry {
         self.resolvers.keys()
     }
 
-    /// Resolve a key event for a mode.
+    /// Resolve a key event for a mode with keymap access.
     ///
-    /// This is a convenience method that:
-    /// 1. Looks up the resolver for the mode
-    /// 2. Calls `resolve()` on it
-    /// 3. If `NotHandled`, tries the parent mode (if `inherits_from()` is set)
+    /// This is the preferred method that provides resolvers with access to
+    /// keymap queries for mechanism/policy separation:
+    /// - Resolvers can call `keymap.query()` to get FACTS about bindings
+    /// - Resolvers apply their own POLICY to decide what to do
+    ///
+    /// # Arguments
+    ///
+    /// * `mode` - The mode to resolve for
+    /// * `key` - The key event to process
+    /// * `state` - Mutable mode state
+    /// * `keymap` - Access to keymap queries
     ///
     /// Returns `None` if no resolver is registered for the mode (or its parents).
-    pub fn resolve(
+    pub fn resolve_with_keymap(
         &self,
         mode: &ModeId,
         key: &KeyEvent,
         state: &mut ModeState,
+        keymap: &dyn KeymapQuery,
     ) -> Option<ResolveResult> {
         let resolver = self.get(mode)?;
-        let result = resolver.resolve(key, state);
+
+        // Clone pending keys to avoid borrow checker issues
+        // (we need to borrow state mutably while also accessing pending_keys)
+        let keys = state.pending_keys.clone();
+        let input = ResolveInput::new(&keys, mode, keymap);
+        let result = resolver.resolve_with_keymap(key, state, &input);
 
         // If not handled, try parent mode
         if matches!(result, ResolveResult::NotHandled)
             && let Some(parent) = resolver.inherits_from()
         {
-            return self.resolve(parent, key, state);
+            return self.resolve_with_keymap(parent, key, state, keymap);
         }
 
         Some(result)
@@ -141,110 +157,12 @@ impl std::fmt::Debug for ResolverRegistry {
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        crate::{
-            mode::EditorMode,
-            resolver::{VimInsertResolver, VimNormalResolver, VimOperatorPendingResolver},
-        },
-    };
+    use super::*;
 
     #[test]
     fn test_new_registry() {
         let registry = ResolverRegistry::new();
         assert!(registry.is_empty());
         assert_eq!(registry.len(), 0);
-    }
-
-    #[test]
-    fn test_register_resolver() {
-        let mut registry = ResolverRegistry::new();
-
-        registry.register(VimNormalResolver::new());
-
-        assert_eq!(registry.len(), 1);
-        assert!(registry.has(&EditorMode::NORMAL_ID));
-    }
-
-    #[test]
-    fn test_register_multiple() {
-        let mut registry = ResolverRegistry::new();
-
-        registry.register(VimNormalResolver::new());
-        registry.register(VimInsertResolver::new());
-        registry.register(VimOperatorPendingResolver::new());
-
-        assert_eq!(registry.len(), 3);
-        assert!(registry.has(&EditorMode::NORMAL_ID));
-        assert!(registry.has(&EditorMode::INSERT_ID));
-        assert!(registry.has(&EditorMode::OPERATOR_PENDING_ID));
-    }
-
-    #[test]
-    fn test_get_resolver() {
-        let mut registry = ResolverRegistry::new();
-        registry.register(VimNormalResolver::new());
-
-        let resolver = registry.get(&EditorMode::NORMAL_ID);
-        assert!(resolver.is_some());
-        assert_eq!(resolver.unwrap().mode_id(), &EditorMode::NORMAL_ID);
-    }
-
-    #[test]
-    fn test_get_nonexistent() {
-        let registry = ResolverRegistry::new();
-        assert!(registry.get(&EditorMode::NORMAL_ID).is_none());
-    }
-
-    #[test]
-    fn test_remove_resolver() {
-        let mut registry = ResolverRegistry::new();
-        registry.register(VimNormalResolver::new());
-
-        let removed = registry.remove(&EditorMode::NORMAL_ID);
-        assert!(removed.is_some());
-        assert!(!registry.has(&EditorMode::NORMAL_ID));
-        assert!(registry.is_empty());
-    }
-
-    #[test]
-    fn test_modes_iterator() {
-        let mut registry = ResolverRegistry::new();
-        registry.register(VimNormalResolver::new());
-        registry.register(VimInsertResolver::new());
-
-        assert_eq!(registry.modes().count(), 2);
-    }
-
-    #[test]
-    fn test_register_replaces() {
-        let mut registry = ResolverRegistry::new();
-
-        registry.register(VimNormalResolver::new());
-        assert_eq!(registry.len(), 1);
-
-        // Register another normal mode resolver
-        registry.register(VimNormalResolver::new());
-        assert_eq!(registry.len(), 1); // Still 1, replaced
-    }
-
-    #[test]
-    fn test_register_arc() {
-        let mut registry = ResolverRegistry::new();
-        let resolver: Arc<dyn ModeKeyResolver> = Arc::new(VimNormalResolver::new());
-
-        registry.register_arc(resolver);
-
-        assert!(registry.has(&EditorMode::NORMAL_ID));
-    }
-
-    #[test]
-    fn test_debug_impl() {
-        let mut registry = ResolverRegistry::new();
-        registry.register(VimNormalResolver::new());
-
-        let debug = format!("{registry:?}");
-        assert!(debug.contains("ResolverRegistry"));
-        assert!(debug.contains("count: 1"));
     }
 }

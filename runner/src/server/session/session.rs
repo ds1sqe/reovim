@@ -308,9 +308,9 @@ impl Session {
             }
             CommandResult::WaitingForChar(ctx) => {
                 // Find-char command (f/F/t/T) needs a character argument.
-                // Set char-wait state so next key press completes the motion.
-                // This is handled by the message loop which checks char_wait before keymap lookup.
-                self.set_char_wait(ctx).await;
+                // Set pending char state so next key press completes the motion.
+                // This is handled by the message loop which checks pending_char before keymap lookup.
+                self.set_pending_char(ctx).await;
                 None
             }
             CommandResult::RepeatFindSame => {
@@ -702,13 +702,6 @@ impl Session {
         };
 
         state.app.set_pending_char(pending);
-    }
-
-    /// Set char-wait state for find-char commands.
-    ///
-    /// DEPRECATED: Use `set_pending_char` instead. Kept for backward compatibility.
-    pub async fn set_char_wait(&self, ctx: reovim_driver_command::CharWaitContext) {
-        self.set_pending_char(ctx).await;
     }
 
     /// Record an edit action in the undo registry.

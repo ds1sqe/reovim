@@ -51,6 +51,7 @@ mod convert;
 mod error;
 mod fallback;
 mod key;
+mod lookup;
 mod mode;
 mod mouse;
 mod resolver;
@@ -81,6 +82,12 @@ pub use fallback::{
 
 // Re-export resolver types (Phase 9 - Flexible mode system)
 pub use resolver::{
-    ArgValue, ModeKeyResolver, ModeState, ModeTransition, PopResult, ResolveContext, ResolveResult,
-    TransitionContext,
+    ArgValue, ModeKeyResolver, ModeState, ModeTransition, PopResult, ResolveContext, ResolveInput,
+    ResolveResult, TransitionContext,
+};
+
+// Re-export lookup types (Epic #353 - Mechanism/Policy separation)
+pub use lookup::{
+    BindingLayer, EagerLookupPolicy, KeyLookupPolicy, KeyLookupResult, KeyLookupState, KeymapQuery,
+    VimLookupPolicy,
 };

@@ -7,7 +7,7 @@ use {
     reovim_kernel::api::v1::{CommandId, KernelContext, events::ModeChanged},
 };
 
-use super::super::mode::{EDITOR_MODULE, EditorMode};
+use reovim_module_editor::{EDITOR_MODULE, EditorMode};
 
 /// Exit visual mode and return to normal mode.
 #[derive(Debug, Clone, Copy, Default)]

@@ -11,7 +11,7 @@ use {
     reovim_kernel::api::v1::ModeId,
 };
 
-use crate::mode::EditorMode;
+use reovim_module_editor::EditorMode;
 
 /// Vim insert mode key resolver.
 ///

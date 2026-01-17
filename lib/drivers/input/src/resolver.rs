@@ -51,7 +51,72 @@ use std::collections::HashMap;
 
 use reovim_kernel::api::v1::{BufferId, CommandId, ModeId, ModeStack, Position};
 
-use crate::{KeyEvent, KeySequence};
+use crate::{KeyEvent, KeySequence, KeymapQuery};
+
+// ============================================================================
+// ResolveInput - Input context for resolvers
+// ============================================================================
+
+/// Input context passed to resolvers for key resolution.
+///
+/// This struct provides resolvers with access to:
+/// - The current key sequence being resolved
+/// - The current mode
+/// - Access to keymap queries (via `KeymapQuery` trait)
+///
+/// # Mechanism vs Policy
+///
+/// `ResolveInput` enables the mechanism/policy separation:
+/// - **Mechanism**: The keymap registry reports FACTS via `keymap.query()`
+/// - **Policy**: The resolver decides what to DO with those facts
+///
+/// For example, given `KeyLookupState::ExactWithLonger`:
+/// - **Vim policy**: Wait for more keys (dd might follow d)
+/// - **Eager policy**: Execute immediately
+///
+/// # Example
+///
+/// ```ignore
+/// use reovim_driver_input::{ResolveInput, KeyLookupState, ResolveResult};
+///
+/// fn resolve(input: &ResolveInput<'_>) -> ResolveResult {
+///     // Query the keymap for facts
+///     let state = input.keymap.query(input.mode, input.keys);
+///
+///     // Apply policy to the facts
+///     match state {
+///         KeyLookupState::ExactWithLonger { exact } => {
+///             // Vim: wait for more keys
+///             ResolveResult::Pending
+///         }
+///         KeyLookupState::ExactOnly(cmd) => {
+///             // Execute the command
+///             ResolveResult::Execute(cmd, ResolveContext::new())
+///         }
+///         // ...
+///     }
+/// }
+/// ```
+pub struct ResolveInput<'a> {
+    /// The accumulated key sequence being resolved.
+    pub keys: &'a KeySequence,
+
+    /// The current mode.
+    pub mode: &'a ModeId,
+
+    /// Access to keymap queries.
+    ///
+    /// Use `keymap.query(mode, keys)` to get facts about what bindings exist.
+    pub keymap: &'a dyn KeymapQuery,
+}
+
+impl<'a> ResolveInput<'a> {
+    /// Create a new resolve input context.
+    #[must_use]
+    pub const fn new(keys: &'a KeySequence, mode: &'a ModeId, keymap: &'a dyn KeymapQuery) -> Self {
+        Self { keys, mode, keymap }
+    }
+}
 
 // ============================================================================
 // ModeKeyResolver Trait
@@ -97,7 +162,9 @@ use crate::{KeyEvent, KeySequence};
 /// }
 /// ```
 pub trait ModeKeyResolver: Send + Sync {
-    /// Process a key event in this mode's context.
+    /// Process a key event in this mode's context (legacy API).
+    ///
+    /// **Deprecated**: Use `resolve_with_keymap` instead for access to keymap queries.
     ///
     /// The resolver has full control over interpretation:
     /// - Accumulate counts, registers, pending sequences
@@ -113,6 +180,60 @@ pub trait ModeKeyResolver: Send + Sync {
     ///
     /// A `ResolveResult` indicating what action to take.
     fn resolve(&self, key: &KeyEvent, state: &mut ModeState) -> ResolveResult;
+
+    /// Process a key event with access to keymap queries.
+    ///
+    /// This is the preferred method for resolvers that need to query keybindings.
+    /// It enables mechanism/policy separation:
+    /// - Query `input.keymap.query()` to get FACTS about what bindings exist
+    /// - Apply your own POLICY to decide what to do
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key event to process
+    /// * `state` - Mutable access to shared mode state
+    /// * `input` - Input context with keymap access
+    ///
+    /// # Returns
+    ///
+    /// A `ResolveResult` indicating what action to take.
+    ///
+    /// # Default Implementation
+    ///
+    /// Falls back to `resolve()` for backward compatibility with existing resolvers.
+    /// Override this method to use keymap queries.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// fn resolve_with_keymap(
+    ///     &self,
+    ///     key: &KeyEvent,
+    ///     state: &mut ModeState,
+    ///     input: &ResolveInput<'_>,
+    /// ) -> ResolveResult {
+    ///     // Get facts about what bindings exist
+    ///     let lookup_state = input.keymap.query(input.mode, input.keys);
+    ///
+    ///     // Apply Vim policy: wait for longer sequences
+    ///     match lookup_state {
+    ///         KeyLookupState::ExactWithLonger { .. } => ResolveResult::Pending,
+    ///         KeyLookupState::ExactOnly(cmd) => {
+    ///             ResolveResult::Execute(cmd, ResolveContext::new())
+    ///         }
+    ///         // ...
+    ///     }
+    /// }
+    /// ```
+    fn resolve_with_keymap(
+        &self,
+        key: &KeyEvent,
+        state: &mut ModeState,
+        _input: &ResolveInput<'_>,
+    ) -> ResolveResult {
+        // Default: delegate to legacy resolve() for backward compatibility
+        self.resolve(key, state)
+    }
 
     /// Which mode this resolver handles.
     fn mode_id(&self) -> &ModeId;

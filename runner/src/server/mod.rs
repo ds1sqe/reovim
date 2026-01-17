@@ -186,6 +186,7 @@ impl SrvArgs {
 // Submodules - all server-specific code lives here
 mod app;
 pub mod client;
+pub mod config;
 pub mod debug;
 mod event_loop;
 pub mod instance;
@@ -229,6 +230,7 @@ use {
     reovim_module_keymap::KeymapModule,
     reovim_module_motions::{MotionsModule, find_char, line, search as motions_search, word},
     reovim_module_operators::OperatorsModule,
+    reovim_module_vim::VimModule,
     reovim_protocol::v1::{RpcError, RpcRequest, RpcResponse},
 };
 
@@ -913,6 +915,9 @@ fn build_default_registries() -> (ModeRegistry, CommandRegistry, KeymapRegistry,
     if let Err(e) = module_manager.register(KeymapModule) {
         tracing::warn!(error = %e, "failed to register keymap module");
     }
+    if let Err(e) = module_manager.register(VimModule) {
+        tracing::warn!(error = %e, "failed to register vim module");
+    }
     if let Err(e) = module_manager.register(MotionsModule) {
         tracing::warn!(error = %e, "failed to register motions module");
     }
@@ -922,7 +927,7 @@ fn build_default_registries() -> (ModeRegistry, CommandRegistry, KeymapRegistry,
     if let Err(e) = module_manager.register(CommandsModule) {
         tracing::warn!(error = %e, "failed to register commands module");
     }
-    tracing::info!(count = 4, "registered static modules");
+    tracing::info!(count = 5, "registered static modules");
 
     // Register editor modes (so ModeRegistry knows about them)
     // Each mode provides Mode (identity), ModeDisplay (cursor), and ModeInput (accepts char)
@@ -963,17 +968,18 @@ fn build_default_registries() -> (ModeRegistry, CommandRegistry, KeymapRegistry,
     }
     tracing::info!(count = command_registry.len(), "registered motions commands");
 
-    // Create keymap module and wire its keybindings
-    let keymap_module = KeymapModule::new();
-    let module_id = keymap_module.id();
+    // Create vim module and wire its keybindings
+    // (Vim module provides all the standard Vim keybindings)
+    let vim_module = VimModule::new();
+    let module_id = vim_module.id();
 
     // Initialize the module (for logging purposes)
     let ctx = ModuleContext::default();
-    let mut keymap_module_init = keymap_module;
-    let _init_result = keymap_module_init.init(&ctx);
+    let mut vim_module_init = vim_module;
+    let _init_result = vim_module_init.init(&ctx);
 
-    // Wire keybindings from the keymap module
-    let keybindings = keymap_module_init.keybindings();
+    // Wire keybindings from the vim module
+    let keybindings = vim_module_init.keybindings();
     match wire_module_keybindings(&module_id, &keybindings, &mut keymap_registry) {
         Ok(stats) => {
             tracing::info!(
@@ -985,6 +991,41 @@ fn build_default_registries() -> (ModeRegistry, CommandRegistry, KeymapRegistry,
         }
         Err(e) => {
             tracing::error!(module = %module_id, error = %e, "failed to wire keybindings");
+        }
+    }
+
+    // Load user keymap configuration from ~/.config/reovim/keymap.toml
+    // User bindings are registered at the User layer (highest priority)
+    match config::KeymapConfig::load() {
+        Ok(user_config) => {
+            if !user_config.is_empty() {
+                // Validate config and report warnings for any issues
+                let validation_errors = user_config.validate();
+                for err in &validation_errors {
+                    tracing::warn!(error = %err, "keymap.toml validation warning");
+                }
+
+                // Try to apply - will fail on first invalid entry
+                match user_config.apply(&mut keymap_registry) {
+                    Ok(stats) => {
+                        tracing::info!(
+                            bindings_added = stats.bindings_added,
+                            bindings_removed = stats.bindings_removed,
+                            warnings = validation_errors.len(),
+                            "applied user keymap configuration"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "failed to apply keymap configuration");
+                    }
+                }
+            }
+        }
+        Err(config::KeymapConfigError::NoConfigDir) => {
+            // Silent - no config directory is fine
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to load keymap.toml");
         }
     }
 

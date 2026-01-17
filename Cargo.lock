@@ -1107,6 +1107,7 @@ dependencies = [
  "reovim-module-motions",
  "reovim-module-operators",
  "reovim-module-undotree",
+ "reovim-module-vim",
  "reovim-protocol",
  "serde",
  "serde_json",
@@ -1264,6 +1265,7 @@ dependencies = [
  "reovim-module-commands",
  "reovim-module-keymap",
  "reovim-module-operators",
+ "reovim-module-vim",
 ]
 
 [[package]]
@@ -1303,7 +1305,6 @@ name = "reovim-module-keymap"
 version = "0.9.1-dev"
 dependencies = [
  "reovim-kernel",
- "reovim-module-macros",
 ]
 
 [[package]]
@@ -1370,6 +1371,18 @@ dependencies = [
  "reovim-driver-display",
  "reovim-driver-input",
  "reovim-kernel",
+]
+
+[[package]]
+name = "reovim-module-vim"
+version = "0.9.1-dev"
+dependencies = [
+ "reovim-driver-command",
+ "reovim-driver-input",
+ "reovim-kernel",
+ "reovim-module-editor",
+ "reovim-module-macros",
+ "reovim-module-operators",
 ]
 
 [[package]]

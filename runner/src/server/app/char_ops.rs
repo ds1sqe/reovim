@@ -168,45 +168,6 @@ impl PendingCharOp {
     }
 }
 
-/// State for commands waiting for a character argument.
-///
-/// When a find-char command (f/F/t/T) is executed, it returns `WaitingForChar`
-/// and this state is set. The next key press provides the character argument
-/// to complete the motion.
-///
-/// DEPRECATED: Use `PendingCharOp` instead. Kept for backward compatibility
-/// during transition.
-#[derive(Debug, Clone)]
-pub struct CharWaitState {
-    /// The type of find operation.
-    pub find_type: FindType,
-    /// Starting position for the motion (for operator range calculation).
-    pub start_position: Position,
-}
-
-impl CharWaitState {
-    /// Create a new char-wait state.
-    #[must_use]
-    pub const fn new(find_type: FindType, start_position: Position) -> Self {
-        Self {
-            find_type,
-            start_position,
-        }
-    }
-
-    /// Convert to `PendingCharOp`.
-    #[must_use]
-    pub const fn to_pending_char_op(&self) -> PendingCharOp {
-        PendingCharOp::from_find_type(self.find_type, self.start_position)
-    }
-}
-
-impl From<CharWaitState> for PendingCharOp {
-    fn from(state: CharWaitState) -> Self {
-        state.to_pending_char_op()
-    }
-}
-
 /// Record of the last find-char operation for `;` and `,` repeat.
 ///
 /// Stores the character and find type so that `;` can repeat the same
@@ -265,13 +226,6 @@ mod tests {
         assert!(!FindType::FindBackward.is_till());
         assert!(FindType::TillForward.is_till());
         assert!(FindType::TillBackward.is_till());
-    }
-
-    #[test]
-    fn test_char_wait_state_new() {
-        let state = CharWaitState::new(FindType::FindForward, Position::new(0, 5));
-        assert_eq!(state.find_type, FindType::FindForward);
-        assert_eq!(state.start_position, Position::new(0, 5));
     }
 
     #[test]
@@ -386,20 +340,5 @@ mod tests {
         let op = PendingCharOp::from_find_type(FindType::TillBackward, Position::new(5, 5));
         assert_eq!(op.find_type(), Some(FindType::TillBackward));
         assert_eq!(op.start_position(), Some(Position::new(5, 5)));
-    }
-
-    #[test]
-    fn test_char_wait_state_to_pending_char_op() {
-        let state = CharWaitState::new(FindType::FindForward, Position::new(0, 10));
-        let op = state.to_pending_char_op();
-        assert_eq!(op.find_type(), Some(FindType::FindForward));
-        assert_eq!(op.start_position(), Some(Position::new(0, 10)));
-    }
-
-    #[test]
-    fn test_char_wait_state_into_pending_char_op() {
-        let state = CharWaitState::new(FindType::TillForward, Position::new(1, 2));
-        let op: PendingCharOp = state.into();
-        assert_eq!(op.find_type(), Some(FindType::TillForward));
     }
 }
