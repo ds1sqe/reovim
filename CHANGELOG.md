@@ -32,6 +32,10 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - search.rs: 5 enabled (was 3), 10 ignored
   - Updated ignore messages to reference specific issues
 
+- Multi-client tests: Enable all 3 tests (#314)
+  - Add `with_buffer()` to `MultiClientTest` for shared buffer setup
+  - Fix "No active buffer" error in multi-client tests
+
 ### Fixed
 
 ### Removed
