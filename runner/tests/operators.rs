@@ -1,7 +1,7 @@
 //! Operator integration tests (delete, yank, paste, change).
 //!
-//! **Status**: 12 tests enabled, 16 tests require additional features
-//! (operator-pending mode, count prefix handling).
+//! **Status**: 19 tests enabled, 9 tests require additional features
+//! ($ motion, operator-motion with j/w/b motions, paste before P).
 //!
 //! Run `cargo test --ignored` to run the remaining ignored tests.
 
@@ -57,7 +57,6 @@ async fn test_dd_last_line() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_5dd_count_delete() {
     let result = IntegrationTest::new()
         .await
@@ -91,7 +90,6 @@ async fn test_x_middle_of_word() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_x_at_eol() {
     let result = IntegrationTest::new()
         .await
@@ -103,7 +101,6 @@ async fn test_x_at_eol() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_3x_count_delete() {
     let result = IntegrationTest::new()
         .await
@@ -115,7 +112,7 @@ async fn test_3x_count_delete() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
+#[ignore = "requires w motion to return range in operator-pending mode"]
 async fn test_dw_delete_word() {
     let result = IntegrationTest::new()
         .await
@@ -127,7 +124,7 @@ async fn test_dw_delete_word() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
+#[ignore = "requires $ motion (#340)"]
 async fn test_d_dollar_delete_to_eol() {
     let result = IntegrationTest::new()
         .await
@@ -139,7 +136,7 @@ async fn test_d_dollar_delete_to_eol() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
+#[ignore = "requires j motion to return range in operator-pending mode"]
 async fn test_dj_delete_two_lines() {
     let result = IntegrationTest::new()
         .await
@@ -151,7 +148,7 @@ async fn test_dj_delete_two_lines() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
+#[ignore = "requires b motion to return range in operator-pending mode"]
 async fn test_db_delete_backward_word() {
     let result = IntegrationTest::new()
         .await
@@ -189,7 +186,7 @@ async fn test_yy_p_multiline() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
+#[ignore = "requires j motion to return range in operator-pending mode"]
 async fn test_yj_yank_two_lines() {
     let result = IntegrationTest::new()
         .await
@@ -212,7 +209,6 @@ async fn test_yw_yank_word() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_2yy_yank_count() {
     let result = IntegrationTest::new()
         .await
@@ -228,7 +224,6 @@ async fn test_2yy_yank_count() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_dd_p_paste_after() {
     let result = IntegrationTest::new()
         .await
@@ -240,7 +235,7 @@ async fn test_dd_p_paste_after() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
+#[ignore = "requires P (paste before) fix"]
 async fn test_dd_upper_p_paste_before() {
     let result = IntegrationTest::new()
         .await
@@ -263,7 +258,6 @@ async fn test_yw_p_paste_char() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_2p_paste_multiple() {
     let result = IntegrationTest::new()
         .await
@@ -290,7 +284,7 @@ async fn test_paste_preserves_register() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
+#[ignore = "requires w motion to return range in operator-pending mode"]
 async fn test_cw_change_word() {
     let result = IntegrationTest::new()
         .await
@@ -303,7 +297,7 @@ async fn test_cw_change_word() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
+#[ignore = "requires $ motion (#340)"]
 async fn test_c_dollar_change_to_eol() {
     let result = IntegrationTest::new()
         .await
@@ -315,7 +309,6 @@ async fn test_c_dollar_change_to_eol() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_cc_change_line() {
     let result = IntegrationTest::new()
         .await
@@ -327,7 +320,7 @@ async fn test_cc_change_line() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
+#[ignore = "requires w motion + count support in operator-pending mode"]
 async fn test_2cw_change_count() {
     let result = IntegrationTest::new()
         .await

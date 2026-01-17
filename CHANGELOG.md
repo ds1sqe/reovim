@@ -27,6 +27,11 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- E2E tests: Enable 9 more tests after upstream changes (#308)
+  - operators.rs: 19 enabled (was 12), 9 ignored
+  - search.rs: 5 enabled (was 3), 10 ignored
+  - Updated ignore messages to reference specific issues
+
 ### Fixed
 
 ### Removed
