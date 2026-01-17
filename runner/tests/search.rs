@@ -1,7 +1,7 @@
 //! Search integration tests (/, ?, n, N, *, #).
 //!
-//! **Status**: 3 tests enabled, 12 tests require additional features
-//! (search command mode, n/N commands).
+//! **Status**: 5 tests enabled, 10 tests require additional features
+//! (command-line mode for / and ? search patterns).
 //!
 //! Run `cargo test --ignored` to run the remaining ignored tests.
 
@@ -13,7 +13,7 @@ use common::IntegrationTest;
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
+#[ignore = "requires command-line mode for / search (#338)"]
 async fn test_search_forward_basic() {
     let result = IntegrationTest::new()
         .await
@@ -25,7 +25,7 @@ async fn test_search_forward_basic() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
+#[ignore = "requires command-line mode for / search (#338)"]
 async fn test_search_forward_multiline() {
     let result = IntegrationTest::new()
         .await
@@ -37,7 +37,7 @@ async fn test_search_forward_multiline() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
+#[ignore = "requires command-line mode for / search (#338)"]
 async fn test_search_forward_wrap() {
     let result = IntegrationTest::new()
         .await
@@ -55,7 +55,7 @@ async fn test_search_forward_wrap() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
+#[ignore = "requires command-line mode for ? search (#338)"]
 async fn test_search_backward_basic() {
     let result = IntegrationTest::new()
         .await
@@ -69,7 +69,7 @@ async fn test_search_backward_basic() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
+#[ignore = "requires command-line mode for ? search (#338)"]
 async fn test_search_backward_multiline() {
     let result = IntegrationTest::new()
         .await
@@ -86,7 +86,7 @@ async fn test_search_backward_multiline() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
+#[ignore = "requires command-line mode for / search (#338)"]
 async fn test_search_next() {
     let result = IntegrationTest::new()
         .await
@@ -100,7 +100,7 @@ async fn test_search_next() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
+#[ignore = "requires command-line mode for / search (#338)"]
 async fn test_search_next_multiple() {
     let result = IntegrationTest::new()
         .await
@@ -114,7 +114,7 @@ async fn test_search_next_multiple() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
+#[ignore = "requires command-line mode for / search (#338)"]
 async fn test_search_previous() {
     let result = IntegrationTest::new()
         .await
@@ -133,7 +133,6 @@ async fn test_search_previous() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_search_word_forward() {
     let result = IntegrationTest::new()
         .await
@@ -159,7 +158,6 @@ async fn test_search_word_backward() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_search_word_with_n() {
     let result = IntegrationTest::new()
         .await
@@ -177,7 +175,7 @@ async fn test_search_word_with_n() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
+#[ignore = "requires command-line mode for / search (#338)"]
 async fn test_search_cancel_with_escape() {
     let result = IntegrationTest::new()
         .await
@@ -194,7 +192,7 @@ async fn test_search_cancel_with_escape() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
+#[ignore = "requires command-line mode for / search (#338)"]
 async fn test_search_regex_pattern() {
     let result = IntegrationTest::new()
         .await
