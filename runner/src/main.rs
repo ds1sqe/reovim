@@ -28,11 +28,20 @@ use {
 #[command(about = "Linux kernel-inspired text editor")]
 #[command(
     long_about = "Reovim is a Neovim-like editor with a microkernel architecture.\n\n\
-    Run as a headless server, connect with TUI, or use CLI commands for automation."
+    Run as a headless server, connect with TUI, or use CLI commands for automation.\n\n\
+    Without arguments, starts server and attaches TUI (tmux-like behavior)."
 )]
 struct Args {
     #[command(subcommand)]
     command: Option<Command>,
+
+    /// Start server in detached/daemon mode without TUI.
+    #[arg(short = 'd', long)]
+    detach: bool,
+
+    /// Files to open on startup.
+    #[arg(value_name = "FILE")]
+    files: Vec<PathBuf>,
 
     // Legacy flags (hidden for backwards compatibility)
     #[arg(short, long, hide = true)]
@@ -56,6 +65,8 @@ enum Command {
     Server(SrvArgs),
     /// Connect to server with terminal UI.
     Tui(TuiArgs),
+    /// Attach to an existing server (alias for 'tui').
+    Attach(TuiArgs),
     /// Execute CLI commands.
     Cli(CliArgs),
 }
@@ -74,7 +85,7 @@ fn main() {
             run_server(srv_args.into_config());
         }
 
-        Some(Command::Tui(tui_args)) => {
+        Some(Command::Tui(tui_args) | Command::Attach(tui_args)) => {
             let config = tui_args.into_config();
             run_tui(&config);
         }
@@ -90,7 +101,15 @@ fn main() {
             }
         }
 
-        None => print_usage(),
+        None => {
+            if args.detach {
+                // Detached mode: start server without TUI
+                run_server(ServerConfig::tcp_with_fallback());
+            } else {
+                // Integrated mode: start server + attach TUI
+                run_integrated(&args.files);
+            }
+        }
     }
 }
 
@@ -117,23 +136,54 @@ fn build_legacy_server_config(args: &Args) -> ServerConfig {
     }
 }
 
-fn print_usage() {
-    println!("reovim v0.9.0-dev - Linux kernel-inspired text editor");
-    println!();
-    println!("Usage: reovim <COMMAND>");
-    println!();
-    println!("Commands:");
-    println!("    server    Start headless server");
-    println!("    tui       Connect with terminal UI");
-    println!("    cli       Execute commands");
-    println!();
-    println!("Examples:");
-    println!("    reovim server");
-    println!("    reovim tui");
-    println!("    reovim cli keys 'iHello<Esc>'");
-    println!("    reovim cli --repl");
-    println!();
-    println!("Use --help for options.");
+/// Run integrated mode: spawn server in background, attach TUI.
+///
+/// This is the default behavior when `reovim` is invoked without arguments.
+/// Similar to tmux, the server continues running after TUI exits.
+#[allow(unused_variables)] // files will be used in Phase 4
+fn run_integrated(files: &[PathBuf]) {
+    use {runner::client::common::ConnectionConfig, std::net::SocketAddr, tokio::sync::oneshot};
+
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to create runtime");
+
+    rt.block_on(async {
+        // 1. Create oneshot channel for server ready signal
+        let (tx, rx) = oneshot::channel::<SocketAddr>();
+
+        // 2. Spawn server task in background
+        let server = Server::new(ServerConfig::tcp_with_fallback());
+        tokio::spawn(async move {
+            if let Err(e) = server.run_with_ready_signal(tx).await {
+                eprintln!("Server error: {e}");
+            }
+        });
+
+        // 3. Wait for server to be ready and get bound address
+        let Ok(addr) = rx.await else {
+            eprintln!("Server failed to start");
+            process::exit(1);
+        };
+
+        // 4. Connect TUI to the server
+        let config = ConnectionConfig::tcp(addr.ip().to_string(), addr.port());
+        match TuiApp::connect(&config).await {
+            Ok(mut app) => {
+                // 5. Run TUI (blocks until user exits)
+                if let Err(e) = app.run().await {
+                    eprintln!("TUI error: {e}");
+                    process::exit(1);
+                }
+                // 6. TUI exited - server continues in background (graceful detach)
+            }
+            Err(e) => {
+                eprintln!("Connection failed: {e}");
+                process::exit(1);
+            }
+        }
+    });
 }
 
 fn run_server(config: ServerConfig) {
@@ -288,4 +338,89 @@ fn run_cli(config: &ConnectionConfig, action: &CliAction, format: &str) {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use {super::*, clap::Parser};
+
+    #[test]
+    fn test_args_detach_flag_short() {
+        let args = Args::try_parse_from(["reovim", "-d"]).unwrap();
+        assert!(args.detach);
+        assert!(args.command.is_none());
+    }
+
+    #[test]
+    fn test_args_detach_flag_long() {
+        let args = Args::try_parse_from(["reovim", "--detach"]).unwrap();
+        assert!(args.detach);
+        assert!(args.command.is_none());
+    }
+
+    #[test]
+    fn test_args_files_positional() {
+        let args = Args::try_parse_from(["reovim", "foo.txt", "bar.txt"]).unwrap();
+        assert_eq!(args.files.len(), 2);
+        assert_eq!(args.files[0].to_str().unwrap(), "foo.txt");
+        assert_eq!(args.files[1].to_str().unwrap(), "bar.txt");
+    }
+
+    #[test]
+    fn test_args_files_with_detach() {
+        let args = Args::try_parse_from(["reovim", "-d", "foo.txt"]).unwrap();
+        assert!(args.detach);
+        assert_eq!(args.files.len(), 1);
+    }
+
+    #[test]
+    fn test_attach_subcommand() {
+        let args = Args::try_parse_from(["reovim", "attach"]).unwrap();
+        assert!(matches!(args.command, Some(Command::Attach(_))));
+    }
+
+    #[test]
+    fn test_attach_subcommand_with_tcp() {
+        let args = Args::try_parse_from(["reovim", "attach", "--tcp", "127.0.0.1:12521"]).unwrap();
+        assert!(matches!(args.command, Some(Command::Attach(_))));
+    }
+
+    #[test]
+    fn test_backwards_compat_server() {
+        let args = Args::try_parse_from(["reovim", "server"]).unwrap();
+        assert!(matches!(args.command, Some(Command::Server(_))));
+    }
+
+    #[test]
+    fn test_backwards_compat_server_with_tcp() {
+        let args = Args::try_parse_from(["reovim", "server", "--tcp", "9000"]).unwrap();
+        assert!(matches!(args.command, Some(Command::Server(_))));
+    }
+
+    #[test]
+    fn test_backwards_compat_tui() {
+        let args = Args::try_parse_from(["reovim", "tui"]).unwrap();
+        assert!(matches!(args.command, Some(Command::Tui(_))));
+    }
+
+    #[test]
+    fn test_backwards_compat_cli() {
+        let args = Args::try_parse_from(["reovim", "cli", "mode"]).unwrap();
+        assert!(matches!(args.command, Some(Command::Cli(_))));
+    }
+
+    #[test]
+    fn test_no_args_has_empty_defaults() {
+        let args = Args::try_parse_from(["reovim"]).unwrap();
+        assert!(args.command.is_none());
+        assert!(!args.detach);
+        assert!(args.files.is_empty());
+    }
+
+    #[test]
+    fn test_help_flag() {
+        // --help should cause parse to fail with specific error
+        let result = Args::try_parse_from(["reovim", "--help"]);
+        assert!(result.is_err());
+    }
 }

@@ -158,6 +158,7 @@ pub use {
 };
 
 use std::{
+    net::SocketAddr,
     path::PathBuf,
     sync::{
         Arc,
@@ -432,6 +433,74 @@ impl Server {
                 self.run_listener(listener, &default_session_id).await
             }
             TransportMode::Stdio => self.run_stdio(&default_session_id).await,
+        }
+    }
+
+    /// Run the server and signal when ready.
+    ///
+    /// Similar to [`run`], but sends the bound address through the provided
+    /// channel before entering the accept loop. Used by integrated mode to
+    /// coordinate server startup with TUI attachment.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if binding fails.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let (tx, rx) = tokio::sync::oneshot::channel();
+    /// tokio::spawn(async move {
+    ///     server.run_with_ready_signal(tx).await
+    /// });
+    /// let addr = rx.await?; // Server is now listening
+    /// ```
+    pub async fn run_with_ready_signal(
+        &self,
+        ready_tx: tokio::sync::oneshot::Sender<SocketAddr>,
+    ) -> std::io::Result<()> {
+        // Initialize debug infrastructure (uptime tracking, etc.)
+        debug::init();
+
+        // Load modules from configuration
+        self.load_modules();
+
+        // Create default session
+        let default_session_id = SessionId::new(self.config.default_session_name.as_str());
+        self.ensure_default_session(&default_session_id);
+
+        match &self.config.transport {
+            TransportMode::TcpWithFallback => {
+                let listener = TransportListener::bind_tcp_with_fallback().await?;
+                let addr = listener.local_addr();
+                // Signal ready with bound address
+                if ready_tx.send(addr).is_err() {
+                    tracing::warn!("Ready signal receiver dropped before server sent address");
+                }
+                self.run_listener(listener, &default_session_id).await
+            }
+            TransportMode::Tcp { port } => {
+                let listener = TransportListener::bind_tcp(*port).await?;
+                let addr = listener.local_addr();
+                // Signal ready with bound address
+                if ready_tx.send(addr).is_err() {
+                    tracing::warn!("Ready signal receiver dropped before server sent address");
+                }
+                self.run_listener(listener, &default_session_id).await
+            }
+            #[cfg(unix)]
+            TransportMode::UnixSocket { path } => {
+                let listener = TransportListener::bind_unix(path)?;
+                // Unix sockets don't have a SocketAddr, use a placeholder
+                // The caller should use discovery for Unix sockets
+                drop(ready_tx); // Can't send meaningful address for Unix socket
+                self.run_listener(listener, &default_session_id).await
+            }
+            TransportMode::Stdio => {
+                // Stdio doesn't have an address to report
+                drop(ready_tx);
+                self.run_stdio(&default_session_id).await
+            }
         }
     }
 
@@ -1099,5 +1168,44 @@ mod tests {
         let config = args.into_config();
         assert!(config.modules.no_defaults);
         assert_eq!(config.modules.autoload, vec!["my-module"]);
+    }
+
+    #[tokio::test]
+    async fn test_run_with_ready_signal_sends_address() {
+        use std::time::Duration;
+
+        // Use port 0 to let OS assign a free port
+        let server = Server::new(ServerConfig::tcp(0));
+        let (tx, rx) = tokio::sync::oneshot::channel();
+
+        // Spawn server, wait for ready signal
+        let handle = tokio::spawn(async move { server.run_with_ready_signal(tx).await });
+
+        // Verify we receive a valid address within timeout
+        let addr = tokio::time::timeout(Duration::from_secs(5), rx)
+            .await
+            .expect("timeout waiting for ready signal")
+            .expect("ready signal channel closed");
+
+        assert!(addr.port() > 0);
+
+        // Cleanup
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn test_run_with_ready_signal_continues_on_dropped_receiver() {
+        use std::time::Duration;
+
+        let server = Server::new(ServerConfig::tcp(0));
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        drop(rx); // Drop receiver before server sends
+
+        // Server should not panic, just log warning and continue
+        let handle = tokio::spawn(async move { server.run_with_ready_signal(tx).await });
+
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert!(!handle.is_finished(), "Server should still be running");
+        handle.abort();
     }
 }

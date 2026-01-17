@@ -156,6 +156,23 @@ impl TransportListener {
         }
     }
 
+    /// Get the local socket address for TCP listeners.
+    ///
+    /// Returns the bound `SocketAddr` for TCP.
+    ///
+    /// # Panics
+    ///
+    /// Panics if called on a Unix socket listener, which has no `SocketAddr`.
+    /// Use `tcp_port()` or `local_addr_string()` for safer access.
+    #[must_use]
+    pub const fn local_addr(&self) -> std::net::SocketAddr {
+        match self {
+            Self::Tcp { local_addr, .. } => *local_addr,
+            #[cfg(unix)]
+            Self::Unix { .. } => panic!("Unix socket has no SocketAddr"),
+        }
+    }
+
     /// Get the TCP port if this is a TCP listener.
     #[must_use]
     pub const fn tcp_port(&self) -> Option<u16> {

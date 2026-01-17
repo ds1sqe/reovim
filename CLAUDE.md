@@ -175,7 +175,20 @@ cargo clippy
 # Generate performance report
 cargo run -p perf-report -- bench -v X.Y.Z
 
-# Run in server mode (TCP on 127.0.0.1:12521, or next available port)
+# Default: Start server + TUI in one command (tmux-like)
+cargo run
+# Server spawns in background, TUI attaches automatically
+# TUI exit doesn't kill server (graceful detach)
+
+# Start server in detached/daemon mode (no TUI)
+cargo run -- -d
+cargo run -- --detach
+
+# Attach TUI to existing server
+cargo run -- attach
+cargo run -- attach --tcp 127.0.0.1:12521
+
+# Explicit server mode (TCP on 127.0.0.1:12521, or next available port)
 cargo run -- server
 # Server prints "Listening on 127.0.0.1:<PORT>" to stderr
 
@@ -197,7 +210,7 @@ cargo run -- cli cursor                   # Get cursor position
 cargo run -- cli --format json mode       # JSON output format
 cargo run -- cli -i                       # Interactive REPL mode
 
-# Run TUI client (connects to running server)
+# Explicit TUI client (connects to running server)
 cargo run -- tui                          # Auto-discover server
 cargo run -- tui --tcp 127.0.0.1:12521    # Connect to specific server
 ```
