@@ -322,5 +322,22 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&["editor:normal"])
             .with_category("edit")
             .with_description("Join lines"),
+        // ====================================================================
+        // Session Management (tmux-like, issue #350)
+        // ====================================================================
+        // Note: <C-b> prefix conflicts with scroll-page-up, but multi-key
+        // sequences take precedence over single-key bindings.
+        KeybindingRegistration::new("<C-b>d", "session:detach")
+            .with_modes(&["editor:normal"])
+            .with_category("session")
+            .with_description("Detach from server (server continues)"),
+        KeybindingRegistration::new("<C-b>s", "session:servers")
+            .with_modes(&["editor:normal"])
+            .with_category("session")
+            .with_description("List running server instances"),
+        KeybindingRegistration::new("<C-b>&", "session:kill-server")
+            .with_modes(&["editor:normal"])
+            .with_category("session")
+            .with_description("Kill the current server"),
     ]
 }

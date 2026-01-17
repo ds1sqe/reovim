@@ -107,6 +107,9 @@
 // All server-specific code lives in the server module
 pub mod server;
 
+// Manager daemon for instance coordination
+pub mod manager;
+
 // Search engine for / and ? commands
 pub mod search;
 

@@ -25,6 +25,7 @@
 //! ```
 
 mod quit;
+mod session;
 mod types;
 mod write;
 
@@ -35,17 +36,21 @@ pub use types::{CommandContext, CommandError, CommandHandler, Range};
 
 pub use {
     quit::QuitCommand,
+    session::{DetachCommand, KillServerCommand, ServersCommand},
     write::{WriteCommand, WriteQuitCommand},
 };
 
 /// Returns all commands provided by this module.
 #[must_use]
 pub fn commands() -> Vec<Box<dyn CommandHandler>> {
-    vec![
+    let mut cmds: Vec<Box<dyn CommandHandler>> = vec![
         Box::new(QuitCommand),
         Box::new(WriteCommand),
         Box::new(WriteQuitCommand),
-    ]
+    ];
+    // Add session management commands from #350
+    cmds.extend(session::commands());
+    cmds
 }
 
 // ============================================================================
@@ -84,13 +89,17 @@ mod tests {
     #[test]
     fn test_commands_list() {
         let cmds = commands();
-        assert_eq!(cmds.len(), 3);
+        assert_eq!(cmds.len(), 6); // 3 base + 3 session commands
 
         // Check commands are present
         let ids: Vec<_> = cmds.iter().map(|c| c.id()).collect();
         assert!(ids.contains(&"quit"));
         assert!(ids.contains(&"write"));
         assert!(ids.contains(&"write-quit"));
+        // Session commands from #350
+        assert!(ids.contains(&"detach"));
+        assert!(ids.contains(&"servers"));
+        assert!(ids.contains(&"kill-server"));
     }
 
     #[test]

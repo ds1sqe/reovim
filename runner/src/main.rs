@@ -4,6 +4,7 @@
 //!   reovim server [--tcp PORT] [--socket PATH] [--stdio]
 //!   reovim tui [--tcp ADDR] [--socket PATH]
 //!   reovim cli [--tcp ADDR] [--socket PATH] [--repl] `<command>`
+//!   reovim manager [start|stop|status]
 
 use std::{io::BufRead, path::PathBuf, process};
 
@@ -16,6 +17,7 @@ use {
             common::{ConnectionConfig, rpc::ServerMessage},
             tui::{TuiApp, TuiArgs},
         },
+        manager::{ManagerClient, ManagerDaemon, is_manager_alive},
         server::SrvArgs,
     },
     serde_json::Value,
@@ -70,6 +72,27 @@ enum Command {
     Attach(TuiArgs),
     /// Execute CLI commands.
     Cli(CliArgs),
+    /// Manage the port manager daemon.
+    Manager {
+        /// Manager action to perform.
+        #[command(subcommand)]
+        action: ManagerAction,
+    },
+}
+
+/// Manager daemon actions.
+#[derive(Subcommand, Debug)]
+enum ManagerAction {
+    /// Start the manager daemon.
+    Start {
+        /// Print ready signal to stdout when bound (for process coordination).
+        #[arg(long, hide = true)]
+        ready_signal: bool,
+    },
+    /// Stop the manager daemon.
+    Stop,
+    /// Check manager status.
+    Status,
 }
 
 fn main() {
@@ -100,6 +123,10 @@ fn main() {
             } else if let Some(ref action) = cli_args.action {
                 run_cli(&config, action, &format);
             }
+        }
+
+        Some(Command::Manager { action }) => {
+            run_manager(&action);
         }
 
         None => {
@@ -271,6 +298,81 @@ fn run_server(config: ServerConfig) {
         eprintln!("Server error: {e}");
         process::exit(1);
     }
+}
+
+fn run_manager(action: &ManagerAction) {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to create runtime");
+
+    rt.block_on(async {
+        match action {
+            ManagerAction::Start { ready_signal } => {
+                let ready_signal = *ready_signal;
+                match ManagerDaemon::bind().await {
+                    Ok(daemon) => {
+                        if let Err(e) = daemon.run(ready_signal).await {
+                            eprintln!("Manager error: {e}");
+                            process::exit(1);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to start manager: {e}");
+                        process::exit(1);
+                    }
+                }
+            }
+
+            ManagerAction::Stop => {
+                if !is_manager_alive().await {
+                    eprintln!("Manager is not running");
+                    process::exit(1);
+                }
+
+                match ManagerClient::connect().await {
+                    Ok(mut client) => {
+                        if let Err(e) = client.shutdown().await {
+                            eprintln!("Failed to stop manager: {e}");
+                            process::exit(1);
+                        }
+                        println!("Manager stopped");
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to connect to manager: {e}");
+                        process::exit(1);
+                    }
+                }
+            }
+
+            ManagerAction::Status => {
+                if is_manager_alive().await {
+                    println!("Manager is running on 127.0.0.1:{}", runner::manager::MANAGER_PORT);
+
+                    // Try to get instance list
+                    if let Ok(mut client) = ManagerClient::connect().await
+                        && let Ok(instances) = client.list().await
+                    {
+                        if instances.is_empty() {
+                            println!("No instances registered");
+                        } else {
+                            println!("\nRegistered instances:");
+                            for info in instances {
+                                println!(
+                                    "  {}: {} (PID {})",
+                                    info.name,
+                                    info.transport.display(),
+                                    info.pid
+                                );
+                            }
+                        }
+                    }
+                } else {
+                    println!("Manager is not running");
+                }
+            }
+        }
+    });
 }
 
 fn run_tui(config: &ConnectionConfig) {

@@ -5,7 +5,10 @@
 //! For concurrent reading and writing (e.g., TUI notification handling),
 //! use [`Connection::split`] to get separate reader/writer handles.
 
-use std::{io, path::PathBuf};
+use std::{
+    io,
+    path::{Path, PathBuf},
+};
 
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter},
@@ -14,6 +17,8 @@ use tokio::{
 
 #[cfg(unix)]
 use tokio::net::UnixStream;
+
+use crate::server::instance::{InstanceRegistry, TransportInfo};
 
 /// Connection configuration.
 #[derive(Debug, Clone)]
@@ -91,6 +96,83 @@ impl ConnectionConfig {
                 host: server.host.clone(),
                 port: server.port,
             })
+    }
+
+    /// Resolve connection from CLI flags.
+    ///
+    /// Flag precedence (highest to lowest):
+    /// 1. `--tcp` - explicit TCP connection, bypass registry
+    /// 2. `-S path` - explicit socket/pipe path
+    /// 3. `-L name` - named instance lookup
+    /// 4. Default: `-L default`
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - TCP address parsing fails
+    /// - Instance lookup fails (not found, invalid name)
+    pub fn from_flags(
+        tcp: Option<&str>,
+        socket_path: Option<&Path>,
+        instance: Option<&str>,
+    ) -> Result<Self, String> {
+        // 1. Explicit TCP wins
+        if let Some(addr) = tcp {
+            return Self::parse_tcp(addr);
+        }
+
+        // 2. Explicit socket path
+        if let Some(path) = socket_path {
+            #[cfg(unix)]
+            return Ok(Self::unix_socket(path));
+            #[cfg(not(unix))]
+            return Err(format!("Unix sockets not supported on this platform: {}", path.display()));
+        }
+
+        // 3. Named instance lookup (or default)
+        let name = instance.unwrap_or("default");
+        Self::from_instance(name)
+    }
+
+    /// Look up a named instance from the registry.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Instance name is invalid
+    /// - Instance not found in registry
+    /// - Registry cannot be read
+    pub fn from_instance(name: &str) -> Result<Self, String> {
+        // Validate instance name first
+        InstanceRegistry::validate_name(name).map_err(|e| format!("Invalid instance name: {e}"))?;
+
+        let registry = InstanceRegistry::new();
+        match registry.get(name) {
+            Ok(Some(info)) => Self::from_transport_info(&info.transport),
+            Ok(None) => {
+                Err(format!("Instance '{name}' not found. Run 'reovim server -L {name}' first."))
+            }
+            Err(e) => Err(format!("Failed to read instance registry: {e}")),
+        }
+    }
+
+    /// Create config from transport info.
+    ///
+    /// Returns `Err` on non-Unix platforms for local transport.
+    #[allow(clippy::unnecessary_wraps)] // Result needed for Windows local transport error
+    fn from_transport_info(transport: &TransportInfo) -> Result<Self, String> {
+        match transport {
+            TransportInfo::Tcp { host, port } => Ok(Self::Tcp {
+                host: host.clone(),
+                port: *port,
+            }),
+            TransportInfo::Local { path } => {
+                #[cfg(unix)]
+                return Ok(Self::UnixSocket(PathBuf::from(path)));
+                #[cfg(not(unix))]
+                return Err(format!("Local transport not supported on this platform: {path}"));
+            }
+        }
     }
 }
 
@@ -339,5 +421,115 @@ mod tests {
     fn test_parse_tcp_invalid() {
         assert!(ConnectionConfig::parse_tcp("invalid").is_err());
         assert!(ConnectionConfig::parse_tcp("host:notaport").is_err());
+    }
+
+    #[test]
+    fn test_from_flags_tcp_wins() {
+        // TCP flag takes highest precedence
+        let config = ConnectionConfig::from_flags(
+            Some("127.0.0.1:9000"),
+            Some(std::path::Path::new("/tmp/sock")),
+            Some("instance"),
+        )
+        .unwrap();
+        match config {
+            ConnectionConfig::Tcp { host, port } => {
+                assert_eq!(host, "127.0.0.1");
+                assert_eq!(port, 9000);
+            }
+            #[cfg(unix)]
+            _ => panic!("Expected TCP config"),
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_from_flags_socket_wins_over_instance() {
+        // Socket path takes precedence over instance
+        let config = ConnectionConfig::from_flags(
+            None,
+            Some(std::path::Path::new("/tmp/test.sock")),
+            Some("myinstance"),
+        )
+        .unwrap();
+        match config {
+            ConnectionConfig::UnixSocket(path) => {
+                assert_eq!(path, std::path::PathBuf::from("/tmp/test.sock"));
+            }
+            ConnectionConfig::Tcp { .. } => panic!("Expected UnixSocket config"),
+        }
+    }
+
+    #[test]
+    fn test_from_flags_instance_not_found() {
+        // Instance lookup fails for non-existent instance
+        let result = ConnectionConfig::from_flags(None, None, Some("nonexistent-instance-12345"));
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("not found"));
+        assert!(err.contains("reovim server -L"));
+    }
+
+    #[test]
+    fn test_from_flags_instance_invalid_name() {
+        // Invalid instance name should fail validation
+        let result = ConnectionConfig::from_flags(None, None, Some("../etc/passwd"));
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Invalid instance name"));
+    }
+
+    #[test]
+    fn test_from_instance_invalid_name_empty() {
+        let result = ConnectionConfig::from_instance("");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid instance name"));
+    }
+
+    #[test]
+    fn test_from_instance_invalid_name_too_long() {
+        let long_name = "a".repeat(64);
+        let result = ConnectionConfig::from_instance(&long_name);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid instance name"));
+    }
+
+    #[test]
+    fn test_from_instance_invalid_name_special_chars() {
+        let result = ConnectionConfig::from_instance("has spaces");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid instance name"));
+    }
+
+    #[test]
+    fn test_from_transport_info_tcp() {
+        let transport = TransportInfo::Tcp {
+            host: "192.168.1.1".to_string(),
+            port: 8080,
+        };
+        let config = ConnectionConfig::from_transport_info(&transport).unwrap();
+        match config {
+            ConnectionConfig::Tcp { host, port } => {
+                assert_eq!(host, "192.168.1.1");
+                assert_eq!(port, 8080);
+            }
+            #[cfg(unix)]
+            _ => panic!("Expected TCP config"),
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_from_transport_info_local() {
+        let transport = TransportInfo::Local {
+            path: "/tmp/reovim.sock".to_string(),
+        };
+        let config = ConnectionConfig::from_transport_info(&transport).unwrap();
+        match config {
+            ConnectionConfig::UnixSocket(path) => {
+                assert_eq!(path, std::path::PathBuf::from("/tmp/reovim.sock"));
+            }
+            ConnectionConfig::Tcp { .. } => panic!("Expected UnixSocket config"),
+        }
     }
 }

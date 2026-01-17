@@ -7,6 +7,7 @@
 
 mod convert;
 mod input;
+pub mod local;
 mod signal;
 mod terminal;
 
@@ -16,6 +17,7 @@ pub use {
         convert_key_event, convert_modifiers,
     },
     input::UnixInputSource,
+    local::{UnixLocalListener, UnixLocalStream, process_exists},
     signal::UnixSignalHandler,
     terminal::UnixTerminal,
 };

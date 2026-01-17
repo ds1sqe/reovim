@@ -48,6 +48,16 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - TUI log panel with scroll, filter by level, and keybindings
   - `Ctrl+L` toggles panel, `1-5` filters levels, `j/k` scrolls
 
+- Unified Port System with instance management (#350)
+  - Transport abstraction layer with platform-agnostic `LocalAddr` type
+  - Instance registry for server discovery (file-based JSON with auto-cleanup)
+  - CLI flags: `-L`/`--instance` for named instances, `-S`/`--socket-path` for explicit paths
+  - Port Manager daemon on 127.0.0.1:12521 with auto-start capability
+  - Session commands: `:detach`, `:servers`, `:kill-server`
+  - Keybindings: `<C-b>d` detach, `<C-b>s` servers, `<C-b>&` kill-server
+  - DETACH notification for graceful client disconnect
+  - Full backward compatibility with existing `--tcp` and `--socket` flags
+
 - CLI log command enhancements (#324)
   - Log filtering: `reovim cli log-tail --level warn --target runner --grep error`
   - Dynamic log level: `reovim cli log-level debug` (changes at runtime)

@@ -190,6 +190,11 @@ impl SessionState {
     pub fn request_quit(&mut self) {
         self.app.request_quit();
     }
+
+    /// Request clients to detach (server continues running).
+    pub fn request_detach(&mut self) {
+        self.app.request_detach();
+    }
 }
 
 #[cfg(test)]

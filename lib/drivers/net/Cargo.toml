@@ -16,6 +16,9 @@ workspace = true
 # Only depends on kernel layer
 reovim-kernel = { path = "../../kernel", version = "0.9.1-dev" }
 
+# Platform abstraction (for dirs, local transport)
+reovim-arch = { path = "../../arch", version = "0.9.1-dev" }
+
 # Protocol types (shared RPC definitions)
 reovim-protocol = { workspace = true }
 

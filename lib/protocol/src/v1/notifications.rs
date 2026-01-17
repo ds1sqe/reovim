@@ -24,6 +24,9 @@ pub const RENDER_COMPLETE: &str = "notification/render_complete";
 /// Log entry notification (for log streaming).
 pub const LOG_ENTRY: &str = "notification/log_entry";
 
+/// Detach notification (client should disconnect).
+pub const DETACH: &str = "notification/detach";
+
 // Notification payload types
 
 /// Source of a log entry.
@@ -191,6 +194,46 @@ impl RenderCompletePayload {
     }
 }
 
+/// Payload for detach notification.
+///
+/// Sent to clients when they should disconnect gracefully.
+/// The server continues running after detach.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DetachPayload {
+    /// Optional reason for detach.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+impl DetachPayload {
+    /// Create a new detach payload.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self { reason: None }
+    }
+
+    /// Create a detach payload with a reason.
+    #[must_use]
+    pub fn with_reason(reason: impl Into<String>) -> Self {
+        Self {
+            reason: Some(reason.into()),
+        }
+    }
+
+    /// Convert payload to JSON-RPC notification.
+    ///
+    /// # Panics
+    ///
+    /// This function will not panic as `DetachPayload` serialization is infallible.
+    #[must_use]
+    pub fn into_notification(self) -> super::messages::RpcNotification {
+        super::messages::RpcNotification::new(
+            DETACH,
+            serde_json::to_value(self).expect("DetachPayload serialization cannot fail"),
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -201,6 +244,7 @@ mod tests {
         assert!(CURSOR_MOVED.starts_with("notification/"));
         assert!(BUFFER_MODIFIED.starts_with("notification/"));
         assert!(RENDER_COMPLETE.starts_with("notification/"));
+        assert!(DETACH.starts_with("notification/"));
     }
 
     #[test]
@@ -346,5 +390,50 @@ mod tests {
         let json = r#""invalid_level""#;
         let result: Result<LogLevel, _> = serde_json::from_str(json);
         assert!(result.is_err());
+    }
+
+    // Phase 5 tests for #350
+
+    #[test]
+    fn test_detach_payload_new() {
+        let payload = DetachPayload::new();
+        assert!(payload.reason.is_none());
+    }
+
+    #[test]
+    fn test_detach_payload_with_reason() {
+        let payload = DetachPayload::with_reason("user requested");
+        assert_eq!(payload.reason, Some("user requested".to_string()));
+    }
+
+    #[test]
+    fn test_detach_payload_serialization() {
+        let payload = DetachPayload::new();
+        let json = serde_json::to_string(&payload).unwrap();
+        // Empty object when no reason
+        assert_eq!(json, "{}");
+
+        let payload = DetachPayload::with_reason("test");
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains("\"reason\":\"test\""));
+    }
+
+    #[test]
+    fn test_detach_payload_deserialization() {
+        let json = "{}";
+        let payload: DetachPayload = serde_json::from_str(json).unwrap();
+        assert!(payload.reason.is_none());
+
+        let json = r#"{"reason":"detached"}"#;
+        let payload: DetachPayload = serde_json::from_str(json).unwrap();
+        assert_eq!(payload.reason, Some("detached".to_string()));
+    }
+
+    #[test]
+    fn test_detach_payload_into_notification() {
+        let payload = DetachPayload::new();
+        let notification = payload.into_notification();
+        assert_eq!(notification.jsonrpc, "2.0");
+        assert_eq!(notification.method, DETACH);
     }
 }

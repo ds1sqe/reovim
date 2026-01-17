@@ -66,6 +66,7 @@
 
 mod error;
 mod handler;
+pub mod local;
 mod traits;
 pub mod transport;
 
@@ -111,6 +112,9 @@ pub use error::NetError;
 
 // Transport configuration
 pub use transport::TransportConfig;
+
+// Local transport types
+pub use local::LocalAddr;
 
 // Handler types
 pub use handler::{RpcHandler, RpcHandlerContext, RpcResult};

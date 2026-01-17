@@ -48,8 +48,36 @@ use clap::Args;
 ///
 /// These arguments configure how the server listens for connections
 /// and how modules are loaded.
+///
+/// # Instance Naming
+///
+/// Use `-L` to name this server instance. Named instances are discoverable
+/// via the instance registry, allowing clients to connect using `-L name`
+/// instead of raw TCP addresses.
+///
+/// # Transport Precedence
+///
+/// Transport flags are mutually exclusive. If multiple are specified:
+/// 1. `--stdio` wins (single client mode)
+/// 2. `-s`/`--socket` next (Unix socket)
+/// 3. `-t`/`--tcp` next (specific TCP port)
+/// 4. Default: TCP with automatic port fallback (12521-12530)
 #[derive(Args, Debug, Clone)]
 pub struct SrvArgs {
+    /// Instance name for registry discovery.
+    ///
+    /// Registers this server as a named instance. Clients can then
+    /// connect using `reovim -L <name>` instead of specifying the port.
+    ///
+    /// Default: "default"
+    #[arg(
+        short = 'L',
+        long = "instance",
+        value_name = "NAME",
+        default_value = "default"
+    )]
+    pub instance: String,
+
     /// Start server on specific TCP port.
     #[arg(short, long, value_name = "PORT")]
     pub tcp: Option<u16>,
@@ -95,8 +123,18 @@ pub struct SrvArgs {
 
 impl SrvArgs {
     /// Convert arguments to `ServerConfig`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the instance name is invalid.
     #[must_use]
     pub fn into_config(self) -> ServerConfig {
+        // Validate instance name
+        if let Err(e) = instance::InstanceRegistry::validate_name(&self.instance) {
+            eprintln!("Error: Invalid instance name: {e}");
+            std::process::exit(1);
+        }
+
         // Build module config from CLI arguments
         let mut modules = ModuleConfig::new();
 
@@ -120,6 +158,7 @@ impl SrvArgs {
             #[cfg(unix)]
             if let Some(path) = self.socket {
                 return ServerConfig::unix_socket(path)
+                    .with_instance_name(&self.instance)
                     .with_modules(modules)
                     .with_ready_signal(self.ready_signal);
             }
@@ -135,6 +174,7 @@ impl SrvArgs {
 
         ServerConfig {
             transport,
+            instance_name: self.instance,
             default_session_name: String::from("default"),
             modules,
             default_mode: None,
@@ -148,6 +188,7 @@ mod app;
 pub mod client;
 pub mod debug;
 mod event_loop;
+pub mod instance;
 pub mod module;
 pub mod notification;
 pub mod registry;
@@ -241,6 +282,12 @@ pub struct ServerConfig {
     /// Transport mode (TCP, Unix socket, or Stdio).
     pub transport: TransportMode,
 
+    /// Instance name for registry discovery.
+    ///
+    /// This server will be registered under this name in the instance
+    /// registry, allowing clients to connect using `-L <name>`.
+    pub instance_name: String,
+
     /// Name of the default session to create on startup.
     pub default_session_name: String,
 
@@ -263,6 +310,7 @@ impl Default for ServerConfig {
     fn default() -> Self {
         Self {
             transport: TransportMode::TcpWithFallback,
+            instance_name: String::from("default"),
             default_session_name: String::from("default"),
             modules: ModuleConfig::default(),
             default_mode: None,
@@ -313,6 +361,13 @@ impl ServerConfig {
             transport: TransportMode::Stdio,
             ..Self::default()
         }
+    }
+
+    /// Set the instance name for registry discovery.
+    #[must_use]
+    pub fn with_instance_name(mut self, name: impl Into<String>) -> Self {
+        self.instance_name = name.into();
+        self
     }
 
     /// Set the default session name.
@@ -1108,6 +1163,7 @@ mod tests {
     #[test]
     fn test_srv_args_into_config_default() {
         let args = SrvArgs {
+            instance: "default".to_string(),
             tcp: None,
             #[cfg(unix)]
             socket: None,
@@ -1123,11 +1179,13 @@ mod tests {
         assert!(config.modules.search_paths.is_empty());
         assert!(config.modules.autoload.is_empty());
         assert!(!config.modules.no_defaults);
+        assert_eq!(config.instance_name, "default");
     }
 
     #[test]
     fn test_srv_args_into_config_with_tcp() {
         let args = SrvArgs {
+            instance: "default".to_string(),
             tcp: Some(9000),
             #[cfg(unix)]
             socket: None,
@@ -1145,6 +1203,7 @@ mod tests {
     #[test]
     fn test_srv_args_into_config_with_stdio() {
         let args = SrvArgs {
+            instance: "default".to_string(),
             tcp: None,
             #[cfg(unix)]
             socket: None,
@@ -1162,6 +1221,7 @@ mod tests {
     #[test]
     fn test_srv_args_into_config_with_module_dirs() {
         let args = SrvArgs {
+            instance: "default".to_string(),
             tcp: None,
             #[cfg(unix)]
             socket: None,
@@ -1184,6 +1244,7 @@ mod tests {
     #[test]
     fn test_srv_args_into_config_with_load_modules() {
         let args = SrvArgs {
+            instance: "default".to_string(),
             tcp: None,
             #[cfg(unix)]
             socket: None,
@@ -1203,6 +1264,7 @@ mod tests {
     #[test]
     fn test_srv_args_into_config_with_no_defaults() {
         let args = SrvArgs {
+            instance: "default".to_string(),
             tcp: None,
             #[cfg(unix)]
             socket: None,
@@ -1221,6 +1283,7 @@ mod tests {
     #[test]
     fn test_srv_args_into_config_with_ready_signal() {
         let args = SrvArgs {
+            instance: "default".to_string(),
             tcp: Some(9000),
             #[cfg(unix)]
             socket: None,
@@ -1233,6 +1296,24 @@ mod tests {
 
         let config = args.into_config();
         assert!(config.ready_signal);
+    }
+
+    #[test]
+    fn test_srv_args_into_config_with_custom_instance() {
+        let args = SrvArgs {
+            instance: "my-project".to_string(),
+            tcp: Some(9000),
+            #[cfg(unix)]
+            socket: None,
+            stdio: false,
+            module_dirs: vec![],
+            load_modules: vec![],
+            no_defaults: false,
+            ready_signal: false,
+        };
+
+        let config = args.into_config();
+        assert_eq!(config.instance_name, "my-project");
     }
 
     #[test]

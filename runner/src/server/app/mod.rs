@@ -266,6 +266,19 @@ impl AppState {
         self.running = false;
     }
 
+    /// Request clients to detach (server continues running).
+    ///
+    /// Unlike `request_quit`, the server remains active and accepts new connections.
+    /// Connected TUI clients receive a DETACH notification and disconnect gracefully.
+    ///
+    /// Note: This sets a flag; the actual notification is sent by the broadcaster.
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn request_detach(&mut self) {
+        // TODO: Set a detach_requested flag and have broadcaster send notifications.
+        // For now, this is a placeholder that logs the intent.
+        tracing::info!("Detach requested - clients will be notified");
+    }
+
     /// Check if the application should continue running.
     #[must_use]
     pub const fn is_running(&self) -> bool {

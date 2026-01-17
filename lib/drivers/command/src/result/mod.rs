@@ -46,6 +46,11 @@ pub enum CommandResult {
     Quit,
     /// Command requests editor to quit without saving.
     ForceQuit,
+    /// Command requests client to detach (server continues running).
+    ///
+    /// Unlike `Quit`, the server remains active and other clients can connect.
+    /// The TUI client receives a DETACH notification and disconnects gracefully.
+    Detach,
     /// Command requests an undo/redo action to be performed by the runner.
     ///
     /// This follows the callback pattern where commands declare WHAT they want
@@ -155,6 +160,12 @@ impl CommandResult {
     #[must_use]
     pub const fn is_quit(&self) -> bool {
         matches!(self, Self::Quit | Self::ForceQuit)
+    }
+
+    /// Check if the result requests detach.
+    #[must_use]
+    pub const fn is_detach(&self) -> bool {
+        matches!(self, Self::Detach)
     }
 
     /// Check if the result is an undo/redo action.
