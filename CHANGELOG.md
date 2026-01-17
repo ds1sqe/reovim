@@ -118,6 +118,12 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Removed
 
+- Deprecated `char_wait` field and `CharWaitState` struct (#359)
+  - Replaced by unified `pending_char` field with `PendingCharOp` enum
+  - Removed backward compatibility shims in `set_pending_char()`/`take_pending_char()`
+  - Removed deprecated `Session::set_char_wait()` method
+  - Part of Epic #353 mechanism/policy separation cleanup
+
 ---
 
 ## Version History
