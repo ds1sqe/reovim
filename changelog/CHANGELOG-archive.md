@@ -1,7 +1,6 @@
 # Changelog Archive (Legacy Crates v0.8.x and Earlier)
 
 This file contains changelog entries for legacy crates (`lib/core`, `lib/sys`, plugins).
-For new architecture changes (v0.9.0-dev), see [CHANGELOG.md](../CHANGELOG.md).
 
 ## [0.8.1] - Unreleased
 

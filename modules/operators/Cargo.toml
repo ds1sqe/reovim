@@ -1,6 +1,6 @@
 [package]
 name = "reovim-module-operators"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 edition.workspace = true
 license.workspace = true
 description = "Vim operators (d, y, c) for reovim - POLICY module"

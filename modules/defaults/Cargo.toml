@@ -1,6 +1,6 @@
 [package]
 name = "reovim-module-defaults"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 edition.workspace = true
 license.workspace = true
 description = "Default module bundle for reovim - aggregates keymap, operators, commands"

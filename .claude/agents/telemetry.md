@@ -81,17 +81,17 @@ Perform a **comprehensive test audit** ensuring:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    TEST COVERAGE PYRAMID                     │
+│                    TEST COVERAGE PYRAMID                    │
 ├─────────────────────────────────────────────────────────────┤
-│                         E2E Tests                            │
-│                      (Few, Slow, Broad)                      │
-│                    ┌─────────────────┐                       │
-│                    │   Integration   │                       │
-│                    │     Tests       │                       │
-│                 ┌──┴─────────────────┴──┐                    │
-│                 │      Unit Tests       │                    │
-│                 │   (Many, Fast, Focused)                    │
-│                 └───────────────────────┘                    │
+│                         E2E Tests                           │
+│                      (Few, Slow, Broad)                     │
+│                    ┌─────────────────┐                      │
+│                    │   Integration   │                      │
+│                    │     Tests       │                      │
+│                 ┌──┴─────────────────┴──┐                   │
+│                 │      Unit Tests       │                   │
+│                 │ (Many, Fast, Focused) │                   │
+│                 └───────────────────────┘                   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -159,17 +159,17 @@ Evaluate each test file against these criteria:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ TEST FILE QUALITY SCORECARD                                  │
+│ TEST FILE QUALITY SCORECARD                                 │
 ├─────────────────────────────────────────────────────────────┤
-│ File: [path]                                                 │
-│                                                              │
-│ NAMING          [ ] Descriptive [ ] Follows conventions      │
-│ ORGANIZATION    [ ] Logical grouping [ ] Easy to navigate    │
+│ File: [path]                                                │
+│                                                             │
+│ NAMING          [ ] Descriptive [ ] Follows conventions     │
+│ ORGANIZATION    [ ] Logical grouping [ ] Easy to navigate   │
 │ SETUP/TEARDOWN  [ ] Clean [ ] No side effects               │
-│ ASSERTIONS      [ ] Specific [ ] Good error messages         │
-│ DOCUMENTATION   [ ] Test intent clear [ ] Edge cases noted   │
-│ DETERMINISM     [ ] No flakiness [ ] No sleep/timing         │
-│                                                              │
+│ ASSERTIONS      [ ] Specific [ ] Good error messages        │
+│ DOCUMENTATION   [ ] Test intent clear [ ] Edge cases noted  │
+│ DETERMINISM     [ ] No flakiness [ ] No sleep/timing        │
+│                                                             │
 │ SCORE: [A+/A/B/C/F]                                         │
 └─────────────────────────────────────────────────────────────┘
 ```

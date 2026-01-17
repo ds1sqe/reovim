@@ -1,6 +1,6 @@
 [package]
 name = "reovim-driver-lsp"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -14,7 +14,7 @@ workspace = true
 
 [dependencies]
 # Kernel layer (provides KernelContext, EventBus, ArcSwap, channels, etc.)
-reovim-kernel = { path = "../../kernel", version = "0.9.0-dev" }
+reovim-kernel = { path = "../../kernel", version = "0.9.1-dev" }
 
 # LSP protocol types (matches lib/lsp version)
 lsp-types = "0.97"

@@ -39,7 +39,7 @@ default-members = ["runner"]
 
 [workspace.package]
 rust-version = "1.92"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 edition = "2024"
 authors = ["ds1sqe(dukim) <ds1sqe@mensakorea.org>"]
 license = "AGPL-3.0-only"
@@ -81,43 +81,43 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "time"]
 tracing-appender = "0.2"
 chrono = "0.4"
 # Architecture crates
-reovim-arch = { path = "./lib/arch", version = "0.9.0-dev" }
-reovim-kernel = { path = "./lib/kernel", version = "0.9.0-dev" }
-reovim-module-macros = { path = "./lib/module-macros", version = "0.9.0-dev" }
+reovim-arch = { path = "./lib/arch", version = "0.9.1-dev" }
+reovim-kernel = { path = "./lib/kernel", version = "0.9.1-dev" }
+reovim-module-macros = { path = "./lib/module-macros", version = "0.9.1-dev" }
 
 # Protocol (shared RPC types)
-reovim-protocol = { path = "./lib/protocol", version = "0.9.0-dev" }
+reovim-protocol = { path = "./lib/protocol", version = "0.9.1-dev" }
 
 # Driver crates
-reovim-driver-command = { path = "./lib/drivers/command", version = "0.9.0-dev" }
-reovim-driver-display = { path = "./lib/drivers/display", version = "0.9.0-dev" }
-reovim-driver-input = { path = "./lib/drivers/input", version = "0.9.0-dev" }
-reovim-driver-syntax = { path = "./lib/drivers/syntax", version = "0.9.0-dev" }
-reovim-driver-lsp = { path = "./lib/drivers/lsp", version = "0.9.0-dev" }
-reovim-driver-net = { path = "./lib/drivers/net", version = "0.9.0-dev" }
-reovim-driver-vfs = { path = "./lib/drivers/vfs", version = "0.9.0-dev" }
-reovim-driver-log = { path = "./lib/drivers/log", version = "0.9.0-dev" }
-reovim-driver-trace = { path = "./lib/drivers/trace", version = "0.9.0-dev" }
-reovim-driver-ffi = { path = "./lib/drivers/ffi", version = "0.9.0-dev" }
-reovim-driver-ffi-python = { path = "./lib/drivers/ffi-python", version = "0.9.0-dev" }
+reovim-driver-command = { path = "./lib/drivers/command", version = "0.9.1-dev" }
+reovim-driver-display = { path = "./lib/drivers/display", version = "0.9.1-dev" }
+reovim-driver-input = { path = "./lib/drivers/input", version = "0.9.1-dev" }
+reovim-driver-syntax = { path = "./lib/drivers/syntax", version = "0.9.1-dev" }
+reovim-driver-lsp = { path = "./lib/drivers/lsp", version = "0.9.1-dev" }
+reovim-driver-net = { path = "./lib/drivers/net", version = "0.9.1-dev" }
+reovim-driver-vfs = { path = "./lib/drivers/vfs", version = "0.9.1-dev" }
+reovim-driver-log = { path = "./lib/drivers/log", version = "0.9.1-dev" }
+reovim-driver-trace = { path = "./lib/drivers/trace", version = "0.9.1-dev" }
+reovim-driver-ffi = { path = "./lib/drivers/ffi", version = "0.9.1-dev" }
+reovim-driver-ffi-python = { path = "./lib/drivers/ffi-python", version = "0.9.1-dev" }
 
 # Python FFI
 pyo3 = { version = "0.27", features = ["auto-initialize"] }
 
 # Policy modules
-reovim-module-example = { path = "./modules/example", version = "0.9.0-dev" }
-reovim-module-keymap = { path = "./modules/keymap", version = "0.9.0-dev" }
-reovim-module-operators = { path = "./modules/operators", version = "0.9.0-dev" }
-reovim-module-commands = { path = "./modules/commands", version = "0.9.0-dev" }
-reovim-module-defaults = { path = "./modules/defaults", version = "0.9.0-dev" }
-reovim-module-options = { path = "./modules/options", version = "0.9.0-dev" }
-reovim-module-buffer-ops = { path = "./modules/buffer-ops", version = "0.9.0-dev" }
-reovim-module-window-ops = { path = "./modules/window-ops", version = "0.9.0-dev" }
-reovim-module-mode-manager = { path = "./modules/mode-manager", version = "0.9.0-dev" }
-reovim-module-layout = { path = "./modules/layout", version = "0.9.0-dev" }
-reovim-module-editor = { path = "./modules/editor", version = "0.9.0-dev" }
-reovim-module-motions = { path = "./modules/motions", version = "0.9.0-dev" }
-reovim-module-textobjects = { path = "./modules/textobjects", version = "0.9.0-dev" }
+reovim-module-example = { path = "./modules/example", version = "0.9.1-dev" }
+reovim-module-keymap = { path = "./modules/keymap", version = "0.9.1-dev" }
+reovim-module-operators = { path = "./modules/operators", version = "0.9.1-dev" }
+reovim-module-commands = { path = "./modules/commands", version = "0.9.1-dev" }
+reovim-module-defaults = { path = "./modules/defaults", version = "0.9.1-dev" }
+reovim-module-options = { path = "./modules/options", version = "0.9.1-dev" }
+reovim-module-buffer-ops = { path = "./modules/buffer-ops", version = "0.9.1-dev" }
+reovim-module-window-ops = { path = "./modules/window-ops", version = "0.9.1-dev" }
+reovim-module-mode-manager = { path = "./modules/mode-manager", version = "0.9.1-dev" }
+reovim-module-layout = { path = "./modules/layout", version = "0.9.1-dev" }
+reovim-module-editor = { path = "./modules/editor", version = "0.9.1-dev" }
+reovim-module-motions = { path = "./modules/motions", version = "0.9.1-dev" }
+reovim-module-textobjects = { path = "./modules/textobjects", version = "0.9.1-dev" }
 
 # CLI
 clap = { version = "4", features = ["derive"] }

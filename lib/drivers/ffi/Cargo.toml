@@ -1,6 +1,6 @@
 [package]
 name = "reovim-driver-ffi"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -17,7 +17,7 @@ workspace = true
 
 [dependencies]
 # Kernel layer (FFI types)
-reovim-kernel = { path = "../../kernel", version = "0.9.0-dev" }
+reovim-kernel = { path = "../../kernel", version = "0.9.1-dev" }
 
 # FFI support
 libc = "0.2"

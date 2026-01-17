@@ -1083,7 +1083,7 @@ checksum = "7a2d987857b319362043e95f5353c0535c1f58eec5336fdfcf626430af7def58"
 
 [[package]]
 name = "reovim"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "clap",
  "crossterm",
@@ -1116,7 +1116,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-arch"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "arc-swap",
  "crossterm",
@@ -1126,7 +1126,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-bench"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "criterion",
  "reovim-kernel",
@@ -1134,7 +1134,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-driver-command"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "reovim-driver-display",
  "reovim-driver-vfs",
@@ -1143,7 +1143,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-driver-display"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "reovim-arch",
  "reovim-kernel",
@@ -1152,7 +1152,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-driver-ffi"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "libc",
  "reovim-kernel",
@@ -1161,7 +1161,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-driver-ffi-python"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "pyo3",
  "reovim-kernel",
@@ -1170,7 +1170,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-driver-input"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "bitflags 2.10.0",
  "reovim-arch",
@@ -1179,7 +1179,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-driver-log"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "reovim-kernel",
  "tracing",
@@ -1189,7 +1189,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-driver-lsp"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "lsp-types",
  "reovim-kernel",
@@ -1199,7 +1199,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-driver-net"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "reovim-kernel",
  "reovim-protocol",
@@ -1209,14 +1209,14 @@ dependencies = [
 
 [[package]]
 name = "reovim-driver-syntax"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "reovim-kernel",
 ]
 
 [[package]]
 name = "reovim-driver-trace"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "reovim-kernel",
  "tracing",
@@ -1225,35 +1225,35 @@ dependencies = [
 
 [[package]]
 name = "reovim-driver-vfs"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "reovim-kernel",
 ]
 
 [[package]]
 name = "reovim-kernel"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "reovim-arch",
 ]
 
 [[package]]
 name = "reovim-module-buffer-ops"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "reovim-kernel",
 ]
 
 [[package]]
 name = "reovim-module-commands"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "reovim-kernel",
 ]
 
 [[package]]
 name = "reovim-module-defaults"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "reovim-kernel",
  "reovim-module-commands",
@@ -1263,7 +1263,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-module-editor"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "reovim-driver-command",
  "reovim-driver-display",
@@ -1276,7 +1276,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-module-example"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "reovim-driver-command",
  "reovim-driver-display",
@@ -1286,7 +1286,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-module-hot-reload-demo"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "reovim-kernel",
  "reovim-module-macros",
@@ -1295,7 +1295,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-module-keymap"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "reovim-kernel",
  "reovim-module-macros",
@@ -1303,7 +1303,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-module-layout"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "reovim-driver-command",
  "reovim-driver-display",
@@ -1312,7 +1312,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-module-macros"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1322,14 +1322,14 @@ dependencies = [
 
 [[package]]
 name = "reovim-module-mode-manager"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "reovim-kernel",
 ]
 
 [[package]]
 name = "reovim-module-motions"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "reovim-driver-command",
  "reovim-kernel",
@@ -1337,21 +1337,21 @@ dependencies = [
 
 [[package]]
 name = "reovim-module-operators"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "reovim-kernel",
 ]
 
 [[package]]
 name = "reovim-module-options"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "reovim-kernel",
 ]
 
 [[package]]
 name = "reovim-module-textobjects"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "reovim-driver-command",
  "reovim-kernel",
@@ -1359,7 +1359,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-module-undotree"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "reovim-driver-command",
  "reovim-driver-display",
@@ -1369,14 +1369,14 @@ dependencies = [
 
 [[package]]
 name = "reovim-module-window-ops"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "reovim-kernel",
 ]
 
 [[package]]
 name = "reovim-protocol"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 dependencies = [
  "reovim-kernel",
  "rmp-serde",

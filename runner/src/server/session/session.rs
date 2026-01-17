@@ -236,7 +236,9 @@ impl Session {
             drop(buffer);
 
             // Accumulate edit for batched undo tracking
-            state.app.accumulate_edit(buffer_id, edit, cursor_before, cursor_after);
+            state
+                .app
+                .accumulate_edit(buffer_id, edit, cursor_before, cursor_after);
 
             true
         })

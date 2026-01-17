@@ -1,7 +1,7 @@
 ---
 name: flight-director
 description: "Flight Director has final authority. Expert in architecture, code quality, and Unix philosophy.\n\nModes:\n- countdown: Go/No-Go poll before launch\n- orbit: In-flight architectural monitoring\n- reentry: Final RFL review (detailed audit)\n- ground-ops: General architecture support"
-model: haiku
+model: sonnet
 color: yellow
 ---
 
@@ -81,45 +81,45 @@ Perform a **philosophical and architectural audit** ensuring:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│              THE UNIX PHILOSOPHY CHECKLIST                   │
+│              THE UNIX PHILOSOPHY CHECKLIST                  │
 ├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  1. MECHANISM VS POLICY                                      │
-│     "Separate what from how"                                 │
-│     □ Kernel/core provides mechanisms                        │
-│     □ Modules/plugins implement policies                     │
-│     □ No policy decisions in core abstractions               │
-│                                                              │
-│  2. DO ONE THING WELL                                        │
-│     "Make each program do one thing well"                    │
-│     □ Single responsibility per module                       │
-│     □ Clear, focused interfaces                              │
-│     □ No feature creep                                       │
-│                                                              │
-│  3. COMPOSABILITY                                            │
-│     "Expect output to become input"                          │
-│     □ Small, focused components                              │
-│     □ Standard interfaces between parts                      │
-│     □ Components can be combined freely                      │
-│                                                              │
-│  4. SEPARATION OF CONCERNS                                   │
-│     "Build a system of small pieces loosely joined"          │
-│     □ Clear layer boundaries                                 │
-│     □ Minimal coupling between modules                       │
-│     □ Changes isolated to single components                  │
-│                                                              │
-│  5. API PURITY                                               │
-│     "Write programs to handle text streams"                  │
-│     □ Clean, minimal APIs                                    │
-│     □ No unnecessary dependencies                            │
-│     □ Interface stability prioritized                        │
-│                                                              │
-│  6. SIMPLICITY                                               │
-│     "When in doubt, use brute force"                         │
-│     □ Prefer simple over clever                              │
-│     □ No premature optimization                              │
-│     □ No over-engineering                                    │
-│                                                              │
+│                                                             │
+│  1. MECHANISM VS POLICY                                     │
+│     "Separate what from how"                                │
+│     □ Kernel/core provides mechanisms                       │
+│     □ Modules/plugins implement policies                    │
+│     □ No policy decisions in core abstractions              │
+│                                                             │
+│  2. DO ONE THING WELL                                       │
+│     "Make each program do one thing well"                   │
+│     □ Single responsibility per module                      │
+│     □ Clear, focused interfaces                             │
+│     □ No feature creep                                      │
+│                                                             │
+│  3. COMPOSABILITY                                           │
+│     "Expect output to become input"                         │
+│     □ Small, focused components                             │
+│     □ Standard interfaces between parts                     │
+│     □ Components can be combined freely                     │
+│                                                             │
+│  4. SEPARATION OF CONCERNS                                  │
+│     "Build a system of small pieces loosely joined"         │
+│     □ Clear layer boundaries                                │
+│     □ Minimal coupling between modules                      │
+│     □ Changes isolated to single components                 │
+│                                                             │
+│  5. API PURITY                                              │
+│     "Write programs to handle text streams"                 │
+│     □ Clean, minimal APIs                                   │
+│     □ No unnecessary dependencies                           │
+│     □ Interface stability prioritized                       │
+│                                                             │
+│  6. SIMPLICITY                                              │
+│     "When in doubt, use brute force"                        │
+│     □ Prefer simple over clever                             │
+│     □ No premature optimization                             │
+│     □ No over-engineering                                   │
+│                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -165,25 +165,25 @@ For each changed file, verify:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ LAYER BOUNDARY CHECK                                         │
+│ LAYER BOUNDARY CHECK                                        │
 ├─────────────────────────────────────────────────────────────┤
-│ File: [path]                                                 │
-│ Layer: [Kernel | Driver | Module | Runner]                   │
-│                                                              │
-│ IMPORTS:                                                     │
-│   [ ] Only from same layer or below                          │
-│   [ ] No circular dependencies                               │
-│   [ ] No reaching into private modules                       │
-│                                                              │
-│ EXPORTS:                                                     │
-│   [ ] Clear public API                                       │
-│   [ ] Implementation details hidden                          │
-│   [ ] Stable interface                                       │
-│                                                              │
-│ RESPONSIBILITY:                                              │
-│   [ ] Single, clear purpose                                  │
-│   [ ] No policy in mechanism layers                          │
-│   [ ] No mechanism in policy layers                          │
+│ File: [path]                                                │
+│ Layer: [Kernel | Driver | Module | Runner]                  │
+│                                                             │
+│ IMPORTS:                                                    │
+│   [ ] Only from same layer or below                         │
+│   [ ] No circular dependencies                              │
+│   [ ] No reaching into private modules                      │
+│                                                             │
+│ EXPORTS:                                                    │
+│   [ ] Clear public API                                      │
+│   [ ] Implementation details hidden                         │
+│   [ ] Stable interface                                      │
+│                                                             │
+│ RESPONSIBILITY:                                             │
+│   [ ] Single, clear purpose                                 │
+│   [ ] No policy in mechanism layers                         │
+│   [ ] No mechanism in policy layers                         │
 └─────────────────────────────────────────────────────────────┘
 ```
 

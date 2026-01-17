@@ -54,10 +54,12 @@ Help with:
 
 ## Deferral Policy
 
-**Deferrals are acceptable IF:**
+**Deferrals are only acceptable IF:**
 1. Documented in plan as out-of-scope
 2. Tracking issue created (e.g., #248)
+  -- use `gh issue view` for is tracked
 3. Referenced in code comments and CHANGELOG
+**Only if 1 and 2 and 3 have all matched, deferral allowed**
 
 **Grade impact:**
 - Proper deferral (with tracking issue) = No penalty (grade A)
@@ -81,16 +83,16 @@ For EACH planned item, verify:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ REQUIREMENT VERIFICATION MATRIX                              │
+│ REQUIREMENT VERIFICATION MATRIX                             │
 ├─────────────────────────────────────────────────────────────┤
-│ Requirement ID: [Phase X.Y]                                  │
-│ Description:    [What was planned]                           │
-│ Files Expected: [List from plan]                             │
-│ Files Found:    [Actual files]                               │
-│ Status:         [ ] COMPLETE  [ ] DEFERRED  [ ] MISSING      │
-│ Evidence:       [Line numbers, test names, etc.]             │
-│ If Deferred:    Tracking Issue: #___                         │
-│ Gaps:           [What's missing if any]                      │
+│ Requirement ID: [Phase X.Y]                                 │
+│ Description:    [What was planned]                          │
+│ Files Expected: [List from plan]                            │
+│ Files Found:    [Actual files]                              │
+│ Status:         [ ] COMPLETE  [ ] DEFERRED  [ ] MISSING     │
+│ Evidence:       [Line numbers, test names, etc.]            │
+│ If Deferred:    Tracking Issue: #___                        │
+│ Gaps:           [What's missing if any]                     │
 └─────────────────────────────────────────────────────────────┘
 ```
 

@@ -1,6 +1,6 @@
 [package]
 name = "reovim-module-options"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 edition.workspace = true
 license.workspace = true
 description = "Editor options and settings module for reovim"

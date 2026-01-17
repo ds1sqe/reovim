@@ -1,6 +1,6 @@
 [package]
 name = "reovim-driver-input"
-version = "0.9.0-dev"
+version = "0.9.1-dev"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -13,6 +13,6 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
-reovim-kernel = { path = "../../kernel", version = "0.9.0-dev" }
-reovim-arch = { path = "../../arch", version = "0.9.0-dev" }
+reovim-kernel = { path = "../../kernel", version = "0.9.1-dev" }
+reovim-arch = { path = "../../arch", version = "0.9.1-dev" }
 bitflags = "2.4"
