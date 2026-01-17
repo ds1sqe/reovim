@@ -41,6 +41,20 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - `reovim_timer_count()` - Get active timer count
   - Added timer types to `include/reovim.h`
 
+- TUI log panel for real-time log streaming (#332)
+  - `debug/log_subscribe` and `debug/log_unsubscribe` RPC methods
+  - Real-time `LOG_ENTRY` notifications with level filtering
+  - Channel-based async bridge (sync tracing -> async notifications)
+  - TUI log panel with scroll, filter by level, and keybindings
+  - `Ctrl+L` toggles panel, `1-5` filters levels, `j/k` scrolls
+
+- CLI log command enhancements (#324)
+  - Log filtering: `reovim cli log-tail --level warn --target runner --grep error`
+  - Dynamic log level: `reovim cli log-level debug` (changes at runtime)
+  - Log streaming: `reovim cli log-tail --follow` (like `tail -f`)
+  - Color-coded output: ERROR (red), WARN (yellow), INFO (green), DEBUG (cyan), TRACE (gray)
+  - Uses `tracing_subscriber::reload` layer for runtime log level changes
+
 ### Changed
 
 - E2E tests: Enable 9 more tests after upstream changes (#308)

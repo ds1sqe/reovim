@@ -11,8 +11,9 @@ use {
     reovim_protocol::v1::{
         RpcNotification, RpcResponse,
         notifications::{
-            BUFFER_MODIFIED, BufferModifiedPayload, CURSOR_MOVED, CursorMovedPayload, MODE_CHANGED,
-            ModeChangedPayload, RENDER_COMPLETE, RenderCompletePayload,
+            BUFFER_MODIFIED, BufferModifiedPayload, CURSOR_MOVED, CursorMovedPayload, LOG_ENTRY,
+            LogEntryPayload, MODE_CHANGED, ModeChangedPayload, RENDER_COMPLETE,
+            RenderCompletePayload,
         },
     },
     serde_json::json,
@@ -23,10 +24,32 @@ use crate::client::common::{
     ConnectionConfig, ConnectionReader, RpcClient, RpcClientError, RpcWriter, ServerMessage,
 };
 
-use super::{input::InputHandler, render::Renderer};
+use super::{
+    input::InputHandler,
+    log_buffer::{DEFAULT_TUI_LOG_CAPACITY, TuiLogBuffer},
+    log_panel::LogPanelState,
+    log_render::render_panel,
+    render::Renderer,
+};
 
 /// Channel buffer size for server messages.
 const MESSAGE_CHANNEL_SIZE: usize = 256;
+
+/// Extract HH:MM:SS from an ISO 8601 timestamp.
+///
+/// Falls back to "??:??:??" if the timestamp cannot be parsed.
+fn extract_hms(timestamp: &str) -> String {
+    // ISO 8601 format: 2026-01-17T12:34:56Z or 2026-01-17T12:34:56.123Z
+    // We want the HH:MM:SS part
+    if let Some(t_pos) = timestamp.find('T') {
+        let time_part = &timestamp[t_pos + 1..];
+        // Take first 8 characters (HH:MM:SS)
+        if time_part.len() >= 8 {
+            return time_part[..8].to_string();
+        }
+    }
+    "??:??:??".to_string()
+}
 
 /// TUI application error.
 #[derive(Debug)]
@@ -94,6 +117,12 @@ pub struct TuiApp {
     last_size: (u16, u16),
     /// Current state from server.
     state: TuiState,
+    /// Log buffer for storing log entries.
+    log_buffer: TuiLogBuffer,
+    /// Log panel state.
+    log_panel: LogPanelState,
+    /// Server log subscription ID.
+    subscription_id: Option<u64>,
 }
 
 impl TuiApp {
@@ -128,6 +157,17 @@ impl TuiApp {
             .and_then(serde_json::Value::as_u64)
             .map_or(0, |v| v as usize);
 
+        // Subscribe to server logs (info level and above)
+        let subscription_id = match client.call("debug/log_subscribe", json!({})).await {
+            Ok(result) => result
+                .get("subscription_id")
+                .and_then(serde_json::Value::as_u64),
+            Err(e) => {
+                tracing::debug!("Failed to subscribe to server logs: {e}");
+                None
+            }
+        };
+
         // Split client for concurrent operation
         let (reader, rpc_writer) = client.into_split();
 
@@ -153,6 +193,9 @@ impl TuiApp {
                 buffer_modified: false,
                 needs_redraw: true,
             },
+            log_buffer: TuiLogBuffer::new(DEFAULT_TUI_LOG_CAPACITY),
+            log_panel: LogPanelState::new(),
+            subscription_id,
         })
     }
 
@@ -188,6 +231,14 @@ impl TuiApp {
 
         // Run the main event loop
         let result = self.run_event_loop().await;
+
+        // Unsubscribe from log notifications
+        if let Some(sub_id) = self.subscription_id {
+            let _ = self
+                .rpc_writer
+                .send_request("debug/log_unsubscribe", json!({ "subscription_id": sub_id }))
+                .await;
+        }
 
         // Cleanup
         self.renderer.cleanup()?;
@@ -256,6 +307,56 @@ impl TuiApp {
             return Ok(());
         }
 
+        // Check for log panel toggle (Ctrl+L)
+        if matches!(key.code, KeyCode::Char('l')) && key.modifiers.contains(KeyModifiers::CONTROL) {
+            self.log_panel.toggle();
+            self.state.needs_redraw = true;
+            return Ok(());
+        }
+
+        // Handle log panel keys when visible
+        if self.log_panel.visible {
+            match key.code {
+                KeyCode::Char('j') | KeyCode::Down => {
+                    self.log_panel.scroll_down(1);
+                    self.state.needs_redraw = true;
+                    return Ok(());
+                }
+                KeyCode::Char('k') | KeyCode::Up => {
+                    self.log_panel.scroll_up(1);
+                    self.state.needs_redraw = true;
+                    return Ok(());
+                }
+                KeyCode::Char('G') => {
+                    self.log_panel.scroll_to_bottom();
+                    self.state.needs_redraw = true;
+                    return Ok(());
+                }
+                KeyCode::Char('g') => {
+                    let total = self.log_buffer.len();
+                    self.log_panel.scroll_to_top(total);
+                    self.state.needs_redraw = true;
+                    return Ok(());
+                }
+                KeyCode::Char('q') | KeyCode::Esc => {
+                    self.log_panel.hide();
+                    self.state.needs_redraw = true;
+                    return Ok(());
+                }
+                KeyCode::Char('c') => {
+                    self.log_buffer.clear();
+                    self.state.needs_redraw = true;
+                    return Ok(());
+                }
+                KeyCode::Char(c @ '1'..='5') => {
+                    self.log_panel.set_level_filter_from_key(c);
+                    self.state.needs_redraw = true;
+                    return Ok(());
+                }
+                _ => {} // Fall through to normal key handling
+            }
+        }
+
         // Convert key to notation and send to server
         if let Some(keys) = InputHandler::key_to_notation(&key) {
             self.send_keys(&keys).await?;
@@ -319,6 +420,26 @@ impl TuiApp {
                     tracing::debug!("Render complete notification received");
                 }
             }
+            LOG_ENTRY => {
+                if let Ok(payload) = serde_json::from_value::<LogEntryPayload>(notification.params)
+                {
+                    // Convert to TuiLogEntry and add to buffer
+                    let entry = super::log_buffer::TuiLogEntry::new(
+                        extract_hms(&payload.timestamp),
+                        payload.level,
+                        payload.target,
+                        payload.message,
+                        payload.source,
+                    );
+                    self.log_buffer.push(entry);
+                    self.log_panel.on_new_entries();
+                    // Only redraw if log panel is visible
+                    if self.log_panel.visible {
+                        self.state.needs_redraw = true;
+                    }
+                    tracing::trace!("Log entry received: {:?}", payload.level);
+                }
+            }
             _ => {
                 tracing::debug!("Unknown notification: {}", notification.method);
             }
@@ -374,6 +495,23 @@ impl TuiApp {
             Err(_) => {
                 // Timeout - just position cursor
                 tracing::debug!("Screen content timeout, skipping render");
+            }
+        }
+
+        // Render log panel if visible
+        if self.log_panel.visible {
+            let (width, height) = self.last_size;
+            let panel_height = self.log_panel.height.min(height / 2); // Max half screen
+            let entries = self.log_buffer.entries();
+            let lines = render_panel(&entries, &self.log_panel, width, panel_height);
+
+            // Position cursor at start of panel area
+            let panel_start = height.saturating_sub(panel_height);
+            self.renderer.set_cursor(0, panel_start)?;
+
+            // Render panel lines
+            for line in lines {
+                self.renderer.write_line(&line)?;
             }
         }
 

@@ -134,6 +134,15 @@ impl Renderer {
     pub fn flush(&mut self) -> io::Result<()> {
         self.stdout.flush()
     }
+
+    /// Write a line of content (with newline).
+    ///
+    /// # Errors
+    ///
+    /// Returns error if write fails.
+    pub fn write_line(&mut self, content: &str) -> io::Result<()> {
+        writeln!(self.stdout, "{content}")
+    }
 }
 
 impl Default for Renderer {

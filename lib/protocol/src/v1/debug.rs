@@ -231,6 +231,35 @@ pub struct LogTailResult {
     pub overflow_count: u64,
 }
 
+/// Parameters for `debug/log_subscribe` method.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct LogSubscribeParams {
+    /// Minimum log level to receive (default: info).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub level: Option<String>,
+}
+
+/// Result for `debug/log_subscribe` method.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogSubscribeResult {
+    /// Unique subscription ID for unsubscribing.
+    pub subscription_id: u64,
+}
+
+/// Parameters for `debug/log_unsubscribe` method.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogUnsubscribeParams {
+    /// Subscription ID to cancel.
+    pub subscription_id: u64,
+}
+
+/// Result for `debug/log_unsubscribe` method.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogUnsubscribeResult {
+    /// Whether the subscription was found and removed.
+    pub success: bool,
+}
+
 // ============================================================================
 // Phase 5: Visual Debug Types
 // ============================================================================
@@ -462,5 +491,51 @@ mod tests {
         };
         let json = serde_json::to_string(&params).unwrap();
         assert!(json.contains("\"level\":\"debug\""));
+    }
+
+    // Phase 1 tests for #332 - subscription types
+
+    #[test]
+    fn test_log_subscribe_params_serialization() {
+        // Default (no level filter)
+        let params = LogSubscribeParams::default();
+        let json = serde_json::to_string(&params).unwrap();
+        assert_eq!(json, "{}");
+
+        // With level filter
+        let params = LogSubscribeParams {
+            level: Some("warn".to_string()),
+        };
+        let json = serde_json::to_string(&params).unwrap();
+        assert!(json.contains("\"level\":\"warn\""));
+    }
+
+    #[test]
+    fn test_log_subscribe_result_serialization() {
+        let result = LogSubscribeResult {
+            subscription_id: 42,
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("\"subscription_id\":42"));
+    }
+
+    #[test]
+    fn test_log_unsubscribe_params_serialization() {
+        let params = LogUnsubscribeParams {
+            subscription_id: 123,
+        };
+        let json = serde_json::to_string(&params).unwrap();
+        assert!(json.contains("\"subscription_id\":123"));
+    }
+
+    #[test]
+    fn test_log_unsubscribe_result_serialization() {
+        let result = LogUnsubscribeResult { success: true };
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("\"success\":true"));
+
+        let result = LogUnsubscribeResult { success: false };
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("\"success\":false"));
     }
 }

@@ -2,6 +2,7 @@
 //!
 //! This layer captures tracing events and pushes them to the global
 //! `LogRingBuffer` for later retrieval via `debug/log_tail`.
+//! Also sends entries to the log bridge for real-time notification streaming.
 
 use {
     tracing::{
@@ -11,7 +12,10 @@ use {
     tracing_subscriber::layer::{Context, Layer},
 };
 
-use super::log_buffer::{LogEntry, log_buffer};
+use super::{
+    log_bridge::try_send_log,
+    log_buffer::{LogEntry, log_buffer},
+};
 
 // ============================================================================
 // Message Visitor
@@ -81,9 +85,14 @@ where
         let mut visitor = MessageVisitor::new();
         event.record(&mut visitor);
 
-        // Push to the global log buffer
+        // Create the log entry
         let entry = LogEntry::new(&level, &target, &visitor.message);
-        log_buffer().push(entry);
+
+        // Push to the global log buffer (for debug/log_tail)
+        log_buffer().push(entry.clone());
+
+        // Send to bridge for real-time notifications (non-blocking)
+        try_send_log(entry);
     }
 }
 

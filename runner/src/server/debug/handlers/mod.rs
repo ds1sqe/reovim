@@ -16,7 +16,7 @@ pub mod snapshot;
 pub use {
     info::{debug_uptime, debug_version},
     inspect::{debug_kernel_state, debug_marks, debug_mode_stack, debug_registers},
-    log::{debug_log_level, debug_log_tail},
+    log::{debug_log_level, debug_log_subscribe, debug_log_tail, debug_log_unsubscribe},
     metrics::{debug_handlers, debug_metrics},
     snapshot::debug_visual_snapshot,
 };
