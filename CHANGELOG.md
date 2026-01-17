@@ -4,6 +4,14 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [Unreleased] - v0.9.1-dev
 
+### Fixed
+
+- Complete manager integration for server discovery (#356)
+  - Port separation: manager owns 12521, servers start at 12522
+  - Server auto-starts manager and registers on startup
+  - CLI auto_discover() checks registry before port scanning
+  - REPL: add `list` and `connect` commands for server switching
+
 ### Added
 
 - Register selection prefix (`"a`) - specify register for yank/delete/paste (#333)

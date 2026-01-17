@@ -7,7 +7,10 @@ use std::net::SocketAddr;
 use tokio::net::{TcpListener, TcpStream};
 
 /// Default TCP port for reovim server.
-pub const DEFAULT_PORT: u16 = 12521;
+///
+/// Port 12521 is reserved for the manager daemon.
+/// Server instances start at 12522.
+pub const DEFAULT_PORT: u16 = 12522;
 
 /// Number of ports to try when the default is busy.
 pub const PORT_FALLBACK_COUNT: u16 = 10;

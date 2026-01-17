@@ -2,7 +2,9 @@
 //!
 //! Provides a command-line interface for interactive testing.
 
-use crate::client::common::{ConnectionConfig, RpcClient};
+use crate::client::common::{ConnectionConfig, RpcClient, discovery};
+use crate::manager::{ManagerClient, is_manager_alive};
+use crate::server::instance::InstanceRegistry;
 
 use super::{
     commands,
@@ -47,6 +49,45 @@ pub async fn run_repl(config: &ConnectionConfig) -> Result<(), Box<dyn std::erro
         match cmd {
             "help" | "?" => print_help(),
             "exit" | "quit" | "q" => break,
+
+            "list" | "servers" => {
+                print_server_list().await;
+            }
+
+            "connect" => {
+                if args.len() < 2 {
+                    eprintln!("Usage: connect <instance-name> | connect <host:port>");
+                    continue;
+                }
+                let target = args[1];
+                let new_config = if target.contains(':') {
+                    // host:port format
+                    match ConnectionConfig::parse_tcp(target) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            eprintln!("Invalid address: {e}");
+                            continue;
+                        }
+                    }
+                } else {
+                    // Instance name
+                    match ConnectionConfig::from_instance(target) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            eprintln!("Instance not found: {e}");
+                            continue;
+                        }
+                    }
+                };
+
+                match RpcClient::connect(&new_config).await {
+                    Ok(new_client) => {
+                        client = new_client;
+                        println!("Connected to {target}");
+                    }
+                    Err(e) => eprintln!("Connection failed: {e}"),
+                }
+            }
 
             "keys" | "k" => {
                 if args.len() < 2 {
@@ -187,10 +228,56 @@ pub async fn run_repl(config: &ConnectionConfig) -> Result<(), Box<dyn std::erro
     Ok(())
 }
 
+/// Print list of running servers.
+async fn print_server_list() {
+    use std::collections::HashSet;
+
+    let mut seen_addrs = HashSet::new();
+    let mut found_any = false;
+
+    // First, try to query the manager
+    if is_manager_alive().await {
+        if let Ok(mut client) = ManagerClient::connect().await {
+            if let Ok(instances) = client.list().await {
+                for instance in instances {
+                    let addr = instance.transport.display();
+                    seen_addrs.insert(addr.clone());
+                    println!("  {} ({}) pid: {}", addr, instance.name, instance.pid);
+                    found_any = true;
+                }
+            }
+        }
+    }
+
+    // Fall back to file registry
+    if !found_any {
+        let registry = InstanceRegistry::new();
+        if let Ok(instances) = registry.list() {
+            for instance in instances {
+                let addr = instance.transport.display();
+                seen_addrs.insert(addr.clone());
+                println!("  {} ({}) pid: {}", addr, instance.name, instance.pid);
+            }
+        }
+    }
+
+    // Scan ports for unregistered servers
+    for s in discovery::list_servers() {
+        let addr = format!("{}:{}", s.host, s.port);
+        if !seen_addrs.contains(&addr) {
+            let pid = s.pid.map_or_else(|| "?".into(), |p| p.to_string());
+            println!("  {addr} (unregistered) pid: {pid}");
+        }
+    }
+}
+
 /// Print help text.
 fn print_help() {
     println!(
         r"Commands:
+  list            List running servers
+  connect <dest>  Connect to server (instance name or host:port)
+
   keys <seq>      Inject key sequence (e.g., keys iHello<Esc>)
   mode            Get current mode
   cursor          Get cursor position

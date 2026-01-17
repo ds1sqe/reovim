@@ -32,11 +32,13 @@ pub enum ConnectionConfig {
 
 impl ConnectionConfig {
     /// Create TCP config with default host and port.
+    ///
+    /// Uses port 12522 (port 12521 is reserved for manager daemon).
     #[must_use]
     pub fn tcp_default() -> Self {
         Self::Tcp {
             host: "127.0.0.1".to_string(),
-            port: 12521,
+            port: 12522,
         }
     }
 
@@ -83,12 +85,19 @@ impl ConnectionConfig {
 
     /// Auto-discover a running server.
     ///
-    /// Scans default ports and returns the first available server.
-    /// Falls back to default port if no server found.
+    /// Discovery order:
+    /// 1. Check instance registry for "default" instance
+    /// 2. Scan default ports (12522-12531)
+    /// 3. Fall back to default port
     #[must_use]
     pub fn auto_discover() -> Self {
-        use super::discovery;
+        // First, try to find "default" instance in registry
+        if let Ok(config) = Self::from_instance("default") {
+            return config;
+        }
 
+        // Fall back to port scanning
+        use super::discovery;
         let servers = discovery::list_servers();
         servers
             .first()

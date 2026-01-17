@@ -433,9 +433,46 @@ fn run_cli(config: &ConnectionConfig, action: &CliAction, format: &str) {
     rt.block_on(async {
         // Handle list command without connection
         if matches!(action, CliAction::List) {
+            use runner::manager::{ManagerClient, is_manager_alive};
+            use runner::server::instance::InstanceRegistry;
+            use std::collections::HashSet;
+
+            let mut seen_addrs = HashSet::new();
+            let mut found_any = false;
+
+            // First, try to query the manager (preferred source)
+            if is_manager_alive().await {
+                if let Ok(mut client) = ManagerClient::connect().await {
+                    if let Ok(instances) = client.list().await {
+                        for instance in instances {
+                            let addr = instance.transport.display();
+                            seen_addrs.insert(addr.clone());
+                            println!("{} ({}) pid: {}", addr, instance.name, instance.pid);
+                            found_any = true;
+                        }
+                    }
+                }
+            }
+
+            // Fall back to file registry if manager unavailable
+            if !found_any {
+                let registry = InstanceRegistry::new();
+                if let Ok(instances) = registry.list() {
+                    for instance in instances {
+                        let addr = instance.transport.display();
+                        seen_addrs.insert(addr.clone());
+                        println!("{} ({}) pid: {}", addr, instance.name, instance.pid);
+                    }
+                }
+            }
+
+            // Also scan ports for any unregistered servers
             for s in discovery::list_servers() {
-                let pid = s.pid.map_or_else(|| "?".into(), |p| p.to_string());
-                println!("{}:{} (pid: {pid})", s.host, s.port);
+                let addr = format!("{}:{}", s.host, s.port);
+                if !seen_addrs.contains(&addr) {
+                    let pid = s.pid.map_or_else(|| "?".into(), |p| p.to_string());
+                    println!("{addr} (unregistered) pid: {pid}");
+                }
             }
             return;
         }
