@@ -160,6 +160,22 @@ pub enum CliAction {
         /// Number of entries to return (default: 50).
         #[arg(short, long, default_value = "50")]
         count: usize,
+
+        /// Filter by minimum log level (trace, debug, info, warn, error).
+        #[arg(short = 'l', long)]
+        level: Option<String>,
+
+        /// Filter by target module (substring match).
+        #[arg(short = 't', long)]
+        target: Option<String>,
+
+        /// Filter by message content (case-insensitive).
+        #[arg(short = 'g', long)]
+        grep: Option<String>,
+
+        /// Follow mode: stream new entries as they arrive (like tail -f).
+        #[arg(short = 'f', long)]
+        follow: bool,
     },
     /// Get full debug snapshot (JSON).
     Snapshot,

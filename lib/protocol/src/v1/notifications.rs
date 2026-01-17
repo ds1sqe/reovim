@@ -21,7 +21,84 @@ pub const BUFFER_MODIFIED: &str = "notification/buffer_modified";
 /// Render complete notification.
 pub const RENDER_COMPLETE: &str = "notification/render_complete";
 
+/// Log entry notification (for log streaming).
+pub const LOG_ENTRY: &str = "notification/log_entry";
+
 // Notification payload types
+
+/// Source of a log entry.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum LogSource {
+    /// Log from the server.
+    #[default]
+    Server,
+    /// Log from the client.
+    Client,
+}
+
+/// Log level for filtering and display.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "lowercase")]
+pub enum LogLevel {
+    /// Trace level (most verbose).
+    Trace = 0,
+    /// Debug level.
+    Debug = 1,
+    /// Info level.
+    #[default]
+    Info = 2,
+    /// Warning level.
+    Warn = 3,
+    /// Error level (least verbose).
+    Error = 4,
+}
+
+impl LogLevel {
+    /// Parse a log level from a string.
+    #[must_use]
+    pub fn from_str_lossy(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "trace" => Self::Trace,
+            "debug" => Self::Debug,
+            "warn" | "warning" => Self::Warn,
+            "error" => Self::Error,
+            // "info" and anything else defaults to Info
+            _ => Self::Info,
+        }
+    }
+}
+
+/// Payload for log entry notification.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogEntryPayload {
+    /// Timestamp in ISO 8601 format.
+    pub timestamp: String,
+    /// Log level.
+    pub level: LogLevel,
+    /// Target module.
+    pub target: String,
+    /// Log message.
+    pub message: String,
+    /// Source of the log entry.
+    #[serde(default)]
+    pub source: LogSource,
+}
+
+impl LogEntryPayload {
+    /// Convert payload to JSON-RPC notification.
+    ///
+    /// # Panics
+    ///
+    /// This function will not panic as `LogEntryPayload` serialization is infallible.
+    #[must_use]
+    pub fn into_notification(self) -> super::messages::RpcNotification {
+        super::messages::RpcNotification::new(
+            LOG_ENTRY,
+            serde_json::to_value(self).expect("LogEntryPayload serialization cannot fail"),
+        )
+    }
+}
 
 /// Payload for mode changed notification.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -180,5 +257,94 @@ mod tests {
         let notification = payload.into_notification();
         assert_eq!(notification.jsonrpc, "2.0");
         assert_eq!(notification.method, RENDER_COMPLETE);
+    }
+
+    // Phase 1 tests for #332
+
+    #[test]
+    fn test_log_entry_payload_serialization() {
+        let payload = LogEntryPayload {
+            timestamp: "2026-01-17T12:00:00Z".to_string(),
+            level: LogLevel::Info,
+            target: "runner::server".to_string(),
+            message: "Test message".to_string(),
+            source: LogSource::Server,
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains("\"timestamp\":\"2026-01-17T12:00:00Z\""));
+        assert!(json.contains("\"level\":\"info\""));
+        assert!(json.contains("\"target\":\"runner::server\""));
+        assert!(json.contains("\"message\":\"Test message\""));
+        assert!(json.contains("\"source\":\"server\""));
+    }
+
+    #[test]
+    fn test_log_source_serialization() {
+        assert_eq!(serde_json::to_string(&LogSource::Server).unwrap(), "\"server\"");
+        assert_eq!(serde_json::to_string(&LogSource::Client).unwrap(), "\"client\"");
+    }
+
+    #[test]
+    fn test_log_level_ordering() {
+        assert!(LogLevel::Trace < LogLevel::Debug);
+        assert!(LogLevel::Debug < LogLevel::Info);
+        assert!(LogLevel::Info < LogLevel::Warn);
+        assert!(LogLevel::Warn < LogLevel::Error);
+    }
+
+    #[test]
+    fn test_log_entry_into_notification() {
+        let payload = LogEntryPayload {
+            timestamp: "2026-01-17T12:00:00Z".to_string(),
+            level: LogLevel::Warn,
+            target: "test".to_string(),
+            message: "warning".to_string(),
+            source: LogSource::Client,
+        };
+        let notification = payload.into_notification();
+        assert_eq!(notification.jsonrpc, "2.0");
+        assert_eq!(notification.method, LOG_ENTRY);
+    }
+
+    #[test]
+    fn test_log_entry_payload_missing_field_deserialization() {
+        // Missing 'source' field should use default (Server)
+        let json = r#"{"timestamp":"2026-01-17T12:00:00Z","level":"info","target":"test","message":"msg"}"#;
+        let payload: LogEntryPayload = serde_json::from_str(json).unwrap();
+        assert_eq!(payload.source, LogSource::Server);
+    }
+
+    #[test]
+    fn test_log_level_from_str_lossy() {
+        assert_eq!(LogLevel::from_str_lossy("trace"), LogLevel::Trace);
+        assert_eq!(LogLevel::from_str_lossy("DEBUG"), LogLevel::Debug);
+        assert_eq!(LogLevel::from_str_lossy("Info"), LogLevel::Info);
+        assert_eq!(LogLevel::from_str_lossy("WARN"), LogLevel::Warn);
+        assert_eq!(LogLevel::from_str_lossy("warning"), LogLevel::Warn);
+        assert_eq!(LogLevel::from_str_lossy("error"), LogLevel::Error);
+        assert_eq!(LogLevel::from_str_lossy("invalid"), LogLevel::Info); // fallback
+    }
+
+    #[test]
+    fn test_log_entry_with_empty_strings() {
+        let payload = LogEntryPayload {
+            timestamp: String::new(),
+            level: LogLevel::Debug,
+            target: String::new(),
+            message: String::new(),
+            source: LogSource::Server,
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains("\"timestamp\":\"\""));
+        assert!(json.contains("\"target\":\"\""));
+        assert!(json.contains("\"message\":\"\""));
+    }
+
+    #[test]
+    fn test_log_level_invalid_deserialization() {
+        // Invalid level should fail deserialization
+        let json = r#""invalid_level""#;
+        let result: Result<LogLevel, _> = serde_json::from_str(json);
+        assert!(result.is_err());
     }
 }

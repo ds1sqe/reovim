@@ -129,6 +129,12 @@ pub const DEBUG_LOG_LEVEL: &str = "debug/log_level";
 /// Get recent log entries.
 pub const DEBUG_LOG_TAIL: &str = "debug/log_tail";
 
+/// Subscribe to log streaming.
+pub const DEBUG_LOG_SUBSCRIBE: &str = "debug/log_subscribe";
+
+/// Unsubscribe from log streaming.
+pub const DEBUG_LOG_UNSUBSCRIBE: &str = "debug/log_unsubscribe";
+
 /// Get full debug snapshot for AI/tooling.
 pub const DEBUG_VISUAL_SNAPSHOT: &str = "debug/visual_snapshot";
 

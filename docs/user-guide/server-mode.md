@@ -136,6 +136,27 @@ reovim cli kill
 reovim cli -i
 ```
 
+### Debug Commands
+
+```bash
+# Get/set log level dynamically
+reovim cli log-level                      # Get current level
+reovim cli log-level debug                # Set to debug
+
+# View recent log entries
+reovim cli log-tail                       # Last 50 entries
+reovim cli log-tail --count 100           # Last 100 entries
+
+# Filter logs
+reovim cli log-tail --level warn          # WARN and above
+reovim cli log-tail --target runner       # Filter by module
+reovim cli log-tail --grep "error"        # Search messages
+
+# Stream logs in real-time (like tail -f)
+reovim cli log-tail --follow
+reovim cli log-tail --follow --level warn # Stream with filter
+```
+
 ### Connection Options
 
 ```bash
@@ -208,6 +229,10 @@ reovim tui --socket /tmp/reovim.sock
 | `cursor` | - | Get cursor position |
 | `mode` | - | Get current mode |
 | `kill` | - | Terminate server |
+| `debug/log_level` | `{ level?: string }` | Get/set log level |
+| `debug/log_tail` | `{ count?, level?, target?, grep? }` | Get filtered log entries |
+| `debug/log_subscribe` | `{ level?: string }` | Subscribe to log stream |
+| `debug/log_unsubscribe` | `{ subscription_id: number }` | Unsubscribe from log stream |
 
 ### Screen Formats
 

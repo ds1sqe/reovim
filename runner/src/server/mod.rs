@@ -83,6 +83,14 @@ pub struct SrvArgs {
     /// Useful for testing or minimal startup.
     #[arg(long = "no-defaults")]
     pub no_defaults: bool,
+
+    /// Print ready signal to stdout when server is bound.
+    ///
+    /// When set, server prints `READY <ip>:<port>` to stdout after binding.
+    /// Used by integrated mode for process coordination.
+    /// Format: `READY 127.0.0.1:12521\n`
+    #[arg(long, hide = true)]
+    pub ready_signal: bool,
 }
 
 impl SrvArgs {
@@ -111,7 +119,9 @@ impl SrvArgs {
         let transport = {
             #[cfg(unix)]
             if let Some(path) = self.socket {
-                return ServerConfig::unix_socket(path).with_modules(modules);
+                return ServerConfig::unix_socket(path)
+                    .with_modules(modules)
+                    .with_ready_signal(self.ready_signal);
             }
 
             if self.stdio {
@@ -128,6 +138,7 @@ impl SrvArgs {
             default_session_name: String::from("default"),
             modules,
             default_mode: None,
+            ready_signal: self.ready_signal,
         }
     }
 }
@@ -158,7 +169,6 @@ pub use {
 };
 
 use std::{
-    net::SocketAddr,
     path::PathBuf,
     sync::{
         Arc,
@@ -239,6 +249,12 @@ pub struct ServerConfig {
     ///
     /// If None, falls back to "editor:normal".
     pub default_mode: Option<ModeId>,
+
+    /// Print ready signal to stdout when server is bound.
+    ///
+    /// When true, server prints `READY <ip>:<port>\n` to stdout after binding.
+    /// Used by integrated mode for process coordination.
+    pub ready_signal: bool,
 }
 
 impl Default for ServerConfig {
@@ -248,6 +264,7 @@ impl Default for ServerConfig {
             default_session_name: String::from("default"),
             modules: ModuleConfig::default(),
             default_mode: None,
+            ready_signal: false,
         }
     }
 }
@@ -337,6 +354,15 @@ impl ServerConfig {
         self
     }
 
+    /// Enable ready signal output.
+    ///
+    /// When enabled, server prints `READY <ip>:<port>\n` to stdout after binding.
+    #[must_use]
+    pub const fn with_ready_signal(mut self, enable: bool) -> Self {
+        self.ready_signal = enable;
+        self
+    }
+
     /// Get the effective default mode.
     ///
     /// Returns the configured default mode, or falls back to "editor:normal".
@@ -410,7 +436,8 @@ impl Server {
     /// Returns an error if binding fails.
     pub async fn run(&self) -> std::io::Result<()> {
         // Initialize debug infrastructure (uptime tracking, etc.)
-        debug::init();
+        // Quiet mode when ready_signal is set (no stderr output)
+        debug::init(self.config.ready_signal);
 
         // Load modules from configuration
         self.load_modules();
@@ -437,74 +464,6 @@ impl Server {
         }
     }
 
-    /// Run the server and signal when ready.
-    ///
-    /// Similar to [`run`], but sends the bound address through the provided
-    /// channel before entering the accept loop. Used by integrated mode to
-    /// coordinate server startup with TUI attachment.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if binding fails.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// let (tx, rx) = tokio::sync::oneshot::channel();
-    /// tokio::spawn(async move {
-    ///     server.run_with_ready_signal(tx).await
-    /// });
-    /// let addr = rx.await?; // Server is now listening
-    /// ```
-    pub async fn run_with_ready_signal(
-        &self,
-        ready_tx: tokio::sync::oneshot::Sender<SocketAddr>,
-    ) -> std::io::Result<()> {
-        // Initialize debug infrastructure (uptime tracking, etc.)
-        debug::init();
-
-        // Load modules from configuration
-        self.load_modules();
-
-        // Create default session
-        let default_session_id = SessionId::new(self.config.default_session_name.as_str());
-        self.ensure_default_session(&default_session_id);
-
-        match &self.config.transport {
-            TransportMode::TcpWithFallback => {
-                let listener = TransportListener::bind_tcp_with_fallback().await?;
-                let addr = listener.local_addr();
-                // Signal ready with bound address
-                if ready_tx.send(addr).is_err() {
-                    tracing::warn!("Ready signal receiver dropped before server sent address");
-                }
-                self.run_listener(listener, &default_session_id).await
-            }
-            TransportMode::Tcp { port } => {
-                let listener = TransportListener::bind_tcp(*port).await?;
-                let addr = listener.local_addr();
-                // Signal ready with bound address
-                if ready_tx.send(addr).is_err() {
-                    tracing::warn!("Ready signal receiver dropped before server sent address");
-                }
-                self.run_listener(listener, &default_session_id).await
-            }
-            #[cfg(unix)]
-            TransportMode::UnixSocket { path } => {
-                let listener = TransportListener::bind_unix(path)?;
-                // Unix sockets don't have a SocketAddr, use a placeholder
-                // The caller should use discovery for Unix sockets
-                drop(ready_tx); // Can't send meaningful address for Unix socket
-                self.run_listener(listener, &default_session_id).await
-            }
-            TransportMode::Stdio => {
-                // Stdio doesn't have an address to report
-                drop(ready_tx);
-                self.run_stdio(&default_session_id).await
-            }
-        }
-    }
-
     /// Run the server with a listener transport (TCP or Unix socket).
     ///
     /// Accepts connections in a loop and spawns a task for each client.
@@ -513,8 +472,18 @@ impl Server {
         listener: TransportListener,
         default_session_id: &SessionId,
     ) -> std::io::Result<()> {
-        // Print listening address to stderr (like tmux)
-        eprintln!("Listening on {}", listener.local_addr_string());
+        // Print ready signal or listening message
+        if self.config.ready_signal {
+            // Ready signal for process coordination (stdout)
+            // Format: READY <ip>:<port>\n
+            use std::io::Write;
+            let addr = listener.local_addr();
+            println!("READY {addr}");
+            std::io::stdout().flush().ok();
+        } else {
+            // Normal mode: print to stderr (like tmux)
+            eprintln!("Listening on {}", listener.local_addr_string());
+        }
 
         // Accept loop
         while !self.shutdown.load(Ordering::Relaxed) {
@@ -1128,6 +1097,7 @@ mod tests {
             module_dirs: vec![],
             load_modules: vec![],
             no_defaults: false,
+            ready_signal: false,
         };
 
         let config = args.into_config();
@@ -1147,6 +1117,7 @@ mod tests {
             module_dirs: vec![],
             load_modules: vec![],
             no_defaults: false,
+            ready_signal: false,
         };
 
         let config = args.into_config();
@@ -1163,6 +1134,7 @@ mod tests {
             module_dirs: vec![],
             load_modules: vec![],
             no_defaults: false,
+            ready_signal: false,
         };
 
         let config = args.into_config();
@@ -1182,6 +1154,7 @@ mod tests {
             ],
             load_modules: vec![],
             no_defaults: false,
+            ready_signal: false,
         };
 
         let config = args.into_config();
@@ -1200,6 +1173,7 @@ mod tests {
             module_dirs: vec![],
             load_modules: vec!["editor".into(), "keymap".into()],
             no_defaults: false,
+            ready_signal: false,
         };
 
         let config = args.into_config();
@@ -1218,6 +1192,7 @@ mod tests {
             module_dirs: vec![],
             load_modules: vec!["my-module".into()],
             no_defaults: true,
+            ready_signal: false,
         };
 
         let config = args.into_config();
@@ -1225,42 +1200,29 @@ mod tests {
         assert_eq!(config.modules.autoload, vec!["my-module"]);
     }
 
-    #[tokio::test]
-    async fn test_run_with_ready_signal_sends_address() {
-        use std::time::Duration;
+    #[test]
+    fn test_srv_args_into_config_with_ready_signal() {
+        let args = SrvArgs {
+            tcp: Some(9000),
+            #[cfg(unix)]
+            socket: None,
+            stdio: false,
+            module_dirs: vec![],
+            load_modules: vec![],
+            no_defaults: false,
+            ready_signal: true,
+        };
 
-        // Use port 0 to let OS assign a free port
-        let server = Server::new(ServerConfig::tcp(0));
-        let (tx, rx) = tokio::sync::oneshot::channel();
-
-        // Spawn server, wait for ready signal
-        let handle = tokio::spawn(async move { server.run_with_ready_signal(tx).await });
-
-        // Verify we receive a valid address within timeout
-        let addr = tokio::time::timeout(Duration::from_secs(5), rx)
-            .await
-            .expect("timeout waiting for ready signal")
-            .expect("ready signal channel closed");
-
-        assert!(addr.port() > 0);
-
-        // Cleanup
-        handle.abort();
+        let config = args.into_config();
+        assert!(config.ready_signal);
     }
 
-    #[tokio::test]
-    async fn test_run_with_ready_signal_continues_on_dropped_receiver() {
-        use std::time::Duration;
+    #[test]
+    fn test_server_config_with_ready_signal_builder() {
+        let config = ServerConfig::tcp(9000).with_ready_signal(true);
+        assert!(config.ready_signal);
 
-        let server = Server::new(ServerConfig::tcp(0));
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        drop(rx); // Drop receiver before server sends
-
-        // Server should not panic, just log warning and continue
-        let handle = tokio::spawn(async move { server.run_with_ready_signal(tx).await });
-
-        tokio::time::sleep(Duration::from_millis(200)).await;
-        assert!(!handle.is_finished(), "Server should still be running");
-        handle.abort();
+        let config = ServerConfig::tcp(9000).with_ready_signal(false);
+        assert!(!config.ready_signal);
     }
 }

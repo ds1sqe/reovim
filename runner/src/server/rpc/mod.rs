@@ -142,7 +142,7 @@ mod tests {
         // Server handlers
         assert!(dispatcher.has_method(SERVER_KILL));
 
-        // 16 implemented + 9 stubs + 11 debug (2 info + 4 inspect + 2 metrics + 2 log + 1 snapshot) = 37 total
-        assert_eq!(dispatcher.method_count(), 37);
+        // 16 implemented + 9 stubs + 13 debug (2 info + 4 inspect + 2 metrics + 4 log + 1 snapshot) = 39 total
+        assert_eq!(dispatcher.method_count(), 39);
     }
 }

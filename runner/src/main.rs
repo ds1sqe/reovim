@@ -5,19 +5,20 @@
 //!   reovim tui [--tcp ADDR] [--socket PATH]
 //!   reovim cli [--tcp ADDR] [--socket PATH] [--repl] `<command>`
 
-use std::{path::PathBuf, process};
+use std::{io::BufRead, path::PathBuf, process};
 
 use {
     clap::{Parser, Subcommand},
     runner::{
         Server, ServerConfig,
         client::{
-            cli::{self, CliAction, CliArgs},
-            common::ConnectionConfig,
+            cli::{self, CliAction, CliArgs, OutputFormat},
+            common::{ConnectionConfig, rpc::ServerMessage},
             tui::{TuiApp, TuiArgs},
         },
         server::SrvArgs,
     },
+    serde_json::Value,
 };
 
 /// Main CLI arguments.
@@ -136,54 +137,127 @@ fn build_legacy_server_config(args: &Args) -> ServerConfig {
     }
 }
 
-/// Run integrated mode: spawn server in background, attach TUI.
+/// Run integrated mode: spawn server as separate process, attach TUI.
 ///
 /// This is the default behavior when `reovim` is invoked without arguments.
 /// Similar to tmux, the server continues running after TUI exits.
-#[allow(unused_variables)] // files will be used in Phase 4
+///
+/// # Process Architecture
+///
+/// ```text
+/// reovim (parent)              reovim server (child)
+/// └── TUI Client               └── Server process
+///     └── TCP connect ←────────── READY 127.0.0.1:12521
+/// ```
+#[allow(unused_variables)] // files will be used later
 fn run_integrated(files: &[PathBuf]) {
-    use {runner::client::common::ConnectionConfig, std::net::SocketAddr, tokio::sync::oneshot};
+    use std::{
+        io::BufReader,
+        process::{Command, Stdio},
+        time::Duration,
+    };
 
-    let rt = tokio::runtime::Builder::new_multi_thread()
+    use runner::client::common::ConnectionConfig;
+
+    // 1. Get current executable path
+    let exe = std::env::current_exe().expect("Failed to get current executable path");
+
+    // 2. Spawn server as child process
+    let mut child = Command::new(&exe)
+        .args(["server", "--tcp", "0", "--ready-signal"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null()) // Suppress server logs
+        .spawn()
+        .expect("Failed to spawn server process");
+
+    // 3. Read ready signal from child stdout
+    let stdout = child.stdout.take().expect("Failed to get child stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let addr = match read_ready_signal(&mut reader, Duration::from_secs(5)) {
+        Ok(addr) => addr,
+        Err(e) => {
+            eprintln!("{e}");
+            // Try to kill the child if it's still running
+            let _ = child.kill();
+            process::exit(1);
+        }
+    };
+
+    // 4. Detach from child process - let it continue running independently
+    // On Unix, the child becomes an orphan and gets adopted by init
+    // We don't wait() on it, so it won't become a zombie
+    drop(child);
+
+    // 5. Connect TUI to the server
+    let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .expect("Failed to create runtime");
 
     rt.block_on(async {
-        // 1. Create oneshot channel for server ready signal
-        let (tx, rx) = oneshot::channel::<SocketAddr>();
-
-        // 2. Spawn server task in background
-        let server = Server::new(ServerConfig::tcp_with_fallback());
-        tokio::spawn(async move {
-            if let Err(e) = server.run_with_ready_signal(tx).await {
-                eprintln!("Server error: {e}");
-            }
-        });
-
-        // 3. Wait for server to be ready and get bound address
-        let Ok(addr) = rx.await else {
-            eprintln!("Server failed to start");
-            process::exit(1);
-        };
-
-        // 4. Connect TUI to the server
         let config = ConnectionConfig::tcp(addr.ip().to_string(), addr.port());
         match TuiApp::connect(&config).await {
             Ok(mut app) => {
-                // 5. Run TUI (blocks until user exits)
                 if let Err(e) = app.run().await {
                     eprintln!("TUI error: {e}");
                     process::exit(1);
                 }
-                // 6. TUI exited - server continues in background (graceful detach)
+                // TUI exited - server continues in background (graceful detach)
             }
             Err(e) => {
-                eprintln!("Connection failed: {e}");
+                eprintln!("Failed to connect to server at {addr}: {e}");
                 process::exit(1);
             }
         }
     });
+}
+
+/// Parse ready signal from server stdout.
+///
+/// Reads lines until finding `READY <ip>:<port>` format.
+/// Returns error if timeout or invalid format.
+fn read_ready_signal<R: BufRead>(
+    reader: &mut R,
+    timeout: std::time::Duration,
+) -> Result<std::net::SocketAddr, String> {
+    use std::time::Instant;
+
+    let start = Instant::now();
+    let mut line = String::new();
+
+    loop {
+        // Check timeout
+        if start.elapsed() > timeout {
+            return Err("Server failed to start within 5 seconds".to_string());
+        }
+
+        line.clear();
+        match reader.read_line(&mut line) {
+            Ok(0) => {
+                // EOF - server exited
+                return Err("Server exited unexpectedly before ready signal".to_string());
+            }
+            Ok(_) => {
+                // Try to parse ready signal
+                if let Some(addr) = parse_ready_signal(&line) {
+                    return Ok(addr);
+                }
+                // Not a ready signal, continue reading
+            }
+            Err(e) => {
+                return Err(format!("Failed to read server output: {e}"));
+            }
+        }
+    }
+}
+
+/// Parse a ready signal line into a socket address.
+///
+/// Expected format: `READY <ip>:<port>\n`
+fn parse_ready_signal(line: &str) -> Option<std::net::SocketAddr> {
+    line.strip_prefix("READY ")
+        .and_then(|addr| addr.trim().parse().ok())
 }
 
 fn run_server(config: ServerConfig) {
@@ -233,6 +307,7 @@ fn run_repl(config: &ConnectionConfig) {
     }
 }
 
+#[allow(clippy::too_many_lines)] // CLI dispatch function with many action variants
 fn run_cli(config: &ConnectionConfig, action: &CliAction, format: &str) {
     use {
         cli::{
@@ -314,7 +389,33 @@ fn run_cli(config: &ConnectionConfig, action: &CliAction, format: &str) {
             CliAction::LogLevel { level } => {
                 cmd::cmd_log_level(&mut client, level.as_deref()).await
             }
-            CliAction::LogTail { count } => cmd::cmd_log_tail(&mut client, *count).await,
+            CliAction::LogTail {
+                count,
+                level,
+                target,
+                grep,
+                follow,
+            } => {
+                if *follow {
+                    run_log_follow(
+                        &mut client,
+                        level.as_deref(),
+                        target.as_deref(),
+                        grep.as_deref(),
+                        output_fmt,
+                    )
+                    .await
+                } else {
+                    cmd::cmd_log_tail(
+                        &mut client,
+                        *count,
+                        level.as_deref(),
+                        target.as_deref(),
+                        grep.as_deref(),
+                    )
+                    .await
+                }
+            }
             CliAction::Snapshot => cmd::cmd_snapshot(&mut client).await,
         };
 
@@ -327,6 +428,7 @@ fn run_cli(config: &ConnectionConfig, action: &CliAction, format: &str) {
                     CliAction::Screen => "screen",
                     CliAction::Content { .. } => "content",
                     CliAction::Buffers => "buffers",
+                    CliAction::LogTail { .. } => "log-tail",
                     _ => "",
                 };
                 let out = format_output_for_command(&v, output_fmt, command);
@@ -338,6 +440,123 @@ fn run_cli(config: &ConnectionConfig, action: &CliAction, format: &str) {
             }
         }
     });
+}
+
+/// Run log follow mode: subscribe to log notifications and stream until Ctrl+C.
+async fn run_log_follow(
+    client: &mut runner::client::common::rpc::RpcClient,
+    level: Option<&str>,
+    target: Option<&str>,
+    grep: Option<&str>,
+    format: OutputFormat,
+) -> Result<Value, runner::client::common::rpc::RpcClientError> {
+    // Subscribe with level filter
+    let result: Value = cli::cmd_log_subscribe(client, level).await?;
+    let sub_id = result
+        .get("subscription_id")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| {
+            runner::client::common::rpc::RpcClientError::UnexpectedResponse(
+                "missing subscription_id".to_string(),
+            )
+        })?;
+
+    eprintln!("Following logs (Ctrl+C to stop)...");
+
+    // Read notifications until interrupted
+    let ctrl_c = tokio::signal::ctrl_c();
+    tokio::pin!(ctrl_c);
+
+    loop {
+        tokio::select! {
+            _ = &mut ctrl_c => {
+                // Unsubscribe on Ctrl+C
+                let _ = cli::cmd_log_unsubscribe(client, sub_id).await;
+                eprintln!("\nStopped.");
+                break;
+            }
+            msg = client.read_message() => {
+                match msg {
+                    Ok(ServerMessage::Notification(notification)) => {
+                        // Only process LOG_ENTRY notifications
+                        if notification.method == "LOG_ENTRY" {
+                            // Apply client-side filters (target, grep)
+                            if should_display_log(&notification.params, target, grep) {
+                                print_log_entry(&notification.params, format);
+                            }
+                        }
+                        // Ignore other notification types
+                    }
+                    Ok(ServerMessage::Response(_)) => {
+                        // Ignore responses (shouldn't happen during streaming)
+                    }
+                    Err(e) => {
+                        eprintln!("Stream error: {e}");
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(serde_json::json!({"status": "stopped"}))
+}
+
+/// Check if log entry passes client-side filters.
+fn should_display_log(params: &Value, target: Option<&str>, grep: Option<&str>) -> bool {
+    if let Some(target_filter) = target
+        && let Some(entry_target) = params.get("target").and_then(Value::as_str)
+        && !entry_target.contains(target_filter)
+    {
+        return false;
+    }
+
+    if let Some(grep_filter) = grep
+        && let Some(message) = params.get("message").and_then(Value::as_str)
+        && !message.to_lowercase().contains(&grep_filter.to_lowercase())
+    {
+        return false;
+    }
+
+    true
+}
+
+/// Print a log entry to stdout with color-coded level.
+fn print_log_entry(params: &Value, format: OutputFormat) {
+    match format {
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string(params).unwrap_or_default());
+        }
+        OutputFormat::Plain => {
+            let timestamp = params
+                .get("timestamp")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let level = params
+                .get("level")
+                .and_then(|v| v.as_str())
+                .unwrap_or("INFO");
+            let target = params.get("target").and_then(|v| v.as_str()).unwrap_or("");
+            let message = params.get("message").and_then(|v| v.as_str()).unwrap_or("");
+
+            // Color-coded level if stdout is a tty
+            let use_color = std::io::IsTerminal::is_terminal(&std::io::stdout());
+            let level_str = if use_color {
+                match level.to_uppercase().as_str() {
+                    "ERROR" => format!("\x1b[31m{level:5}\x1b[0m"), // red
+                    "WARN" => format!("\x1b[33m{level:5}\x1b[0m"),  // yellow
+                    "INFO" => format!("\x1b[32m{level:5}\x1b[0m"),  // green
+                    "DEBUG" => format!("\x1b[36m{level:5}\x1b[0m"), // cyan
+                    "TRACE" => format!("\x1b[90m{level:5}\x1b[0m"), // gray
+                    _ => format!("{level:5}"),
+                }
+            } else {
+                format!("{level:5}")
+            };
+
+            println!("{timestamp} {level_str} {target}: {message}");
+        }
+    }
 }
 
 #[cfg(test)]
@@ -422,5 +641,82 @@ mod tests {
         // --help should cause parse to fail with specific error
         let result = Args::try_parse_from(["reovim", "--help"]);
         assert!(result.is_err());
+    }
+
+    // Tests for parse_ready_signal
+
+    #[test]
+    fn test_parse_ready_signal_valid_localhost() {
+        let addr = parse_ready_signal("READY 127.0.0.1:12521\n");
+        assert!(addr.is_some());
+        let addr = addr.unwrap();
+        assert_eq!(addr.ip().to_string(), "127.0.0.1");
+        assert_eq!(addr.port(), 12521);
+    }
+
+    #[test]
+    fn test_parse_ready_signal_valid_any() {
+        let addr = parse_ready_signal("READY 0.0.0.0:9000\n");
+        assert!(addr.is_some());
+        let addr = addr.unwrap();
+        assert_eq!(addr.ip().to_string(), "0.0.0.0");
+        assert_eq!(addr.port(), 9000);
+    }
+
+    #[test]
+    fn test_parse_ready_signal_invalid_prefix() {
+        let addr = parse_ready_signal("INVALID\n");
+        assert!(addr.is_none());
+    }
+
+    #[test]
+    fn test_parse_ready_signal_invalid_address() {
+        let addr = parse_ready_signal("READY not_an_addr\n");
+        assert!(addr.is_none());
+    }
+
+    #[test]
+    fn test_parse_ready_signal_no_newline() {
+        // Should still work without trailing newline
+        let addr = parse_ready_signal("READY 127.0.0.1:8080");
+        assert!(addr.is_some());
+        assert_eq!(addr.unwrap().port(), 8080);
+    }
+
+    // Tests for read_ready_signal
+
+    #[test]
+    fn test_read_ready_signal_immediate() {
+        use std::{io::Cursor, time::Duration};
+
+        let data = "READY 127.0.0.1:12521\n";
+        let mut reader = Cursor::new(data);
+        let result = read_ready_signal(&mut reader, Duration::from_secs(1));
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().port(), 12521);
+    }
+
+    #[test]
+    fn test_read_ready_signal_with_prefix_lines() {
+        use std::{io::Cursor, time::Duration};
+
+        // Server might output some lines before READY
+        let data = "Loading modules...\nInitializing...\nREADY 127.0.0.1:9999\n";
+        let mut reader = Cursor::new(data);
+        let result = read_ready_signal(&mut reader, Duration::from_secs(1));
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().port(), 9999);
+    }
+
+    #[test]
+    fn test_read_ready_signal_eof() {
+        use std::{io::Cursor, time::Duration};
+
+        // EOF before ready signal
+        let data = "";
+        let mut reader = Cursor::new(data);
+        let result = read_ready_signal(&mut reader, Duration::from_secs(1));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("exited unexpectedly"));
     }
 }

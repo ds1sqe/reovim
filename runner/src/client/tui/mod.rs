@@ -10,9 +10,19 @@ use crate::client::common::ConnectionConfig;
 
 pub mod app;
 pub mod input;
+pub mod log_buffer;
+pub mod log_panel;
+pub mod log_render;
 pub mod render;
 
-pub use {app::TuiApp, input::InputHandler, render::Renderer};
+pub use {
+    app::TuiApp,
+    input::InputHandler,
+    log_buffer::{LevelColor, TuiLogBuffer, TuiLogEntry},
+    log_panel::LogPanelState,
+    log_render::{format_entry, render_panel},
+    render::Renderer,
+};
 
 /// TUI mode CLI arguments.
 ///

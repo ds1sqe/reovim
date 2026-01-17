@@ -523,13 +523,32 @@ Query and control logging on a running server via CLI:
 # Get current log level
 reovim cli log-level
 
-# Set log level (trace, debug, info, warn, error)
+# Set log level dynamically (trace, debug, info, warn, error, off)
 reovim cli log-level debug
 
 # Get recent log entries (default: 50)
 reovim cli log-tail
-reovim cli log-tail 100
+reovim cli log-tail --count 100
+
+# Filter by level (shows entries >= specified level)
+reovim cli log-tail --level warn
+
+# Filter by target module
+reovim cli log-tail --target runner::server
+
+# Search for text in messages (case-insensitive)
+reovim cli log-tail --grep "connection"
+
+# Combine filters
+reovim cli log-tail --level info --target runner --grep error
+
+# Follow mode - stream logs in real-time (Ctrl+C to stop)
+reovim cli log-tail --follow
+reovim cli log-tail --follow --level warn
 ```
+
+Output is color-coded when stdout is a TTY:
+- ERROR (red), WARN (yellow), INFO (green), DEBUG (cyan), TRACE (gray)
 
 ### Debugging Flaky Tests
 

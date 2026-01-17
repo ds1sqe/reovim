@@ -195,6 +195,18 @@ pub struct LogTailParams {
     /// Number of log entries to return (default: 50).
     #[serde(default = "default_log_count")]
     pub count: usize,
+
+    /// Filter by minimum log level (trace, debug, info, warn, error).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub level: Option<String>,
+
+    /// Filter by target module (substring match).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+
+    /// Filter by message content (substring match, case-insensitive).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub grep: Option<String>,
 }
 
 const fn default_log_count() -> usize {
@@ -205,6 +217,9 @@ impl Default for LogTailParams {
     fn default() -> Self {
         Self {
             count: default_log_count(),
+            level: None,
+            target: None,
+            grep: None,
         }
     }
 }
@@ -229,6 +244,35 @@ pub struct LogTailResult {
     pub entries: Vec<LogEntryResult>,
     /// Number of entries dropped due to buffer overflow.
     pub overflow_count: u64,
+}
+
+/// Parameters for `debug/log_subscribe` method.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct LogSubscribeParams {
+    /// Minimum log level to receive (default: info).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub level: Option<String>,
+}
+
+/// Result for `debug/log_subscribe` method.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogSubscribeResult {
+    /// Unique subscription ID for unsubscribing.
+    pub subscription_id: u64,
+}
+
+/// Parameters for `debug/log_unsubscribe` method.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogUnsubscribeParams {
+    /// Subscription ID to cancel.
+    pub subscription_id: u64,
+}
+
+/// Result for `debug/log_unsubscribe` method.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogUnsubscribeResult {
+    /// Whether the subscription was found and removed.
+    pub success: bool,
 }
 
 // ============================================================================
@@ -434,6 +478,56 @@ mod tests {
     fn test_log_tail_params_default() {
         let params = LogTailParams::default();
         assert_eq!(params.count, 50);
+        assert!(params.level.is_none());
+        assert!(params.target.is_none());
+        assert!(params.grep.is_none());
+    }
+
+    #[test]
+    fn test_log_tail_params_with_filters() {
+        let params = LogTailParams {
+            count: 100,
+            level: Some("warn".to_string()),
+            target: Some("runner::server".to_string()),
+            grep: Some("error".to_string()),
+        };
+        let json = serde_json::to_string(&params).unwrap();
+        assert!(json.contains("\"count\":100"));
+        assert!(json.contains("\"level\":\"warn\""));
+        assert!(json.contains("\"target\":\"runner::server\""));
+        assert!(json.contains("\"grep\":\"error\""));
+    }
+
+    #[test]
+    fn test_log_tail_params_partial_filters() {
+        // Only level filter
+        let params = LogTailParams {
+            count: 50,
+            level: Some("info".to_string()),
+            target: None,
+            grep: None,
+        };
+        let json = serde_json::to_string(&params).unwrap();
+        assert!(json.contains("\"level\":\"info\""));
+        assert!(!json.contains("\"target\""));
+        assert!(!json.contains("\"grep\""));
+    }
+
+    #[test]
+    fn test_log_tail_params_deserialization() {
+        // With all filters
+        let json = r#"{"count": 25, "level": "debug", "target": "mymod", "grep": "test"}"#;
+        let params: LogTailParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.count, 25);
+        assert_eq!(params.level.as_deref(), Some("debug"));
+        assert_eq!(params.target.as_deref(), Some("mymod"));
+        assert_eq!(params.grep.as_deref(), Some("test"));
+
+        // With default count
+        let json = r#"{"level": "warn"}"#;
+        let params: LogTailParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.count, 50);
+        assert_eq!(params.level.as_deref(), Some("warn"));
     }
 
     #[test]
@@ -462,5 +556,51 @@ mod tests {
         };
         let json = serde_json::to_string(&params).unwrap();
         assert!(json.contains("\"level\":\"debug\""));
+    }
+
+    // Phase 1 tests for #332 - subscription types
+
+    #[test]
+    fn test_log_subscribe_params_serialization() {
+        // Default (no level filter)
+        let params = LogSubscribeParams::default();
+        let json = serde_json::to_string(&params).unwrap();
+        assert_eq!(json, "{}");
+
+        // With level filter
+        let params = LogSubscribeParams {
+            level: Some("warn".to_string()),
+        };
+        let json = serde_json::to_string(&params).unwrap();
+        assert!(json.contains("\"level\":\"warn\""));
+    }
+
+    #[test]
+    fn test_log_subscribe_result_serialization() {
+        let result = LogSubscribeResult {
+            subscription_id: 42,
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("\"subscription_id\":42"));
+    }
+
+    #[test]
+    fn test_log_unsubscribe_params_serialization() {
+        let params = LogUnsubscribeParams {
+            subscription_id: 123,
+        };
+        let json = serde_json::to_string(&params).unwrap();
+        assert!(json.contains("\"subscription_id\":123"));
+    }
+
+    #[test]
+    fn test_log_unsubscribe_result_serialization() {
+        let result = LogUnsubscribeResult { success: true };
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("\"success\":true"));
+
+        let result = LogUnsubscribeResult { success: false };
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("\"success\":false"));
     }
 }
