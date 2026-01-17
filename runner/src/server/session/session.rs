@@ -324,11 +324,15 @@ impl Session {
                 // For now, just return None - full implementation comes in Phase 5.
                 None
             }
-            CommandResult::OperatorRange { .. } => {
-                // Text object commands return ranges for operator-pending mode.
-                // The actual operator execution is handled by the message loop
-                // which has access to the pending operator state.
-                // This result type signals the range but execution happens elsewhere.
+            CommandResult::OperatorRange {
+                start,
+                end,
+                is_linewise,
+            } => {
+                // Motion/text-object returned a range for the pending operator.
+                // Execute the pending operator (d, y, c) with this range.
+                tracing::debug!(?start, ?end, is_linewise, "OperatorRange received (session)");
+                self.execute_pending_operator(start, end, is_linewise).await;
                 None
             }
             CommandResult::ReselectVisual => {
@@ -357,12 +361,22 @@ impl Session {
                 operator_id,
                 register,
             } => {
-                // Enter-operator-pending actions are handled by the event loop.
-                tracing::info!(
-                    operator_id,
-                    ?register,
-                    "Enter operator-pending action requested (session)"
-                );
+                // Enter operator-pending mode: set pending operator and push mode.
+                use {crate::server::app::PendingOperator, reovim_kernel::api::v1::ModuleId};
+
+                let pending = PendingOperator::new(operator_id)
+                    .with_count(1) // Default count; RPC handler manages count separately
+                    .with_register(register);
+
+                let mut state = self.state.write().await;
+                state.app.set_pending_operator(pending);
+
+                // Push operator-pending mode onto the stack
+                let mode_id = ModeId::new(ModuleId::new("editor"), "operator-pending");
+                state.app.mode_stack.push(mode_id);
+                drop(state);
+
+                tracing::debug!(operator_id, ?register, "Entered operator-pending mode (session)");
                 None
             }
         }
@@ -525,6 +539,105 @@ impl Session {
         // Note: ; and , do NOT update last_find (per Vim behavior)
 
         state.app.clear_pending_keys();
+    }
+
+    /// Execute the pending operator with the given range.
+    ///
+    /// Called when a motion command returns `CommandResult::OperatorRange`.
+    /// This takes the pending operator state, executes the operator on the range,
+    /// and returns to normal mode (or insert mode for change operator).
+    async fn execute_pending_operator(
+        &self,
+        start: reovim_kernel::api::v1::Position,
+        end: reovim_kernel::api::v1::Position,
+        is_linewise: bool,
+    ) {
+        use {
+            reovim_kernel::api::v1::ModuleId,
+            reovim_module_operators::{
+                ChangeOperator, DeleteOperator, Operator, OperatorContext, Range, YankOperator,
+            },
+        };
+
+        let mut state = self.state.write().await;
+
+        // Take the pending operator - this clears the state
+        let Some(pending) = state.app.take_pending_operator() else {
+            tracing::warn!("OperatorRange received but no pending operator");
+            return;
+        };
+
+        // Get the active buffer
+        let Some(buffer_id) = state.app.active_buffer else {
+            tracing::warn!("No active buffer for operator execution");
+            state.app.mode_stack.pop(); // Pop operator-pending mode
+            return;
+        };
+
+        // Create the range (normalize it so start <= end)
+        let range = if is_linewise {
+            Range::linewise(start, end).normalized()
+        } else {
+            Range::new(start, end).normalized()
+        };
+
+        // Skip empty ranges (no-op)
+        if range.is_empty() && !is_linewise {
+            tracing::debug!("Empty range, skipping operator");
+            state.app.mode_stack.pop(); // Pop operator-pending mode
+            return;
+        }
+
+        // Get the operator
+        let operator: Box<dyn Operator> = match pending.operator_id {
+            "delete" => Box::new(DeleteOperator),
+            "yank" => Box::new(YankOperator),
+            "change" => Box::new(ChangeOperator),
+            unknown => {
+                tracing::warn!(operator = unknown, "Unknown operator");
+                state.app.mode_stack.pop(); // Pop operator-pending mode
+                return;
+            }
+        };
+
+        // Execute the operator
+        let operator_result = {
+            let mut op_ctx = OperatorContext {
+                kernel: &state.app.kernel,
+                buffer_id,
+                register: pending.register,
+                count: pending.count,
+            };
+            operator.execute(&mut op_ctx, range)
+        };
+
+        match operator_result {
+            Ok(()) => {
+                tracing::debug!(
+                    operator = pending.operator_id,
+                    ?range,
+                    "Operator executed successfully (session)"
+                );
+
+                // For change operator, enter insert mode
+                if pending.operator_id == "change" {
+                    let insert_mode = ModeId::new(ModuleId::new("editor"), "insert");
+                    state.app.mode_stack.set(insert_mode);
+                    tracing::debug!("Entered insert mode after change operator");
+                } else {
+                    // For other operators, pop back to normal mode
+                    state.app.mode_stack.pop();
+                    tracing::debug!(
+                        mode = %state.app.current_mode(),
+                        "Returned from operator-pending mode"
+                    );
+                }
+            }
+            Err(err) => {
+                tracing::error!(error = %err, "Operator execution failed");
+                state.app.mode_stack.pop(); // Pop operator-pending mode
+            }
+        }
     }
 
     /// Set pending char state for commands waiting for character input.

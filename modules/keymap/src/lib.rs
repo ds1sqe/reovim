@@ -26,6 +26,7 @@
 
 use {reovim_kernel::api::v1::*, reovim_module_macros::declare_module};
 
+mod commandline;
 mod insert;
 mod interactor;
 mod normal;
@@ -84,6 +85,7 @@ impl Module for KeymapModule {
         bindings.extend(insert::bindings());
         bindings.extend(visual::bindings());
         bindings.extend(operator_pending::bindings());
+        bindings.extend(commandline::bindings());
         bindings
     }
 }
@@ -98,6 +100,7 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
     all.extend(insert::bindings());
     all.extend(visual::bindings());
     all.extend(operator_pending::bindings());
+    all.extend(commandline::bindings());
     all
 }
 

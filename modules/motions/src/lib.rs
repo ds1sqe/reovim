@@ -78,7 +78,7 @@ mod tests {
     #[test]
     fn test_line_commands_count() {
         let cmds = line::all_commands();
-        assert_eq!(cmds.len(), 5); // 0, $, ^, gg, G
+        assert_eq!(cmds.len(), 6); // 0, $, ^, gg, G, whole-line
     }
 
     #[test]

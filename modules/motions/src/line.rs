@@ -299,6 +299,74 @@ impl CommandHandler for DocumentEnd {
 }
 
 // =============================================================================
+// Whole Line Motion (for operator doubling: dd, yy, cc)
+// =============================================================================
+
+/// Whole line motion for operator doubling (dd, yy, cc).
+///
+/// In operator-pending mode, this returns the current line as a linewise range.
+/// This enables vim's pattern where pressing the operator key twice operates
+/// on the current line (e.g., 'd' enters operator-pending, then 'd' again
+/// provides the "whole line" motion).
+///
+/// In normal mode, this is a no-op since there's no operator to apply.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct WholeLine;
+
+impl Command for WholeLine {
+    fn id(&self) -> CommandId {
+        CommandId::new(MOTIONS_MODULE, "whole-line")
+    }
+
+    fn description(&self) -> &'static str {
+        "Whole line motion (for operator doubling)"
+    }
+
+    fn args(&self) -> Vec<ArgSpec> {
+        vec![ArgSpec::optional(
+            "count",
+            ArgKind::Count,
+            "Number of lines",
+        )]
+    }
+}
+
+impl CommandHandler for WholeLine {
+    #[allow(clippy::cast_possible_truncation)]
+    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+        // This motion only makes sense in operator-pending mode
+        if !args.is_operator_pending() {
+            return CommandResult::Success; // No-op in normal mode
+        }
+
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+
+        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        let buffer = buffer_arc.read();
+        let current_line = buffer.position().line;
+        let line_count = buffer.line_count();
+
+        // Count defaults to 1, meaning the current line only
+        // With count > 1, operates on multiple lines
+        let count = args.count().unwrap_or(1);
+        let end_line = (current_line + count).min(line_count).saturating_sub(1);
+
+        drop(buffer);
+
+        // Return linewise range covering the current line(s)
+        let start = reovim_kernel::api::v1::Position::new(current_line, 0);
+        let end = reovim_kernel::api::v1::Position::new(end_line, 0);
+
+        CommandResult::operator_range(start, end, true) // true = linewise
+    }
+}
+
+// =============================================================================
 // Command Registration
 // =============================================================================
 
@@ -311,6 +379,7 @@ pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
         Box::new(FirstNonBlank),
         Box::new(DocumentStart),
         Box::new(DocumentEnd),
+        Box::new(WholeLine),
     ]
 }
 
@@ -694,6 +763,6 @@ mod tests {
     #[test]
     fn test_all_commands_count() {
         let cmds = all_commands();
-        assert_eq!(cmds.len(), 5); // 0, $, ^, gg, G
+        assert_eq!(cmds.len(), 6); // 0, $, ^, gg, G, whole-line
     }
 }

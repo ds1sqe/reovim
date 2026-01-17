@@ -45,7 +45,8 @@ pub use {
     file::WriteBufferCommand,
     insert_edit::{InsertNewline, InsertTab},
     mode::{
-        EnterInsertMode, EnterInsertModeAppend, EnterWindowMode, ExitOperatorPending, ExitToNormal,
+        EnterCommandLineMode, EnterInsertMode, EnterInsertModeAppend, EnterWindowMode,
+        ExitCommandLineMode, ExitOperatorPending, ExitToNormal,
     },
     mode_entry::{EnterInsertEndOfLine, EnterInsertFirstNonBlank, OpenLineAbove, OpenLineBelow},
     operators::{
@@ -88,6 +89,8 @@ pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
         Box::new(ExitToNormal),
         Box::new(EnterWindowMode),
         Box::new(ExitOperatorPending),
+        Box::new(EnterCommandLineMode),
+        Box::new(ExitCommandLineMode),
         // Insert mode edits
         Box::new(InsertNewline),
         Box::new(InsertTab),
@@ -153,6 +156,8 @@ pub fn mode_commands() -> Vec<Box<dyn CommandHandler>> {
         Box::new(ExitToNormal),
         Box::new(EnterWindowMode),
         Box::new(ExitOperatorPending),
+        Box::new(EnterCommandLineMode),
+        Box::new(ExitCommandLineMode),
     ]
 }
 
@@ -338,10 +343,10 @@ mod tests {
     #[test]
     fn test_all_commands_count() {
         let cmds = all_commands();
-        // 4 cursor + 2 display + 9 mode + 2 insert-edit + 5 enter-operator
+        // 4 cursor + 2 display + 11 mode + 2 insert-edit + 5 enter-operator
         // + 5 delete + 1 yank + 2 paste + 2 change + 2 undo + 1 replace_char
-        // + 1 repeat + 1 write = 37
-        assert_eq!(cmds.len(), 37);
+        // + 1 repeat + 1 write = 39
+        assert_eq!(cmds.len(), 39);
     }
 
     #[test]
@@ -359,7 +364,7 @@ mod tests {
     #[test]
     fn test_mode_commands_count() {
         let cmds = mode_commands();
-        assert_eq!(cmds.len(), 9);
+        assert_eq!(cmds.len(), 11);
     }
 
     // =========================================================================

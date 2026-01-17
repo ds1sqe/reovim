@@ -87,6 +87,7 @@ fn accumulate_count_digit(key: &KeyEvent, pending_count: &mut Option<usize>) {
 ///
 /// This function will not panic as `InputKeysResult` serialization is infallible.
 #[must_use]
+#[allow(clippy::too_many_lines)]
 pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
     Box::pin(async move {
         // Parse params
@@ -136,6 +137,8 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
             let mode = ctx.session.current_mode().await;
             let mode_name = mode.name();
 
+            tracing::debug!(?key, mode = %mode, mode_name, "Processing key");
+
             // Check for count prefix (digits 1-9, or 0 if already have count)
             if is_count_digit(key, pending_count, mode_name) {
                 accumulate_count_digit(key, &mut pending_count);
@@ -145,9 +148,12 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
             pending.push(*key);
 
             let lookup_result = ctx.session.lookup_keys(&mode, &pending).await;
+            tracing::debug!(?lookup_result, pending = ?pending.to_string(), "Keymap lookup result");
 
             match &lookup_result {
                 KeyLookupResult::Found(cmd_id) => {
+                    tracing::debug!(cmd_id = %cmd_id, "Found command, executing");
+
                     // Build command context with count if we have one
                     let mut cmd_ctx = reovim_driver_command::CommandContext::default();
                     if let Some(count) = pending_count.take() {
@@ -160,7 +166,10 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
 
                     // Execute the command
                     if let Some(cmd_result) = ctx.session.execute_command(cmd_id, &cmd_ctx).await {
+                        tracing::debug!(?cmd_result, "Command executed, handling result");
                         ctx.session.handle_command_result(cmd_result).await;
+                    } else {
+                        tracing::warn!(cmd_id = %cmd_id, "Command not found in registry");
                     }
 
                     // Apply any pending mode change from ModeChanged events

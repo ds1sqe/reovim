@@ -382,12 +382,33 @@ mod tests {
         registry.register_str(mode.clone(), "g", test_command("goto"));
         registry.register_str(mode.clone(), "gg", test_command("goto-top"));
 
-        // Single `g` is a prefix of `gg`, so we return Prefix (vim-style wait for more keys)
+        // Single `g` is a prefix of `gg`, so return Prefix even though there's an exact match.
+        // This implements vim-style "wait for more keys" behavior for multi-key sequences.
         let g = KeySequence::parse("g").unwrap();
         let result = registry.lookup(&mode, &g);
         assert!(result.is_prefix());
 
-        // `gg` is an exact match with no longer prefix
+        // `gg` is an exact match (and not a prefix of anything longer)
+        let gg = KeySequence::parse("gg").unwrap();
+        let result = registry.lookup(&mode, &gg);
+        assert!(result.is_found());
+        assert_eq!(result.command_id().unwrap().name(), "goto-top");
+    }
+
+    #[test]
+    fn test_keymap_registry_prefix_only() {
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+
+        // Register only `gg` (no binding for `g` alone)
+        registry.register_str(mode.clone(), "gg", test_command("goto-top"));
+
+        // Single `g` has no exact match but is a prefix of `gg` - return Prefix
+        let g = KeySequence::parse("g").unwrap();
+        let result = registry.lookup(&mode, &g);
+        assert!(result.is_prefix());
+
+        // `gg` is an exact match
         let gg = KeySequence::parse("gg").unwrap();
         let result = registry.lookup(&mode, &gg);
         assert!(result.is_found());

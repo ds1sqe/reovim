@@ -24,7 +24,10 @@ pub use error::EventLoopError;
 
 use {
     reovim_driver_command::{CommandContext, CommandResult, UndoAction},
-    reovim_driver_input::{FallbackResult, InputFallbackHandler, KeyEvent},
+    reovim_driver_input::{
+        FallbackResult, InputFallbackHandler, KeyEvent, ModeState, ModeTransition, PopResult,
+        ResolveResult,
+    },
     reovim_kernel::{
         api::v1::{EventResult, ModeId, events::ModeChanged},
         profile_scope,
@@ -37,6 +40,8 @@ use super::{
     app::{FindType, PendingCharOp},
     registry::{CommandRegistry, KeyLookupResult, KeymapRegistry, ModeRegistry},
 };
+
+use reovim_module_editor::ResolverRegistry;
 
 /// Main event loop for the runner.
 ///
@@ -115,6 +120,13 @@ pub struct EventLoop<F: InputFallbackHandler<AppState>> {
     /// - `Some('"')`: Waiting for register character (sentinel)
     /// - `Some('a'..'z')`: Register selected, apply to next command
     pending_register: Option<char>,
+
+    /// Registry for mode key resolvers.
+    ///
+    /// When set, the event loop will use resolvers to handle key input
+    /// instead of the traditional keymap lookup. This enables the flexible
+    /// mode system where modules can define their own key handling policy.
+    resolver_registry: Option<ResolverRegistry>,
 }
 
 impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
@@ -163,7 +175,19 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
             pending_mode_change,
             pending_count: None,
             pending_register: None,
+            resolver_registry: None,
         }
+    }
+
+    /// Set a resolver registry for mode-specific key handling.
+    ///
+    /// When set, the event loop will use resolvers to handle key input
+    /// for modes that have registered resolvers, enabling the flexible
+    /// mode system.
+    #[must_use]
+    pub fn with_resolver_registry(mut self, registry: ResolverRegistry) -> Self {
+        self.resolver_registry = Some(registry);
+        self
     }
 
     /// Set a custom key reader for testing.
@@ -244,6 +268,19 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
             self.handle_pending_char(key);
             return;
         }
+
+        // Try resolver-based key handling if resolver registry is configured.
+        // This enables the flexible mode system where modules define key handling policy.
+        if let Some(result) = self.try_resolver(&key)
+            && self.handle_resolve_result(result, key)
+        {
+            return;
+        }
+        // Fall through to traditional keymap lookup if NotHandled
+
+        // --- Legacy keymap-based handling (fallback) ---
+        // The following code handles keys when no resolver is configured or
+        // when the resolver returns NotHandled.
 
         // Check for register prefix waiting for character
         if self.is_waiting_for_register() {
@@ -583,6 +620,183 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
                 tracing::info!(mode = %mode_name, "Set mode on stack");
                 self.last_error = None;
             }
+        }
+    }
+
+    /// Try to resolve a key event using the resolver registry.
+    ///
+    /// Returns `Some(result)` if a resolver handled the key, `None` if:
+    /// - No resolver registry is configured
+    /// - No resolver is registered for the current mode
+    fn try_resolver(&self, key: &KeyEvent) -> Option<ResolveResult> {
+        use reovim_kernel::api::v1::{CommandId, ModuleId};
+
+        let registry = self.resolver_registry.as_ref()?;
+        let mode = self.app.current_mode();
+        let mut mode_state = ModeState::new(mode.clone());
+
+        // Copy transition context if in operator-pending mode
+        if let Some(pending) = self.app.pending_operator() {
+            // Convert operator_id string to CommandId
+            let operator_cmd = CommandId::new(ModuleId::new("editor"), pending.operator_id);
+            let ctx = reovim_driver_input::TransitionContext::with_operator(operator_cmd)
+                .count(pending.count)
+                .register(pending.register.unwrap_or('\0'));
+            mode_state.transition_context = Some(ctx);
+        }
+
+        registry.resolve(mode, key, &mut mode_state)
+    }
+
+    /// Handle a resolve result from a mode key resolver.
+    ///
+    /// Returns `true` if the key was handled, `false` if it should fall through
+    /// to the traditional keymap lookup.
+    fn handle_resolve_result(&mut self, result: ResolveResult, _key: KeyEvent) -> bool {
+        match result {
+            ResolveResult::Execute(cmd_id, ctx) => {
+                // Build command context from resolver context
+                let mut cmd_ctx = CommandContext::new();
+
+                if let Some(count) = ctx.count {
+                    cmd_ctx.set("count", reovim_driver_command::ArgValue::Count(count));
+                }
+
+                if let Some(reg) = ctx.register {
+                    cmd_ctx.set("register", reovim_driver_command::ArgValue::Register(reg));
+                }
+
+                if let Some(buffer_id) = self.app.active_buffer {
+                    cmd_ctx.set_buffer_id(buffer_id);
+                }
+
+                let mode = self.app.current_mode();
+                cmd_ctx.set_mode_name(mode.name());
+
+                // Execute the command
+                if let Some(result) =
+                    self.command_registry
+                        .execute(&cmd_id, &mut self.app, &cmd_ctx)
+                {
+                    self.handle_command_result(result);
+                }
+
+                true
+            }
+
+            ResolveResult::Pending => {
+                // Key is part of a pending sequence, wait for more keys
+                true
+            }
+
+            ResolveResult::InsertChar(ch) => {
+                // Insert the character directly
+                self.fallback_handler.handle_unmatched(
+                    KeyEvent::new(reovim_driver_input::KeyCode::Char(ch)),
+                    &mut self.app,
+                );
+                true
+            }
+
+            ResolveResult::ModeTransition(transition) => {
+                self.handle_mode_transition(transition);
+                true
+            }
+
+            ResolveResult::NotHandled => {
+                // Fall through to traditional keymap lookup
+                false
+            }
+        }
+    }
+
+    /// Handle a mode transition from a resolver.
+    fn handle_mode_transition(&mut self, transition: ModeTransition) {
+        match transition {
+            ModeTransition::Push { mode, context } => {
+                // Save context for the new mode (e.g., pending operator)
+                if let Some(op) = context.pending_operator {
+                    use crate::server::app::PendingOperator;
+
+                    // Convert CommandId name to static str for PendingOperator
+                    let op_name: &'static str = Box::leak(op.name().to_string().into_boxed_str());
+                    let pending = PendingOperator::new(op_name)
+                        .with_count(context.count.unwrap_or(1))
+                        .with_register(context.register);
+                    self.app.set_pending_operator(pending);
+                }
+
+                self.app.mode_stack.push(mode);
+            }
+
+            ModeTransition::Pop { result } => {
+                // Handle the pop result
+                if let Some(ref pop_result) = result {
+                    self.handle_pop_result(pop_result);
+                }
+
+                // Pop the mode stack
+                self.app.mode_stack.pop();
+
+                // Clear pending operator if popping from operator-pending
+                if self.app.pending_operator().is_some() {
+                    self.app.take_pending_operator();
+                }
+            }
+
+            ModeTransition::Set { mode, context: _ } => {
+                self.app.mode_stack.set(mode);
+            }
+        }
+    }
+
+    /// Handle a pop result from operator-pending mode.
+    fn handle_pop_result(&mut self, result: &PopResult) {
+        use reovim_kernel::api::v1::{CommandId, ModuleId};
+
+        match result {
+            PopResult::Cancelled => {
+                // User cancelled (Escape), just clear pending state
+                self.app.take_pending_operator();
+            }
+
+            PopResult::OperatorRange {
+                start: _,
+                end: _,
+                linewise,
+            } => {
+                // Execute the pending operator with the range
+                if let Some(pending) = self.app.take_pending_operator()
+                    && *linewise
+                {
+                    // Line-wise operation (dd, yy, cc)
+                    // The operator should execute on the current line
+                    let mut ctx = CommandContext::new();
+                    ctx.set("linewise", reovim_driver_command::ArgValue::Bang(true));
+                    ctx.set("count", reovim_driver_command::ArgValue::Count(pending.count));
+
+                    if let Some(reg) = pending.register {
+                        ctx.set("register", reovim_driver_command::ArgValue::Register(reg));
+                    }
+
+                    if let Some(buffer_id) = self.app.active_buffer {
+                        ctx.set_buffer_id(buffer_id);
+                    }
+
+                    // Convert operator_id to CommandId for execution
+                    let cmd_id = CommandId::new(ModuleId::new("operators"), pending.operator_id);
+
+                    // Execute the operator command with linewise flag
+                    if let Some(result) =
+                        self.command_registry.execute(&cmd_id, &mut self.app, &ctx)
+                    {
+                        self.handle_command_result(result);
+                    }
+                }
+            }
+
+            // Other pop results can be handled as needed
+            _ => {}
         }
     }
 
