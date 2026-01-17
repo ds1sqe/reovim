@@ -6,6 +6,13 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ## [Unreleased] - v0.9.0-dev
 
+### Fixed
+
+- **E2E Test Infrastructure** ([#308](https://github.com/ds1sqe/reovim/issues/308))
+  - Fixed keymap lookup to use vim-style prefix handling (wait for longer bindings like `dd` when `d` is pressed)
+  - Fixed mode ID references in keymap module to use explicit `editor:` prefix (`editor:normal`, `editor:insert`, etc.)
+  - Enables 12 of 28 operator E2E tests to pass
+
 ### Refactored
 
 - **File Splitting Epic Phase 1-3** ([Epic #304](https://github.com/ds1sqe/reovim/issues/304))
