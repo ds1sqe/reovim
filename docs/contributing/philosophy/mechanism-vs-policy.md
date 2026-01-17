@@ -229,6 +229,9 @@ Following the Wayland/wlroots/River model, Screen and Window span multiple layer
 
 ## Related Documents
 
-- [Module-Mode Inheritance](../modules/mode-inheritance.md) - Mode system architecture
+- [Mechanism/Policy Architecture](../../architecture/mechanism-policy/README.md) - Epic #353 implementation
+  - [Vision](../../architecture/mechanism-policy/vision.md) - Policy-Composable Editor concept
+  - [Violations](../../architecture/mechanism-policy/violations.md) - Anti-patterns to avoid
+- [Module-Mode Inheritance](../../architecture/modules/mode-inheritance.md) - Mode system architecture
 - [Clean Architecture Proposal](../../heritage/clean-architecture-proposal.md) - Overall architecture (historical)
-- [Module System](../modules/overview.md) - Module development guide
+- [Module System](../../architecture/modules/overview.md) - Module development guide

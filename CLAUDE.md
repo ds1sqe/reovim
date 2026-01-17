@@ -478,6 +478,7 @@ For in-depth information, see:
 - [docs/architecture/kernel/overview.md](./docs/architecture/kernel/overview.md) - Kernel subsystems: mm/, ipc/, core/, block/, sched/
 - [docs/architecture/drivers/overview.md](./docs/architecture/drivers/overview.md) - Driver layer: syntax/, input/, display/, lsp/, net/
 - [docs/architecture/modules/overview.md](./docs/architecture/modules/overview.md) - Module trait, declare_module!, loader, registry
+- [docs/architecture/mechanism-policy/](./docs/architecture/mechanism-policy/) - Epic #353: mechanism/policy separation implementation
 - [docs/contributing/philosophy/mechanism-vs-policy.md](./docs/contributing/philosophy/mechanism-vs-policy.md) - Core design principle
 - [docs/architecture/modules/mode-inheritance.md](./docs/architecture/modules/mode-inheritance.md) - Mode system with inheritance
 
