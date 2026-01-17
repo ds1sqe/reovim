@@ -12,6 +12,11 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - CLI auto_discover() checks registry before port scanning
   - REPL: add `list` and `connect` commands for server switching
 
+- Server now emits `render/complete` notification (#320)
+  - Emitted after any visual state change (mode, cursor, buffer modified)
+  - Buffer-scoped when active buffer exists, session-wide otherwise
+  - TUI clients use this to know when to refresh display
+
 ### Added
 
 - Register selection prefix (`"a`) - specify register for yank/delete/paste (#333)

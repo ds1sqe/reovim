@@ -433,24 +433,27 @@ fn run_cli(config: &ConnectionConfig, action: &CliAction, format: &str) {
     rt.block_on(async {
         // Handle list command without connection
         if matches!(action, CliAction::List) {
-            use runner::manager::{ManagerClient, is_manager_alive};
-            use runner::server::instance::InstanceRegistry;
-            use std::collections::HashSet;
+            use {
+                runner::{
+                    manager::{ManagerClient, is_manager_alive},
+                    server::instance::InstanceRegistry,
+                },
+                std::collections::HashSet,
+            };
 
             let mut seen_addrs = HashSet::new();
             let mut found_any = false;
 
             // First, try to query the manager (preferred source)
-            if is_manager_alive().await {
-                if let Ok(mut client) = ManagerClient::connect().await {
-                    if let Ok(instances) = client.list().await {
-                        for instance in instances {
-                            let addr = instance.transport.display();
-                            seen_addrs.insert(addr.clone());
-                            println!("{} ({}) pid: {}", addr, instance.name, instance.pid);
-                            found_any = true;
-                        }
-                    }
+            if is_manager_alive().await
+                && let Ok(mut client) = ManagerClient::connect().await
+                && let Ok(instances) = client.list().await
+            {
+                for instance in instances {
+                    let addr = instance.transport.display();
+                    seen_addrs.insert(addr.clone());
+                    println!("{} ({}) pid: {}", addr, instance.name, instance.pid);
+                    found_any = true;
                 }
             }
 

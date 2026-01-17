@@ -91,13 +91,14 @@ impl ConnectionConfig {
     /// 3. Fall back to default port
     #[must_use]
     pub fn auto_discover() -> Self {
+        use super::discovery;
+
         // First, try to find "default" instance in registry
         if let Ok(config) = Self::from_instance("default") {
             return config;
         }
 
         // Fall back to port scanning
-        use super::discovery;
         let servers = discovery::list_servers();
         servers
             .first()

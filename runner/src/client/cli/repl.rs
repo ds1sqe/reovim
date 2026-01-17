@@ -2,9 +2,11 @@
 //!
 //! Provides a command-line interface for interactive testing.
 
-use crate::client::common::{ConnectionConfig, RpcClient, discovery};
-use crate::manager::{ManagerClient, is_manager_alive};
-use crate::server::instance::InstanceRegistry;
+use crate::{
+    client::common::{ConnectionConfig, RpcClient, discovery},
+    manager::{ManagerClient, is_manager_alive},
+    server::instance::InstanceRegistry,
+};
 
 use super::{
     commands,
@@ -236,16 +238,15 @@ async fn print_server_list() {
     let mut found_any = false;
 
     // First, try to query the manager
-    if is_manager_alive().await {
-        if let Ok(mut client) = ManagerClient::connect().await {
-            if let Ok(instances) = client.list().await {
-                for instance in instances {
-                    let addr = instance.transport.display();
-                    seen_addrs.insert(addr.clone());
-                    println!("  {} ({}) pid: {}", addr, instance.name, instance.pid);
-                    found_any = true;
-                }
-            }
+    if is_manager_alive().await
+        && let Ok(mut client) = ManagerClient::connect().await
+        && let Ok(instances) = client.list().await
+    {
+        for instance in instances {
+            let addr = instance.transport.display();
+            seen_addrs.insert(addr.clone());
+            println!("  {} ({}) pid: {}", addr, instance.name, instance.pid);
+            found_any = true;
         }
     }
 
