@@ -1,6 +1,10 @@
 //! Multi-client test utilities for concurrent client testing.
 
-use std::time::Duration;
+use std::{
+    io::Write,
+    sync::atomic::{AtomicU32, Ordering},
+    time::Duration,
+};
 
 use {
     runner::client::common::{ConnectionConfig, RpcClient},
@@ -8,6 +12,9 @@ use {
 };
 
 use super::harness::TestServerHarness;
+
+/// Counter for unique temp file names
+static MULTI_CLIENT_FILE_COUNTER: AtomicU32 = AtomicU32::new(0);
 
 /// Client wrapper for multi-client tests
 pub struct TestClient {
@@ -59,6 +66,7 @@ impl TestClient {
 pub struct MultiClientTest {
     harness: TestServerHarness,
     client_count: usize,
+    initial_content: Option<String>,
 }
 
 impl MultiClientTest {
@@ -69,7 +77,15 @@ impl MultiClientTest {
                 .await
                 .expect("Failed to spawn server"),
             client_count: n,
+            initial_content: None,
         }
+    }
+
+    /// Set initial buffer content (shared by all clients)
+    #[must_use]
+    pub fn with_buffer(mut self, content: &str) -> Self {
+        self.initial_content = Some(content.to_string());
+        self
     }
 
     /// Connect all clients and run test
@@ -94,6 +110,26 @@ impl MultiClientTest {
                 }
             };
             clients.push(TestClient { client, id });
+        }
+
+        // Set up initial buffer via first client (shared by all)
+        if self.initial_content.is_some() || !clients.is_empty() {
+            let temp_path = {
+                let id = MULTI_CLIENT_FILE_COUNTER.fetch_add(1, Ordering::SeqCst);
+                let path = format!("/tmp/reovim-multi-test-{}-{id}.txt", std::process::id());
+                let content = self.initial_content.as_deref().unwrap_or("");
+                let mut file = std::fs::File::create(&path).expect("Failed to create temp file");
+                file.write_all(content.as_bytes())
+                    .expect("Failed to write temp file");
+                path
+            };
+            clients[0]
+                .client
+                .call("buffer/open_file", json!({ "path": &temp_path }))
+                .await
+                .expect("Failed to open buffer file");
+            // Small delay to ensure buffer is ready for other clients
+            tokio::time::sleep(Duration::from_millis(10)).await;
         }
 
         test_fn(clients).await;

@@ -1,18 +1,17 @@
 //! Multi-client concurrent tests.
 //!
-//! **Status**: 1 test enabled, 2 tests require additional features
-//! (buffer sharing between clients).
+//! **Status**: 3 tests enabled.
 //!
-//! Run `cargo test --ignored` to run the remaining ignored tests.
+//! Run `cargo test --test multi_client_tests` to run these tests.
 
 mod common;
 use common::MultiClientTest;
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_two_clients_read_same_buffer() {
     MultiClientTest::with_clients(2)
         .await
+        .with_buffer("")
         .run(|mut clients| async move {
             // Client 0 inserts
             clients[0].send_keys("ihello<Esc>").await.unwrap();
@@ -25,10 +24,10 @@ async fn test_two_clients_read_same_buffer() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_clients_see_changes() {
     MultiClientTest::with_clients(2)
         .await
+        .with_buffer("")
         .run(|mut clients| async move {
             // Client 0 makes change
             clients[0].send_keys("iworld<Esc>").await.unwrap();
@@ -45,6 +44,7 @@ async fn test_clients_see_changes() {
 async fn test_three_clients_concurrent() {
     MultiClientTest::with_clients(3)
         .await
+        .with_buffer("")
         .run(|mut clients| async move {
             // All clients should connect successfully
             for (i, client) in clients.iter_mut().enumerate() {
