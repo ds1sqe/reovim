@@ -6,7 +6,9 @@
 use std::{collections::HashMap, sync::Arc};
 
 use {
-    reovim_driver_input::{KeyEvent, ModeKeyResolver, ModeState, ResolveResult},
+    reovim_driver_input::{
+        KeyEvent, KeymapQuery, ModeKeyResolver, ModeState, ResolveInput, ResolveResult,
+    },
     reovim_kernel::api::v1::ModeId,
 };
 
@@ -102,7 +104,9 @@ impl ResolverRegistry {
         self.resolvers.keys()
     }
 
-    /// Resolve a key event for a mode.
+    /// Resolve a key event for a mode (legacy API).
+    ///
+    /// **Deprecated**: Use `resolve_with_keymap` for keymap-aware resolution.
     ///
     /// This is a convenience method that:
     /// 1. Looks up the resolver for the mode
@@ -124,6 +128,46 @@ impl ResolverRegistry {
             && let Some(parent) = resolver.inherits_from()
         {
             return self.resolve(parent, key, state);
+        }
+
+        Some(result)
+    }
+
+    /// Resolve a key event for a mode with keymap access.
+    ///
+    /// This is the preferred method that provides resolvers with access to
+    /// keymap queries for mechanism/policy separation:
+    /// - Resolvers can call `keymap.query()` to get FACTS about bindings
+    /// - Resolvers apply their own POLICY to decide what to do
+    ///
+    /// # Arguments
+    ///
+    /// * `mode` - The mode to resolve for
+    /// * `key` - The key event to process
+    /// * `state` - Mutable mode state
+    /// * `keymap` - Access to keymap queries
+    ///
+    /// Returns `None` if no resolver is registered for the mode (or its parents).
+    pub fn resolve_with_keymap(
+        &self,
+        mode: &ModeId,
+        key: &KeyEvent,
+        state: &mut ModeState,
+        keymap: &dyn KeymapQuery,
+    ) -> Option<ResolveResult> {
+        let resolver = self.get(mode)?;
+
+        // Clone pending keys to avoid borrow checker issues
+        // (we need to borrow state mutably while also accessing pending_keys)
+        let keys = state.pending_keys.clone();
+        let input = ResolveInput::new(&keys, mode, keymap);
+        let result = resolver.resolve_with_keymap(key, state, &input);
+
+        // If not handled, try parent mode
+        if matches!(result, ResolveResult::NotHandled)
+            && let Some(parent) = resolver.inherits_from()
+        {
+            return self.resolve_with_keymap(parent, key, state, keymap);
         }
 
         Some(result)

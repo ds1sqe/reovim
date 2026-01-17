@@ -11,7 +11,7 @@ use std::sync::RwLock;
 use {
     reovim_driver_input::{
         KeyCode, KeyEvent, KeySequence, ModeKeyResolver, ModeState, ModeTransition, Modifiers,
-        ResolveContext, ResolveResult, TransitionContext,
+        ResolveContext, ResolveInput, ResolveResult, TransitionContext,
     },
     reovim_kernel::api::v1::{CommandId, ModeId},
 };
@@ -258,10 +258,44 @@ impl ModeKeyResolver for VimNormalResolver {
         self.push_pending_key(*key);
         let _keys = self.get_pending_keys();
 
-        // Keymap lookup would happen here via the runner's registry
-        // For now, return NotHandled to let the runner do the lookup
-        // This will be refined in Phase 3 when we integrate with the registry
+        // Legacy: return NotHandled to let the runner do the lookup
+        // Use resolve_with_keymap for keymap-aware resolution
         ResolveResult::NotHandled
+    }
+
+    /// Vim-style key resolution with keymap access.
+    ///
+    /// **Note**: Currently delegates to `resolve()` for backward compatibility.
+    /// The keymap-aware resolution infrastructure is in place for future use,
+    /// but the runner's existing multi-key handling is used for now.
+    ///
+    /// # Future Vim Policy (not yet active)
+    ///
+    /// When fully implemented, this will:
+    /// - Query the keymap to get FACTS about what bindings exist
+    /// - Apply Vim policy: prefer longer sequences (wait for `dd` after `d`)
+    ///
+    /// | Lookup State | Vim Behavior |
+    /// |--------------|--------------|
+    /// | `ExactWithLonger` | `Pending` - wait for more keys |
+    /// | `ExactOnly` | `Execute` - run the command |
+    /// | `PrefixOnly` | `Pending` - wait for more keys |
+    /// | `NotFound` | `NotHandled` - delegate to fallback |
+    fn resolve_with_keymap(
+        &self,
+        key: &KeyEvent,
+        state: &mut ModeState,
+        _input: &ResolveInput<'_>,
+    ) -> ResolveResult {
+        // Delegate to legacy resolve() for backward compatibility.
+        //
+        // The keymap-aware infrastructure (KeymapQuery, ResolveInput, etc.) is
+        // in place, but full integration requires unifying the runner's pending
+        // key management with the resolver's internal state.
+        //
+        // TODO(Epic #353 Phase 3): Enable full keymap-aware resolution once the
+        // runner's pending key management is unified with the resolver.
+        self.resolve(key, state)
     }
 
     fn mode_id(&self) -> &ModeId {
@@ -490,5 +524,51 @@ mod tests {
     fn test_inherits_from() {
         let resolver = VimNormalResolver::new();
         assert!(resolver.inherits_from().is_none());
+    }
+
+    // ========================================================================
+    // Keymap-aware resolution tests (Epic #353 - Mechanism/Policy separation)
+    // ========================================================================
+    //
+    // Note: resolve_with_keymap currently delegates to resolve() for backward
+    // compatibility. Full keymap-aware resolution is planned for Phase 3.
+    //
+    // The following tests verify the basic infrastructure works:
+
+    use reovim_driver_input::KeymapQuery;
+
+    /// Mock keymap for testing the infrastructure.
+    struct MockKeymap;
+
+    impl KeymapQuery for MockKeymap {
+        fn query(
+            &self,
+            _mode: &ModeId,
+            _keys: &KeySequence,
+        ) -> reovim_driver_input::KeyLookupState {
+            reovim_driver_input::KeyLookupState::NotFound
+        }
+    }
+
+    #[test]
+    fn test_resolve_with_keymap_delegates_to_resolve() {
+        // Verify that resolve_with_keymap delegates to resolve() for backward compatibility.
+        // The keymap is not actually queried in the current implementation.
+        let resolver = VimNormalResolver::new();
+        let mut state = test_state();
+        let keymap = MockKeymap;
+        let keys = KeySequence::new();
+        let mode = EditorMode::NORMAL_ID;
+        let input = ResolveInput::new(&keys, &mode, &keymap);
+
+        // Test count accumulation works through resolve_with_keymap
+        let result = resolver.resolve_with_keymap(&key('3'), &mut state, &input);
+        assert!(matches!(result, ResolveResult::Pending));
+        assert_eq!(resolver.pending_count(), Some(3));
+
+        // Test that regular keys return NotHandled (delegated to runner's keymap lookup)
+        resolver.clear_state();
+        let result = resolver.resolve_with_keymap(&key('j'), &mut state, &input);
+        assert!(matches!(result, ResolveResult::NotHandled));
     }
 }

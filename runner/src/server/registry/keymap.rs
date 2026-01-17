@@ -6,83 +6,61 @@
 //! - **Prefix match**: The sequence is a prefix of one or more bindings
 //! - **No match**: The sequence doesn't match anything
 //!
+//! # Layered Bindings (Epic #353)
+//!
+//! Bindings are organized into layers with priority ordering:
+//! - **User** (highest): User configuration overrides
+//! - **Policy**: Policy module defaults (Vim, Emacs, etc.)
+//! - **Base** (lowest): Mechanism defaults (rarely used)
+//!
+//! Higher layers override lower layers for the same key sequence.
+//!
 //! # Module Ownership
 //!
 //! Keybindings can be registered with optional module ownership via
 //! [`KeymapRegistry::register_for_module`]. When a module is unloaded, all its
 //! registered keybindings can be removed via [`KeymapRegistry::unregister_for_module`].
+//!
+//! # Mechanism vs Policy
+//!
+//! The registry is pure mechanism - it reports FACTS via [`Self::query()`].
+//! Policy decisions (wait for `dd` vs execute `d` immediately) are made by
+//! `ModeKeyResolver` implementations, not the registry.
 
 use std::collections::HashMap;
 
 use {
-    reovim_driver_input::KeySequence,
+    reovim_driver_input::{
+        BindingLayer, KeyLookupPolicy, KeyLookupResult, KeyLookupState, KeySequence, KeymapQuery,
+        VimLookupPolicy,
+    },
     reovim_kernel::{
         api::v1::{CommandId, ModeId, ModuleId},
         profile_scope,
     },
 };
 
-/// Result of a keymap lookup.
-///
-/// Used by the event loop to determine how to handle a key sequence.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum KeyLookupResult {
-    /// Full match: the key sequence maps to this command.
-    Found(CommandId),
-
-    /// Prefix match: the sequence is a prefix of one or more bindings.
-    ///
-    /// The event loop should wait for more keys.
-    Prefix,
-
-    /// No match: the sequence doesn't match any binding.
-    ///
-    /// The event loop should delegate to the fallback handler.
-    NotFound,
-}
-
-impl KeyLookupResult {
-    /// Check if this is a full match.
-    #[must_use]
-    pub const fn is_found(&self) -> bool {
-        matches!(self, Self::Found(_))
-    }
-
-    /// Check if this is a prefix match.
-    #[must_use]
-    pub const fn is_prefix(&self) -> bool {
-        matches!(self, Self::Prefix)
-    }
-
-    /// Check if this is no match.
-    #[must_use]
-    pub const fn is_not_found(&self) -> bool {
-        matches!(self, Self::NotFound)
-    }
-
-    /// Get the command ID if this is a full match.
-    #[must_use]
-    pub const fn command_id(&self) -> Option<&CommandId> {
-        match self {
-            Self::Found(id) => Some(id),
-            _ => None,
-        }
-    }
-}
-
-/// Entry in the keymap registry with optional ownership tracking.
+/// Entry in the keymap registry with layer and ownership tracking.
+#[derive(Clone)]
 struct KeybindingEntry {
     /// The command ID to execute.
     command: CommandId,
+    /// The layer this binding belongs to.
+    layer: BindingLayer,
     /// The module that owns this keybinding (if any).
     owner: Option<ModuleId>,
 }
 
-/// Registry for keybindings.
+/// Registry for keybindings with layered composition.
 ///
 /// Maps (mode, key sequence) pairs to command IDs. Supports multi-key
 /// sequences with prefix detection for proper handling of sequences
 /// like `gg` or `<C-w>h`.
+///
+/// # Layered Bindings
+///
+/// Bindings are organized into layers (User > Policy > Base). When multiple
+/// layers define the same binding, the highest layer wins.
 ///
 /// # Module Ownership
 ///
@@ -93,28 +71,27 @@ struct KeybindingEntry {
 ///
 /// ```ignore
 /// use runner::registry::{KeymapRegistry, KeyLookupResult};
-/// use reovim_driver_input::KeySequence;
+/// use reovim_driver_input::{KeySequence, BindingLayer};
 ///
 /// let mut registry = KeymapRegistry::new();
 ///
-/// // Register `gg` in normal mode
-/// let normal_mode = EditorMode::NORMAL_ID;
-/// let gg = KeySequence::parse("gg").unwrap();
-/// let goto_top = CommandId::new(EDITOR_MODULE, "goto-top");
-/// registry.register(normal_mode.clone(), gg, goto_top);
+/// // Register `d` at Policy layer (Vim default)
+/// registry.register_at_layer(BindingLayer::Policy, &normal, keys, cmd("delete"));
 ///
-/// // Lookup single `g` - should be prefix
-/// let g = KeySequence::parse("g").unwrap();
-/// assert!(registry.lookup(&normal_mode, &g).is_prefix());
+/// // Register `d` at User layer (user override)
+/// registry.register_at_layer(BindingLayer::User, &normal, keys, cmd("custom"));
 ///
-/// // Lookup `gg` - should be found
-/// let gg = KeySequence::parse("gg").unwrap();
-/// assert!(registry.lookup(&normal_mode, &gg).is_found());
+/// // get_binding returns user's binding (higher layer wins)
+/// assert_eq!(registry.get_binding(&normal, &keys), Some(cmd("custom")));
+///
+/// // query() returns facts for ModeKeyResolver to decide behavior
+/// let state = registry.query(&normal, &keys);
 /// ```
 #[derive(Default)]
 pub struct KeymapRegistry {
-    /// Bindings organized by mode, then by key sequence.
-    entries: HashMap<ModeId, HashMap<KeySequence, KeybindingEntry>>,
+    /// Bindings organized by mode, then by key sequence, then by layer.
+    /// Each key sequence can have multiple entries (one per layer).
+    entries: HashMap<ModeId, HashMap<KeySequence, Vec<KeybindingEntry>>>,
 }
 
 impl KeymapRegistry {
@@ -124,44 +101,169 @@ impl KeymapRegistry {
         Self::default()
     }
 
-    /// Register a keybinding (without module ownership).
+    // ========================================================================
+    // Layered Registration (Epic #353)
+    // ========================================================================
+
+    /// Register a keybinding at a specific layer.
+    ///
+    /// Higher layers override lower layers for the same key sequence.
+    /// If a binding already exists at the same layer, it is replaced.
+    ///
+    /// # Arguments
+    ///
+    /// * `layer` - The binding layer (User > Policy > Base)
+    /// * `mode` - The mode in which this binding is active
+    /// * `keys` - The key sequence that triggers the binding
+    /// * `command` - The command to execute
+    pub fn register_at_layer(
+        &mut self,
+        layer: BindingLayer,
+        mode: &ModeId,
+        keys: KeySequence,
+        command: CommandId,
+    ) {
+        let mode_entries = self.entries.entry(mode.clone()).or_default();
+        let key_entries = mode_entries.entry(keys).or_default();
+
+        // Remove existing entry at same layer (if any)
+        key_entries.retain(|e| e.layer != layer);
+
+        // Add new entry
+        key_entries.push(KeybindingEntry {
+            command,
+            layer,
+            owner: None,
+        });
+
+        // Sort by layer (highest first) for efficient lookup
+        key_entries.sort_by(|a, b| b.layer.cmp(&a.layer));
+    }
+
+    /// Register a keybinding at a specific layer with module ownership.
+    ///
+    /// When the owning module is unloaded, this keybinding will be automatically
+    /// deregistered via [`Self::unregister_for_module`].
+    pub fn register_at_layer_for_module(
+        &mut self,
+        layer: BindingLayer,
+        mode: &ModeId,
+        keys: KeySequence,
+        command: CommandId,
+        owner: ModuleId,
+    ) {
+        let mode_entries = self.entries.entry(mode.clone()).or_default();
+        let key_entries = mode_entries.entry(keys).or_default();
+
+        // Remove existing entry at same layer (if any)
+        key_entries.retain(|e| e.layer != layer);
+
+        // Add new entry
+        key_entries.push(KeybindingEntry {
+            command,
+            layer,
+            owner: Some(owner),
+        });
+
+        // Sort by layer (highest first)
+        key_entries.sort_by(|a, b| b.layer.cmp(&a.layer));
+    }
+
+    /// Get the effective binding for a key sequence (highest layer wins).
+    ///
+    /// Returns `None` if no binding exists at any layer.
+    #[must_use]
+    pub fn get_binding(&self, mode: &ModeId, keys: &KeySequence) -> Option<CommandId> {
+        self.entries
+            .get(mode)
+            .and_then(|m| m.get(keys))
+            .and_then(|entries| entries.first()) // Already sorted, first is highest
+            .map(|e| e.command.clone())
+    }
+
+    /// Pure query - reports facts about what exists (no policy decisions).
+    ///
+    /// This is the core mechanism API. It returns FACTS about what bindings
+    /// exist for a key sequence. The `ModeKeyResolver` then applies its
+    /// policy to decide what to do with these facts.
+    ///
+    /// # Returns
+    ///
+    /// - `ExactOnly(cmd)` - Exact match exists, no longer bindings
+    /// - `ExactWithLonger { exact }` - Exact match AND longer bindings exist
+    /// - `PrefixOnly` - No exact match, but longer bindings exist
+    /// - `NotFound` - Nothing matches
+    #[must_use]
+    pub fn query(&self, mode: &ModeId, keys: &KeySequence) -> KeyLookupState {
+        profile_scope!("keymap_query", "runner::keymap");
+
+        let exact = self.get_binding(mode, keys);
+        let has_longer = self.has_longer_bindings(mode, keys);
+
+        match (exact, has_longer) {
+            (Some(cmd), true) => KeyLookupState::ExactWithLonger { exact: cmd },
+            (Some(cmd), false) => KeyLookupState::ExactOnly(cmd),
+            (None, true) => KeyLookupState::PrefixOnly,
+            (None, false) => KeyLookupState::NotFound,
+        }
+    }
+
+    /// Check if longer bindings exist for a key sequence.
+    ///
+    /// Returns `true` if there are bindings that start with `keys` but are longer.
+    #[must_use]
+    pub fn has_longer_bindings(&self, mode: &ModeId, keys: &KeySequence) -> bool {
+        self.entries.get(mode).is_some_and(|mode_entries| {
+            mode_entries
+                .iter()
+                .any(|(k, entries)| k.starts_with(keys) && k != keys && !entries.is_empty())
+        })
+    }
+
+    /// Remove all bindings at a specific layer for a mode.
+    ///
+    /// Useful for clearing user overrides or reloading a policy module.
+    pub fn clear_layer(&mut self, layer: BindingLayer, mode: &ModeId) {
+        if let Some(mode_entries) = self.entries.get_mut(mode) {
+            for entries in mode_entries.values_mut() {
+                entries.retain(|e| e.layer != layer);
+            }
+            // Clean up empty key entries
+            mode_entries.retain(|_, entries| !entries.is_empty());
+        }
+        // Clean up empty mode entries
+        self.entries
+            .retain(|_, mode_entries| !mode_entries.is_empty());
+    }
+
+    // ========================================================================
+    // Legacy API (backward compatibility)
+    // ========================================================================
+
+    /// Register a keybinding at the Policy layer (without module ownership).
+    ///
+    /// This is the legacy API. New code should use [`Self::register_at_layer`].
     ///
     /// # Arguments
     ///
     /// * `mode` - The mode in which this binding is active
     /// * `keys` - The key sequence that triggers the binding
     /// * `command` - The command to execute
-    ///
-    /// If a binding with the same mode and key sequence already exists,
-    /// it is replaced.
-    pub fn register(&mut self, mode: ModeId, keys: KeySequence, command: CommandId) {
-        self.entries.entry(mode).or_default().insert(
-            keys,
-            KeybindingEntry {
-                command,
-                owner: None,
-            },
-        );
+    pub fn register(&mut self, mode: &ModeId, keys: KeySequence, command: CommandId) {
+        self.register_at_layer(BindingLayer::Policy, mode, keys, command);
     }
 
-    /// Register a keybinding with module ownership.
+    /// Register a keybinding at the Policy layer with module ownership.
     ///
-    /// When the owning module is unloaded, this keybinding will be automatically
-    /// deregistered via [`Self::unregister_for_module`].
+    /// This is the legacy API. New code should use [`Self::register_at_layer_for_module`].
     pub fn register_for_module(
         &mut self,
-        mode: ModeId,
+        mode: &ModeId,
         keys: KeySequence,
         command: CommandId,
         owner: ModuleId,
     ) {
-        self.entries.entry(mode).or_default().insert(
-            keys,
-            KeybindingEntry {
-                command,
-                owner: Some(owner),
-            },
-        );
+        self.register_at_layer_for_module(BindingLayer::Policy, mode, keys, command, owner);
     }
 
     /// Remove all keybindings owned by a module.
@@ -172,9 +274,13 @@ impl KeymapRegistry {
     pub fn unregister_for_module(&mut self, module: &ModuleId) -> usize {
         let mut removed = 0;
         for mode_entries in self.entries.values_mut() {
-            let before = mode_entries.len();
-            mode_entries.retain(|_, entry| entry.owner.as_ref() != Some(module));
-            removed += before - mode_entries.len();
+            for entries in mode_entries.values_mut() {
+                let before = entries.len();
+                entries.retain(|e| e.owner.as_ref() != Some(module));
+                removed += before - entries.len();
+            }
+            // Clean up empty key entries
+            mode_entries.retain(|_, entries| !entries.is_empty());
         }
         // Clean up empty mode maps
         self.entries
@@ -182,99 +288,115 @@ impl KeymapRegistry {
         removed
     }
 
-    /// Register a keybinding from a string.
+    /// Register a keybinding from a string at the Policy layer.
     ///
     /// Convenience method that parses the key sequence from a string.
     /// Returns `false` if the string couldn't be parsed.
-    ///
-    /// # Arguments
-    ///
-    /// * `mode` - The mode in which this binding is active
-    /// * `keys` - Key sequence string (e.g., "gg", "`<C-w>`h")
-    /// * `command` - The command to execute
-    pub fn register_str(&mut self, mode: ModeId, keys: &str, command: CommandId) -> bool {
+    pub fn register_str(&mut self, mode: &ModeId, keys: &str, command: CommandId) -> bool {
         KeySequence::parse(keys).is_some_and(|seq| {
             self.register(mode, seq, command);
             true
         })
     }
 
-    /// Look up a key sequence in a mode.
+    /// Look up a key sequence in a mode (Vim-style behavior).
     ///
-    /// Returns:
-    /// - `Found(cmd)` if the sequence exactly matches a binding AND is NOT a prefix of any longer binding
-    /// - `Prefix` if the sequence is a prefix of one or more longer bindings (even if it also matches exactly)
-    /// - `NotFound` if the sequence doesn't match anything
+    /// This method uses VIM-STYLE behavior for backward compatibility:
+    /// - If longer bindings exist, return `Prefix` (wait for more keys)
+    /// - This allows sequences like `dd` to work (waits after first `d`)
     ///
-    /// This implements vim-style "wait for more keys" behavior:
-    /// - `d` is both an exact match (enter-delete-operator) and a prefix of `dd` (delete-line)
-    /// - We return `Prefix` so the user can type `dd` to delete a line
-    /// - If the user wanted just `d`, they can press another motion like `dw`
+    /// For other policies, use [`Self::lookup_with_policy()`].
+    ///
+    /// # Returns
+    ///
+    /// - `Found(cmd)` if an exact match exists AND no longer bindings exist
+    /// - `Prefix` if longer bindings exist (even if exact match also exists)
+    /// - `NotFound` if nothing matches
     #[must_use]
     pub fn lookup(&self, mode: &ModeId, keys: &KeySequence) -> KeyLookupResult {
         profile_scope!("keymap_lookup", "runner::keymap");
-
-        let Some(mode_entries) = self.entries.get(mode) else {
-            return KeyLookupResult::NotFound;
-        };
-
-        let exact_match = mode_entries.get(keys);
-        let is_prefix = Self::is_prefix_of_any(mode_entries, keys);
-
-        // Vim-style: if this is a prefix of something longer, wait for more keys
-        // even if it's also an exact match (e.g., 'd' is both d-> and dd)
-        if is_prefix {
-            return KeyLookupResult::Prefix;
-        }
-
-        // Not a prefix - return exact match if found
-        if let Some(entry) = exact_match {
-            return KeyLookupResult::Found(entry.command.clone());
-        }
-
-        KeyLookupResult::NotFound
+        self.lookup_with_policy(mode, keys, &VimLookupPolicy)
     }
 
-    /// Check if a key sequence is a prefix of any binding in the mode.
-    fn is_prefix_of_any(
-        mode_entries: &HashMap<KeySequence, KeybindingEntry>,
+    /// Look up a key sequence in a mode with a specific policy.
+    ///
+    /// This method allows you to provide a custom `KeyLookupPolicy` that
+    /// determines how to interpret the lookup facts.
+    ///
+    /// # Arguments
+    ///
+    /// * `mode` - The mode to look up in
+    /// * `keys` - The key sequence to look up
+    /// * `policy` - The policy that interprets the facts
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use reovim_driver_input::{VimLookupPolicy, EagerLookupPolicy};
+    ///
+    /// // Vim-style: wait for longer sequences
+    /// let result = registry.lookup_with_policy(&mode, &keys, &VimLookupPolicy);
+    ///
+    /// // Eager: execute exact matches immediately
+    /// let result = registry.lookup_with_policy(&mode, &keys, &EagerLookupPolicy);
+    /// ```
+    #[must_use]
+    pub fn lookup_with_policy(
+        &self,
+        mode: &ModeId,
         keys: &KeySequence,
-    ) -> bool {
-        mode_entries
-            .keys()
-            .any(|binding_keys| binding_keys.starts_with(keys) && binding_keys != keys)
+        policy: &dyn KeyLookupPolicy,
+    ) -> KeyLookupResult {
+        profile_scope!("keymap_lookup_with_policy", "runner::keymap");
+        policy.resolve(self.query(mode, keys))
     }
 
-    /// Get all bindings for a mode.
+    // ========================================================================
+    // Query methods
+    // ========================================================================
+
+    /// Get all bindings for a mode (effective bindings only).
     #[must_use]
     pub fn bindings_for_mode(&self, mode: &ModeId) -> Vec<(&KeySequence, &CommandId)> {
         self.entries
             .get(mode)
-            .map(|m| m.iter().map(|(k, e)| (k, &e.command)).collect())
+            .map(|m| {
+                m.iter()
+                    .filter_map(|(k, entries)| entries.first().map(|e| (k, &e.command)))
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
-    /// Get the number of bindings for a mode.
+    /// Get the number of unique key sequences with bindings for a mode.
     #[must_use]
     pub fn binding_count(&self, mode: &ModeId) -> usize {
-        self.entries.get(mode).map_or(0, HashMap::len)
+        self.entries
+            .get(mode)
+            .map_or(0, |m| m.values().filter(|entries| !entries.is_empty()).count())
     }
 
-    /// Get total number of bindings across all modes.
+    /// Get total number of unique key sequences with bindings across all modes.
     #[must_use]
     pub fn total_bindings(&self) -> usize {
-        self.entries.values().map(HashMap::len).sum()
+        self.entries
+            .values()
+            .map(|m| m.values().filter(|entries| !entries.is_empty()).count())
+            .sum()
     }
 
     /// Get all modes that have bindings.
     pub fn modes(&self) -> impl Iterator<Item = &ModeId> {
-        self.entries.keys()
+        self.entries
+            .iter()
+            .filter(|(_, m)| m.values().any(|entries| !entries.is_empty()))
+            .map(|(mode, _)| mode)
     }
 
     /// Check if the registry has any bindings.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.entries.is_empty() || self.entries.values().all(HashMap::is_empty)
+        self.entries.is_empty() || self.entries.values().all(|m| m.values().all(Vec::is_empty))
     }
 }
 
@@ -284,6 +406,27 @@ impl std::fmt::Debug for KeymapRegistry {
             .field("modes", &self.entries.keys().collect::<Vec<_>>())
             .field("total_bindings", &self.total_bindings())
             .finish()
+    }
+}
+
+// ============================================================================
+// KeymapQuery Implementation (Epic #353)
+// ============================================================================
+
+impl KeymapQuery for KeymapRegistry {
+    fn query(&self, mode: &ModeId, keys: &KeySequence) -> KeyLookupState {
+        // Delegate to the inherent method
+        Self::query(self, mode, keys)
+    }
+
+    fn has_longer_bindings(&self, mode: &ModeId, keys: &KeySequence) -> bool {
+        // Delegate to the inherent method
+        Self::has_longer_bindings(self, mode, keys)
+    }
+
+    fn get_exact(&self, mode: &ModeId, keys: &KeySequence) -> Option<CommandId> {
+        // Delegate to get_binding (which returns effective binding considering layers)
+        self.get_binding(mode, keys)
     }
 }
 
@@ -313,7 +456,7 @@ mod tests {
         let keys = KeySequence::parse("j").unwrap();
         let cmd = test_command("cursor-down");
 
-        registry.register(mode.clone(), keys, cmd);
+        registry.register(&mode, keys, cmd);
 
         assert_eq!(registry.binding_count(&mode), 1);
         assert!(!registry.is_empty());
@@ -325,7 +468,7 @@ mod tests {
         let mode = test_mode();
         let cmd = test_command("cursor-down");
 
-        assert!(registry.register_str(mode.clone(), "j", cmd));
+        assert!(registry.register_str(&mode, "j", cmd));
         assert_eq!(registry.binding_count(&mode), 1);
     }
 
@@ -335,7 +478,7 @@ mod tests {
         let mode = test_mode();
         let cmd = test_command("cursor-down");
 
-        registry.register_str(mode.clone(), "j", cmd.clone());
+        registry.register_str(&mode, "j", cmd.clone());
 
         let keys = KeySequence::parse("j").unwrap();
         let result = registry.lookup(&mode, &keys);
@@ -350,7 +493,7 @@ mod tests {
         let mode = test_mode();
 
         // Register `gg`
-        registry.register_str(mode.clone(), "gg", test_command("goto-top"));
+        registry.register_str(&mode, "gg", test_command("goto-top"));
 
         // Look up single `g` - should be prefix
         let g = KeySequence::parse("g").unwrap();
@@ -364,7 +507,7 @@ mod tests {
         let mut registry = KeymapRegistry::new();
         let mode = test_mode();
 
-        registry.register_str(mode.clone(), "j", test_command("cursor-down"));
+        registry.register_str(&mode, "j", test_command("cursor-down"));
 
         // Look up unbound key
         let x = KeySequence::parse("x").unwrap();
@@ -379,14 +522,23 @@ mod tests {
         let mode = test_mode();
 
         // Register both `g` and `gg`
-        registry.register_str(mode.clone(), "g", test_command("goto"));
-        registry.register_str(mode.clone(), "gg", test_command("goto-top"));
+        registry.register_str(&mode, "g", test_command("goto"));
+        registry.register_str(&mode, "gg", test_command("goto-top"));
 
-        // Single `g` is a prefix of `gg`, so return Prefix even though there's an exact match.
-        // This implements vim-style "wait for more keys" behavior for multi-key sequences.
+        // lookup() uses VIM-STYLE semantics: returns Prefix if longer bindings exist
+        // (for backward compatibility with existing behavior)
         let g = KeySequence::parse("g").unwrap();
         let result = registry.lookup(&mode, &g);
-        assert!(result.is_prefix());
+        assert!(result.is_prefix()); // VIM: wait for more keys since `gg` exists
+
+        // query() shows the full picture for resolvers to make policy decisions
+        let state = registry.query(&mode, &g);
+        assert_eq!(
+            state,
+            KeyLookupState::ExactWithLonger {
+                exact: test_command("goto")
+            }
+        );
 
         // `gg` is an exact match (and not a prefix of anything longer)
         let gg = KeySequence::parse("gg").unwrap();
@@ -401,7 +553,7 @@ mod tests {
         let mode = test_mode();
 
         // Register only `gg` (no binding for `g` alone)
-        registry.register_str(mode.clone(), "gg", test_command("goto-top"));
+        registry.register_str(&mode, "gg", test_command("goto-top"));
 
         // Single `g` has no exact match but is a prefix of `gg` - return Prefix
         let g = KeySequence::parse("g").unwrap();
@@ -421,8 +573,8 @@ mod tests {
         let insert = ModeId::new(ModuleId::new("test"), "insert");
 
         // Same key, different commands in different modes
-        registry.register_str(normal.clone(), "j", test_command("cursor-down"));
-        registry.register_str(insert.clone(), "j", test_command("insert-j"));
+        registry.register_str(&normal, "j", test_command("cursor-down"));
+        registry.register_str(&insert, "j", test_command("insert-j"));
 
         let j = KeySequence::parse("j").unwrap();
 
@@ -440,8 +592,8 @@ mod tests {
         let mut registry = KeymapRegistry::new();
         let mode = test_mode();
 
-        registry.register_str(mode.clone(), "j", test_command("down"));
-        registry.register_str(mode.clone(), "k", test_command("up"));
+        registry.register_str(&mode, "j", test_command("down"));
+        registry.register_str(&mode, "k", test_command("up"));
 
         let bindings = registry.bindings_for_mode(&mode);
         assert_eq!(bindings.len(), 2);
@@ -475,7 +627,7 @@ mod tests {
         let owner = ModuleId::new("my-module");
         let keys = KeySequence::parse("j").unwrap();
 
-        registry.register_for_module(mode.clone(), keys.clone(), test_command("down"), owner);
+        registry.register_for_module(&mode, keys.clone(), test_command("down"), owner);
 
         assert_eq!(registry.binding_count(&mode), 1);
 
@@ -492,12 +644,12 @@ mod tests {
         // Register keybindings for the module
         let j = KeySequence::parse("j").unwrap();
         let k = KeySequence::parse("k").unwrap();
-        registry.register_for_module(mode.clone(), j.clone(), test_command("down"), owner.clone());
-        registry.register_for_module(mode.clone(), k.clone(), test_command("up"), owner.clone());
+        registry.register_for_module(&mode, j.clone(), test_command("down"), owner.clone());
+        registry.register_for_module(&mode, k.clone(), test_command("up"), owner.clone());
 
         // Register one without owner
         let l = KeySequence::parse("l").unwrap();
-        registry.register(mode.clone(), l.clone(), test_command("right"));
+        registry.register(&mode, l.clone(), test_command("right"));
 
         assert_eq!(registry.binding_count(&mode), 3);
 
@@ -524,8 +676,8 @@ mod tests {
 
         // Register in multiple modes
         let j = KeySequence::parse("j").unwrap();
-        registry.register_for_module(normal_mode, j.clone(), test_command("down"), owner.clone());
-        registry.register_for_module(insert_mode, j, test_command("insert-j"), owner.clone());
+        registry.register_for_module(&normal_mode, j.clone(), test_command("down"), owner.clone());
+        registry.register_for_module(&insert_mode, j, test_command("insert-j"), owner.clone());
 
         assert_eq!(registry.total_bindings(), 2);
 
@@ -545,7 +697,7 @@ mod tests {
 
         // Register without owner
         let j = KeySequence::parse("j").unwrap();
-        registry.register(mode.clone(), j, test_command("down"));
+        registry.register(&mode, j, test_command("down"));
 
         // Try to unregister for a module that has no keybindings
         let removed = registry.unregister_for_module(&owner);
@@ -564,13 +716,8 @@ mod tests {
         let j = KeySequence::parse("j").unwrap();
         let k = KeySequence::parse("k").unwrap();
 
-        registry.register_for_module(
-            mode.clone(),
-            j.clone(),
-            test_command("a-down"),
-            module_x.clone(),
-        );
-        registry.register_for_module(mode.clone(), k.clone(), test_command("b-up"), module_y);
+        registry.register_for_module(&mode, j.clone(), test_command("a-down"), module_x.clone());
+        registry.register_for_module(&mode, k.clone(), test_command("b-up"), module_y);
 
         assert_eq!(registry.total_bindings(), 2);
 
@@ -580,5 +727,382 @@ mod tests {
         assert_eq!(registry.total_bindings(), 1);
         assert!(registry.lookup(&mode, &j).is_not_found());
         assert!(registry.lookup(&mode, &k).is_found());
+    }
+
+    // ========================================================================
+    // Phase 1 Tests: KeyLookupState Variants (Epic #353)
+    // ========================================================================
+
+    #[test]
+    fn test_query_exact_only() {
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+
+        // Register 'x' only (no 'xx', 'xy', etc.)
+        registry.register_str(&mode, "x", test_command("delete-char"));
+
+        let x = KeySequence::parse("x").unwrap();
+        let state = registry.query(&mode, &x);
+
+        assert_eq!(state, KeyLookupState::ExactOnly(test_command("delete-char")));
+    }
+
+    #[test]
+    fn test_query_exact_with_longer() {
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+
+        // Register 'd' and 'dd' - classic Vim scenario
+        registry.register_str(&mode, "d", test_command("delete"));
+        registry.register_str(&mode, "dd", test_command("delete-line"));
+
+        let d = KeySequence::parse("d").unwrap();
+        let state = registry.query(&mode, &d);
+
+        // 'd' has exact match AND 'dd' exists (longer binding)
+        assert_eq!(
+            state,
+            KeyLookupState::ExactWithLonger {
+                exact: test_command("delete")
+            }
+        );
+    }
+
+    #[test]
+    fn test_query_prefix_only() {
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+
+        // Register only 'gg' (no binding for 'g' alone)
+        registry.register_str(&mode, "gg", test_command("goto-top"));
+
+        let g = KeySequence::parse("g").unwrap();
+        let state = registry.query(&mode, &g);
+
+        // 'g' has no exact match, but 'gg' exists (prefix)
+        assert_eq!(state, KeyLookupState::PrefixOnly);
+    }
+
+    #[test]
+    fn test_query_not_found() {
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+
+        registry.register_str(&mode, "j", test_command("cursor-down"));
+
+        // 'z' is not registered and not a prefix of anything
+        let z = KeySequence::parse("z").unwrap();
+        let state = registry.query(&mode, &z);
+
+        assert_eq!(state, KeyLookupState::NotFound);
+    }
+
+    #[test]
+    fn test_query_empty_registry() {
+        let registry = KeymapRegistry::new();
+        let mode = test_mode();
+
+        let j = KeySequence::parse("j").unwrap();
+        let state = registry.query(&mode, &j);
+
+        assert_eq!(state, KeyLookupState::NotFound);
+    }
+
+    #[test]
+    fn test_query_unknown_mode() {
+        let mut registry = KeymapRegistry::new();
+        let normal = test_mode();
+        let visual = ModeId::new(ModuleId::new("test"), "visual");
+
+        // Register in normal mode only
+        registry.register_str(&normal, "j", test_command("cursor-down"));
+
+        // Query in visual mode - should be NotFound
+        let j = KeySequence::parse("j").unwrap();
+        let state = registry.query(&visual, &j);
+
+        assert_eq!(state, KeyLookupState::NotFound);
+    }
+
+    // ========================================================================
+    // Phase 1 Tests: Layered Bindings (Epic #353)
+    // ========================================================================
+
+    #[test]
+    fn test_layer_override_policy_with_user() {
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+        let keys = KeySequence::parse("d").unwrap();
+
+        // Policy layer: d → delete
+        registry.register_at_layer(
+            BindingLayer::Policy,
+            &mode,
+            keys.clone(),
+            test_command("delete"),
+        );
+
+        // User layer: d → custom-delete (overrides policy)
+        registry.register_at_layer(
+            BindingLayer::User,
+            &mode,
+            keys.clone(),
+            test_command("custom-delete"),
+        );
+
+        // get_binding returns user's binding (higher layer wins)
+        let binding = registry.get_binding(&mode, &keys);
+        assert_eq!(binding, Some(test_command("custom-delete")));
+    }
+
+    #[test]
+    fn test_layer_fallback_to_policy() {
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+        let keys = KeySequence::parse("j").unwrap();
+
+        // Only Policy layer has the binding
+        registry.register_at_layer(
+            BindingLayer::Policy,
+            &mode,
+            keys.clone(),
+            test_command("cursor-down"),
+        );
+
+        // get_binding falls back to Policy when User is empty
+        let binding = registry.get_binding(&mode, &keys);
+        assert_eq!(binding, Some(test_command("cursor-down")));
+    }
+
+    #[test]
+    fn test_layer_base_fallback() {
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+        let keys = KeySequence::parse("h").unwrap();
+
+        // Only Base layer has the binding
+        registry.register_at_layer(
+            BindingLayer::Base,
+            &mode,
+            keys.clone(),
+            test_command("cursor-left"),
+        );
+
+        // get_binding falls back to Base
+        let binding = registry.get_binding(&mode, &keys);
+        assert_eq!(binding, Some(test_command("cursor-left")));
+    }
+
+    #[test]
+    fn test_clear_user_layer() {
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+        let keys = KeySequence::parse("d").unwrap();
+
+        // Policy layer: d → delete
+        registry.register_at_layer(
+            BindingLayer::Policy,
+            &mode,
+            keys.clone(),
+            test_command("delete"),
+        );
+
+        // User layer: d → custom-delete
+        registry.register_at_layer(
+            BindingLayer::User,
+            &mode,
+            keys.clone(),
+            test_command("custom-delete"),
+        );
+
+        // Before clear: user layer wins
+        assert_eq!(registry.get_binding(&mode, &keys), Some(test_command("custom-delete")));
+
+        // Clear user layer
+        registry.clear_layer(BindingLayer::User, &mode);
+
+        // After clear: falls back to policy layer
+        assert_eq!(registry.get_binding(&mode, &keys), Some(test_command("delete")));
+    }
+
+    #[test]
+    fn test_query_sees_effective_binding() {
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+
+        // Policy layer: d → delete, dd → delete-line
+        registry.register_at_layer(
+            BindingLayer::Policy,
+            &mode,
+            KeySequence::parse("d").unwrap(),
+            test_command("delete"),
+        );
+        registry.register_at_layer(
+            BindingLayer::Policy,
+            &mode,
+            KeySequence::parse("dd").unwrap(),
+            test_command("delete-line"),
+        );
+
+        // User layer: d → custom-delete (overrides policy 'd')
+        registry.register_at_layer(
+            BindingLayer::User,
+            &mode,
+            KeySequence::parse("d").unwrap(),
+            test_command("custom-delete"),
+        );
+
+        // query() should see user's 'd' binding with 'dd' still existing
+        let d = KeySequence::parse("d").unwrap();
+        let state = registry.query(&mode, &d);
+
+        assert_eq!(
+            state,
+            KeyLookupState::ExactWithLonger {
+                exact: test_command("custom-delete")
+            }
+        );
+    }
+
+    #[test]
+    fn test_register_same_key_same_layer_replaces() {
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+        let keys = KeySequence::parse("j").unwrap();
+
+        // First registration at Policy layer
+        registry.register_at_layer(
+            BindingLayer::Policy,
+            &mode,
+            keys.clone(),
+            test_command("old-down"),
+        );
+
+        // Second registration at same layer - should replace
+        registry.register_at_layer(
+            BindingLayer::Policy,
+            &mode,
+            keys.clone(),
+            test_command("new-down"),
+        );
+
+        // Only one binding should exist
+        assert_eq!(registry.binding_count(&mode), 1);
+
+        // The new command should be active
+        assert_eq!(registry.get_binding(&mode, &keys), Some(test_command("new-down")));
+    }
+
+    #[test]
+    fn test_layer_ordering_enforced() {
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+        let keys = KeySequence::parse("j").unwrap();
+
+        // Register in reverse priority order to test sorting
+        registry.register_at_layer(
+            BindingLayer::User, // Highest
+            &mode,
+            keys.clone(),
+            test_command("user-cmd"),
+        );
+        registry.register_at_layer(
+            BindingLayer::Base, // Lowest
+            &mode,
+            keys.clone(),
+            test_command("base-cmd"),
+        );
+        registry.register_at_layer(
+            BindingLayer::Policy, // Middle
+            &mode,
+            keys.clone(),
+            test_command("policy-cmd"),
+        );
+
+        // User layer should win regardless of registration order
+        assert_eq!(registry.get_binding(&mode, &keys), Some(test_command("user-cmd")));
+    }
+
+    #[test]
+    fn test_multi_key_sequence_with_layers() {
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+
+        // Policy layer: <C-w>h → window-left
+        let ctrl_w_h = KeySequence::parse("<C-w>h").unwrap();
+        registry.register_at_layer(
+            BindingLayer::Policy,
+            &mode,
+            ctrl_w_h.clone(),
+            test_command("window-left"),
+        );
+
+        // User layer: <C-w>h → custom-window-left
+        registry.register_at_layer(
+            BindingLayer::User,
+            &mode,
+            ctrl_w_h.clone(),
+            test_command("custom-window-left"),
+        );
+
+        // User layer wins for complex sequences too
+        assert_eq!(
+            registry.get_binding(&mode, &ctrl_w_h),
+            Some(test_command("custom-window-left"))
+        );
+
+        // <C-w> alone is prefix
+        let ctrl_w = KeySequence::parse("<C-w>").unwrap();
+        let state = registry.query(&mode, &ctrl_w);
+        assert_eq!(state, KeyLookupState::PrefixOnly);
+    }
+
+    #[test]
+    fn test_bindings_isolated_per_mode() {
+        let mut registry = KeymapRegistry::new();
+        let normal = ModeId::new(ModuleId::new("test"), "normal");
+        let insert = ModeId::new(ModuleId::new("test"), "insert");
+        let keys = KeySequence::parse("j").unwrap();
+
+        // Register at different layers in different modes
+        registry.register_at_layer(
+            BindingLayer::User,
+            &normal,
+            keys.clone(),
+            test_command("normal-j"),
+        );
+        registry.register_at_layer(
+            BindingLayer::Policy,
+            &insert,
+            keys.clone(),
+            test_command("insert-j"),
+        );
+
+        // Bindings are isolated per mode
+        assert_eq!(registry.get_binding(&normal, &keys), Some(test_command("normal-j")));
+        assert_eq!(registry.get_binding(&insert, &keys), Some(test_command("insert-j")));
+    }
+
+    #[test]
+    fn test_has_longer_bindings() {
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+
+        registry.register_str(&mode, "g", test_command("goto"));
+        registry.register_str(&mode, "gg", test_command("goto-top"));
+        registry.register_str(&mode, "gj", test_command("goto-down"));
+
+        let g = KeySequence::parse("g").unwrap();
+        let gg = KeySequence::parse("gg").unwrap();
+        let x = KeySequence::parse("x").unwrap();
+
+        // 'g' has longer bindings (gg, gj)
+        assert!(registry.has_longer_bindings(&mode, &g));
+
+        // 'gg' has no longer bindings (no 'ggg', etc.)
+        assert!(!registry.has_longer_bindings(&mode, &gg));
+
+        // 'x' is not even registered - no longer bindings
+        assert!(!registry.has_longer_bindings(&mode, &x));
     }
 }

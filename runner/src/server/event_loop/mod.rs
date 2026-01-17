@@ -633,6 +633,12 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
     /// Returns `Some(result)` if a resolver handled the key, `None` if:
     /// - No resolver registry is configured
     /// - No resolver is registered for the current mode
+    ///
+    /// # Mechanism vs Policy (Epic #353)
+    ///
+    /// This method provides resolvers with access to the keymap registry via
+    /// `resolve_with_keymap`. Resolvers can query the keymap to get FACTS about
+    /// what bindings exist, then apply their own POLICY to decide what to do.
     fn try_resolver(&self, key: &KeyEvent) -> Option<ResolveResult> {
         use reovim_kernel::api::v1::{CommandId, ModuleId};
 
@@ -650,7 +656,8 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
             mode_state.transition_context = Some(ctx);
         }
 
-        registry.resolve(mode, key, &mut mode_state)
+        // Use resolve_with_keymap to give resolvers access to keymap queries
+        registry.resolve_with_keymap(mode, key, &mut mode_state, &self.keymap_registry)
     }
 
     /// Handle a resolve result from a mode key resolver.
@@ -1226,11 +1233,10 @@ mod tests {
         event_loop.command_registry_mut().register(Arc::new(cmd));
 
         // Register keybinding
-        event_loop.keymap_registry_mut().register_str(
-            test_mode(),
-            "j",
-            test_command_id("test-cmd"),
-        );
+        let mode = test_mode();
+        event_loop
+            .keymap_registry_mut()
+            .register_str(&mode, "j", test_command_id("test-cmd"));
 
         // Set up key reader
         let mut keys = vec![KeyEvent::new(KeyCode::Char('j'))].into_iter();
@@ -1253,9 +1259,10 @@ mod tests {
             .register(Arc::new(QuitCommand));
 
         // Register keybinding
+        let mode = test_mode();
         event_loop
             .keymap_registry_mut()
-            .register_str(test_mode(), "q", test_command_id("quit"));
+            .register_str(&mode, "q", test_command_id("quit"));
 
         // Set up key reader
         let mut keys = vec![KeyEvent::new(KeyCode::Char('q'))].into_iter();
@@ -1292,11 +1299,10 @@ mod tests {
             id: test_command_id("goto-top"),
         };
         event_loop.command_registry_mut().register(Arc::new(cmd));
-        event_loop.keymap_registry_mut().register_str(
-            test_mode(),
-            "gg",
-            test_command_id("goto-top"),
-        );
+        let mode = test_mode();
+        event_loop
+            .keymap_registry_mut()
+            .register_str(&mode, "gg", test_command_id("goto-top"));
 
         // First 'g' should be prefix
         let mut keys = vec![

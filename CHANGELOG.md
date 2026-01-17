@@ -41,6 +41,15 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - `reovim_timer_count()` - Get active timer count
   - Added timer types to `include/reovim.h`
 
+- Mechanism/Policy separation for key lookup (#353)
+  - `KeyLookupState` enum reports FACTS about bindings (no policy decisions)
+  - `KeyLookupPolicy` trait for interpreting lookup results
+  - `VimLookupPolicy` - wait for longer sequences (dd after d)
+  - `EagerLookupPolicy` - execute exact matches immediately
+  - `KeymapQuery` trait for resolvers to query bindings
+  - `lookup_with_policy()` method for policy-based lookup
+  - Layered bindings: User > Policy > Base (for future user overrides)
+
 - TUI log panel for real-time log streaming (#332)
   - `debug/log_subscribe` and `debug/log_unsubscribe` RPC methods
   - Real-time `LOG_ENTRY` notifications with level filtering
