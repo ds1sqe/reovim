@@ -211,6 +211,23 @@ impl TuiApp {
             }
         };
 
+        // Register for buffer notifications by setting the active buffer.
+        // This is required to receive buffer-scoped notifications like cursor_moved,
+        // buffer_modified, and render_complete which trigger TUI updates.
+        if let Ok(buffer_list) = client.call("buffer/list", json!({})).await
+            && let Some(buffers) = buffer_list.get("buffers").and_then(|v| v.as_array())
+            && let Some(first_buffer) = buffers.first()
+            && let Some(buffer_id) = first_buffer.get("id").and_then(|v| v.as_u64())
+        {
+            match client
+                .call("editor/set_active_buffer", json!({ "buffer_id": buffer_id }))
+                .await
+            {
+                Ok(_) => tracing::debug!("Set active buffer to {buffer_id}"),
+                Err(e) => tracing::debug!("Failed to set active buffer: {e}"),
+            }
+        }
+
         // Subscribe to server logs (info level and above)
         let subscription_id = match client.call("debug/log_subscribe", json!({})).await {
             Ok(result) => result

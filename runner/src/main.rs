@@ -39,8 +39,30 @@ struct Args {
     command: Option<Command>,
 
     /// Start server in detached/daemon mode without TUI.
+    ///
+    /// Server runs in background, no TUI is attached.
+    /// Use `reovim tui` or `reovim attach` to connect later.
     #[arg(short = 'd', long)]
     detach: bool,
+
+    /// Enable debug mode for TUI (statusline + frame capture).
+    ///
+    /// Shows a debug statusline at the bottom with timestamp, server address,
+    /// mode, and module count. Also captures frame buffers periodically.
+    #[arg(long)]
+    debug: bool,
+
+    /// Debug log directory (requires --debug).
+    ///
+    /// Default: ~/.local/share/reovim/logs/tui/
+    #[arg(long, value_name = "DIR")]
+    debug_dir: Option<PathBuf>,
+
+    /// Debug session name for log filenames (requires --debug).
+    ///
+    /// Default: "default"
+    #[arg(long, value_name = "NAME")]
+    debug_name: Option<String>,
 
     /// Files to open on startup.
     #[arg(value_name = "FILE")]
@@ -136,7 +158,8 @@ fn main() {
                 run_server(ServerConfig::tcp_with_fallback());
             } else {
                 // Integrated mode: start server + attach TUI
-                run_integrated(&args.files);
+                let debug_config = create_debug_config(args.debug, &args.debug_dir, &args.debug_name);
+                run_integrated(&args.files, debug_config);
             }
         }
     }
@@ -177,8 +200,31 @@ fn build_legacy_server_config(args: &Args) -> ServerConfig {
 /// └── TUI Client               └── Server process
 ///     └── TCP connect ←────────── READY 127.0.0.1:12521
 /// ```
+/// Create debug configuration from CLI flags.
+fn create_debug_config(
+    debug: bool,
+    debug_dir: &Option<PathBuf>,
+    debug_name: &Option<String>,
+) -> Option<runner::client::tui::TuiDebugConfig> {
+    if !debug {
+        return None;
+    }
+
+    let log_dir = debug_dir.clone().unwrap_or_else(|| {
+        reovim_arch::dirs::data_local_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("reovim")
+            .join("logs")
+            .join("tui")
+    });
+
+    let name = debug_name.clone().unwrap_or_else(|| "default".to_string());
+
+    Some(runner::client::tui::TuiDebugConfig::new(log_dir, name))
+}
+
 #[allow(unused_variables)] // files will be used later
-fn run_integrated(files: &[PathBuf]) {
+fn run_integrated(files: &[PathBuf], debug_config: Option<runner::client::tui::TuiDebugConfig>) {
     use std::{
         io::BufReader,
         process::{Command, Stdio},
@@ -225,8 +271,7 @@ fn run_integrated(files: &[PathBuf]) {
 
     rt.block_on(async {
         let config = ConnectionConfig::tcp(addr.ip().to_string(), addr.port());
-        // Integrated mode doesn't support debug flags (no CLI args available)
-        match TuiApp::connect(&config, None).await {
+        match TuiApp::connect(&config, debug_config).await {
             Ok(mut app) => {
                 if let Err(e) = app.run().await {
                     eprintln!("TUI error: {e}");

@@ -6,6 +6,10 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Fixed
 
+- TUI not receiving buffer-scoped notifications (#365)
+  - TUI now calls `editor/set_active_buffer` on connect to register for notifications
+  - Fixes input appearing unresponsive (cursor_moved, buffer_modified, render_complete were missed)
+
 - Complete manager integration for server discovery (#356)
   - Port separation: manager owns 12521, servers start at 12522
   - Server auto-starts manager and registers on startup
@@ -23,6 +27,11 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - Prevents ghost from ping-ponging between double buffers after resize
 
 ### Added
+
+- Unified debug flags in integrated mode (#364)
+  - `reovim --debug` now works (previously only `reovim tui --debug`)
+  - Added `--debug-dir` and `--debug-name` flags to main CLI
+  - More verbose help descriptions
 
 - TUI Debug Mode with statusline and frame buffer capture (#358)
   - `--debug` flag enables debug statusline with timestamp, server, mode, modules
