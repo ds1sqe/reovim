@@ -6,13 +6,12 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ## [Unreleased] - v0.9.0-dev
 
-### Documentation
+### Fixed
 
-- **CLAUDE.md Logging Section Update** (Issue #322)
-  - Updated "Logs and Debugging" section to reflect v0.9.0 state
-  - Documented what currently works: RPC debug commands (`log-level`, `log-tail`)
-  - Marked unimplemented features as "Planned": CLI args (`--log`, `--lsp-log`), env vars
-  - Removed outdated examples referencing non-existent CLI flags
+- **E2E Test Infrastructure** ([#308](https://github.com/ds1sqe/reovim/issues/308))
+  - Fixed keymap lookup to use vim-style prefix handling (wait for longer bindings like `dd` when `d` is pressed)
+  - Fixed mode ID references in keymap module to use explicit `editor:` prefix (`editor:normal`, `editor:insert`, etc.)
+  - Enables 12 of 28 operator E2E tests to pass
 
 ### Refactored
 

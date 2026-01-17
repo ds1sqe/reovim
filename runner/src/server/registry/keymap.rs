@@ -202,9 +202,14 @@ impl KeymapRegistry {
     /// Look up a key sequence in a mode.
     ///
     /// Returns:
-    /// - `Found(cmd)` if the sequence exactly matches a binding
-    /// - `Prefix` if the sequence is a prefix of one or more bindings
+    /// - `Found(cmd)` if the sequence exactly matches a binding AND is NOT a prefix of any longer binding
+    /// - `Prefix` if the sequence is a prefix of one or more longer bindings (even if it also matches exactly)
     /// - `NotFound` if the sequence doesn't match anything
+    ///
+    /// This implements vim-style "wait for more keys" behavior:
+    /// - `d` is both an exact match (enter-delete-operator) and a prefix of `dd` (delete-line)
+    /// - We return `Prefix` so the user can type `dd` to delete a line
+    /// - If the user wanted just `d`, they can press another motion like `dw`
     #[must_use]
     pub fn lookup(&self, mode: &ModeId, keys: &KeySequence) -> KeyLookupResult {
         profile_scope!("keymap_lookup", "runner::keymap");
@@ -213,14 +218,18 @@ impl KeymapRegistry {
             return KeyLookupResult::NotFound;
         };
 
-        // Check for exact match first
-        if let Some(entry) = mode_entries.get(keys) {
-            return KeyLookupResult::Found(entry.command.clone());
+        let exact_match = mode_entries.get(keys);
+        let is_prefix = Self::is_prefix_of_any(mode_entries, keys);
+
+        // Vim-style: if this is a prefix of something longer, wait for more keys
+        // even if it's also an exact match (e.g., 'd' is both d-> and dd)
+        if is_prefix {
+            return KeyLookupResult::Prefix;
         }
 
-        // Check if this is a prefix of any binding
-        if Self::is_prefix_of_any(mode_entries, keys) {
-            return KeyLookupResult::Prefix;
+        // Not a prefix - return exact match if found
+        if let Some(entry) = exact_match {
+            return KeyLookupResult::Found(entry.command.clone());
         }
 
         KeyLookupResult::NotFound
@@ -373,12 +382,12 @@ mod tests {
         registry.register_str(mode.clone(), "g", test_command("goto"));
         registry.register_str(mode.clone(), "gg", test_command("goto-top"));
 
-        // Single `g` is an exact match (not prefix)
+        // Single `g` is a prefix of `gg`, so we return Prefix (vim-style wait for more keys)
         let g = KeySequence::parse("g").unwrap();
         let result = registry.lookup(&mode, &g);
-        assert!(result.is_found());
+        assert!(result.is_prefix());
 
-        // `gg` is also an exact match
+        // `gg` is an exact match with no longer prefix
         let gg = KeySequence::parse("gg").unwrap();
         let result = registry.lookup(&mode, &gg);
         assert!(result.is_found());
