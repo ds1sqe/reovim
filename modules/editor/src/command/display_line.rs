@@ -3,15 +3,30 @@
 //! Provides cursor movement based on display (visual) lines rather than buffer lines.
 //! When text wraps across multiple terminal lines, gj/gk move one visual line
 //! rather than one buffer line.
+//!
+//! These commands are unicode-aware and handle:
+//! - Tab characters (expand based on `tabstop` setting)
+//! - CJK double-width characters (take 2 display columns)
 
 use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_kernel::api::v1::{CommandId, KernelContext, Position, events::CursorMoved},
+    reovim_kernel::api::v1::{
+        CommandId, KernelContext, OptionScopeId, Position, events::CursorMoved,
+    },
 };
 
 use super::super::{display_lines, mode::EDITOR_MODULE};
+
+/// Get the tabstop setting for a buffer.
+fn get_tabstop(ctx: &KernelContext, buffer_id: reovim_kernel::api::v1::BufferId) -> usize {
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+    ctx.options
+        .get("tabstop", OptionScopeId::Buffer(buffer_id))
+        .and_then(|v| v.as_int())
+        .map_or(8, |n| n.max(1) as usize)
+}
 
 /// Move cursor down one display line (gj).
 ///
@@ -52,8 +67,9 @@ impl CommandHandler for CursorDisplayDown {
 
         // Terminal width: use 80 as default
         // Note: In the future, this could be retrieved from session state
-        // or passed through CommandContext. See issue #248 for tracking.
+        // or passed through CommandContext.
         let terminal_width = 80;
+        let tabstop = get_tabstop(ctx, buffer_id);
 
         let count = args.count().unwrap_or(1);
         let (old_pos, new_pos) = {
@@ -63,10 +79,16 @@ impl CommandHandler for CursorDisplayDown {
 
             // Get current line content
             let current_line = buffer.line(old_pos.line).unwrap_or("");
+
+            // Use unicode-aware functions for proper tab and CJK handling
             let display_lines_in_current =
-                display_lines::display_line_count(current_line, terminal_width);
-            let (current_display_line, display_col) =
-                display_lines::display_position(old_pos.column, terminal_width);
+                display_lines::display_line_count_unicode(current_line, terminal_width, tabstop);
+            let (current_display_line, display_col) = display_lines::display_position_unicode(
+                current_line,
+                old_pos.column,
+                terminal_width,
+                tabstop,
+            );
 
             // Calculate how many display lines we can move within this buffer line
             let remaining_display_lines =
@@ -75,8 +97,12 @@ impl CommandHandler for CursorDisplayDown {
             let new_pos = if count <= remaining_display_lines {
                 // Stay on same buffer line, move to next display line
                 let target_display_line = current_display_line + count;
-                let new_col =
-                    display_lines::buffer_column(target_display_line, display_col, terminal_width);
+                let target_display_col = target_display_line * terminal_width + display_col;
+                let new_col = display_lines::buffer_col_from_display_col_unicode(
+                    current_line,
+                    target_display_col,
+                    tabstop,
+                );
                 // Clamp to line length
                 let line_len = current_line.chars().count();
                 let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
@@ -88,15 +114,17 @@ impl CommandHandler for CursorDisplayDown {
 
                 while lines_to_move > 0 && new_line < line_count {
                     let line = buffer.line(new_line).unwrap_or("");
-                    let display_count = display_lines::display_line_count(line, terminal_width);
+                    let display_count =
+                        display_lines::display_line_count_unicode(line, terminal_width, tabstop);
 
                     if lines_to_move <= display_count {
                         // Target is within this line
                         let target_display = lines_to_move - 1;
-                        let new_col = display_lines::buffer_column(
-                            target_display,
-                            display_col,
-                            terminal_width,
+                        let target_display_col = target_display * terminal_width + display_col;
+                        let new_col = display_lines::buffer_col_from_display_col_unicode(
+                            line,
+                            target_display_col,
+                            tabstop,
                         );
                         let line_len = line.chars().count();
                         let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
@@ -118,11 +146,18 @@ impl CommandHandler for CursorDisplayDown {
                 // Reached end of buffer - go to last line, last display line
                 let last_line = line_count.saturating_sub(1);
                 let last_content = buffer.line(last_line).unwrap_or("");
-                let last_display_count =
-                    display_lines::display_line_count(last_content, terminal_width);
+                let last_display_count = display_lines::display_line_count_unicode(
+                    last_content,
+                    terminal_width,
+                    tabstop,
+                );
                 let target_display = last_display_count.saturating_sub(1);
-                let new_col =
-                    display_lines::buffer_column(target_display, display_col, terminal_width);
+                let target_display_col = target_display * terminal_width + display_col;
+                let new_col = display_lines::buffer_col_from_display_col_unicode(
+                    last_content,
+                    target_display_col,
+                    tabstop,
+                );
                 let line_len = last_content.chars().count();
                 let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
                 Position::new(last_line, clamped_col)
@@ -182,8 +217,9 @@ impl CommandHandler for CursorDisplayUp {
 
         // Terminal width: use 80 as default
         // Note: In the future, this could be retrieved from session state
-        // or passed through CommandContext. See issue #248 for tracking.
+        // or passed through CommandContext.
         let terminal_width = 80;
+        let tabstop = get_tabstop(ctx, buffer_id);
 
         let count = args.count().unwrap_or(1);
         let (old_pos, new_pos) = {
@@ -192,14 +228,24 @@ impl CommandHandler for CursorDisplayUp {
 
             // Get current line content
             let current_line = buffer.line(old_pos.line).unwrap_or("");
-            let (current_display_line, display_col) =
-                display_lines::display_position(old_pos.column, terminal_width);
+
+            // Use unicode-aware functions for proper tab and CJK handling
+            let (current_display_line, display_col) = display_lines::display_position_unicode(
+                current_line,
+                old_pos.column,
+                terminal_width,
+                tabstop,
+            );
 
             let new_pos = if count <= current_display_line {
                 // Stay on same buffer line, move to previous display line
                 let target_display_line = current_display_line - count;
-                let new_col =
-                    display_lines::buffer_column(target_display_line, display_col, terminal_width);
+                let target_display_col = target_display_line * terminal_width + display_col;
+                let new_col = display_lines::buffer_col_from_display_col_unicode(
+                    current_line,
+                    target_display_col,
+                    tabstop,
+                );
                 // Clamp to line length
                 let line_len = current_line.chars().count();
                 let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
@@ -212,15 +258,17 @@ impl CommandHandler for CursorDisplayUp {
                 while lines_to_move > 0 && new_line > 0 {
                     new_line -= 1;
                     let line = buffer.line(new_line).unwrap_or("");
-                    let display_count = display_lines::display_line_count(line, terminal_width);
+                    let display_count =
+                        display_lines::display_line_count_unicode(line, terminal_width, tabstop);
 
                     if lines_to_move <= display_count {
                         // Target is within this line (from bottom)
                         let target_display = display_count - lines_to_move;
-                        let new_col = display_lines::buffer_column(
-                            target_display,
-                            display_col,
-                            terminal_width,
+                        let target_display_col = target_display * terminal_width + display_col;
+                        let new_col = display_lines::buffer_col_from_display_col_unicode(
+                            line,
+                            target_display_col,
+                            tabstop,
                         );
                         let line_len = line.chars().count();
                         let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
@@ -240,7 +288,11 @@ impl CommandHandler for CursorDisplayUp {
 
                 // Reached beginning of buffer - go to first line, first display line
                 let first_content = buffer.line(0).unwrap_or("");
-                let new_col = display_lines::buffer_column(0, display_col, terminal_width);
+                let new_col = display_lines::buffer_col_from_display_col_unicode(
+                    first_content,
+                    display_col,
+                    tabstop,
+                );
                 let line_len = first_content.chars().count();
                 let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
                 Position::new(0, clamped_col)

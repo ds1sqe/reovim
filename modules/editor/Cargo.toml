@@ -16,6 +16,7 @@ reovim-driver-display = { path = "../../lib/drivers/display" }
 reovim-driver-input = { path = "../../lib/drivers/input" }
 reovim-driver-vfs = { path = "../../lib/drivers/vfs" }
 reovim-module-operators = { path = "../operators" }
+unicode-width = "0.2"
 
 [lints]
 workspace = true

@@ -92,6 +92,15 @@ pub struct EventLoop<F: InputFallbackHandler<AppState>> {
     /// stores the target here, and we apply it after command execution.
     /// This enables event-driven mode transitions without hardcoded command names.
     pending_mode_change: Arc<Mutex<Option<ModeId>>>,
+
+    /// Pending count for the next command.
+    ///
+    /// In Vim, typing "3i" enters insert mode and repeats the text 3 times on exit.
+    /// Digits pressed in normal mode (without modifiers) accumulate here until
+    /// a non-digit command key is pressed.
+    ///
+    /// Reset after command execution or when leaving normal mode.
+    pending_count: Option<usize>,
 }
 
 impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
@@ -138,6 +147,7 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
             key_reader: None,
             last_error: None,
             pending_mode_change,
+            pending_count: None,
         }
     }
 
@@ -199,11 +209,12 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
     ///
     /// This is the core dispatch logic:
     /// 0. Check for char-wait state (find-char commands)
-    /// 1. Add key to pending sequence
-    /// 2. Look up in keymap
-    /// 3. If found: execute command
-    /// 4. If prefix: wait for more keys
-    /// 5. If not found: delegate to fallback handler
+    /// 1. Check for count prefix (digits in normal mode)
+    /// 2. Add key to pending sequence
+    /// 3. Look up in keymap
+    /// 4. If found: execute command
+    /// 5. If prefix: wait for more keys
+    /// 6. If not found: delegate to fallback handler
     fn handle_key(&mut self, key: KeyEvent) {
         profile_scope!("handle_key", "runner::event_loop");
 
@@ -216,6 +227,13 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
         // Check for pending character operation (f/F/t/T or r waiting for character)
         if self.app.has_pending_char() {
             self.handle_pending_char(key);
+            return;
+        }
+
+        // Check for count prefix (digits 1-9, or 0 if already have count) in normal mode
+        // Digits without modifiers accumulate as a count prefix
+        if self.is_count_digit(&key) {
+            self.accumulate_count_digit(&key);
             return;
         }
 
@@ -232,8 +250,14 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
                 // (any command breaks insert mode batching)
                 self.app.flush_pending_edits();
 
-                // Build command context (TODO: parse count/register from pending keys)
+                // Build command context with count from pending_count
                 let mut ctx = CommandContext::new();
+
+                // Set count in context if we have a pending count
+                let command_count = self.pending_count.take();
+                if let Some(count) = command_count {
+                    ctx.set("count", reovim_driver_command::ArgValue::Count(count));
+                }
 
                 // Set buffer_id in context if we have an active buffer
                 if let Some(buffer_id) = self.app.active_buffer {
@@ -248,6 +272,9 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
                     self.save_visual_selection_if_active();
                 }
 
+                // Track current mode before command for insert mode detection
+                let mode_before = self.app.current_mode().clone();
+
                 // Clear pending mode change before command execution
                 if let Ok(mut guard) = self.pending_mode_change.lock() {
                     *guard = None;
@@ -260,9 +287,39 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
                     // Handle mode transition from ModeChanged events
                     // Commands emit ModeChanged::with_mode_id() which sets pending_mode_change.
                     // This event-driven approach replaces hardcoded mode_for_command() mapping.
-                    if let Ok(mut guard) = self.pending_mode_change.lock()
-                        && let Some(new_mode) = guard.take()
-                    {
+                    //
+                    // Extract mode change from mutex before processing to avoid borrow issues
+                    let new_mode = self
+                        .pending_mode_change
+                        .lock()
+                        .ok()
+                        .and_then(|mut guard| guard.take());
+
+                    if let Some(new_mode) = new_mode {
+                        // Check if entering insert mode - start accumulation with count
+                        if new_mode.name() == "insert" && mode_before.name() != "insert" {
+                            use crate::server::app::InsertEntryType;
+
+                            let insert_count = command_count.unwrap_or(1);
+
+                            // Determine entry type based on command
+                            let entry_type = if cmd_id.name() == "open-line-below" {
+                                InsertEntryType::OpenBelow
+                            } else if cmd_id.name() == "open-line-above" {
+                                InsertEntryType::OpenAbove
+                            } else {
+                                InsertEntryType::Inline
+                            };
+
+                            self.app
+                                .repeat_state
+                                .start_accumulating_with_count_and_type(insert_count, entry_type);
+                        }
+                        // Check if exiting insert mode - handle text repetition
+                        else if mode_before.name() == "insert" && new_mode.name() != "insert" {
+                            self.handle_insert_mode_exit();
+                        }
+
                         self.app.mode_stack.set(new_mode);
                     }
                 } else {
@@ -566,6 +623,118 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
     pub fn keymap_registry_mut(&mut self) -> &mut KeymapRegistry {
         &mut self.keymap_registry
     }
+
+    // ========================================================================
+    // Count Prefix Handling (for 3i, 5o, etc.)
+    // ========================================================================
+
+    /// Check if a key is a count digit.
+    ///
+    /// In Vim, digits 1-9 start a count, and 0 continues an existing count.
+    /// This only applies in normal/visual modes and only without modifiers.
+    fn is_count_digit(&self, key: &KeyEvent) -> bool {
+        use reovim_driver_input::KeyCode;
+
+        // Only in normal or visual modes (not insert, not operator-pending, etc.)
+        let mode_name = self.app.current_mode().name();
+        if mode_name != "normal" && !mode_name.starts_with("visual") {
+            return false;
+        }
+
+        // No modifiers allowed for count digits
+        if !key.modifiers.is_empty() {
+            return false;
+        }
+
+        // Check if it's a digit
+        match key.code {
+            KeyCode::Char(c) => {
+                if c.is_ascii_digit() {
+                    // 1-9 can start a count, 0 can only continue
+                    c != '0' || self.pending_count.is_some()
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
+    }
+
+    /// Accumulate a digit into the pending count.
+    ///
+    /// Called when `is_count_digit` returns true. Multiplies existing count
+    /// by 10 and adds the new digit.
+    fn accumulate_count_digit(&mut self, key: &KeyEvent) {
+        use reovim_driver_input::KeyCode;
+
+        if let KeyCode::Char(c) = key.code
+            && let Some(digit) = c.to_digit(10)
+        {
+            let digit = digit as usize;
+            let current = self.pending_count.unwrap_or(0);
+            // Prevent overflow by capping at MAX_INSERT_COUNT
+            let new_count = current.saturating_mul(10).saturating_add(digit);
+            self.pending_count = Some(new_count.min(crate::server::app::MAX_INSERT_COUNT));
+        }
+    }
+
+    // ========================================================================
+    // Insert Mode Exit Handling
+    // ========================================================================
+
+    /// Handle insert mode exit (repeat accumulated text if count > 1).
+    ///
+    /// Behavior depends on how insert mode was entered:
+    /// - `Inline` (i/a/I/A): "3ihello<Esc>" inserts "hellohellohello"
+    /// - `OpenBelow` (o): "3ohello<Esc>" creates 3 lines each with "hello"
+    /// - `OpenAbove` (O): "3Ohello<Esc>" creates 3 lines each with "hello"
+    fn handle_insert_mode_exit(&mut self) {
+        use crate::server::app::InsertEntryType;
+
+        // Stop accumulating and get the count and entry type
+        self.app.repeat_state.stop_accumulating();
+        let count = self.app.repeat_state.get_insert_count();
+        let entry_type = self.app.repeat_state.get_insert_entry_type();
+
+        // If count > 1, repeat the accumulated text
+        if count > 1 {
+            let text = self.app.repeat_state.insert_text.clone();
+            if !text.is_empty() {
+                // Get the active buffer
+                if let Some(buffer_id) = self.app.active_buffer
+                    && let Some(buffer_arc) = self.app.kernel.buffers.get(buffer_id)
+                {
+                    let mut buffer = buffer_arc.write();
+                    let cursor_before = buffer.position();
+
+                    // Build the repeat text based on entry type
+                    let repeat_text = match entry_type {
+                        InsertEntryType::Inline => {
+                            // Repeat text inline (e.g., "3itest" -> "testtesttest")
+                            text.repeat(count - 1)
+                        }
+                        InsertEntryType::OpenBelow | InsertEntryType::OpenAbove => {
+                            // Repeat text on new lines (e.g., "3otest" -> 3 lines with "test")
+                            // Format: newline + text, repeated (count-1) times
+                            format!("\n{text}").repeat(count - 1)
+                        }
+                    };
+
+                    let edit = buffer.insert(&repeat_text);
+                    let cursor_after = buffer.position();
+                    drop(buffer);
+
+                    // Record the edit for undo
+                    self.app.undo_registry.record(
+                        buffer_id,
+                        vec![edit],
+                        cursor_before,
+                        cursor_after,
+                    );
+                }
+            }
+        }
+    }
 }
 
 impl<F: InputFallbackHandler<AppState>> std::fmt::Debug for EventLoop<F> {
@@ -828,4 +997,100 @@ mod tests {
 
     // Note: mode_for_command tests and helpers removed as part of Epic #284.
     // Mode transitions are now event-driven via ModeChanged events with target_mode.
+
+    // =========================================================================
+    // Count Prefix Tests
+    // =========================================================================
+
+    #[test]
+    fn test_is_count_digit_in_normal_mode() {
+        let event_loop = create_test_event_loop();
+
+        // 1-9 can start a count
+        assert!(event_loop.is_count_digit(&KeyEvent::new(KeyCode::Char('1'))));
+        assert!(event_loop.is_count_digit(&KeyEvent::new(KeyCode::Char('5'))));
+        assert!(event_loop.is_count_digit(&KeyEvent::new(KeyCode::Char('9'))));
+
+        // 0 cannot start a count (it's "go to beginning of line")
+        assert!(!event_loop.is_count_digit(&KeyEvent::new(KeyCode::Char('0'))));
+
+        // Letters are not count digits
+        assert!(!event_loop.is_count_digit(&KeyEvent::new(KeyCode::Char('a'))));
+        assert!(!event_loop.is_count_digit(&KeyEvent::new(KeyCode::Char('i'))));
+    }
+
+    #[test]
+    fn test_is_count_digit_with_modifiers() {
+        use reovim_driver_input::Modifiers;
+
+        let event_loop = create_test_event_loop();
+
+        // Digits with modifiers are not count digits
+        let ctrl_1 = KeyEvent::with_modifiers(KeyCode::Char('1'), Modifiers::CTRL);
+        assert!(!event_loop.is_count_digit(&ctrl_1));
+
+        let alt_5 = KeyEvent::with_modifiers(KeyCode::Char('5'), Modifiers::ALT);
+        assert!(!event_loop.is_count_digit(&alt_5));
+    }
+
+    #[test]
+    fn test_is_count_digit_zero_continues_count() {
+        let mut event_loop = create_test_event_loop();
+
+        // Set a pending count
+        event_loop.pending_count = Some(3);
+
+        // Now 0 can continue the count
+        assert!(event_loop.is_count_digit(&KeyEvent::new(KeyCode::Char('0'))));
+    }
+
+    #[test]
+    fn test_accumulate_count_digit() {
+        let mut event_loop = create_test_event_loop();
+
+        // Accumulate "123"
+        event_loop.accumulate_count_digit(&KeyEvent::new(KeyCode::Char('1')));
+        assert_eq!(event_loop.pending_count, Some(1));
+
+        event_loop.accumulate_count_digit(&KeyEvent::new(KeyCode::Char('2')));
+        assert_eq!(event_loop.pending_count, Some(12));
+
+        event_loop.accumulate_count_digit(&KeyEvent::new(KeyCode::Char('3')));
+        assert_eq!(event_loop.pending_count, Some(123));
+    }
+
+    #[test]
+    fn test_accumulate_count_digit_capped() {
+        let mut event_loop = create_test_event_loop();
+
+        // Set a high count and try to exceed MAX_INSERT_COUNT
+        event_loop.pending_count = Some(990);
+        event_loop.accumulate_count_digit(&KeyEvent::new(KeyCode::Char('9')));
+
+        // Should be capped at MAX_INSERT_COUNT (999)
+        assert_eq!(event_loop.pending_count, Some(crate::server::app::MAX_INSERT_COUNT));
+    }
+
+    #[test]
+    fn test_pending_count_initially_none() {
+        let event_loop = create_test_event_loop();
+        assert!(event_loop.pending_count.is_none());
+    }
+
+    #[test]
+    fn test_count_digit_in_insert_mode_not_counted() {
+        let kernel = KernelContext::default();
+        let insert_mode = ModeId::new(ModuleId::new("editor"), "insert");
+        let app = AppState::new(kernel, insert_mode);
+        let event_loop = EventLoop::new(
+            app,
+            ModeRegistry::new(),
+            CommandRegistry::new(),
+            KeymapRegistry::new(),
+            NoOpFallback,
+        );
+
+        // In insert mode, digits are not count prefixes
+        assert!(!event_loop.is_count_digit(&KeyEvent::new(KeyCode::Char('3'))));
+    }
 }
