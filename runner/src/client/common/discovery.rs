@@ -5,7 +5,10 @@
 use std::{net::TcpStream, time::Duration};
 
 /// Default server port.
-pub const DEFAULT_PORT: u16 = 12521;
+///
+/// Port 12521 is reserved for the manager daemon.
+/// Server instances start at 12522.
+pub const DEFAULT_PORT: u16 = 12522;
 
 /// Number of ports to scan for fallback.
 pub const PORT_FALLBACK_COUNT: u16 = 10;

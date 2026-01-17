@@ -193,6 +193,42 @@ reovim tui --tcp 127.0.0.1:12521
 reovim tui --socket /tmp/reovim.sock
 ```
 
+### TUI Debug Mode
+
+Enable debug mode for TUI diagnostics:
+
+```bash
+# Enable debug statusline and frame capture
+reovim tui --debug
+
+# Custom log directory
+reovim tui --debug --debug-dir /tmp/reovim-debug
+
+# Custom session name
+reovim tui --debug --debug-name mysession
+```
+
+**Debug Features:**
+
+1. **Statusline**: Shows current time, server address, mode, and module count at the bottom of the screen
+   ```
+   [26-01-18 12:34:56 KST] [server: 127.0.0.1:12521] [mode: NORMAL] [modules: 5]
+   ```
+
+2. **Frame Buffer Capture**: Captures rendered frames every 5 seconds
+   - Path: `~/.local/share/reovim/logs/tui/frame-buffer/{name}-{timestamp}.frame`
+
+3. **Session Log**: Records key events (mode changes, resize, etc.)
+   - Path: `~/.local/share/reovim/logs/tui/{name}_{start_time}.log`
+
+**TUI Debug Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--debug` | Enable debug mode (statusline + frame capture) |
+| `--debug-dir <DIR>` | Custom log directory (default: `~/.local/share/reovim/logs/tui/`) |
+| `--debug-name <NAME>` | Session name for filenames (default: `default`) |
+
 ## JSON-RPC Protocol
 
 ### Request Format

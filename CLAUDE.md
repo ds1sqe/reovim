@@ -550,6 +550,38 @@ reovim cli log-tail --follow --level warn
 Output is color-coded when stdout is a TTY:
 - ERROR (red), WARN (yellow), INFO (green), DEBUG (cyan), TRACE (gray)
 
+### TUI Debug Mode
+
+Enable debug mode for TUI diagnostics:
+
+```bash
+# Enable debug statusline and frame capture
+reovim tui --debug
+
+# Custom log directory
+reovim tui --debug --debug-dir /tmp/reovim-debug
+
+# Custom session name
+reovim tui --debug --debug-name mysession
+```
+
+**Output files:**
+- `~/.local/share/reovim/logs/tui/{name}_{start_time}.log` - Session log
+- `~/.local/share/reovim/logs/tui/frame-buffer/{name}-{timestamp}.frame` - Frame captures (every 5 seconds)
+
+**Statusline format:**
+```
+[YY-MM-DD HH:MM:SS TZ] [server: ADDR] [mode: MODE] [modules: N]
+```
+
+The statusline is rendered at the bottom of the screen with inverse colors.
+
+**Session log events:**
+- Session start/end
+- Mode changes
+- Terminal resize
+- Frame captures
+
 ### Debugging Flaky Tests
 
 **Think Twice Before Assuming Race Conditions**: When tests pass/fail intermittently:

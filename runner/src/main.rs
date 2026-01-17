@@ -110,8 +110,9 @@ fn main() {
         }
 
         Some(Command::Tui(tui_args) | Command::Attach(tui_args)) => {
+            let debug_config = tui_args.into_debug_config();
             let config = tui_args.into_config();
-            run_tui(&config);
+            run_tui(&config, debug_config);
         }
 
         Some(Command::Cli(cli_args)) => {
@@ -224,7 +225,8 @@ fn run_integrated(files: &[PathBuf]) {
 
     rt.block_on(async {
         let config = ConnectionConfig::tcp(addr.ip().to_string(), addr.port());
-        match TuiApp::connect(&config).await {
+        // Integrated mode doesn't support debug flags (no CLI args available)
+        match TuiApp::connect(&config, None).await {
             Ok(mut app) => {
                 if let Err(e) = app.run().await {
                     eprintln!("TUI error: {e}");
@@ -375,14 +377,14 @@ fn run_manager(action: &ManagerAction) {
     });
 }
 
-fn run_tui(config: &ConnectionConfig) {
+fn run_tui(config: &ConnectionConfig, debug_config: Option<runner::client::tui::TuiDebugConfig>) {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .expect("Failed to create runtime");
 
     rt.block_on(async {
-        match TuiApp::connect(config).await {
+        match TuiApp::connect(config, debug_config).await {
             Ok(mut app) => {
                 if let Err(e) = app.run().await {
                     eprintln!("TUI error: {e}");
@@ -433,9 +435,49 @@ fn run_cli(config: &ConnectionConfig, action: &CliAction, format: &str) {
     rt.block_on(async {
         // Handle list command without connection
         if matches!(action, CliAction::List) {
+            use {
+                runner::{
+                    manager::{ManagerClient, is_manager_alive},
+                    server::instance::InstanceRegistry,
+                },
+                std::collections::HashSet,
+            };
+
+            let mut seen_addrs = HashSet::new();
+            let mut found_any = false;
+
+            // First, try to query the manager (preferred source)
+            if is_manager_alive().await
+                && let Ok(mut client) = ManagerClient::connect().await
+                && let Ok(instances) = client.list().await
+            {
+                for instance in instances {
+                    let addr = instance.transport.display();
+                    seen_addrs.insert(addr.clone());
+                    println!("{} ({}) pid: {}", addr, instance.name, instance.pid);
+                    found_any = true;
+                }
+            }
+
+            // Fall back to file registry if manager unavailable
+            if !found_any {
+                let registry = InstanceRegistry::new();
+                if let Ok(instances) = registry.list() {
+                    for instance in instances {
+                        let addr = instance.transport.display();
+                        seen_addrs.insert(addr.clone());
+                        println!("{} ({}) pid: {}", addr, instance.name, instance.pid);
+                    }
+                }
+            }
+
+            // Also scan ports for any unregistered servers
             for s in discovery::list_servers() {
-                let pid = s.pid.map_or_else(|| "?".into(), |p| p.to_string());
-                println!("{}:{} (pid: {pid})", s.host, s.port);
+                let addr = format!("{}:{}", s.host, s.port);
+                if !seen_addrs.contains(&addr) {
+                    let pid = s.pid.map_or_else(|| "?".into(), |p| p.to_string());
+                    println!("{addr} (unregistered) pid: {pid}");
+                }
             }
             return;
         }

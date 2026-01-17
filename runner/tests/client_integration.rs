@@ -369,7 +369,7 @@ mod common {
         match config {
             ConnectionConfig::Tcp { host, port } => {
                 assert_eq!(host, "127.0.0.1");
-                assert_eq!(port, 12521);
+                assert_eq!(port, 12522);
             }
             #[cfg(unix)]
             _ => panic!("Expected TCP config"),

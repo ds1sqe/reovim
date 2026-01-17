@@ -542,6 +542,46 @@ impl Server {
             eprintln!("Listening on {}", listener.local_addr_string());
         }
 
+        // Build instance info for registration
+        let transport_info = Self::transport_info_from_listener(&listener);
+        let instance_info = instance::InstanceInfo::new(
+            self.config.instance_name.clone(),
+            std::process::id(),
+            transport_info,
+        );
+
+        // Register with manager if available (auto-starts if needed)
+        let manager_registered = self.register_with_manager(&instance_info).await;
+
+        // Also register in file-based registry as fallback
+        let registry = instance::InstanceRegistry::new();
+        if let Err(e) = registry.register(&instance_info) {
+            tracing::warn!(
+                instance = %self.config.instance_name,
+                error = %e,
+                "Failed to register instance in file registry"
+            );
+        } else {
+            tracing::debug!(
+                instance = %self.config.instance_name,
+                "Registered instance in file registry"
+            );
+        }
+
+        if manager_registered {
+            tracing::info!(
+                instance = %self.config.instance_name,
+                transport = %instance_info.transport,
+                "Registered instance with manager"
+            );
+        } else {
+            tracing::info!(
+                instance = %self.config.instance_name,
+                transport = %instance_info.transport,
+                "Registered instance (file registry only, manager unavailable)"
+            );
+        }
+
         // Accept loop
         while !self.shutdown.load(Ordering::Relaxed) {
             match listener.accept().await {
@@ -581,6 +621,23 @@ impl Server {
             }
         }
 
+        // Unregister from manager
+        self.unregister_from_manager().await;
+
+        // Unregister from file registry
+        if let Err(e) = registry.unregister(&self.config.instance_name) {
+            tracing::warn!(
+                instance = %self.config.instance_name,
+                error = %e,
+                "Failed to unregister instance from file registry"
+            );
+        } else {
+            tracing::debug!(
+                instance = %self.config.instance_name,
+                "Unregistered instance from file registry"
+            );
+        }
+
         tracing::info!("Server shutting down");
         Ok(())
     }
@@ -613,6 +670,67 @@ impl Server {
 
         tracing::info!("Stdio client disconnected");
         Ok(())
+    }
+
+    /// Create transport info from a listener.
+    ///
+    /// Extracts the address information from the listener to create
+    /// a `TransportInfo` for registry registration.
+    fn transport_info_from_listener(listener: &TransportListener) -> instance::TransportInfo {
+        match listener {
+            TransportListener::Tcp { local_addr, .. } => {
+                instance::TransportInfo::tcp(local_addr.ip().to_string(), local_addr.port())
+            }
+            #[cfg(unix)]
+            TransportListener::Unix { path, .. } => {
+                instance::TransportInfo::local(path.display().to_string())
+            }
+        }
+    }
+
+    /// Register this server instance with the manager daemon.
+    ///
+    /// Auto-starts the manager if not running. Returns true if registration
+    /// succeeded, false if manager is unavailable.
+    async fn register_with_manager(&self, info: &instance::InstanceInfo) -> bool {
+        use crate::manager::{ManagerClient, ensure_manager_running};
+
+        // Try to ensure manager is running (auto-starts if needed)
+        if let Err(e) = ensure_manager_running().await {
+            tracing::debug!(error = %e, "Manager not available, using file registry only");
+            return false;
+        }
+
+        // Connect and register
+        match ManagerClient::connect().await {
+            Ok(mut client) => match client.register(info.clone()).await {
+                Ok(()) => true,
+                Err(e) => {
+                    tracing::warn!(error = %e, "Failed to register with manager");
+                    false
+                }
+            },
+            Err(e) => {
+                tracing::debug!(error = %e, "Failed to connect to manager");
+                false
+            }
+        }
+    }
+
+    /// Unregister this server instance from the manager daemon.
+    ///
+    /// Called on shutdown. Silently ignores failures.
+    async fn unregister_from_manager(&self) {
+        use crate::manager::{ManagerClient, is_manager_alive};
+
+        // Only try if manager is running
+        if !is_manager_alive().await {
+            return;
+        }
+
+        if let Ok(mut client) = ManagerClient::connect().await {
+            let _ = client.unregister(&self.config.instance_name).await;
+        }
     }
 
     /// Request server shutdown.

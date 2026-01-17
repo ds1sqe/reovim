@@ -4,7 +4,28 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [Unreleased] - v0.9.1-dev
 
+### Fixed
+
+- Complete manager integration for server discovery (#356)
+  - Port separation: manager owns 12521, servers start at 12522
+  - Server auto-starts manager and registers on startup
+  - CLI auto_discover() checks registry before port scanning
+  - REPL: add `list` and `connect` commands for server switching
+
+- Server now emits `render/complete` notification (#320)
+  - Emitted after any visual state change (mode, cursor, buffer modified)
+  - Buffer-scoped when active buffer exists, session-wide otherwise
+  - TUI clients use this to know when to refresh display
+
 ### Added
+
+- TUI Debug Mode with statusline and frame buffer capture (#358)
+  - `--debug` flag enables debug statusline with timestamp, server, mode, modules
+  - Frame buffer capture every 5 seconds to `~/.local/share/reovim/logs/tui/frame-buffer/`
+  - LLM-friendly capture format with metadata header and ANSI-styled screen content
+  - Wired TUI to use `FrameRenderer` double-buffer for accurate capture
+  - Session logging to `~/.local/share/reovim/logs/tui/{name}_{time}.log`
+  - Known issue: ghost statusline on resize due to double-buffer swap (deferred)
 
 - Register selection prefix (`"a`) - specify register for yank/delete/paste (#333)
   - `"ayy` yanks line into register 'a'
