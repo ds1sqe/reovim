@@ -25,6 +25,22 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - Escape cancels pending operator
   - Full operator-pending mode support
 
+- Kernel Timer API for delayed and periodic work scheduling (#343)
+  - `Runtime::schedule_delayed(delay, callback)` - one-shot timer
+  - `Runtime::schedule_periodic(interval, callback)` - repeating timer
+  - RAII `TimerHandle` auto-cancels on drop
+  - Timer wheel implementation with O(1) cancel
+  - Thread-safe with configurable `max_timers` limit
+  - Integrated with Runtime tick cycle and panic safety
+
+- Timer FFI extension for external modules (#343)
+  - `reovim_schedule_delayed()` - C FFI for one-shot timers
+  - `reovim_schedule_periodic()` - C FFI for periodic timers
+  - `reovim_cancel_timer()` - Cancel scheduled timer
+  - `reovim_timer_is_pending()` - Check timer status
+  - `reovim_timer_count()` - Get active timer count
+  - Added timer types to `include/reovim.h`
+
 ### Changed
 
 - E2E tests: Enable 9 more tests after upstream changes (#308)

@@ -14,6 +14,7 @@ fn main() {
     println!("cargo:rerun-if-changed=src/lib.rs");
     println!("cargo:rerun-if-changed=src/types.rs");
     println!("cargo:rerun-if-changed=src/logging.rs");
+    println!("cargo:rerun-if-changed=src/timer.rs");
     println!("cargo:rerun-if-changed=src/version.rs");
     println!("cargo:rerun-if-changed=include/reovim.h");
 }
