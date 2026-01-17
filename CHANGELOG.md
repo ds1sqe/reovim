@@ -6,6 +6,12 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ## [Unreleased] - v0.9.0-dev
 
+### Testing
+
+- **Undotree Panel Refresh Tests** ([#259](https://github.com/ds1sqe/reovim/issues/259))
+  - Added missing integration tests for panel refresh on undo/redo operations
+  - Tests verify panel stays open and updates when `u` or `<C-r>` is pressed
+
 ### Fixed
 
 - **E2E Test Infrastructure** ([#308](https://github.com/ds1sqe/reovim/issues/308))
