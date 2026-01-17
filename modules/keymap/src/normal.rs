@@ -269,19 +269,19 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
         // ====================================================================
         // Search
         // ====================================================================
-        KeybindingRegistration::new("/", "search-forward")
+        KeybindingRegistration::new("/", "motions:search-forward")
             .with_modes(&["editor:normal"])
             .with_category("search")
             .with_description("Search forward"),
-        KeybindingRegistration::new("?", "search-backward")
+        KeybindingRegistration::new("?", "motions:search-backward")
             .with_modes(&["editor:normal"])
             .with_category("search")
             .with_description("Search backward"),
-        KeybindingRegistration::new("n", "search-next")
+        KeybindingRegistration::new("n", "motions:search-next")
             .with_modes(&["editor:normal"])
             .with_category("search")
             .with_description("Next search result"),
-        KeybindingRegistration::new("N", "search-prev")
+        KeybindingRegistration::new("N", "motions:search-prev")
             .with_modes(&["editor:normal"])
             .with_category("search")
             .with_description("Previous search result"),

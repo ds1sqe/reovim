@@ -155,11 +155,10 @@ impl Command for DeleteLine {
     }
 
     fn args(&self) -> Vec<ArgSpec> {
-        vec![ArgSpec::optional(
-            "count",
-            ArgKind::Count,
-            "Number of lines to delete",
-        )]
+        vec![
+            ArgSpec::optional("count", ArgKind::Count, "Number of lines to delete"),
+            ArgSpec::optional("register", ArgKind::Register, "Target register"),
+        ]
     }
 }
 
@@ -186,6 +185,21 @@ impl CommandHandler for DeleteLine {
         if lines_to_delete == 0 {
             return CommandResult::Success;
         }
+
+        // Collect deleted text for register
+        let mut deleted_text = String::new();
+        for i in 0..lines_to_delete {
+            let line_idx = start_line + i;
+            if let Some(line) = buffer.line(line_idx) {
+                deleted_text.push_str(line);
+                deleted_text.push('\n');
+            }
+        }
+
+        // Store in register (use specified or unnamed)
+        let content = RegisterContent::linewise(deleted_text);
+        let register = args.register();
+        ctx.registers.write().set_by_name(register, content);
 
         // Delete range: from start of first line to start of line after deleted range
         let start = Position::new(start_line, 0);
@@ -244,6 +258,14 @@ impl Command for DeleteToEndOfLine {
     fn description(&self) -> &'static str {
         "Delete to end of line"
     }
+
+    fn args(&self) -> Vec<ArgSpec> {
+        vec![ArgSpec::optional(
+            "register",
+            ArgKind::Register,
+            "Target register",
+        )]
+    }
 }
 
 impl CommandHandler for DeleteToEndOfLine {
@@ -263,6 +285,17 @@ impl CommandHandler for DeleteToEndOfLine {
         if pos.column >= line_len {
             return CommandResult::Success;
         }
+
+        // Get text to delete for register
+        let deleted_text = buffer
+            .line(pos.line)
+            .map(|line| line[pos.column..].to_string())
+            .unwrap_or_default();
+
+        // Store in register (use specified or unnamed)
+        let content = RegisterContent::characterwise(deleted_text);
+        let register = args.register();
+        ctx.registers.write().set_by_name(register, content);
 
         // Delete from cursor to end of line (not including newline)
         let chars_to_delete = line_len - pos.column;
@@ -293,11 +326,10 @@ impl Command for ChangeLine {
     }
 
     fn args(&self) -> Vec<ArgSpec> {
-        vec![ArgSpec::optional(
-            "count",
-            ArgKind::Count,
-            "Number of lines to change",
-        )]
+        vec![
+            ArgSpec::optional("count", ArgKind::Count, "Number of lines to change"),
+            ArgSpec::optional("register", ArgKind::Register, "Target register"),
+        ]
     }
 }
 
@@ -345,9 +377,10 @@ impl CommandHandler for ChangeLine {
         }
         deleted_text.push('\n'); // Linewise content ends with newline
 
-        // Store in register as linewise
+        // Store in register (use specified or unnamed)
         let content = RegisterContent::linewise(deleted_text);
-        ctx.registers.write().set(content);
+        let register = args.register();
+        ctx.registers.write().set_by_name(register, content);
 
         // For cc: if changing multiple lines, delete all but first, then clear first
         // Single line: just clear the content
@@ -443,6 +476,14 @@ impl Command for ChangeToEndOfLine {
     fn description(&self) -> &'static str {
         "Change to end of line"
     }
+
+    fn args(&self) -> Vec<ArgSpec> {
+        vec![ArgSpec::optional(
+            "register",
+            ArgKind::Register,
+            "Target register",
+        )]
+    }
 }
 
 impl CommandHandler for ChangeToEndOfLine {
@@ -472,9 +513,10 @@ impl CommandHandler for ChangeToEndOfLine {
             .map(|line| line[pos.column..].to_string())
             .unwrap_or_default();
 
-        // Store in register as characterwise
+        // Store in register (use specified or unnamed)
         let content = RegisterContent::characterwise(deleted_text);
-        ctx.registers.write().set(content);
+        let register = args.register();
+        ctx.registers.write().set_by_name(register, content);
 
         // Delete from cursor to end of line (not including newline)
         let chars_to_delete = line_len - pos.column;

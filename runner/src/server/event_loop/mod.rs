@@ -14,6 +14,7 @@
 
 mod char_handler;
 mod error;
+mod operator_handler;
 mod search_handler;
 mod undotree_handler;
 mod visual_handler;
@@ -101,6 +102,19 @@ pub struct EventLoop<F: InputFallbackHandler<AppState>> {
     ///
     /// Reset after command execution or when leaving normal mode.
     pending_count: Option<usize>,
+
+    /// Pending register for the next command.
+    ///
+    /// In Vim, typing `"a` before a command specifies the register to use.
+    /// The `"` key enters "waiting for register" state, and the next character
+    /// selects the register. The register is then passed to the command via
+    /// `CommandContext`.
+    ///
+    /// States:
+    /// - `None`: No register prefix
+    /// - `Some('"')`: Waiting for register character (sentinel)
+    /// - `Some('a'..'z')`: Register selected, apply to next command
+    pending_register: Option<char>,
 }
 
 impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
@@ -148,6 +162,7 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
             last_error: None,
             pending_mode_change,
             pending_count: None,
+            pending_register: None,
         }
     }
 
@@ -230,6 +245,18 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
             return;
         }
 
+        // Check for register prefix waiting for character
+        if self.is_waiting_for_register() {
+            self.handle_register_char(key);
+            return;
+        }
+
+        // Check for register prefix start (") in normal/visual mode
+        if self.is_register_prefix(&key) {
+            self.pending_register = Some('"'); // Sentinel: waiting for char
+            return;
+        }
+
         // Check for count prefix (digits 1-9, or 0 if already have count) in normal mode
         // Digits without modifiers accumulate as a count prefix
         if self.is_count_digit(&key) {
@@ -259,10 +286,22 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
                     ctx.set("count", reovim_driver_command::ArgValue::Count(count));
                 }
 
+                // Set register in context if we have a pending register
+                if let Some(reg) = self.pending_register.take() {
+                    // Only set if it's an actual register, not the sentinel
+                    if reg != '"' {
+                        ctx.set("register", reovim_driver_command::ArgValue::Register(reg));
+                    }
+                }
+
                 // Set buffer_id in context if we have an active buffer
                 if let Some(buffer_id) = self.app.active_buffer {
                     ctx.set_buffer_id(buffer_id);
                 }
+
+                // Set current mode name in context for commands that need to
+                // adjust behavior based on mode (e.g., motions in operator-pending)
+                ctx.set_mode_name(mode.name());
 
                 // Save visual selection if currently in visual mode (for gv command).
                 // We check the current mode rather than hardcoding command names that exit visual.
@@ -357,6 +396,7 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
     }
 
     /// Handle command execution result.
+    #[allow(clippy::too_many_lines)]
     fn handle_command_result(&mut self, result: CommandResult) {
         use reovim_driver_command::CharWaitOp;
 
@@ -451,16 +491,12 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
                 end,
                 is_linewise,
             } => {
-                // Text object command returned a range for the pending operator.
+                // Motion/text-object returned a range for the pending operator.
                 // Execute the pending operator (d, y, c) with this range.
-                tracing::debug!(
-                    ?start,
-                    ?end,
-                    is_linewise,
-                    "OperatorRange received from text object"
-                );
-                // TODO: Execute pending operator with range
-                // For now, just clear error state
+                tracing::debug!(?start, ?end, is_linewise, "OperatorRange received");
+
+                // Execute the pending operator
+                self.execute_pending_operator(start, end, is_linewise);
                 self.last_error = None;
             }
             CommandResult::ReselectVisual => {
@@ -473,6 +509,30 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
                 // Visual-block insert (I/A in visual-block mode) wants to insert
                 // text across multiple lines. Full implementation TBD.
                 tracing::debug!(?action, "BlockInsertAction requested");
+                self.last_error = None;
+            }
+            CommandResult::EnterOperatorPending {
+                operator_id,
+                register,
+            } => {
+                // Enter-operator commands (d, y, c) request operator-pending mode.
+                // Set pending operator state and push operator-pending mode.
+                use crate::server::app::PendingOperator;
+
+                let count = self.pending_count.take().unwrap_or(1);
+                let pending = PendingOperator::new(operator_id)
+                    .with_count(count)
+                    .with_register(register);
+                self.app.set_pending_operator(pending);
+
+                // Push operator-pending mode onto the stack
+                let mode_id = ModeId::new(
+                    reovim_kernel::api::v1::ModuleId::new("editor"),
+                    "operator-pending",
+                );
+                self.app.mode_stack.push(mode_id);
+
+                tracing::debug!(operator_id, ?register, count, "Entered operator-pending mode");
                 self.last_error = None;
             }
         }
@@ -498,9 +558,19 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
             }
             ModeAction::Pop => {
                 // Pop the current mode from the stack.
+                // If popping from operator-pending mode, clear pending operator state.
+                let was_operator_pending = self.app.current_mode().name() == "operator-pending";
+
                 if let Some(popped) = self.app.mode_stack.pop() {
                     tracing::info!(mode = %popped, "Popped mode from stack");
                 }
+
+                // Clear pending operator if we were in operator-pending mode
+                if was_operator_pending {
+                    self.app.take_pending_operator();
+                    tracing::debug!("Cleared pending operator state on mode pop");
+                }
+
                 self.last_error = None;
             }
             ModeAction::Set(mode_name) => {
@@ -675,6 +745,77 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
             // Prevent overflow by capping at MAX_INSERT_COUNT
             let new_count = current.saturating_mul(10).saturating_add(digit);
             self.pending_count = Some(new_count.min(crate::server::app::MAX_INSERT_COUNT));
+        }
+    }
+
+    // ========================================================================
+    // Register Prefix Handling (for "ayy, "ap, etc.)
+    // ========================================================================
+
+    /// Check if a key is the register prefix (`"`).
+    ///
+    /// In Vim, `"` starts a register selection. Only valid in normal/visual modes
+    /// and without modifiers.
+    fn is_register_prefix(&self, key: &KeyEvent) -> bool {
+        use reovim_driver_input::KeyCode;
+
+        // Only in normal or visual modes
+        let mode_name = self.app.current_mode().name();
+        if mode_name != "normal" && !mode_name.starts_with("visual") {
+            return false;
+        }
+
+        // No modifiers allowed for register prefix
+        if !key.modifiers.is_empty() {
+            return false;
+        }
+
+        // Check if it's the register prefix key
+        matches!(key.code, KeyCode::Char('"'))
+    }
+
+    /// Check if we're waiting for a register character.
+    ///
+    /// Returns true if `pending_register` is the sentinel value `"`.
+    fn is_waiting_for_register(&self) -> bool {
+        self.pending_register == Some('"')
+    }
+
+    /// Handle the register character after `"` was pressed.
+    ///
+    /// Valid registers: a-z, A-Z (append), 0-9, ", +, *, and more.
+    fn handle_register_char(&mut self, key: KeyEvent) {
+        use reovim_driver_input::KeyCode;
+
+        // Handle escape - cancel register selection
+        if key.code == KeyCode::Escape {
+            self.pending_register = None;
+            self.app.clear_pending_keys();
+            return;
+        }
+
+        // Extract character from key event
+        let KeyCode::Char(c) = key.code else {
+            // Non-character keys cancel register selection
+            self.pending_register = None;
+            self.set_error("Invalid register");
+            return;
+        };
+
+        // Validate register character
+        // Valid: a-z, A-Z (append), 0-9, " (unnamed), + (clipboard), * (selection)
+        if c.is_ascii_alphabetic()
+            || c.is_ascii_digit()
+            || c == '"'
+            || c == '+'
+            || c == '*'
+            || c == '_'
+            || c == '-'
+        {
+            self.pending_register = Some(c);
+        } else {
+            self.pending_register = None;
+            self.set_error("Invalid register");
         }
     }
 
@@ -1092,5 +1233,141 @@ mod tests {
 
         // In insert mode, digits are not count prefixes
         assert!(!event_loop.is_count_digit(&KeyEvent::new(KeyCode::Char('3'))));
+    }
+
+    // =========================================================================
+    // Register Prefix Tests
+    // =========================================================================
+
+    #[test]
+    fn test_is_register_prefix_in_normal_mode() {
+        let event_loop = create_test_event_loop();
+
+        // " is the register prefix
+        assert!(event_loop.is_register_prefix(&KeyEvent::new(KeyCode::Char('"'))));
+
+        // Other characters are not register prefix
+        assert!(!event_loop.is_register_prefix(&KeyEvent::new(KeyCode::Char('a'))));
+        assert!(!event_loop.is_register_prefix(&KeyEvent::new(KeyCode::Char('1'))));
+    }
+
+    #[test]
+    fn test_is_register_prefix_with_modifiers() {
+        use reovim_driver_input::Modifiers;
+
+        let event_loop = create_test_event_loop();
+
+        // " with modifiers is not register prefix
+        let ctrl_quote = KeyEvent::with_modifiers(KeyCode::Char('"'), Modifiers::CTRL);
+        assert!(!event_loop.is_register_prefix(&ctrl_quote));
+    }
+
+    #[test]
+    fn test_is_register_prefix_in_insert_mode() {
+        let kernel = KernelContext::default();
+        let insert_mode = ModeId::new(ModuleId::new("editor"), "insert");
+        let app = AppState::new(kernel, insert_mode);
+        let event_loop = EventLoop::new(
+            app,
+            ModeRegistry::new(),
+            CommandRegistry::new(),
+            KeymapRegistry::new(),
+            NoOpFallback,
+        );
+
+        // In insert mode, " is not a register prefix
+        assert!(!event_loop.is_register_prefix(&KeyEvent::new(KeyCode::Char('"'))));
+    }
+
+    #[test]
+    fn test_is_waiting_for_register() {
+        let mut event_loop = create_test_event_loop();
+
+        // Initially not waiting
+        assert!(!event_loop.is_waiting_for_register());
+
+        // Set sentinel
+        event_loop.pending_register = Some('"');
+        assert!(event_loop.is_waiting_for_register());
+
+        // Set actual register
+        event_loop.pending_register = Some('a');
+        assert!(!event_loop.is_waiting_for_register());
+    }
+
+    #[test]
+    fn test_handle_register_char_valid() {
+        let mut event_loop = create_test_event_loop();
+        event_loop.pending_register = Some('"'); // Waiting for char
+
+        // Valid register char 'a'
+        event_loop.handle_register_char(KeyEvent::new(KeyCode::Char('a')));
+        assert_eq!(event_loop.pending_register, Some('a'));
+    }
+
+    #[test]
+    fn test_handle_register_char_uppercase() {
+        let mut event_loop = create_test_event_loop();
+        event_loop.pending_register = Some('"');
+
+        // Uppercase for append
+        event_loop.handle_register_char(KeyEvent::new(KeyCode::Char('A')));
+        assert_eq!(event_loop.pending_register, Some('A'));
+    }
+
+    #[test]
+    fn test_handle_register_char_digit() {
+        let mut event_loop = create_test_event_loop();
+        event_loop.pending_register = Some('"');
+
+        // Numbered registers
+        event_loop.handle_register_char(KeyEvent::new(KeyCode::Char('0')));
+        assert_eq!(event_loop.pending_register, Some('0'));
+    }
+
+    #[test]
+    fn test_handle_register_char_special() {
+        let mut event_loop = create_test_event_loop();
+
+        // Test + (clipboard)
+        event_loop.pending_register = Some('"');
+        event_loop.handle_register_char(KeyEvent::new(KeyCode::Char('+')));
+        assert_eq!(event_loop.pending_register, Some('+'));
+
+        // Test * (selection)
+        event_loop.pending_register = Some('"');
+        event_loop.handle_register_char(KeyEvent::new(KeyCode::Char('*')));
+        assert_eq!(event_loop.pending_register, Some('*'));
+
+        // Test " (unnamed)
+        event_loop.pending_register = Some('"');
+        event_loop.handle_register_char(KeyEvent::new(KeyCode::Char('"')));
+        assert_eq!(event_loop.pending_register, Some('"'));
+    }
+
+    #[test]
+    fn test_handle_register_char_escape_cancels() {
+        let mut event_loop = create_test_event_loop();
+        event_loop.pending_register = Some('"');
+
+        event_loop.handle_register_char(KeyEvent::new(KeyCode::Escape));
+        assert!(event_loop.pending_register.is_none());
+    }
+
+    #[test]
+    fn test_handle_register_char_invalid() {
+        let mut event_loop = create_test_event_loop();
+        event_loop.pending_register = Some('"');
+
+        // Invalid register char (e.g., %)
+        event_loop.handle_register_char(KeyEvent::new(KeyCode::Char('%')));
+        assert!(event_loop.pending_register.is_none());
+        assert!(event_loop.last_error().is_some());
+    }
+
+    #[test]
+    fn test_pending_register_initially_none() {
+        let event_loop = create_test_event_loop();
+        assert!(event_loop.pending_register.is_none());
     }
 }

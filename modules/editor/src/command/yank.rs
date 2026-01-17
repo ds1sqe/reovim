@@ -26,11 +26,10 @@ impl Command for YankLine {
     }
 
     fn args(&self) -> Vec<ArgSpec> {
-        vec![ArgSpec::optional(
-            "count",
-            ArgKind::Count,
-            "Number of lines to yank",
-        )]
+        vec![
+            ArgSpec::optional("count", ArgKind::Count, "Number of lines to yank"),
+            ArgSpec::optional("register", ArgKind::Register, "Target register"),
+        ]
     }
 }
 
@@ -64,9 +63,10 @@ impl CommandHandler for YankLine {
         }
         drop(buffer);
 
-        // Store in unnamed register as linewise
+        // Store in register (use specified register or unnamed)
         let content = RegisterContent::linewise(yanked);
-        ctx.registers.write().set(content);
+        let register = args.register();
+        ctx.registers.write().set_by_name(register, content);
 
         CommandResult::Success
     }

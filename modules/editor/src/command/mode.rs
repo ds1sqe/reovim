@@ -138,3 +138,32 @@ impl CommandHandler for EnterWindowMode {
         CommandResult::ModeAction(ModeAction::Push("window".to_string()))
     }
 }
+
+/// Exit operator-pending mode (Escape cancels the operator).
+///
+/// This command is called when the user presses Escape while in operator-pending
+/// mode. It clears the pending operator state and returns to normal mode.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ExitOperatorPending;
+
+impl Command for ExitOperatorPending {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "exit-operator-pending")
+    }
+
+    fn description(&self) -> &'static str {
+        "Cancel pending operator and return to normal mode"
+    }
+}
+
+impl CommandHandler for ExitOperatorPending {
+    fn execute(&self, ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
+        // Emit mode change event
+        ctx.event_bus
+            .emit(ModeChanged::with_mode_id("operator-pending", EditorMode::NORMAL_ID));
+
+        // Return mode action to pop operator-pending mode off the stack
+        // The event loop will clear the pending operator state
+        CommandResult::ModeAction(ModeAction::Pop)
+    }
+}

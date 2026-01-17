@@ -30,11 +30,10 @@ impl Command for PasteAfter {
     }
 
     fn args(&self) -> Vec<ArgSpec> {
-        vec![ArgSpec::optional(
-            "count",
-            ArgKind::Count,
-            "Number of times to paste",
-        )]
+        vec![
+            ArgSpec::optional("count", ArgKind::Count, "Number of times to paste"),
+            ArgSpec::optional("register", ArgKind::Register, "Source register"),
+        ]
     }
 }
 
@@ -48,11 +47,16 @@ impl CommandHandler for PasteAfter {
         };
 
         let count = args.count().unwrap_or(1);
+        let register = args.register();
 
-        // Get register content
+        // Get register content (use specified or unnamed)
         let content = {
             let registers = ctx.registers.read();
-            registers.get().clone()
+            registers.get_by_name(register).cloned()
+        };
+
+        let Some(content) = content else {
+            return CommandResult::Success; // Empty register
         };
 
         if content.is_empty() {
@@ -141,11 +145,10 @@ impl Command for PasteBefore {
     }
 
     fn args(&self) -> Vec<ArgSpec> {
-        vec![ArgSpec::optional(
-            "count",
-            ArgKind::Count,
-            "Number of times to paste",
-        )]
+        vec![
+            ArgSpec::optional("count", ArgKind::Count, "Number of times to paste"),
+            ArgSpec::optional("register", ArgKind::Register, "Source register"),
+        ]
     }
 }
 
@@ -159,11 +162,16 @@ impl CommandHandler for PasteBefore {
         };
 
         let count = args.count().unwrap_or(1);
+        let register = args.register();
 
-        // Get register content
+        // Get register content (use specified or unnamed)
         let content = {
             let registers = ctx.registers.read();
-            registers.get().clone()
+            registers.get_by_name(register).cloned()
+        };
+
+        let Some(content) = content else {
+            return CommandResult::Success; // Empty register
         };
 
         if content.is_empty() {

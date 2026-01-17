@@ -117,6 +117,18 @@ pub enum CommandResult {
     /// the last visual selection. The runner handles the actual restoration
     /// by looking up the saved selection and entering the appropriate visual mode.
     ReselectVisual,
+    /// Command requests entering operator-pending mode with a specific operator.
+    ///
+    /// Enter-operator commands (enter-delete-operator, enter-yank-operator, etc.)
+    /// return this to indicate operator-pending mode should be entered with the
+    /// specified operator waiting for a motion. The runner handles setting the
+    /// pending operator state and pushing operator-pending mode.
+    EnterOperatorPending {
+        /// The operator ID (e.g., "delete", "yank", "change").
+        operator_id: &'static str,
+        /// Optional register for the operation.
+        register: Option<char>,
+    },
     /// Command requests a visual-block insert operation.
     ///
     /// Visual-block commands (I, A in visual-block mode) return this to
@@ -251,6 +263,12 @@ impl CommandResult {
         matches!(self, Self::BlockInsertAction(_))
     }
 
+    /// Check if the result is entering operator-pending mode.
+    #[must_use]
+    pub const fn is_enter_operator_pending(&self) -> bool {
+        matches!(self, Self::EnterOperatorPending { .. })
+    }
+
     /// Create an operator range result for text object commands.
     #[must_use]
     pub const fn operator_range(start: Position, end: Position, is_linewise: bool) -> Self {
@@ -258,6 +276,15 @@ impl CommandResult {
             start,
             end,
             is_linewise,
+        }
+    }
+
+    /// Create an enter-operator-pending result.
+    #[must_use]
+    pub const fn enter_operator_pending(operator_id: &'static str, register: Option<char>) -> Self {
+        Self::EnterOperatorPending {
+            operator_id,
+            register,
         }
     }
 }

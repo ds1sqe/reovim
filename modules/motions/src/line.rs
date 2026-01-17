@@ -21,6 +21,9 @@ use super::MOTIONS_MODULE;
 // =============================================================================
 
 /// Execute a line position motion and update cursor position.
+///
+/// In operator-pending mode, returns an `OperatorRange` instead of moving the cursor.
+/// Line position motions (`0`, `$`, `^`) are characterwise.
 #[allow(clippy::cast_possible_truncation)]
 fn execute_line_position(
     ctx: &KernelContext,
@@ -35,24 +38,40 @@ fn execute_line_position(
         return CommandResult::error("Buffer not found");
     };
 
-    let (old_pos, new_pos) = {
-        let mut buffer = buffer_arc.write();
-        let cursor = Cursor::new(buffer.position());
-        let old_pos = cursor.position;
+    let buffer = buffer_arc.read();
+    let cursor = Cursor::new(buffer.position());
+    let old_pos = cursor.position;
 
-        let motion = Motion::LinePosition(position);
-        let Some(new_pos) = MotionEngine::calculate(&buffer, &cursor, motion, 1) else {
-            return CommandResult::Success; // No-op if motion fails
-        };
-
-        if new_pos == old_pos {
-            return CommandResult::Success; // No movement
-        }
-
-        buffer.set_position(new_pos);
+    let motion = Motion::LinePosition(position);
+    let Some(new_pos) = MotionEngine::calculate(&buffer, &cursor, motion, 1) else {
         drop(buffer);
-        (old_pos, new_pos)
+        return CommandResult::Success; // No-op if motion fails
     };
+
+    if new_pos == old_pos {
+        drop(buffer);
+        return CommandResult::Success; // No movement
+    }
+
+    drop(buffer);
+
+    // In operator-pending mode, return range for the operator
+    if args.is_operator_pending() {
+        // Determine range direction - start should be before end
+        let (start, range_end) = if new_pos.column >= old_pos.column {
+            (old_pos, new_pos)
+        } else {
+            (new_pos, old_pos)
+        };
+        // Line position motions are characterwise
+        return CommandResult::operator_range(start, range_end, false);
+    }
+
+    // Normal mode: move cursor
+    {
+        let mut buffer = buffer_arc.write();
+        buffer.set_position(new_pos);
+    }
 
     ctx.event_bus.emit(CursorMoved {
         buffer_id: buffer_id.as_usize() as u64,
@@ -64,6 +83,9 @@ fn execute_line_position(
 }
 
 /// Execute a jump line motion and update cursor position.
+///
+/// In operator-pending mode, returns an `OperatorRange` instead of moving the cursor.
+/// Document motions (`gg`, `G`) are linewise.
 #[allow(clippy::cast_possible_truncation)]
 fn execute_jump_line(
     ctx: &KernelContext,
@@ -78,24 +100,40 @@ fn execute_jump_line(
         return CommandResult::error("Buffer not found");
     };
 
-    let (old_pos, new_pos) = {
-        let mut buffer = buffer_arc.write();
-        let cursor = Cursor::new(buffer.position());
-        let old_pos = cursor.position;
+    let buffer = buffer_arc.read();
+    let cursor = Cursor::new(buffer.position());
+    let old_pos = cursor.position;
 
-        let motion = Motion::JumpLine(target_line);
-        let Some(new_pos) = MotionEngine::calculate(&buffer, &cursor, motion, 1) else {
-            return CommandResult::Success; // No-op if motion fails
-        };
-
-        if new_pos == old_pos {
-            return CommandResult::Success; // No movement
-        }
-
-        buffer.set_position(new_pos);
+    let motion = Motion::JumpLine(target_line);
+    let Some(new_pos) = MotionEngine::calculate(&buffer, &cursor, motion, 1) else {
         drop(buffer);
-        (old_pos, new_pos)
+        return CommandResult::Success; // No-op if motion fails
     };
+
+    if new_pos == old_pos {
+        drop(buffer);
+        return CommandResult::Success; // No movement
+    }
+
+    drop(buffer);
+
+    // In operator-pending mode, return range for the operator
+    if args.is_operator_pending() {
+        // Determine range direction - start line should be before end line
+        let (start, range_end) = if new_pos.line >= old_pos.line {
+            (old_pos, new_pos)
+        } else {
+            (new_pos, old_pos)
+        };
+        // Document motions are linewise
+        return CommandResult::operator_range(start, range_end, true);
+    }
+
+    // Normal mode: move cursor
+    {
+        let mut buffer = buffer_arc.write();
+        buffer.set_position(new_pos);
+    }
 
     ctx.event_bus.emit(CursorMoved {
         buffer_id: buffer_id.as_usize() as u64,
