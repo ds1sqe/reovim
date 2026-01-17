@@ -37,31 +37,31 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&["editor:visual", "editor:visual-line", "editor:visual-block"])
             .with_category("motion")
             .with_description("Extend selection right"),
-        KeybindingRegistration::new("w", "word-forward")
+        KeybindingRegistration::new("w", "motions:word-forward")
             .with_modes(&["editor:visual", "editor:visual-line", "editor:visual-block"])
             .with_category("motion")
             .with_description("Extend to next word"),
-        KeybindingRegistration::new("b", "word-backward")
+        KeybindingRegistration::new("b", "motions:word-backward")
             .with_modes(&["editor:visual", "editor:visual-line", "editor:visual-block"])
             .with_category("motion")
             .with_description("Extend to previous word"),
-        KeybindingRegistration::new("e", "word-end")
+        KeybindingRegistration::new("e", "motions:word-end")
             .with_modes(&["editor:visual", "editor:visual-line", "editor:visual-block"])
             .with_category("motion")
             .with_description("Extend to end of word"),
-        KeybindingRegistration::new("0", "line-start")
+        KeybindingRegistration::new("0", "motions:line-start")
             .with_modes(&["editor:visual", "editor:visual-line", "editor:visual-block"])
             .with_category("motion")
             .with_description("Extend to start of line"),
-        KeybindingRegistration::new("$", "line-end")
+        KeybindingRegistration::new("$", "motions:line-end")
             .with_modes(&["editor:visual", "editor:visual-line", "editor:visual-block"])
             .with_category("motion")
             .with_description("Extend to end of line"),
-        KeybindingRegistration::new("gg", "document-start")
+        KeybindingRegistration::new("gg", "motions:document-start")
             .with_modes(&["editor:visual", "editor:visual-line", "editor:visual-block"])
             .with_category("motion")
             .with_description("Extend to start of document"),
-        KeybindingRegistration::new("G", "document-end")
+        KeybindingRegistration::new("G", "motions:document-end")
             .with_modes(&["editor:visual", "editor:visual-line", "editor:visual-block"])
             .with_category("motion")
             .with_description("Extend to end of document"),

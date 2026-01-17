@@ -203,6 +203,46 @@ impl Session {
         self.state.read().await.mode_accepts_char_input()
     }
 
+    /// Insert a character at the cursor position in the active buffer.
+    ///
+    /// This is the fallback behavior for unmatched keys in modes that accept
+    /// character input (like Insert mode). Returns `true` if the character
+    /// was inserted, `false` if not (no active buffer, mode doesn't accept input).
+    ///
+    /// Acquires a write lock on the session state.
+    pub async fn insert_char(&self, ch: char) -> bool {
+        use reovim_driver_input::FallbackContext;
+
+        self.with_state_mut(|state| {
+            // Check if current mode accepts character input
+            if !state.mode_accepts_char_input() {
+                return false;
+            }
+
+            // Get active buffer
+            let Some(buffer_id) = state.app.active_buffer() else {
+                return false;
+            };
+
+            let Some(buffer_arc) = state.app.get_buffer(buffer_id) else {
+                return false;
+            };
+
+            // Insert character
+            let mut buffer = buffer_arc.write();
+            let cursor_before = buffer.position();
+            let edit = buffer.insert(&ch.to_string());
+            let cursor_after = buffer.position();
+            drop(buffer);
+
+            // Accumulate edit for batched undo tracking
+            state.app.accumulate_edit(buffer_id, edit, cursor_before, cursor_after);
+
+            true
+        })
+        .await
+    }
+
     /// Access session state with a read lock.
     ///
     /// For operations that need direct state access. Prefer the

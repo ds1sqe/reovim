@@ -1,7 +1,6 @@
 //! Edge case tests (empty buffer, Unicode, boundaries).
 //!
-//! **Status**: 9 tests enabled, 1 test requires additional features
-//! (Unicode insert handling).
+//! **Status**: All 10 tests enabled.
 //!
 //! Run `cargo test --ignored` to run the remaining ignored tests.
 
@@ -72,7 +71,6 @@ async fn test_yy_cjk_line() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_insert_unicode() {
     let result = IntegrationTest::new()
         .await

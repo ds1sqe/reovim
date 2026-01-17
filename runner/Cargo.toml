@@ -30,6 +30,7 @@ reovim-driver-vfs = { path = "../lib/drivers/vfs" }
 # Default modules (statically linked for core functionality)
 reovim-module-keymap = { path = "../modules/keymap" }
 reovim-module-editor = { path = "../modules/editor" }
+reovim-module-motions = { path = "../modules/motions" }
 
 # Layout module for window management
 reovim-module-layout = { path = "../modules/layout" }

@@ -1102,6 +1102,7 @@ dependencies = [
  "reovim-module-hot-reload-demo",
  "reovim-module-keymap",
  "reovim-module-layout",
+ "reovim-module-motions",
  "reovim-module-undotree",
  "reovim-protocol",
  "serde",
@@ -1270,6 +1271,7 @@ dependencies = [
  "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-operators",
+ "unicode-width",
 ]
 
 [[package]]

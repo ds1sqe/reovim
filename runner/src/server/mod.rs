@@ -172,8 +172,9 @@ use {
         EventBus, KernelContext, MarkBank, ModeId, Module, ModuleContext, ModuleId, MotionEngine,
         OptionRegistry, OptionScope, OptionSpec, OptionValue, RegisterBank, TextObjectEngine,
     },
-    reovim_module_editor::{EditorMode, command::all_commands},
+    reovim_module_editor::{EditorMode, command::all_commands as editor_commands},
     reovim_module_keymap::KeymapModule,
+    reovim_module_motions::{find_char, line, search as motions_search, word},
     reovim_protocol::v1::{RpcError, RpcRequest, RpcResponse},
 };
 
@@ -712,10 +713,26 @@ fn build_default_registries() -> (ModeRegistry, CommandRegistry, KeymapRegistry,
     // Register editor commands (cursor movement, mode switching, editing, etc.)
     // These are the command handlers that keybindings point to.
     let editor_module_id = ModuleId::new("editor");
-    for cmd in all_commands() {
+    for cmd in editor_commands() {
         command_registry.register_for_module(cmd.into(), editor_module_id.clone());
     }
     tracing::info!(count = command_registry.len(), "registered editor commands");
+
+    // Register motions module commands (word, line, find-char, search motions)
+    let motions_module_id = ModuleId::new("motions");
+    for cmd in word::all_commands() {
+        command_registry.register_for_module(cmd.into(), motions_module_id.clone());
+    }
+    for cmd in line::all_commands() {
+        command_registry.register_for_module(cmd.into(), motions_module_id.clone());
+    }
+    for cmd in find_char::all_commands() {
+        command_registry.register_for_module(cmd.into(), motions_module_id.clone());
+    }
+    for cmd in motions_search::all_commands() {
+        command_registry.register_for_module(cmd.into(), motions_module_id.clone());
+    }
+    tracing::info!(count = command_registry.len(), "registered motions commands");
 
     // Create keymap module and wire its keybindings
     let keymap_module = KeymapModule::new();
