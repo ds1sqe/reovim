@@ -1098,6 +1098,7 @@ dependencies = [
  "reovim-driver-input",
  "reovim-driver-vfs",
  "reovim-kernel",
+ "reovim-module-commands",
  "reovim-module-editor",
  "reovim-module-hot-reload-demo",
  "reovim-module-keymap",
