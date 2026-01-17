@@ -10,7 +10,7 @@ use reovim_protocol::v1::{
 
 use crate::server::rpc::{HandlerFuture, RpcContext};
 
-use super::super::infrastructure::{current_log_level, log_buffer, log_subscribers};
+use super::super::infrastructure::{get_current_level, log_buffer, log_subscribers, set_log_level};
 
 /// Handle `debug/log_level` request.
 ///
@@ -20,36 +20,70 @@ pub fn debug_log_level(_ctx: RpcContext, params: serde_json::Value) -> HandlerFu
     Box::pin(async move {
         let params: LogLevelParams = serde_json::from_value(params).unwrap_or_default();
 
-        // For now, we only support getting the level (setting requires tracing reload)
-        let level = current_log_level();
-
-        let result = if params.level.is_some() {
-            // Setting level is not yet implemented
-            LogLevelResult {
-                level: level.clone(),
-                previous: Some(level),
-            }
-        } else {
-            LogLevelResult {
-                level,
-                previous: None,
-            }
-        };
-
-        serde_json::to_value(result).map_err(|e| RpcError::internal_error(e.to_string()))
+        params.level.map_or_else(
+            || {
+                // Just return current level
+                let level = get_current_level();
+                let result = LogLevelResult {
+                    level,
+                    previous: None,
+                };
+                serde_json::to_value(result).map_err(|e| RpcError::internal_error(e.to_string()))
+            },
+            |new_level| {
+                // Set the new log level
+                match set_log_level(&new_level) {
+                    Ok(previous) => {
+                        let result = LogLevelResult {
+                            level: new_level,
+                            previous: Some(previous),
+                        };
+                        serde_json::to_value(result)
+                            .map_err(|e| RpcError::internal_error(e.to_string()))
+                    }
+                    Err(e) => Err(RpcError::invalid_params(e.to_string())),
+                }
+            },
+        )
     })
 }
 
 /// Handle `debug/log_tail` request.
 ///
-/// Get the last N log entries.
+/// Get the last N log entries with optional filtering.
 #[must_use]
 pub fn debug_log_tail(_ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
     Box::pin(async move {
         let params: LogTailParams = serde_json::from_value(params).unwrap_or_default();
 
         let buffer = log_buffer();
-        let entries = buffer.tail(params.count);
+
+        // Get more entries than requested if filtering (to account for filtered out)
+        // Cap at 5000 to prevent memory spikes with aggressive filtering
+        let has_filters =
+            params.level.is_some() || params.target.is_some() || params.grep.is_some();
+        let fetch_count = if has_filters {
+            (params.count * 10).min(5000)
+        } else {
+            params.count
+        };
+        let mut entries = buffer.tail(fetch_count);
+
+        // Apply filters
+        if let Some(ref level_filter) = params.level {
+            let min_level = LogLevel::from_str_lossy(level_filter);
+            entries.retain(|e| LogLevel::from_str_lossy(&e.level) >= min_level);
+        }
+        if let Some(ref target_filter) = params.target {
+            entries.retain(|e| e.target.contains(target_filter));
+        }
+        if let Some(ref grep) = params.grep {
+            let grep_lower = grep.to_lowercase();
+            entries.retain(|e| e.message.to_lowercase().contains(&grep_lower));
+        }
+
+        // Limit to requested count after filtering
+        entries.truncate(params.count);
 
         let entries: Vec<LogEntryResult> = entries
             .into_iter()
@@ -132,6 +166,84 @@ mod tests {
         let value = result.unwrap();
         assert!(value.get("entries").is_some());
         assert!(value.get("overflow_count").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_debug_log_tail_with_level_filter() {
+        let ctx = test_ctx();
+
+        let result = debug_log_tail(ctx, serde_json::json!({ "count": 50, "level": "warn" })).await;
+        assert!(result.is_ok());
+
+        let value = result.unwrap();
+        assert!(value.get("entries").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_debug_log_tail_with_target_filter() {
+        let ctx = test_ctx();
+
+        let result =
+            debug_log_tail(ctx, serde_json::json!({ "count": 50, "target": "runner" })).await;
+        assert!(result.is_ok());
+
+        let value = result.unwrap();
+        assert!(value.get("entries").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_debug_log_tail_with_grep_filter() {
+        let ctx = test_ctx();
+
+        let result = debug_log_tail(ctx, serde_json::json!({ "count": 50, "grep": "error" })).await;
+        assert!(result.is_ok());
+
+        let value = result.unwrap();
+        assert!(value.get("entries").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_debug_log_tail_with_combined_filters() {
+        let ctx = test_ctx();
+
+        let result = debug_log_tail(
+            ctx,
+            serde_json::json!({
+                "count": 50,
+                "level": "info",
+                "target": "runner",
+                "grep": "test"
+            }),
+        )
+        .await;
+        assert!(result.is_ok());
+
+        let value = result.unwrap();
+        assert!(value.get("entries").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_debug_log_tail_boundary_count_zero() {
+        let ctx = test_ctx();
+
+        let result = debug_log_tail(ctx, serde_json::json!({ "count": 0 })).await;
+        assert!(result.is_ok());
+
+        let value = result.unwrap();
+        let entries = value.get("entries").unwrap().as_array().unwrap();
+        assert!(entries.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_debug_log_tail_boundary_count_one() {
+        let ctx = test_ctx();
+
+        let result = debug_log_tail(ctx, serde_json::json!({ "count": 1 })).await;
+        assert!(result.is_ok());
+
+        let value = result.unwrap();
+        let entries = value.get("entries").unwrap().as_array().unwrap();
+        assert!(entries.len() <= 1);
     }
 
     #[tokio::test]

@@ -70,10 +70,63 @@ fn format_plain_for_command(value: &Value, command: &str) -> String {
                 return format_buffer_list_typed(&result.buffers);
             }
         }
+        "log-tail" => {
+            return format_log_entries(value);
+        }
         _ => {}
     }
     // Fallback to generic formatting
     format_plain(value)
+}
+
+/// Format log entries for plain text output with color-coded levels.
+fn format_log_entries(value: &Value) -> String {
+    let Some(entries) = value.get("entries").and_then(Value::as_array) else {
+        return format_plain(value);
+    };
+
+    if entries.is_empty() {
+        return "No log entries".to_string();
+    }
+
+    let overflow = value
+        .get("overflow_count")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+
+    // Check if stdout is a tty for color support
+    let use_color = std::io::IsTerminal::is_terminal(&std::io::stdout());
+
+    let mut output = String::new();
+
+    for entry in entries {
+        let timestamp = entry.get("timestamp").and_then(Value::as_str).unwrap_or("");
+        let level = entry.get("level").and_then(Value::as_str).unwrap_or("INFO");
+        let target = entry.get("target").and_then(Value::as_str).unwrap_or("");
+        let message = entry.get("message").and_then(Value::as_str).unwrap_or("");
+
+        // Color-coded level
+        let level_str = if use_color {
+            match level.to_uppercase().as_str() {
+                "ERROR" => format!("\x1b[31m{level:5}\x1b[0m"), // red
+                "WARN" => format!("\x1b[33m{level:5}\x1b[0m"),  // yellow
+                "INFO" => format!("\x1b[32m{level:5}\x1b[0m"),  // green
+                "DEBUG" => format!("\x1b[36m{level:5}\x1b[0m"), // cyan
+                "TRACE" => format!("\x1b[90m{level:5}\x1b[0m"), // gray
+                _ => format!("{level:5}"),
+            }
+        } else {
+            format!("{level:5}")
+        };
+
+        let _ = writeln!(output, "{timestamp} {level_str} {target}: {message}");
+    }
+
+    if overflow > 0 {
+        let _ = writeln!(output, "\n({overflow} older entries dropped due to buffer overflow)");
+    }
+
+    output
 }
 
 /// Format buffer list from typed data.
@@ -329,5 +382,55 @@ mod tests {
         // JSON format should not do typed formatting
         assert!(output.contains("\"content\""));
         assert!(output.contains("\"test\""));
+    }
+
+    #[test]
+    fn test_format_log_entries() {
+        let value = json!({
+            "entries": [
+                {
+                    "timestamp": "2025-01-17T12:00:00Z",
+                    "level": "INFO",
+                    "target": "test::module",
+                    "message": "Test message"
+                },
+                {
+                    "timestamp": "2025-01-17T12:00:01Z",
+                    "level": "ERROR",
+                    "target": "test::module",
+                    "message": "Error occurred"
+                }
+            ],
+            "overflow_count": 0
+        });
+        let output = format_output_for_command(&value, OutputFormat::Plain, "log-tail");
+        assert!(output.contains("Test message"));
+        assert!(output.contains("Error occurred"));
+        assert!(output.contains("test::module"));
+    }
+
+    #[test]
+    fn test_format_log_entries_empty() {
+        let value = json!({
+            "entries": [],
+            "overflow_count": 0
+        });
+        let output = format_output_for_command(&value, OutputFormat::Plain, "log-tail");
+        assert_eq!(output, "No log entries");
+    }
+
+    #[test]
+    fn test_format_log_entries_with_overflow() {
+        let value = json!({
+            "entries": [{
+                "timestamp": "2025-01-17T12:00:00Z",
+                "level": "INFO",
+                "target": "test",
+                "message": "msg"
+            }],
+            "overflow_count": 100
+        });
+        let output = format_output_for_command(&value, OutputFormat::Plain, "log-tail");
+        assert!(output.contains("100 older entries dropped"));
     }
 }

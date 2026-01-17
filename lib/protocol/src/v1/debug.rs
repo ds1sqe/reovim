@@ -195,6 +195,18 @@ pub struct LogTailParams {
     /// Number of log entries to return (default: 50).
     #[serde(default = "default_log_count")]
     pub count: usize,
+
+    /// Filter by minimum log level (trace, debug, info, warn, error).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub level: Option<String>,
+
+    /// Filter by target module (substring match).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+
+    /// Filter by message content (substring match, case-insensitive).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub grep: Option<String>,
 }
 
 const fn default_log_count() -> usize {
@@ -205,6 +217,9 @@ impl Default for LogTailParams {
     fn default() -> Self {
         Self {
             count: default_log_count(),
+            level: None,
+            target: None,
+            grep: None,
         }
     }
 }
@@ -463,6 +478,56 @@ mod tests {
     fn test_log_tail_params_default() {
         let params = LogTailParams::default();
         assert_eq!(params.count, 50);
+        assert!(params.level.is_none());
+        assert!(params.target.is_none());
+        assert!(params.grep.is_none());
+    }
+
+    #[test]
+    fn test_log_tail_params_with_filters() {
+        let params = LogTailParams {
+            count: 100,
+            level: Some("warn".to_string()),
+            target: Some("runner::server".to_string()),
+            grep: Some("error".to_string()),
+        };
+        let json = serde_json::to_string(&params).unwrap();
+        assert!(json.contains("\"count\":100"));
+        assert!(json.contains("\"level\":\"warn\""));
+        assert!(json.contains("\"target\":\"runner::server\""));
+        assert!(json.contains("\"grep\":\"error\""));
+    }
+
+    #[test]
+    fn test_log_tail_params_partial_filters() {
+        // Only level filter
+        let params = LogTailParams {
+            count: 50,
+            level: Some("info".to_string()),
+            target: None,
+            grep: None,
+        };
+        let json = serde_json::to_string(&params).unwrap();
+        assert!(json.contains("\"level\":\"info\""));
+        assert!(!json.contains("\"target\""));
+        assert!(!json.contains("\"grep\""));
+    }
+
+    #[test]
+    fn test_log_tail_params_deserialization() {
+        // With all filters
+        let json = r#"{"count": 25, "level": "debug", "target": "mymod", "grep": "test"}"#;
+        let params: LogTailParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.count, 25);
+        assert_eq!(params.level.as_deref(), Some("debug"));
+        assert_eq!(params.target.as_deref(), Some("mymod"));
+        assert_eq!(params.grep.as_deref(), Some("test"));
+
+        // With default count
+        let json = r#"{"level": "warn"}"#;
+        let params: LogTailParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.count, 50);
+        assert_eq!(params.level.as_deref(), Some("warn"));
     }
 
     #[test]

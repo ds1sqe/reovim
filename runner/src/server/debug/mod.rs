@@ -51,7 +51,9 @@ use {
         DEBUG_LOG_UNSUBSCRIBE, DEBUG_MARKS, DEBUG_METRICS, DEBUG_MODE_STACK, DEBUG_REGISTERS,
         DEBUG_UPTIME, DEBUG_VERSION, DEBUG_VISUAL_SNAPSHOT,
     },
-    tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt},
+    tracing_subscriber::{
+        filter::LevelFilter, layer::SubscriberExt, reload, util::SubscriberInitExt,
+    },
 };
 
 /// Register all debug handlers with the dispatcher.
@@ -92,6 +94,7 @@ pub fn register_handlers(dispatcher: &mut RpcDispatcher) {
 /// - Handler metrics collection
 /// - Log ring buffer
 /// - Log bridge for real-time notifications (#332)
+/// - Dynamic log level control via reload layer (#324)
 ///
 /// # Arguments
 ///
@@ -103,18 +106,29 @@ pub fn init(quiet: bool) {
     // Returns None if already initialized (safe for multiple calls).
     let log_rx = infrastructure::init_log_bridge();
 
+    // Create reloadable level filter for dynamic log level changes (#324).
+    // The type is reload::Handle<LevelFilter, Registry> because the reload layer
+    // is applied directly to the Registry before other layers.
+    let (level_filter, reload_handle) = reload::Layer::new(LevelFilter::INFO);
+
+    // Store reload handle for runtime changes via debug/log_level
+    infrastructure::init_level_handle(reload_handle);
+
     // Initialize tracing subscriber with LogBufferLayer.
     // This captures log events to the ring buffer for debug/log_tail,
     // and sends them to the bridge for real-time notifications.
     // Uses try_init() to avoid panic if subscriber already set.
+    // Both quiet and non-quiet modes use the same reload layer.
     if quiet {
         // Quiet mode: only capture to buffer, no stderr output
         let _ = tracing_subscriber::registry()
+            .with(level_filter)
             .with(infrastructure::LogBufferLayer)
             .try_init();
     } else {
         // Normal mode: capture to buffer AND write to stderr
         let _ = tracing_subscriber::registry()
+            .with(level_filter)
             .with(infrastructure::LogBufferLayer)
             .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
             .try_init();

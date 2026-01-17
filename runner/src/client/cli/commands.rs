@@ -286,14 +286,55 @@ pub async fn cmd_log_level(
     client.call("debug/log_level", params).await
 }
 
-/// Get recent log entries.
+/// Get recent log entries with optional filtering.
 ///
 /// # Errors
 ///
 /// Returns error if RPC call fails.
-pub async fn cmd_log_tail(client: &mut RpcClient, count: usize) -> Result<Value, RpcClientError> {
+pub async fn cmd_log_tail(
+    client: &mut RpcClient,
+    count: usize,
+    level: Option<&str>,
+    target: Option<&str>,
+    grep: Option<&str>,
+) -> Result<Value, RpcClientError> {
+    let mut params = json!({ "count": count });
+    if let Some(l) = level {
+        params["level"] = json!(l);
+    }
+    if let Some(t) = target {
+        params["target"] = json!(t);
+    }
+    if let Some(g) = grep {
+        params["grep"] = json!(g);
+    }
+    client.call("debug/log_tail", params).await
+}
+
+/// Subscribe to log streaming.
+///
+/// # Errors
+///
+/// Returns error if RPC call fails.
+pub async fn cmd_log_subscribe(
+    client: &mut RpcClient,
+    level: Option<&str>,
+) -> Result<Value, RpcClientError> {
+    let params = level.map_or_else(|| json!({}), |l| json!({ "level": l }));
+    client.call("debug/log_subscribe", params).await
+}
+
+/// Unsubscribe from log streaming.
+///
+/// # Errors
+///
+/// Returns error if RPC call fails.
+pub async fn cmd_log_unsubscribe(
+    client: &mut RpcClient,
+    subscription_id: u64,
+) -> Result<Value, RpcClientError> {
     client
-        .call("debug/log_tail", json!({ "count": count }))
+        .call("debug/log_unsubscribe", json!({ "subscription_id": subscription_id }))
         .await
 }
 

@@ -46,6 +46,25 @@ reovim cli list
 reovim cli kill
 ```
 
+### Debug Commands
+
+```bash
+# Log level control
+reovim cli log-level              # Get current level
+reovim cli log-level debug        # Set level dynamically
+
+# Log viewing with filters
+reovim cli log-tail --count 100   # Last 100 entries
+reovim cli log-tail --level warn  # Filter by level
+reovim cli log-tail --target mod  # Filter by module
+reovim cli log-tail --grep "err"  # Search messages
+
+# Real-time log streaming
+reovim cli log-tail --follow      # Stream like tail -f
+```
+
+Output is color-coded: ERROR (red), WARN (yellow), INFO (green), DEBUG (cyan), TRACE (gray)
+
 ### Interactive REPL
 
 ```bash

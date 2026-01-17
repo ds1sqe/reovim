@@ -12,12 +12,13 @@ use {
     runner::{
         Server, ServerConfig,
         client::{
-            cli::{self, CliAction, CliArgs},
-            common::ConnectionConfig,
+            cli::{self, CliAction, CliArgs, OutputFormat},
+            common::{ConnectionConfig, rpc::ServerMessage},
             tui::{TuiApp, TuiArgs},
         },
         server::SrvArgs,
     },
+    serde_json::Value,
 };
 
 /// Main CLI arguments.
@@ -306,6 +307,7 @@ fn run_repl(config: &ConnectionConfig) {
     }
 }
 
+#[allow(clippy::too_many_lines)] // CLI dispatch function with many action variants
 fn run_cli(config: &ConnectionConfig, action: &CliAction, format: &str) {
     use {
         cli::{
@@ -387,7 +389,33 @@ fn run_cli(config: &ConnectionConfig, action: &CliAction, format: &str) {
             CliAction::LogLevel { level } => {
                 cmd::cmd_log_level(&mut client, level.as_deref()).await
             }
-            CliAction::LogTail { count } => cmd::cmd_log_tail(&mut client, *count).await,
+            CliAction::LogTail {
+                count,
+                level,
+                target,
+                grep,
+                follow,
+            } => {
+                if *follow {
+                    run_log_follow(
+                        &mut client,
+                        level.as_deref(),
+                        target.as_deref(),
+                        grep.as_deref(),
+                        output_fmt,
+                    )
+                    .await
+                } else {
+                    cmd::cmd_log_tail(
+                        &mut client,
+                        *count,
+                        level.as_deref(),
+                        target.as_deref(),
+                        grep.as_deref(),
+                    )
+                    .await
+                }
+            }
             CliAction::Snapshot => cmd::cmd_snapshot(&mut client).await,
         };
 
@@ -400,6 +428,7 @@ fn run_cli(config: &ConnectionConfig, action: &CliAction, format: &str) {
                     CliAction::Screen => "screen",
                     CliAction::Content { .. } => "content",
                     CliAction::Buffers => "buffers",
+                    CliAction::LogTail { .. } => "log-tail",
                     _ => "",
                 };
                 let out = format_output_for_command(&v, output_fmt, command);
@@ -411,6 +440,123 @@ fn run_cli(config: &ConnectionConfig, action: &CliAction, format: &str) {
             }
         }
     });
+}
+
+/// Run log follow mode: subscribe to log notifications and stream until Ctrl+C.
+async fn run_log_follow(
+    client: &mut runner::client::common::rpc::RpcClient,
+    level: Option<&str>,
+    target: Option<&str>,
+    grep: Option<&str>,
+    format: OutputFormat,
+) -> Result<Value, runner::client::common::rpc::RpcClientError> {
+    // Subscribe with level filter
+    let result: Value = cli::cmd_log_subscribe(client, level).await?;
+    let sub_id = result
+        .get("subscription_id")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| {
+            runner::client::common::rpc::RpcClientError::UnexpectedResponse(
+                "missing subscription_id".to_string(),
+            )
+        })?;
+
+    eprintln!("Following logs (Ctrl+C to stop)...");
+
+    // Read notifications until interrupted
+    let ctrl_c = tokio::signal::ctrl_c();
+    tokio::pin!(ctrl_c);
+
+    loop {
+        tokio::select! {
+            _ = &mut ctrl_c => {
+                // Unsubscribe on Ctrl+C
+                let _ = cli::cmd_log_unsubscribe(client, sub_id).await;
+                eprintln!("\nStopped.");
+                break;
+            }
+            msg = client.read_message() => {
+                match msg {
+                    Ok(ServerMessage::Notification(notification)) => {
+                        // Only process LOG_ENTRY notifications
+                        if notification.method == "LOG_ENTRY" {
+                            // Apply client-side filters (target, grep)
+                            if should_display_log(&notification.params, target, grep) {
+                                print_log_entry(&notification.params, format);
+                            }
+                        }
+                        // Ignore other notification types
+                    }
+                    Ok(ServerMessage::Response(_)) => {
+                        // Ignore responses (shouldn't happen during streaming)
+                    }
+                    Err(e) => {
+                        eprintln!("Stream error: {e}");
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(serde_json::json!({"status": "stopped"}))
+}
+
+/// Check if log entry passes client-side filters.
+fn should_display_log(params: &Value, target: Option<&str>, grep: Option<&str>) -> bool {
+    if let Some(target_filter) = target
+        && let Some(entry_target) = params.get("target").and_then(Value::as_str)
+        && !entry_target.contains(target_filter)
+    {
+        return false;
+    }
+
+    if let Some(grep_filter) = grep
+        && let Some(message) = params.get("message").and_then(Value::as_str)
+        && !message.to_lowercase().contains(&grep_filter.to_lowercase())
+    {
+        return false;
+    }
+
+    true
+}
+
+/// Print a log entry to stdout with color-coded level.
+fn print_log_entry(params: &Value, format: OutputFormat) {
+    match format {
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string(params).unwrap_or_default());
+        }
+        OutputFormat::Plain => {
+            let timestamp = params
+                .get("timestamp")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let level = params
+                .get("level")
+                .and_then(|v| v.as_str())
+                .unwrap_or("INFO");
+            let target = params.get("target").and_then(|v| v.as_str()).unwrap_or("");
+            let message = params.get("message").and_then(|v| v.as_str()).unwrap_or("");
+
+            // Color-coded level if stdout is a tty
+            let use_color = std::io::IsTerminal::is_terminal(&std::io::stdout());
+            let level_str = if use_color {
+                match level.to_uppercase().as_str() {
+                    "ERROR" => format!("\x1b[31m{level:5}\x1b[0m"), // red
+                    "WARN" => format!("\x1b[33m{level:5}\x1b[0m"),  // yellow
+                    "INFO" => format!("\x1b[32m{level:5}\x1b[0m"),  // green
+                    "DEBUG" => format!("\x1b[36m{level:5}\x1b[0m"), // cyan
+                    "TRACE" => format!("\x1b[90m{level:5}\x1b[0m"), // gray
+                    _ => format!("{level:5}"),
+                }
+            } else {
+                format!("{level:5}")
+            };
+
+            println!("{timestamp} {level_str} {target}: {message}");
+        }
+    }
 }
 
 #[cfg(test)]
