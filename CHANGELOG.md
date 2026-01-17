@@ -124,6 +124,21 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
   - 47 tests redistributed across modules with zero regressions
   - Follows mechanism-vs-policy principle with policy-adjacent types documented
 
+### Tests
+
+- **Undotree Test Coverage** (Issues #258, #259)
+  - Complex tree rendering tests (#258):
+    - `test_render_multi_branch_tree` - fork points with 2 branches
+    - `test_render_deep_tree` - 12 sequential nodes
+    - `test_render_wide_tree` - 6 branches from root
+    - `test_render_current_node_at_leaf` - @ marker at tree tip
+    - `test_render_current_node_at_middle` - @ marker after undo
+  - End-to-end integration tests (#259):
+    - Panel commands (`:undotree`, toggle)
+    - Navigation (j/k movement)
+    - Actions (Enter to goto, q/Esc to close)
+    - History preservation after panel close
+
 ### Changed
 
 - **Phase 7-A: Module System Reorganization** (Issue #268)
