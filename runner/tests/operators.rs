@@ -1,10 +1,9 @@
 //! Operator integration tests (delete, yank, paste, change).
 //!
-//! **NOTE**: These tests are currently ignored because the server requires
-//! modules to be loaded for key bindings to function. The server follows
-//! a "mechanism vs policy" design where modules provide the actual editing
-//! behavior. Run with `cargo test --ignored` to run these tests when
-//! module loading is configured.
+//! **Status**: 12 tests enabled, 16 tests require additional features
+//! (operator-pending mode, count prefix handling).
+//!
+//! Run `cargo test --ignored` to run the remaining ignored tests.
 
 mod common;
 use common::IntegrationTest;
@@ -14,7 +13,6 @@ use common::IntegrationTest;
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_dd_single_line() {
     let result = IntegrationTest::new()
         .await
@@ -26,7 +24,6 @@ async fn test_dd_single_line() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_dd_middle_line() {
     let result = IntegrationTest::new()
         .await
@@ -38,7 +35,6 @@ async fn test_dd_middle_line() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_dd_first_line() {
     let result = IntegrationTest::new()
         .await
@@ -50,7 +46,6 @@ async fn test_dd_first_line() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_dd_last_line() {
     let result = IntegrationTest::new()
         .await
@@ -74,7 +69,6 @@ async fn test_5dd_count_delete() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_x_delete_char() {
     let result = IntegrationTest::new()
         .await
@@ -86,7 +80,6 @@ async fn test_x_delete_char() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_x_middle_of_word() {
     let result = IntegrationTest::new()
         .await
@@ -174,7 +167,6 @@ async fn test_db_delete_backward_word() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_yy_p_duplicate_line() {
     let result = IntegrationTest::new()
         .await
@@ -186,7 +178,6 @@ async fn test_yy_p_duplicate_line() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_yy_p_multiline() {
     let result = IntegrationTest::new()
         .await
@@ -210,7 +201,6 @@ async fn test_yj_yank_two_lines() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_yw_yank_word() {
     let result = IntegrationTest::new()
         .await
@@ -262,7 +252,6 @@ async fn test_dd_upper_p_paste_before() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_yw_p_paste_char() {
     let result = IntegrationTest::new()
         .await
@@ -286,7 +275,6 @@ async fn test_2p_paste_multiple() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_paste_preserves_register() {
     let result = IntegrationTest::new()
         .await
@@ -355,7 +343,6 @@ async fn test_2cw_change_count() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_d_escape_cancels() {
     let result = IntegrationTest::new()
         .await
