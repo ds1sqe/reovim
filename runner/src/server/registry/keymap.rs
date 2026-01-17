@@ -49,6 +49,11 @@ struct KeybindingEntry {
     layer: BindingLayer,
     /// The module that owns this keybinding (if any).
     owner: Option<ModuleId>,
+    /// Whether this entry marks the binding as removed.
+    ///
+    /// When true, this entry shadows lower layers without providing a command.
+    /// Used by user config to disable default bindings.
+    removed: bool,
 }
 
 /// Registry for keybindings with layered composition.
@@ -134,6 +139,7 @@ impl KeymapRegistry {
             command,
             layer,
             owner: None,
+            removed: false,
         });
 
         // Sort by layer (highest first) for efficient lookup
@@ -163,6 +169,7 @@ impl KeymapRegistry {
             command,
             layer,
             owner: Some(owner),
+            removed: false,
         });
 
         // Sort by layer (highest first)
@@ -171,13 +178,15 @@ impl KeymapRegistry {
 
     /// Get the effective binding for a key sequence (highest layer wins).
     ///
-    /// Returns `None` if no binding exists at any layer.
+    /// Returns `None` if no binding exists at any layer, or if the highest
+    /// layer entry is marked as removed.
     #[must_use]
     pub fn get_binding(&self, mode: &ModeId, keys: &KeySequence) -> Option<CommandId> {
         self.entries
             .get(mode)
             .and_then(|m| m.get(keys))
             .and_then(|entries| entries.first()) // Already sorted, first is highest
+            .filter(|e| !e.removed) // Skip removed entries
             .map(|e| e.command.clone())
     }
 
@@ -234,6 +243,48 @@ impl KeymapRegistry {
         // Clean up empty mode entries
         self.entries
             .retain(|_, mode_entries| !mode_entries.is_empty());
+    }
+
+    /// Mark a binding as removed at a specific layer.
+    ///
+    /// This shadows any lower-layer bindings for this key sequence,
+    /// effectively disabling the binding. Unlike `clear_layer()`, this
+    /// adds a tombstone entry that prevents lookup from falling through
+    /// to lower layers.
+    ///
+    /// # Arguments
+    ///
+    /// * `layer` - The layer to add the removal marker at (typically User)
+    /// * `mode` - The mode in which to remove the binding
+    /// * `keys` - The key sequence to disable
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Disable 'Q' in normal mode (user doesn't want ex mode)
+    /// registry.remove_at_layer(BindingLayer::User, &normal_mode, q_keys);
+    ///
+    /// // Now get_binding returns None even if Policy layer has a binding
+    /// assert!(registry.get_binding(&normal_mode, &q_keys).is_none());
+    /// ```
+    pub fn remove_at_layer(&mut self, layer: BindingLayer, mode: &ModeId, keys: KeySequence) {
+        let mode_entries = self.entries.entry(mode.clone()).or_default();
+        let key_entries = mode_entries.entry(keys).or_default();
+
+        // Remove existing entry at same layer (if any)
+        key_entries.retain(|e| e.layer != layer);
+
+        // Add tombstone entry
+        // Use a placeholder command (it won't be executed due to removed flag)
+        key_entries.push(KeybindingEntry {
+            command: CommandId::new(ModuleId::new("system"), "noop"),
+            layer,
+            owner: None,
+            removed: true,
+        });
+
+        // Sort by layer (highest first)
+        key_entries.sort_by(|a, b| b.layer.cmp(&a.layer));
     }
 
     // ========================================================================
@@ -1104,5 +1155,93 @@ mod tests {
 
         // 'x' is not even registered - no longer bindings
         assert!(!registry.has_longer_bindings(&mode, &x));
+    }
+
+    // ========================================================================
+    // remove_at_layer tests
+    // ========================================================================
+
+    #[test]
+    fn test_remove_at_layer_shadows_lower_layer() {
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+        let keys = KeySequence::parse("Q").unwrap();
+
+        // Policy layer: Q → ex-mode
+        registry.register_at_layer(
+            BindingLayer::Policy,
+            &mode,
+            keys.clone(),
+            test_command("ex-mode"),
+        );
+
+        // Verify binding exists
+        assert_eq!(registry.get_binding(&mode, &keys), Some(test_command("ex-mode")));
+
+        // User removes Q at User layer
+        registry.remove_at_layer(BindingLayer::User, &mode, keys.clone());
+
+        // Now get_binding returns None (removed entry shadows policy)
+        assert!(registry.get_binding(&mode, &keys).is_none());
+    }
+
+    #[test]
+    fn test_remove_at_layer_does_not_affect_other_keys() {
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+        let q = KeySequence::parse("Q").unwrap();
+        let j = KeySequence::parse("j").unwrap();
+
+        // Register Q and j at Policy layer
+        registry.register_at_layer(BindingLayer::Policy, &mode, q.clone(), test_command("ex-mode"));
+        registry.register_at_layer(
+            BindingLayer::Policy,
+            &mode,
+            j.clone(),
+            test_command("cursor-down"),
+        );
+
+        // Remove only Q
+        registry.remove_at_layer(BindingLayer::User, &mode, q.clone());
+
+        // Q is removed, j still works
+        assert!(registry.get_binding(&mode, &q).is_none());
+        assert_eq!(registry.get_binding(&mode, &j), Some(test_command("cursor-down")));
+    }
+
+    #[test]
+    fn test_remove_at_layer_clear_restores() {
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+        let keys = KeySequence::parse("Q").unwrap();
+
+        // Policy layer: Q → ex-mode
+        registry.register_at_layer(
+            BindingLayer::Policy,
+            &mode,
+            keys.clone(),
+            test_command("ex-mode"),
+        );
+
+        // User removes Q
+        registry.remove_at_layer(BindingLayer::User, &mode, keys.clone());
+        assert!(registry.get_binding(&mode, &keys).is_none());
+
+        // Clear user layer restores policy binding
+        registry.clear_layer(BindingLayer::User, &mode);
+        assert_eq!(registry.get_binding(&mode, &keys), Some(test_command("ex-mode")));
+    }
+
+    #[test]
+    fn test_remove_nonexistent_binding() {
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+        let keys = KeySequence::parse("Z").unwrap();
+
+        // Remove a key that was never registered
+        registry.remove_at_layer(BindingLayer::User, &mode, keys.clone());
+
+        // Should still return None (no binding to shadow)
+        assert!(registry.get_binding(&mode, &keys).is_none());
     }
 }

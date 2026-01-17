@@ -95,6 +95,16 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - `ArgValue` for dynamic command arguments
   - Foundation for supporting different editing styles (Vim, Emacs, Kakoune)
 
+- User keymap configuration via `~/.config/reovim/keymap.toml` (#361)
+  - Override keybindings at User layer (highest priority)
+  - `[bindings.normal]` section for adding/overriding bindings
+  - `[remove.normal]` section for disabling bindings (e.g., disable `Q` key)
+  - Supports mode names: "normal", "insert", "visual" or full form "editor:normal"
+  - Key sequences: `"<C-s>"`, `"<Leader>ff"`, `"jk"`, etc.
+  - Command IDs: `"buffer:save"`, `"editor:cursor-down"`, etc.
+  - Validation with warnings at startup (invalid entries reported, valid applied)
+  - Part of Epic #353 mechanism/policy separation (Phase 4)
+
 ### Changed
 
 - Moved Vim policy code from editor to vim module (Epic #353)

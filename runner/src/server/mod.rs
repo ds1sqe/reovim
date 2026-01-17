@@ -186,6 +186,7 @@ impl SrvArgs {
 // Submodules - all server-specific code lives here
 mod app;
 pub mod client;
+pub mod config;
 pub mod debug;
 mod event_loop;
 pub mod instance;
@@ -872,6 +873,41 @@ fn build_default_registries() -> (ModeRegistry, CommandRegistry, KeymapRegistry,
         }
         Err(e) => {
             tracing::error!(module = %module_id, error = %e, "failed to wire keybindings");
+        }
+    }
+
+    // Load user keymap configuration from ~/.config/reovim/keymap.toml
+    // User bindings are registered at the User layer (highest priority)
+    match config::KeymapConfig::load() {
+        Ok(user_config) => {
+            if !user_config.is_empty() {
+                // Validate config and report warnings for any issues
+                let validation_errors = user_config.validate();
+                for err in &validation_errors {
+                    tracing::warn!(error = %err, "keymap.toml validation warning");
+                }
+
+                // Try to apply - will fail on first invalid entry
+                match user_config.apply(&mut keymap_registry) {
+                    Ok(stats) => {
+                        tracing::info!(
+                            bindings_added = stats.bindings_added,
+                            bindings_removed = stats.bindings_removed,
+                            warnings = validation_errors.len(),
+                            "applied user keymap configuration"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "failed to apply keymap configuration");
+                    }
+                }
+            }
+        }
+        Err(config::KeymapConfigError::NoConfigDir) => {
+            // Silent - no config directory is fine
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to load keymap.toml");
         }
     }
 
