@@ -173,6 +173,34 @@ For legacy crate changes (`lib/core`, `lib/sys`, plugins), see [CHANGELOG-archiv
 
 ### Added
 
+- **Deferred Enhancements from #233/#234** ([Issue #248](https://github.com/ds1sqe/reovim/issues/248))
+  - **Unicode-Aware Display Line Calculations** (`modules/editor/src/display_lines.rs`):
+    - Tab width support with contextual expansion based on `tabstop` option
+    - CJK double-width character handling via `unicode-width` crate
+    - New functions: `display_width_unicode()`, `display_line_count_unicode()`, `display_position_unicode()`, `buffer_col_from_display_col_unicode()`
+    - 46 comprehensive unit tests covering edge cases
+  - **Autoindent for o/O Commands** (`modules/editor/src/command/mode_entry.rs`):
+    - `OpenLineBelow` and `OpenLineAbove` now preserve current line indentation
+    - `get_line_indent()` helper extracts leading whitespace (tabs and spaces)
+    - Respects `autoindent` option from buffer-scoped OptionRegistry
+  - **Smart Indent for Enter Key** (`modules/editor/src/command/insert_edit.rs`):
+    - `InsertNewline` command applies autoindent in insert mode
+    - New lines inherit indentation from current line
+  - **Count Support Infrastructure** (`runner/src/server/app/repeat.rs`):
+    - `InsertEntryType` enum: `Inline`, `OpenBelow`, `OpenAbove`
+    - `RepeatState` extended with count tracking and entry type
+    - Count validation: zero becomes 1, capped at 999 to prevent denial-of-service
+    - 15+ unit tests for count handling
+  - **Count Prefix Handling** (`runner/src/server/event_loop/mod.rs`):
+    - Vim-style count accumulation (1-9 starts count, 0 continues)
+    - Mode-aware: only active in normal/visual modes
+    - `handle_insert_mode_exit()` handles text repetition based on entry type
+  - **Unicode-Aware gj/gk Commands** (`modules/editor/src/command/display_line.rs`):
+    - `CursorDisplayDown` and `CursorDisplayUp` now use unicode-aware display calculations
+    - Proper handling of tabs and CJK characters in wrapped line navigation
+    - Retrieves `tabstop` option from buffer-scoped OptionRegistry
+  - Deferred to E2E epic #307: Integration tests for 3i/5o count features
+
 - **Visual Mode Key Blocking** (Issue #145)
   - Explicit no-op bindings for `i`/`a` keys in all visual modes (prevent fallthrough)
   - `I` command in visual/visual-line modes: move to first non-blank, enter insert

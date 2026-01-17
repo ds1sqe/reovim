@@ -12,7 +12,7 @@ mod visual;
 
 pub use {
     char_ops::{CharWaitState, FindType, LastFind, PendingCharOp},
-    repeat::{PendingEditBatch, RepeatState},
+    repeat::{InsertEntryType, MAX_INSERT_COUNT, PendingEditBatch, RepeatState},
     search::{SearchDirection, SearchState},
     undotree::{DiffPreviewLine, UndotreeRenderLine, UndotreeState},
     visual::LastVisualSelection,

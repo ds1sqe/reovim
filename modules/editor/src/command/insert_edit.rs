@@ -9,7 +9,7 @@ use {
     reovim_kernel::api::v1::{CommandId, KernelContext, OptionScopeId},
 };
 
-use super::super::mode::EDITOR_MODULE;
+use super::{super::mode::EDITOR_MODULE, mode_entry::get_line_indent};
 
 /// Insert a newline at cursor position (Enter in insert mode).
 #[derive(Debug, Clone, Copy, Default)]
@@ -34,10 +34,33 @@ impl CommandHandler for InsertNewline {
             return CommandResult::error("Buffer not found");
         };
 
+        // Check autoindent option
+        let autoindent = ctx
+            .options
+            .get("autoindent", OptionScopeId::Buffer(buffer_id))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+
         let mut buffer = buffer_arc.write();
+        let pos = buffer.position();
+
+        // Get indent from current line if autoindent is enabled
+        let indent = if autoindent {
+            buffer
+                .line(pos.line)
+                .map(|line| get_line_indent(line).to_owned())
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+
         let cursor_before = buffer.position();
-        // Insert newline splits the line at cursor position
-        let edit = buffer.insert("\n");
+
+        // Insert newline + indent (splits the line at cursor position)
+        let insert_text = format!("\n{indent}");
+        let edit = buffer.insert(&insert_text);
+
+        // Cursor is now at end of indent on new line
         let cursor_after = buffer.position();
         drop(buffer);
 

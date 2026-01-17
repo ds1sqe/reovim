@@ -8,10 +8,33 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_kernel::api::v1::{CommandId, KernelContext, Position, events::ModeChanged},
+    reovim_kernel::api::v1::{
+        CommandId, KernelContext, OptionScopeId, Position, events::ModeChanged,
+    },
 };
 
 use super::super::mode::{EDITOR_MODULE, EditorMode};
+
+/// Extract the leading whitespace (indent) from a line.
+///
+/// Returns a string slice containing only the leading whitespace characters.
+/// This preserves the exact mix of tabs and spaces.
+///
+/// # Example
+///
+/// ```ignore
+/// assert_eq!(get_line_indent("    hello"), "    ");
+/// assert_eq!(get_line_indent("\t\thello"), "\t\t");
+/// assert_eq!(get_line_indent("hello"), "");
+/// ```
+#[must_use]
+pub fn get_line_indent(line: &str) -> &str {
+    let non_ws_pos = line
+        .char_indices()
+        .find(|(_, c)| !c.is_whitespace())
+        .map_or(line.len(), |(i, _)| i);
+    &line[..non_ws_pos]
+}
 
 /// Enter insert mode at first non-blank character (I).
 #[derive(Debug, Clone, Copy, Default)]
@@ -109,8 +132,25 @@ impl CommandHandler for OpenLineBelow {
             return CommandResult::error("Buffer not found");
         };
 
+        // Check autoindent option
+        let autoindent = ctx
+            .options
+            .get("autoindent", OptionScopeId::Buffer(buffer_id))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+
         let mut buffer = buffer_arc.write();
         let pos = buffer.position();
+
+        // Get indent from current line if autoindent is enabled
+        let indent = if autoindent {
+            buffer
+                .line(pos.line)
+                .map(|line| get_line_indent(line).to_owned())
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
 
         // Move to end of current line
         let line_len = buffer.line_len(pos.line).unwrap_or(0);
@@ -118,9 +158,12 @@ impl CommandHandler for OpenLineBelow {
 
         // Capture cursor before insert (after move to end of line)
         let cursor_before = buffer.position();
-        // Insert newline (creates new line below)
-        let edit = buffer.insert("\n");
-        // Cursor is now at start of new line
+
+        // Insert newline + indent
+        let insert_text = format!("\n{indent}");
+        let edit = buffer.insert(&insert_text);
+
+        // Cursor is now at end of indent on new line
         let cursor_after = buffer.position();
         drop(buffer);
 
@@ -154,19 +197,39 @@ impl CommandHandler for OpenLineAbove {
             return CommandResult::error("Buffer not found");
         };
 
+        // Check autoindent option
+        let autoindent = ctx
+            .options
+            .get("autoindent", OptionScopeId::Buffer(buffer_id))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+
         let mut buffer = buffer_arc.write();
         let pos = buffer.position();
+
+        // Get indent from current line if autoindent is enabled
+        let indent = if autoindent {
+            buffer
+                .line(pos.line)
+                .map(|line| get_line_indent(line).to_owned())
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
 
         // Move to start of current line
         buffer.set_position(Position::new(pos.line, 0));
 
         // Capture cursor before insert
         let cursor_before = buffer.position();
-        // Insert newline before current line content
-        let edit = buffer.insert("\n");
 
-        // Move cursor up to the new empty line
-        buffer.set_position(Position::new(pos.line, 0));
+        // Insert indent + newline before current line content
+        let insert_text = format!("{indent}\n");
+        let edit = buffer.insert(&insert_text);
+
+        // Move cursor to end of indent on the new line (which is now at pos.line)
+        let indent_len = indent.chars().count();
+        buffer.set_position(Position::new(pos.line, indent_len));
         let cursor_after = buffer.position();
         drop(buffer);
 
@@ -174,5 +237,45 @@ impl CommandHandler for OpenLineAbove {
             .emit(ModeChanged::with_mode_id("normal", EditorMode::INSERT_ID));
 
         CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_line_indent_spaces() {
+        assert_eq!(get_line_indent("    hello"), "    ");
+        assert_eq!(get_line_indent("  world"), "  ");
+    }
+
+    #[test]
+    fn test_get_line_indent_tabs() {
+        assert_eq!(get_line_indent("\t\thello"), "\t\t");
+        assert_eq!(get_line_indent("\tworld"), "\t");
+    }
+
+    #[test]
+    fn test_get_line_indent_mixed() {
+        assert_eq!(get_line_indent("\t  hello"), "\t  ");
+        assert_eq!(get_line_indent("  \thello"), "  \t");
+    }
+
+    #[test]
+    fn test_get_line_indent_no_indent() {
+        assert_eq!(get_line_indent("hello"), "");
+        assert_eq!(get_line_indent("world"), "");
+    }
+
+    #[test]
+    fn test_get_line_indent_empty() {
+        assert_eq!(get_line_indent(""), "");
+    }
+
+    #[test]
+    fn test_get_line_indent_whitespace_only() {
+        assert_eq!(get_line_indent("    "), "    ");
+        assert_eq!(get_line_indent("\t\t"), "\t\t");
     }
 }

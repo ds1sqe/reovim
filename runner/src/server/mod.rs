@@ -170,7 +170,7 @@ use {
     reovim_driver_vfs::{StandardVfs, VfsDriver},
     reovim_kernel::api::v1::{
         EventBus, KernelContext, MarkBank, ModeId, Module, ModuleContext, ModuleId, MotionEngine,
-        OptionRegistry, RegisterBank, TextObjectEngine,
+        OptionRegistry, OptionScope, OptionSpec, OptionValue, RegisterBank, TextObjectEngine,
     },
     reovim_module_editor::{EditorMode, command::all_commands},
     reovim_module_keymap::KeymapModule,
@@ -765,6 +765,9 @@ const fn fallback_default_mode() -> ModeId {
 /// Unlike `KernelContext::default()` which uses stubs, this creates
 /// a fully functional kernel context suitable for actual editing.
 fn real_kernel_context() -> KernelContext {
+    let option_registry = Arc::new(OptionRegistry::new());
+    register_default_options(&option_registry);
+
     KernelContext::new(
         Arc::new(EventBus::new()),
         Arc::new(SimpleBufferManager::new()),
@@ -772,8 +775,43 @@ fn real_kernel_context() -> KernelContext {
         Arc::new(TextObjectEngine),
         Arc::new(RwLock::new(RegisterBank::new())),
         Arc::new(RwLock::new(MarkBank::new())),
-        Arc::new(OptionRegistry::new()),
+        option_registry,
     )
+}
+
+/// Register default editor options.
+///
+/// These options are registered at startup and available to all modules.
+/// Following mechanism vs policy: the registry (mechanism) is in kernel,
+/// the option definitions (policy) are here in the runner.
+fn register_default_options(registry: &OptionRegistry) {
+    // Indentation options
+    let _ = registry.register(
+        OptionSpec::new(
+            "autoindent",
+            "Copy indent from current line when starting new line",
+            OptionValue::bool(true),
+        )
+        .with_short("ai")
+        .with_scope(OptionScope::Buffer),
+    );
+
+    let _ = registry.register(
+        OptionSpec::new(
+            "smartindent",
+            "Smart autoindenting for C-like languages",
+            OptionValue::bool(false),
+        )
+        .with_short("si")
+        .with_scope(OptionScope::Buffer),
+    );
+
+    // Tab options (for display line calculations)
+    let _ = registry.register(
+        OptionSpec::new("tabstop", "Number of spaces that a tab counts for", OptionValue::int(8))
+            .with_short("ts")
+            .with_scope(OptionScope::Buffer),
+    );
 }
 
 /// Create the standard VFS for file operations.

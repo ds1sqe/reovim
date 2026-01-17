@@ -96,6 +96,24 @@ impl PendingEditBatch {
 // Repeat Infrastructure
 // ============================================================================
 
+/// Maximum insert count to prevent denial-of-service (e.g., `999999i` would be very slow).
+pub const MAX_INSERT_COUNT: usize = 999;
+
+/// Type of command that entered insert mode.
+///
+/// Used by the repeat system to know how to repeat text on exit.
+/// For example, "3o" opens a line and repeats text on 2 more new lines on exit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum InsertEntryType {
+    /// Normal insert (i, a, I, A) - repeat text inline.
+    #[default]
+    Inline,
+    /// Open line below (o) - repeat text on new lines below.
+    OpenBelow,
+    /// Open line above (O) - repeat text on new lines above.
+    OpenAbove,
+}
+
 /// State for the repeat command (`.`).
 ///
 /// Tracks the last repeatable command so that `.` can re-execute it.
@@ -114,19 +132,89 @@ pub struct RepeatState {
 
     /// Whether we're currently accumulating insert text.
     pub accumulating: bool,
+
+    /// Count for insert mode entry (e.g., `3i` means repeat text 3 times).
+    ///
+    /// Defaults to 1. Set when entering insert mode with a count prefix.
+    /// Used by `ExitToNormal` to repeat the accumulated text.
+    insert_count: usize,
+
+    /// Type of command that entered insert mode.
+    ///
+    /// Used to determine how to repeat text on exit:
+    /// - `Inline`: repeat text at cursor (i, a, I, A)
+    /// - `OpenBelow`: repeat text on new lines below (o)
+    /// - `OpenAbove`: repeat text on new lines above (O)
+    insert_entry_type: InsertEntryType,
 }
 
 impl RepeatState {
     /// Create a new empty repeat state.
     #[must_use]
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            insert_count: 1,
+            ..Self::default()
+        }
     }
 
-    /// Start accumulating insert mode text.
-    pub fn start_accumulating(&mut self) {
+    /// Start accumulating insert mode text with an optional count and entry type.
+    ///
+    /// # Arguments
+    ///
+    /// * `count` - Repeat count for insert mode (e.g., 3 for `3i`).
+    ///   Values of 0 default to 1. Values above `MAX_INSERT_COUNT` are capped.
+    /// * `entry_type` - How insert mode was entered (affects how text is repeated).
+    pub fn start_accumulating_with_count_and_type(
+        &mut self,
+        count: usize,
+        entry_type: InsertEntryType,
+    ) {
         self.accumulating = true;
         self.insert_text.clear();
+        self.set_insert_count(count);
+        self.insert_entry_type = entry_type;
+    }
+
+    /// Start accumulating insert mode text with an optional count.
+    ///
+    /// Uses `InsertEntryType::Inline` by default.
+    ///
+    /// # Arguments
+    ///
+    /// * `count` - Repeat count for insert mode (e.g., 3 for `3i`).
+    ///   Values of 0 default to 1. Values above `MAX_INSERT_COUNT` are capped.
+    pub fn start_accumulating_with_count(&mut self, count: usize) {
+        self.start_accumulating_with_count_and_type(count, InsertEntryType::Inline);
+    }
+
+    /// Start accumulating insert mode text (count defaults to 1, inline entry).
+    pub fn start_accumulating(&mut self) {
+        self.start_accumulating_with_count(1);
+    }
+
+    /// Get the insert entry type.
+    #[must_use]
+    pub const fn get_insert_entry_type(&self) -> InsertEntryType {
+        self.insert_entry_type
+    }
+
+    /// Set the insert count with validation.
+    ///
+    /// - Count of 0 is treated as 1 (no repetition)
+    /// - Count above `MAX_INSERT_COUNT` is capped
+    pub fn set_insert_count(&mut self, count: usize) {
+        self.insert_count = if count == 0 {
+            1
+        } else {
+            count.min(MAX_INSERT_COUNT)
+        };
+    }
+
+    /// Get the current insert count.
+    #[must_use]
+    pub const fn get_insert_count(&self) -> usize {
+        self.insert_count
     }
 
     /// Add text to the insert accumulator.
@@ -153,6 +241,8 @@ impl RepeatState {
         self.last_command = None;
         self.insert_text.clear();
         self.accumulating = false;
+        self.insert_count = 1;
+        self.insert_entry_type = InsertEntryType::Inline;
     }
 }
 
@@ -226,12 +316,129 @@ mod tests {
     fn test_repeat_state_clear() {
         let mut state = RepeatState::new();
         state.record_command("change");
-        state.start_accumulating();
+        state.start_accumulating_with_count(5);
         state.accumulate_insert("text");
 
         state.clear();
         assert!(state.last_command.is_none());
         assert!(state.insert_text.is_empty());
         assert!(!state.accumulating);
+        assert_eq!(state.get_insert_count(), 1);
+    }
+
+    #[test]
+    fn test_repeat_state_insert_count_default() {
+        let state = RepeatState::new();
+        assert_eq!(state.get_insert_count(), 1);
+    }
+
+    #[test]
+    fn test_repeat_state_set_insert_count() {
+        let mut state = RepeatState::new();
+        state.set_insert_count(3);
+        assert_eq!(state.get_insert_count(), 3);
+    }
+
+    #[test]
+    fn test_repeat_state_insert_count_zero_becomes_one() {
+        let mut state = RepeatState::new();
+        state.set_insert_count(0);
+        assert_eq!(state.get_insert_count(), 1);
+    }
+
+    #[test]
+    fn test_repeat_state_insert_count_capped() {
+        let mut state = RepeatState::new();
+        state.set_insert_count(1000);
+        assert_eq!(state.get_insert_count(), MAX_INSERT_COUNT);
+
+        state.set_insert_count(10000);
+        assert_eq!(state.get_insert_count(), MAX_INSERT_COUNT);
+    }
+
+    #[test]
+    fn test_repeat_state_insert_count_max_accepted() {
+        let mut state = RepeatState::new();
+        state.set_insert_count(MAX_INSERT_COUNT);
+        assert_eq!(state.get_insert_count(), MAX_INSERT_COUNT);
+    }
+
+    #[test]
+    fn test_repeat_state_start_accumulating_with_count() {
+        let mut state = RepeatState::new();
+        state.start_accumulating_with_count(5);
+        assert!(state.accumulating);
+        assert!(state.insert_text.is_empty());
+        assert_eq!(state.get_insert_count(), 5);
+    }
+
+    #[test]
+    fn test_repeat_state_sequential_inserts_reset_count() {
+        let mut state = RepeatState::new();
+
+        // First insert with count 3
+        state.start_accumulating_with_count(3);
+        state.accumulate_insert("hello");
+        state.stop_accumulating();
+        assert_eq!(state.get_insert_count(), 3);
+
+        // Second insert without explicit count
+        state.start_accumulating();
+        assert_eq!(state.get_insert_count(), 1);
+    }
+
+    // =========================================================================
+    // Insert Entry Type Tests
+    // =========================================================================
+
+    #[test]
+    fn test_insert_entry_type_default() {
+        let state = RepeatState::new();
+        assert_eq!(state.get_insert_entry_type(), InsertEntryType::Inline);
+    }
+
+    #[test]
+    fn test_start_accumulating_with_count_and_type_inline() {
+        let mut state = RepeatState::new();
+        state.start_accumulating_with_count_and_type(3, InsertEntryType::Inline);
+        assert!(state.accumulating);
+        assert_eq!(state.get_insert_count(), 3);
+        assert_eq!(state.get_insert_entry_type(), InsertEntryType::Inline);
+    }
+
+    #[test]
+    fn test_start_accumulating_with_count_and_type_open_below() {
+        let mut state = RepeatState::new();
+        state.start_accumulating_with_count_and_type(5, InsertEntryType::OpenBelow);
+        assert!(state.accumulating);
+        assert_eq!(state.get_insert_count(), 5);
+        assert_eq!(state.get_insert_entry_type(), InsertEntryType::OpenBelow);
+    }
+
+    #[test]
+    fn test_start_accumulating_with_count_and_type_open_above() {
+        let mut state = RepeatState::new();
+        state.start_accumulating_with_count_and_type(2, InsertEntryType::OpenAbove);
+        assert!(state.accumulating);
+        assert_eq!(state.get_insert_count(), 2);
+        assert_eq!(state.get_insert_entry_type(), InsertEntryType::OpenAbove);
+    }
+
+    #[test]
+    fn test_clear_resets_entry_type() {
+        let mut state = RepeatState::new();
+        state.start_accumulating_with_count_and_type(5, InsertEntryType::OpenBelow);
+        state.clear();
+        assert_eq!(state.get_insert_entry_type(), InsertEntryType::Inline);
+    }
+
+    #[test]
+    fn test_start_accumulating_without_type_defaults_to_inline() {
+        let mut state = RepeatState::new();
+        // First set it to something else
+        state.start_accumulating_with_count_and_type(3, InsertEntryType::OpenBelow);
+        // Then start accumulating with just count
+        state.start_accumulating_with_count(5);
+        assert_eq!(state.get_insert_entry_type(), InsertEntryType::Inline);
     }
 }
