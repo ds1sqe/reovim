@@ -3,7 +3,11 @@
 //! Connects to server, handles input, and renders output.
 //! Uses concurrent notification handling with `tokio::select!`.
 
-use std::io;
+use std::{
+    fmt::Write as _,
+    io::{self, Write},
+    time::{Duration, Instant},
+};
 
 use {
     crossterm::event::{Event, EventStream, KeyCode, KeyModifiers},
@@ -20,9 +24,14 @@ use {
     tokio::{sync::mpsc, task::JoinHandle},
 };
 
+/// Interval for frame buffer capture (5 seconds).
+const FRAME_CAPTURE_INTERVAL: Duration = Duration::from_secs(5);
+
 use crate::client::common::{
     ConnectionConfig, ConnectionReader, RpcClient, RpcClientError, RpcWriter, ServerMessage,
 };
+
+use reovim_driver_display::{ColorMode, FrameRenderer, Style};
 
 use super::{
     input::InputHandler,
@@ -99,6 +108,8 @@ struct TuiState {
     buffer_modified: bool,
     /// Whether screen needs redraw.
     needs_redraw: bool,
+    /// Loaded modules list.
+    modules: Vec<String>,
 }
 
 /// TUI application.
@@ -109,8 +120,10 @@ pub struct TuiApp {
     message_rx: mpsc::Receiver<ServerMessage>,
     /// Handle to notification listener task.
     listener_handle: JoinHandle<()>,
-    /// Terminal renderer.
+    /// Terminal renderer (basic terminal ops).
     renderer: Renderer,
+    /// Frame renderer with double-buffering for content.
+    frame_renderer: FrameRenderer,
     /// Whether the app is running.
     running: bool,
     /// Last known terminal size.
@@ -123,6 +136,14 @@ pub struct TuiApp {
     log_panel: LogPanelState,
     /// Server log subscription ID.
     subscription_id: Option<u64>,
+    /// Connected server address for statusline.
+    server_address: String,
+    /// Debug configuration (None = debug disabled).
+    debug_config: Option<super::TuiDebugConfig>,
+    /// Debug session log file handle.
+    debug_log_file: Option<std::fs::File>,
+    /// Last frame capture time.
+    last_frame_capture: Instant,
 }
 
 impl TuiApp {
@@ -130,10 +151,25 @@ impl TuiApp {
     ///
     /// Fetches initial state before entering notification-driven mode.
     ///
+    /// # Arguments
+    ///
+    /// * `config` - Connection configuration for server
+    /// * `debug_config` - Optional debug configuration for statusline/frame capture
+    ///
     /// # Errors
     ///
     /// Returns error if connection or initial state fetch fails.
-    pub async fn connect(config: &ConnectionConfig) -> Result<Self, TuiError> {
+    pub async fn connect(
+        config: &ConnectionConfig,
+        debug_config: Option<super::TuiDebugConfig>,
+    ) -> Result<Self, TuiError> {
+        // Get server address for statusline display
+        let server_address = match config {
+            ConnectionConfig::Tcp { host, port } => format!("{host}:{port}"),
+            #[cfg(unix)]
+            ConnectionConfig::UnixSocket(path) => path.display().to_string(),
+        };
+
         // Connect and fetch initial state while we have blocking RpcClient
         let mut client = RpcClient::connect(config).await?;
 
@@ -157,6 +193,24 @@ impl TuiApp {
             .and_then(serde_json::Value::as_u64)
             .map_or(0, |v| v as usize);
 
+        // Get loaded modules
+        let modules = match client.call("module/list", json!({})).await {
+            Ok(result) => result
+                .get("modules")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|m| m.get("id").and_then(|id| id.as_str()))
+                        .map(String::from)
+                        .collect()
+                })
+                .unwrap_or_default(),
+            Err(e) => {
+                tracing::debug!("Failed to get module list: {e}");
+                Vec::new()
+            }
+        };
+
         // Subscribe to server logs (info level and above)
         let subscription_id = match client.call("debug/log_subscribe", json!({})).await {
             Ok(result) => result
@@ -179,11 +233,34 @@ impl TuiApp {
 
         let renderer = Renderer::new();
 
+        // Initialize debug features if enabled
+        let debug_log_file = debug_config.as_ref().and_then(|cfg| {
+            // Create directories
+            let frame_dir = cfg.log_dir.join("frame-buffer");
+            if let Err(e) = std::fs::create_dir_all(&frame_dir) {
+                tracing::warn!("Failed to create frame capture dir: {e}");
+            }
+
+            // Open session log file
+            let log_path = cfg.session_log_path();
+            match std::fs::File::create(&log_path) {
+                Ok(file) => {
+                    tracing::debug!("Debug session log: {}", log_path.display());
+                    Some(file)
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to create debug log file: {e}");
+                    None
+                }
+            }
+        });
+
         Ok(Self {
             rpc_writer,
             message_rx,
             listener_handle,
             renderer,
+            frame_renderer: FrameRenderer::default(), // Resized on run()
             running: false,
             last_size: (0, 0),
             state: TuiState {
@@ -192,10 +269,15 @@ impl TuiApp {
                 cursor_column,
                 buffer_modified: false,
                 needs_redraw: true,
+                modules,
             },
             log_buffer: TuiLogBuffer::new(DEFAULT_TUI_LOG_CAPACITY),
             log_panel: LogPanelState::new(),
             subscription_id,
+            server_address,
+            debug_config,
+            debug_log_file,
+            last_frame_capture: Instant::now(),
         })
     }
 
@@ -207,6 +289,13 @@ impl TuiApp {
     ///
     /// Returns error if fatal error occurs.
     pub async fn run(&mut self) -> Result<(), TuiError> {
+        // Log session start
+        self.debug_log(&format!(
+            "TUI session started - server: {}, mode: {}",
+            self.server_address,
+            self.state.mode_display.as_deref().unwrap_or("?")
+        ));
+
         // Install panic hook before entering raw mode to ensure terminal cleanup
         let original_hook = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |info| {
@@ -224,6 +313,7 @@ impl TuiApp {
         // Get initial size and notify server
         let (width, height) = self.renderer.size()?;
         self.last_size = (width, height);
+        self.frame_renderer.resize(width, height);
         self.send_resize(width, height).await?;
 
         // Request initial screen content
@@ -231,6 +321,9 @@ impl TuiApp {
 
         // Run the main event loop
         let result = self.run_event_loop().await;
+
+        // Log session end
+        self.debug_log("TUI session ended");
 
         // Unsubscribe from log notifications
         if let Some(sub_id) = self.subscription_id {
@@ -252,6 +345,10 @@ impl TuiApp {
     /// Main event loop using `tokio::select!`.
     async fn run_event_loop(&mut self) -> Result<(), TuiError> {
         let mut terminal_events = EventStream::new();
+
+        // Create a 1-second interval for statusline updates (only ticks if debug mode)
+        let mut statusline_tick = tokio::time::interval(Duration::from_secs(1));
+        statusline_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         while self.running {
             tokio::select! {
@@ -284,6 +381,14 @@ impl TuiApp {
                             return Err(TuiError::Disconnected);
                         }
                     }
+                }
+
+                // Periodic statusline update (debug mode only)
+                // Update frame buffer and flush to keep capture in sync
+                _ = statusline_tick.tick(), if self.debug_config.is_some() => {
+                    self.write_statusline_to_buffer();
+                    self.maybe_capture_frame();
+                    self.frame_renderer.flush(&mut io::stdout())?;
                 }
             }
 
@@ -370,9 +475,11 @@ impl TuiApp {
     async fn handle_resize(&mut self, width: u16, height: u16) -> Result<(), TuiError> {
         if (width, height) != self.last_size {
             self.last_size = (width, height);
+            self.frame_renderer.resize(width, height);
             self.send_resize(width, height).await?;
             // Request refresh after resize
             self.state.needs_redraw = true;
+            self.debug_log(&format!("Terminal resized: {width}x{height}"));
         }
         Ok(())
     }
@@ -384,9 +491,11 @@ impl TuiApp {
                 if let Ok(payload) =
                     serde_json::from_value::<ModeChangedPayload>(notification.params)
                 {
+                    let new_mode = payload.mode.display.clone();
                     self.state.mode_display = Some(payload.mode.display);
                     self.state.needs_redraw = true;
                     tracing::debug!("Mode changed to: {:?}", self.state.mode_display);
+                    self.debug_log(&format!("Mode changed: {new_mode}"));
                 }
             }
             CURSOR_MOVED => {
@@ -488,15 +597,29 @@ impl TuiApp {
     }
 
     /// Refresh screen content from server.
+    ///
+    /// Uses double-buffered frame renderer:
+    /// 1. Clear back buffer
+    /// 2. Write server content to back buffer
+    /// 3. Write log panel to back buffer (if visible)
+    /// 4. Write statusline to back buffer (if debug mode)
+    /// 5. Flush (diff render to stdout)
     async fn refresh_screen(&mut self) -> Result<(), TuiError> {
-        // Send screen content request (fire-and-forget style, but we wait for immediate response)
-        // This is a transitional implementation - ideally we'd poll from cached state
+        let (width, height) = self.last_size;
+        if width == 0 || height == 0 {
+            return Ok(());
+        }
+
+        // Clear back buffer
+        self.frame_renderer.buffer_mut().clear();
+
+        // Request screen content from server
         let _ = self
             .rpc_writer
-            .send_request("state/screen_content", json!({ "format": "raw_ansi" }))
+            .send_request("state/screen_content", json!({ "format": "plain_text" }))
             .await;
 
-        // Read response from message channel with short timeout
+        // Read response and write to frame buffer
         match tokio::time::timeout(
             std::time::Duration::from_millis(100),
             self.wait_for_screen_content(),
@@ -504,33 +627,52 @@ impl TuiApp {
         .await
         {
             Ok(Ok(content)) => {
-                self.renderer.render(&content)?;
+                // Write server content to frame buffer (line by line)
+                let default_style = Style::default();
+                for (y, line) in content.lines().enumerate().take(height as usize) {
+                    #[allow(clippy::cast_possible_truncation)]
+                    let y_u16 = y as u16;
+                    self.frame_renderer
+                        .buffer_mut()
+                        .write_str(0, y_u16, line, &default_style);
+                }
             }
             Ok(Err(e)) => return Err(e),
             Err(_) => {
-                // Timeout - just position cursor
                 tracing::debug!("Screen content timeout, skipping render");
             }
         }
 
-        // Render log panel if visible
+        // Write log panel to frame buffer (if visible)
         if self.log_panel.visible {
-            let (width, height) = self.last_size;
-            let panel_height = self.log_panel.height.min(height / 2); // Max half screen
+            let panel_height = self.log_panel.height.min(height / 2);
             let entries = self.log_buffer.entries();
             let lines = render_panel(&entries, &self.log_panel, width, panel_height);
 
-            // Position cursor at start of panel area
             let panel_start = height.saturating_sub(panel_height);
-            self.renderer.set_cursor(0, panel_start)?;
-
-            // Render panel lines
-            for line in lines {
-                self.renderer.write_line(&line)?;
+            let default_style = Style::default();
+            for (i, line) in lines.iter().enumerate() {
+                #[allow(clippy::cast_possible_truncation)]
+                let y = panel_start + i as u16;
+                if y < height {
+                    self.frame_renderer
+                        .buffer_mut()
+                        .write_str(0, y, line, &default_style);
+                }
             }
         }
 
-        // Position cursor based on current state
+        // Write debug statusline to frame buffer (if enabled)
+        self.write_statusline_to_buffer();
+
+        // Capture frame BEFORE flush (back buffer has current content)
+        // After flush, buffers swap and back becomes stale
+        self.maybe_capture_frame();
+
+        // Flush frame buffer to stdout (diff rendering)
+        self.frame_renderer.flush(&mut io::stdout())?;
+
+        // Position cursor and show
         #[allow(clippy::cast_possible_truncation)]
         self.renderer
             .set_cursor(self.state.cursor_column as u16, self.state.cursor_line as u16)?;
@@ -538,6 +680,188 @@ impl TuiApp {
         self.renderer.flush()?;
 
         Ok(())
+    }
+
+    /// Write debug statusline to frame buffer.
+    ///
+    /// Uses inverse video style. Only writes if debug mode is enabled.
+    fn write_statusline_to_buffer(&mut self) {
+        if self.debug_config.is_none() {
+            return;
+        }
+
+        let (width, height) = self.last_size;
+        if width == 0 || height == 0 {
+            return;
+        }
+
+        let statusline_y = height.saturating_sub(1);
+
+        // Build statusline content
+        let now = chrono::Local::now();
+        let timestamp = now.format("%y-%m-%d %H:%M:%S %Z").to_string();
+        let server = &self.server_address;
+        let mode = self.state.mode_display.as_deref().unwrap_or("?");
+        let modules_count = self.state.modules.len();
+
+        let line =
+            format!(" [{timestamp}] [server: {server}] [mode: {mode}] [modules: {modules_count}]");
+
+        // Truncate or pad to width
+        let display_line: String = if line.chars().count() > width as usize {
+            line.chars().take(width as usize).collect()
+        } else {
+            format!("{:width$}", line, width = width as usize)
+        };
+
+        // Write to frame buffer with inverse style
+        let inverse_style = Style::default().reverse();
+        self.frame_renderer
+            .buffer_mut()
+            .write_str(0, statusline_y, &display_line, &inverse_style);
+    }
+
+    /// Capture frame buffer to file if interval has elapsed.
+    ///
+    /// Captures the complete TUI screen state including:
+    /// - Server content (main editor area)
+    /// - Log panel (if visible)
+    /// - Debug statusline
+    ///
+    /// Only captures if debug mode is enabled and sufficient time has passed.
+    fn maybe_capture_frame(&mut self) {
+        let Some(ref config) = self.debug_config else {
+            return;
+        };
+
+        // Check if capture interval has elapsed
+        if self.last_frame_capture.elapsed() < FRAME_CAPTURE_INTERVAL {
+            return;
+        }
+
+        self.last_frame_capture = Instant::now();
+
+        // Build the complete frame content from current TUI state
+        let frame_content = self.build_frame_content();
+
+        // Generate timestamp for filename
+        let timestamp = chrono::Local::now().format("%Y%m%d%H%M%S").to_string();
+        let path = config.frame_capture_path(&timestamp);
+
+        // Ensure directory exists
+        if let Some(parent) = path.parent()
+            && let Err(e) = std::fs::create_dir_all(parent)
+        {
+            tracing::warn!("Failed to create frame capture dir: {e}");
+            return;
+        }
+
+        // Write frame content
+        if let Err(e) = std::fs::write(&path, &frame_content) {
+            tracing::warn!("Failed to write frame capture: {e}");
+        } else {
+            // Log to session log
+            self.debug_log(&format!("Frame captured: {}", path.display()));
+        }
+    }
+
+    /// Build frame content from the frame buffer in LLM-friendly format.
+    ///
+    /// Reads directly from `frame_renderer.buffer()` - the same source
+    /// that was flushed to stdout. This ensures capture = render.
+    ///
+    /// Format designed for easy parsing by language models:
+    /// - Clear section markers with `===`
+    /// - Key-value metadata
+    /// - Explicit line numbers in `[N]` format
+    /// - ANSI codes preserved for styled content (e.g., inverse statusline)
+    fn build_frame_content(&self) -> String {
+        let (width, height) = self.last_size;
+        if width == 0 || height == 0 {
+            return String::new();
+        }
+
+        let mut output = String::new();
+
+        // Metadata section (key: value format for easy parsing)
+        let now = chrono::Local::now();
+        let timestamp = now.format("%Y-%m-%d %H:%M:%S %z").to_string();
+        let mode = self.state.mode_display.as_deref().unwrap_or("UNKNOWN");
+        let cursor_line = self.state.cursor_line;
+        let cursor_col = self.state.cursor_column;
+        let modules_count = self.state.modules.len();
+
+        let _ = writeln!(output, "=== FRAME CAPTURE ===");
+        let _ = writeln!(output, "timestamp: {timestamp}");
+        let _ = writeln!(output, "screen_size: {width}x{height}");
+        let _ = writeln!(output, "server: {}", self.server_address);
+        let _ = writeln!(output, "mode: {mode}");
+        let _ = writeln!(output, "cursor: line={cursor_line}, col={cursor_col}");
+        let _ = writeln!(output, "modules: {modules_count}");
+        let _ = writeln!(output, "log_panel_visible: {}", self.log_panel.visible);
+
+        // Read screen content directly from frame buffer
+        let buffer = self.frame_renderer.buffer();
+        let buf_height = buffer.height();
+
+        let _ = writeln!(output, "\n=== SCREEN CONTENT ({width} cols x {buf_height} rows) ===");
+
+        // Read each row from frame buffer
+        for y in 0..buf_height {
+            let mut line = String::new();
+            let mut current_style: Option<Style> = None;
+
+            if let Some(row) = buffer.row(y) {
+                for cell in row {
+                    if cell.is_continuation {
+                        continue;
+                    }
+
+                    // Track style changes for ANSI output
+                    let cell_style = &cell.style;
+                    if current_style.as_ref() != Some(cell_style) {
+                        // Close previous style if any
+                        if current_style.is_some() {
+                            line.push_str("\x1b[0m");
+                        }
+                        // Open new style if not default
+                        let ansi = cell_style.to_ansi_start(ColorMode::TrueColor);
+                        if !ansi.is_empty() {
+                            line.push_str(&ansi);
+                        }
+                        current_style = Some(cell_style.clone());
+                    }
+
+                    line.push(cell.char);
+                }
+
+                // Close any open style
+                if current_style.is_some() {
+                    line.push_str("\x1b[0m");
+                }
+            }
+
+            // Use [N] format for easy regex matching
+            let _ = writeln!(output, "[{}] {}", y + 1, line);
+        }
+
+        let _ = writeln!(output, "=== END FRAME ===");
+
+        output
+    }
+
+    /// Write a message to the debug session log.
+    ///
+    /// Only writes if debug mode is enabled and log file is available.
+    fn debug_log(&mut self, msg: &str) {
+        if let Some(ref mut file) = self.debug_log_file {
+            let timestamp = chrono::Local::now().format("%H:%M:%S%.3f");
+            if let Err(e) = writeln!(file, "[{timestamp}] {msg}") {
+                tracing::warn!("Failed to write debug log: {e}");
+            }
+            // Flush immediately for debugging
+            let _ = file.flush();
+        }
     }
 
     /// Wait for screen content response from message channel.

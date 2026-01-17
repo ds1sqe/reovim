@@ -110,8 +110,9 @@ fn main() {
         }
 
         Some(Command::Tui(tui_args) | Command::Attach(tui_args)) => {
+            let debug_config = tui_args.into_debug_config();
             let config = tui_args.into_config();
-            run_tui(&config);
+            run_tui(&config, debug_config);
         }
 
         Some(Command::Cli(cli_args)) => {
@@ -224,7 +225,8 @@ fn run_integrated(files: &[PathBuf]) {
 
     rt.block_on(async {
         let config = ConnectionConfig::tcp(addr.ip().to_string(), addr.port());
-        match TuiApp::connect(&config).await {
+        // Integrated mode doesn't support debug flags (no CLI args available)
+        match TuiApp::connect(&config, None).await {
             Ok(mut app) => {
                 if let Err(e) = app.run().await {
                     eprintln!("TUI error: {e}");
@@ -375,14 +377,14 @@ fn run_manager(action: &ManagerAction) {
     });
 }
 
-fn run_tui(config: &ConnectionConfig) {
+fn run_tui(config: &ConnectionConfig, debug_config: Option<runner::client::tui::TuiDebugConfig>) {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .expect("Failed to create runtime");
 
     rt.block_on(async {
-        match TuiApp::connect(config).await {
+        match TuiApp::connect(config, debug_config).await {
             Ok(mut app) => {
                 if let Err(e) = app.run().await {
                     eprintln!("TUI error: {e}");

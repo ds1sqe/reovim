@@ -19,6 +19,14 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- TUI Debug Mode with statusline and frame buffer capture (#358)
+  - `--debug` flag enables debug statusline with timestamp, server, mode, modules
+  - Frame buffer capture every 5 seconds to `~/.local/share/reovim/logs/tui/frame-buffer/`
+  - LLM-friendly capture format with metadata header and ANSI-styled screen content
+  - Wired TUI to use `FrameRenderer` double-buffer for accurate capture
+  - Session logging to `~/.local/share/reovim/logs/tui/{name}_{time}.log`
+  - Known issue: ghost statusline on resize due to double-buffer swap (deferred)
+
 - Register selection prefix (`"a`) - specify register for yank/delete/paste (#333)
   - `"ayy` yanks line into register 'a'
   - `"ap` pastes from register 'a'
