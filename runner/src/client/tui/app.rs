@@ -384,11 +384,9 @@ impl TuiApp {
                 }
 
                 // Periodic statusline update (debug mode only)
-                // Update frame buffer and flush to keep capture in sync
+                // Trigger a full refresh to update statusline and capture
                 _ = statusline_tick.tick(), if self.debug_config.is_some() => {
-                    self.write_statusline_to_buffer();
-                    self.maybe_capture_frame();
-                    self.frame_renderer.flush(&mut io::stdout())?;
+                    self.state.needs_redraw = true;
                 }
             }
 
@@ -704,9 +702,7 @@ impl TuiApp {
         let mode = self.state.mode_display.as_deref().unwrap_or("?");
         let modules_count = self.state.modules.len();
 
-        let line =
-            format!(" [{timestamp}] [server: {server}] [mode: {mode}] [modules: {modules_count}]");
-
+        let line = format!("{timestamp}|{server}|{mode}| m: {modules_count}");
         // Truncate or pad to width
         let display_line: String = if line.chars().count() > width as usize {
             line.chars().take(width as usize).collect()

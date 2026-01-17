@@ -17,6 +17,11 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - Buffer-scoped when active buffer exists, session-wide otherwise
   - TUI clients use this to know when to refresh display
 
+- Ghost statusline on resize in TUI debug mode (#362)
+  - Clear both buffers in `FrameRenderer::resize()` to remove stale content
+  - Tick handler now triggers full refresh instead of independent flush/swap
+  - Prevents ghost from ping-ponging between double buffers after resize
+
 ### Added
 
 - TUI Debug Mode with statusline and frame buffer capture (#358)
@@ -25,7 +30,6 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - LLM-friendly capture format with metadata header and ANSI-styled screen content
   - Wired TUI to use `FrameRenderer` double-buffer for accurate capture
   - Session logging to `~/.local/share/reovim/logs/tui/{name}_{time}.log`
-  - Known issue: ghost statusline on resize due to double-buffer swap (deferred)
 
 - Register selection prefix (`"a`) - specify register for yank/delete/paste (#333)
   - `"ayy` yanks line into register 'a'
