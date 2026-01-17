@@ -1,0 +1,14 @@
+[package]
+name = "reovim-module-vim"
+version = "0.9.1-dev"
+edition = "2024"
+rust-version = "1.92"
+description = "Vim policy module for reovim - keybindings and behavior"
+license = "AGPL-3.0-only"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+reovim-kernel = { path = "../../lib/kernel" }
+reovim-module-macros = { path = "../../lib/module-macros" }

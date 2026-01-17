@@ -1,49 +1,59 @@
-//! Vim keybindings module.
+//! Keymap utilities module.
 //!
-//! Provides standard vim keybindings: hjkl movement, operators, modes.
+//! This module provides **mechanism** utilities for keybinding management:
+//! - [`InteractorRegistry`] - Input routing policy for components
+//! - [`InteractorConfig`] - Configuration for input handling behavior
+//! - [`ComponentId`] - Identifiers for interactor components
 //!
-//! This is a **POLICY** module - it defines WHICH keys trigger WHICH actions.
-//! The kernel provides the mechanisms (motion calculation, buffer operations).
+//! # Architecture
 //!
-//! # Reference
+//! This is a **MECHANISM** module - it provides utilities for keybinding
+//! management without defining any specific bindings.
 //!
-//! This module was concept-extracted from lib/core/src/bind/mod.rs.
-//! It is NOT a migration - it's a fresh implementation using kernel APIs.
+//! For actual keybindings, see the `vim` module (or future `emacs`, `kakoune`
+//! policy modules).
+//!
+//! ```text
+//! ┌─────────────────────────────────────────────────────────┐
+//! │  POLICY MODULES (vim/, emacs/, etc.)       BINDINGS     │
+//! │  → "hjkl moves cursor" (Vim)                            │
+//! │  → "C-n moves cursor down" (Emacs)                      │
+//! ├─────────────────────────────────────────────────────────┤
+//! │  MECHANISM MODULES (this module)           UTILITIES    │
+//! │  → InteractorRegistry (input routing)                   │
+//! │  → Future: bind(), bind_mode() helpers                  │
+//! └─────────────────────────────────────────────────────────┘
+//! ```
 //!
 //! # Example
 //!
-//! ```ignore
-//! use reovim_kernel::api::v1::*;
+//! ```
+//! use reovim_module_keymap::{InteractorRegistry, InteractorConfig, ComponentId};
 //!
-//! // The module registers keybindings via Module::keybindings()
-//! let module = KeymapModule::new();
-//! let bindings = module.keybindings();
+//! let mut registry = InteractorRegistry::new();
 //!
-//! // Each binding maps a key sequence to a command
-//! // 'j' -> cursor-down
-//! // 'dd' -> delete-line
+//! // Register Window mode as using keymap (h/j/k/l navigation)
+//! registry.register(ComponentId::WINDOW, InteractorConfig::using_keymap());
+//!
+//! // Check if a component accepts character input
+//! assert!(!registry.accepts_char_input(&ComponentId::WINDOW));
 //! ```
 
-use {reovim_kernel::api::v1::*, reovim_module_macros::declare_module};
+use reovim_kernel::api::v1::*;
 
-mod commandline;
-mod insert;
 mod interactor;
-mod normal;
-mod operator_pending;
-mod visual;
 
-// Re-export interactor types
+// Re-export interactor types (mechanism for input routing)
 pub use interactor::{ComponentId, InteractorConfig, InteractorRegistry};
 
-/// Vim keybindings module.
+/// Keymap utilities module.
 ///
-/// Implements standard vim keybindings as policy.
-/// The module is stateless - all state is managed by the kernel.
+/// Provides mechanism utilities for keybinding management.
+/// Does NOT provide any keybindings - those come from policy modules (vim, emacs, etc.).
 pub struct KeymapModule;
 
 impl KeymapModule {
-    /// Create a new keymap module.
+    /// Create a new keymap utilities module.
     #[must_use]
     pub const fn new() -> Self {
         Self
@@ -62,7 +72,7 @@ impl Module for KeymapModule {
     }
 
     fn name(&self) -> &'static str {
-        "Vim Keymap"
+        "Keymap Utilities"
     }
 
     fn version(&self) -> Version {
@@ -70,39 +80,48 @@ impl Module for KeymapModule {
     }
 
     fn init(&mut self, _ctx: &ModuleContext) -> ProbeResult {
-        pr_info!("Keymap module initialized");
+        pr_info!("Keymap utilities module initialized");
         ProbeResult::Success
     }
 
     fn exit(&mut self) -> Result<(), ModuleError> {
-        pr_info!("Keymap module exiting");
+        pr_info!("Keymap utilities module exiting");
         Ok(())
     }
 
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
-        let mut bindings = Vec::new();
-        bindings.extend(normal::bindings());
-        bindings.extend(insert::bindings());
-        bindings.extend(visual::bindings());
-        bindings.extend(operator_pending::bindings());
-        bindings.extend(commandline::bindings());
-        bindings
+        // No keybindings - this is a mechanism module.
+        // Keybindings come from policy modules (vim, emacs, etc.).
+        vec![]
     }
 }
 
-/// Returns all keybindings provided by this module.
-///
-/// Convenience function to get all bindings without creating a module instance.
-#[must_use]
-pub fn bindings() -> Vec<KeybindingRegistration> {
-    let mut all = Vec::new();
-    all.extend(normal::bindings());
-    all.extend(insert::bindings());
-    all.extend(visual::bindings());
-    all.extend(operator_pending::bindings());
-    all.extend(commandline::bindings());
-    all
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-// Generate FFI entry points for dynamic loading
-declare_module!(KeymapModule);
+    #[test]
+    fn test_keymap_module_id() {
+        let module = KeymapModule::new();
+        assert_eq!(module.id().as_str(), "keymap");
+    }
+
+    #[test]
+    fn test_keymap_module_name() {
+        let module = KeymapModule::new();
+        assert_eq!(module.name(), "Keymap Utilities");
+    }
+
+    #[test]
+    fn test_keymap_module_has_no_keybindings() {
+        let module = KeymapModule::new();
+        let bindings = module.keybindings();
+        assert!(bindings.is_empty(), "Keymap module is mechanism-only, should have no bindings");
+    }
+
+    #[test]
+    fn test_interactor_registry_exists() {
+        // Verify mechanism utilities are exported
+        let _registry = InteractorRegistry::new();
+    }
+}

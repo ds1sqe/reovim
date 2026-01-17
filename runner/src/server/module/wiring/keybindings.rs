@@ -206,7 +206,7 @@ pub fn wire_module_keybindings(
         // Register the keybinding in each mode
         for mode in modes {
             keymap_registry.register_for_module(
-                mode,
+                &mode,
                 keys.clone(),
                 command_id.clone(),
                 module_id.clone(),

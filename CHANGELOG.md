@@ -50,6 +50,12 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - `lookup_with_policy()` method for policy-based lookup
   - Layered bindings: User > Policy > Base (for future user overrides)
 
+- Vim policy module separation (#357)
+  - Created `modules/vim/` with VimModule for all Vim keybindings
+  - Moved bindings from keymap to vim module (normal, insert, visual, operator-pending, commandline)
+  - Made `modules/keymap/` pure mechanism (InteractorRegistry, ComponentId, InteractorConfig only)
+  - Enables future policy modules (emacs, kakoune) without kernel changes
+
 - TUI log panel for real-time log streaming (#332)
   - `debug/log_subscribe` and `debug/log_unsubscribe` RPC methods
   - Real-time `LOG_ENTRY` notifications with level filtering
