@@ -89,14 +89,27 @@ pub fn register_handlers(dispatcher: &mut RpcDispatcher) {
 /// - Tracing subscriber with `LogBufferLayer` for log capture
 /// - Handler metrics collection
 /// - Log ring buffer
-pub fn init() {
+///
+/// # Arguments
+///
+/// * `quiet` - If true, suppress stderr logging (for integrated mode).
+///   Logs are still captured to the ring buffer for `debug/log_tail`.
+pub fn init(quiet: bool) {
     // Initialize tracing subscriber with LogBufferLayer.
     // This captures log events to the ring buffer for debug/log_tail.
     // Uses try_init() to avoid panic if subscriber already set.
-    let _ = tracing_subscriber::registry()
-        .with(infrastructure::LogBufferLayer)
-        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
-        .try_init();
+    if quiet {
+        // Quiet mode: only capture to buffer, no stderr output
+        let _ = tracing_subscriber::registry()
+            .with(infrastructure::LogBufferLayer)
+            .try_init();
+    } else {
+        // Normal mode: capture to buffer AND write to stderr
+        let _ = tracing_subscriber::registry()
+            .with(infrastructure::LogBufferLayer)
+            .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
+            .try_init();
+    }
 
     infrastructure::init_server_start();
 }
@@ -135,7 +148,13 @@ mod tests {
     #[test]
     fn test_init() {
         // Should not panic when called multiple times
-        init();
-        init();
+        init(false);
+        init(false);
+    }
+
+    #[test]
+    fn test_init_quiet() {
+        // Quiet mode should also not panic
+        init(true);
     }
 }

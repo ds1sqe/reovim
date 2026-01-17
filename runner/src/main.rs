@@ -5,7 +5,7 @@
 //!   reovim tui [--tcp ADDR] [--socket PATH]
 //!   reovim cli [--tcp ADDR] [--socket PATH] [--repl] `<command>`
 
-use std::{path::PathBuf, process};
+use std::{io::BufRead, path::PathBuf, process};
 
 use {
     clap::{Parser, Subcommand},
@@ -136,54 +136,127 @@ fn build_legacy_server_config(args: &Args) -> ServerConfig {
     }
 }
 
-/// Run integrated mode: spawn server in background, attach TUI.
+/// Run integrated mode: spawn server as separate process, attach TUI.
 ///
 /// This is the default behavior when `reovim` is invoked without arguments.
 /// Similar to tmux, the server continues running after TUI exits.
-#[allow(unused_variables)] // files will be used in Phase 4
+///
+/// # Process Architecture
+///
+/// ```text
+/// reovim (parent)              reovim server (child)
+/// └── TUI Client               └── Server process
+///     └── TCP connect ←────────── READY 127.0.0.1:12521
+/// ```
+#[allow(unused_variables)] // files will be used later
 fn run_integrated(files: &[PathBuf]) {
-    use {runner::client::common::ConnectionConfig, std::net::SocketAddr, tokio::sync::oneshot};
+    use std::{
+        io::BufReader,
+        process::{Command, Stdio},
+        time::Duration,
+    };
 
-    let rt = tokio::runtime::Builder::new_multi_thread()
+    use runner::client::common::ConnectionConfig;
+
+    // 1. Get current executable path
+    let exe = std::env::current_exe().expect("Failed to get current executable path");
+
+    // 2. Spawn server as child process
+    let mut child = Command::new(&exe)
+        .args(["server", "--tcp", "0", "--ready-signal"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null()) // Suppress server logs
+        .spawn()
+        .expect("Failed to spawn server process");
+
+    // 3. Read ready signal from child stdout
+    let stdout = child.stdout.take().expect("Failed to get child stdout");
+    let mut reader = BufReader::new(stdout);
+
+    let addr = match read_ready_signal(&mut reader, Duration::from_secs(5)) {
+        Ok(addr) => addr,
+        Err(e) => {
+            eprintln!("{e}");
+            // Try to kill the child if it's still running
+            let _ = child.kill();
+            process::exit(1);
+        }
+    };
+
+    // 4. Detach from child process - let it continue running independently
+    // On Unix, the child becomes an orphan and gets adopted by init
+    // We don't wait() on it, so it won't become a zombie
+    drop(child);
+
+    // 5. Connect TUI to the server
+    let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .expect("Failed to create runtime");
 
     rt.block_on(async {
-        // 1. Create oneshot channel for server ready signal
-        let (tx, rx) = oneshot::channel::<SocketAddr>();
-
-        // 2. Spawn server task in background
-        let server = Server::new(ServerConfig::tcp_with_fallback());
-        tokio::spawn(async move {
-            if let Err(e) = server.run_with_ready_signal(tx).await {
-                eprintln!("Server error: {e}");
-            }
-        });
-
-        // 3. Wait for server to be ready and get bound address
-        let Ok(addr) = rx.await else {
-            eprintln!("Server failed to start");
-            process::exit(1);
-        };
-
-        // 4. Connect TUI to the server
         let config = ConnectionConfig::tcp(addr.ip().to_string(), addr.port());
         match TuiApp::connect(&config).await {
             Ok(mut app) => {
-                // 5. Run TUI (blocks until user exits)
                 if let Err(e) = app.run().await {
                     eprintln!("TUI error: {e}");
                     process::exit(1);
                 }
-                // 6. TUI exited - server continues in background (graceful detach)
+                // TUI exited - server continues in background (graceful detach)
             }
             Err(e) => {
-                eprintln!("Connection failed: {e}");
+                eprintln!("Failed to connect to server at {addr}: {e}");
                 process::exit(1);
             }
         }
     });
+}
+
+/// Parse ready signal from server stdout.
+///
+/// Reads lines until finding `READY <ip>:<port>` format.
+/// Returns error if timeout or invalid format.
+fn read_ready_signal<R: BufRead>(
+    reader: &mut R,
+    timeout: std::time::Duration,
+) -> Result<std::net::SocketAddr, String> {
+    use std::time::Instant;
+
+    let start = Instant::now();
+    let mut line = String::new();
+
+    loop {
+        // Check timeout
+        if start.elapsed() > timeout {
+            return Err("Server failed to start within 5 seconds".to_string());
+        }
+
+        line.clear();
+        match reader.read_line(&mut line) {
+            Ok(0) => {
+                // EOF - server exited
+                return Err("Server exited unexpectedly before ready signal".to_string());
+            }
+            Ok(_) => {
+                // Try to parse ready signal
+                if let Some(addr) = parse_ready_signal(&line) {
+                    return Ok(addr);
+                }
+                // Not a ready signal, continue reading
+            }
+            Err(e) => {
+                return Err(format!("Failed to read server output: {e}"));
+            }
+        }
+    }
+}
+
+/// Parse a ready signal line into a socket address.
+///
+/// Expected format: `READY <ip>:<port>\n`
+fn parse_ready_signal(line: &str) -> Option<std::net::SocketAddr> {
+    line.strip_prefix("READY ")
+        .and_then(|addr| addr.trim().parse().ok())
 }
 
 fn run_server(config: ServerConfig) {
@@ -422,5 +495,82 @@ mod tests {
         // --help should cause parse to fail with specific error
         let result = Args::try_parse_from(["reovim", "--help"]);
         assert!(result.is_err());
+    }
+
+    // Tests for parse_ready_signal
+
+    #[test]
+    fn test_parse_ready_signal_valid_localhost() {
+        let addr = parse_ready_signal("READY 127.0.0.1:12521\n");
+        assert!(addr.is_some());
+        let addr = addr.unwrap();
+        assert_eq!(addr.ip().to_string(), "127.0.0.1");
+        assert_eq!(addr.port(), 12521);
+    }
+
+    #[test]
+    fn test_parse_ready_signal_valid_any() {
+        let addr = parse_ready_signal("READY 0.0.0.0:9000\n");
+        assert!(addr.is_some());
+        let addr = addr.unwrap();
+        assert_eq!(addr.ip().to_string(), "0.0.0.0");
+        assert_eq!(addr.port(), 9000);
+    }
+
+    #[test]
+    fn test_parse_ready_signal_invalid_prefix() {
+        let addr = parse_ready_signal("INVALID\n");
+        assert!(addr.is_none());
+    }
+
+    #[test]
+    fn test_parse_ready_signal_invalid_address() {
+        let addr = parse_ready_signal("READY not_an_addr\n");
+        assert!(addr.is_none());
+    }
+
+    #[test]
+    fn test_parse_ready_signal_no_newline() {
+        // Should still work without trailing newline
+        let addr = parse_ready_signal("READY 127.0.0.1:8080");
+        assert!(addr.is_some());
+        assert_eq!(addr.unwrap().port(), 8080);
+    }
+
+    // Tests for read_ready_signal
+
+    #[test]
+    fn test_read_ready_signal_immediate() {
+        use std::{io::Cursor, time::Duration};
+
+        let data = "READY 127.0.0.1:12521\n";
+        let mut reader = Cursor::new(data);
+        let result = read_ready_signal(&mut reader, Duration::from_secs(1));
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().port(), 12521);
+    }
+
+    #[test]
+    fn test_read_ready_signal_with_prefix_lines() {
+        use std::{io::Cursor, time::Duration};
+
+        // Server might output some lines before READY
+        let data = "Loading modules...\nInitializing...\nREADY 127.0.0.1:9999\n";
+        let mut reader = Cursor::new(data);
+        let result = read_ready_signal(&mut reader, Duration::from_secs(1));
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().port(), 9999);
+    }
+
+    #[test]
+    fn test_read_ready_signal_eof() {
+        use std::{io::Cursor, time::Duration};
+
+        // EOF before ready signal
+        let data = "";
+        let mut reader = Cursor::new(data);
+        let result = read_ready_signal(&mut reader, Duration::from_secs(1));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("exited unexpectedly"));
     }
 }

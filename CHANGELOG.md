@@ -54,6 +54,12 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Fixed
 
+- **Process separation for integrated mode** ([#331](https://github.com/ds1sqe/reovim/issues/331))
+  - Server now spawns as separate OS process instead of tokio task
+  - Fixes garbled terminal output when server logs conflict with TUI rendering
+  - Added `--ready-signal` flag for process coordination
+  - Server prints "READY <addr>" to stdout when bound
+
 ### Removed
 
 ---
