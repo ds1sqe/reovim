@@ -188,3 +188,47 @@ async fn test_undotree_preserves_undo_after_close() {
 
     result.assert_buffer_eq("original");
 }
+
+// ============================================================================
+// Panel Refresh Tests
+// ============================================================================
+
+#[tokio::test]
+#[ignore = "requires modules loaded for key bindings"]
+async fn test_undotree_panel_refresh_on_undo() {
+    // Open undotree panel, perform undo while panel is open
+    // Panel should update to show new current node position
+    let result = IntegrationTest::new()
+        .await
+        .with_buffer("original")
+        .send_keys("cwmodified<Esc>") // Create undo point (node 1)
+        .send_keys(":undotree<CR>") // Open panel (showing node 1 as current)
+        .send_keys("u") // Undo while panel is open
+        .run()
+        .await;
+
+    // Buffer should be restored to original
+    result.assert_buffer_eq("original");
+    // Panel should still be open in undotree mode
+    assert_undotree_mode(&result);
+}
+
+#[tokio::test]
+#[ignore = "requires modules loaded for key bindings"]
+async fn test_undotree_panel_refresh_on_redo() {
+    // Open undotree panel, perform undo then redo while panel is open
+    let result = IntegrationTest::new()
+        .await
+        .with_buffer("original")
+        .send_keys("cwmodified<Esc>") // Create undo point
+        .send_keys(":undotree<CR>") // Open panel
+        .send_keys("u") // Undo (go to node 0)
+        .send_keys("<C-r>") // Redo (go back to node 1)
+        .run()
+        .await;
+
+    // Buffer should show modified content after redo
+    result.assert_buffer_eq("modified");
+    // Panel should still be open
+    assert_undotree_mode(&result);
+}
