@@ -97,6 +97,19 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- Moved Vim policy code from editor to vim module (Epic #353)
+  - Resolvers: `VimNormalResolver`, `VimInsertResolver`, `VimOperatorPendingResolver` -> `modules/vim/src/resolvers/`
+  - Visual mode: entry, exit, manipulation, operators -> `modules/vim/src/visual/`
+  - `modules/editor/` now pure mechanism (only `ResolverRegistry`)
+  - Import from `reovim_module_vim` instead of `reovim_module_editor`
+
+- Unified resolver state management (#360)
+  - Resolvers now own pending_count, pending_register, pending_keys state
+  - `resolve_with_keymap()` queries keymap and applies Vim policy
+  - EventLoop delegates to resolver for keymap queries (no legacy fallback)
+  - VimNormalResolver and VimOperatorPendingResolver now use keymap-aware resolution
+  - Part of Epic #353 mechanism/policy separation (Phase 3)
+
 - E2E tests: Enable 9 more tests after upstream changes (#308)
   - operators.rs: 19 enabled (was 12), 9 ignored
   - search.rs: 5 enabled (was 3), 10 ignored

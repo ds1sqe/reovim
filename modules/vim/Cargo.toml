@@ -12,3 +12,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 reovim-kernel = { path = "../../lib/kernel" }
 reovim-module-macros = { path = "../../lib/module-macros" }
+reovim-driver-command = { path = "../../lib/drivers/command" }
+reovim-driver-input = { path = "../../lib/drivers/input" }
+reovim-module-editor = { path = "../editor" }
+reovim-module-operators = { path = "../operators" }

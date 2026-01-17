@@ -35,12 +35,9 @@ pub mod display_lines;
 mod fallback;
 mod mode;
 pub mod resolver;
-pub mod visual;
 
 pub use {
     fallback::EditorFallbackHandler,
     mode::{EDITOR_MODULE, EditorMode},
-    resolver::{
-        ResolverRegistry, VimInsertResolver, VimNormalResolver, VimOperatorPendingResolver,
-    },
+    resolver::ResolverRegistry,
 };

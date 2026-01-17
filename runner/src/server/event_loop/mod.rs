@@ -254,6 +254,7 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
     /// 4. If found: execute command
     /// 5. If prefix: wait for more keys
     /// 6. If not found: delegate to fallback handler
+    #[allow(clippy::too_many_lines)] // Key dispatch coordination - splitting would fragment logic
     fn handle_key(&mut self, key: KeyEvent) {
         profile_scope!("handle_key", "runner::event_loop");
 
@@ -271,16 +272,34 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
 
         // Try resolver-based key handling if resolver registry is configured.
         // This enables the flexible mode system where modules define key handling policy.
-        if let Some(result) = self.try_resolver(&key)
-            && self.handle_resolve_result(result, key)
-        {
-            return;
+        //
+        // When a resolver is available and handles the mode:
+        // - Execute/Pending/InsertChar/ModeTransition -> handled, return
+        // - NotHandled -> call fallback handler only (no legacy keymap lookup)
+        //
+        // Legacy keymap lookup only runs when NO resolver is registered for the mode.
+        if let Some(result) = self.try_resolver(&key) {
+            match result {
+                ResolveResult::NotHandled => {
+                    // Resolver says key is not bound - call fallback handler only.
+                    // The resolver has already queried the keymap, so we don't do it again.
+                    self.fallback_handler.handle_unmatched(key, &mut self.app);
+                    self.app.clear_pending_keys();
+                    return;
+                }
+                _ => {
+                    // All other results are handled by handle_resolve_result
+                    if self.handle_resolve_result(result, key) {
+                        return;
+                    }
+                }
+            }
         }
-        // Fall through to traditional keymap lookup if NotHandled
+        // Fall through to traditional keymap lookup only if no resolver for this mode
 
-        // --- Legacy keymap-based handling (fallback) ---
-        // The following code handles keys when no resolver is configured or
-        // when the resolver returns NotHandled.
+        // --- Legacy keymap-based handling ---
+        // The following code handles keys when no resolver is configured for the
+        // current mode. Modes with resolvers use the resolver path above exclusively.
 
         // Check for register prefix waiting for character
         if self.is_waiting_for_register() {

@@ -15,7 +15,7 @@ use {
     reovim_module_operators::{DeleteOperator, Operator, OperatorContext, Range, YankOperator},
 };
 
-use super::super::mode::{EDITOR_MODULE, EditorMode};
+use reovim_module_editor::{EDITOR_MODULE, EditorMode};
 
 /// Helper function to get selection range from buffer.
 ///

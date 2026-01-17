@@ -10,7 +10,7 @@ use {
     reovim_kernel::api::v1::{CommandId, KernelContext, SelectionMode, events::ModeChanged},
 };
 
-use super::super::mode::{EDITOR_MODULE, EditorMode};
+use reovim_module_editor::{EDITOR_MODULE, EditorMode};
 
 /// Enter visual mode (character-wise selection).
 #[derive(Debug, Clone, Copy, Default)]

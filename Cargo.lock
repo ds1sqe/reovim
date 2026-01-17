@@ -1376,8 +1376,12 @@ dependencies = [
 name = "reovim-module-vim"
 version = "0.9.1-dev"
 dependencies = [
+ "reovim-driver-command",
+ "reovim-driver-input",
  "reovim-kernel",
+ "reovim-module-editor",
  "reovim-module-macros",
+ "reovim-module-operators",
 ]
 
 [[package]]

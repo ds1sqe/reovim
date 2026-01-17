@@ -2,6 +2,8 @@
 //!
 //! This module provides Vim-style behavior for reovim:
 //! - **Keybindings**: Standard Vim keys (hjkl, operators, modes)
+//! - **Resolvers**: Mode-specific key interpretation (counts, registers)
+//! - **Visual mode**: Entry, exit, manipulation, operators
 //! - **Policy**: Vim lookup behavior (wait for longer sequences)
 //!
 //! # Architecture
@@ -13,6 +15,8 @@
 //! ┌─────────────────────────────────────────────────────────┐
 //! │  VIM POLICY MODULE (this module)           POLICY       │
 //! │  → Vim keybindings (hjkl, dd, etc.)                     │
+//! │  → Vim resolvers (count/register handling)              │
+//! │  → Visual mode commands (selection operations)          │
 //! │  → Vim behavior (wait for longer sequences)             │
 //! ├─────────────────────────────────────────────────────────┤
 //! │  MECHANISM MODULES                         CAPABILITIES │
@@ -34,6 +38,42 @@
 use {reovim_kernel::api::v1::*, reovim_module_macros::declare_module};
 
 pub mod bindings;
+pub mod resolvers;
+pub mod visual;
+
+#[cfg(test)]
+mod registry_integration;
+
+// Re-export resolvers
+pub use resolvers::{VimInsertResolver, VimNormalResolver, VimOperatorPendingResolver};
+
+// Re-export visual mode commands
+pub use visual::{
+    // Operators
+    ChangeSelection,
+    DedentSelection,
+    DeleteSelection,
+    // Entry
+    EnterVisualBlockMode,
+    EnterVisualLineMode,
+    EnterVisualMode,
+    // Exit
+    ExitVisualMode,
+    IndentSelection,
+    // Manipulation
+    ReselectLast,
+    SwapAnchor,
+    ToggleVisualBlock,
+    ToggleVisualChar,
+    ToggleVisualLine,
+    YankSelection,
+    // Helper functions
+    visual_commands,
+    visual_entry_commands,
+    visual_exit_commands,
+    visual_operator_commands,
+    visual_selection_commands,
+};
 
 /// Vim policy module.
 ///
