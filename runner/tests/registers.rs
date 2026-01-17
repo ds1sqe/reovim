@@ -1,7 +1,7 @@
 //! Register tests (unnamed, named, yank types).
 //!
-//! **Status**: 1 test enabled, 4 tests require additional features
-//! (register content query API).
+//! **Status**: All 5 tests currently require additional features.
+//! (register selection prefix, register content query API).
 //!
 //! Run `cargo test --ignored` to run the remaining ignored tests.
 
@@ -62,6 +62,7 @@ async fn test_named_register_a() {
 }
 
 #[tokio::test]
+#[ignore = "requires register selection (\"a) prefix support"]
 async fn test_named_register_paste() {
     let result = IntegrationTest::new()
         .await

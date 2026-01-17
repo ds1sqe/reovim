@@ -41,63 +41,63 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
             .with_category("motion")
             .with_description("Move cursor up one display line"),
         // ====================================================================
-        // Word motions
+        // Word motions (provided by motions module)
         // ====================================================================
-        KeybindingRegistration::new("w", "word-forward")
+        KeybindingRegistration::new("w", "motions:word-forward")
             .with_modes(&["editor:normal"])
             .with_category("motion")
             .with_description("Move to next word"),
-        KeybindingRegistration::new("b", "word-backward")
+        KeybindingRegistration::new("b", "motions:word-backward")
             .with_modes(&["editor:normal"])
             .with_category("motion")
             .with_description("Move to previous word"),
-        KeybindingRegistration::new("e", "word-end")
+        KeybindingRegistration::new("e", "motions:word-end")
             .with_modes(&["editor:normal"])
             .with_category("motion")
             .with_description("Move to end of word"),
-        KeybindingRegistration::new("W", "word-forward-big")
+        KeybindingRegistration::new("W", "motions:word-forward-big")
             .with_modes(&["editor:normal"])
             .with_category("motion")
             .with_description("Move to next WORD"),
-        KeybindingRegistration::new("B", "word-backward-big")
+        KeybindingRegistration::new("B", "motions:word-backward-big")
             .with_modes(&["editor:normal"])
             .with_category("motion")
             .with_description("Move to previous WORD"),
-        KeybindingRegistration::new("E", "word-end-big")
+        KeybindingRegistration::new("E", "motions:word-end-big")
             .with_modes(&["editor:normal"])
             .with_category("motion")
             .with_description("Move to end of WORD"),
-        KeybindingRegistration::new("ge", "word-end-backward")
+        KeybindingRegistration::new("ge", "motions:word-end-backward")
             .with_modes(&["editor:normal"])
             .with_category("motion")
             .with_description("Move to end of previous word"),
-        KeybindingRegistration::new("gE", "word-end-backward-big")
+        KeybindingRegistration::new("gE", "motions:word-end-backward-big")
             .with_modes(&["editor:normal"])
             .with_category("motion")
             .with_description("Move to end of previous WORD"),
         // ====================================================================
-        // Line motions
+        // Line motions (provided by motions module)
         // ====================================================================
-        KeybindingRegistration::new("0", "line-start")
+        KeybindingRegistration::new("0", "motions:line-start")
             .with_modes(&["editor:normal"])
             .with_category("motion")
             .with_description("Move to start of line"),
-        KeybindingRegistration::new("$", "line-end")
+        KeybindingRegistration::new("$", "motions:line-end")
             .with_modes(&["editor:normal"])
             .with_category("motion")
             .with_description("Move to end of line"),
-        KeybindingRegistration::new("^", "first-non-blank")
+        KeybindingRegistration::new("^", "motions:first-non-blank")
             .with_modes(&["editor:normal"])
             .with_category("motion")
             .with_description("Move to first non-blank character"),
         // ====================================================================
-        // Document motions
+        // Document motions (provided by motions module)
         // ====================================================================
-        KeybindingRegistration::new("gg", "document-start")
+        KeybindingRegistration::new("gg", "motions:document-start")
             .with_modes(&["editor:normal"])
             .with_category("motion")
             .with_description("Go to start of document"),
-        KeybindingRegistration::new("G", "document-end")
+        KeybindingRegistration::new("G", "motions:document-end")
             .with_modes(&["editor:normal"])
             .with_category("motion")
             .with_description("Go to end of document"),
@@ -285,11 +285,11 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&["editor:normal"])
             .with_category("search")
             .with_description("Previous search result"),
-        KeybindingRegistration::new("*", "search-word-forward")
+        KeybindingRegistration::new("*", "motions:search-word-forward")
             .with_modes(&["editor:normal"])
             .with_category("search")
             .with_description("Search word under cursor forward"),
-        KeybindingRegistration::new("#", "search-word-backward")
+        KeybindingRegistration::new("#", "motions:search-word-backward")
             .with_modes(&["editor:normal"])
             .with_category("search")
             .with_description("Search word under cursor backward"),

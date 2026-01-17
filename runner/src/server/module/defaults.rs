@@ -28,6 +28,7 @@
 /// - `editor` - Cursor movement, mode switching, basic editing
 /// - `keymap` - Vim keybindings and key sequence handling
 /// - `operators` - Vim operators (d, y, c, etc.)
+/// - `motions` - Vim motions (w, e, b, $, ^, G, etc.)
 /// - `commands` - Ex commands (:w, :q, :wq, etc.)
 /// - `mode-manager` - Mode transitions and mode stack management
 ///
@@ -37,7 +38,14 @@
 /// - Use `[modules].autoload` in config to replace this list
 /// - Use `[modules].skip` in config to remove specific modules
 /// - Use `[modules].extra` in config to add modules
-pub const DEFAULT_MODULES: &[&str] = &["editor", "keymap", "operators", "commands", "mode-manager"];
+pub const DEFAULT_MODULES: &[&str] = &[
+    "editor",
+    "keymap",
+    "operators",
+    "motions",
+    "commands",
+    "mode-manager",
+];
 
 #[cfg(test)]
 mod tests {

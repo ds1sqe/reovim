@@ -1,9 +1,7 @@
 //! Cursor movement tests (hjkl, 0$, gg/G, w/b/e).
 //!
-//! **Status**: 10 tests enabled, 7 tests require additional features
-//! (count prefix handling, motions like $, ^, w, e, G).
-//!
-//! Run `cargo test --ignored` to run the remaining ignored tests.
+//! **Status**: All 17 tests enabled.
+//! Count prefix support (3j, 5G) implemented in RPC input handler.
 
 mod common;
 use common::IntegrationTest;
@@ -57,7 +55,6 @@ async fn test_h_moves_left() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_3j_count_movement() {
     let result = IntegrationTest::new()
         .await
@@ -73,7 +70,6 @@ async fn test_3j_count_movement() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_dollar_moves_to_eol() {
     let result = IntegrationTest::new()
         .await
@@ -96,7 +92,6 @@ async fn test_0_moves_to_bol() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_caret_moves_to_first_nonblank() {
     let result = IntegrationTest::new()
         .await
@@ -123,7 +118,6 @@ async fn test_gg_moves_to_first_line() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_g_moves_to_last_line() {
     let result = IntegrationTest::new()
         .await
@@ -135,7 +129,6 @@ async fn test_g_moves_to_last_line() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_5g_moves_to_line_5() {
     let result = IntegrationTest::new()
         .await
@@ -151,7 +144,6 @@ async fn test_5g_moves_to_line_5() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_w_moves_to_next_word() {
     let result = IntegrationTest::new()
         .await
@@ -174,7 +166,6 @@ async fn test_b_moves_to_prev_word() {
 }
 
 #[tokio::test]
-#[ignore = "requires modules loaded for key bindings"]
 async fn test_e_moves_to_end_of_word() {
     let result = IntegrationTest::new()
         .await
