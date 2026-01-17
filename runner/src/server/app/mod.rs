@@ -5,6 +5,7 @@
 //! state like active buffer and mode stack.
 
 mod char_ops;
+mod cmdline;
 mod repeat;
 mod search;
 mod undotree;
@@ -12,6 +13,7 @@ mod visual;
 
 pub use {
     char_ops::{CharWaitState, FindType, LastFind, PendingCharOp},
+    cmdline::CommandLineState,
     repeat::{InsertEntryType, MAX_INSERT_COUNT, PendingEditBatch, RepeatState},
     search::{SearchDirection, SearchState},
     undotree::{DiffPreviewLine, UndotreeRenderLine, UndotreeState},
@@ -162,6 +164,12 @@ pub struct AppState {
     /// and navigation state within the tree.
     pub undotree_state: UndotreeState,
 
+    /// Command-line mode state for : commands.
+    ///
+    /// Tracks input buffer and whether command-line mode is active.
+    /// Used for Ex-style commands like `:w`, `:q`, `:set`, etc.
+    pub cmdline: CommandLineState,
+
     /// Pending operator waiting for a motion.
     ///
     /// When a user presses an operator key (d, y, c) in normal mode,
@@ -242,6 +250,7 @@ impl AppState {
             windows: WindowRegistry::new(),
             undotree_state: UndotreeState::new(),
             pending_operator: None,
+            cmdline: CommandLineState::new(),
         }
     }
 

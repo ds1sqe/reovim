@@ -53,6 +53,7 @@ mod fallback;
 mod key;
 mod mode;
 mod mouse;
+mod resolver;
 mod traits;
 
 // Re-export error types
@@ -76,4 +77,10 @@ pub use mode::{KeySequence, Keybinding, ModeInput};
 // Re-export fallback types (Phase 8 - Break editor->runner cycle)
 pub use fallback::{
     BeepFallback, FallbackContext, FallbackResult, InputFallbackHandler, NoOpFallback,
+};
+
+// Re-export resolver types (Phase 9 - Flexible mode system)
+pub use resolver::{
+    ArgValue, ModeKeyResolver, ModeState, ModeTransition, PopResult, ResolveContext, ResolveResult,
+    TransitionContext,
 };

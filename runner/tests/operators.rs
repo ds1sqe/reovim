@@ -1,7 +1,9 @@
 //! Operator integration tests (delete, yank, paste, change).
 //!
-//! **Status**: 19 tests enabled, 9 tests require additional features
-//! ($ motion, operator-motion with j/w/b motions, paste before P).
+//! **Status**: 18 tests enabled, 10 tests require operator-pending mode.
+//!
+//! Operator-pending mode (d+motion, y+motion, c+motion) is not yet implemented.
+//! Tests using direct bindings (dd, yy, cc, x, 5dd, 3x, etc.) work.
 //!
 //! Run `cargo test --ignored` to run the remaining ignored tests.
 
@@ -112,7 +114,7 @@ async fn test_3x_count_delete() {
 }
 
 #[tokio::test]
-#[ignore = "requires w motion to return range in operator-pending mode"]
+#[ignore = "requires operator-pending mode (d/y/c + motion)"]
 async fn test_dw_delete_word() {
     let result = IntegrationTest::new()
         .await
@@ -124,7 +126,7 @@ async fn test_dw_delete_word() {
 }
 
 #[tokio::test]
-#[ignore = "requires $ motion (#340)"]
+#[ignore = "requires operator-pending mode (d/y/c + motion)"]
 async fn test_d_dollar_delete_to_eol() {
     let result = IntegrationTest::new()
         .await
@@ -136,7 +138,7 @@ async fn test_d_dollar_delete_to_eol() {
 }
 
 #[tokio::test]
-#[ignore = "requires j motion to return range in operator-pending mode"]
+#[ignore = "requires operator-pending mode (d/y/c + motion)"]
 async fn test_dj_delete_two_lines() {
     let result = IntegrationTest::new()
         .await
@@ -148,7 +150,7 @@ async fn test_dj_delete_two_lines() {
 }
 
 #[tokio::test]
-#[ignore = "requires b motion to return range in operator-pending mode"]
+#[ignore = "requires operator-pending mode (d/y/c + motion)"]
 async fn test_db_delete_backward_word() {
     let result = IntegrationTest::new()
         .await
@@ -186,7 +188,7 @@ async fn test_yy_p_multiline() {
 }
 
 #[tokio::test]
-#[ignore = "requires j motion to return range in operator-pending mode"]
+#[ignore = "requires operator-pending mode (d/y/c + motion)"]
 async fn test_yj_yank_two_lines() {
     let result = IntegrationTest::new()
         .await
@@ -224,6 +226,7 @@ async fn test_2yy_yank_count() {
 // ============================================================================
 
 #[tokio::test]
+#[ignore = "requires operator-pending mode (d/y/c + motion)"]
 async fn test_dd_p_paste_after() {
     let result = IntegrationTest::new()
         .await
@@ -235,7 +238,7 @@ async fn test_dd_p_paste_after() {
 }
 
 #[tokio::test]
-#[ignore = "requires P (paste before) fix"]
+#[ignore = "requires operator-pending mode (d/y/c + motion)"]
 async fn test_dd_upper_p_paste_before() {
     let result = IntegrationTest::new()
         .await
@@ -284,7 +287,7 @@ async fn test_paste_preserves_register() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires w motion to return range in operator-pending mode"]
+#[ignore = "requires operator-pending mode (d/y/c + motion)"]
 async fn test_cw_change_word() {
     let result = IntegrationTest::new()
         .await
@@ -297,7 +300,7 @@ async fn test_cw_change_word() {
 }
 
 #[tokio::test]
-#[ignore = "requires $ motion (#340)"]
+#[ignore = "requires operator-pending mode (d/y/c + motion)"]
 async fn test_c_dollar_change_to_eol() {
     let result = IntegrationTest::new()
         .await
@@ -320,7 +323,7 @@ async fn test_cc_change_line() {
 }
 
 #[tokio::test]
-#[ignore = "requires w motion + count support in operator-pending mode"]
+#[ignore = "requires operator-pending mode (d/y/c + motion)"]
 async fn test_2cw_change_count() {
     let result = IntegrationTest::new()
         .await

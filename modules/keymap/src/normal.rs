@@ -140,10 +140,10 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&["editor:normal"])
             .with_category("mode")
             .with_description("Enter visual block mode"),
-        KeybindingRegistration::new(":", "enter-command")
+        KeybindingRegistration::new(":", "enter-commandline")
             .with_modes(&["editor:normal"])
             .with_category("mode")
-            .with_description("Enter command mode"),
+            .with_description("Enter command-line mode"),
         // ====================================================================
         // Operators (enter operator-pending mode)
         // ====================================================================

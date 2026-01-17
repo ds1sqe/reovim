@@ -1,4 +1,4 @@
-//! Editor modes - Normal, Insert, and Visual.
+//! Editor modes - Normal, Insert, Visual, and Command-line.
 //!
 //! These are the fundamental modes for vim-style text editing:
 //! - **Normal**: Navigation mode with cursor movement commands
@@ -6,6 +6,7 @@
 //! - **Visual**: Selection mode for character-wise selection
 //! - **`VisualLine`**: Selection mode for line-wise selection
 //! - **`VisualBlock`**: Selection mode for block (rectangular) selection
+//! - **`CommandLine`**: Ex command input mode (`:` commands)
 
 use {
     reovim_driver_display::{CursorStyle, ModeDisplay},
@@ -24,6 +25,7 @@ pub const EDITOR_MODULE: ModuleId = ModuleId::new("editor");
 /// - `Visual`: Block cursor, character-wise selection
 /// - `VisualLine`: Block cursor, line-wise selection
 /// - `VisualBlock`: Block cursor, block (rectangular) selection
+/// - `CommandLine`: Bar cursor, accepts character input for ex commands
 ///
 /// # Trait Implementations
 ///
@@ -44,6 +46,8 @@ pub enum EditorMode {
     VisualLine,
     /// Visual block mode - block (rectangular) selection.
     VisualBlock,
+    /// Command-line mode - ex command input (`:` commands).
+    CommandLine,
 }
 
 impl EditorMode {
@@ -62,6 +66,12 @@ impl EditorMode {
     /// Mode ID for Visual Block mode.
     pub const VISUAL_BLOCK_ID: ModeId = ModeId::new(EDITOR_MODULE, "visual-block");
 
+    /// Mode ID for Command-line mode.
+    pub const COMMANDLINE_ID: ModeId = ModeId::new(EDITOR_MODULE, "commandline");
+
+    /// Mode ID for Operator-pending mode.
+    pub const OPERATOR_PENDING_ID: ModeId = ModeId::new(EDITOR_MODULE, "operator-pending");
+
     /// Get the mode ID for this mode.
     #[must_use]
     pub const fn mode_id(&self) -> ModeId {
@@ -71,6 +81,7 @@ impl EditorMode {
             Self::Visual => Self::VISUAL_ID,
             Self::VisualLine => Self::VISUAL_LINE_ID,
             Self::VisualBlock => Self::VISUAL_BLOCK_ID,
+            Self::CommandLine => Self::COMMANDLINE_ID,
         }
     }
 
@@ -127,7 +138,7 @@ impl ModeDisplay for EditorMode {
             Self::Normal | Self::Visual | Self::VisualLine | Self::VisualBlock => {
                 CursorStyle::Block
             }
-            Self::Insert => CursorStyle::Bar,
+            Self::Insert | Self::CommandLine => CursorStyle::Bar,
         }
     }
 
@@ -138,13 +149,14 @@ impl ModeDisplay for EditorMode {
             Self::Visual => "VISUAL",
             Self::VisualLine => "V-LINE",
             Self::VisualBlock => "V-BLOCK",
+            Self::CommandLine => "COMMAND",
         }
     }
 }
 
 impl ModeInput for EditorMode {
     fn accepts_char_input(&self) -> bool {
-        matches!(self, Self::Insert)
+        matches!(self, Self::Insert | Self::CommandLine)
     }
 }
 

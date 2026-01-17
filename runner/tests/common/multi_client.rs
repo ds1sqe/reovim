@@ -55,6 +55,25 @@ impl TestClient {
         Ok(result["content"].as_str().unwrap_or("").to_string())
     }
 
+    /// Open a new buffer with optional content
+    pub async fn open_buffer(&mut self, content: &str) -> Result<(), String> {
+        use std::io::Write;
+
+        // Create temp file with content
+        let path = format!("/tmp/reovim-multiclient-{}-{}.txt", std::process::id(), self.id);
+        let mut file = std::fs::File::create(&path).map_err(|e| e.to_string())?;
+        file.write_all(content.as_bytes())
+            .map_err(|e| e.to_string())?;
+
+        // Open the file
+        self.client
+            .call("buffer/open_file", json!({ "path": &path }))
+            .await
+            .map_err(|e| e.to_string())?;
+
+        Ok(())
+    }
+
     /// Client ID
     #[must_use]
     pub const fn id(&self) -> usize {

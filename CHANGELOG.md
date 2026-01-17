@@ -55,6 +55,21 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - Color-coded output: ERROR (red), WARN (yellow), INFO (green), DEBUG (cyan), TRACE (gray)
   - Uses `tracing_subscriber::reload` layer for runtime log level changes
 
+- Command-line mode infrastructure (#338)
+  - `EditorMode::CommandLine` variant with proper trait implementations
+  - `CommandLineState` for tracking input buffer and mode state
+  - `EnterCommandLineMode` and `ExitCommandLineMode` commands
+  - Keybindings: `:` enters command-line mode, `Esc`/`Enter`/`C-c` exits
+
+- Multi-client test infrastructure: `open_buffer()` method for TestClient (#339)
+
+- Flexible mode system architecture (#348)
+  - `ModeKeyResolver` trait for mode-specific key handling
+  - `ResolveResult`, `ModeTransition`, `PopResult` for resolver responses
+  - `ModeState`, `TransitionContext`, `ResolveContext` for state management
+  - `ArgValue` for dynamic command arguments
+  - Foundation for supporting different editing styles (Vim, Emacs, Kakoune)
+
 ### Changed
 
 - E2E tests: Enable 9 more tests after upstream changes (#308)
@@ -73,6 +88,8 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - Fixes garbled terminal output when server logs conflict with TUI rendering
   - Added `--ready-signal` flag for process coordination
   - Server prints "READY <addr>" to stdout when bound
+
+- Multi-client tests now properly initialize buffers before operations (#339)
 
 ### Removed
 

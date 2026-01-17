@@ -1,8 +1,9 @@
 //! Multi-client concurrent tests.
 //!
-//! **Status**: 3 tests enabled.
+//! **Status**: 3 tests enabled, all passing.
 //!
-//! Run `cargo test --test multi_client_tests` to run these tests.
+//! Tests verify that multiple clients can connect to the same server
+//! and see changes made by other clients.
 
 mod common;
 use common::MultiClientTest;
@@ -13,8 +14,14 @@ async fn test_two_clients_read_same_buffer() {
         .await
         .with_buffer("")
         .run(|mut clients| async move {
+            // Client 0 opens a buffer first
+            clients[0].open_buffer("").await.unwrap();
+
             // Client 0 inserts
             clients[0].send_keys("ihello<Esc>").await.unwrap();
+
+            // Small delay for sync
+            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 
             // Client 1 reads
             let content = clients[1].get_buffer().await.unwrap();
@@ -29,6 +36,9 @@ async fn test_clients_see_changes() {
         .await
         .with_buffer("")
         .run(|mut clients| async move {
+            // Client 0 opens a buffer first
+            clients[0].open_buffer("").await.unwrap();
+
             // Client 0 makes change
             clients[0].send_keys("iworld<Esc>").await.unwrap();
             tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;

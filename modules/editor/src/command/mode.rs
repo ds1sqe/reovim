@@ -167,3 +167,56 @@ impl CommandHandler for ExitOperatorPending {
         CommandResult::ModeAction(ModeAction::Pop)
     }
 }
+
+/// Enter command-line mode (`:` in normal mode).
+///
+/// This pushes "commandline" mode onto the mode stack. In command-line mode,
+/// the user can type Ex commands like `:w`, `:q`, `:set`, etc.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct EnterCommandLineMode;
+
+impl Command for EnterCommandLineMode {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "enter-commandline")
+    }
+
+    fn description(&self) -> &'static str {
+        "Enter command-line mode"
+    }
+}
+
+impl CommandHandler for EnterCommandLineMode {
+    fn execute(&self, ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
+        // Emit mode change event
+        ctx.event_bus
+            .emit(ModeChanged::with_mode_id("normal", EditorMode::COMMANDLINE_ID));
+
+        // Return mode action to transition to commandline mode
+        CommandResult::ModeAction(ModeAction::Set(EditorMode::COMMANDLINE_ID.to_string()))
+    }
+}
+
+/// Exit command-line mode (Escape or Enter).
+///
+/// Returns to normal mode from command-line mode.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ExitCommandLineMode;
+
+impl Command for ExitCommandLineMode {
+    fn id(&self) -> CommandId {
+        CommandId::new(EDITOR_MODULE, "exit-commandline")
+    }
+
+    fn description(&self) -> &'static str {
+        "Exit command-line mode and return to normal mode"
+    }
+}
+
+impl CommandHandler for ExitCommandLineMode {
+    fn execute(&self, ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
+        ctx.event_bus
+            .emit(ModeChanged::with_mode_id("commandline", EditorMode::NORMAL_ID));
+
+        CommandResult::ModeAction(ModeAction::Set(EditorMode::NORMAL_ID.to_string()))
+    }
+}

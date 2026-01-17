@@ -22,73 +22,90 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
             .with_category("mode")
             .with_description("Cancel operator"),
         // ====================================================================
+        // Operator doubling (dd, yy, cc)
+        // ====================================================================
+        // When an operator key is pressed again in operator-pending mode,
+        // it operates on the current line (whole-line motion).
+        KeybindingRegistration::new("d", "motions:whole-line")
+            .with_modes(&["editor:operator-pending"])
+            .with_category("motion")
+            .with_description("Whole line (for dd)"),
+        KeybindingRegistration::new("y", "motions:whole-line")
+            .with_modes(&["editor:operator-pending"])
+            .with_category("motion")
+            .with_description("Whole line (for yy)"),
+        KeybindingRegistration::new("c", "motions:whole-line")
+            .with_modes(&["editor:operator-pending"])
+            .with_category("motion")
+            .with_description("Whole line (for cc)"),
+        // ====================================================================
         // Motions (complete the operator)
         // ====================================================================
-        KeybindingRegistration::new("h", "motion-left")
+        KeybindingRegistration::new("h", "cursor-left")
             .with_modes(&["editor:operator-pending"])
             .with_category("motion")
             .with_description("Left motion"),
-        KeybindingRegistration::new("j", "motion-down")
+        KeybindingRegistration::new("j", "cursor-down")
             .with_modes(&["editor:operator-pending"])
             .with_category("motion")
             .with_description("Down motion"),
-        KeybindingRegistration::new("k", "motion-up")
+        KeybindingRegistration::new("k", "cursor-up")
             .with_modes(&["editor:operator-pending"])
             .with_category("motion")
             .with_description("Up motion"),
-        KeybindingRegistration::new("l", "motion-right")
+        KeybindingRegistration::new("l", "cursor-right")
             .with_modes(&["editor:operator-pending"])
             .with_category("motion")
             .with_description("Right motion"),
-        KeybindingRegistration::new("w", "motion-word-forward")
+        KeybindingRegistration::new("w", "motions:word-forward")
             .with_modes(&["editor:operator-pending"])
             .with_category("motion")
             .with_description("Word forward motion"),
-        KeybindingRegistration::new("b", "motion-word-backward")
+        KeybindingRegistration::new("b", "motions:word-backward")
             .with_modes(&["editor:operator-pending"])
             .with_category("motion")
             .with_description("Word backward motion"),
-        KeybindingRegistration::new("e", "motion-word-end")
+        KeybindingRegistration::new("e", "motions:word-end")
             .with_modes(&["editor:operator-pending"])
             .with_category("motion")
             .with_description("Word end motion"),
-        KeybindingRegistration::new("W", "motion-word-forward-big")
+        KeybindingRegistration::new("W", "motions:word-forward-big")
             .with_modes(&["editor:operator-pending"])
             .with_category("motion")
             .with_description("WORD forward motion"),
-        KeybindingRegistration::new("B", "motion-word-backward-big")
+        KeybindingRegistration::new("B", "motions:word-backward-big")
             .with_modes(&["editor:operator-pending"])
             .with_category("motion")
             .with_description("WORD backward motion"),
-        KeybindingRegistration::new("E", "motion-word-end-big")
+        KeybindingRegistration::new("E", "motions:word-end-big")
             .with_modes(&["editor:operator-pending"])
             .with_category("motion")
             .with_description("WORD end motion"),
-        KeybindingRegistration::new("ge", "motion-word-end-backward")
+        KeybindingRegistration::new("ge", "motions:word-end-backward")
             .with_modes(&["editor:operator-pending"])
             .with_category("motion")
             .with_description("Word end backward motion"),
-        KeybindingRegistration::new("gE", "motion-word-end-backward-big")
+        KeybindingRegistration::new("gE", "motions:word-end-backward-big")
             .with_modes(&["editor:operator-pending"])
             .with_category("motion")
             .with_description("WORD end backward motion"),
-        KeybindingRegistration::new("0", "motion-line-start")
+        KeybindingRegistration::new("0", "motions:line-start")
             .with_modes(&["editor:operator-pending"])
             .with_category("motion")
             .with_description("Line start motion"),
-        KeybindingRegistration::new("$", "motion-line-end")
+        KeybindingRegistration::new("$", "motions:line-end")
             .with_modes(&["editor:operator-pending"])
             .with_category("motion")
             .with_description("Line end motion"),
-        KeybindingRegistration::new("^", "motion-first-non-blank")
+        KeybindingRegistration::new("^", "motions:first-non-blank")
             .with_modes(&["editor:operator-pending"])
             .with_category("motion")
             .with_description("First non-blank motion"),
-        KeybindingRegistration::new("gg", "motion-document-start")
+        KeybindingRegistration::new("gg", "motions:document-start")
             .with_modes(&["editor:operator-pending"])
             .with_category("motion")
             .with_description("Document start motion"),
-        KeybindingRegistration::new("G", "motion-document-end")
+        KeybindingRegistration::new("G", "motions:document-end")
             .with_modes(&["editor:operator-pending"])
             .with_category("motion")
             .with_description("Document end motion"),
