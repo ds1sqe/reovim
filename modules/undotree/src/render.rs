@@ -399,4 +399,184 @@ mod tests {
         let formatted = UndotreeRenderer::format_time_ago(timestamp, now);
         assert_eq!(formatted, "23h ago");
     }
+
+    // ========================================================================
+    // Complex Tree Rendering Tests (#258)
+    // ========================================================================
+
+    use reovim_kernel::api::v1::{Edit, Position};
+
+    /// Create a simple test edit for building undo trees.
+    fn test_edit() -> Vec<Edit> {
+        vec![Edit::insert(Position::default(), "x")]
+    }
+
+    #[test]
+    fn test_render_multi_branch_tree() {
+        // Create tree with fork point:
+        //   push -> undo -> push (branch 1)
+        //                -> undo -> push (branch 2)
+        let mut tree = UndoTree::new();
+        let cursor = Position::default();
+
+        // Push first change (node 1)
+        tree.push(test_edit(), cursor, cursor);
+
+        // Undo back to root, then push (creates branch at root)
+        tree.undo();
+        tree.push(test_edit(), cursor, cursor); // node 2 (branch from root)
+
+        // Push another from node 2 (node 3)
+        tree.push(test_edit(), cursor, cursor);
+
+        let renderer = UndotreeRenderer::new();
+        let lines = renderer.render(&tree, tree.current_index());
+
+        // Should have 4 nodes (root + 3 changes)
+        assert_eq!(tree.node_count(), 4);
+
+        // Root should have 2 children (fork point)
+        let root = tree.node(0).unwrap();
+        assert_eq!(root.children().len(), 2, "Root should have 2 branches");
+
+        // Current node (3) should be marked with @
+        let current_line = lines.iter().find(|l| l.is_current).unwrap();
+        assert!(current_line.text.contains('@'), "Current node should have @ marker");
+
+        // Non-current nodes should have 'o' marker
+        let non_current_count = lines
+            .iter()
+            .filter(|l| l.node_index.is_some() && !l.is_current)
+            .count();
+        assert!(non_current_count >= 2, "Should have at least 2 non-current nodes");
+    }
+
+    #[test]
+    fn test_render_deep_tree() {
+        // Create tree with 12 sequential nodes (root + 11 changes)
+        let mut tree = UndoTree::new();
+        let cursor = Position::default();
+
+        for _ in 0..11 {
+            tree.push(test_edit(), cursor, cursor);
+        }
+
+        let renderer = UndotreeRenderer::new();
+        let lines = renderer.render(&tree, tree.current_index());
+
+        // Should have 12 nodes total
+        assert_eq!(tree.node_count(), 12);
+
+        // Count node lines (lines with node_index)
+        let node_count = lines.iter().filter(|l| l.node_index.is_some()).count();
+        assert_eq!(node_count, 12, "Should render all 12 nodes");
+
+        // Verify sequence numbers are present [0] through [11]
+        for i in 0..12 {
+            let has_seq = lines.iter().any(|l| l.text.contains(&format!("[{i}]")));
+            assert!(has_seq, "Missing sequence number [{i}]");
+        }
+
+        // Current should be at the tip (node 11)
+        assert_eq!(tree.current_index(), 11);
+        let current_line = lines.iter().find(|l| l.is_current).unwrap();
+        assert!(current_line.text.contains("[11]"));
+    }
+
+    #[test]
+    fn test_render_wide_tree() {
+        // Create tree with 5 branches from root
+        let mut tree = UndoTree::new();
+        let cursor = Position::default();
+
+        for _ in 0..5 {
+            // Push a change, then undo back to root
+            tree.push(test_edit(), cursor, cursor);
+            tree.undo();
+        }
+
+        // Push one more to be current
+        tree.push(test_edit(), cursor, cursor);
+
+        let renderer = UndotreeRenderer::new();
+        let lines = renderer.render(&tree, tree.current_index());
+
+        // Root should have 6 children (5 undone branches + 1 current)
+        let root = tree.node(0).unwrap();
+        assert_eq!(root.children().len(), 6, "Root should have 6 branches");
+
+        // All 7 nodes should be rendered (root + 6 children)
+        assert_eq!(tree.node_count(), 7);
+        let node_count = lines.iter().filter(|l| l.node_index.is_some()).count();
+        assert_eq!(node_count, 7, "Should render all 7 nodes");
+
+        // Current should be marked
+        let current_line = lines.iter().find(|l| l.is_current).unwrap();
+        assert!(current_line.text.contains('@'));
+    }
+
+    #[test]
+    fn test_render_current_node_at_leaf() {
+        // Current at tip of tree (leaf position)
+        let mut tree = UndoTree::new();
+        let cursor = Position::default();
+
+        tree.push(test_edit(), cursor, cursor);
+        tree.push(test_edit(), cursor, cursor);
+        tree.push(test_edit(), cursor, cursor);
+
+        let renderer = UndotreeRenderer::new();
+        let lines = renderer.render(&tree, tree.current_index());
+
+        // Current should be node 3 (leaf)
+        assert_eq!(tree.current_index(), 3);
+
+        // Verify @ is on node 3
+        let current_line = lines.iter().find(|l| l.is_current).unwrap();
+        assert!(current_line.text.contains("[3]"));
+        assert!(current_line.text.contains('@'));
+
+        // Verify nodes 0, 1, 2 have 'o' marker (not @)
+        for line in lines
+            .iter()
+            .filter(|l| l.node_index.is_some() && !l.is_current)
+        {
+            assert!(
+                line.text.contains('o') && !line.text.contains('@'),
+                "Non-current node should have 'o' marker: {}",
+                line.text
+            );
+        }
+    }
+
+    #[test]
+    fn test_render_current_node_at_middle() {
+        // Current in middle of tree (after undo)
+        let mut tree = UndoTree::new();
+        let cursor = Position::default();
+
+        tree.push(test_edit(), cursor, cursor); // node 1
+        tree.push(test_edit(), cursor, cursor); // node 2
+        tree.push(test_edit(), cursor, cursor); // node 3
+        tree.undo(); // back to node 2
+
+        let renderer = UndotreeRenderer::new();
+        let lines = renderer.render(&tree, tree.current_index());
+
+        // Current should be node 2 (middle)
+        assert_eq!(tree.current_index(), 2);
+
+        // Verify @ is on node 2
+        let current_line = lines.iter().find(|l| l.is_current).unwrap();
+        assert!(current_line.text.contains("[2]"));
+        assert!(current_line.text.contains('@'));
+
+        // Node 3 exists but is not current
+        let node3_line = lines
+            .iter()
+            .find(|l| l.node_index == Some(3))
+            .expect("Node 3 should be rendered");
+        assert!(!node3_line.is_current);
+        assert!(node3_line.text.contains('o'));
+    }
 }
