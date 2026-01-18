@@ -7,12 +7,9 @@
 mod tests {
     use std::sync::Arc;
 
-    use {
-        reovim_driver_input::ModeKeyResolver,
-        reovim_module_editor::{EditorMode, ResolverRegistry},
-    };
+    use {reovim_driver_input::ModeKeyResolver, reovim_module_editor::ResolverRegistry};
 
-    use crate::{VimInsertResolver, VimNormalResolver, VimOperatorPendingResolver};
+    use crate::{VimInsertResolver, VimMode, VimNormalResolver, VimOperatorPendingResolver};
 
     #[test]
     fn test_register_vim_normal_resolver() {
@@ -21,7 +18,7 @@ mod tests {
         registry.register(VimNormalResolver::new());
 
         assert_eq!(registry.len(), 1);
-        assert!(registry.has(&EditorMode::NORMAL_ID));
+        assert!(registry.has(&VimMode::NORMAL_ID));
     }
 
     #[test]
@@ -33,9 +30,9 @@ mod tests {
         registry.register(VimOperatorPendingResolver::new());
 
         assert_eq!(registry.len(), 3);
-        assert!(registry.has(&EditorMode::NORMAL_ID));
-        assert!(registry.has(&EditorMode::INSERT_ID));
-        assert!(registry.has(&EditorMode::OPERATOR_PENDING_ID));
+        assert!(registry.has(&VimMode::NORMAL_ID));
+        assert!(registry.has(&VimMode::INSERT_ID));
+        assert!(registry.has(&VimMode::OPERATOR_PENDING_ID));
     }
 
     #[test]
@@ -43,9 +40,9 @@ mod tests {
         let mut registry = ResolverRegistry::new();
         registry.register(VimNormalResolver::new());
 
-        let resolver = registry.get(&EditorMode::NORMAL_ID);
+        let resolver = registry.get(&VimMode::NORMAL_ID);
         assert!(resolver.is_some());
-        assert_eq!(resolver.unwrap().mode_id(), &EditorMode::NORMAL_ID);
+        assert_eq!(resolver.unwrap().mode_id(), &VimMode::NORMAL_ID);
     }
 
     #[test]
@@ -53,9 +50,9 @@ mod tests {
         let mut registry = ResolverRegistry::new();
         registry.register(VimNormalResolver::new());
 
-        let removed = registry.remove(&EditorMode::NORMAL_ID);
+        let removed = registry.remove(&VimMode::NORMAL_ID);
         assert!(removed.is_some());
-        assert!(!registry.has(&EditorMode::NORMAL_ID));
+        assert!(!registry.has(&VimMode::NORMAL_ID));
         assert!(registry.is_empty());
     }
 
@@ -87,7 +84,7 @@ mod tests {
 
         registry.register_arc(resolver);
 
-        assert!(registry.has(&EditorMode::NORMAL_ID));
+        assert!(registry.has(&VimMode::NORMAL_ID));
     }
 
     #[test]

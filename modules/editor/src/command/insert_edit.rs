@@ -6,10 +6,24 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_kernel::api::v1::{CommandId, KernelContext, OptionScopeId},
+    reovim_kernel::api::v1::{CommandId, KernelContext, ModuleId, OptionScopeId},
 };
 
-use super::{super::mode::EDITOR_MODULE, mode_entry::get_line_indent};
+// Command module ID for editor commands.
+const EDITOR_MODULE: ModuleId = ModuleId::new("editor");
+
+/// Extract the leading whitespace (indent) from a line.
+///
+/// Returns a string slice containing only the leading whitespace characters.
+/// This preserves the exact mix of tabs and spaces.
+#[must_use]
+fn get_line_indent(line: &str) -> &str {
+    let non_ws_pos = line
+        .char_indices()
+        .find(|(_, c)| !c.is_whitespace())
+        .map_or(line.len(), |(i, _)| i);
+    &line[..non_ws_pos]
+}
 
 /// Insert a newline at cursor position (Enter in insert mode).
 #[derive(Debug, Clone, Copy, Default)]

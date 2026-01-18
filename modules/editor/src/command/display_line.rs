@@ -13,11 +13,14 @@ use {
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
     reovim_kernel::api::v1::{
-        CommandId, KernelContext, OptionScopeId, Position, events::CursorMoved,
+        CommandId, KernelContext, ModuleId, OptionScopeId, Position, events::CursorMoved,
     },
 };
 
-use super::super::{display_lines, mode::EDITOR_MODULE};
+use super::super::display_lines;
+
+// Command module ID for editor commands.
+const EDITOR_MODULE: ModuleId = ModuleId::new("editor");
 
 /// Get the tabstop setting for a buffer.
 fn get_tabstop(ctx: &KernelContext, buffer_id: reovim_kernel::api::v1::BufferId) -> usize {

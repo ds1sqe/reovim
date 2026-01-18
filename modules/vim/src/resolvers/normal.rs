@@ -16,7 +16,7 @@ use {
     reovim_kernel::api::v1::ModeId,
 };
 
-use reovim_module_editor::EditorMode;
+use crate::modes::VimMode;
 
 /// Vim normal mode key resolver.
 ///
@@ -77,7 +77,7 @@ impl VimNormalResolver {
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            mode_id: EditorMode::NORMAL_ID,
+            mode_id: VimMode::NORMAL_ID,
             pending_count: RwLock::new(None),
             pending_register: RwLock::new(None),
             pending_keys: RwLock::new(KeySequence::new()),
@@ -353,13 +353,13 @@ mod tests {
     }
 
     fn test_state() -> ModeState {
-        ModeState::new(EditorMode::NORMAL_ID)
+        ModeState::new(VimMode::NORMAL_ID)
     }
 
     #[test]
     fn test_new_resolver() {
         let resolver = VimNormalResolver::new();
-        assert_eq!(resolver.mode_id(), &EditorMode::NORMAL_ID);
+        assert_eq!(resolver.mode_id(), &VimMode::NORMAL_ID);
         assert!(resolver.pending_count().is_none());
         assert!(resolver.pending_register().is_none());
     }
@@ -609,7 +609,7 @@ mod tests {
     fn resolve_input(keymap: &impl KeymapQuery) -> ResolveInput<'_> {
         // Keys are managed by resolver, so we pass empty sequence here
         static EMPTY_KEYS: KeySequence = KeySequence::new();
-        static MODE: ModeId = EditorMode::NORMAL_ID;
+        static MODE: ModeId = VimMode::NORMAL_ID;
         ResolveInput::new(&EMPTY_KEYS, &MODE, keymap)
     }
 

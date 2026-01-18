@@ -226,11 +226,11 @@ use {
         OptionRegistry, OptionScope, OptionSpec, OptionValue, RegisterBank, TextObjectEngine,
     },
     reovim_module_commands::CommandsModule,
-    reovim_module_editor::{EditorMode, command::all_commands as editor_commands},
+    reovim_module_editor::command::all_commands as editor_commands,
     reovim_module_keymap::KeymapModule,
     reovim_module_motions::{MotionsModule, find_char, line, search as motions_search, word},
     reovim_module_operators::OperatorsModule,
-    reovim_module_vim::VimModule,
+    reovim_module_vim::{VimMode, VimModule},
     reovim_protocol::v1::{RpcError, RpcRequest, RpcResponse},
 };
 
@@ -239,7 +239,7 @@ use crate::buffer_manager::SimpleBufferManager;
 use {
     client::Client,
     module::{ModuleConfig, ModuleManager, wire_module_keybindings},
-    registry::{CommandRegistry, KeymapRegistry, ModeEntry, ModeRegistry},
+    registry::{CommandRegistry, KeymapRegistry, ModeRegistry},
     rpc::{RpcContext, RpcDispatcher, create_default_dispatcher},
     session::{Session, SessionId, SessionRegistry},
     transport::{TransportListener, TransportReader, TransportWriter},
@@ -888,10 +888,16 @@ fn create_session_with_defaults(id: SessionId) -> Arc<Session> {
     let (mode_registry, command_registry, keymap_registry, module_registry) =
         build_default_registries();
 
+    // Use auto-detected entry mode from registry, or fall back to hardcoded default
+    let initial_mode = mode_registry
+        .entry_mode()
+        .cloned()
+        .unwrap_or_else(fallback_default_mode);
+
     Session::with_registries(
         id,
         real_kernel_context(),
-        fallback_default_mode(),
+        initial_mode,
         standard_vfs(),
         mode_registry,
         command_registry,
@@ -929,19 +935,10 @@ fn build_default_registries() -> (ModeRegistry, CommandRegistry, KeymapRegistry,
     }
     tracing::info!(count = 5, "registered static modules");
 
-    // Register editor modes (so ModeRegistry knows about them)
+    // Register Vim modes (so ModeRegistry knows about them)
     // Each mode provides Mode (identity), ModeDisplay (cursor), and ModeInput (accepts char)
-    for mode in [
-        EditorMode::Normal,
-        EditorMode::Insert,
-        EditorMode::Visual,
-        EditorMode::VisualLine,
-        EditorMode::VisualBlock,
-    ] {
-        let entry = ModeEntry::new(Arc::new(mode))
-            .with_display(Arc::new(mode))
-            .with_input(Arc::new(mode));
-        mode_registry.register(entry);
+    for mode in VimMode::ALL {
+        mode_registry.register_mode(*mode);
     }
 
     // Register editor commands (cursor movement, mode switching, editing, etc.)
@@ -968,6 +965,17 @@ fn build_default_registries() -> (ModeRegistry, CommandRegistry, KeymapRegistry,
     }
     tracing::info!(count = command_registry.len(), "registered motions commands");
 
+    // Register vim module commands (mode switching, visual operations)
+    // These are Vim-specific commands that require knowledge of VimMode IDs
+    let vim_module_id = ModuleId::new("vim");
+    for cmd in reovim_module_vim::commands::mode_commands() {
+        command_registry.register_for_module(cmd.into(), vim_module_id.clone());
+    }
+    for cmd in reovim_module_vim::visual_commands() {
+        command_registry.register_for_module(cmd.into(), vim_module_id.clone());
+    }
+    tracing::info!(count = command_registry.len(), "registered vim commands");
+
     // Create vim module and wire its keybindings
     // (Vim module provides all the standard Vim keybindings)
     let vim_module = VimModule::new();
@@ -980,7 +988,7 @@ fn build_default_registries() -> (ModeRegistry, CommandRegistry, KeymapRegistry,
 
     // Wire keybindings from the vim module
     let keybindings = vim_module_init.keybindings();
-    match wire_module_keybindings(&module_id, &keybindings, &mut keymap_registry) {
+    match wire_module_keybindings(&module_id, &keybindings, &mut keymap_registry, &mode_registry) {
         Ok(stats) => {
             tracing::info!(
                 module = %module_id,

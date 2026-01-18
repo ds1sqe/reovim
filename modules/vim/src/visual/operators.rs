@@ -15,7 +15,7 @@ use {
     reovim_module_operators::{DeleteOperator, Operator, OperatorContext, Range, YankOperator},
 };
 
-use reovim_module_editor::{EDITOR_MODULE, EditorMode};
+use crate::modes::{VIM_MODULE, VimMode};
 
 /// Helper function to get selection range from buffer.
 ///
@@ -85,7 +85,7 @@ pub struct DeleteSelection;
 
 impl Command for DeleteSelection {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "delete-selection")
+        CommandId::new(VIM_MODULE, "delete-selection")
     }
 
     fn description(&self) -> &'static str {
@@ -125,7 +125,7 @@ impl CommandHandler for DeleteSelection {
 
         // Mode transition to Normal with target ModeId
         ctx.event_bus
-            .emit(ModeChanged::with_mode_id("visual", EditorMode::NORMAL_ID));
+            .emit(ModeChanged::with_mode_id("visual", VimMode::NORMAL_ID));
 
         CommandResult::Success
     }
@@ -140,7 +140,7 @@ pub struct YankSelection;
 
 impl Command for YankSelection {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "yank-selection")
+        CommandId::new(VIM_MODULE, "yank-selection")
     }
 
     fn description(&self) -> &'static str {
@@ -179,7 +179,7 @@ impl CommandHandler for YankSelection {
 
         // Mode transition to Normal with target ModeId
         ctx.event_bus
-            .emit(ModeChanged::with_mode_id("visual", EditorMode::NORMAL_ID));
+            .emit(ModeChanged::with_mode_id("visual", VimMode::NORMAL_ID));
 
         CommandResult::Success
     }
@@ -193,7 +193,7 @@ pub struct ChangeSelection;
 
 impl Command for ChangeSelection {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "change-selection")
+        CommandId::new(VIM_MODULE, "change-selection")
     }
 
     fn description(&self) -> &'static str {
@@ -233,7 +233,7 @@ impl CommandHandler for ChangeSelection {
 
         // Mode transition to Insert with target ModeId
         ctx.event_bus
-            .emit(ModeChanged::with_mode_id("visual", EditorMode::INSERT_ID));
+            .emit(ModeChanged::with_mode_id("visual", VimMode::INSERT_ID));
 
         CommandResult::Success
     }
@@ -248,7 +248,7 @@ pub struct IndentSelection;
 
 impl Command for IndentSelection {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "indent-selection")
+        CommandId::new(VIM_MODULE, "indent-selection")
     }
 
     fn description(&self) -> &'static str {
@@ -293,7 +293,7 @@ impl CommandHandler for IndentSelection {
         // Mode transition to Normal is handled by event loop
         drop(buffer);
         ctx.event_bus
-            .emit(ModeChanged::with_mode_id("visual", EditorMode::NORMAL_ID));
+            .emit(ModeChanged::with_mode_id("visual", VimMode::NORMAL_ID));
 
         CommandResult::Success
     }
@@ -308,7 +308,7 @@ pub struct DedentSelection;
 
 impl Command for DedentSelection {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "dedent-selection")
+        CommandId::new(VIM_MODULE, "dedent-selection")
     }
 
     fn description(&self) -> &'static str {
@@ -366,7 +366,7 @@ impl CommandHandler for DedentSelection {
         // Mode transition to Normal is handled by event loop
         drop(buffer);
         ctx.event_bus
-            .emit(ModeChanged::with_mode_id("visual", EditorMode::NORMAL_ID));
+            .emit(ModeChanged::with_mode_id("visual", VimMode::NORMAL_ID));
 
         CommandResult::Success
     }

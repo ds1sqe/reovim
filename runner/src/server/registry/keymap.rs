@@ -485,12 +485,26 @@ impl KeymapQuery for KeymapRegistry {
 mod tests {
     use {super::*, reovim_kernel::api::v1::ModuleId};
 
+    const TEST_MODULE: ModuleId = ModuleId::new("test");
+
     fn test_mode() -> ModeId {
-        ModeId::new(ModuleId::new("test"), "normal")
+        ModeId::with_discriminant(TEST_MODULE, "NORMAL", 0)
+    }
+
+    fn test_mode_normal() -> ModeId {
+        ModeId::with_discriminant(TEST_MODULE, "NORMAL", 0)
+    }
+
+    fn test_mode_insert() -> ModeId {
+        ModeId::with_discriminant(TEST_MODULE, "INSERT", 1)
+    }
+
+    fn test_mode_visual() -> ModeId {
+        ModeId::with_discriminant(TEST_MODULE, "VISUAL", 2)
     }
 
     fn test_command(name: &'static str) -> CommandId {
-        CommandId::new(ModuleId::new("test"), name)
+        CommandId::new(TEST_MODULE, name)
     }
 
     #[test]
@@ -620,8 +634,8 @@ mod tests {
     #[test]
     fn test_keymap_registry_different_modes() {
         let mut registry = KeymapRegistry::new();
-        let normal = ModeId::new(ModuleId::new("test"), "normal");
-        let insert = ModeId::new(ModuleId::new("test"), "insert");
+        let normal = test_mode_normal();
+        let insert = test_mode_insert();
 
         // Same key, different commands in different modes
         registry.register_str(&normal, "j", test_command("cursor-down"));
@@ -721,8 +735,8 @@ mod tests {
     #[test]
     fn test_keymap_registry_unregister_for_module_multiple_modes() {
         let mut registry = KeymapRegistry::new();
-        let normal_mode = ModeId::new(ModuleId::new("test"), "normal");
-        let insert_mode = ModeId::new(ModuleId::new("test"), "insert");
+        let normal_mode = test_mode_normal();
+        let insert_mode = test_mode_insert();
         let owner = ModuleId::new("my-module");
 
         // Register in multiple modes
@@ -862,8 +876,8 @@ mod tests {
     #[test]
     fn test_query_unknown_mode() {
         let mut registry = KeymapRegistry::new();
-        let normal = test_mode();
-        let visual = ModeId::new(ModuleId::new("test"), "visual");
+        let normal = test_mode_normal();
+        let visual = test_mode_visual();
 
         // Register in normal mode only
         registry.register_str(&normal, "j", test_command("cursor-down"));
@@ -1111,8 +1125,8 @@ mod tests {
     #[test]
     fn test_bindings_isolated_per_mode() {
         let mut registry = KeymapRegistry::new();
-        let normal = ModeId::new(ModuleId::new("test"), "normal");
-        let insert = ModeId::new(ModuleId::new("test"), "insert");
+        let normal = test_mode_normal();
+        let insert = test_mode_insert();
         let keys = KeySequence::parse("j").unwrap();
 
         // Register at different layers in different modes

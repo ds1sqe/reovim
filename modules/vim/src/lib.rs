@@ -38,11 +38,27 @@
 use {reovim_kernel::api::v1::*, reovim_module_macros::declare_module};
 
 pub mod bindings;
+pub mod commands;
+pub mod fallback;
+pub mod modes;
 pub mod resolvers;
 pub mod visual;
 
 #[cfg(test)]
 mod registry_integration;
+
+// Re-export mode types (Epic #372 - Mode Ownership)
+pub use modes::{VIM_MODULE, VimMode};
+
+// Re-export fallback handler (Epic #372 - Mode Ownership)
+pub use fallback::VimFallbackHandler;
+
+// Re-export mode commands (Epic #372 - Mode Ownership)
+pub use commands::{
+    ChangeLine, ChangeToEndOfLine, EnterCommandLineMode, EnterInsertEndOfLine,
+    EnterInsertFirstNonBlank, EnterInsertMode, EnterInsertModeAppend, EnterWindowMode,
+    ExitCommandLineMode, ExitOperatorPending, ExitToNormal, OpenLineAbove, OpenLineBelow,
+};
 
 // Re-export resolvers
 pub use resolvers::{VimInsertResolver, VimNormalResolver, VimOperatorPendingResolver};

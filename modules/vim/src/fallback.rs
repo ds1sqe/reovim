@@ -1,8 +1,14 @@
-//! Editor fallback handler for character insertion.
+//! Vim fallback handler for character insertion.
 //!
 //! This handler provides the policy for unmatched keys:
 //! - In Insert mode: Insert the character into the buffer
 //! - In Normal mode: Beep (invalid key)
+//!
+//! # Epic #372 - Mode Ownership
+//!
+//! This handler uses `VimMode::*_ID` constants directly to check the current
+//! mode, which is why it belongs in the vim module rather than the generic
+//! editor module.
 //!
 //! # Design Philosophy
 //!
@@ -17,9 +23,9 @@ use reovim_driver_input::{
     FallbackContext, FallbackResult, InputFallbackHandler, KeyCode, KeyEvent, Modifiers,
 };
 
-use super::mode::EditorMode;
+use crate::modes::VimMode;
 
-/// Editor-specific fallback handler.
+/// Vim-specific fallback handler.
 ///
 /// Implements character insertion for Insert mode and beeps for
 /// unmatched keys in Normal mode.
@@ -33,21 +39,21 @@ use super::mode::EditorMode;
 /// # Example
 ///
 /// ```ignore
-/// use reovim_module_editor::EditorFallbackHandler;
+/// use reovim_module_vim::VimFallbackHandler;
 /// use runner::EventLoop;
 ///
-/// let fallback = EditorFallbackHandler;
+/// let fallback = VimFallbackHandler;
 /// let event_loop = EventLoop::new(app, modes, commands, keymaps, fallback);
 /// ```
 #[derive(Debug, Clone, Copy, Default)]
-pub struct EditorFallbackHandler;
+pub struct VimFallbackHandler;
 
-impl<C: FallbackContext> InputFallbackHandler<C> for EditorFallbackHandler {
+impl<C: FallbackContext> InputFallbackHandler<C> for VimFallbackHandler {
     fn handle_unmatched(&self, key: KeyEvent, ctx: &mut C) -> FallbackResult {
         let mode_id = ctx.current_mode();
 
         // Check if we're in Insert mode
-        if *mode_id == EditorMode::INSERT_ID {
+        if *mode_id == VimMode::INSERT_ID {
             // Try to extract a printable character
             if let Some(ch) = key_to_char(&key) {
                 // Insert the character into the active buffer
@@ -75,7 +81,7 @@ impl<C: FallbackContext> InputFallbackHandler<C> for EditorFallbackHandler {
         }
 
         // In Normal mode, unmatched keys should beep
-        if *mode_id == EditorMode::NORMAL_ID {
+        if *mode_id == VimMode::NORMAL_ID {
             return FallbackResult::Beep;
         }
 
@@ -137,11 +143,11 @@ mod tests {
         }
 
         fn normal() -> Self {
-            Self::with_mode(EditorMode::NORMAL_ID)
+            Self::with_mode(VimMode::NORMAL_ID)
         }
 
         fn insert() -> Self {
-            Self::with_mode(EditorMode::INSERT_ID)
+            Self::with_mode(VimMode::INSERT_ID)
         }
     }
 
@@ -188,7 +194,7 @@ mod tests {
 
     #[test]
     fn test_normal_mode_beeps() {
-        let handler = EditorFallbackHandler;
+        let handler = VimFallbackHandler;
         let mut ctx = TestContext::normal();
 
         let key = KeyEvent::new(KeyCode::Char('x'));
@@ -199,7 +205,7 @@ mod tests {
 
     #[test]
     fn test_insert_mode_handles_char() {
-        let handler = EditorFallbackHandler;
+        let handler = VimFallbackHandler;
         let mut ctx = TestContext::insert();
 
         let key = KeyEvent::new(KeyCode::Char('a'));
@@ -210,7 +216,7 @@ mod tests {
 
     #[test]
     fn test_insert_mode_handles_uppercase() {
-        let handler = EditorFallbackHandler;
+        let handler = VimFallbackHandler;
         let mut ctx = TestContext::insert();
 
         let key = KeyEvent::with_modifiers(KeyCode::Char('A'), Modifiers::SHIFT);
@@ -221,7 +227,7 @@ mod tests {
 
     #[test]
     fn test_insert_mode_ignores_ctrl_char() {
-        let handler = EditorFallbackHandler;
+        let handler = VimFallbackHandler;
         let mut ctx = TestContext::insert();
 
         let key = KeyEvent::with_modifiers(KeyCode::Char('c'), Modifiers::CTRL);
@@ -232,7 +238,7 @@ mod tests {
 
     #[test]
     fn test_insert_mode_handles_tab() {
-        let handler = EditorFallbackHandler;
+        let handler = VimFallbackHandler;
         let mut ctx = TestContext::insert();
 
         let key = KeyEvent::new(KeyCode::Tab);
@@ -243,7 +249,7 @@ mod tests {
 
     #[test]
     fn test_insert_mode_handles_enter() {
-        let handler = EditorFallbackHandler;
+        let handler = VimFallbackHandler;
         let mut ctx = TestContext::insert();
 
         let key = KeyEvent::new(KeyCode::Enter);
@@ -254,7 +260,7 @@ mod tests {
 
     #[test]
     fn test_insert_mode_ignores_special_keys() {
-        let handler = EditorFallbackHandler;
+        let handler = VimFallbackHandler;
         let mut ctx = TestContext::insert();
 
         // Function keys, arrow keys, etc. should be ignored

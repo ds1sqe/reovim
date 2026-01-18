@@ -6,6 +6,26 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Fixed
 
+- Character insertion and mode switching fixes (#372)
+  - Fixed command ID resolution: keybindings now default to registering module
+  - Fixed vim commands not registered (enter-insert, visual operations, etc.)
+  - Updated vim bindings to use editor: prefix for editor commands (cursor, scroll, undo, etc.)
+  - Fixed mode lookup using id.name() instead of display_name
+  - Fixed invalid keybindings: `<` and `>` now use `<lt>` and `<gt>` notation
+  - Unicode character insertion (emoji, CJK) now works in insert mode
+
+- RPC input handler now handles count prefixes for movements (#372)
+  - Count digits (e.g., "3j", "10G") are accumulated before keymap lookup
+  - Accumulated count is passed to commands via CommandContext
+  - Fixes integration tests: `test_3j_count_movement`, `test_5g_moves_to_line_5`
+
+- Mode ownership: VimMode now properly owned by vim module (#372)
+  - Added `is_entry()` method to Mode trait for modes to declare entry status
+  - ModeRegistry auto-detects entry mode during registration
+  - Session starts in `vim:normal` instead of hardcoded `editor:normal`
+  - Fixed keybinding mode prefixes: `editor:*` → `vim:*` in all VimModule bindings
+  - Fixes keybindings not working due to mode mismatch
+
 - TUI not receiving buffer-scoped notifications (#365)
   - TUI now calls `editor/set_active_buffer` on connect to register for notifications
   - Fixes input appearing unresponsive (cursor_moved, buffer_modified, render_complete were missed)

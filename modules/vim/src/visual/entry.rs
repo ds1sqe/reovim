@@ -10,7 +10,7 @@ use {
     reovim_kernel::api::v1::{CommandId, KernelContext, SelectionMode, events::ModeChanged},
 };
 
-use reovim_module_editor::{EDITOR_MODULE, EditorMode};
+use crate::modes::{VIM_MODULE, VimMode};
 
 /// Enter visual mode (character-wise selection).
 #[derive(Debug, Clone, Copy, Default)]
@@ -18,7 +18,7 @@ pub struct EnterVisualMode;
 
 impl Command for EnterVisualMode {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "enter-visual")
+        CommandId::new(VIM_MODULE, "enter-visual")
     }
 
     fn description(&self) -> &'static str {
@@ -45,7 +45,7 @@ impl CommandHandler for EnterVisualMode {
 
         // Emit mode change event with target ModeId
         ctx.event_bus
-            .emit(ModeChanged::with_mode_id("normal", EditorMode::VISUAL_ID));
+            .emit(ModeChanged::with_mode_id("normal", VimMode::VISUAL_ID));
 
         CommandResult::Success
     }
@@ -57,7 +57,7 @@ pub struct EnterVisualLineMode;
 
 impl Command for EnterVisualLineMode {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "enter-visual-line")
+        CommandId::new(VIM_MODULE, "enter-visual-line")
     }
 
     fn description(&self) -> &'static str {
@@ -84,7 +84,7 @@ impl CommandHandler for EnterVisualLineMode {
 
         // Emit mode change event with target ModeId
         ctx.event_bus
-            .emit(ModeChanged::with_mode_id("normal", EditorMode::VISUAL_LINE_ID));
+            .emit(ModeChanged::with_mode_id("normal", VimMode::VISUAL_LINE_ID));
 
         CommandResult::Success
     }
@@ -96,7 +96,7 @@ pub struct EnterVisualBlockMode;
 
 impl Command for EnterVisualBlockMode {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "enter-visual-block")
+        CommandId::new(VIM_MODULE, "enter-visual-block")
     }
 
     fn description(&self) -> &'static str {
@@ -123,7 +123,7 @@ impl CommandHandler for EnterVisualBlockMode {
 
         // Emit mode change event with target ModeId
         ctx.event_bus
-            .emit(ModeChanged::with_mode_id("normal", EditorMode::VISUAL_BLOCK_ID));
+            .emit(ModeChanged::with_mode_id("normal", VimMode::VISUAL_BLOCK_ID));
 
         CommandResult::Success
     }

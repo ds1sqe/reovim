@@ -10,7 +10,10 @@ use {
     reovim_kernel::api::v1::{CommandId, KernelContext, RegisterContent},
 };
 
-use super::super::mode::EDITOR_MODULE;
+use reovim_kernel::api::v1::ModuleId;
+
+// Command module ID for editor commands.
+const EDITOR_MODULE: ModuleId = ModuleId::new("editor");
 
 /// Yank current line(s) to register (yy, Y).
 #[derive(Debug, Clone, Copy, Default)]

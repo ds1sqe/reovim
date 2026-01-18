@@ -1,10 +1,15 @@
-//! Mode entry commands (Phase 2).
+//! Mode entry commands.
 //!
 //! Provides specialized commands for entering insert mode:
 //! - `EnterInsertFirstNonBlank` (I)
 //! - `EnterInsertEndOfLine` (A)
 //! - `OpenLineBelow` (o)
 //! - `OpenLineAbove` (O)
+//!
+//! # Epic #372 - Mode Ownership
+//!
+//! These commands use `VimMode::INSERT_ID` to transition to insert mode,
+//! which is why they belong in the vim module.
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
@@ -13,22 +18,14 @@ use {
     },
 };
 
-use super::super::mode::{EDITOR_MODULE, EditorMode};
+use crate::modes::{VIM_MODULE, VimMode};
 
 /// Extract the leading whitespace (indent) from a line.
 ///
 /// Returns a string slice containing only the leading whitespace characters.
 /// This preserves the exact mix of tabs and spaces.
-///
-/// # Example
-///
-/// ```ignore
-/// assert_eq!(get_line_indent("    hello"), "    ");
-/// assert_eq!(get_line_indent("\t\thello"), "\t\t");
-/// assert_eq!(get_line_indent("hello"), "");
-/// ```
 #[must_use]
-pub fn get_line_indent(line: &str) -> &str {
+fn get_line_indent(line: &str) -> &str {
     let non_ws_pos = line
         .char_indices()
         .find(|(_, c)| !c.is_whitespace())
@@ -42,7 +39,7 @@ pub struct EnterInsertFirstNonBlank;
 
 impl Command for EnterInsertFirstNonBlank {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "enter-insert-bol")
+        CommandId::new(VIM_MODULE, "enter-insert-bol")
     }
 
     fn description(&self) -> &'static str {
@@ -68,7 +65,7 @@ impl CommandHandler for EnterInsertFirstNonBlank {
         }
 
         ctx.event_bus
-            .emit(ModeChanged::with_mode_id("normal", EditorMode::INSERT_ID));
+            .emit(ModeChanged::with_mode_id("normal", VimMode::INSERT_ID));
 
         CommandResult::Success
     }
@@ -80,7 +77,7 @@ pub struct EnterInsertEndOfLine;
 
 impl Command for EnterInsertEndOfLine {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "enter-insert-eol")
+        CommandId::new(VIM_MODULE, "enter-insert-eol")
     }
 
     fn description(&self) -> &'static str {
@@ -103,7 +100,7 @@ impl CommandHandler for EnterInsertEndOfLine {
         }
 
         ctx.event_bus
-            .emit(ModeChanged::with_mode_id("normal", EditorMode::INSERT_ID));
+            .emit(ModeChanged::with_mode_id("normal", VimMode::INSERT_ID));
 
         CommandResult::Success
     }
@@ -115,7 +112,7 @@ pub struct OpenLineBelow;
 
 impl Command for OpenLineBelow {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "open-line-below")
+        CommandId::new(VIM_MODULE, "open-line-below")
     }
 
     fn description(&self) -> &'static str {
@@ -168,7 +165,7 @@ impl CommandHandler for OpenLineBelow {
         drop(buffer);
 
         ctx.event_bus
-            .emit(ModeChanged::with_mode_id("normal", EditorMode::INSERT_ID));
+            .emit(ModeChanged::with_mode_id("normal", VimMode::INSERT_ID));
 
         CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
     }
@@ -180,7 +177,7 @@ pub struct OpenLineAbove;
 
 impl Command for OpenLineAbove {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "open-line-above")
+        CommandId::new(VIM_MODULE, "open-line-above")
     }
 
     fn description(&self) -> &'static str {
@@ -234,7 +231,7 @@ impl CommandHandler for OpenLineAbove {
         drop(buffer);
 
         ctx.event_bus
-            .emit(ModeChanged::with_mode_id("normal", EditorMode::INSERT_ID));
+            .emit(ModeChanged::with_mode_id("normal", VimMode::INSERT_ID));
 
         CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
     }

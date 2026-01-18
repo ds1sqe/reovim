@@ -12,7 +12,10 @@ use {
     reovim_kernel::api::v1::{CommandId, KernelContext},
 };
 
-use super::super::mode::EDITOR_MODULE;
+use reovim_kernel::api::v1::ModuleId;
+
+// Command module ID for editor commands.
+const EDITOR_MODULE: ModuleId = ModuleId::new("editor");
 
 /// Write buffer to file.
 ///

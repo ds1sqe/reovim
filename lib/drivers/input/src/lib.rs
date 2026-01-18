@@ -51,8 +51,10 @@ mod convert;
 mod error;
 mod fallback;
 mod key;
+mod lifecycle;
 mod lookup;
 mod mode;
+mod mode_registry;
 mod mouse;
 mod resolver;
 mod traits;
@@ -91,3 +93,9 @@ pub use lookup::{
     BindingLayer, EagerLookupPolicy, KeyLookupPolicy, KeyLookupResult, KeyLookupState, KeymapQuery,
     VimLookupPolicy,
 };
+
+// Re-export mode registry types (Epic #372 - Mode Ownership)
+pub use mode_registry::{ModeEntry, ModeRegistry};
+
+// Re-export lifecycle types (Epic #372 - Mode Ownership)
+pub use lifecycle::{ModeLifecycleHandler, NopLifecycleHandler};

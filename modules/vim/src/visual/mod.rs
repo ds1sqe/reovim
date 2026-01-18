@@ -108,7 +108,7 @@ mod tests {
         std::{collections::HashMap, sync::Arc},
     };
 
-    use reovim_module_editor::EDITOR_MODULE;
+    use crate::modes::VIM_MODULE;
 
     /// Test buffer manager that actually stores buffers.
     struct TestBufferManager {
@@ -182,28 +182,28 @@ mod tests {
     fn test_enter_visual_command_id() {
         let cmd = EnterVisualMode;
         assert_eq!(cmd.id().name(), "enter-visual");
-        assert_eq!(cmd.id().module(), &EDITOR_MODULE);
+        assert_eq!(cmd.id().module(), &VIM_MODULE);
     }
 
     #[test]
     fn test_enter_visual_line_command_id() {
         let cmd = EnterVisualLineMode;
         assert_eq!(cmd.id().name(), "enter-visual-line");
-        assert_eq!(cmd.id().module(), &EDITOR_MODULE);
+        assert_eq!(cmd.id().module(), &VIM_MODULE);
     }
 
     #[test]
     fn test_enter_visual_block_command_id() {
         let cmd = EnterVisualBlockMode;
         assert_eq!(cmd.id().name(), "enter-visual-block");
-        assert_eq!(cmd.id().module(), &EDITOR_MODULE);
+        assert_eq!(cmd.id().module(), &VIM_MODULE);
     }
 
     #[test]
     fn test_exit_visual_command_id() {
         let cmd = ExitVisualMode;
         assert_eq!(cmd.id().name(), "exit-visual");
-        assert_eq!(cmd.id().module(), &EDITOR_MODULE);
+        assert_eq!(cmd.id().module(), &VIM_MODULE);
     }
 
     // =========================================================================
@@ -339,7 +339,7 @@ mod tests {
     fn test_swap_anchor_command_id() {
         let cmd = SwapAnchor;
         assert_eq!(cmd.id().name(), "visual-swap-anchor");
-        assert_eq!(cmd.id().module(), &EDITOR_MODULE);
+        assert_eq!(cmd.id().module(), &VIM_MODULE);
     }
 
     #[test]
@@ -538,7 +538,7 @@ mod tests {
     fn test_reselect_last_command_id() {
         let cmd = ReselectLast;
         assert_eq!(cmd.id().name(), "reselect-last");
-        assert_eq!(cmd.id().module(), &EDITOR_MODULE);
+        assert_eq!(cmd.id().module(), &VIM_MODULE);
     }
 
     #[test]
@@ -565,35 +565,35 @@ mod tests {
     fn test_delete_selection_command_id() {
         let cmd = DeleteSelection;
         assert_eq!(cmd.id().name(), "delete-selection");
-        assert_eq!(cmd.id().module(), &EDITOR_MODULE);
+        assert_eq!(cmd.id().module(), &VIM_MODULE);
     }
 
     #[test]
     fn test_yank_selection_command_id() {
         let cmd = YankSelection;
         assert_eq!(cmd.id().name(), "yank-selection");
-        assert_eq!(cmd.id().module(), &EDITOR_MODULE);
+        assert_eq!(cmd.id().module(), &VIM_MODULE);
     }
 
     #[test]
     fn test_change_selection_command_id() {
         let cmd = ChangeSelection;
         assert_eq!(cmd.id().name(), "change-selection");
-        assert_eq!(cmd.id().module(), &EDITOR_MODULE);
+        assert_eq!(cmd.id().module(), &VIM_MODULE);
     }
 
     #[test]
     fn test_indent_selection_command_id() {
         let cmd = IndentSelection;
         assert_eq!(cmd.id().name(), "indent-selection");
-        assert_eq!(cmd.id().module(), &EDITOR_MODULE);
+        assert_eq!(cmd.id().module(), &VIM_MODULE);
     }
 
     #[test]
     fn test_dedent_selection_command_id() {
         let cmd = DedentSelection;
         assert_eq!(cmd.id().name(), "dedent-selection");
-        assert_eq!(cmd.id().module(), &EDITOR_MODULE);
+        assert_eq!(cmd.id().module(), &VIM_MODULE);
     }
 
     #[test]

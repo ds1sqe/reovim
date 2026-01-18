@@ -156,28 +156,81 @@ fn sync_primitives_accessible() {
 // Mode trait tests
 // ============================================================================
 
-/// A test mode implementation to verify the Mode trait is accessible.
-struct TestMode {
-    id: ModeId,
+/// Test module for mode tests.
+const TEST_MODULE: ModuleId = ModuleId::new("test");
+
+/// A test mode enum implementation to verify the Mode trait is accessible.
+///
+/// Mode trait requires Copy + Clone + Eq + Hash + Send + Sync + 'static.
+/// Mode is NOT object-safe by design (runtime uses `ModeId` instead).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u16)]
+enum TestMode {
+    Normal = 0,
+    Insert = 1,
 }
 
 impl Mode for TestMode {
+    fn module() -> ModuleId {
+        TEST_MODULE
+    }
+
+    fn discriminant(&self) -> u16 {
+        *self as u16
+    }
+
     fn id(&self) -> ModeId {
-        self.id.clone()
+        // Use lowercase names for ModeId (for programmatic matching)
+        // display_name() returns uppercase for statusline display
+        let name = match self {
+            Self::Normal => "normal",
+            Self::Insert => "insert",
+        };
+        ModeId::with_discriminant(TEST_MODULE, name, self.discriminant())
+    }
+
+    fn display_name(&self) -> &'static str {
+        // Uppercase names for statusline display
+        match self {
+            Self::Normal => "NORMAL",
+            Self::Insert => "INSERT",
+        }
+    }
+
+    fn cursor_style(&self) -> CursorStyle {
+        match self {
+            Self::Normal => CursorStyle::Block,
+            Self::Insert => CursorStyle::Bar,
+        }
+    }
+
+    fn accepts_char_input(&self) -> bool {
+        matches!(self, Self::Insert)
     }
 }
 
 #[test]
 fn mode_trait_accessible() {
-    let module = ModuleId::new("test");
-    let mode = TestMode {
-        id: ModeId::new(module, "test-mode"),
-    };
+    let mode = TestMode::Normal;
 
     // Mode trait is accessible
-    assert_eq!(mode.id().name(), "test-mode");
+    // ModeId names are lowercase (for programmatic matching)
+    assert_eq!(mode.id().name(), "normal");
+    assert_eq!(mode.id().module(), &TEST_MODULE);
+    assert_eq!(mode.discriminant(), 0);
+    assert_eq!(mode.cursor_style(), CursorStyle::Block);
+    assert!(!mode.accepts_char_input());
+    // display_name is uppercase (for statusline)
+    assert_eq!(mode.display_name(), "NORMAL");
 
-    // Mode can be used as trait object
-    let mode_ref: &dyn Mode = &mode;
-    assert_eq!(mode_ref.id().name(), "test-mode");
+    // Different mode
+    let insert = TestMode::Insert;
+    assert_eq!(insert.id().name(), "insert");
+    assert_eq!(insert.cursor_style(), CursorStyle::Bar);
+    assert!(insert.accepts_char_input());
+    assert_eq!(insert.display_name(), "INSERT");
+
+    // ModeId can be used for runtime storage (Mode is NOT object-safe by design)
+    let mode_id: ModeId = mode.into();
+    assert_eq!(mode_id.name(), "normal");
 }

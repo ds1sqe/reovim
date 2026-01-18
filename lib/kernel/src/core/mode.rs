@@ -10,38 +10,103 @@
 //!
 //! | Layer | Responsibility |
 //! |-------|---------------|
-//! | Kernel (this) | Identity: `ModeId`, `CommandId`, `Mode` trait |
-//! | Display Driver | Display: `ModeDisplay`, `CursorStyle` |
+//! | Kernel (this) | Identity: `ModeId`, `CommandId`, `Mode` trait, `CursorStyle` |
+//! | Display Driver | Display: `ModeDisplay` (uses kernel `CursorStyle`) |
 //! | Input Driver | Input: `ModeInput`, `KeySequence`, `Keybinding` |
 //! | Command Driver | Execution: `Command`, `CommandHandler` |
 //! | Modules | Policy: actual mode/command implementations |
 //!
+//! # Mode Ownership
+//!
+//! The `Mode` trait is designed for type-safe, compile-time enforced mode ownership:
+//!
+//! - Policy modules (e.g., vim) define their own Mode enums
+//! - Mode enums implement the `Mode` trait
+//! - `ModeId` provides runtime identity for storage in `ModeStack`
+//! - Blanket impl `From<M> for ModeId` allows ergonomic conversion
+//!
 //! # Usage
 //!
 //! ```
-//! use reovim_kernel::api::v1::{Mode, ModeId, ModuleId, CommandId};
+//! use reovim_kernel::api::v1::{Mode, ModeId, ModuleId, CommandId, CursorStyle};
 //!
 //! // Define a module ID
 //! const MY_MODULE: ModuleId = ModuleId::new("my-module");
 //!
 //! // Create mode and command IDs
 //! let normal_mode = ModeId::new(MY_MODULE.clone(), "normal");
-//! let insert_mode = ModeId::new(MY_MODULE.clone(), "insert");
+//! let insert_mode = ModeId::with_discriminant(MY_MODULE.clone(), "insert", 1);
 //! let cursor_down = CommandId::new(MY_MODULE.clone(), "cursor-down");
+//!
+//! assert_eq!(insert_mode.discriminant(), 1);
 //! ```
 
-use std::fmt;
+use std::{fmt, hash::Hash};
 
 use crate::api::module::ModuleId;
+
+// ============================================================================
+// CursorStyle
+// ============================================================================
+
+/// Cursor display style.
+///
+/// Different modes typically use different cursor styles to provide
+/// visual feedback about the current mode. This enum is defined in the
+/// kernel so that the `Mode` trait can include cursor style information.
+///
+/// # Variants
+///
+/// - `Block`: Full cell cursor, typical for Normal mode
+/// - `Bar`: Thin vertical line, typical for Insert mode
+/// - `Underline`: Horizontal line under the character
+/// - `Hidden`: Cursor not visible
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum CursorStyle {
+    /// Block cursor (full cell, typical for Normal mode).
+    #[default]
+    Block,
+    /// Vertical bar cursor (thin line, typical for Insert mode).
+    Bar,
+    /// Underline cursor (horizontal line under the character).
+    Underline,
+    /// Hidden cursor (cursor not visible).
+    Hidden,
+}
+
+impl CursorStyle {
+    /// Check if the cursor is visible.
+    #[must_use]
+    pub const fn is_visible(&self) -> bool {
+        !matches!(self, Self::Hidden)
+    }
+
+    /// Get the style name for display.
+    #[must_use]
+    pub const fn name(&self) -> &'static str {
+        match self {
+            Self::Block => "block",
+            Self::Bar => "bar",
+            Self::Underline => "underline",
+            Self::Hidden => "hidden",
+        }
+    }
+}
 
 // ============================================================================
 // ModeId
 // ============================================================================
 
-/// Namespaced mode identifier.
+/// Namespaced mode identifier with numeric discriminant.
 ///
-/// Modes are identified by their owning module and a local name.
-/// This prevents naming conflicts between modules.
+/// Modes are identified by their owning module, a local name, and a numeric
+/// discriminant for O(1) identity comparison. The discriminant provides
+/// compile-time type safety when used with the `Mode` trait.
+///
+/// # Identity
+///
+/// Two `ModeId`s are equal if and only if their module AND discriminant match.
+/// The name is for display purposes only and does not affect equality.
 ///
 /// # Example
 ///
@@ -49,26 +114,53 @@ use crate::api::module::ModuleId;
 /// use reovim_kernel::api::v1::{ModeId, ModuleId};
 ///
 /// let editor_module = ModuleId::new("editor");
-/// let normal = ModeId::new(editor_module.clone(), "normal");
-/// let insert = ModeId::new(editor_module, "insert");
+/// let normal = ModeId::with_discriminant(editor_module.clone(), "NORMAL", 0);
+/// let insert = ModeId::with_discriminant(editor_module, "INSERT", 1);
 ///
-/// assert_eq!(normal.name(), "normal");
-/// assert_eq!(insert.name(), "insert");
+/// assert_eq!(normal.name(), "NORMAL");
+/// assert_eq!(normal.discriminant(), 0);
+/// assert_eq!(insert.discriminant(), 1);
 /// assert_ne!(normal, insert);
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct ModeId {
     /// The module that owns this mode.
     module: ModuleId,
-    /// The local name within the module.
+    /// The display name (for statusline, etc.).
     name: &'static str,
+    /// Numeric discriminant for O(1) identity comparison.
+    discriminant: u16,
 }
 
 impl ModeId {
-    /// Create a new mode identifier.
+    /// Create a new mode identifier with default discriminant (0).
+    ///
+    /// This constructor is provided for backward compatibility.
+    /// Prefer `with_discriminant` for new code.
     #[must_use]
     pub const fn new(module: ModuleId, name: &'static str) -> Self {
-        Self { module, name }
+        Self {
+            module,
+            name,
+            discriminant: 0,
+        }
+    }
+
+    /// Create a new mode identifier with explicit discriminant.
+    ///
+    /// The discriminant should be unique within the module and stable
+    /// across versions for serialization compatibility.
+    #[must_use]
+    pub const fn with_discriminant(
+        module: ModuleId,
+        name: &'static str,
+        discriminant: u16,
+    ) -> Self {
+        Self {
+            module,
+            name,
+            discriminant,
+        }
     }
 
     /// Get the owning module.
@@ -77,10 +169,33 @@ impl ModeId {
         &self.module
     }
 
-    /// Get the local name.
+    /// Get the display name.
     #[must_use]
     pub const fn name(&self) -> &'static str {
         self.name
+    }
+
+    /// Get the numeric discriminant.
+    #[must_use]
+    pub const fn discriminant(&self) -> u16 {
+        self.discriminant
+    }
+}
+
+// Manual PartialEq: equality based on module + discriminant only
+impl PartialEq for ModeId {
+    fn eq(&self, other: &Self) -> bool {
+        self.module == other.module && self.discriminant == other.discriminant
+    }
+}
+
+impl Eq for ModeId {}
+
+// Manual Hash: hash based on module + discriminant only
+impl std::hash::Hash for ModeId {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.module.hash(state);
+        self.discriminant.hash(state);
     }
 }
 
@@ -149,36 +264,150 @@ impl fmt::Display for CommandId {
 // Mode Trait
 // ============================================================================
 
-/// Mode identity trait.
+/// Mode trait for type-safe, compile-time enforced mode ownership.
 ///
-/// This trait provides identity only - no behavior. Mode behavior is defined
-/// by driver-level traits (`ModeDisplay`, `ModeInput`) and module implementations.
+/// Policy modules (e.g., vim, emacs) define their own Mode enums and implement
+/// this trait. The trait provides both identity and behavior information,
+/// allowing the kernel and drivers to query mode properties without knowing
+/// the concrete type.
+///
+/// # Type Safety
+///
+/// The trait requires `Copy + Clone + PartialEq + Eq + Hash` to ensure modes
+/// are lightweight value types that can be efficiently compared and stored.
+/// This also makes the trait **not object-safe**, which is intentional:
+/// runtime storage uses `ModeId`, not `dyn Mode`.
+///
+/// # Blanket Implementation
+///
+/// All `Mode` types automatically implement `From<M> for ModeId`, allowing
+/// ergonomic conversion when storing modes in `ModeStack` or `ModeRegistry`.
 ///
 /// # Example
 ///
 /// ```ignore
-/// use reovim_kernel::api::v1::{Mode, ModeId, ModuleId};
+/// use reovim_kernel::api::v1::{Mode, ModeId, ModuleId, CursorStyle};
 ///
-/// const MY_MODULE: ModuleId = ModuleId::new("my-module");
+/// const VIM_MODULE: ModuleId = ModuleId::new("vim");
 ///
-/// #[derive(Debug, Clone, Copy)]
-/// enum MyMode {
-///     Normal,
-///     Insert,
+/// #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// #[repr(u16)]
+/// enum VimMode {
+///     Normal = 0,
+///     Insert = 1,
+///     Visual = 2,
 /// }
 ///
-/// impl Mode for MyMode {
-///     fn id(&self) -> ModeId {
-///         ModeId::new(MY_MODULE.clone(), match self {
-///             Self::Normal => "normal",
-///             Self::Insert => "insert",
-///         })
+/// impl Mode for VimMode {
+///     fn module() -> ModuleId { VIM_MODULE }
+///
+///     fn discriminant(&self) -> u16 { *self as u16 }
+///
+///     fn display_name(&self) -> &'static str {
+///         match self {
+///             Self::Normal => "NORMAL",
+///             Self::Insert => "INSERT",
+///             Self::Visual => "VISUAL",
+///         }
+///     }
+///
+///     fn cursor_style(&self) -> CursorStyle {
+///         match self {
+///             Self::Insert => CursorStyle::Bar,
+///             _ => CursorStyle::Block,
+///         }
+///     }
+///
+///     fn accepts_char_input(&self) -> bool {
+///         matches!(self, Self::Insert)
 ///     }
 /// }
 /// ```
-pub trait Mode: Send + Sync + 'static {
-    /// Get the mode's unique identifier.
-    fn id(&self) -> ModeId;
+pub trait Mode: Copy + Clone + PartialEq + Eq + Hash + Send + Sync + 'static {
+    /// The module that owns this mode type.
+    ///
+    /// This is a type-level constant, not an instance method.
+    fn module() -> ModuleId
+    where
+        Self: Sized;
+
+    /// Get the unique discriminant for this mode variant.
+    ///
+    /// For `#[repr(u16)]` enums, this is typically `*self as u16`.
+    /// Discriminants must be stable across versions for serialization.
+    fn discriminant(&self) -> u16;
+
+    /// Convert to the runtime storage type.
+    ///
+    /// Default implementation creates a `ModeId` from module, `display_name`,
+    /// and discriminant. Override only if custom behavior is needed.
+    fn id(&self) -> ModeId
+    where
+        Self: Sized,
+    {
+        ModeId::with_discriminant(Self::module(), self.display_name(), self.discriminant())
+    }
+
+    /// Get the display name for this mode.
+    ///
+    /// This is shown in the statusline (e.g., "NORMAL", "INSERT", "VISUAL").
+    fn display_name(&self) -> &'static str;
+
+    /// Get the cursor style for this mode.
+    ///
+    /// Different modes typically use different cursor styles:
+    /// - Normal mode: Block cursor
+    /// - Insert mode: Bar cursor
+    /// - Replace mode: Underline cursor
+    fn cursor_style(&self) -> CursorStyle;
+
+    /// Whether this mode accepts direct character input.
+    ///
+    /// Returns `true` for modes like Insert, `CommandLine`, Replace.
+    /// Returns `false` for Normal, Visual, `OperatorPending`.
+    fn accepts_char_input(&self) -> bool;
+
+    /// Whether this mode has an active selection.
+    ///
+    /// Returns `true` for Visual, Select modes.
+    /// Default is `false`.
+    fn has_selection(&self) -> bool {
+        false
+    }
+
+    /// Get the parent mode for keybinding inheritance.
+    ///
+    /// For example, `VisualLine` might inherit from Visual, which inherits
+    /// from Normal. Returns `None` for root modes.
+    fn inherits_from(&self) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        None
+    }
+
+    /// Whether this is the entry/default mode for new sessions.
+    ///
+    /// Only one mode per module should return true. The first mode
+    /// registered with `is_entry() = true` becomes the session's initial mode.
+    ///
+    /// Default is `false`.
+    fn is_entry(&self) -> bool {
+        false
+    }
+}
+
+/// Blanket implementation: all Mode types convert to `ModeId`.
+///
+/// This allows ergonomic usage:
+/// ```ignore
+/// let stack = ModeStack::new(VimMode::Normal);  // No .into() needed
+/// stack.push(VimMode::Insert);
+/// ```
+impl<M: Mode> From<M> for ModeId {
+    fn from(mode: M) -> Self {
+        mode.id()
+    }
 }
 
 // ============================================================================
@@ -191,15 +420,25 @@ pub trait Mode: Send + Sync + 'static {
 /// For example, entering operator-pending mode pushes onto the stack,
 /// and completing/canceling the operation pops back.
 ///
+/// # Generic Mode Support
+///
+/// All methods accept `impl Into<ModeId>`, allowing both `ModeId` and
+/// any type implementing `Mode` to be used directly:
+///
+/// ```ignore
+/// let mut stack = ModeStack::new(VimMode::Normal);  // VimMode implements Mode
+/// stack.push(VimMode::OperatorPending);
+/// ```
+///
 /// # Example
 ///
 /// ```
 /// use reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId};
 ///
 /// let module = ModuleId::new("editor");
-/// let normal = ModeId::new(module.clone(), "normal");
-/// let insert = ModeId::new(module.clone(), "insert");
-/// let op_pending = ModeId::new(module, "operator-pending");
+/// let normal = ModeId::with_discriminant(module.clone(), "NORMAL", 0);
+/// let insert = ModeId::with_discriminant(module.clone(), "INSERT", 1);
+/// let op_pending = ModeId::with_discriminant(module, "OP-PEND", 5);
 ///
 /// let mut stack = ModeStack::new(normal.clone());
 /// assert_eq!(stack.current(), &normal);
@@ -224,10 +463,13 @@ pub struct ModeStack {
 
 impl ModeStack {
     /// Create a new mode stack with an initial mode.
+    ///
+    /// Accepts any type that implements `Into<ModeId>`, including
+    /// `ModeId` itself and any type implementing `Mode`.
     #[must_use]
-    pub fn new(initial: ModeId) -> Self {
+    pub fn new<M: Into<ModeId>>(initial: M) -> Self {
         Self {
-            stack: vec![initial],
+            stack: vec![initial.into()],
         }
     }
 
@@ -244,8 +486,10 @@ impl ModeStack {
     }
 
     /// Push a new mode onto the stack.
-    pub fn push(&mut self, mode: ModeId) {
-        self.stack.push(mode);
+    ///
+    /// Accepts any type that implements `Into<ModeId>`.
+    pub fn push<M: Into<ModeId>>(&mut self, mode: M) {
+        self.stack.push(mode.into());
     }
 
     /// Pop the top mode from the stack.
@@ -262,9 +506,10 @@ impl ModeStack {
     /// Set the current mode, replacing the top of the stack.
     ///
     /// This is equivalent to pop + push, but works even when only one mode exists.
-    pub fn set(&mut self, mode: ModeId) {
+    /// Accepts any type that implements `Into<ModeId>`.
+    pub fn set<M: Into<ModeId>>(&mut self, mode: M) {
         if let Some(last) = self.stack.last_mut() {
-            *last = mode;
+            *last = mode.into();
         }
     }
 
@@ -300,6 +545,32 @@ mod tests {
     }
 
     // ========================================================================
+    // CursorStyle tests
+    // ========================================================================
+
+    #[test]
+    fn test_cursor_style_default() {
+        let style = CursorStyle::default();
+        assert_eq!(style, CursorStyle::Block);
+    }
+
+    #[test]
+    fn test_cursor_style_is_visible() {
+        assert!(CursorStyle::Block.is_visible());
+        assert!(CursorStyle::Bar.is_visible());
+        assert!(CursorStyle::Underline.is_visible());
+        assert!(!CursorStyle::Hidden.is_visible());
+    }
+
+    #[test]
+    fn test_cursor_style_name() {
+        assert_eq!(CursorStyle::Block.name(), "block");
+        assert_eq!(CursorStyle::Bar.name(), "bar");
+        assert_eq!(CursorStyle::Underline.name(), "underline");
+        assert_eq!(CursorStyle::Hidden.name(), "hidden");
+    }
+
+    // ========================================================================
     // ModeId tests
     // ========================================================================
 
@@ -309,37 +580,49 @@ mod tests {
         let mode = ModeId::new(module.clone(), "normal");
         assert_eq!(mode.module(), &module);
         assert_eq!(mode.name(), "normal");
+        assert_eq!(mode.discriminant(), 0); // default discriminant
+    }
+
+    #[test]
+    fn test_mode_id_with_discriminant() {
+        let module = test_module();
+        let mode = ModeId::with_discriminant(module.clone(), "INSERT", 1);
+        assert_eq!(mode.module(), &module);
+        assert_eq!(mode.name(), "INSERT");
+        assert_eq!(mode.discriminant(), 1);
     }
 
     #[test]
     fn test_mode_id_display() {
         let module = test_module();
-        let mode = ModeId::new(module, "normal");
-        assert_eq!(format!("{mode}"), "test-module:normal");
+        let mode = ModeId::with_discriminant(module, "NORMAL", 0);
+        assert_eq!(format!("{mode}"), "test-module:NORMAL");
     }
 
     #[test]
-    fn test_mode_id_equality() {
+    fn test_mode_id_equality_by_discriminant() {
         let module = test_module();
-        let mode1 = ModeId::new(module.clone(), "normal");
-        let mode2 = ModeId::new(module.clone(), "normal");
-        let mode3 = ModeId::new(module, "insert");
-        assert_eq!(mode1, mode2);
-        assert_ne!(mode1, mode3);
+        // Same module + discriminant = equal (even if names differ)
+        let mode1 = ModeId::with_discriminant(module.clone(), "normal", 0);
+        let mode2 = ModeId::with_discriminant(module.clone(), "NORMAL", 0);
+        let mode3 = ModeId::with_discriminant(module, "insert", 1);
+        assert_eq!(mode1, mode2); // Same discriminant
+        assert_ne!(mode1, mode3); // Different discriminant
     }
 
     #[test]
-    fn test_mode_id_hash() {
+    fn test_mode_id_hash_by_discriminant() {
         use std::collections::HashSet;
         let module = test_module();
-        let mode1 = ModeId::new(module.clone(), "normal");
-        let mode2 = ModeId::new(module.clone(), "normal");
-        let mode3 = ModeId::new(module, "insert");
+        // Same module + discriminant = same hash
+        let mode1 = ModeId::with_discriminant(module.clone(), "normal", 0);
+        let mode2 = ModeId::with_discriminant(module.clone(), "NORMAL", 0);
+        let mode3 = ModeId::with_discriminant(module, "insert", 1);
 
         let mut set = HashSet::new();
         set.insert(mode1);
-        assert!(set.contains(&mode2));
-        assert!(!set.contains(&mode3));
+        assert!(set.contains(&mode2)); // Same discriminant
+        assert!(!set.contains(&mode3)); // Different discriminant
     }
 
     // ========================================================================
@@ -448,29 +731,148 @@ mod tests {
     // Mode trait tests
     // ========================================================================
 
-    #[test]
-    fn test_mode_trait_object_safety() {
-        // Verify Mode trait is object-safe
-        fn _accepts_mode_ref(_: &dyn Mode) {}
-        fn _accepts_boxed_mode(_: Box<dyn Mode>) {}
-        fn _accepts_arc_mode(_: std::sync::Arc<dyn Mode>) {}
-    }
+    // The Mode trait is intentionally NOT object-safe.
+    // It requires Copy + Clone + PartialEq + Eq + Hash, making dyn Mode invalid.
+    // This is by design: runtime storage uses ModeId, not dyn Mode.
 
     // Test implementation of Mode trait
-    struct TestMode {
-        name: &'static str,
+    const TEST_MODULE: ModuleId = ModuleId::new("test");
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    #[repr(u16)]
+    enum TestMode {
+        Normal = 0,
+        Insert = 1,
+        Visual = 2,
     }
 
     impl Mode for TestMode {
-        fn id(&self) -> ModeId {
-            ModeId::new(ModuleId::new("test"), self.name)
+        fn module() -> ModuleId {
+            TEST_MODULE
+        }
+
+        fn discriminant(&self) -> u16 {
+            *self as u16
+        }
+
+        fn display_name(&self) -> &'static str {
+            match self {
+                Self::Normal => "NORMAL",
+                Self::Insert => "INSERT",
+                Self::Visual => "VISUAL",
+            }
+        }
+
+        fn cursor_style(&self) -> CursorStyle {
+            match self {
+                Self::Insert => CursorStyle::Bar,
+                _ => CursorStyle::Block,
+            }
+        }
+
+        fn accepts_char_input(&self) -> bool {
+            matches!(self, Self::Insert)
+        }
+
+        fn has_selection(&self) -> bool {
+            matches!(self, Self::Visual)
+        }
+
+        fn inherits_from(&self) -> Option<Self> {
+            match self {
+                Self::Visual => Some(Self::Normal),
+                _ => None,
+            }
         }
     }
 
     #[test]
     fn test_mode_implementation() {
-        let mode = TestMode { name: "normal" };
-        assert_eq!(mode.id().name(), "normal");
+        let mode = TestMode::Normal;
+        assert_eq!(mode.id().name(), "NORMAL");
         assert_eq!(mode.id().module().as_str(), "test");
+        assert_eq!(mode.discriminant(), 0);
+    }
+
+    #[test]
+    fn test_mode_cursor_style() {
+        assert_eq!(TestMode::Normal.cursor_style(), CursorStyle::Block);
+        assert_eq!(TestMode::Insert.cursor_style(), CursorStyle::Bar);
+        assert_eq!(TestMode::Visual.cursor_style(), CursorStyle::Block);
+    }
+
+    #[test]
+    fn test_mode_accepts_char_input() {
+        assert!(!TestMode::Normal.accepts_char_input());
+        assert!(TestMode::Insert.accepts_char_input());
+        assert!(!TestMode::Visual.accepts_char_input());
+    }
+
+    #[test]
+    fn test_mode_has_selection() {
+        assert!(!TestMode::Normal.has_selection());
+        assert!(!TestMode::Insert.has_selection());
+        assert!(TestMode::Visual.has_selection());
+    }
+
+    #[test]
+    fn test_mode_inherits_from() {
+        assert_eq!(TestMode::Normal.inherits_from(), None);
+        assert_eq!(TestMode::Insert.inherits_from(), None);
+        assert_eq!(TestMode::Visual.inherits_from(), Some(TestMode::Normal));
+    }
+
+    #[test]
+    fn test_mode_into_mode_id() {
+        let mode = TestMode::Insert;
+        let id: ModeId = mode.into();
+        assert_eq!(id.name(), "INSERT");
+        assert_eq!(id.discriminant(), 1);
+        assert_eq!(id.module(), &TEST_MODULE);
+    }
+
+    #[test]
+    fn test_mode_stack_with_mode_trait() {
+        // ModeStack accepts impl Into<ModeId>, so Mode types work directly
+        let mut stack = ModeStack::new(TestMode::Normal);
+        assert_eq!(stack.current().discriminant(), 0);
+
+        stack.push(TestMode::Visual);
+        assert_eq!(stack.current().discriminant(), 2);
+
+        stack.set(TestMode::Insert);
+        assert_eq!(stack.current().discriminant(), 1);
+    }
+
+    /// Test that `ModeId`s created with static vs dynamic `ModuleId`s are equal.
+    ///
+    /// This is critical for the keymap wiring scenario where:
+    /// - Session mode is created with `ModeId::new(ModuleId::new("editor"), "normal")`
+    /// - Wired keybindings use `ModeId::new(ModuleId::from_string("editor".to_string()), "normal")`
+    ///
+    /// Both should hash and compare equal for `HashMap` lookups to work.
+    #[test]
+    fn test_mode_id_static_vs_dynamic_module() {
+        use std::collections::HashMap;
+
+        // Static module ID (like in fallback_default_mode)
+        let static_module = ModuleId::new("editor");
+        let mode_a = ModeId::new(static_module, "normal");
+
+        // Dynamic module ID (like in wire_module_keybindings)
+        let dynamic_module = ModuleId::from_string("editor".to_string());
+        let mode_b = ModeId::new(dynamic_module, "normal");
+
+        // Should be equal
+        assert_eq!(mode_a, mode_b, "ModeIds with same content should be equal");
+        assert_eq!(mode_a.module(), mode_b.module(), "Module IDs should be equal");
+        assert_eq!(mode_a.discriminant(), mode_b.discriminant(), "Discriminants should be equal");
+
+        // Should have same hash (HashMap lookup must work)
+        let mut map: HashMap<ModeId, &str> = HashMap::new();
+        map.insert(mode_a.clone(), "from_a");
+
+        assert_eq!(map.get(&mode_a), Some(&"from_a"), "Lookup with same ModeId should work");
+        assert_eq!(map.get(&mode_b), Some(&"from_a"), "Lookup with equivalent ModeId should work");
     }
 }

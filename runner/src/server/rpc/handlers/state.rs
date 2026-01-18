@@ -39,7 +39,7 @@ pub fn state_mode(ctx: RpcContext, _params: serde_json::Value) -> HandlerFuture 
         // Get the display text from mode registry
         let display = ctx
             .session
-            .with_state(|state| state.mode_registry.status_text(&mode_id).to_string())
+            .with_state(|state| state.mode_registry.display_name(&mode_id).to_string())
             .await;
 
         let mode_info = ModeInfo {

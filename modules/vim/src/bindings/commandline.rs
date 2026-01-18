@@ -12,17 +12,17 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
         // Exit command-line mode
         // ====================================================================
         KeybindingRegistration::new("<Esc>", "exit-commandline")
-            .with_modes(&["editor:commandline"])
+            .with_modes(&["vim:command"])
             .with_category("mode")
             .with_description("Cancel and exit command-line mode"),
         KeybindingRegistration::new("<C-c>", "exit-commandline")
-            .with_modes(&["editor:commandline"])
+            .with_modes(&["vim:command"])
             .with_category("mode")
             .with_description("Cancel and exit command-line mode"),
         // Note: Enter key for executing commands will be added when command
         // execution is implemented. For now, Enter just exits.
         KeybindingRegistration::new("<CR>", "exit-commandline")
-            .with_modes(&["editor:commandline"])
+            .with_modes(&["vim:command"])
             .with_category("mode")
             .with_description("Execute command and exit command-line mode"),
     ]

@@ -205,8 +205,9 @@ mod tests {
 
     #[test]
     fn test_snapshot_mode_difference() {
-        let mode1 = ModeId::new(ModuleId::new("test"), "normal");
-        let mode2 = ModeId::new(ModuleId::new("test"), "insert");
+        // Use different discriminants to ensure modes compare as different
+        let mode1 = ModeId::with_discriminant(ModuleId::new("test"), "NORMAL", 0);
+        let mode2 = ModeId::with_discriminant(ModuleId::new("test"), "INSERT", 1);
 
         let snapshot1 = StateSnapshot {
             mode: mode1,

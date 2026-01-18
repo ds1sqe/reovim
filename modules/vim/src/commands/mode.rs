@@ -1,16 +1,23 @@
 //! Mode switching commands.
 //!
-//! Provides commands for switching between editor modes:
+//! Provides commands for switching between Vim modes:
 //! - Enter insert mode (i, a)
 //! - Exit to normal mode (Escape)
 //! - Enter window mode (Ctrl-W)
+//! - Enter/exit command-line mode
+//! - Exit operator-pending mode
+//!
+//! # Epic #372 - Mode Ownership
+//!
+//! These commands use `VimMode::*_ID` constants directly, which is why they
+//! belong in the vim module rather than the generic editor module.
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult, ModeAction},
     reovim_kernel::api::v1::{CommandId, KernelContext, Position, events::ModeChanged},
 };
 
-use super::super::mode::{EDITOR_MODULE, EditorMode};
+use crate::modes::{VIM_MODULE, VimMode};
 
 /// Enter insert mode (before cursor).
 #[derive(Debug, Clone, Copy, Default)]
@@ -18,7 +25,7 @@ pub struct EnterInsertMode;
 
 impl Command for EnterInsertMode {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "enter-insert")
+        CommandId::new(VIM_MODULE, "enter-insert")
     }
 
     fn description(&self) -> &'static str {
@@ -30,10 +37,7 @@ impl CommandHandler for EnterInsertMode {
     fn execute(&self, ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
         // Emit mode change event
         ctx.event_bus
-            .emit(ModeChanged::with_mode_id("normal", EditorMode::INSERT_ID));
-
-        // Note: The actual mode stack change happens in the runner via a callback
-        // or by the caller checking the result. For now, we just emit the event.
+            .emit(ModeChanged::with_mode_id("normal", VimMode::INSERT_ID));
 
         CommandResult::Success
     }
@@ -45,7 +49,7 @@ pub struct EnterInsertModeAppend;
 
 impl Command for EnterInsertModeAppend {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "enter-insert-after")
+        CommandId::new(VIM_MODULE, "enter-insert-after")
     }
 
     fn description(&self) -> &'static str {
@@ -70,7 +74,7 @@ impl CommandHandler for EnterInsertModeAppend {
         }
 
         ctx.event_bus
-            .emit(ModeChanged::with_mode_id("normal", EditorMode::INSERT_ID));
+            .emit(ModeChanged::with_mode_id("normal", VimMode::INSERT_ID));
 
         CommandResult::Success
     }
@@ -82,7 +86,7 @@ pub struct ExitToNormal;
 
 impl Command for ExitToNormal {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "exit-insert")
+        CommandId::new(VIM_MODULE, "exit-insert")
     }
 
     fn description(&self) -> &'static str {
@@ -105,7 +109,7 @@ impl CommandHandler for ExitToNormal {
         }
 
         ctx.event_bus
-            .emit(ModeChanged::with_mode_id("insert", EditorMode::NORMAL_ID));
+            .emit(ModeChanged::with_mode_id("insert", VimMode::NORMAL_ID));
 
         CommandResult::Success
     }
@@ -121,7 +125,7 @@ pub struct EnterWindowMode;
 
 impl Command for EnterWindowMode {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "enter-window-mode")
+        CommandId::new(VIM_MODULE, "enter-window-mode")
     }
 
     fn description(&self) -> &'static str {
@@ -148,7 +152,7 @@ pub struct ExitOperatorPending;
 
 impl Command for ExitOperatorPending {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "exit-operator-pending")
+        CommandId::new(VIM_MODULE, "exit-operator-pending")
     }
 
     fn description(&self) -> &'static str {
@@ -160,7 +164,7 @@ impl CommandHandler for ExitOperatorPending {
     fn execute(&self, ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
         // Emit mode change event
         ctx.event_bus
-            .emit(ModeChanged::with_mode_id("operator-pending", EditorMode::NORMAL_ID));
+            .emit(ModeChanged::with_mode_id("operator-pending", VimMode::NORMAL_ID));
 
         // Return mode action to pop operator-pending mode off the stack
         // The event loop will clear the pending operator state
@@ -177,7 +181,7 @@ pub struct EnterCommandLineMode;
 
 impl Command for EnterCommandLineMode {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "enter-commandline")
+        CommandId::new(VIM_MODULE, "enter-commandline")
     }
 
     fn description(&self) -> &'static str {
@@ -189,10 +193,10 @@ impl CommandHandler for EnterCommandLineMode {
     fn execute(&self, ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
         // Emit mode change event
         ctx.event_bus
-            .emit(ModeChanged::with_mode_id("normal", EditorMode::COMMANDLINE_ID));
+            .emit(ModeChanged::with_mode_id("normal", VimMode::COMMANDLINE_ID));
 
         // Return mode action to transition to commandline mode
-        CommandResult::ModeAction(ModeAction::Set(EditorMode::COMMANDLINE_ID.to_string()))
+        CommandResult::ModeAction(ModeAction::Set(VimMode::COMMANDLINE_ID.to_string()))
     }
 }
 
@@ -204,7 +208,7 @@ pub struct ExitCommandLineMode;
 
 impl Command for ExitCommandLineMode {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "exit-commandline")
+        CommandId::new(VIM_MODULE, "exit-commandline")
     }
 
     fn description(&self) -> &'static str {
@@ -215,8 +219,8 @@ impl Command for ExitCommandLineMode {
 impl CommandHandler for ExitCommandLineMode {
     fn execute(&self, ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
         ctx.event_bus
-            .emit(ModeChanged::with_mode_id("commandline", EditorMode::NORMAL_ID));
+            .emit(ModeChanged::with_mode_id("commandline", VimMode::NORMAL_ID));
 
-        CommandResult::ModeAction(ModeAction::Set(EditorMode::NORMAL_ID.to_string()))
+        CommandResult::ModeAction(ModeAction::Set(VimMode::NORMAL_ID.to_string()))
     }
 }
