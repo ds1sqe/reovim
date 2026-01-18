@@ -6,6 +6,10 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Fixed
 
+- TUI not receiving buffer-scoped notifications (#365)
+  - TUI now calls `editor/set_active_buffer` on connect to register for notifications
+  - Fixes input appearing unresponsive (cursor_moved, buffer_modified, render_complete were missed)
+
 - Complete manager integration for server discovery (#356)
   - Port separation: manager owns 12521, servers start at 12522
   - Server auto-starts manager and registers on startup
@@ -17,7 +21,28 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - Buffer-scoped when active buffer exists, session-wide otherwise
   - TUI clients use this to know when to refresh display
 
+- Ghost statusline on resize in TUI debug mode (#362)
+  - Clear both buffers in `FrameRenderer::resize()` to remove stale content
+  - Tick handler now triggers full refresh instead of independent flush/swap
+  - Prevents ghost from ping-ponging between double buffers after resize
+
 ### Added
+
+- TUI local shortcuts, error display, and embedded CLI panel (#368)
+  - Error display: RPC errors shown in statusline (red, auto-clear after 5s)
+  - Prefix mode: `<C-b>` enters prefix mode (2s timeout, `^B-` indicator in debug mode)
+    - `<C-b>d` detaches from server without killing it
+    - `<C-b>;` toggles embedded CLI panel
+    - `<C-b><C-b>` sends literal Ctrl+B to server
+  - CLI panel: embedded command panel for quick commands
+    - Fire-and-forget commands: `keys`, `resize`, `open`, `kill`, `help`
+    - Command history navigation with Up/Down arrows
+    - Line editing: Left/Right, Home/End, Backspace, Delete
+
+- Unified debug flags in integrated mode (#364)
+  - `reovim --debug` now works (previously only `reovim tui --debug`)
+  - Added `--debug-dir` and `--debug-name` flags to main CLI
+  - More verbose help descriptions
 
 - TUI Debug Mode with statusline and frame buffer capture (#358)
   - `--debug` flag enables debug statusline with timestamp, server, mode, modules
@@ -25,7 +50,6 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - LLM-friendly capture format with metadata header and ANSI-styled screen content
   - Wired TUI to use `FrameRenderer` double-buffer for accurate capture
   - Session logging to `~/.local/share/reovim/logs/tui/{name}_{time}.log`
-  - Known issue: ghost statusline on resize due to double-buffer swap (deferred)
 
 - Register selection prefix (`"a`) - specify register for yank/delete/paste (#333)
   - `"ayy` yanks line into register 'a'

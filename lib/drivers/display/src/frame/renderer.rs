@@ -43,9 +43,15 @@ impl FrameRenderer {
     }
 
     /// Resize both buffers to new dimensions.
+    ///
+    /// Clears both buffers after resize to prevent ghost artifacts from
+    /// stale content at old row positions (e.g., statuslines from before resize).
     pub fn resize(&mut self, width: u16, height: u16) {
         self.front.resize(width, height);
         self.back.resize(width, height);
+        // Clear both buffers to prevent ghost artifacts from stale content
+        self.front.clear();
+        self.back.clear();
         self.initialized = false; // Force full redraw after resize
     }
 
