@@ -12,7 +12,7 @@ use {
     reovim_kernel::api::v1::{CommandId, KernelContext, SelectionMode, events::ModeChanged},
 };
 
-use reovim_module_editor::{EDITOR_MODULE, EditorMode};
+use crate::modes::{VIM_MODULE, VimMode};
 
 /// Swap cursor and anchor positions (o in visual mode).
 ///
@@ -23,7 +23,7 @@ pub struct SwapAnchor;
 
 impl Command for SwapAnchor {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "visual-swap-anchor")
+        CommandId::new(VIM_MODULE, "visual-swap-anchor")
     }
 
     fn description(&self) -> &'static str {
@@ -68,7 +68,7 @@ pub struct ToggleVisualChar;
 
 impl Command for ToggleVisualChar {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "toggle-visual-char")
+        CommandId::new(VIM_MODULE, "toggle-visual-char")
     }
 
     fn description(&self) -> &'static str {
@@ -91,11 +91,11 @@ impl CommandHandler for ToggleVisualChar {
             if buffer.selection().is_active() && buffer.selection().mode().is_character() {
                 // Already in character mode - exit to normal
                 buffer.selection_mut().clear();
-                ("visual", EditorMode::NORMAL_ID)
+                ("visual", VimMode::NORMAL_ID)
             } else {
                 // Switch to character mode
                 buffer.selection_mut().set_mode(SelectionMode::Character);
-                ("visual-line", EditorMode::VISUAL_ID)
+                ("visual-line", VimMode::VISUAL_ID)
             };
         drop(buffer);
 
@@ -115,7 +115,7 @@ pub struct ToggleVisualLine;
 
 impl Command for ToggleVisualLine {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "toggle-visual-line")
+        CommandId::new(VIM_MODULE, "toggle-visual-line")
     }
 
     fn description(&self) -> &'static str {
@@ -138,11 +138,11 @@ impl CommandHandler for ToggleVisualLine {
             if buffer.selection().is_active() && buffer.selection().mode().is_line() {
                 // Already in line mode - exit to normal
                 buffer.selection_mut().clear();
-                ("visual-line", EditorMode::NORMAL_ID)
+                ("visual-line", VimMode::NORMAL_ID)
             } else {
                 // Switch to line mode
                 buffer.selection_mut().set_mode(SelectionMode::Line);
-                ("visual", EditorMode::VISUAL_LINE_ID)
+                ("visual", VimMode::VISUAL_LINE_ID)
             };
         drop(buffer);
 
@@ -162,7 +162,7 @@ pub struct ToggleVisualBlock;
 
 impl Command for ToggleVisualBlock {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "toggle-visual-block")
+        CommandId::new(VIM_MODULE, "toggle-visual-block")
     }
 
     fn description(&self) -> &'static str {
@@ -185,11 +185,11 @@ impl CommandHandler for ToggleVisualBlock {
             if buffer.selection().is_active() && buffer.selection().mode().is_block() {
                 // Already in block mode - exit to normal
                 buffer.selection_mut().clear();
-                ("visual-block", EditorMode::NORMAL_ID)
+                ("visual-block", VimMode::NORMAL_ID)
             } else {
                 // Switch to block mode
                 buffer.selection_mut().set_mode(SelectionMode::Block);
-                ("visual", EditorMode::VISUAL_BLOCK_ID)
+                ("visual", VimMode::VISUAL_BLOCK_ID)
             };
         drop(buffer);
 
@@ -213,7 +213,7 @@ pub struct ReselectLast;
 
 impl Command for ReselectLast {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "reselect-last")
+        CommandId::new(VIM_MODULE, "reselect-last")
     }
 
     fn description(&self) -> &'static str {

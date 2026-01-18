@@ -1,11 +1,14 @@
 //! Mode registry for storing mode metadata and behavior.
 //!
-//! Modes in reovim follow the kernel's trait separation:
-//! - `Mode` (kernel): Identity only (provides `ModeId`)
-//! - `ModeDisplay` (display driver): Cursor style, status text
-//! - `ModeInput` (input driver): Whether mode accepts char input
+//! This registry stores mode behavior information directly, keyed by `ModeId`.
+//! The `Mode` trait is NOT object-safe (by design), so we store mode properties
+//! directly rather than trait objects.
 //!
-//! This registry stores all three aspects together for easy lookup.
+//! # Architecture (Epic #372)
+//!
+//! - `Mode` trait: Compile-time type-safe mode definitions (not object-safe)
+//! - `ModeId`: Runtime identity stored in `ModeStack`, used as registry keys
+//! - `ModeEntry`: Cached behavior properties (cursor style, input acceptance)
 //!
 //! # Module Ownership
 //!
@@ -13,32 +16,36 @@
 //! [`ModeRegistry::register_for_module`]. When a module is unloaded, all its
 //! registered modes can be removed via [`ModeRegistry::unregister_for_module`].
 
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
-use {
-    reovim_driver_display::{CursorStyle, ModeDisplay},
-    reovim_driver_input::ModeInput,
-    reovim_kernel::api::v1::{Mode, ModeId, ModuleId},
-};
+use reovim_kernel::api::v1::{CursorStyle, Mode, ModeId, ModuleId};
 
-/// Entry in the mode registry containing all mode aspects.
+/// Entry in the mode registry containing cached mode behavior.
 ///
-/// Bundles the mode's identity with its display and input behavior.
-/// All fields are optional except the mode itself because some modes
-/// might not implement all traits.
+/// Stores mode identity and behavior properties directly. The `Mode` trait
+/// is not object-safe, so we cache the properties here for runtime lookup.
+#[derive(Debug, Clone)]
 pub struct ModeEntry {
-    /// The mode implementation (provides identity via `ModeId`).
-    pub mode: Arc<dyn Mode>,
+    /// The mode ID.
+    id: ModeId,
 
-    /// Display behavior (cursor style, status text).
-    ///
-    /// `None` if the mode doesn't customize display.
-    pub display: Option<Arc<dyn ModeDisplay>>,
+    /// Display name for statusline.
+    pub display_name: &'static str,
 
-    /// Input behavior (whether mode accepts character input).
-    ///
-    /// `None` if the mode doesn't customize input handling.
-    pub input: Option<Arc<dyn ModeInput>>,
+    /// Cursor style for this mode.
+    pub cursor_style: CursorStyle,
+
+    /// Whether this mode accepts character input.
+    pub accepts_char_input: bool,
+
+    /// Whether this mode has an active selection.
+    pub has_selection: bool,
+
+    /// Parent mode for keybinding inheritance.
+    pub inherits_from: Option<ModeId>,
+
+    /// Whether this is the entry/default mode for new sessions.
+    pub is_entry: bool,
 
     /// The module that owns this mode (if any).
     ///
@@ -47,29 +54,21 @@ pub struct ModeEntry {
 }
 
 impl ModeEntry {
-    /// Create a new mode entry with just the mode (no display/input).
+    /// Create a new mode entry from a Mode implementation.
+    ///
+    /// Caches all behavior properties from the Mode trait.
     #[must_use]
-    pub fn new(mode: Arc<dyn Mode>) -> Self {
+    pub fn from_mode<M: Mode>(mode: M) -> Self {
         Self {
-            mode,
-            display: None,
-            input: None,
+            id: mode.id(),
+            display_name: mode.display_name(),
+            cursor_style: mode.cursor_style(),
+            accepts_char_input: mode.accepts_char_input(),
+            has_selection: mode.has_selection(),
+            inherits_from: mode.inherits_from().map(|m| m.id()),
+            is_entry: mode.is_entry(),
             owner: None,
         }
-    }
-
-    /// Create a mode entry with display behavior.
-    #[must_use]
-    pub fn with_display(mut self, display: Arc<dyn ModeDisplay>) -> Self {
-        self.display = Some(display);
-        self
-    }
-
-    /// Create a mode entry with input behavior.
-    #[must_use]
-    pub fn with_input(mut self, input: Arc<dyn ModeInput>) -> Self {
-        self.input = Some(input);
-        self
     }
 
     /// Set the owning module for this mode entry.
@@ -81,8 +80,8 @@ impl ModeEntry {
 
     /// Get the mode's ID.
     #[must_use]
-    pub fn id(&self) -> ModeId {
-        self.mode.id()
+    pub const fn id(&self) -> &ModeId {
+        &self.id
     }
 
     /// Get the owning module ID if any.
@@ -92,46 +91,44 @@ impl ModeEntry {
     }
 }
 
-impl std::fmt::Debug for ModeEntry {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ModeEntry")
-            .field("id", &self.mode.id())
-            .field("has_display", &self.display.is_some())
-            .field("has_input", &self.input.is_some())
-            .field("owner", &self.owner)
-            .finish()
-    }
-}
-
 /// Registry for mode metadata and behavior.
 ///
 /// Stores [`ModeEntry`] instances keyed by [`ModeId`]. The event loop
 /// uses this to look up cursor styles and input behavior for the
 /// current mode.
 ///
+/// # Entry Mode Auto-Detection
+///
+/// When modes are registered via [`register`](Self::register) or
+/// [`register_mode`](Self::register_mode), the registry automatically
+/// detects which mode is the entry mode (first mode with `is_entry = true`).
+/// This is used by session creation to determine the initial mode.
+///
 /// # Example
 ///
 /// ```ignore
 /// use runner::registry::{ModeRegistry, ModeEntry};
-/// use std::sync::Arc;
+/// use reovim_module_vim::VimMode;
 ///
 /// let mut registry = ModeRegistry::new();
 ///
-/// // Register a mode with display behavior
-/// let normal = EditorMode::Normal;
-/// let entry = ModeEntry::new(Arc::new(normal))
-///     .with_display(Arc::new(normal))
-///     .with_input(Arc::new(normal));
-/// registry.register(entry);
+/// // Register a mode
+/// registry.register(ModeEntry::from_mode(VimMode::Normal));
+/// registry.register(ModeEntry::from_mode(VimMode::Insert));
 ///
 /// // Look up mode behavior
-/// let mode_id = EditorMode::NORMAL_ID;
-/// assert!(registry.accepts_char_input(&mode_id) == false);
-/// assert!(registry.cursor_style(&mode_id) == CursorStyle::Block);
+/// let mode_id = VimMode::NORMAL_ID;
+/// assert!(!registry.accepts_char_input(&mode_id));
+/// assert_eq!(registry.cursor_style(&mode_id), CursorStyle::Block);
+///
+/// // Entry mode was auto-detected
+/// assert_eq!(registry.entry_mode(), Some(&VimMode::NORMAL_ID));
 /// ```
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct ModeRegistry {
     modes: HashMap<ModeId, ModeEntry>,
+    /// The auto-detected entry mode (first mode registered with `is_entry` = true).
+    entry_mode: Option<ModeId>,
 }
 
 impl ModeRegistry {
@@ -141,12 +138,43 @@ impl ModeRegistry {
         Self::default()
     }
 
+    /// Register a mode from a Mode implementation.
+    ///
+    /// Convenience method that creates a `ModeEntry` from the mode.
+    pub fn register_mode<M: Mode>(&mut self, mode: M) {
+        self.register(ModeEntry::from_mode(mode));
+    }
+
+    /// Register all modes from an iterator.
+    ///
+    /// Convenience method for registering multiple modes at once.
+    pub fn register_all<M: Mode, I: IntoIterator<Item = M>>(&mut self, modes: I) {
+        for mode in modes {
+            self.register_mode(mode);
+        }
+    }
+
     /// Register a mode entry.
     ///
     /// If a mode with the same ID already exists, it is replaced.
+    /// Auto-detects entry mode: the first mode registered with `is_entry = true`
+    /// becomes the session's initial mode.
     pub fn register(&mut self, entry: ModeEntry) {
-        let id = entry.id();
+        // Auto-detect entry mode (first one wins)
+        if entry.is_entry && self.entry_mode.is_none() {
+            self.entry_mode = Some(entry.id.clone());
+        }
+        let id = entry.id.clone();
         self.modes.insert(id, entry);
+    }
+
+    /// Get the auto-detected entry mode.
+    ///
+    /// Returns the first mode that was registered with `is_entry = true`,
+    /// or `None` if no entry mode was found.
+    #[must_use]
+    pub const fn entry_mode(&self) -> Option<&ModeId> {
+        self.entry_mode.as_ref()
     }
 
     /// Get a mode entry by ID.
@@ -163,43 +191,77 @@ impl ModeRegistry {
 
     /// Check if a mode accepts character input.
     ///
-    /// Returns `false` if the mode isn't registered or doesn't have
-    /// input behavior defined.
+    /// Returns `false` if the mode isn't registered.
     #[must_use]
     pub fn accepts_char_input(&self, id: &ModeId) -> bool {
-        self.modes
-            .get(id)
-            .and_then(|e| e.input.as_ref())
-            .is_some_and(|i| i.accepts_char_input())
+        self.modes.get(id).is_some_and(|e| e.accepts_char_input)
+    }
+
+    /// Check if a mode has an active selection.
+    ///
+    /// Returns `false` if the mode isn't registered.
+    #[must_use]
+    pub fn has_selection(&self, id: &ModeId) -> bool {
+        self.modes.get(id).is_some_and(|e| e.has_selection)
     }
 
     /// Get the cursor style for a mode.
     ///
-    /// Returns `CursorStyle::Block` (default) if the mode isn't registered
-    /// or doesn't have display behavior defined.
+    /// Returns `CursorStyle::Block` (default) if the mode isn't registered.
     #[must_use]
     pub fn cursor_style(&self, id: &ModeId) -> CursorStyle {
         self.modes
             .get(id)
-            .and_then(|e| e.display.as_ref())
-            .map_or(CursorStyle::Block, |d| d.cursor_style())
+            .map_or(CursorStyle::Block, |e| e.cursor_style)
     }
 
-    /// Get the status text for a mode.
+    /// Get the display name for a mode.
     ///
-    /// Returns an empty string if the mode isn't registered or doesn't
-    /// have display behavior defined.
+    /// Returns "UNKNOWN" if the mode isn't registered.
     #[must_use]
-    pub fn status_text(&self, id: &ModeId) -> &str {
-        self.modes
-            .get(id)
-            .and_then(|e| e.display.as_ref())
-            .map_or("", |d| d.status_text())
+    pub fn display_name(&self, id: &ModeId) -> &'static str {
+        self.modes.get(id).map_or("UNKNOWN", |e| e.display_name)
+    }
+
+    /// Get the parent mode for keybinding inheritance.
+    ///
+    /// Returns `None` if the mode isn't registered or has no parent.
+    #[must_use]
+    pub fn inherits_from(&self, id: &ModeId) -> Option<&ModeId> {
+        self.modes.get(id).and_then(|e| e.inherits_from.as_ref())
     }
 
     /// Get all registered mode IDs.
     pub fn ids(&self) -> impl Iterator<Item = &ModeId> {
         self.modes.keys()
+    }
+
+    /// Find a mode by module and name strings.
+    ///
+    /// This is used during keybinding wiring to look up the correct `ModeId`
+    /// (with proper discriminant) from a mode name like "editor:normal".
+    ///
+    /// Returns `None` if no mode with the given module and name is registered.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Look up by module name and programmatic mode name (not display_name)
+    /// let mode_id = registry.find_by_name("vim", "normal");
+    /// assert!(mode_id.is_some());
+    /// ```
+    #[must_use]
+    pub fn find_by_name(&self, module: &str, name: &str) -> Option<&ModeId> {
+        // Linear search - acceptable because mode count is small (<20)
+        // Compare against entry.id.name() (the programmatic name like "visual-block")
+        // not display_name (the statusline display like "V-BLOCK")
+        self.modes.values().find_map(|entry| {
+            if entry.id.module().as_str() == module && entry.id.name() == name {
+                Some(&entry.id)
+            } else {
+                None
+            }
+        })
     }
 
     /// Get the number of registered modes.
@@ -227,66 +289,66 @@ impl ModeRegistry {
     }
 }
 
-impl std::fmt::Debug for ModeRegistry {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ModeRegistry")
-            .field("count", &self.modes.len())
-            .field("modes", &self.modes.keys().collect::<Vec<_>>())
-            .finish()
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use {super::*, reovim_kernel::api::v1::ModuleId};
+    use super::*;
 
-    // Test mode implementation
-    struct TestMode {
-        id: ModeId,
-        accepts_input: bool,
+    // Test mode enum implementing the Mode trait
+    const TEST_MODULE: ModuleId = ModuleId::new("test");
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    #[repr(u16)]
+    enum TestMode {
+        Command = 0,
+        Input = 1,
+        Selection = 2,
     }
 
     impl Mode for TestMode {
+        fn module() -> ModuleId {
+            TEST_MODULE
+        }
+
+        fn discriminant(&self) -> u16 {
+            *self as u16
+        }
+
         fn id(&self) -> ModeId {
-            self.id.clone()
+            ModeId::with_discriminant(TEST_MODULE, self.display_name(), self.discriminant())
         }
-    }
 
-    impl ModeDisplay for TestMode {
+        fn display_name(&self) -> &'static str {
+            match self {
+                Self::Command => "COMMAND",
+                Self::Input => "INPUT",
+                Self::Selection => "SELECTION",
+            }
+        }
+
         fn cursor_style(&self) -> CursorStyle {
-            if self.accepts_input {
-                CursorStyle::Bar
-            } else {
-                CursorStyle::Block
+            match self {
+                Self::Command | Self::Selection => CursorStyle::Block,
+                Self::Input => CursorStyle::Bar,
             }
         }
 
-        fn status_text(&self) -> &'static str {
-            if self.accepts_input {
-                "INSERT"
-            } else {
-                "NORMAL"
-            }
-        }
-    }
-
-    impl ModeInput for TestMode {
         fn accepts_char_input(&self) -> bool {
-            self.accepts_input
+            matches!(self, Self::Input)
         }
-    }
 
-    fn normal_mode() -> TestMode {
-        TestMode {
-            id: ModeId::new(ModuleId::new("test"), "normal"),
-            accepts_input: false,
+        fn has_selection(&self) -> bool {
+            matches!(self, Self::Selection)
         }
-    }
 
-    fn insert_mode() -> TestMode {
-        TestMode {
-            id: ModeId::new(ModuleId::new("test"), "insert"),
-            accepts_input: true,
+        fn inherits_from(&self) -> Option<Self> {
+            match self {
+                Self::Selection => Some(Self::Command),
+                _ => None,
+            }
+        }
+
+        fn is_entry(&self) -> bool {
+            matches!(self, Self::Command)
         }
     }
 
@@ -300,92 +362,94 @@ mod tests {
     #[test]
     fn test_mode_registry_register() {
         let mut registry = ModeRegistry::new();
-        let mode = normal_mode();
-        let id = mode.id.clone();
+        registry.register_mode(TestMode::Command);
 
-        let entry = ModeEntry::new(Arc::new(mode));
-        registry.register(entry);
-
-        assert!(registry.contains(&id));
+        assert!(registry.contains(&TestMode::Command.id()));
         assert_eq!(registry.len(), 1);
+    }
+
+    #[test]
+    fn test_mode_registry_register_all() {
+        let mut registry = ModeRegistry::new();
+        registry.register_all([TestMode::Command, TestMode::Input, TestMode::Selection]);
+
+        assert_eq!(registry.len(), 3);
+        assert!(registry.contains(&TestMode::Command.id()));
+        assert!(registry.contains(&TestMode::Input.id()));
+        assert!(registry.contains(&TestMode::Selection.id()));
     }
 
     #[test]
     fn test_mode_registry_accepts_char_input() {
         let mut registry = ModeRegistry::new();
+        registry.register_all([TestMode::Command, TestMode::Input]);
 
-        // Normal mode - doesn't accept input
-        let normal = normal_mode();
-        let normal_id = normal.id.clone();
-        let normal_arc: Arc<TestMode> = Arc::new(normal);
-        registry.register(ModeEntry::new(normal_arc.clone()).with_input(normal_arc));
+        assert!(!registry.accepts_char_input(&TestMode::Command.id()));
+        assert!(registry.accepts_char_input(&TestMode::Input.id()));
+    }
 
-        // Insert mode - accepts input
-        let insert = insert_mode();
-        let insert_id = insert.id.clone();
-        let insert_arc: Arc<TestMode> = Arc::new(insert);
-        registry.register(ModeEntry::new(insert_arc.clone()).with_input(insert_arc));
+    #[test]
+    fn test_mode_registry_has_selection() {
+        let mut registry = ModeRegistry::new();
+        registry.register_all([TestMode::Command, TestMode::Selection]);
 
-        assert!(!registry.accepts_char_input(&normal_id));
-        assert!(registry.accepts_char_input(&insert_id));
+        assert!(!registry.has_selection(&TestMode::Command.id()));
+        assert!(registry.has_selection(&TestMode::Selection.id()));
     }
 
     #[test]
     fn test_mode_registry_cursor_style() {
         let mut registry = ModeRegistry::new();
+        registry.register_all([TestMode::Command, TestMode::Input]);
 
-        let normal = normal_mode();
-        let normal_id = normal.id.clone();
-        let normal_arc: Arc<TestMode> = Arc::new(normal);
-        registry.register(ModeEntry::new(normal_arc.clone()).with_display(normal_arc));
-
-        let insert = insert_mode();
-        let insert_id = insert.id.clone();
-        let insert_arc: Arc<TestMode> = Arc::new(insert);
-        registry.register(ModeEntry::new(insert_arc.clone()).with_display(insert_arc));
-
-        assert_eq!(registry.cursor_style(&normal_id), CursorStyle::Block);
-        assert_eq!(registry.cursor_style(&insert_id), CursorStyle::Bar);
+        assert_eq!(registry.cursor_style(&TestMode::Command.id()), CursorStyle::Block);
+        assert_eq!(registry.cursor_style(&TestMode::Input.id()), CursorStyle::Bar);
     }
 
     #[test]
-    fn test_mode_registry_status_text() {
+    fn test_mode_registry_display_name() {
         let mut registry = ModeRegistry::new();
+        registry.register_mode(TestMode::Command);
 
-        let normal = normal_mode();
-        let normal_id = normal.id.clone();
-        let normal_arc: Arc<TestMode> = Arc::new(normal);
-        registry.register(ModeEntry::new(normal_arc.clone()).with_display(normal_arc));
+        assert_eq!(registry.display_name(&TestMode::Command.id()), "COMMAND");
+    }
 
-        assert_eq!(registry.status_text(&normal_id), "NORMAL");
+    #[test]
+    fn test_mode_registry_inherits_from() {
+        let mut registry = ModeRegistry::new();
+        registry.register_all([TestMode::Command, TestMode::Selection]);
+
+        assert_eq!(registry.inherits_from(&TestMode::Command.id()), None);
+        assert_eq!(
+            registry.inherits_from(&TestMode::Selection.id()),
+            Some(&TestMode::Command.id())
+        );
     }
 
     #[test]
     fn test_mode_registry_unknown_mode() {
         let registry = ModeRegistry::new();
-        let unknown_id = ModeId::new(ModuleId::new("unknown"), "mode");
+        let unknown_id = ModeId::with_discriminant(ModuleId::new("unknown"), "UNKNOWN", 99);
 
         // Unknown modes should return defaults
         assert!(!registry.accepts_char_input(&unknown_id));
+        assert!(!registry.has_selection(&unknown_id));
         assert_eq!(registry.cursor_style(&unknown_id), CursorStyle::Block);
-        assert_eq!(registry.status_text(&unknown_id), "");
+        assert_eq!(registry.display_name(&unknown_id), "UNKNOWN");
+        assert_eq!(registry.inherits_from(&unknown_id), None);
     }
 
     #[test]
     fn test_mode_entry_with_owner() {
-        let mode = normal_mode();
         let owner = ModuleId::new("my-module");
-
-        let entry = ModeEntry::new(Arc::new(mode)).with_owner(owner.clone());
+        let entry = ModeEntry::from_mode(TestMode::Command).with_owner(owner.clone());
 
         assert_eq!(entry.owner(), Some(&owner));
     }
 
     #[test]
     fn test_mode_entry_without_owner() {
-        let mode = normal_mode();
-        let entry = ModeEntry::new(Arc::new(mode));
-
+        let entry = ModeEntry::from_mode(TestMode::Command);
         assert!(entry.owner().is_none());
     }
 
@@ -395,21 +459,11 @@ mod tests {
         let owner = ModuleId::new("my-module");
 
         // Register modes with owner
-        let normal = normal_mode();
-        let normal_id = normal.id.clone();
-        registry.register(ModeEntry::new(Arc::new(normal)).with_owner(owner.clone()));
-
-        let insert = insert_mode();
-        let insert_id = insert.id.clone();
-        registry.register(ModeEntry::new(Arc::new(insert)).with_owner(owner.clone()));
+        registry.register(ModeEntry::from_mode(TestMode::Command).with_owner(owner.clone()));
+        registry.register(ModeEntry::from_mode(TestMode::Input).with_owner(owner.clone()));
 
         // Register one mode without owner
-        let other_mode = TestMode {
-            id: ModeId::new(ModuleId::new("test"), "visual"),
-            accepts_input: false,
-        };
-        let visual_id = other_mode.id.clone();
-        registry.register(ModeEntry::new(Arc::new(other_mode)));
+        registry.register(ModeEntry::from_mode(TestMode::Selection));
 
         assert_eq!(registry.len(), 3);
 
@@ -418,9 +472,9 @@ mod tests {
 
         assert_eq!(removed, 2);
         assert_eq!(registry.len(), 1);
-        assert!(!registry.contains(&normal_id));
-        assert!(!registry.contains(&insert_id));
-        assert!(registry.contains(&visual_id));
+        assert!(!registry.contains(&TestMode::Command.id()));
+        assert!(!registry.contains(&TestMode::Input.id()));
+        assert!(registry.contains(&TestMode::Selection.id()));
     }
 
     #[test]
@@ -429,7 +483,7 @@ mod tests {
         let owner = ModuleId::new("my-module");
 
         // Register mode without owner
-        registry.register(ModeEntry::new(Arc::new(normal_mode())));
+        registry.register_mode(TestMode::Command);
 
         // Try to unregister for a module that has no modes
         let removed = registry.unregister_for_module(&owner);
@@ -441,30 +495,132 @@ mod tests {
     #[test]
     fn test_mode_registry_multiple_modules() {
         let mut registry = ModeRegistry::new();
-        let module_x = ModuleId::new("module-a");
-        let module_y = ModuleId::new("module-b");
+        let module_a = ModuleId::new("module-a");
+        let module_b = ModuleId::new("module-b");
 
-        let first_mode = TestMode {
-            id: ModeId::new(ModuleId::new("test"), "mode-a"),
-            accepts_input: false,
-        };
-        let first_mode_id = first_mode.id.clone();
-        registry.register(ModeEntry::new(Arc::new(first_mode)).with_owner(module_x.clone()));
-
-        let second_mode = TestMode {
-            id: ModeId::new(ModuleId::new("test"), "mode-b"),
-            accepts_input: true,
-        };
-        let second_mode_id = second_mode.id.clone();
-        registry.register(ModeEntry::new(Arc::new(second_mode)).with_owner(module_y));
+        registry.register(ModeEntry::from_mode(TestMode::Command).with_owner(module_a.clone()));
+        registry.register(ModeEntry::from_mode(TestMode::Input).with_owner(module_b));
 
         assert_eq!(registry.len(), 2);
 
         // Unload module A
-        registry.unregister_for_module(&module_x);
+        registry.unregister_for_module(&module_a);
 
         assert_eq!(registry.len(), 1);
-        assert!(!registry.contains(&first_mode_id));
-        assert!(registry.contains(&second_mode_id));
+        assert!(!registry.contains(&TestMode::Command.id()));
+        assert!(registry.contains(&TestMode::Input.id()));
+    }
+
+    #[test]
+    fn test_mode_registry_entry_mode_auto_detect() {
+        let mut registry = ModeRegistry::new();
+
+        // Registry starts with no entry mode
+        assert!(registry.entry_mode().is_none());
+
+        // Register entry mode (Command)
+        registry.register_mode(TestMode::Command);
+        assert_eq!(registry.entry_mode(), Some(&TestMode::Command.id()));
+
+        // Registering non-entry modes doesn't change entry mode
+        registry.register_mode(TestMode::Input);
+        registry.register_mode(TestMode::Selection);
+        assert_eq!(registry.entry_mode(), Some(&TestMode::Command.id()));
+    }
+
+    #[test]
+    fn test_mode_registry_entry_mode_first_wins() {
+        // Create a second test mode enum where Input is the entry mode
+        const TEST2_MODULE: ModuleId = ModuleId::new("test2");
+
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        #[repr(u16)]
+        enum TestMode2 {
+            First = 0,
+            Second = 1,
+        }
+
+        impl Mode for TestMode2 {
+            fn module() -> ModuleId {
+                TEST2_MODULE
+            }
+
+            fn discriminant(&self) -> u16 {
+                *self as u16
+            }
+
+            fn id(&self) -> ModeId {
+                ModeId::with_discriminant(TEST2_MODULE, self.display_name(), self.discriminant())
+            }
+
+            fn display_name(&self) -> &'static str {
+                match self {
+                    Self::First => "FIRST",
+                    Self::Second => "SECOND",
+                }
+            }
+
+            fn cursor_style(&self) -> CursorStyle {
+                CursorStyle::Block
+            }
+
+            fn accepts_char_input(&self) -> bool {
+                false
+            }
+
+            fn is_entry(&self) -> bool {
+                // Both modes are entry modes - first registered wins
+                true
+            }
+        }
+
+        let mut registry = ModeRegistry::new();
+        registry.register_mode(TestMode2::First);
+        registry.register_mode(TestMode2::Second);
+
+        // First registered entry mode wins
+        assert_eq!(registry.entry_mode(), Some(&TestMode2::First.id()));
+    }
+
+    #[test]
+    fn test_mode_registry_entry_mode_none_when_no_entry() {
+        // Create a mode enum with no entry mode
+        const TEST3_MODULE: ModuleId = ModuleId::new("test3");
+
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        #[repr(u16)]
+        enum TestMode3 {
+            ModeA = 0,
+        }
+
+        impl Mode for TestMode3 {
+            fn module() -> ModuleId {
+                TEST3_MODULE
+            }
+
+            fn discriminant(&self) -> u16 {
+                *self as u16
+            }
+
+            fn display_name(&self) -> &'static str {
+                "MODE_A"
+            }
+
+            fn cursor_style(&self) -> CursorStyle {
+                CursorStyle::Block
+            }
+
+            fn accepts_char_input(&self) -> bool {
+                false
+            }
+
+            // Default is_entry returns false
+        }
+
+        let mut registry = ModeRegistry::new();
+        registry.register_mode(TestMode3::ModeA);
+
+        // No entry mode when all modes return is_entry = false
+        assert!(registry.entry_mode().is_none());
     }
 }

@@ -28,7 +28,7 @@ pub use {
 
 use {
     crate::char_wait::{CharWaitContext, FindType},
-    reovim_kernel::api::v1::{BufferId, Edit, Position},
+    reovim_kernel::api::v1::{BufferId, Edit, ModeId, Position},
 };
 
 // ============================================================================
@@ -296,6 +296,63 @@ impl CommandResult {
         Self::EnterOperatorPending {
             operator_id,
             register,
+        }
+    }
+}
+
+// ============================================================================
+// OperatorResult
+// ============================================================================
+
+/// Result of an operator execution.
+///
+/// Operators (delete, yank, change, etc.) return this to indicate what action
+/// was taken. This is separate from `CommandResult` because operators have
+/// different semantics - they may complete, transition to a new mode, or be
+/// cancelled.
+///
+/// # Epic #372 - Mode Ownership
+///
+/// This type supports the mode ownership system by allowing operators to
+/// request mode transitions using `ModeId` rather than string names.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OperatorResult {
+    /// Operator completed successfully.
+    Done,
+    /// Operator completed and requests transition to a mode.
+    ///
+    /// For example, the "change" operator deletes text and then requests
+    /// transition to insert mode.
+    TransitionTo(ModeId),
+    /// Operator was cancelled (e.g., by pressing Escape).
+    Cancelled,
+}
+
+impl OperatorResult {
+    /// Check if the operator completed.
+    #[must_use]
+    pub const fn is_done(&self) -> bool {
+        matches!(self, Self::Done)
+    }
+
+    /// Check if the operator requests a mode transition.
+    #[must_use]
+    pub const fn is_transition(&self) -> bool {
+        matches!(self, Self::TransitionTo(_))
+    }
+
+    /// Check if the operator was cancelled.
+    #[must_use]
+    pub const fn is_cancelled(&self) -> bool {
+        matches!(self, Self::Cancelled)
+    }
+
+    /// Get the target mode if this is a transition.
+    #[must_use]
+    pub const fn target_mode(&self) -> Option<&ModeId> {
+        match self {
+            Self::TransitionTo(mode) => Some(mode),
+            _ => None,
         }
     }
 }
@@ -795,5 +852,63 @@ mod tests {
             assert!(!result.is_mode_action());
             assert!(!result.is_window_action());
         }
+    }
+
+    // ========================================================================
+    // OperatorResult Tests
+    // ========================================================================
+
+    #[test]
+    fn test_operator_result_done() {
+        let result = OperatorResult::Done;
+        assert!(result.is_done());
+        assert!(!result.is_transition());
+        assert!(!result.is_cancelled());
+        assert!(result.target_mode().is_none());
+    }
+
+    #[test]
+    fn test_operator_result_transition_to() {
+        use reovim_kernel::api::v1::ModuleId;
+
+        // Use a generic test module, not vim-specific
+        let test_module = ModuleId::new("test");
+        let test_mode = ModeId::with_discriminant(test_module, "some-mode", 1);
+        let result = OperatorResult::TransitionTo(test_mode.clone());
+
+        assert!(!result.is_done());
+        assert!(result.is_transition());
+        assert!(!result.is_cancelled());
+        assert_eq!(result.target_mode(), Some(&test_mode));
+    }
+
+    #[test]
+    fn test_operator_result_cancelled() {
+        let result = OperatorResult::Cancelled;
+        assert!(!result.is_done());
+        assert!(!result.is_transition());
+        assert!(result.is_cancelled());
+        assert!(result.target_mode().is_none());
+    }
+
+    #[test]
+    fn test_operator_result_equality() {
+        use reovim_kernel::api::v1::ModuleId;
+
+        let done1 = OperatorResult::Done;
+        let done2 = OperatorResult::Done;
+        let cancelled = OperatorResult::Cancelled;
+
+        assert_eq!(done1, done2);
+        assert_ne!(done1, cancelled);
+
+        // Use a generic test module, not vim-specific
+        let test_module = ModuleId::new("test");
+        let test_mode = ModeId::with_discriminant(test_module, "some-mode", 1);
+        let transition1 = OperatorResult::TransitionTo(test_mode.clone());
+        let transition2 = OperatorResult::TransitionTo(test_mode);
+
+        assert_eq!(transition1, transition2);
+        assert_ne!(transition1, cancelled);
     }
 }

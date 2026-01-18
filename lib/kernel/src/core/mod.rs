@@ -79,4 +79,4 @@ pub use option::{
 pub use config::{Config, ConfigError, ConfigPaths, ConfigValue};
 
 // Re-export mode types
-pub use mode::{CommandId, Mode, ModeId, ModeStack};
+pub use mode::{CommandId, CursorStyle, Mode, ModeId, ModeStack};

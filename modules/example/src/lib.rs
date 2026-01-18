@@ -84,15 +84,17 @@ mod tests {
     fn test_mode_implements_all_traits() {
         let normal = ExampleMode::Normal;
 
-        // Kernel: Mode trait
-        let _id = normal.id();
+        // Kernel: Mode trait (canonical source)
+        let _id = Mode::id(&normal);
+        let _style = Mode::cursor_style(&normal);
+        let _accepts = Mode::accepts_char_input(&normal);
 
-        // Display driver: ModeDisplay trait
-        let _style = normal.cursor_style();
-        let _text = normal.status_text();
+        // Display driver: ModeDisplay trait (delegates to Mode)
+        let _style = <ExampleMode as ModeDisplay>::cursor_style(&normal);
+        let _text = <ExampleMode as ModeDisplay>::status_text(&normal);
 
-        // Input driver: ModeInput trait
-        let _accepts = normal.accepts_char_input();
+        // Input driver: ModeInput trait (delegates to Mode)
+        let _accepts = <ExampleMode as ModeInput>::accepts_char_input(&normal);
     }
 
     #[test]

@@ -17,16 +17,14 @@ use {
     reovim_driver_command::Command,
     reovim_driver_input::{KeyCode, KeyEvent},
     reovim_kernel::api::v1::KernelContext,
-    reovim_module_editor::{
-        EditorFallbackHandler, EditorMode,
-        command::{
-            CursorDown, CursorLeft, CursorRight, CursorUp, EnterInsertMode, EnterInsertModeAppend,
-            ExitToNormal, all_commands,
-        },
+    reovim_module_editor::command::{CursorDown, CursorLeft, CursorRight, CursorUp, all_commands},
+    reovim_module_vim::{
+        VimFallbackHandler, VimMode,
+        commands::{EnterInsertMode, EnterInsertModeAppend, ExitToNormal},
     },
     runner::{
         AppState, EventLoop,
-        registry::{CommandRegistry, KeymapRegistry, ModeEntry, ModeRegistry},
+        registry::{CommandRegistry, KeymapRegistry, ModeRegistry},
     },
 };
 
@@ -38,7 +36,7 @@ fn main() {
     // This shows how the kernel-driver-module architecture works:
     // 1. Kernel provides context (event bus, buffer manager, etc.)
     // 2. Drivers provide traits (Mode, ModeDisplay, CommandHandler)
-    // 3. Modules provide implementations (EditorMode, cursor commands)
+    // 3. Modules provide implementations (VimMode, cursor commands)
     // 4. Runner wires it all together
 
     // 1. Create kernel context
@@ -46,7 +44,7 @@ fn main() {
     println!("✓ Created KernelContext");
 
     // 2. Create AppState with Normal mode as initial
-    let app = AppState::new(kernel, EditorMode::NORMAL_ID);
+    let app = AppState::new(kernel, VimMode::NORMAL_ID);
     println!("✓ Created AppState (initial mode: Normal)");
 
     // 3. Create registries
@@ -55,21 +53,9 @@ fn main() {
     let mut keymap_registry = KeymapRegistry::new();
     println!("✓ Created registries (Mode, Command, Keymap)");
 
-    // 4. Register modes (EditorMode implements Mode, ModeDisplay, ModeInput)
-    //    EditorMode can be cloned and used as all three traits
-    let normal = Arc::new(EditorMode::Normal);
-    let insert = Arc::new(EditorMode::Insert);
-
-    mode_registry.register(
-        ModeEntry::new(normal.clone())
-            .with_display(normal.clone())
-            .with_input(normal),
-    );
-    mode_registry.register(
-        ModeEntry::new(insert.clone())
-            .with_display(insert.clone())
-            .with_input(insert),
-    );
+    // 4. Register modes (VimMode implements Mode trait with all behavior)
+    mode_registry.register_mode(VimMode::Normal);
+    mode_registry.register_mode(VimMode::Insert);
     println!("✓ Registered modes: Normal, Insert");
 
     // 5. Register commands
@@ -82,22 +68,22 @@ fn main() {
 
     // 6. Register keybindings
     //    Normal mode: vim-style navigation and mode switching
-    keymap_registry.register_str(&EditorMode::NORMAL_ID, "j", CursorDown.id());
-    keymap_registry.register_str(&EditorMode::NORMAL_ID, "k", CursorUp.id());
-    keymap_registry.register_str(&EditorMode::NORMAL_ID, "h", CursorLeft.id());
-    keymap_registry.register_str(&EditorMode::NORMAL_ID, "l", CursorRight.id());
-    keymap_registry.register_str(&EditorMode::NORMAL_ID, "i", EnterInsertMode.id());
-    keymap_registry.register_str(&EditorMode::NORMAL_ID, "a", EnterInsertModeAppend.id());
+    keymap_registry.register_str(&VimMode::NORMAL_ID, "j", CursorDown.id());
+    keymap_registry.register_str(&VimMode::NORMAL_ID, "k", CursorUp.id());
+    keymap_registry.register_str(&VimMode::NORMAL_ID, "h", CursorLeft.id());
+    keymap_registry.register_str(&VimMode::NORMAL_ID, "l", CursorRight.id());
+    keymap_registry.register_str(&VimMode::NORMAL_ID, "i", EnterInsertMode.id());
+    keymap_registry.register_str(&VimMode::NORMAL_ID, "a", EnterInsertModeAppend.id());
 
     //    Insert mode: escape to exit
-    keymap_registry.register_str(&EditorMode::INSERT_ID, "<Escape>", ExitToNormal.id());
+    keymap_registry.register_str(&VimMode::INSERT_ID, "<Escape>", ExitToNormal.id());
     println!("✓ Registered keybindings:");
     println!("  Normal: j/k/h/l (cursor), i/a (enter insert)");
     println!("  Insert: <Escape> (exit to normal)");
 
-    // 7. Create fallback handler (policy from editor module)
-    let fallback = EditorFallbackHandler;
-    println!("✓ Created EditorFallbackHandler");
+    // 7. Create fallback handler (policy from vim module)
+    let fallback = VimFallbackHandler;
+    println!("✓ Created VimFallbackHandler");
 
     // 8. Create event loop
     let mut event_loop =

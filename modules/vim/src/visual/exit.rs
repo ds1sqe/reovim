@@ -7,7 +7,7 @@ use {
     reovim_kernel::api::v1::{CommandId, KernelContext, events::ModeChanged},
 };
 
-use reovim_module_editor::{EDITOR_MODULE, EditorMode};
+use crate::modes::{VIM_MODULE, VimMode};
 
 /// Exit visual mode and return to normal mode.
 #[derive(Debug, Clone, Copy, Default)]
@@ -15,7 +15,7 @@ pub struct ExitVisualMode;
 
 impl Command for ExitVisualMode {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "exit-visual")
+        CommandId::new(VIM_MODULE, "exit-visual")
     }
 
     fn description(&self) -> &'static str {
@@ -35,7 +35,7 @@ impl CommandHandler for ExitVisualMode {
 
         // Emit mode change event with target ModeId
         ctx.event_bus
-            .emit(ModeChanged::with_mode_id("visual", EditorMode::NORMAL_ID));
+            .emit(ModeChanged::with_mode_id("visual", VimMode::NORMAL_ID));
 
         CommandResult::Success
     }

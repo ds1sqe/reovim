@@ -99,28 +99,6 @@ pub struct EventLoop<F: InputFallbackHandler<AppState>> {
     /// This enables event-driven mode transitions without hardcoded command names.
     pending_mode_change: Arc<Mutex<Option<ModeId>>>,
 
-    /// Pending count for the next command.
-    ///
-    /// In Vim, typing "3i" enters insert mode and repeats the text 3 times on exit.
-    /// Digits pressed in normal mode (without modifiers) accumulate here until
-    /// a non-digit command key is pressed.
-    ///
-    /// Reset after command execution or when leaving normal mode.
-    pending_count: Option<usize>,
-
-    /// Pending register for the next command.
-    ///
-    /// In Vim, typing `"a` before a command specifies the register to use.
-    /// The `"` key enters "waiting for register" state, and the next character
-    /// selects the register. The register is then passed to the command via
-    /// `CommandContext`.
-    ///
-    /// States:
-    /// - `None`: No register prefix
-    /// - `Some('"')`: Waiting for register character (sentinel)
-    /// - `Some('a'..'z')`: Register selected, apply to next command
-    pending_register: Option<char>,
-
     /// Registry for mode key resolvers.
     ///
     /// When set, the event loop will use resolvers to handle key input
@@ -173,8 +151,6 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
             key_reader: None,
             last_error: None,
             pending_mode_change,
-            pending_count: None,
-            pending_register: None,
             resolver_registry: None,
         }
     }
@@ -300,25 +276,9 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
         // --- Legacy keymap-based handling ---
         // The following code handles keys when no resolver is configured for the
         // current mode. Modes with resolvers use the resolver path above exclusively.
-
-        // Check for register prefix waiting for character
-        if self.is_waiting_for_register() {
-            self.handle_register_char(key);
-            return;
-        }
-
-        // Check for register prefix start (") in normal/visual mode
-        if self.is_register_prefix(&key) {
-            self.pending_register = Some('"'); // Sentinel: waiting for char
-            return;
-        }
-
-        // Check for count prefix (digits 1-9, or 0 if already have count) in normal mode
-        // Digits without modifiers accumulate as a count prefix
-        if self.is_count_digit(&key) {
-            self.accumulate_count_digit(&key);
-            return;
-        }
+        //
+        // Note: Count prefix and register prefix handling has been moved to the
+        // Vim policy module (Epic #372). The runner is now truly policy-agnostic.
 
         // Add to pending sequence
         self.app.pending_keys.push(key);
@@ -333,22 +293,10 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
                 // (any command breaks insert mode batching)
                 self.app.flush_pending_edits();
 
-                // Build command context with count from pending_count
+                // Build command context.
+                // Note: Count and register prefixes are handled by the Vim resolver
+                // (Epic #372 - policy-agnostic runner).
                 let mut ctx = CommandContext::new();
-
-                // Set count in context if we have a pending count
-                let command_count = self.pending_count.take();
-                if let Some(count) = command_count {
-                    ctx.set("count", reovim_driver_command::ArgValue::Count(count));
-                }
-
-                // Set register in context if we have a pending register
-                if let Some(reg) = self.pending_register.take() {
-                    // Only set if it's an actual register, not the sentinel
-                    if reg != '"' {
-                        ctx.set("register", reovim_driver_command::ArgValue::Register(reg));
-                    }
-                }
 
                 // Set buffer_id in context if we have an active buffer
                 if let Some(buffer_id) = self.app.active_buffer {
@@ -362,7 +310,7 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
                 // Save visual selection if currently in visual mode (for gv command).
                 // We check the current mode rather than hardcoding command names that exit visual.
                 // Any command that exits visual mode will have the selection saved before execution.
-                let in_visual_mode = self.app.current_mode().name().starts_with("visual");
+                let in_visual_mode = self.mode_registry.has_selection(self.app.current_mode());
                 if in_visual_mode {
                     self.save_visual_selection_if_active();
                 }
@@ -391,11 +339,12 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
                         .and_then(|mut guard| guard.take());
 
                     if let Some(new_mode) = new_mode {
-                        // Check if entering insert mode - start accumulation with count
-                        if new_mode.name() == "insert" && mode_before.name() != "insert" {
+                        // Check if entering input mode - start accumulation
+                        // Uses capability-based query instead of string comparison (Epic #372)
+                        if self.mode_registry.accepts_char_input(&new_mode)
+                            && !self.mode_registry.accepts_char_input(&mode_before)
+                        {
                             use crate::server::app::InsertEntryType;
-
-                            let insert_count = command_count.unwrap_or(1);
 
                             // Determine entry type based on command
                             let entry_type = if cmd_id.name() == "open-line-below" {
@@ -408,10 +357,13 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
 
                             self.app
                                 .repeat_state
-                                .start_accumulating_with_count_and_type(insert_count, entry_type);
+                                .start_accumulating_with_count_and_type(1, entry_type);
                         }
-                        // Check if exiting insert mode - handle text repetition
-                        else if mode_before.name() == "insert" && new_mode.name() != "insert" {
+                        // Check if exiting input mode - handle text repetition
+                        // Uses capability-based query instead of string comparison (Epic #372)
+                        else if self.mode_registry.accepts_char_input(&mode_before)
+                            && !self.mode_registry.accepts_char_input(&new_mode)
+                        {
                             self.handle_insert_mode_exit();
                         }
 
@@ -578,11 +530,13 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
             } => {
                 // Enter-operator commands (d, y, c) request operator-pending mode.
                 // Set pending operator state and push operator-pending mode.
+                //
+                // Note: Count is handled by the Vim resolver (Epic #372).
+                // The legacy keymap path uses default count of 1.
                 use crate::server::app::PendingOperator;
 
-                let count = self.pending_count.take().unwrap_or(1);
                 let pending = PendingOperator::new(operator_id)
-                    .with_count(count)
+                    .with_count(1)
                     .with_register(register);
                 self.app.set_pending_operator(pending);
 
@@ -593,7 +547,7 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
                 );
                 self.app.mode_stack.push(mode_id);
 
-                tracing::debug!(operator_id, ?register, count, "Entered operator-pending mode");
+                tracing::debug!(operator_id, ?register, "Entered operator-pending mode");
                 self.last_error = None;
             }
         }
@@ -619,15 +573,16 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
             }
             ModeAction::Pop => {
                 // Pop the current mode from the stack.
-                // If popping from operator-pending mode, clear pending operator state.
-                let was_operator_pending = self.app.current_mode().name() == "operator-pending";
+                // If there's a pending operator, clear it.
+                // This is policy-agnostic - we check state, not mode names (Epic #372).
+                let has_pending_operator = self.app.pending_operator().is_some();
 
                 if let Some(popped) = self.app.mode_stack.pop() {
                     tracing::info!(mode = %popped, "Popped mode from stack");
                 }
 
-                // Clear pending operator if we were in operator-pending mode
-                if was_operator_pending {
+                // Clear pending operator state if present
+                if has_pending_operator {
                     self.app.take_pending_operator();
                     tracing::debug!("Cleared pending operator state on mode pop");
                 }
@@ -940,131 +895,6 @@ impl<F: InputFallbackHandler<AppState>> EventLoop<F> {
     }
 
     // ========================================================================
-    // Count Prefix Handling (for 3i, 5o, etc.)
-    // ========================================================================
-
-    /// Check if a key is a count digit.
-    ///
-    /// In Vim, digits 1-9 start a count, and 0 continues an existing count.
-    /// This only applies in normal/visual modes and only without modifiers.
-    fn is_count_digit(&self, key: &KeyEvent) -> bool {
-        use reovim_driver_input::KeyCode;
-
-        // Only in normal or visual modes (not insert, not operator-pending, etc.)
-        let mode_name = self.app.current_mode().name();
-        if mode_name != "normal" && !mode_name.starts_with("visual") {
-            return false;
-        }
-
-        // No modifiers allowed for count digits
-        if !key.modifiers.is_empty() {
-            return false;
-        }
-
-        // Check if it's a digit
-        match key.code {
-            KeyCode::Char(c) => {
-                if c.is_ascii_digit() {
-                    // 1-9 can start a count, 0 can only continue
-                    c != '0' || self.pending_count.is_some()
-                } else {
-                    false
-                }
-            }
-            _ => false,
-        }
-    }
-
-    /// Accumulate a digit into the pending count.
-    ///
-    /// Called when `is_count_digit` returns true. Multiplies existing count
-    /// by 10 and adds the new digit.
-    fn accumulate_count_digit(&mut self, key: &KeyEvent) {
-        use reovim_driver_input::KeyCode;
-
-        if let KeyCode::Char(c) = key.code
-            && let Some(digit) = c.to_digit(10)
-        {
-            let digit = digit as usize;
-            let current = self.pending_count.unwrap_or(0);
-            // Prevent overflow by capping at MAX_INSERT_COUNT
-            let new_count = current.saturating_mul(10).saturating_add(digit);
-            self.pending_count = Some(new_count.min(crate::server::app::MAX_INSERT_COUNT));
-        }
-    }
-
-    // ========================================================================
-    // Register Prefix Handling (for "ayy, "ap, etc.)
-    // ========================================================================
-
-    /// Check if a key is the register prefix (`"`).
-    ///
-    /// In Vim, `"` starts a register selection. Only valid in normal/visual modes
-    /// and without modifiers.
-    fn is_register_prefix(&self, key: &KeyEvent) -> bool {
-        use reovim_driver_input::KeyCode;
-
-        // Only in normal or visual modes
-        let mode_name = self.app.current_mode().name();
-        if mode_name != "normal" && !mode_name.starts_with("visual") {
-            return false;
-        }
-
-        // No modifiers allowed for register prefix
-        if !key.modifiers.is_empty() {
-            return false;
-        }
-
-        // Check if it's the register prefix key
-        matches!(key.code, KeyCode::Char('"'))
-    }
-
-    /// Check if we're waiting for a register character.
-    ///
-    /// Returns true if `pending_register` is the sentinel value `"`.
-    fn is_waiting_for_register(&self) -> bool {
-        self.pending_register == Some('"')
-    }
-
-    /// Handle the register character after `"` was pressed.
-    ///
-    /// Valid registers: a-z, A-Z (append), 0-9, ", +, *, and more.
-    fn handle_register_char(&mut self, key: KeyEvent) {
-        use reovim_driver_input::KeyCode;
-
-        // Handle escape - cancel register selection
-        if key.code == KeyCode::Escape {
-            self.pending_register = None;
-            self.app.clear_pending_keys();
-            return;
-        }
-
-        // Extract character from key event
-        let KeyCode::Char(c) = key.code else {
-            // Non-character keys cancel register selection
-            self.pending_register = None;
-            self.set_error("Invalid register");
-            return;
-        };
-
-        // Validate register character
-        // Valid: a-z, A-Z (append), 0-9, " (unnamed), + (clipboard), * (selection)
-        if c.is_ascii_alphabetic()
-            || c.is_ascii_digit()
-            || c == '"'
-            || c == '+'
-            || c == '*'
-            || c == '_'
-            || c == '-'
-        {
-            self.pending_register = Some(c);
-        } else {
-            self.pending_register = None;
-            self.set_error("Invalid register");
-        }
-    }
-
-    // ========================================================================
     // Insert Mode Exit Handling
     // ========================================================================
 
@@ -1142,12 +972,58 @@ mod tests {
         crate::NoOpFallback,
         reovim_driver_command::{ArgSpec, Command, CommandHandler},
         reovim_driver_input::KeyCode,
-        reovim_kernel::api::v1::{CommandId, KernelContext, ModeId, ModuleId},
+        reovim_kernel::api::v1::{CommandId, KernelContext, Mode, ModeId, ModuleId},
         std::sync::Arc,
     };
 
+    // Test mode implementation for mode registry tests
+    const TEST_MODULE: ModuleId = ModuleId::new("test");
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    #[repr(u16)]
+    enum TestMode {
+        Command = 0,
+        Input = 1,
+    }
+
+    impl reovim_kernel::api::v1::Mode for TestMode {
+        fn module() -> ModuleId {
+            TEST_MODULE
+        }
+
+        fn discriminant(&self) -> u16 {
+            *self as u16
+        }
+
+        fn display_name(&self) -> &'static str {
+            match self {
+                Self::Command => "COMMAND",
+                Self::Input => "INPUT",
+            }
+        }
+
+        fn cursor_style(&self) -> reovim_kernel::api::v1::CursorStyle {
+            match self {
+                Self::Command => reovim_kernel::api::v1::CursorStyle::Block,
+                Self::Input => reovim_kernel::api::v1::CursorStyle::Bar,
+            }
+        }
+
+        fn accepts_char_input(&self) -> bool {
+            matches!(self, Self::Input)
+        }
+
+        fn has_selection(&self) -> bool {
+            false
+        }
+
+        fn inherits_from(&self) -> Option<Self> {
+            None
+        }
+    }
+
     fn test_mode() -> ModeId {
-        ModeId::new(ModuleId::new("test"), "normal")
+        TestMode::Command.id()
     }
 
     fn test_command_id(name: &'static str) -> CommandId {
@@ -1157,9 +1033,15 @@ mod tests {
     fn create_test_event_loop() -> EventLoop<NoOpFallback> {
         let kernel = KernelContext::default();
         let app = AppState::new(kernel, test_mode());
+
+        // Register test modes so capability queries work
+        let mut mode_registry = ModeRegistry::new();
+        mode_registry.register_mode(TestMode::Command);
+        mode_registry.register_mode(TestMode::Input);
+
         EventLoop::new(
             app,
-            ModeRegistry::new(),
+            mode_registry,
             CommandRegistry::new(),
             KeymapRegistry::new(),
             NoOpFallback,
@@ -1383,235 +1265,6 @@ mod tests {
     // Note: mode_for_command tests and helpers removed as part of Epic #284.
     // Mode transitions are now event-driven via ModeChanged events with target_mode.
 
-    // =========================================================================
-    // Count Prefix Tests
-    // =========================================================================
-
-    #[test]
-    fn test_is_count_digit_in_normal_mode() {
-        let event_loop = create_test_event_loop();
-
-        // 1-9 can start a count
-        assert!(event_loop.is_count_digit(&KeyEvent::new(KeyCode::Char('1'))));
-        assert!(event_loop.is_count_digit(&KeyEvent::new(KeyCode::Char('5'))));
-        assert!(event_loop.is_count_digit(&KeyEvent::new(KeyCode::Char('9'))));
-
-        // 0 cannot start a count (it's "go to beginning of line")
-        assert!(!event_loop.is_count_digit(&KeyEvent::new(KeyCode::Char('0'))));
-
-        // Letters are not count digits
-        assert!(!event_loop.is_count_digit(&KeyEvent::new(KeyCode::Char('a'))));
-        assert!(!event_loop.is_count_digit(&KeyEvent::new(KeyCode::Char('i'))));
-    }
-
-    #[test]
-    fn test_is_count_digit_with_modifiers() {
-        use reovim_driver_input::Modifiers;
-
-        let event_loop = create_test_event_loop();
-
-        // Digits with modifiers are not count digits
-        let ctrl_1 = KeyEvent::with_modifiers(KeyCode::Char('1'), Modifiers::CTRL);
-        assert!(!event_loop.is_count_digit(&ctrl_1));
-
-        let alt_5 = KeyEvent::with_modifiers(KeyCode::Char('5'), Modifiers::ALT);
-        assert!(!event_loop.is_count_digit(&alt_5));
-    }
-
-    #[test]
-    fn test_is_count_digit_zero_continues_count() {
-        let mut event_loop = create_test_event_loop();
-
-        // Set a pending count
-        event_loop.pending_count = Some(3);
-
-        // Now 0 can continue the count
-        assert!(event_loop.is_count_digit(&KeyEvent::new(KeyCode::Char('0'))));
-    }
-
-    #[test]
-    fn test_accumulate_count_digit() {
-        let mut event_loop = create_test_event_loop();
-
-        // Accumulate "123"
-        event_loop.accumulate_count_digit(&KeyEvent::new(KeyCode::Char('1')));
-        assert_eq!(event_loop.pending_count, Some(1));
-
-        event_loop.accumulate_count_digit(&KeyEvent::new(KeyCode::Char('2')));
-        assert_eq!(event_loop.pending_count, Some(12));
-
-        event_loop.accumulate_count_digit(&KeyEvent::new(KeyCode::Char('3')));
-        assert_eq!(event_loop.pending_count, Some(123));
-    }
-
-    #[test]
-    fn test_accumulate_count_digit_capped() {
-        let mut event_loop = create_test_event_loop();
-
-        // Set a high count and try to exceed MAX_INSERT_COUNT
-        event_loop.pending_count = Some(990);
-        event_loop.accumulate_count_digit(&KeyEvent::new(KeyCode::Char('9')));
-
-        // Should be capped at MAX_INSERT_COUNT (999)
-        assert_eq!(event_loop.pending_count, Some(crate::server::app::MAX_INSERT_COUNT));
-    }
-
-    #[test]
-    fn test_pending_count_initially_none() {
-        let event_loop = create_test_event_loop();
-        assert!(event_loop.pending_count.is_none());
-    }
-
-    #[test]
-    fn test_count_digit_in_insert_mode_not_counted() {
-        let kernel = KernelContext::default();
-        let insert_mode = ModeId::new(ModuleId::new("editor"), "insert");
-        let app = AppState::new(kernel, insert_mode);
-        let event_loop = EventLoop::new(
-            app,
-            ModeRegistry::new(),
-            CommandRegistry::new(),
-            KeymapRegistry::new(),
-            NoOpFallback,
-        );
-
-        // In insert mode, digits are not count prefixes
-        assert!(!event_loop.is_count_digit(&KeyEvent::new(KeyCode::Char('3'))));
-    }
-
-    // =========================================================================
-    // Register Prefix Tests
-    // =========================================================================
-
-    #[test]
-    fn test_is_register_prefix_in_normal_mode() {
-        let event_loop = create_test_event_loop();
-
-        // " is the register prefix
-        assert!(event_loop.is_register_prefix(&KeyEvent::new(KeyCode::Char('"'))));
-
-        // Other characters are not register prefix
-        assert!(!event_loop.is_register_prefix(&KeyEvent::new(KeyCode::Char('a'))));
-        assert!(!event_loop.is_register_prefix(&KeyEvent::new(KeyCode::Char('1'))));
-    }
-
-    #[test]
-    fn test_is_register_prefix_with_modifiers() {
-        use reovim_driver_input::Modifiers;
-
-        let event_loop = create_test_event_loop();
-
-        // " with modifiers is not register prefix
-        let ctrl_quote = KeyEvent::with_modifiers(KeyCode::Char('"'), Modifiers::CTRL);
-        assert!(!event_loop.is_register_prefix(&ctrl_quote));
-    }
-
-    #[test]
-    fn test_is_register_prefix_in_insert_mode() {
-        let kernel = KernelContext::default();
-        let insert_mode = ModeId::new(ModuleId::new("editor"), "insert");
-        let app = AppState::new(kernel, insert_mode);
-        let event_loop = EventLoop::new(
-            app,
-            ModeRegistry::new(),
-            CommandRegistry::new(),
-            KeymapRegistry::new(),
-            NoOpFallback,
-        );
-
-        // In insert mode, " is not a register prefix
-        assert!(!event_loop.is_register_prefix(&KeyEvent::new(KeyCode::Char('"'))));
-    }
-
-    #[test]
-    fn test_is_waiting_for_register() {
-        let mut event_loop = create_test_event_loop();
-
-        // Initially not waiting
-        assert!(!event_loop.is_waiting_for_register());
-
-        // Set sentinel
-        event_loop.pending_register = Some('"');
-        assert!(event_loop.is_waiting_for_register());
-
-        // Set actual register
-        event_loop.pending_register = Some('a');
-        assert!(!event_loop.is_waiting_for_register());
-    }
-
-    #[test]
-    fn test_handle_register_char_valid() {
-        let mut event_loop = create_test_event_loop();
-        event_loop.pending_register = Some('"'); // Waiting for char
-
-        // Valid register char 'a'
-        event_loop.handle_register_char(KeyEvent::new(KeyCode::Char('a')));
-        assert_eq!(event_loop.pending_register, Some('a'));
-    }
-
-    #[test]
-    fn test_handle_register_char_uppercase() {
-        let mut event_loop = create_test_event_loop();
-        event_loop.pending_register = Some('"');
-
-        // Uppercase for append
-        event_loop.handle_register_char(KeyEvent::new(KeyCode::Char('A')));
-        assert_eq!(event_loop.pending_register, Some('A'));
-    }
-
-    #[test]
-    fn test_handle_register_char_digit() {
-        let mut event_loop = create_test_event_loop();
-        event_loop.pending_register = Some('"');
-
-        // Numbered registers
-        event_loop.handle_register_char(KeyEvent::new(KeyCode::Char('0')));
-        assert_eq!(event_loop.pending_register, Some('0'));
-    }
-
-    #[test]
-    fn test_handle_register_char_special() {
-        let mut event_loop = create_test_event_loop();
-
-        // Test + (clipboard)
-        event_loop.pending_register = Some('"');
-        event_loop.handle_register_char(KeyEvent::new(KeyCode::Char('+')));
-        assert_eq!(event_loop.pending_register, Some('+'));
-
-        // Test * (selection)
-        event_loop.pending_register = Some('"');
-        event_loop.handle_register_char(KeyEvent::new(KeyCode::Char('*')));
-        assert_eq!(event_loop.pending_register, Some('*'));
-
-        // Test " (unnamed)
-        event_loop.pending_register = Some('"');
-        event_loop.handle_register_char(KeyEvent::new(KeyCode::Char('"')));
-        assert_eq!(event_loop.pending_register, Some('"'));
-    }
-
-    #[test]
-    fn test_handle_register_char_escape_cancels() {
-        let mut event_loop = create_test_event_loop();
-        event_loop.pending_register = Some('"');
-
-        event_loop.handle_register_char(KeyEvent::new(KeyCode::Escape));
-        assert!(event_loop.pending_register.is_none());
-    }
-
-    #[test]
-    fn test_handle_register_char_invalid() {
-        let mut event_loop = create_test_event_loop();
-        event_loop.pending_register = Some('"');
-
-        // Invalid register char (e.g., %)
-        event_loop.handle_register_char(KeyEvent::new(KeyCode::Char('%')));
-        assert!(event_loop.pending_register.is_none());
-        assert!(event_loop.last_error().is_some());
-    }
-
-    #[test]
-    fn test_pending_register_initially_none() {
-        let event_loop = create_test_event_loop();
-        assert!(event_loop.pending_register.is_none());
-    }
+    // Note: Count prefix and register prefix tests removed as part of Epic #372.
+    // Count and register handling is now the responsibility of policy modules (Vim).
 }

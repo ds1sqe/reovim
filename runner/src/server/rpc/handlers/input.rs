@@ -5,7 +5,7 @@
 use std::sync::{Arc, Mutex};
 
 use {
-    reovim_driver_input::{KeyCode, KeyEvent, KeySequence, Modifiers},
+    reovim_driver_input::{KeyCode, KeySequence, Modifiers},
     reovim_kernel::api::v1::{EventResult, ModeId, events::ModeChanged},
     reovim_protocol::v1::{InputKeysParams, InputKeysResult, RpcError},
 };
@@ -17,47 +17,6 @@ use {
         session::{StateSnapshot, emit_state_changes},
     },
 };
-
-/// Check if a key is a count digit in normal/visual mode.
-///
-/// In Vim, digits 1-9 start a count, and 0 continues an existing count.
-/// '0' alone goes to beginning of line.
-fn is_count_digit(key: &KeyEvent, pending_count: Option<usize>, mode_name: &str) -> bool {
-    // Only parse counts in Normal or Visual modes
-    if !mode_name.starts_with("normal") && !mode_name.starts_with("visual") {
-        return false;
-    }
-
-    // No modifiers allowed for count digits
-    if key.modifiers.contains(Modifiers::CTRL)
-        || key.modifiers.contains(Modifiers::ALT)
-        || key.modifiers.contains(Modifiers::META)
-    {
-        return false;
-    }
-
-    // Check if it's a digit
-    if let KeyCode::Char(c) = key.code
-        && c.is_ascii_digit()
-    {
-        // 1-9 can start a count, 0 can only continue
-        return c != '0' || pending_count.is_some();
-    }
-    false
-}
-
-/// Accumulate a digit into the pending count.
-fn accumulate_count_digit(key: &KeyEvent, pending_count: &mut Option<usize>) {
-    if let KeyCode::Char(c) = key.code
-        && let Some(digit) = c.to_digit(10)
-    {
-        let digit = digit as usize;
-        let current = pending_count.unwrap_or(0);
-        // Cap at reasonable maximum (same as event loop)
-        let new_count = current.saturating_mul(10).saturating_add(digit);
-        *pending_count = Some(new_count.min(10000));
-    }
-}
 
 /// Handler for `input/keys` method.
 ///
@@ -83,11 +42,18 @@ fn accumulate_count_digit(key: &KeyEvent, pending_count: &mut Option<usize>) {
 /// - `"pending"`: Final keys are a prefix of a binding, waiting for more
 /// - `"not_found"`: No keys matched any binding
 ///
+/// Note: Count prefix digits (1-9 or 0 after other digits) are accumulated
+/// before keymap lookup. The accumulated count is passed to commands via
+/// `CommandContext`. This mirrors the resolver behavior in the event loop.
+///
 /// # Panics
 ///
 /// This function will not panic as `InputKeysResult` serialization is infallible.
 #[must_use]
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "RPC handler with event subscription, key processing loop, and mode tracking - refactoring deferred"
+)]
 pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
     Box::pin(async move {
         // Parse params
@@ -128,9 +94,12 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
         // Process keys one at a time, like the event loop does
         // This allows "jj" to execute 'j' twice rather than looking for a "jj" binding
         let mut pending = KeySequence::new();
-        let mut pending_count: Option<usize> = None;
         let mut any_executed = false;
         let mut final_result = KeyLookupResult::NotFound;
+
+        // Count prefix accumulation - digits before commands multiply the action
+        // e.g., "3j" moves down 3 lines, "10dd" deletes 10 lines
+        let mut pending_count: Option<usize> = None;
 
         for key in keys.as_slice() {
             // Get current mode (may change after each command)
@@ -139,10 +108,25 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
 
             tracing::debug!(?key, mode = %mode, mode_name, "Processing key");
 
-            // Check for count prefix (digits 1-9, or 0 if already have count)
-            if is_count_digit(key, pending_count, mode_name) {
-                accumulate_count_digit(key, &mut pending_count);
-                continue;
+            // Check for count digit BEFORE processing as command
+            // 1-9 always starts/continues a count, 0 only continues (since 0 is often a command)
+            let is_count_digit = key.modifiers == Modifiers::NONE
+                && match key.code {
+                    KeyCode::Char(c @ '1'..='9') => {
+                        let digit = c.to_digit(10).unwrap_or(0) as usize;
+                        pending_count = Some(pending_count.unwrap_or(0) * 10 + digit);
+                        true
+                    }
+                    KeyCode::Char('0') if pending_count.is_some() => {
+                        pending_count = Some(pending_count.unwrap_or(0) * 10);
+                        true
+                    }
+                    _ => false,
+                };
+
+            if is_count_digit {
+                tracing::debug!(count = ?pending_count, "Accumulated count digit");
+                continue; // Skip keymap lookup for count digits
             }
 
             pending.push(*key);
@@ -154,15 +138,18 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
                 KeyLookupResult::Found(cmd_id) => {
                     tracing::debug!(cmd_id = %cmd_id, "Found command, executing");
 
-                    // Build command context with count if we have one
+                    // Build command context with accumulated count prefix
                     let mut cmd_ctx = reovim_driver_command::CommandContext::default();
-                    if let Some(count) = pending_count.take() {
-                        cmd_ctx.set("count", reovim_driver_command::ArgValue::Count(count));
-                    }
 
                     // Set current mode name in context for commands that need to
                     // adjust behavior based on mode (e.g., motions in operator-pending)
                     cmd_ctx.set_mode_name(mode_name);
+
+                    // Set count from accumulated digits (e.g., "3j" passes count=3 to cursor-down)
+                    if let Some(count) = pending_count.take() {
+                        cmd_ctx.set("count", reovim_driver_command::ArgValue::Count(count));
+                        tracing::debug!(count, "Passing count to command");
+                    }
 
                     // Execute the command
                     if let Some(cmd_result) = ctx.session.execute_command(cmd_id, &cmd_ctx).await {
@@ -207,7 +194,7 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
                             }
                         }
                     }
-                    // Clear pending and count
+                    // Clear pending keys and count - unrecognized key cancels count
                     pending.clear();
                     pending_count = None;
                     final_result = KeyLookupResult::NotFound;

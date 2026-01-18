@@ -1,18 +1,20 @@
-//! Editor commands - cursor movement, mode switching, and text operations.
+//! Editor commands - cursor movement and text operations.
 //!
 //! This module provides the basic commands for editor operation:
 //! - Cursor movement: up, down, left, right
 //! - Display line movement: gj, gk
-//! - Mode switching: enter insert, exit to normal, window mode
-//! - Mode entry: I, A, o, O
 //! - Insert mode edits: newline, tab
 //! - Delete operations: x, X, dd, D
-//! - Change operations: cc, C
 //! - Replace operations: r, .
 //! - Undo/redo: u, Ctrl-R
 //! - Yank: yy, Y
 //! - Paste: p, P
 //! - File operations: :w
+//!
+//! # Mode Commands
+//!
+//! Mode-specific commands (enter insert, exit to normal, etc.) are in
+//! `reovim-module-vim::commands` because they require `VimMode` constants.
 //!
 //! # Cursor Movement Philosophy
 //!
@@ -27,8 +29,6 @@ mod delete;
 mod display_line;
 mod file;
 mod insert_edit;
-mod mode;
-mod mode_entry;
 mod operators;
 mod paste;
 mod replace;
@@ -38,17 +38,10 @@ mod yank;
 // Re-export all command types for external use
 pub use {
     cursor::{CursorDown, CursorLeft, CursorRight, CursorUp},
-    delete::{
-        ChangeLine, ChangeToEndOfLine, DeleteChar, DeleteCharBefore, DeleteLine, DeleteToEndOfLine,
-    },
+    delete::{DeleteChar, DeleteCharBefore, DeleteLine, DeleteToEndOfLine},
     display_line::{CursorDisplayDown, CursorDisplayUp},
     file::WriteBufferCommand,
     insert_edit::{InsertNewline, InsertTab},
-    mode::{
-        EnterCommandLineMode, EnterInsertMode, EnterInsertModeAppend, EnterWindowMode,
-        ExitCommandLineMode, ExitOperatorPending, ExitToNormal,
-    },
-    mode_entry::{EnterInsertEndOfLine, EnterInsertFirstNonBlank, OpenLineAbove, OpenLineBelow},
     operators::{
         EnterChangeOperator, EnterDedentOperator, EnterDeleteOperator, EnterIndentOperator,
         EnterYankOperator,
@@ -68,6 +61,7 @@ use reovim_driver_command::CommandHandler;
 /// Get all editor commands as boxed trait objects.
 ///
 /// This is useful for registering all commands at once.
+/// Note: Mode commands (enter insert, etc.) are in the vim module.
 #[must_use]
 pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
     vec![
@@ -79,18 +73,6 @@ pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
         // Display line movement
         Box::new(CursorDisplayDown),
         Box::new(CursorDisplayUp),
-        // Mode switching
-        Box::new(EnterInsertMode),
-        Box::new(EnterInsertModeAppend),
-        Box::new(EnterInsertFirstNonBlank),
-        Box::new(EnterInsertEndOfLine),
-        Box::new(OpenLineBelow),
-        Box::new(OpenLineAbove),
-        Box::new(ExitToNormal),
-        Box::new(EnterWindowMode),
-        Box::new(ExitOperatorPending),
-        Box::new(EnterCommandLineMode),
-        Box::new(ExitCommandLineMode),
         // Insert mode edits
         Box::new(InsertNewline),
         Box::new(InsertTab),
@@ -111,9 +93,6 @@ pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
         // Paste
         Box::new(PasteAfter),
         Box::new(PasteBefore),
-        // Change
-        Box::new(ChangeLine),
-        Box::new(ChangeToEndOfLine),
         // Replace
         Box::new(ReplaceCharStart),
         // Repeat
@@ -141,24 +120,6 @@ pub fn cursor_commands() -> Vec<Box<dyn CommandHandler>> {
 #[must_use]
 pub fn display_line_commands() -> Vec<Box<dyn CommandHandler>> {
     vec![Box::new(CursorDisplayDown), Box::new(CursorDisplayUp)]
-}
-
-/// Get all mode switching commands.
-#[must_use]
-pub fn mode_commands() -> Vec<Box<dyn CommandHandler>> {
-    vec![
-        Box::new(EnterInsertMode),
-        Box::new(EnterInsertModeAppend),
-        Box::new(EnterInsertFirstNonBlank),
-        Box::new(EnterInsertEndOfLine),
-        Box::new(OpenLineBelow),
-        Box::new(OpenLineAbove),
-        Box::new(ExitToNormal),
-        Box::new(EnterWindowMode),
-        Box::new(ExitOperatorPending),
-        Box::new(EnterCommandLineMode),
-        Box::new(ExitCommandLineMode),
-    ]
 }
 
 /// Get all insert mode edit commands.
@@ -195,12 +156,6 @@ pub fn yank_commands() -> Vec<Box<dyn CommandHandler>> {
 #[must_use]
 pub fn paste_commands() -> Vec<Box<dyn CommandHandler>> {
     vec![Box::new(PasteAfter), Box::new(PasteBefore)]
-}
-
-/// Get all change commands.
-#[must_use]
-pub fn change_commands() -> Vec<Box<dyn CommandHandler>> {
-    vec![Box::new(ChangeLine), Box::new(ChangeToEndOfLine)]
 }
 
 #[cfg(test)]
@@ -308,24 +263,6 @@ mod tests {
         assert_eq!(cmd.id().name(), "cursor-right");
     }
 
-    #[test]
-    fn test_enter_insert_id() {
-        let cmd = EnterInsertMode;
-        assert_eq!(cmd.id().name(), "enter-insert");
-    }
-
-    #[test]
-    fn test_enter_insert_append_id() {
-        let cmd = EnterInsertModeAppend;
-        assert_eq!(cmd.id().name(), "enter-insert-after");
-    }
-
-    #[test]
-    fn test_exit_to_normal_id() {
-        let cmd = ExitToNormal;
-        assert_eq!(cmd.id().name(), "exit-insert");
-    }
-
     // =========================================================================
     // Command Args Tests
     // =========================================================================
@@ -343,10 +280,9 @@ mod tests {
     #[test]
     fn test_all_commands_count() {
         let cmds = all_commands();
-        // 4 cursor + 2 display + 11 mode + 2 insert-edit + 5 enter-operator
-        // + 5 delete + 1 yank + 2 paste + 2 change + 2 undo + 1 replace_char
-        // + 1 repeat + 1 write = 39
-        assert_eq!(cmds.len(), 39);
+        // 4 cursor + 2 display + 2 insert-edit + 5 enter-operator
+        // + 5 delete + 1 yank + 2 paste + 1 replace_char + 1 repeat + 2 undo + 1 write = 26
+        assert_eq!(cmds.len(), 26);
     }
 
     #[test]
@@ -359,12 +295,6 @@ mod tests {
     fn test_display_line_commands_count() {
         let cmds = display_line_commands();
         assert_eq!(cmds.len(), 2);
-    }
-
-    #[test]
-    fn test_mode_commands_count() {
-        let cmds = mode_commands();
-        assert_eq!(cmds.len(), 11);
     }
 
     // =========================================================================
@@ -604,30 +534,6 @@ mod tests {
         let buffer = ctx.buffers.get(buffer_id).unwrap();
         let pos = buffer.read().position();
         assert_eq!(pos.column, 7); // Stayed at last character
-    }
-
-    // =========================================================================
-    // Mode Commands Tests
-    // =========================================================================
-
-    #[test]
-    fn test_mode_commands_execute_success() {
-        let mut ctx = create_test_context();
-        let args = CommandContext::new();
-
-        // Mode commands don't require buffer_id
-        assert_eq!(
-            EnterInsertMode.execute(&mut ctx, &args),
-            reovim_driver_command::CommandResult::Success
-        );
-        assert_eq!(
-            EnterInsertModeAppend.execute(&mut ctx, &args),
-            reovim_driver_command::CommandResult::Success
-        );
-        assert_eq!(
-            ExitToNormal.execute(&mut ctx, &args),
-            reovim_driver_command::CommandResult::Success
-        );
     }
 
     // =========================================================================
@@ -1121,259 +1027,6 @@ mod tests {
     fn test_paste_commands_count() {
         let cmds = paste_commands();
         assert_eq!(cmds.len(), 2);
-    }
-
-    // =========================================================================
-    // Change Command Tests
-    // =========================================================================
-
-    #[test]
-    fn test_change_line_command_id() {
-        let cmd = ChangeLine;
-        assert_eq!(cmd.id().name(), "change-line");
-    }
-
-    #[test]
-    fn test_change_to_eol_command_id() {
-        let cmd = ChangeToEndOfLine;
-        assert_eq!(cmd.id().name(), "change-to-eol");
-    }
-
-    #[test]
-    fn test_change_line_has_count_arg() {
-        let cmd = ChangeLine;
-        let args = cmd.args();
-        assert!(!args.is_empty());
-        assert_eq!(args[0].name, "count");
-        assert_eq!(args[0].kind, ArgKind::Count);
-    }
-
-    #[test]
-    fn test_change_line_no_buffer_returns_error() {
-        let mut ctx = KernelContext::default();
-        let args = CommandContext::new();
-        let result = ChangeLine.execute(&mut ctx, &args);
-        assert!(result.is_error());
-    }
-
-    #[test]
-    fn test_change_to_eol_no_buffer_returns_error() {
-        let mut ctx = KernelContext::default();
-        let args = CommandContext::new();
-        let result = ChangeToEndOfLine.execute(&mut ctx, &args);
-        assert!(result.is_error());
-    }
-
-    #[test]
-    fn test_change_line_single_line() {
-        let (mut ctx, _) = setup_buffer_context();
-
-        // Replace buffer with single line content
-        let buffer = Buffer::from_string("hello world");
-        let new_buffer_id = ctx.buffers.register(buffer);
-
-        let mut args = CommandContext::new();
-        args.set_buffer_id(new_buffer_id);
-        let result = ChangeLine.execute(&mut ctx, &args);
-        assert!(result.is_edit_action());
-
-        // Check buffer content - line should be empty
-        let buffer = ctx.buffers.get(new_buffer_id).unwrap();
-        assert_eq!(buffer.read().content(), "");
-
-        // Check register - should have deleted text as linewise
-        let registers = ctx.registers.read();
-        let content = registers.get().clone();
-        drop(registers);
-        assert!(content.is_linewise());
-        assert_eq!(content.text, "hello world\n");
-    }
-
-    #[test]
-    fn test_change_line_multi_line() {
-        let (mut ctx, buffer_id) = setup_buffer_context();
-        // setup_buffer_context gives us "line one\nline two\nline three"
-
-        let mut args = CommandContext::new();
-        args.set_buffer_id(buffer_id);
-        args.set("count", ArgValue::Count(2));
-        let result = ChangeLine.execute(&mut ctx, &args);
-        assert!(result.is_edit_action());
-
-        // Check register - should have deleted text as linewise
-        let registers = ctx.registers.read();
-        let content = registers.get().clone();
-        drop(registers);
-        assert!(content.is_linewise());
-        assert!(content.text.contains("line one"));
-        assert!(content.text.contains("line two"));
-    }
-
-    #[test]
-    fn test_change_line_empty_buffer() {
-        let mut ctx = create_test_context();
-        let buffer = Buffer::new();
-        let buffer_id = ctx.buffers.register(buffer);
-
-        let mut args = CommandContext::new();
-        args.set_buffer_id(buffer_id);
-        let result = ChangeLine.execute(&mut ctx, &args);
-        // Should succeed (enters insert mode on empty buffer)
-        assert!(result.is_success());
-    }
-
-    #[test]
-    fn test_change_to_eol_middle_of_line() {
-        let mut ctx = create_test_context();
-        let buffer = Buffer::from_string("hello world");
-        let buffer_id = ctx.buffers.register(buffer);
-
-        // Position cursor at column 6 (at 'w')
-        {
-            let buffer = ctx.buffers.get(buffer_id).unwrap();
-            buffer.write().set_position(Position::new(0, 6));
-        }
-
-        let mut args = CommandContext::new();
-        args.set_buffer_id(buffer_id);
-        let result = ChangeToEndOfLine.execute(&mut ctx, &args);
-        assert!(result.is_edit_action());
-
-        // Check buffer content - should have "hello "
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
-        assert_eq!(buffer.read().content(), "hello ");
-
-        // Check register - should have "world" as characterwise
-        let registers = ctx.registers.read();
-        let content = registers.get().clone();
-        drop(registers);
-        assert!(!content.is_linewise());
-        assert_eq!(content.text, "world");
-    }
-
-    #[test]
-    fn test_change_to_eol_at_start() {
-        let mut ctx = create_test_context();
-        let buffer = Buffer::from_string("hello world");
-        let buffer_id = ctx.buffers.register(buffer);
-
-        let mut args = CommandContext::new();
-        args.set_buffer_id(buffer_id);
-        let result = ChangeToEndOfLine.execute(&mut ctx, &args);
-        assert!(result.is_edit_action());
-
-        // Check buffer content - should be empty
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
-        assert_eq!(buffer.read().content(), "");
-
-        // Check register - should have "hello world" as characterwise
-        let registers = ctx.registers.read();
-        let content = registers.get().clone();
-        drop(registers);
-        assert!(!content.is_linewise());
-        assert_eq!(content.text, "hello world");
-    }
-
-    #[test]
-    fn test_change_to_eol_at_end_of_line() {
-        let mut ctx = create_test_context();
-        let buffer = Buffer::from_string("hello");
-        let buffer_id = ctx.buffers.register(buffer);
-
-        // Position cursor at end of line
-        {
-            let buffer = ctx.buffers.get(buffer_id).unwrap();
-            buffer.write().set_position(Position::new(0, 5));
-        }
-
-        let mut args = CommandContext::new();
-        args.set_buffer_id(buffer_id);
-        let result = ChangeToEndOfLine.execute(&mut ctx, &args);
-        // Should succeed but be a no-op (just enters insert mode)
-        assert!(result.is_success());
-
-        // Buffer should be unchanged
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
-        assert_eq!(buffer.read().content(), "hello");
-    }
-
-    #[test]
-    fn test_change_commands_count() {
-        let cmds = change_commands();
-        assert_eq!(cmds.len(), 2);
-    }
-
-    #[test]
-    fn test_all_commands_includes_change() {
-        let cmds = all_commands();
-        let has_change_line = cmds.iter().any(|c| c.id().name() == "change-line");
-        let has_change_to_eol = cmds.iter().any(|c| c.id().name() == "change-to-eol");
-        assert!(has_change_line);
-        assert!(has_change_to_eol);
-    }
-
-    #[test]
-    fn test_change_line_returns_edit_action() {
-        use reovim_driver_command::CommandResult;
-
-        let (mut ctx, buffer_id) = setup_buffer_context();
-
-        let mut args = CommandContext::new();
-        args.set_buffer_id(buffer_id);
-        let result = ChangeLine.execute(&mut ctx, &args);
-
-        // Verify EditAction returned for undo integration
-        assert!(result.is_edit_action());
-        if let CommandResult::EditAction(action) = result {
-            // EditAction should have non-empty edits
-            assert!(!action.edits.is_empty());
-            // Verify buffer_id is correct
-            assert_eq!(action.buffer_id, buffer_id);
-        } else {
-            panic!("Expected EditAction result");
-        }
-    }
-
-    #[test]
-    fn test_change_to_eol_returns_edit_action() {
-        use reovim_driver_command::CommandResult;
-
-        let mut ctx = create_test_context();
-        let buffer = Buffer::from_string("hello world");
-        let buffer_id = ctx.buffers.register(buffer);
-
-        let mut args = CommandContext::new();
-        args.set_buffer_id(buffer_id);
-        let result = ChangeToEndOfLine.execute(&mut ctx, &args);
-
-        // Verify EditAction returned for undo integration
-        assert!(result.is_edit_action());
-        if let CommandResult::EditAction(action) = result {
-            // EditAction should have non-empty edits
-            assert!(!action.edits.is_empty());
-            // Verify buffer_id is correct
-            assert_eq!(action.buffer_id, buffer_id);
-        } else {
-            panic!("Expected EditAction result");
-        }
-    }
-
-    #[test]
-    fn test_change_line_cursor_position_after() {
-        use reovim_driver_command::CommandResult;
-
-        let (mut ctx, buffer_id) = setup_buffer_context();
-
-        let mut args = CommandContext::new();
-        args.set_buffer_id(buffer_id);
-        let result = ChangeLine.execute(&mut ctx, &args);
-
-        // After cc, cursor should be at column 0
-        if let CommandResult::EditAction(action) = result {
-            assert_eq!(action.cursor_after.column, 0);
-        } else {
-            panic!("Expected EditAction result");
-        }
     }
 
     // =========================================================================

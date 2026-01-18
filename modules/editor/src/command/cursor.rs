@@ -17,7 +17,10 @@ use {
     reovim_kernel::api::v1::{CommandId, KernelContext, Position, events::CursorMoved},
 };
 
-use super::super::mode::EDITOR_MODULE;
+use reovim_kernel::api::v1::ModuleId;
+
+// Command module ID for editor commands.
+const EDITOR_MODULE: ModuleId = ModuleId::new("editor");
 
 /// Move cursor up.
 #[derive(Debug, Clone, Copy, Default)]

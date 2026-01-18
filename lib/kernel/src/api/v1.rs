@@ -117,7 +117,7 @@ pub use crate::core::{
 pub use crate::core::{Config, ConfigError, ConfigPaths, ConfigValue};
 
 // Mode and Command identity types
-pub use crate::core::{CommandId, Mode, ModeId, ModeStack};
+pub use crate::core::{CommandId, CursorStyle, Mode, ModeId, ModeStack};
 
 // ============================================================================
 // Block Operations (block/)

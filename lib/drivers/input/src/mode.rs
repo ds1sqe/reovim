@@ -522,6 +522,21 @@ mod tests {
     }
 
     #[test]
+    fn test_key_sequence_parse_unicode_emoji() {
+        // Test emoji parsing (#372)
+        let seq = KeySequence::parse("🎉").unwrap();
+        assert_eq!(seq.len(), 1);
+        assert_eq!(seq.as_slice()[0].code, KeyCode::Char('🎉'));
+
+        // Test emoji in sequence
+        let seq = KeySequence::parse("i🎉<Esc>").unwrap();
+        assert_eq!(seq.len(), 3);
+        assert_eq!(seq.as_slice()[0].code, KeyCode::Char('i'));
+        assert_eq!(seq.as_slice()[1].code, KeyCode::Char('🎉'));
+        assert_eq!(seq.as_slice()[2].code, KeyCode::Escape);
+    }
+
+    #[test]
     fn test_key_sequence_display() {
         let seq = KeySequence::from_keys(&[
             KeyEvent::new(KeyCode::Char('g')),

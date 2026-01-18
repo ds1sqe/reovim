@@ -9,7 +9,7 @@ use {
     reovim_kernel::api::v1::{CommandId, KeybindingRegistration, ModeId, ModuleId},
 };
 
-use crate::server::registry::KeymapRegistry;
+use crate::server::registry::{KeymapRegistry, ModeRegistry};
 
 /// Result of a wiring operation.
 pub type WiringResult = Result<WiringStats, WiringError>;
@@ -96,6 +96,7 @@ impl std::error::Error for WiringError {}
 /// * `module_id` - The ID of the module providing the keybindings
 /// * `keybindings` - The keybinding registrations from the module
 /// * `keymap_registry` - The registry to wire keybindings to
+/// * `mode_registry` - The registry to look up mode IDs from names
 ///
 /// # Returns
 ///
@@ -113,10 +114,15 @@ impl std::error::Error for WiringError {}
 /// Disabled keybindings (where `enabled == false`) are skipped.
 /// Non-required keybindings that fail to parse are skipped with a warning.
 /// Required keybindings that fail to parse return an error.
+///
+/// Mode names are looked up in the mode registry to get the correct `ModeId`
+/// with proper discriminant. If a mode is not found, it falls back to creating
+/// a `ModeId` with discriminant 0 (for forward compatibility with new modes).
 pub fn wire_module_keybindings(
     module_id: &ModuleId,
     keybindings: &[KeybindingRegistration],
     keymap_registry: &mut KeymapRegistry,
+    mode_registry: &ModeRegistry,
 ) -> WiringResult {
     let mut stats = WiringStats::new();
 
@@ -146,20 +152,20 @@ pub fn wire_module_keybindings(
         };
 
         // Build the command ID
-        // Convention: if command_id doesn't contain ':', it defaults to "editor" module
-        // since most commands (cursor movement, mode switching, etc.) are in the editor module.
-        // Keybinding modules (like keymap) provide bindings, editor provides commands.
+        // Convention: if command_id doesn't contain ':', it defaults to the registering module.
+        // This maintains proper decoupling - each module owns its commands.
+        // Cross-module references use fully qualified names (e.g., "editor:cursor-down").
         let command_id = if registration.command_id.contains(':') {
-            // Already fully qualified (e.g., "editor:cursor-down")
+            // Fully qualified (e.g., "editor:cursor-down", "motions:word-forward")
             let parts: Vec<&str> = registration.command_id.splitn(2, ':').collect();
             if parts.len() == 2 {
                 CommandId::new(ModuleId::from_string(parts[0].to_string()), parts[1])
             } else {
-                CommandId::new(ModuleId::new("editor"), registration.command_id)
+                CommandId::new(module_id.clone(), registration.command_id)
             }
         } else {
-            // Default to editor module for unqualified commands
-            CommandId::new(ModuleId::new("editor"), registration.command_id)
+            // Default to the registering module
+            CommandId::new(module_id.clone(), registration.command_id)
         };
 
         // Determine modes to register in
@@ -185,20 +191,39 @@ pub fn wire_module_keybindings(
             registration
                 .modes
                 .iter()
-                .map(|mode_name| {
+                .filter_map(|mode_name| {
                     // Mode names are typically "module:name" or just "name"
                     // If just "name", assume it's from the same module
-                    if mode_name.contains(':') {
+                    let (mode_module, mode_local) = if mode_name.contains(':') {
                         let parts: Vec<&str> = mode_name.splitn(2, ':').collect();
                         if parts.len() == 2 {
-                            ModeId::new(ModuleId::from_string(parts[0].to_string()), parts[1])
+                            (parts[0], parts[1])
                         } else {
-                            ModeId::new(module_id.clone(), mode_name)
+                            (module_id.as_str(), *mode_name)
                         }
                     } else {
                         // No explicit module prefix - use the registering module
-                        ModeId::new(module_id.clone(), mode_name)
-                    }
+                        (module_id.as_str(), *mode_name)
+                    };
+
+                    // Look up the mode in the registry to get the correct ModeId
+                    // with proper discriminant
+                    mode_registry
+                        .find_by_name(mode_module, mode_local)
+                        .map_or_else(
+                            || {
+                                // Mode not found - warn and skip this mode binding
+                                // This is more conservative than creating a ModeId with
+                                // discriminant 0, which would cause all modes to collide
+                                tracing::warn!(
+                                    module = %module_id,
+                                    mode = %mode_name,
+                                    "mode not found in registry, skipping binding"
+                                );
+                                None
+                            },
+                            |mode_id| Some(mode_id.clone()),
+                        )
                 })
                 .collect()
         };
@@ -223,8 +248,58 @@ pub fn wire_module_keybindings(
 mod tests {
     use {
         super::*,
-        reovim_kernel::api::v1::{KeybindingRegistration, RegistrationFlags},
+        reovim_kernel::api::v1::{CursorStyle, KeybindingRegistration, Mode, RegistrationFlags},
     };
+
+    /// Test module ID for test modes.
+    const TEST_MODULE: ModuleId = ModuleId::new("my-module");
+
+    /// Test mode enum implementing the Mode trait for testing.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    #[repr(u16)]
+    enum TestMode {
+        Command = 0,
+        Input = 1,
+        Selection = 2,
+    }
+
+    impl Mode for TestMode {
+        fn module() -> ModuleId {
+            TEST_MODULE
+        }
+
+        fn discriminant(&self) -> u16 {
+            *self as u16
+        }
+
+        fn display_name(&self) -> &'static str {
+            match self {
+                Self::Command => "command",
+                Self::Input => "input",
+                Self::Selection => "selection",
+            }
+        }
+
+        fn cursor_style(&self) -> CursorStyle {
+            match self {
+                Self::Input => CursorStyle::Bar,
+                _ => CursorStyle::Block,
+            }
+        }
+
+        fn accepts_char_input(&self) -> bool {
+            matches!(self, Self::Input)
+        }
+    }
+
+    /// Create a mode registry with test modes.
+    fn test_mode_registry() -> ModeRegistry {
+        let mut registry = ModeRegistry::new();
+        registry.register_mode(TestMode::Command);
+        registry.register_mode(TestMode::Input);
+        registry.register_mode(TestMode::Selection);
+        registry
+    }
 
     #[test]
     fn test_wiring_stats_new() {
@@ -269,15 +344,17 @@ mod tests {
 
     #[test]
     fn test_wire_module_keybindings_simple() {
-        let mut registry = KeymapRegistry::new();
+        let mut keymap_registry = KeymapRegistry::new();
+        let mode_registry = test_mode_registry();
         let module_id = ModuleId::new("my-module");
 
         let keybindings = vec![
-            KeybindingRegistration::new("j", "cursor-down").with_modes(&["normal"]),
-            KeybindingRegistration::new("k", "cursor-up").with_modes(&["normal"]),
+            KeybindingRegistration::new("j", "cursor-down").with_modes(&["command"]),
+            KeybindingRegistration::new("k", "cursor-up").with_modes(&["command"]),
         ];
 
-        let result = wire_module_keybindings(&module_id, &keybindings, &mut registry);
+        let result =
+            wire_module_keybindings(&module_id, &keybindings, &mut keymap_registry, &mode_registry);
 
         assert!(result.is_ok());
         let stats = result.unwrap();
@@ -287,16 +364,18 @@ mod tests {
 
     #[test]
     fn test_wire_module_keybindings_skips_disabled() {
-        let mut registry = KeymapRegistry::new();
+        let mut keymap_registry = KeymapRegistry::new();
+        let mode_registry = test_mode_registry();
         let module_id = ModuleId::new("my-module");
 
         let keybindings = vec![
             KeybindingRegistration::new("j", "cursor-down")
-                .with_modes(&["normal"])
+                .with_modes(&["command"])
                 .with_disabled(),
         ];
 
-        let result = wire_module_keybindings(&module_id, &keybindings, &mut registry);
+        let result =
+            wire_module_keybindings(&module_id, &keybindings, &mut keymap_registry, &mode_registry);
 
         assert!(result.is_ok());
         let stats = result.unwrap();
@@ -306,14 +385,16 @@ mod tests {
 
     #[test]
     fn test_wire_module_keybindings_invalid_keys_non_required() {
-        let mut registry = KeymapRegistry::new();
+        let mut keymap_registry = KeymapRegistry::new();
+        let mode_registry = test_mode_registry();
         let module_id = ModuleId::new("my-module");
 
         // Invalid key sequence but not required
         let keybindings =
-            vec![KeybindingRegistration::new("<INVALID_KEY>", "some-cmd").with_modes(&["normal"])];
+            vec![KeybindingRegistration::new("<INVALID_KEY>", "some-cmd").with_modes(&["command"])];
 
-        let result = wire_module_keybindings(&module_id, &keybindings, &mut registry);
+        let result =
+            wire_module_keybindings(&module_id, &keybindings, &mut keymap_registry, &mode_registry);
 
         assert!(result.is_ok());
         let stats = result.unwrap();
@@ -323,17 +404,19 @@ mod tests {
 
     #[test]
     fn test_wire_module_keybindings_invalid_keys_required() {
-        let mut registry = KeymapRegistry::new();
+        let mut keymap_registry = KeymapRegistry::new();
+        let mode_registry = test_mode_registry();
         let module_id = ModuleId::new("my-module");
 
         // Invalid key sequence and required
         let keybindings = vec![
             KeybindingRegistration::new("<INVALID_KEY>", "some-cmd")
-                .with_modes(&["normal"])
+                .with_modes(&["command"])
                 .with_flags(RegistrationFlags::required()),
         ];
 
-        let result = wire_module_keybindings(&module_id, &keybindings, &mut registry);
+        let result =
+            wire_module_keybindings(&module_id, &keybindings, &mut keymap_registry, &mode_registry);
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -342,13 +425,15 @@ mod tests {
 
     #[test]
     fn test_wire_module_keybindings_no_modes_non_required() {
-        let mut registry = KeymapRegistry::new();
+        let mut keymap_registry = KeymapRegistry::new();
+        let mode_registry = test_mode_registry();
         let module_id = ModuleId::new("my-module");
 
         // No modes specified (empty slice is the default)
         let keybindings = vec![KeybindingRegistration::new("j", "some-cmd")];
 
-        let result = wire_module_keybindings(&module_id, &keybindings, &mut registry);
+        let result =
+            wire_module_keybindings(&module_id, &keybindings, &mut keymap_registry, &mode_registry);
 
         assert!(result.is_ok());
         let stats = result.unwrap();
@@ -358,7 +443,8 @@ mod tests {
 
     #[test]
     fn test_wire_module_keybindings_no_modes_required() {
-        let mut registry = KeymapRegistry::new();
+        let mut keymap_registry = KeymapRegistry::new();
+        let mode_registry = test_mode_registry();
         let module_id = ModuleId::new("my-module");
 
         // No modes specified and required
@@ -366,7 +452,8 @@ mod tests {
             KeybindingRegistration::new("j", "some-cmd").with_flags(RegistrationFlags::required()),
         ];
 
-        let result = wire_module_keybindings(&module_id, &keybindings, &mut registry);
+        let result =
+            wire_module_keybindings(&module_id, &keybindings, &mut keymap_registry, &mode_registry);
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -375,14 +462,16 @@ mod tests {
 
     #[test]
     fn test_wire_module_keybindings_qualified_command_id() {
-        let mut registry = KeymapRegistry::new();
+        let mut keymap_registry = KeymapRegistry::new();
+        let mode_registry = test_mode_registry();
         let module_id = ModuleId::new("my-module");
 
         // Command ID with explicit module prefix
         let keybindings =
-            vec![KeybindingRegistration::new("j", "editor:cursor-down").with_modes(&["normal"])];
+            vec![KeybindingRegistration::new("j", "editor:cursor-down").with_modes(&["command"])];
 
-        let result = wire_module_keybindings(&module_id, &keybindings, &mut registry);
+        let result =
+            wire_module_keybindings(&module_id, &keybindings, &mut keymap_registry, &mode_registry);
 
         assert!(result.is_ok());
         let stats = result.unwrap();
@@ -391,25 +480,30 @@ mod tests {
 
     #[test]
     fn test_wire_module_keybindings_multiple_modes() {
-        let mut registry = KeymapRegistry::new();
+        let mut keymap_registry = KeymapRegistry::new();
+        let mode_registry = test_mode_registry();
         let module_id = ModuleId::new("my-module");
 
         // Same key in multiple modes
         let keybindings = vec![
-            KeybindingRegistration::new("<Esc>", "enter-normal").with_modes(&["insert", "visual"]),
+            KeybindingRegistration::new("<Esc>", "enter-command")
+                .with_modes(&["input", "selection"]),
         ];
 
-        let result = wire_module_keybindings(&module_id, &keybindings, &mut registry);
+        let result =
+            wire_module_keybindings(&module_id, &keybindings, &mut keymap_registry, &mode_registry);
 
         assert!(result.is_ok());
         let stats = result.unwrap();
         assert_eq!(stats.keybindings_wired, 1);
 
-        // Both modes should have the binding - using the registering module, not hardcoded "editor"
-        let insert_mode = ModeId::new(module_id.clone(), "insert");
-        let visual_mode = ModeId::new(module_id.clone(), "visual");
+        // Both modes should have the binding - look up the correct mode IDs from registry
+        let input_mode = mode_registry.find_by_name("my-module", "input").unwrap();
+        let selection_mode = mode_registry
+            .find_by_name("my-module", "selection")
+            .unwrap();
 
-        assert_eq!(registry.binding_count(&insert_mode), 1);
-        assert_eq!(registry.binding_count(&visual_mode), 1);
+        assert_eq!(keymap_registry.binding_count(input_mode), 1);
+        assert_eq!(keymap_registry.binding_count(selection_mode), 1);
     }
 }

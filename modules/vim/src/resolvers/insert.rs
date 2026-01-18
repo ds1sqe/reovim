@@ -11,7 +11,7 @@ use {
     reovim_kernel::api::v1::ModeId,
 };
 
-use reovim_module_editor::EditorMode;
+use crate::modes::VimMode;
 
 /// Vim insert mode key resolver.
 ///
@@ -44,7 +44,7 @@ impl VimInsertResolver {
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            mode_id: EditorMode::INSERT_ID,
+            mode_id: VimMode::INSERT_ID,
         }
     }
 
@@ -83,7 +83,7 @@ impl ModeKeyResolver for VimInsertResolver {
         // Escape exits insert mode
         if Self::is_escape(key) {
             return ResolveResult::ModeTransition(ModeTransition::Set {
-                mode: EditorMode::NORMAL_ID,
+                mode: VimMode::NORMAL_ID,
                 context: TransitionContext::new(),
             });
         }
@@ -126,13 +126,13 @@ mod tests {
     }
 
     fn test_state() -> ModeState {
-        ModeState::new(EditorMode::INSERT_ID)
+        ModeState::new(VimMode::INSERT_ID)
     }
 
     #[test]
     fn test_new_resolver() {
         let resolver = VimInsertResolver::new();
-        assert_eq!(resolver.mode_id(), &EditorMode::INSERT_ID);
+        assert_eq!(resolver.mode_id(), &VimMode::INSERT_ID);
     }
 
     #[test]
@@ -179,7 +179,7 @@ mod tests {
         let result = resolver.resolve(&KeyEvent::new(KeyCode::Escape), &mut state);
 
         if let ResolveResult::ModeTransition(ModeTransition::Set { mode, .. }) = result {
-            assert_eq!(mode, EditorMode::NORMAL_ID);
+            assert_eq!(mode, VimMode::NORMAL_ID);
         } else {
             panic!("expected ModeTransition::Set");
         }
@@ -193,7 +193,7 @@ mod tests {
         let result = resolver.resolve(&key_with_mod('[', Modifiers::CTRL), &mut state);
 
         if let ResolveResult::ModeTransition(ModeTransition::Set { mode, .. }) = result {
-            assert_eq!(mode, EditorMode::NORMAL_ID);
+            assert_eq!(mode, VimMode::NORMAL_ID);
         } else {
             panic!("expected ModeTransition::Set for Ctrl+[");
         }

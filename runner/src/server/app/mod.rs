@@ -14,7 +14,7 @@ mod visual;
 pub use {
     char_ops::{FindType, LastFind, PendingCharOp},
     cmdline::CommandLineState,
-    repeat::{InsertEntryType, MAX_INSERT_COUNT, PendingEditBatch, RepeatState},
+    repeat::{InsertEntryType, PendingEditBatch, RepeatState},
     search::{SearchDirection, SearchState},
     undotree::{DiffPreviewLine, UndotreeRenderLine, UndotreeState},
     visual::LastVisualSelection,

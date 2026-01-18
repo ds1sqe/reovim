@@ -68,7 +68,7 @@ pub async fn emit_state_changes(session: &Session, before: &StateSnapshot, after
     if before.mode != after.mode {
         let mode_info = session
             .with_state(|state| {
-                let display = state.mode_registry.status_text(&after.mode).to_string();
+                let display = state.mode_registry.display_name(&after.mode).to_string();
                 ModeInfo {
                     focus: "Editor".to_string(),
                     edit_mode: after.mode.name().to_string(),

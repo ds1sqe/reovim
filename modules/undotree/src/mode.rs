@@ -4,9 +4,9 @@
 //! navigation through the undo history with j/k/Enter/q keybindings.
 
 use {
-    reovim_driver_display::{CursorStyle, ModeDisplay},
+    reovim_driver_display::ModeDisplay,
     reovim_driver_input::ModeInput,
-    reovim_kernel::api::v1::{Mode, ModeId},
+    reovim_kernel::api::v1::{CursorStyle, Mode, ModeId, ModuleId},
 };
 
 use crate::UNDOTREE_MODULE;
@@ -24,28 +24,48 @@ pub struct UndotreeMode;
 
 impl UndotreeMode {
     /// Mode ID for the undotree navigation mode.
-    pub const ID: ModeId = ModeId::new(UNDOTREE_MODULE, "undotree");
+    pub const ID: ModeId = ModeId::with_discriminant(UNDOTREE_MODULE, "UNDOTREE", 0);
 }
 
 impl Mode for UndotreeMode {
+    fn module() -> ModuleId {
+        UNDOTREE_MODULE
+    }
+
+    fn discriminant(&self) -> u16 {
+        0
+    }
+
     fn id(&self) -> ModeId {
         Self::ID
+    }
+
+    fn display_name(&self) -> &'static str {
+        "UNDOTREE"
+    }
+
+    fn cursor_style(&self) -> CursorStyle {
+        CursorStyle::Block
+    }
+
+    fn accepts_char_input(&self) -> bool {
+        false
     }
 }
 
 impl ModeDisplay for UndotreeMode {
     fn cursor_style(&self) -> CursorStyle {
-        CursorStyle::Block
+        Mode::cursor_style(self)
     }
 
     fn status_text(&self) -> &'static str {
-        "UNDOTREE"
+        Mode::display_name(self)
     }
 }
 
 impl ModeInput for UndotreeMode {
     fn accepts_char_input(&self) -> bool {
-        false
+        Mode::accepts_char_input(self)
     }
 }
 
@@ -56,7 +76,7 @@ mod tests {
     #[test]
     fn test_undotree_mode_id() {
         let mode = UndotreeMode;
-        assert_eq!(mode.id(), UndotreeMode::ID);
+        assert_eq!(Mode::id(&mode), UndotreeMode::ID);
     }
 
     #[test]
@@ -66,24 +86,24 @@ mod tests {
 
     #[test]
     fn test_undotree_mode_id_name() {
-        assert_eq!(UndotreeMode::ID.name(), "undotree");
+        assert_eq!(UndotreeMode::ID.name(), "UNDOTREE");
     }
 
     #[test]
     fn test_undotree_mode_cursor_style() {
         let mode = UndotreeMode;
-        assert_eq!(mode.cursor_style(), CursorStyle::Block);
+        assert_eq!(<UndotreeMode as Mode>::cursor_style(&mode), CursorStyle::Block);
     }
 
     #[test]
     fn test_undotree_mode_status_text() {
         let mode = UndotreeMode;
-        assert_eq!(mode.status_text(), "UNDOTREE");
+        assert_eq!(<UndotreeMode as Mode>::display_name(&mode), "UNDOTREE");
     }
 
     #[test]
     fn test_undotree_mode_accepts_char_input() {
         let mode = UndotreeMode;
-        assert!(!mode.accepts_char_input());
+        assert!(!<UndotreeMode as Mode>::accepts_char_input(&mode));
     }
 }

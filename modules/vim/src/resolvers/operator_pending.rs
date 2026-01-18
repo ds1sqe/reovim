@@ -13,7 +13,7 @@ use {
     reovim_kernel::api::v1::{ModeId, Position},
 };
 
-use reovim_module_editor::EditorMode;
+use crate::modes::VimMode;
 
 /// Vim operator-pending mode key resolver.
 ///
@@ -68,8 +68,8 @@ impl VimOperatorPendingResolver {
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            mode_id: EditorMode::OPERATOR_PENDING_ID,
-            parent_mode_id: EditorMode::NORMAL_ID,
+            mode_id: VimMode::OPERATOR_PENDING_ID,
+            parent_mode_id: VimMode::NORMAL_ID,
             pending_count: RwLock::new(None),
             pending_keys: RwLock::new(KeySequence::new()),
         }
@@ -322,11 +322,11 @@ mod tests {
     }
 
     fn test_state() -> ModeState {
-        ModeState::new(EditorMode::OPERATOR_PENDING_ID)
+        ModeState::new(VimMode::OPERATOR_PENDING_ID)
     }
 
     fn test_state_with_operator(op_name: &'static str) -> ModeState {
-        let mut state = ModeState::new(EditorMode::OPERATOR_PENDING_ID);
+        let mut state = ModeState::new(VimMode::OPERATOR_PENDING_ID);
         state.transition_context = Some(TransitionContext::with_operator(CommandId::new(
             reovim_kernel::api::v1::ModuleId::new("editor"),
             op_name,
@@ -337,7 +337,7 @@ mod tests {
     #[test]
     fn test_new_resolver() {
         let resolver = VimOperatorPendingResolver::new();
-        assert_eq!(resolver.mode_id(), &EditorMode::OPERATOR_PENDING_ID);
+        assert_eq!(resolver.mode_id(), &VimMode::OPERATOR_PENDING_ID);
         assert!(resolver.pending_count().is_none());
     }
 
@@ -513,7 +513,7 @@ mod tests {
     fn resolve_input(keymap: &impl KeymapQuery) -> ResolveInput<'_> {
         // Keys are managed by resolver, so we pass empty sequence here
         static EMPTY_KEYS: KeySequence = KeySequence::new();
-        static MODE: ModeId = EditorMode::OPERATOR_PENDING_ID;
+        static MODE: ModeId = VimMode::OPERATOR_PENDING_ID;
         ResolveInput::new(&EMPTY_KEYS, &MODE, keymap)
     }
 

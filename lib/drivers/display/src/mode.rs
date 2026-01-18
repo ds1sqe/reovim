@@ -7,8 +7,8 @@
 //!
 //! | Layer | Responsibility |
 //! |-------|---------------|
-//! | Kernel | Identity: `Mode` trait, `ModeId` |
-//! | Display Driver (this) | Display: `ModeDisplay`, `CursorStyle` |
+//! | Kernel | Identity: `Mode` trait, `ModeId`, `CursorStyle` |
+//! | Display Driver (this) | Display: `ModeDisplay` (re-exports `CursorStyle`) |
 //! | Modules | Policy: actual mode implementations |
 //!
 //! # Example
@@ -43,44 +43,12 @@
 //! ```
 
 // ============================================================================
-// CursorStyle
+// CursorStyle (re-export from kernel)
 // ============================================================================
 
-/// Cursor display style.
-///
-/// Different modes typically use different cursor styles to provide
-/// visual feedback about the current mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub enum CursorStyle {
-    /// Block cursor (full cell, typical for Normal mode).
-    #[default]
-    Block,
-    /// Vertical bar cursor (thin line, typical for Insert mode).
-    Bar,
-    /// Underline cursor (horizontal line under the character).
-    Underline,
-    /// Hidden cursor (cursor not visible).
-    Hidden,
-}
-
-impl CursorStyle {
-    /// Check if the cursor is visible.
-    #[must_use]
-    pub const fn is_visible(&self) -> bool {
-        !matches!(self, Self::Hidden)
-    }
-
-    /// Get the style name for display.
-    #[must_use]
-    pub const fn name(&self) -> &'static str {
-        match self {
-            Self::Block => "block",
-            Self::Bar => "bar",
-            Self::Underline => "underline",
-            Self::Hidden => "hidden",
-        }
-    }
-}
+// Re-export CursorStyle from kernel - the kernel owns this type as part of
+// the Mode trait. Display driver re-exports for backwards compatibility.
+pub use reovim_kernel::api::v1::CursorStyle;
 
 // ============================================================================
 // ModeDisplay Trait
