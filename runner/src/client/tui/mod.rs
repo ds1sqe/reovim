@@ -60,6 +60,9 @@ impl TuiDebugConfig {
 }
 
 pub mod app;
+pub mod cli_executor;
+pub mod cli_panel;
+pub mod cli_render;
 pub mod input;
 pub mod log_buffer;
 pub mod log_panel;
@@ -68,6 +71,7 @@ pub mod render;
 
 pub use {
     app::TuiApp,
+    cli_panel::{CliHistoryEntry, CliPanelState, CliResult},
     input::InputHandler,
     log_buffer::{LevelColor, TuiLogBuffer, TuiLogEntry},
     log_panel::LogPanelState,

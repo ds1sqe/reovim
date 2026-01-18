@@ -28,6 +28,17 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- TUI local shortcuts, error display, and embedded CLI panel (#368)
+  - Error display: RPC errors shown in statusline (red, auto-clear after 5s)
+  - Prefix mode: `<C-b>` enters prefix mode (2s timeout, `^B-` indicator in debug mode)
+    - `<C-b>d` detaches from server without killing it
+    - `<C-b>;` toggles embedded CLI panel
+    - `<C-b><C-b>` sends literal Ctrl+B to server
+  - CLI panel: embedded command panel for quick commands
+    - Fire-and-forget commands: `keys`, `resize`, `open`, `kill`, `help`
+    - Command history navigation with Up/Down arrows
+    - Line editing: Left/Right, Home/End, Backspace, Delete
+
 - Unified debug flags in integrated mode (#364)
   - `reovim --debug` now works (previously only `reovim tui --debug`)
   - Added `--debug-dir` and `--debug-name` flags to main CLI

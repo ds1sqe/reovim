@@ -34,15 +34,21 @@ use crate::client::common::{
 use reovim_driver_display::{ColorMode, FrameRenderer, Style};
 
 use super::{
+    cli_executor,
+    cli_panel::CliPanelState,
+    cli_render::render_panel as render_cli_panel,
     input::InputHandler,
     log_buffer::{DEFAULT_TUI_LOG_CAPACITY, TuiLogBuffer},
     log_panel::LogPanelState,
-    log_render::render_panel,
+    log_render::render_panel as render_log_panel,
     render::Renderer,
 };
 
 /// Channel buffer size for server messages.
 const MESSAGE_CHANNEL_SIZE: usize = 256;
+
+/// Timeout for prefix mode (2 seconds).
+const PREFIX_TIMEOUT: Duration = Duration::from_millis(2000);
 
 /// Extract HH:MM:SS from an ISO 8601 timestamp.
 ///
@@ -110,6 +116,12 @@ struct TuiState {
     needs_redraw: bool,
     /// Loaded modules list.
     modules: Vec<String>,
+    /// Last key sent to server (for debug).
+    last_key: Option<String>,
+    /// Last RPC error message (for statusline display).
+    last_error: Option<String>,
+    /// When the error occurred (for auto-clear after 5 seconds).
+    error_timestamp: Option<Instant>,
 }
 
 /// TUI application.
@@ -134,6 +146,8 @@ pub struct TuiApp {
     log_buffer: TuiLogBuffer,
     /// Log panel state.
     log_panel: LogPanelState,
+    /// CLI panel state.
+    cli_panel: CliPanelState,
     /// Server log subscription ID.
     subscription_id: Option<u64>,
     /// Connected server address for statusline.
@@ -144,6 +158,10 @@ pub struct TuiApp {
     debug_log_file: Option<std::fs::File>,
     /// Last frame capture time.
     last_frame_capture: Instant,
+    /// Whether we're in prefix mode waiting for next key (e.g., after `<C-b>`).
+    prefix_mode: bool,
+    /// When prefix mode was entered (for timeout).
+    prefix_entered: Option<Instant>,
 }
 
 impl TuiApp {
@@ -159,6 +177,7 @@ impl TuiApp {
     /// # Errors
     ///
     /// Returns error if connection or initial state fetch fails.
+    #[allow(clippy::too_many_lines)]
     pub async fn connect(
         config: &ConnectionConfig,
         debug_config: Option<super::TuiDebugConfig>,
@@ -217,7 +236,7 @@ impl TuiApp {
         if let Ok(buffer_list) = client.call("buffer/list", json!({})).await
             && let Some(buffers) = buffer_list.get("buffers").and_then(|v| v.as_array())
             && let Some(first_buffer) = buffers.first()
-            && let Some(buffer_id) = first_buffer.get("id").and_then(|v| v.as_u64())
+            && let Some(buffer_id) = first_buffer.get("id").and_then(serde_json::Value::as_u64)
         {
             match client
                 .call("editor/set_active_buffer", json!({ "buffer_id": buffer_id }))
@@ -287,14 +306,20 @@ impl TuiApp {
                 buffer_modified: false,
                 needs_redraw: true,
                 modules,
+                last_key: None,
+                last_error: None,
+                error_timestamp: None,
             },
             log_buffer: TuiLogBuffer::new(DEFAULT_TUI_LOG_CAPACITY),
             log_panel: LogPanelState::new(),
+            cli_panel: CliPanelState::new(),
             subscription_id,
             server_address,
             debug_config,
             debug_log_file,
             last_frame_capture: Instant::now(),
+            prefix_mode: false,
+            prefix_entered: None,
         })
     }
 
@@ -407,6 +432,15 @@ impl TuiApp {
                 }
             }
 
+            // Auto-clear error after 5 seconds
+            if let Some(ts) = self.state.error_timestamp
+                && ts.elapsed() > Duration::from_secs(5)
+            {
+                self.state.last_error = None;
+                self.state.error_timestamp = None;
+                self.state.needs_redraw = true;
+            }
+
             // Render if needed
             if self.state.needs_redraw {
                 self.render().await?;
@@ -418,7 +452,72 @@ impl TuiApp {
     }
 
     /// Handle a key event.
+    #[allow(clippy::too_many_lines)]
     async fn handle_key_event(&mut self, key: crossterm::event::KeyEvent) -> Result<(), TuiError> {
+        // Check prefix timeout first
+        if self.prefix_mode
+            && let Some(entered) = self.prefix_entered
+            && entered.elapsed() > PREFIX_TIMEOUT
+        {
+            self.prefix_mode = false;
+            self.prefix_entered = None;
+            self.state.needs_redraw = true;
+            // Timeout - continue to normal handling
+        }
+
+        // Handle prefix mode keys
+        if self.prefix_mode {
+            self.prefix_mode = false;
+            self.prefix_entered = None;
+            self.state.needs_redraw = true;
+
+            return match key.code {
+                KeyCode::Char('d') => {
+                    // Detach: quit TUI without killing server
+                    tracing::info!("Detaching from server (prefix mode)");
+                    self.debug_log("Detach via <C-b>d");
+                    self.running = false;
+                    Ok(())
+                }
+                // <C-b>; toggles CLI panel
+                KeyCode::Char(';') => {
+                    self.cli_panel.toggle();
+                    self.state.needs_redraw = true;
+                    Ok(())
+                }
+                // <C-b><C-b> sends literal <C-b>
+                KeyCode::Char('b') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    self.send_keys("<C-b>").await?;
+                    Ok(())
+                }
+                KeyCode::Char('\x02') => {
+                    self.send_keys("<C-b>").await?;
+                    Ok(())
+                }
+                KeyCode::Esc => {
+                    // Cancel prefix mode
+                    Ok(())
+                }
+                _ => {
+                    // Unknown prefix command - ignore
+                    tracing::debug!("Unknown prefix command: {:?}", key.code);
+                    Ok(())
+                }
+            };
+        }
+
+        // Check for prefix mode entry (Ctrl+B)
+        // Handle both 'b' with CONTROL modifier and raw control character '\x02'
+        let is_ctrl_b = matches!(key.code, KeyCode::Char('b'))
+            && key.modifiers.contains(KeyModifiers::CONTROL)
+            || matches!(key.code, KeyCode::Char('\x02'));
+        if is_ctrl_b {
+            self.prefix_mode = true;
+            self.prefix_entered = Some(Instant::now());
+            self.state.needs_redraw = true;
+            return Ok(());
+        }
+
         // Check for quit (Ctrl+C or Ctrl+Q)
         if matches!(key.code, KeyCode::Char('c' | 'q'))
             && key.modifiers.contains(KeyModifiers::CONTROL)
@@ -432,6 +531,78 @@ impl TuiApp {
             self.log_panel.toggle();
             self.state.needs_redraw = true;
             return Ok(());
+        }
+
+        // Handle CLI panel keys when visible
+        if self.cli_panel.visible {
+            match key.code {
+                KeyCode::Esc => {
+                    self.cli_panel.hide();
+                    self.state.needs_redraw = true;
+                    return Ok(());
+                }
+                KeyCode::Enter => {
+                    if let Some(cmd) = self.cli_panel.submit() {
+                        // Check for clear command specially
+                        if cmd.trim() == "clear" {
+                            self.cli_panel.history.clear();
+                            self.state.needs_redraw = true;
+                            return Ok(());
+                        }
+                        let result =
+                            cli_executor::execute_command(&mut self.rpc_writer, &cmd).await;
+                        self.cli_panel.add_result(cmd, result);
+                        self.state.needs_redraw = true;
+                    }
+                    return Ok(());
+                }
+                KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    self.cli_panel.insert_char(c);
+                    self.state.needs_redraw = true;
+                    return Ok(());
+                }
+                KeyCode::Backspace => {
+                    self.cli_panel.backspace();
+                    self.state.needs_redraw = true;
+                    return Ok(());
+                }
+                KeyCode::Delete => {
+                    self.cli_panel.delete();
+                    self.state.needs_redraw = true;
+                    return Ok(());
+                }
+                KeyCode::Left => {
+                    self.cli_panel.move_cursor_left();
+                    self.state.needs_redraw = true;
+                    return Ok(());
+                }
+                KeyCode::Right => {
+                    self.cli_panel.move_cursor_right();
+                    self.state.needs_redraw = true;
+                    return Ok(());
+                }
+                KeyCode::Up => {
+                    self.cli_panel.history_prev();
+                    self.state.needs_redraw = true;
+                    return Ok(());
+                }
+                KeyCode::Down => {
+                    self.cli_panel.history_next();
+                    self.state.needs_redraw = true;
+                    return Ok(());
+                }
+                KeyCode::Home => {
+                    self.cli_panel.move_cursor_home();
+                    self.state.needs_redraw = true;
+                    return Ok(());
+                }
+                KeyCode::End => {
+                    self.cli_panel.move_cursor_end();
+                    self.state.needs_redraw = true;
+                    return Ok(());
+                }
+                _ => {} // Other keys pass through
+            }
         }
 
         // Handle log panel keys when visible
@@ -479,8 +650,8 @@ impl TuiApp {
 
         // Convert key to notation and send to server
         if let Some(keys) = InputHandler::key_to_notation(&key) {
+            self.state.last_key = Some(keys.clone());
             self.send_keys(&keys).await?;
-            // Note: We no longer refresh here - notifications will trigger updates
         }
 
         Ok(())
@@ -587,11 +758,14 @@ impl TuiApp {
 
     /// Handle a server response.
     ///
-    /// In notification-driven mode, responses are mostly informational.
-    #[allow(clippy::unused_self)] // Method signature for future expansion
-    fn handle_response(&self, response: RpcResponse) {
+    /// Captures RPC errors for statusline display (auto-clears after 5 seconds).
+    fn handle_response(&mut self, response: RpcResponse) {
         if let Some(error) = response.error {
-            tracing::warn!("RPC error for id={}: {}", response.id, error.message);
+            let msg = format!("RPC {}: {}", response.id, error.message);
+            tracing::warn!("{}", msg);
+            self.state.last_error = Some(msg);
+            self.state.error_timestamp = Some(Instant::now());
+            self.state.needs_redraw = true;
         }
         // State updates come via notifications, not responses
     }
@@ -658,18 +832,44 @@ impl TuiApp {
             }
         }
 
-        // Write log panel to frame buffer (if visible)
-        if self.log_panel.visible {
-            let panel_height = self.log_panel.height.min(height / 2);
-            let entries = self.log_buffer.entries();
-            let lines = render_panel(&entries, &self.log_panel, width, panel_height);
+        // Calculate panel heights and positions
+        let statusline_height: u16 = u16::from(self.debug_config.is_some());
+        let available_height = height.saturating_sub(statusline_height);
 
-            let panel_start = height.saturating_sub(panel_height);
+        // Write CLI panel to frame buffer (if visible)
+        let cli_panel_height = if self.cli_panel.visible {
+            let panel_height = self.cli_panel.height.min(available_height / 2);
+            let lines = render_cli_panel(&self.cli_panel, width, panel_height);
+
+            let panel_start = available_height.saturating_sub(panel_height);
             let default_style = Style::default();
             for (i, line) in lines.iter().enumerate() {
                 #[allow(clippy::cast_possible_truncation)]
                 let y = panel_start + i as u16;
-                if y < height {
+                if y < available_height {
+                    self.frame_renderer
+                        .buffer_mut()
+                        .write_str(0, y, line, &default_style);
+                }
+            }
+            panel_height
+        } else {
+            0
+        };
+
+        // Write log panel to frame buffer (if visible)
+        if self.log_panel.visible {
+            let max_log_height = available_height.saturating_sub(cli_panel_height);
+            let panel_height = self.log_panel.height.min(max_log_height / 2);
+            let entries = self.log_buffer.entries();
+            let lines = render_log_panel(&entries, &self.log_panel, width, panel_height);
+
+            let panel_start = available_height.saturating_sub(cli_panel_height + panel_height);
+            let default_style = Style::default();
+            for (i, line) in lines.iter().enumerate() {
+                #[allow(clippy::cast_possible_truncation)]
+                let y = panel_start + i as u16;
+                if y < available_height.saturating_sub(cli_panel_height) {
                     self.frame_renderer
                         .buffer_mut()
                         .write_str(0, y, line, &default_style);
@@ -699,7 +899,8 @@ impl TuiApp {
 
     /// Write debug statusline to frame buffer.
     ///
-    /// Uses inverse video style. Only writes if debug mode is enabled.
+    /// Shows error in red if present, otherwise normal status with inverse video.
+    /// Only writes if debug mode is enabled.
     fn write_statusline_to_buffer(&mut self) {
         if self.debug_config.is_none() {
             return;
@@ -712,14 +913,32 @@ impl TuiApp {
 
         let statusline_y = height.saturating_sub(1);
 
-        // Build statusline content
-        let now = chrono::Local::now();
-        let timestamp = now.format("%y-%m-%d %H:%M:%S %Z").to_string();
-        let server = &self.server_address;
-        let mode = self.state.mode_display.as_deref().unwrap_or("?");
-        let modules_count = self.state.modules.len();
+        // If error exists, show in red; otherwise show normal status
+        let (line, style) = if let Some(ref err) = self.state.last_error {
+            // Error statusline: red background
+            let err_line = format!("ERR: {err}");
+            let style = Style::default()
+                .bg(reovim_driver_display::Color::Red)
+                .fg(reovim_driver_display::Color::White);
+            (err_line, style)
+        } else {
+            // Normal statusline: inverse video
+            let now = chrono::Local::now();
+            let timestamp = now.format("%y-%m-%d %H:%M:%S %Z").to_string();
+            let server = &self.server_address;
+            let mode = self.state.mode_display.as_deref().unwrap_or("?");
+            let modules_count = self.state.modules.len();
+            let last_key = self.state.last_key.as_deref().unwrap_or("-");
+            let cursor = format!("{}:{}", self.state.cursor_line, self.state.cursor_column);
+            let prefix_indicator = if self.prefix_mode { "^B-" } else { "" };
 
-        let line = format!("{timestamp}|{server}|{mode}| m: {modules_count}");
+            let line = format!(
+                "{prefix_indicator}{timestamp}|{server}|{mode}|k:{last_key}|c:{cursor}|m:{modules_count}"
+            );
+            let style = Style::default().reverse();
+            (line, style)
+        };
+
         // Truncate or pad to width
         let display_line: String = if line.chars().count() > width as usize {
             line.chars().take(width as usize).collect()
@@ -727,11 +946,10 @@ impl TuiApp {
             format!("{:width$}", line, width = width as usize)
         };
 
-        // Write to frame buffer with inverse style
-        let inverse_style = Style::default().reverse();
+        // Write to frame buffer
         self.frame_renderer
             .buffer_mut()
-            .write_str(0, statusline_y, &display_line, &inverse_style);
+            .write_str(0, statusline_y, &display_line, &style);
     }
 
     /// Capture frame buffer to file if interval has elapsed.

@@ -34,6 +34,7 @@ use {
     Run as a headless server, connect with TUI, or use CLI commands for automation.\n\n\
     Without arguments, starts server and attaches TUI (tmux-like behavior)."
 )]
+#[allow(clippy::struct_excessive_bools)]
 struct Args {
     #[command(subcommand)]
     command: Option<Command>,
@@ -158,7 +159,8 @@ fn main() {
                 run_server(ServerConfig::tcp_with_fallback());
             } else {
                 // Integrated mode: start server + attach TUI
-                let debug_config = create_debug_config(args.debug, &args.debug_dir, &args.debug_name);
+                let debug_config =
+                    create_debug_config(args.debug, &args.debug_dir, &args.debug_name);
                 run_integrated(&args.files, debug_config);
             }
         }
@@ -201,6 +203,7 @@ fn build_legacy_server_config(args: &Args) -> ServerConfig {
 ///     └── TCP connect ←────────── READY 127.0.0.1:12521
 /// ```
 /// Create debug configuration from CLI flags.
+#[allow(clippy::ref_option)]
 fn create_debug_config(
     debug: bool,
     debug_dir: &Option<PathBuf>,
