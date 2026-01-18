@@ -39,6 +39,20 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
     - Command history navigation with Up/Down arrows
     - Line editing: Left/Right, Home/End, Backspace, Delete
 
+- CLI panel query commands with response correlation (#371)
+  - Query commands now work: `mode`, `cursor`, `screen`, `buffers`, `buffer`, `modules`
+  - Debug queries: `version`, `uptime`, `registers`, `marks`, `log-level`, `log-tail`
+  - Raw RPC: `call <method> [params]` for arbitrary server queries
+  - Pending state: yellow "Querying..." indicator while awaiting response
+  - Timeout: 10-second timeout with automatic error display
+  - Max 16 concurrent pending requests to prevent memory issues
+
+- CLI panel bug fixes and enhancements (#371)
+  - Fix: Unicode characters (Korean, Chinese, etc.) no longer cause panics
+  - Fix: Query command responses now routed correctly (fixes timeout issue)
+  - Panel now uses half screen height for better visibility
+  - Added PageUp/PageDown for history scrolling, Shift+G to scroll to bottom
+
 - Unified debug flags in integrated mode (#364)
   - `reovim --debug` now works (previously only `reovim tui --debug`)
   - Added `--debug-dir` and `--debug-name` flags to main CLI
