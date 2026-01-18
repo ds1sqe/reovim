@@ -4,6 +4,7 @@
 //! Uses concurrent notification handling with `tokio::select!`.
 
 use std::{
+    collections::HashMap,
     fmt::Write as _,
     io::{self, Write},
     time::{Duration, Instant},
@@ -49,6 +50,22 @@ const MESSAGE_CHANNEL_SIZE: usize = 256;
 
 /// Timeout for prefix mode (2 seconds).
 const PREFIX_TIMEOUT: Duration = Duration::from_millis(2000);
+
+/// Maximum concurrent pending CLI query requests.
+const MAX_PENDING_REQUESTS: usize = 16;
+
+/// Query timeout duration (10 seconds).
+const QUERY_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Tracks a pending RPC query for CLI panel correlation.
+struct PendingRequest {
+    /// The command (format key) that was executed.
+    command: String,
+    /// When the request was sent.
+    sent_at: Instant,
+    /// Index in `cli_panel.history` for updating result.
+    history_index: usize,
+}
 
 /// Extract HH:MM:SS from an ISO 8601 timestamp.
 ///
@@ -162,6 +179,8 @@ pub struct TuiApp {
     prefix_mode: bool,
     /// When prefix mode was entered (for timeout).
     prefix_entered: Option<Instant>,
+    /// Pending CLI query requests awaiting responses.
+    pending_requests: HashMap<u64, PendingRequest>,
 }
 
 impl TuiApp {
@@ -320,6 +339,7 @@ impl TuiApp {
             last_frame_capture: Instant::now(),
             prefix_mode: false,
             prefix_entered: None,
+            pending_requests: HashMap::new(),
         })
     }
 
@@ -441,6 +461,30 @@ impl TuiApp {
                 self.state.needs_redraw = true;
             }
 
+            // Check for timed-out pending CLI requests
+            {
+                use super::cli_panel::CliResult;
+
+                let now = Instant::now();
+                let timed_out: Vec<u64> = self
+                    .pending_requests
+                    .iter()
+                    .filter(|(_, req)| now.duration_since(req.sent_at) > QUERY_TIMEOUT)
+                    .map(|(id, _)| *id)
+                    .collect();
+
+                for id in timed_out {
+                    if let Some(pending) = self.pending_requests.remove(&id) {
+                        tracing::warn!("Query timeout for command: {}", pending.command);
+                        let _ = self.cli_panel.update_result(
+                            pending.history_index,
+                            CliResult::Err("Query timed out".to_string()),
+                        );
+                        self.state.needs_redraw = true;
+                    }
+                }
+            }
+
             // Render if needed
             if self.state.needs_redraw {
                 self.render().await?;
@@ -542,16 +586,71 @@ impl TuiApp {
                     return Ok(());
                 }
                 KeyCode::Enter => {
+                    use super::cli_panel::CliResult;
+
                     if let Some(cmd) = self.cli_panel.submit() {
                         // Check for clear command specially
                         if cmd.trim() == "clear" {
                             self.cli_panel.history.clear();
+                            self.pending_requests.clear(); // Clear stale pending refs
                             self.state.needs_redraw = true;
                             return Ok(());
                         }
-                        let result =
-                            cli_executor::execute_command(&mut self.rpc_writer, &cmd).await;
-                        self.cli_panel.add_result(cmd, result);
+
+                        match cli_executor::classify_command(&cmd) {
+                            cli_executor::CommandType::Local(result) => {
+                                self.cli_panel.add_result(cmd, result);
+                            }
+                            cli_executor::CommandType::FireAndForget => {
+                                let result = cli_executor::execute_fire_and_forget(
+                                    &mut self.rpc_writer,
+                                    &cmd,
+                                )
+                                .await;
+                                self.cli_panel.add_result(cmd, result);
+                            }
+                            cli_executor::CommandType::Query {
+                                method,
+                                params,
+                                format_key,
+                            } => {
+                                // Check pending request limit
+                                if self.pending_requests.len() >= MAX_PENDING_REQUESTS {
+                                    self.cli_panel.add_result(
+                                        cmd,
+                                        CliResult::Err("Too many pending requests".to_string()),
+                                    );
+                                } else {
+                                    // Send request
+                                    match self.rpc_writer.send_request(method, params).await {
+                                        Ok(id) => {
+                                            // Add pending entry to history
+                                            let history_index = self.cli_panel.history.len();
+                                            self.cli_panel.add_result(
+                                                cmd.clone(),
+                                                CliResult::Pending("Querying...".to_string()),
+                                            );
+
+                                            // Track for correlation
+                                            self.pending_requests.insert(
+                                                id,
+                                                PendingRequest {
+                                                    command: format_key.to_string(),
+                                                    sent_at: Instant::now(),
+                                                    history_index,
+                                                },
+                                            );
+                                        }
+                                        Err(e) => {
+                                            self.cli_panel.add_result(
+                                                cmd,
+                                                CliResult::Err(format!("Send error: {e}")),
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         self.state.needs_redraw = true;
                     }
                     return Ok(());
@@ -601,6 +700,25 @@ impl TuiApp {
                     self.state.needs_redraw = true;
                     return Ok(());
                 }
+                KeyCode::PageUp => {
+                    // Scroll up by roughly half the visible panel height
+                    let visible_height = (self.last_size.1 / 4) as usize;
+                    self.cli_panel.scroll_up(visible_height.max(5));
+                    self.state.needs_redraw = true;
+                    return Ok(());
+                }
+                KeyCode::PageDown => {
+                    // Scroll down by roughly half the visible panel height
+                    let visible_height = (self.last_size.1 / 4) as usize;
+                    self.cli_panel.scroll_down(visible_height.max(5));
+                    self.state.needs_redraw = true;
+                    return Ok(());
+                }
+                KeyCode::Char('G') if key.modifiers.contains(KeyModifiers::SHIFT) => {
+                    self.cli_panel.scroll_to_bottom();
+                    self.state.needs_redraw = true;
+                    return Ok(());
+                }
                 _ => {} // Other keys pass through
             }
         }
@@ -615,6 +733,18 @@ impl TuiApp {
                 }
                 KeyCode::Char('k') | KeyCode::Up => {
                     self.log_panel.scroll_up(1);
+                    self.state.needs_redraw = true;
+                    return Ok(());
+                }
+                KeyCode::PageUp => {
+                    let visible_height = (self.last_size.1 / 4) as usize;
+                    self.log_panel.scroll_up(visible_height.max(5));
+                    self.state.needs_redraw = true;
+                    return Ok(());
+                }
+                KeyCode::PageDown => {
+                    let visible_height = (self.last_size.1 / 4) as usize;
+                    self.log_panel.scroll_down(visible_height.max(5));
                     self.state.needs_redraw = true;
                     return Ok(());
                 }
@@ -759,7 +889,36 @@ impl TuiApp {
     /// Handle a server response.
     ///
     /// Captures RPC errors for statusline display (auto-clears after 5 seconds).
+    /// Routes responses to pending CLI query requests for correlation.
     fn handle_response(&mut self, response: RpcResponse) {
+        use super::{cli_executor::format_query_result, cli_panel::CliResult};
+
+        // Check if this is a tracked CLI query
+        if let Some(pending) = self.pending_requests.remove(&response.id) {
+            let result = if let Some(ref error) = response.error {
+                CliResult::Err(error.message.clone())
+            } else if let Some(ref result) = response.result {
+                // Format result based on command
+                let formatted = format_query_result(&pending.command, result);
+                CliResult::Ok(formatted)
+            } else {
+                CliResult::Err("No result returned".to_string())
+            };
+
+            // Update CLI history entry
+            // Note: Index may be invalid if history was cleared
+            let was_at_bottom = self.cli_panel.scroll_offset == 0;
+            if self.cli_panel.update_result(pending.history_index, result) {
+                // Only scroll to bottom if user was already at bottom
+                if was_at_bottom {
+                    self.cli_panel.scroll_offset = 0;
+                }
+                self.state.needs_redraw = true;
+            }
+            return;
+        }
+
+        // Existing error handling for non-query responses
         if let Some(error) = response.error {
             let msg = format!("RPC {}: {}", response.id, error.message);
             tracing::warn!("{}", msg);
@@ -767,7 +926,6 @@ impl TuiApp {
             self.state.error_timestamp = Some(Instant::now());
             self.state.needs_redraw = true;
         }
-        // State updates come via notifications, not responses
     }
 
     /// Render the current screen state.
@@ -838,7 +996,7 @@ impl TuiApp {
 
         // Write CLI panel to frame buffer (if visible)
         let cli_panel_height = if self.cli_panel.visible {
-            let panel_height = self.cli_panel.height.min(available_height / 2);
+            let panel_height = available_height / 2;
             let lines = render_cli_panel(&self.cli_panel, width, panel_height);
 
             let panel_start = available_height.saturating_sub(panel_height);
@@ -1096,19 +1254,20 @@ impl TuiApp {
     }
 
     /// Wait for screen content response from message channel.
+    ///
+    /// Routes non-screen responses to `handle_response()` for CLI query correlation.
     async fn wait_for_screen_content(&mut self) -> Result<String, TuiError> {
         while let Some(msg) = self.message_rx.recv().await {
             match msg {
                 ServerMessage::Response(response) => {
-                    if let Some(result) = response.result
+                    // Check if this is the screen content response
+                    if let Some(ref result) = response.result
                         && let Some(content) = result.get("content").and_then(|v| v.as_str())
                     {
                         return Ok(content.to_string());
                     }
-                    if let Some(error) = response.error {
-                        tracing::warn!("Screen content error: {}", error.message);
-                    }
-                    // If it's not the right response, we got our answer
+                    // Not screen content - route to handle_response for CLI query correlation
+                    self.handle_response(response);
                     return Ok(String::new());
                 }
                 ServerMessage::Notification(notification) => {

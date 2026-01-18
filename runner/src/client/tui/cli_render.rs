@@ -52,6 +52,10 @@ pub fn render_panel(state: &CliPanelState, width: u16, height: u16) -> Vec<Strin
             CliResult::Err(msg) => {
                 history_lines.push(format!("\x1b[31m  Error: {msg}\x1b[0m"));
             }
+            CliResult::Pending(msg) => {
+                // Yellow for pending state
+                history_lines.push(format!("\x1b[33m  {msg}\x1b[0m"));
+            }
         }
     }
 
@@ -82,34 +86,42 @@ pub fn render_panel(state: &CliPanelState, width: u16, height: u16) -> Vec<Strin
 }
 
 /// Render the input line with cursor.
+///
+/// Uses character-based indexing for proper Unicode support.
 fn render_input_line(state: &CliPanelState, width: u16) -> String {
     let prompt = "> ";
     let max_input_width = (width as usize).saturating_sub(prompt.len() + 1);
 
+    let char_count = state.input.chars().count();
+
     // Simple cursor rendering: show underscore at cursor position
-    if state.cursor_pos >= state.input.len() {
+    if state.cursor_pos >= char_count {
         // Cursor at end
-        let input = if state.input.len() > max_input_width {
+        let input: String = if char_count > max_input_width {
             // Truncate from start to show cursor
-            let start = state.input.len().saturating_sub(max_input_width);
-            &state.input[start..]
+            state
+                .input
+                .chars()
+                .skip(char_count.saturating_sub(max_input_width))
+                .collect()
         } else {
-            &state.input
+            state.input.clone()
         };
         format!("{prompt}{input}\x1b[7m \x1b[0m")
     } else {
         // Cursor in middle - highlight character at cursor
-        let (before, rest) = state.input.split_at(state.cursor_pos);
-        let cursor_char = rest.chars().next().unwrap_or(' ');
-        let after = &rest[cursor_char.len_utf8()..];
+        let before: String = state.input.chars().take(state.cursor_pos).collect();
+        let cursor_char = state.input.chars().nth(state.cursor_pos).unwrap_or(' ');
+        let after: String = state.input.chars().skip(state.cursor_pos + 1).collect();
 
-        // Truncate if needed
-        let display = format!("{before}\x1b[7m{cursor_char}\x1b[0m{after}");
-        if display.len() > max_input_width + 10 {
-            // Account for ANSI codes
-            format!("{prompt}...{}", &display[display.len().saturating_sub(max_input_width)..])
+        // Truncate if needed (count visible characters, not bytes)
+        let visible_len = before.chars().count() + 1 + after.chars().count();
+        if visible_len > max_input_width {
+            let display = format!("{before}\x1b[7m{cursor_char}\x1b[0m{after}");
+            // Simple truncation for now - could be improved
+            format!("{prompt}...{display}")
         } else {
-            format!("{prompt}{display}")
+            format!("{prompt}{before}\x1b[7m{cursor_char}\x1b[0m{after}")
         }
     }
 }
@@ -213,5 +225,21 @@ mod tests {
 
         let line = render_input_line(&state, 80);
         assert!(line.contains("he\x1b[7ml\x1b[0mlo")); // 'l' highlighted
+    }
+
+    #[test]
+    fn test_render_panel_with_pending() {
+        let mut state = CliPanelState::new();
+        state.add_result("mode".to_string(), CliResult::Pending("Querying...".to_string()));
+
+        let lines = render_panel(&state, 80, 10);
+        let combined = lines.join("\n");
+
+        // Should contain the command
+        assert!(combined.contains("mode"));
+        // Should contain yellow ANSI code for pending
+        assert!(combined.contains("\x1b[33m"));
+        // Should contain the pending message
+        assert!(combined.contains("Querying..."));
     }
 }
