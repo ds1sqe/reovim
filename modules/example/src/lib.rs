@@ -57,12 +57,57 @@ pub use {
     mode::ExampleMode,
 };
 
-use reovim_kernel::api::v1::ModuleId;
+use reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version};
 
 /// The module identifier for this example module.
 ///
 /// All modes and commands in this module are namespaced under this ID.
 pub const EXAMPLE_MODULE: ModuleId = ModuleId::new("example");
+
+/// Example module instance.
+///
+/// Demonstrates the kernel-driver architecture with sample modes and commands.
+pub struct ExampleModule;
+
+impl ExampleModule {
+    /// Create a new example module.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for ExampleModule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Module for ExampleModule {
+    fn id(&self) -> ModuleId {
+        EXAMPLE_MODULE
+    }
+
+    fn name(&self) -> &'static str {
+        "Example Module"
+    }
+
+    fn version(&self) -> Version {
+        Version::new(0, 9, 0)
+    }
+
+    fn init(&mut self, _ctx: &ModuleContext) -> ProbeResult {
+        ProbeResult::Success
+    }
+
+    fn exit(&mut self) -> Result<(), ModuleError> {
+        Ok(())
+    }
+}
+
+// Generate FFI entry points for dynamic loading (only when building standalone cdylib)
+#[cfg(feature = "dynamic")]
+reovim_module_macros::declare_module!(ExampleModule);
 
 // ============================================================================
 // Tests

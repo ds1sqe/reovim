@@ -60,6 +60,20 @@ pub fn commands() -> Vec<Box<dyn CommandHandler>> {
 /// Commands module instance.
 pub struct CommandsModule;
 
+impl CommandsModule {
+    /// Create a new commands module.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for CommandsModule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Module for CommandsModule {
     fn id(&self) -> ModuleId {
         ModuleId::new("commands")
@@ -81,6 +95,10 @@ impl Module for CommandsModule {
         Ok(())
     }
 }
+
+// Generate FFI entry points for dynamic loading (only when building standalone cdylib)
+#[cfg(feature = "dynamic")]
+reovim_module_macros::declare_module!(CommandsModule);
 
 #[cfg(test)]
 mod tests {

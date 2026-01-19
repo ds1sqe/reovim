@@ -159,6 +159,10 @@ pub const fn empty_session_handler() -> scratch_buffer::ScratchBufferHandler {
     scratch_buffer::ScratchBufferHandler
 }
 
+// Generate FFI entry points for dynamic loading (only when building standalone cdylib)
+#[cfg(feature = "dynamic")]
+reovim_module_macros::declare_module!(DefaultsModule);
+
 #[cfg(test)]
 mod tests {
     use super::*;

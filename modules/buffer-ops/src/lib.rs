@@ -120,10 +120,9 @@ impl Module for BufferOps {
     }
 }
 
-// Note: declare_module! is NOT used here because this module is statically linked.
-// The macro generates FFI entry points with fixed symbol names that conflict when
-// multiple modules are linked into the same binary. It's only needed for dynamic
-// loading via libloading.
+// Generate FFI entry points for dynamic loading (only when building standalone cdylib)
+#[cfg(feature = "dynamic")]
+reovim_module_macros::declare_module!(BufferOps);
 
 #[cfg(test)]
 mod tests {

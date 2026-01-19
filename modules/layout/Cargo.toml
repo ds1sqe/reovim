@@ -7,9 +7,14 @@ description = "Window layout module for reovim - tiling, splits, and focus navig
 license = "AGPL-3.0-only"
 
 [lib]
-crate-type = ["rlib"]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+dynamic = []  # Enable FFI entry points for standalone dynamic loading
 
 [dependencies]
 reovim-kernel = { path = "../../lib/kernel" }
+reovim-module-macros = { path = "../../lib/module-macros" }
 reovim-driver-display = { path = "../../lib/drivers/display" }
 reovim-driver-command = { path = "../../lib/drivers/command" }

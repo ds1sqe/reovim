@@ -1254,6 +1254,7 @@ name = "reovim-module-buffer-ops"
 version = "0.9.1-dev"
 dependencies = [
  "reovim-kernel",
+ "reovim-module-macros",
 ]
 
 [[package]]
@@ -1261,6 +1262,7 @@ name = "reovim-module-commands"
 version = "0.9.1-dev"
 dependencies = [
  "reovim-kernel",
+ "reovim-module-macros",
 ]
 
 [[package]]
@@ -1271,6 +1273,7 @@ dependencies = [
  "reovim-kernel",
  "reovim-module-commands",
  "reovim-module-keymap",
+ "reovim-module-macros",
  "reovim-module-operators",
  "reovim-module-scratch-buffer",
  "reovim-module-vim",
@@ -1285,6 +1288,7 @@ dependencies = [
  "reovim-driver-input",
  "reovim-driver-vfs",
  "reovim-kernel",
+ "reovim-module-macros",
  "reovim-module-operators",
  "unicode-width",
 ]
@@ -1297,6 +1301,7 @@ dependencies = [
  "reovim-driver-display",
  "reovim-driver-input",
  "reovim-kernel",
+ "reovim-module-macros",
 ]
 
 [[package]]
@@ -1313,6 +1318,7 @@ name = "reovim-module-keymap"
 version = "0.9.1-dev"
 dependencies = [
  "reovim-kernel",
+ "reovim-module-macros",
 ]
 
 [[package]]
@@ -1322,6 +1328,7 @@ dependencies = [
  "reovim-driver-command",
  "reovim-driver-display",
  "reovim-kernel",
+ "reovim-module-macros",
 ]
 
 [[package]]
@@ -1339,6 +1346,7 @@ name = "reovim-module-mode-manager"
 version = "0.9.1-dev"
 dependencies = [
  "reovim-kernel",
+ "reovim-module-macros",
 ]
 
 [[package]]
@@ -1347,6 +1355,7 @@ version = "0.9.1-dev"
 dependencies = [
  "reovim-driver-command",
  "reovim-kernel",
+ "reovim-module-macros",
 ]
 
 [[package]]
@@ -1354,6 +1363,7 @@ name = "reovim-module-operators"
 version = "0.9.1-dev"
 dependencies = [
  "reovim-kernel",
+ "reovim-module-macros",
 ]
 
 [[package]]
@@ -1361,6 +1371,7 @@ name = "reovim-module-options"
 version = "0.9.1-dev"
 dependencies = [
  "reovim-kernel",
+ "reovim-module-macros",
 ]
 
 [[package]]
@@ -1368,6 +1379,8 @@ name = "reovim-module-scratch-buffer"
 version = "0.9.0"
 dependencies = [
  "reovim-driver-session",
+ "reovim-kernel",
+ "reovim-module-macros",
 ]
 
 [[package]]
@@ -1376,6 +1389,7 @@ version = "0.9.1-dev"
 dependencies = [
  "reovim-driver-command",
  "reovim-kernel",
+ "reovim-module-macros",
 ]
 
 [[package]]
@@ -1386,6 +1400,7 @@ dependencies = [
  "reovim-driver-display",
  "reovim-driver-input",
  "reovim-kernel",
+ "reovim-module-macros",
 ]
 
 [[package]]
@@ -1407,6 +1422,7 @@ name = "reovim-module-window-ops"
 version = "0.9.1-dev"
 dependencies = [
  "reovim-kernel",
+ "reovim-module-macros",
 ]
 
 [[package]]

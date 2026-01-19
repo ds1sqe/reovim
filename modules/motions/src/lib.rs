@@ -40,6 +40,20 @@ pub const MOTIONS_MODULE: ModuleId = ModuleId::new("motions");
 /// Motions module instance.
 pub struct MotionsModule;
 
+impl MotionsModule {
+    /// Create a new motions module.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for MotionsModule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Module for MotionsModule {
     fn id(&self) -> ModuleId {
         MOTIONS_MODULE
@@ -72,6 +86,10 @@ impl CommandProvider for MotionsModule {
         handlers
     }
 }
+
+// Generate FFI entry points for dynamic loading (only when building standalone cdylib)
+#[cfg(feature = "dynamic")]
+reovim_module_macros::declare_module!(MotionsModule);
 
 #[cfg(test)]
 mod tests {

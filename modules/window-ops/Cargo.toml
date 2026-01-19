@@ -7,7 +7,12 @@ description = "Window operations module for reovim"
 license = "AGPL-3.0-only"
 
 [lib]
-crate-type = ["rlib"]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+dynamic = []  # Enable FFI entry points for standalone dynamic loading
 
 [dependencies]
 reovim-kernel = { path = "../../lib/kernel" }
+reovim-module-macros = { path = "../../lib/module-macros" }

@@ -38,7 +38,6 @@
 use {
     reovim_driver_command::{CommandHandler, CommandProvider},
     reovim_kernel::api::v1::*,
-    reovim_module_macros::declare_module,
 };
 
 pub mod bindings;
@@ -153,8 +152,9 @@ impl CommandProvider for VimModule {
     }
 }
 
-// Generate FFI entry points for dynamic loading
-declare_module!(VimModule);
+// Generate FFI entry points for dynamic loading (only when building standalone cdylib)
+#[cfg(feature = "dynamic")]
+reovim_module_macros::declare_module!(VimModule);
 
 #[cfg(test)]
 mod tests {

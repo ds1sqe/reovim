@@ -239,7 +239,10 @@ use crate::buffer_manager::SimpleBufferManager;
 
 use {
     client::Client,
-    module::{ModuleConfig, ModuleManager, wire_module_commands, wire_module_keybindings},
+    module::{
+        ModuleConfig, ModuleLoader, ModuleManager, load_from_config, wire_module_commands,
+        wire_module_keybindings,
+    },
     registry::{CommandRegistry, EmptySessionHandlerRegistry, KeymapRegistry, ModeRegistry},
     rpc::{RpcContext, RpcDispatcher, create_default_dispatcher},
     session::{Session, SessionId, SessionRegistry},
@@ -811,37 +814,11 @@ impl Server {
             "Loading modules"
         );
 
-        // Discover available modules in search paths
+        // Note: Actual module loading now happens in `build_default_registries()`
+        // via `load_from_config()`, which tries dynamic loading first and falls
+        // back to static modules. This function just logs the config-based intent.
         let search_paths = merged.all_search_paths_with_env();
         tracing::debug!(paths = ?search_paths, "Module search paths");
-
-        let discovered = self.module_registry.discover();
-        tracing::debug!(count = discovered.len(), "Discovered module files");
-
-        // Load each module (actual loading deferred to #265)
-        // For now, log what would be loaded
-        for module_id in &modules_to_load {
-            // Check if module exists in discovered modules by name
-            let found = discovered.iter().any(|path| {
-                path.file_stem()
-                    .and_then(|s| s.to_str())
-                    .is_some_and(|name| name.contains(module_id))
-            });
-
-            if found {
-                tracing::debug!(module = %module_id, "Module available for loading");
-            } else {
-                tracing::warn!(module = %module_id, "Module not found in search paths");
-            }
-        }
-
-        // TODO (#265): Actually load discovered modules
-        // The full implementation requires:
-        // 1. Matching discovered modules to autoload list
-        // 2. Creating proper ModuleContext with data/cache dirs
-        // 3. Calling self.module_registry.load_by_name(&module_id)
-        // 4. Calling self.module_registry.init_all(&ctx)
-        // 5. Wiring handlers for initialized modules
     }
 
     /// Merge file config with CLI arguments.
@@ -969,35 +946,56 @@ fn handle_empty_session(kernel: &KernelContext, registry: &EmptySessionHandlerRe
     }
 }
 
+/// Static module factory - creates module instances by name.
+///
+/// This is the fallback for modules not found in dynamic search paths.
+/// Returns `None` if the module name is unknown.
+fn static_module_factory(name: &str) -> Option<Box<dyn Module>> {
+    match name {
+        "keymap" => Some(Box::new(KeymapModule)),
+        "vim" => Some(Box::new(VimModule::new())),
+        "motions" => Some(Box::new(MotionsModule)),
+        "operators" => Some(Box::new(OperatorsModule)),
+        "commands" => Some(Box::new(CommandsModule)),
+        "editor" => Some(Box::new(EditorModule)),
+        _ => None,
+    }
+}
+
 /// Build default registries with keybindings wired from default modules.
 ///
 /// This is the "generation position" where modules are registered and
 /// their keybindings are wired to the session registries.
+///
+/// Module loading follows this precedence:
+/// 1. Dynamic modules from XDG paths (`~/.local/share/reovim/modules/`)
+/// 2. Static fallback for modules not found in paths
 #[allow(clippy::too_many_lines)]
 fn build_default_registries() -> (ModeRegistry, CommandRegistry, KeymapRegistry, ModuleManager) {
     let mut mode_registry = ModeRegistry::new();
     let mut command_registry = CommandRegistry::new();
     let mut keymap_registry = KeymapRegistry::new();
-    let module_manager = ModuleManager::new();
 
-    // Register static modules with ModuleManager so they appear in module/list
-    // These are the core modules that provide vim-like functionality
-    if let Err(e) = module_manager.register(KeymapModule) {
-        tracing::warn!(error = %e, "failed to register keymap module");
-    }
-    if let Err(e) = module_manager.register(VimModule) {
-        tracing::warn!(error = %e, "failed to register vim module");
-    }
-    if let Err(e) = module_manager.register(MotionsModule) {
-        tracing::warn!(error = %e, "failed to register motions module");
-    }
-    if let Err(e) = module_manager.register(OperatorsModule) {
-        tracing::warn!(error = %e, "failed to register operators module");
-    }
-    if let Err(e) = module_manager.register(CommandsModule) {
-        tracing::warn!(error = %e, "failed to register commands module");
-    }
-    tracing::info!(count = 5, "registered static modules");
+    // Load module configuration from ~/.config/reovim/config.toml
+    let module_config = ModuleConfig::load().unwrap_or_else(|e| {
+        tracing::warn!(error = %e, "failed to load module config, using defaults");
+        ModuleConfig::default()
+    });
+
+    // Create module loader and load modules from config
+    let mut loader = ModuleLoader::new();
+    let load_stats = load_from_config(&mut loader, &module_config, Some(static_module_factory));
+
+    tracing::info!(
+        dynamic = load_stats.dynamic_loaded.len(),
+        static_ = load_stats.static_loaded.len(),
+        not_found = load_stats.not_found.len(),
+        failed = load_stats.failed.len(),
+        "loaded modules from config"
+    );
+
+    // Create ModuleManager from the loader
+    let module_manager = ModuleManager::with_loader(loader);
 
     // Register Vim modes (so ModeRegistry knows about them)
     // Each mode provides Mode (identity), ModeDisplay (cursor), and ModeInput (accepts char)

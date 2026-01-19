@@ -96,6 +96,10 @@ impl Module for KeymapModule {
     }
 }
 
+// Generate FFI entry points for dynamic loading (only when building standalone cdylib)
+#[cfg(feature = "dynamic")]
+reovim_module_macros::declare_module!(KeymapModule);
+
 #[cfg(test)]
 mod tests {
     use super::*;
