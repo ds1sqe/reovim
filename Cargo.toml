@@ -19,6 +19,7 @@ members = [
     "lib/drivers/trace",
     "lib/drivers/ffi",
     "lib/drivers/ffi-python",
+    "lib/drivers/session",
 
     # Platform abstraction
     "lib/arch",

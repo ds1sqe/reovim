@@ -25,6 +25,7 @@ reovim-kernel = { path = "../lib/kernel" }
 reovim-driver-command = { path = "../lib/drivers/command" }
 reovim-driver-display = { path = "../lib/drivers/display" }
 reovim-driver-input = { path = "../lib/drivers/input" }
+reovim-driver-session = { path = "../lib/drivers/session" }
 reovim-driver-vfs = { path = "../lib/drivers/vfs" }
 
 # Default modules (statically linked for core functionality)
@@ -40,6 +41,9 @@ reovim-module-layout = { path = "../modules/layout" }
 
 # Undotree module for rendering
 reovim-module-undotree = { path = "../modules/undotree" }
+
+# Scratch buffer handler for empty sessions
+reovim-module-scratch-buffer = { path = "../modules/scratch-buffer" }
 
 # Protocol (shared RPC types)
 reovim-protocol = { path = "../lib/protocol" }

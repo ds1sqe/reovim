@@ -26,7 +26,10 @@ pub use {
     flags::RegistrationFlags,
     id::ModuleId,
     probe::ModuleProbe,
-    registration::{CommandRegistration, EventHandlerRegistration, KeybindingRegistration},
+    registration::{
+        CommandRegistration, EmptySessionHandlerRegistration, EventHandlerRegistration,
+        KeybindingRegistration,
+    },
     state::{ModuleInfo, ModuleState},
 };
 
@@ -188,6 +191,28 @@ pub trait Module: Send + Sync + 'static {
 
     /// Get event handler registrations.
     fn event_handlers(&self) -> Vec<EventHandlerRegistration> {
+        Vec::new()
+    }
+
+    /// Get empty session handler registrations.
+    ///
+    /// Modules return handler registrations here to participate in
+    /// empty session handling. When a session starts with no buffers,
+    /// the runner calls handlers in priority order until one returns
+    /// an action.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// fn empty_session_handlers(&self) -> Vec<EmptySessionHandlerRegistration> {
+    ///     vec![
+    ///         EmptySessionHandlerRegistration::new("my-module:welcome")
+    ///             .with_description("Show welcome screen")
+    ///             .with_priority(50),
+    ///     ]
+    /// }
+    /// ```
+    fn empty_session_handlers(&self) -> Vec<EmptySessionHandlerRegistration> {
         Vec::new()
     }
 

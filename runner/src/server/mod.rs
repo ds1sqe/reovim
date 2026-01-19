@@ -230,6 +230,7 @@ use {
     reovim_module_keymap::KeymapModule,
     reovim_module_motions::MotionsModule,
     reovim_module_operators::OperatorsModule,
+    reovim_module_scratch_buffer::ScratchBufferHandler,
     reovim_module_vim::{VimMode, VimModule},
     reovim_protocol::v1::{RpcError, RpcRequest, RpcResponse},
 };
@@ -239,11 +240,13 @@ use crate::buffer_manager::SimpleBufferManager;
 use {
     client::Client,
     module::{ModuleConfig, ModuleManager, wire_module_commands, wire_module_keybindings},
-    registry::{CommandRegistry, KeymapRegistry, ModeRegistry},
+    registry::{CommandRegistry, EmptySessionHandlerRegistry, KeymapRegistry, ModeRegistry},
     rpc::{RpcContext, RpcDispatcher, create_default_dispatcher},
     session::{Session, SessionId, SessionRegistry},
     transport::{TransportListener, TransportReader, TransportWriter},
 };
+
+use reovim_driver_session::{EmptySessionAction, EmptySessionContext};
 
 /// Transport configuration for the server.
 ///
@@ -894,9 +897,16 @@ fn create_session_with_defaults(id: SessionId) -> Arc<Session> {
         .cloned()
         .unwrap_or_else(fallback_default_mode);
 
+    // Create kernel context
+    let kernel = real_kernel_context();
+
+    // Handle empty session: create buffer if handlers indicate so
+    let empty_session_registry = build_empty_session_registry();
+    handle_empty_session(&kernel, &empty_session_registry);
+
     Session::with_registries(
         id,
-        real_kernel_context(),
+        kernel,
         initial_mode,
         standard_vfs(),
         mode_registry,
@@ -904,6 +914,58 @@ fn create_session_with_defaults(id: SessionId) -> Arc<Session> {
         keymap_registry,
         module_registry,
     )
+}
+
+/// Build the empty session handler registry.
+///
+/// Collects handlers that determine what happens when a session
+/// starts with no buffers. The scratch buffer handler creates an
+/// empty buffer so the user has something to edit immediately.
+fn build_empty_session_registry() -> EmptySessionHandlerRegistry {
+    let mut registry = EmptySessionHandlerRegistry::new();
+
+    // Register the scratch buffer handler
+    // This creates an empty buffer when no files are specified
+    registry.register(Arc::new(ScratchBufferHandler));
+
+    tracing::debug!(handlers = registry.len(), "built empty session handler registry");
+
+    registry
+}
+
+/// Handle empty session by calling registered handlers.
+///
+/// If no buffers exist and a handler returns `CreateBuffer`, creates
+/// the buffer in the kernel context. This runs synchronously at session
+/// startup.
+fn handle_empty_session(kernel: &KernelContext, registry: &EmptySessionHandlerRegistry) {
+    // Check if session already has buffers
+    if kernel.buffers.count() > 0 {
+        return;
+    }
+
+    // No file args for now (CLI file opening is separate)
+    let file_args: Vec<String> = Vec::new();
+    let cwd = std::env::current_dir().unwrap_or_default();
+
+    let ctx = EmptySessionContext {
+        session_id: 0, // Session ID not used in current handlers
+        file_args: &file_args,
+        cwd: &cwd,
+    };
+
+    if let Some(EmptySessionAction::CreateBuffer { name: _, content }) = registry.resolve(&ctx) {
+        let buffer_id = kernel.buffers.create();
+        if !content.is_empty()
+            && let Some(buffer) = kernel.buffers.get(buffer_id)
+        {
+            buffer.write().set_content(&content);
+        }
+        tracing::info!(
+            buffer_id = buffer_id.as_usize(),
+            "Created initial buffer for empty session"
+        );
+    }
 }
 
 /// Build default registries with keybindings wired from default modules.

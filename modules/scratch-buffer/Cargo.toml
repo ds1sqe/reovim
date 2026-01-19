@@ -1,0 +1,12 @@
+[package]
+name = "reovim-module-scratch-buffer"
+version = "0.9.0"
+edition = "2024"
+description = "Scratch buffer handler for reovim - creates empty buffer on startup"
+rust-version = "1.85"
+
+[dependencies]
+reovim-driver-session = { path = "../../lib/drivers/session" }
+
+[lints]
+workspace = true

@@ -1097,6 +1097,7 @@ dependencies = [
  "reovim-driver-display",
  "reovim-driver-ffi-python",
  "reovim-driver-input",
+ "reovim-driver-session",
  "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-commands",
@@ -1106,6 +1107,7 @@ dependencies = [
  "reovim-module-layout",
  "reovim-module-motions",
  "reovim-module-operators",
+ "reovim-module-scratch-buffer",
  "reovim-module-undotree",
  "reovim-module-vim",
  "reovim-protocol",
@@ -1212,6 +1214,10 @@ dependencies = [
  "serde",
  "serde_json",
 ]
+
+[[package]]
+name = "reovim-driver-session"
+version = "0.9.0"
 
 [[package]]
 name = "reovim-driver-syntax"
@@ -1353,6 +1359,13 @@ name = "reovim-module-options"
 version = "0.9.1-dev"
 dependencies = [
  "reovim-kernel",
+]
+
+[[package]]
+name = "reovim-module-scratch-buffer"
+version = "0.9.0"
+dependencies = [
+ "reovim-driver-session",
 ]
 
 [[package]]

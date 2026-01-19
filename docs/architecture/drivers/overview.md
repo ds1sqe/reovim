@@ -13,6 +13,7 @@ Drivers (`lib/drivers/*`) implement traits defined by the kernel. Each driver is
 | `lsp/` | `reovim-driver-lsp` | LSP client infrastructure | [lsp/overview.md](./lsp/overview.md) |
 | `net/` | `reovim-driver-net` | RPC server, transports | [net/overview.md](./net/overview.md) |
 | `vfs/` | `reovim-driver-vfs` | Virtual filesystem | [vfs/overview.md](./vfs/overview.md) |
+| `session/` | `reovim-driver-session` | Session management traits | [session/overview.md](./session/overview.md) |
 | `log/` | `reovim-driver-log` | Logger implementation (tracing) | [log/overview.md](./log/overview.md) |
 
 ## Layer Position
@@ -31,6 +32,7 @@ Drivers (`lib/drivers/*`) implement traits defined by the kernel. Each driver is
 │  ├── lsp/      - Language server                            │
 │  ├── net/      - Network/RPC                                │
 │  ├── vfs/      - Filesystem                                 │
+│  ├── session/  - Session management                         │
 │  └── log/      - Logging                                    │
 ├─────────────────────────────────────────────────────────────┤
 │  Kernel (core primitives)                                   │

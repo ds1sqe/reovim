@@ -4,6 +4,16 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [Unreleased] - v0.9.1-dev
 
+### Added
+
+- Empty session handler mechanism (#369)
+  - New `lib/drivers/session/` driver with `EmptySessionHandler` trait
+  - `EmptySessionHandlerRegistration` added to kernel API
+  - `Module` trait extended with `empty_session_handlers()` method
+  - `EmptySessionHandlerRegistry` in runner for handler resolution
+  - `modules/scratch-buffer/` with `ScratchBufferHandler` creates empty buffer on startup
+  - Sessions now start with a usable buffer instead of a blank screen
+
 ### Changed
 
 - Strong-typed CommandId for keybindings (#377, #378)

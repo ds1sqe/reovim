@@ -1,0 +1,19 @@
+[package]
+name = "reovim-driver-session"
+version = "0.9.1-dev"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Session driver for reovim - provides traits for session management"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Minimal dependencies - this is a trait definition crate
+
+[lints]
+workspace = true
