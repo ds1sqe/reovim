@@ -6,7 +6,7 @@ use std::fmt;
 
 use {
     reovim_driver_input::KeySequence,
-    reovim_kernel::api::v1::{CommandId, KeybindingRegistration, ModeId, ModuleId},
+    reovim_kernel::api::v1::{KeybindingRegistration, ModeId, ModuleId},
 };
 
 use crate::server::registry::{KeymapRegistry, ModeRegistry};
@@ -151,22 +151,9 @@ pub fn wire_module_keybindings(
             continue;
         };
 
-        // Build the command ID
-        // Convention: if command_id doesn't contain ':', it defaults to the registering module.
-        // This maintains proper decoupling - each module owns its commands.
-        // Cross-module references use fully qualified names (e.g., "editor:cursor-down").
-        let command_id = if registration.command_id.contains(':') {
-            // Fully qualified (e.g., "editor:cursor-down", "motions:word-forward")
-            let parts: Vec<&str> = registration.command_id.splitn(2, ':').collect();
-            if parts.len() == 2 {
-                CommandId::new(ModuleId::from_string(parts[0].to_string()), parts[1])
-            } else {
-                CommandId::new(module_id.clone(), registration.command_id)
-            }
-        } else {
-            // Default to the registering module
-            CommandId::new(module_id.clone(), registration.command_id)
-        };
+        // Command ID is now a typed CommandId - use it directly
+        // No string parsing needed since compile-time verification ensures correctness
+        let command_id = registration.command_id.clone();
 
         // Determine modes to register in
         let modes: Vec<ModeId> = if registration.modes.is_empty() {
@@ -248,11 +235,21 @@ pub fn wire_module_keybindings(
 mod tests {
     use {
         super::*,
-        reovim_kernel::api::v1::{CursorStyle, KeybindingRegistration, Mode, RegistrationFlags},
+        reovim_kernel::api::v1::{
+            CommandId, CursorStyle, KeybindingRegistration, Mode, RegistrationFlags,
+        },
     };
 
     /// Test module ID for test modes.
     const TEST_MODULE: ModuleId = ModuleId::new("my-module");
+
+    // Test command IDs
+    const CMD_CURSOR_DOWN: CommandId = CommandId::new(TEST_MODULE, "cursor-down");
+    const CMD_CURSOR_UP: CommandId = CommandId::new(TEST_MODULE, "cursor-up");
+    const CMD_SOME: CommandId = CommandId::new(TEST_MODULE, "some-cmd");
+    const CMD_ENTER_COMMAND: CommandId = CommandId::new(TEST_MODULE, "enter-command");
+    const EDITOR_MODULE: ModuleId = ModuleId::new("editor");
+    const CMD_EDITOR_CURSOR_DOWN: CommandId = CommandId::new(EDITOR_MODULE, "cursor-down");
 
     /// Test mode enum implementing the Mode trait for testing.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -349,8 +346,8 @@ mod tests {
         let module_id = ModuleId::new("my-module");
 
         let keybindings = vec![
-            KeybindingRegistration::new("j", "cursor-down").with_modes(&["command"]),
-            KeybindingRegistration::new("k", "cursor-up").with_modes(&["command"]),
+            KeybindingRegistration::new("j", CMD_CURSOR_DOWN).with_modes(&["command"]),
+            KeybindingRegistration::new("k", CMD_CURSOR_UP).with_modes(&["command"]),
         ];
 
         let result =
@@ -369,7 +366,7 @@ mod tests {
         let module_id = ModuleId::new("my-module");
 
         let keybindings = vec![
-            KeybindingRegistration::new("j", "cursor-down")
+            KeybindingRegistration::new("j", CMD_CURSOR_DOWN)
                 .with_modes(&["command"])
                 .with_disabled(),
         ];
@@ -391,7 +388,7 @@ mod tests {
 
         // Invalid key sequence but not required
         let keybindings =
-            vec![KeybindingRegistration::new("<INVALID_KEY>", "some-cmd").with_modes(&["command"])];
+            vec![KeybindingRegistration::new("<INVALID_KEY>", CMD_SOME).with_modes(&["command"])];
 
         let result =
             wire_module_keybindings(&module_id, &keybindings, &mut keymap_registry, &mode_registry);
@@ -410,7 +407,7 @@ mod tests {
 
         // Invalid key sequence and required
         let keybindings = vec![
-            KeybindingRegistration::new("<INVALID_KEY>", "some-cmd")
+            KeybindingRegistration::new("<INVALID_KEY>", CMD_SOME)
                 .with_modes(&["command"])
                 .with_flags(RegistrationFlags::required()),
         ];
@@ -430,7 +427,7 @@ mod tests {
         let module_id = ModuleId::new("my-module");
 
         // No modes specified (empty slice is the default)
-        let keybindings = vec![KeybindingRegistration::new("j", "some-cmd")];
+        let keybindings = vec![KeybindingRegistration::new("j", CMD_SOME)];
 
         let result =
             wire_module_keybindings(&module_id, &keybindings, &mut keymap_registry, &mode_registry);
@@ -449,7 +446,7 @@ mod tests {
 
         // No modes specified and required
         let keybindings = vec![
-            KeybindingRegistration::new("j", "some-cmd").with_flags(RegistrationFlags::required()),
+            KeybindingRegistration::new("j", CMD_SOME).with_flags(RegistrationFlags::required()),
         ];
 
         let result =
@@ -466,9 +463,9 @@ mod tests {
         let mode_registry = test_mode_registry();
         let module_id = ModuleId::new("my-module");
 
-        // Command ID with explicit module prefix
+        // Command ID with explicit module prefix (now a typed CommandId)
         let keybindings =
-            vec![KeybindingRegistration::new("j", "editor:cursor-down").with_modes(&["command"])];
+            vec![KeybindingRegistration::new("j", CMD_EDITOR_CURSOR_DOWN).with_modes(&["command"])];
 
         let result =
             wire_module_keybindings(&module_id, &keybindings, &mut keymap_registry, &mode_registry);
@@ -486,7 +483,7 @@ mod tests {
 
         // Same key in multiple modes
         let keybindings = vec![
-            KeybindingRegistration::new("<Esc>", "enter-command")
+            KeybindingRegistration::new("<Esc>", CMD_ENTER_COMMAND)
                 .with_modes(&["input", "selection"]),
         ];
 

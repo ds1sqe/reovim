@@ -4,6 +4,20 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [Unreleased] - v0.9.1-dev
 
+### Changed
+
+- Strong-typed CommandId for keybindings (#377, #378)
+  - `KeybindingRegistration::command_id` changed from `&'static str` to `CommandId`
+  - Compile-time verification: typos in command IDs now cause compile errors
+  - Created `ids.rs` in modules: editor, motions, vim, textobjects, undotree, layout
+  - All keybindings now use typed `CommandId` constants instead of string literals
+
+- CommandProvider trait for decoupled command registration (#378)
+  - New `CommandProvider` trait in `lib/drivers/command/` for modules to provide handlers
+  - Modules (editor, motions, vim) implement `CommandProvider`
+  - Runner uses `wire_module_commands()` instead of hardcoded registration
+  - Maintains kernel purity: command registration stays in driver layer
+
 ### Fixed
 
 - Character insertion and mode switching fixes (#372)

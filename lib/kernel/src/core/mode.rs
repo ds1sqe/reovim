@@ -241,6 +241,41 @@ impl CommandId {
         Self { module, name }
     }
 
+    /// Create a command identifier from a qualified string like "module:command".
+    ///
+    /// This method is intended for dynamic use cases like FFI where command IDs
+    /// are specified as strings at runtime. The strings are leaked to get
+    /// `'static` lifetime, so this should only be used for long-lived commands.
+    ///
+    /// If the string doesn't contain ':', the entire string is treated as the
+    /// command name with "unknown" as the module.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use reovim_kernel::api::v1::CommandId;
+    ///
+    /// let cmd = CommandId::from_qualified_leaked("editor:cursor-down".to_string());
+    /// assert_eq!(cmd.module().as_str(), "editor");
+    /// assert_eq!(cmd.name(), "cursor-down");
+    /// ```
+    #[must_use]
+    pub fn from_qualified_leaked(qualified: String) -> Self {
+        let (module_str, name_str) = if let Some(idx) = qualified.find(':') {
+            (qualified[..idx].to_string(), qualified[idx + 1..].to_string())
+        } else {
+            ("unknown".to_string(), qualified)
+        };
+
+        let module_static: &'static str = Box::leak(module_str.into_boxed_str());
+        let name_static: &'static str = Box::leak(name_str.into_boxed_str());
+
+        Self {
+            module: ModuleId::new(module_static),
+            name: name_static,
+        }
+    }
+
     /// Get the owning module.
     #[must_use]
     pub const fn module(&self) -> &ModuleId {

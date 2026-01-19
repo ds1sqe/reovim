@@ -629,7 +629,7 @@ impl PyKeybindingRegistration {
 
         v1::KeybindingRegistration {
             keys: Box::leak(self.keys.clone().into_boxed_str()),
-            command_id: Box::leak(self.command_id.clone().into_boxed_str()),
+            command_id: v1::CommandId::from_qualified_leaked(self.command_id.clone()),
             modes,
             description: Box::leak(self.description.clone().into_boxed_str()),
             category: self
@@ -1043,14 +1043,15 @@ mod tests {
 
     #[test]
     fn test_py_keybinding_registration_to_kernel() {
-        let reg = PyKeybindingRegistration::new("dd", "delete-line")
+        let reg = PyKeybindingRegistration::new("dd", "editor:delete-line")
             .with_modes(vec!["normal".to_string(), "visual".to_string()])
             .with_description("Delete entire line")
             .with_priority(10);
 
         let kernel_reg = reg.to_kernel();
         assert_eq!(kernel_reg.keys, "dd");
-        assert_eq!(kernel_reg.command_id, "delete-line");
+        assert_eq!(kernel_reg.command_id.module().as_str(), "editor");
+        assert_eq!(kernel_reg.command_id.name(), "delete-line");
         assert_eq!(kernel_reg.modes.len(), 2);
         assert_eq!(kernel_reg.modes[0], "normal");
         assert_eq!(kernel_reg.modes[1], "visual");

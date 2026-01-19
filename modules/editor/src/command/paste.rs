@@ -11,10 +11,7 @@ use {
     reovim_kernel::api::v1::{CommandId, KernelContext, Position},
 };
 
-use reovim_kernel::api::v1::ModuleId;
-
-// Command module ID for editor commands.
-const EDITOR_MODULE: ModuleId = ModuleId::new("editor");
+use crate::ids;
 
 /// Paste from register after cursor (p).
 ///
@@ -25,7 +22,7 @@ pub struct PasteAfter;
 
 impl Command for PasteAfter {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "paste-after")
+        ids::PASTE_AFTER
     }
 
     fn description(&self) -> &'static str {
@@ -140,7 +137,7 @@ pub struct PasteBefore;
 
 impl Command for PasteBefore {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "paste-before")
+        ids::PASTE_BEFORE
     }
 
     fn description(&self) -> &'static str {

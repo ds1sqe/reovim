@@ -395,7 +395,8 @@ class KeybindingModule(Module):
     let keybindings = module.keybindings();
     assert_eq!(keybindings.len(), 2);
     assert_eq!(keybindings[0].keys, "<C-m>");
-    assert_eq!(keybindings[0].command_id, "my-command");
+    assert_eq!(keybindings[0].command_id.module().as_str(), "unknown");
+    assert_eq!(keybindings[0].command_id.name(), "my-command");
     assert_eq!(keybindings[0].modes, &["normal", "visual"]);
     assert_eq!(keybindings[0].description, "Trigger my command");
 }

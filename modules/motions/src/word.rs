@@ -15,7 +15,7 @@ use {
     },
 };
 
-use super::MOTIONS_MODULE;
+use crate::ids;
 
 // =============================================================================
 // Helper function
@@ -102,7 +102,7 @@ pub struct WordForward;
 
 impl Command for WordForward {
     fn id(&self) -> CommandId {
-        CommandId::new(MOTIONS_MODULE, "word-forward")
+        ids::WORD_FORWARD
     }
 
     fn description(&self) -> &'static str {
@@ -134,7 +134,7 @@ pub struct WordBackward;
 
 impl Command for WordBackward {
     fn id(&self) -> CommandId {
-        CommandId::new(MOTIONS_MODULE, "word-backward")
+        ids::WORD_BACKWARD
     }
 
     fn description(&self) -> &'static str {
@@ -166,7 +166,7 @@ pub struct WordEnd;
 
 impl Command for WordEnd {
     fn id(&self) -> CommandId {
-        CommandId::new(MOTIONS_MODULE, "word-end")
+        ids::WORD_END
     }
 
     fn description(&self) -> &'static str {
@@ -198,7 +198,7 @@ pub struct WordForwardBig;
 
 impl Command for WordForwardBig {
     fn id(&self) -> CommandId {
-        CommandId::new(MOTIONS_MODULE, "word-forward-big")
+        ids::WORD_FORWARD_BIG
     }
 
     fn description(&self) -> &'static str {
@@ -230,7 +230,7 @@ pub struct WordBackwardBig;
 
 impl Command for WordBackwardBig {
     fn id(&self) -> CommandId {
-        CommandId::new(MOTIONS_MODULE, "word-backward-big")
+        ids::WORD_BACKWARD_BIG
     }
 
     fn description(&self) -> &'static str {
@@ -262,7 +262,7 @@ pub struct WordEndBig;
 
 impl Command for WordEndBig {
     fn id(&self) -> CommandId {
-        CommandId::new(MOTIONS_MODULE, "word-end-big")
+        ids::WORD_END_BIG
     }
 
     fn description(&self) -> &'static str {
@@ -294,7 +294,7 @@ pub struct WordEndBackward;
 
 impl Command for WordEndBackward {
     fn id(&self) -> CommandId {
-        CommandId::new(MOTIONS_MODULE, "word-end-backward")
+        ids::WORD_END_BACKWARD
     }
 
     fn description(&self) -> &'static str {
@@ -326,7 +326,7 @@ pub struct WordEndBackwardBig;
 
 impl Command for WordEndBackwardBig {
     fn id(&self) -> CommandId {
-        CommandId::new(MOTIONS_MODULE, "word-end-backward-big")
+        ids::WORD_END_BACKWARD_BIG
     }
 
     fn description(&self) -> &'static str {
@@ -458,7 +458,7 @@ mod tests {
     #[test]
     fn test_word_forward_id() {
         let cmd = WordForward;
-        assert_eq!(cmd.id().module(), &MOTIONS_MODULE);
+        assert_eq!(cmd.id().module(), &ids::MODULE);
         assert_eq!(cmd.id().name(), "word-forward");
     }
 

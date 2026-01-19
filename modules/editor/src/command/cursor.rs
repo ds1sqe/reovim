@@ -17,10 +17,7 @@ use {
     reovim_kernel::api::v1::{CommandId, KernelContext, Position, events::CursorMoved},
 };
 
-use reovim_kernel::api::v1::ModuleId;
-
-// Command module ID for editor commands.
-const EDITOR_MODULE: ModuleId = ModuleId::new("editor");
+use crate::ids;
 
 /// Move cursor up.
 #[derive(Debug, Clone, Copy, Default)]
@@ -28,7 +25,7 @@ pub struct CursorUp;
 
 impl Command for CursorUp {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "cursor-up")
+        ids::CURSOR_UP
     }
 
     fn description(&self) -> &'static str {
@@ -103,7 +100,7 @@ pub struct CursorDown;
 
 impl Command for CursorDown {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "cursor-down")
+        ids::CURSOR_DOWN
     }
 
     fn description(&self) -> &'static str {
@@ -180,7 +177,7 @@ pub struct CursorLeft;
 
 impl Command for CursorLeft {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "cursor-left")
+        ids::CURSOR_LEFT
     }
 
     fn description(&self) -> &'static str {
@@ -252,7 +249,7 @@ pub struct CursorRight;
 
 impl Command for CursorRight {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "cursor-right")
+        ids::CURSOR_RIGHT
     }
 
     fn description(&self) -> &'static str {

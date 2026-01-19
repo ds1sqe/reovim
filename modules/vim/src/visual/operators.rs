@@ -15,7 +15,7 @@ use {
     reovim_module_operators::{DeleteOperator, Operator, OperatorContext, Range, YankOperator},
 };
 
-use crate::modes::{VIM_MODULE, VimMode};
+use crate::{ids, modes::VimMode};
 
 /// Helper function to get selection range from buffer.
 ///
@@ -85,7 +85,7 @@ pub struct DeleteSelection;
 
 impl Command for DeleteSelection {
     fn id(&self) -> CommandId {
-        CommandId::new(VIM_MODULE, "delete-selection")
+        ids::DELETE_SELECTION
     }
 
     fn description(&self) -> &'static str {
@@ -140,7 +140,7 @@ pub struct YankSelection;
 
 impl Command for YankSelection {
     fn id(&self) -> CommandId {
-        CommandId::new(VIM_MODULE, "yank-selection")
+        ids::YANK_SELECTION
     }
 
     fn description(&self) -> &'static str {
@@ -193,7 +193,7 @@ pub struct ChangeSelection;
 
 impl Command for ChangeSelection {
     fn id(&self) -> CommandId {
-        CommandId::new(VIM_MODULE, "change-selection")
+        ids::CHANGE_SELECTION
     }
 
     fn description(&self) -> &'static str {
@@ -248,7 +248,7 @@ pub struct IndentSelection;
 
 impl Command for IndentSelection {
     fn id(&self) -> CommandId {
-        CommandId::new(VIM_MODULE, "indent-selection")
+        ids::INDENT_SELECTION
     }
 
     fn description(&self) -> &'static str {
@@ -308,7 +308,7 @@ pub struct DedentSelection;
 
 impl Command for DedentSelection {
     fn id(&self) -> CommandId {
-        CommandId::new(VIM_MODULE, "dedent-selection")
+        ids::DEDENT_SELECTION
     }
 
     fn description(&self) -> &'static str {

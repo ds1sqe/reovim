@@ -31,8 +31,52 @@
 //! }
 //! ```
 
+use {
+    reovim_driver_command::{CommandHandler, CommandProvider},
+    reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
+};
+
 pub mod command;
 pub mod display_lines;
+pub mod ids;
 pub mod resolver;
 
 pub use resolver::ResolverRegistry;
+
+/// Module identifier for editor module.
+pub const EDITOR_MODULE: ModuleId = ids::MODULE;
+
+/// Editor module instance.
+///
+/// Provides core editor commands: cursor movement, text operations,
+/// undo/redo, yank/paste, etc. These commands are policy-agnostic;
+/// mode-specific behavior (vim modes) is in the vim module.
+pub struct EditorModule;
+
+impl Module for EditorModule {
+    fn id(&self) -> ModuleId {
+        EDITOR_MODULE
+    }
+
+    fn name(&self) -> &'static str {
+        "Editor"
+    }
+
+    fn version(&self) -> Version {
+        Version::new(0, 9, 0)
+    }
+
+    fn init(&mut self, _ctx: &ModuleContext) -> ProbeResult {
+        ProbeResult::Success
+    }
+
+    fn exit(&mut self) -> Result<(), ModuleError> {
+        Ok(())
+    }
+}
+
+impl CommandProvider for EditorModule {
+    fn command_handlers(&self) -> Vec<Box<dyn CommandHandler>> {
+        command::all_commands()
+    }
+}

@@ -15,11 +15,10 @@
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult, WindowAction},
     reovim_driver_display::NavigateDirection,
-    reovim_kernel::api::v1::{CommandId, KernelContext, ModuleId},
+    reovim_kernel::api::v1::{CommandId, KernelContext},
 };
 
-/// Layout module ID for command registration.
-const LAYOUT_MODULE: ModuleId = ModuleId::new("layout");
+use crate::ids;
 
 // =============================================================================
 // Window Splitting Commands
@@ -31,7 +30,7 @@ pub struct SplitHorizontalCmd;
 
 impl Command for SplitHorizontalCmd {
     fn id(&self) -> CommandId {
-        CommandId::new(LAYOUT_MODULE, "split-horizontal")
+        ids::SPLIT_HORIZONTAL
     }
 
     fn description(&self) -> &'static str {
@@ -51,7 +50,7 @@ pub struct SplitVerticalCmd;
 
 impl Command for SplitVerticalCmd {
     fn id(&self) -> CommandId {
-        CommandId::new(LAYOUT_MODULE, "split-vertical")
+        ids::SPLIT_VERTICAL
     }
 
     fn description(&self) -> &'static str {
@@ -75,7 +74,7 @@ pub struct CloseWindowCmd;
 
 impl Command for CloseWindowCmd {
     fn id(&self) -> CommandId {
-        CommandId::new(LAYOUT_MODULE, "close-window")
+        ids::CLOSE_WINDOW
     }
 
     fn description(&self) -> &'static str {
@@ -95,7 +94,7 @@ pub struct CloseOthersCmd;
 
 impl Command for CloseOthersCmd {
     fn id(&self) -> CommandId {
-        CommandId::new(LAYOUT_MODULE, "close-others")
+        ids::CLOSE_OTHERS
     }
 
     fn description(&self) -> &'static str {
@@ -119,7 +118,7 @@ pub struct FocusLeftCmd;
 
 impl Command for FocusLeftCmd {
     fn id(&self) -> CommandId {
-        CommandId::new(LAYOUT_MODULE, "focus-left")
+        ids::FOCUS_LEFT
     }
 
     fn description(&self) -> &'static str {
@@ -139,7 +138,7 @@ pub struct FocusRightCmd;
 
 impl Command for FocusRightCmd {
     fn id(&self) -> CommandId {
-        CommandId::new(LAYOUT_MODULE, "focus-right")
+        ids::FOCUS_RIGHT
     }
 
     fn description(&self) -> &'static str {
@@ -159,7 +158,7 @@ pub struct FocusUpCmd;
 
 impl Command for FocusUpCmd {
     fn id(&self) -> CommandId {
-        CommandId::new(LAYOUT_MODULE, "focus-up")
+        ids::FOCUS_UP
     }
 
     fn description(&self) -> &'static str {
@@ -179,7 +178,7 @@ pub struct FocusDownCmd;
 
 impl Command for FocusDownCmd {
     fn id(&self) -> CommandId {
-        CommandId::new(LAYOUT_MODULE, "focus-down")
+        ids::FOCUS_DOWN
     }
 
     fn description(&self) -> &'static str {
@@ -203,7 +202,7 @@ pub struct CycleForwardCmd;
 
 impl Command for CycleForwardCmd {
     fn id(&self) -> CommandId {
-        CommandId::new(LAYOUT_MODULE, "focus-next")
+        ids::FOCUS_NEXT
     }
 
     fn description(&self) -> &'static str {
@@ -223,7 +222,7 @@ pub struct CycleBackwardCmd;
 
 impl Command for CycleBackwardCmd {
     fn id(&self) -> CommandId {
-        CommandId::new(LAYOUT_MODULE, "focus-prev")
+        ids::FOCUS_PREV
     }
 
     fn description(&self) -> &'static str {
@@ -247,7 +246,7 @@ pub struct ResizeHeightIncreaseCmd;
 
 impl Command for ResizeHeightIncreaseCmd {
     fn id(&self) -> CommandId {
-        CommandId::new(LAYOUT_MODULE, "resize-height-increase")
+        ids::RESIZE_HEIGHT_INCREASE
     }
 
     fn description(&self) -> &'static str {
@@ -267,7 +266,7 @@ pub struct ResizeHeightDecreaseCmd;
 
 impl Command for ResizeHeightDecreaseCmd {
     fn id(&self) -> CommandId {
-        CommandId::new(LAYOUT_MODULE, "resize-height-decrease")
+        ids::RESIZE_HEIGHT_DECREASE
     }
 
     fn description(&self) -> &'static str {
@@ -287,7 +286,7 @@ pub struct ResizeWidthIncreaseCmd;
 
 impl Command for ResizeWidthIncreaseCmd {
     fn id(&self) -> CommandId {
-        CommandId::new(LAYOUT_MODULE, "resize-width-increase")
+        ids::RESIZE_WIDTH_INCREASE
     }
 
     fn description(&self) -> &'static str {
@@ -307,7 +306,7 @@ pub struct ResizeWidthDecreaseCmd;
 
 impl Command for ResizeWidthDecreaseCmd {
     fn id(&self) -> CommandId {
-        CommandId::new(LAYOUT_MODULE, "resize-width-decrease")
+        ids::RESIZE_WIDTH_DECREASE
     }
 
     fn description(&self) -> &'static str {
@@ -327,7 +326,7 @@ pub struct ResizeEqualCmd;
 
 impl Command for ResizeEqualCmd {
     fn id(&self) -> CommandId {
-        CommandId::new(LAYOUT_MODULE, "resize-equal")
+        ids::RESIZE_EQUAL
     }
 
     fn description(&self) -> &'static str {

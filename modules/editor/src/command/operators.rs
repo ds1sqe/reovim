@@ -12,10 +12,7 @@ use {
     reovim_kernel::api::v1::{CommandId, KernelContext},
 };
 
-use reovim_kernel::api::v1::ModuleId;
-
-// Command module ID for editor commands.
-const EDITOR_MODULE: ModuleId = ModuleId::new("editor");
+use crate::ids;
 
 /// Enter delete operator-pending mode (d).
 ///
@@ -26,7 +23,7 @@ pub struct EnterDeleteOperator;
 
 impl Command for EnterDeleteOperator {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "enter-delete-operator")
+        ids::ENTER_DELETE_OPERATOR
     }
 
     fn description(&self) -> &'static str {
@@ -50,7 +47,7 @@ pub struct EnterYankOperator;
 
 impl Command for EnterYankOperator {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "enter-yank-operator")
+        ids::ENTER_YANK_OPERATOR
     }
 
     fn description(&self) -> &'static str {
@@ -75,7 +72,7 @@ pub struct EnterChangeOperator;
 
 impl Command for EnterChangeOperator {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "enter-change-operator")
+        ids::ENTER_CHANGE_OPERATOR
     }
 
     fn description(&self) -> &'static str {
@@ -99,7 +96,7 @@ pub struct EnterIndentOperator;
 
 impl Command for EnterIndentOperator {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "enter-indent-operator")
+        ids::ENTER_INDENT_OPERATOR
     }
 
     fn description(&self) -> &'static str {
@@ -122,7 +119,7 @@ pub struct EnterDedentOperator;
 
 impl Command for EnterDedentOperator {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "enter-dedent-operator")
+        ids::ENTER_DEDENT_OPERATOR
     }
 
     fn description(&self) -> &'static str {

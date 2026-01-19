@@ -12,10 +12,7 @@ use {
     reovim_kernel::api::v1::{CommandId, KernelContext},
 };
 
-use reovim_kernel::api::v1::ModuleId;
-
-// Command module ID for editor commands.
-const EDITOR_MODULE: ModuleId = ModuleId::new("editor");
+use crate::ids;
 
 /// Write buffer to file.
 ///
@@ -38,7 +35,7 @@ pub struct WriteBufferCommand;
 
 impl Command for WriteBufferCommand {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "write")
+        ids::WRITE
     }
 
     fn description(&self) -> &'static str {

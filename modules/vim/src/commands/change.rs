@@ -18,7 +18,7 @@ use {
     },
 };
 
-use crate::modes::{VIM_MODULE, VimMode};
+use crate::{ids, modes::VimMode};
 
 /// Change current line (cc).
 ///
@@ -30,7 +30,7 @@ pub struct ChangeLine;
 
 impl Command for ChangeLine {
     fn id(&self) -> CommandId {
-        CommandId::new(VIM_MODULE, "change-line")
+        ids::CHANGE_LINE
     }
 
     fn description(&self) -> &'static str {
@@ -182,7 +182,7 @@ pub struct ChangeToEndOfLine;
 
 impl Command for ChangeToEndOfLine {
     fn id(&self) -> CommandId {
-        CommandId::new(VIM_MODULE, "change-to-eol")
+        ids::CHANGE_TO_EOL
     }
 
     fn description(&self) -> &'static str {

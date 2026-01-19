@@ -6,11 +6,10 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_kernel::api::v1::{CommandId, KernelContext, ModuleId, OptionScopeId},
+    reovim_kernel::api::v1::{CommandId, KernelContext, OptionScopeId},
 };
 
-// Command module ID for editor commands.
-const EDITOR_MODULE: ModuleId = ModuleId::new("editor");
+use crate::ids;
 
 /// Extract the leading whitespace (indent) from a line.
 ///
@@ -31,7 +30,7 @@ pub struct InsertNewline;
 
 impl Command for InsertNewline {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "insert-newline")
+        ids::INSERT_NEWLINE
     }
 
     fn description(&self) -> &'static str {
@@ -90,7 +89,7 @@ pub struct InsertTab;
 
 impl Command for InsertTab {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "insert-tab")
+        ids::INSERT_TAB
     }
 
     fn description(&self) -> &'static str {

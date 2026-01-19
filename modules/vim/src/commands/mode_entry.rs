@@ -18,7 +18,7 @@ use {
     },
 };
 
-use crate::modes::{VIM_MODULE, VimMode};
+use crate::{ids, modes::VimMode};
 
 /// Extract the leading whitespace (indent) from a line.
 ///
@@ -39,7 +39,7 @@ pub struct EnterInsertFirstNonBlank;
 
 impl Command for EnterInsertFirstNonBlank {
     fn id(&self) -> CommandId {
-        CommandId::new(VIM_MODULE, "enter-insert-bol")
+        ids::ENTER_INSERT_BOL
     }
 
     fn description(&self) -> &'static str {
@@ -77,7 +77,7 @@ pub struct EnterInsertEndOfLine;
 
 impl Command for EnterInsertEndOfLine {
     fn id(&self) -> CommandId {
-        CommandId::new(VIM_MODULE, "enter-insert-eol")
+        ids::ENTER_INSERT_EOL
     }
 
     fn description(&self) -> &'static str {
@@ -112,7 +112,7 @@ pub struct OpenLineBelow;
 
 impl Command for OpenLineBelow {
     fn id(&self) -> CommandId {
-        CommandId::new(VIM_MODULE, "open-line-below")
+        ids::OPEN_LINE_BELOW
     }
 
     fn description(&self) -> &'static str {
@@ -177,7 +177,7 @@ pub struct OpenLineAbove;
 
 impl Command for OpenLineAbove {
     fn id(&self) -> CommandId {
-        CommandId::new(VIM_MODULE, "open-line-above")
+        ids::OPEN_LINE_ABOVE
     }
 
     fn description(&self) -> &'static str {

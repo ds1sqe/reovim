@@ -35,11 +35,16 @@
 //! // Returns ~180 Vim keybindings
 //! ```
 
-use {reovim_kernel::api::v1::*, reovim_module_macros::declare_module};
+use {
+    reovim_driver_command::{CommandHandler, CommandProvider},
+    reovim_kernel::api::v1::*,
+    reovim_module_macros::declare_module,
+};
 
 pub mod bindings;
 pub mod commands;
 pub mod fallback;
+pub mod ids;
 pub mod modes;
 pub mod resolvers;
 pub mod visual;
@@ -136,6 +141,15 @@ impl Module for VimModule {
 
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
         bindings::all()
+    }
+}
+
+impl CommandProvider for VimModule {
+    fn command_handlers(&self) -> Vec<Box<dyn CommandHandler>> {
+        let mut handlers = Vec::new();
+        handlers.extend(commands::mode_commands());
+        handlers.extend(visual::visual_commands());
+        handlers
     }
 }
 

@@ -46,6 +46,7 @@
 
 pub mod commands;
 mod focus;
+pub mod ids;
 mod split;
 mod tiling;
 
@@ -109,150 +110,150 @@ impl Module for LayoutModule {
             // ====================================================================
             // Focus Navigation (window mode, after <C-w>)
             // ====================================================================
-            KeybindingRegistration::new("h", "focus-left")
+            KeybindingRegistration::new("h", ids::FOCUS_LEFT)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Move focus to left window"),
-            KeybindingRegistration::new("j", "focus-down")
+            KeybindingRegistration::new("j", ids::FOCUS_DOWN)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Move focus to window below"),
-            KeybindingRegistration::new("k", "focus-up")
+            KeybindingRegistration::new("k", ids::FOCUS_UP)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Move focus to window above"),
-            KeybindingRegistration::new("l", "focus-right")
+            KeybindingRegistration::new("l", ids::FOCUS_RIGHT)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Move focus to right window"),
             // Arrow keys as aliases
-            KeybindingRegistration::new("<Left>", "focus-left")
+            KeybindingRegistration::new("<Left>", ids::FOCUS_LEFT)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Move focus to left window"),
-            KeybindingRegistration::new("<Down>", "focus-down")
+            KeybindingRegistration::new("<Down>", ids::FOCUS_DOWN)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Move focus to window below"),
-            KeybindingRegistration::new("<Up>", "focus-up")
+            KeybindingRegistration::new("<Up>", ids::FOCUS_UP)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Move focus to window above"),
-            KeybindingRegistration::new("<Right>", "focus-right")
+            KeybindingRegistration::new("<Right>", ids::FOCUS_RIGHT)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Move focus to right window"),
             // ====================================================================
             // Focus Cycling
             // ====================================================================
-            KeybindingRegistration::new("w", "focus-next")
+            KeybindingRegistration::new("w", ids::FOCUS_NEXT)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Cycle focus to next window"),
-            KeybindingRegistration::new("W", "focus-prev")
+            KeybindingRegistration::new("W", ids::FOCUS_PREV)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Cycle focus to previous window"),
-            KeybindingRegistration::new("p", "focus-prev")
+            KeybindingRegistration::new("p", ids::FOCUS_PREV)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Go to previous (last accessed) window"),
             // ====================================================================
             // Window Splitting
             // ====================================================================
-            KeybindingRegistration::new("s", "split-horizontal")
+            KeybindingRegistration::new("s", ids::SPLIT_HORIZONTAL)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Split window horizontally (:split)"),
-            KeybindingRegistration::new("v", "split-vertical")
+            KeybindingRegistration::new("v", ids::SPLIT_VERTICAL)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Split window vertically (:vsplit)"),
-            KeybindingRegistration::new("n", "split-new")
+            KeybindingRegistration::new("n", ids::SPLIT_NEW)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Create new window with empty buffer"),
             // ====================================================================
             // Window Closing
             // ====================================================================
-            KeybindingRegistration::new("c", "close-window")
+            KeybindingRegistration::new("c", ids::CLOSE_WINDOW)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Close current window (:close)"),
-            KeybindingRegistration::new("q", "close-window")
+            KeybindingRegistration::new("q", ids::CLOSE_WINDOW)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Close current window"),
-            KeybindingRegistration::new("o", "close-others")
+            KeybindingRegistration::new("o", ids::CLOSE_OTHERS)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Close all other windows (:only)"),
             // ====================================================================
             // Window Resizing
             // ====================================================================
-            KeybindingRegistration::new("+", "resize-height-increase")
+            KeybindingRegistration::new("+", ids::RESIZE_HEIGHT_INCREASE)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Increase window height"),
-            KeybindingRegistration::new("-", "resize-height-decrease")
+            KeybindingRegistration::new("-", ids::RESIZE_HEIGHT_DECREASE)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Decrease window height"),
-            KeybindingRegistration::new(">", "resize-width-increase")
+            KeybindingRegistration::new(">", ids::RESIZE_WIDTH_INCREASE)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Increase window width"),
-            KeybindingRegistration::new("<", "resize-width-decrease")
+            KeybindingRegistration::new("<", ids::RESIZE_WIDTH_DECREASE)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Decrease window width"),
-            KeybindingRegistration::new("=", "resize-equal")
+            KeybindingRegistration::new("=", ids::RESIZE_EQUAL)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Make all windows equal size"),
-            KeybindingRegistration::new("_", "resize-max-height")
+            KeybindingRegistration::new("_", ids::RESIZE_MAX_HEIGHT)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Maximize window height"),
-            KeybindingRegistration::new("|", "resize-max-width")
+            KeybindingRegistration::new("|", ids::RESIZE_MAX_WIDTH)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Maximize window width"),
             // ====================================================================
             // Window Movement
             // ====================================================================
-            KeybindingRegistration::new("H", "move-window-left")
+            KeybindingRegistration::new("H", ids::MOVE_WINDOW_LEFT)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Move window to far left"),
-            KeybindingRegistration::new("J", "move-window-down")
+            KeybindingRegistration::new("J", ids::MOVE_WINDOW_DOWN)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Move window to bottom"),
-            KeybindingRegistration::new("K", "move-window-up")
+            KeybindingRegistration::new("K", ids::MOVE_WINDOW_UP)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Move window to top"),
-            KeybindingRegistration::new("L", "move-window-right")
+            KeybindingRegistration::new("L", ids::MOVE_WINDOW_RIGHT)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Move window to far right"),
-            KeybindingRegistration::new("r", "rotate-windows")
+            KeybindingRegistration::new("r", ids::ROTATE_WINDOWS)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Rotate windows downwards"),
-            KeybindingRegistration::new("R", "rotate-windows-reverse")
+            KeybindingRegistration::new("R", ids::ROTATE_WINDOWS_REVERSE)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Rotate windows upwards"),
-            KeybindingRegistration::new("x", "swap-window")
+            KeybindingRegistration::new("x", ids::SWAP_WINDOW)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Exchange window with next"),
             // ====================================================================
             // Tab Operations (for future tab support)
             // ====================================================================
-            KeybindingRegistration::new("T", "move-to-new-tab")
+            KeybindingRegistration::new("T", ids::MOVE_TO_NEW_TAB)
                 .with_modes(&["window"])
                 .with_category("window")
                 .with_description("Move current window to new tab"),

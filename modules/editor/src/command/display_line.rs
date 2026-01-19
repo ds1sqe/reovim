@@ -13,14 +13,11 @@ use {
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
     reovim_kernel::api::v1::{
-        CommandId, KernelContext, ModuleId, OptionScopeId, Position, events::CursorMoved,
+        CommandId, KernelContext, OptionScopeId, Position, events::CursorMoved,
     },
 };
 
-use super::super::display_lines;
-
-// Command module ID for editor commands.
-const EDITOR_MODULE: ModuleId = ModuleId::new("editor");
+use {super::super::display_lines, crate::ids};
 
 /// Get the tabstop setting for a buffer.
 fn get_tabstop(ctx: &KernelContext, buffer_id: reovim_kernel::api::v1::BufferId) -> usize {
@@ -41,7 +38,7 @@ pub struct CursorDisplayDown;
 
 impl Command for CursorDisplayDown {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "cursor-display-down")
+        ids::CURSOR_DISPLAY_DOWN
     }
 
     fn description(&self) -> &'static str {
@@ -191,7 +188,7 @@ pub struct CursorDisplayUp;
 
 impl Command for CursorDisplayUp {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "cursor-display-up")
+        ids::CURSOR_DISPLAY_UP
     }
 
     fn description(&self) -> &'static str {

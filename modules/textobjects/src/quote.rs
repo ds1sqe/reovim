@@ -11,7 +11,7 @@ use {
     reovim_kernel::api::v1::{CommandId, KernelContext, Position, TextObject, TextObjectEngine},
 };
 
-use crate::TEXTOBJECTS_MODULE;
+use crate::ids;
 
 // =============================================================================
 // Helper function
@@ -67,7 +67,7 @@ pub struct InnerDoubleQuote;
 
 impl Command for InnerDoubleQuote {
     fn id(&self) -> CommandId {
-        CommandId::new(TEXTOBJECTS_MODULE, "inner-double-quote")
+        ids::INNER_DOUBLE_QUOTE
     }
 
     fn description(&self) -> &'static str {
@@ -101,7 +101,7 @@ pub struct AroundDoubleQuote;
 
 impl Command for AroundDoubleQuote {
     fn id(&self) -> CommandId {
-        CommandId::new(TEXTOBJECTS_MODULE, "around-double-quote")
+        ids::AROUND_DOUBLE_QUOTE
     }
 
     fn description(&self) -> &'static str {
@@ -135,7 +135,7 @@ pub struct InnerSingleQuote;
 
 impl Command for InnerSingleQuote {
     fn id(&self) -> CommandId {
-        CommandId::new(TEXTOBJECTS_MODULE, "inner-single-quote")
+        ids::INNER_SINGLE_QUOTE
     }
 
     fn description(&self) -> &'static str {
@@ -169,7 +169,7 @@ pub struct AroundSingleQuote;
 
 impl Command for AroundSingleQuote {
     fn id(&self) -> CommandId {
-        CommandId::new(TEXTOBJECTS_MODULE, "around-single-quote")
+        ids::AROUND_SINGLE_QUOTE
     }
 
     fn description(&self) -> &'static str {
@@ -203,7 +203,7 @@ pub struct InnerBacktick;
 
 impl Command for InnerBacktick {
     fn id(&self) -> CommandId {
-        CommandId::new(TEXTOBJECTS_MODULE, "inner-backtick")
+        ids::INNER_BACKTICK
     }
 
     fn description(&self) -> &'static str {
@@ -237,7 +237,7 @@ pub struct AroundBacktick;
 
 impl Command for AroundBacktick {
     fn id(&self) -> CommandId {
-        CommandId::new(TEXTOBJECTS_MODULE, "around-backtick")
+        ids::AROUND_BACKTICK
     }
 
     fn description(&self) -> &'static str {
@@ -282,7 +282,7 @@ pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, crate::TEXTOBJECTS_MODULE};
 
     #[test]
     fn test_inner_double_quote_id() {

@@ -13,11 +13,10 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_kernel::api::v1::{CommandId, KernelContext, ModuleId, Position, RegisterContent},
+    reovim_kernel::api::v1::{CommandId, KernelContext, Position, RegisterContent},
 };
 
-// Command module ID for editor commands.
-const EDITOR_MODULE: ModuleId = ModuleId::new("editor");
+use crate::ids;
 
 /// Delete character under cursor (x).
 #[derive(Debug, Clone, Copy, Default)]
@@ -25,7 +24,7 @@ pub struct DeleteChar;
 
 impl Command for DeleteChar {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "delete-char")
+        ids::DELETE_CHAR
     }
 
     fn description(&self) -> &'static str {
@@ -81,7 +80,7 @@ pub struct DeleteCharBefore;
 
 impl Command for DeleteCharBefore {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "delete-char-before")
+        ids::DELETE_CHAR_BEFORE
     }
 
     fn description(&self) -> &'static str {
@@ -147,7 +146,7 @@ pub struct DeleteLine;
 
 impl Command for DeleteLine {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "delete-line")
+        ids::DELETE_LINE
     }
 
     fn description(&self) -> &'static str {
@@ -252,7 +251,7 @@ pub struct DeleteToEndOfLine;
 
 impl Command for DeleteToEndOfLine {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "delete-to-eol")
+        ids::DELETE_TO_EOL
     }
 
     fn description(&self) -> &'static str {

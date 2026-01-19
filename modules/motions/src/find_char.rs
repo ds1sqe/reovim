@@ -14,7 +14,7 @@ use {
     reovim_kernel::api::v1::{CommandId, KernelContext, Position},
 };
 
-use super::MOTIONS_MODULE;
+use crate::ids;
 
 // =============================================================================
 // Helper function
@@ -41,7 +41,7 @@ pub struct FindCharForward;
 
 impl Command for FindCharForward {
     fn id(&self) -> CommandId {
-        CommandId::new(MOTIONS_MODULE, "find-char-forward")
+        ids::FIND_CHAR_FORWARD
     }
 
     fn description(&self) -> &'static str {
@@ -72,7 +72,7 @@ pub struct FindCharBackward;
 
 impl Command for FindCharBackward {
     fn id(&self) -> CommandId {
-        CommandId::new(MOTIONS_MODULE, "find-char-backward")
+        ids::FIND_CHAR_BACKWARD
     }
 
     fn description(&self) -> &'static str {
@@ -103,7 +103,7 @@ pub struct TillCharForward;
 
 impl Command for TillCharForward {
     fn id(&self) -> CommandId {
-        CommandId::new(MOTIONS_MODULE, "till-char-forward")
+        ids::TILL_CHAR_FORWARD
     }
 
     fn description(&self) -> &'static str {
@@ -134,7 +134,7 @@ pub struct TillCharBackward;
 
 impl Command for TillCharBackward {
     fn id(&self) -> CommandId {
-        CommandId::new(MOTIONS_MODULE, "till-char-backward")
+        ids::TILL_CHAR_BACKWARD
     }
 
     fn description(&self) -> &'static str {
@@ -168,7 +168,7 @@ pub struct RepeatFindSame;
 
 impl Command for RepeatFindSame {
     fn id(&self) -> CommandId {
-        CommandId::new(MOTIONS_MODULE, "repeat-find-same")
+        ids::REPEAT_FIND_SAME
     }
 
     fn description(&self) -> &'static str {
@@ -200,7 +200,7 @@ pub struct RepeatFindReverse;
 
 impl Command for RepeatFindReverse {
     fn id(&self) -> CommandId {
-        CommandId::new(MOTIONS_MODULE, "repeat-find-reverse")
+        ids::REPEAT_FIND_REVERSE
     }
 
     fn description(&self) -> &'static str {

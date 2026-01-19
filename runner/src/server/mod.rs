@@ -226,9 +226,9 @@ use {
         OptionRegistry, OptionScope, OptionSpec, OptionValue, RegisterBank, TextObjectEngine,
     },
     reovim_module_commands::CommandsModule,
-    reovim_module_editor::command::all_commands as editor_commands,
+    reovim_module_editor::EditorModule,
     reovim_module_keymap::KeymapModule,
-    reovim_module_motions::{MotionsModule, find_char, line, search as motions_search, word},
+    reovim_module_motions::MotionsModule,
     reovim_module_operators::OperatorsModule,
     reovim_module_vim::{VimMode, VimModule},
     reovim_protocol::v1::{RpcError, RpcRequest, RpcResponse},
@@ -238,7 +238,7 @@ use crate::buffer_manager::SimpleBufferManager;
 
 use {
     client::Client,
-    module::{ModuleConfig, ModuleManager, wire_module_keybindings},
+    module::{ModuleConfig, ModuleManager, wire_module_commands, wire_module_keybindings},
     registry::{CommandRegistry, KeymapRegistry, ModeRegistry},
     rpc::{RpcContext, RpcDispatcher, create_default_dispatcher},
     session::{Session, SessionId, SessionRegistry},
@@ -910,6 +910,7 @@ fn create_session_with_defaults(id: SessionId) -> Arc<Session> {
 ///
 /// This is the "generation position" where modules are registered and
 /// their keybindings are wired to the session registries.
+#[allow(clippy::too_many_lines)]
 fn build_default_registries() -> (ModeRegistry, CommandRegistry, KeymapRegistry, ModuleManager) {
     let mut mode_registry = ModeRegistry::new();
     let mut command_registry = CommandRegistry::new();
@@ -941,64 +942,82 @@ fn build_default_registries() -> (ModeRegistry, CommandRegistry, KeymapRegistry,
         mode_registry.register_mode(*mode);
     }
 
-    // Register editor commands (cursor movement, mode switching, editing, etc.)
-    // These are the command handlers that keybindings point to.
-    let editor_module_id = ModuleId::new("editor");
-    for cmd in editor_commands() {
-        command_registry.register_for_module(cmd.into(), editor_module_id.clone());
-    }
-    tracing::info!(count = command_registry.len(), "registered editor commands");
+    // Register commands from modules that implement CommandProvider
+    // Using wire_module_commands for type-safe command registration
 
-    // Register motions module commands (word, line, find-char, search motions)
-    let motions_module_id = ModuleId::new("motions");
-    for cmd in word::all_commands() {
-        command_registry.register_for_module(cmd.into(), motions_module_id.clone());
+    // Wire editor module commands (cursor movement, editing operations, etc.)
+    let editor_module = EditorModule;
+    let editor_module_id = editor_module.id();
+    match wire_module_commands(&editor_module_id, &editor_module, &mut command_registry) {
+        Ok(stats) => {
+            tracing::info!(
+                module = %editor_module_id,
+                wired = stats.commands_wired,
+                "wired editor commands"
+            );
+        }
+        Err(e) => {
+            tracing::error!(module = %editor_module_id, error = %e, "failed to wire editor commands");
+        }
     }
-    for cmd in line::all_commands() {
-        command_registry.register_for_module(cmd.into(), motions_module_id.clone());
-    }
-    for cmd in find_char::all_commands() {
-        command_registry.register_for_module(cmd.into(), motions_module_id.clone());
-    }
-    for cmd in motions_search::all_commands() {
-        command_registry.register_for_module(cmd.into(), motions_module_id.clone());
-    }
-    tracing::info!(count = command_registry.len(), "registered motions commands");
 
-    // Register vim module commands (mode switching, visual operations)
-    // These are Vim-specific commands that require knowledge of VimMode IDs
-    let vim_module_id = ModuleId::new("vim");
-    for cmd in reovim_module_vim::commands::mode_commands() {
-        command_registry.register_for_module(cmd.into(), vim_module_id.clone());
+    // Wire motions module commands (word, line, find-char, search motions)
+    let motions_module = MotionsModule;
+    let motions_module_id = motions_module.id();
+    match wire_module_commands(&motions_module_id, &motions_module, &mut command_registry) {
+        Ok(stats) => {
+            tracing::info!(
+                module = %motions_module_id,
+                wired = stats.commands_wired,
+                "wired motions commands"
+            );
+        }
+        Err(e) => {
+            tracing::error!(module = %motions_module_id, error = %e, "failed to wire motions commands");
+        }
     }
-    for cmd in reovim_module_vim::visual_commands() {
-        command_registry.register_for_module(cmd.into(), vim_module_id.clone());
-    }
-    tracing::info!(count = command_registry.len(), "registered vim commands");
 
-    // Create vim module and wire its keybindings
-    // (Vim module provides all the standard Vim keybindings)
-    let vim_module = VimModule::new();
-    let module_id = vim_module.id();
+    // Wire vim module commands and keybindings
+    // Vim module provides mode switching, visual operations, and standard keybindings
+    let mut vim_module = VimModule::new();
+    let vim_module_id = vim_module.id();
 
     // Initialize the module (for logging purposes)
     let ctx = ModuleContext::default();
-    let mut vim_module_init = vim_module;
-    let _init_result = vim_module_init.init(&ctx);
+    let _init_result = vim_module.init(&ctx);
 
-    // Wire keybindings from the vim module
-    let keybindings = vim_module_init.keybindings();
-    match wire_module_keybindings(&module_id, &keybindings, &mut keymap_registry, &mode_registry) {
+    // Wire commands
+    match wire_module_commands(&vim_module_id, &vim_module, &mut command_registry) {
         Ok(stats) => {
             tracing::info!(
-                module = %module_id,
+                module = %vim_module_id,
+                wired = stats.commands_wired,
+                "wired vim commands"
+            );
+        }
+        Err(e) => {
+            tracing::error!(module = %vim_module_id, error = %e, "failed to wire vim commands");
+        }
+    }
+
+    // Wire keybindings from the vim module
+    let keybindings = vim_module.keybindings();
+    match wire_module_keybindings(
+        &vim_module_id,
+        &keybindings,
+        &mut keymap_registry,
+        &mode_registry,
+    ) {
+        Ok(stats) => {
+            tracing::info!(
+                module = %vim_module_id,
                 wired = stats.keybindings_wired,
                 skipped = stats.keybindings_skipped,
                 "wired keybindings"
             );
         }
         Err(e) => {
-            tracing::error!(module = %module_id, error = %e, "failed to wire keybindings");
+            tracing::error!(module = %vim_module_id, error = %e, "failed to wire keybindings");
         }
     }
 

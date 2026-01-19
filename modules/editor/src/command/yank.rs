@@ -10,10 +10,7 @@ use {
     reovim_kernel::api::v1::{CommandId, KernelContext, RegisterContent},
 };
 
-use reovim_kernel::api::v1::ModuleId;
-
-// Command module ID for editor commands.
-const EDITOR_MODULE: ModuleId = ModuleId::new("editor");
+use crate::ids;
 
 /// Yank current line(s) to register (yy, Y).
 #[derive(Debug, Clone, Copy, Default)]
@@ -21,7 +18,7 @@ pub struct YankLine;
 
 impl Command for YankLine {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "yank-line")
+        ids::YANK_LINE
     }
 
     fn description(&self) -> &'static str {

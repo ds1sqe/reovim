@@ -10,7 +10,7 @@ use {
     reovim_kernel::api::v1::{CommandId, KernelContext, SelectionMode, events::ModeChanged},
 };
 
-use crate::modes::{VIM_MODULE, VimMode};
+use crate::{ids, modes::VimMode};
 
 /// Enter visual mode (character-wise selection).
 #[derive(Debug, Clone, Copy, Default)]
@@ -18,7 +18,7 @@ pub struct EnterVisualMode;
 
 impl Command for EnterVisualMode {
     fn id(&self) -> CommandId {
-        CommandId::new(VIM_MODULE, "enter-visual")
+        ids::ENTER_VISUAL
     }
 
     fn description(&self) -> &'static str {
@@ -57,7 +57,7 @@ pub struct EnterVisualLineMode;
 
 impl Command for EnterVisualLineMode {
     fn id(&self) -> CommandId {
-        CommandId::new(VIM_MODULE, "enter-visual-line")
+        ids::ENTER_VISUAL_LINE
     }
 
     fn description(&self) -> &'static str {
@@ -96,7 +96,7 @@ pub struct EnterVisualBlockMode;
 
 impl Command for EnterVisualBlockMode {
     fn id(&self) -> CommandId {
-        CommandId::new(VIM_MODULE, "enter-visual-block")
+        ids::ENTER_VISUAL_BLOCK
     }
 
     fn description(&self) -> &'static str {

@@ -14,7 +14,7 @@ use {
     },
 };
 
-use crate::TEXTOBJECTS_MODULE;
+use crate::ids;
 
 // =============================================================================
 // Helper function
@@ -71,7 +71,7 @@ pub struct InnerWord;
 
 impl Command for InnerWord {
     fn id(&self) -> CommandId {
-        CommandId::new(TEXTOBJECTS_MODULE, "inner-word")
+        ids::INNER_WORD
     }
 
     fn description(&self) -> &'static str {
@@ -105,7 +105,7 @@ pub struct AWord;
 
 impl Command for AWord {
     fn id(&self) -> CommandId {
-        CommandId::new(TEXTOBJECTS_MODULE, "around-word")
+        ids::AROUND_WORD
     }
 
     fn description(&self) -> &'static str {
@@ -139,7 +139,7 @@ pub struct InnerWordBig;
 
 impl Command for InnerWordBig {
     fn id(&self) -> CommandId {
-        CommandId::new(TEXTOBJECTS_MODULE, "inner-word-big")
+        ids::INNER_WORD_BIG
     }
 
     fn description(&self) -> &'static str {
@@ -173,7 +173,7 @@ pub struct AWordBig;
 
 impl Command for AWordBig {
     fn id(&self) -> CommandId {
-        CommandId::new(TEXTOBJECTS_MODULE, "around-word-big")
+        ids::AROUND_WORD_BIG
     }
 
     fn description(&self) -> &'static str {
@@ -218,6 +218,7 @@ pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
 mod tests {
     use {
         super::*,
+        crate::TEXTOBJECTS_MODULE,
         reovim_driver_command::ArgValue,
         reovim_kernel::api::v1::{
             Buffer, BufferError, BufferId, BufferManager, EventBus, MarkBank, MotionEngine,
