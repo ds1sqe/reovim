@@ -2,31 +2,24 @@
 //!
 //! Implements vim find-char motions: `f`, `F`, `t`, `T`, `;`, `,`.
 //!
-//! These commands use the char-wait infrastructure from the runner:
-//! - `f`, `F`, `t`, `T` return `WaitingForChar` to request a character argument
-//! - The event loop completes the motion when the character is received
-//! - `;` and `,` repeat the last find motion in same/opposite direction
+//! # Architecture (Epic #385)
+//!
+//! These commands are **intercepted by the vim resolver** before execution.
+//! The resolver handles `pending_char` state via `VimSessionState`. These command
+//! definitions exist only for:
+//! 1. Keybinding registration (command IDs)
+//! 2. Command metadata (description, args)
+//!
+//! The actual find-char logic lives in:
+//! - `VimNormalResolver::classify_find_char_command()` - intercepts these commands
+//! - `vim::commands::ExecuteFindChar` - executes the motion with char from context
 
 use {
-    reovim_driver_command::{
-        CharWaitContext, Command, CommandContext, CommandHandler, CommandResult, FindType,
-    },
-    reovim_kernel::api::v1::{CommandId, KernelContext, Position},
+    reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
+    reovim_kernel::api::v1::{CommandId, KernelContext},
 };
 
 use crate::ids;
-
-// =============================================================================
-// Helper function
-// =============================================================================
-
-/// Get current cursor position from the active buffer.
-fn get_cursor_position(ctx: &KernelContext, args: &CommandContext) -> Option<Position> {
-    let buffer_id = args.buffer_id()?;
-    let buffer_arc = ctx.buffers.get(buffer_id)?;
-    let buffer = buffer_arc.read();
-    Some(buffer.position())
-}
 
 // =============================================================================
 // Find Char Forward (f)
@@ -36,6 +29,9 @@ fn get_cursor_position(ctx: &KernelContext, args: &CommandContext) -> Option<Pos
 ///
 /// Press `f` followed by a character to move cursor to next occurrence
 /// of that character on the current line.
+///
+/// Note: This command is intercepted by the vim resolver. The `execute()`
+/// method should never be called in normal operation.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct FindCharForward;
 
@@ -50,12 +46,9 @@ impl Command for FindCharForward {
 }
 
 impl CommandHandler for FindCharForward {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        let Some(pos) = get_cursor_position(ctx, args) else {
-            return CommandResult::error("No active buffer");
-        };
-
-        CommandResult::WaitingForChar(CharWaitContext::new(FindType::FindForward, pos))
+    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
+        // Intercepted by vim resolver - should not reach here
+        CommandResult::Success
     }
 }
 
@@ -81,12 +74,9 @@ impl Command for FindCharBackward {
 }
 
 impl CommandHandler for FindCharBackward {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        let Some(pos) = get_cursor_position(ctx, args) else {
-            return CommandResult::error("No active buffer");
-        };
-
-        CommandResult::WaitingForChar(CharWaitContext::new(FindType::FindBackward, pos))
+    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
+        // Intercepted by vim resolver - should not reach here
+        CommandResult::Success
     }
 }
 
@@ -112,12 +102,9 @@ impl Command for TillCharForward {
 }
 
 impl CommandHandler for TillCharForward {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        let Some(pos) = get_cursor_position(ctx, args) else {
-            return CommandResult::error("No active buffer");
-        };
-
-        CommandResult::WaitingForChar(CharWaitContext::new(FindType::TillForward, pos))
+    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
+        // Intercepted by vim resolver - should not reach here
+        CommandResult::Success
     }
 }
 
@@ -143,12 +130,9 @@ impl Command for TillCharBackward {
 }
 
 impl CommandHandler for TillCharBackward {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        let Some(pos) = get_cursor_position(ctx, args) else {
-            return CommandResult::error("No active buffer");
-        };
-
-        CommandResult::WaitingForChar(CharWaitContext::new(FindType::TillBackward, pos))
+    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
+        // Intercepted by vim resolver - should not reach here
+        CommandResult::Success
     }
 }
 
@@ -161,8 +145,7 @@ impl CommandHandler for TillCharBackward {
 /// After using `f`, `F`, `t`, or `T`, press `;` to repeat that motion
 /// in the same direction.
 ///
-/// Note: The actual repeat logic is handled by the runner which has access
-/// to `last_find` state. This command signals the intent to repeat.
+/// Note: Repeat logic is handled by vim resolver via `VimSessionState.last_find`.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RepeatFindSame;
 
@@ -178,9 +161,8 @@ impl Command for RepeatFindSame {
 
 impl CommandHandler for RepeatFindSame {
     fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // Signal to runner to repeat the last find in the same direction.
-        // The runner will check last_find and execute the motion.
-        CommandResult::RepeatFindSame
+        // TODO: Implement via VimSessionState.last_find when SessionContext is available
+        CommandResult::Success
     }
 }
 
@@ -193,8 +175,7 @@ impl CommandHandler for RepeatFindSame {
 /// After using `f`, `F`, `t`, or `T`, press `,` to repeat that motion
 /// in the opposite direction.
 ///
-/// Note: The actual repeat logic is handled by the runner which has access
-/// to `last_find` state. This command signals the intent to repeat.
+/// Note: Repeat logic is handled by vim resolver via `VimSessionState.last_find`.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RepeatFindReverse;
 
@@ -210,9 +191,8 @@ impl Command for RepeatFindReverse {
 
 impl CommandHandler for RepeatFindReverse {
     fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // Signal to runner to repeat the last find in the opposite direction.
-        // The runner will check last_find and execute the motion.
-        CommandResult::RepeatFindReverse
+        // TODO: Implement via VimSessionState.last_find when SessionContext is available
+        CommandResult::Success
     }
 }
 
@@ -287,89 +267,5 @@ mod tests {
     fn test_all_commands_count() {
         let cmds = all_commands();
         assert_eq!(cmds.len(), 6); // f, F, t, T, ;, ,
-    }
-
-    #[test]
-    fn test_find_char_forward_returns_waiting_for_char() {
-        use reovim_kernel::api::v1::KernelContext;
-
-        let mut ctx = KernelContext::default();
-        let args = CommandContext::new();
-
-        let cmd = FindCharForward;
-        let result = cmd.execute(&mut ctx, &args);
-
-        // Without active buffer, returns error
-        assert!(result.is_error());
-    }
-
-    #[test]
-    fn test_find_char_backward_returns_waiting_for_char() {
-        use reovim_kernel::api::v1::KernelContext;
-
-        let mut ctx = KernelContext::default();
-        let args = CommandContext::new();
-
-        let cmd = FindCharBackward;
-        let result = cmd.execute(&mut ctx, &args);
-
-        // Without active buffer, returns error
-        assert!(result.is_error());
-    }
-
-    #[test]
-    fn test_till_char_forward_returns_waiting_for_char() {
-        use reovim_kernel::api::v1::KernelContext;
-
-        let mut ctx = KernelContext::default();
-        let args = CommandContext::new();
-
-        let cmd = TillCharForward;
-        let result = cmd.execute(&mut ctx, &args);
-
-        // Without active buffer, returns error
-        assert!(result.is_error());
-    }
-
-    #[test]
-    fn test_till_char_backward_returns_waiting_for_char() {
-        use reovim_kernel::api::v1::KernelContext;
-
-        let mut ctx = KernelContext::default();
-        let args = CommandContext::new();
-
-        let cmd = TillCharBackward;
-        let result = cmd.execute(&mut ctx, &args);
-
-        // Without active buffer, returns error
-        assert!(result.is_error());
-    }
-
-    #[test]
-    fn test_repeat_find_same_returns_repeat_find_same() {
-        use reovim_kernel::api::v1::KernelContext;
-
-        let mut ctx = KernelContext::default();
-        let args = CommandContext::new();
-
-        let cmd = RepeatFindSame;
-        let result = cmd.execute(&mut ctx, &args);
-
-        // RepeatFindSame returns RepeatFindSame variant (runner handles actual logic)
-        assert!(matches!(result, CommandResult::RepeatFindSame));
-    }
-
-    #[test]
-    fn test_repeat_find_reverse_returns_repeat_find_reverse() {
-        use reovim_kernel::api::v1::KernelContext;
-
-        let mut ctx = KernelContext::default();
-        let args = CommandContext::new();
-
-        let cmd = RepeatFindReverse;
-        let result = cmd.execute(&mut ctx, &args);
-
-        // RepeatFindReverse returns RepeatFindReverse variant (runner handles actual logic)
-        assert!(matches!(result, CommandResult::RepeatFindReverse));
     }
 }

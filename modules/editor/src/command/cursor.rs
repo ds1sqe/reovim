@@ -74,7 +74,9 @@ impl CommandHandler for CursorUp {
         // j/k motions are linewise
         if args.is_operator_pending() {
             // k moves up, so new_pos.line < old_pos.line
-            return CommandResult::operator_range(new_pos, old_pos, true);
+            // TODO: Return operator range via different mechanism when SessionContext is available
+            let _ = (new_pos, old_pos); // Suppress unused warnings
+            return CommandResult::Success;
         }
 
         // Normal mode: move cursor
@@ -151,7 +153,9 @@ impl CommandHandler for CursorDown {
         // j/k motions are linewise
         if args.is_operator_pending() {
             // j moves down, so old_pos.line < new_pos.line
-            return CommandResult::operator_range(old_pos, new_pos, true);
+            // TODO: Return operator range via different mechanism when SessionContext is available
+            let _ = (old_pos, new_pos); // Suppress unused warnings
+            return CommandResult::Success;
         }
 
         // Normal mode: move cursor
@@ -223,7 +227,9 @@ impl CommandHandler for CursorLeft {
         // h/l motions are characterwise
         if args.is_operator_pending() {
             // h moves left, so new_pos.column < old_pos.column
-            return CommandResult::operator_range(new_pos, old_pos, false);
+            // TODO: Return operator range via different mechanism when SessionContext is available
+            let _ = (new_pos, old_pos); // Suppress unused warnings
+            return CommandResult::Success;
         }
 
         // Normal mode: move cursor
@@ -303,7 +309,9 @@ impl CommandHandler for CursorRight {
         // h/l motions are characterwise
         if args.is_operator_pending() {
             // l moves right, so old_pos.column < new_pos.column
-            return CommandResult::operator_range(old_pos, new_pos, false);
+            // TODO: Return operator range via different mechanism when SessionContext is available
+            let _ = (old_pos, new_pos); // Suppress unused warnings
+            return CommandResult::Success;
         }
 
         // Normal mode: move cursor

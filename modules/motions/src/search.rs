@@ -2,14 +2,14 @@
 //!
 //! Implements vim search commands: `/`, `?`, `n`, `N`, `*`, `#`, `:noh`.
 //!
-//! These commands use the search infrastructure from the runner:
-//! - `/` and `?` return `SearchAction::EnterSearchMode` to start input mode
-//! - `n` and `N` return `SearchAction::Next/Previous` for repeat search
-//! - `*` and `#` return `SearchAction::WordUnderCursor` for word search
-//! - `:noh` returns `SearchAction::ClearHighlight` to clear highlighting
+//! # Architecture (Epic #385)
+//!
+//! These commands are stubs that will be implemented when `SessionContext`
+//! provides direct access to search state. The actual search functionality
+//! will be handled by the vim resolver or a dedicated search module.
 
 use {
-    reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult, SearchAction},
+    reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_kernel::api::v1::CommandId,
 };
 
@@ -42,9 +42,8 @@ impl CommandHandler for SearchForward {
         _ctx: &mut reovim_kernel::api::v1::KernelContext,
         _args: &CommandContext,
     ) -> CommandResult {
-        CommandResult::SearchAction(SearchAction::EnterSearchMode {
-            direction: reovim_driver_command::SearchDirection::Forward,
-        })
+        // TODO: Implement via SessionContext when available
+        CommandResult::Success
     }
 }
 
@@ -75,9 +74,8 @@ impl CommandHandler for SearchBackward {
         _ctx: &mut reovim_kernel::api::v1::KernelContext,
         _args: &CommandContext,
     ) -> CommandResult {
-        CommandResult::SearchAction(SearchAction::EnterSearchMode {
-            direction: reovim_driver_command::SearchDirection::Backward,
-        })
+        // TODO: Implement via SessionContext when available
+        CommandResult::Success
     }
 }
 
@@ -108,7 +106,8 @@ impl CommandHandler for SearchNext {
         _ctx: &mut reovim_kernel::api::v1::KernelContext,
         _args: &CommandContext,
     ) -> CommandResult {
-        CommandResult::SearchAction(SearchAction::Next)
+        // TODO: Implement via SessionContext when available
+        CommandResult::Success
     }
 }
 
@@ -139,7 +138,8 @@ impl CommandHandler for SearchPrevious {
         _ctx: &mut reovim_kernel::api::v1::KernelContext,
         _args: &CommandContext,
     ) -> CommandResult {
-        CommandResult::SearchAction(SearchAction::Previous)
+        // TODO: Implement via SessionContext when available
+        CommandResult::Success
     }
 }
 
@@ -170,9 +170,8 @@ impl CommandHandler for SearchWordForward {
         _ctx: &mut reovim_kernel::api::v1::KernelContext,
         _args: &CommandContext,
     ) -> CommandResult {
-        CommandResult::SearchAction(SearchAction::WordUnderCursor {
-            direction: reovim_driver_command::SearchDirection::Forward,
-        })
+        // TODO: Implement via SessionContext when available
+        CommandResult::Success
     }
 }
 
@@ -203,9 +202,8 @@ impl CommandHandler for SearchWordBackward {
         _ctx: &mut reovim_kernel::api::v1::KernelContext,
         _args: &CommandContext,
     ) -> CommandResult {
-        CommandResult::SearchAction(SearchAction::WordUnderCursor {
-            direction: reovim_driver_command::SearchDirection::Backward,
-        })
+        // TODO: Implement via SessionContext when available
+        CommandResult::Success
     }
 }
 
@@ -236,7 +234,8 @@ impl CommandHandler for ClearSearchHighlight {
         _ctx: &mut reovim_kernel::api::v1::KernelContext,
         _args: &CommandContext,
     ) -> CommandResult {
-        CommandResult::SearchAction(SearchAction::ClearHighlight)
+        // TODO: Implement via SessionContext when available
+        CommandResult::Success
     }
 }
 
@@ -319,116 +318,5 @@ mod tests {
     fn test_all_commands_count() {
         let cmds = all_commands();
         assert_eq!(cmds.len(), 7); // /, ?, n, N, *, #, :noh
-    }
-
-    #[test]
-    fn test_search_forward_returns_search_action() {
-        use reovim_kernel::api::v1::KernelContext;
-
-        let mut ctx = KernelContext::default();
-        let args = CommandContext::new();
-
-        let cmd = SearchForward;
-        let result = cmd.execute(&mut ctx, &args);
-
-        assert!(matches!(
-            result,
-            CommandResult::SearchAction(SearchAction::EnterSearchMode {
-                direction: reovim_driver_command::SearchDirection::Forward
-            })
-        ));
-    }
-
-    #[test]
-    fn test_search_backward_returns_search_action() {
-        use reovim_kernel::api::v1::KernelContext;
-
-        let mut ctx = KernelContext::default();
-        let args = CommandContext::new();
-
-        let cmd = SearchBackward;
-        let result = cmd.execute(&mut ctx, &args);
-
-        assert!(matches!(
-            result,
-            CommandResult::SearchAction(SearchAction::EnterSearchMode {
-                direction: reovim_driver_command::SearchDirection::Backward
-            })
-        ));
-    }
-
-    #[test]
-    fn test_search_next_returns_search_action() {
-        use reovim_kernel::api::v1::KernelContext;
-
-        let mut ctx = KernelContext::default();
-        let args = CommandContext::new();
-
-        let cmd = SearchNext;
-        let result = cmd.execute(&mut ctx, &args);
-
-        assert!(matches!(result, CommandResult::SearchAction(SearchAction::Next)));
-    }
-
-    #[test]
-    fn test_search_previous_returns_search_action() {
-        use reovim_kernel::api::v1::KernelContext;
-
-        let mut ctx = KernelContext::default();
-        let args = CommandContext::new();
-
-        let cmd = SearchPrevious;
-        let result = cmd.execute(&mut ctx, &args);
-
-        assert!(matches!(result, CommandResult::SearchAction(SearchAction::Previous)));
-    }
-
-    #[test]
-    fn test_search_word_forward_returns_search_action() {
-        use reovim_kernel::api::v1::KernelContext;
-
-        let mut ctx = KernelContext::default();
-        let args = CommandContext::new();
-
-        let cmd = SearchWordForward;
-        let result = cmd.execute(&mut ctx, &args);
-
-        assert!(matches!(
-            result,
-            CommandResult::SearchAction(SearchAction::WordUnderCursor {
-                direction: reovim_driver_command::SearchDirection::Forward
-            })
-        ));
-    }
-
-    #[test]
-    fn test_search_word_backward_returns_search_action() {
-        use reovim_kernel::api::v1::KernelContext;
-
-        let mut ctx = KernelContext::default();
-        let args = CommandContext::new();
-
-        let cmd = SearchWordBackward;
-        let result = cmd.execute(&mut ctx, &args);
-
-        assert!(matches!(
-            result,
-            CommandResult::SearchAction(SearchAction::WordUnderCursor {
-                direction: reovim_driver_command::SearchDirection::Backward
-            })
-        ));
-    }
-
-    #[test]
-    fn test_clear_search_highlight_returns_search_action() {
-        use reovim_kernel::api::v1::KernelContext;
-
-        let mut ctx = KernelContext::default();
-        let args = CommandContext::new();
-
-        let cmd = ClearSearchHighlight;
-        let result = cmd.execute(&mut ctx, &args);
-
-        assert!(matches!(result, CommandResult::SearchAction(SearchAction::ClearHighlight)));
     }
 }

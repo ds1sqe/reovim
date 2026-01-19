@@ -607,94 +607,45 @@ mod tests {
     }
 
     #[test]
-    fn test_undo_command_returns_undo_action() {
-        use reovim_driver_command::{CommandResult, UndoAction};
-
+    fn test_undo_command_returns_success() {
+        // Commands now return Success - actual undo logic
+        // will be handled by SessionContext when available
         let mut ctx = KernelContext::default();
         let args = CommandContext::new();
 
         let result = UndoCommand.execute(&mut ctx, &args);
-        assert!(result.is_undo_action());
-
-        match result {
-            CommandResult::UndoAction(UndoAction::Undo { count }) => {
-                assert_eq!(count, 1); // Default count is 1
-            }
-            _ => panic!("Expected UndoAction::Undo"),
-        }
+        assert!(result.is_success());
     }
 
     #[test]
-    fn test_redo_command_returns_undo_action() {
-        use reovim_driver_command::{CommandResult, UndoAction};
-
+    fn test_redo_command_returns_success() {
         let mut ctx = KernelContext::default();
         let args = CommandContext::new();
 
         let result = RedoCommand.execute(&mut ctx, &args);
-        assert!(result.is_undo_action());
-
-        match result {
-            CommandResult::UndoAction(UndoAction::Redo { count }) => {
-                assert_eq!(count, 1);
-            }
-            _ => panic!("Expected UndoAction::Redo"),
-        }
+        assert!(result.is_success());
     }
 
     #[test]
-    fn test_undo_command_respects_count() {
-        use reovim_driver_command::{CommandResult, UndoAction};
-
+    fn test_undo_command_with_count() {
         let mut ctx = KernelContext::default();
         let mut args = CommandContext::new();
         args.set("count", ArgValue::Count(5));
 
         let result = UndoCommand.execute(&mut ctx, &args);
-
-        match result {
-            CommandResult::UndoAction(UndoAction::Undo { count }) => {
-                assert_eq!(count, 5);
-            }
-            _ => panic!("Expected UndoAction::Undo"),
-        }
+        // Commands return Success - count is accessed but actual undo
+        // will be handled by SessionContext
+        assert!(result.is_success());
     }
 
     #[test]
-    fn test_redo_command_respects_count() {
-        use reovim_driver_command::{CommandResult, UndoAction};
-
+    fn test_redo_command_with_count() {
         let mut ctx = KernelContext::default();
         let mut args = CommandContext::new();
         args.set("count", ArgValue::Count(3));
 
         let result = RedoCommand.execute(&mut ctx, &args);
-
-        match result {
-            CommandResult::UndoAction(UndoAction::Redo { count }) => {
-                assert_eq!(count, 3);
-            }
-            _ => panic!("Expected UndoAction::Redo"),
-        }
-    }
-
-    #[test]
-    fn test_undo_command_zero_count_defaults_to_one() {
-        use reovim_driver_command::{CommandResult, UndoAction};
-
-        let mut ctx = KernelContext::default();
-        let mut args = CommandContext::new();
-        args.set("count", ArgValue::Count(0));
-
-        let result = UndoCommand.execute(&mut ctx, &args);
-
-        // Zero count should be interpreted as 0 (caller's responsibility to handle)
-        match result {
-            CommandResult::UndoAction(UndoAction::Undo { count }) => {
-                assert_eq!(count, 0);
-            }
-            _ => panic!("Expected UndoAction::Undo"),
-        }
+        assert!(result.is_success());
     }
 
     #[test]
@@ -723,14 +674,13 @@ mod tests {
 
     #[test]
     fn test_undo_command_does_not_require_buffer_id() {
-        // Undo commands return intent, they don't directly access the buffer
+        // Undo commands return Success without requiring buffer_id
         let mut ctx = KernelContext::default();
         let args = CommandContext::new();
 
-        // Should NOT return an error, should return UndoAction
         let result = UndoCommand.execute(&mut ctx, &args);
         assert!(!result.is_error());
-        assert!(result.is_undo_action());
+        assert!(result.is_success());
     }
 
     #[test]
@@ -740,7 +690,7 @@ mod tests {
 
         let result = RedoCommand.execute(&mut ctx, &args);
         assert!(!result.is_error());
-        assert!(result.is_undo_action());
+        assert!(result.is_success());
     }
 
     // =========================================================================
@@ -911,7 +861,7 @@ mod tests {
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
         let result = PasteAfter.execute(&mut ctx, &args);
-        assert!(result.is_edit_action());
+        assert!(result.is_success());
 
         // Check buffer content
         let buffer = ctx.buffers.get(buffer_id).unwrap();
@@ -938,7 +888,7 @@ mod tests {
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
         let result = PasteBefore.execute(&mut ctx, &args);
-        assert!(result.is_edit_action());
+        assert!(result.is_success());
 
         // Check buffer content
         let buffer = ctx.buffers.get(buffer_id).unwrap();
@@ -964,7 +914,7 @@ mod tests {
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
         let result = PasteAfter.execute(&mut ctx, &args);
-        assert!(result.is_edit_action());
+        assert!(result.is_success());
 
         // Check buffer content - "XYZ" pasted after cursor (position 0)
         let buffer = ctx.buffers.get(buffer_id).unwrap();
@@ -988,7 +938,7 @@ mod tests {
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
         let result = PasteBefore.execute(&mut ctx, &args);
-        assert!(result.is_edit_action());
+        assert!(result.is_success());
 
         // Check buffer content - "XYZ" pasted at cursor (position 0)
         let buffer = ctx.buffers.get(buffer_id).unwrap();
@@ -1013,7 +963,7 @@ mod tests {
         args.set_buffer_id(buffer_id);
         args.set("count", ArgValue::Count(3));
         let result = PasteAfter.execute(&mut ctx, &args);
-        assert!(result.is_edit_action());
+        assert!(result.is_success());
 
         // Check buffer content - "XXX" pasted after cursor
         let buffer = ctx.buffers.get(buffer_id).unwrap();
@@ -1048,44 +998,24 @@ mod tests {
     }
 
     #[test]
-    fn test_replace_char_start_returns_waiting_for_char() {
+    fn test_replace_char_start_returns_success() {
+        // Commands now return Success - actual replace-char logic
+        // will be handled by SessionContext/vim resolver
         let (mut ctx, _buffer_id) = setup_buffer_context();
         let args = CommandContext::new();
         let result = ReplaceCharStart.execute(&mut ctx, &args);
 
-        assert!(result.is_waiting_for_char());
+        assert!(result.is_success());
     }
 
     #[test]
-    fn test_replace_char_start_with_count() {
-        use reovim_driver_command::{CharWaitOp, CommandResult};
-
+    fn test_replace_char_start_with_count_returns_success() {
         let (mut ctx, _buffer_id) = setup_buffer_context();
         let mut args = CommandContext::new();
         args.set("count", ArgValue::Count(3));
         let result = ReplaceCharStart.execute(&mut ctx, &args);
 
-        if let CommandResult::WaitingForChar(char_ctx) = result {
-            assert_eq!(char_ctx.op_type, CharWaitOp::ReplaceChar);
-            assert_eq!(char_ctx.count, Some(3));
-        } else {
-            panic!("Expected WaitingForChar result");
-        }
-    }
-
-    #[test]
-    fn test_replace_char_start_default_count_is_one() {
-        use reovim_driver_command::CommandResult;
-
-        let (mut ctx, _buffer_id) = setup_buffer_context();
-        let args = CommandContext::new();
-        let result = ReplaceCharStart.execute(&mut ctx, &args);
-
-        if let CommandResult::WaitingForChar(char_ctx) = result {
-            assert_eq!(char_ctx.count, Some(1));
-        } else {
-            panic!("Expected WaitingForChar result");
-        }
+        assert!(result.is_success());
     }
 
     // =========================================================================
@@ -1107,11 +1037,13 @@ mod tests {
     }
 
     #[test]
-    fn test_repeat_dot_returns_repeat_action() {
+    fn test_repeat_dot_returns_success() {
+        // Commands now return Success - actual repeat logic
+        // will be handled by SessionContext
         let (mut ctx, _buffer_id) = setup_buffer_context();
         let args = CommandContext::new();
         let result = RepeatDot.execute(&mut ctx, &args);
 
-        assert!(result.is_repeat_action());
+        assert!(result.is_success());
     }
 }

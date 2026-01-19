@@ -63,12 +63,20 @@ impl ModuleManager {
     }
 
     /// Create manager with custom loader.
+    ///
+    /// Modules already in the loader are marked as `Loaded` state.
     #[must_use]
     pub fn with_loader(loader: ModuleLoader) -> Self {
+        // Initialize states for all modules already in the loader
+        let states: HashMap<ModuleId, ModuleState> = loader
+            .loaded_ids()
+            .map(|id| (id.clone(), ModuleState::Loaded))
+            .collect();
+
         Self {
             inner: Mutex::new(ModuleManagerInner {
                 loader,
-                states: HashMap::new(),
+                states,
                 init_order: Vec::new(),
                 dependents: HashMap::new(),
             }),

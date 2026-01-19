@@ -40,6 +40,20 @@ pub const TEXTOBJECTS_MODULE: ModuleId = ModuleId::new("textobjects");
 /// Text objects module instance.
 pub struct TextObjectsModule;
 
+impl TextObjectsModule {
+    /// Create a new text objects module.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for TextObjectsModule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Module for TextObjectsModule {
     fn id(&self) -> ModuleId {
         TEXTOBJECTS_MODULE
@@ -72,6 +86,10 @@ pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
     cmds.extend(paragraph::all_commands());
     cmds
 }
+
+// Generate FFI entry points for dynamic loading (only when building standalone cdylib)
+#[cfg(feature = "dynamic")]
+reovim_module_macros::declare_module!(TextObjectsModule);
 
 #[cfg(test)]
 mod tests {

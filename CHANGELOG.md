@@ -4,6 +4,47 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [Unreleased] - v0.9.1-dev
 
+### Added
+
+- Dynamic module loading infrastructure (#390)
+  - All 17 modules now support dynamic loading with `crate-type = ["cdylib", "rlib"]`
+  - All modules now use `declare_module!` macro for FFI entry point generation
+  - Added `dynamic` feature flag to gate FFI symbols (prevents duplicate symbols when modules depend on each other)
+  - Added constructors (`new()`) to all modules for dynamic instantiation
+  - New `scripts/build-module.sh` for building modules as shared libraries
+    - Uses `--features dynamic` to enable FFI symbols
+    - Platform-aware output (.so/.dylib/.dll)
+    - FFI symbol verification (validates all 10 required symbols)
+    - Install support (`--install` to `~/.local/share/reovim/modules/`)
+    - Config install support (`--install-config` to `~/.config/reovim/`)
+    - Batch build support (`--all` for all cdylib modules)
+  - New `config/config.toml.example` for module configuration template
+  - Startup module loading from XDG paths (`~/.local/share/reovim/modules/`)
+    - Config-based loading with static module fallback
+    - Modules load dynamically first, fall back to compiled-in if not found
+  - Name-based module loading via RPC (`module/load undotree`)
+    - Searches XDG paths for matching `.so` files
+    - Supports tilde expansion (`~/path/to/module.so`)
+  - New `autoload_installed` config option to load all discovered modules
+    - When `true`, all modules in search paths are loaded automatically
+    - Use `skip` to exclude specific modules
+  - Module documentation updated with build script usage
+
+- Empty session handler mechanism (#369)
+  - New `lib/drivers/session/` driver with `EmptySessionHandler` trait
+  - `EmptySessionHandlerRegistration` added to kernel API
+  - `Module` trait extended with `empty_session_handlers()` method
+  - `EmptySessionHandlerRegistry` in runner for handler resolution
+  - `modules/scratch-buffer/` with `ScratchBufferHandler` creates empty buffer on startup
+  - Sessions now start with a usable buffer instead of a blank screen
+
+- Expand defaults module as central policy aggregator (#381)
+  - `modules/defaults` now includes empty session handler (`scratch-buffer`)
+  - `empty_session_handler()` factory function for centralized handler access
+  - `empty_session_handlers()` method on `DefaultsModule`
+  - Runner no longer directly imports `scratch-buffer` module
+  - Wiring infrastructure prepared for dynamic module loading (#265)
+
 ### Changed
 
 - Strong-typed CommandId for keybindings (#377, #378)
@@ -17,6 +58,14 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - Modules (editor, motions, vim) implement `CommandProvider`
   - Runner uses `wire_module_commands()` instead of hardcoded registration
   - Maintains kernel purity: command registration stays in driver layer
+
+- Runner simplification: pure mechanism with zero vim-specific knowledge (#385)
+  - Removed `PendingOperator` from `AppState` - moved to vim module's `VimSessionState`
+  - Extended `PopResult::OperatorRange` with operator info (SSOT for operator execution)
+  - Simplified event loop: resolvers handle all key-to-action mapping
+  - Modules store policy state via `ExtensionMap` and `SessionExtension` trait
+  - Removed outdated demo example
+  - Updated runner documentation to reflect mechanism-only design
 
 ### Fixed
 

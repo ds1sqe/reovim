@@ -542,7 +542,7 @@ mod tests {
     }
 
     #[test]
-    fn test_reselect_last_returns_reselect_visual() {
+    fn test_reselect_last_returns_success() {
         use reovim_driver_command::CommandHandler;
 
         let mut ctx = create_test_context();
@@ -552,9 +552,9 @@ mod tests {
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        // ReselectLast returns ReselectVisual to signal intent (actual logic is in runner)
+        // ReselectLast returns Success (actual logic handled via SessionContext/resolver when available)
         let result = ReselectLast.execute(&mut ctx, &args);
-        assert_eq!(result, CommandResult::ReselectVisual);
+        assert!(result.is_success());
     }
 
     // =========================================================================

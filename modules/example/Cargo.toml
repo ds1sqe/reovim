@@ -9,12 +9,22 @@ repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+dynamic = []  # Enable FFI entry points for standalone dynamic loading
+
 [lints]
 workspace = true
 
 [dependencies]
 # Kernel layer (for Mode, ModeId, CommandId, KernelContext)
 reovim-kernel = { path = "../../lib/kernel", version = "0.9.1-dev" }
+
+# Module macros for dynamic loading
+reovim-module-macros = { path = "../../lib/module-macros" }
 
 # Driver layers
 reovim-driver-display = { path = "../../lib/drivers/display", version = "0.9.1-dev" }

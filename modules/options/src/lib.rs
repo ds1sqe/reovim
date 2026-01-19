@@ -207,6 +207,10 @@ impl Module for OptionsModule {
     }
 }
 
+// Generate FFI entry points for dynamic loading (only when building standalone cdylib)
+#[cfg(feature = "dynamic")]
+reovim_module_macros::declare_module!(OptionsModule);
+
 #[cfg(test)]
 mod tests {
     use super::*;

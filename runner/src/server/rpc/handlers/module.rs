@@ -19,7 +19,10 @@ use {
     },
 };
 
-use super::super::dispatcher::{HandlerFuture, RpcContext};
+use {
+    super::super::dispatcher::{HandlerFuture, RpcContext},
+    crate::server::module::{ModuleConfig, find_module},
+};
 
 /// Handler for `module/list` method.
 ///
@@ -85,12 +88,19 @@ pub fn module_list(ctx: RpcContext, _params: serde_json::Value) -> HandlerFuture
 
 /// Handler for `module/load` method.
 ///
-/// Loads a dynamic module from a file path.
+/// Loads a dynamic module from a file path or by name.
+///
+/// If `path` starts with `/` or `~`, it's treated as a file path.
+/// Otherwise, it's treated as a module name and searched in XDG paths.
 ///
 /// # Request
 ///
 /// ```json
+/// // By path:
 /// {"jsonrpc": "2.0", "id": 1, "method": "module/load", "params": {"path": "/tmp/libexample.so"}}
+///
+/// // By name (searches XDG paths):
+/// {"jsonrpc": "2.0", "id": 1, "method": "module/load", "params": {"path": "undotree"}}
 /// ```
 ///
 /// # Response
@@ -114,13 +124,14 @@ pub fn module_load(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture 
         let params: ModuleLoadParams =
             serde_json::from_value(params).map_err(|e| RpcError::invalid_params(e.to_string()))?;
 
-        let path = std::path::Path::new(&params.path);
+        // Resolve the path - either direct path or search by name
+        let resolved_path = resolve_module_path(&params.path)?;
 
         // SAFETY: Loading dynamic modules is inherently unsafe (FFI boundary).
         // The RPC caller takes responsibility for ABI compatibility.
         let module_id = unsafe {
             ctx.session
-                .with_state_mut(|state| state.module_registry.load_dynamic(path))
+                .with_state_mut(|state| state.module_registry.load_dynamic(&resolved_path))
                 .await
         }
         .map_err(|e| RpcError::internal_error(format!("Load failed: {e:?}")))?;
@@ -136,7 +147,7 @@ pub fn module_load(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture 
                     .module_registry
                     .state(&module_id)
                     .map_or_else(|| "Loaded".to_string(), |s| format!("{s:?}")),
-                path: Some(params.path.clone()),
+                path: Some(resolved_path.to_string_lossy().to_string()),
                 is_static: false,
                 dependencies: vec![],
             })
@@ -144,6 +155,38 @@ pub fn module_load(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture 
 
         Ok(serde_json::to_value(ModuleLoadResult { module: info })
             .expect("ModuleLoadResult serialization cannot fail"))
+    })
+}
+
+/// Resolve a module path from user input.
+///
+/// - If starts with `/` or `~`, treat as direct path
+/// - Otherwise, search XDG paths for module by name
+fn resolve_module_path(input: &str) -> Result<PathBuf, RpcError> {
+    // Direct path
+    if input.starts_with('/') {
+        return Ok(PathBuf::from(input));
+    }
+
+    // Tilde expansion
+    if let Some(rest) = input.strip_prefix("~/") {
+        if let Some(home) = dirs::home_dir() {
+            return Ok(home.join(rest));
+        }
+        return Ok(PathBuf::from(input));
+    }
+
+    // Search by module name in XDG paths
+    let config = ModuleConfig::load().unwrap_or_default();
+    let search_paths = config.all_search_paths_with_env();
+
+    // Convert module name to library name (e.g., "undotree" -> "reovim_module_undotree")
+    let lib_name = format!("reovim_module_{}", input.replace('-', "_"));
+
+    find_module(&search_paths, &lib_name).ok_or_else(|| {
+        RpcError::internal_error(format!(
+            "{input}: cannot open shared object file: No such file or directory"
+        ))
     })
 }
 

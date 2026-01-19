@@ -72,8 +72,10 @@ fn execute_word_motion(
         } else {
             (new_pos, old_pos)
         };
+        // TODO: Return operator range via different mechanism when SessionContext is available
         // Word motions are characterwise
-        return CommandResult::operator_range(start, range_end, false);
+        let _ = (start, range_end); // Suppress unused warnings
+        return CommandResult::Success;
     }
 
     // Normal mode: move cursor

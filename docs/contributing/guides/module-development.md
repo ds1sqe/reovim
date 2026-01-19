@@ -77,8 +77,38 @@ declare_module!(MyModule);
 
 ### 3. Build the Module
 
+Use the provided build script for convenience:
+
 ```bash
-cargo build -p reovim-module-my-module
+# Build a single module (release mode)
+./scripts/build-module.sh my-module
+
+# Build in debug mode
+./scripts/build-module.sh my-module --debug
+
+# Build and install to ~/.local/share/reovim/modules/
+./scripts/build-module.sh my-module --install
+
+# Build ALL modules with cdylib support
+./scripts/build-module.sh --all
+
+# Build all and install
+./scripts/build-module.sh --all --install
+```
+
+The script automatically:
+- Enables the `dynamic` feature flag (required for FFI symbols)
+- Builds the cdylib target
+- Verifies all 10 FFI symbols are present
+- Supports platform-aware output (.so/.dylib/.dll)
+
+**Note:** The `dynamic` feature flag gates the FFI symbols to prevent duplicate symbol errors when modules depend on each other. When building manually, use `--features dynamic`.
+
+Or build manually with cargo:
+
+```bash
+# Must include --features dynamic for FFI symbols
+cargo build -p reovim-module-my-module --features dynamic --release
 
 # The .so file is created at:
 # target/debug/libreovim_module_my_module.so (debug)
@@ -326,11 +356,24 @@ search_paths = [
   "/opt/reovim/modules"
 ]
 
-# Modules to auto-load on startup
+# Modules to auto-load on startup (overrides defaults)
 autoload = [
   "lang-rust",
   "feat-completion"
 ]
+
+# Add modules to defaults (without replacing them)
+extra = [
+  "my-custom-module"
+]
+
+# Skip specific default modules
+skip = [
+  "operators"
+]
+
+# Skip all default modules
+no_defaults = false
 ```
 
 ### Default Search Paths

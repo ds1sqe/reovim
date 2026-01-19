@@ -4,7 +4,7 @@
 
 use reovim_kernel::api::v1::RegisterContent;
 
-use crate::{Operator, OperatorContext, OperatorError, Range};
+use super::{Operator, OperatorContext, OperatorError, Range};
 
 /// Change operator - cuts text and signals insert mode.
 ///

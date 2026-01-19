@@ -185,11 +185,73 @@ highlight = true
 timeout = 100
 ```
 
+## Module Configuration
+
+Configure module loading in `~/.config/reovim/config.toml`:
+
+```toml
+[modules]
+# Override default modules (replaces the default list)
+autoload = ["vim", "editor", "keymap"]
+
+# Add modules to defaults (without replacing them)
+extra = ["my-custom-module", "lang-rust"]
+
+# Skip specific default modules
+skip = ["operators"]
+
+# Skip all default modules
+no_defaults = false
+
+# Additional module search paths
+search_paths = [
+  "~/my-modules",
+  "/opt/reovim/modules"
+]
+```
+
+### Default Modules
+
+These modules are loaded by default: `editor`, `keymap`, `operators`, `motions`, `commands`, `mode-manager`
+
+### Module Search Paths
+
+Modules are searched in order:
+1. `/usr/lib/reovim/modules` (system)
+2. `/usr/local/lib/reovim/modules` (local install)
+3. `~/.local/share/reovim/modules` (user)
+4. Paths from config `search_paths`
+
+### CLI Module Options
+
+```bash
+# Load specific modules
+reovim server --load my-module --load another-module
+
+# Skip default modules
+reovim server --no-defaults
+
+# Add module search directory
+reovim server --moddir /path/to/modules
+```
+
+### Runtime Module Management
+
+Use the embedded CLI (`Ctrl+B ;`) or CLI REPL:
+
+```
+modules              # List loaded modules
+load /path/to.so     # Load a module
+unload my-module     # Unload a module
+reload my-module     # Hot reload a module
+```
+
 ## Environment Variables
 
 | Variable | Description |
 |----------|-------------|
 | `REOVIM_LOG` | Log level (`error`, `warn`, `info`, `debug`, `trace`) |
+| `REOVIM_MODULE_PATH` | Colon-separated additional module search paths |
 | `XDG_CONFIG_HOME` | Config directory (default: `~/.config`) |
 | `XDG_DATA_HOME` | Data directory (default: `~/.local/share`) |
 
@@ -238,6 +300,6 @@ Press `Space s` to open the interactive settings menu. Navigate with `j`/`k`, to
 
 ## Related Documentation
 
-- [Module System](../modules/overview.md) - Module configuration
+- [Module Development](../contributing/guides/module-development.md) - Creating dynamic modules
 - [Server Mode](./server-mode.md) - Server options
 - [Architecture](../architecture/overview.md) - System overview

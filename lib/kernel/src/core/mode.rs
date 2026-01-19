@@ -295,6 +295,9 @@ impl fmt::Display for CommandId {
     }
 }
 
+// Note: OperatorId was removed from kernel (Epic #385).
+// Operators are vim-specific policy - OperatorId now lives in modules/vim/src/ids.rs
+
 // ============================================================================
 // Mode Trait
 // ============================================================================
@@ -565,6 +568,26 @@ impl ModeStack {
     pub fn as_slice(&self) -> &[ModeId] {
         &self.stack
     }
+
+    /// Get the home (base) mode.
+    ///
+    /// The home mode is the first mode pushed onto the stack and cannot be popped.
+    ///
+    /// # Panics
+    ///
+    /// This function will never panic in normal use. It only panics if the internal
+    /// invariant (stack has at least one element) is violated, which indicates a bug.
+    #[must_use]
+    pub fn home(&self) -> &ModeId {
+        // Safety: stack always has at least one element (invariant maintained by all methods)
+        self.stack.first().expect("mode stack is never empty")
+    }
+
+    /// Check if a mode is anywhere in the stack.
+    #[must_use]
+    pub fn contains(&self, mode_id: &ModeId) -> bool {
+        self.stack.contains(mode_id)
+    }
 }
 
 // ============================================================================
@@ -689,6 +712,8 @@ mod tests {
         assert_ne!(cmd1, cmd3);
     }
 
+    // Note: OperatorId tests moved to modules/vim (Epic #385)
+
     // ========================================================================
     // ModeStack tests
     // ========================================================================
@@ -760,6 +785,47 @@ mod tests {
         assert_eq!(slice.len(), 2);
         assert_eq!(slice[0], normal);
         assert_eq!(slice[1], op_pending);
+    }
+
+    #[test]
+    fn test_mode_stack_home() {
+        let module = test_module();
+        let normal = ModeId::new(module.clone(), "normal");
+        let insert = ModeId::new(module, "insert");
+
+        let mut stack = ModeStack::new(normal.clone());
+        assert_eq!(stack.home(), &normal);
+
+        // Home doesn't change when we push
+        stack.push(insert);
+        assert_eq!(stack.home(), &normal);
+
+        // Home doesn't change when we pop
+        stack.pop();
+        assert_eq!(stack.home(), &normal);
+    }
+
+    #[test]
+    fn test_mode_stack_contains() {
+        let module = test_module();
+        // Use different discriminants for different modes
+        let normal = ModeId::with_discriminant(module.clone(), "normal", 0);
+        let insert = ModeId::with_discriminant(module.clone(), "insert", 1);
+        let visual = ModeId::with_discriminant(module, "visual", 2);
+
+        let mut stack = ModeStack::new(normal.clone());
+        assert!(stack.contains(&normal));
+        assert!(!stack.contains(&insert));
+        assert!(!stack.contains(&visual));
+
+        stack.push(insert.clone());
+        assert!(stack.contains(&normal));
+        assert!(stack.contains(&insert));
+        assert!(!stack.contains(&visual));
+
+        stack.pop();
+        assert!(stack.contains(&normal));
+        assert!(!stack.contains(&insert));
     }
 
     // ========================================================================

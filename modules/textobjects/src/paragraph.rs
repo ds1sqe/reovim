@@ -48,12 +48,10 @@ fn execute_paragraph_textobj(
     // Kernel returns inclusive end, convert to exclusive
     let end_exclusive = Position::new(end.line, end.column + 1);
 
+    // TODO: Return operator range via different mechanism when SessionContext is available
     // Paragraph operations are linewise
-    CommandResult::OperatorRange {
-        start,
-        end: end_exclusive,
-        is_linewise: true,
-    }
+    let _ = (start, end_exclusive); // Suppress unused warnings
+    CommandResult::Success
 }
 
 // =============================================================================

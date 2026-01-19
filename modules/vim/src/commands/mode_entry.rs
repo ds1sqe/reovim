@@ -161,13 +161,15 @@ impl CommandHandler for OpenLineBelow {
         let edit = buffer.insert(&insert_text);
 
         // Cursor is now at end of indent on new line
-        let cursor_after = buffer.position();
+        let _cursor_after = buffer.position();
         drop(buffer);
 
         ctx.event_bus
             .emit(ModeChanged::with_mode_id("normal", VimMode::INSERT_ID));
 
-        CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
+        // TODO: Return edit action via different mechanism when SessionContext is available
+        let _ = (buffer_id, edit, cursor_before); // Suppress unused warnings
+        CommandResult::Success
     }
 }
 
@@ -227,13 +229,15 @@ impl CommandHandler for OpenLineAbove {
         // Move cursor to end of indent on the new line (which is now at pos.line)
         let indent_len = indent.chars().count();
         buffer.set_position(Position::new(pos.line, indent_len));
-        let cursor_after = buffer.position();
+        let _cursor_after = buffer.position();
         drop(buffer);
 
         ctx.event_bus
             .emit(ModeChanged::with_mode_id("normal", VimMode::INSERT_ID));
 
-        CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
+        // TODO: Return edit action via different mechanism when SessionContext is available
+        let _ = (buffer_id, edit, cursor_before); // Suppress unused warnings
+        CommandResult::Success
     }
 }
 

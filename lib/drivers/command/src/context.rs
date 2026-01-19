@@ -193,6 +193,18 @@ impl CommandContext {
             .as_ref()
             .is_some_and(|m| m == "operator-pending")
     }
+
+    /// Get a character argument by name.
+    ///
+    /// Used for commands that need a single character input, such as
+    /// find-char (f/F/t/T) or replace (r).
+    #[must_use]
+    pub fn char(&self, name: &str) -> Option<char> {
+        match self.args.get(name) {
+            Some(ArgValue::Char(c)) => Some(*c),
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]

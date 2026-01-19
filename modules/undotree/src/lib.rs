@@ -141,3 +141,7 @@ pub fn keybindings() -> Vec<KeybindingRegistration> {
             .with_description("Close undotree panel"),
     ]
 }
+
+// Generate FFI entry points for dynamic loading (only when building standalone cdylib)
+#[cfg(feature = "dynamic")]
+reovim_module_macros::declare_module!(UndotreeModule);

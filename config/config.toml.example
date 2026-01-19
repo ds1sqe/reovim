@@ -1,0 +1,27 @@
+# Reovim Configuration
+# Copy to ~/.config/reovim/config.toml
+
+# Module loading configuration
+[modules]
+# Auto-load all installed modules from search paths
+# When true, discovers and loads ALL .so/.dylib files in search paths
+# Use 'skip' to exclude specific modules
+autoload_installed = true
+
+# Additional search paths for modules (searched after defaults)
+# Default paths: /usr/lib/reovim/modules, /usr/local/lib/reovim/modules, ~/.local/share/reovim/modules
+# search_paths = ["~/my-modules"]
+
+# Extra modules to load on top of defaults (only used when autoload_installed = false)
+# These are loaded in addition to the default modules (editor, keymap, operators, motions, commands, mode-manager)
+# extra = ["undotree", "textobjects"]
+
+# Modules to skip (works with both autoload_installed and defaults)
+# Use this to disable specific modules
+# skip = ["example", "hot-reload-demo"]
+
+# Override default modules entirely (replaces defaults, not recommended)
+# autoload = ["editor", "keymap", "my-custom-module"]
+
+# Skip all default modules (only load what's in autoload)
+# no_defaults = false

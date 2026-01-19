@@ -223,8 +223,8 @@ impl Command for ReselectLast {
 
 impl CommandHandler for ReselectLast {
     fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // Signal intent to restore the last visual selection.
-        // The runner handles the actual restoration since it requires AppState.
-        CommandResult::ReselectVisual
+        // TODO: Implement via SessionContext when available
+        // Will signal intent to restore the last visual selection
+        CommandResult::Success
     }
 }

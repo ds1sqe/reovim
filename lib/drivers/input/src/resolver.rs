@@ -49,7 +49,10 @@
 
 use std::collections::HashMap;
 
-use reovim_kernel::api::v1::{BufferId, CommandId, ModeId, ModeStack, Position};
+use {
+    reovim_driver_session::ExtensionMap,
+    reovim_kernel::api::v1::{BufferId, CommandId, ModeId, ModeStack, Position},
+};
 
 use crate::{KeyEvent, KeySequence, KeymapQuery};
 
@@ -233,6 +236,73 @@ pub trait ModeKeyResolver: Send + Sync {
     ) -> ResolveResult {
         // Default: delegate to legacy resolve() for backward compatibility
         self.resolve(key, state)
+    }
+
+    /// Process a key event with access to keymap queries AND session extensions.
+    ///
+    /// This is the preferred method for resolvers that need to access per-session
+    /// module state (e.g., `VimSessionState` for pending operators, find-char state).
+    ///
+    /// # Architecture (Epic #385)
+    ///
+    /// This method enables the proper mechanism/policy separation:
+    /// - **Mechanism**: Runner routes keys to resolvers, provides extension access
+    /// - **Policy**: Vim resolver stores/reads `VimSessionState` in extensions
+    ///
+    /// By passing `extensions` as a mutable reference, resolvers can:
+    /// - Read pending operator state
+    /// - Set pending char state (for f/t/r commands)
+    /// - Execute operators directly when motion provides range
+    /// - All without returning vim-specific `CommandResult` variants
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key event to process
+    /// * `state` - Mutable access to shared mode state
+    /// * `input` - Input context with keymap access
+    /// * `extensions` - Per-session extension storage for module state
+    ///
+    /// # Returns
+    ///
+    /// A `ResolveResult` indicating what action to take.
+    ///
+    /// # Default Implementation
+    ///
+    /// Falls back to `resolve_with_keymap()` for backward compatibility.
+    /// Override this method to use session extensions.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use reovim_module_vim::VimSessionState;
+    ///
+    /// fn resolve_with_extensions(
+    ///     &self,
+    ///     key: &KeyEvent,
+    ///     state: &mut ModeState,
+    ///     input: &ResolveInput<'_>,
+    ///     extensions: &mut ExtensionMap,
+    /// ) -> ResolveResult {
+    ///     // Get vim-specific state
+    ///     let vim = extensions.get_or_insert::<VimSessionState>();
+    ///
+    ///     // Check for pending operator
+    ///     if let Some(pending) = &vim.pending_operator {
+    ///         // Handle operator-pending logic
+    ///     }
+    ///
+    ///     // ... rest of resolution logic
+    /// }
+    /// ```
+    fn resolve_with_extensions(
+        &self,
+        key: &KeyEvent,
+        state: &mut ModeState,
+        input: &ResolveInput<'_>,
+        _extensions: &mut ExtensionMap,
+    ) -> ResolveResult {
+        // Default: delegate to resolve_with_keymap for backward compatibility
+        self.resolve_with_keymap(key, state, input)
     }
 
     /// Which mode this resolver handles.
@@ -576,14 +646,25 @@ pub enum PopResult {
     /// Operator completed with a range.
     ///
     /// The parent mode (normal) should execute the pending operator
-    /// on this range.
+    /// on this range. All information needed for execution is included
+    /// to maintain SSOT (Single Source of Truth) - no duplicate state
+    /// storage in the runner.
     OperatorRange {
+        /// The operator command to execute.
+        ///
+        /// Carried through from the transition context when entering
+        /// operator-pending mode, ensuring no state duplication.
+        operator: CommandId,
         /// Start position of the range.
         start: Position,
         /// End position of the range.
         end: Position,
         /// Whether the range is linewise (full lines).
         linewise: bool,
+        /// Count applied to the operator.
+        count: Option<usize>,
+        /// Target register for the operation.
+        register: Option<char>,
     },
 
     /// Text object selected.
@@ -900,22 +981,31 @@ mod tests {
     fn test_mode_transition_pop() {
         let trans = ModeTransition::Pop {
             result: Some(PopResult::OperatorRange {
+                operator: test_command(),
                 start: Position::new(0, 0),
                 end: Position::new(0, 5),
                 linewise: false,
+                count: Some(2),
+                register: Some('a'),
             }),
         };
 
         if let ModeTransition::Pop { result: Some(r) } = trans {
             if let PopResult::OperatorRange {
+                operator,
                 start,
                 end,
                 linewise,
+                count,
+                register,
             } = r
             {
+                assert_eq!(operator, test_command());
                 assert_eq!(start, Position::new(0, 0));
                 assert_eq!(end, Position::new(0, 5));
                 assert!(!linewise);
+                assert_eq!(count, Some(2));
+                assert_eq!(register, Some('a'));
             } else {
                 panic!("expected OperatorRange");
             }
@@ -979,20 +1069,29 @@ mod tests {
     #[test]
     fn test_pop_result_operator_range() {
         let result = PopResult::OperatorRange {
+            operator: test_command(),
             start: Position::new(1, 0),
             end: Position::new(3, 0),
             linewise: true,
+            count: None,
+            register: None,
         };
 
         if let PopResult::OperatorRange {
+            operator,
             start,
             end,
             linewise,
+            count,
+            register,
         } = result
         {
+            assert_eq!(operator, test_command());
             assert_eq!(start, Position::new(1, 0));
             assert_eq!(end, Position::new(3, 0));
             assert!(linewise);
+            assert!(count.is_none());
+            assert!(register.is_none());
         } else {
             panic!("expected OperatorRange");
         }

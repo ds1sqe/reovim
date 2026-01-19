@@ -1,6 +1,4 @@
-//! Vim operators module - POLICY.
-//!
-//! Reference: lib/core/src/command/builtin/operator.rs (concept-extraction, not migration)
+//! Vim operators - delete, yank, change.
 //!
 //! This module implements the standard Vim operators:
 //! - `d` - Delete (cuts text to register)
@@ -12,24 +10,15 @@
 //! - **Mechanism (Kernel)**: Buffer management, position types, register storage
 //! - **Policy (This Module)**: `Operator` trait, `Range`, what operators do
 //!
-//! # Example
+//! # Note
 //!
-//! ```ignore
-//! use reovim_module_operators::operators;
-//!
-//! // Get all operators registered by this module
-//! let ops = operators();
-//! for op in &ops {
-//!     println!("{}: {}", op.id(), if op.is_text_modifying() { "modifies" } else { "read-only" });
-//! }
-//! ```
+//! Operators are a vim-specific concept (operator + motion = action on range).
+//! This is why they live in the vim module, not as a separate module.
 
 mod change;
 mod delete;
 mod types;
 mod yank;
-
-use reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version};
 
 // Re-export operator types
 pub use types::{Operator, OperatorContext, OperatorError, Range};
@@ -44,35 +33,6 @@ pub fn operators() -> Vec<Box<dyn Operator>> {
         Box::new(YankOperator),
         Box::new(ChangeOperator),
     ]
-}
-
-// ============================================================================
-// Module trait implementation
-// ============================================================================
-
-/// Operators module instance.
-pub struct OperatorsModule;
-
-impl Module for OperatorsModule {
-    fn id(&self) -> ModuleId {
-        ModuleId::new("operators")
-    }
-
-    fn name(&self) -> &'static str {
-        "Vim Operators"
-    }
-
-    fn version(&self) -> Version {
-        Version::new(0, 9, 0)
-    }
-
-    fn init(&mut self, _ctx: &ModuleContext) -> ProbeResult {
-        ProbeResult::Success
-    }
-
-    fn exit(&mut self) -> Result<(), ModuleError> {
-        Ok(())
-    }
 }
 
 #[cfg(test)]
@@ -108,12 +68,5 @@ mod tests {
     fn test_change_is_text_modifying() {
         let change = ChangeOperator;
         assert!(change.is_text_modifying());
-    }
-
-    #[test]
-    fn test_module_trait() {
-        let module = OperatorsModule;
-        assert_eq!(module.id().as_str(), "operators");
-        assert_eq!(module.name(), "Vim Operators");
     }
 }

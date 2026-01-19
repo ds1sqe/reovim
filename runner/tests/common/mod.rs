@@ -29,8 +29,10 @@ pub use {
 
 /// Get the path to the demo module shared library.
 ///
-/// The demo module is built as a cdylib when running tests because it's
-/// listed as a dev-dependency in runner/Cargo.toml.
+/// Searches in order:
+/// 1. XDG data dir (`~/.local/share/reovim/modules/`) - installed modules with FFI symbols
+/// 2. `target/release/` - release build with FFI symbols
+/// 3. `target/debug/` - debug build (fallback, may not have FFI symbols)
 ///
 /// # Returns
 ///
@@ -42,20 +44,40 @@ pub use {
 /// Panics if the parent directory of `CARGO_MANIFEST_DIR` doesn't exist.
 #[must_use]
 pub fn demo_module_path() -> PathBuf {
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let profile = if cfg!(debug_assertions) {
-        "debug"
-    } else {
-        "release"
-    };
-
     let lib_name = demo_module_filename();
 
+    // First, check XDG data dir for installed modules (these have FFI symbols)
+    // XDG_DATA_HOME defaults to ~/.local/share
+    let xdg_data_home = std::env::var("XDG_DATA_HOME").map_or_else(
+        |_| {
+            std::env::var("HOME")
+                .map_or_else(|_| PathBuf::new(), |h| PathBuf::from(h).join(".local/share"))
+        },
+        PathBuf::from,
+    );
+    let xdg_path = xdg_data_home.join("reovim/modules").join(lib_name);
+
+    if xdg_path.exists() {
+        return xdg_path;
+    }
+
+    // Second, check release build (built with --features dynamic)
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let release_path = PathBuf::from(manifest_dir)
+        .parent()
+        .expect("runner should have parent directory")
+        .join("target/release")
+        .join(lib_name);
+
+    if release_path.exists() {
+        return release_path;
+    }
+
+    // Fallback to debug build (may not have FFI symbols without --features dynamic)
     PathBuf::from(manifest_dir)
         .parent()
         .expect("runner should have parent directory")
-        .join("target")
-        .join(profile)
+        .join("target/debug")
         .join(lib_name)
 }
 

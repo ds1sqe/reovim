@@ -25,6 +25,7 @@ reovim-kernel = { path = "../lib/kernel" }
 reovim-driver-command = { path = "../lib/drivers/command" }
 reovim-driver-display = { path = "../lib/drivers/display" }
 reovim-driver-input = { path = "../lib/drivers/input" }
+reovim-driver-session = { path = "../lib/drivers/session" }
 reovim-driver-vfs = { path = "../lib/drivers/vfs" }
 
 # Default modules (statically linked for core functionality)
@@ -32,7 +33,7 @@ reovim-module-keymap = { path = "../modules/keymap" }
 reovim-module-vim = { path = "../modules/vim" }
 reovim-module-editor = { path = "../modules/editor" }
 reovim-module-motions = { path = "../modules/motions" }
-reovim-module-operators = { path = "../modules/operators" }
+# Note: operators merged into vim (Epic #385)
 reovim-module-commands = { path = "../modules/commands" }
 
 # Layout module for window management
@@ -40,6 +41,9 @@ reovim-module-layout = { path = "../modules/layout" }
 
 # Undotree module for rendering
 reovim-module-undotree = { path = "../modules/undotree" }
+
+# Default modules bundle (includes scratch-buffer for empty sessions)
+reovim-module-defaults = { path = "../modules/defaults" }
 
 # Protocol (shared RPC types)
 reovim-protocol = { path = "../lib/protocol" }

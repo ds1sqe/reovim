@@ -1,0 +1,21 @@
+[package]
+name = "reovim-module-scratch-buffer"
+version = "0.9.0"
+edition = "2024"
+description = "Scratch buffer handler for reovim - creates empty buffer on startup"
+rust-version = "1.85"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+dynamic = []  # Enable FFI entry points for standalone dynamic loading
+
+[dependencies]
+reovim-driver-session = { path = "../../lib/drivers/session" }
+reovim-kernel = { path = "../../lib/kernel" }
+reovim-module-macros = { path = "../../lib/module-macros" }
+
+[lints]
+workspace = true

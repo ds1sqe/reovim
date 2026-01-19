@@ -53,6 +53,20 @@ pub const EDITOR_MODULE: ModuleId = ids::MODULE;
 /// mode-specific behavior (vim modes) is in the vim module.
 pub struct EditorModule;
 
+impl EditorModule {
+    /// Create a new editor module.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for EditorModule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Module for EditorModule {
     fn id(&self) -> ModuleId {
         EDITOR_MODULE
@@ -80,3 +94,7 @@ impl CommandProvider for EditorModule {
         command::all_commands()
     }
 }
+
+// Generate FFI entry points for dynamic loading (only when building standalone cdylib)
+#[cfg(feature = "dynamic")]
+reovim_module_macros::declare_module!(EditorModule);

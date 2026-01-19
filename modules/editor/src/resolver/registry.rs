@@ -7,7 +7,8 @@ use std::{collections::HashMap, sync::Arc};
 
 use {
     reovim_driver_input::{
-        KeyEvent, KeymapQuery, ModeKeyResolver, ModeState, ResolveInput, ResolveResult,
+        ExtensionMap, KeyEvent, KeymapQuery, ModeKeyResolver, ModeState, ResolveInput,
+        ResolveResult,
     },
     reovim_kernel::api::v1::ModeId,
 };
@@ -140,6 +141,51 @@ impl ResolverRegistry {
             && let Some(parent) = resolver.inherits_from()
         {
             return self.resolve_with_keymap(parent, key, state, keymap);
+        }
+
+        Some(result)
+    }
+
+    /// Resolve a key event for a mode with keymap AND extension access.
+    ///
+    /// This is the preferred method for the new resolver architecture (Epic #385).
+    /// Resolvers can access per-session module state via the extensions parameter,
+    /// enabling them to handle vim-specific state without runner involvement.
+    ///
+    /// # Architecture
+    ///
+    /// - **Mechanism (runner)**: Routes keys, provides extensions
+    /// - **Policy (resolvers)**: Access `VimSessionState` in extensions, decide what to do
+    ///
+    /// # Arguments
+    ///
+    /// * `mode` - The mode to resolve for
+    /// * `key` - The key event to process
+    /// * `state` - Mutable mode state
+    /// * `keymap` - Access to keymap queries
+    /// * `extensions` - Per-session extension storage for module state
+    ///
+    /// Returns `None` if no resolver is registered for the mode (or its parents).
+    pub fn resolve_with_extensions(
+        &self,
+        mode: &ModeId,
+        key: &KeyEvent,
+        state: &mut ModeState,
+        keymap: &dyn KeymapQuery,
+        extensions: &mut ExtensionMap,
+    ) -> Option<ResolveResult> {
+        let resolver = self.get(mode)?;
+
+        // Clone pending keys to avoid borrow checker issues
+        let keys = state.pending_keys.clone();
+        let input = ResolveInput::new(&keys, mode, keymap);
+        let result = resolver.resolve_with_extensions(key, state, &input, extensions);
+
+        // If not handled, try parent mode
+        if matches!(result, ResolveResult::NotHandled)
+            && let Some(parent) = resolver.inherits_from()
+        {
+            return self.resolve_with_extensions(parent, key, state, keymap, extensions);
         }
 
         Some(result)

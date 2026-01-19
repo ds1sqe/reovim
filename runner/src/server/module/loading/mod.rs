@@ -22,6 +22,8 @@ mod discovery;
 mod handle;
 #[allow(unsafe_code)]
 mod loader;
+#[allow(unsafe_code)]
+mod startup;
 
 // Re-exports
 pub use {
@@ -30,6 +32,7 @@ pub use {
     },
     handle::{InitResult, ModuleHandle},
     loader::ModuleLoader,
+    startup::{LoadResult, StartupLoadStats, StaticModuleFactory, load_from_config},
 };
 
 #[cfg(feature = "python")]

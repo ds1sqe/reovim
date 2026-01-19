@@ -1,0 +1,509 @@
+//! Session types for per-client state.
+//!
+//! This module provides types for managing per-client session state.
+//! Each connected client has its own `Session` with windows, mode stack,
+//! and extension storage.
+//!
+//! # Design
+//!
+//! - **Session**: Complete per-client state container
+//! - **`SessionId`**: Unique session identifier
+//! - **Viewport**: Client viewport dimensions and scroll
+//! - **Window**: Single window with buffer reference
+//! - **`WindowLayout`**: Window arrangement for a session
+
+use reovim_kernel::api::v1::{BufferId, ModeId, ModeStack, Position, WindowId};
+
+use crate::extension::ExtensionMap;
+
+/// Unique session identifier.
+///
+/// Sessions are identified by a monotonically increasing ID assigned
+/// by the server when the client connects.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SessionId(pub u64);
+
+impl SessionId {
+    /// Create a new session ID.
+    #[must_use]
+    pub const fn new(id: u64) -> Self {
+        Self(id)
+    }
+
+    /// Get the raw ID value.
+    #[must_use]
+    pub const fn as_u64(&self) -> u64 {
+        self.0
+    }
+}
+
+impl std::fmt::Display for SessionId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "session-{}", self.0)
+    }
+}
+
+/// Viewport for a client session.
+///
+/// Represents the visible area of a buffer in a window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Viewport {
+    /// Width in columns.
+    pub width: u16,
+    /// Height in rows.
+    pub height: u16,
+    /// Scroll offset (first visible line).
+    pub scroll_offset: usize,
+}
+
+impl Viewport {
+    /// Create a new viewport.
+    #[must_use]
+    pub const fn new(width: u16, height: u16) -> Self {
+        Self {
+            width,
+            height,
+            scroll_offset: 0,
+        }
+    }
+
+    /// Create a default viewport (80x24).
+    #[must_use]
+    pub const fn default_size() -> Self {
+        Self::new(80, 24)
+    }
+
+    /// Get the last visible line index.
+    #[must_use]
+    pub const fn last_visible_line(&self) -> usize {
+        self.scroll_offset + self.height as usize - 1
+    }
+
+    /// Check if a line is visible.
+    #[must_use]
+    pub const fn is_line_visible(&self, line: usize) -> bool {
+        line >= self.scroll_offset && line <= self.last_visible_line()
+    }
+}
+
+impl Default for Viewport {
+    fn default() -> Self {
+        Self::default_size()
+    }
+}
+
+/// Cursor position within a window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CursorPosition {
+    /// Line number (0-indexed).
+    pub line: usize,
+    /// Column number (0-indexed).
+    pub column: usize,
+}
+
+impl CursorPosition {
+    /// Create a new cursor position.
+    #[must_use]
+    pub const fn new(line: usize, column: usize) -> Self {
+        Self { line, column }
+    }
+
+    /// Create cursor at origin (0, 0).
+    #[must_use]
+    pub const fn origin() -> Self {
+        Self::new(0, 0)
+    }
+}
+
+impl From<Position> for CursorPosition {
+    fn from(pos: Position) -> Self {
+        Self::new(pos.line, pos.column)
+    }
+}
+
+impl From<CursorPosition> for Position {
+    fn from(cursor: CursorPosition) -> Self {
+        Self::new(cursor.line, cursor.column)
+    }
+}
+
+/// Window within a session.
+///
+/// A window displays a portion of a buffer. Sessions can have multiple
+/// windows (splits), each with its own viewport and cursor.
+#[derive(Debug)]
+pub struct Window {
+    /// Unique window identifier.
+    pub id: WindowId,
+    /// Buffer displayed in this window (if any).
+    pub buffer_id: Option<BufferId>,
+    /// Cursor position within the buffer.
+    pub cursor: CursorPosition,
+    /// Visible viewport.
+    pub viewport: Viewport,
+}
+
+impl Window {
+    /// Create a new empty window.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            id: WindowId::new(),
+            buffer_id: None,
+            cursor: CursorPosition::origin(),
+            viewport: Viewport::default(),
+        }
+    }
+
+    /// Create a window displaying a buffer.
+    #[must_use]
+    pub fn with_buffer(buffer_id: BufferId) -> Self {
+        Self {
+            id: WindowId::new(),
+            buffer_id: Some(buffer_id),
+            cursor: CursorPosition::origin(),
+            viewport: Viewport::default(),
+        }
+    }
+}
+
+impl Default for Window {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Window layout for a session.
+///
+/// Manages the windows in a session, including which window is active.
+#[derive(Debug, Default)]
+pub struct WindowLayout {
+    /// All windows in this session.
+    pub windows: Vec<Window>,
+    /// Currently active window index.
+    active_index: Option<usize>,
+}
+
+impl WindowLayout {
+    /// Create an empty layout.
+    #[must_use]
+    pub const fn empty() -> Self {
+        Self {
+            windows: Vec::new(),
+            active_index: None,
+        }
+    }
+
+    /// Create a layout with one window.
+    #[must_use]
+    pub fn single(window: Window) -> Self {
+        Self {
+            windows: vec![window],
+            active_index: Some(0),
+        }
+    }
+
+    /// Add a window to the layout.
+    ///
+    /// If this is the first window, it becomes active.
+    pub fn add(&mut self, window: Window) {
+        self.windows.push(window);
+        if self.active_index.is_none() {
+            self.active_index = Some(0);
+        }
+    }
+
+    /// Get the active window.
+    #[must_use]
+    pub fn active(&self) -> Option<&Window> {
+        self.active_index.and_then(|i| self.windows.get(i))
+    }
+
+    /// Get the active window mutably.
+    pub fn active_mut(&mut self) -> Option<&mut Window> {
+        self.active_index.and_then(|i| self.windows.get_mut(i))
+    }
+
+    /// Get the active window ID.
+    #[must_use]
+    pub fn active_id(&self) -> Option<WindowId> {
+        self.active().map(|w| w.id)
+    }
+
+    /// Set the active window by ID.
+    ///
+    /// Returns `true` if the window was found and made active.
+    pub fn set_active(&mut self, id: WindowId) -> bool {
+        if let Some(idx) = self.windows.iter().position(|w| w.id == id) {
+            self.active_index = Some(idx);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Check if the layout is empty.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.windows.is_empty()
+    }
+
+    /// Get the number of windows.
+    #[must_use]
+    pub const fn len(&self) -> usize {
+        self.windows.len()
+    }
+
+    /// Get window by ID.
+    #[must_use]
+    pub fn get(&self, id: WindowId) -> Option<&Window> {
+        self.windows.iter().find(|w| w.id == id)
+    }
+
+    /// Get window by ID mutably.
+    pub fn get_mut(&mut self, id: WindowId) -> Option<&mut Window> {
+        self.windows.iter_mut().find(|w| w.id == id)
+    }
+}
+
+/// Pending key sequence.
+///
+/// Accumulates keys that haven't been resolved yet (e.g., `d` waiting for motion).
+#[derive(Debug, Clone, Default)]
+pub struct KeySequence {
+    /// Accumulated key representations.
+    keys: Vec<String>,
+}
+
+impl KeySequence {
+    /// Create an empty sequence.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self { keys: Vec::new() }
+    }
+
+    /// Add a key to the sequence.
+    pub fn push(&mut self, key: String) {
+        self.keys.push(key);
+    }
+
+    /// Clear the sequence.
+    pub fn clear(&mut self) {
+        self.keys.clear();
+    }
+
+    /// Check if empty.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.keys.is_empty()
+    }
+
+    /// Get the keys.
+    #[must_use]
+    pub fn keys(&self) -> &[String] {
+        &self.keys
+    }
+
+    /// Get the sequence as a single string.
+    #[must_use]
+    pub fn as_string(&self) -> String {
+        self.keys.join("")
+    }
+}
+
+/// Complete session (server-side storage for one client).
+///
+/// Each connected client has its own session with independent state.
+/// Sessions are identified by `SessionId` and contain:
+///
+/// - Windows and their layouts
+/// - Mode stack (current editing mode)
+/// - Pending key sequence
+/// - Module-provided extensions (policy state)
+#[derive(Debug)]
+pub struct Session {
+    /// Unique session identifier.
+    pub id: SessionId,
+    /// Window layout (per-session windows).
+    pub windows: WindowLayout,
+    /// Mode stack (current mode on top).
+    pub mode_stack: ModeStack,
+    /// Keys accumulated but not yet processed.
+    pub pending_keys: KeySequence,
+    /// Module-provided per-session state.
+    pub extensions: ExtensionMap,
+}
+
+impl Session {
+    /// Create a new session with a home mode.
+    ///
+    /// The home mode is the bottom of the mode stack and cannot be popped.
+    #[must_use]
+    pub fn new(id: SessionId, home_mode: ModeId) -> Self {
+        Self {
+            id,
+            windows: WindowLayout::empty(),
+            mode_stack: ModeStack::new(home_mode),
+            pending_keys: KeySequence::new(),
+            extensions: ExtensionMap::new(),
+        }
+    }
+
+    /// Get the current mode.
+    #[must_use]
+    pub fn current_mode(&self) -> &ModeId {
+        self.mode_stack.current()
+    }
+
+    /// Get the active buffer ID (from active window).
+    #[must_use]
+    pub fn active_buffer(&self) -> Option<BufferId> {
+        self.windows.active().and_then(|w| w.buffer_id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use {super::*, reovim_kernel::api::v1::ModuleId};
+
+    fn test_mode() -> ModeId {
+        ModeId::new(ModuleId::new("test"), "normal")
+    }
+
+    #[test]
+    fn test_session_id() {
+        let id = SessionId::new(42);
+        assert_eq!(id.as_u64(), 42);
+        assert_eq!(id.to_string(), "session-42");
+    }
+
+    #[test]
+    fn test_viewport() {
+        let vp = Viewport::new(100, 50);
+        assert_eq!(vp.width, 100);
+        assert_eq!(vp.height, 50);
+        assert_eq!(vp.scroll_offset, 0);
+        assert_eq!(vp.last_visible_line(), 49);
+        assert!(vp.is_line_visible(0));
+        assert!(vp.is_line_visible(49));
+        assert!(!vp.is_line_visible(50));
+    }
+
+    #[test]
+    fn test_viewport_default() {
+        let vp = Viewport::default();
+        assert_eq!(vp.width, 80);
+        assert_eq!(vp.height, 24);
+    }
+
+    #[test]
+    fn test_cursor_position() {
+        let cursor = CursorPosition::new(5, 10);
+        assert_eq!(cursor.line, 5);
+        assert_eq!(cursor.column, 10);
+
+        let origin = CursorPosition::origin();
+        assert_eq!(origin.line, 0);
+        assert_eq!(origin.column, 0);
+    }
+
+    #[test]
+    fn test_cursor_position_conversion() {
+        let pos = Position::new(10, 20);
+        let cursor: CursorPosition = pos.into();
+        assert_eq!(cursor.line, 10);
+        assert_eq!(cursor.column, 20);
+
+        let back: Position = cursor.into();
+        assert_eq!(back, pos);
+    }
+
+    #[test]
+    fn test_window() {
+        let window = Window::new();
+        assert!(window.buffer_id.is_none());
+
+        let buf_id = BufferId::new();
+        let window = Window::with_buffer(buf_id);
+        assert_eq!(window.buffer_id, Some(buf_id));
+    }
+
+    #[test]
+    fn test_window_layout_empty() {
+        let layout = WindowLayout::empty();
+        assert!(layout.is_empty());
+        assert_eq!(layout.len(), 0);
+        assert!(layout.active().is_none());
+    }
+
+    #[test]
+    fn test_window_layout_single() {
+        let window = Window::new();
+        let id = window.id;
+        let layout = WindowLayout::single(window);
+
+        assert!(!layout.is_empty());
+        assert_eq!(layout.len(), 1);
+        assert_eq!(layout.active_id(), Some(id));
+    }
+
+    #[test]
+    fn test_window_layout_add() {
+        let mut layout = WindowLayout::empty();
+        let w1 = Window::new();
+        let id1 = w1.id;
+        layout.add(w1);
+
+        assert_eq!(layout.active_id(), Some(id1)); // First becomes active
+
+        let w2 = Window::new();
+        let id2 = w2.id;
+        layout.add(w2);
+
+        assert_eq!(layout.len(), 2);
+        assert_eq!(layout.active_id(), Some(id1)); // Still first
+
+        assert!(layout.set_active(id2));
+        assert_eq!(layout.active_id(), Some(id2));
+    }
+
+    #[test]
+    fn test_key_sequence() {
+        let mut seq = KeySequence::new();
+        assert!(seq.is_empty());
+
+        seq.push("d".to_string());
+        seq.push("w".to_string());
+        assert!(!seq.is_empty());
+        assert_eq!(seq.as_string(), "dw");
+
+        seq.clear();
+        assert!(seq.is_empty());
+    }
+
+    #[test]
+    fn test_session_new() {
+        let mode = test_mode();
+        let session = Session::new(SessionId::new(1), mode.clone());
+
+        assert_eq!(session.id.as_u64(), 1);
+        assert_eq!(session.current_mode(), &mode);
+        assert!(session.windows.is_empty());
+        assert!(session.pending_keys.is_empty());
+        assert!(session.extensions.is_empty());
+    }
+
+    #[test]
+    fn test_session_active_buffer() {
+        let mode = test_mode();
+        let mut session = Session::new(SessionId::new(1), mode);
+
+        assert!(session.active_buffer().is_none());
+
+        let buf_id = BufferId::new();
+        let window = Window::with_buffer(buf_id);
+        session.windows.add(window);
+
+        assert_eq!(session.active_buffer(), Some(buf_id));
+    }
+}

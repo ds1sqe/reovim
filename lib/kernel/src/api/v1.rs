@@ -117,6 +117,7 @@ pub use crate::core::{
 pub use crate::core::{Config, ConfigError, ConfigPaths, ConfigValue};
 
 // Mode and Command identity types
+// Note: OperatorId moved to modules/vim (Epic #385 - operators are vim-specific policy)
 pub use crate::core::{CommandId, CursorStyle, Mode, ModeId, ModeStack};
 
 // ============================================================================
@@ -190,8 +191,9 @@ pub use crate::{pr_debug, pr_err, pr_info, pr_trace, pr_warn};
 // ============================================================================
 
 pub use super::module::{
-    CommandRegistration, EventHandlerRegistration, KeybindingRegistration, Module, ModuleError,
-    ModuleId, ModuleInfo, ModuleProbe, ModuleState, ProbeResult, RegistrationFlags,
+    CommandRegistration, EmptySessionHandlerRegistration, EventHandlerRegistration,
+    KeybindingRegistration, Module, ModuleError, ModuleId, ModuleInfo, ModuleProbe, ModuleState,
+    ProbeResult, RegistrationFlags,
 };
 
 // Note: SyntaxHighlight trait has been moved to lib/drivers/syntax/

@@ -12,8 +12,9 @@ use {
     reovim_kernel::api::v1::{
         BufferId, CommandId, KernelContext, Position, SelectionMode, events::ModeChanged,
     },
-    reovim_module_operators::{DeleteOperator, Operator, OperatorContext, Range, YankOperator},
 };
+
+use crate::operators::{DeleteOperator, Operator, OperatorContext, Range, YankOperator};
 
 use crate::{ids, modes::VimMode};
 
@@ -113,7 +114,7 @@ impl CommandHandler for DeleteSelection {
         };
 
         if let Err(e) = delete_op.execute(&mut op_ctx, range) {
-            return CommandResult::error(format!("Delete failed: {e}"));
+            return CommandResult::error(&format!("Delete failed: {e}"));
         }
 
         // Clear selection and set cursor
@@ -168,7 +169,7 @@ impl CommandHandler for YankSelection {
         };
 
         if let Err(e) = yank_op.execute(&mut op_ctx, range) {
-            return CommandResult::error(format!("Yank failed: {e}"));
+            return CommandResult::error(&format!("Yank failed: {e}"));
         }
 
         // Clear selection (yank doesn't move cursor in Vim, but returns to normal)
@@ -221,7 +222,7 @@ impl CommandHandler for ChangeSelection {
         };
 
         if let Err(e) = delete_op.execute(&mut op_ctx, range) {
-            return CommandResult::error(format!("Change failed: {e}"));
+            return CommandResult::error(&format!("Change failed: {e}"));
         }
 
         // Clear selection and set cursor

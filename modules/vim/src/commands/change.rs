@@ -103,15 +103,17 @@ impl CommandHandler for ChangeLine {
             let line_len = buffer.line_len(start_line).unwrap_or(0);
             if line_len > 0 {
                 buffer.set_position(Position::new(start_line, 0));
-                let edit = buffer.delete(line_len);
+                let _edit = buffer.delete(line_len);
                 buffer.set_position(Position::new(start_line, 0));
-                let cursor_after = buffer.position();
+                let _cursor_after = buffer.position();
                 drop(buffer);
 
                 ctx.event_bus
                     .emit(ModeChanged::with_mode_id("normal", VimMode::INSERT_ID));
 
-                return CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after);
+                // TODO: Return edit action via different mechanism when SessionContext is available
+                let _ = (buffer_id, cursor_before); // Suppress unused warnings
+                return CommandResult::Success;
             }
             // Line is already empty
             drop(buffer);
@@ -147,29 +149,33 @@ impl CommandHandler for ChangeLine {
             buffer.set_position(Position::new(start_line, 0));
             let chars = first_line_len + chars_to_delete_from_rest + (lines_to_change - 1); // newlines between
             let content_len = buffer.content().len();
-            let edit = buffer.delete(chars.min(content_len));
+            let _edit = buffer.delete(chars.min(content_len));
             buffer.set_position(Position::new(start_line, 0));
-            let cursor_after = buffer.position();
+            let _cursor_after = buffer.position();
             drop(buffer);
 
             ctx.event_bus
                 .emit(ModeChanged::with_mode_id("normal", VimMode::INSERT_ID));
 
-            return CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after);
+            // TODO: Return edit action via different mechanism when SessionContext is available
+            let _ = (buffer_id, cursor_before); // Suppress unused warnings
+            return CommandResult::Success;
         }
 
         // Normal case: delete all content from lines and their separating newlines
         // Keep one line at start_line, cleared
         buffer.set_position(Position::new(start_line, 0));
-        let edit = buffer.delete(total_delete);
+        let _edit = buffer.delete(total_delete);
         buffer.set_position(Position::new(start_line, 0));
-        let cursor_after = buffer.position();
+        let _cursor_after = buffer.position();
         drop(buffer);
 
         ctx.event_bus
             .emit(ModeChanged::with_mode_id("normal", VimMode::INSERT_ID));
 
-        CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
+        // TODO: Return edit action via different mechanism when SessionContext is available
+        let _ = (buffer_id, cursor_before); // Suppress unused warnings
+        CommandResult::Success
     }
 }
 
@@ -232,14 +238,15 @@ impl CommandHandler for ChangeToEndOfLine {
 
         // Delete from cursor to end of line (not including newline)
         let chars_to_delete = line_len - pos.column;
-        let cursor_before = buffer.position();
-        let edit = buffer.delete(chars_to_delete);
-        let cursor_after = buffer.position();
+        let _cursor_before = buffer.position();
+        let _edit = buffer.delete(chars_to_delete);
+        let _cursor_after = buffer.position();
         drop(buffer);
 
         ctx.event_bus
             .emit(ModeChanged::with_mode_id("normal", VimMode::INSERT_ID));
 
-        CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
+        // TODO: Return edit action via different mechanism when SessionContext is available
+        CommandResult::Success
     }
 }

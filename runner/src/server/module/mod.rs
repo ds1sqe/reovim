@@ -70,8 +70,9 @@ pub use {
     lifecycle::{DependencyOrder, ModuleManager, resolve_dependencies},
     // Loading subsystem
     loading::{
-        InitResult, ModuleHandle, ModuleLoader, default_search_paths, discover_modules,
-        find_module, library_extension, library_filename,
+        InitResult, LoadResult, ModuleHandle, ModuleLoader, StartupLoadStats, StaticModuleFactory,
+        default_search_paths, discover_modules, find_module, library_extension, library_filename,
+        load_from_config,
     },
     // Wiring subsystem
     wiring::{

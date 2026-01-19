@@ -7,6 +7,7 @@
 //!
 //! ```toml
 //! [modules]
+//! autoload_installed = true                     # Load all installed modules
 //! search_paths = ["~/.local/share/reovim/modules"]
 //! autoload = ["lang-rust", "feat-completion"]  # Overrides defaults
 //! extra = ["my-custom-module"]                  # Adds to defaults
@@ -41,6 +42,26 @@ use std::{
 use serde::Deserialize;
 
 use super::loading::default_search_paths;
+
+/// Extract module name from a library path.
+///
+/// Converts library filename to module name:
+/// - `libreovim_module_vim.so` → `vim`
+/// - `libreovim_module_hot_reload_demo.dylib` → `hot-reload-demo`
+///
+/// Returns `None` if the path doesn't match the expected pattern.
+fn extract_module_name_from_path(path: &Path) -> Option<String> {
+    let stem = path.file_stem()?.to_str()?;
+
+    // Strip "lib" prefix (Unix) or handle Windows without prefix
+    let without_prefix = stem.strip_prefix("lib").unwrap_or(stem);
+
+    // Strip "reovim_module_" prefix
+    let name = without_prefix.strip_prefix("reovim_module_")?;
+
+    // Convert underscores back to hyphens (kebab-case)
+    Some(name.replace('_', "-"))
+}
 
 /// Module configuration section from config file.
 ///
@@ -93,6 +114,14 @@ pub struct ModuleConfig {
     /// are loaded. Useful for testing or minimal startup.
     #[serde(default)]
     pub no_defaults: bool,
+
+    /// Auto-load all installed modules.
+    ///
+    /// When `true`, all modules discovered in search paths are loaded
+    /// automatically. Use `skip` to exclude specific modules.
+    /// This takes precedence over `autoload` and `extra`.
+    #[serde(default)]
+    pub autoload_installed: bool,
 }
 
 /// Top-level configuration file structure.
@@ -265,7 +294,24 @@ impl ModuleConfig {
     /// ```
     #[must_use]
     pub fn effective_modules(&self) -> Vec<String> {
-        use super::defaults::DEFAULT_MODULES;
+        use super::{defaults::DEFAULT_MODULES, loading::discover_modules};
+
+        // If autoload_installed is true, discover all modules from search paths
+        if self.autoload_installed {
+            let search_paths = self.all_search_paths_with_env();
+            let discovered = discover_modules(&search_paths);
+
+            // Extract module names from discovered paths
+            let mut result: Vec<String> = discovered
+                .iter()
+                .filter_map(|path| extract_module_name_from_path(path))
+                .filter(|m| !self.skip.contains(m))
+                .collect();
+
+            // Sort for deterministic order
+            result.sort();
+            return result;
+        }
 
         // Determine base list
         let base: Vec<String> = if self.autoload.is_empty() {

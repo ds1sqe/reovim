@@ -10,13 +10,17 @@ use std::sync::RwLock;
 
 use {
     reovim_driver_input::{
-        KeyCode, KeyEvent, KeyLookupState, KeySequence, ModeKeyResolver, ModeState, Modifiers,
-        ResolveContext, ResolveInput, ResolveResult,
+        ArgValue, ExtensionMap, KeyCode, KeyEvent, KeyLookupState, KeySequence, ModeKeyResolver,
+        ModeState, Modifiers, ResolveContext, ResolveInput, ResolveResult,
     },
     reovim_kernel::api::v1::ModeId,
 };
 
-use crate::modes::VimMode;
+use crate::{
+    ids::EXECUTE_FIND_CHAR,
+    modes::VimMode,
+    session_state::{PendingCharOp, VimSessionState},
+};
 
 /// Vim normal mode key resolver.
 ///
@@ -208,6 +212,89 @@ impl VimNormalResolver {
 
         ctx
     }
+
+    // ========================================================================
+    // Extension-based helpers (Epic #385 - use VimSessionState)
+    // ========================================================================
+
+    /// Check if a key is a count digit (extension-based version).
+    fn is_count_digit_ext(&self, key: &KeyEvent, vim: &VimSessionState) -> bool {
+        if key.modifiers != Modifiers::NONE {
+            return false;
+        }
+
+        match key.code {
+            KeyCode::Char('1'..='9') => true,
+            KeyCode::Char('0') => vim.pending_count.is_some(),
+            _ => false,
+        }
+    }
+
+    /// Accumulate a count digit (extension-based version).
+    fn accumulate_count_ext(&self, key: &KeyEvent, vim: &mut VimSessionState) {
+        if let KeyCode::Char(c @ '0'..='9') = key.code {
+            let digit = c.to_digit(10).expect("valid digit") as usize;
+            vim.pending_count = Some(vim.pending_count.unwrap_or(0) * 10 + digit);
+        }
+    }
+
+    /// Handle register character after `"` prefix (extension-based version).
+    fn handle_register_char_ext(&self, key: &KeyEvent, vim: &mut VimSessionState) -> ResolveResult {
+        if let KeyCode::Char(c) = key.code {
+            // Valid register characters: a-z, A-Z, 0-9, and special registers
+            if c.is_ascii_alphanumeric() || "+-*/.%#:".contains(c) {
+                vim.pending_register = Some(c);
+                return ResolveResult::Pending;
+            }
+        }
+
+        // Invalid register character - cancel and pass key through
+        vim.pending_register = None;
+        ResolveResult::NotHandled
+    }
+
+    /// Build resolve context with count and register (extension-based version).
+    fn build_context_ext(&self, keys: KeySequence, vim: &mut VimSessionState) -> ResolveContext {
+        let mut ctx = ResolveContext::new().keys(keys);
+
+        if let Some(count) = vim.pending_count.take() {
+            ctx = ctx.count(count);
+        }
+
+        // Don't return the sentinel
+        if let Some(reg) = vim.pending_register.take()
+            && reg != '"'
+        {
+            ctx = ctx.register(reg);
+        }
+
+        ctx
+    }
+
+    /// Classify a command as a find-char operation, if applicable.
+    ///
+    /// Returns the corresponding `PendingCharOp` if the command is one of the
+    /// find-char commands (f, F, t, T), otherwise returns `None`.
+    ///
+    /// This enables the resolver to intercept these commands and handle the
+    /// character wait internally, rather than relying on the runner.
+    fn classify_find_char_command(
+        cmd: &reovim_kernel::api::v1::CommandId,
+    ) -> Option<PendingCharOp> {
+        // Check if this is a motions module command
+        if cmd.module().as_str() != "motions" {
+            return None;
+        }
+
+        // Match by command name within the motions module
+        match cmd.name() {
+            "find-char-forward" => Some(PendingCharOp::FindForward),
+            "find-char-backward" => Some(PendingCharOp::FindBackward),
+            "till-char-forward" => Some(PendingCharOp::TillForward),
+            "till-char-backward" => Some(PendingCharOp::TillBackward),
+            _ => None,
+        }
+    }
 }
 
 impl Default for VimNormalResolver {
@@ -315,6 +402,131 @@ impl ModeKeyResolver for VimNormalResolver {
             KeyLookupState::PrefixOnly => {
                 // Wait for more keys (g waiting for gg, etc.)
                 // Keep pending_keys for next lookup
+                ResolveResult::Pending
+            }
+            KeyLookupState::NotFound => {
+                // No binding found - clear keys and let runner handle
+                self.clear_pending_keys();
+                ResolveResult::NotHandled
+            }
+        }
+    }
+
+    /// Vim-style key resolution with keymap AND session extensions access.
+    ///
+    /// This is the new architecture (Epic #385) that uses `VimSessionState` from
+    /// extensions instead of the runner's `AppState`. The resolver owns the vim
+    /// policy, the runner is pure mechanism.
+    ///
+    /// # State Management
+    ///
+    /// | State | Source | Notes |
+    /// |-------|--------|-------|
+    /// | `pending_count` | `VimSessionState` | From extensions |
+    /// | `pending_register` | `VimSessionState` | From extensions |
+    /// | `pending_keys` | Internal `RwLock` | Multi-key sequence |
+    ///
+    /// Note: For backward compatibility, we still use internal `pending_keys`.
+    /// Once all resolvers are migrated, these can move to `VimSessionState` too.
+    fn resolve_with_extensions(
+        &self,
+        key: &KeyEvent,
+        _state: &mut ModeState,
+        input: &ResolveInput<'_>,
+        extensions: &mut ExtensionMap,
+    ) -> ResolveResult {
+        // Get vim session state from extensions
+        let vim = extensions.get_or_insert::<VimSessionState>();
+
+        // Handle escape - reset state and return NotHandled
+        if key.code == KeyCode::Escape {
+            vim.clear_pending();
+            self.clear_pending_keys();
+            return ResolveResult::NotHandled;
+        }
+
+        // =====================================================================
+        // Epic #385 - Handle pending find-char operation
+        // =====================================================================
+        // If pending_char is set, the next character completes the find motion.
+        // We create an Execute result with EXECUTE_FIND_CHAR and the char in metadata.
+        // Note: take() consumes pending_char regardless of whether the key is a char,
+        // which correctly cancels the operation if a non-char key is pressed.
+        if let Some(pending_op) = vim.pending_char.take()
+            && let KeyCode::Char(c) = key.code
+        {
+            // Build context with find-char metadata
+            let mut ctx = self.build_context_ext(KeySequence::new(), vim);
+
+            // Set the target character
+            ctx.metadata
+                .insert("find_char".to_string(), ArgValue::Char(c));
+
+            // Set direction based on operation type
+            let direction = if pending_op.is_forward() {
+                "forward"
+            } else {
+                "backward"
+            };
+            ctx.metadata
+                .insert("find_direction".to_string(), ArgValue::String(direction.to_string()));
+
+            // Set inclusive flag: f/F are inclusive (on char), t/T are not (before char)
+            let inclusive = pending_op.is_find();
+            ctx.metadata
+                .insert("find_inclusive".to_string(), ArgValue::Bool(inclusive));
+
+            self.clear_pending_keys();
+            return ResolveResult::Execute(EXECUTE_FIND_CHAR, ctx);
+        }
+
+        // Check for register prefix waiting for character
+        if vim.pending_register == Some('"') {
+            return self.handle_register_char_ext(key, vim);
+        }
+
+        // Check for register prefix start
+        if Self::is_register_prefix(key) {
+            vim.pending_register = Some('"'); // Sentinel
+            return ResolveResult::Pending;
+        }
+
+        // Check for count digit
+        if self.is_count_digit_ext(key, vim) {
+            self.accumulate_count_ext(key, vim);
+            return ResolveResult::Pending;
+        }
+
+        // Add to pending keys for lookup
+        self.push_pending_key(*key);
+        let keys = self.get_pending_keys();
+
+        // Query keymap for facts about what bindings exist
+        let lookup_state = input.keymap.query(input.mode, &keys);
+
+        // Apply Vim policy
+        match lookup_state {
+            KeyLookupState::ExactWithLonger { .. } => {
+                // Wait for longer sequence (d might become dd)
+                ResolveResult::Pending
+            }
+            KeyLookupState::ExactOnly(cmd) => {
+                // Epic #385 - Intercept find-char commands
+                // Instead of executing commands that return WaitingForChar,
+                // set pending_char in VimSessionState and return Pending.
+                if let Some(pending_op) = Self::classify_find_char_command(&cmd) {
+                    vim.pending_char = Some(pending_op);
+                    self.clear_pending_keys();
+                    return ResolveResult::Pending;
+                }
+
+                // Execute with context containing count and register
+                let ctx = self.build_context_ext(keys, vim);
+                self.clear_pending_keys();
+                ResolveResult::Execute(cmd, ctx)
+            }
+            KeyLookupState::PrefixOnly => {
+                // Wait for more keys
                 ResolveResult::Pending
             }
             KeyLookupState::NotFound => {

@@ -19,6 +19,7 @@ members = [
     "lib/drivers/trace",
     "lib/drivers/ffi",
     "lib/drivers/ffi-python",
+    "lib/drivers/session",
 
     # Platform abstraction
     "lib/arch",
@@ -100,6 +101,7 @@ reovim-driver-log = { path = "./lib/drivers/log", version = "0.9.1-dev" }
 reovim-driver-trace = { path = "./lib/drivers/trace", version = "0.9.1-dev" }
 reovim-driver-ffi = { path = "./lib/drivers/ffi", version = "0.9.1-dev" }
 reovim-driver-ffi-python = { path = "./lib/drivers/ffi-python", version = "0.9.1-dev" }
+reovim-driver-session = { path = "./lib/drivers/session", version = "0.9.1-dev" }
 
 # Python FFI
 pyo3 = { version = "0.27", features = ["auto-initialize"] }
@@ -107,7 +109,7 @@ pyo3 = { version = "0.27", features = ["auto-initialize"] }
 # Policy modules
 reovim-module-example = { path = "./modules/example", version = "0.9.1-dev" }
 reovim-module-keymap = { path = "./modules/keymap", version = "0.9.1-dev" }
-reovim-module-operators = { path = "./modules/operators", version = "0.9.1-dev" }
+# Note: operators merged into vim (Epic #385)
 reovim-module-commands = { path = "./modules/commands", version = "0.9.1-dev" }
 reovim-module-defaults = { path = "./modules/defaults", version = "0.9.1-dev" }
 reovim-module-options = { path = "./modules/options", version = "0.9.1-dev" }
