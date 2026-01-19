@@ -9,8 +9,6 @@ repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
-[lints]
-workspace = true
 
 [dependencies]
 # Minimal dependencies - this is a trait definition crate

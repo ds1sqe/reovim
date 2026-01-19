@@ -101,6 +101,7 @@ reovim-driver-log = { path = "./lib/drivers/log", version = "0.9.1-dev" }
 reovim-driver-trace = { path = "./lib/drivers/trace", version = "0.9.1-dev" }
 reovim-driver-ffi = { path = "./lib/drivers/ffi", version = "0.9.1-dev" }
 reovim-driver-ffi-python = { path = "./lib/drivers/ffi-python", version = "0.9.1-dev" }
+reovim-driver-session = { path = "./lib/drivers/session", version = "0.9.1-dev" }
 
 # Python FFI
 pyo3 = { version = "0.27", features = ["auto-initialize"] }

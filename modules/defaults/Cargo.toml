@@ -13,6 +13,8 @@ reovim-module-keymap = { path = "../keymap" }
 reovim-module-vim = { path = "../vim" }
 reovim-module-operators = { path = "../operators" }
 reovim-module-commands = { path = "../commands" }
+reovim-module-scratch-buffer = { path = "../scratch-buffer" }
+reovim-driver-session = { workspace = true }
 
 [lints]
 workspace = true

@@ -226,11 +226,11 @@ use {
         OptionRegistry, OptionScope, OptionSpec, OptionValue, RegisterBank, TextObjectEngine,
     },
     reovim_module_commands::CommandsModule,
+    reovim_module_defaults,
     reovim_module_editor::EditorModule,
     reovim_module_keymap::KeymapModule,
     reovim_module_motions::MotionsModule,
     reovim_module_operators::OperatorsModule,
-    reovim_module_scratch_buffer::ScratchBufferHandler,
     reovim_module_vim::{VimMode, VimModule},
     reovim_protocol::v1::{RpcError, RpcRequest, RpcResponse},
 };
@@ -918,15 +918,16 @@ fn create_session_with_defaults(id: SessionId) -> Arc<Session> {
 
 /// Build the empty session handler registry.
 ///
-/// Collects handlers that determine what happens when a session
-/// starts with no buffers. The scratch buffer handler creates an
-/// empty buffer so the user has something to edit immediately.
+/// Collects handlers from the defaults module. The defaults module
+/// aggregates all default policy handlers, keeping the runner decoupled
+/// from specific handler modules like scratch-buffer.
 fn build_empty_session_registry() -> EmptySessionHandlerRegistry {
     let mut registry = EmptySessionHandlerRegistry::new();
 
-    // Register the scratch buffer handler
-    // This creates an empty buffer when no files are specified
-    registry.register(Arc::new(ScratchBufferHandler));
+    // Get handler from defaults module (centralized policy)
+    // The defaults module provides the scratch buffer handler
+    let handler = reovim_module_defaults::empty_session_handler();
+    registry.register(Arc::new(handler));
 
     tracing::debug!(handlers = registry.len(), "built empty session handler registry");
 

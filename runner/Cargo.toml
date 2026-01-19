@@ -42,8 +42,8 @@ reovim-module-layout = { path = "../modules/layout" }
 # Undotree module for rendering
 reovim-module-undotree = { path = "../modules/undotree" }
 
-# Scratch buffer handler for empty sessions
-reovim-module-scratch-buffer = { path = "../modules/scratch-buffer" }
+# Default modules bundle (includes scratch-buffer for empty sessions)
+reovim-module-defaults = { path = "../modules/defaults" }
 
 # Protocol (shared RPC types)
 reovim-protocol = { path = "../lib/protocol" }

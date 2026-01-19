@@ -24,7 +24,8 @@
 //! ```
 
 use reovim_kernel::api::v1::{
-    KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
+    EmptySessionHandlerRegistration, KeybindingRegistration, Module, ModuleContext, ModuleError,
+    ModuleId, ProbeResult, Version,
 };
 
 // Import traits from their respective modules (mechanism vs policy)
@@ -33,8 +34,12 @@ use {reovim_module_commands::CommandHandler, reovim_module_operators::Operator};
 // Re-export sub-modules for direct access
 pub use {
     reovim_module_commands as commands, reovim_module_keymap as keymap,
-    reovim_module_operators as operators, reovim_module_vim as vim,
+    reovim_module_operators as operators, reovim_module_scratch_buffer as scratch_buffer,
+    reovim_module_vim as vim,
 };
+
+// Re-export driver trait for handler type
+pub use reovim_driver_session::EmptySessionHandler;
 
 /// Default modules bundle.
 ///
@@ -88,6 +93,7 @@ impl Module for DefaultsModule {
             ModuleId::new("keymap"),
             ModuleId::new("operators"),
             ModuleId::new("commands"),
+            ModuleId::new("scratch-buffer"),
         ]
     }
 
@@ -102,6 +108,16 @@ impl Module for DefaultsModule {
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
         // Aggregate keybindings from vim module
         vim::VimModule::new().keybindings()
+    }
+
+    fn empty_session_handlers(&self) -> Vec<EmptySessionHandlerRegistration> {
+        // Expose empty session handler registration from scratch-buffer
+        // The runner will use empty_session_handler() to get the actual handler
+        vec![
+            EmptySessionHandlerRegistration::new("defaults:scratch-buffer")
+                .with_description("Create empty scratch buffer on startup")
+                .with_priority(100),
+        ]
     }
 }
 
@@ -121,6 +137,26 @@ pub fn commands() -> Vec<Box<dyn CommandHandler>> {
 #[must_use]
 pub fn keybindings() -> Vec<KeybindingRegistration> {
     vim::bindings::all()
+}
+
+/// Get the default empty session handler.
+///
+/// Returns `ScratchBufferHandler` which creates an empty buffer
+/// when a session starts with no files. This centralizes the
+/// default policy in the `defaults` module.
+///
+/// # Example
+///
+/// ```ignore
+/// use std::sync::Arc;
+/// use reovim_module_defaults::empty_session_handler;
+///
+/// let handler = Arc::new(empty_session_handler());
+/// registry.register(handler);
+/// ```
+#[must_use]
+pub const fn empty_session_handler() -> scratch_buffer::ScratchBufferHandler {
+    scratch_buffer::ScratchBufferHandler
 }
 
 #[cfg(test)]
@@ -143,7 +179,8 @@ mod tests {
     fn test_defaults_has_dependencies() {
         let module = DefaultsModule::new();
         let deps = module.dependencies();
-        assert_eq!(deps.len(), 3);
+        // keymap, operators, commands, scratch-buffer
+        assert_eq!(deps.len(), 4);
     }
 
     #[test]
@@ -168,5 +205,64 @@ mod tests {
     fn test_keybindings_not_empty() {
         let bindings = keybindings();
         assert!(!bindings.is_empty());
+    }
+
+    #[test]
+    fn test_defaults_has_empty_session_handlers() {
+        let module = DefaultsModule::new();
+        let handlers = module.empty_session_handlers();
+        assert_eq!(handlers.len(), 1);
+    }
+
+    #[test]
+    fn test_empty_session_handler_registration_id() {
+        let module = DefaultsModule::new();
+        let handlers = module.empty_session_handlers();
+        assert_eq!(handlers[0].id, "defaults:scratch-buffer");
+    }
+
+    #[test]
+    fn test_empty_session_handler_registration_priority() {
+        let module = DefaultsModule::new();
+        let handlers = module.empty_session_handlers();
+        assert_eq!(handlers[0].priority, 100);
+    }
+
+    #[test]
+    fn test_empty_session_handler_factory() {
+        use {
+            reovim_driver_session::{EmptySessionAction, EmptySessionContext, EmptySessionHandler},
+            std::path::Path,
+        };
+
+        let handler = empty_session_handler();
+
+        // Handler should create buffer when no files specified
+        let ctx = EmptySessionContext {
+            session_id: 1,
+            file_args: &[],
+            cwd: Path::new("/home/user"),
+        };
+        let action = handler.handle(&ctx);
+        assert!(matches!(action, EmptySessionAction::CreateBuffer { .. }));
+    }
+
+    #[test]
+    fn test_empty_session_handler_defers_when_files_specified() {
+        use {
+            reovim_driver_session::{EmptySessionAction, EmptySessionContext, EmptySessionHandler},
+            std::path::Path,
+        };
+
+        let handler = empty_session_handler();
+        let files = vec!["file.txt".to_string()];
+
+        let ctx = EmptySessionContext {
+            session_id: 1,
+            file_args: &files,
+            cwd: Path::new("/home/user"),
+        };
+        let action = handler.handle(&ctx);
+        assert!(matches!(action, EmptySessionAction::None));
     }
 }

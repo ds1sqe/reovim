@@ -14,6 +14,13 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - `modules/scratch-buffer/` with `ScratchBufferHandler` creates empty buffer on startup
   - Sessions now start with a usable buffer instead of a blank screen
 
+- Expand defaults module as central policy aggregator (#381)
+  - `modules/defaults` now includes empty session handler (`scratch-buffer`)
+  - `empty_session_handler()` factory function for centralized handler access
+  - `empty_session_handlers()` method on `DefaultsModule`
+  - Runner no longer directly imports `scratch-buffer` module
+  - Wiring infrastructure prepared for dynamic module loading (#265)
+
 ### Changed
 
 - Strong-typed CommandId for keybindings (#377, #378)

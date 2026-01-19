@@ -1101,13 +1101,13 @@ dependencies = [
  "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-commands",
+ "reovim-module-defaults",
  "reovim-module-editor",
  "reovim-module-hot-reload-demo",
  "reovim-module-keymap",
  "reovim-module-layout",
  "reovim-module-motions",
  "reovim-module-operators",
- "reovim-module-scratch-buffer",
  "reovim-module-undotree",
  "reovim-module-vim",
  "reovim-protocol",
@@ -1217,7 +1217,7 @@ dependencies = [
 
 [[package]]
 name = "reovim-driver-session"
-version = "0.9.0"
+version = "0.9.1-dev"
 
 [[package]]
 name = "reovim-driver-syntax"
@@ -1267,10 +1267,12 @@ dependencies = [
 name = "reovim-module-defaults"
 version = "0.9.1-dev"
 dependencies = [
+ "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-commands",
  "reovim-module-keymap",
  "reovim-module-operators",
+ "reovim-module-scratch-buffer",
  "reovim-module-vim",
 ]
 
