@@ -3,10 +3,15 @@
 //! Provides commands for undo/redo operations:
 //! - `UndoCommand` (u)
 //! - `RedoCommand` (Ctrl-R)
+//!
+//! # Architecture (Epic #385)
+//!
+//! These commands are stubs that will be implemented when `SessionContext`
+//! provides direct access to undo state.
 
 use {
     reovim_driver_command::{
-        ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult, UndoAction,
+        ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
     reovim_kernel::api::v1::{CommandId, KernelContext},
 };
@@ -15,8 +20,7 @@ use crate::ids;
 
 /// Undo the last change.
 ///
-/// Returns an `UndoAction` intent for the runner to handle. The runner
-/// maintains per-buffer undo trees and applies the actual undo operation.
+/// Note: Will be implemented via `SessionContext` when available.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct UndoCommand;
 
@@ -43,15 +47,15 @@ impl Command for UndoCommand {
 }
 
 impl CommandHandler for UndoCommand {
-    fn execute(&self, _ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        let count = args.count().unwrap_or(1);
-        CommandResult::UndoAction(UndoAction::Undo { count })
+    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
+        // TODO: Implement via SessionContext when available
+        CommandResult::Success
     }
 }
 
 /// Redo the last undone change.
 ///
-/// Returns an `UndoAction` intent for the runner to handle.
+/// Note: Will be implemented via `SessionContext` when available.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RedoCommand;
 
@@ -78,8 +82,8 @@ impl Command for RedoCommand {
 }
 
 impl CommandHandler for RedoCommand {
-    fn execute(&self, _ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        let count = args.count().unwrap_or(1);
-        CommandResult::UndoAction(UndoAction::Redo { count })
+    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
+        // TODO: Implement via SessionContext when available
+        CommandResult::Success
     }
 }

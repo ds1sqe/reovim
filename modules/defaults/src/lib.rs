@@ -1,9 +1,8 @@
 //! Default modules bundle - POLICY aggregator.
 //!
 //! This module bundles the standard vim-like behavior modules:
-//! - `vim` - Vim keybindings (normal, insert, visual, operator-pending)
+//! - `vim` - Vim keybindings, operators (normal, insert, visual, operator-pending, d/y/c)
 //! - `keymap` - Keymap utilities (mechanism)
-//! - `operators` - Vim operators (d, y, c)
 //! - `commands` - Ex-commands (:w, :q, :wq)
 //!
 //! # Purpose
@@ -29,13 +28,12 @@ use reovim_kernel::api::v1::{
 };
 
 // Import traits from their respective modules (mechanism vs policy)
-use {reovim_module_commands::CommandHandler, reovim_module_operators::Operator};
+use {reovim_module_commands::CommandHandler, reovim_module_vim::Operator};
 
 // Re-export sub-modules for direct access
 pub use {
     reovim_module_commands as commands, reovim_module_keymap as keymap,
-    reovim_module_operators as operators, reovim_module_scratch_buffer as scratch_buffer,
-    reovim_module_vim as vim,
+    reovim_module_scratch_buffer as scratch_buffer, reovim_module_vim as vim,
 };
 
 // Re-export driver trait for handler type
@@ -62,7 +60,7 @@ impl DefaultsModule {
     pub fn create_modules() -> Vec<Box<dyn Module>> {
         vec![
             Box::new(keymap::KeymapModule),
-            Box::new(operators::OperatorsModule),
+            // Note: operators merged into vim module (Epic #385)
             Box::new(commands::CommandsModule),
         ]
     }
@@ -89,9 +87,9 @@ impl Module for DefaultsModule {
 
     fn dependencies(&self) -> Vec<ModuleId> {
         // This module depends on its sub-modules
+        // Note: operators merged into vim module (Epic #385)
         vec![
             ModuleId::new("keymap"),
-            ModuleId::new("operators"),
             ModuleId::new("commands"),
             ModuleId::new("scratch-buffer"),
         ]
@@ -124,7 +122,7 @@ impl Module for DefaultsModule {
 /// Get all default operators.
 #[must_use]
 pub fn operators() -> Vec<Box<dyn Operator>> {
-    operators::operators()
+    vim::operators::operators()
 }
 
 /// Get all default commands.
@@ -183,14 +181,15 @@ mod tests {
     fn test_defaults_has_dependencies() {
         let module = DefaultsModule::new();
         let deps = module.dependencies();
-        // keymap, operators, commands, scratch-buffer
-        assert_eq!(deps.len(), 4);
+        // keymap, commands, scratch-buffer (operators merged into vim - Epic #385)
+        assert_eq!(deps.len(), 3);
     }
 
     #[test]
     fn test_create_modules() {
         let modules = DefaultsModule::create_modules();
-        assert_eq!(modules.len(), 3);
+        // keymap, commands (operators merged into vim - Epic #385)
+        assert_eq!(modules.len(), 2);
     }
 
     #[test]

@@ -13,7 +13,7 @@
 //! belong in the vim module rather than the generic editor module.
 
 use {
-    reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult, ModeAction},
+    reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_kernel::api::v1::{CommandId, KernelContext, Position, events::ModeChanged},
 };
 
@@ -138,8 +138,8 @@ impl CommandHandler for EnterWindowMode {
         // Emit mode change event
         ctx.event_bus.emit(ModeChanged::new("normal", "window"));
 
-        // Return mode action to push window mode onto stack
-        CommandResult::ModeAction(ModeAction::Push("window".to_string()))
+        // TODO: Mode stack handling via SessionContext when available
+        CommandResult::Success
     }
 }
 
@@ -166,9 +166,8 @@ impl CommandHandler for ExitOperatorPending {
         ctx.event_bus
             .emit(ModeChanged::with_mode_id("operator-pending", VimMode::NORMAL_ID));
 
-        // Return mode action to pop operator-pending mode off the stack
-        // The event loop will clear the pending operator state
-        CommandResult::ModeAction(ModeAction::Pop)
+        // TODO: Mode stack handling via SessionContext when available
+        CommandResult::Success
     }
 }
 
@@ -195,8 +194,8 @@ impl CommandHandler for EnterCommandLineMode {
         ctx.event_bus
             .emit(ModeChanged::with_mode_id("normal", VimMode::COMMANDLINE_ID));
 
-        // Return mode action to transition to commandline mode
-        CommandResult::ModeAction(ModeAction::Set(VimMode::COMMANDLINE_ID.to_string()))
+        // TODO: Mode stack handling via SessionContext when available
+        CommandResult::Success
     }
 }
 
@@ -221,6 +220,7 @@ impl CommandHandler for ExitCommandLineMode {
         ctx.event_bus
             .emit(ModeChanged::with_mode_id("commandline", VimMode::NORMAL_ID));
 
-        CommandResult::ModeAction(ModeAction::Set(VimMode::NORMAL_ID.to_string()))
+        // TODO: Mode stack handling via SessionContext when available
+        CommandResult::Success
     }
 }

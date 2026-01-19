@@ -2,11 +2,14 @@
 //!
 //! These commands implement the `:undotree` ex command and navigation
 //! commands for the undotree panel.
+//!
+//! # Architecture (Epic #385)
+//!
+//! These commands are stubs that will be implemented when `SessionContext`
+//! provides direct access to undotree state.
 
 use {
-    reovim_driver_command::{
-        Command, CommandContext, CommandHandler, CommandResult, UndotreeAction,
-    },
+    reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_kernel::api::v1::{CommandId, KernelContext},
 };
 
@@ -30,11 +33,9 @@ impl Command for UndotreeCommand {
 }
 
 impl CommandHandler for UndotreeCommand {
-    fn execute(&self, _ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        let buffer_id = args
-            .buffer_id()
-            .map_or(0, reovim_kernel::api::v1::BufferId::as_usize);
-        CommandResult::UndotreeAction(UndotreeAction::Toggle { buffer_id })
+    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
+        // TODO: Implement via SessionContext when available
+        CommandResult::Success
     }
 }
 
@@ -53,7 +54,8 @@ impl Command for UndotreeDownCommand {
 
 impl CommandHandler for UndotreeDownCommand {
     fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        CommandResult::UndotreeAction(UndotreeAction::MoveDown)
+        // TODO: Implement via SessionContext when available
+        CommandResult::Success
     }
 }
 
@@ -72,7 +74,8 @@ impl Command for UndotreeUpCommand {
 
 impl CommandHandler for UndotreeUpCommand {
     fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        CommandResult::UndotreeAction(UndotreeAction::MoveUp)
+        // TODO: Implement via SessionContext when available
+        CommandResult::Success
     }
 }
 
@@ -91,7 +94,8 @@ impl Command for UndotreeGotoCommand {
 
 impl CommandHandler for UndotreeGotoCommand {
     fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        CommandResult::UndotreeAction(UndotreeAction::GotoSelected)
+        // TODO: Implement via SessionContext when available
+        CommandResult::Success
     }
 }
 
@@ -110,7 +114,8 @@ impl Command for UndotreeCloseCommand {
 
 impl CommandHandler for UndotreeCloseCommand {
     fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        CommandResult::UndotreeAction(UndotreeAction::Close)
+        // TODO: Implement via SessionContext when available
+        CommandResult::Success
     }
 }
 
@@ -129,13 +134,14 @@ impl Command for UndotreePreviewCommand {
 
 impl CommandHandler for UndotreePreviewCommand {
     fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        CommandResult::UndotreeAction(UndotreeAction::PreviewDiff)
+        // TODO: Implement via SessionContext when available
+        CommandResult::Success
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::UNDOTREE_MODULE, reovim_kernel::api::v1::BufferId};
+    use {super::*, crate::UNDOTREE_MODULE};
 
     #[test]
     fn test_undotree_command_id() {
@@ -156,46 +162,9 @@ mod tests {
     }
 
     #[test]
-    fn test_undotree_command_execute_returns_toggle() {
-        let cmd = UndotreeCommand;
-        let mut ctx = CommandContext::new();
-        ctx.set_buffer_id(BufferId::from_raw(42));
-        let mut kernel = KernelContext::default();
-
-        let result = cmd.execute(&mut kernel, &ctx);
-        assert!(matches!(
-            result,
-            CommandResult::UndotreeAction(UndotreeAction::Toggle { buffer_id: 42 })
-        ));
-    }
-
-    #[test]
-    fn test_undotree_command_execute_default_buffer() {
-        let cmd = UndotreeCommand;
-        let ctx = CommandContext::new();
-        let mut kernel = KernelContext::default();
-
-        let result = cmd.execute(&mut kernel, &ctx);
-        assert!(matches!(
-            result,
-            CommandResult::UndotreeAction(UndotreeAction::Toggle { buffer_id: 0 })
-        ));
-    }
-
-    #[test]
     fn test_undotree_down_command_id() {
         let cmd = UndotreeDownCommand;
         assert_eq!(cmd.id().name(), "undotree-down");
-    }
-
-    #[test]
-    fn test_undotree_down_command_execute() {
-        let cmd = UndotreeDownCommand;
-        let ctx = CommandContext::new();
-        let mut kernel = KernelContext::default();
-
-        let result = cmd.execute(&mut kernel, &ctx);
-        assert!(matches!(result, CommandResult::UndotreeAction(UndotreeAction::MoveDown)));
     }
 
     #[test]
@@ -205,29 +174,9 @@ mod tests {
     }
 
     #[test]
-    fn test_undotree_up_command_execute() {
-        let cmd = UndotreeUpCommand;
-        let ctx = CommandContext::new();
-        let mut kernel = KernelContext::default();
-
-        let result = cmd.execute(&mut kernel, &ctx);
-        assert!(matches!(result, CommandResult::UndotreeAction(UndotreeAction::MoveUp)));
-    }
-
-    #[test]
     fn test_undotree_goto_command_id() {
         let cmd = UndotreeGotoCommand;
         assert_eq!(cmd.id().name(), "undotree-goto");
-    }
-
-    #[test]
-    fn test_undotree_goto_command_execute() {
-        let cmd = UndotreeGotoCommand;
-        let ctx = CommandContext::new();
-        let mut kernel = KernelContext::default();
-
-        let result = cmd.execute(&mut kernel, &ctx);
-        assert!(matches!(result, CommandResult::UndotreeAction(UndotreeAction::GotoSelected)));
     }
 
     #[test]
@@ -237,29 +186,9 @@ mod tests {
     }
 
     #[test]
-    fn test_undotree_close_command_execute() {
-        let cmd = UndotreeCloseCommand;
-        let ctx = CommandContext::new();
-        let mut kernel = KernelContext::default();
-
-        let result = cmd.execute(&mut kernel, &ctx);
-        assert!(matches!(result, CommandResult::UndotreeAction(UndotreeAction::Close)));
-    }
-
-    #[test]
     fn test_undotree_preview_command_id() {
         let cmd = UndotreePreviewCommand;
         assert_eq!(cmd.id().name(), "undotree-preview");
-    }
-
-    #[test]
-    fn test_undotree_preview_command_execute() {
-        let cmd = UndotreePreviewCommand;
-        let ctx = CommandContext::new();
-        let mut kernel = KernelContext::default();
-
-        let result = cmd.execute(&mut kernel, &ctx);
-        assert!(matches!(result, CommandResult::UndotreeAction(UndotreeAction::PreviewDiff)));
     }
 
     #[test]

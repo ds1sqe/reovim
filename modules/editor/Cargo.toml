@@ -20,7 +20,7 @@ reovim-driver-command = { path = "../../lib/drivers/command" }
 reovim-driver-display = { path = "../../lib/drivers/display" }
 reovim-driver-input = { path = "../../lib/drivers/input" }
 reovim-driver-vfs = { path = "../../lib/drivers/vfs" }
-reovim-module-operators = { path = "../operators" }
+# Note: operators merged into vim (Epic #385)
 unicode-width = "0.2"
 
 [lints]

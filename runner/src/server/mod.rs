@@ -230,7 +230,7 @@ use {
     reovim_module_editor::EditorModule,
     reovim_module_keymap::KeymapModule,
     reovim_module_motions::MotionsModule,
-    reovim_module_operators::OperatorsModule,
+    // Note: operators merged into vim (Epic #385)
     reovim_module_vim::{VimMode, VimModule},
     reovim_protocol::v1::{RpcError, RpcRequest, RpcResponse},
 };
@@ -955,7 +955,7 @@ fn static_module_factory(name: &str) -> Option<Box<dyn Module>> {
         "keymap" => Some(Box::new(KeymapModule)),
         "vim" => Some(Box::new(VimModule::new())),
         "motions" => Some(Box::new(MotionsModule)),
-        "operators" => Some(Box::new(OperatorsModule)),
+        // Note: operators merged into vim (Epic #385)
         "commands" => Some(Box::new(CommandsModule)),
         "editor" => Some(Box::new(EditorModule)),
         _ => None,

@@ -1,11 +1,19 @@
 //! Reovim Runner - Headless Editor Server with TUI and CLI Clients
 //!
-//! This crate provides a headless editor server using the kernel-driver
-//! type system from issue #213. It implements the "mechanism vs policy"
-//! principle where:
+//! This crate provides a headless editor server implementing the "mechanism vs policy"
+//! principle. The runner is **pure mechanism** - it provides infrastructure without
+//! any vim-specific or editor-specific policy knowledge.
 //!
-//! - **Mechanism** (this crate): Server, sessions, registries
-//! - **Policy** (modules): Mode implementations, commands, keybindings
+//! # Design Philosophy
+//!
+//! - **Mechanism** (this crate): Server, sessions, registries, event dispatch
+//! - **Policy** (modules): Mode implementations, commands, keybindings, vim behavior
+//!
+//! The runner deliberately has **zero vim-specific knowledge**:
+//! - No `PendingOperator`, visual state, or search patterns
+//! - No mode-specific handling logic
+//! - Modules store policy state via `ExtensionMap` and `SessionExtension` trait
+//! - Resolvers handle all key-to-action mapping
 //!
 //! # Architecture
 //!
@@ -13,11 +21,10 @@
 //! runner/
 //! ├── lib.rs           - Re-exports from server/ and client/
 //! ├── main.rs          - Entry point (server/tui/cli dispatcher)
-//! ├── server/          - Server-side code
+//! ├── server/          - Server-side code (mechanism layer)
 //! │   ├── mod.rs       - Server struct, config, SrvArgs
-//! │   ├── app.rs       - AppState (kernel + runtime state)
-//! │   ├── event_loop.rs - Synchronous event loop
-//! │   ├── fallback.rs  - InputFallbackHandler trait
+//! │   ├── app/         - AppState (kernel context + runtime state)
+//! │   ├── event_loop/  - Key dispatch to resolvers (no policy logic)
 //! │   ├── notification.rs - NotificationBroadcaster
 //! │   ├── session/     - Session management
 //! │   ├── client/      - Inbound client connections (server-side)

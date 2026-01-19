@@ -117,6 +117,7 @@ pub use crate::core::{
 pub use crate::core::{Config, ConfigError, ConfigPaths, ConfigValue};
 
 // Mode and Command identity types
+// Note: OperatorId moved to modules/vim (Epic #385 - operators are vim-specific policy)
 pub use crate::core::{CommandId, CursorStyle, Mode, ModeId, ModeStack};
 
 // ============================================================================

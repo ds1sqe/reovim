@@ -93,7 +93,7 @@ impl CommandHandler for WriteBufferCommand {
                 buffer_arc.write().set_modified(false);
                 CommandResult::Success
             }
-            Err(e) => CommandResult::error(format!("Write failed: {e}")),
+            Err(e) => CommandResult::error(&format!("Write failed: {e}")),
         }
     }
 }

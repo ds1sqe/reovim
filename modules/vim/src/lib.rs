@@ -2,6 +2,7 @@
 //!
 //! This module provides Vim-style behavior for reovim:
 //! - **Keybindings**: Standard Vim keys (hjkl, operators, modes)
+//! - **Operators**: Vim operators (d, y, c) - delete, yank, change
 //! - **Resolvers**: Mode-specific key interpretation (counts, registers)
 //! - **Visual mode**: Entry, exit, manipulation, operators
 //! - **Policy**: Vim lookup behavior (wait for longer sequences)
@@ -15,12 +16,13 @@
 //! ┌─────────────────────────────────────────────────────────┐
 //! │  VIM POLICY MODULE (this module)           POLICY       │
 //! │  → Vim keybindings (hjkl, dd, etc.)                     │
+//! │  → Vim operators (d, y, c with motions)                 │
 //! │  → Vim resolvers (count/register handling)              │
 //! │  → Visual mode commands (selection operations)          │
 //! │  → Vim behavior (wait for longer sequences)             │
 //! ├─────────────────────────────────────────────────────────┤
 //! │  MECHANISM MODULES                         CAPABILITIES │
-//! │  editor/, keymap/, motions/, operators/                 │
+//! │  editor/, keymap/, motions/                             │
 //! │  → "What operations are possible"                       │
 //! └─────────────────────────────────────────────────────────┘
 //! ```
@@ -45,7 +47,9 @@ pub mod commands;
 pub mod fallback;
 pub mod ids;
 pub mod modes;
+pub mod operators;
 pub mod resolvers;
+pub mod session_state;
 pub mod visual;
 
 #[cfg(test)]
@@ -54,6 +58,17 @@ mod registry_integration;
 // Re-export mode types (Epic #372 - Mode Ownership)
 pub use modes::{VIM_MODULE, VimMode};
 
+// Re-export session state (Epic #385 - Server Simplification)
+pub use session_state::{LastFind, PendingCharOp, PendingOperator, VimSessionState};
+
+// Re-export OperatorId (Epic #385 - operators are vim policy, not kernel mechanism)
+pub use ids::{CHANGE, DELETE, OperatorId, YANK};
+
+// Re-export operators (Epic #385 - operators are vim-specific, merged from operators module)
+pub use operators::{
+    ChangeOperator, DeleteOperator, Operator, OperatorContext, OperatorError, Range, YankOperator,
+};
+
 // Re-export fallback handler (Epic #372 - Mode Ownership)
 pub use fallback::VimFallbackHandler;
 
@@ -61,7 +76,8 @@ pub use fallback::VimFallbackHandler;
 pub use commands::{
     ChangeLine, ChangeToEndOfLine, EnterCommandLineMode, EnterInsertEndOfLine,
     EnterInsertFirstNonBlank, EnterInsertMode, EnterInsertModeAppend, EnterWindowMode,
-    ExitCommandLineMode, ExitOperatorPending, ExitToNormal, OpenLineAbove, OpenLineBelow,
+    ExecuteFindChar, ExitCommandLineMode, ExitOperatorPending, ExitToNormal, OpenLineAbove,
+    OpenLineBelow,
 };
 
 // Re-export resolvers

@@ -77,11 +77,13 @@ impl CommandHandler for PasteAfter {
 
             if line_count == 0 {
                 // Empty buffer: just insert the content
-                let edit = buffer.insert(paste_text);
+                let _edit = buffer.insert(paste_text);
                 buffer.set_position(Position::new(0, 0));
-                let cursor_after = buffer.position();
+                let _cursor_after = buffer.position();
                 drop(buffer);
-                return CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after);
+                // TODO: Return edit action via different mechanism when SessionContext is available
+                let _ = cursor_before; // Suppress unused warning
+                return CommandResult::Success;
             }
 
             // Move to end of current line
@@ -90,15 +92,11 @@ impl CommandHandler for PasteAfter {
 
             // Insert newline then content
             let insert_text = format!("\n{paste_text}");
-            let edit = buffer.insert(&insert_text);
+            let _edit = buffer.insert(&insert_text);
 
             // Position cursor on first character of first pasted line
             let new_line = pos.line + 1;
             buffer.set_position(Position::new(new_line, 0));
-            let cursor_after = buffer.position();
-            drop(buffer);
-
-            CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
         } else {
             // Characterwise: paste after cursor
             let line_len = buffer.line_len(pos.line).unwrap_or(0);
@@ -111,7 +109,7 @@ impl CommandHandler for PasteAfter {
             buffer.set_position(Position::new(pos.line, insert_col));
 
             let paste_text = content.text.repeat(count);
-            let edit = buffer.insert(&paste_text);
+            let _edit = buffer.insert(&paste_text);
 
             // Position cursor at end of pasted text (Vim behavior: last character)
             let final_pos = buffer.position();
@@ -121,10 +119,12 @@ impl CommandHandler for PasteAfter {
                 final_pos
             };
             buffer.set_position(cursor_after);
-            drop(buffer);
-
-            CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
         }
+        drop(buffer);
+
+        // TODO: Return edit action via different mechanism when SessionContext is available
+        let _ = cursor_before; // Suppress unused warning
+        CommandResult::Success
     }
 }
 
@@ -195,18 +195,14 @@ impl CommandHandler for PasteBefore {
 
             // Insert content then newline
             let insert_text = format!("{paste_text}\n");
-            let edit = buffer.insert(&insert_text);
+            let _edit = buffer.insert(&insert_text);
 
             // Position cursor on first character of first pasted line
             buffer.set_position(Position::new(pos.line, 0));
-            let cursor_after = buffer.position();
-            drop(buffer);
-
-            CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
         } else {
             // Characterwise: paste at cursor position (before)
             // Cursor stays at current position, content inserted there
-            let edit = buffer.insert(&paste_text);
+            let _edit = buffer.insert(&paste_text);
 
             // Position cursor at end of pasted text (Vim behavior: last character)
             let final_pos = buffer.position();
@@ -216,9 +212,11 @@ impl CommandHandler for PasteBefore {
                 final_pos
             };
             buffer.set_position(cursor_after);
-            drop(buffer);
-
-            CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
         }
+        drop(buffer);
+
+        // TODO: Return edit action via different mechanism when SessionContext is available
+        let _ = cursor_before; // Suppress unused warning
+        CommandResult::Success
     }
 }

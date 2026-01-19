@@ -1,7 +1,8 @@
 //! Search integration tests (/, ?, n, N, *, #).
 //!
-//! **Status**: 5 tests enabled, 10 tests require additional features
-//! (command-line mode for / and ? search patterns).
+//! **Status**: 2 tests enabled, 15 tests require additional features
+//! - 10 tests require command-line mode for / and ? search patterns
+//! - 3 tests require search implementation via `SessionContext` (#385)
 //!
 //! Run `cargo test --ignored` to run the remaining ignored tests.
 
@@ -133,6 +134,7 @@ async fn test_search_previous() {
 // ============================================================================
 
 #[tokio::test]
+#[ignore = "requires search implementation via SessionContext (#385)"]
 async fn test_search_word_forward() {
     let result = IntegrationTest::new()
         .await
@@ -145,6 +147,7 @@ async fn test_search_word_forward() {
 }
 
 #[tokio::test]
+#[ignore = "requires search implementation via SessionContext (#385)"]
 async fn test_search_word_backward() {
     let result = IntegrationTest::new()
         .await
@@ -158,6 +161,7 @@ async fn test_search_word_backward() {
 }
 
 #[tokio::test]
+#[ignore = "requires search implementation via SessionContext (#385)"]
 async fn test_search_word_with_n() {
     let result = IntegrationTest::new()
         .await

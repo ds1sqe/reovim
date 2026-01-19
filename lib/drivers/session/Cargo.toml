@@ -11,7 +11,8 @@ categories.workspace = true
 
 
 [dependencies]
-# Minimal dependencies - this is a trait definition crate
+# Kernel types for ModeId, BufferId, etc.
+reovim-kernel = { path = "../../kernel" }
 
 [lints]
 workspace = true

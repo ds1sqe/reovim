@@ -64,6 +64,8 @@ pub enum ArgKind {
     Bang,
     /// Buffer identifier (set by runner before command execution).
     BufferId,
+    /// Single character (e.g., for find-char operations).
+    Char,
 }
 
 /// Argument value parsed from user input.
@@ -85,6 +87,8 @@ pub enum ArgValue {
     Bang(bool),
     /// A buffer identifier (raw usize, converted to `BufferId` by helper).
     BufferId(usize),
+    /// A single character (e.g., for find-char targets).
+    Char(char),
 }
 
 #[cfg(test)]

@@ -74,10 +74,12 @@ impl CommandHandler for InsertNewline {
         let edit = buffer.insert(&insert_text);
 
         // Cursor is now at end of indent on new line
-        let cursor_after = buffer.position();
+        let _cursor_after = buffer.position();
         drop(buffer);
 
-        CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
+        // TODO: Return edit action via different mechanism when SessionContext is available
+        let _ = (buffer_id, edit, cursor_before); // Suppress unused warnings
+        CommandResult::Success
     }
 }
 
@@ -127,11 +129,12 @@ impl CommandHandler for InsertTab {
         };
 
         let mut buffer = buffer_arc.write();
-        let cursor_before = buffer.position();
-        let edit = buffer.insert(&text);
-        let cursor_after = buffer.position();
+        let _cursor_before = buffer.position();
+        let _edit = buffer.insert(&text);
+        let _cursor_after = buffer.position();
         drop(buffer);
 
-        CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
+        // TODO: Return edit action via different mechanism when SessionContext is available
+        CommandResult::Success
     }
 }

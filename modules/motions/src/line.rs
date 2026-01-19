@@ -63,8 +63,10 @@ fn execute_line_position(
         } else {
             (new_pos, old_pos)
         };
+        // TODO: Return operator range via different mechanism when SessionContext is available
         // Line position motions are characterwise
-        return CommandResult::operator_range(start, range_end, false);
+        let _ = (start, range_end); // Suppress unused warnings
+        return CommandResult::Success;
     }
 
     // Normal mode: move cursor
@@ -125,8 +127,10 @@ fn execute_jump_line(
         } else {
             (new_pos, old_pos)
         };
+        // TODO: Return operator range via different mechanism when SessionContext is available
         // Document motions are linewise
-        return CommandResult::operator_range(start, range_end, true);
+        let _ = (start, range_end); // Suppress unused warnings
+        return CommandResult::Success;
     }
 
     // Normal mode: move cursor
@@ -362,7 +366,9 @@ impl CommandHandler for WholeLine {
         let start = reovim_kernel::api::v1::Position::new(current_line, 0);
         let end = reovim_kernel::api::v1::Position::new(end_line, 0);
 
-        CommandResult::operator_range(start, end, true) // true = linewise
+        // TODO: Return operator range via different mechanism when SessionContext is available
+        let _ = (start, end); // Suppress unused warnings
+        CommandResult::Success
     }
 }
 

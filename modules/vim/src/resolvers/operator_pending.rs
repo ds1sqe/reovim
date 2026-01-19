@@ -180,6 +180,27 @@ impl VimOperatorPendingResolver {
         }
         false
     }
+
+    /// Extract operator info from transition context (SSOT).
+    ///
+    /// Returns `(operator, count, register)` from the mode state's transition context.
+    /// If no operator is found, returns a placeholder "noop" command.
+    fn extract_operator_info(
+        state: &ModeState,
+    ) -> (reovim_kernel::api::v1::CommandId, Option<usize>, Option<char>) {
+        use reovim_kernel::api::v1::{CommandId, ModuleId};
+
+        if let Some(ctx) = &state.transition_context {
+            let operator = ctx
+                .pending_operator
+                .clone()
+                .unwrap_or_else(|| CommandId::new(ModuleId::new("noop"), "noop"));
+            (operator, ctx.count, ctx.register)
+        } else {
+            // Fallback - should not happen in normal operation
+            (CommandId::new(ModuleId::new("noop"), "noop"), None, None)
+        }
+    }
 }
 
 impl Default for VimOperatorPendingResolver {
@@ -206,14 +227,17 @@ impl ModeKeyResolver for VimOperatorPendingResolver {
 
         // Check for line operator (dd, yy, cc)
         if Self::is_line_operator(key, state) {
-            // Return a special result indicating line-wise operation
-            // The runner will handle this by operating on the current line
+            // Extract operator info from transition context (SSOT)
+            let (operator, count, register) = Self::extract_operator_info(state);
             return ResolveResult::ModeTransition(ModeTransition::Pop {
                 result: Some(PopResult::OperatorRange {
+                    operator,
                     // Placeholder positions - runner will calculate actual line range
                     start: Position::new(0, 0),
                     end: Position::new(0, 0),
                     linewise: true,
+                    count,
+                    register,
                 }),
             });
         }
@@ -248,16 +272,20 @@ impl ModeKeyResolver for VimOperatorPendingResolver {
 
         // Check for line operator (dd, yy, cc)
         if Self::is_line_operator(key, state) {
-            // Clear state and return line-wise operation
-            // Count is already passed via transition context from normal mode
-            let _count = self.take_count(); // Motion count (for lines like `d2d`)
+            // Extract operator info from transition context (SSOT)
+            let (operator, count, register) = Self::extract_operator_info(state);
+            // Motion count (for lines like `d2d`) - currently unused but cleared
+            let _motion_count = self.take_count();
             self.clear_pending_keys();
             return ResolveResult::ModeTransition(ModeTransition::Pop {
                 result: Some(PopResult::OperatorRange {
+                    operator,
                     // Placeholder positions - runner will calculate actual line range
                     start: Position::new(0, 0),
                     end: Position::new(0, 0),
                     linewise: true,
+                    count,
+                    register,
                 }),
             });
         }

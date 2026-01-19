@@ -14,13 +14,16 @@
 //! - `mode` - Mode transition commands (i, a, Escape, Ctrl-W, etc.)
 //! - `mode_entry` - Insert mode entry variations (I, A, o, O)
 //! - `change` - Change commands that enter insert mode (cc, C)
+//! - `find_char` - Find-char motion execution (f, F, t, T via resolver)
 
 mod change;
+mod find_char;
 mod mode;
 mod mode_entry;
 
 pub use {
     change::{ChangeLine, ChangeToEndOfLine},
+    find_char::ExecuteFindChar,
     mode::{
         EnterCommandLineMode, EnterInsertMode, EnterInsertModeAppend, EnterWindowMode,
         ExitCommandLineMode, ExitOperatorPending, ExitToNormal,
@@ -50,5 +53,7 @@ pub fn mode_commands() -> Vec<Box<dyn CommandHandler>> {
         // Change commands
         Box::new(ChangeLine),
         Box::new(ChangeToEndOfLine),
+        // Find-char motion execution (Epic #385)
+        Box::new(ExecuteFindChar),
     ]
 }

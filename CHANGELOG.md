@@ -59,6 +59,14 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - Runner uses `wire_module_commands()` instead of hardcoded registration
   - Maintains kernel purity: command registration stays in driver layer
 
+- Runner simplification: pure mechanism with zero vim-specific knowledge (#385)
+  - Removed `PendingOperator` from `AppState` - moved to vim module's `VimSessionState`
+  - Extended `PopResult::OperatorRange` with operator info (SSOT for operator execution)
+  - Simplified event loop: resolvers handle all key-to-action mapping
+  - Modules store policy state via `ExtensionMap` and `SessionExtension` trait
+  - Removed outdated demo example
+  - Updated runner documentation to reflect mechanism-only design
+
 ### Fixed
 
 - Character insertion and mode switching fixes (#372)

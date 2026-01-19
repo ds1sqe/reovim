@@ -1,30 +1,30 @@
-//! Yank operator.
+//! Delete operator.
 //!
 //! Reference: lib/core/src/command/builtin/operator.rs (concept-extraction, not migration)
 
 use reovim_kernel::api::v1::RegisterContent;
 
-use crate::{Operator, OperatorContext, OperatorError, Range};
+use super::{Operator, OperatorContext, OperatorError, Range};
 
-/// Yank operator - copies text to register.
+/// Delete operator - cuts text to register.
 ///
 /// Behavior:
-/// - Copies text in the given range to register
-/// - Does NOT modify the buffer
+/// - Deletes text in the given range
+/// - Stores deleted text in the unnamed register (or specified register)
 /// - Linewise if the motion was linewise
 ///
 /// # Example
 ///
 /// ```ignore
-/// let yank = YankOperator;
-/// yank.execute(&mut ctx, range)?;
+/// let delete = DeleteOperator;
+/// delete.execute(&mut ctx, range)?;
 /// ```
 #[derive(Debug, Clone, Copy)]
-pub struct YankOperator;
+pub struct DeleteOperator;
 
-impl Operator for YankOperator {
+impl Operator for DeleteOperator {
     fn id(&self) -> &'static str {
-        "yank"
+        "delete"
     }
 
     fn execute(&self, ctx: &mut OperatorContext<'_>, range: Range) -> Result<(), OperatorError> {
@@ -35,60 +35,60 @@ impl Operator for YankOperator {
             .get(ctx.buffer_id)
             .ok_or(OperatorError::BufferNotFound(ctx.buffer_id))?;
 
-        let buffer = buffer_arc.read();
+        let mut buffer = buffer_arc.write();
 
-        // Build yanked text from lines
+        // Get text before deleting
         let start = range.start;
         let end = range.end;
-        let mut yanked_text = String::new();
+
+        // Build deleted text from lines
+        let mut deleted_text = String::new();
         let lines = buffer.lines();
 
         if start.line == end.line {
-            // Single line yank
+            // Single line deletion
             if let Some(line) = lines.get(start.line) {
                 let start_col = start.column.min(line.len());
                 let end_col = end.column.min(line.len());
                 if start_col < end_col {
-                    yanked_text.push_str(&line[start_col..end_col]);
+                    deleted_text.push_str(&line[start_col..end_col]);
                 }
             }
         } else {
-            // Multi-line yank
+            // Multi-line deletion
             for line_idx in start.line..=end.line {
                 if let Some(line) = lines.get(line_idx) {
                     if line_idx == start.line {
                         let start_col = start.column.min(line.len());
-                        yanked_text.push_str(&line[start_col..]);
-                        yanked_text.push('\n');
+                        deleted_text.push_str(&line[start_col..]);
+                        deleted_text.push('\n');
                     } else if line_idx == end.line {
                         let end_col = end.column.min(line.len());
-                        yanked_text.push_str(&line[..end_col]);
+                        deleted_text.push_str(&line[..end_col]);
                     } else {
-                        yanked_text.push_str(line);
-                        yanked_text.push('\n');
+                        deleted_text.push_str(line);
+                        deleted_text.push('\n');
                     }
                 }
             }
         }
 
-        // Release the buffer lock before acquiring register lock
-        drop(buffer);
-
         // Store in register - linewise if the range was linewise
         let content = if range.is_linewise {
-            RegisterContent::linewise(yanked_text)
+            RegisterContent::linewise(deleted_text)
         } else {
-            RegisterContent::characterwise(yanked_text)
+            RegisterContent::characterwise(deleted_text)
         };
 
-        // Use set_by_name which handles:
-        // - None or '"' -> unnamed register
-        // - 'a'-'z' -> named register
-        // - 'A'-'Z' -> append to named register
+        // Use set_by_name which handles named registers (a-z) and append (A-Z)
         ctx.kernel
             .registers
             .write()
             .set_by_name(ctx.register, content);
+
+        // Delete the text from buffer
+        buffer.delete_range(start, end);
+        drop(buffer);
 
         Ok(())
     }
@@ -98,7 +98,7 @@ impl Operator for YankOperator {
     }
 
     fn is_text_modifying(&self) -> bool {
-        false // Yank does NOT modify text
+        true
     }
 }
 
@@ -107,20 +107,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_yank_operator_id() {
-        let yank = YankOperator;
-        assert_eq!(yank.id(), "yank");
+    fn test_delete_operator_id() {
+        let delete = DeleteOperator;
+        assert_eq!(delete.id(), "delete");
     }
 
     #[test]
-    fn test_yank_is_not_text_modifying() {
-        let yank = YankOperator;
-        assert!(!yank.is_text_modifying());
+    fn test_delete_is_text_modifying() {
+        let delete = DeleteOperator;
+        assert!(delete.is_text_modifying());
     }
 
     #[test]
-    fn test_yank_is_not_linewise_by_default() {
-        let yank = YankOperator;
-        assert!(!yank.is_linewise());
+    fn test_delete_is_not_linewise_by_default() {
+        let delete = DeleteOperator;
+        assert!(!delete.is_linewise());
     }
 }

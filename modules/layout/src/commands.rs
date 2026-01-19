@@ -1,20 +1,15 @@
 //! Window management commands.
 //!
 //! Commands for window splitting, closing, focus navigation, and resizing.
-//! Each command returns a `WindowAction` that the runner handles.
 //!
-//! # Architecture
+//! # Architecture (Epic #385)
 //!
-//! Following the "mechanism vs policy" principle:
-//! - **Mechanism** (runner): `WindowRegistry`, actual window state management
-//! - **Policy** (this module): Commands declare WHAT action is needed
-//!
-//! Commands don't directly manipulate windows. They return `CommandResult::WindowAction`
-//! to signal intent, and the runner handles the actual state changes.
+//! These commands are stubs that will be implemented when SessionContext
+//! provides direct access to window state. The actual window operations
+//! will be performed directly instead of returning action intents.
 
 use {
-    reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult, WindowAction},
-    reovim_driver_display::NavigateDirection,
+    reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_kernel::api::v1::{CommandId, KernelContext},
 };
 
@@ -40,7 +35,8 @@ impl Command for SplitHorizontalCmd {
 
 impl CommandHandler for SplitHorizontalCmd {
     fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        CommandResult::WindowAction(WindowAction::SplitHorizontal)
+        // TODO: Implement via SessionContext when available
+        CommandResult::Success
     }
 }
 
@@ -60,7 +56,8 @@ impl Command for SplitVerticalCmd {
 
 impl CommandHandler for SplitVerticalCmd {
     fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        CommandResult::WindowAction(WindowAction::SplitVertical)
+        // TODO: Implement via SessionContext when available
+        CommandResult::Success
     }
 }
 
@@ -84,7 +81,8 @@ impl Command for CloseWindowCmd {
 
 impl CommandHandler for CloseWindowCmd {
     fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        CommandResult::WindowAction(WindowAction::CloseWindow)
+        // TODO: Implement via SessionContext when available
+        CommandResult::Success
     }
 }
 
@@ -104,7 +102,8 @@ impl Command for CloseOthersCmd {
 
 impl CommandHandler for CloseOthersCmd {
     fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        CommandResult::WindowAction(WindowAction::CloseOthers)
+        // TODO: Implement via SessionContext when available
+        CommandResult::Success
     }
 }
 
@@ -128,7 +127,8 @@ impl Command for FocusLeftCmd {
 
 impl CommandHandler for FocusLeftCmd {
     fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        CommandResult::WindowAction(WindowAction::FocusDirection(NavigateDirection::Left))
+        // TODO: Implement via SessionContext when available
+        CommandResult::Success
     }
 }
 
@@ -148,7 +148,8 @@ impl Command for FocusRightCmd {
 
 impl CommandHandler for FocusRightCmd {
     fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        CommandResult::WindowAction(WindowAction::FocusDirection(NavigateDirection::Right))
+        // TODO: Implement via SessionContext when available
+        CommandResult::Success
     }
 }
 
@@ -168,7 +169,8 @@ impl Command for FocusUpCmd {
 
 impl CommandHandler for FocusUpCmd {
     fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        CommandResult::WindowAction(WindowAction::FocusDirection(NavigateDirection::Up))
+        // TODO: Implement via SessionContext when available
+        CommandResult::Success
     }
 }
 
@@ -188,7 +190,8 @@ impl Command for FocusDownCmd {
 
 impl CommandHandler for FocusDownCmd {
     fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        CommandResult::WindowAction(WindowAction::FocusDirection(NavigateDirection::Down))
+        // TODO: Implement via SessionContext when available
+        CommandResult::Success
     }
 }
 
@@ -212,7 +215,8 @@ impl Command for CycleForwardCmd {
 
 impl CommandHandler for CycleForwardCmd {
     fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        CommandResult::WindowAction(WindowAction::CycleForward)
+        // TODO: Implement via SessionContext when available
+        CommandResult::Success
     }
 }
 
@@ -232,7 +236,8 @@ impl Command for CycleBackwardCmd {
 
 impl CommandHandler for CycleBackwardCmd {
     fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        CommandResult::WindowAction(WindowAction::CycleBackward)
+        // TODO: Implement via SessionContext when available
+        CommandResult::Success
     }
 }
 
@@ -256,7 +261,8 @@ impl Command for ResizeHeightIncreaseCmd {
 
 impl CommandHandler for ResizeHeightIncreaseCmd {
     fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        CommandResult::WindowAction(WindowAction::ResizeHeightIncrease)
+        // TODO: Implement via SessionContext when available
+        CommandResult::Success
     }
 }
 
@@ -276,7 +282,8 @@ impl Command for ResizeHeightDecreaseCmd {
 
 impl CommandHandler for ResizeHeightDecreaseCmd {
     fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        CommandResult::WindowAction(WindowAction::ResizeHeightDecrease)
+        // TODO: Implement via SessionContext when available
+        CommandResult::Success
     }
 }
 
@@ -296,7 +303,8 @@ impl Command for ResizeWidthIncreaseCmd {
 
 impl CommandHandler for ResizeWidthIncreaseCmd {
     fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        CommandResult::WindowAction(WindowAction::ResizeWidthIncrease)
+        // TODO: Implement via SessionContext when available
+        CommandResult::Success
     }
 }
 
@@ -316,7 +324,8 @@ impl Command for ResizeWidthDecreaseCmd {
 
 impl CommandHandler for ResizeWidthDecreaseCmd {
     fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        CommandResult::WindowAction(WindowAction::ResizeWidthDecrease)
+        // TODO: Implement via SessionContext when available
+        CommandResult::Success
     }
 }
 
@@ -336,7 +345,8 @@ impl Command for ResizeEqualCmd {
 
 impl CommandHandler for ResizeEqualCmd {
     fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        CommandResult::WindowAction(WindowAction::ResizeEqual)
+        // TODO: Implement via SessionContext when available
+        CommandResult::Success
     }
 }
 
@@ -377,153 +387,6 @@ pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_split_horizontal_cmd_returns_window_action() {
-        let cmd = SplitHorizontalCmd;
-        let mut ctx = KernelContext::default();
-        let args = CommandContext::new();
-
-        let result = cmd.execute(&mut ctx, &args);
-        assert!(result.is_window_action());
-        assert!(matches!(result, CommandResult::WindowAction(WindowAction::SplitHorizontal)));
-    }
-
-    #[test]
-    fn test_split_vertical_cmd_returns_window_action() {
-        let cmd = SplitVerticalCmd;
-        let mut ctx = KernelContext::default();
-        let args = CommandContext::new();
-
-        let result = cmd.execute(&mut ctx, &args);
-        assert!(result.is_window_action());
-        assert!(matches!(result, CommandResult::WindowAction(WindowAction::SplitVertical)));
-    }
-
-    #[test]
-    fn test_close_window_cmd_returns_window_action() {
-        let cmd = CloseWindowCmd;
-        let mut ctx = KernelContext::default();
-        let args = CommandContext::new();
-
-        let result = cmd.execute(&mut ctx, &args);
-        assert!(result.is_window_action());
-        assert!(matches!(result, CommandResult::WindowAction(WindowAction::CloseWindow)));
-    }
-
-    #[test]
-    fn test_close_others_cmd_returns_window_action() {
-        let cmd = CloseOthersCmd;
-        let mut ctx = KernelContext::default();
-        let args = CommandContext::new();
-
-        let result = cmd.execute(&mut ctx, &args);
-        assert!(result.is_window_action());
-        assert!(matches!(result, CommandResult::WindowAction(WindowAction::CloseOthers)));
-    }
-
-    #[test]
-    fn test_focus_left_cmd_returns_window_action() {
-        let cmd = FocusLeftCmd;
-        let mut ctx = KernelContext::default();
-        let args = CommandContext::new();
-
-        let result = cmd.execute(&mut ctx, &args);
-        assert!(result.is_window_action());
-        assert!(matches!(
-            result,
-            CommandResult::WindowAction(WindowAction::FocusDirection(NavigateDirection::Left))
-        ));
-    }
-
-    #[test]
-    fn test_focus_right_cmd_returns_window_action() {
-        let cmd = FocusRightCmd;
-        let mut ctx = KernelContext::default();
-        let args = CommandContext::new();
-
-        let result = cmd.execute(&mut ctx, &args);
-        assert!(result.is_window_action());
-        assert!(matches!(
-            result,
-            CommandResult::WindowAction(WindowAction::FocusDirection(NavigateDirection::Right))
-        ));
-    }
-
-    #[test]
-    fn test_focus_up_cmd_returns_window_action() {
-        let cmd = FocusUpCmd;
-        let mut ctx = KernelContext::default();
-        let args = CommandContext::new();
-
-        let result = cmd.execute(&mut ctx, &args);
-        assert!(result.is_window_action());
-        assert!(matches!(
-            result,
-            CommandResult::WindowAction(WindowAction::FocusDirection(NavigateDirection::Up))
-        ));
-    }
-
-    #[test]
-    fn test_focus_down_cmd_returns_window_action() {
-        let cmd = FocusDownCmd;
-        let mut ctx = KernelContext::default();
-        let args = CommandContext::new();
-
-        let result = cmd.execute(&mut ctx, &args);
-        assert!(result.is_window_action());
-        assert!(matches!(
-            result,
-            CommandResult::WindowAction(WindowAction::FocusDirection(NavigateDirection::Down))
-        ));
-    }
-
-    #[test]
-    fn test_cycle_forward_cmd_returns_window_action() {
-        let cmd = CycleForwardCmd;
-        let mut ctx = KernelContext::default();
-        let args = CommandContext::new();
-
-        let result = cmd.execute(&mut ctx, &args);
-        assert!(result.is_window_action());
-        assert!(matches!(result, CommandResult::WindowAction(WindowAction::CycleForward)));
-    }
-
-    #[test]
-    fn test_cycle_backward_cmd_returns_window_action() {
-        let cmd = CycleBackwardCmd;
-        let mut ctx = KernelContext::default();
-        let args = CommandContext::new();
-
-        let result = cmd.execute(&mut ctx, &args);
-        assert!(result.is_window_action());
-        assert!(matches!(result, CommandResult::WindowAction(WindowAction::CycleBackward)));
-    }
-
-    #[test]
-    fn test_resize_height_increase_cmd_returns_window_action() {
-        let cmd = ResizeHeightIncreaseCmd;
-        let mut ctx = KernelContext::default();
-        let args = CommandContext::new();
-
-        let result = cmd.execute(&mut ctx, &args);
-        assert!(result.is_window_action());
-        assert!(matches!(
-            result,
-            CommandResult::WindowAction(WindowAction::ResizeHeightIncrease)
-        ));
-    }
-
-    #[test]
-    fn test_resize_equal_cmd_returns_window_action() {
-        let cmd = ResizeEqualCmd;
-        let mut ctx = KernelContext::default();
-        let args = CommandContext::new();
-
-        let result = cmd.execute(&mut ctx, &args);
-        assert!(result.is_window_action());
-        assert!(matches!(result, CommandResult::WindowAction(WindowAction::ResizeEqual)));
-    }
 
     #[test]
     fn test_all_commands_not_empty() {

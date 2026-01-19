@@ -75,7 +75,7 @@ pub use traits::{
 };
 
 // Re-export mode types (Phase 6 - Kernel-driver architecture)
-pub use mode::{KeySequence, Keybinding, ModeInput};
+pub use mode::{KeySequence, Keybinding, KeybindingTarget, ModeInput};
 
 // Re-export fallback types (Phase 8 - Break editor->runner cycle)
 pub use fallback::{
@@ -99,3 +99,7 @@ pub use mode_registry::{ModeEntry, ModeRegistry};
 
 // Re-export lifecycle types (Epic #372 - Mode Ownership)
 pub use lifecycle::{ModeLifecycleHandler, NopLifecycleHandler};
+
+// Re-export session extension types (Epic #385 - Server Simplification)
+// Needed for ModeKeyResolver::resolve_with_extensions()
+pub use reovim_driver_session::ExtensionMap;

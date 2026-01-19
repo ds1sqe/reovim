@@ -59,7 +59,6 @@
 
 // Internal modules
 mod args;
-mod char_wait;
 mod context;
 mod provider;
 mod result;
@@ -68,17 +67,11 @@ mod traits;
 // Re-export argument types
 pub use args::{ArgKind, ArgSpec, ArgValue};
 
-// Re-export char-wait types
-pub use char_wait::{CharWaitContext, CharWaitOp, FindType};
-
 // Re-export context
 pub use context::CommandContext;
 
 // Re-export result types
-pub use result::{
-    BlockInsertAction, CommandResult, EditAction, ModeAction, OperatorResult, SearchAction,
-    SearchDirection, UndoAction, UndotreeAction, WindowAction,
-};
+pub use result::CommandResult;
 
 // Re-export provider trait
 pub use provider::CommandProvider;
@@ -90,7 +83,7 @@ pub use traits::{Command, CommandHandler};
 mod tests {
     use {
         super::*,
-        reovim_kernel::api::v1::{CommandId, KernelContext, ModuleId},
+        reovim_kernel::api::v1::{CommandId, ModuleId},
     };
 
     // Integration test: verify trait object safety
@@ -124,16 +117,6 @@ mod tests {
 
         fn names(&self) -> &[&'static str] {
             &["test", "t"]
-        }
-    }
-
-    impl CommandHandler for TestCommand {
-        fn execute(&self, _ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-            if args.count().unwrap_or(0) > 100 {
-                CommandResult::error("Count too large")
-            } else {
-                CommandResult::Success
-            }
         }
     }
 

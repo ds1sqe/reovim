@@ -62,11 +62,10 @@ impl CommandHandler for DeleteChar {
         // Delete up to end of line
         let chars_to_delete = count.min(line_len - pos.column);
         if chars_to_delete > 0 {
-            let cursor_before = buffer.position();
-            let edit = buffer.delete(chars_to_delete);
-            let cursor_after = buffer.position();
-            drop(buffer);
-            return CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after);
+            let _cursor_before = buffer.position();
+            let _edit = buffer.delete(chars_to_delete);
+            let _cursor_after = buffer.position();
+            // TODO: Return edit action via different mechanism when SessionContext is available
         }
         drop(buffer);
 
@@ -116,11 +115,10 @@ impl CommandHandler for DeleteCharBefore {
                 let prev_line_len = buffer.line_len(pos.line - 1).unwrap_or(0);
                 let new_pos = Position::new(pos.line - 1, prev_line_len);
                 buffer.set_position(new_pos);
-                let cursor_before = buffer.position();
-                let edit = buffer.delete(1); // Delete the newline
-                let cursor_after = buffer.position();
-                drop(buffer);
-                return CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after);
+                let _cursor_before = buffer.position();
+                let _edit = buffer.delete(1); // Delete the newline
+                let _cursor_after = buffer.position();
+                // TODO: Return edit action via different mechanism when SessionContext is available
             }
             drop(buffer);
             return CommandResult::Success;
@@ -131,12 +129,13 @@ impl CommandHandler for DeleteCharBefore {
         let delete_pos = Position::new(pos.line, new_col);
 
         buffer.set_position(delete_pos);
-        let cursor_before = buffer.position();
-        let edit = buffer.delete(chars_to_delete);
-        let cursor_after = buffer.position();
+        let _cursor_before = buffer.position();
+        let _edit = buffer.delete(chars_to_delete);
+        let _cursor_after = buffer.position();
         drop(buffer);
 
-        CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
+        // TODO: Return edit action via different mechanism when SessionContext is available
+        CommandResult::Success
     }
 }
 
@@ -238,10 +237,12 @@ impl CommandHandler for DeleteLine {
             .line(new_line)
             .map_or(0, |line| line.chars().position(|c| !c.is_whitespace()).unwrap_or(0));
         buffer.set_position(Position::new(new_line, first_non_blank));
-        let cursor_after = buffer.position();
+        let _cursor_after = buffer.position();
         drop(buffer);
 
-        CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
+        // TODO: Return edit action via different mechanism when SessionContext is available
+        let _ = (cursor_before, edit); // Suppress unused warnings
+        CommandResult::Success
     }
 }
 
@@ -298,11 +299,12 @@ impl CommandHandler for DeleteToEndOfLine {
 
         // Delete from cursor to end of line (not including newline)
         let chars_to_delete = line_len - pos.column;
-        let cursor_before = buffer.position();
-        let edit = buffer.delete(chars_to_delete);
-        let cursor_after = buffer.position();
+        let _cursor_before = buffer.position();
+        let _edit = buffer.delete(chars_to_delete);
+        let _cursor_after = buffer.position();
         drop(buffer);
 
-        CommandResult::edit_action(buffer_id, edit, cursor_before, cursor_after)
+        // TODO: Return edit action via different mechanism when SessionContext is available
+        CommandResult::Success
     }
 }

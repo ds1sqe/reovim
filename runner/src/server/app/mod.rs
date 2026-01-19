@@ -4,29 +4,15 @@
 //! core services (buffers, events, options); the runner tracks runtime
 //! state like active buffer and mode stack.
 
-mod char_ops;
 mod cmdline;
-mod repeat;
-mod search;
-mod undotree;
-mod visual;
 
-pub use {
-    char_ops::{FindType, LastFind, PendingCharOp},
-    cmdline::CommandLineState,
-    repeat::{InsertEntryType, PendingEditBatch, RepeatState},
-    search::{SearchDirection, SearchState},
-    undotree::{DiffPreviewLine, UndotreeRenderLine, UndotreeState},
-    visual::LastVisualSelection,
-};
-
-// Re-export PendingOperator (defined in this file, not a submodule)
+pub use cmdline::CommandLineState;
 
 use {
     crate::{UndoRegistry, server::window::WindowRegistry},
     reovim_arch::sync::RwLock,
     reovim_driver_display::WindowId,
-    reovim_driver_input::{FallbackContext, KeySequence},
+    reovim_driver_input::{ExtensionMap, FallbackContext, KeySequence},
     reovim_kernel::api::v1::{Buffer, BufferId, Edit, KernelContext, ModeId, ModeStack, Position},
     std::sync::Arc,
 };
@@ -97,63 +83,11 @@ pub struct AppState {
     /// undo/redo operations. Each buffer has its own isolated undo history.
     pub undo_registry: UndoRegistry,
 
-    /// Pending character operation.
-    ///
-    /// Unified field for all commands that need a character argument:
-    /// - Find-char commands (f, F, t, T) - search for a character
-    /// - Replace-char command (r) - replace with a character
-    ///
-    /// When Some, the next character input will be used as the argument
-    /// to complete the pending operation.
-    pub pending_char: Option<PendingCharOp>,
-
-    /// Last find-char operation for `;` and `,` repeat commands.
-    ///
-    /// Updated each time a find-char motion successfully moves the cursor.
-    pub last_find: Option<LastFind>,
-
-    /// Search state for / and ? commands.
-    ///
-    /// Tracks the current pattern, direction, highlighting, and input mode.
-    /// Pattern persists across buffer switches (like Vim).
-    pub search: SearchState,
-
-    /// Repeat state for the `.` command.
-    ///
-    /// Tracks the last repeatable command and any insert mode text.
-    pub repeat_state: RepeatState,
-
-    /// Pending edits for transaction batching.
-    ///
-    /// Accumulates consecutive edits (typically character insertions in
-    /// insert mode) until a batch-breaking event occurs, then flushes
-    /// them as a single undo transaction.
-    ///
-    /// # Batch Break Events
-    ///
-    /// - Mode change (e.g., Escape exits insert mode)
-    /// - Any command execution (Backspace, arrow keys, etc.)
-    /// - Buffer change (editing different buffer)
-    pending_edits: PendingEditBatch,
-
-    /// Last visual selection for the `gv` (reselect) command.
-    ///
-    /// When visual mode is exited, the selection is saved here so that
-    /// `gv` can restore it. This allows re-selecting the last visual area.
-    pub last_visual_selection: Option<LastVisualSelection>,
-
     /// Window registry for multi-window support.
     ///
     /// Tracks window state, layout, and focus. Each window has its own
     /// cursor position, allowing multiple views of the same buffer.
     pub windows: WindowRegistry,
-
-    /// Undotree panel state.
-    ///
-    /// Tracks the undotree visualization panel: whether it's open,
-    /// which window displays it, which buffer's tree is shown,
-    /// and navigation state within the tree.
-    pub undotree_state: UndotreeState,
 
     /// Command-line mode state for : commands.
     ///
@@ -161,56 +95,20 @@ pub struct AppState {
     /// Used for Ex-style commands like `:w`, `:q`, `:set`, etc.
     pub cmdline: CommandLineState,
 
-    /// Pending operator waiting for a motion.
+    /// Per-session module extensions (Epic #385).
     ///
-    /// When a user presses an operator key (d, y, c) in normal mode,
-    /// the operator is stored here until a motion key is pressed to
-    /// complete the operation. The motion provides the text range,
-    /// then the operator is executed on that range.
-    pub pending_operator: Option<PendingOperator>,
-}
-
-/// Information about a pending operator waiting for a motion.
-///
-/// In vim, operators like `d`, `y`, `c` wait for a motion to define
-/// the text range they operate on. This struct captures the operator
-/// and any modifiers (count, register) while waiting.
-#[derive(Debug, Clone)]
-pub struct PendingOperator {
-    /// Operator ID: "delete", "yank", or "change".
-    pub operator_id: &'static str,
-
-    /// Count applied to the operator (e.g., `2dw` applies operator twice).
-    pub count: usize,
-
-    /// Target register for the operation.
-    pub register: Option<char>,
-}
-
-impl PendingOperator {
-    /// Create a new pending operator.
-    #[must_use]
-    pub const fn new(operator_id: &'static str) -> Self {
-        Self {
-            operator_id,
-            count: 1,
-            register: None,
-        }
-    }
-
-    /// Set the count for this operator.
-    #[must_use]
-    pub const fn with_count(mut self, count: usize) -> Self {
-        self.count = count;
-        self
-    }
-
-    /// Set the register for this operator.
-    #[must_use]
-    pub const fn with_register(mut self, register: Option<char>) -> Self {
-        self.register = register;
-        self
-    }
+    /// Modules store per-session policy state via `SessionExtension` trait.
+    /// For example, `VimSessionState` stores pending operator, find-char state,
+    /// and other vim-specific policy that was previously in `AppState`.
+    ///
+    /// # Architecture
+    ///
+    /// - **Mechanism (runner)**: Provides storage via `ExtensionMap`
+    /// - **Policy (modules)**: Store/access their own state types
+    ///
+    /// This enables the runner to be policy-agnostic while still allowing
+    /// modules to maintain per-session state.
+    pub extensions: ExtensionMap,
 }
 
 impl AppState {
@@ -231,16 +129,9 @@ impl AppState {
             terminal_width: 80,
             terminal_height: 24,
             undo_registry: UndoRegistry::new(),
-            pending_char: None,
-            last_find: None,
-            search: SearchState::new(),
-            repeat_state: RepeatState::new(),
-            pending_edits: PendingEditBatch::new(),
-            last_visual_selection: None,
             windows: WindowRegistry::new(),
-            undotree_state: UndotreeState::new(),
-            pending_operator: None,
             cmdline: CommandLineState::new(),
+            extensions: ExtensionMap::new(),
         }
     }
 
@@ -278,94 +169,6 @@ impl AppState {
     /// Clear the pending key sequence.
     pub fn clear_pending_keys(&mut self) {
         self.pending_keys.clear();
-    }
-
-    // ========================================================================
-    // Pending Character Operation Methods
-    // ========================================================================
-
-    /// Set a pending character operation.
-    ///
-    /// The next character input will be used to complete this operation.
-    pub const fn set_pending_char(&mut self, op: PendingCharOp) {
-        self.pending_char = Some(op);
-    }
-
-    /// Take the pending character operation, clearing it.
-    ///
-    /// Returns `Some(op)` if there was a pending operation, `None` otherwise.
-    pub const fn take_pending_char(&mut self) -> Option<PendingCharOp> {
-        self.pending_char.take()
-    }
-
-    /// Check if there is a pending character operation.
-    #[must_use]
-    pub const fn has_pending_char(&self) -> bool {
-        self.pending_char.is_some()
-    }
-
-    /// Get a reference to the pending character operation, if any.
-    #[must_use]
-    pub const fn pending_char(&self) -> Option<&PendingCharOp> {
-        self.pending_char.as_ref()
-    }
-
-    // ========================================================================
-    // Pending Operator Methods (for operator-motion combinations)
-    // ========================================================================
-
-    /// Set a pending operator that's waiting for a motion.
-    ///
-    /// Called when an operator key (d, y, c) is pressed in normal mode.
-    /// The operator waits for a motion to provide the text range.
-    pub const fn set_pending_operator(&mut self, op: PendingOperator) {
-        self.pending_operator = Some(op);
-    }
-
-    /// Take the pending operator, clearing it.
-    ///
-    /// Returns `Some(op)` if there was a pending operator, `None` otherwise.
-    /// Called when a motion provides a range to complete the operation.
-    pub const fn take_pending_operator(&mut self) -> Option<PendingOperator> {
-        self.pending_operator.take()
-    }
-
-    /// Check if there is a pending operator.
-    #[must_use]
-    pub const fn has_pending_operator(&self) -> bool {
-        self.pending_operator.is_some()
-    }
-
-    /// Get a reference to the pending operator, if any.
-    #[must_use]
-    pub const fn pending_operator(&self) -> Option<&PendingOperator> {
-        self.pending_operator.as_ref()
-    }
-
-    // ========================================================================
-    // Repeat State Methods
-    // ========================================================================
-
-    /// Record a command for repeat (`.`).
-    ///
-    /// Only text-modifying commands should be recorded.
-    pub fn record_for_repeat(&mut self, command_id: &str) {
-        self.repeat_state.record_command(command_id);
-    }
-
-    /// Start accumulating insert mode text for repeat.
-    pub fn start_insert_accumulation(&mut self) {
-        self.repeat_state.start_accumulating();
-    }
-
-    /// Add text to the insert mode accumulator.
-    pub fn accumulate_insert_text(&mut self, text: &str) {
-        self.repeat_state.accumulate_insert(text);
-    }
-
-    /// Stop accumulating insert mode text.
-    pub const fn stop_insert_accumulation(&mut self) {
-        self.repeat_state.stop_accumulating();
     }
 
     // ========================================================================
@@ -413,145 +216,6 @@ impl AppState {
         }
         self.active_buffer = Some(buffer_id);
     }
-
-    // ========================================================================
-    // Undo Transaction Batching Methods
-    // ========================================================================
-
-    /// Accumulate an edit for batched undo.
-    ///
-    /// Consecutive character insertions (or other edits) can be accumulated
-    /// and later flushed as a single undo transaction. This enables Vim-like
-    /// behavior where typing "hello" in insert mode creates a single undo node.
-    ///
-    /// If the buffer changes (different `buffer_id` from current batch), the
-    /// existing batch is flushed before starting a new one.
-    ///
-    /// # Arguments
-    ///
-    /// * `buffer_id` - The buffer being edited
-    /// * `edit` - The edit to accumulate
-    /// * `cursor_before` - Cursor position before this edit
-    /// * `cursor_after` - Cursor position after this edit
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// // User types 'h' in insert mode
-    /// app.accumulate_edit(buffer_id, edit, Position::new(0, 0), Position::new(0, 1));
-    /// // User types 'i'
-    /// app.accumulate_edit(buffer_id, edit, Position::new(0, 1), Position::new(0, 2));
-    /// // User presses Escape - this triggers flush
-    /// app.flush_pending_edits();
-    /// // Result: single undo node with both edits
-    /// ```
-    pub fn accumulate_edit(
-        &mut self,
-        buffer_id: BufferId,
-        edit: Edit,
-        cursor_before: Position,
-        cursor_after: Position,
-    ) {
-        // Flush if buffer changed
-        if self
-            .pending_edits
-            .buffer_id
-            .is_some_and(|id| id != buffer_id)
-        {
-            self.flush_pending_edits();
-        }
-
-        // Start new batch if empty
-        if self.pending_edits.edits.is_empty() {
-            self.pending_edits.buffer_id = Some(buffer_id);
-            self.pending_edits.cursor_before = Some(cursor_before);
-        }
-
-        self.pending_edits.edits.push(edit);
-        self.pending_edits.cursor_after = Some(cursor_after);
-    }
-
-    /// Flush pending edits to undo registry as a single transaction.
-    ///
-    /// This commits all accumulated edits as a single undo node. If there are
-    /// no pending edits, this is a no-op (safe to call multiple times).
-    ///
-    /// Called automatically on:
-    /// - Mode change (e.g., exiting insert mode)
-    /// - Before any command execution (Backspace, arrow keys, etc.)
-    /// - Buffer change (via `accumulate_edit` when buffer differs)
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// // Accumulated 5 character edits
-    /// app.flush_pending_edits();
-    /// // Now pressing 'u' undoes all 5 characters at once
-    /// ```
-    pub fn flush_pending_edits(&mut self) {
-        if self.pending_edits.is_empty() {
-            return;
-        }
-
-        let Some(buffer_id) = self.pending_edits.buffer_id else {
-            return;
-        };
-        let Some(cursor_before) = self.pending_edits.cursor_before else {
-            return;
-        };
-        let Some(cursor_after) = self.pending_edits.cursor_after else {
-            return;
-        };
-
-        let edits = std::mem::take(&mut self.pending_edits.edits);
-        self.undo_registry
-            .record(buffer_id, edits, cursor_before, cursor_after);
-        self.pending_edits.clear();
-    }
-
-    /// Check if there are pending edits waiting to be flushed.
-    ///
-    /// Useful for testing and debugging.
-    #[must_use]
-    pub const fn has_pending_edits(&self) -> bool {
-        !self.pending_edits.is_empty()
-    }
-
-    /// Get the number of pending edits.
-    ///
-    /// Useful for testing and debugging.
-    #[must_use]
-    pub const fn pending_edit_count(&self) -> usize {
-        self.pending_edits.len()
-    }
-
-    // ========================================================================
-    // Visual Selection Methods
-    // ========================================================================
-
-    /// Save the current visual selection for later reselection with `gv`.
-    ///
-    /// Called when exiting visual mode to remember the selection boundaries.
-    pub fn save_visual_selection(&mut self, selection: LastVisualSelection) {
-        self.last_visual_selection = Some(selection);
-    }
-
-    /// Get the last visual selection, if any.
-    #[must_use]
-    pub const fn last_visual_selection(&self) -> Option<&LastVisualSelection> {
-        self.last_visual_selection.as_ref()
-    }
-
-    /// Check if there is a saved visual selection.
-    #[must_use]
-    pub const fn has_last_visual_selection(&self) -> bool {
-        self.last_visual_selection.is_some()
-    }
-
-    /// Clear the last visual selection.
-    pub fn clear_last_visual_selection(&mut self) {
-        self.last_visual_selection = None;
-    }
 }
 
 impl FallbackContext for AppState {
@@ -585,33 +249,23 @@ impl FallbackContext for AppState {
         cursor_before: Position,
         cursor_after: Position,
     ) {
-        // Delegate to the inherent method on AppState
-        Self::accumulate_edit(self, buffer_id, edit, cursor_before, cursor_after);
+        // For now, just record directly
+        // TODO: Implement batching via extensions when SessionContext is available
+        self.undo_registry
+            .record(buffer_id, vec![edit], cursor_before, cursor_after);
     }
 
     fn flush_pending_edits(&mut self) {
-        // Delegate to the inherent method on AppState
-        Self::flush_pending_edits(self);
+        // No-op - batching removed, edits recorded immediately
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        reovim_kernel::api::v1::{Direction, ModuleId, SelectionMode},
-    };
+    use {super::*, reovim_kernel::api::v1::ModuleId};
 
     fn test_mode_id() -> ModeId {
         ModeId::new(ModuleId::new("test"), "normal")
-    }
-
-    fn test_visual_mode_id() -> ModeId {
-        ModeId::new(ModuleId::new("editor"), "visual")
-    }
-
-    fn test_visual_line_mode_id() -> ModeId {
-        ModeId::new(ModuleId::new("editor"), "visual-line")
     }
 
     #[test]
@@ -714,369 +368,6 @@ mod tests {
     }
 
     // ========================================================================
-    // Char-Wait Infrastructure Tests
-    // ========================================================================
-
-    #[test]
-    fn test_app_state_last_find_set() {
-        let kernel = KernelContext::default();
-        let mut app = AppState::new(kernel, test_mode_id());
-
-        // Set last_find
-        app.last_find = Some(LastFind::new('a', FindType::TillForward));
-
-        let last = app.last_find.unwrap();
-        assert_eq!(last.char, 'a');
-        assert_eq!(last.find_type, FindType::TillForward);
-    }
-
-    // ========================================================================
-    // AppState Pending Char Methods Tests
-    // ========================================================================
-
-    #[test]
-    fn test_app_state_pending_char_initially_none() {
-        let kernel = KernelContext::default();
-        let app = AppState::new(kernel, test_mode_id());
-
-        assert!(!app.has_pending_char());
-        assert!(app.pending_char().is_none());
-    }
-
-    #[test]
-    fn test_app_state_set_pending_char() {
-        let kernel = KernelContext::default();
-        let mut app = AppState::new(kernel, test_mode_id());
-
-        app.set_pending_char(PendingCharOp::find_forward(Position::new(0, 0)));
-
-        assert!(app.has_pending_char());
-        assert!(app.pending_char().is_some());
-    }
-
-    #[test]
-    fn test_app_state_take_pending_char() {
-        let kernel = KernelContext::default();
-        let mut app = AppState::new(kernel, test_mode_id());
-
-        app.set_pending_char(PendingCharOp::till_backward(Position::new(1, 5)));
-
-        let taken = app.take_pending_char();
-        assert!(taken.is_some());
-        assert!(!app.has_pending_char());
-    }
-
-    #[test]
-    fn test_app_state_set_pending_char_replace() {
-        let kernel = KernelContext::default();
-        let mut app = AppState::new(kernel, test_mode_id());
-
-        app.set_pending_char(PendingCharOp::replace_char(1));
-
-        assert!(app.has_pending_char());
-    }
-
-    // ========================================================================
-    // AppState Repeat Methods Tests
-    // ========================================================================
-
-    #[test]
-    fn test_app_state_repeat_state_initially_empty() {
-        let kernel = KernelContext::default();
-        let app = AppState::new(kernel, test_mode_id());
-
-        assert!(app.repeat_state.last_command.is_none());
-    }
-
-    #[test]
-    fn test_app_state_record_for_repeat() {
-        let kernel = KernelContext::default();
-        let mut app = AppState::new(kernel, test_mode_id());
-
-        app.record_for_repeat("delete-line");
-        assert_eq!(app.repeat_state.last_command, Some("delete-line".to_string()));
-    }
-
-    #[test]
-    fn test_app_state_insert_accumulation() {
-        let kernel = KernelContext::default();
-        let mut app = AppState::new(kernel, test_mode_id());
-
-        app.start_insert_accumulation();
-        app.accumulate_insert_text("test");
-        app.stop_insert_accumulation();
-
-        assert_eq!(app.repeat_state.insert_text, "test");
-        assert!(!app.repeat_state.accumulating);
-    }
-
-    // ========================================================================
-    // AppState Undo Batching Methods Tests
-    // ========================================================================
-
-    #[test]
-    fn test_app_state_pending_edits_initially_empty() {
-        let kernel = KernelContext::default();
-        let app = AppState::new(kernel, test_mode_id());
-
-        assert!(!app.has_pending_edits());
-        assert_eq!(app.pending_edit_count(), 0);
-    }
-
-    #[test]
-    fn test_accumulate_single_edit() {
-        let kernel = KernelContext::default();
-        let mut app = AppState::new(kernel, test_mode_id());
-
-        let buffer_id = BufferId::from_raw(1);
-        let edit = Edit::insert(Position::new(0, 0), "a");
-
-        app.accumulate_edit(buffer_id, edit, Position::new(0, 0), Position::new(0, 1));
-
-        assert!(app.has_pending_edits());
-        assert_eq!(app.pending_edit_count(), 1);
-    }
-
-    #[test]
-    fn test_accumulate_multiple_edits_same_buffer() {
-        let kernel = KernelContext::default();
-        let mut app = AppState::new(kernel, test_mode_id());
-
-        let buffer_id = BufferId::from_raw(1);
-
-        // Accumulate "hello" (5 characters)
-        app.accumulate_edit(
-            buffer_id,
-            Edit::insert(Position::new(0, 0), "h"),
-            Position::new(0, 0),
-            Position::new(0, 1),
-        );
-        app.accumulate_edit(
-            buffer_id,
-            Edit::insert(Position::new(0, 1), "e"),
-            Position::new(0, 1),
-            Position::new(0, 2),
-        );
-        app.accumulate_edit(
-            buffer_id,
-            Edit::insert(Position::new(0, 2), "l"),
-            Position::new(0, 2),
-            Position::new(0, 3),
-        );
-        app.accumulate_edit(
-            buffer_id,
-            Edit::insert(Position::new(0, 3), "l"),
-            Position::new(0, 3),
-            Position::new(0, 4),
-        );
-        app.accumulate_edit(
-            buffer_id,
-            Edit::insert(Position::new(0, 4), "o"),
-            Position::new(0, 4),
-            Position::new(0, 5),
-        );
-
-        assert!(app.has_pending_edits());
-        assert_eq!(app.pending_edit_count(), 5);
-    }
-
-    #[test]
-    fn test_accumulate_different_buffer_flushes() {
-        let kernel = KernelContext::default();
-        let mut app = AppState::new(kernel, test_mode_id());
-
-        let buffer1 = BufferId::from_raw(1);
-        let buffer2 = BufferId::from_raw(2);
-
-        // Accumulate to buffer1
-        app.accumulate_edit(
-            buffer1,
-            Edit::insert(Position::new(0, 0), "a"),
-            Position::new(0, 0),
-            Position::new(0, 1),
-        );
-        app.accumulate_edit(
-            buffer1,
-            Edit::insert(Position::new(0, 1), "b"),
-            Position::new(0, 1),
-            Position::new(0, 2),
-        );
-
-        assert_eq!(app.pending_edit_count(), 2);
-
-        // Accumulate to buffer2 - should flush buffer1 first
-        app.accumulate_edit(
-            buffer2,
-            Edit::insert(Position::new(0, 0), "x"),
-            Position::new(0, 0),
-            Position::new(0, 1),
-        );
-
-        // Now pending should only have 1 edit (for buffer2)
-        // The previous 2 edits for buffer1 were flushed
-        assert_eq!(app.pending_edit_count(), 1);
-
-        // Buffer1 should have undo history from the flush
-        assert!(app.undo_registry.has_history(buffer1));
-    }
-
-    #[test]
-    fn test_flush_empty_batch_no_op() {
-        let kernel = KernelContext::default();
-        let mut app = AppState::new(kernel, test_mode_id());
-
-        let buffer_id = BufferId::from_raw(1);
-
-        // Flush when empty should be safe no-op
-        app.flush_pending_edits();
-
-        // Should not create any undo history
-        assert!(!app.undo_registry.has_history(buffer_id));
-        assert!(!app.has_pending_edits());
-    }
-
-    #[test]
-    fn test_flush_creates_single_undo_node() {
-        let kernel = KernelContext::default();
-        let mut app = AppState::new(kernel, test_mode_id());
-
-        let buffer_id = BufferId::from_raw(1);
-
-        // Accumulate 3 edits
-        app.accumulate_edit(
-            buffer_id,
-            Edit::insert(Position::new(0, 0), "a"),
-            Position::new(0, 0),
-            Position::new(0, 1),
-        );
-        app.accumulate_edit(
-            buffer_id,
-            Edit::insert(Position::new(0, 1), "b"),
-            Position::new(0, 1),
-            Position::new(0, 2),
-        );
-        app.accumulate_edit(
-            buffer_id,
-            Edit::insert(Position::new(0, 2), "c"),
-            Position::new(0, 2),
-            Position::new(0, 3),
-        );
-
-        assert_eq!(app.pending_edit_count(), 3);
-
-        // Flush should create single undo node
-        app.flush_pending_edits();
-
-        assert!(!app.has_pending_edits());
-        assert!(app.undo_registry.has_history(buffer_id));
-
-        // Verify it's a single undo operation (one undo should undo all 3)
-        let result = app.undo_registry.undo(buffer_id);
-        assert!(result.is_some());
-        let undo_result = result.unwrap();
-        // The undo should contain 3 inverse edits (one for each accumulated edit)
-        assert_eq!(undo_result.edits.len(), 3);
-    }
-
-    #[test]
-    fn test_multiple_consecutive_flushes_safe() {
-        let kernel = KernelContext::default();
-        let mut app = AppState::new(kernel, test_mode_id());
-
-        // Multiple flushes when empty should be safe
-        app.flush_pending_edits();
-        app.flush_pending_edits();
-        app.flush_pending_edits();
-
-        assert!(!app.has_pending_edits());
-    }
-
-    // ========================================================================
-    // Visual Selection Tests
-    // ========================================================================
-
-    #[test]
-    fn test_app_state_last_visual_selection_initially_none() {
-        let kernel = KernelContext::default();
-        let app = AppState::new(kernel, test_mode_id());
-
-        assert!(!app.has_last_visual_selection());
-        assert!(app.last_visual_selection().is_none());
-    }
-
-    #[test]
-    fn test_app_state_save_visual_selection() {
-        let kernel = KernelContext::default();
-        let mut app = AppState::new(kernel, test_mode_id());
-
-        let selection = LastVisualSelection::new(
-            BufferId::from_raw(1),
-            Position::new(0, 0),
-            Position::new(1, 5),
-            SelectionMode::Character,
-            test_visual_mode_id(),
-        );
-
-        app.save_visual_selection(selection);
-
-        assert!(app.has_last_visual_selection());
-        let saved = app.last_visual_selection().unwrap();
-        assert_eq!(saved.anchor, Position::new(0, 0));
-        assert_eq!(saved.cursor, Position::new(1, 5));
-    }
-
-    #[test]
-    fn test_app_state_clear_last_visual_selection() {
-        let kernel = KernelContext::default();
-        let mut app = AppState::new(kernel, test_mode_id());
-
-        let selection = LastVisualSelection::new(
-            BufferId::from_raw(1),
-            Position::new(0, 0),
-            Position::new(1, 5),
-            SelectionMode::Character,
-            test_visual_mode_id(),
-        );
-
-        app.save_visual_selection(selection);
-        assert!(app.has_last_visual_selection());
-
-        app.clear_last_visual_selection();
-        assert!(!app.has_last_visual_selection());
-    }
-
-    #[test]
-    fn test_app_state_save_visual_selection_overwrites() {
-        let kernel = KernelContext::default();
-        let mut app = AppState::new(kernel, test_mode_id());
-
-        let selection1 = LastVisualSelection::new(
-            BufferId::from_raw(1),
-            Position::new(0, 0),
-            Position::new(1, 5),
-            SelectionMode::Character,
-            test_visual_mode_id(),
-        );
-        app.save_visual_selection(selection1);
-
-        let selection2 = LastVisualSelection::new(
-            BufferId::from_raw(2),
-            Position::new(5, 0),
-            Position::new(10, 20),
-            SelectionMode::Line,
-            test_visual_line_mode_id(),
-        );
-        app.save_visual_selection(selection2);
-
-        // Should have the second selection
-        let saved = app.last_visual_selection().unwrap();
-        assert_eq!(saved.buffer_id, BufferId::from_raw(2));
-        assert_eq!(saved.anchor, Position::new(5, 0));
-        assert_eq!(saved.cursor, Position::new(10, 20));
-        assert_eq!(saved.mode, SelectionMode::Line);
-    }
-
-    // ========================================================================
     // Window Management Tests
     // ========================================================================
 
@@ -1166,36 +457,5 @@ mod tests {
         // Should not find window for non-existent buffer
         let other_buffer = BufferId::new();
         assert!(app.window_for_buffer(other_buffer).is_none());
-    }
-
-    // ========================================================================
-    // UndotreeState Tests
-    // ========================================================================
-
-    #[test]
-    fn test_app_state_has_undotree_state() {
-        let kernel = KernelContext::default();
-        let app = AppState::new(kernel, test_mode_id());
-
-        // AppState should have undotree_state initialized
-        assert!(!app.undotree_state.is_open());
-        assert!(app.undotree_state.panel_window_id().is_none());
-    }
-
-    // Type re-export tests to ensure flat re-exports work
-    #[test]
-    fn test_reexported_types_accessible() {
-        // Verify types are accessible via the re-exports
-        let _ = FindType::FindForward;
-        let _ = SearchDirection::Forward;
-        let _ = RepeatState::new();
-        let _ = PendingEditBatch::new();
-        let _ = UndotreeState::new();
-    }
-
-    #[test]
-    fn test_find_type_direction_via_reexport() {
-        assert_eq!(FindType::FindForward.direction(), Direction::Forward);
-        assert_eq!(FindType::FindBackward.direction(), Direction::Backward);
     }
 }

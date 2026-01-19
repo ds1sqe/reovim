@@ -3,7 +3,7 @@ name = "reovim-module-defaults"
 version = "0.9.1-dev"
 edition.workspace = true
 license.workspace = true
-description = "Default module bundle for reovim - aggregates keymap, operators, commands"
+description = "Default module bundle for reovim - aggregates keymap, vim, commands"
 readme = "README.md"
 repository.workspace = true
 
@@ -19,7 +19,7 @@ reovim-kernel = { workspace = true }
 reovim-module-macros = { path = "../../lib/module-macros" }
 reovim-module-keymap = { path = "../keymap" }
 reovim-module-vim = { path = "../vim" }
-reovim-module-operators = { path = "../operators" }
+# Note: operators merged into vim (Epic #385)
 reovim-module-commands = { path = "../commands" }
 reovim-module-scratch-buffer = { path = "../scratch-buffer" }
 reovim-driver-session = { workspace = true }

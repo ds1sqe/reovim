@@ -345,6 +345,101 @@ impl std::fmt::Display for KeySequence {
 }
 
 // ============================================================================
+// KeybindingTarget
+// ============================================================================
+
+/// What a keybinding triggers.
+///
+/// Keybindings can either execute a command or enter a mode.
+/// This enables user-configurable mode bindings like `<C-t>` to enter Tetris mode.
+///
+/// # TOML Syntax
+///
+/// ```toml
+/// [bindings.normal]
+/// "dd" = "editor:delete-line"      # Command (default)
+/// "i" = { enter = "vim:insert" }   # Mode (explicit)
+/// "<C-t>" = { enter = "tetris:play" }
+/// ```
+///
+/// # Example
+///
+/// ```ignore
+/// use reovim_driver_input::KeybindingTarget;
+/// use reovim_kernel::api::v1::{CommandId, ModeId, ModuleId};
+///
+/// let module = ModuleId::new("editor");
+///
+/// // Command target
+/// let cmd = CommandId::new(module.clone(), "delete-line");
+/// let target = KeybindingTarget::Command(cmd);
+///
+/// // Mode target
+/// let mode = ModeId::new(module, "insert");
+/// let target = KeybindingTarget::EnterMode(mode);
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum KeybindingTarget {
+    /// Execute a command.
+    Command(CommandId),
+    /// Enter a mode (push onto mode stack).
+    EnterMode(ModeId),
+}
+
+impl KeybindingTarget {
+    /// Check if this is a command target.
+    #[must_use]
+    pub const fn is_command(&self) -> bool {
+        matches!(self, Self::Command(_))
+    }
+
+    /// Check if this is a mode target.
+    #[must_use]
+    pub const fn is_mode(&self) -> bool {
+        matches!(self, Self::EnterMode(_))
+    }
+
+    /// Get the command if this is a command target.
+    #[must_use]
+    pub const fn as_command(&self) -> Option<&CommandId> {
+        match self {
+            Self::Command(cmd) => Some(cmd),
+            Self::EnterMode(_) => None,
+        }
+    }
+
+    /// Get the mode if this is a mode target.
+    #[must_use]
+    pub const fn as_mode(&self) -> Option<&ModeId> {
+        match self {
+            Self::Command(_) => None,
+            Self::EnterMode(mode) => Some(mode),
+        }
+    }
+}
+
+impl From<CommandId> for KeybindingTarget {
+    fn from(cmd: CommandId) -> Self {
+        Self::Command(cmd)
+    }
+}
+
+impl From<ModeId> for KeybindingTarget {
+    fn from(mode: ModeId) -> Self {
+        Self::EnterMode(mode)
+    }
+}
+
+impl std::fmt::Display for KeybindingTarget {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Command(cmd) => write!(f, "{cmd}"),
+            Self::EnterMode(mode) => write!(f, "enter:{mode}"),
+        }
+    }
+}
+
+// ============================================================================
 // Keybinding
 // ============================================================================
 
@@ -600,5 +695,81 @@ mod tests {
         assert_eq!(binding.keys.len(), 1);
         assert_eq!(binding.mode, mode);
         assert_eq!(binding.command, cmd);
+    }
+
+    // ========================================================================
+    // KeybindingTarget tests
+    // ========================================================================
+
+    #[test]
+    fn test_keybinding_target_command() {
+        let module = ModuleId::new("test");
+        let cmd = CommandId::new(module, "test-cmd");
+        let target = KeybindingTarget::Command(cmd.clone());
+
+        assert!(target.is_command());
+        assert!(!target.is_mode());
+        assert_eq!(target.as_command(), Some(&cmd));
+        assert_eq!(target.as_mode(), None);
+    }
+
+    #[test]
+    fn test_keybinding_target_mode() {
+        let module = ModuleId::new("test");
+        let mode = ModeId::new(module, "insert");
+        let target = KeybindingTarget::EnterMode(mode.clone());
+
+        assert!(!target.is_command());
+        assert!(target.is_mode());
+        assert_eq!(target.as_command(), None);
+        assert_eq!(target.as_mode(), Some(&mode));
+    }
+
+    #[test]
+    fn test_keybinding_target_from_command() {
+        let module = ModuleId::new("test");
+        let cmd = CommandId::new(module, "test-cmd");
+        let target: KeybindingTarget = cmd.clone().into();
+
+        assert!(target.is_command());
+        assert_eq!(target.as_command(), Some(&cmd));
+    }
+
+    #[test]
+    fn test_keybinding_target_from_mode() {
+        let module = ModuleId::new("test");
+        let mode = ModeId::new(module, "insert");
+        let target: KeybindingTarget = mode.clone().into();
+
+        assert!(target.is_mode());
+        assert_eq!(target.as_mode(), Some(&mode));
+    }
+
+    #[test]
+    fn test_keybinding_target_display() {
+        let module = ModuleId::new("test");
+        let cmd = CommandId::new(module.clone(), "delete");
+        let mode = ModeId::new(module, "insert");
+
+        let cmd_target = KeybindingTarget::Command(cmd);
+        assert_eq!(format!("{cmd_target}"), "test:delete");
+
+        let mode_target = KeybindingTarget::EnterMode(mode);
+        assert_eq!(format!("{mode_target}"), "enter:test:insert");
+    }
+
+    #[test]
+    fn test_keybinding_target_equality() {
+        let module = ModuleId::new("test");
+        let cmd1 = CommandId::new(module.clone(), "cmd");
+        let cmd2 = CommandId::new(module.clone(), "cmd");
+        let mode = ModeId::new(module, "insert");
+
+        let target1 = KeybindingTarget::Command(cmd1);
+        let target2 = KeybindingTarget::Command(cmd2);
+        let target3 = KeybindingTarget::EnterMode(mode);
+
+        assert_eq!(target1, target2);
+        assert_ne!(target1, target3);
     }
 }

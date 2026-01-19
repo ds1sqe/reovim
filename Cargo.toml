@@ -109,7 +109,7 @@ pyo3 = { version = "0.27", features = ["auto-initialize"] }
 # Policy modules
 reovim-module-example = { path = "./modules/example", version = "0.9.1-dev" }
 reovim-module-keymap = { path = "./modules/keymap", version = "0.9.1-dev" }
-reovim-module-operators = { path = "./modules/operators", version = "0.9.1-dev" }
+# Note: operators merged into vim (Epic #385)
 reovim-module-commands = { path = "./modules/commands", version = "0.9.1-dev" }
 reovim-module-defaults = { path = "./modules/defaults", version = "0.9.1-dev" }
 reovim-module-options = { path = "./modules/options", version = "0.9.1-dev" }

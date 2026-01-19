@@ -33,7 +33,7 @@ reovim-module-keymap = { path = "../modules/keymap" }
 reovim-module-vim = { path = "../modules/vim" }
 reovim-module-editor = { path = "../modules/editor" }
 reovim-module-motions = { path = "../modules/motions" }
-reovim-module-operators = { path = "../modules/operators" }
+# Note: operators merged into vim (Epic #385)
 reovim-module-commands = { path = "../modules/commands" }
 
 # Layout module for window management

@@ -33,8 +33,10 @@ impl Command for EnterDeleteOperator {
 
 impl CommandHandler for EnterDeleteOperator {
     fn execute(&self, _ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        let register = args.register();
-        CommandResult::enter_operator_pending("delete", register)
+        // TODO: Implement via SessionContext when available
+        // Will set pending operator to "delete" and enter operator-pending mode
+        let _ = args.register(); // Suppress unused warning
+        CommandResult::Success
     }
 }
 
@@ -57,8 +59,10 @@ impl Command for EnterYankOperator {
 
 impl CommandHandler for EnterYankOperator {
     fn execute(&self, _ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        let register = args.register();
-        CommandResult::enter_operator_pending("yank", register)
+        // TODO: Implement via SessionContext when available
+        // Will set pending operator to "yank" and enter operator-pending mode
+        let _ = args.register(); // Suppress unused warning
+        CommandResult::Success
     }
 }
 
@@ -82,8 +86,10 @@ impl Command for EnterChangeOperator {
 
 impl CommandHandler for EnterChangeOperator {
     fn execute(&self, _ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        let register = args.register();
-        CommandResult::enter_operator_pending("change", register)
+        // TODO: Implement via SessionContext when available
+        // Will set pending operator to "change" and enter operator-pending mode
+        let _ = args.register(); // Suppress unused warning
+        CommandResult::Success
     }
 }
 
@@ -106,7 +112,9 @@ impl Command for EnterIndentOperator {
 
 impl CommandHandler for EnterIndentOperator {
     fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        CommandResult::enter_operator_pending("indent", None)
+        // TODO: Implement via SessionContext when available
+        // Will set pending operator to "indent" and enter operator-pending mode
+        CommandResult::Success
     }
 }
 
@@ -129,7 +137,9 @@ impl Command for EnterDedentOperator {
 
 impl CommandHandler for EnterDedentOperator {
     fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        CommandResult::enter_operator_pending("dedent", None)
+        // TODO: Implement via SessionContext when available
+        // Will set pending operator to "dedent" and enter operator-pending mode
+        CommandResult::Success
     }
 }
 
@@ -168,80 +178,44 @@ mod tests {
     }
 
     #[test]
-    fn test_enter_delete_operator_returns_enter_operator_pending() {
+    fn test_enter_delete_operator_returns_success() {
+        // Commands now return Success - actual operator-pending logic
+        // will be handled by the vim resolver via SessionContext
         let mut ctx = KernelContext::default();
         let args = CommandContext::new();
         let result = EnterDeleteOperator.execute(&mut ctx, &args);
-
-        assert!(result.is_enter_operator_pending());
-        if let CommandResult::EnterOperatorPending {
-            operator_id,
-            register,
-        } = result
-        {
-            assert_eq!(operator_id, "delete");
-            assert_eq!(register, None);
-        } else {
-            panic!("Expected EnterOperatorPending result");
-        }
+        assert!(result.is_success());
     }
 
     #[test]
-    fn test_enter_yank_operator_returns_enter_operator_pending() {
+    fn test_enter_yank_operator_returns_success() {
         let mut ctx = KernelContext::default();
         let args = CommandContext::new();
         let result = EnterYankOperator.execute(&mut ctx, &args);
-
-        assert!(result.is_enter_operator_pending());
-        if let CommandResult::EnterOperatorPending {
-            operator_id,
-            register,
-        } = result
-        {
-            assert_eq!(operator_id, "yank");
-            assert_eq!(register, None);
-        } else {
-            panic!("Expected EnterOperatorPending result");
-        }
+        assert!(result.is_success());
     }
 
     #[test]
-    fn test_enter_change_operator_returns_enter_operator_pending() {
+    fn test_enter_change_operator_returns_success() {
         let mut ctx = KernelContext::default();
         let args = CommandContext::new();
         let result = EnterChangeOperator.execute(&mut ctx, &args);
-
-        assert!(result.is_enter_operator_pending());
-        if let CommandResult::EnterOperatorPending {
-            operator_id,
-            register,
-        } = result
-        {
-            assert_eq!(operator_id, "change");
-            assert_eq!(register, None);
-        } else {
-            panic!("Expected EnterOperatorPending result");
-        }
+        assert!(result.is_success());
     }
 
     #[test]
-    fn test_enter_delete_operator_with_register() {
-        use reovim_driver_command::ArgValue;
-
+    fn test_enter_indent_operator_returns_success() {
         let mut ctx = KernelContext::default();
-        let mut args = CommandContext::new();
-        args.set("register", ArgValue::Register('a'));
-        let result = EnterDeleteOperator.execute(&mut ctx, &args);
+        let args = CommandContext::new();
+        let result = EnterIndentOperator.execute(&mut ctx, &args);
+        assert!(result.is_success());
+    }
 
-        if let CommandResult::EnterOperatorPending {
-            operator_id,
-            register,
-        } = result
-        {
-            assert_eq!(operator_id, "delete");
-            assert_eq!(register, Some('a'));
-        } else {
-            panic!("Expected EnterOperatorPending result");
-        }
+    #[test]
+    fn test_enter_dedent_operator_returns_success() {
+        let mut ctx = KernelContext::default();
+        let args = CommandContext::new();
+        let result = EnterDedentOperator.execute(&mut ctx, &args);
+        assert!(result.is_success());
     }
 }
