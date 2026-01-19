@@ -122,6 +122,35 @@ nursery = "deny"
 - Use generic kernel APIs, extend only when multiple modules benefit
 - Policy belongs in `modules/`, mechanism belongs in `lib/kernel/` or `lib/drivers/`
 
+### Design Philosophy: Slow but Right
+
+**Always choose the correct solution over the fast hack.** This project prioritizes long-term maintainability and architectural integrity over quick fixes.
+
+**Principles:**
+- **Never choose fast but hacky** - Quick workarounds create technical debt that compounds
+- **It's OK to be slow** - Taking time to design the right solution pays dividends
+- **Proper abstractions over verification hacks** - If you need tests to catch what the compiler should catch, redesign the API
+- **Extend APIs properly** - If the current API doesn't support your needs, extend it correctly rather than working around it
+- **No "pragmatic" shortcuts** - What seems pragmatic today becomes legacy tomorrow
+
+**Examples:**
+- If `&'static str` prevents type safety → change the API to not require `&'static str`
+- If kernel purity blocks a feature → design a proper driver/runner-side abstraction
+- If a workaround needs unit tests to catch errors → redesign for compile-time safety
+- If "it works" but the architecture is wrong → refactor first, then implement
+
+**Red Flags (do NOT proceed):**
+- "This is a workaround but it works"
+- "We can verify this with tests instead"
+- "The proper solution is too complex"
+- "This violates X principle but is faster"
+
+**Green Flags (proceed):**
+- "This extends the existing pattern correctly"
+- "The compiler enforces this constraint"
+- "This follows the established architecture"
+- "Future modules will benefit from this design"
+
 ### Process Safety Policy
 
 **NEVER kill other reovim instances.** Multiple reovim servers can run concurrently for debugging.
