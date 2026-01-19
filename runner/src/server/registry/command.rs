@@ -189,6 +189,28 @@ impl std::fmt::Debug for CommandRegistry {
     }
 }
 
+// === CommandExecutor implementation ===
+//
+// This allows SessionRuntime to execute commands without needing
+// direct access to AppState. Used by the Session Driver API.
+
+use {reovim_driver_session::CommandExecutor, reovim_kernel::api::v1::KernelContext};
+
+impl CommandExecutor for CommandRegistry {
+    fn execute(
+        &self,
+        cmd: &CommandId,
+        ctx: &CommandContext,
+        kernel: &mut KernelContext,
+    ) -> Option<CommandResult> {
+        profile_scope!("command_execute_via_executor", "runner::command");
+
+        self.entries
+            .get(cmd)
+            .map(|entry| entry.handler.execute(kernel, ctx))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use {

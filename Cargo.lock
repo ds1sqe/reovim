@@ -1219,6 +1219,7 @@ dependencies = [
 name = "reovim-driver-session"
 version = "0.9.1-dev"
 dependencies = [
+ "reovim-driver-command",
  "reovim-kernel",
 ]
 

@@ -1,7 +1,12 @@
 //! State change notification emission.
 //!
-//! Compares state snapshots and emits appropriate notifications
-//! to connected clients for any detected changes.
+//! Provides two notification mechanisms:
+//!
+//! 1. [`emit_state_changes`] - Compares before/after snapshots to detect changes
+//! 2. [`emit_from_state_changes`] - Uses pre-computed `StateChanges` from resolvers
+//!
+//! The second method is preferred when resolvers use the `SessionApi` directly,
+//! as changes are tracked during execution rather than inferred via snapshot diff.
 //!
 //! # Notifications Emitted
 //!
@@ -16,9 +21,25 @@
 //!
 //! The `render_complete` notification is always emitted last, after all
 //! specific change notifications, to signal clients that they can refresh.
+//!
+//! # Example
+//!
+//! ```ignore
+//! use reovim_driver_session::api::StateChanges;
+//!
+//! // From resolver using SessionApi
+//! let changes = runtime.take_changes();
+//! if changes.has_changes() {
+//!     emit_from_state_changes(&session, &changes).await;
+//! }
+//! ```
 
-use reovim_protocol::v1::{
-    BufferModifiedPayload, CursorMovedPayload, ModeChangedPayload, ModeInfo, RenderCompletePayload,
+use {
+    reovim_driver_session::api::StateChanges,
+    reovim_protocol::v1::{
+        BufferModifiedPayload, CursorMovedPayload, ModeChangedPayload, ModeInfo,
+        RenderCompletePayload,
+    },
 };
 
 use {
@@ -138,6 +159,152 @@ async fn emit_render_complete(
         NotificationBroadcaster::broadcast_to_buffer(session, buffer_id, &json).await;
     } else {
         NotificationBroadcaster::broadcast_to_session(session, &json).await;
+    }
+}
+
+/// Emit notifications from pre-computed `StateChanges`.
+///
+/// Unlike [`emit_state_changes`] which compares before/after snapshots,
+/// this function uses `StateChanges` that resolvers accumulated during
+/// execution via the `SessionApi`. This is more efficient and provides
+/// richer information (e.g., lists of affected buffers).
+///
+/// # Use Case
+///
+/// When resolvers use `SessionApi` methods (like `ModeApi::push_mode` or
+/// `BufferApi::move_cursor`), changes are tracked internally. After resolution,
+/// call this function to broadcast the accumulated changes:
+///
+/// ```ignore
+/// let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
+/// let result = resolver.resolve_with_session(key, state, input, &mut runtime, extensions);
+/// let changes = runtime.take_changes();
+///
+/// if changes.has_changes() {
+///     emit_from_state_changes(&session, &changes).await;
+/// }
+/// ```
+///
+/// # Notifications Emitted
+///
+/// - `notify/mode_changed` - When `changes.mode_changed` is true (session-wide)
+/// - `notify/cursor_moved` - For each buffer in `changes.affected_buffers` where cursor moved
+/// - `notify/buffer_modified` - For each buffer in `changes.modified_buffers`
+/// - `notify/render_complete` - Final signal when any changes occurred
+///
+/// # Design Note
+///
+/// This function bridges the resolver's `StateChanges` (from session driver)
+/// to the notification system (in runner). It follows mechanism vs policy:
+/// - Mechanism: `StateChanges` tracks WHAT changed
+/// - Policy: This function decides HOW to notify
+///
+/// # Panics
+///
+/// Panics if notification serialization fails, which should never happen
+/// as the notification types implement `Serialize` correctly.
+#[expect(
+    clippy::useless_let_if_seq,
+    reason = "any_emitted is set in multiple conditionals, not a single if/else"
+)]
+pub async fn emit_from_state_changes(session: &Session, changes: &StateChanges) {
+    if !changes.has_changes() {
+        return;
+    }
+
+    let mut any_emitted = false;
+
+    // Mode changed - broadcast to ALL clients (mode is session-wide)
+    if changes.mode_changed {
+        // Get current mode info from session
+        let mode_info = session
+            .with_state(|state| {
+                let mode = state.current_mode();
+                let display = state.mode_registry.display_name(mode).to_string();
+                ModeInfo {
+                    focus: "Editor".to_string(),
+                    edit_mode: mode.name().to_string(),
+                    sub_mode: "None".to_string(),
+                    display,
+                }
+            })
+            .await;
+
+        let payload = ModeChangedPayload { mode: mode_info };
+        let json = serde_json::to_string(&payload.into_notification())
+            .expect("notification serialization cannot fail");
+        NotificationBroadcaster::broadcast_to_session(session, &json).await;
+        any_emitted = true;
+    }
+
+    // Cursor moved - broadcast to clients viewing affected buffers
+    if changes.cursor_moved {
+        for &buffer_id in &changes.affected_buffers {
+            // Get cursor position from the buffer
+            let cursor_opt = session
+                .with_state(|state| {
+                    state
+                        .app
+                        .kernel
+                        .buffers
+                        .get(buffer_id)
+                        .map(|buf| buf.read().position())
+                })
+                .await;
+
+            if let Some(pos) = cursor_opt {
+                let payload = CursorMovedPayload {
+                    buffer_id: buffer_id.as_usize(),
+                    position: reovim_protocol::v1::Position {
+                        line: pos.line,
+                        column: pos.column,
+                    },
+                };
+                let json = serde_json::to_string(&payload.into_notification())
+                    .expect("notification serialization cannot fail");
+                NotificationBroadcaster::broadcast_to_buffer(session, buffer_id, &json).await;
+                any_emitted = true;
+            }
+        }
+    }
+
+    // Buffer modified - broadcast to clients viewing modified buffers
+    if changes.buffer_modified {
+        for &buffer_id in &changes.modified_buffers {
+            // Get modified status from buffer
+            let modified = session
+                .with_state(|state| {
+                    state
+                        .app
+                        .kernel
+                        .buffers
+                        .get(buffer_id)
+                        .is_some_and(|buf| buf.read().is_modified())
+                })
+                .await;
+
+            let payload = BufferModifiedPayload {
+                buffer_id: buffer_id.as_usize(),
+                modified,
+            };
+            let json = serde_json::to_string(&payload.into_notification())
+                .expect("notification serialization cannot fail");
+            NotificationBroadcaster::broadcast_to_buffer(session, buffer_id, &json).await;
+            any_emitted = true;
+        }
+    }
+
+    // TODO: Handle buffer lifecycle notifications (created, deleted, renamed)
+    // These would require new notification types in the protocol
+
+    // TODO: Handle window change notifications (created, closed, focus)
+    // These would require new notification types in the protocol
+
+    // Emit render_complete if any notifications were sent
+    if any_emitted {
+        // Determine active buffer for scoped broadcast
+        let active_buffer = session.with_state(|state| state.app.active_buffer).await;
+        emit_render_complete(session, active_buffer).await;
     }
 }
 
@@ -327,5 +494,82 @@ mod tests {
         // Should not panic with no clients
         // render_complete is buffer-scoped when active buffer exists
         emit_state_changes(&session, &before, &after).await;
+    }
+
+    // ==========================================================================
+    // emit_from_state_changes tests
+    // ==========================================================================
+
+    #[tokio::test]
+    async fn test_emit_from_changes_empty() {
+        let session = test_session();
+        let changes = StateChanges::new();
+
+        // Empty changes should return immediately without emitting
+        emit_from_state_changes(&session, &changes).await;
+    }
+
+    #[tokio::test]
+    async fn test_emit_from_changes_mode_changed() {
+        let session = test_session();
+        let mut changes = StateChanges::new();
+        changes.record_mode_change();
+
+        // Should not panic with no clients
+        // Should emit mode_changed notification
+        emit_from_state_changes(&session, &changes).await;
+    }
+
+    #[tokio::test]
+    async fn test_emit_from_changes_cursor_moved() {
+        use reovim_kernel::api::v1::BufferId;
+
+        let session = test_session();
+        let buffer_id = BufferId::new();
+
+        let mut changes = StateChanges::new();
+        changes.record_cursor_move(buffer_id);
+
+        // Should not panic with no clients (and buffer doesn't exist)
+        emit_from_state_changes(&session, &changes).await;
+    }
+
+    #[tokio::test]
+    async fn test_emit_from_changes_buffer_modified() {
+        use reovim_kernel::api::v1::BufferId;
+
+        let session = test_session();
+        let buffer_id = BufferId::new();
+
+        let mut changes = StateChanges::new();
+        changes.record_buffer_modified(buffer_id);
+
+        // Should not panic with no clients (and buffer doesn't exist)
+        emit_from_state_changes(&session, &changes).await;
+    }
+
+    #[tokio::test]
+    async fn test_emit_from_changes_combined() {
+        use reovim_kernel::api::v1::BufferId;
+
+        let session = test_session();
+        let buffer_id = BufferId::new();
+
+        let mut changes = StateChanges::new();
+        changes.record_mode_change();
+        changes.record_cursor_move(buffer_id);
+        changes.record_buffer_modified(buffer_id);
+
+        // Combined changes should emit multiple notifications
+        emit_from_state_changes(&session, &changes).await;
+    }
+
+    #[tokio::test]
+    async fn test_emit_from_changes_has_changes() {
+        let mut changes = StateChanges::new();
+        assert!(!changes.has_changes());
+
+        changes.record_mode_change();
+        assert!(changes.has_changes());
     }
 }

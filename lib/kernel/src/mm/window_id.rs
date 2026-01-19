@@ -39,6 +39,14 @@ impl WindowId {
         Self(NEXT_ID.fetch_add(1, Ordering::Relaxed))
     }
 
+    /// Create a window ID from a raw value.
+    ///
+    /// Used when converting from external window ID representations.
+    #[must_use]
+    pub const fn from_raw(id: u64) -> Self {
+        Self(id)
+    }
+
     /// Get the raw ID value.
     #[must_use]
     pub const fn raw(&self) -> u64 {
