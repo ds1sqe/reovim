@@ -2,9 +2,9 @@
 //!
 //! This module shows how to implement a complete vim-like mode system using:
 //!
-//! - **Kernel layer** (reovim-kernel): Mode identity, `CommandId`, `ModeStack`
+//! - **Kernel layer** (reovim-kernel): Mode identity and behavior, `CommandId`, `ModeStack`
 //! - **Display driver** (reovim-driver-display): `ModeDisplay`, `CursorStyle`
-//! - **Input driver** (reovim-driver-input): `ModeInput`, `KeySequence`, `Keybinding`
+//! - **Input driver** (reovim-driver-input): `KeySequence`, `Keybinding`
 //! - **Command driver** (reovim-driver-command): Command, `CommandHandler`
 //!
 //! # Architecture
@@ -19,13 +19,13 @@
 //! │  Command, CommandHandler, CommandContext, ArgSpec, CommandResult        │
 //! ├─────────────────────────────────────────────────────────────────────────┤
 //! │  INPUT DRIVER                                               MECHANISM   │
-//! │  ModeInput, KeySequence, Keybinding                                     │
+//! │  KeySequence, Keybinding                                                │
 //! ├─────────────────────────────────────────────────────────────────────────┤
 //! │  DISPLAY DRIVER                                             MECHANISM   │
 //! │  ModeDisplay, CursorStyle                                               │
 //! ├─────────────────────────────────────────────────────────────────────────┤
 //! │  KERNEL                                                     MECHANISM   │
-//! │  Mode trait, ModeId, CommandId, ModeStack, ModuleId                     │
+//! │  Mode trait (identity + accepts_char_input), ModeId, CommandId, ModeStack│
 //! └─────────────────────────────────────────────────────────────────────────┘
 //! ```
 //!
@@ -36,7 +36,6 @@
 //! use reovim_module_example::command::{HelloCommand, QuitCommand};
 //! use reovim_kernel::api::v1::{Mode, ModeStack};
 //! use reovim_driver_display::ModeDisplay;
-//! use reovim_driver_input::ModeInput;
 //!
 //! // Create initial mode stack
 //! let mode = ExampleMode::Normal;
@@ -45,7 +44,7 @@
 //! // Query mode properties from different layers
 //! assert_eq!(mode.id().module(), &EXAMPLE_MODULE);        // Kernel: identity
 //! assert_eq!(mode.cursor_style(), CursorStyle::Block);   // Display: rendering
-//! assert!(!mode.accepts_char_input());                   // Input: behavior
+//! assert!(!mode.accepts_char_input());                   // Kernel: behavior
 //! ```
 
 pub mod command;
@@ -117,7 +116,7 @@ reovim_module_macros::declare_module!(ExampleModule);
 mod tests {
     use {
         super::*, reovim_driver_command::Command, reovim_driver_display::ModeDisplay,
-        reovim_driver_input::ModeInput, reovim_kernel::api::v1::Mode,
+        reovim_kernel::api::v1::Mode,
     };
 
     #[test]
@@ -129,7 +128,7 @@ mod tests {
     fn test_mode_implements_all_traits() {
         let normal = ExampleMode::Normal;
 
-        // Kernel: Mode trait (canonical source)
+        // Kernel: Mode trait (canonical source for identity + behavior)
         let _id = Mode::id(&normal);
         let _style = Mode::cursor_style(&normal);
         let _accepts = Mode::accepts_char_input(&normal);
@@ -137,9 +136,6 @@ mod tests {
         // Display driver: ModeDisplay trait (delegates to Mode)
         let _style = <ExampleMode as ModeDisplay>::cursor_style(&normal);
         let _text = <ExampleMode as ModeDisplay>::status_text(&normal);
-
-        // Input driver: ModeInput trait (delegates to Mode)
-        let _accepts = <ExampleMode as ModeInput>::accepts_char_input(&normal);
     }
 
     #[test]

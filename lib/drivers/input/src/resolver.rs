@@ -57,6 +57,97 @@ use {
 use crate::{KeyEvent, KeySequence, KeymapQuery};
 
 // ============================================================================
+// OperatorArgs - Shared count/register fields (#391)
+// ============================================================================
+
+/// Common arguments for operator operations.
+///
+/// Extracted to avoid field duplication across context types (DRY principle).
+/// Used by `TransitionContext`, `ResolveContext`, and `PopResult::OperatorRange`.
+///
+/// # Example
+///
+/// ```
+/// use reovim_driver_input::OperatorArgs;
+///
+/// // Create with defaults
+/// let args = OperatorArgs::new();
+/// assert_eq!(args.effective_count(), 1); // Default count is 1
+///
+/// // Builder pattern
+/// let args = OperatorArgs::new().count(3).register('a');
+/// assert_eq!(args.count, Some(3));
+/// assert_eq!(args.register, Some('a'));
+///
+/// // From count shorthand
+/// let args = OperatorArgs::with_count(5);
+/// assert_eq!(args.effective_count(), 5);
+/// ```
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct OperatorArgs {
+    /// Count prefix (e.g., 3 in `3j` or `2d3w`).
+    ///
+    /// Counts can be combined across mode transitions: `2d3w` = 6 words.
+    pub count: Option<usize>,
+
+    /// Register for the operation (e.g., `a` in `"ayw`).
+    ///
+    /// In vim, registers store yanked/deleted text.
+    pub register: Option<char>,
+}
+
+impl OperatorArgs {
+    /// Create a new empty operator args.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            count: None,
+            register: None,
+        }
+    }
+
+    /// Create operator args with a count.
+    #[must_use]
+    pub const fn with_count(count: usize) -> Self {
+        Self {
+            count: Some(count),
+            register: None,
+        }
+    }
+
+    /// Set the count (builder pattern).
+    #[must_use]
+    pub const fn count(mut self, count: usize) -> Self {
+        self.count = Some(count);
+        self
+    }
+
+    /// Set the register (builder pattern).
+    #[must_use]
+    pub const fn register(mut self, reg: char) -> Self {
+        self.register = Some(reg);
+        self
+    }
+
+    /// Get the effective count (default to 1 if not set).
+    ///
+    /// In vim, an unspecified count means "1", not "none".
+    #[must_use]
+    pub const fn effective_count(&self) -> usize {
+        match self.count {
+            Some(c) => c,
+            None => 1,
+        }
+    }
+
+    /// Check if any arguments are set.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.count.is_none() && self.register.is_none()
+    }
+}
+
+// ============================================================================
 // ResolveInput - Input context for resolvers
 // ============================================================================
 
@@ -1209,5 +1300,71 @@ mod tests {
         assert!(ctx.is_some());
         assert_eq!(ctx.unwrap().count, Some(5));
         assert!(state.transition_context.is_none());
+    }
+
+    // ========================================================================
+    // OperatorArgs tests (#391)
+    // ========================================================================
+
+    #[test]
+    fn test_operator_args_new() {
+        let args = OperatorArgs::new();
+        assert!(args.count.is_none());
+        assert!(args.register.is_none());
+        assert!(args.is_empty());
+    }
+
+    #[test]
+    fn test_operator_args_with_count() {
+        let args = OperatorArgs::with_count(5);
+        assert_eq!(args.count, Some(5));
+        assert!(args.register.is_none());
+        assert!(!args.is_empty());
+    }
+
+    #[test]
+    fn test_operator_args_builder() {
+        let args = OperatorArgs::new().count(3).register('a');
+        assert_eq!(args.count, Some(3));
+        assert_eq!(args.register, Some('a'));
+        assert!(!args.is_empty());
+    }
+
+    #[test]
+    fn test_operator_args_effective_count() {
+        let args_none = OperatorArgs::new();
+        assert_eq!(args_none.effective_count(), 1);
+
+        let args_some = OperatorArgs::with_count(7);
+        assert_eq!(args_some.effective_count(), 7);
+    }
+
+    #[test]
+    fn test_operator_args_is_empty() {
+        let empty = OperatorArgs::new();
+        assert!(empty.is_empty());
+
+        let with_count = OperatorArgs::new().count(1);
+        assert!(!with_count.is_empty());
+
+        let with_register = OperatorArgs::new().register('b');
+        assert!(!with_register.is_empty());
+    }
+
+    #[test]
+    fn test_operator_args_equality() {
+        let args1 = OperatorArgs::new().count(3).register('a');
+        let args2 = OperatorArgs::new().count(3).register('a');
+        let args3 = OperatorArgs::new().count(3).register('b');
+
+        assert_eq!(args1, args2);
+        assert_ne!(args1, args3);
+    }
+
+    #[test]
+    fn test_operator_args_default() {
+        let args = OperatorArgs::default();
+        assert!(args.is_empty());
+        assert_eq!(args.effective_count(), 1);
     }
 }

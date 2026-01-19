@@ -47,6 +47,13 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- Type consolidation and layer clarity (#391)
+  - Deleted dead code: `ModeInput` trait, `PopResult` enum (session driver), `mode_registry.rs`
+  - Renamed `CommandContext` → `ExCommandContext` and `CommandHandler` → `ExCommandHandler` in modules/commands to avoid collision with driver types
+  - Added `OperatorArgs` type for shared count/register fields (DRY principle)
+  - Created `docs/architecture/type-layers.md` documenting type ownership across layers
+  - Kernel Mode trait now owns `accepts_char_input()` - no separate ModeInput trait needed
+
 - Strong-typed CommandId for keybindings (#377, #378)
   - `KeybindingRegistration::command_id` changed from `&'static str` to `CommandId`
   - Compile-time verification: typos in command IDs now cause compile errors

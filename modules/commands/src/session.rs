@@ -7,7 +7,7 @@
 //!
 //! These commands are part of issue #350 (Unified Port System).
 
-use crate::types::{CommandContext, CommandError, CommandHandler};
+use crate::types::{CommandError, ExCommandContext, ExCommandHandler};
 
 // ============================================================================
 // Detach Command
@@ -22,7 +22,7 @@ use crate::types::{CommandContext, CommandError, CommandHandler};
 /// Usage: `:detach`
 pub struct DetachCommand;
 
-impl CommandHandler for DetachCommand {
+impl ExCommandHandler for DetachCommand {
     fn id(&self) -> &'static str {
         "detach"
     }
@@ -31,7 +31,7 @@ impl CommandHandler for DetachCommand {
         &["detach"]
     }
 
-    fn execute(&self, _ctx: &mut CommandContext<'_>, _args: &[&str]) -> Result<(), CommandError> {
+    fn execute(&self, _ctx: &mut ExCommandContext<'_>, _args: &[&str]) -> Result<(), CommandError> {
         // Note: The actual detach is handled by the runner.
         // This command signals the intent to detach.
         // The runner checks for this command and sends DETACH notification.
@@ -55,7 +55,7 @@ impl CommandHandler for DetachCommand {
 /// Usage: `:servers`
 pub struct ServersCommand;
 
-impl CommandHandler for ServersCommand {
+impl ExCommandHandler for ServersCommand {
     fn id(&self) -> &'static str {
         "servers"
     }
@@ -64,7 +64,7 @@ impl CommandHandler for ServersCommand {
         &["servers"]
     }
 
-    fn execute(&self, _ctx: &mut CommandContext<'_>, _args: &[&str]) -> Result<(), CommandError> {
+    fn execute(&self, _ctx: &mut ExCommandContext<'_>, _args: &[&str]) -> Result<(), CommandError> {
         // Note: The actual listing is handled by the runner.
         // This command signals the intent to list servers.
         // The runner queries the instance registry and displays results.
@@ -88,7 +88,7 @@ impl CommandHandler for ServersCommand {
 /// Usage: `:kill-server`
 pub struct KillServerCommand;
 
-impl CommandHandler for KillServerCommand {
+impl ExCommandHandler for KillServerCommand {
     fn id(&self) -> &'static str {
         "kill-server"
     }
@@ -97,7 +97,7 @@ impl CommandHandler for KillServerCommand {
         &["kill-server", "killserver"]
     }
 
-    fn execute(&self, _ctx: &mut CommandContext<'_>, _args: &[&str]) -> Result<(), CommandError> {
+    fn execute(&self, _ctx: &mut ExCommandContext<'_>, _args: &[&str]) -> Result<(), CommandError> {
         // Note: The actual termination is handled by the runner.
         // This command signals the intent to kill the server.
         // The runner initiates a forced quit.
@@ -115,7 +115,7 @@ impl CommandHandler for KillServerCommand {
 
 /// Get all session management commands.
 #[must_use]
-pub fn commands() -> Vec<Box<dyn CommandHandler>> {
+pub fn commands() -> Vec<Box<dyn ExCommandHandler>> {
     vec![
         Box::new(DetachCommand),
         Box::new(ServersCommand),

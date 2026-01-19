@@ -83,7 +83,7 @@ pub use empty_handler::{EmptySessionAction, EmptySessionContext, EmptySessionHan
 pub use extension::{ExtensionMap, SessionExtension};
 
 // Mode lifecycle
-pub use mode::{ModeError, PopResult, SessionMode};
+pub use mode::{ModeError, SessionMode};
 
 // Session types
 pub use types::{CursorPosition, KeySequence, Session, SessionId, Viewport, Window, WindowLayout};

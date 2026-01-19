@@ -54,7 +54,6 @@ mod key;
 mod lifecycle;
 mod lookup;
 mod mode;
-mod mode_registry;
 mod mouse;
 mod resolver;
 mod traits;
@@ -75,7 +74,7 @@ pub use traits::{
 };
 
 // Re-export mode types (Phase 6 - Kernel-driver architecture)
-pub use mode::{KeySequence, Keybinding, KeybindingTarget, ModeInput};
+pub use mode::{KeySequence, Keybinding, KeybindingTarget};
 
 // Re-export fallback types (Phase 8 - Break editor->runner cycle)
 pub use fallback::{
@@ -84,8 +83,8 @@ pub use fallback::{
 
 // Re-export resolver types (Phase 9 - Flexible mode system)
 pub use resolver::{
-    ArgValue, ModeKeyResolver, ModeState, ModeTransition, PopResult, ResolveContext, ResolveInput,
-    ResolveResult, TransitionContext,
+    ArgValue, ModeKeyResolver, ModeState, ModeTransition, OperatorArgs, PopResult, ResolveContext,
+    ResolveInput, ResolveResult, TransitionContext,
 };
 
 // Re-export lookup types (Epic #353 - Mechanism/Policy separation)
@@ -93,9 +92,6 @@ pub use lookup::{
     BindingLayer, EagerLookupPolicy, KeyLookupPolicy, KeyLookupResult, KeyLookupState, KeymapQuery,
     VimLookupPolicy,
 };
-
-// Re-export mode registry types (Epic #372 - Mode Ownership)
-pub use mode_registry::{ModeEntry, ModeRegistry};
 
 // Re-export lifecycle types (Epic #372 - Mode Ownership)
 pub use lifecycle::{ModeLifecycleHandler, NopLifecycleHandler};

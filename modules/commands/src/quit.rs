@@ -2,7 +2,7 @@
 //!
 //! Reference: `lib/core/src/command_line/ex_command.rs` (concept-extraction, not migration)
 
-use crate::{CommandContext, CommandError, CommandHandler};
+use crate::{CommandError, ExCommandContext, ExCommandHandler};
 
 /// Quit command - exit the editor.
 ///
@@ -19,7 +19,7 @@ use crate::{CommandContext, CommandError, CommandHandler};
 #[derive(Debug, Clone, Copy)]
 pub struct QuitCommand;
 
-impl CommandHandler for QuitCommand {
+impl ExCommandHandler for QuitCommand {
     fn id(&self) -> &'static str {
         "quit"
     }
@@ -28,7 +28,7 @@ impl CommandHandler for QuitCommand {
         &["q", "quit"]
     }
 
-    fn execute(&self, ctx: &mut CommandContext<'_>, _args: &[&str]) -> Result<(), CommandError> {
+    fn execute(&self, ctx: &mut ExCommandContext<'_>, _args: &[&str]) -> Result<(), CommandError> {
         // Check for unsaved changes (unless bang is set)
         if !ctx.bang {
             // In a full implementation, we would check if the buffer is modified

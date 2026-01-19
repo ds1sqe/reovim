@@ -15,12 +15,10 @@
 //! # Example
 //!
 //! ```ignore
-//! use reovim_driver_input::{ModeLifecycleHandler, ModeRegistry};
+//! use reovim_driver_input::ModeLifecycleHandler;
 //! use reovim_kernel::api::v1::ModeId;
 //!
-//! struct VimLifecycleHandler {
-//!     registry: ModeRegistry,
-//! }
+//! struct VimLifecycleHandler;
 //!
 //! impl ModeLifecycleHandler for VimLifecycleHandler {
 //!     fn on_input_mode_enter(&mut self, mode: &ModeId) {

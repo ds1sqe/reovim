@@ -7,7 +7,7 @@
 //! - **Policy (This Module)**: What commands exist, how they behave
 //!
 //! Note: These are the "legacy" command types. The new architecture uses
-//! `reovim-driver-command` with `Command` and `CommandHandler` traits.
+//! `reovim-driver-command` with `Command` and `ExCommandHandler` traits.
 //! This module may be refactored to use the new system in the future.
 
 use reovim_kernel::api::v1::{BufferId, KernelContext, Position, WindowId};
@@ -36,7 +36,7 @@ impl Range {
 }
 
 // ============================================================================
-// CommandHandler Trait
+// ExCommandHandler Trait
 // ============================================================================
 
 /// Handles ex-commands (commands entered via :).
@@ -49,15 +49,15 @@ impl Range {
 /// Modules implement this trait to define command behavior:
 ///
 /// ```ignore
-/// use reovim_module_commands::{CommandHandler, CommandContext, CommandError};
+/// use reovim_module_commands::{ExCommandHandler, ExCommandContext, CommandError};
 ///
 /// struct WriteCommand;
 ///
-/// impl CommandHandler for WriteCommand {
+/// impl ExCommandHandler for WriteCommand {
 ///     fn id(&self) -> &'static str { "write" }
 ///     fn names(&self) -> &[&'static str] { &["w", "write"] }
 ///
-///     fn execute(&self, ctx: &mut CommandContext<'_>, args: &[&str])
+///     fn execute(&self, ctx: &mut ExCommandContext<'_>, args: &[&str])
 ///         -> Result<(), CommandError>
 ///     {
 ///         let buffer_id = ctx.buffer_id
@@ -71,7 +71,7 @@ impl Range {
 ///     }
 /// }
 /// ```
-pub trait CommandHandler: Send + Sync {
+pub trait ExCommandHandler: Send + Sync {
     /// Command identifier.
     fn id(&self) -> &'static str;
 
@@ -90,7 +90,7 @@ pub trait CommandHandler: Send + Sync {
     /// # Errors
     ///
     /// Returns `CommandError` if the command fails.
-    fn execute(&self, ctx: &mut CommandContext<'_>, args: &[&str]) -> Result<(), CommandError>;
+    fn execute(&self, ctx: &mut ExCommandContext<'_>, args: &[&str]) -> Result<(), CommandError>;
 
     /// Command completion suggestions.
     ///
@@ -106,7 +106,7 @@ pub trait CommandHandler: Send + Sync {
 }
 
 /// Context passed to command execution.
-pub struct CommandContext<'a> {
+pub struct ExCommandContext<'a> {
     /// Kernel context for accessing services.
     pub kernel: &'a KernelContext,
     /// Current buffer (if any).

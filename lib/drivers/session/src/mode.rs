@@ -56,15 +56,6 @@ impl fmt::Display for ModeError {
 
 impl std::error::Error for ModeError {}
 
-/// Result of popping a mode from the stack.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PopResult {
-    /// Mode was popped successfully.
-    Popped(ModeId),
-    /// Already at home mode - cannot pop further.
-    AtHome,
-}
-
 /// Mode with lifecycle hooks.
 ///
 /// Modules implement this trait for their modes. The runner calls lifecycle
@@ -186,17 +177,6 @@ mod tests {
     fn test_mode_error_display() {
         let err = ModeError::new("something went wrong");
         assert_eq!(err.to_string(), "mode error: something went wrong");
-    }
-
-    #[test]
-    fn test_pop_result_variants() {
-        let mode_id = ModeId::new(ModuleId::new("test"), "normal");
-
-        let popped = PopResult::Popped(mode_id);
-        assert!(matches!(popped, PopResult::Popped(_)));
-
-        let at_home = PopResult::AtHome;
-        assert!(matches!(at_home, PopResult::AtHome));
     }
 
     #[test]
