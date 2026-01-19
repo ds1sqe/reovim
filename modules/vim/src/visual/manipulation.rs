@@ -12,7 +12,7 @@ use {
     reovim_kernel::api::v1::{CommandId, KernelContext, SelectionMode, events::ModeChanged},
 };
 
-use crate::modes::{VIM_MODULE, VimMode};
+use crate::{ids, modes::VimMode};
 
 /// Swap cursor and anchor positions (o in visual mode).
 ///
@@ -23,7 +23,7 @@ pub struct SwapAnchor;
 
 impl Command for SwapAnchor {
     fn id(&self) -> CommandId {
-        CommandId::new(VIM_MODULE, "visual-swap-anchor")
+        ids::VISUAL_SWAP_ANCHOR
     }
 
     fn description(&self) -> &'static str {
@@ -68,7 +68,7 @@ pub struct ToggleVisualChar;
 
 impl Command for ToggleVisualChar {
     fn id(&self) -> CommandId {
-        CommandId::new(VIM_MODULE, "toggle-visual-char")
+        ids::TOGGLE_VISUAL_CHAR
     }
 
     fn description(&self) -> &'static str {
@@ -115,7 +115,7 @@ pub struct ToggleVisualLine;
 
 impl Command for ToggleVisualLine {
     fn id(&self) -> CommandId {
-        CommandId::new(VIM_MODULE, "toggle-visual-line")
+        ids::TOGGLE_VISUAL_LINE
     }
 
     fn description(&self) -> &'static str {
@@ -162,7 +162,7 @@ pub struct ToggleVisualBlock;
 
 impl Command for ToggleVisualBlock {
     fn id(&self) -> CommandId {
-        CommandId::new(VIM_MODULE, "toggle-visual-block")
+        ids::TOGGLE_VISUAL_BLOCK
     }
 
     fn description(&self) -> &'static str {
@@ -213,7 +213,7 @@ pub struct ReselectLast;
 
 impl Command for ReselectLast {
     fn id(&self) -> CommandId {
-        CommandId::new(VIM_MODULE, "reselect-last")
+        ids::RESELECT_LAST
     }
 
     fn description(&self) -> &'static str {

@@ -10,14 +10,14 @@ use {
     reovim_kernel::api::v1::{CommandId, KernelContext},
 };
 
-use crate::UNDOTREE_MODULE;
+use crate::ids;
 
 /// The `:undotree` command - toggles the undotree visualization panel.
 pub struct UndotreeCommand;
 
 impl Command for UndotreeCommand {
     fn id(&self) -> CommandId {
-        CommandId::new(UNDOTREE_MODULE, "undotree")
+        ids::UNDOTREE
     }
 
     fn description(&self) -> &'static str {
@@ -43,7 +43,7 @@ pub struct UndotreeDownCommand;
 
 impl Command for UndotreeDownCommand {
     fn id(&self) -> CommandId {
-        CommandId::new(UNDOTREE_MODULE, "undotree-down")
+        ids::UNDOTREE_DOWN
     }
 
     fn description(&self) -> &'static str {
@@ -62,7 +62,7 @@ pub struct UndotreeUpCommand;
 
 impl Command for UndotreeUpCommand {
     fn id(&self) -> CommandId {
-        CommandId::new(UNDOTREE_MODULE, "undotree-up")
+        ids::UNDOTREE_UP
     }
 
     fn description(&self) -> &'static str {
@@ -81,7 +81,7 @@ pub struct UndotreeGotoCommand;
 
 impl Command for UndotreeGotoCommand {
     fn id(&self) -> CommandId {
-        CommandId::new(UNDOTREE_MODULE, "undotree-goto")
+        ids::UNDOTREE_GOTO
     }
 
     fn description(&self) -> &'static str {
@@ -100,7 +100,7 @@ pub struct UndotreeCloseCommand;
 
 impl Command for UndotreeCloseCommand {
     fn id(&self) -> CommandId {
-        CommandId::new(UNDOTREE_MODULE, "undotree-close")
+        ids::UNDOTREE_CLOSE
     }
 
     fn description(&self) -> &'static str {
@@ -119,7 +119,7 @@ pub struct UndotreePreviewCommand;
 
 impl Command for UndotreePreviewCommand {
     fn id(&self) -> CommandId {
-        CommandId::new(UNDOTREE_MODULE, "undotree-preview")
+        ids::UNDOTREE_PREVIEW
     }
 
     fn description(&self) -> &'static str {
@@ -135,7 +135,7 @@ impl CommandHandler for UndotreePreviewCommand {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, reovim_kernel::api::v1::BufferId};
+    use {super::*, crate::UNDOTREE_MODULE, reovim_kernel::api::v1::BufferId};
 
     #[test]
     fn test_undotree_command_id() {

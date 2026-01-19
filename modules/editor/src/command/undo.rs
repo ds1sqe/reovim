@@ -11,10 +11,7 @@ use {
     reovim_kernel::api::v1::{CommandId, KernelContext},
 };
 
-use reovim_kernel::api::v1::ModuleId;
-
-// Command module ID for editor commands.
-const EDITOR_MODULE: ModuleId = ModuleId::new("editor");
+use crate::ids;
 
 /// Undo the last change.
 ///
@@ -25,7 +22,7 @@ pub struct UndoCommand;
 
 impl Command for UndoCommand {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "undo")
+        ids::UNDO
     }
 
     fn description(&self) -> &'static str {
@@ -60,7 +57,7 @@ pub struct RedoCommand;
 
 impl Command for RedoCommand {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "redo")
+        ids::REDO
     }
 
     fn description(&self) -> &'static str {

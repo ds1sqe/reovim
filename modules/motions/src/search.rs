@@ -13,7 +13,7 @@ use {
     reovim_kernel::api::v1::CommandId,
 };
 
-use super::MOTIONS_MODULE;
+use crate::ids;
 
 // =============================================================================
 // Search Forward (/)
@@ -28,7 +28,7 @@ pub struct SearchForward;
 
 impl Command for SearchForward {
     fn id(&self) -> CommandId {
-        CommandId::new(MOTIONS_MODULE, "search-forward")
+        ids::SEARCH_FORWARD
     }
 
     fn description(&self) -> &'static str {
@@ -61,7 +61,7 @@ pub struct SearchBackward;
 
 impl Command for SearchBackward {
     fn id(&self) -> CommandId {
-        CommandId::new(MOTIONS_MODULE, "search-backward")
+        ids::SEARCH_BACKWARD
     }
 
     fn description(&self) -> &'static str {
@@ -94,7 +94,7 @@ pub struct SearchNext;
 
 impl Command for SearchNext {
     fn id(&self) -> CommandId {
-        CommandId::new(MOTIONS_MODULE, "search-next")
+        ids::SEARCH_NEXT
     }
 
     fn description(&self) -> &'static str {
@@ -125,7 +125,7 @@ pub struct SearchPrevious;
 
 impl Command for SearchPrevious {
     fn id(&self) -> CommandId {
-        CommandId::new(MOTIONS_MODULE, "search-prev")
+        ids::SEARCH_PREV
     }
 
     fn description(&self) -> &'static str {
@@ -156,7 +156,7 @@ pub struct SearchWordForward;
 
 impl Command for SearchWordForward {
     fn id(&self) -> CommandId {
-        CommandId::new(MOTIONS_MODULE, "search-word-forward")
+        ids::SEARCH_WORD_FORWARD
     }
 
     fn description(&self) -> &'static str {
@@ -189,7 +189,7 @@ pub struct SearchWordBackward;
 
 impl Command for SearchWordBackward {
     fn id(&self) -> CommandId {
-        CommandId::new(MOTIONS_MODULE, "search-word-backward")
+        ids::SEARCH_WORD_BACKWARD
     }
 
     fn description(&self) -> &'static str {
@@ -222,7 +222,7 @@ pub struct ClearSearchHighlight;
 
 impl Command for ClearSearchHighlight {
     fn id(&self) -> CommandId {
-        CommandId::new(MOTIONS_MODULE, "clear-search-highlight")
+        ids::CLEAR_SEARCH_HIGHLIGHT
     }
 
     fn description(&self) -> &'static str {

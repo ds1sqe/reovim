@@ -14,7 +14,7 @@ use {
     },
 };
 
-use super::MOTIONS_MODULE;
+use crate::ids;
 
 // =============================================================================
 // Helper functions
@@ -154,7 +154,7 @@ pub struct LineStart;
 
 impl Command for LineStart {
     fn id(&self) -> CommandId {
-        CommandId::new(MOTIONS_MODULE, "line-start")
+        ids::LINE_START
     }
 
     fn description(&self) -> &'static str {
@@ -182,7 +182,7 @@ pub struct LineEnd;
 
 impl Command for LineEnd {
     fn id(&self) -> CommandId {
-        CommandId::new(MOTIONS_MODULE, "line-end")
+        ids::LINE_END
     }
 
     fn description(&self) -> &'static str {
@@ -210,7 +210,7 @@ pub struct FirstNonBlank;
 
 impl Command for FirstNonBlank {
     fn id(&self) -> CommandId {
-        CommandId::new(MOTIONS_MODULE, "first-non-blank")
+        ids::FIRST_NON_BLANK
     }
 
     fn description(&self) -> &'static str {
@@ -238,7 +238,7 @@ pub struct DocumentStart;
 
 impl Command for DocumentStart {
     fn id(&self) -> CommandId {
-        CommandId::new(MOTIONS_MODULE, "document-start")
+        ids::DOCUMENT_START
     }
 
     fn description(&self) -> &'static str {
@@ -273,7 +273,7 @@ pub struct DocumentEnd;
 
 impl Command for DocumentEnd {
     fn id(&self) -> CommandId {
-        CommandId::new(MOTIONS_MODULE, "document-end")
+        ids::DOCUMENT_END
     }
 
     fn description(&self) -> &'static str {
@@ -315,7 +315,7 @@ pub struct WholeLine;
 
 impl Command for WholeLine {
     fn id(&self) -> CommandId {
-        CommandId::new(MOTIONS_MODULE, "whole-line")
+        ids::WHOLE_LINE
     }
 
     fn description(&self) -> &'static str {
@@ -473,7 +473,7 @@ mod tests {
     #[test]
     fn test_line_start_id() {
         let cmd = LineStart;
-        assert_eq!(cmd.id().module(), &MOTIONS_MODULE);
+        assert_eq!(cmd.id().module(), &ids::MODULE);
         assert_eq!(cmd.id().name(), "line-start");
     }
 

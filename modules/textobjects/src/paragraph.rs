@@ -11,7 +11,7 @@ use {
     reovim_kernel::api::v1::{CommandId, KernelContext, Position, TextObject, TextObjectEngine},
 };
 
-use crate::TEXTOBJECTS_MODULE;
+use crate::ids;
 
 // =============================================================================
 // Helper function
@@ -68,7 +68,7 @@ pub struct InnerParagraph;
 
 impl Command for InnerParagraph {
     fn id(&self) -> CommandId {
-        CommandId::new(TEXTOBJECTS_MODULE, "inner-paragraph")
+        ids::INNER_PARAGRAPH
     }
 
     fn description(&self) -> &'static str {
@@ -102,7 +102,7 @@ pub struct AroundParagraph;
 
 impl Command for AroundParagraph {
     fn id(&self) -> CommandId {
-        CommandId::new(TEXTOBJECTS_MODULE, "around-paragraph")
+        ids::AROUND_PARAGRAPH
     }
 
     fn description(&self) -> &'static str {
@@ -140,7 +140,7 @@ pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, crate::TEXTOBJECTS_MODULE};
 
     #[test]
     fn test_inner_paragraph_id() {

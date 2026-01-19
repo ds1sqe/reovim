@@ -23,12 +23,16 @@
 //! }
 //! ```
 
+use {
+    reovim_driver_command::{CommandHandler, CommandProvider},
+    reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
+};
+
 pub mod find_char;
+pub mod ids;
 pub mod line;
 pub mod search;
 pub mod word;
-
-use reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version};
 
 /// Module identifier for motions module.
 pub const MOTIONS_MODULE: ModuleId = ModuleId::new("motions");
@@ -55,6 +59,17 @@ impl Module for MotionsModule {
 
     fn exit(&mut self) -> Result<(), ModuleError> {
         Ok(())
+    }
+}
+
+impl CommandProvider for MotionsModule {
+    fn command_handlers(&self) -> Vec<Box<dyn CommandHandler>> {
+        let mut handlers = Vec::new();
+        handlers.extend(word::all_commands());
+        handlers.extend(line::all_commands());
+        handlers.extend(find_char::all_commands());
+        handlers.extend(search::all_commands());
+        handlers
     }
 }
 

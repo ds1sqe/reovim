@@ -24,6 +24,7 @@
 //! ```
 
 pub mod bracket;
+pub mod ids;
 pub mod paragraph;
 pub mod quote;
 pub mod word;

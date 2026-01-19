@@ -20,7 +20,42 @@ pub trait Command {
 pub trait CommandHandler: Command + Send + Sync {
     fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult;
 }
+
+/// Provider for module command registration
+pub trait CommandProvider {
+    fn commands(&self) -> Vec<Box<dyn CommandHandler>>;
+}
 ```
+
+## Command IDs
+
+Commands are identified by `CommandId`, which combines a `ModuleId` and command name:
+
+```rust
+pub struct CommandId {
+    module: ModuleId,
+    name: &'static str,
+}
+```
+
+### Module ids.rs Pattern
+
+Each module defines its command IDs in an `ids.rs` file for compile-time verification:
+
+```rust
+// modules/editor/src/ids.rs
+use reovim_kernel::api::v1::{CommandId, ModuleId};
+
+pub const MODULE: ModuleId = ModuleId::new("editor");
+pub const CURSOR_UP: CommandId = CommandId::new(MODULE, "cursor-up");
+pub const CURSOR_DOWN: CommandId = CommandId::new(MODULE, "cursor-down");
+// ...
+```
+
+This enables:
+- Compile-time verification of command IDs in keybindings
+- Typos in command IDs cause compile errors instead of runtime failures
+- Single source of truth for command identifiers
 
 ## Argument System
 

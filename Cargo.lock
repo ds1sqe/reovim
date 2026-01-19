@@ -1382,7 +1382,9 @@ dependencies = [
  "reovim-kernel",
  "reovim-module-editor",
  "reovim-module-macros",
+ "reovim-module-motions",
  "reovim-module-operators",
+ "reovim-module-textobjects",
 ]
 
 [[package]]

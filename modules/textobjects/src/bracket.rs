@@ -11,7 +11,7 @@ use {
     reovim_kernel::api::v1::{CommandId, KernelContext, Position, TextObject, TextObjectEngine},
 };
 
-use crate::TEXTOBJECTS_MODULE;
+use crate::ids;
 
 // =============================================================================
 // Helper function
@@ -67,7 +67,7 @@ pub struct InnerParen;
 
 impl Command for InnerParen {
     fn id(&self) -> CommandId {
-        CommandId::new(TEXTOBJECTS_MODULE, "inner-paren")
+        ids::INNER_PAREN
     }
 
     fn description(&self) -> &'static str {
@@ -97,7 +97,7 @@ pub struct AroundParen;
 
 impl Command for AroundParen {
     fn id(&self) -> CommandId {
-        CommandId::new(TEXTOBJECTS_MODULE, "around-paren")
+        ids::AROUND_PAREN
     }
 
     fn description(&self) -> &'static str {
@@ -127,7 +127,7 @@ pub struct InnerSquareBracket;
 
 impl Command for InnerSquareBracket {
     fn id(&self) -> CommandId {
-        CommandId::new(TEXTOBJECTS_MODULE, "inner-bracket")
+        ids::INNER_BRACKET
     }
 
     fn description(&self) -> &'static str {
@@ -157,7 +157,7 @@ pub struct AroundSquareBracket;
 
 impl Command for AroundSquareBracket {
     fn id(&self) -> CommandId {
-        CommandId::new(TEXTOBJECTS_MODULE, "around-bracket")
+        ids::AROUND_BRACKET
     }
 
     fn description(&self) -> &'static str {
@@ -187,7 +187,7 @@ pub struct InnerBrace;
 
 impl Command for InnerBrace {
     fn id(&self) -> CommandId {
-        CommandId::new(TEXTOBJECTS_MODULE, "inner-brace")
+        ids::INNER_BRACE
     }
 
     fn description(&self) -> &'static str {
@@ -217,7 +217,7 @@ pub struct AroundBrace;
 
 impl Command for AroundBrace {
     fn id(&self) -> CommandId {
-        CommandId::new(TEXTOBJECTS_MODULE, "around-brace")
+        ids::AROUND_BRACE
     }
 
     fn description(&self) -> &'static str {
@@ -247,7 +247,7 @@ pub struct InnerAngle;
 
 impl Command for InnerAngle {
     fn id(&self) -> CommandId {
-        CommandId::new(TEXTOBJECTS_MODULE, "inner-angle")
+        ids::INNER_ANGLE
     }
 
     fn description(&self) -> &'static str {
@@ -277,7 +277,7 @@ pub struct AroundAngle;
 
 impl Command for AroundAngle {
     fn id(&self) -> CommandId {
-        CommandId::new(TEXTOBJECTS_MODULE, "around-angle")
+        ids::AROUND_ANGLE
     }
 
     fn description(&self) -> &'static str {
@@ -320,7 +320,7 @@ pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, crate::TEXTOBJECTS_MODULE};
 
     #[test]
     fn test_inner_paren_id() {

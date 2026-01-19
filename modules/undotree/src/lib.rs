@@ -31,6 +31,7 @@
 
 pub mod command;
 pub mod diff;
+pub mod ids;
 pub mod mode;
 pub mod render;
 
@@ -107,34 +108,34 @@ impl Module for UndotreeModule {
 pub fn keybindings() -> Vec<KeybindingRegistration> {
     vec![
         // Navigation
-        KeybindingRegistration::new("j", "undotree:undotree-down")
+        KeybindingRegistration::new("j", ids::UNDOTREE_DOWN)
             .with_modes(&["undotree"])
             .with_category("navigation")
             .with_description("Move selection down in undotree"),
-        KeybindingRegistration::new("k", "undotree:undotree-up")
+        KeybindingRegistration::new("k", ids::UNDOTREE_UP)
             .with_modes(&["undotree"])
             .with_category("navigation")
             .with_description("Move selection up in undotree"),
         // Activation
-        KeybindingRegistration::new("<CR>", "undotree:undotree-goto")
+        KeybindingRegistration::new("<CR>", ids::UNDOTREE_GOTO)
             .with_modes(&["undotree"])
             .with_category("action")
             .with_description("Navigate to selected node"),
-        KeybindingRegistration::new("<Enter>", "undotree:undotree-goto")
+        KeybindingRegistration::new("<Enter>", ids::UNDOTREE_GOTO)
             .with_modes(&["undotree"])
             .with_category("action")
             .with_description("Navigate to selected node"),
         // Preview
-        KeybindingRegistration::new("p", "undotree:undotree-preview")
+        KeybindingRegistration::new("p", ids::UNDOTREE_PREVIEW)
             .with_modes(&["undotree"])
             .with_category("preview")
             .with_description("Preview diff of selected node"),
         // Close panel
-        KeybindingRegistration::new("q", "undotree:undotree-close")
+        KeybindingRegistration::new("q", ids::UNDOTREE_CLOSE)
             .with_modes(&["undotree"])
             .with_category("panel")
             .with_description("Close undotree panel"),
-        KeybindingRegistration::new("<Esc>", "undotree:undotree-close")
+        KeybindingRegistration::new("<Esc>", ids::UNDOTREE_CLOSE)
             .with_modes(&["undotree"])
             .with_category("panel")
             .with_description("Close undotree panel"),

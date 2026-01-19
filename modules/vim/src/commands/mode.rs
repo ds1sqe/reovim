@@ -17,7 +17,7 @@ use {
     reovim_kernel::api::v1::{CommandId, KernelContext, Position, events::ModeChanged},
 };
 
-use crate::modes::{VIM_MODULE, VimMode};
+use crate::{ids, modes::VimMode};
 
 /// Enter insert mode (before cursor).
 #[derive(Debug, Clone, Copy, Default)]
@@ -25,7 +25,7 @@ pub struct EnterInsertMode;
 
 impl Command for EnterInsertMode {
     fn id(&self) -> CommandId {
-        CommandId::new(VIM_MODULE, "enter-insert")
+        ids::ENTER_INSERT
     }
 
     fn description(&self) -> &'static str {
@@ -49,7 +49,7 @@ pub struct EnterInsertModeAppend;
 
 impl Command for EnterInsertModeAppend {
     fn id(&self) -> CommandId {
-        CommandId::new(VIM_MODULE, "enter-insert-after")
+        ids::ENTER_INSERT_AFTER
     }
 
     fn description(&self) -> &'static str {
@@ -86,7 +86,7 @@ pub struct ExitToNormal;
 
 impl Command for ExitToNormal {
     fn id(&self) -> CommandId {
-        CommandId::new(VIM_MODULE, "exit-insert")
+        ids::EXIT_INSERT
     }
 
     fn description(&self) -> &'static str {
@@ -125,7 +125,7 @@ pub struct EnterWindowMode;
 
 impl Command for EnterWindowMode {
     fn id(&self) -> CommandId {
-        CommandId::new(VIM_MODULE, "enter-window-mode")
+        ids::ENTER_WINDOW_MODE
     }
 
     fn description(&self) -> &'static str {
@@ -152,7 +152,7 @@ pub struct ExitOperatorPending;
 
 impl Command for ExitOperatorPending {
     fn id(&self) -> CommandId {
-        CommandId::new(VIM_MODULE, "exit-operator-pending")
+        ids::EXIT_OPERATOR_PENDING
     }
 
     fn description(&self) -> &'static str {
@@ -181,7 +181,7 @@ pub struct EnterCommandLineMode;
 
 impl Command for EnterCommandLineMode {
     fn id(&self) -> CommandId {
-        CommandId::new(VIM_MODULE, "enter-commandline")
+        ids::ENTER_COMMANDLINE
     }
 
     fn description(&self) -> &'static str {
@@ -208,7 +208,7 @@ pub struct ExitCommandLineMode;
 
 impl Command for ExitCommandLineMode {
     fn id(&self) -> CommandId {
-        CommandId::new(VIM_MODULE, "exit-commandline")
+        ids::EXIT_COMMANDLINE
     }
 
     fn description(&self) -> &'static str {

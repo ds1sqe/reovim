@@ -2,7 +2,12 @@
 //!
 //! Reference: lib/core/src/bind/mod.rs (concept-extraction, not migration)
 
-use reovim_kernel::api::v1::KeybindingRegistration;
+use {
+    reovim_kernel::api::v1::KeybindingRegistration, reovim_module_editor::ids as editor,
+    reovim_module_motions::ids as motions,
+};
+
+use crate::ids as vim;
 
 /// Visual mode keybindings.
 pub fn bindings() -> Vec<KeybindingRegistration> {
@@ -10,168 +15,168 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
         // ====================================================================
         // Exit visual mode
         // ====================================================================
-        KeybindingRegistration::new("<Esc>", "exit-visual")
+        KeybindingRegistration::new("<Esc>", vim::EXIT_VISUAL)
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("mode")
             .with_description("Exit visual mode"),
-        KeybindingRegistration::new("<C-c>", "exit-visual")
+        KeybindingRegistration::new("<C-c>", vim::EXIT_VISUAL)
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("mode")
             .with_description("Exit visual mode"),
         // ====================================================================
         // Movement (extends selection)
         // ====================================================================
-        KeybindingRegistration::new("h", "editor:cursor-left")
+        KeybindingRegistration::new("h", editor::CURSOR_LEFT)
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("motion")
             .with_description("Extend selection left"),
-        KeybindingRegistration::new("j", "editor:cursor-down")
+        KeybindingRegistration::new("j", editor::CURSOR_DOWN)
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("motion")
             .with_description("Extend selection down"),
-        KeybindingRegistration::new("k", "editor:cursor-up")
+        KeybindingRegistration::new("k", editor::CURSOR_UP)
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("motion")
             .with_description("Extend selection up"),
-        KeybindingRegistration::new("l", "editor:cursor-right")
+        KeybindingRegistration::new("l", editor::CURSOR_RIGHT)
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("motion")
             .with_description("Extend selection right"),
-        KeybindingRegistration::new("w", "motions:word-forward")
+        KeybindingRegistration::new("w", motions::WORD_FORWARD)
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("motion")
             .with_description("Extend to next word"),
-        KeybindingRegistration::new("b", "motions:word-backward")
+        KeybindingRegistration::new("b", motions::WORD_BACKWARD)
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("motion")
             .with_description("Extend to previous word"),
-        KeybindingRegistration::new("e", "motions:word-end")
+        KeybindingRegistration::new("e", motions::WORD_END)
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("motion")
             .with_description("Extend to end of word"),
-        KeybindingRegistration::new("0", "motions:line-start")
+        KeybindingRegistration::new("0", motions::LINE_START)
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("motion")
             .with_description("Extend to start of line"),
-        KeybindingRegistration::new("$", "motions:line-end")
+        KeybindingRegistration::new("$", motions::LINE_END)
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("motion")
             .with_description("Extend to end of line"),
-        KeybindingRegistration::new("gg", "motions:document-start")
+        KeybindingRegistration::new("gg", motions::DOCUMENT_START)
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("motion")
             .with_description("Extend to start of document"),
-        KeybindingRegistration::new("G", "motions:document-end")
+        KeybindingRegistration::new("G", motions::DOCUMENT_END)
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("motion")
             .with_description("Extend to end of document"),
         // ====================================================================
         // Selection operations
         // ====================================================================
-        KeybindingRegistration::new("o", "visual-swap-anchor")
+        KeybindingRegistration::new("o", vim::VISUAL_SWAP_ANCHOR)
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("selection")
             .with_description("Swap cursor and anchor"),
-        KeybindingRegistration::new("O", "visual-swap-corner")
+        KeybindingRegistration::new("O", vim::VISUAL_SWAP_CORNER)
             .with_modes(&["vim:visual-block"])
             .with_category("selection")
             .with_description("Swap cursor to opposite corner"),
         // ====================================================================
         // Mode switching within visual
         // ====================================================================
-        KeybindingRegistration::new("v", "toggle-visual-char")
+        KeybindingRegistration::new("v", vim::TOGGLE_VISUAL_CHAR)
             .with_modes(&["vim:visual-line", "vim:visual-block"])
             .with_category("mode")
             .with_description("Switch to character-wise visual"),
-        KeybindingRegistration::new("V", "toggle-visual-line")
+        KeybindingRegistration::new("V", vim::TOGGLE_VISUAL_LINE)
             .with_modes(&["vim:visual", "vim:visual-block"])
             .with_category("mode")
             .with_description("Switch to line-wise visual"),
-        KeybindingRegistration::new("<C-v>", "toggle-visual-block")
+        KeybindingRegistration::new("<C-v>", vim::TOGGLE_VISUAL_BLOCK)
             .with_modes(&["vim:visual", "vim:visual-line"])
             .with_category("mode")
             .with_description("Switch to block-wise visual"),
         // ====================================================================
         // Operators on selection
         // ====================================================================
-        KeybindingRegistration::new("d", "delete-selection")
+        KeybindingRegistration::new("d", vim::DELETE_SELECTION)
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("operator")
             .with_description("Delete selection"),
-        KeybindingRegistration::new("y", "yank-selection")
+        KeybindingRegistration::new("y", vim::YANK_SELECTION)
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("operator")
             .with_description("Yank selection"),
-        KeybindingRegistration::new("c", "change-selection")
+        KeybindingRegistration::new("c", vim::CHANGE_SELECTION)
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("operator")
             .with_description("Change selection"),
-        KeybindingRegistration::new("x", "delete-selection")
+        KeybindingRegistration::new("x", vim::DELETE_SELECTION)
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("operator")
             .with_description("Delete selection (alias)"),
-        KeybindingRegistration::new("<gt>", "indent-selection")
+        KeybindingRegistration::new("<gt>", vim::INDENT_SELECTION)
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("operator")
             .with_description("Indent selection"),
-        KeybindingRegistration::new("<lt>", "dedent-selection")
+        KeybindingRegistration::new("<lt>", vim::DEDENT_SELECTION)
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("operator")
             .with_description("Dedent selection"),
-        KeybindingRegistration::new("~", "toggle-case-selection")
+        KeybindingRegistration::new("~", vim::TOGGLE_CASE_SELECTION)
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("operator")
             .with_description("Toggle case of selection"),
-        KeybindingRegistration::new("u", "lowercase-selection")
+        KeybindingRegistration::new("u", vim::LOWERCASE_SELECTION)
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("operator")
             .with_description("Lowercase selection"),
-        KeybindingRegistration::new("U", "uppercase-selection")
+        KeybindingRegistration::new("U", vim::UPPERCASE_SELECTION)
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("operator")
             .with_description("Uppercase selection"),
         // ====================================================================
         // Join
         // ====================================================================
-        KeybindingRegistration::new("J", "join-selection")
+        KeybindingRegistration::new("J", vim::JOIN_SELECTION)
             .with_modes(&["vim:visual", "vim:visual-line"])
             .with_category("edit")
             .with_description("Join selected lines"),
         // ====================================================================
         // Enter command mode with selection
         // ====================================================================
-        KeybindingRegistration::new(":", "command-with-selection")
+        KeybindingRegistration::new(":", vim::COMMAND_WITH_SELECTION)
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("mode")
             .with_description("Enter command mode with selection range"),
         // ====================================================================
         // Blocked keys (explicit no-op) - Issue #145
         // ====================================================================
-        KeybindingRegistration::new("i", "visual-noop")
+        KeybindingRegistration::new("i", vim::VISUAL_NOOP)
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("blocked")
             .with_description("No-op (insert key blocked in visual mode)"),
-        KeybindingRegistration::new("a", "visual-noop")
+        KeybindingRegistration::new("a", vim::VISUAL_NOOP)
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("blocked")
             .with_description("No-op (append key blocked in visual mode)"),
         // ====================================================================
         // Visual insert commands (I/A) - Issue #145
         // ====================================================================
-        KeybindingRegistration::new("I", "visual-insert-start")
+        KeybindingRegistration::new("I", vim::VISUAL_INSERT_START)
             .with_modes(&["vim:visual", "vim:visual-line"])
             .with_category("mode")
             .with_description("Exit visual, move to line start, enter insert"),
-        KeybindingRegistration::new("A", "visual-insert-end")
+        KeybindingRegistration::new("A", vim::VISUAL_INSERT_END)
             .with_modes(&["vim:visual", "vim:visual-line"])
             .with_category("mode")
             .with_description("Exit visual, move to line end, enter insert"),
         // Block mode I/A - Issue #146
-        KeybindingRegistration::new("I", "block-insert-start")
+        KeybindingRegistration::new("I", vim::BLOCK_INSERT_START)
             .with_modes(&["vim:visual-block"])
             .with_category("mode")
             .with_description("Insert at block left column on all lines"),
-        KeybindingRegistration::new("A", "block-insert-end")
+        KeybindingRegistration::new("A", vim::BLOCK_INSERT_END)
             .with_modes(&["vim:visual-block"])
             .with_category("mode")
             .with_description("Append at block right column on all lines"),

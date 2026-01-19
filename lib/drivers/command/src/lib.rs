@@ -61,6 +61,7 @@
 mod args;
 mod char_wait;
 mod context;
+mod provider;
 mod result;
 mod traits;
 
@@ -78,6 +79,9 @@ pub use result::{
     BlockInsertAction, CommandResult, EditAction, ModeAction, OperatorResult, SearchAction,
     SearchDirection, UndoAction, UndotreeAction, WindowAction,
 };
+
+// Re-export provider trait
+pub use provider::CommandProvider;
 
 // Re-export traits
 pub use traits::{Command, CommandHandler};

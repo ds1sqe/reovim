@@ -15,4 +15,6 @@ reovim-module-macros = { path = "../../lib/module-macros" }
 reovim-driver-command = { path = "../../lib/drivers/command" }
 reovim-driver-input = { path = "../../lib/drivers/input" }
 reovim-module-editor = { path = "../editor" }
+reovim-module-motions = { path = "../motions" }
 reovim-module-operators = { path = "../operators" }
+reovim-module-textobjects = { path = "../textobjects" }

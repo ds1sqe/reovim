@@ -12,10 +12,7 @@ use {
     reovim_kernel::api::v1::{CommandId, Edit, KernelContext, Position},
 };
 
-use reovim_kernel::api::v1::ModuleId;
-
-// Command module ID for editor commands.
-const EDITOR_MODULE: ModuleId = ModuleId::new("editor");
+use crate::ids;
 
 /// Start replace char operation (r).
 ///
@@ -31,7 +28,7 @@ pub struct ReplaceCharStart;
 
 impl Command for ReplaceCharStart {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "replace-char-start")
+        ids::REPLACE_CHAR_START
     }
 
     fn description(&self) -> &'static str {
@@ -70,7 +67,7 @@ pub struct RepeatDot;
 
 impl Command for RepeatDot {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "repeat-dot")
+        ids::REPEAT_DOT
     }
 
     fn description(&self) -> &'static str {
@@ -100,7 +97,7 @@ pub struct JoinLines;
 
 impl Command for JoinLines {
     fn id(&self) -> CommandId {
-        CommandId::new(EDITOR_MODULE, "join-lines")
+        ids::JOIN_LINES
     }
 
     fn description(&self) -> &'static str {

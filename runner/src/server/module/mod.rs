@@ -74,7 +74,10 @@ pub use {
         find_module, library_extension, library_filename,
     },
     // Wiring subsystem
-    wiring::{WiringError, WiringResult, WiringStats, wire_module_keybindings},
+    wiring::{
+        CommandWiringError, CommandWiringResult, CommandWiringStats, WiringError, WiringResult,
+        WiringStats, wire_module_commands, wire_module_keybindings,
+    },
 };
 
 // Backwards compatibility alias: ModuleRegistry -> ModuleManager

@@ -1,6 +1,6 @@
 //! Registration types for commands, keybindings, and event handlers.
 
-use super::RegistrationFlags;
+use {super::RegistrationFlags, crate::core::CommandId};
 
 /// Command registration descriptor.
 ///
@@ -121,8 +121,8 @@ impl CommandRegistration {
 pub struct KeybindingRegistration {
     /// Key sequence in vim notation (e.g., `"dd"`, `"<C-w>h"`, `"<Space>ff"`).
     pub keys: &'static str,
-    /// Command ID to invoke.
-    pub command_id: &'static str,
+    /// Command ID to invoke (compile-time verified).
+    pub command_id: CommandId,
     /// Modes where binding is active (e.g., `&["normal"]`, `&["normal", "visual"]`).
     /// Empty slice means all modes (like Linux's match-all).
     pub modes: &'static [&'static str],
@@ -143,8 +143,12 @@ pub struct KeybindingRegistration {
 
 impl KeybindingRegistration {
     /// Create a new keybinding registration.
+    ///
+    /// The `command_id` parameter is a typed `CommandId`, enabling compile-time
+    /// verification that the referenced command exists. Import command ID constants
+    /// from the appropriate module (e.g., `reovim_module_editor::ids::CURSOR_DOWN`).
     #[must_use]
-    pub const fn new(keys: &'static str, command_id: &'static str) -> Self {
+    pub const fn new(keys: &'static str, command_id: CommandId) -> Self {
         Self {
             keys,
             command_id,
@@ -301,7 +305,13 @@ impl EventHandlerRegistration {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, crate::api::module::ModuleId};
+
+    // Test constants for keybinding tests
+    const TEST_MODULE: ModuleId = ModuleId::new("test");
+    const DELETE_LINE: CommandId = CommandId::new(TEST_MODULE, "delete-line");
+    const WINDOW_LEFT: CommandId = CommandId::new(TEST_MODULE, "window-left");
+    const GOTO_DEFINITION: CommandId = CommandId::new(TEST_MODULE, "goto-definition");
 
     #[test]
     fn test_command_registration_new() {
@@ -349,9 +359,9 @@ mod tests {
 
     #[test]
     fn test_keybinding_registration_new() {
-        let reg = KeybindingRegistration::new("dd", "delete-line");
+        let reg = KeybindingRegistration::new("dd", DELETE_LINE);
         assert_eq!(reg.keys, "dd");
-        assert_eq!(reg.command_id, "delete-line");
+        assert_eq!(reg.command_id, DELETE_LINE);
         assert!(reg.modes.is_empty()); // All modes
         assert_eq!(reg.description, "");
         assert!(reg.category.is_none());
@@ -362,7 +372,7 @@ mod tests {
 
     #[test]
     fn test_keybinding_registration_builder() {
-        let reg = KeybindingRegistration::new("<C-w>h", "window-left")
+        let reg = KeybindingRegistration::new("<C-w>h", WINDOW_LEFT)
             .with_modes(&["normal"])
             .with_description("Move to left window")
             .with_category("window")
@@ -371,7 +381,7 @@ mod tests {
             .with_flags(RegistrationFlags::deferrable());
 
         assert_eq!(reg.keys, "<C-w>h");
-        assert_eq!(reg.command_id, "window-left");
+        assert_eq!(reg.command_id, WINDOW_LEFT);
         assert_eq!(reg.modes, &["normal"]);
         assert_eq!(reg.description, "Move to left window");
         assert_eq!(reg.category, Some("window"));
@@ -383,7 +393,7 @@ mod tests {
 
     #[test]
     fn test_keybinding_registration_disabled() {
-        let reg = KeybindingRegistration::new("gd", "goto-definition").with_disabled();
+        let reg = KeybindingRegistration::new("gd", GOTO_DEFINITION).with_disabled();
         assert!(!reg.enabled);
     }
 
