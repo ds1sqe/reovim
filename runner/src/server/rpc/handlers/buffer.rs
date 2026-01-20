@@ -43,11 +43,11 @@ pub fn buffer_get_content(ctx: RpcContext, params: serde_json::Value) -> Handler
         let content = ctx
             .session
             .with_state(|state| {
-                // Use provided buffer_id or fall back to active buffer
+                // Use provided buffer_id or fall back to active buffer (from driver_session SSOT)
                 let buffer_id = params
                     .buffer_id
                     .map(BufferId::from_raw)
-                    .or(state.app.active_buffer)
+                    .or_else(|| state.session_active_buffer())
                     .ok_or_else(|| RpcError::invalid_params("No active buffer"))?;
 
                 let buffer_arc = state.app.kernel.buffers.get(buffer_id).ok_or_else(|| {
@@ -96,7 +96,7 @@ pub fn buffer_set_content(ctx: RpcContext, params: serde_json::Value) -> Handler
                 let buffer_id = params
                     .buffer_id
                     .map(BufferId::from_raw)
-                    .or(state.app.active_buffer)
+                    .or_else(|| state.session_active_buffer())
                     .ok_or_else(|| RpcError::invalid_params("No active buffer"))?;
 
                 let buffer_arc = state.app.kernel.buffers.get(buffer_id).ok_or_else(|| {
@@ -210,7 +210,8 @@ pub fn buffer_open_file(ctx: RpcContext, params: serde_json::Value) -> HandlerFu
                 let mut buffer = Buffer::from_string(&content);
                 buffer.set_file_path(Some(params.path.clone()));
                 let id = state.app.kernel.buffers.register(buffer);
-                state.app.active_buffer = Some(id);
+                // Use driver_session as SSOT for active_buffer
+                state.set_session_active_buffer(Some(id));
 
                 // Load undo history from disk (graceful: log errors, don't fail)
                 let loaded = state.app.undo_registry.load_graceful(
@@ -284,7 +285,7 @@ pub fn buffer_write_file(ctx: RpcContext, params: serde_json::Value) -> HandlerF
                 let buffer_id = params
                     .buffer_id
                     .map(BufferId::from_raw)
-                    .or(state.app.active_buffer)
+                    .or_else(|| state.session_active_buffer())
                     .ok_or_else(|| RpcError::invalid_params("No active buffer"))?;
 
                 let buffer_arc = state.app.kernel.buffers.get(buffer_id).ok_or_else(|| {
@@ -449,7 +450,8 @@ mod tests {
             .with_state_mut(|state| {
                 let buffer = Buffer::from_string(&content_owned);
                 let id = state.app.kernel.buffers.register(buffer);
-                state.app.active_buffer = Some(id);
+                // Use driver_session as SSOT for active_buffer
+                state.set_session_active_buffer(Some(id));
                 id
             })
             .await;

@@ -47,6 +47,14 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- Refactored `SessionState` to use `driver::Session` as SSOT for session state (#406)
+  - `driver_session` is now the Single Source of Truth for per-session state
+  - Fields moved to `driver_session`: `mode_stack`, `pending_keys`, `extensions`, `active_buffer`, `terminal_size`
+  - `AppState` now contains only runner-specific state: `kernel`, `undo_registry`, `windows`, `cmdline`
+  - New delegation methods on `SessionState`: `mode_stack()`, `session_active_buffer()`, `session_terminal_size()`, etc.
+  - `CommandRegistry::execute()` now takes `&mut DriverSession` for SSOT access
+  - Updated docs/architecture/runner/server/sessions.md with SSOT architecture
+
 - Clarified Session vs Client types with tmux-like semantics (#405)
   - Renamed `driver::SessionId(usize)` to `ClientId(usize)` - identifies client connections
   - `runner::SessionId(Arc<str>)` unchanged - identifies named editing sessions

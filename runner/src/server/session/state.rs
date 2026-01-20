@@ -2,14 +2,27 @@
 //!
 //! `SessionState` bundles the runtime application state with the registries
 //! needed for key processing. Each session has its own isolated state.
+//!
+//! # SSOT Architecture
+//!
+//! `driver_session` is the Single Source of Truth (SSOT) for per-session state:
+//! - `mode_stack` - current editing mode
+//! - `pending_keys` - accumulated key sequence
+//! - `extensions` - module-provided policy state
+//! - `active_buffer` - currently active buffer ID
+//! - `terminal_size` - session-level terminal dimensions
+//!
+//! The `AppState` within this struct provides runner-specific state (kernel,
+//! `undo_registry`, windows, cmdline) that doesn't belong in the driver layer.
 
 use std::sync::Arc;
 
 use {
     reovim_driver_command::{CommandContext, CommandResult},
-    reovim_driver_input::FallbackContext,
+    reovim_driver_input::{ExtensionMap, FallbackContext},
+    reovim_driver_session::{ClientId, Session as DriverSession},
     reovim_driver_vfs::VfsDriver,
-    reovim_kernel::api::v1::{CommandId, KernelContext, ModeId},
+    reovim_kernel::api::v1::{BufferId, CommandId, KernelContext, ModeId, ModeStack},
 };
 
 use crate::{
@@ -22,9 +35,14 @@ use crate::{
 ///
 /// This is the complete state for a single editing session. Each session
 /// (like tmux sessions) has its own `SessionState` with independent:
+/// - Driver-layer session (SSOT for `mode_stack`, `pending_keys`, `extensions`, etc.)
 /// - Kernel context (buffers, events, options)
 /// - Mode/command/keymap/module registries
-/// - Runtime state (active buffer, pending keys)
+///
+/// # SSOT Architecture
+///
+/// `driver_session` is the Single Source of Truth for per-session state.
+/// `AppState` provides runner-specific state that doesn't belong in the driver.
 ///
 /// # Thread Safety
 ///
@@ -45,7 +63,17 @@ use crate::{
 /// let result = state.lookup_keys(&mode_id, &key_sequence);
 /// ```
 pub struct SessionState {
-    /// Application state (kernel + runtime state).
+    /// Driver-layer session state (SSOT for `mode_stack`, `pending_keys`, `extensions`,
+    /// `active_buffer`, `terminal_size`).
+    ///
+    /// This is the canonical source for per-session editing state.
+    pub driver_session: DriverSession,
+
+    /// Application state (kernel + runner-specific state).
+    ///
+    /// Contains: kernel context, running flag, `undo_registry`, windows, cmdline.
+    /// NOTE: `mode_stack`, `pending_keys`, `extensions`, `active_buffer`, and
+    /// `terminal_size` in `AppState` are DEPRECATED - use `driver_session` instead.
     pub app: AppState,
 
     /// Virtual filesystem driver for file operations.
@@ -93,8 +121,13 @@ impl SessionState {
             .map_or_else(|| std::path::PathBuf::from(".reovim"), |d| d.join("reovim"));
         let undo_persistence = UndoPersistence::new(&data_dir);
 
+        // Create driver session (SSOT for session state)
+        // ClientId(0) for single-session model
+        let driver_session = DriverSession::new(ClientId::new(0), initial_mode);
+
         Self {
-            app: AppState::new(kernel, initial_mode),
+            driver_session,
+            app: AppState::new(kernel),
             vfs,
             mode_registry: ModeRegistry::new(),
             command_registry: CommandRegistry::new(),
@@ -123,8 +156,13 @@ impl SessionState {
             .map_or_else(|| std::path::PathBuf::from(".reovim"), |d| d.join("reovim"));
         let undo_persistence = UndoPersistence::new(&data_dir);
 
+        // Create driver session (SSOT for session state)
+        // ClientId(0) for single-session model
+        let driver_session = DriverSession::new(ClientId::new(0), initial_mode);
+
         Self {
-            app: AppState::new(kernel, initial_mode),
+            driver_session,
+            app: AppState::new(kernel),
             vfs,
             mode_registry,
             command_registry,
@@ -134,16 +172,82 @@ impl SessionState {
         }
     }
 
+    /// Get a reference to the driver session (SSOT for session state).
+    #[must_use]
+    pub const fn driver_session(&self) -> &DriverSession {
+        &self.driver_session
+    }
+
+    /// Get a mutable reference to the driver session.
+    #[allow(clippy::missing_const_for_fn)] // &mut self can't be const in stable Rust
+    pub fn driver_session_mut(&mut self) -> &mut DriverSession {
+        &mut self.driver_session
+    }
+
+    // ========================================================================
+    // Delegation Methods (SSOT in driver_session)
+    // ========================================================================
+
+    /// Get a reference to the mode stack (delegates to `driver_session`).
+    #[must_use]
+    pub const fn mode_stack(&self) -> &ModeStack {
+        &self.driver_session.mode_stack
+    }
+
+    /// Get a mutable reference to the mode stack (delegates to `driver_session`).
+    #[allow(clippy::missing_const_for_fn)] // &mut self can't be const in stable Rust
+    pub fn mode_stack_mut(&mut self) -> &mut ModeStack {
+        &mut self.driver_session.mode_stack
+    }
+
+    /// Get a reference to the extensions map (delegates to `driver_session`).
+    #[must_use]
+    pub const fn extensions(&self) -> &ExtensionMap {
+        &self.driver_session.extensions
+    }
+
+    /// Get a mutable reference to the extensions map (delegates to `driver_session`).
+    #[allow(clippy::missing_const_for_fn)] // &mut self can't be const in stable Rust
+    pub fn extensions_mut(&mut self) -> &mut ExtensionMap {
+        &mut self.driver_session.extensions
+    }
+
+    /// Get the session-level active buffer ID (delegates to `driver_session`).
+    #[must_use]
+    pub const fn session_active_buffer(&self) -> Option<BufferId> {
+        self.driver_session.active_buffer()
+    }
+
+    /// Set the session-level active buffer ID (delegates to `driver_session`).
+    pub const fn set_session_active_buffer(&mut self, id: Option<BufferId>) {
+        self.driver_session.set_active_buffer(id);
+    }
+
+    /// Get the session-level terminal size (delegates to `driver_session`).
+    #[must_use]
+    pub const fn session_terminal_size(&self) -> (u16, u16) {
+        self.driver_session.terminal_size()
+    }
+
+    /// Set the session-level terminal size (delegates to `driver_session`).
+    pub const fn set_session_terminal_size(&mut self, width: u16, height: u16) {
+        self.driver_session.set_terminal_size(width, height);
+    }
+
+    // ========================================================================
+    // Registry Accessors
+    // ========================================================================
+
     /// Get a reference to the module registry.
     #[must_use]
     pub const fn module_registry(&self) -> &ModuleManager {
         &self.module_registry
     }
 
-    /// Get the current mode ID.
+    /// Get the current mode ID (from `driver_session` SSOT).
     #[must_use]
     pub fn current_mode(&self) -> &ModeId {
-        self.app.current_mode()
+        self.driver_session.current_mode()
     }
 
     /// Look up a key sequence in the current mode's keymap.
@@ -171,14 +275,17 @@ impl SessionState {
         // Flush pending edits before command execution
         // (any command breaks insert mode batching)
         self.app.flush_pending_edits();
-        self.command_registry.execute(id, &mut self.app, args)
+        // Use driver_session as SSOT for mode_stack and active_buffer
+        self.command_registry
+            .execute(id, &mut self.driver_session, &mut self.app, args)
     }
 
     /// Check if the current mode accepts character input.
     #[must_use]
     pub fn mode_accepts_char_input(&self) -> bool {
+        // Use driver_session as SSOT for current mode
         self.mode_registry
-            .accepts_char_input(self.app.current_mode())
+            .accepts_char_input(self.driver_session.current_mode())
     }
 
     /// Check if the session should continue running.

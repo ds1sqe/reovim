@@ -43,7 +43,7 @@ use {
 };
 
 use {
-    super::{Session, snapshot::StateSnapshot},
+    super::{Session, snapshot::StateSnapshot, state::SessionState},
     crate::notification::NotificationBroadcaster,
 };
 
@@ -302,8 +302,10 @@ pub async fn emit_from_state_changes(session: &Session, changes: &StateChanges) 
 
     // Emit render_complete if any notifications were sent
     if any_emitted {
-        // Determine active buffer for scoped broadcast
-        let active_buffer = session.with_state(|state| state.app.active_buffer).await;
+        // Determine active buffer for scoped broadcast (from driver_session SSOT)
+        let active_buffer = session
+            .with_state(SessionState::session_active_buffer)
+            .await;
         emit_render_complete(session, active_buffer).await;
     }
 }

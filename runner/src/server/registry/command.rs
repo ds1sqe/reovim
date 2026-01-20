@@ -14,6 +14,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use {
     reovim_driver_command::{CommandContext, CommandHandler, CommandResult},
+    reovim_driver_session::Session as DriverSession,
     reovim_kernel::{
         api::v1::{CommandId, ModuleId},
         profile_scope,
@@ -127,14 +128,15 @@ impl CommandRegistry {
     ///
     /// Returns `None` if the command isn't registered.
     ///
-    /// The active buffer ID from `AppState` is automatically populated
+    /// The active buffer ID from `driver_session` is automatically populated
     /// into the `CommandContext` before execution, allowing commands to
     /// know which buffer they should operate on.
     ///
     /// # Arguments
     ///
     /// * `id` - The command ID to execute
-    /// * `app` - Application state (contains `KernelContext` + runtime state)
+    /// * `driver_session` - Driver session (SSOT for `mode_stack`, `active_buffer`)
+    /// * `app` - Application state (contains `KernelContext` + `WindowRegistry`)
     /// * `args` - Command arguments (count, register, etc.)
     ///
     /// # Returns
@@ -145,69 +147,46 @@ impl CommandRegistry {
     pub fn execute(
         &self,
         id: &CommandId,
+        driver_session: &mut DriverSession,
         app: &mut AppState,
         args: &CommandContext,
     ) -> Option<CommandResult> {
-        use reovim_driver_session::{ClientId, Session, SessionRuntime, Window};
+        use reovim_driver_session::{SessionRuntime, Window};
 
         profile_scope!("command_execute", "runner::command");
 
         self.entries.get(id).map(|entry| {
-            // Clone args and populate buffer ID from AppState
+            // Clone args and populate buffer ID from driver_session (SSOT)
             let mut ctx = args.clone();
-            if let Some(buffer_id) = app.active_buffer {
+            if let Some(buffer_id) = driver_session.active_buffer() {
                 ctx.set_buffer_id(buffer_id);
             }
 
-            // Create a temporary Session from AppState fields for SessionRuntime
-            // This bridges the AppState/Session gap during migration
-            let mut session = Session::new(ClientId::new(1), app.mode_stack.home().clone());
-
-            // Copy mode stack (excluding home mode which is already set)
-            for mode in app.mode_stack.as_slice().iter().skip(1) {
-                session.mode_stack.push(mode.clone());
-            }
-
-            // Copy windows from WindowRegistry to Session's WindowLayout
+            // Copy windows from WindowRegistry to driver_session's WindowLayout
+            // (SessionRuntime needs window state for cursor operations)
+            driver_session.windows.clear();
             for win_id in app.windows.windows() {
                 if let Some(state) = app.windows.get(win_id) {
                     let mut window = Window::new();
                     window.buffer_id = state.buffer_id;
                     window.cursor.line = state.cursor.line;
                     window.cursor.column = state.cursor.column;
-                    session.windows.add(window);
+                    driver_session.windows.add(window);
                 }
             }
 
             // Create SessionRuntime for command execution
-            // NOTE: We pass a stub executor here because commands shouldn't
-            // recursively execute other commands via SessionRuntime::execute_command
+            // Now uses driver_session directly (SSOT for mode_stack, active_buffer)
             let stub_executor = StubCommandExecutor;
-            let mut runtime = SessionRuntime::new(&mut session, &app.kernel, &stub_executor);
+            let mut runtime = SessionRuntime::new(driver_session, &app.kernel, &stub_executor);
 
-            // Execute command with new signature
+            // Execute command
             let result = entry.handler.execute(&mut runtime, &ctx);
 
-            // Sync changes back to AppState
-            // Mode stack changes - sync entire stack from Session to AppState
-            // First, pop all non-home modes from AppState
-            while app.mode_stack.depth() > 1 {
-                app.mode_stack.pop();
-            }
-            // Sync the current mode (handles set_mode changes to home position)
-            if let Some(session_current) = session.mode_stack.as_slice().first() {
-                app.mode_stack.set(session_current.clone());
-            }
-            // Push any additional modes from Session
-            for mode in session.mode_stack.as_slice().iter().skip(1) {
-                app.mode_stack.push(mode.clone());
-            }
-
-            // Window cursor changes - sync back to WindowRegistry
-            // (buffer content changes go through kernel directly)
-            // Collect window IDs first to avoid borrow conflict
+            // Sync window cursor changes back to WindowRegistry
+            // (mode_stack and active_buffer changes stay on driver_session)
             let window_ids: Vec<_> = app.windows.windows().collect();
-            for (idx, window) in session.windows.windows.iter().enumerate() {
+            for (idx, window) in driver_session.windows.windows.iter().enumerate() {
                 if let Some(&win_id) = window_ids.get(idx)
                     && let Some(state) = app.windows.get_mut(win_id)
                 {
@@ -301,7 +280,7 @@ mod tests {
     use {
         super::*,
         reovim_driver_command::{ArgSpec, Command},
-        reovim_driver_session::SessionRuntime,
+        reovim_driver_session::{ClientId, SessionRuntime},
         reovim_kernel::api::v1::ModuleId,
     };
 
@@ -384,10 +363,11 @@ mod tests {
 
         let kernel = KernelContext::default();
         let mode = reovim_kernel::api::v1::ModeId::new(ModuleId::new("test"), "normal");
-        let mut app = AppState::new(kernel, mode);
+        let mut driver_session = DriverSession::new(ClientId::new(0), mode);
+        let mut app = AppState::new(kernel);
         let args = CommandContext::new();
 
-        let result = registry.execute(&id, &mut app, &args);
+        let result = registry.execute(&id, &mut driver_session, &mut app, &args);
         assert_eq!(result, Some(CommandResult::Success));
     }
 
@@ -398,10 +378,11 @@ mod tests {
 
         let kernel = KernelContext::default();
         let mode = reovim_kernel::api::v1::ModeId::new(ModuleId::new("test"), "normal");
-        let mut app = AppState::new(kernel, mode);
+        let mut driver_session = DriverSession::new(ClientId::new(0), mode);
+        let mut app = AppState::new(kernel);
         let args = CommandContext::new();
 
-        let result = registry.execute(&unknown_id, &mut app, &args);
+        let result = registry.execute(&unknown_id, &mut driver_session, &mut app, &args);
         assert!(result.is_none());
     }
 

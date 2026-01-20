@@ -1,13 +1,13 @@
-//! `AppStateRuntime` - adapts `AppState` fields to the `SessionApiDyn` interface.
+//! `AppStateRuntime` - adapts `driver::Session` to the `SessionApiDyn` interface.
 //!
 //! This wrapper enables the event loop to use `resolve_with_session` by
-//! providing the session API traits over individual `AppState` fields.
+//! providing the session API traits over the driver-layer Session.
 //!
 //! # Design
 //!
 //! ```text
 //! AppStateRuntime
-//! ├── ModeStack (from AppState)
+//! ├── DriverSession (SSOT for mode_stack, active_buffer)
 //! ├── WindowRegistry (from AppState)
 //! ├── KernelContext (from AppState)
 //! ├── CommandRegistry (for future command execution)
@@ -17,40 +17,45 @@
 //! Note: Extensions are NOT borrowed by this runtime - they're passed separately
 //! to `resolve_with_session` to work around Rust's borrow rules.
 //!
-//! # Why Not Use `SessionRuntime`?
+//! # SSOT Architecture
 //!
-//! `SessionRuntime` from the session driver expects a `Session` type, but
-//! the runner uses `AppState`. Rather than refactoring `AppState` into
-//! `Session`, we create this adapter that implements the same traits.
+//! As of #406, `driver::Session` is the Single Source of Truth for:
+//! - `mode_stack` - current editing mode
+//! - `active_buffer` - currently active buffer ID
+//! - `pending_keys` - accumulated key sequence
+//! - `extensions` - module-provided state
 
 use {
     reovim_driver_command::{CommandContext, CommandResult},
     reovim_driver_session::{
-        PopResult, TransitionContext,
+        PopResult, Session as DriverSession, TransitionContext,
         api::{
             BufferApi, BufferError, ChangeTracker, CommandApi, ModeApi, ModeError, Selection,
             SelectionMode, StateChanges, WindowApi, WindowError,
         },
     },
     reovim_kernel::api::v1::{
-        BufferId, CommandId, KernelContext, ModeId, ModeStack, Position,
-        SelectionMode as KernelSelectionMode, WindowId,
+        BufferId, CommandId, KernelContext, ModeId, Position, SelectionMode as KernelSelectionMode,
+        WindowId,
     },
 };
 
 use crate::server::{registry::CommandRegistry, window::WindowRegistry};
 
-/// Runtime that adapts `AppState` fields to the session API traits.
+/// Runtime that adapts `driver::Session` to the session API traits.
 ///
 /// This enables the event loop to use `resolve_with_session` while keeping
-/// the existing `AppState` structure. Extensions are passed separately.
+/// the existing structure. Extensions are passed separately.
+///
+/// # SSOT
+///
+/// `driver_session` is the Single Source of Truth for `mode_stack` and
+/// `active_buffer`. All mutations go through the driver session.
 pub struct AppStateRuntime<'a> {
-    /// Mode stack for mode transitions.
-    mode_stack: &'a mut ModeStack,
+    /// Driver session (SSOT for `mode_stack`, `active_buffer`).
+    driver_session: &'a mut DriverSession,
     /// Window registry for window operations.
     windows: &'a mut WindowRegistry,
-    /// Active buffer ID.
-    active_buffer: &'a mut Option<BufferId>,
     /// Kernel context for buffer operations.
     kernel: &'a KernelContext,
     /// Command registry for looking up commands.
@@ -60,20 +65,18 @@ pub struct AppStateRuntime<'a> {
 }
 
 impl<'a> AppStateRuntime<'a> {
-    /// Create a new runtime from individual `AppState` fields.
+    /// Create a new runtime from `driver::Session` and other components.
     ///
     /// Extensions are NOT borrowed here - pass them separately to `resolve_with_session`.
     pub fn new(
-        mode_stack: &'a mut ModeStack,
+        driver_session: &'a mut DriverSession,
         windows: &'a mut WindowRegistry,
-        active_buffer: &'a mut Option<BufferId>,
         kernel: &'a KernelContext,
         command_registry: &'a CommandRegistry,
     ) -> Self {
         Self {
-            mode_stack,
+            driver_session,
             windows,
-            active_buffer,
             kernel,
             command_registry,
             changes: StateChanges::new(),
@@ -97,41 +100,41 @@ impl<'a> AppStateRuntime<'a> {
 
 impl ModeApi for AppStateRuntime<'_> {
     fn current_mode(&self) -> &ModeId {
-        self.mode_stack.current()
+        self.driver_session.mode_stack.current()
     }
 
     fn home_mode(&self) -> &ModeId {
-        self.mode_stack.home()
+        self.driver_session.mode_stack.home()
     }
 
     fn mode_depth(&self) -> usize {
-        self.mode_stack.depth()
+        self.driver_session.mode_stack.depth()
     }
 
     fn is_mode_active(&self, mode: &ModeId) -> bool {
-        self.mode_stack.contains(mode)
+        self.driver_session.mode_stack.contains(mode)
     }
 
     fn mode_stack(&self) -> Vec<ModeId> {
-        self.mode_stack.as_slice().to_vec()
+        self.driver_session.mode_stack.as_slice().to_vec()
     }
 
     fn push_mode(&mut self, mode: ModeId, _ctx: TransitionContext) {
-        self.mode_stack.push(mode);
+        self.driver_session.mode_stack.push(mode);
         self.changes.record_mode_change();
     }
 
     fn pop_mode(&mut self, _result: Option<PopResult>) -> Result<(), ModeError> {
-        if self.mode_stack.depth() <= 1 {
+        if self.driver_session.mode_stack.depth() <= 1 {
             return Err(ModeError::CannotPopHomeMode);
         }
-        self.mode_stack.pop();
+        self.driver_session.mode_stack.pop();
         self.changes.record_mode_change();
         Ok(())
     }
 
     fn set_mode(&mut self, mode: ModeId, _ctx: TransitionContext) {
-        self.mode_stack.set(mode);
+        self.driver_session.mode_stack.set(mode);
         self.changes.record_mode_change();
     }
 }
@@ -140,7 +143,7 @@ impl ModeApi for AppStateRuntime<'_> {
 
 impl BufferApi for AppStateRuntime<'_> {
     fn active_buffer(&self) -> Option<BufferId> {
-        *self.active_buffer
+        self.driver_session.active_buffer()
     }
 
     fn buffer_line(&self, buffer: BufferId, line: usize) -> Option<String> {
@@ -489,7 +492,7 @@ impl ChangeTracker for AppStateRuntime<'_> {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, reovim_kernel::api::v1::ModuleId};
+    use {super::*, reovim_driver_session::ClientId, reovim_kernel::api::v1::ModuleId};
 
     fn test_mode() -> ModeId {
         ModeId::new(ModuleId::new("test"), "normal")
@@ -499,21 +502,19 @@ mod tests {
         ModeId::with_discriminant(ModuleId::new("test"), "insert", 1)
     }
 
+    fn test_driver_session() -> DriverSession {
+        DriverSession::new(ClientId::new(0), test_mode())
+    }
+
     #[test]
     fn test_mode_api() {
         let kernel = KernelContext::default();
-        let mut mode_stack = ModeStack::new(test_mode());
+        let mut driver_session = test_driver_session();
         let mut windows = WindowRegistry::new();
-        let mut active_buffer: Option<BufferId> = None;
         let command_registry = CommandRegistry::new();
 
-        let mut runtime = AppStateRuntime::new(
-            &mut mode_stack,
-            &mut windows,
-            &mut active_buffer,
-            &kernel,
-            &command_registry,
-        );
+        let mut runtime =
+            AppStateRuntime::new(&mut driver_session, &mut windows, &kernel, &command_registry);
 
         // Check initial state
         assert_eq!(runtime.current_mode(), &test_mode());
@@ -537,18 +538,12 @@ mod tests {
     #[test]
     fn test_change_tracking() {
         let kernel = KernelContext::default();
-        let mut mode_stack = ModeStack::new(test_mode());
+        let mut driver_session = test_driver_session();
         let mut windows = WindowRegistry::new();
-        let mut active_buffer: Option<BufferId> = None;
         let command_registry = CommandRegistry::new();
 
-        let mut runtime = AppStateRuntime::new(
-            &mut mode_stack,
-            &mut windows,
-            &mut active_buffer,
-            &kernel,
-            &command_registry,
-        );
+        let mut runtime =
+            AppStateRuntime::new(&mut driver_session, &mut windows, &kernel, &command_registry);
 
         // No changes initially
         assert!(!runtime.changes.has_changes());

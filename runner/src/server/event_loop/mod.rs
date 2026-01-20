@@ -16,14 +16,14 @@ mod runtime;
 
 pub use {error::EventLoopError, runtime::AppStateRuntime};
 
-use reovim_driver_session::api::StateChanges;
+use reovim_driver_session::{ClientId, Session as DriverSession, api::StateChanges};
 
 use {
     reovim_driver_command::{CommandContext, CommandResult},
     reovim_driver_input::{
         ArgValue as InputArgValue, KeyEvent, ModeState, ModeTransition, PopResult, ResolveResult,
     },
-    reovim_kernel::profile_scope,
+    reovim_kernel::{api::v1::ModeId, profile_scope},
 };
 
 use super::{
@@ -38,6 +38,11 @@ use reovim_module_editor::ResolverRegistry;
 /// Super simple - just dispatches keys to resolvers.
 /// No fallback handler, no vim-specific state. Pure mechanism.
 pub struct EventLoop {
+    /// Driver session (SSOT for `mode_stack`, `active_buffer`, etc.).
+    ///
+    /// As of #406, this is the canonical source for session state.
+    driver_session: DriverSession,
+
     /// Application state (kernel + runtime).
     pub(super) app: AppState,
 
@@ -62,14 +67,22 @@ pub struct EventLoop {
 
 impl EventLoop {
     /// Create a new event loop.
+    ///
+    /// Creates a driver session using the provided initial mode.
+    /// The initial mode is typically Normal mode.
     #[must_use]
     pub fn new(
         app: AppState,
+        initial_mode: ModeId,
         mode_registry: ModeRegistry,
         command_registry: CommandRegistry,
         keymap_registry: KeymapRegistry,
     ) -> Self {
+        // Create driver session with the initial mode (SSOT for mode_stack)
+        let driver_session = DriverSession::new(ClientId::new(0), initial_mode);
+
         Self {
+            driver_session,
             app,
             mode_registry,
             command_registry,
@@ -169,21 +182,22 @@ impl EventLoop {
         use reovim_driver_session::ChangeTracker;
 
         let registry = self.resolver_registry.as_ref()?;
-        let mode = self.app.current_mode().clone();
+        let mode = self.driver_session.mode_stack.current().clone();
         let mut mode_state = ModeState::new(mode.clone());
 
-        // Create session runtime adapter from individual AppState fields.
+        // Create session runtime adapter from driver_session (SSOT).
         // Extensions are passed separately to work around borrow rules.
         let mut runtime = AppStateRuntime::new(
-            &mut self.app.mode_stack,
+            &mut self.driver_session,
             &mut self.app.windows,
-            &mut self.app.active_buffer,
             &self.app.kernel,
             &self.command_registry,
         );
 
         // Resolvers access session state via SessionApiDyn + extensions
         // Extensions contain module-specific state (e.g., VimSessionState)
+        // NOTE: Uses app.extensions due to borrow checker - driver_session is already borrowed by runtime
+        // TODO(#406): Consider interior mutability or architectural change for true SSOT
         let result = registry.resolve_with_session(
             &mode,
             key,
@@ -213,11 +227,11 @@ impl EventLoop {
                     cmd_ctx.set("register", reovim_driver_command::ArgValue::Register(reg));
                 }
 
-                if let Some(buffer_id) = self.app.active_buffer {
+                if let Some(buffer_id) = self.driver_session.active_buffer() {
                     cmd_ctx.set_buffer_id(buffer_id);
                 }
 
-                cmd_ctx.set_mode_name(self.app.current_mode().name());
+                cmd_ctx.set_mode_name(self.driver_session.mode_stack.current().name());
 
                 // Transfer metadata
                 for (key, value) in ctx.metadata {
@@ -227,10 +241,12 @@ impl EventLoop {
                     }
                 }
 
-                if let Some(result) =
-                    self.command_registry
-                        .execute(&cmd_id, &mut self.app, &cmd_ctx)
-                {
+                if let Some(result) = self.command_registry.execute(
+                    &cmd_id,
+                    &mut self.driver_session,
+                    &mut self.app,
+                    &cmd_ctx,
+                ) {
                     self.handle_command_result(result);
                 }
             }
@@ -252,23 +268,23 @@ impl EventLoop {
 
     /// Handle a mode transition from a resolver.
     ///
-    /// SSOT: Context flows through transitions, not stored in runner.
+    /// SSOT: Mode transitions go through `driver_session` (canonical source).
     fn handle_mode_transition(&mut self, transition: ModeTransition) {
         match transition {
             ModeTransition::Push { mode, context: _ } => {
                 // Context is handled by resolver (stored in VimSessionState)
-                self.app.mode_stack.push(mode);
+                self.driver_session.mode_stack.push(mode);
             }
 
             ModeTransition::Pop { result } => {
                 if let Some(ref pop_result) = result {
                     self.handle_pop_result(pop_result);
                 }
-                self.app.mode_stack.pop();
+                self.driver_session.mode_stack.pop();
             }
 
             ModeTransition::Set { mode, context: _ } => {
-                self.app.mode_stack.set(mode);
+                self.driver_session.mode_stack.set(mode);
             }
         }
     }
@@ -293,11 +309,16 @@ impl EventLoop {
                 ctx.set("register", reovim_driver_command::ArgValue::Register(*reg));
             }
 
-            if let Some(buffer_id) = self.app.active_buffer {
+            if let Some(buffer_id) = self.driver_session.active_buffer() {
                 ctx.set_buffer_id(buffer_id);
             }
 
-            if let Some(result) = self.command_registry.execute(operator, &mut self.app, &ctx) {
+            if let Some(result) = self.command_registry.execute(
+                operator,
+                &mut self.driver_session,
+                &mut self.app,
+                &ctx,
+            ) {
                 self.handle_command_result(result);
             }
         }
@@ -469,13 +490,20 @@ mod tests {
 
     fn create_test_event_loop() -> EventLoop {
         let kernel = KernelContext::default();
-        let app = AppState::new(kernel, test_mode());
+        let app = AppState::new(kernel);
+        let initial_mode = test_mode();
 
         let mut mode_registry = ModeRegistry::new();
         mode_registry.register_mode(TestMode::Command);
         mode_registry.register_mode(TestMode::Input);
 
-        EventLoop::new(app, mode_registry, CommandRegistry::new(), KeymapRegistry::new())
+        EventLoop::new(
+            app,
+            initial_mode,
+            mode_registry,
+            CommandRegistry::new(),
+            KeymapRegistry::new(),
+        )
     }
 
     struct TestCommand {

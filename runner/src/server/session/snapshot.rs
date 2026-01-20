@@ -31,8 +31,9 @@ impl StateSnapshot {
     /// track for change notification purposes.
     #[must_use]
     pub fn capture(state: &SessionState) -> Self {
-        let mode = state.app.mode_stack.current().clone();
-        let active_buffer = state.app.active_buffer;
+        // Use driver_session as SSOT for mode_stack and active_buffer
+        let mode = state.mode_stack().current().clone();
+        let active_buffer = state.session_active_buffer();
 
         let (cursor, modified) = active_buffer
             .and_then(|id| state.app.kernel.buffers.get(id))
@@ -157,7 +158,8 @@ mod tests {
         // Create and register a buffer
         let buffer = Buffer::from_string("Hello\nWorld");
         let buffer_id = state.app.kernel.buffers.register(buffer);
-        state.app.active_buffer = Some(buffer_id);
+        // Use driver_session as SSOT for active_buffer
+        state.set_session_active_buffer(Some(buffer_id));
 
         let snapshot = StateSnapshot::capture(&state);
 
@@ -177,7 +179,8 @@ mod tests {
         let mut buffer = Buffer::from_string("Test content");
         buffer.set_modified(true);
         let buffer_id = state.app.kernel.buffers.register(buffer);
-        state.app.active_buffer = Some(buffer_id);
+        // Use driver_session as SSOT for active_buffer
+        state.set_session_active_buffer(Some(buffer_id));
 
         let snapshot = StateSnapshot::capture(&state);
 

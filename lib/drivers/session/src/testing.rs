@@ -114,6 +114,9 @@ impl TestSessionRuntime {
         window.buffer_id = Some(buffer_id);
         test.session.windows.add(window);
 
+        // Set the active buffer (SSOT for session state)
+        test.session.set_active_buffer(Some(buffer_id));
+
         test
     }
 
@@ -286,7 +289,7 @@ impl TestSessionRuntime {
 
     /// Get the active buffer ID, if any.
     #[must_use]
-    pub fn active_buffer(&self) -> Option<BufferId> {
+    pub const fn active_buffer(&self) -> Option<BufferId> {
         self.session.active_buffer()
     }
 

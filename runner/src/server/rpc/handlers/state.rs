@@ -181,8 +181,8 @@ pub fn state_selection(ctx: RpcContext, _params: serde_json::Value) -> HandlerFu
         let selection_info = ctx
             .session
             .with_state(|state| {
-                // Check if we have an active buffer with a selection
-                if let Some(buffer_id) = state.app.active_buffer
+                // Check if we have an active buffer with a selection (from driver_session SSOT)
+                if let Some(buffer_id) = state.session_active_buffer()
                     && let Some(buffer_arc) = state.app.kernel.buffers.get(buffer_id)
                 {
                     let buffer = buffer_arc.read();
