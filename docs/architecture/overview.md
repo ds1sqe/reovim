@@ -61,6 +61,24 @@ Reovim follows a **Linux kernel-inspired architecture** with clear separation be
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+## Session Model
+
+reovim uses a tmux-like session model:
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  Server                                                       │
+│  ├── Session "default"                                        │
+│  │   ├── driver::Session (SSOT for editing state)             │
+│  │   ├── Kernel (buffers, events)                             │
+│  │   └── Clients: [ClientId(1), ClientId(2)]                  │
+│  └── Session "project-a"                                      │
+│      └── ...                                                  │
+└──────────────────────────────────────────────────────────────┘
+```
+
+See: [Session Model](./session-model.md)
+
 ## Linux Kernel Mapping
 
 | Linux | Reovim | Purpose |
@@ -182,6 +200,7 @@ runner/
 
 ## Related Documents
 
+- [Session Model](./session-model.md) - tmux-like multi-client architecture
 - [Mechanism vs Policy](./mechanism-vs-policy.md) - Core principle
 - [Module-Mode Inheritance](./module-mode-inheritance.md) - Mode system
 - [Kernel Subsystems](./kernel.md) - Kernel internals
