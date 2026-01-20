@@ -12,6 +12,7 @@
 //! The event loop contains NO business logic - resolvers handle everything.
 
 mod error;
+pub mod handlers;
 mod runtime_adapter;
 
 pub use {error::EventLoopError, runtime_adapter::RuntimeAdapter};
@@ -26,8 +27,18 @@ use {
     reovim_driver_input::{
         ArgValue as InputArgValue, KeyEvent, ModeState, ModeTransition, PopResult, ResolveResult,
     },
-    reovim_kernel::{api::v1::ModeId, profile_scope},
+    reovim_kernel::{
+        api::v1::{
+            EventBus, ModeId, Subscription,
+            events::{
+                ClientId as KernelClientId, KeyCode, KeyInput, KeyPressEvent, Modifiers, SessionId,
+            },
+        },
+        profile_scope,
+    },
 };
+
+use handlers::register_key_handler;
 
 use super::{
     AppState,
@@ -38,8 +49,14 @@ use reovim_module_editor::ResolverRegistry;
 
 /// Main event loop for the runner.
 ///
-/// Super simple - just dispatches keys to resolvers.
-/// No fallback handler, no vim-specific state. Pure mechanism.
+/// Dispatches keys to `EventBus` for handler processing.
+/// Uses event-driven architecture for loosely-coupled key handling.
+///
+/// # `EventBus` Integration (#408)
+///
+/// Keys are emitted as `KeyPressEvent` to the `EventBus`. Registered handlers
+/// process the event and return results. If no handler handles the key,
+/// the fallback path (direct resolver call) is used.
 pub struct EventLoop {
     /// Driver session (SSOT for `mode_stack`, `active_buffer`, etc.).
     ///
@@ -48,6 +65,17 @@ pub struct EventLoop {
 
     /// Application state (kernel + runtime).
     pub(super) app: AppState,
+
+    /// `EventBus` for key dispatch (#408).
+    ///
+    /// Keys are emitted as `KeyPressEvent` and processed by registered handlers.
+    event_bus: EventBus,
+
+    /// Key handler subscription (RAII cleanup).
+    ///
+    /// Automatically unregisters handler when `EventLoop` is dropped.
+    #[allow(dead_code)] // Held for RAII cleanup
+    _key_handler_subscription: Subscription,
 
     /// Registry for mode metadata.
     mode_registry: ModeRegistry,
@@ -73,6 +101,13 @@ impl EventLoop {
     ///
     /// Creates a driver session using the provided initial mode.
     /// The initial mode is typically Normal mode.
+    ///
+    /// # `EventBus` Setup (#408)
+    ///
+    /// Creates an `EventBus` and registers a key handler for session 0.
+    /// The handler is a transitional placeholder that returns `NotHandled`,
+    /// allowing the fallback path to process keys until full handler
+    /// implementation is complete.
     #[must_use]
     pub fn new(
         app: AppState,
@@ -81,12 +116,30 @@ impl EventLoop {
         command_registry: CommandRegistry,
         keymap_registry: KeymapRegistry,
     ) -> Self {
+        use reovim_kernel::api::v1::EventResult;
+
         // Create driver session with the initial mode (SSOT for mode_stack)
         let driver_session = DriverSession::new(ClientId::new(0), initial_mode);
+
+        // Create EventBus for key dispatch (#408)
+        let event_bus = EventBus::new();
+
+        // Session ID 0 for single-session mode
+        let session_id = SessionId::new(0);
+
+        // Register key handler (transitional: returns NotHandled to use fallback)
+        // Full implementation will move key resolution into the handler
+        let subscription = register_key_handler(&event_bus, session_id, |_event| {
+            // Transitional placeholder - returns NotHandled to trigger fallback
+            // Phase 4 will replace this with full key resolution
+            EventResult::NotHandled
+        });
 
         Self {
             driver_session,
             app,
+            event_bus,
+            _key_handler_subscription: subscription,
             mode_registry,
             command_registry,
             keymap_registry,
@@ -143,11 +196,35 @@ impl EventLoop {
 
     /// Handle a single key event.
     ///
-    /// Super simple: resolver handles everything.
-    /// `StateChanges` from session API are collected but not yet broadcast (Phase 4).
+    /// Emits `KeyPressEvent` to `EventBus` for handler dispatch (#408).
+    /// If no handler handles the key, falls back to direct resolver call.
+    ///
+    /// # `EventBus` Flow
+    ///
+    /// 1. Convert `KeyEvent` to `KeyPressEvent`
+    /// 2. Emit to `EventBus`
+    /// 3. If handled, we're done
+    /// 4. If not handled, fallback to `try_resolver`
     fn handle_key(&mut self, key: KeyEvent) {
         profile_scope!("handle_key", "runner::event_loop");
 
+        // Convert driver KeyEvent to kernel KeyInput for `EventBus`
+        let key_input = Self::key_event_to_key_input(&key);
+        let event = KeyPressEvent::new(
+            key_input,
+            SessionId::new(0),      // Single-session mode
+            KernelClientId::new(0), // Default client
+        );
+
+        // Emit to `EventBus` - handler processes synchronously
+        let result = self.event_bus.emit(event);
+
+        // If handler processed the key, we're done
+        if result.is_handled() || result.is_consumed() {
+            return;
+        }
+
+        // Fallback: Direct resolver call (transitional until full handler impl)
         if let Some((result, _changes)) = self.try_resolver(&key) {
             self.handle_resolve_result(result);
 
@@ -157,6 +234,86 @@ impl EventLoop {
             // }
         }
         // No resolver = key ignored (resolver handles everything)
+    }
+
+    /// Convert driver `KeyEvent` to kernel `KeyInput`.
+    ///
+    /// The kernel has its own key types to maintain layer purity.
+    /// Driver uses bitflags for modifiers, kernel uses struct with bool fields.
+    #[allow(clippy::missing_const_for_fn)] // Modifiers::contains is not const
+    fn key_event_to_key_input(key: &KeyEvent) -> KeyInput {
+        use reovim_driver_input::{KeyCode as DriverKeyCode, Modifiers as DriverModifiers};
+
+        // Map driver KeyCode to kernel KeyCode
+        // Driver uses `Escape`, kernel uses `Esc`
+        let key_code = match key.code {
+            DriverKeyCode::Char(c) => KeyCode::Char(c),
+            DriverKeyCode::F(n) => KeyCode::F(n),
+            DriverKeyCode::Backspace => KeyCode::Backspace,
+            DriverKeyCode::Enter => KeyCode::Enter,
+            DriverKeyCode::Left => KeyCode::Left,
+            DriverKeyCode::Right => KeyCode::Right,
+            DriverKeyCode::Up => KeyCode::Up,
+            DriverKeyCode::Down => KeyCode::Down,
+            DriverKeyCode::Home => KeyCode::Home,
+            DriverKeyCode::End => KeyCode::End,
+            DriverKeyCode::PageUp => KeyCode::PageUp,
+            DriverKeyCode::PageDown => KeyCode::PageDown,
+            DriverKeyCode::Tab => KeyCode::Tab,
+            DriverKeyCode::BackTab => KeyCode::BackTab,
+            DriverKeyCode::Delete => KeyCode::Delete,
+            DriverKeyCode::Insert => KeyCode::Insert,
+            DriverKeyCode::Escape => KeyCode::Esc,
+            // Unsupported keys map to Null
+            DriverKeyCode::Null
+            | DriverKeyCode::CapsLock
+            | DriverKeyCode::ScrollLock
+            | DriverKeyCode::NumLock
+            | DriverKeyCode::PrintScreen
+            | DriverKeyCode::Pause
+            | DriverKeyCode::Menu
+            | DriverKeyCode::KeypadBegin
+            | DriverKeyCode::MediaPlay
+            | DriverKeyCode::MediaPause
+            | DriverKeyCode::MediaPlayPause
+            | DriverKeyCode::MediaStop
+            | DriverKeyCode::MediaReverse
+            | DriverKeyCode::MediaFastForward
+            | DriverKeyCode::MediaRewind
+            | DriverKeyCode::MediaNext
+            | DriverKeyCode::MediaPrevious
+            | DriverKeyCode::MediaRecord
+            | DriverKeyCode::MediaLowerVolume
+            | DriverKeyCode::MediaRaiseVolume
+            | DriverKeyCode::MediaMuteVolume
+            | DriverKeyCode::LeftShift
+            | DriverKeyCode::RightShift
+            | DriverKeyCode::LeftCtrl
+            | DriverKeyCode::RightCtrl
+            | DriverKeyCode::LeftAlt
+            | DriverKeyCode::RightAlt
+            | DriverKeyCode::LeftSuper
+            | DriverKeyCode::RightSuper
+            | DriverKeyCode::LeftHyper
+            | DriverKeyCode::RightHyper
+            | DriverKeyCode::LeftMeta
+            | DriverKeyCode::RightMeta
+            | DriverKeyCode::IsoLevel3Shift
+            | DriverKeyCode::IsoLevel5Shift => KeyCode::Null,
+        };
+
+        // Convert bitflags to struct (driver uses bitflags, kernel uses bool fields)
+        let modifiers = Modifiers {
+            ctrl: key.modifiers.contains(DriverModifiers::CTRL),
+            alt: key.modifiers.contains(DriverModifiers::ALT),
+            shift: key.modifiers.contains(DriverModifiers::SHIFT),
+            super_key: key.modifiers.contains(DriverModifiers::SUPER),
+        };
+
+        KeyInput {
+            key: key_code,
+            modifiers,
+        }
     }
 
     /// Handle command execution result.

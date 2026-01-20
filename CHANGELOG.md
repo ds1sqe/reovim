@@ -47,6 +47,15 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- Wired `EventBus` for key dispatch - event-driven key handling (#408)
+  - Added `KeyPressEvent` type in kernel with `SessionId` and `ClientId` for event routing
+  - Created `handlers.rs` module with `register_key_handler()` infrastructure
+  - `RecursionGuard` with thread-local counter prevents infinite loops (limit: 16)
+  - Panic isolation via `catch_unwind` prevents handler crashes from affecting server
+  - Handler subscription stored in `EventLoop` for RAII cleanup on drop
+  - `EventLoop::handle_key()` now emits events to `EventBus` with fallback to direct resolver
+  - Type conversion layer between driver `KeyEvent` and kernel `KeyInput`
+
 - Deleted `AppStateRuntime` adapter (~500 lines) - thin runner architecture (#407)
   - Created `RuntimeAdapter` that combines `SessionRuntime` with `WindowRegistry`
   - `RuntimeAdapter` implements all session API traits: `ModeApi`, `BufferApi`, `WindowApi`, `RegisterApi`, `ExtensionApi`, `CommandApi`, `ChangeTracker`

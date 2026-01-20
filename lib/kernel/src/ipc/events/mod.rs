@@ -39,6 +39,7 @@
 
 pub mod driver;
 pub mod kernel;
+pub mod key;
 
 // Re-export common types for convenience
 pub use {
@@ -52,4 +53,5 @@ pub use {
         OptionReset, Shutdown, ViewportScrolled, WindowClosed, WindowCreated, WindowFocused,
         priority,
     },
+    key::{ClientId, KeyPressEvent, SessionId},
 };
