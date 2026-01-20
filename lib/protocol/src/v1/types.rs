@@ -156,10 +156,10 @@ pub struct ScreenInfo {
     /// Terminal height in rows.
     pub height: u16,
     /// Currently active buffer ID.
-    pub active_buffer_id: usize,
+    pub active_buffer_id: BufferId,
     /// Currently active window ID (if any).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub active_window_id: Option<usize>,
+    pub active_window_id: Option<WindowId>,
     /// Total number of windows.
     pub window_count: usize,
 }
@@ -168,9 +168,9 @@ pub struct ScreenInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WindowInfo {
     /// Window ID.
-    pub id: usize,
+    pub id: WindowId,
     /// Buffer displayed in this window.
-    pub buffer_id: usize,
+    pub buffer_id: BufferId,
     /// Whether this window is active.
     pub is_active: bool,
     /// Cursor position within the window.

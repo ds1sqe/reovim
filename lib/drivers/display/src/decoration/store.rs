@@ -5,6 +5,8 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+use reovim_kernel::api::v1::BufferId;
+
 use super::types::{Decoration, DecorationGroup};
 
 /// Reference to a decoration within a buffer's decoration storage.
@@ -183,7 +185,7 @@ impl BufferDecorations {
 /// Global decoration store mapping buffer IDs to their decorations.
 #[derive(Debug, Default)]
 pub struct DecorationStore {
-    buffers: HashMap<usize, BufferDecorations>,
+    buffers: HashMap<BufferId, BufferDecorations>,
 }
 
 impl DecorationStore {
@@ -196,29 +198,29 @@ impl DecorationStore {
     }
 
     /// Get or create decorations for a buffer.
-    pub fn get_or_create(&mut self, buffer_id: usize) -> &mut BufferDecorations {
+    pub fn get_or_create(&mut self, buffer_id: BufferId) -> &mut BufferDecorations {
         self.buffers.entry(buffer_id).or_default()
     }
 
     /// Get decorations for a buffer (immutable).
     #[must_use]
-    pub fn get(&self, buffer_id: usize) -> Option<&BufferDecorations> {
+    pub fn get(&self, buffer_id: BufferId) -> Option<&BufferDecorations> {
         self.buffers.get(&buffer_id)
     }
 
     /// Get decorations for a buffer (mutable).
-    pub fn get_mut(&mut self, buffer_id: usize) -> Option<&mut BufferDecorations> {
+    pub fn get_mut(&mut self, buffer_id: BufferId) -> Option<&mut BufferDecorations> {
         self.buffers.get_mut(&buffer_id)
     }
 
     /// Remove decorations for a buffer.
-    pub fn remove(&mut self, buffer_id: usize) -> Option<BufferDecorations> {
+    pub fn remove(&mut self, buffer_id: BufferId) -> Option<BufferDecorations> {
         self.buffers.remove(&buffer_id)
     }
 
     /// Check if a buffer has decorations.
     #[must_use]
-    pub fn contains(&self, buffer_id: usize) -> bool {
+    pub fn contains(&self, buffer_id: BufferId) -> bool {
         self.buffers.contains_key(&buffer_id)
     }
 
@@ -333,18 +335,21 @@ mod tests {
     fn test_decoration_store_basic() {
         let mut store = DecorationStore::new();
 
-        let buffer1 = store.get_or_create(1);
+        let buffer_id = BufferId::from_raw(1);
+        let buffer_id_2 = BufferId::from_raw(2);
+
+        let buffer1 = store.get_or_create(buffer_id);
         buffer1.add(
             DecorationGroup::Language,
             Decoration::conceal(Span::line(0, 0, 5), "test", None),
         );
 
-        assert!(store.contains(1));
-        assert!(!store.contains(2));
+        assert!(store.contains(buffer_id));
+        assert!(!store.contains(buffer_id_2));
         assert_eq!(store.buffer_count(), 1);
 
-        store.remove(1);
-        assert!(!store.contains(1));
+        store.remove(buffer_id);
+        assert!(!store.contains(buffer_id));
         assert_eq!(store.buffer_count(), 0);
     }
 }

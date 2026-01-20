@@ -445,8 +445,8 @@ impl SplitTree {
         if self.root.is_none() {
             self.root = Some(SplitNode::leaf(id));
             // Update next_id if needed
-            if id.raw() >= self.next_id {
-                self.next_id = id.raw() + 1;
+            if id.as_usize() >= self.next_id {
+                self.next_id = id.as_usize() + 1;
             }
         }
     }
@@ -464,8 +464,8 @@ impl SplitTree {
             if let Some(new_root) = root.split_window(target, new_id, direction) {
                 self.root = Some(new_root);
                 // Update next_id if needed
-                if new_id.raw() >= self.next_id {
-                    self.next_id = new_id.raw() + 1;
+                if new_id.as_usize() >= self.next_id {
+                    self.next_id = new_id.as_usize() + 1;
                 }
                 return true;
             }

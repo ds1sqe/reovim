@@ -205,7 +205,7 @@ impl Screen {
                 }
 
                 // Window ID indicator
-                let id_str = format!("Win {}", view.window_id.raw());
+                let id_str = format!("Win {}", view.window_id.as_usize());
                 let text_x = b.x + 2;
                 let text_y = b.y + b.height / 2;
                 #[allow(clippy::cast_possible_truncation)]

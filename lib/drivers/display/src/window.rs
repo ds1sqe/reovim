@@ -13,7 +13,7 @@ impl WindowId {
 
     /// Get the raw ID value.
     #[must_use]
-    pub const fn raw(&self) -> usize {
+    pub const fn as_usize(&self) -> usize {
         self.0
     }
 }
@@ -102,10 +102,10 @@ mod tests {
     #[test]
     fn test_window_id() {
         let id = WindowId::new(42);
-        assert_eq!(id.raw(), 42);
+        assert_eq!(id.as_usize(), 42);
 
         let default_id = WindowId::default();
-        assert_eq!(default_id.raw(), 0);
+        assert_eq!(default_id.as_usize(), 0);
     }
 
     #[test]

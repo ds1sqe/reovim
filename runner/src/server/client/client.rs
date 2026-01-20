@@ -156,7 +156,7 @@ mod tests {
         let client_id = ClientId::new(42);
         let session_id = SessionId::new("test");
 
-        assert_eq!(client_id.value(), 42);
+        assert_eq!(client_id.as_usize(), 42);
         assert_eq!(session_id.name(), "test");
     }
 }

@@ -3,9 +3,10 @@
 //! Handlers for `state/mode`, `state/cursor`, and related methods.
 
 use {
-    reovim_kernel::api::v1::BufferId,
+    reovim_kernel::api::v1::BufferId as KernelBufferId,
     reovim_protocol::v1::{
-        CursorInfo, ModeInfo, Position, ScreenInfo, SelectionInfo, SelectionMode,
+        BufferId as ProtocolBufferId, CursorInfo, ModeInfo, Position, ScreenInfo, SelectionInfo,
+        SelectionMode,
     },
 };
 
@@ -143,7 +144,9 @@ pub fn state_screen(ctx: RpcContext, _params: serde_json::Value) -> HandlerFutur
             ScreenInfo {
                 width: viewport.terminal_width,
                 height: viewport.terminal_height,
-                active_buffer_id: viewport.active_buffer.map_or(0, BufferId::as_usize),
+                active_buffer_id: ProtocolBufferId::from(
+                    viewport.active_buffer.map_or(0, KernelBufferId::as_usize),
+                ),
                 active_window_id: None,
                 window_count: 1,
             }

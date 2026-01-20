@@ -7,7 +7,7 @@ use std::{
     collections::HashMap,
     sync::{
         Arc,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicUsize, Ordering},
     },
 };
 
@@ -24,7 +24,7 @@ use super::{SessionId, id::ClientId, session::Session};
 ///
 /// Following the lock hierarchy from `docs/reference/concurrency.md`:
 /// - **Level 0 (Lock-Free)**: Session lookup via `ArcSwap`
-/// - **Level 0 (Lock-Free)**: Client ID generation via `AtomicU64`
+/// - **Level 0 (Lock-Free)**: Client ID generation via `AtomicUsize`
 ///
 /// This design prioritizes:
 /// - Lock-free reads for session lookup (hot path)
@@ -35,7 +35,7 @@ use super::{SessionId, id::ClientId, session::Session};
 /// | Operation | Target | Pattern |
 /// |-----------|--------|---------|
 /// | Session lookup | <100ns | `ArcSwap` lock-free read |
-/// | Client ID gen | <10ns | `AtomicU64` `fetch_add` |
+/// | Client ID gen | <10ns | `AtomicUsize` `fetch_add` |
 ///
 /// # Example
 ///
@@ -67,7 +67,7 @@ pub struct SessionRegistry {
     ///
     /// Using `Relaxed` ordering because client IDs just need uniqueness,
     /// not synchronization with other operations.
-    next_client_id: AtomicU64,
+    next_client_id: AtomicUsize,
 }
 
 impl SessionRegistry {
@@ -76,7 +76,7 @@ impl SessionRegistry {
     pub fn new() -> Self {
         Self {
             sessions: ArcSwap::from_pointee(HashMap::new()),
-            next_client_id: AtomicU64::new(1), // Start at 1, 0 could be "no client"
+            next_client_id: AtomicUsize::new(1), // Start at 1, 0 could be "no client"
         }
     }
 
@@ -292,9 +292,9 @@ mod tests {
         let id3 = registry.next_client_id();
 
         // IDs should be unique and sequential
-        assert_eq!(id1.value(), 1);
-        assert_eq!(id2.value(), 2);
-        assert_eq!(id3.value(), 3);
+        assert_eq!(id1.as_usize(), 1);
+        assert_eq!(id2.as_usize(), 2);
+        assert_eq!(id3.as_usize(), 3);
     }
 
     #[test]

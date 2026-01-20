@@ -400,12 +400,11 @@ impl BufferApi for AppStateRuntime<'_> {
 // === WindowApi ===
 
 impl WindowApi for AppStateRuntime<'_> {
-    #[allow(clippy::cast_lossless)]
     fn active_window(&self) -> Option<WindowId> {
-        // Convert display WindowId (usize) to kernel WindowId (u64)
+        // Convert display WindowId (usize) to kernel WindowId (usize)
         self.windows
             .active_window()
-            .map(|id| WindowId::from_raw(id.0 as u64))
+            .map(|id| WindowId::from_raw(id.0))
     }
 
     fn window_count(&self) -> usize {
@@ -413,15 +412,13 @@ impl WindowApi for AppStateRuntime<'_> {
     }
 
     fn window_buffer(&self, window: WindowId) -> Option<BufferId> {
-        #[allow(clippy::cast_possible_truncation)]
-        let display_id = reovim_driver_display::WindowId(window.raw() as usize);
+        let display_id = reovim_driver_display::WindowId(window.as_usize());
         self.windows.get(display_id).and_then(|w| w.buffer_id)
     }
 
-    #[allow(clippy::cast_lossless)]
     fn create_window(&mut self, buffer: Option<BufferId>) -> WindowId {
         let display_id = self.windows.create_window(buffer);
-        let kernel_id = WindowId::from_raw(display_id.0 as u64);
+        let kernel_id = WindowId::from_raw(display_id.0);
         self.changes.record_window_created(kernel_id);
         kernel_id
     }
@@ -430,8 +427,7 @@ impl WindowApi for AppStateRuntime<'_> {
         if self.windows.window_count() <= 1 {
             return Err(WindowError::CannotCloseLastWindow);
         }
-        #[allow(clippy::cast_possible_truncation)]
-        let display_id = reovim_driver_display::WindowId(window.raw() as usize);
+        let display_id = reovim_driver_display::WindowId(window.as_usize());
         if self.windows.close_window(display_id) {
             self.changes.record_window_closed(window);
             Ok(())
@@ -441,8 +437,7 @@ impl WindowApi for AppStateRuntime<'_> {
     }
 
     fn focus_window(&mut self, window: WindowId) -> Result<(), WindowError> {
-        #[allow(clippy::cast_possible_truncation)]
-        let display_id = reovim_driver_display::WindowId(window.raw() as usize);
+        let display_id = reovim_driver_display::WindowId(window.as_usize());
         if self.windows.get(display_id).is_some() {
             self.windows.set_active_window(display_id);
             self.changes.record_focus_change();
@@ -456,8 +451,7 @@ impl WindowApi for AppStateRuntime<'_> {
         if self.kernel.buffers.get(buffer).is_none() {
             return Err(WindowError::BufferNotFound(buffer));
         }
-        #[allow(clippy::cast_possible_truncation)]
-        let display_id = reovim_driver_display::WindowId(window.raw() as usize);
+        let display_id = reovim_driver_display::WindowId(window.as_usize());
         if let Some(state) = self.windows.get_mut(display_id) {
             state.buffer_id = Some(buffer);
             self.changes.window_changed = true;

@@ -47,6 +47,13 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- Unified ID types to `usize` with standardized accessor (#412)
+  - All numeric ID types (`WindowId`, `SessionId`, `ClientId`) converted from `u64` to `usize`
+  - Standardized accessor method: `as_usize()` replaces `raw()`, `as_u64()`, `value()`
+  - Hard Typing enforced: raw `usize` fields replaced with proper newtypes (`BufferId`, `WindowId`)
+  - Atomic counters updated: `AtomicU64` → `AtomicUsize` for ID generation
+  - Protocol types use newtype wrappers for type-safe serialization boundaries
+
 - SessionApi migration: Complete escape hatch elimination (#394)
   - Changed `CommandHandler::execute` signature from `&mut KernelContext` to `&mut SessionRuntime<'_>`
   - Commands now access session state via Session APIs (ModeApi, BufferApi, WindowApi, RegisterApi)

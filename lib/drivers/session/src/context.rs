@@ -141,7 +141,7 @@ mod tests {
         let mut session = Session::new(SessionId::new(1), test_mode());
         let ctx = SessionContext::new(&mut session);
 
-        assert_eq!(ctx.session.id.as_u64(), 1);
+        assert_eq!(ctx.session.id.as_usize(), 1);
     }
 
     #[test]

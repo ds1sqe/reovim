@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::types::Position;
+use super::types::{BufferId, Position};
 
 // Notification type name constants
 
@@ -129,7 +129,7 @@ impl ModeChangedPayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CursorMovedPayload {
     /// The buffer where cursor moved.
-    pub buffer_id: usize,
+    pub buffer_id: BufferId,
     /// The new cursor position.
     pub position: Position,
 }
@@ -153,7 +153,7 @@ impl CursorMovedPayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BufferModifiedPayload {
     /// The buffer that was modified.
-    pub buffer_id: usize,
+    pub buffer_id: BufferId,
     /// Whether the buffer has unsaved changes.
     pub modified: bool,
 }
@@ -250,7 +250,7 @@ mod tests {
     #[test]
     fn test_cursor_moved_serialization() {
         let payload = CursorMovedPayload {
-            buffer_id: 1,
+            buffer_id: BufferId::from(1),
             position: Position {
                 line: 10,
                 column: 5,
@@ -275,7 +275,7 @@ mod tests {
     #[test]
     fn test_cursor_moved_into_notification() {
         let payload = CursorMovedPayload {
-            buffer_id: 1,
+            buffer_id: BufferId::from(1),
             position: Position::new(10, 5),
         };
         let notification = payload.into_notification();
@@ -287,7 +287,7 @@ mod tests {
     #[test]
     fn test_buffer_modified_into_notification() {
         let payload = BufferModifiedPayload {
-            buffer_id: 1,
+            buffer_id: BufferId::from(1),
             modified: true,
         };
         let notification = payload.into_notification();

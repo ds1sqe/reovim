@@ -7,7 +7,7 @@
 
 use std::{
     fmt,
-    sync::atomic::{AtomicU64, Ordering},
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
 /// Unique window identifier.
@@ -27,10 +27,10 @@ use std::{
 /// assert_eq!(window1, window1);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct WindowId(u64);
+pub struct WindowId(usize);
 
 /// Global window ID counter.
-static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+static NEXT_ID: AtomicUsize = AtomicUsize::new(1);
 
 impl WindowId {
     /// Create a new unique window ID.
@@ -43,13 +43,13 @@ impl WindowId {
     ///
     /// Used when converting from external window ID representations.
     #[must_use]
-    pub const fn from_raw(id: u64) -> Self {
+    pub const fn from_raw(id: usize) -> Self {
         Self(id)
     }
 
     /// Get the raw ID value.
     #[must_use]
-    pub const fn raw(&self) -> u64 {
+    pub const fn as_usize(&self) -> usize {
         self.0
     }
 }
@@ -75,7 +75,7 @@ mod tests {
         let id1 = WindowId::new();
         let id2 = WindowId::new();
         assert_ne!(id1, id2);
-        assert!(id2.raw() > id1.raw());
+        assert!(id2.as_usize() > id1.as_usize());
     }
 
     #[test]
@@ -94,6 +94,6 @@ mod tests {
     #[test]
     fn test_window_id_default() {
         let id = WindowId::default();
-        assert!(id.raw() > 0);
+        assert!(id.as_usize() > 0);
     }
 }

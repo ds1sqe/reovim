@@ -37,8 +37,8 @@
 use {
     reovim_driver_session::api::StateChanges,
     reovim_protocol::v1::{
-        BufferModifiedPayload, CursorMovedPayload, ModeChangedPayload, ModeInfo,
-        RenderCompletePayload,
+        BufferId as ProtocolBufferId, BufferModifiedPayload, CursorMovedPayload,
+        ModeChangedPayload, ModeInfo, RenderCompletePayload,
     },
 };
 
@@ -111,7 +111,7 @@ pub async fn emit_state_changes(session: &Session, before: &StateSnapshot, after
         && before.cursor != after.cursor
     {
         let payload = CursorMovedPayload {
-            buffer_id: buffer_id.as_usize(),
+            buffer_id: ProtocolBufferId::from(buffer_id.as_usize()),
             position: reovim_protocol::v1::Position {
                 line: pos.line,
                 column: pos.column,
@@ -128,7 +128,7 @@ pub async fn emit_state_changes(session: &Session, before: &StateSnapshot, after
         && before.modified != after.modified
     {
         let payload = BufferModifiedPayload {
-            buffer_id: buffer_id.as_usize(),
+            buffer_id: ProtocolBufferId::from(buffer_id.as_usize()),
             modified: after.modified.unwrap_or(false),
         };
         let json = serde_json::to_string(&payload.into_notification())
@@ -254,7 +254,7 @@ pub async fn emit_from_state_changes(session: &Session, changes: &StateChanges) 
 
             if let Some(pos) = cursor_opt {
                 let payload = CursorMovedPayload {
-                    buffer_id: buffer_id.as_usize(),
+                    buffer_id: ProtocolBufferId::from(buffer_id.as_usize()),
                     position: reovim_protocol::v1::Position {
                         line: pos.line,
                         column: pos.column,
@@ -284,7 +284,7 @@ pub async fn emit_from_state_changes(session: &Session, changes: &StateChanges) 
                 .await;
 
             let payload = BufferModifiedPayload {
-                buffer_id: buffer_id.as_usize(),
+                buffer_id: ProtocolBufferId::from(buffer_id.as_usize()),
                 modified,
             };
             let json = serde_json::to_string(&payload.into_notification())

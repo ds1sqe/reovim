@@ -21,18 +21,18 @@ use crate::extension::ExtensionMap;
 /// Sessions are identified by a monotonically increasing ID assigned
 /// by the server when the client connects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct SessionId(pub u64);
+pub struct SessionId(pub usize);
 
 impl SessionId {
     /// Create a new session ID.
     #[must_use]
-    pub const fn new(id: u64) -> Self {
+    pub const fn new(id: usize) -> Self {
         Self(id)
     }
 
     /// Get the raw ID value.
     #[must_use]
-    pub const fn as_u64(&self) -> u64 {
+    pub const fn as_usize(&self) -> usize {
         self.0
     }
 }
@@ -373,7 +373,7 @@ mod tests {
     #[test]
     fn test_session_id() {
         let id = SessionId::new(42);
-        assert_eq!(id.as_u64(), 42);
+        assert_eq!(id.as_usize(), 42);
         assert_eq!(id.to_string(), "session-42");
     }
 
@@ -486,7 +486,7 @@ mod tests {
         let mode = test_mode();
         let session = Session::new(SessionId::new(1), mode.clone());
 
-        assert_eq!(session.id.as_u64(), 1);
+        assert_eq!(session.id.as_usize(), 1);
         assert_eq!(session.current_mode(), &mode);
         assert!(session.windows.is_empty());
         assert!(session.pending_keys.is_empty());
