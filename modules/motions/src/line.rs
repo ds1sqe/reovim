@@ -33,27 +33,27 @@ fn execute_line_position(
         return CommandResult::error("No active buffer");
     };
 
-    // Get buffer for motion calculation (requires direct kernel access)
-    let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
-        return CommandResult::error("Buffer not found");
-    };
-
-    let buffer = buffer_arc.read();
-    let cursor = Cursor::new(buffer.position());
-    let old_pos = cursor.position;
-
+    // Calculate motion using with_buffer_read callback
     let motion = Motion::LinePosition(position);
-    let Some(new_pos) = MotionEngine::calculate(&buffer, &cursor, motion, 1) else {
-        drop(buffer);
-        return CommandResult::Success; // No-op if motion fails
+    let motion_result = runtime.with_buffer_read(buffer_id, |buffer| {
+        let cursor = Cursor::new(buffer.position());
+        let old_pos = cursor.position;
+        let new_pos = MotionEngine::calculate(buffer, &cursor, motion, 1);
+        (old_pos, new_pos)
+    });
+
+    let Some((old_pos, Some(new_pos))) = motion_result else {
+        // Buffer not found or motion calculation failed
+        return if motion_result.is_none() {
+            CommandResult::error("Buffer not found")
+        } else {
+            CommandResult::Success // No-op if motion fails
+        };
     };
 
     if new_pos == old_pos {
-        drop(buffer);
         return CommandResult::Success; // No movement
     }
-
-    drop(buffer);
 
     // In operator-pending mode, return range for the operator
     if args.is_operator_pending() {
@@ -92,27 +92,27 @@ fn execute_jump_line(
         return CommandResult::error("No active buffer");
     };
 
-    // Get buffer for motion calculation (requires direct kernel access)
-    let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
-        return CommandResult::error("Buffer not found");
-    };
-
-    let buffer = buffer_arc.read();
-    let cursor = Cursor::new(buffer.position());
-    let old_pos = cursor.position;
-
+    // Calculate motion using with_buffer_read callback
     let motion = Motion::JumpLine(target_line);
-    let Some(new_pos) = MotionEngine::calculate(&buffer, &cursor, motion, 1) else {
-        drop(buffer);
-        return CommandResult::Success; // No-op if motion fails
+    let motion_result = runtime.with_buffer_read(buffer_id, |buffer| {
+        let cursor = Cursor::new(buffer.position());
+        let old_pos = cursor.position;
+        let new_pos = MotionEngine::calculate(buffer, &cursor, motion, 1);
+        (old_pos, new_pos)
+    });
+
+    let Some((old_pos, Some(new_pos))) = motion_result else {
+        // Buffer not found or motion calculation failed
+        return if motion_result.is_none() {
+            CommandResult::error("Buffer not found")
+        } else {
+            CommandResult::Success // No-op if motion fails
+        };
     };
 
     if new_pos == old_pos {
-        drop(buffer);
         return CommandResult::Success; // No movement
     }
-
-    drop(buffer);
 
     // In operator-pending mode, return range for the operator
     if args.is_operator_pending() {

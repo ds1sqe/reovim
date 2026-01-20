@@ -44,11 +44,8 @@ impl CommandHandler for InsertNewline {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
-        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
-            return CommandResult::error("Buffer not found");
-        };
 
-        // Check autoindent option
+        // Check autoindent option (escape hatch - OptionsApi not yet available)
         let autoindent = runtime
             .kernel()
             .options
@@ -71,19 +68,15 @@ impl CommandHandler for InsertNewline {
             String::new()
         };
 
-        let cursor_before = pos;
-
         // Insert newline + indent (splits the line at cursor position)
         let insert_text = format!("\n{indent}");
-        let mut buffer = buffer_arc.write();
-        let edit = buffer.insert(&insert_text);
+        runtime.insert_text(buffer_id, pos, &insert_text);
 
-        // Cursor is now at end of indent on new line
-        let _cursor_after = buffer.position();
-        drop(buffer);
+        // Update cursor position to end of indent on new line
+        let indent_len = indent.chars().count();
+        let new_pos = reovim_kernel::api::v1::Position::new(pos.line + 1, indent_len);
+        runtime.set_buffer_position(buffer_id, new_pos);
 
-        // TODO(#394): Return edit action via different mechanism (escape hatch until API supports this)
-        let _ = (buffer_id, edit, cursor_before); // Suppress unused warnings
         CommandResult::Success
     }
 }
@@ -109,11 +102,8 @@ impl CommandHandler for InsertTab {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
-        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
-            return CommandResult::error("Buffer not found");
-        };
 
-        // Get options (with defaults). Use buffer-local scope if available.
+        // Get options (escape hatch - OptionsApi not yet available)
         let scope = OptionScopeId::Buffer(buffer_id);
         let expandtab = runtime
             .kernel()
@@ -136,14 +126,18 @@ impl CommandHandler for InsertTab {
         };
 
         // Get position via BufferApi
-        let _cursor_before = runtime.buffer_position(buffer_id);
+        let Some(pos) = runtime.buffer_position(buffer_id) else {
+            return CommandResult::error("Failed to get buffer position");
+        };
 
-        let mut buffer = buffer_arc.write();
-        let _edit = buffer.insert(&text);
-        let _cursor_after = buffer.position();
-        drop(buffer);
+        // Insert tab/spaces at current position
+        runtime.insert_text(buffer_id, pos, &text);
 
-        // TODO(#394): Return edit action via different mechanism (escape hatch until API supports this)
+        // Update cursor position to after inserted text
+        let text_len = text.chars().count();
+        let new_pos = reovim_kernel::api::v1::Position::new(pos.line, pos.column + text_len);
+        runtime.set_buffer_position(buffer_id, new_pos);
+
         CommandResult::Success
     }
 }

@@ -47,18 +47,21 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
-- SessionApi migration: CommandHandler now uses SessionRuntime (#394)
+- SessionApi migration: Complete escape hatch elimination (#394)
   - Changed `CommandHandler::execute` signature from `&mut KernelContext` to `&mut SessionRuntime<'_>`
-  - Commands now access session state via Session APIs (ModeApi, BufferApi, WindowApi)
-  - Mode commands fully migrated to use `ModeApi::set_mode()` and `push_mode()`
-  - Extended BufferApi with position methods: `buffer_position()`, `set_buffer_position()`, `buffer_line_len()`, `buffer_line_count()`
+  - Commands now access session state via Session APIs (ModeApi, BufferApi, WindowApi, RegisterApi)
+  - **Phase 1-6**: Mode, cursor, motion, paste commands migrated
+  - **Phase 7**: Buffer mutation commands using existing `delete_range()`, `insert_text()` APIs
+  - **Phase 8**: Visual selection API implemented (`selection()`, `set_selection()`, `swap_selection_ends()`)
+  - **Phase 9**: Motion/textobject commands via `with_buffer_read()` callback pattern
+  - **Phase 10**: File operations via `buffer_content()`, `buffer_file_path()`, `is_buffer_modified()`
+  - Extended BufferApi with: `buffer_text_range()`, `buffer_content()`, `buffer_file_path()`, `is_buffer_modified()`, `set_buffer_modified()`
+  - Added `with_buffer_read()` on SessionRuntime for callback-based buffer access (dyn-compatible)
   - Created RegisterApi trait: `get_register()`, `set_register()` for register access
   - Extended ChangeTracker trait with `record_cursor_move()` for cursor change tracking
-  - Migrated cursor commands, motion helpers, and paste commands to use new APIs
-  - Added `runtime.kernel()` escape hatch for operations not yet covered by APIs
-  - Fixed Session→AppState mode sync for `set_mode()` changes to home mode
-  - Test infrastructure updated: added `run_command()` helper for backward compatibility
-  - ~74 commands across 28 files updated to new signature
+  - **Zero escape hatches** remaining in command handler `execute()` methods
+  - Test infrastructure updated: `TestSessionRuntime` with comprehensive buffer/register testing
+  - ~100 commands across 30+ files migrated to pure API usage
 
 - Type consolidation and layer clarity (#391)
   - Deleted dead code: `ModeInput` trait, `PopResult` enum (session driver), `mode_registry.rs`

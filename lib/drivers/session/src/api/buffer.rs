@@ -78,6 +78,38 @@ pub trait BufferApi: Send {
     /// Returns `None` if no selection is active.
     fn selection(&self, buffer: BufferId) -> Option<Selection>;
 
+    /// Extract text from a range in the buffer.
+    ///
+    /// Returns the text between start and end positions, including all lines
+    /// in between. Returns `None` if the buffer doesn't exist.
+    ///
+    /// # Range Semantics
+    ///
+    /// The range is inclusive of `start` and exclusive of `end`, similar to
+    /// Rust's `start..end` range syntax.
+    fn buffer_text_range(&self, buffer: BufferId, start: Position, end: Position)
+    -> Option<String>;
+
+    /// Get full buffer content as a string.
+    ///
+    /// Returns `None` if the buffer doesn't exist.
+    fn buffer_content(&self, buffer: BufferId) -> Option<String>;
+
+    /// Get buffer's file path.
+    ///
+    /// Returns `None` if the buffer doesn't exist or has no associated file.
+    fn buffer_file_path(&self, buffer: BufferId) -> Option<String>;
+
+    /// Check if buffer has been modified since last save.
+    ///
+    /// Returns `None` if buffer doesn't exist.
+    fn is_buffer_modified(&self, buffer: BufferId) -> Option<bool>;
+
+    /// Set buffer's modified flag.
+    ///
+    /// Used to mark buffer as saved (false) or modified (true).
+    fn set_buffer_modified(&mut self, buffer: BufferId, modified: bool);
+
     // === Content Mutations ===
 
     /// Insert text at a position.
@@ -91,6 +123,18 @@ pub trait BufferApi: Send {
 
     /// Set selection.
     fn set_selection(&mut self, buffer: BufferId, sel: Option<Selection>);
+
+    /// Swap selection anchor and cursor positions.
+    ///
+    /// This is used by the `o` command in visual mode to adjust the other end.
+    /// Does nothing if no selection is active.
+    fn swap_selection_ends(&mut self, buffer: BufferId);
+
+    /// Change selection mode without resetting anchor.
+    ///
+    /// Useful for toggling between character/line/block modes.
+    /// Does nothing if no selection is active.
+    fn set_selection_mode(&mut self, buffer: BufferId, mode: SelectionMode);
 
     // === Lifecycle ===
 

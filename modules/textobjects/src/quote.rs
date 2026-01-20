@@ -19,7 +19,6 @@ use crate::ids;
 // =============================================================================
 
 /// Execute a quote text object and return the range.
-#[allow(clippy::significant_drop_tightening)]
 fn execute_quote_textobj(
     runtime: &SessionRuntime<'_>,
     args: &CommandContext,
@@ -29,17 +28,16 @@ fn execute_quote_textobj(
         return CommandResult::error("No active buffer");
     };
 
-    let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
-        return CommandResult::error("Buffer not found");
-    };
-
     let count = args.count().unwrap_or(1);
 
-    // Hold the buffer lock only for the duration needed
-    let range_result = {
-        let buffer = buffer_arc.read();
+    // Calculate text object range using with_buffer_read callback
+    let range_result = runtime.with_buffer_read(buffer_id, |buffer| {
         let pos = buffer.position();
-        TextObjectEngine::range(&buffer, pos, text_object, count)
+        TextObjectEngine::range(buffer, pos, text_object, count)
+    });
+
+    let Some(range_result) = range_result else {
+        return CommandResult::error("Buffer not found");
     };
 
     let Some((start, end)) = range_result else {

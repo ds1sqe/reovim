@@ -13,7 +13,9 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_driver_session::{SessionRuntime, TransitionContext, api::ModeApi},
+    reovim_driver_session::{
+        BufferApi, RegisterApi, SessionRuntime, TransitionContext, api::ModeApi,
+    },
     reovim_kernel::api::v1::{CommandId, Position, RegisterContent},
 };
 
@@ -50,20 +52,12 @@ impl CommandHandler for ChangeLine {
             return CommandResult::error("No active buffer");
         };
 
-        let kernel = runtime.kernel();
-
-        let Some(buffer_arc) = kernel.buffers.get(buffer_id) else {
-            return CommandResult::error("Buffer not found");
-        };
-
         let count = args.count().unwrap_or(1);
-        let mut buffer = buffer_arc.write();
-        let start_line = buffer.position().line;
-        let line_count = buffer.line_count();
+        let start_line = runtime.buffer_position(buffer_id).map_or(0, |p| p.line);
+        let line_count = runtime.buffer_line_count(buffer_id).unwrap_or(0);
 
         if line_count == 0 {
             // Empty buffer - just enter insert mode
-            drop(buffer);
             runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
             return CommandResult::Success;
         }
@@ -71,7 +65,6 @@ impl CommandHandler for ChangeLine {
         // Calculate lines to change
         let lines_to_change = count.min(line_count.saturating_sub(start_line));
         if lines_to_change == 0 {
-            drop(buffer);
             runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
             return CommandResult::Success;
         }
@@ -80,8 +73,8 @@ impl CommandHandler for ChangeLine {
         let mut deleted_text = String::new();
         for i in 0..lines_to_change {
             let line_idx = start_line + i;
-            if let Some(line) = buffer.line(line_idx) {
-                deleted_text.push_str(line);
+            if let Some(line) = runtime.buffer_line(buffer_id, line_idx) {
+                deleted_text.push_str(&line);
             }
             if i < lines_to_change - 1 {
                 deleted_text.push('\n');
@@ -89,88 +82,47 @@ impl CommandHandler for ChangeLine {
         }
         deleted_text.push('\n'); // Linewise content ends with newline
 
-        // Store in register (use specified or unnamed)
+        // Store in register via RegisterApi
         let content = RegisterContent::linewise(deleted_text);
         let register = args.register();
-        kernel.registers.write().set_by_name(register, content);
+        runtime.set_register(register, content);
 
         // For cc: if changing multiple lines, delete all but first, then clear first
         // Single line: just clear the content
-        let cursor_before = buffer.position();
 
         if lines_to_change == 1 {
             // Clear the single line content
-            let line_len = buffer.line_len(start_line).unwrap_or(0);
+            let line_len = runtime.buffer_line_len(buffer_id, start_line).unwrap_or(0);
             if line_len > 0 {
-                buffer.set_position(Position::new(start_line, 0));
-                let _edit = buffer.delete(line_len);
-                buffer.set_position(Position::new(start_line, 0));
-                let _cursor_after = buffer.position();
-                drop(buffer);
-
-                runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
-
-                // TODO(#394): Return edit action via different mechanism (escape hatch until API supports this)
-                let _ = (buffer_id, cursor_before); // Suppress unused warnings
-                return CommandResult::Success;
+                let delete_start = Position::new(start_line, 0);
+                let delete_end = Position::new(start_line, line_len);
+                runtime.delete_range(buffer_id, delete_start, delete_end);
+                runtime.set_buffer_position(buffer_id, Position::new(start_line, 0));
             }
-            // Line is already empty
-            drop(buffer);
             runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
             return CommandResult::Success;
         }
 
-        // Multiple lines: delete lines 2..N entirely, then clear line 1
-        // First, calculate total chars to delete from lines 2..N (including newlines)
-        let mut chars_to_delete_from_rest = 0;
-        for i in 1..lines_to_change {
-            let line_idx = start_line + i;
-            if line_idx < line_count {
-                let line_len = buffer.line_len(line_idx).unwrap_or(0);
-                chars_to_delete_from_rest += line_len;
-                // Add 1 for newline
-                if line_idx + 1 < line_count {
-                    chars_to_delete_from_rest += 1;
-                }
-            }
-        }
-
-        // Delete from end of first line (newline) to end of last changed line
-        let first_line_len = buffer.line_len(start_line).unwrap_or(0);
-        let total_delete = first_line_len + 1 + chars_to_delete_from_rest; // +1 for newline after first line
-
-        // Handle edge case: if deleting to end of buffer
+        // Multiple lines: delete all content from first line to end of last changed line
+        // Then keep one empty line at start_line
+        let last_changed_line = start_line + lines_to_change - 1;
+        let last_line_len = runtime
+            .buffer_line_len(buffer_id, last_changed_line)
+            .unwrap_or(0);
         let end_line = start_line + lines_to_change;
-        if end_line >= line_count {
-            // We're changing to end of buffer - delete including last line's content
-            // but keep one empty line
-            buffer.set_position(Position::new(start_line, 0));
-            let chars = first_line_len + chars_to_delete_from_rest + (lines_to_change - 1); // newlines between
-            let content_len = buffer.content().len();
-            let _edit = buffer.delete(chars.min(content_len));
-            buffer.set_position(Position::new(start_line, 0));
-            let _cursor_after = buffer.position();
-            drop(buffer);
 
-            runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
+        let (delete_start, delete_end) = if end_line >= line_count {
+            // Changing to end of buffer - delete from start of first line to end of last line
+            (Position::new(start_line, 0), Position::new(last_changed_line, last_line_len))
+        } else {
+            // Normal case: delete from start of first line to start of line after changed range
+            (Position::new(start_line, 0), Position::new(end_line, 0))
+        };
 
-            // TODO(#394): Return edit action via different mechanism (escape hatch until API supports this)
-            let _ = (buffer_id, cursor_before); // Suppress unused warnings
-            return CommandResult::Success;
-        }
-
-        // Normal case: delete all content from lines and their separating newlines
-        // Keep one line at start_line, cleared
-        buffer.set_position(Position::new(start_line, 0));
-        let _edit = buffer.delete(total_delete);
-        buffer.set_position(Position::new(start_line, 0));
-        let _cursor_after = buffer.position();
-        drop(buffer);
-
+        runtime.delete_range(buffer_id, delete_start, delete_end);
+        runtime.set_buffer_position(buffer_id, Position::new(start_line, 0));
         runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
 
-        // TODO(#394): Return edit action via different mechanism (escape hatch until API supports this)
-        let _ = (buffer_id, cursor_before); // Suppress unused warnings
         CommandResult::Success
     }
 }
@@ -206,44 +158,34 @@ impl CommandHandler for ChangeToEndOfLine {
             return CommandResult::error("No active buffer");
         };
 
-        let kernel = runtime.kernel();
-
-        let Some(buffer_arc) = kernel.buffers.get(buffer_id) else {
-            return CommandResult::error("Buffer not found");
-        };
-
-        let mut buffer = buffer_arc.write();
-        let pos = buffer.position();
-        let line_len = buffer.line_len(pos.line).unwrap_or(0);
+        let pos = runtime
+            .buffer_position(buffer_id)
+            .unwrap_or_else(|| Position::new(0, 0));
+        let line_len = runtime.buffer_line_len(buffer_id, pos.line).unwrap_or(0);
 
         // Nothing to delete if at or past end of line - just enter insert mode
         if pos.column >= line_len {
-            drop(buffer);
             runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
             return CommandResult::Success;
         }
 
         // Get text to delete for register
-        let deleted_text = buffer
-            .line(pos.line)
+        let deleted_text = runtime
+            .buffer_line(buffer_id, pos.line)
             .map(|line| line[pos.column..].to_string())
             .unwrap_or_default();
 
-        // Store in register (use specified or unnamed)
+        // Store in register via RegisterApi
         let content = RegisterContent::characterwise(deleted_text);
         let register = args.register();
-        kernel.registers.write().set_by_name(register, content);
+        runtime.set_register(register, content);
 
         // Delete from cursor to end of line (not including newline)
-        let chars_to_delete = line_len - pos.column;
-        let _cursor_before = buffer.position();
-        let _edit = buffer.delete(chars_to_delete);
-        let _cursor_after = buffer.position();
-        drop(buffer);
+        let delete_end = Position::new(pos.line, line_len);
+        runtime.delete_range(buffer_id, pos, delete_end);
 
         runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
 
-        // TODO(#394): Return edit action via different mechanism (escape hatch until API supports this)
         CommandResult::Success
     }
 }

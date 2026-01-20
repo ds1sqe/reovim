@@ -4,7 +4,7 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::{SessionRuntime, TransitionContext, api::ModeApi},
+    reovim_driver_session::{BufferApi, SessionRuntime, TransitionContext, api::ModeApi},
     reovim_kernel::api::v1::CommandId,
 };
 
@@ -26,14 +26,9 @@ impl Command for ExitVisualMode {
 
 impl CommandHandler for ExitVisualMode {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        let kernel = runtime.kernel();
-
         // Clear selection if we have a buffer
-        if let Some(buffer_id) = args.buffer_id()
-            && let Some(buffer_arc) = kernel.buffers.get(buffer_id)
-        {
-            let mut buffer = buffer_arc.write();
-            buffer.selection_mut().clear();
+        if let Some(buffer_id) = args.buffer_id() {
+            runtime.set_selection(buffer_id, None);
         }
 
         // Change to normal mode

@@ -10,7 +10,7 @@ use {
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
     reovim_driver_session::{BufferApi, SessionRuntime},
-    reovim_kernel::api::v1::{CommandId, Edit, Position},
+    reovim_kernel::api::v1::{CommandId, Position},
 };
 
 use crate::ids;
@@ -121,9 +121,6 @@ impl CommandHandler for JoinLines {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
-        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
-            return CommandResult::error("Buffer not found");
-        };
 
         let count = args.count().unwrap_or(1);
 
@@ -132,13 +129,12 @@ impl CommandHandler for JoinLines {
             return CommandResult::error("Failed to get buffer position");
         };
         let current_line = pos.line;
-        let cursor_before = pos;
 
         let Some(mut line_count) = runtime.buffer_line_count(buffer_id) else {
             return CommandResult::error("Failed to get line count");
         };
 
-        let mut edits: Vec<Edit> = Vec::new();
+        let mut joined_any = false;
 
         for _ in 0..count {
             // Can't join if on last line
@@ -151,42 +147,56 @@ impl CommandHandler for JoinLines {
                 .buffer_line_len(buffer_id, current_line)
                 .unwrap_or(0);
 
-            // Move to end of current line via BufferApi
-            runtime.set_buffer_position(buffer_id, Position::new(current_line, line_len));
+            // Delete newline (joins the lines) - delete from end of current line to start of next
+            let newline_start = Position::new(current_line, line_len);
+            let newline_end = Position::new(current_line + 1, 0);
+            runtime.delete_range(buffer_id, newline_start, newline_end);
 
-            // Delete newline (joins the lines)
-            let mut buffer = buffer_arc.write();
-            let edit = buffer.delete(1);
-            edits.push(edit);
-
-            // Delete leading whitespace of what was the next line
-            let new_line_content = buffer.line(current_line).unwrap_or("").to_owned();
-            let after_join = &new_line_content[line_len..];
+            // Get the joined line content to find leading whitespace
+            let joined_line = runtime
+                .buffer_line(buffer_id, current_line)
+                .unwrap_or_default();
+            let after_join = if joined_line.len() > line_len {
+                &joined_line[line_len..]
+            } else {
+                ""
+            };
             let leading_ws = after_join.chars().take_while(|c| c.is_whitespace()).count();
 
+            // Delete leading whitespace of what was the next line
             if leading_ws > 0 {
-                let edit = buffer.delete(leading_ws);
-                edits.push(edit);
+                let ws_start = Position::new(current_line, line_len);
+                let ws_end = Position::new(current_line, line_len + leading_ws);
+                runtime.delete_range(buffer_id, ws_start, ws_end);
             }
 
             // Insert single space between joined content (Vim behavior)
             // Only if there's content after the join point
-            if buffer.line_len(current_line).unwrap_or(0) > line_len {
-                let edit = buffer.insert(" ");
-                edits.push(edit);
+            let new_line_len = runtime
+                .buffer_line_len(buffer_id, current_line)
+                .unwrap_or(0);
+            if new_line_len > line_len {
+                let insert_pos = Position::new(current_line, line_len);
+                runtime.insert_text(buffer_id, insert_pos, " ");
             }
 
             // Update line count for next iteration
-            line_count = buffer.line_count();
-            drop(buffer);
+            line_count = runtime.buffer_line_count(buffer_id).unwrap_or(line_count);
+            joined_any = true;
         }
 
-        if edits.is_empty() {
+        if !joined_any {
             return CommandResult::Success;
         }
 
-        // TODO(#394): Return edit actions via different mechanism (escape hatch until API supports this)
-        let _ = (buffer_id, edits, cursor_before); // Suppress unused warnings
+        // Position cursor at join point
+        let final_line_len = runtime
+            .buffer_line_len(buffer_id, current_line)
+            .unwrap_or(0);
+        let cursor_pos =
+            Position::new(current_line, pos.column.min(final_line_len.saturating_sub(1)));
+        runtime.set_buffer_position(buffer_id, cursor_pos);
+
         CommandResult::Success
     }
 }

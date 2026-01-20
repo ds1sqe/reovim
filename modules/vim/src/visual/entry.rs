@@ -7,8 +7,11 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::{SessionRuntime, TransitionContext, api::ModeApi},
-    reovim_kernel::api::v1::{CommandId, SelectionMode},
+    reovim_driver_session::{
+        BufferApi, SessionRuntime, TransitionContext,
+        api::{ModeApi, Selection},
+    },
+    reovim_kernel::api::v1::CommandId,
 };
 
 use crate::{ids, modes::VimMode};
@@ -33,18 +36,14 @@ impl CommandHandler for EnterVisualMode {
             return CommandResult::error("No active buffer");
         };
 
-        let kernel = runtime.kernel();
-
-        let Some(buffer_arc) = kernel.buffers.get(buffer_id) else {
+        // Get current cursor position
+        let Some(pos) = runtime.buffer_position(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
         // Start character-wise selection at current cursor position
-        {
-            let mut buffer = buffer_arc.write();
-            let pos = buffer.position();
-            buffer.selection_mut().start(pos, SelectionMode::Character);
-        }
+        let selection = Selection::character(pos, pos);
+        runtime.set_selection(buffer_id, Some(selection));
 
         // Change to visual mode
         runtime.set_mode(VimMode::VISUAL_ID, TransitionContext::new());
@@ -73,18 +72,14 @@ impl CommandHandler for EnterVisualLineMode {
             return CommandResult::error("No active buffer");
         };
 
-        let kernel = runtime.kernel();
-
-        let Some(buffer_arc) = kernel.buffers.get(buffer_id) else {
+        // Get current cursor position
+        let Some(pos) = runtime.buffer_position(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
         // Start line-wise selection at current cursor position
-        {
-            let mut buffer = buffer_arc.write();
-            let pos = buffer.position();
-            buffer.selection_mut().start(pos, SelectionMode::Line);
-        }
+        let selection = Selection::line(pos, pos);
+        runtime.set_selection(buffer_id, Some(selection));
 
         // Change to visual line mode
         runtime.set_mode(VimMode::VISUAL_LINE_ID, TransitionContext::new());
@@ -113,18 +108,14 @@ impl CommandHandler for EnterVisualBlockMode {
             return CommandResult::error("No active buffer");
         };
 
-        let kernel = runtime.kernel();
-
-        let Some(buffer_arc) = kernel.buffers.get(buffer_id) else {
+        // Get current cursor position
+        let Some(pos) = runtime.buffer_position(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
         // Start block selection at current cursor position
-        {
-            let mut buffer = buffer_arc.write();
-            let pos = buffer.position();
-            buffer.selection_mut().start(pos, SelectionMode::Block);
-        }
+        let selection = Selection::block(pos, pos);
+        runtime.set_selection(buffer_id, Some(selection));
 
         // Change to visual block mode
         runtime.set_mode(VimMode::VISUAL_BLOCK_ID, TransitionContext::new());

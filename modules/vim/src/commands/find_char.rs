@@ -75,10 +75,6 @@ impl CommandHandler for ExecuteFindChar {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
-            return CommandResult::error("Buffer not found");
-        };
-
         // Build the find-char motion
         let motion = Motion::FindChar {
             char: target_char,
@@ -90,10 +86,13 @@ impl CommandHandler for ExecuteFindChar {
             till: !inclusive,
         };
 
-        // Calculate motion target
-        let target = {
-            let buffer = buffer_arc.read();
-            MotionEngine::calculate(&buffer, buffer.cursor(), motion, count)
+        // Calculate motion target using with_buffer_read callback
+        let target = runtime.with_buffer_read(buffer_id, |buffer| {
+            MotionEngine::calculate(buffer, buffer.cursor(), motion, count)
+        });
+
+        let Some(target) = target else {
+            return CommandResult::error("Buffer not found");
         };
 
         // Apply motion if target found
