@@ -8,7 +8,7 @@ use std::{collections::HashMap, sync::Arc};
 use {
     reovim_driver_input::{
         ExtensionMap, KeyEvent, KeymapQuery, ModeKeyResolver, ModeState, ResolveInput,
-        ResolveResult,
+        ResolveResult, SessionApiDyn,
     },
     reovim_kernel::api::v1::ModeId,
 };
@@ -186,6 +186,75 @@ impl ResolverRegistry {
             && let Some(parent) = resolver.inherits_from()
         {
             return self.resolve_with_extensions(parent, key, state, keymap, extensions);
+        }
+
+        Some(result)
+    }
+
+    /// Resolve a key event for a mode with full session API access.
+    ///
+    /// This is the preferred method for Epic #393 - Session Driver API for Resolver Actions.
+    /// Resolvers can directly manipulate session state via the `session` parameter and
+    /// return `ResolveResult::Completed` when done.
+    ///
+    /// # Architecture
+    ///
+    /// - **Mechanism (runner)**: Creates `SessionRuntime`, routes keys to resolvers
+    /// - **Policy (resolvers)**: Perform actions directly via `session.*` methods
+    /// - **Coordination**: Runner takes `StateChanges` after resolution for notifications
+    ///
+    /// # Arguments
+    ///
+    /// * `mode` - The mode to resolve for
+    /// * `key` - The key event to process
+    /// * `state` - Mutable mode state
+    /// * `keymap` - Access to keymap queries
+    /// * `session` - Dyn-compatible session API for direct state manipulation
+    /// * `extensions` - Per-session extension storage for module state
+    ///
+    /// # Returns
+    ///
+    /// - `Some(result)` - Resolver handled the key
+    /// - `None` - No resolver registered for the mode
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // In event loop:
+    /// let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
+    ///
+    /// if let Some(result) = registry.resolve_with_session(
+    ///     &mode, &key, &mut state, &keymap, &mut runtime, &mut extensions
+    /// ) {
+    ///     if matches!(result, ResolveResult::Completed) {
+    ///         let changes = runtime.take_changes();
+    ///         broadcast_notifications(&changes);
+    ///     } else {
+    ///         handle_resolve_result(result);
+    ///     }
+    /// }
+    /// ```
+    pub fn resolve_with_session(
+        &self,
+        mode: &ModeId,
+        key: &KeyEvent,
+        state: &mut ModeState,
+        keymap: &dyn KeymapQuery,
+        session: &mut dyn SessionApiDyn,
+        extensions: &mut ExtensionMap,
+    ) -> Option<ResolveResult> {
+        let resolver = self.get(mode)?;
+
+        // Clone pending keys to avoid borrow checker issues
+        let keys = state.pending_keys.clone();
+        let input = ResolveInput::new(&keys, mode, keymap);
+        let result = resolver.resolve_with_session(key, state, &input, session, extensions);
+
+        // If not handled, try parent mode
+        if matches!(result, ResolveResult::NotHandled)
+            && let Some(parent) = resolver.inherits_from()
+        {
+            return self.resolve_with_session(parent, key, state, keymap, session, extensions);
         }
 
         Some(result)

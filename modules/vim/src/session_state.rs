@@ -18,9 +18,9 @@
 //!
 //! ```ignore
 //! use reovim_module_vim::VimSessionState;
-//! use reovim_driver_session::SessionContext;
+//! use reovim_driver_session::SessionRuntime;
 //!
-//! fn check_operator_pending(ctx: &SessionContext) -> bool {
+//! fn check_operator_pending(runtime: &SessionRuntime) -> bool {
 //!     ctx.ext::<VimSessionState>()
 //!         .map(|vim| vim.pending_operator.is_some())
 //!         .unwrap_or(false)

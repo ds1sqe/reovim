@@ -13,6 +13,10 @@ categories.workspace = true
 [dependencies]
 # Kernel types for ModeId, BufferId, etc.
 reovim-kernel = { path = "../../kernel" }
+# Command types for CommandContext, CommandResult (avoids circular dependency)
+reovim-driver-command-types = { path = "../command-types" }
+# Platform abstraction (RwLock for test buffer manager)
+reovim-arch = { path = "../../arch" }
 
 [lints]
 workspace = true

@@ -70,10 +70,14 @@
 //! vim.pending_count = Some(5);
 //! ```
 
+pub mod api;
 mod context;
 mod empty_handler;
 mod extension;
 mod mode;
+mod runtime;
+pub mod testing;
+mod transition;
 mod types;
 
 // Empty session handling
@@ -83,10 +87,23 @@ pub use empty_handler::{EmptySessionAction, EmptySessionContext, EmptySessionHan
 pub use extension::{ExtensionMap, SessionExtension};
 
 // Mode lifecycle
-pub use mode::{ModeError, PopResult, SessionMode};
+pub use mode::{ModeError, SessionMode};
 
 // Session types
 pub use types::{CursorPosition, KeySequence, Session, SessionId, Viewport, Window, WindowLayout};
 
 // Session context
 pub use context::SessionContext;
+
+// Transition types
+pub use transition::{PopResult, TransitionContext};
+
+// Session runtime (implements all API traits)
+pub use runtime::SessionRuntime;
+
+// Session API traits (re-export for convenience)
+pub use api::{
+    BufferApi, BufferError, ChangeTracker, CommandApi, CommandExecutor, ExtensionApi, ModeApi,
+    ModeError as ApiModeError, Selection, SelectionMode, SessionApi, SessionApiDyn, StateChanges,
+    WindowApi, WindowError,
+};

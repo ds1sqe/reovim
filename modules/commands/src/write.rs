@@ -2,7 +2,7 @@
 //!
 //! Reference: `lib/core/src/command_line/ex_command.rs` (concept-extraction, not migration)
 
-use crate::{CommandContext, CommandError, CommandHandler};
+use crate::{CommandError, ExCommandContext, ExCommandHandler};
 
 /// Write command - save the buffer to disk.
 ///
@@ -20,7 +20,7 @@ use crate::{CommandContext, CommandError, CommandHandler};
 #[derive(Debug, Clone, Copy)]
 pub struct WriteCommand;
 
-impl CommandHandler for WriteCommand {
+impl ExCommandHandler for WriteCommand {
     fn id(&self) -> &'static str {
         "write"
     }
@@ -29,7 +29,7 @@ impl CommandHandler for WriteCommand {
         &["w", "write"]
     }
 
-    fn execute(&self, ctx: &mut CommandContext<'_>, args: &[&str]) -> Result<(), CommandError> {
+    fn execute(&self, ctx: &mut ExCommandContext<'_>, args: &[&str]) -> Result<(), CommandError> {
         let _buffer_id = ctx.buffer_id.ok_or(CommandError::NoBuffer)?;
 
         let _filename = if args.is_empty() {
@@ -75,7 +75,7 @@ impl CommandHandler for WriteCommand {
 #[derive(Debug, Clone, Copy)]
 pub struct WriteQuitCommand;
 
-impl CommandHandler for WriteQuitCommand {
+impl ExCommandHandler for WriteQuitCommand {
     fn id(&self) -> &'static str {
         "write-quit"
     }
@@ -84,7 +84,7 @@ impl CommandHandler for WriteQuitCommand {
         &["wq"]
     }
 
-    fn execute(&self, ctx: &mut CommandContext<'_>, args: &[&str]) -> Result<(), CommandError> {
+    fn execute(&self, ctx: &mut ExCommandContext<'_>, args: &[&str]) -> Result<(), CommandError> {
         // Write first
         WriteCommand.execute(ctx, args)?;
 

@@ -6,7 +6,8 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_kernel::api::v1::{CommandId, KernelContext, OptionScopeId},
+    reovim_driver_session::SessionRuntime,
+    reovim_kernel::api::v1::{CommandId, OptionScopeId},
 };
 
 use crate::ids;
@@ -39,16 +40,17 @@ impl Command for InsertNewline {
 }
 
 impl CommandHandler for InsertNewline {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
         // Check autoindent option
-        let autoindent = ctx
+        let autoindent = runtime
+            .kernel()
             .options
             .get("autoindent", OptionScopeId::Buffer(buffer_id))
             .and_then(|v| v.as_bool())
@@ -77,7 +79,7 @@ impl CommandHandler for InsertNewline {
         let _cursor_after = buffer.position();
         drop(buffer);
 
-        // TODO: Return edit action via different mechanism when SessionContext is available
+        // TODO(#394): Return edit action via different mechanism (escape hatch until API supports this)
         let _ = (buffer_id, edit, cursor_before); // Suppress unused warnings
         CommandResult::Success
     }
@@ -100,23 +102,25 @@ impl Command for InsertTab {
 }
 
 impl CommandHandler for InsertTab {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
         // Get options (with defaults). Use buffer-local scope if available.
         let scope = OptionScopeId::Buffer(buffer_id);
-        let expandtab = ctx
+        let expandtab = runtime
+            .kernel()
             .options
             .get("expandtab", scope)
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
         #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-        let tabstop = ctx
+        let tabstop = runtime
+            .kernel()
             .options
             .get("tabstop", scope)
             .and_then(|v| v.as_int())
@@ -134,7 +138,7 @@ impl CommandHandler for InsertTab {
         let _cursor_after = buffer.position();
         drop(buffer);
 
-        // TODO: Return edit action via different mechanism when SessionContext is available
+        // TODO(#394): Return edit action via different mechanism (escape hatch until API supports this)
         CommandResult::Success
     }
 }

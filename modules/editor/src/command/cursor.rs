@@ -14,7 +14,8 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_kernel::api::v1::{CommandId, KernelContext, Position, events::CursorMoved},
+    reovim_driver_session::SessionRuntime,
+    reovim_kernel::api::v1::{CommandId, Position, events::CursorMoved},
 };
 
 use crate::ids;
@@ -43,12 +44,12 @@ impl Command for CursorUp {
 
 impl CommandHandler for CursorUp {
     #[allow(clippy::cast_possible_truncation)] // Line/column numbers won't exceed u32::MAX
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
@@ -74,7 +75,7 @@ impl CommandHandler for CursorUp {
         // j/k motions are linewise
         if args.is_operator_pending() {
             // k moves up, so new_pos.line < old_pos.line
-            // TODO: Return operator range via different mechanism when SessionContext is available
+            // TODO(#394): Return operator range via different mechanism (escape hatch until API supports this)
             let _ = (new_pos, old_pos); // Suppress unused warnings
             return CommandResult::Success;
         }
@@ -86,7 +87,7 @@ impl CommandHandler for CursorUp {
         }
 
         // Emit CursorMoved event (buffer lock released)
-        ctx.event_bus.emit(CursorMoved {
+        runtime.kernel().event_bus.emit(CursorMoved {
             buffer_id: buffer_id.as_usize() as u64,
             from: (old_pos.line as u32, old_pos.column as u32),
             to: (new_pos.line as u32, new_pos.column as u32),
@@ -120,12 +121,12 @@ impl Command for CursorDown {
 
 impl CommandHandler for CursorDown {
     #[allow(clippy::cast_possible_truncation)] // Line/column numbers won't exceed u32::MAX
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
@@ -153,7 +154,7 @@ impl CommandHandler for CursorDown {
         // j/k motions are linewise
         if args.is_operator_pending() {
             // j moves down, so old_pos.line < new_pos.line
-            // TODO: Return operator range via different mechanism when SessionContext is available
+            // TODO(#394): Return operator range via different mechanism (escape hatch until API supports this)
             let _ = (old_pos, new_pos); // Suppress unused warnings
             return CommandResult::Success;
         }
@@ -165,7 +166,7 @@ impl CommandHandler for CursorDown {
         }
 
         // Emit CursorMoved event (buffer lock released)
-        ctx.event_bus.emit(CursorMoved {
+        runtime.kernel().event_bus.emit(CursorMoved {
             buffer_id: buffer_id.as_usize() as u64,
             from: (old_pos.line as u32, old_pos.column as u32),
             to: (new_pos.line as u32, new_pos.column as u32),
@@ -199,12 +200,12 @@ impl Command for CursorLeft {
 
 impl CommandHandler for CursorLeft {
     #[allow(clippy::cast_possible_truncation)] // Line/column numbers won't exceed u32::MAX
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
@@ -227,7 +228,7 @@ impl CommandHandler for CursorLeft {
         // h/l motions are characterwise
         if args.is_operator_pending() {
             // h moves left, so new_pos.column < old_pos.column
-            // TODO: Return operator range via different mechanism when SessionContext is available
+            // TODO(#394): Return operator range via different mechanism (escape hatch until API supports this)
             let _ = (new_pos, old_pos); // Suppress unused warnings
             return CommandResult::Success;
         }
@@ -239,7 +240,7 @@ impl CommandHandler for CursorLeft {
         }
 
         // Emit CursorMoved event (buffer lock released)
-        ctx.event_bus.emit(CursorMoved {
+        runtime.kernel().event_bus.emit(CursorMoved {
             buffer_id: buffer_id.as_usize() as u64,
             from: (old_pos.line as u32, old_pos.column as u32),
             to: (new_pos.line as u32, new_pos.column as u32),
@@ -273,12 +274,12 @@ impl Command for CursorRight {
 
 impl CommandHandler for CursorRight {
     #[allow(clippy::cast_possible_truncation)] // Line/column numbers won't exceed u32::MAX
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
@@ -309,7 +310,7 @@ impl CommandHandler for CursorRight {
         // h/l motions are characterwise
         if args.is_operator_pending() {
             // l moves right, so old_pos.column < new_pos.column
-            // TODO: Return operator range via different mechanism when SessionContext is available
+            // TODO(#394): Return operator range via different mechanism (escape hatch until API supports this)
             let _ = (old_pos, new_pos); // Suppress unused warnings
             return CommandResult::Success;
         }
@@ -321,7 +322,7 @@ impl CommandHandler for CursorRight {
         }
 
         // Emit CursorMoved event (buffer lock released)
-        ctx.event_bus.emit(CursorMoved {
+        runtime.kernel().event_bus.emit(CursorMoved {
             buffer_id: buffer_id.as_usize() as u64,
             from: (old_pos.line as u32, old_pos.column as u32),
             to: (new_pos.line as u32, new_pos.column as u32),

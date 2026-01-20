@@ -9,9 +9,8 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_kernel::api::v1::{
-        CommandId, KernelContext, Position, TextObject, TextObjectEngine, WordBoundary,
-    },
+    reovim_driver_session::SessionRuntime,
+    reovim_kernel::api::v1::{CommandId, Position, TextObject, TextObjectEngine, WordBoundary},
 };
 
 use crate::ids;
@@ -23,7 +22,7 @@ use crate::ids;
 /// Execute a word text object and return the range.
 #[allow(clippy::significant_drop_tightening)]
 fn execute_word_textobj(
-    ctx: &KernelContext,
+    runtime: &SessionRuntime<'_>,
     args: &CommandContext,
     text_object: TextObject,
 ) -> CommandResult {
@@ -31,7 +30,7 @@ fn execute_word_textobj(
         return CommandResult::error("No active buffer");
     };
 
-    let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+    let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
         return CommandResult::error("Buffer not found");
     };
 
@@ -52,7 +51,7 @@ fn execute_word_textobj(
     // end.column points to the last character, we need end.column + 1
     let end_exclusive = Position::new(end.line, end.column + 1);
 
-    // TODO: Return operator range via different mechanism when SessionContext is available
+    // TODO(#394): Return operator range via different mechanism (escape hatch until API supports this)
     // For now, store range somewhere the operator can access
     let _ = (start, end_exclusive); // Suppress unused warnings
     CommandResult::Success
@@ -87,8 +86,8 @@ impl Command for InnerWord {
 }
 
 impl CommandHandler for InnerWord {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        execute_word_textobj(ctx, args, TextObject::InnerWord(WordBoundary::Word))
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_word_textobj(runtime, args, TextObject::InnerWord(WordBoundary::Word))
     }
 }
 
@@ -121,8 +120,8 @@ impl Command for AWord {
 }
 
 impl CommandHandler for AWord {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        execute_word_textobj(ctx, args, TextObject::AWord(WordBoundary::Word))
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_word_textobj(runtime, args, TextObject::AWord(WordBoundary::Word))
     }
 }
 
@@ -155,8 +154,8 @@ impl Command for InnerWordBig {
 }
 
 impl CommandHandler for InnerWordBig {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        execute_word_textobj(ctx, args, TextObject::InnerWord(WordBoundary::BigWord))
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_word_textobj(runtime, args, TextObject::InnerWord(WordBoundary::BigWord))
     }
 }
 
@@ -189,8 +188,8 @@ impl Command for AWordBig {
 }
 
 impl CommandHandler for AWordBig {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        execute_word_textobj(ctx, args, TextObject::AWord(WordBoundary::BigWord))
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_word_textobj(runtime, args, TextObject::AWord(WordBoundary::BigWord))
     }
 }
 
@@ -219,9 +218,10 @@ mod tests {
         super::*,
         crate::TEXTOBJECTS_MODULE,
         reovim_driver_command::ArgValue,
+        reovim_driver_session::{Session, SessionId, api::CommandExecutor},
         reovim_kernel::api::v1::{
-            Buffer, BufferError, BufferId, BufferManager, EventBus, MarkBank, MotionEngine,
-            OptionRegistry, RegisterBank, RwLock,
+            Buffer, BufferError, BufferId, BufferManager, CommandId, EventBus, KernelContext,
+            MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry, RegisterBank, RwLock,
         },
         std::{collections::HashMap, sync::Arc},
     };
@@ -275,6 +275,24 @@ mod tests {
         fn count(&self) -> usize {
             self.buffers.read().len()
         }
+    }
+
+    /// Stub command executor for tests.
+    struct StubExecutor;
+
+    impl CommandExecutor for StubExecutor {
+        fn execute(
+            &self,
+            _cmd: &CommandId,
+            _ctx: &CommandContext,
+            _kernel: &mut KernelContext,
+        ) -> Option<CommandResult> {
+            Some(CommandResult::Success)
+        }
+    }
+
+    fn test_mode() -> ModeId {
+        ModeId::new(ModuleId::new("test"), "normal")
     }
 
     fn create_test_context() -> KernelContext {
@@ -343,18 +361,24 @@ mod tests {
 
     #[test]
     fn test_inner_word_no_buffer_returns_error() {
-        let mut ctx = KernelContext::default();
+        let kernel = KernelContext::default();
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
         let args = CommandContext::new();
-        let result = InnerWord.execute(&mut ctx, &args);
+        let result = InnerWord.execute(&mut runtime, &args);
         assert!(result.is_error());
     }
 
     #[test]
     fn test_inner_word_invalid_buffer_returns_error() {
-        let mut ctx = KernelContext::default();
+        let kernel = KernelContext::default();
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
         args.set("buffer_id", ArgValue::BufferId(999));
-        let result = InnerWord.execute(&mut ctx, &args);
+        let result = InnerWord.execute(&mut runtime, &args);
         assert!(result.is_error());
     }
 
@@ -364,13 +388,16 @@ mod tests {
 
     #[test]
     fn test_inner_word_basic() {
-        let mut ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, "hello world foo");
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello world foo");
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = InnerWord.execute(&mut ctx, &args);
+        let result = InnerWord.execute(&mut runtime, &args);
 
         // Commands now return Success - actual range calculation happens
         // but is stored internally for the operator to access
@@ -379,19 +406,23 @@ mod tests {
 
     #[test]
     fn test_inner_word_middle_of_word() {
-        let mut ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, "hello world");
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello world");
 
         // Position cursor at 'l' in "hello"
         {
-            let buffer = ctx.buffers.get(buffer_id).unwrap();
+            let buffer = kernel.buffers.get(buffer_id).unwrap();
             buffer.write().set_position(Position::new(0, 2));
         }
+
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = InnerWord.execute(&mut ctx, &args);
+        let result = InnerWord.execute(&mut runtime, &args);
         assert!(result.is_success());
     }
 
@@ -401,13 +432,16 @@ mod tests {
 
     #[test]
     fn test_a_word_includes_trailing_whitespace() {
-        let mut ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, "hello world");
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello world");
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = AWord.execute(&mut ctx, &args);
+        let result = AWord.execute(&mut runtime, &args);
         assert!(result.is_success());
     }
 
@@ -417,25 +451,31 @@ mod tests {
 
     #[test]
     fn test_inner_word_big_skips_punctuation() {
-        let mut ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, "hello-world foo");
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello-world foo");
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = InnerWordBig.execute(&mut ctx, &args);
+        let result = InnerWordBig.execute(&mut runtime, &args);
         assert!(result.is_success());
     }
 
     #[test]
     fn test_inner_word_small_stops_at_punctuation() {
-        let mut ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, "hello-world foo");
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello-world foo");
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = InnerWord.execute(&mut ctx, &args);
+        let result = InnerWord.execute(&mut runtime, &args);
         assert!(result.is_success());
     }
 
@@ -445,26 +485,32 @@ mod tests {
 
     #[test]
     fn test_empty_buffer() {
-        let mut ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, "");
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "");
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = InnerWord.execute(&mut ctx, &args);
+        let result = InnerWord.execute(&mut runtime, &args);
         // Empty buffer should return Success (no-op) since there's no word
         assert!(result.is_success());
     }
 
     #[test]
     fn test_whitespace_only() {
-        let mut ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, "   ");
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "   ");
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = InnerWord.execute(&mut ctx, &args);
+        let result = InnerWord.execute(&mut runtime, &args);
         // Commands return Success - range is calculated but stored internally
         assert!(result.is_success());
     }

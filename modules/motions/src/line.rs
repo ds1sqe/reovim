@@ -9,6 +9,7 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
+    reovim_driver_session::SessionRuntime,
     reovim_kernel::api::v1::{
         CommandId, Cursor, KernelContext, LinePosition, Motion, MotionEngine, events::CursorMoved,
     },
@@ -63,7 +64,7 @@ fn execute_line_position(
         } else {
             (new_pos, old_pos)
         };
-        // TODO: Return operator range via different mechanism when SessionContext is available
+        // TODO(#394): Return operator range via different mechanism (escape hatch until API supports this)
         // Line position motions are characterwise
         let _ = (start, range_end); // Suppress unused warnings
         return CommandResult::Success;
@@ -127,7 +128,7 @@ fn execute_jump_line(
         } else {
             (new_pos, old_pos)
         };
-        // TODO: Return operator range via different mechanism when SessionContext is available
+        // TODO(#394): Return operator range via different mechanism (escape hatch until API supports this)
         // Document motions are linewise
         let _ = (start, range_end); // Suppress unused warnings
         return CommandResult::Success;
@@ -171,8 +172,8 @@ impl Command for LineStart {
 }
 
 impl CommandHandler for LineStart {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        execute_line_position(ctx, args, LinePosition::Start)
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_line_position(runtime.kernel(), args, LinePosition::Start)
     }
 }
 
@@ -199,8 +200,8 @@ impl Command for LineEnd {
 }
 
 impl CommandHandler for LineEnd {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        execute_line_position(ctx, args, LinePosition::End)
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_line_position(runtime.kernel(), args, LinePosition::End)
     }
 }
 
@@ -227,8 +228,8 @@ impl Command for FirstNonBlank {
 }
 
 impl CommandHandler for FirstNonBlank {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        execute_line_position(ctx, args, LinePosition::FirstNonBlank)
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_line_position(runtime.kernel(), args, LinePosition::FirstNonBlank)
     }
 }
 
@@ -259,11 +260,11 @@ impl Command for DocumentStart {
 }
 
 impl CommandHandler for DocumentStart {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         // gg without count goes to line 0
         // With count, go to that line (1-indexed in vim, convert to 0-indexed)
         let target_line = args.count().map(|c| c.saturating_sub(1));
-        execute_jump_line(ctx, args, target_line.or(Some(0)))
+        execute_jump_line(runtime.kernel(), args, target_line.or(Some(0)))
     }
 }
 
@@ -294,11 +295,11 @@ impl Command for DocumentEnd {
 }
 
 impl CommandHandler for DocumentEnd {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         // G without count goes to last line (None)
         // With count, go to that line (1-indexed in vim, convert to 0-indexed)
         let target_line = args.count().map(|c| c.saturating_sub(1));
-        execute_jump_line(ctx, args, target_line)
+        execute_jump_line(runtime.kernel(), args, target_line)
     }
 }
 
@@ -337,7 +338,7 @@ impl Command for WholeLine {
 
 impl CommandHandler for WholeLine {
     #[allow(clippy::cast_possible_truncation)]
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         // This motion only makes sense in operator-pending mode
         if !args.is_operator_pending() {
             return CommandResult::Success; // No-op in normal mode
@@ -347,7 +348,7 @@ impl CommandHandler for WholeLine {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
@@ -366,7 +367,7 @@ impl CommandHandler for WholeLine {
         let start = reovim_kernel::api::v1::Position::new(current_line, 0);
         let end = reovim_kernel::api::v1::Position::new(end_line, 0);
 
-        // TODO: Return operator range via different mechanism when SessionContext is available
+        // TODO(#394): Return operator range via different mechanism (escape hatch until API supports this)
         let _ = (start, end); // Suppress unused warnings
         CommandResult::Success
     }
@@ -398,9 +399,10 @@ mod tests {
     use {
         super::*,
         reovim_driver_command::ArgValue,
+        reovim_driver_session::{Session, SessionId, SessionRuntime, api::CommandExecutor},
         reovim_kernel::api::v1::{
-            Buffer, BufferError, BufferId, BufferManager, EventBus, MarkBank, OptionRegistry,
-            Position, RegisterBank, RwLock, TextObjectEngine,
+            Buffer, BufferError, BufferId, BufferManager, EventBus, MarkBank, ModeId, ModuleId,
+            OptionRegistry, Position, RegisterBank, RwLock, TextObjectEngine,
         },
         std::{collections::HashMap, sync::Arc},
     };
@@ -472,6 +474,29 @@ mod tests {
         ctx.buffers.register(buffer)
     }
 
+    fn run_command<C: CommandHandler>(
+        cmd: &C,
+        ctx: &KernelContext,
+        args: &CommandContext,
+    ) -> CommandResult {
+        struct StubExecutor;
+        impl CommandExecutor for StubExecutor {
+            fn execute(
+                &self,
+                _: &CommandId,
+                _: &CommandContext,
+                _: &mut KernelContext,
+            ) -> Option<CommandResult> {
+                Some(CommandResult::Success)
+            }
+        }
+        let home_mode = ModeId::new(ModuleId::new("test"), "normal");
+        let mut session = Session::new(SessionId::new(1), home_mode);
+        let executor = StubExecutor;
+        let mut runtime = SessionRuntime::new(&mut session, ctx, &executor);
+        cmd.execute(&mut runtime, args)
+    }
+
     // =========================================================================
     // Command ID Tests
     // =========================================================================
@@ -513,7 +538,7 @@ mod tests {
 
     #[test]
     fn test_line_start_basic() {
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer_id = setup_buffer(&ctx, "  hello world");
 
         // Position in middle of line
@@ -525,7 +550,7 @@ mod tests {
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = LineStart.execute(&mut ctx, &args);
+        let result = run_command(&LineStart, &ctx, &args);
         assert!(result.is_success());
 
         let buffer = ctx.buffers.get(buffer_id).unwrap();
@@ -535,7 +560,7 @@ mod tests {
 
     #[test]
     fn test_line_start_on_empty_line() {
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer_id = setup_buffer(&ctx, "hello\n\nworld");
 
         // Position on empty line
@@ -547,7 +572,7 @@ mod tests {
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = LineStart.execute(&mut ctx, &args);
+        let result = run_command(&LineStart, &ctx, &args);
         assert!(result.is_success());
 
         let buffer = ctx.buffers.get(buffer_id).unwrap();
@@ -562,13 +587,13 @@ mod tests {
 
     #[test]
     fn test_line_end_basic() {
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer_id = setup_buffer(&ctx, "hello world");
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = LineEnd.execute(&mut ctx, &args);
+        let result = run_command(&LineEnd, &ctx, &args);
         assert!(result.is_success());
 
         let buffer = ctx.buffers.get(buffer_id).unwrap();
@@ -578,7 +603,7 @@ mod tests {
 
     #[test]
     fn test_line_end_on_empty_line() {
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer_id = setup_buffer(&ctx, "hello\n\nworld");
 
         // Position on empty line
@@ -590,7 +615,7 @@ mod tests {
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = LineEnd.execute(&mut ctx, &args);
+        let result = run_command(&LineEnd, &ctx, &args);
         assert!(result.is_success());
 
         // Empty line - $ should stay at 0 or go to 0
@@ -605,7 +630,7 @@ mod tests {
 
     #[test]
     fn test_first_non_blank_basic() {
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer_id = setup_buffer(&ctx, "  hello world");
 
         // Position at end of line
@@ -617,7 +642,7 @@ mod tests {
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = FirstNonBlank.execute(&mut ctx, &args);
+        let result = run_command(&FirstNonBlank, &ctx, &args);
         assert!(result.is_success());
 
         let buffer = ctx.buffers.get(buffer_id).unwrap();
@@ -627,7 +652,7 @@ mod tests {
 
     #[test]
     fn test_first_non_blank_no_leading_whitespace() {
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer_id = setup_buffer(&ctx, "hello world");
 
         // Position in middle
@@ -639,7 +664,7 @@ mod tests {
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = FirstNonBlank.execute(&mut ctx, &args);
+        let result = run_command(&FirstNonBlank, &ctx, &args);
         assert!(result.is_success());
 
         let buffer = ctx.buffers.get(buffer_id).unwrap();
@@ -653,7 +678,7 @@ mod tests {
 
     #[test]
     fn test_document_start_basic() {
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer_id = setup_buffer(&ctx, "line one\nline two\nline three");
 
         // Position on last line
@@ -665,7 +690,7 @@ mod tests {
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = DocumentStart.execute(&mut ctx, &args);
+        let result = run_command(&DocumentStart, &ctx, &args);
         assert!(result.is_success());
 
         let buffer = ctx.buffers.get(buffer_id).unwrap();
@@ -676,14 +701,14 @@ mod tests {
 
     #[test]
     fn test_document_start_with_count() {
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer_id = setup_buffer(&ctx, "line one\nline two\nline three");
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
         args.set("count", ArgValue::Count(2)); // Go to line 2 (0-indexed: line 1)
 
-        let result = DocumentStart.execute(&mut ctx, &args);
+        let result = run_command(&DocumentStart, &ctx, &args);
         assert!(result.is_success());
 
         let buffer = ctx.buffers.get(buffer_id).unwrap();
@@ -697,13 +722,13 @@ mod tests {
 
     #[test]
     fn test_document_end_basic() {
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer_id = setup_buffer(&ctx, "line one\nline two\nline three");
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = DocumentEnd.execute(&mut ctx, &args);
+        let result = run_command(&DocumentEnd, &ctx, &args);
         assert!(result.is_success());
 
         let buffer = ctx.buffers.get(buffer_id).unwrap();
@@ -713,7 +738,7 @@ mod tests {
 
     #[test]
     fn test_document_end_with_count() {
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer_id = setup_buffer(&ctx, "line one\nline two\nline three");
 
         // Position at start
@@ -726,7 +751,7 @@ mod tests {
         args.set_buffer_id(buffer_id);
         args.set("count", ArgValue::Count(2)); // Go to line 2 (0-indexed: line 1)
 
-        let result = DocumentEnd.execute(&mut ctx, &args);
+        let result = run_command(&DocumentEnd, &ctx, &args);
         assert!(result.is_success());
 
         let buffer = ctx.buffers.get(buffer_id).unwrap();
@@ -736,13 +761,13 @@ mod tests {
 
     #[test]
     fn test_document_end_single_line_buffer() {
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer_id = setup_buffer(&ctx, "only line");
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = DocumentEnd.execute(&mut ctx, &args);
+        let result = run_command(&DocumentEnd, &ctx, &args);
         assert!(result.is_success());
 
         let buffer = ctx.buffers.get(buffer_id).unwrap();
@@ -756,9 +781,9 @@ mod tests {
 
     #[test]
     fn test_line_motion_no_buffer_returns_error() {
-        let mut ctx = KernelContext::default();
+        let ctx = KernelContext::default();
         let args = CommandContext::new();
-        let result = LineStart.execute(&mut ctx, &args);
+        let result = run_command(&LineStart, &ctx, &args);
         assert!(result.is_error());
     }
 

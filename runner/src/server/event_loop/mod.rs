@@ -12,8 +12,11 @@
 //! The event loop contains NO business logic - resolvers handle everything.
 
 mod error;
+mod runtime;
 
-pub use error::EventLoopError;
+pub use {error::EventLoopError, runtime::AppStateRuntime};
+
+use reovim_driver_session::api::StateChanges;
 
 use {
     reovim_driver_command::{CommandContext, CommandResult},
@@ -125,11 +128,17 @@ impl EventLoop {
     /// Handle a single key event.
     ///
     /// Super simple: resolver handles everything.
+    /// `StateChanges` from session API are collected but not yet broadcast (Phase 4).
     fn handle_key(&mut self, key: KeyEvent) {
         profile_scope!("handle_key", "runner::event_loop");
 
-        if let Some(result) = self.try_resolver(&key) {
+        if let Some((result, _changes)) = self.try_resolver(&key) {
             self.handle_resolve_result(result);
+
+            // TODO (Phase 4): Broadcast state changes to clients
+            // if changes.has_changes() {
+            //     self.broadcast_state_changes(&changes);
+            // }
         }
         // No resolver = key ignored (resolver handles everything)
     }
@@ -153,20 +162,41 @@ impl EventLoop {
     }
 
     /// Try to resolve a key event using the resolver registry.
-    fn try_resolver(&mut self, key: &KeyEvent) -> Option<ResolveResult> {
+    ///
+    /// Returns both the `ResolveResult` and accumulated `StateChanges` from
+    /// the session API. The changes can be broadcast to clients.
+    fn try_resolver(&mut self, key: &KeyEvent) -> Option<(ResolveResult, StateChanges)> {
+        use reovim_driver_session::ChangeTracker;
+
         let registry = self.resolver_registry.as_ref()?;
         let mode = self.app.current_mode().clone();
         let mut mode_state = ModeState::new(mode.clone());
 
-        // Resolvers access vim-specific state via extensions (VimSessionState)
-        // Runner doesn't know or care about pending operators, etc.
-        registry.resolve_with_extensions(
+        // Create session runtime adapter from individual AppState fields.
+        // Extensions are passed separately to work around borrow rules.
+        let mut runtime = AppStateRuntime::new(
+            &mut self.app.mode_stack,
+            &mut self.app.windows,
+            &mut self.app.active_buffer,
+            &self.app.kernel,
+            &self.command_registry,
+        );
+
+        // Resolvers access session state via SessionApiDyn + extensions
+        // Extensions contain module-specific state (e.g., VimSessionState)
+        let result = registry.resolve_with_session(
             &mode,
             key,
             &mut mode_state,
             &self.keymap_registry,
+            &mut runtime,
             &mut self.app.extensions,
-        )
+        );
+
+        // Take accumulated changes from the runtime
+        let changes = runtime.take_changes();
+
+        result.map(|r| (r, changes))
     }
 
     /// Handle a resolve result from a mode key resolver.
@@ -212,7 +242,11 @@ impl EventLoop {
             // Pending: wait for more keys
             // InsertChar: resolvers should return Execute with insert command
             // NotHandled: key not handled, ignore
-            ResolveResult::Pending | ResolveResult::InsertChar(_) | ResolveResult::NotHandled => {}
+            // Completed: resolver already did everything via SessionApi, changes are tracked
+            ResolveResult::Pending
+            | ResolveResult::InsertChar(_)
+            | ResolveResult::NotHandled
+            | ResolveResult::Completed => {}
         }
     }
 
@@ -375,6 +409,7 @@ mod tests {
         super::*,
         reovim_driver_command::{ArgSpec, Command, CommandHandler},
         reovim_driver_input::KeyCode,
+        reovim_driver_session::SessionRuntime,
         reovim_kernel::api::v1::{CommandId, KernelContext, Mode, ModeId, ModuleId},
         std::sync::Arc,
     };
@@ -460,7 +495,11 @@ mod tests {
     }
 
     impl CommandHandler for TestCommand {
-        fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
+        fn execute(
+            &self,
+            _runtime: &mut SessionRuntime<'_>,
+            _args: &CommandContext,
+        ) -> CommandResult {
             CommandResult::Success
         }
     }

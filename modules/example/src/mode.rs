@@ -1,11 +1,10 @@
 //! Example mode implementation.
 //!
-//! Demonstrates implementing Mode (kernel), `ModeDisplay` (display driver),
-//! and `ModeInput` (input driver) traits for a simple mode system.
+//! Demonstrates implementing Mode (kernel) and `ModeDisplay` (display driver)
+//! traits for a simple mode system.
 
 use {
     reovim_driver_display::ModeDisplay,
-    reovim_driver_input::ModeInput,
     reovim_kernel::api::v1::{CursorStyle, Mode, ModeId, ModuleId},
 };
 
@@ -14,9 +13,8 @@ use crate::EXAMPLE_MODULE;
 /// Example editor mode enum.
 ///
 /// This demonstrates how modules define modes by implementing:
-/// - [`Mode`] from kernel (identity + behavior)
+/// - [`Mode`] from kernel (identity + behavior, including `accepts_char_input()`)
 /// - [`ModeDisplay`] from display driver (rendering, delegates to Mode)
-/// - [`ModeInput`] from input driver (input handling, delegates to Mode)
 ///
 /// # Architecture
 ///
@@ -25,7 +23,6 @@ use crate::EXAMPLE_MODULE;
 ///     |
 ///     +-- impl Mode            Identity + behavior (kernel)
 ///     +-- impl ModeDisplay     Rendering (delegates to Mode)
-///     +-- impl ModeInput       Input handling (delegates to Mode)
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
 #[repr(u16)]
@@ -93,17 +90,6 @@ impl ModeDisplay for ExampleMode {
     fn status_text(&self) -> &'static str {
         // Delegate to Mode trait's display_name
         Mode::display_name(self)
-    }
-}
-
-// ============================================================================
-// Input Driver: ModeInput trait (delegates to Mode)
-// ============================================================================
-
-impl ModeInput for ExampleMode {
-    fn accepts_char_input(&self) -> bool {
-        // Delegate to Mode trait
-        Mode::accepts_char_input(self)
     }
 }
 
@@ -184,26 +170,10 @@ mod tests {
     }
 
     #[test]
-    fn test_mode_input_delegates_to_mode() {
-        // ModeInput should delegate to Mode trait
-        assert_eq!(
-            <ExampleMode as ModeInput>::accepts_char_input(&ExampleMode::Insert),
-            Mode::accepts_char_input(&ExampleMode::Insert)
-        );
-    }
-
-    #[test]
     fn test_mode_display_trait_object() {
         // Verify ModeDisplay can be used as trait object
         let mode: &dyn ModeDisplay = &ExampleMode::Insert;
         assert_eq!(mode.cursor_style(), CursorStyle::Bar);
-    }
-
-    #[test]
-    fn test_mode_input_trait_object() {
-        // Verify ModeInput can be used as trait object
-        let mode: &dyn ModeInput = &ExampleMode::Insert;
-        assert!(mode.accepts_char_input());
     }
 
     #[test]

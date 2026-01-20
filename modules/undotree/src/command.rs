@@ -5,12 +5,13 @@
 //!
 //! # Architecture (Epic #385)
 //!
-//! These commands are stubs that will be implemented when `SessionContext`
-//! provides direct access to undotree state.
+//! These commands are stubs that will be implemented when `SessionRuntime`
+//! provides direct access to undotree state. See #394 for API gap tracking.
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_kernel::api::v1::{CommandId, KernelContext},
+    reovim_driver_session::SessionRuntime,
+    reovim_kernel::api::v1::CommandId,
 };
 
 use crate::ids;
@@ -33,8 +34,8 @@ impl Command for UndotreeCommand {
 }
 
 impl CommandHandler for UndotreeCommand {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         CommandResult::Success
     }
 }
@@ -53,8 +54,8 @@ impl Command for UndotreeDownCommand {
 }
 
 impl CommandHandler for UndotreeDownCommand {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         CommandResult::Success
     }
 }
@@ -73,8 +74,8 @@ impl Command for UndotreeUpCommand {
 }
 
 impl CommandHandler for UndotreeUpCommand {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         CommandResult::Success
     }
 }
@@ -93,8 +94,8 @@ impl Command for UndotreeGotoCommand {
 }
 
 impl CommandHandler for UndotreeGotoCommand {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         CommandResult::Success
     }
 }
@@ -113,8 +114,8 @@ impl Command for UndotreeCloseCommand {
 }
 
 impl CommandHandler for UndotreeCloseCommand {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         CommandResult::Success
     }
 }
@@ -133,8 +134,8 @@ impl Command for UndotreePreviewCommand {
 }
 
 impl CommandHandler for UndotreePreviewCommand {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         CommandResult::Success
     }
 }

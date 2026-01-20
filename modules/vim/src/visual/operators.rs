@@ -9,9 +9,8 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_kernel::api::v1::{
-        BufferId, CommandId, KernelContext, Position, SelectionMode, events::ModeChanged,
-    },
+    reovim_driver_session::{SessionRuntime, TransitionContext, api::ModeApi},
+    reovim_kernel::api::v1::{BufferId, CommandId, KernelContext, Position, SelectionMode},
 };
 
 use crate::operators::{DeleteOperator, Operator, OperatorContext, Range, YankOperator};
@@ -95,19 +94,21 @@ impl Command for DeleteSelection {
 }
 
 impl CommandHandler for DeleteSelection {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
 
-        let Some((range, cursor_pos)) = get_selection_range(ctx, buffer_id) else {
+        let kernel = runtime.kernel();
+
+        let Some((range, cursor_pos)) = get_selection_range(kernel, buffer_id) else {
             return CommandResult::Success; // No selection - no-op
         };
 
         // Execute delete operator
         let delete_op = DeleteOperator;
         let mut op_ctx = OperatorContext {
-            kernel: ctx,
+            kernel,
             buffer_id,
             register: args.register(),
             count: 1,
@@ -118,15 +119,14 @@ impl CommandHandler for DeleteSelection {
         }
 
         // Clear selection and set cursor
-        if let Some(buffer_arc) = ctx.buffers.get(buffer_id) {
+        if let Some(buffer_arc) = kernel.buffers.get(buffer_id) {
             let mut buffer = buffer_arc.write();
             buffer.selection_mut().clear();
             buffer.set_position(cursor_pos);
         }
 
         // Mode transition to Normal with target ModeId
-        ctx.event_bus
-            .emit(ModeChanged::with_mode_id("visual", VimMode::NORMAL_ID));
+        runtime.set_mode(VimMode::NORMAL_ID, TransitionContext::new());
 
         CommandResult::Success
     }
@@ -150,19 +150,21 @@ impl Command for YankSelection {
 }
 
 impl CommandHandler for YankSelection {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
 
-        let Some((range, _cursor_pos)) = get_selection_range(ctx, buffer_id) else {
+        let kernel = runtime.kernel();
+
+        let Some((range, _cursor_pos)) = get_selection_range(kernel, buffer_id) else {
             return CommandResult::Success; // No selection - no-op
         };
 
         // Execute yank operator
         let yank_op = YankOperator;
         let mut op_ctx = OperatorContext {
-            kernel: ctx,
+            kernel,
             buffer_id,
             register: args.register(),
             count: 1,
@@ -173,14 +175,13 @@ impl CommandHandler for YankSelection {
         }
 
         // Clear selection (yank doesn't move cursor in Vim, but returns to normal)
-        if let Some(buffer_arc) = ctx.buffers.get(buffer_id) {
+        if let Some(buffer_arc) = kernel.buffers.get(buffer_id) {
             let mut buffer = buffer_arc.write();
             buffer.selection_mut().clear();
         }
 
         // Mode transition to Normal with target ModeId
-        ctx.event_bus
-            .emit(ModeChanged::with_mode_id("visual", VimMode::NORMAL_ID));
+        runtime.set_mode(VimMode::NORMAL_ID, TransitionContext::new());
 
         CommandResult::Success
     }
@@ -203,19 +204,21 @@ impl Command for ChangeSelection {
 }
 
 impl CommandHandler for ChangeSelection {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
 
-        let Some((range, cursor_pos)) = get_selection_range(ctx, buffer_id) else {
+        let kernel = runtime.kernel();
+
+        let Some((range, cursor_pos)) = get_selection_range(kernel, buffer_id) else {
             return CommandResult::Success; // No selection - no-op
         };
 
         // Execute delete operator (change = delete + insert mode)
         let delete_op = DeleteOperator;
         let mut op_ctx = OperatorContext {
-            kernel: ctx,
+            kernel,
             buffer_id,
             register: args.register(),
             count: 1,
@@ -226,15 +229,14 @@ impl CommandHandler for ChangeSelection {
         }
 
         // Clear selection and set cursor
-        if let Some(buffer_arc) = ctx.buffers.get(buffer_id) {
+        if let Some(buffer_arc) = kernel.buffers.get(buffer_id) {
             let mut buffer = buffer_arc.write();
             buffer.selection_mut().clear();
             buffer.set_position(cursor_pos);
         }
 
         // Mode transition to Insert with target ModeId
-        ctx.event_bus
-            .emit(ModeChanged::with_mode_id("visual", VimMode::INSERT_ID));
+        runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
 
         CommandResult::Success
     }
@@ -258,12 +260,14 @@ impl Command for IndentSelection {
 }
 
 impl CommandHandler for IndentSelection {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+        let kernel = runtime.kernel();
+
+        let Some(buffer_arc) = kernel.buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
@@ -293,8 +297,7 @@ impl CommandHandler for IndentSelection {
 
         // Mode transition to Normal is handled by event loop
         drop(buffer);
-        ctx.event_bus
-            .emit(ModeChanged::with_mode_id("visual", VimMode::NORMAL_ID));
+        runtime.set_mode(VimMode::NORMAL_ID, TransitionContext::new());
 
         CommandResult::Success
     }
@@ -318,12 +321,14 @@ impl Command for DedentSelection {
 }
 
 impl CommandHandler for DedentSelection {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+        let kernel = runtime.kernel();
+
+        let Some(buffer_arc) = kernel.buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
@@ -366,8 +371,7 @@ impl CommandHandler for DedentSelection {
 
         // Mode transition to Normal is handled by event loop
         drop(buffer);
-        ctx.event_bus
-            .emit(ModeChanged::with_mode_id("visual", VimMode::NORMAL_ID));
+        runtime.set_mode(VimMode::NORMAL_ID, TransitionContext::new());
 
         CommandResult::Success
     }

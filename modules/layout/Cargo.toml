@@ -18,3 +18,4 @@ reovim-kernel = { path = "../../lib/kernel" }
 reovim-module-macros = { path = "../../lib/module-macros" }
 reovim-driver-display = { path = "../../lib/drivers/display" }
 reovim-driver-command = { path = "../../lib/drivers/command" }
+reovim-driver-session = { workspace = true }

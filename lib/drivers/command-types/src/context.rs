@@ -17,7 +17,7 @@ use {
 /// # Example
 ///
 /// ```
-/// use reovim_driver_command::{CommandContext, ArgValue};
+/// use reovim_driver_command_types::{CommandContext, ArgValue};
 ///
 /// let mut ctx = CommandContext::new();
 /// ctx.set("count", ArgValue::Count(5));

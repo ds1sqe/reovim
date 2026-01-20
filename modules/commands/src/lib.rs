@@ -10,7 +10,7 @@
 //! # Mechanism vs Policy
 //!
 //! - **Mechanism (Kernel)**: Buffer management, position types
-//! - **Policy (This Module)**: `CommandHandler` trait, what commands do
+//! - **Policy (This Module)**: `ExCommandHandler` trait, what commands do
 //!
 //! # Example
 //!
@@ -32,7 +32,7 @@ mod write;
 use reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version};
 
 // Re-export command types
-pub use types::{CommandContext, CommandError, CommandHandler, Range};
+pub use types::{CommandError, ExCommandContext, ExCommandHandler, Range};
 
 pub use {
     quit::QuitCommand,
@@ -42,8 +42,8 @@ pub use {
 
 /// Returns all commands provided by this module.
 #[must_use]
-pub fn commands() -> Vec<Box<dyn CommandHandler>> {
-    let mut cmds: Vec<Box<dyn CommandHandler>> = vec![
+pub fn commands() -> Vec<Box<dyn ExCommandHandler>> {
+    let mut cmds: Vec<Box<dyn ExCommandHandler>> = vec![
         Box::new(QuitCommand),
         Box::new(WriteCommand),
         Box::new(WriteQuitCommand),

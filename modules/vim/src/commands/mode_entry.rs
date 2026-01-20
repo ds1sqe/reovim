@@ -13,9 +13,8 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_kernel::api::v1::{
-        CommandId, KernelContext, OptionScopeId, Position, events::ModeChanged,
-    },
+    reovim_driver_session::{SessionRuntime, TransitionContext, api::ModeApi},
+    reovim_kernel::api::v1::{CommandId, OptionScopeId, Position},
 };
 
 use crate::{ids, modes::VimMode};
@@ -48,9 +47,11 @@ impl Command for EnterInsertFirstNonBlank {
 }
 
 impl CommandHandler for EnterInsertFirstNonBlank {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        let kernel = runtime.kernel();
+
         if let Some(buffer_id) = args.buffer_id()
-            && let Some(buffer_arc) = ctx.buffers.get(buffer_id)
+            && let Some(buffer_arc) = kernel.buffers.get(buffer_id)
         {
             let mut buffer = buffer_arc.write();
             let pos = buffer.position();
@@ -64,8 +65,7 @@ impl CommandHandler for EnterInsertFirstNonBlank {
             drop(buffer);
         }
 
-        ctx.event_bus
-            .emit(ModeChanged::with_mode_id("normal", VimMode::INSERT_ID));
+        runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
 
         CommandResult::Success
     }
@@ -86,9 +86,11 @@ impl Command for EnterInsertEndOfLine {
 }
 
 impl CommandHandler for EnterInsertEndOfLine {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        let kernel = runtime.kernel();
+
         if let Some(buffer_id) = args.buffer_id()
-            && let Some(buffer_arc) = ctx.buffers.get(buffer_id)
+            && let Some(buffer_arc) = kernel.buffers.get(buffer_id)
         {
             let mut buffer = buffer_arc.write();
             let pos = buffer.position();
@@ -99,8 +101,7 @@ impl CommandHandler for EnterInsertEndOfLine {
             drop(buffer);
         }
 
-        ctx.event_bus
-            .emit(ModeChanged::with_mode_id("normal", VimMode::INSERT_ID));
+        runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
 
         CommandResult::Success
     }
@@ -121,16 +122,19 @@ impl Command for OpenLineBelow {
 }
 
 impl CommandHandler for OpenLineBelow {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+
+        let kernel = runtime.kernel();
+
+        let Some(buffer_arc) = kernel.buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
         // Check autoindent option
-        let autoindent = ctx
+        let autoindent = kernel
             .options
             .get("autoindent", OptionScopeId::Buffer(buffer_id))
             .and_then(|v| v.as_bool())
@@ -164,10 +168,9 @@ impl CommandHandler for OpenLineBelow {
         let _cursor_after = buffer.position();
         drop(buffer);
 
-        ctx.event_bus
-            .emit(ModeChanged::with_mode_id("normal", VimMode::INSERT_ID));
+        runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
 
-        // TODO: Return edit action via different mechanism when SessionContext is available
+        // TODO(#394): Return edit action via different mechanism (escape hatch until API supports this)
         let _ = (buffer_id, edit, cursor_before); // Suppress unused warnings
         CommandResult::Success
     }
@@ -188,16 +191,19 @@ impl Command for OpenLineAbove {
 }
 
 impl CommandHandler for OpenLineAbove {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+
+        let kernel = runtime.kernel();
+
+        let Some(buffer_arc) = kernel.buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
         // Check autoindent option
-        let autoindent = ctx
+        let autoindent = kernel
             .options
             .get("autoindent", OptionScopeId::Buffer(buffer_id))
             .and_then(|v| v.as_bool())
@@ -232,10 +238,9 @@ impl CommandHandler for OpenLineAbove {
         let _cursor_after = buffer.position();
         drop(buffer);
 
-        ctx.event_bus
-            .emit(ModeChanged::with_mode_id("normal", VimMode::INSERT_ID));
+        runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
 
-        // TODO: Return edit action via different mechanism when SessionContext is available
+        // TODO(#394): Return edit action via different mechanism (escape hatch until API supports this)
         let _ = (buffer_id, edit, cursor_before); // Suppress unused warnings
         CommandResult::Success
     }

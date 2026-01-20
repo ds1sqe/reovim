@@ -62,7 +62,7 @@ mod state;
 
 pub use {
     id::{ClientId, SessionId},
-    notify::emit_state_changes,
+    notify::{emit_from_state_changes, emit_state_changes},
     registry::SessionRegistry,
     session::Session,
     snapshot::StateSnapshot,

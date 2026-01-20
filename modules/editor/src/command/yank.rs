@@ -7,7 +7,8 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_kernel::api::v1::{CommandId, KernelContext, RegisterContent},
+    reovim_driver_session::SessionRuntime,
+    reovim_kernel::api::v1::{CommandId, RegisterContent},
 };
 
 use crate::ids;
@@ -34,11 +35,11 @@ impl Command for YankLine {
 }
 
 impl CommandHandler for YankLine {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
@@ -66,7 +67,11 @@ impl CommandHandler for YankLine {
         // Store in register (use specified register or unnamed)
         let content = RegisterContent::linewise(yanked);
         let register = args.register();
-        ctx.registers.write().set_by_name(register, content);
+        runtime
+            .kernel()
+            .registers
+            .write()
+            .set_by_name(register, content);
 
         CommandResult::Success
     }

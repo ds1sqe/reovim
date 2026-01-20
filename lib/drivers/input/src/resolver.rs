@@ -56,6 +56,100 @@ use {
 
 use crate::{KeyEvent, KeySequence, KeymapQuery};
 
+// Re-export transition types and session API from session driver (canonical source)
+pub use reovim_driver_session::{PopResult, SessionApi, SessionApiDyn, TransitionContext};
+
+// ============================================================================
+// OperatorArgs - Shared count/register fields (#391)
+// ============================================================================
+
+/// Common arguments for operator operations.
+///
+/// Extracted to avoid field duplication across context types (DRY principle).
+/// Used by `TransitionContext`, `ResolveContext`, and `PopResult::OperatorRange`.
+///
+/// # Example
+///
+/// ```
+/// use reovim_driver_input::OperatorArgs;
+///
+/// // Create with defaults
+/// let args = OperatorArgs::new();
+/// assert_eq!(args.effective_count(), 1); // Default count is 1
+///
+/// // Builder pattern
+/// let args = OperatorArgs::new().count(3).register('a');
+/// assert_eq!(args.count, Some(3));
+/// assert_eq!(args.register, Some('a'));
+///
+/// // From count shorthand
+/// let args = OperatorArgs::with_count(5);
+/// assert_eq!(args.effective_count(), 5);
+/// ```
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct OperatorArgs {
+    /// Count prefix (e.g., 3 in `3j` or `2d3w`).
+    ///
+    /// Counts can be combined across mode transitions: `2d3w` = 6 words.
+    pub count: Option<usize>,
+
+    /// Register for the operation (e.g., `a` in `"ayw`).
+    ///
+    /// In vim, registers store yanked/deleted text.
+    pub register: Option<char>,
+}
+
+impl OperatorArgs {
+    /// Create a new empty operator args.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            count: None,
+            register: None,
+        }
+    }
+
+    /// Create operator args with a count.
+    #[must_use]
+    pub const fn with_count(count: usize) -> Self {
+        Self {
+            count: Some(count),
+            register: None,
+        }
+    }
+
+    /// Set the count (builder pattern).
+    #[must_use]
+    pub const fn count(mut self, count: usize) -> Self {
+        self.count = Some(count);
+        self
+    }
+
+    /// Set the register (builder pattern).
+    #[must_use]
+    pub const fn register(mut self, reg: char) -> Self {
+        self.register = Some(reg);
+        self
+    }
+
+    /// Get the effective count (default to 1 if not set).
+    ///
+    /// In vim, an unspecified count means "1", not "none".
+    #[must_use]
+    pub const fn effective_count(&self) -> usize {
+        match self.count {
+            Some(c) => c,
+            None => 1,
+        }
+    }
+
+    /// Check if any arguments are set.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.count.is_none() && self.register.is_none()
+    }
+}
+
 // ============================================================================
 // ResolveInput - Input context for resolvers
 // ============================================================================
@@ -305,6 +399,80 @@ pub trait ModeKeyResolver: Send + Sync {
         self.resolve_with_keymap(key, state, input)
     }
 
+    /// Process a key event with full session API access.
+    ///
+    /// This is the preferred method for resolvers that need direct state manipulation.
+    /// Instead of returning commands for the runner to execute, resolvers can perform
+    /// operations directly via the session API and return `ResolveResult::Completed`.
+    ///
+    /// # Architecture (Epic #393)
+    ///
+    /// This method completes the mechanism/policy separation:
+    /// - **Mechanism (runner)**: Creates `SessionRuntime`, routes keys to resolvers
+    /// - **Policy (resolvers)**: Perform actions directly via `session.*` methods
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key event to process
+    /// * `state` - Mutable access to shared mode state
+    /// * `input` - Input context with keymap access
+    /// * `session` - Dyn-compatible session API (mode, buffer, window, command, changes)
+    /// * `extensions` - Per-session extension storage for module state
+    ///
+    /// # Why Separate `extensions`?
+    ///
+    /// `ExtensionApi` has generic methods (`ext<T>`, `ext_mut<T>`), making it
+    /// incompatible with trait objects. By passing extensions separately, we preserve
+    /// dyn-compatibility for `ModeKeyResolver` while still providing full access.
+    ///
+    /// # Returns
+    ///
+    /// A `ResolveResult` indicating what action to take:
+    /// - `Completed` - Resolver handled everything via `SessionApi`
+    /// - Other variants - Runner should handle as before
+    ///
+    /// # Default Implementation
+    ///
+    /// Falls back to `resolve_with_extensions()` for backward compatibility.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use reovim_driver_session::{SessionApiDyn, ModeApi, BufferApi, ExtensionMap};
+    ///
+    /// fn resolve_with_session(
+    ///     &self,
+    ///     key: &KeyEvent,
+    ///     state: &mut ModeState,
+    ///     input: &ResolveInput<'_>,
+    ///     session: &mut dyn SessionApiDyn,
+    ///     extensions: &mut ExtensionMap,
+    /// ) -> ResolveResult {
+    ///     // Directly manipulate state via session
+    ///     session.push_mode(insert_mode, TransitionContext::new());
+    ///     session.move_cursor(buffer, Position::new(0, 5));
+    ///
+    ///     // Access module state via extensions
+    ///     let vim = extensions.get_or_insert::<VimSessionState>();
+    ///     vim.pending_count = None;
+    ///
+    ///     // Tell runner: "I'm done, just broadcast the changes"
+    ///     ResolveResult::Completed
+    /// }
+    /// ```
+    fn resolve_with_session(
+        &self,
+        key: &KeyEvent,
+        state: &mut ModeState,
+        input: &ResolveInput<'_>,
+        _session: &mut dyn SessionApiDyn,
+        extensions: &mut ExtensionMap,
+    ) -> ResolveResult {
+        // Default: delegate to resolve_with_extensions for backward compatibility.
+        // Resolvers that need session access should override this method.
+        self.resolve_with_extensions(key, state, input, extensions)
+    }
+
     /// Which mode this resolver handles.
     fn mode_id(&self) -> &ModeId;
 
@@ -337,6 +505,7 @@ pub trait ModeKeyResolver: Send + Sync {
 /// - Pass to parent mode
 /// - Insert a character
 /// - Request a mode transition
+/// - Completed (resolver executed everything via `SessionApi`)
 #[derive(Debug, Clone)]
 pub enum ResolveResult {
     /// Execute this command with the given context.
@@ -367,6 +536,34 @@ pub enum ResolveResult {
     ///
     /// Push, pop, or replace the current mode on the mode stack.
     ModeTransition(ModeTransition),
+
+    /// Resolver already executed everything via `SessionApi`.
+    ///
+    /// The resolver used `SessionRuntime` methods directly to perform
+    /// all necessary operations (mode changes, cursor moves, buffer edits, etc.).
+    /// Runner should just take accumulated changes via `take_changes()` and
+    /// broadcast notifications to clients.
+    ///
+    /// This variant is used with the new `resolve_with_session` pattern
+    /// where resolvers receive `&mut impl SessionApi` and can act directly.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// fn resolve_with_session<S: ModeApi + BufferApi>(
+    ///     &self,
+    ///     key: &KeyEvent,
+    ///     state: &mut ModeState,
+    ///     session: &mut S,
+    /// ) -> ResolveResult {
+    ///     // Directly modify state via SessionApi
+    ///     session.push_mode(insert_mode, TransitionContext::new());
+    ///
+    ///     // Tell runner: "I'm done, just broadcast the changes"
+    ///     ResolveResult::Completed
+    /// }
+    /// ```
+    Completed,
 }
 
 // ============================================================================
@@ -567,143 +764,7 @@ pub enum ModeTransition {
     },
 }
 
-// ============================================================================
-// TransitionContext
-// ============================================================================
-
-/// Context passed when entering a new mode.
-///
-/// Contains state from the previous mode that the new mode needs:
-/// - Pending operator (for operator-pending mode)
-/// - Count prefix (inherited across mode transitions)
-/// - Register selection
-#[derive(Debug, Clone, Default)]
-pub struct TransitionContext {
-    /// Pending operator waiting for a motion/text-object.
-    ///
-    /// Set when entering operator-pending mode (e.g., after pressing `d`).
-    pub pending_operator: Option<CommandId>,
-
-    /// Count prefix to pass to the new mode.
-    ///
-    /// Counts can be combined: `2d3w` = delete 6 words.
-    pub count: Option<usize>,
-
-    /// Register for the operation.
-    pub register: Option<char>,
-}
-
-impl TransitionContext {
-    /// Create an empty context.
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Create a context with a pending operator.
-    #[must_use]
-    pub fn with_operator(operator: CommandId) -> Self {
-        Self {
-            pending_operator: Some(operator),
-            ..Default::default()
-        }
-    }
-
-    /// Set the pending operator.
-    #[must_use]
-    pub fn operator(mut self, op: CommandId) -> Self {
-        self.pending_operator = Some(op);
-        self
-    }
-
-    /// Set the count.
-    #[must_use]
-    pub const fn count(mut self, count: usize) -> Self {
-        self.count = Some(count);
-        self
-    }
-
-    /// Set the register.
-    #[must_use]
-    pub const fn register(mut self, register: char) -> Self {
-        self.register = Some(register);
-        self
-    }
-}
-
-// ============================================================================
-// PopResult
-// ============================================================================
-
-/// Result returned when popping from a mode.
-///
-/// The parent mode uses this to complete its operation:
-/// - Operator-pending returns range for the operator
-/// - Search returns the search pattern
-/// - Command-line returns the entered command
-#[derive(Debug, Clone)]
-pub enum PopResult {
-    /// Operator completed with a range.
-    ///
-    /// The parent mode (normal) should execute the pending operator
-    /// on this range. All information needed for execution is included
-    /// to maintain SSOT (Single Source of Truth) - no duplicate state
-    /// storage in the runner.
-    OperatorRange {
-        /// The operator command to execute.
-        ///
-        /// Carried through from the transition context when entering
-        /// operator-pending mode, ensuring no state duplication.
-        operator: CommandId,
-        /// Start position of the range.
-        start: Position,
-        /// End position of the range.
-        end: Position,
-        /// Whether the range is linewise (full lines).
-        linewise: bool,
-        /// Count applied to the operator.
-        count: Option<usize>,
-        /// Target register for the operation.
-        register: Option<char>,
-    },
-
-    /// Text object selected.
-    ///
-    /// Similar to `OperatorRange` but explicitly marks text object selection.
-    TextObject {
-        /// Start position.
-        start: Position,
-        /// End position.
-        end: Position,
-        /// Whether the selection is linewise.
-        linewise: bool,
-        /// Whether this is an "inner" (i) or "around" (a) text object.
-        inner: bool,
-    },
-
-    /// User cancelled the operation (Escape pressed).
-    Cancelled,
-
-    /// Search pattern entered.
-    SearchPattern {
-        /// The search pattern.
-        pattern: String,
-        /// Search direction (forward = true, backward = false).
-        forward: bool,
-    },
-
-    /// Command-line command entered.
-    CommandLine {
-        /// The entered command string.
-        command: String,
-    },
-
-    /// Character input completed (for f/t/r commands).
-    CharInput {
-        /// The entered character.
-        char: char,
-    },
-}
+// TransitionContext and PopResult are re-exported from session driver above.
 
 // ============================================================================
 // ModeState
@@ -1030,142 +1091,7 @@ mod tests {
         }
     }
 
-    // ========================================================================
-    // TransitionContext tests
-    // ========================================================================
-
-    #[test]
-    fn test_transition_context_new() {
-        let ctx = TransitionContext::new();
-        assert!(ctx.pending_operator.is_none());
-        assert!(ctx.count.is_none());
-        assert!(ctx.register.is_none());
-    }
-
-    #[test]
-    fn test_transition_context_builder() {
-        let op = test_command();
-        let ctx = TransitionContext::new()
-            .operator(op.clone())
-            .count(2)
-            .register('b');
-
-        assert_eq!(ctx.pending_operator, Some(op));
-        assert_eq!(ctx.count, Some(2));
-        assert_eq!(ctx.register, Some('b'));
-    }
-
-    #[test]
-    fn test_transition_context_with_operator() {
-        let op = test_command();
-        let ctx = TransitionContext::with_operator(op.clone());
-        assert_eq!(ctx.pending_operator, Some(op));
-    }
-
-    // ========================================================================
-    // PopResult tests
-    // ========================================================================
-
-    #[test]
-    fn test_pop_result_operator_range() {
-        let result = PopResult::OperatorRange {
-            operator: test_command(),
-            start: Position::new(1, 0),
-            end: Position::new(3, 0),
-            linewise: true,
-            count: None,
-            register: None,
-        };
-
-        if let PopResult::OperatorRange {
-            operator,
-            start,
-            end,
-            linewise,
-            count,
-            register,
-        } = result
-        {
-            assert_eq!(operator, test_command());
-            assert_eq!(start, Position::new(1, 0));
-            assert_eq!(end, Position::new(3, 0));
-            assert!(linewise);
-            assert!(count.is_none());
-            assert!(register.is_none());
-        } else {
-            panic!("expected OperatorRange");
-        }
-    }
-
-    #[test]
-    fn test_pop_result_text_object() {
-        let result = PopResult::TextObject {
-            start: Position::new(0, 5),
-            end: Position::new(0, 10),
-            linewise: false,
-            inner: true,
-        };
-
-        if let PopResult::TextObject {
-            start,
-            end,
-            linewise,
-            inner,
-        } = result
-        {
-            assert_eq!(start, Position::new(0, 5));
-            assert_eq!(end, Position::new(0, 10));
-            assert!(!linewise);
-            assert!(inner);
-        } else {
-            panic!("expected TextObject");
-        }
-    }
-
-    #[test]
-    fn test_pop_result_cancelled() {
-        let result = PopResult::Cancelled;
-        assert!(matches!(result, PopResult::Cancelled));
-    }
-
-    #[test]
-    fn test_pop_result_search_pattern() {
-        let result = PopResult::SearchPattern {
-            pattern: "foo".to_string(),
-            forward: true,
-        };
-
-        if let PopResult::SearchPattern { pattern, forward } = result {
-            assert_eq!(pattern, "foo");
-            assert!(forward);
-        } else {
-            panic!("expected SearchPattern");
-        }
-    }
-
-    #[test]
-    fn test_pop_result_command_line() {
-        let result = PopResult::CommandLine {
-            command: "wq".to_string(),
-        };
-
-        if let PopResult::CommandLine { command } = result {
-            assert_eq!(command, "wq");
-        } else {
-            panic!("expected CommandLine");
-        }
-    }
-
-    #[test]
-    fn test_pop_result_char_input() {
-        let result = PopResult::CharInput { char: 'x' };
-
-        if let PopResult::CharInput { char: c } = result {
-            assert_eq!(c, 'x');
-        } else {
-            panic!("expected CharInput");
-        }
-    }
+    // TransitionContext and PopResult tests are in reovim-driver-session::transition (canonical source)
 
     // ========================================================================
     // ModeState tests
@@ -1209,5 +1135,71 @@ mod tests {
         assert!(ctx.is_some());
         assert_eq!(ctx.unwrap().count, Some(5));
         assert!(state.transition_context.is_none());
+    }
+
+    // ========================================================================
+    // OperatorArgs tests (#391)
+    // ========================================================================
+
+    #[test]
+    fn test_operator_args_new() {
+        let args = OperatorArgs::new();
+        assert!(args.count.is_none());
+        assert!(args.register.is_none());
+        assert!(args.is_empty());
+    }
+
+    #[test]
+    fn test_operator_args_with_count() {
+        let args = OperatorArgs::with_count(5);
+        assert_eq!(args.count, Some(5));
+        assert!(args.register.is_none());
+        assert!(!args.is_empty());
+    }
+
+    #[test]
+    fn test_operator_args_builder() {
+        let args = OperatorArgs::new().count(3).register('a');
+        assert_eq!(args.count, Some(3));
+        assert_eq!(args.register, Some('a'));
+        assert!(!args.is_empty());
+    }
+
+    #[test]
+    fn test_operator_args_effective_count() {
+        let args_none = OperatorArgs::new();
+        assert_eq!(args_none.effective_count(), 1);
+
+        let args_some = OperatorArgs::with_count(7);
+        assert_eq!(args_some.effective_count(), 7);
+    }
+
+    #[test]
+    fn test_operator_args_is_empty() {
+        let empty = OperatorArgs::new();
+        assert!(empty.is_empty());
+
+        let with_count = OperatorArgs::new().count(1);
+        assert!(!with_count.is_empty());
+
+        let with_register = OperatorArgs::new().register('b');
+        assert!(!with_register.is_empty());
+    }
+
+    #[test]
+    fn test_operator_args_equality() {
+        let args1 = OperatorArgs::new().count(3).register('a');
+        let args2 = OperatorArgs::new().count(3).register('a');
+        let args3 = OperatorArgs::new().count(3).register('b');
+
+        assert_eq!(args1, args2);
+        assert_ne!(args1, args3);
+    }
+
+    #[test]
+    fn test_operator_args_default() {
+        let args = OperatorArgs::default();
+        assert!(args.is_empty());
+        assert_eq!(args.effective_count(), 1);
     }
 }

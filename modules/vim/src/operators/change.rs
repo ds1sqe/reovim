@@ -111,7 +111,36 @@ impl Operator for ChangeOperator {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {
+        super::*,
+        reovim_driver_command::{CommandContext, CommandHandler, CommandResult},
+        reovim_driver_session::{Session, SessionId, SessionRuntime, api::CommandExecutor},
+        reovim_kernel::api::v1::{CommandId, KernelContext, ModeId, ModuleId},
+    };
+
+    #[allow(dead_code)]
+    fn run_command<C: CommandHandler>(
+        cmd: &C,
+        ctx: &KernelContext,
+        args: &CommandContext,
+    ) -> CommandResult {
+        struct StubExecutor;
+        impl CommandExecutor for StubExecutor {
+            fn execute(
+                &self,
+                _: &CommandId,
+                _: &CommandContext,
+                _: &mut KernelContext,
+            ) -> Option<CommandResult> {
+                Some(CommandResult::Success)
+            }
+        }
+        let home_mode = ModeId::new(ModuleId::new("test"), "normal");
+        let mut session = Session::new(SessionId::new(1), home_mode);
+        let executor = StubExecutor;
+        let mut runtime = SessionRuntime::new(&mut session, ctx, &executor);
+        cmd.execute(&mut runtime, args)
+    }
 
     #[test]
     fn test_change_operator_id() {

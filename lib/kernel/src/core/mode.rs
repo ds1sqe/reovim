@@ -10,9 +10,9 @@
 //!
 //! | Layer | Responsibility |
 //! |-------|---------------|
-//! | Kernel (this) | Identity: `ModeId`, `CommandId`, `Mode` trait, `CursorStyle` |
+//! | Kernel (this) | Identity + Behavior: `ModeId`, `CommandId`, `Mode` trait, `CursorStyle` |
 //! | Display Driver | Display: `ModeDisplay` (uses kernel `CursorStyle`) |
-//! | Input Driver | Input: `ModeInput`, `KeySequence`, `Keybinding` |
+//! | Input Driver | Input: `KeySequence`, `Keybinding` |
 //! | Command Driver | Execution: `Command`, `CommandHandler` |
 //! | Modules | Policy: actual mode/command implementations |
 //!

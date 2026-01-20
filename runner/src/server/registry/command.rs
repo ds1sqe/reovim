@@ -148,6 +148,8 @@ impl CommandRegistry {
         app: &mut AppState,
         args: &CommandContext,
     ) -> Option<CommandResult> {
+        use reovim_driver_session::{Session, SessionId, SessionRuntime, Window};
+
         profile_scope!("command_execute", "runner::command");
 
         self.entries.get(id).map(|entry| {
@@ -156,9 +158,65 @@ impl CommandRegistry {
             if let Some(buffer_id) = app.active_buffer {
                 ctx.set_buffer_id(buffer_id);
             }
-            // Note: CommandHandler::execute takes &mut KernelContext,
-            // we extract it from AppState
-            entry.handler.execute(&mut app.kernel, &ctx)
+
+            // Create a temporary Session from AppState fields for SessionRuntime
+            // This bridges the AppState/Session gap during migration
+            let mut session = Session::new(SessionId::new(1), app.mode_stack.home().clone());
+
+            // Copy mode stack (excluding home mode which is already set)
+            for mode in app.mode_stack.as_slice().iter().skip(1) {
+                session.mode_stack.push(mode.clone());
+            }
+
+            // Copy windows from WindowRegistry to Session's WindowLayout
+            for win_id in app.windows.windows() {
+                if let Some(state) = app.windows.get(win_id) {
+                    let mut window = Window::new();
+                    window.buffer_id = state.buffer_id;
+                    window.cursor.line = state.cursor.line;
+                    window.cursor.column = state.cursor.column;
+                    session.windows.add(window);
+                }
+            }
+
+            // Create SessionRuntime for command execution
+            // NOTE: We pass a stub executor here because commands shouldn't
+            // recursively execute other commands via SessionRuntime::execute_command
+            let stub_executor = StubCommandExecutor;
+            let mut runtime = SessionRuntime::new(&mut session, &app.kernel, &stub_executor);
+
+            // Execute command with new signature
+            let result = entry.handler.execute(&mut runtime, &ctx);
+
+            // Sync changes back to AppState
+            // Mode stack changes - sync entire stack from Session to AppState
+            // First, pop all non-home modes from AppState
+            while app.mode_stack.depth() > 1 {
+                app.mode_stack.pop();
+            }
+            // Sync the current mode (handles set_mode changes to home position)
+            if let Some(session_current) = session.mode_stack.as_slice().first() {
+                app.mode_stack.set(session_current.clone());
+            }
+            // Push any additional modes from Session
+            for mode in session.mode_stack.as_slice().iter().skip(1) {
+                app.mode_stack.push(mode.clone());
+            }
+
+            // Window cursor changes - sync back to WindowRegistry
+            // (buffer content changes go through kernel directly)
+            // Collect window IDs first to avoid borrow conflict
+            let window_ids: Vec<_> = app.windows.windows().collect();
+            for (idx, window) in session.windows.windows.iter().enumerate() {
+                if let Some(&win_id) = window_ids.get(idx)
+                    && let Some(state) = app.windows.get_mut(win_id)
+                {
+                    state.cursor.line = window.cursor.line;
+                    state.cursor.column = window.cursor.column;
+                }
+            }
+
+            result
         })
     }
 
@@ -189,12 +247,62 @@ impl std::fmt::Debug for CommandRegistry {
     }
 }
 
+// === Stub CommandExecutor for internal use ===
+//
+// Used when executing commands via SessionRuntime - commands shouldn't
+// recursively execute other commands through SessionRuntime.execute_command().
+
+use {reovim_driver_session::CommandExecutor, reovim_kernel::api::v1::KernelContext};
+
+/// Stub executor that returns an error for any command execution.
+///
+/// Used when creating `SessionRuntime` for command execution - commands
+/// should not recursively call other commands via `execute_command()`.
+struct StubCommandExecutor;
+
+impl CommandExecutor for StubCommandExecutor {
+    fn execute(
+        &self,
+        _cmd: &CommandId,
+        _ctx: &CommandContext,
+        _kernel: &mut KernelContext,
+    ) -> Option<CommandResult> {
+        // Commands cannot recursively execute other commands via SessionRuntime
+        Some(CommandResult::Error("recursive command execution not supported".to_string()))
+    }
+}
+
+// === CommandExecutor implementation for CommandRegistry ===
+//
+// This allows SessionRuntime to execute commands without needing
+// direct access to AppState. Used by the Session Driver API.
+// NOTE: This implementation is currently a placeholder for Phase 3.
+
+impl CommandExecutor for CommandRegistry {
+    fn execute(
+        &self,
+        _cmd: &CommandId,
+        _ctx: &CommandContext,
+        _kernel: &mut KernelContext,
+    ) -> Option<CommandResult> {
+        profile_scope!("command_execute_via_executor", "runner::command");
+
+        // NOTE: This implementation is complex because commands now need SessionRuntime,
+        // but CommandExecutor only provides KernelContext. For now, return an error.
+        // Commands that need to call other commands should use the event-based approach.
+        Some(CommandResult::Error(
+            "command execution via CommandExecutor not yet implemented".to_string(),
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use {
         super::*,
         reovim_driver_command::{ArgSpec, Command},
-        reovim_kernel::api::v1::{KernelContext, ModuleId},
+        reovim_driver_session::SessionRuntime,
+        reovim_kernel::api::v1::ModuleId,
     };
 
     // Test command implementation
@@ -225,7 +333,11 @@ mod tests {
     }
 
     impl CommandHandler for TestCommand {
-        fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
+        fn execute(
+            &self,
+            _runtime: &mut SessionRuntime<'_>,
+            _args: &CommandContext,
+        ) -> CommandResult {
             CommandResult::Success
         }
     }

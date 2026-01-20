@@ -162,11 +162,12 @@ pub fn paste_commands() -> Vec<Box<dyn CommandHandler>> {
 mod tests {
     use {
         super::*,
-        reovim_driver_command::{ArgKind, ArgValue, Command, CommandContext},
+        reovim_driver_command::{ArgKind, ArgValue, Command, CommandContext, CommandResult},
+        reovim_driver_session::{Session, SessionId, SessionRuntime, api::CommandExecutor},
         reovim_kernel::api::v1::{
-            Buffer, BufferError, BufferId, BufferManager, EventBus, KernelContext, MarkBank,
-            MotionEngine, OptionRegistry, Position, RegisterBank, RegisterContent, RwLock,
-            TextObjectEngine,
+            Buffer, BufferError, BufferId, BufferManager, CommandId as KernelCommandId, EventBus,
+            KernelContext, MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry, Position,
+            RegisterBank, RegisterContent, RwLock, TextObjectEngine,
         },
         std::{collections::HashMap, sync::Arc},
     };
@@ -222,6 +223,23 @@ mod tests {
         }
     }
 
+    fn test_mode() -> ModeId {
+        ModeId::new(ModuleId::new("test"), "normal")
+    }
+
+    struct StubExecutor;
+
+    impl CommandExecutor for StubExecutor {
+        fn execute(
+            &self,
+            _cmd: &KernelCommandId,
+            _ctx: &CommandContext,
+            _kernel: &mut KernelContext,
+        ) -> Option<CommandResult> {
+            Some(CommandResult::Success)
+        }
+    }
+
     /// Create a `KernelContext` with a real buffer manager for testing.
     fn create_test_context() -> KernelContext {
         KernelContext::new(
@@ -233,6 +251,15 @@ mod tests {
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::default()),
         )
+    }
+
+    /// Create a test runtime for command execution.
+    fn create_test_runtime<'a>(
+        session: &'a mut Session,
+        kernel: &'a KernelContext,
+        executor: &'a StubExecutor,
+    ) -> SessionRuntime<'a> {
+        SessionRuntime::new(session, kernel, executor)
     }
 
     // =========================================================================
@@ -303,33 +330,45 @@ mod tests {
 
     #[test]
     fn test_cursor_up_no_buffer_id_returns_error() {
-        let mut ctx = KernelContext::default();
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let args = CommandContext::new();
-        let result = CursorUp.execute(&mut ctx, &args);
+        let result = CursorUp.execute(&mut runtime, &args);
         assert!(result.is_error());
     }
 
     #[test]
     fn test_cursor_down_no_buffer_id_returns_error() {
-        let mut ctx = KernelContext::default();
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let args = CommandContext::new();
-        let result = CursorDown.execute(&mut ctx, &args);
+        let result = CursorDown.execute(&mut runtime, &args);
         assert!(result.is_error());
     }
 
     #[test]
     fn test_cursor_left_no_buffer_id_returns_error() {
-        let mut ctx = KernelContext::default();
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let args = CommandContext::new();
-        let result = CursorLeft.execute(&mut ctx, &args);
+        let result = CursorLeft.execute(&mut runtime, &args);
         assert!(result.is_error());
     }
 
     #[test]
     fn test_cursor_right_no_buffer_id_returns_error() {
-        let mut ctx = KernelContext::default();
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let args = CommandContext::new();
-        let result = CursorRight.execute(&mut ctx, &args);
+        let result = CursorRight.execute(&mut runtime, &args);
         assert!(result.is_error());
     }
 
@@ -339,10 +378,13 @@ mod tests {
 
     #[test]
     fn test_cursor_up_invalid_buffer_returns_error() {
-        let mut ctx = KernelContext::default();
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
         args.set("buffer_id", ArgValue::BufferId(999));
-        let result = CursorUp.execute(&mut ctx, &args);
+        let result = CursorUp.execute(&mut runtime, &args);
         assert!(result.is_error());
     }
 
@@ -359,14 +401,17 @@ mod tests {
 
     #[test]
     fn test_cursor_down_moves_cursor() {
-        let (mut ctx, buffer_id) = setup_buffer_context();
+        let (kernel, buffer_id) = setup_buffer_context();
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = CursorDown.execute(&mut ctx, &args);
+        let result = CursorDown.execute(&mut runtime, &args);
         assert!(result.is_success());
 
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let buffer = kernel.buffers.get(buffer_id).unwrap();
         let pos = buffer.read().position();
         assert_eq!(pos.line, 1);
         assert_eq!(pos.column, 0);
@@ -374,34 +419,40 @@ mod tests {
 
     #[test]
     fn test_cursor_up_moves_cursor() {
-        let (mut ctx, buffer_id) = setup_buffer_context();
+        let (kernel, buffer_id) = setup_buffer_context();
         // First move down, then test up
         {
-            let buffer = ctx.buffers.get(buffer_id).unwrap();
+            let buffer = kernel.buffers.get(buffer_id).unwrap();
             buffer.write().set_position(Position::new(2, 0));
         }
 
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = CursorUp.execute(&mut ctx, &args);
+        let result = CursorUp.execute(&mut runtime, &args);
         assert!(result.is_success());
 
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let buffer = kernel.buffers.get(buffer_id).unwrap();
         let pos = buffer.read().position();
         assert_eq!(pos.line, 1);
     }
 
     #[test]
     fn test_cursor_right_moves_cursor() {
-        let (mut ctx, buffer_id) = setup_buffer_context();
+        let (kernel, buffer_id) = setup_buffer_context();
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = CursorRight.execute(&mut ctx, &args);
+        let result = CursorRight.execute(&mut runtime, &args);
         assert!(result.is_success());
 
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let buffer = kernel.buffers.get(buffer_id).unwrap();
         let pos = buffer.read().position();
         assert_eq!(pos.line, 0);
         assert_eq!(pos.column, 1);
@@ -409,20 +460,23 @@ mod tests {
 
     #[test]
     fn test_cursor_left_moves_cursor() {
-        let (mut ctx, buffer_id) = setup_buffer_context();
+        let (kernel, buffer_id) = setup_buffer_context();
         // First move right, then test left
         {
-            let buffer = ctx.buffers.get(buffer_id).unwrap();
+            let buffer = kernel.buffers.get(buffer_id).unwrap();
             buffer.write().set_position(Position::new(0, 5));
         }
 
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = CursorLeft.execute(&mut ctx, &args);
+        let result = CursorLeft.execute(&mut runtime, &args);
         assert!(result.is_success());
 
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let buffer = kernel.buffers.get(buffer_id).unwrap();
         let pos = buffer.read().position();
         assert_eq!(pos.column, 4);
     }
@@ -433,30 +487,36 @@ mod tests {
 
     #[test]
     fn test_cursor_down_count_respected() {
-        let (mut ctx, buffer_id) = setup_buffer_context();
+        let (kernel, buffer_id) = setup_buffer_context();
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
         args.set("count", ArgValue::Count(2));
 
-        let result = CursorDown.execute(&mut ctx, &args);
+        let result = CursorDown.execute(&mut runtime, &args);
         assert!(result.is_success());
 
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let buffer = kernel.buffers.get(buffer_id).unwrap();
         let pos = buffer.read().position();
         assert_eq!(pos.line, 2); // Moved down 2 lines
     }
 
     #[test]
     fn test_cursor_right_count_respected() {
-        let (mut ctx, buffer_id) = setup_buffer_context();
+        let (kernel, buffer_id) = setup_buffer_context();
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
         args.set("count", ArgValue::Count(3));
 
-        let result = CursorRight.execute(&mut ctx, &args);
+        let result = CursorRight.execute(&mut runtime, &args);
         assert!(result.is_success());
 
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let buffer = kernel.buffers.get(buffer_id).unwrap();
         let pos = buffer.read().position();
         assert_eq!(pos.column, 3);
     }
@@ -467,71 +527,83 @@ mod tests {
 
     #[test]
     fn test_cursor_up_at_line_zero_is_noop() {
-        let (mut ctx, buffer_id) = setup_buffer_context();
+        let (kernel, buffer_id) = setup_buffer_context();
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
         // Cursor starts at (0, 0), should stay there
-        let result = CursorUp.execute(&mut ctx, &args);
+        let result = CursorUp.execute(&mut runtime, &args);
         assert!(result.is_success());
 
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let buffer = kernel.buffers.get(buffer_id).unwrap();
         let pos = buffer.read().position();
         assert_eq!(pos.line, 0);
     }
 
     #[test]
     fn test_cursor_down_at_eof_is_noop() {
-        let (mut ctx, buffer_id) = setup_buffer_context();
+        let (kernel, buffer_id) = setup_buffer_context();
         // Move to last line
         {
-            let buffer = ctx.buffers.get(buffer_id).unwrap();
+            let buffer = kernel.buffers.get(buffer_id).unwrap();
             buffer.write().set_position(Position::new(2, 0));
         }
 
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = CursorDown.execute(&mut ctx, &args);
+        let result = CursorDown.execute(&mut runtime, &args);
         assert!(result.is_success());
 
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let buffer = kernel.buffers.get(buffer_id).unwrap();
         let pos = buffer.read().position();
         assert_eq!(pos.line, 2); // Stayed at last line
     }
 
     #[test]
     fn test_cursor_left_at_col_zero_is_noop() {
-        let (mut ctx, buffer_id) = setup_buffer_context();
+        let (kernel, buffer_id) = setup_buffer_context();
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
         // Cursor starts at column 0
-        let result = CursorLeft.execute(&mut ctx, &args);
+        let result = CursorLeft.execute(&mut runtime, &args);
         assert!(result.is_success());
 
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let buffer = kernel.buffers.get(buffer_id).unwrap();
         let pos = buffer.read().position();
         assert_eq!(pos.column, 0);
     }
 
     #[test]
     fn test_cursor_right_at_eol_is_noop() {
-        let (mut ctx, buffer_id) = setup_buffer_context();
+        let (kernel, buffer_id) = setup_buffer_context();
         // Move to last character of line ("line one" is 8 chars, last char at index 7)
         // In normal mode, cursor can't go past the last character
         {
-            let buffer = ctx.buffers.get(buffer_id).unwrap();
+            let buffer = kernel.buffers.get(buffer_id).unwrap();
             buffer.write().set_position(Position::new(0, 7)); // 'e' in "line one"
         }
 
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = CursorRight.execute(&mut ctx, &args);
+        let result = CursorRight.execute(&mut runtime, &args);
         assert!(result.is_success());
 
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let buffer = kernel.buffers.get(buffer_id).unwrap();
         let pos = buffer.read().position();
         assert_eq!(pos.column, 7); // Stayed at last character
     }
@@ -542,36 +614,42 @@ mod tests {
 
     #[test]
     fn test_cursor_movement_empty_buffer() {
-        let mut ctx = create_test_context();
+        let kernel = create_test_context();
         let buffer = Buffer::new(); // Empty buffer
-        let buffer_id = ctx.buffers.register(buffer);
+        let buffer_id = kernel.buffers.register(buffer);
 
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
         // All movements should succeed (no-op on empty buffer)
-        assert!(CursorDown.execute(&mut ctx, &args).is_success());
-        assert!(CursorUp.execute(&mut ctx, &args).is_success());
-        assert!(CursorLeft.execute(&mut ctx, &args).is_success());
-        assert!(CursorRight.execute(&mut ctx, &args).is_success());
+        assert!(CursorDown.execute(&mut runtime, &args).is_success());
+        assert!(CursorUp.execute(&mut runtime, &args).is_success());
+        assert!(CursorLeft.execute(&mut runtime, &args).is_success());
+        assert!(CursorRight.execute(&mut runtime, &args).is_success());
     }
 
     #[test]
     fn test_cursor_movement_single_line() {
-        let mut ctx = create_test_context();
+        let kernel = create_test_context();
         let buffer = Buffer::from_string("single line");
-        let buffer_id = ctx.buffers.register(buffer);
+        let buffer_id = kernel.buffers.register(buffer);
 
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
         // Up/down should be no-op
-        assert!(CursorDown.execute(&mut ctx, &args).is_success());
-        assert!(CursorUp.execute(&mut ctx, &args).is_success());
+        assert!(CursorDown.execute(&mut runtime, &args).is_success());
+        assert!(CursorUp.execute(&mut runtime, &args).is_success());
 
         // Left/right should work
-        assert!(CursorRight.execute(&mut ctx, &args).is_success());
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        assert!(CursorRight.execute(&mut runtime, &args).is_success());
+        let buffer = kernel.buffers.get(buffer_id).unwrap();
         assert_eq!(buffer.read().position().column, 1);
     }
 
@@ -609,42 +687,54 @@ mod tests {
     #[test]
     fn test_undo_command_returns_success() {
         // Commands now return Success - actual undo logic
-        // will be handled by SessionContext when available
-        let mut ctx = KernelContext::default();
+        // will be handled by SessionRuntime (see #394 for API gap)
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let args = CommandContext::new();
 
-        let result = UndoCommand.execute(&mut ctx, &args);
+        let result = UndoCommand.execute(&mut runtime, &args);
         assert!(result.is_success());
     }
 
     #[test]
     fn test_redo_command_returns_success() {
-        let mut ctx = KernelContext::default();
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let args = CommandContext::new();
 
-        let result = RedoCommand.execute(&mut ctx, &args);
+        let result = RedoCommand.execute(&mut runtime, &args);
         assert!(result.is_success());
     }
 
     #[test]
     fn test_undo_command_with_count() {
-        let mut ctx = KernelContext::default();
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
         args.set("count", ArgValue::Count(5));
 
-        let result = UndoCommand.execute(&mut ctx, &args);
+        let result = UndoCommand.execute(&mut runtime, &args);
         // Commands return Success - count is accessed but actual undo
-        // will be handled by SessionContext
+        // will be handled by SessionRuntime (see #394)
         assert!(result.is_success());
     }
 
     #[test]
     fn test_redo_command_with_count() {
-        let mut ctx = KernelContext::default();
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
         args.set("count", ArgValue::Count(3));
 
-        let result = RedoCommand.execute(&mut ctx, &args);
+        let result = RedoCommand.execute(&mut runtime, &args);
         assert!(result.is_success());
     }
 
@@ -675,20 +765,26 @@ mod tests {
     #[test]
     fn test_undo_command_does_not_require_buffer_id() {
         // Undo commands return Success without requiring buffer_id
-        let mut ctx = KernelContext::default();
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let args = CommandContext::new();
 
-        let result = UndoCommand.execute(&mut ctx, &args);
+        let result = UndoCommand.execute(&mut runtime, &args);
         assert!(!result.is_error());
         assert!(result.is_success());
     }
 
     #[test]
     fn test_redo_command_does_not_require_buffer_id() {
-        let mut ctx = KernelContext::default();
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let args = CommandContext::new();
 
-        let result = RedoCommand.execute(&mut ctx, &args);
+        let result = RedoCommand.execute(&mut runtime, &args);
         assert!(!result.is_error());
         assert!(result.is_success());
     }
@@ -714,23 +810,29 @@ mod tests {
 
     #[test]
     fn test_yank_line_no_buffer_returns_error() {
-        let mut ctx = KernelContext::default();
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let args = CommandContext::new();
-        let result = YankLine.execute(&mut ctx, &args);
+        let result = YankLine.execute(&mut runtime, &args);
         assert!(result.is_error());
     }
 
     #[test]
     fn test_yank_line_single_line() {
-        let (mut ctx, buffer_id) = setup_buffer_context();
+        let (kernel, buffer_id) = setup_buffer_context();
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = YankLine.execute(&mut ctx, &args);
+        let result = YankLine.execute(&mut runtime, &args);
         assert!(result.is_success());
 
         // Check register content
-        let registers = ctx.registers.read();
+        let registers = kernel.registers.read();
         let content = registers.get().clone();
         drop(registers);
         assert!(content.is_linewise());
@@ -739,16 +841,19 @@ mod tests {
 
     #[test]
     fn test_yank_line_count() {
-        let (mut ctx, buffer_id) = setup_buffer_context();
+        let (kernel, buffer_id) = setup_buffer_context();
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
         args.set("count", ArgValue::Count(2));
 
-        let result = YankLine.execute(&mut ctx, &args);
+        let result = YankLine.execute(&mut runtime, &args);
         assert!(result.is_success());
 
         // Check register content
-        let registers = ctx.registers.read();
+        let registers = kernel.registers.read();
         let content = registers.get().clone();
         drop(registers);
         assert!(content.is_linewise());
@@ -757,22 +862,25 @@ mod tests {
 
     #[test]
     fn test_yank_line_at_eof() {
-        let (mut ctx, buffer_id) = setup_buffer_context();
+        let (kernel, buffer_id) = setup_buffer_context();
         // Move to last line
         {
-            let buffer = ctx.buffers.get(buffer_id).unwrap();
+            let buffer = kernel.buffers.get(buffer_id).unwrap();
             buffer.write().set_position(Position::new(2, 0));
         }
 
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
         args.set("count", ArgValue::Count(5)); // More than remaining lines
 
-        let result = YankLine.execute(&mut ctx, &args);
+        let result = YankLine.execute(&mut runtime, &args);
         assert!(result.is_success());
 
         // Should only yank the last line
-        let registers = ctx.registers.read();
+        let registers = kernel.registers.read();
         let content = registers.get().clone();
         drop(registers);
         assert!(content.is_linewise());
@@ -821,50 +929,65 @@ mod tests {
 
     #[test]
     fn test_paste_after_no_buffer_returns_error() {
-        let mut ctx = KernelContext::default();
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let args = CommandContext::new();
-        let result = PasteAfter.execute(&mut ctx, &args);
+        let result = PasteAfter.execute(&mut runtime, &args);
         assert!(result.is_error());
     }
 
     #[test]
     fn test_paste_before_no_buffer_returns_error() {
-        let mut ctx = KernelContext::default();
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let args = CommandContext::new();
-        let result = PasteBefore.execute(&mut ctx, &args);
+        let result = PasteBefore.execute(&mut runtime, &args);
         assert!(result.is_error());
     }
 
     #[test]
     fn test_paste_after_empty_register() {
-        let (mut ctx, buffer_id) = setup_buffer_context();
+        let (kernel, buffer_id) = setup_buffer_context();
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
         // Register is empty by default
-        let result = PasteAfter.execute(&mut ctx, &args);
+        let result = PasteAfter.execute(&mut runtime, &args);
         assert!(result.is_success()); // No-op, not error
     }
 
     #[test]
     fn test_paste_after_linewise() {
-        let (mut ctx, buffer_id) = setup_buffer_context();
+        let (kernel, buffer_id) = setup_buffer_context();
 
         // First yank a line
         {
+            let mut session = Session::new(SessionId::new(1), test_mode());
+            let executor = StubExecutor;
+            let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
             let mut args = CommandContext::new();
             args.set_buffer_id(buffer_id);
-            YankLine.execute(&mut ctx, &args);
+            YankLine.execute(&mut runtime, &args);
         }
 
         // Then paste after
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
-        let result = PasteAfter.execute(&mut ctx, &args);
+        let result = PasteAfter.execute(&mut runtime, &args);
         assert!(result.is_success());
 
         // Check buffer content
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let buffer = kernel.buffers.get(buffer_id).unwrap();
         let buffer_read = buffer.read();
         let line_count = buffer_read.line_count();
         let line1 = buffer_read.line(1).map(str::to_owned);
@@ -875,23 +998,29 @@ mod tests {
 
     #[test]
     fn test_paste_before_linewise() {
-        let (mut ctx, buffer_id) = setup_buffer_context();
+        let (kernel, buffer_id) = setup_buffer_context();
 
         // First yank a line
         {
+            let mut session = Session::new(SessionId::new(1), test_mode());
+            let executor = StubExecutor;
+            let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
             let mut args = CommandContext::new();
             args.set_buffer_id(buffer_id);
-            YankLine.execute(&mut ctx, &args);
+            YankLine.execute(&mut runtime, &args);
         }
 
         // Then paste before
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
-        let result = PasteBefore.execute(&mut ctx, &args);
+        let result = PasteBefore.execute(&mut runtime, &args);
         assert!(result.is_success());
 
         // Check buffer content
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let buffer = kernel.buffers.get(buffer_id).unwrap();
         let buffer_read = buffer.read();
         let line_count = buffer_read.line_count();
         let line0 = buffer_read.line(0).map(str::to_owned);
@@ -902,22 +1031,26 @@ mod tests {
 
     #[test]
     fn test_paste_after_characterwise() {
-        let mut ctx = create_test_context();
+        let kernel = create_test_context();
         let buffer = Buffer::from_string("hello world");
-        let buffer_id = ctx.buffers.register(buffer);
+        let buffer_id = kernel.buffers.register(buffer);
 
         // Set characterwise content in register
-        ctx.registers
+        kernel
+            .registers
             .write()
             .set(RegisterContent::characterwise("XYZ"));
 
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
-        let result = PasteAfter.execute(&mut ctx, &args);
+        let result = PasteAfter.execute(&mut runtime, &args);
         assert!(result.is_success());
 
         // Check buffer content - "XYZ" pasted after cursor (position 0)
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let buffer = kernel.buffers.get(buffer_id).unwrap();
         let buffer_read = buffer.read();
         let content = buffer_read.line(0).map(str::to_owned);
         drop(buffer_read);
@@ -926,22 +1059,26 @@ mod tests {
 
     #[test]
     fn test_paste_before_characterwise() {
-        let mut ctx = create_test_context();
+        let kernel = create_test_context();
         let buffer = Buffer::from_string("hello world");
-        let buffer_id = ctx.buffers.register(buffer);
+        let buffer_id = kernel.buffers.register(buffer);
 
         // Set characterwise content in register
-        ctx.registers
+        kernel
+            .registers
             .write()
             .set(RegisterContent::characterwise("XYZ"));
 
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
-        let result = PasteBefore.execute(&mut ctx, &args);
+        let result = PasteBefore.execute(&mut runtime, &args);
         assert!(result.is_success());
 
         // Check buffer content - "XYZ" pasted at cursor (position 0)
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let buffer = kernel.buffers.get(buffer_id).unwrap();
         let buffer_read = buffer.read();
         let content = buffer_read.line(0).map(str::to_owned);
         drop(buffer_read);
@@ -950,23 +1087,27 @@ mod tests {
 
     #[test]
     fn test_paste_after_count() {
-        let mut ctx = create_test_context();
+        let kernel = create_test_context();
         let buffer = Buffer::from_string("hello");
-        let buffer_id = ctx.buffers.register(buffer);
+        let buffer_id = kernel.buffers.register(buffer);
 
         // Set characterwise content in register
-        ctx.registers
+        kernel
+            .registers
             .write()
             .set(RegisterContent::characterwise("X"));
 
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
         args.set("count", ArgValue::Count(3));
-        let result = PasteAfter.execute(&mut ctx, &args);
+        let result = PasteAfter.execute(&mut runtime, &args);
         assert!(result.is_success());
 
         // Check buffer content - "XXX" pasted after cursor
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
+        let buffer = kernel.buffers.get(buffer_id).unwrap();
         let buffer_read = buffer.read();
         let content = buffer_read.line(0).map(str::to_owned);
         drop(buffer_read);
@@ -1000,20 +1141,26 @@ mod tests {
     #[test]
     fn test_replace_char_start_returns_success() {
         // Commands now return Success - actual replace-char logic
-        // will be handled by SessionContext/vim resolver
-        let (mut ctx, _buffer_id) = setup_buffer_context();
+        // will be handled by SessionRuntime (see #394)/vim resolver
+        let (kernel, _buffer_id) = setup_buffer_context();
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let args = CommandContext::new();
-        let result = ReplaceCharStart.execute(&mut ctx, &args);
+        let result = ReplaceCharStart.execute(&mut runtime, &args);
 
         assert!(result.is_success());
     }
 
     #[test]
     fn test_replace_char_start_with_count_returns_success() {
-        let (mut ctx, _buffer_id) = setup_buffer_context();
+        let (kernel, _buffer_id) = setup_buffer_context();
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
         args.set("count", ArgValue::Count(3));
-        let result = ReplaceCharStart.execute(&mut ctx, &args);
+        let result = ReplaceCharStart.execute(&mut runtime, &args);
 
         assert!(result.is_success());
     }
@@ -1039,10 +1186,13 @@ mod tests {
     #[test]
     fn test_repeat_dot_returns_success() {
         // Commands now return Success - actual repeat logic
-        // will be handled by SessionContext
-        let (mut ctx, _buffer_id) = setup_buffer_context();
+        // will be handled by SessionRuntime (see #394)
+        let (kernel, _buffer_id) = setup_buffer_context();
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let args = CommandContext::new();
-        let result = RepeatDot.execute(&mut ctx, &args);
+        let result = RepeatDot.execute(&mut runtime, &args);
 
         assert!(result.is_success());
     }

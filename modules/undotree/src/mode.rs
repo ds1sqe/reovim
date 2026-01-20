@@ -5,7 +5,6 @@
 
 use {
     reovim_driver_display::ModeDisplay,
-    reovim_driver_input::ModeInput,
     reovim_kernel::api::v1::{CursorStyle, Mode, ModeId, ModuleId},
 };
 
@@ -60,12 +59,6 @@ impl ModeDisplay for UndotreeMode {
 
     fn status_text(&self) -> &'static str {
         Mode::display_name(self)
-    }
-}
-
-impl ModeInput for UndotreeMode {
-    fn accepts_char_input(&self) -> bool {
-        Mode::accepts_char_input(self)
     }
 }
 

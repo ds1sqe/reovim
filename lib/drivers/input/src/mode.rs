@@ -1,33 +1,20 @@
-//! Mode input traits and types.
+//! Mode keybinding types.
 //!
-//! This module defines how modes handle input and keybinding types.
-//! Modes implement `ModeInput` to control character input behavior.
+//! This module defines keybinding and key sequence types.
 //!
 //! # Architecture
 //!
 //! | Layer | Responsibility |
 //! |-------|---------------|
 //! | Kernel | Identity: `Mode` trait, `ModeId`, `CommandId` |
-//! | Input Driver (this) | Input: `ModeInput`, `KeySequence`, `Keybinding` |
+//! | Input Driver (this) | Input: `KeySequence`, `Keybinding` |
 //! | Modules | Policy: actual mode implementations and keybindings |
 //!
 //! # Example
 //!
 //! ```ignore
-//! use reovim_driver_input::{ModeInput, KeySequence, Keybinding, KeyEvent, KeyCode};
+//! use reovim_driver_input::{KeySequence, Keybinding, KeyEvent, KeyCode};
 //! use reovim_kernel::api::v1::{ModeId, CommandId, ModuleId};
-//!
-//! #[derive(Debug, Clone, Copy)]
-//! enum EditorMode {
-//!     Normal,
-//!     Insert,
-//! }
-//!
-//! impl ModeInput for EditorMode {
-//!     fn accepts_char_input(&self) -> bool {
-//!         matches!(self, Self::Insert)
-//!     }
-//! }
 //!
 //! // Create a keybinding for "j" in normal mode
 //! let module = ModuleId::new("editor");
@@ -46,50 +33,6 @@ use {
     crate::{KeyCode, KeyEvent, Modifiers},
     reovim_kernel::api::v1::{CommandId, ModeId},
 };
-
-// ============================================================================
-// ModeInput Trait
-// ============================================================================
-
-/// Trait defining how a mode handles input.
-///
-/// Modes implement this trait to specify their input behavior:
-/// - Whether they accept character input (Insert mode: yes, Normal mode: no)
-///
-/// # Design Philosophy
-///
-/// This trait separates input concerns from mode identity. The kernel's
-/// `Mode` trait provides identity only; this trait adds input behavior.
-///
-/// # Thread Safety
-///
-/// This trait requires `Send + Sync` to allow modes to be used in
-/// multi-threaded server contexts (tokio runtime).
-///
-/// # Example
-///
-/// ```ignore
-/// use reovim_driver_input::ModeInput;
-///
-/// struct InsertMode;
-///
-/// impl ModeInput for InsertMode {
-///     fn accepts_char_input(&self) -> bool {
-///         true
-///     }
-/// }
-/// ```
-pub trait ModeInput: Send + Sync {
-    /// Check if this mode accepts character input directly.
-    ///
-    /// When `true`, character keys that don't match any keybinding
-    /// will be inserted as text. When `false`, unmatched keys are ignored
-    /// or handled as commands.
-    ///
-    /// - Normal mode: `false` (keys trigger commands)
-    /// - Insert mode: `true` (keys insert text)
-    fn accepts_char_input(&self) -> bool;
-}
 
 // ============================================================================
 // KeySequence
@@ -644,31 +587,6 @@ mod tests {
             Modifiers::CTRL,
         )]);
         assert_eq!(format!("{ctrl_w}"), "<C-w>");
-    }
-
-    #[test]
-    fn test_mode_input_trait_object_safety() {
-        // Verify ModeInput trait is object-safe
-        fn _accepts_ref(_: &dyn ModeInput) {}
-        fn _accepts_box(_: Box<dyn ModeInput>) {}
-    }
-
-    // Test implementation
-    struct TestMode(bool);
-
-    impl ModeInput for TestMode {
-        fn accepts_char_input(&self) -> bool {
-            self.0
-        }
-    }
-
-    #[test]
-    fn test_mode_input_implementation() {
-        let insert = TestMode(true);
-        let normal = TestMode(false);
-
-        assert!(insert.accepts_char_input());
-        assert!(!normal.accepts_char_input());
     }
 
     #[test]

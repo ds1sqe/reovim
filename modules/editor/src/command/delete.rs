@@ -13,7 +13,8 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_kernel::api::v1::{CommandId, KernelContext, Position, RegisterContent},
+    reovim_driver_session::SessionRuntime,
+    reovim_kernel::api::v1::{CommandId, Position, RegisterContent},
 };
 
 use crate::ids;
@@ -41,11 +42,11 @@ impl Command for DeleteChar {
 }
 
 impl CommandHandler for DeleteChar {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
@@ -65,7 +66,7 @@ impl CommandHandler for DeleteChar {
             let _cursor_before = buffer.position();
             let _edit = buffer.delete(chars_to_delete);
             let _cursor_after = buffer.position();
-            // TODO: Return edit action via different mechanism when SessionContext is available
+            // TODO(#394): Return edit action via different mechanism (escape hatch until API supports this)
         }
         drop(buffer);
 
@@ -96,11 +97,11 @@ impl Command for DeleteCharBefore {
 }
 
 impl CommandHandler for DeleteCharBefore {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
@@ -118,7 +119,7 @@ impl CommandHandler for DeleteCharBefore {
                 let _cursor_before = buffer.position();
                 let _edit = buffer.delete(1); // Delete the newline
                 let _cursor_after = buffer.position();
-                // TODO: Return edit action via different mechanism when SessionContext is available
+                // TODO(#394): Return edit action via different mechanism (escape hatch until API supports this)
             }
             drop(buffer);
             return CommandResult::Success;
@@ -134,7 +135,7 @@ impl CommandHandler for DeleteCharBefore {
         let _cursor_after = buffer.position();
         drop(buffer);
 
-        // TODO: Return edit action via different mechanism when SessionContext is available
+        // TODO(#394): Return edit action via different mechanism (escape hatch until API supports this)
         CommandResult::Success
     }
 }
@@ -161,11 +162,11 @@ impl Command for DeleteLine {
 }
 
 impl CommandHandler for DeleteLine {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
@@ -197,7 +198,11 @@ impl CommandHandler for DeleteLine {
         // Store in register (use specified or unnamed)
         let content = RegisterContent::linewise(deleted_text);
         let register = args.register();
-        ctx.registers.write().set_by_name(register, content);
+        runtime
+            .kernel()
+            .registers
+            .write()
+            .set_by_name(register, content);
 
         // Delete range: from start of first line to start of line after deleted range
         let start = Position::new(start_line, 0);
@@ -240,7 +245,7 @@ impl CommandHandler for DeleteLine {
         let _cursor_after = buffer.position();
         drop(buffer);
 
-        // TODO: Return edit action via different mechanism when SessionContext is available
+        // TODO(#394): Return edit action via different mechanism (escape hatch until API supports this)
         let _ = (cursor_before, edit); // Suppress unused warnings
         CommandResult::Success
     }
@@ -269,11 +274,11 @@ impl Command for DeleteToEndOfLine {
 }
 
 impl CommandHandler for DeleteToEndOfLine {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
@@ -295,7 +300,11 @@ impl CommandHandler for DeleteToEndOfLine {
         // Store in register (use specified or unnamed)
         let content = RegisterContent::characterwise(deleted_text);
         let register = args.register();
-        ctx.registers.write().set_by_name(register, content);
+        runtime
+            .kernel()
+            .registers
+            .write()
+            .set_by_name(register, content);
 
         // Delete from cursor to end of line (not including newline)
         let chars_to_delete = line_len - pos.column;
@@ -304,7 +313,7 @@ impl CommandHandler for DeleteToEndOfLine {
         let _cursor_after = buffer.position();
         drop(buffer);
 
-        // TODO: Return edit action via different mechanism when SessionContext is available
+        // TODO(#394): Return edit action via different mechanism (escape hatch until API supports this)
         CommandResult::Success
     }
 }

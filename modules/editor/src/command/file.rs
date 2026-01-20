@@ -9,7 +9,8 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_kernel::api::v1::{CommandId, KernelContext},
+    reovim_driver_session::SessionRuntime,
+    reovim_kernel::api::v1::CommandId,
 };
 
 use crate::ids;
@@ -56,7 +57,7 @@ impl Command for WriteBufferCommand {
 }
 
 impl CommandHandler for WriteBufferCommand {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         // Get VFS from context
         let Some(vfs) = args.vfs() else {
             return CommandResult::error("VFS not available");
@@ -67,7 +68,7 @@ impl CommandHandler for WriteBufferCommand {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 

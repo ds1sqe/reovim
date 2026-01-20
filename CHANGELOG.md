@@ -47,6 +47,22 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- SessionApi migration: CommandHandler now uses SessionRuntime (#394)
+  - Changed `CommandHandler::execute` signature from `&mut KernelContext` to `&mut SessionRuntime<'_>`
+  - Commands now access session state via Session APIs (ModeApi, BufferApi, WindowApi)
+  - Mode commands fully migrated to use `ModeApi::set_mode()` and `push_mode()`
+  - Added `runtime.kernel()` escape hatch for operations not yet covered by APIs
+  - Fixed Session→AppState mode sync for `set_mode()` changes to home mode
+  - Test infrastructure updated: added `run_command()` helper for backward compatibility
+  - ~74 commands across 28 files updated to new signature
+
+- Type consolidation and layer clarity (#391)
+  - Deleted dead code: `ModeInput` trait, `PopResult` enum (session driver), `mode_registry.rs`
+  - Renamed `CommandContext` → `ExCommandContext` and `CommandHandler` → `ExCommandHandler` in modules/commands to avoid collision with driver types
+  - Added `OperatorArgs` type for shared count/register fields (DRY principle)
+  - Created `docs/architecture/type-layers.md` documenting type ownership across layers
+  - Kernel Mode trait now owns `accepts_char_input()` - no separate ModeInput trait needed
+
 - Strong-typed CommandId for keybindings (#377, #378)
   - `KeybindingRegistration::command_id` changed from `&'static str` to `CommandId`
   - Compile-time verification: typos in command IDs now cause compile errors

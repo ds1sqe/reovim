@@ -13,9 +13,8 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_kernel::api::v1::{
-        CommandId, KernelContext, Position, RegisterContent, events::ModeChanged,
-    },
+    reovim_driver_session::{SessionRuntime, TransitionContext, api::ModeApi},
+    reovim_kernel::api::v1::{CommandId, Position, RegisterContent},
 };
 
 use crate::{ids, modes::VimMode};
@@ -46,11 +45,14 @@ impl Command for ChangeLine {
 }
 
 impl CommandHandler for ChangeLine {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+
+        let kernel = runtime.kernel();
+
+        let Some(buffer_arc) = kernel.buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
@@ -62,8 +64,7 @@ impl CommandHandler for ChangeLine {
         if line_count == 0 {
             // Empty buffer - just enter insert mode
             drop(buffer);
-            ctx.event_bus
-                .emit(ModeChanged::with_mode_id("normal", VimMode::INSERT_ID));
+            runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
             return CommandResult::Success;
         }
 
@@ -71,8 +72,7 @@ impl CommandHandler for ChangeLine {
         let lines_to_change = count.min(line_count.saturating_sub(start_line));
         if lines_to_change == 0 {
             drop(buffer);
-            ctx.event_bus
-                .emit(ModeChanged::with_mode_id("normal", VimMode::INSERT_ID));
+            runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
             return CommandResult::Success;
         }
 
@@ -92,7 +92,7 @@ impl CommandHandler for ChangeLine {
         // Store in register (use specified or unnamed)
         let content = RegisterContent::linewise(deleted_text);
         let register = args.register();
-        ctx.registers.write().set_by_name(register, content);
+        kernel.registers.write().set_by_name(register, content);
 
         // For cc: if changing multiple lines, delete all but first, then clear first
         // Single line: just clear the content
@@ -108,17 +108,15 @@ impl CommandHandler for ChangeLine {
                 let _cursor_after = buffer.position();
                 drop(buffer);
 
-                ctx.event_bus
-                    .emit(ModeChanged::with_mode_id("normal", VimMode::INSERT_ID));
+                runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
 
-                // TODO: Return edit action via different mechanism when SessionContext is available
+                // TODO(#394): Return edit action via different mechanism (escape hatch until API supports this)
                 let _ = (buffer_id, cursor_before); // Suppress unused warnings
                 return CommandResult::Success;
             }
             // Line is already empty
             drop(buffer);
-            ctx.event_bus
-                .emit(ModeChanged::with_mode_id("normal", VimMode::INSERT_ID));
+            runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
             return CommandResult::Success;
         }
 
@@ -154,10 +152,9 @@ impl CommandHandler for ChangeLine {
             let _cursor_after = buffer.position();
             drop(buffer);
 
-            ctx.event_bus
-                .emit(ModeChanged::with_mode_id("normal", VimMode::INSERT_ID));
+            runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
 
-            // TODO: Return edit action via different mechanism when SessionContext is available
+            // TODO(#394): Return edit action via different mechanism (escape hatch until API supports this)
             let _ = (buffer_id, cursor_before); // Suppress unused warnings
             return CommandResult::Success;
         }
@@ -170,10 +167,9 @@ impl CommandHandler for ChangeLine {
         let _cursor_after = buffer.position();
         drop(buffer);
 
-        ctx.event_bus
-            .emit(ModeChanged::with_mode_id("normal", VimMode::INSERT_ID));
+        runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
 
-        // TODO: Return edit action via different mechanism when SessionContext is available
+        // TODO(#394): Return edit action via different mechanism (escape hatch until API supports this)
         let _ = (buffer_id, cursor_before); // Suppress unused warnings
         CommandResult::Success
     }
@@ -205,11 +201,14 @@ impl Command for ChangeToEndOfLine {
 }
 
 impl CommandHandler for ChangeToEndOfLine {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+
+        let kernel = runtime.kernel();
+
+        let Some(buffer_arc) = kernel.buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
@@ -220,8 +219,7 @@ impl CommandHandler for ChangeToEndOfLine {
         // Nothing to delete if at or past end of line - just enter insert mode
         if pos.column >= line_len {
             drop(buffer);
-            ctx.event_bus
-                .emit(ModeChanged::with_mode_id("normal", VimMode::INSERT_ID));
+            runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
             return CommandResult::Success;
         }
 
@@ -234,7 +232,7 @@ impl CommandHandler for ChangeToEndOfLine {
         // Store in register (use specified or unnamed)
         let content = RegisterContent::characterwise(deleted_text);
         let register = args.register();
-        ctx.registers.write().set_by_name(register, content);
+        kernel.registers.write().set_by_name(register, content);
 
         // Delete from cursor to end of line (not including newline)
         let chars_to_delete = line_len - pos.column;
@@ -243,10 +241,9 @@ impl CommandHandler for ChangeToEndOfLine {
         let _cursor_after = buffer.position();
         drop(buffer);
 
-        ctx.event_bus
-            .emit(ModeChanged::with_mode_id("normal", VimMode::INSERT_ID));
+        runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
 
-        // TODO: Return edit action via different mechanism when SessionContext is available
+        // TODO(#394): Return edit action via different mechanism (escape hatch until API supports this)
         CommandResult::Success
     }
 }

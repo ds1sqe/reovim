@@ -9,7 +9,8 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_kernel::api::v1::{CommandId, Edit, KernelContext, Position},
+    reovim_driver_session::SessionRuntime,
+    reovim_kernel::api::v1::{CommandId, Edit, Position},
 };
 
 use crate::ids;
@@ -45,8 +46,8 @@ impl Command for ReplaceCharStart {
 }
 
 impl CommandHandler for ReplaceCharStart {
-    fn execute(&self, _ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         // Will signal waiting for replace character with count
         let _count = args.count().unwrap_or(1);
         CommandResult::Success
@@ -86,8 +87,8 @@ impl Command for RepeatDot {
 }
 
 impl CommandHandler for RepeatDot {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         // Will signal intent to repeat last change
         CommandResult::Success
     }
@@ -116,11 +117,11 @@ impl Command for JoinLines {
 }
 
 impl CommandHandler for JoinLines {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
@@ -173,7 +174,7 @@ impl CommandHandler for JoinLines {
             return CommandResult::Success;
         }
 
-        // TODO: Return edit actions via different mechanism when SessionContext is available
+        // TODO(#394): Return edit actions via different mechanism (escape hatch until API supports this)
         let _ = (buffer_id, edits, cursor_before); // Suppress unused warnings
         CommandResult::Success
     }

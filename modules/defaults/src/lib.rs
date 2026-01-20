@@ -28,7 +28,7 @@ use reovim_kernel::api::v1::{
 };
 
 // Import traits from their respective modules (mechanism vs policy)
-use {reovim_module_commands::CommandHandler, reovim_module_vim::Operator};
+use {reovim_module_commands::ExCommandHandler, reovim_module_vim::Operator};
 
 // Re-export sub-modules for direct access
 pub use {
@@ -127,7 +127,7 @@ pub fn operators() -> Vec<Box<dyn Operator>> {
 
 /// Get all default commands.
 #[must_use]
-pub fn commands() -> Vec<Box<dyn CommandHandler>> {
+pub fn commands() -> Vec<Box<dyn ExCommandHandler>> {
     commands::commands()
 }
 

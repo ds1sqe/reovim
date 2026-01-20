@@ -18,11 +18,12 @@
 //!
 //! This command does NOT update `last_find` because commands don't have
 //! access to `VimSessionState` via extensions yet. That will be added in
-//! Phase 6 when commands receive `SessionContext`.
+//! a future phase when commands have API support (#394).
 
 use {
     reovim_driver_command::{ArgValue, Command, CommandContext, CommandHandler, CommandResult},
-    reovim_kernel::api::v1::{CommandId, KernelContext, Motion, MotionEngine},
+    reovim_driver_session::SessionRuntime,
+    reovim_kernel::api::v1::{CommandId, Motion, MotionEngine},
 };
 
 use crate::ids::EXECUTE_FIND_CHAR;
@@ -51,7 +52,7 @@ impl Command for ExecuteFindChar {
 }
 
 impl CommandHandler for ExecuteFindChar {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         // Get the target character (required)
         let Some(target_char) = args.char("find_char") else {
             return CommandResult::error("find_char argument required");
@@ -74,7 +75,7 @@ impl CommandHandler for ExecuteFindChar {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 

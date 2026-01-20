@@ -4,12 +4,13 @@
 //!
 //! # Architecture (Epic #385)
 //!
-//! These commands are stubs that will be implemented when `SessionContext`
-//! provides direct access to search state. The actual search functionality
+//! These commands are stubs that will be implemented when `SessionRuntime`
+//! provides direct access to search state (#394). The actual search functionality
 //! will be handled by the vim resolver or a dedicated search module.
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
+    reovim_driver_session::SessionRuntime,
     reovim_kernel::api::v1::CommandId,
 };
 
@@ -37,12 +38,8 @@ impl Command for SearchForward {
 }
 
 impl CommandHandler for SearchForward {
-    fn execute(
-        &self,
-        _ctx: &mut reovim_kernel::api::v1::KernelContext,
-        _args: &CommandContext,
-    ) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         CommandResult::Success
     }
 }
@@ -69,12 +66,8 @@ impl Command for SearchBackward {
 }
 
 impl CommandHandler for SearchBackward {
-    fn execute(
-        &self,
-        _ctx: &mut reovim_kernel::api::v1::KernelContext,
-        _args: &CommandContext,
-    ) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         CommandResult::Success
     }
 }
@@ -101,12 +94,8 @@ impl Command for SearchNext {
 }
 
 impl CommandHandler for SearchNext {
-    fn execute(
-        &self,
-        _ctx: &mut reovim_kernel::api::v1::KernelContext,
-        _args: &CommandContext,
-    ) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         CommandResult::Success
     }
 }
@@ -133,12 +122,8 @@ impl Command for SearchPrevious {
 }
 
 impl CommandHandler for SearchPrevious {
-    fn execute(
-        &self,
-        _ctx: &mut reovim_kernel::api::v1::KernelContext,
-        _args: &CommandContext,
-    ) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         CommandResult::Success
     }
 }
@@ -165,12 +150,8 @@ impl Command for SearchWordForward {
 }
 
 impl CommandHandler for SearchWordForward {
-    fn execute(
-        &self,
-        _ctx: &mut reovim_kernel::api::v1::KernelContext,
-        _args: &CommandContext,
-    ) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         CommandResult::Success
     }
 }
@@ -197,12 +178,8 @@ impl Command for SearchWordBackward {
 }
 
 impl CommandHandler for SearchWordBackward {
-    fn execute(
-        &self,
-        _ctx: &mut reovim_kernel::api::v1::KernelContext,
-        _args: &CommandContext,
-    ) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         CommandResult::Success
     }
 }
@@ -229,12 +206,8 @@ impl Command for ClearSearchHighlight {
 }
 
 impl CommandHandler for ClearSearchHighlight {
-    fn execute(
-        &self,
-        _ctx: &mut reovim_kernel::api::v1::KernelContext,
-        _args: &CommandContext,
-    ) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         CommandResult::Success
     }
 }

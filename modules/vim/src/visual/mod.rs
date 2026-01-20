@@ -100,15 +100,39 @@ mod tests {
     use {
         super::*,
         reovim_driver_command::{Command, CommandContext, CommandResult},
+        reovim_driver_session::{Session, SessionId, SessionRuntime, api::CommandExecutor},
         reovim_kernel::api::v1::{
-            Buffer, BufferError, BufferId, BufferManager, EventBus, KernelContext, MarkBank,
-            MotionEngine, OptionRegistry, Position, RegisterBank, RwLock, SelectionMode,
-            TextObjectEngine,
+            Buffer, BufferError, BufferId, BufferManager, CommandId, EventBus, KernelContext,
+            MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry, Position, RegisterBank,
+            RwLock, SelectionMode, TextObjectEngine,
         },
         std::{collections::HashMap, sync::Arc},
     };
 
     use crate::modes::VIM_MODULE;
+
+    fn run_command<C: CommandHandler>(
+        cmd: &C,
+        ctx: &KernelContext,
+        args: &CommandContext,
+    ) -> CommandResult {
+        struct StubExecutor;
+        impl CommandExecutor for StubExecutor {
+            fn execute(
+                &self,
+                _: &CommandId,
+                _: &CommandContext,
+                _: &mut KernelContext,
+            ) -> Option<CommandResult> {
+                Some(CommandResult::Success)
+            }
+        }
+        let home_mode = ModeId::new(ModuleId::new("test"), "normal");
+        let mut session = Session::new(SessionId::new(1), home_mode);
+        let executor = StubExecutor;
+        let mut runtime = SessionRuntime::new(&mut session, ctx, &executor);
+        cmd.execute(&mut runtime, args)
+    }
 
     /// Test buffer manager that actually stores buffers.
     struct TestBufferManager {
@@ -212,16 +236,14 @@ mod tests {
 
     #[test]
     fn test_enter_visual_activates_selection() {
-        use reovim_driver_command::CommandHandler;
-
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer = Buffer::from_string("hello world");
         let buffer_id = ctx.buffers.register(buffer);
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = EnterVisualMode.execute(&mut ctx, &args);
+        let result = run_command(&EnterVisualMode, &ctx, &args);
         assert_eq!(result, CommandResult::Success);
 
         // Verify selection is active
@@ -233,16 +255,14 @@ mod tests {
 
     #[test]
     fn test_enter_visual_line_activates_line_selection() {
-        use reovim_driver_command::CommandHandler;
-
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer = Buffer::from_string("line 1\nline 2");
         let buffer_id = ctx.buffers.register(buffer);
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = EnterVisualLineMode.execute(&mut ctx, &args);
+        let result = run_command(&EnterVisualLineMode, &ctx, &args);
         assert_eq!(result, CommandResult::Success);
 
         // Verify selection is active and in line mode
@@ -254,16 +274,14 @@ mod tests {
 
     #[test]
     fn test_enter_visual_block_activates_block_selection() {
-        use reovim_driver_command::CommandHandler;
-
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer = Buffer::from_string("hello\nworld");
         let buffer_id = ctx.buffers.register(buffer);
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = EnterVisualBlockMode.execute(&mut ctx, &args);
+        let result = run_command(&EnterVisualBlockMode, &ctx, &args);
         assert_eq!(result, CommandResult::Success);
 
         // Verify selection is active and in block mode
@@ -275,12 +293,10 @@ mod tests {
 
     #[test]
     fn test_enter_visual_no_buffer_returns_error() {
-        use reovim_driver_command::CommandHandler;
-
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let args = CommandContext::new();
 
-        let result = EnterVisualMode.execute(&mut ctx, &args);
+        let result = run_command(&EnterVisualMode, &ctx, &args);
         assert!(matches!(result, CommandResult::Error(_)));
     }
 
@@ -290,9 +306,7 @@ mod tests {
 
     #[test]
     fn test_exit_visual_clears_selection() {
-        use reovim_driver_command::CommandHandler;
-
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer = Buffer::from_string("hello world");
         let buffer_id = ctx.buffers.register(buffer);
 
@@ -300,7 +314,7 @@ mod tests {
         args.set_buffer_id(buffer_id);
 
         // First enter visual mode
-        let _ = EnterVisualMode.execute(&mut ctx, &args);
+        let _ = run_command(&EnterVisualMode, &ctx, &args);
 
         // Verify selection is active
         {
@@ -310,7 +324,7 @@ mod tests {
         }
 
         // Exit visual mode
-        let result = ExitVisualMode.execute(&mut ctx, &args);
+        let result = run_command(&ExitVisualMode, &ctx, &args);
         assert_eq!(result, CommandResult::Success);
 
         // Verify selection is cleared
@@ -321,13 +335,11 @@ mod tests {
 
     #[test]
     fn test_exit_visual_without_buffer_succeeds() {
-        use reovim_driver_command::CommandHandler;
-
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let args = CommandContext::new();
 
         // Should still succeed (just emits event)
-        let result = ExitVisualMode.execute(&mut ctx, &args);
+        let result = run_command(&ExitVisualMode, &ctx, &args);
         assert_eq!(result, CommandResult::Success);
     }
 
@@ -344,9 +356,7 @@ mod tests {
 
     #[test]
     fn test_swap_anchor_swaps_positions() {
-        use reovim_driver_command::CommandHandler;
-
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer = Buffer::from_string("hello world");
         let buffer_id = ctx.buffers.register(buffer);
 
@@ -354,7 +364,7 @@ mod tests {
         args.set_buffer_id(buffer_id);
 
         // Enter visual mode and move cursor
-        let _ = EnterVisualMode.execute(&mut ctx, &args);
+        let _ = run_command(&EnterVisualMode, &ctx, &args);
 
         // Move cursor to position 5
         {
@@ -372,7 +382,7 @@ mod tests {
         }
 
         // Execute swap anchor
-        let result = SwapAnchor.execute(&mut ctx, &args);
+        let result = run_command(&SwapAnchor, &ctx, &args);
         assert_eq!(result, CommandResult::Success);
 
         // Verify swapped: anchor at 5, cursor at 0
@@ -384,9 +394,7 @@ mod tests {
 
     #[test]
     fn test_swap_anchor_noop_without_selection() {
-        use reovim_driver_command::CommandHandler;
-
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer = Buffer::from_string("hello world");
         let buffer_id = ctx.buffers.register(buffer);
 
@@ -394,15 +402,13 @@ mod tests {
         args.set_buffer_id(buffer_id);
 
         // Don't enter visual mode - just execute swap
-        let result = SwapAnchor.execute(&mut ctx, &args);
+        let result = run_command(&SwapAnchor, &ctx, &args);
         assert_eq!(result, CommandResult::Success);
     }
 
     #[test]
     fn test_toggle_visual_char_exits_if_already_char() {
-        use reovim_driver_command::CommandHandler;
-
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer = Buffer::from_string("hello world");
         let buffer_id = ctx.buffers.register(buffer);
 
@@ -410,10 +416,10 @@ mod tests {
         args.set_buffer_id(buffer_id);
 
         // Enter visual mode (character)
-        let _ = EnterVisualMode.execute(&mut ctx, &args);
+        let _ = run_command(&EnterVisualMode, &ctx, &args);
 
         // Toggle should exit
-        let result = ToggleVisualChar.execute(&mut ctx, &args);
+        let result = run_command(&ToggleVisualChar, &ctx, &args);
         assert_eq!(result, CommandResult::Success);
 
         // Selection should be cleared
@@ -424,9 +430,7 @@ mod tests {
 
     #[test]
     fn test_toggle_visual_char_switches_from_line() {
-        use reovim_driver_command::CommandHandler;
-
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer = Buffer::from_string("hello world");
         let buffer_id = ctx.buffers.register(buffer);
 
@@ -434,10 +438,10 @@ mod tests {
         args.set_buffer_id(buffer_id);
 
         // Enter visual line mode
-        let _ = EnterVisualLineMode.execute(&mut ctx, &args);
+        let _ = run_command(&EnterVisualLineMode, &ctx, &args);
 
         // Toggle to char mode
-        let result = ToggleVisualChar.execute(&mut ctx, &args);
+        let result = run_command(&ToggleVisualChar, &ctx, &args);
         assert_eq!(result, CommandResult::Success);
 
         // Should be in character mode
@@ -449,9 +453,7 @@ mod tests {
 
     #[test]
     fn test_toggle_visual_line_exits_if_already_line() {
-        use reovim_driver_command::CommandHandler;
-
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer = Buffer::from_string("hello world");
         let buffer_id = ctx.buffers.register(buffer);
 
@@ -459,10 +461,10 @@ mod tests {
         args.set_buffer_id(buffer_id);
 
         // Enter visual line mode
-        let _ = EnterVisualLineMode.execute(&mut ctx, &args);
+        let _ = run_command(&EnterVisualLineMode, &ctx, &args);
 
         // Toggle should exit
-        let result = ToggleVisualLine.execute(&mut ctx, &args);
+        let result = run_command(&ToggleVisualLine, &ctx, &args);
         assert_eq!(result, CommandResult::Success);
 
         // Selection should be cleared
@@ -473,9 +475,7 @@ mod tests {
 
     #[test]
     fn test_toggle_visual_block_switches_mode() {
-        use reovim_driver_command::CommandHandler;
-
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer = Buffer::from_string("hello world");
         let buffer_id = ctx.buffers.register(buffer);
 
@@ -483,10 +483,10 @@ mod tests {
         args.set_buffer_id(buffer_id);
 
         // Enter visual mode (character)
-        let _ = EnterVisualMode.execute(&mut ctx, &args);
+        let _ = run_command(&EnterVisualMode, &ctx, &args);
 
         // Toggle to block mode
-        let result = ToggleVisualBlock.execute(&mut ctx, &args);
+        let result = run_command(&ToggleVisualBlock, &ctx, &args);
         assert_eq!(result, CommandResult::Success);
 
         // Should be in block mode
@@ -543,17 +543,15 @@ mod tests {
 
     #[test]
     fn test_reselect_last_returns_success() {
-        use reovim_driver_command::CommandHandler;
-
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer = Buffer::from_string("hello world");
         let buffer_id = ctx.buffers.register(buffer);
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        // ReselectLast returns Success (actual logic handled via SessionContext/resolver when available)
-        let result = ReselectLast.execute(&mut ctx, &args);
+        // ReselectLast returns Success (actual logic handled via SessionRuntime/resolver, see #394)
+        let result = run_command(&ReselectLast, &ctx, &args);
         assert!(result.is_success());
     }
 
@@ -598,9 +596,7 @@ mod tests {
 
     #[test]
     fn test_delete_selection_noop_without_selection() {
-        use reovim_driver_command::CommandHandler;
-
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer = Buffer::from_string("hello world");
         let buffer_id = ctx.buffers.register(buffer);
 
@@ -608,7 +604,7 @@ mod tests {
         args.set_buffer_id(buffer_id);
 
         // Without an active selection, should be a no-op
-        let result = DeleteSelection.execute(&mut ctx, &args);
+        let result = run_command(&DeleteSelection, &ctx, &args);
         assert_eq!(result, CommandResult::Success);
 
         // Buffer should be unchanged
@@ -619,9 +615,7 @@ mod tests {
 
     #[test]
     fn test_yank_selection_noop_without_selection() {
-        use reovim_driver_command::CommandHandler;
-
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer = Buffer::from_string("hello world");
         let buffer_id = ctx.buffers.register(buffer);
 
@@ -629,15 +623,13 @@ mod tests {
         args.set_buffer_id(buffer_id);
 
         // Without an active selection, should be a no-op
-        let result = YankSelection.execute(&mut ctx, &args);
+        let result = run_command(&YankSelection, &ctx, &args);
         assert_eq!(result, CommandResult::Success);
     }
 
     #[test]
     fn test_change_selection_noop_without_selection() {
-        use reovim_driver_command::CommandHandler;
-
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer = Buffer::from_string("hello world");
         let buffer_id = ctx.buffers.register(buffer);
 
@@ -645,15 +637,13 @@ mod tests {
         args.set_buffer_id(buffer_id);
 
         // Without an active selection, should be a no-op
-        let result = ChangeSelection.execute(&mut ctx, &args);
+        let result = run_command(&ChangeSelection, &ctx, &args);
         assert_eq!(result, CommandResult::Success);
     }
 
     #[test]
     fn test_delete_selection_deletes_text() {
-        use reovim_driver_command::CommandHandler;
-
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer = Buffer::from_string("hello world");
         let buffer_id = ctx.buffers.register(buffer);
 
@@ -670,7 +660,7 @@ mod tests {
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = DeleteSelection.execute(&mut ctx, &args);
+        let result = run_command(&DeleteSelection, &ctx, &args);
         assert_eq!(result, CommandResult::Success);
 
         // Buffer should have "hello" deleted
@@ -681,9 +671,7 @@ mod tests {
 
     #[test]
     fn test_indent_selection_adds_indentation() {
-        use reovim_driver_command::CommandHandler;
-
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer = Buffer::from_string("line1\nline2\nline3");
         let buffer_id = ctx.buffers.register(buffer);
 
@@ -700,7 +688,7 @@ mod tests {
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = IndentSelection.execute(&mut ctx, &args);
+        let result = run_command(&IndentSelection, &ctx, &args);
         assert_eq!(result, CommandResult::Success);
 
         // Lines 0-1 should be indented
@@ -713,9 +701,7 @@ mod tests {
 
     #[test]
     fn test_dedent_selection_removes_indentation() {
-        use reovim_driver_command::CommandHandler;
-
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer = Buffer::from_string("    line1\n    line2\nline3");
         let buffer_id = ctx.buffers.register(buffer);
 
@@ -732,7 +718,7 @@ mod tests {
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = DedentSelection.execute(&mut ctx, &args);
+        let result = run_command(&DedentSelection, &ctx, &args);
         assert_eq!(result, CommandResult::Success);
 
         // Lines 0-1 should be dedented
@@ -749,9 +735,7 @@ mod tests {
 
     #[test]
     fn test_yank_selection_yanks_text() {
-        use reovim_driver_command::CommandHandler;
-
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer = Buffer::from_string("hello world");
         let buffer_id = ctx.buffers.register(buffer);
 
@@ -768,7 +752,7 @@ mod tests {
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = YankSelection.execute(&mut ctx, &args);
+        let result = run_command(&YankSelection, &ctx, &args);
         assert_eq!(result, CommandResult::Success);
 
         // Buffer content should remain unchanged (yank doesn't delete)
@@ -782,9 +766,7 @@ mod tests {
 
     #[test]
     fn test_change_selection_changes_text() {
-        use reovim_driver_command::CommandHandler;
-
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer = Buffer::from_string("hello world");
         let buffer_id = ctx.buffers.register(buffer);
 
@@ -801,7 +783,7 @@ mod tests {
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = ChangeSelection.execute(&mut ctx, &args);
+        let result = run_command(&ChangeSelection, &ctx, &args);
         assert_eq!(result, CommandResult::Success);
 
         // Buffer should have "hello" deleted (like delete, but followed by insert mode)
@@ -815,9 +797,7 @@ mod tests {
 
     #[test]
     fn test_delete_selection_line_mode_deletes_entire_lines() {
-        use reovim_driver_command::CommandHandler;
-
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer = Buffer::from_string("line one\nline two\nline three");
         let buffer_id = ctx.buffers.register(buffer);
 
@@ -834,7 +814,7 @@ mod tests {
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = DeleteSelection.execute(&mut ctx, &args);
+        let result = run_command(&DeleteSelection, &ctx, &args);
         assert_eq!(result, CommandResult::Success);
 
         // Lines 0-1 should be completely deleted, leaving only "line three"
