@@ -12,11 +12,14 @@
 //! The event loop contains NO business logic - resolvers handle everything.
 
 mod error;
-mod runtime;
+mod runtime_adapter;
 
-pub use {error::EventLoopError, runtime::AppStateRuntime};
+pub use {error::EventLoopError, runtime_adapter::RuntimeAdapter};
 
-use reovim_driver_session::{ClientId, Session as DriverSession, api::StateChanges};
+use reovim_driver_session::{
+    ClientId, Session as DriverSession, SessionRuntime,
+    api::{CommandExecutor, StateChanges},
+};
 
 use {
     reovim_driver_command::{CommandContext, CommandResult},
@@ -179,25 +182,23 @@ impl EventLoop {
     /// Returns both the `ResolveResult` and accumulated `StateChanges` from
     /// the session API. The changes can be broadcast to clients.
     fn try_resolver(&mut self, key: &KeyEvent) -> Option<(ResolveResult, StateChanges)> {
-        use reovim_driver_session::ChangeTracker;
+        use reovim_driver_session::api::ChangeTracker;
 
         let registry = self.resolver_registry.as_ref()?;
         let mode = self.driver_session.mode_stack.current().clone();
         let mut mode_state = ModeState::new(mode.clone());
 
-        // Create session runtime adapter from driver_session (SSOT).
-        // Extensions are passed separately to work around borrow rules.
-        let mut runtime = AppStateRuntime::new(
-            &mut self.driver_session,
-            &mut self.app.windows,
-            &self.app.kernel,
-            &self.command_registry,
-        );
+        // Create RuntimeAdapter combining SessionRuntime with WindowRegistry.
+        // This replaces AppStateRuntime with proper delegation to driver layer.
+        let stub_executor = StubCommandExecutor;
+        let session_runtime =
+            SessionRuntime::new(&mut self.driver_session, &self.app.kernel, &stub_executor);
+        let mut runtime =
+            RuntimeAdapter::new(session_runtime, &mut self.app.windows, &self.app.kernel);
 
         // Resolvers access session state via SessionApiDyn + extensions
         // Extensions contain module-specific state (e.g., VimSessionState)
         // NOTE: Uses app.extensions due to borrow checker - driver_session is already borrowed by runtime
-        // TODO(#406): Consider interior mutability or architectural change for true SSOT
         let result = registry.resolve_with_session(
             &mode,
             key,
@@ -421,6 +422,25 @@ impl std::fmt::Debug for EventLoop {
             .field("keymap_registry", &self.keymap_registry)
             .field("last_error", &self.last_error)
             .finish_non_exhaustive()
+    }
+}
+
+/// Stub command executor for resolver key handling.
+///
+/// Used when creating `SessionRuntime` for resolver operations.
+/// Resolvers should return `ResolveResult::Execute` to trigger command
+/// execution, not call `execute_command` directly.
+struct StubCommandExecutor;
+
+impl CommandExecutor for StubCommandExecutor {
+    fn execute(
+        &self,
+        _cmd: &reovim_kernel::api::v1::CommandId,
+        _ctx: &reovim_driver_command::CommandContext,
+        _kernel: &mut reovim_kernel::api::v1::KernelContext,
+    ) -> Option<CommandResult> {
+        // Resolvers should return ResolveResult::Execute, not call this directly
+        Some(CommandResult::Error("command execution via resolver not supported".to_string()))
     }
 }
 

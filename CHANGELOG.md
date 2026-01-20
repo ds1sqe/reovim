@@ -47,6 +47,14 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- Deleted `AppStateRuntime` adapter (~500 lines) - thin runner architecture (#407)
+  - Created `RuntimeAdapter` that combines `SessionRuntime` with `WindowRegistry`
+  - `RuntimeAdapter` implements all session API traits: `ModeApi`, `BufferApi`, `WindowApi`, `RegisterApi`, `ExtensionApi`, `CommandApi`, `ChangeTracker`
+  - Window operations delegated directly to `WindowRegistry` (runner-layer SSOT)
+  - Mode/buffer/register/extension operations delegated to `SessionRuntime` (driver-layer SSOT)
+  - Event loop now uses `RuntimeAdapter` for resolver key handling
+  - Removed redundant `WindowBridge` adapter
+
 - Refactored `SessionState` to use `driver::Session` as SSOT for session state (#406)
   - `driver_session` is now the Single Source of Truth for per-session state
   - Fields moved to `driver_session`: `mode_stack`, `pending_keys`, `extensions`, `active_buffer`, `terminal_size`

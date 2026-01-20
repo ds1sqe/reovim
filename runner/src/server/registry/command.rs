@@ -14,9 +14,11 @@ use std::{collections::HashMap, sync::Arc};
 
 use {
     reovim_driver_command::{CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::Session as DriverSession,
+    reovim_driver_session::{
+        Session as DriverSession, SessionRuntime, Window, api::CommandExecutor,
+    },
     reovim_kernel::{
-        api::v1::{CommandId, ModuleId},
+        api::v1::{CommandId, KernelContext, ModuleId},
         profile_scope,
     },
 };
@@ -151,8 +153,6 @@ impl CommandRegistry {
         app: &mut AppState,
         args: &CommandContext,
     ) -> Option<CommandResult> {
-        use reovim_driver_session::{SessionRuntime, Window};
-
         profile_scope!("command_execute", "runner::command");
 
         self.entries.get(id).map(|entry| {
@@ -164,6 +164,8 @@ impl CommandRegistry {
 
             // Copy windows from WindowRegistry to driver_session's WindowLayout
             // (SessionRuntime needs window state for cursor operations)
+            // NOTE: CommandHandler::execute takes &mut SessionRuntime specifically,
+            // so we must use SessionRuntime with manual window syncing here.
             driver_session.windows.clear();
             for win_id in app.windows.windows() {
                 if let Some(state) = app.windows.get(win_id) {
@@ -176,7 +178,6 @@ impl CommandRegistry {
             }
 
             // Create SessionRuntime for command execution
-            // Now uses driver_session directly (SSOT for mode_stack, active_buffer)
             let stub_executor = StubCommandExecutor;
             let mut runtime = SessionRuntime::new(driver_session, &app.kernel, &stub_executor);
 
@@ -184,7 +185,6 @@ impl CommandRegistry {
             let result = entry.handler.execute(&mut runtime, &ctx);
 
             // Sync window cursor changes back to WindowRegistry
-            // (mode_stack and active_buffer changes stay on driver_session)
             let window_ids: Vec<_> = app.windows.windows().collect();
             for (idx, window) in driver_session.windows.windows.iter().enumerate() {
                 if let Some(&win_id) = window_ids.get(idx)
@@ -230,8 +230,6 @@ impl std::fmt::Debug for CommandRegistry {
 //
 // Used when executing commands via SessionRuntime - commands shouldn't
 // recursively execute other commands through SessionRuntime.execute_command().
-
-use {reovim_driver_session::CommandExecutor, reovim_kernel::api::v1::KernelContext};
 
 /// Stub executor that returns an error for any command execution.
 ///
