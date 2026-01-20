@@ -7,7 +7,7 @@
 
 use std::{
     fmt,
-    sync::atomic::{AtomicU64, Ordering},
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
 /// Unique window identifier.
@@ -26,11 +26,11 @@ use std::{
 /// assert_ne!(window1, window2);
 /// assert_eq!(window1, window1);
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct WindowId(u64);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct WindowId(usize);
 
 /// Global window ID counter.
-static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+static NEXT_ID: AtomicUsize = AtomicUsize::new(1);
 
 impl WindowId {
     /// Create a new unique window ID.
@@ -43,13 +43,13 @@ impl WindowId {
     ///
     /// Used when converting from external window ID representations.
     #[must_use]
-    pub const fn from_raw(id: u64) -> Self {
+    pub const fn from_raw(id: usize) -> Self {
         Self(id)
     }
 
     /// Get the raw ID value.
     #[must_use]
-    pub const fn raw(&self) -> u64 {
+    pub const fn as_usize(&self) -> usize {
         self.0
     }
 }
@@ -75,7 +75,7 @@ mod tests {
         let id1 = WindowId::new();
         let id2 = WindowId::new();
         assert_ne!(id1, id2);
-        assert!(id2.raw() > id1.raw());
+        assert!(id2.as_usize() > id1.as_usize());
     }
 
     #[test]
@@ -94,6 +94,29 @@ mod tests {
     #[test]
     fn test_window_id_default() {
         let id = WindowId::default();
-        assert!(id.raw() > 0);
+        assert!(id.as_usize() > 0);
+    }
+
+    #[test]
+    fn test_window_id_from_raw() {
+        let id = WindowId::from_raw(42);
+        assert_eq!(id.as_usize(), 42);
+    }
+
+    #[test]
+    fn test_window_id_ordering() {
+        let id1 = WindowId::from_raw(1);
+        let id2 = WindowId::from_raw(2);
+        let id3 = WindowId::from_raw(3);
+
+        // PartialOrd
+        assert!(id1 < id2);
+        assert!(id2 < id3);
+        assert!(id1 < id3);
+
+        // Ord (for sorting)
+        let mut ids = vec![id3, id1, id2];
+        ids.sort();
+        assert_eq!(ids, vec![id1, id2, id3]);
     }
 }

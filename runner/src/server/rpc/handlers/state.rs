@@ -3,9 +3,10 @@
 //! Handlers for `state/mode`, `state/cursor`, and related methods.
 
 use {
-    reovim_kernel::api::v1::BufferId,
+    reovim_kernel::api::v1::BufferId as KernelBufferId,
     reovim_protocol::v1::{
-        CursorInfo, ModeInfo, Position, ScreenInfo, SelectionInfo, SelectionMode,
+        BufferId as ProtocolBufferId, CursorInfo, ModeInfo, Position, ScreenInfo, SelectionInfo,
+        SelectionMode,
     },
 };
 
@@ -143,7 +144,9 @@ pub fn state_screen(ctx: RpcContext, _params: serde_json::Value) -> HandlerFutur
             ScreenInfo {
                 width: viewport.terminal_width,
                 height: viewport.terminal_height,
-                active_buffer_id: viewport.active_buffer.map_or(0, BufferId::as_usize),
+                active_buffer_id: ProtocolBufferId::from(
+                    viewport.active_buffer.map_or(0, KernelBufferId::as_usize),
+                ),
                 active_window_id: None,
                 window_count: 1,
             }
@@ -178,8 +181,8 @@ pub fn state_selection(ctx: RpcContext, _params: serde_json::Value) -> HandlerFu
         let selection_info = ctx
             .session
             .with_state(|state| {
-                // Check if we have an active buffer with a selection
-                if let Some(buffer_id) = state.app.active_buffer
+                // Check if we have an active buffer with a selection (from driver_session SSOT)
+                if let Some(buffer_id) = state.session_active_buffer()
                     && let Some(buffer_arc) = state.app.kernel.buffers.get(buffer_id)
                 {
                     let buffer = buffer_arc.read();

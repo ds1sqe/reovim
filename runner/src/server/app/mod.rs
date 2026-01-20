@@ -13,7 +13,7 @@ use {
     reovim_arch::sync::RwLock,
     reovim_driver_display::WindowId,
     reovim_driver_input::{ExtensionMap, FallbackContext, KeySequence},
-    reovim_kernel::api::v1::{Buffer, BufferId, Edit, KernelContext, ModeId, ModeStack, Position},
+    reovim_kernel::api::v1::{Buffer, BufferId, Edit, KernelContext, ModeId, Position},
     std::sync::Arc,
 };
 
@@ -28,36 +28,33 @@ use {
 /// `AppState` wraps `KernelContext` and adds runtime-specific state that
 /// the event loop and commands need to operate.
 ///
+/// # SSOT Note
+///
+/// `mode_stack`, `active_buffer`, `terminal_size`, and `pending_keys` are now
+/// stored in `driver::Session` (SSOT). See `SessionState::driver_session`.
+/// This struct only keeps kernel-related and window-related state.
+///
 /// # Example
 ///
 /// ```ignore
 /// use runner::AppState;
-/// use reovim_kernel::api::v1::{KernelContext, ModeId, ModuleId};
+/// use reovim_kernel::api::v1::KernelContext;
 ///
 /// let kernel = KernelContext::default();
-/// let initial_mode = ModeId::new(ModuleId::new("editor"), "normal");
-/// let app = AppState::new(kernel, initial_mode);
+/// let app = AppState::new(kernel);
 /// ```
 #[derive(Debug)]
 pub struct AppState {
     /// Kernel context providing access to all kernel services.
     pub kernel: KernelContext,
 
-    /// Current mode stack for vim-style mode handling.
-    ///
-    /// Supports mode stacking (e.g., Normal → Operator-Pending → back to Normal).
-    pub mode_stack: ModeStack,
-
-    /// Currently active buffer ID.
-    ///
-    /// This is a runtime concern, not kernel - the kernel just stores buffers,
-    /// the runner decides which one is "active".
-    pub active_buffer: Option<BufferId>,
-
     /// Pending key sequence for multi-key bindings.
     ///
     /// For sequences like `gg` or `<C-w>h`, keys accumulate here until
     /// they either match a binding, are a prefix, or don't match.
+    ///
+    /// NOTE: This is a legacy field. The SSOT is `driver::Session::pending_keys`.
+    /// Kept for backward compatibility with code that hasn't migrated yet.
     pub pending_keys: KeySequence,
 
     /// Whether the application is running.
@@ -65,16 +62,14 @@ pub struct AppState {
 
     /// Terminal width in columns.
     ///
-    /// Tracked at runtime for headless server mode. TUI clients send
-    /// `editor/resize` to update this when their terminal is resized.
-    /// Default: 80 (standard VT100 width).
+    /// NOTE: This is a legacy field. The SSOT is `driver::Session::terminal_size`.
+    /// Kept for backward compatibility.
     pub terminal_width: u16,
 
     /// Terminal height in rows.
     ///
-    /// Tracked at runtime for headless server mode. TUI clients send
-    /// `editor/resize` to update this when their terminal is resized.
-    /// Default: 24 (standard VT100 height).
+    /// NOTE: This is a legacy field. The SSOT is `driver::Session::terminal_size`.
+    /// Kept for backward compatibility.
     pub terminal_height: u16,
 
     /// Per-buffer undo registry.
@@ -117,13 +112,15 @@ impl AppState {
     /// # Arguments
     ///
     /// * `kernel` - The kernel context providing core services
-    /// * `initial_mode` - The mode to start in (typically Normal mode)
+    ///
+    /// # Note
+    ///
+    /// `mode_stack` and `active_buffer` are now stored in `driver::Session` (SSOT).
+    /// Use `SessionState::driver_session` for these values.
     #[must_use]
-    pub fn new(kernel: KernelContext, initial_mode: ModeId) -> Self {
+    pub fn new(kernel: KernelContext) -> Self {
         Self {
             kernel,
-            mode_stack: ModeStack::new(initial_mode),
-            active_buffer: None,
             pending_keys: KeySequence::new(),
             running: true,
             terminal_width: 80,
@@ -133,12 +130,6 @@ impl AppState {
             cmdline: CommandLineState::new(),
             extensions: ExtensionMap::new(),
         }
-    }
-
-    /// Get the current mode ID.
-    #[must_use]
-    pub fn current_mode(&self) -> &ModeId {
-        self.mode_stack.current()
     }
 
     /// Request the application to quit.
@@ -203,6 +194,10 @@ impl AppState {
     ///
     /// For backward compatibility with single-window usage, this creates
     /// a window if none exist when a buffer is set as active.
+    ///
+    /// NOTE: This only updates the window registry. The SSOT for `active_buffer`
+    /// is now `driver::Session::active_buffer`. Use `SessionState::set_session_active_buffer()`
+    /// to set the actual active buffer.
     pub fn set_active_buffer_with_window(&mut self, buffer_id: BufferId) {
         // If no windows exist, create one
         if self.windows.is_empty() {
@@ -214,17 +209,31 @@ impl AppState {
                 state.buffer_id = Some(buffer_id);
             }
         }
-        self.active_buffer = Some(buffer_id);
     }
 }
 
+/// `FallbackContext` implementation for `AppState`.
+///
+/// # SSOT Migration Note
+///
+/// `current_mode()` and `active_buffer()` are implemented to satisfy the trait,
+/// but the SSOT for these values is now `driver::Session`. These methods
+/// panic because they should not be called - use `SessionState` methods instead.
 impl FallbackContext for AppState {
     fn current_mode(&self) -> &ModeId {
-        self.mode_stack.current()
+        // This should not be called - SSOT is now driver::Session
+        // The VimFallbackHandler is not currently connected to the event loop
+        panic!(
+            "AppState::current_mode() should not be called - use SessionState::current_mode() instead"
+        );
     }
 
     fn active_buffer(&self) -> Option<BufferId> {
-        self.active_buffer
+        // This should not be called - SSOT is now driver::Session
+        // The VimFallbackHandler is not currently connected to the event loop
+        panic!(
+            "AppState::active_buffer() should not be called - use SessionState::session_active_buffer() instead"
+        );
     }
 
     fn get_buffer(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
@@ -262,27 +271,22 @@ impl FallbackContext for AppState {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, reovim_kernel::api::v1::ModuleId};
-
-    fn test_mode_id() -> ModeId {
-        ModeId::new(ModuleId::new("test"), "normal")
-    }
+    use super::*;
 
     #[test]
     fn test_app_state_new() {
         let kernel = KernelContext::default();
-        let app = AppState::new(kernel, test_mode_id());
+        let app = AppState::new(kernel);
 
         assert!(app.is_running());
-        assert!(app.active_buffer.is_none());
+        // Note: active_buffer and mode_stack are now in driver::Session (SSOT)
         assert!(app.pending_keys.is_empty());
-        assert_eq!(app.current_mode().name(), "normal");
     }
 
     #[test]
     fn test_app_state_quit() {
         let kernel = KernelContext::default();
-        let mut app = AppState::new(kernel, test_mode_id());
+        let mut app = AppState::new(kernel);
 
         assert!(app.is_running());
         app.request_quit();
@@ -292,7 +296,7 @@ mod tests {
     #[test]
     fn test_app_state_clear_pending() {
         let kernel = KernelContext::default();
-        let mut app = AppState::new(kernel, test_mode_id());
+        let mut app = AppState::new(kernel);
 
         // Add some keys
         app.pending_keys
@@ -306,7 +310,7 @@ mod tests {
     #[test]
     fn test_app_state_default_terminal_size() {
         let kernel = KernelContext::default();
-        let app = AppState::new(kernel, test_mode_id());
+        let app = AppState::new(kernel);
 
         // Default terminal size is 80x24 (VT100 standard)
         assert_eq!(app.terminal_width, 80);
@@ -316,7 +320,7 @@ mod tests {
     #[test]
     fn test_app_state_terminal_size_access() {
         let kernel = KernelContext::default();
-        let mut app = AppState::new(kernel, test_mode_id());
+        let mut app = AppState::new(kernel);
 
         // Verify we can read and write terminal dimensions
         app.terminal_width = 120;
@@ -329,7 +333,7 @@ mod tests {
     #[test]
     fn test_app_state_has_undo_registry() {
         let kernel = KernelContext::default();
-        let app = AppState::new(kernel, test_mode_id());
+        let app = AppState::new(kernel);
 
         // AppState should initialize with empty UndoRegistry
         assert_eq!(app.undo_registry.buffer_count(), 0);
@@ -338,7 +342,7 @@ mod tests {
     #[test]
     fn test_app_state_undo_registry_accessible() {
         let kernel = KernelContext::default();
-        let mut app = AppState::new(kernel, test_mode_id());
+        let mut app = AppState::new(kernel);
 
         // Can call undo_registry.record()
         let buffer_id = BufferId::from_raw(1);
@@ -352,7 +356,7 @@ mod tests {
     #[test]
     fn test_app_state_undo_registry_per_buffer() {
         let kernel = KernelContext::default();
-        let mut app = AppState::new(kernel, test_mode_id());
+        let mut app = AppState::new(kernel);
 
         let buffer1 = BufferId::from_raw(1);
         let buffer2 = BufferId::from_raw(2);
@@ -374,7 +378,7 @@ mod tests {
     #[test]
     fn test_app_state_has_window_registry() {
         let kernel = KernelContext::default();
-        let app = AppState::new(kernel, test_mode_id());
+        let app = AppState::new(kernel);
 
         // Initially no windows
         assert!(app.windows.is_empty());
@@ -384,7 +388,7 @@ mod tests {
     #[test]
     fn test_app_state_active_window_initially_none() {
         let kernel = KernelContext::default();
-        let app = AppState::new(kernel, test_mode_id());
+        let app = AppState::new(kernel);
 
         assert!(app.active_window().is_none());
         assert_eq!(app.windows.window_count(), 0);
@@ -393,7 +397,7 @@ mod tests {
     #[test]
     fn test_app_state_create_window_on_buffer_set() {
         let kernel = KernelContext::default();
-        let mut app = AppState::new(kernel, test_mode_id());
+        let mut app = AppState::new(kernel);
 
         let buffer_id = BufferId::new();
 
@@ -403,7 +407,6 @@ mod tests {
         // Should have created a window
         assert_eq!(app.windows.window_count(), 1);
         assert!(app.active_window().is_some());
-        assert_eq!(app.active_buffer, Some(buffer_id));
 
         // The window should contain the buffer
         let win_id = app.active_window().unwrap();
@@ -413,7 +416,7 @@ mod tests {
     #[test]
     fn test_app_state_backward_compat_single_buffer() {
         let kernel = KernelContext::default();
-        let mut app = AppState::new(kernel, test_mode_id());
+        let mut app = AppState::new(kernel);
 
         // Old single-buffer workflow:
         // 1. Create buffer
@@ -423,8 +426,7 @@ mod tests {
         let buffer_id = BufferId::new();
         app.set_active_buffer_with_window(buffer_id);
 
-        // Verify backward compatibility
-        assert_eq!(app.active_buffer, Some(buffer_id));
+        // Verify window was created
         assert!(app.active_window().is_some());
 
         // Window should have the buffer
@@ -437,14 +439,13 @@ mod tests {
 
         // Still one window, but with new buffer
         assert_eq!(app.windows.window_count(), 1);
-        assert_eq!(app.active_buffer, Some(buffer_id2));
         assert_eq!(app.buffer_for_window(win), Some(buffer_id2));
     }
 
     #[test]
     fn test_app_state_window_for_buffer() {
         let kernel = KernelContext::default();
-        let mut app = AppState::new(kernel, test_mode_id());
+        let mut app = AppState::new(kernel);
 
         let buffer_id = BufferId::new();
         app.set_active_buffer_with_window(buffer_id);

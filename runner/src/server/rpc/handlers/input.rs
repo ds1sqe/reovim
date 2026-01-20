@@ -168,7 +168,8 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
                         tracing::debug!(new_mode = %new_mode, "Applying mode change from event");
                         ctx.session
                             .with_state_mut(|state| {
-                                state.app.mode_stack.set(new_mode.clone());
+                                // Use driver_session as SSOT for mode_stack
+                                state.mode_stack_mut().set(new_mode.clone());
                             })
                             .await;
                     }

@@ -33,9 +33,9 @@ pub fn debug_kernel_state(ctx: RpcContext, _params: serde_json::Value) -> Handle
             .session
             .with_state(|state| {
                 let snapshot = snapshot_kernel_state(&state.app.kernel);
+                // Use driver_session as SSOT for active_buffer
                 let active_buffer = state
-                    .app
-                    .active_buffer
+                    .session_active_buffer()
                     .map(reovim_kernel::api::v1::BufferId::as_usize);
 
                 KernelStateResult {
@@ -163,7 +163,8 @@ pub fn debug_mode_stack(ctx: RpcContext, _params: serde_json::Value) -> HandlerF
         let result = ctx
             .session
             .with_state(|state| {
-                let snapshot = snapshot_mode_stack(&state.app.mode_stack);
+                // Use driver_session as SSOT for mode_stack
+                let snapshot = snapshot_mode_stack(state.mode_stack());
 
                 ModeStackResult {
                     current: snapshot.current,

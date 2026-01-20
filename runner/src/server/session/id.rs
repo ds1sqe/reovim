@@ -76,21 +76,21 @@ impl From<String> for SessionId {
 /// use runner::session::ClientId;
 ///
 /// let client = ClientId::new(1);
-/// assert_eq!(client.value(), 1);
+/// assert_eq!(client.as_usize(), 1);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ClientId(u64);
+pub struct ClientId(usize);
 
 impl ClientId {
     /// Create a new client ID.
     #[must_use]
-    pub const fn new(id: u64) -> Self {
+    pub const fn new(id: usize) -> Self {
         Self(id)
     }
 
     /// Get the raw ID value.
     #[must_use]
-    pub const fn value(&self) -> u64 {
+    pub const fn as_usize(&self) -> usize {
         self.0
     }
 }
@@ -136,7 +136,7 @@ mod tests {
     #[test]
     fn test_client_id_new() {
         let id = ClientId::new(42);
-        assert_eq!(id.value(), 42);
+        assert_eq!(id.as_usize(), 42);
     }
 
     #[test]

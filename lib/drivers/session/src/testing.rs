@@ -28,7 +28,7 @@
 
 use {
     crate::{
-        Session, SessionId,
+        ClientId, Session,
         api::{CommandExecutor, StateChanges},
         runtime::SessionRuntime,
     },
@@ -82,7 +82,7 @@ impl TestSessionRuntime {
     pub fn new() -> Self {
         let home_mode = ModeId::new(ModuleId::new("test"), "normal");
         Self {
-            session: Session::new(SessionId::new(1), home_mode),
+            session: Session::new(ClientId::new(1), home_mode),
             kernel: Self::make_test_kernel(),
             executor: StubExecutor,
             changes: StateChanges::new(),
@@ -93,7 +93,7 @@ impl TestSessionRuntime {
     #[must_use]
     pub fn with_home_mode(mode: ModeId) -> Self {
         Self {
-            session: Session::new(SessionId::new(1), mode),
+            session: Session::new(ClientId::new(1), mode),
             kernel: Self::make_test_kernel(),
             executor: StubExecutor,
             changes: StateChanges::new(),
@@ -113,6 +113,9 @@ impl TestSessionRuntime {
         let mut window = crate::Window::new();
         window.buffer_id = Some(buffer_id);
         test.session.windows.add(window);
+
+        // Set the active buffer (SSOT for session state)
+        test.session.set_active_buffer(Some(buffer_id));
 
         test
     }
@@ -286,7 +289,7 @@ impl TestSessionRuntime {
 
     /// Get the active buffer ID, if any.
     #[must_use]
-    pub fn active_buffer(&self) -> Option<BufferId> {
+    pub const fn active_buffer(&self) -> Option<BufferId> {
         self.session.active_buffer()
     }
 

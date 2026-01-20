@@ -368,7 +368,7 @@ impl SplitTree {
     ///
     /// Returns the new window ID.
     pub fn add_first_window(&mut self) -> WindowId {
-        let id = WindowId::new(self.next_id);
+        let id = WindowId::from_raw(self.next_id);
         self.next_id += 1;
         self.root = Some(SplitNode::leaf(id));
         id
@@ -384,7 +384,7 @@ impl SplitTree {
     ) -> Option<WindowId> {
         let root = self.root.take()?;
 
-        let new_id = WindowId::new(self.next_id);
+        let new_id = WindowId::from_raw(self.next_id);
         self.next_id += 1;
 
         // Clone root before split_window since it takes ownership
@@ -445,8 +445,8 @@ impl SplitTree {
         if self.root.is_none() {
             self.root = Some(SplitNode::leaf(id));
             // Update next_id if needed
-            if id.raw() >= self.next_id {
-                self.next_id = id.raw() + 1;
+            if id.as_usize() >= self.next_id {
+                self.next_id = id.as_usize() + 1;
             }
         }
     }
@@ -464,8 +464,8 @@ impl SplitTree {
             if let Some(new_root) = root.split_window(target, new_id, direction) {
                 self.root = Some(new_root);
                 // Update next_id if needed
-                if new_id.raw() >= self.next_id {
-                    self.next_id = new_id.raw() + 1;
+                if new_id.as_usize() >= self.next_id {
+                    self.next_id = new_id.as_usize() + 1;
                 }
                 return true;
             }
@@ -482,9 +482,9 @@ mod tests {
 
     #[test]
     fn test_split_node_leaf() {
-        let node = SplitNode::leaf(WindowId::new(1));
+        let node = SplitNode::leaf(WindowId::from_raw(1));
         assert!(node.is_leaf());
-        assert_eq!(node.window_id(), Some(WindowId::new(1)));
+        assert_eq!(node.window_id(), Some(WindowId::from_raw(1)));
         assert_eq!(node.window_count(), 1);
     }
 
@@ -492,8 +492,8 @@ mod tests {
     fn test_split_node_split() {
         let node = SplitNode::split(
             SplitDirection::Vertical,
-            SplitNode::leaf(WindowId::new(1)),
-            SplitNode::leaf(WindowId::new(2)),
+            SplitNode::leaf(WindowId::from_raw(1)),
+            SplitNode::leaf(WindowId::from_raw(2)),
         );
         assert!(!node.is_leaf());
         assert_eq!(node.window_id(), None);
@@ -504,33 +504,33 @@ mod tests {
     fn test_split_node_contains() {
         let node = SplitNode::split(
             SplitDirection::Vertical,
-            SplitNode::leaf(WindowId::new(1)),
-            SplitNode::leaf(WindowId::new(2)),
+            SplitNode::leaf(WindowId::from_raw(1)),
+            SplitNode::leaf(WindowId::from_raw(2)),
         );
-        assert!(node.contains(WindowId::new(1)));
-        assert!(node.contains(WindowId::new(2)));
-        assert!(!node.contains(WindowId::new(3)));
+        assert!(node.contains(WindowId::from_raw(1)));
+        assert!(node.contains(WindowId::from_raw(2)));
+        assert!(!node.contains(WindowId::from_raw(3)));
     }
 
     #[test]
     fn test_split_node_calculate_bounds() {
         let node = SplitNode::split(
             SplitDirection::Vertical,
-            SplitNode::leaf(WindowId::new(1)),
-            SplitNode::leaf(WindowId::new(2)),
+            SplitNode::leaf(WindowId::from_raw(1)),
+            SplitNode::leaf(WindowId::from_raw(2)),
         );
         let bounds = node.calculate_bounds(Rect::new(0, 0, 80, 24));
         assert_eq!(bounds.len(), 2);
 
         // First window gets left half
         let (id1, rect1) = bounds[0];
-        assert_eq!(id1, WindowId::new(1));
+        assert_eq!(id1, WindowId::from_raw(1));
         assert_eq!(rect1.x, 0);
         assert_eq!(rect1.width, 40);
 
         // Second window gets right half
         let (id2, rect2) = bounds[1];
-        assert_eq!(id2, WindowId::new(2));
+        assert_eq!(id2, WindowId::from_raw(2));
         assert_eq!(rect2.x, 40);
         assert_eq!(rect2.width, 40);
     }
@@ -539,8 +539,8 @@ mod tests {
     fn test_split_node_horizontal_bounds() {
         let node = SplitNode::split(
             SplitDirection::Horizontal,
-            SplitNode::leaf(WindowId::new(1)),
-            SplitNode::leaf(WindowId::new(2)),
+            SplitNode::leaf(WindowId::from_raw(1)),
+            SplitNode::leaf(WindowId::from_raw(2)),
         );
         let bounds = node.calculate_bounds(Rect::new(0, 0, 80, 24));
 
@@ -557,9 +557,12 @@ mod tests {
 
     #[test]
     fn test_split_node_split_window() {
-        let node = SplitNode::leaf(WindowId::new(1));
-        let result =
-            node.split_window(WindowId::new(1), WindowId::new(2), SplitDirection::Vertical);
+        let node = SplitNode::leaf(WindowId::from_raw(1));
+        let result = node.split_window(
+            WindowId::from_raw(1),
+            WindowId::from_raw(2),
+            SplitDirection::Vertical,
+        );
 
         assert!(result.is_some());
         let new_node = result.unwrap();
@@ -571,34 +574,34 @@ mod tests {
     fn test_split_node_remove_window() {
         let node = SplitNode::split(
             SplitDirection::Vertical,
-            SplitNode::leaf(WindowId::new(1)),
-            SplitNode::leaf(WindowId::new(2)),
+            SplitNode::leaf(WindowId::from_raw(1)),
+            SplitNode::leaf(WindowId::from_raw(2)),
         );
 
         // Remove window 1 - should leave just window 2
-        let result = node.remove_window(WindowId::new(1));
+        let result = node.remove_window(WindowId::from_raw(1));
         assert!(result.is_some());
         let new_node = result.unwrap();
         assert!(new_node.is_leaf());
-        assert_eq!(new_node.window_id(), Some(WindowId::new(2)));
+        assert_eq!(new_node.window_id(), Some(WindowId::from_raw(2)));
     }
 
     #[test]
     fn test_split_node_collect_windows() {
         let node = SplitNode::split(
             SplitDirection::Vertical,
-            SplitNode::leaf(WindowId::new(1)),
+            SplitNode::leaf(WindowId::from_raw(1)),
             SplitNode::split(
                 SplitDirection::Horizontal,
-                SplitNode::leaf(WindowId::new(2)),
-                SplitNode::leaf(WindowId::new(3)),
+                SplitNode::leaf(WindowId::from_raw(2)),
+                SplitNode::leaf(WindowId::from_raw(3)),
             ),
         );
         let windows = node.collect_windows();
         assert_eq!(windows.len(), 3);
-        assert!(windows.contains(&WindowId::new(1)));
-        assert!(windows.contains(&WindowId::new(2)));
-        assert!(windows.contains(&WindowId::new(3)));
+        assert!(windows.contains(&WindowId::from_raw(1)));
+        assert!(windows.contains(&WindowId::from_raw(2)));
+        assert!(windows.contains(&WindowId::from_raw(3)));
     }
 
     #[test]
@@ -710,12 +713,12 @@ mod tests {
         let node = SplitNode::split_with_ratio(
             SplitDirection::Vertical,
             0.5,
-            SplitNode::leaf(WindowId::new(1)),
-            SplitNode::leaf(WindowId::new(2)),
+            SplitNode::leaf(WindowId::from_raw(1)),
+            SplitNode::leaf(WindowId::from_raw(2)),
         );
 
         // Adjust ratio for window 1 (in first child)
-        let adjusted = node.adjust_ratio(WindowId::new(1), 0.1);
+        let adjusted = node.adjust_ratio(WindowId::from_raw(1), 0.1);
         if let SplitNode::Split { ratio, .. } = adjusted {
             assert!((ratio - 0.6).abs() < 0.001);
         } else {

@@ -163,7 +163,7 @@ mod tests {
     use {
         super::*,
         reovim_driver_command::{ArgKind, ArgValue, Command, CommandContext, CommandResult},
-        reovim_driver_session::{Session, SessionId, SessionRuntime, api::CommandExecutor},
+        reovim_driver_session::{ClientId, Session, SessionRuntime, api::CommandExecutor},
         reovim_kernel::api::v1::{
             Buffer, BufferError, BufferId, BufferManager, CommandId as KernelCommandId, EventBus,
             KernelContext, MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry, Position,
@@ -330,7 +330,7 @@ mod tests {
 
     #[test]
     fn test_cursor_up_no_buffer_id_returns_error() {
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
@@ -341,7 +341,7 @@ mod tests {
 
     #[test]
     fn test_cursor_down_no_buffer_id_returns_error() {
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
@@ -352,7 +352,7 @@ mod tests {
 
     #[test]
     fn test_cursor_left_no_buffer_id_returns_error() {
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
@@ -363,7 +363,7 @@ mod tests {
 
     #[test]
     fn test_cursor_right_no_buffer_id_returns_error() {
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
@@ -378,7 +378,7 @@ mod tests {
 
     #[test]
     fn test_cursor_up_invalid_buffer_returns_error() {
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
@@ -402,7 +402,7 @@ mod tests {
     #[test]
     fn test_cursor_down_moves_cursor() {
         let (kernel, buffer_id) = setup_buffer_context();
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
@@ -426,7 +426,7 @@ mod tests {
             buffer.write().set_position(Position::new(2, 0));
         }
 
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
@@ -443,7 +443,7 @@ mod tests {
     #[test]
     fn test_cursor_right_moves_cursor() {
         let (kernel, buffer_id) = setup_buffer_context();
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
@@ -467,7 +467,7 @@ mod tests {
             buffer.write().set_position(Position::new(0, 5));
         }
 
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
@@ -488,7 +488,7 @@ mod tests {
     #[test]
     fn test_cursor_down_count_respected() {
         let (kernel, buffer_id) = setup_buffer_context();
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
@@ -506,7 +506,7 @@ mod tests {
     #[test]
     fn test_cursor_right_count_respected() {
         let (kernel, buffer_id) = setup_buffer_context();
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
@@ -528,7 +528,7 @@ mod tests {
     #[test]
     fn test_cursor_up_at_line_zero_is_noop() {
         let (kernel, buffer_id) = setup_buffer_context();
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
@@ -552,7 +552,7 @@ mod tests {
             buffer.write().set_position(Position::new(2, 0));
         }
 
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
@@ -569,7 +569,7 @@ mod tests {
     #[test]
     fn test_cursor_left_at_col_zero_is_noop() {
         let (kernel, buffer_id) = setup_buffer_context();
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
@@ -594,7 +594,7 @@ mod tests {
             buffer.write().set_position(Position::new(0, 7)); // 'e' in "line one"
         }
 
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
@@ -618,7 +618,7 @@ mod tests {
         let buffer = Buffer::new(); // Empty buffer
         let buffer_id = kernel.buffers.register(buffer);
 
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
@@ -637,7 +637,7 @@ mod tests {
         let buffer = Buffer::from_string("single line");
         let buffer_id = kernel.buffers.register(buffer);
 
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
@@ -688,7 +688,7 @@ mod tests {
     fn test_undo_command_returns_success() {
         // Commands now return Success - actual undo logic
         // will be handled by SessionRuntime (see #394 for API gap)
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
@@ -700,7 +700,7 @@ mod tests {
 
     #[test]
     fn test_redo_command_returns_success() {
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
@@ -712,7 +712,7 @@ mod tests {
 
     #[test]
     fn test_undo_command_with_count() {
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
@@ -727,7 +727,7 @@ mod tests {
 
     #[test]
     fn test_redo_command_with_count() {
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
@@ -765,7 +765,7 @@ mod tests {
     #[test]
     fn test_undo_command_does_not_require_buffer_id() {
         // Undo commands return Success without requiring buffer_id
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
@@ -778,7 +778,7 @@ mod tests {
 
     #[test]
     fn test_redo_command_does_not_require_buffer_id() {
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
@@ -810,7 +810,7 @@ mod tests {
 
     #[test]
     fn test_yank_line_no_buffer_returns_error() {
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
@@ -822,7 +822,7 @@ mod tests {
     #[test]
     fn test_yank_line_single_line() {
         let (kernel, buffer_id) = setup_buffer_context();
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
@@ -842,7 +842,7 @@ mod tests {
     #[test]
     fn test_yank_line_count() {
         let (kernel, buffer_id) = setup_buffer_context();
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
@@ -869,7 +869,7 @@ mod tests {
             buffer.write().set_position(Position::new(2, 0));
         }
 
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
@@ -929,7 +929,7 @@ mod tests {
 
     #[test]
     fn test_paste_after_no_buffer_returns_error() {
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
@@ -940,7 +940,7 @@ mod tests {
 
     #[test]
     fn test_paste_before_no_buffer_returns_error() {
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
@@ -952,7 +952,7 @@ mod tests {
     #[test]
     fn test_paste_after_empty_register() {
         let (kernel, buffer_id) = setup_buffer_context();
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
@@ -969,7 +969,7 @@ mod tests {
 
         // First yank a line
         {
-            let mut session = Session::new(SessionId::new(1), test_mode());
+            let mut session = Session::new(ClientId::new(1), test_mode());
             let executor = StubExecutor;
             let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
             let mut args = CommandContext::new();
@@ -978,7 +978,7 @@ mod tests {
         }
 
         // Then paste after
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
@@ -1002,7 +1002,7 @@ mod tests {
 
         // First yank a line
         {
-            let mut session = Session::new(SessionId::new(1), test_mode());
+            let mut session = Session::new(ClientId::new(1), test_mode());
             let executor = StubExecutor;
             let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
             let mut args = CommandContext::new();
@@ -1011,7 +1011,7 @@ mod tests {
         }
 
         // Then paste before
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
@@ -1041,7 +1041,7 @@ mod tests {
             .write()
             .set(RegisterContent::characterwise("XYZ"));
 
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
@@ -1069,7 +1069,7 @@ mod tests {
             .write()
             .set(RegisterContent::characterwise("XYZ"));
 
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
@@ -1097,7 +1097,7 @@ mod tests {
             .write()
             .set(RegisterContent::characterwise("X"));
 
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
@@ -1143,7 +1143,7 @@ mod tests {
         // Commands now return Success - actual replace-char logic
         // will be handled by SessionRuntime (see #394)/vim resolver
         let (kernel, _buffer_id) = setup_buffer_context();
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let args = CommandContext::new();
@@ -1155,7 +1155,7 @@ mod tests {
     #[test]
     fn test_replace_char_start_with_count_returns_success() {
         let (kernel, _buffer_id) = setup_buffer_context();
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
@@ -1188,7 +1188,7 @@ mod tests {
         // Commands now return Success - actual repeat logic
         // will be handled by SessionRuntime (see #394)
         let (kernel, _buffer_id) = setup_buffer_context();
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = create_test_runtime(&mut session, &kernel, &executor);
         let args = CommandContext::new();

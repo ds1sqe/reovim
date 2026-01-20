@@ -5,7 +5,7 @@
 
 use std::fmt::Debug;
 
-use serde_json::Value;
+use {reovim_kernel::api::v1::BufferId, serde_json::Value};
 
 /// Result of an RPC handler execution.
 #[derive(Debug)]
@@ -74,19 +74,19 @@ impl RpcResult {
 /// `PluginStateRegistry`, `ModeState`, and `active_buffer_id`.
 pub struct RpcHandlerContext {
     /// Active buffer ID.
-    pub active_buffer_id: usize,
+    pub active_buffer_id: BufferId,
 }
 
 impl RpcHandlerContext {
     /// Create a new minimal context.
     #[must_use]
-    pub const fn new(active_buffer_id: usize) -> Self {
+    pub const fn new(active_buffer_id: BufferId) -> Self {
         Self { active_buffer_id }
     }
 
     /// Get the active buffer ID.
     #[must_use]
-    pub const fn active_buffer_id(&self) -> usize {
+    pub const fn active_buffer_id(&self) -> BufferId {
         self.active_buffer_id
     }
 }
@@ -187,7 +187,7 @@ mod tests {
         assert_eq!(handler.method(), "test/echo");
         assert_eq!(handler.description(), "Echo back the params");
 
-        let ctx = RpcHandlerContext::new(0);
+        let ctx = RpcHandlerContext::new(BufferId::from_raw(0));
         let result = handler.handle(&serde_json::json!({"test": 1}), &ctx);
         assert!(matches!(result, RpcResult::Success(_)));
     }

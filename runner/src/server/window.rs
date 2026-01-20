@@ -112,7 +112,7 @@ impl WindowRegistry {
     /// Returns the new window's ID. The window is added to the layout
     /// and becomes the active window if it's the first one.
     pub fn create_window(&mut self, buffer_id: Option<BufferId>) -> WindowId {
-        let id = WindowId::new(self.next_id);
+        let id = WindowId::from_raw(self.next_id);
         self.next_id += 1;
 
         let state = WindowState::new(id, buffer_id);
@@ -199,7 +199,7 @@ impl WindowRegistry {
         }
 
         // Create new window ID
-        let new_id = WindowId::new(self.next_id);
+        let new_id = WindowId::from_raw(self.next_id);
         self.next_id += 1;
 
         // Split in layout
@@ -223,7 +223,7 @@ impl WindowRegistry {
         }
 
         // Create new window ID
-        let new_id = WindowId::new(self.next_id);
+        let new_id = WindowId::from_raw(self.next_id);
         self.next_id += 1;
 
         // Split in layout
@@ -495,7 +495,7 @@ mod tests {
 
     #[test]
     fn test_window_state_builders() {
-        let id = WindowId::new(1);
+        let id = WindowId::from_raw(1);
         let buffer_id = BufferId::new();
 
         let state = WindowState::new(id, Some(buffer_id))
@@ -523,7 +523,7 @@ mod tests {
         assert_eq!(registry.active_window(), Some(w2));
 
         // Try to set non-existent window
-        assert!(!registry.set_active_window(WindowId::new(999)));
+        assert!(!registry.set_active_window(WindowId::from_raw(999)));
         assert_eq!(registry.active_window(), Some(w2)); // Unchanged
     }
 

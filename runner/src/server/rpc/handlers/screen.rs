@@ -58,8 +58,8 @@ pub fn state_screen_content(ctx: RpcContext, params: serde_json::Value) -> Handl
         let result = ctx
             .session
             .with_state(|state| {
-                let width = state.app.terminal_width;
-                let height = state.app.terminal_height;
+                // Use driver_session as SSOT for terminal size
+                let (width, height) = state.session_terminal_size();
 
                 // Get window views from registry
                 let window_views = state.app.windows.arrange((width, height));
@@ -88,9 +88,9 @@ fn render_single_window(
     _width: u16,
     _height: u16,
 ) -> ScreenContentResult {
+    // Use driver_session SSOT for active_buffer
     let content = state
-        .app
-        .active_buffer
+        .session_active_buffer()
         .and_then(|id: BufferId| state.app.kernel.buffers.get(id))
         .map(|arc| {
             let buf = arc.read();
@@ -413,7 +413,8 @@ mod tests {
             .with_state_mut(|state| {
                 let buffer = Buffer::from_string(&content_owned);
                 let id = state.app.kernel.buffers.register(buffer);
-                state.app.active_buffer = Some(id);
+                // Use driver_session as SSOT for active_buffer
+                state.set_session_active_buffer(Some(id));
             })
             .await;
         session
@@ -504,8 +505,8 @@ mod tests {
         // Window 1: 0,0 to 39,24 (left half)
         // Window 2: 40,0 to 79,24 (right half)
         let views = vec![
-            WindowView::new(WindowId::new(1), Rect::new(0, 0, 40, 24)),
-            WindowView::new(WindowId::new(2), Rect::new(40, 0, 40, 24)),
+            WindowView::new(WindowId::from_raw(1), Rect::new(0, 0, 40, 24)),
+            WindowView::new(WindowId::from_raw(2), Rect::new(40, 0, 40, 24)),
         ];
 
         let separators = super::find_separators(&views, 80, 24);
@@ -529,8 +530,8 @@ mod tests {
         // Window 1: 0,0 to 80,12 (top half)
         // Window 2: 0,12 to 80,12 (bottom half)
         let views = vec![
-            WindowView::new(WindowId::new(1), Rect::new(0, 0, 80, 12)),
-            WindowView::new(WindowId::new(2), Rect::new(0, 12, 80, 12)),
+            WindowView::new(WindowId::from_raw(1), Rect::new(0, 0, 80, 12)),
+            WindowView::new(WindowId::from_raw(2), Rect::new(0, 12, 80, 12)),
         ];
 
         let separators = super::find_separators(&views, 80, 24);
@@ -551,7 +552,10 @@ mod tests {
         use reovim_driver_display::{Rect, WindowId, WindowView};
 
         // Single window - no separators needed
-        let views = vec![WindowView::new(WindowId::new(1), Rect::new(0, 0, 80, 24))];
+        let views = vec![WindowView::new(
+            WindowId::from_raw(1),
+            Rect::new(0, 0, 80, 24),
+        )];
 
         let separators = super::find_separators(&views, 80, 24);
         assert!(separators.is_empty(), "Single window should have no separators");

@@ -61,8 +61,11 @@ pub use capabilities::DisplayCapabilities;
 // Render commands
 pub use command::RenderCommand;
 
-// Window types
-pub use window::{NavigateDirection, Rect, SplitDirection, TerminalSize, WindowId};
+// Window types (WindowId re-exported from kernel as SSOT)
+pub use {
+    reovim_kernel::api::v1::WindowId,
+    window::{NavigateDirection, Rect, SplitDirection, TerminalSize},
+};
 
 // Traits
 pub use traits::{DisplayDriver, WindowManager};

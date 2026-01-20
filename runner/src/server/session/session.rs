@@ -226,8 +226,8 @@ impl Session {
                 return false;
             }
 
-            // Get active buffer
-            let Some(buffer_id) = state.app.active_buffer() else {
+            // Get active buffer (from driver_session SSOT)
+            let Some(buffer_id) = state.session_active_buffer() else {
                 return false;
             };
 

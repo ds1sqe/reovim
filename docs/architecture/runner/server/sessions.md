@@ -6,6 +6,7 @@ Sessions manage shared editor state while viewports provide per-client independe
 
 - Sessions: `runner/src/server/session/`
 - Viewports: `runner/src/server/client/viewport.rs`
+- Driver Session: `lib/drivers/session/` (SSOT for per-session state)
 
 ## Session Architecture
 
@@ -14,9 +15,18 @@ Sessions manage shared editor state while viewports provide per-client independe
 │  Session "default"                                           │
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │ SessionState (shared)                                   │ │
-│  │ ├── KernelContext (buffers, event_bus, registries)     │ │
-│  │ ├── ModeId (current mode)                              │ │
-│  │ └── CommandRegistry, KeymapRegistry, ...               │ │
+│  │ ├── driver_session: DriverSession (SSOT)               │ │
+│  │ │   ├── mode_stack (current mode)                      │ │
+│  │ │   ├── pending_keys                                   │ │
+│  │ │   ├── extensions                                     │ │
+│  │ │   ├── active_buffer                                  │ │
+│  │ │   └── terminal_size                                  │ │
+│  │ ├── app: AppState                                      │ │
+│  │ │   ├── kernel (buffers, event_bus)                    │ │
+│  │ │   ├── undo_registry                                  │ │
+│  │ │   ├── windows                                        │ │
+│  │ │   └── cmdline                                        │ │
+│  │ └── CommandRegistry, KeymapRegistry, ModeRegistry      │ │
 │  └────────────────────────────────────────────────────────┘ │
 │                                                              │
 │  ┌────────────────────────────────────────────────────────┐ │
@@ -26,6 +36,46 @@ Sessions manage shared editor state while viewports provide per-client independe
 │  │ └── Client 3 → ClientViewport (120x40, buf2, cursor@1:0)│ │
 │  └────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
+```
+
+## SSOT Architecture
+
+`driver_session` is the Single Source of Truth (SSOT) for per-session editing state:
+
+| Field | Location | Description |
+|-------|----------|-------------|
+| `mode_stack` | `driver_session` | Current editing mode |
+| `pending_keys` | `driver_session` | Accumulated key sequence |
+| `extensions` | `driver_session` | Module-provided policy state |
+| `active_buffer` | `driver_session` | Currently active buffer ID |
+| `terminal_size` | `driver_session` | Session-level terminal dimensions |
+
+`AppState` provides runner-specific state that doesn't belong in the driver layer:
+
+| Field | Location | Description |
+|-------|----------|-------------|
+| `kernel` | `app` | Core kernel services (buffers, events) |
+| `undo_registry` | `app` | Per-buffer undo trees |
+| `windows` | `app` | Window layout and state |
+| `cmdline` | `app` | Command-line mode state |
+
+### Accessing Session State
+
+Use `SessionState` delegation methods for consistent access:
+
+```rust
+// Read current mode (delegates to driver_session)
+let mode = state.current_mode();
+
+// Modify mode stack
+state.mode_stack_mut().push(new_mode);
+
+// Access active buffer
+let buf_id = state.session_active_buffer();
+state.set_session_active_buffer(Some(buffer_id));
+
+// Terminal size (session default)
+let (width, height) = state.session_terminal_size();
 ```
 
 ## Per-Client Viewport

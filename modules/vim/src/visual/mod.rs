@@ -100,7 +100,7 @@ mod tests {
     use {
         super::*,
         reovim_driver_command::{Command, CommandContext, CommandResult},
-        reovim_driver_session::{Session, SessionId, SessionRuntime, api::CommandExecutor},
+        reovim_driver_session::{ClientId, Session, SessionRuntime, api::CommandExecutor},
         reovim_kernel::api::v1::{
             Buffer, BufferError, BufferId, BufferManager, CommandId, EventBus, KernelContext,
             MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry, Position, RegisterBank,
@@ -128,7 +128,7 @@ mod tests {
             }
         }
         let home_mode = ModeId::new(ModuleId::new("test"), "normal");
-        let mut session = Session::new(SessionId::new(1), home_mode);
+        let mut session = Session::new(ClientId::new(1), home_mode);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(&mut session, ctx, &executor);
         cmd.execute(&mut runtime, args)

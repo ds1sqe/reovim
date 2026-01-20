@@ -216,7 +216,7 @@ mod tests {
         super::*,
         crate::TEXTOBJECTS_MODULE,
         reovim_driver_command::ArgValue,
-        reovim_driver_session::{Session, SessionId, api::CommandExecutor},
+        reovim_driver_session::{ClientId, Session, api::CommandExecutor},
         reovim_kernel::api::v1::{
             Buffer, BufferError, BufferId, BufferManager, CommandId, EventBus, KernelContext,
             MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry, RegisterBank, RwLock,
@@ -360,7 +360,7 @@ mod tests {
     #[test]
     fn test_inner_word_no_buffer_returns_error() {
         let kernel = KernelContext::default();
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
         let args = CommandContext::new();
@@ -371,7 +371,7 @@ mod tests {
     #[test]
     fn test_inner_word_invalid_buffer_returns_error() {
         let kernel = KernelContext::default();
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
         let mut args = CommandContext::new();
@@ -388,7 +388,7 @@ mod tests {
     fn test_inner_word_basic() {
         let kernel = create_test_context();
         let buffer_id = setup_buffer(&kernel, "hello world foo");
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
 
@@ -413,7 +413,7 @@ mod tests {
             buffer.write().set_position(Position::new(0, 2));
         }
 
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
 
@@ -432,7 +432,7 @@ mod tests {
     fn test_a_word_includes_trailing_whitespace() {
         let kernel = create_test_context();
         let buffer_id = setup_buffer(&kernel, "hello world");
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
 
@@ -451,7 +451,7 @@ mod tests {
     fn test_inner_word_big_skips_punctuation() {
         let kernel = create_test_context();
         let buffer_id = setup_buffer(&kernel, "hello-world foo");
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
 
@@ -466,7 +466,7 @@ mod tests {
     fn test_inner_word_small_stops_at_punctuation() {
         let kernel = create_test_context();
         let buffer_id = setup_buffer(&kernel, "hello-world foo");
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
 
@@ -485,7 +485,7 @@ mod tests {
     fn test_empty_buffer() {
         let kernel = create_test_context();
         let buffer_id = setup_buffer(&kernel, "");
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
 
@@ -501,7 +501,7 @@ mod tests {
     fn test_whitespace_only() {
         let kernel = create_test_context();
         let buffer_id = setup_buffer(&kernel, "   ");
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
 

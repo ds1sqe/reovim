@@ -7,7 +7,7 @@
 //! # Design
 //!
 //! - **Session**: Complete per-client state container
-//! - **`SessionId`**: Unique session identifier
+//! - **`ClientId`**: Unique client connection identifier
 //! - **Viewport**: Client viewport dimensions and scroll
 //! - **Window**: Single window with buffer reference
 //! - **`WindowLayout`**: Window arrangement for a session
@@ -16,30 +16,36 @@ use reovim_kernel::api::v1::{BufferId, ModeId, ModeStack, Position, WindowId};
 
 use crate::extension::ExtensionMap;
 
-/// Unique session identifier.
+/// Unique client connection identifier.
 ///
-/// Sessions are identified by a monotonically increasing ID assigned
-/// by the server when the client connects.
+/// Each terminal/TUI that connects to the server gets a unique `ClientId`.
+/// IDs are monotonically increasing and not reused after disconnect.
+///
+/// # Semantics
+///
+/// - **Client**: Individual connection to the server (like tmux clients)
+/// - **Session**: Named editing context (defined in runner layer)
+/// - Multiple clients can attach to the same session
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct SessionId(pub u64);
+pub struct ClientId(pub usize);
 
-impl SessionId {
-    /// Create a new session ID.
+impl ClientId {
+    /// Create a new client ID.
     #[must_use]
-    pub const fn new(id: u64) -> Self {
+    pub const fn new(id: usize) -> Self {
         Self(id)
     }
 
     /// Get the raw ID value.
     #[must_use]
-    pub const fn as_u64(&self) -> u64 {
+    pub const fn as_usize(&self) -> usize {
         self.0
     }
 }
 
-impl std::fmt::Display for SessionId {
+impl std::fmt::Display for ClientId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "session-{}", self.0)
+        write!(f, "client-{}", self.0)
     }
 }
 
@@ -254,6 +260,12 @@ impl WindowLayout {
         self.windows.len()
     }
 
+    /// Clear all windows from the layout.
+    pub fn clear(&mut self) {
+        self.windows.clear();
+        self.active_index = None;
+    }
+
     /// Get window by ID.
     #[must_use]
     pub fn get(&self, id: WindowId) -> Option<&Window> {
@@ -314,16 +326,24 @@ impl KeySequence {
 /// Complete session (server-side storage for one client).
 ///
 /// Each connected client has its own session with independent state.
-/// Sessions are identified by `SessionId` and contain:
+/// Sessions are identified by `ClientId` and contain:
 ///
 /// - Windows and their layouts
 /// - Mode stack (current editing mode)
 /// - Pending key sequence
 /// - Module-provided extensions (policy state)
+/// - Active buffer ID
+/// - Terminal size (session-level default)
+///
+/// # Per-Client vs Per-Session State
+///
+/// `terminal_size` here is the session-level default. Per-client dimensions
+/// may differ and are stored in `ClientViewport` at the runner layer.
+/// The precedence rule is: `ClientViewport` (if exists) > Session default.
 #[derive(Debug)]
 pub struct Session {
-    /// Unique session identifier.
-    pub id: SessionId,
+    /// Unique client identifier.
+    pub id: ClientId,
     /// Window layout (per-session windows).
     pub windows: WindowLayout,
     /// Mode stack (current mode on top).
@@ -332,20 +352,33 @@ pub struct Session {
     pub pending_keys: KeySequence,
     /// Module-provided per-session state.
     pub extensions: ExtensionMap,
+    /// Currently active buffer ID.
+    ///
+    /// This is a session-level concern - all clients attached to this
+    /// session see the same active buffer.
+    active_buffer: Option<BufferId>,
+    /// Terminal dimensions (width, height) as session-level default.
+    ///
+    /// Per-client dimensions may override this via `ClientViewport`.
+    /// Default: (80, 24) - standard VT100 size.
+    terminal_size: (u16, u16),
 }
 
 impl Session {
     /// Create a new session with a home mode.
     ///
     /// The home mode is the bottom of the mode stack and cannot be popped.
+    /// Terminal size defaults to VT100 standard (80x24).
     #[must_use]
-    pub fn new(id: SessionId, home_mode: ModeId) -> Self {
+    pub fn new(id: ClientId, home_mode: ModeId) -> Self {
         Self {
             id,
             windows: WindowLayout::empty(),
             mode_stack: ModeStack::new(home_mode),
             pending_keys: KeySequence::new(),
             extensions: ExtensionMap::new(),
+            active_buffer: None,
+            terminal_size: (80, 24), // VT100 default
         }
     }
 
@@ -355,9 +388,36 @@ impl Session {
         self.mode_stack.current()
     }
 
-    /// Get the active buffer ID (from active window).
+    /// Get the active buffer ID.
     #[must_use]
-    pub fn active_buffer(&self) -> Option<BufferId> {
+    pub const fn active_buffer(&self) -> Option<BufferId> {
+        self.active_buffer
+    }
+
+    /// Set the active buffer ID.
+    pub const fn set_active_buffer(&mut self, id: Option<BufferId>) {
+        self.active_buffer = id;
+    }
+
+    /// Get terminal dimensions (width, height).
+    ///
+    /// This is the session-level default. Per-client dimensions
+    /// may differ and are stored in `ClientViewport`.
+    #[must_use]
+    pub const fn terminal_size(&self) -> (u16, u16) {
+        self.terminal_size
+    }
+
+    /// Set terminal dimensions.
+    pub const fn set_terminal_size(&mut self, width: u16, height: u16) {
+        self.terminal_size = (width, height);
+    }
+
+    /// Get the active buffer ID from the active window (legacy method).
+    ///
+    /// This is kept for backward compatibility. Prefer `active_buffer()`.
+    #[must_use]
+    pub fn window_active_buffer(&self) -> Option<BufferId> {
         self.windows.active().and_then(|w| w.buffer_id)
     }
 }
@@ -371,10 +431,10 @@ mod tests {
     }
 
     #[test]
-    fn test_session_id() {
-        let id = SessionId::new(42);
-        assert_eq!(id.as_u64(), 42);
-        assert_eq!(id.to_string(), "session-42");
+    fn test_client_id() {
+        let id = ClientId::new(42);
+        assert_eq!(id.as_usize(), 42);
+        assert_eq!(id.to_string(), "client-42");
     }
 
     #[test]
@@ -484,26 +544,79 @@ mod tests {
     #[test]
     fn test_session_new() {
         let mode = test_mode();
-        let session = Session::new(SessionId::new(1), mode.clone());
+        let session = Session::new(ClientId::new(1), mode.clone());
 
-        assert_eq!(session.id.as_u64(), 1);
+        assert_eq!(session.id.as_usize(), 1);
         assert_eq!(session.current_mode(), &mode);
         assert!(session.windows.is_empty());
         assert!(session.pending_keys.is_empty());
         assert!(session.extensions.is_empty());
+        // New fields initialized correctly
+        assert!(session.active_buffer().is_none());
+        assert_eq!(session.terminal_size(), (80, 24)); // VT100 default
     }
 
     #[test]
     fn test_session_active_buffer() {
         let mode = test_mode();
-        let mut session = Session::new(SessionId::new(1), mode);
+        let mut session = Session::new(ClientId::new(1), mode);
 
+        // Initially None
         assert!(session.active_buffer().is_none());
+
+        // Set active buffer
+        let buf_id = BufferId::new();
+        session.set_active_buffer(Some(buf_id));
+        assert_eq!(session.active_buffer(), Some(buf_id));
+
+        // Clear active buffer
+        session.set_active_buffer(None);
+        assert!(session.active_buffer().is_none());
+    }
+
+    #[test]
+    fn test_session_window_active_buffer() {
+        let mode = test_mode();
+        let mut session = Session::new(ClientId::new(1), mode);
+
+        // window_active_buffer derives from active window
+        assert!(session.window_active_buffer().is_none());
 
         let buf_id = BufferId::new();
         let window = Window::with_buffer(buf_id);
         session.windows.add(window);
 
-        assert_eq!(session.active_buffer(), Some(buf_id));
+        assert_eq!(session.window_active_buffer(), Some(buf_id));
+    }
+
+    #[test]
+    fn test_session_terminal_size() {
+        let mode = test_mode();
+        let mut session = Session::new(ClientId::new(1), mode);
+
+        // Default VT100 size
+        assert_eq!(session.terminal_size(), (80, 24));
+
+        // Update terminal size
+        session.set_terminal_size(120, 40);
+        assert_eq!(session.terminal_size(), (120, 40));
+    }
+
+    #[test]
+    fn test_session_terminal_size_boundaries() {
+        let mode = test_mode();
+        let mut session = Session::new(ClientId::new(1), mode);
+
+        // Min values
+        session.set_terminal_size(0, 0);
+        assert_eq!(session.terminal_size(), (0, 0));
+
+        // Near-min
+        session.set_terminal_size(1, 1);
+        assert_eq!(session.terminal_size(), (1, 1));
+
+        // Max values
+        session.set_terminal_size(u16::MAX, u16::MAX);
+        assert_eq!(session.terminal_size(), (u16::MAX, u16::MAX));
     }
 }

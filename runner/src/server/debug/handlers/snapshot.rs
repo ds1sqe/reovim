@@ -137,22 +137,23 @@ pub fn debug_visual_snapshot(ctx: RpcContext, _params: serde_json::Value) -> Han
                     marks_to_result(snapshot_marks(&marks))
                 };
 
-                // Mode stack
-                let mode_snapshot = snapshot_mode_stack(&state.app.mode_stack);
+                // Mode stack (from driver_session SSOT)
+                let mode_snapshot = snapshot_mode_stack(state.mode_stack());
                 let mode_stack_result = ModeStackResult {
                     current: mode_snapshot.current,
                     stack: mode_snapshot.stack,
                     depth: mode_snapshot.depth,
                 };
 
-                // Cursor position
+                // Cursor position (use driver_session as SSOT for active_buffer)
                 let cursor_pos = state
-                    .app
-                    .active_buffer
+                    .session_active_buffer()
                     .and_then(|id| state.app.kernel.buffers.get(id))
                     .map_or_else(
                         || Position::new(0, 0),
-                        |buffer_arc| {
+                        |buffer_arc: std::sync::Arc<
+                            reovim_arch::sync::RwLock<reovim_kernel::api::v1::Buffer>,
+                        >| {
                             let pos = buffer_arc.read().position();
                             Position::new(pos.line, pos.column)
                         },
@@ -183,9 +184,9 @@ pub fn debug_visual_snapshot(ctx: RpcContext, _params: serde_json::Value) -> Han
 
                 let buffers_section = SnapshotBuffersSection {
                     count: kernel_snapshot.buffer_count,
+                    // Use driver_session as SSOT for active_buffer
                     active_id: state
-                        .app
-                        .active_buffer
+                        .session_active_buffer()
                         .map(reovim_kernel::api::v1::BufferId::as_usize),
                     buffers: buffer_infos,
                 };

@@ -199,7 +199,7 @@ mod tests {
     use super::*;
 
     /// Create a test client with the given ID.
-    fn test_client(id: u64) -> Arc<Client> {
+    fn test_client(id: usize) -> Arc<Client> {
         Client::new(ClientId::new(id), SessionId::new("test"), TransportWriter::from_stdio())
     }
 

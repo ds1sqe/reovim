@@ -1378,24 +1378,26 @@ mod tests {
 
     #[test]
     fn test_cursor_moved_payload_parsing() {
+        use reovim_protocol::v1::BufferId as ProtocolBufferId;
         let params = json!({
             "buffer_id": 1,
             "position": { "line": 10, "column": 5 }
         });
         let payload: CursorMovedPayload = serde_json::from_value(params).unwrap();
-        assert_eq!(payload.buffer_id, 1);
+        assert_eq!(payload.buffer_id, ProtocolBufferId::from(1));
         assert_eq!(payload.position.line, 10);
         assert_eq!(payload.position.column, 5);
     }
 
     #[test]
     fn test_buffer_modified_payload_parsing() {
+        use reovim_protocol::v1::BufferId as ProtocolBufferId;
         let params = json!({
             "buffer_id": 1,
             "modified": true
         });
         let payload: BufferModifiedPayload = serde_json::from_value(params).unwrap();
-        assert_eq!(payload.buffer_id, 1);
+        assert_eq!(payload.buffer_id, ProtocolBufferId::from(1));
         assert!(payload.modified);
     }
 

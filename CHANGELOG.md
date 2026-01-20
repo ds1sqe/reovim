@@ -47,6 +47,70 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- Unified `WindowId` to single kernel definition (#410)
+  - Display driver re-exports kernel's `WindowId` (was redefinition)
+  - Protocol uses `WireWindowId` wrapper with `#[serde(transparent)]` for RPC
+  - All `WindowId::new(explicit_id)` replaced with `WindowId::from_raw(id)`
+  - Added `PartialOrd, Ord` derives to kernel `WindowId` for sorting
+  - Simplified `RuntimeAdapter` by removing type conversion boilerplate
+  - Zero raw `.0` access - use `.as_usize()` accessor
+
+- Added tmux-like session architecture documentation (#411)
+  - New `docs/architecture/session-model.md` with Session/Client concepts
+  - Updated architecture overview with session model diagram
+  - Updated driver session docs with SSOT and ClientId sections
+  - Updated runner docs with event-driven architecture and thin runner philosophy
+  - Updated CLAUDE.md with session model explanation
+
+- Wired `EventBus` for key dispatch - event-driven key handling (#408)
+  - Added `KeyPressEvent` type in kernel with `SessionId` and `ClientId` for event routing
+  - Created `handlers.rs` module with `register_key_handler()` infrastructure
+  - `RecursionGuard` with thread-local counter prevents infinite loops (limit: 16)
+  - Panic isolation via `catch_unwind` prevents handler crashes from affecting server
+  - Handler subscription stored in `EventLoop` for RAII cleanup on drop
+  - `EventLoop::handle_key()` now emits events to `EventBus` with fallback to direct resolver
+  - Type conversion layer between driver `KeyEvent` and kernel `KeyInput`
+
+- Simplified event loop to emit + process pattern (#409)
+  - `handle_key()` now only emits - stores key and sends to channel, no resolution
+  - New `process_events()` method handles resolution with full `&mut self` access
+  - `run()` and `step()` now call emit + process sequentially
+  - Removed fallback path from `handle_key()` - resolution only in `process_events()`
+  - Added `pending_key_event` field with documented single-slot safety guarantees
+  - Uses `EventBus::new_with_channel(1024)` for future async/multi-session support
+  - Handler infrastructure preserved in `handlers.rs` for future plugin support
+  - Added 13 new tests for emit + process pattern and conversion functions
+
+- Deleted `AppStateRuntime` adapter (~500 lines) - thin runner architecture (#407)
+  - Created `RuntimeAdapter` that combines `SessionRuntime` with `WindowRegistry`
+  - `RuntimeAdapter` implements all session API traits: `ModeApi`, `BufferApi`, `WindowApi`, `RegisterApi`, `ExtensionApi`, `CommandApi`, `ChangeTracker`
+  - Window operations delegated directly to `WindowRegistry` (runner-layer SSOT)
+  - Mode/buffer/register/extension operations delegated to `SessionRuntime` (driver-layer SSOT)
+  - Event loop now uses `RuntimeAdapter` for resolver key handling
+  - Removed redundant `WindowBridge` adapter
+
+- Refactored `SessionState` to use `driver::Session` as SSOT for session state (#406)
+  - `driver_session` is now the Single Source of Truth for per-session state
+  - Fields moved to `driver_session`: `mode_stack`, `pending_keys`, `extensions`, `active_buffer`, `terminal_size`
+  - `AppState` now contains only runner-specific state: `kernel`, `undo_registry`, `windows`, `cmdline`
+  - New delegation methods on `SessionState`: `mode_stack()`, `session_active_buffer()`, `session_terminal_size()`, etc.
+  - `CommandRegistry::execute()` now takes `&mut DriverSession` for SSOT access
+  - Updated docs/architecture/runner/server/sessions.md with SSOT architecture
+
+- Clarified Session vs Client types with tmux-like semantics (#405)
+  - Renamed `driver::SessionId(usize)` to `ClientId(usize)` - identifies client connections
+  - `runner::SessionId(Arc<str>)` unchanged - identifies named editing sessions
+  - Display format updated: "client-{id}" (was "session-{id}")
+  - Clear documentation explaining multi-client session semantics
+  - 15 files updated across driver, modules, and runner layers
+
+- Unified ID types to `usize` with standardized accessor (#412)
+  - All numeric ID types (`WindowId`, `SessionId`, `ClientId`) converted from `u64` to `usize`
+  - Standardized accessor method: `as_usize()` replaces `raw()`, `as_u64()`, `value()`
+  - Hard Typing enforced: raw `usize` fields replaced with proper newtypes (`BufferId`, `WindowId`)
+  - Atomic counters updated: `AtomicU64` → `AtomicUsize` for ID generation
+  - Protocol types use newtype wrappers for type-safe serialization boundaries
+
 - SessionApi migration: Complete escape hatch elimination (#394)
   - Changed `CommandHandler::execute` signature from `&mut KernelContext` to `&mut SessionRuntime<'_>`
   - Commands now access session state via Session APIs (ModeApi, BufferApi, WindowApi, RegisterApi)

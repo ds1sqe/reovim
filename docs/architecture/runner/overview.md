@@ -32,6 +32,41 @@ The runner (`runner/`) is the application layer that orchestrates kernel, driver
 └─────────────────────────────────────────────────────────────┘
 ```
 
+## Event-Driven Architecture
+
+The runner follows an **emit + process** pattern:
+
+```rust
+loop {
+    // 1. Read (blocking)
+    let key = read_key();
+
+    // 2. Emit (non-blocking)
+    bus.emit(KeyPressEvent { key, session_id, client_id });
+
+    // 3. Process (handlers execute)
+    bus.process_queue();
+
+    // 4. Render (if requested)
+    if render_requested.take() {
+        render();
+    }
+}
+```
+
+### Thin Runner Philosophy
+
+The runner is a **thin dispatcher**, not a fat coordinator:
+
+| Before (Fat) | After (Thin) |
+|--------------|--------------|
+| ~500 lines `AppStateRuntime` | Deleted |
+| Calculation in event loop | Handlers do calculation |
+| Tight coupling to resolvers | Loose coupling via EventBus |
+| Hard to test | Mock EventBus for testing |
+
+The runner's only job: **dispatch events and render results**.
+
 ## Server Mode
 
 The runner can operate as a JSON-RPC 2.0 server:

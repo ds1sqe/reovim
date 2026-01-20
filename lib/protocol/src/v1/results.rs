@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::types::{
-    BufferInfo, CursorInfo, ModeInfo, ScreenFormat, ScreenInfo, SelectionInfo, WindowInfo,
+    BufferId, BufferInfo, CursorInfo, ModeInfo, ScreenFormat, ScreenInfo, SelectionInfo, WindowInfo,
 };
 
 /// Result type aliases for state methods.
@@ -46,7 +46,7 @@ pub struct BufferContentResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BufferOpenResult {
     /// ID of the opened buffer.
-    pub buffer_id: usize,
+    pub buffer_id: BufferId,
 }
 
 /// Result for `state/windows` method.
@@ -204,10 +204,11 @@ mod tests {
 
     #[test]
     fn test_windows_result() {
+        use crate::v1::types::{BufferId, WireWindowId};
         let result = WindowsResult {
             windows: vec![WindowInfo {
-                id: 1,
-                buffer_id: 1,
+                id: WireWindowId::from(1),
+                buffer_id: BufferId::from(1),
                 is_active: true,
                 cursor: Position::new(5, 10),
             }],

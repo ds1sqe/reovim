@@ -189,7 +189,7 @@ mod tests {
     use super::*;
 
     fn make_view(id: usize, x: u16, y: u16, w: u16, h: u16) -> WindowView {
-        WindowView::new(WindowId::new(id), Rect::new(x, y, w, h))
+        WindowView::new(WindowId::from_raw(id), Rect::new(x, y, w, h))
     }
 
     #[test]
@@ -208,11 +208,11 @@ mod tests {
         ];
 
         // From right, go left
-        let next = policy.next(NavigateDirection::Left, WindowId::new(2), &views);
-        assert_eq!(next, Some(WindowId::new(1)));
+        let next = policy.next(NavigateDirection::Left, WindowId::from_raw(2), &views);
+        assert_eq!(next, Some(WindowId::from_raw(1)));
 
         // From left, go left (nothing there)
-        let next = policy.next(NavigateDirection::Left, WindowId::new(1), &views);
+        let next = policy.next(NavigateDirection::Left, WindowId::from_raw(1), &views);
         assert_eq!(next, None);
     }
 
@@ -225,11 +225,11 @@ mod tests {
         ];
 
         // From left, go right
-        let next = policy.next(NavigateDirection::Right, WindowId::new(1), &views);
-        assert_eq!(next, Some(WindowId::new(2)));
+        let next = policy.next(NavigateDirection::Right, WindowId::from_raw(1), &views);
+        assert_eq!(next, Some(WindowId::from_raw(2)));
 
         // From right, go right (nothing there)
-        let next = policy.next(NavigateDirection::Right, WindowId::new(2), &views);
+        let next = policy.next(NavigateDirection::Right, WindowId::from_raw(2), &views);
         assert_eq!(next, None);
     }
 
@@ -242,11 +242,11 @@ mod tests {
         ];
 
         // From bottom, go up
-        let next = policy.next(NavigateDirection::Up, WindowId::new(2), &views);
-        assert_eq!(next, Some(WindowId::new(1)));
+        let next = policy.next(NavigateDirection::Up, WindowId::from_raw(2), &views);
+        assert_eq!(next, Some(WindowId::from_raw(1)));
 
         // From top, go up (nothing there)
-        let next = policy.next(NavigateDirection::Up, WindowId::new(1), &views);
+        let next = policy.next(NavigateDirection::Up, WindowId::from_raw(1), &views);
         assert_eq!(next, None);
     }
 
@@ -259,11 +259,11 @@ mod tests {
         ];
 
         // From top, go down
-        let next = policy.next(NavigateDirection::Down, WindowId::new(1), &views);
-        assert_eq!(next, Some(WindowId::new(2)));
+        let next = policy.next(NavigateDirection::Down, WindowId::from_raw(1), &views);
+        assert_eq!(next, Some(WindowId::from_raw(2)));
 
         // From bottom, go down (nothing there)
-        let next = policy.next(NavigateDirection::Down, WindowId::new(2), &views);
+        let next = policy.next(NavigateDirection::Down, WindowId::from_raw(2), &views);
         assert_eq!(next, None);
     }
 
@@ -283,12 +283,12 @@ mod tests {
         ];
 
         // From window 1, going right should prefer 3 (aligned) over anything else
-        let next = policy.next(NavigateDirection::Right, WindowId::new(1), &views);
-        assert_eq!(next, Some(WindowId::new(3)));
+        let next = policy.next(NavigateDirection::Right, WindowId::from_raw(1), &views);
+        assert_eq!(next, Some(WindowId::from_raw(3)));
 
         // From window 3, going left should prefer 1 (aligned)
-        let next = policy.next(NavigateDirection::Left, WindowId::new(3), &views);
-        assert_eq!(next, Some(WindowId::new(1)));
+        let next = policy.next(NavigateDirection::Left, WindowId::from_raw(3), &views);
+        assert_eq!(next, Some(WindowId::from_raw(1)));
     }
 
     #[test]
@@ -305,12 +305,12 @@ mod tests {
         ];
 
         // From 1, going right should pick 2 (closest)
-        let next = policy.next(NavigateDirection::Right, WindowId::new(1), &views);
-        assert_eq!(next, Some(WindowId::new(2)));
+        let next = policy.next(NavigateDirection::Right, WindowId::from_raw(1), &views);
+        assert_eq!(next, Some(WindowId::from_raw(2)));
 
         // From 3, going left should pick 2 (closest)
-        let next = policy.next(NavigateDirection::Left, WindowId::new(3), &views);
-        assert_eq!(next, Some(WindowId::new(2)));
+        let next = policy.next(NavigateDirection::Left, WindowId::from_raw(3), &views);
+        assert_eq!(next, Some(WindowId::from_raw(2)));
     }
 
     #[test]
@@ -319,7 +319,7 @@ mod tests {
         let views = vec![make_view(1, 0, 0, 80, 24)];
 
         // Current window not in views
-        let next = policy.next(NavigateDirection::Left, WindowId::new(999), &views);
+        let next = policy.next(NavigateDirection::Left, WindowId::from_raw(999), &views);
         assert_eq!(next, None);
     }
 
@@ -328,7 +328,7 @@ mod tests {
         let policy = VimFocusPolicy::new();
         let views: Vec<WindowView> = vec![];
 
-        let next = policy.next(NavigateDirection::Left, WindowId::new(1), &views);
+        let next = policy.next(NavigateDirection::Left, WindowId::from_raw(1), &views);
         assert_eq!(next, None);
     }
 
@@ -342,11 +342,11 @@ mod tests {
         ];
 
         // Cycle forward from 1
-        assert_eq!(policy.cycle(true, WindowId::new(1), &views), Some(WindowId::new(2)));
+        assert_eq!(policy.cycle(true, WindowId::from_raw(1), &views), Some(WindowId::from_raw(2)));
         // Cycle forward from 2
-        assert_eq!(policy.cycle(true, WindowId::new(2), &views), Some(WindowId::new(3)));
+        assert_eq!(policy.cycle(true, WindowId::from_raw(2), &views), Some(WindowId::from_raw(3)));
         // Cycle forward from 3 (wraps to 1)
-        assert_eq!(policy.cycle(true, WindowId::new(3), &views), Some(WindowId::new(1)));
+        assert_eq!(policy.cycle(true, WindowId::from_raw(3), &views), Some(WindowId::from_raw(1)));
     }
 
     #[test]
@@ -359,11 +359,11 @@ mod tests {
         ];
 
         // Cycle backward from 3
-        assert_eq!(policy.cycle(false, WindowId::new(3), &views), Some(WindowId::new(2)));
+        assert_eq!(policy.cycle(false, WindowId::from_raw(3), &views), Some(WindowId::from_raw(2)));
         // Cycle backward from 2
-        assert_eq!(policy.cycle(false, WindowId::new(2), &views), Some(WindowId::new(1)));
+        assert_eq!(policy.cycle(false, WindowId::from_raw(2), &views), Some(WindowId::from_raw(1)));
         // Cycle backward from 1 (wraps to 3)
-        assert_eq!(policy.cycle(false, WindowId::new(1), &views), Some(WindowId::new(3)));
+        assert_eq!(policy.cycle(false, WindowId::from_raw(1), &views), Some(WindowId::from_raw(3)));
     }
 
     #[test]
@@ -371,7 +371,7 @@ mod tests {
         let policy = VimFocusPolicy::new();
         let views = vec![make_view(1, 0, 0, 80, 24)];
 
-        assert_eq!(policy.cycle(true, WindowId::new(999), &views), None);
+        assert_eq!(policy.cycle(true, WindowId::from_raw(999), &views), None);
     }
 
     #[test]
@@ -379,7 +379,7 @@ mod tests {
         let policy = VimFocusPolicy::new();
         let views: Vec<WindowView> = vec![];
 
-        assert_eq!(policy.cycle(true, WindowId::new(1), &views), None);
+        assert_eq!(policy.cycle(true, WindowId::from_raw(1), &views), None);
     }
 
     #[test]

@@ -46,6 +46,22 @@ Reovim is a Rust-based neovim-like text editor following a **Linux kernel-inspir
 - **API Boundary**: Modules use ONLY `reovim_kernel::api::*`. Kernel internals are `pub(crate)` (compile-time enforced).
 - **Trait Contracts**: Drivers define traits (e.g., `LayoutPolicy`), modules implement them (e.g., `TilingLayout`).
 
+### Session Model
+
+Reovim uses a **tmux-like session model**:
+
+- **Session** (`SessionId(Arc<str>)`) - Named editing context, shared state
+- **Client** (`ClientId(usize)`) - Connection to server, own viewport
+
+Multiple clients can attach to one session, sharing buffers and mode but with
+independent cursors and viewports. See `docs/architecture/session-model.md`.
+
+Key types (all use `usize` storage, `as_usize()` accessor):
+- `SessionId(Arc<str>)` - Named session in runner
+- `ClientId(usize)` - Client connection in driver
+- `BufferId(usize)` - Buffer identifier in kernel
+- `WindowId(usize)` - Window identifier in kernel
+
 ### Workspace Structure
 
 **Kernel Layer:**
