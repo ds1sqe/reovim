@@ -26,7 +26,7 @@ use std::{
 /// assert_ne!(window1, window2);
 /// assert_eq!(window1, window1);
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct WindowId(usize);
 
 /// Global window ID counter.
@@ -95,5 +95,28 @@ mod tests {
     fn test_window_id_default() {
         let id = WindowId::default();
         assert!(id.as_usize() > 0);
+    }
+
+    #[test]
+    fn test_window_id_from_raw() {
+        let id = WindowId::from_raw(42);
+        assert_eq!(id.as_usize(), 42);
+    }
+
+    #[test]
+    fn test_window_id_ordering() {
+        let id1 = WindowId::from_raw(1);
+        let id2 = WindowId::from_raw(2);
+        let id3 = WindowId::from_raw(3);
+
+        // PartialOrd
+        assert!(id1 < id2);
+        assert!(id2 < id3);
+        assert!(id1 < id3);
+
+        // Ord (for sorting)
+        let mut ids = vec![id3, id1, id2];
+        ids.sort();
+        assert_eq!(ids, vec![id1, id2, id3]);
     }
 }

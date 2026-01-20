@@ -204,10 +204,10 @@ mod tests {
 
     #[test]
     fn test_windows_result() {
-        use crate::v1::types::{BufferId, WindowId};
+        use crate::v1::types::{BufferId, WireWindowId};
         let result = WindowsResult {
             windows: vec![WindowInfo {
-                id: WindowId::from(1),
+                id: WireWindowId::from(1),
                 buffer_id: BufferId::from(1),
                 is_active: true,
                 cursor: Position::new(5, 10),

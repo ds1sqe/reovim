@@ -39,19 +39,38 @@ impl From<BufferId> for usize {
     }
 }
 
-/// Window identifier.
+/// Wire-format window identifier for serialization.
+///
+/// This is a thin wrapper for protocol serialization only.
+/// Convert to/from `reovim_kernel::api::v1::WindowId` (the canonical type) at
+/// RPC boundaries using the `From` implementations.
+///
+/// `#[serde(transparent)]` ensures wire format is just `42`, not `{"0": 42}`.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct WindowId(pub usize);
+#[serde(transparent)]
+pub struct WireWindowId(pub usize);
 
-impl From<usize> for WindowId {
+impl From<usize> for WireWindowId {
     fn from(id: usize) -> Self {
         Self(id)
     }
 }
 
-impl From<WindowId> for usize {
-    fn from(id: WindowId) -> Self {
+impl From<WireWindowId> for usize {
+    fn from(id: WireWindowId) -> Self {
         id.0
+    }
+}
+
+impl From<reovim_kernel::api::v1::WindowId> for WireWindowId {
+    fn from(id: reovim_kernel::api::v1::WindowId) -> Self {
+        Self(id.as_usize())
+    }
+}
+
+impl From<WireWindowId> for reovim_kernel::api::v1::WindowId {
+    fn from(id: WireWindowId) -> Self {
+        Self::from_raw(id.0)
     }
 }
 
@@ -159,7 +178,7 @@ pub struct ScreenInfo {
     pub active_buffer_id: BufferId,
     /// Currently active window ID (if any).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub active_window_id: Option<WindowId>,
+    pub active_window_id: Option<WireWindowId>,
     /// Total number of windows.
     pub window_count: usize,
 }
@@ -168,7 +187,7 @@ pub struct ScreenInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WindowInfo {
     /// Window ID.
-    pub id: WindowId,
+    pub id: WireWindowId,
     /// Buffer displayed in this window.
     pub buffer_id: BufferId,
     /// Whether this window is active.
@@ -273,5 +292,24 @@ mod tests {
         assert!(!json.contains("\"bold\""));
         assert!(!json.contains("\"bg\""));
         assert!(json.contains("\"fg\":\"#ff0000\""));
+    }
+
+    #[test]
+    fn test_wire_window_id_roundtrip() {
+        use reovim_kernel::api::v1::WindowId;
+
+        // Kernel → Wire → Kernel
+        let kernel_id = WindowId::from_raw(42);
+        let wire: WireWindowId = kernel_id.into();
+        let back: WindowId = wire.into();
+        assert_eq!(kernel_id, back);
+
+        // Verify transparent serialization (just "42", not {"0": 42})
+        let json = serde_json::to_string(&wire).unwrap();
+        assert_eq!(json, "42");
+
+        // Verify deserialization
+        let parsed: WireWindowId = serde_json::from_str("42").unwrap();
+        assert_eq!(parsed.0, 42);
     }
 }

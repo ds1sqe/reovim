@@ -1,22 +1,7 @@
 //! Window management types.
-
-/// Unique window identifier.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct WindowId(pub usize);
-
-impl WindowId {
-    /// Create a new window ID.
-    #[must_use]
-    pub const fn new(id: usize) -> Self {
-        Self(id)
-    }
-
-    /// Get the raw ID value.
-    #[must_use]
-    pub const fn as_usize(&self) -> usize {
-        self.0
-    }
-}
+//!
+//! `WindowId` is re-exported from the kernel (single source of truth).
+//! This module provides window-related types like split direction and geometry.
 
 /// Split direction for window layouts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,15 +83,6 @@ impl Rect {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_window_id() {
-        let id = WindowId::new(42);
-        assert_eq!(id.as_usize(), 42);
-
-        let default_id = WindowId::default();
-        assert_eq!(default_id.as_usize(), 0);
-    }
 
     #[test]
     fn test_terminal_size_is_valid() {

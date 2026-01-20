@@ -228,7 +228,7 @@ impl Default for Screen {
 mod tests {
     use {
         super::*,
-        crate::window::{Rect, WindowId},
+        crate::{WindowId, window::Rect},
     };
 
     #[test]
@@ -319,8 +319,8 @@ mod tests {
     fn test_render_views() {
         let mut screen = Screen::new(80, 24);
         let views = vec![
-            WindowView::new(WindowId::new(1), Rect::new(0, 0, 40, 24)),
-            WindowView::new(WindowId::new(2), Rect::new(40, 0, 40, 24)),
+            WindowView::new(WindowId::from_raw(1), Rect::new(0, 0, 40, 24)),
+            WindowView::new(WindowId::from_raw(2), Rect::new(40, 0, 40, 24)),
         ];
 
         screen.render_views(&views, &Style::default());

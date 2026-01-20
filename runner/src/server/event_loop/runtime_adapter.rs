@@ -78,10 +78,8 @@ impl<'a> RuntimeAdapter<'a> {
     }
 
     /// Find the first window displaying a given buffer.
-    fn find_window_for_buffer(
-        &self,
-        buffer_id: BufferId,
-    ) -> Option<reovim_driver_display::WindowId> {
+    fn find_window_for_buffer(&self, buffer_id: BufferId) -> Option<WindowId> {
+        // WindowId is now unified - no type conversion needed
         self.windows.windows().find(|&win_id| {
             self.windows
                 .get(win_id)
@@ -241,9 +239,8 @@ impl BufferApi for RuntimeAdapter<'_> {
 
 impl WindowApi for RuntimeAdapter<'_> {
     fn active_window(&self) -> Option<WindowId> {
-        self.windows
-            .active_window()
-            .map(|id| WindowId::from_raw(id.0))
+        // Display and kernel WindowId are now the same type (unified)
+        self.windows.active_window()
     }
 
     fn window_count(&self) -> usize {
@@ -251,23 +248,23 @@ impl WindowApi for RuntimeAdapter<'_> {
     }
 
     fn window_buffer(&self, window: WindowId) -> Option<BufferId> {
-        let display_id = reovim_driver_display::WindowId(window.as_usize());
-        self.windows.get(display_id).and_then(|w| w.buffer_id)
+        // No conversion needed - types are unified
+        self.windows.get(window).and_then(|w| w.buffer_id)
     }
 
     fn create_window(&mut self, buffer: Option<BufferId>) -> WindowId {
-        let display_id = self.windows.create_window(buffer);
-        let kernel_id = WindowId::from_raw(display_id.0);
-        self.window_changes.record_window_created(kernel_id);
-        kernel_id
+        // No conversion needed - types are unified
+        let window_id = self.windows.create_window(buffer);
+        self.window_changes.record_window_created(window_id);
+        window_id
     }
 
     fn close_window(&mut self, window: WindowId) -> Result<(), WindowError> {
         if self.windows.window_count() <= 1 {
             return Err(WindowError::CannotCloseLastWindow);
         }
-        let display_id = reovim_driver_display::WindowId(window.as_usize());
-        if self.windows.close_window(display_id) {
+        // No conversion needed - types are unified
+        if self.windows.close_window(window) {
             self.window_changes.record_window_closed(window);
             Ok(())
         } else {
@@ -276,9 +273,9 @@ impl WindowApi for RuntimeAdapter<'_> {
     }
 
     fn focus_window(&mut self, window: WindowId) -> Result<(), WindowError> {
-        let display_id = reovim_driver_display::WindowId(window.as_usize());
-        if self.windows.get(display_id).is_some() {
-            self.windows.set_active_window(display_id);
+        // No conversion needed - types are unified
+        if self.windows.get(window).is_some() {
+            self.windows.set_active_window(window);
             self.window_changes.record_focus_change();
             Ok(())
         } else {
@@ -290,8 +287,8 @@ impl WindowApi for RuntimeAdapter<'_> {
         if self.kernel.buffers.get(buffer).is_none() {
             return Err(WindowError::BufferNotFound(buffer));
         }
-        let display_id = reovim_driver_display::WindowId(window.as_usize());
-        if let Some(state) = self.windows.get_mut(display_id) {
+        // No conversion needed - types are unified
+        if let Some(state) = self.windows.get_mut(window) {
             state.buffer_id = Some(buffer);
             self.window_changes.window_changed = true;
             Ok(())

@@ -47,6 +47,21 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- Unified `WindowId` to single kernel definition (#410)
+  - Display driver re-exports kernel's `WindowId` (was redefinition)
+  - Protocol uses `WireWindowId` wrapper with `#[serde(transparent)]` for RPC
+  - All `WindowId::new(explicit_id)` replaced with `WindowId::from_raw(id)`
+  - Added `PartialOrd, Ord` derives to kernel `WindowId` for sorting
+  - Simplified `RuntimeAdapter` by removing type conversion boilerplate
+  - Zero raw `.0` access - use `.as_usize()` accessor
+
+- Added tmux-like session architecture documentation (#411)
+  - New `docs/architecture/session-model.md` with Session/Client concepts
+  - Updated architecture overview with session model diagram
+  - Updated driver session docs with SSOT and ClientId sections
+  - Updated runner docs with event-driven architecture and thin runner philosophy
+  - Updated CLAUDE.md with session model explanation
+
 - Wired `EventBus` for key dispatch - event-driven key handling (#408)
   - Added `KeyPressEvent` type in kernel with `SessionId` and `ClientId` for event routing
   - Created `handlers.rs` module with `register_key_handler()` infrastructure

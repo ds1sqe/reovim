@@ -505,8 +505,8 @@ mod tests {
         // Window 1: 0,0 to 39,24 (left half)
         // Window 2: 40,0 to 79,24 (right half)
         let views = vec![
-            WindowView::new(WindowId::new(1), Rect::new(0, 0, 40, 24)),
-            WindowView::new(WindowId::new(2), Rect::new(40, 0, 40, 24)),
+            WindowView::new(WindowId::from_raw(1), Rect::new(0, 0, 40, 24)),
+            WindowView::new(WindowId::from_raw(2), Rect::new(40, 0, 40, 24)),
         ];
 
         let separators = super::find_separators(&views, 80, 24);
@@ -530,8 +530,8 @@ mod tests {
         // Window 1: 0,0 to 80,12 (top half)
         // Window 2: 0,12 to 80,12 (bottom half)
         let views = vec![
-            WindowView::new(WindowId::new(1), Rect::new(0, 0, 80, 12)),
-            WindowView::new(WindowId::new(2), Rect::new(0, 12, 80, 12)),
+            WindowView::new(WindowId::from_raw(1), Rect::new(0, 0, 80, 12)),
+            WindowView::new(WindowId::from_raw(2), Rect::new(0, 12, 80, 12)),
         ];
 
         let separators = super::find_separators(&views, 80, 24);
@@ -552,7 +552,10 @@ mod tests {
         use reovim_driver_display::{Rect, WindowId, WindowView};
 
         // Single window - no separators needed
-        let views = vec![WindowView::new(WindowId::new(1), Rect::new(0, 0, 80, 24))];
+        let views = vec![WindowView::new(
+            WindowId::from_raw(1),
+            Rect::new(0, 0, 80, 24),
+        )];
 
         let separators = super::find_separators(&views, 80, 24);
         assert!(separators.is_empty(), "Single window should have no separators");
