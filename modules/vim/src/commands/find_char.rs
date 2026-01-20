@@ -22,7 +22,7 @@
 
 use {
     reovim_driver_command::{ArgValue, Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::SessionRuntime,
+    reovim_driver_session::{BufferApi, SessionRuntime},
     reovim_kernel::api::v1::{CommandId, Motion, MotionEngine},
 };
 
@@ -91,19 +91,18 @@ impl CommandHandler for ExecuteFindChar {
         };
 
         // Calculate motion target
-        let buffer = buffer_arc.read();
-        let target = MotionEngine::calculate(&buffer, buffer.cursor(), motion, count);
-        drop(buffer);
+        let target = {
+            let buffer = buffer_arc.read();
+            MotionEngine::calculate(&buffer, buffer.cursor(), motion, count)
+        };
 
         // Apply motion if target found
         if let Some(pos) = target {
-            buffer_arc.write().set_position(pos);
-            CommandResult::Success
-        } else {
-            // Character not found - this is not an error, just don't move
-            // (Vim behavior: cursor stays in place, no beep)
-            CommandResult::Success
+            runtime.set_buffer_position(buffer_id, pos);
         }
+        // Character not found - this is not an error, just don't move
+        // (Vim behavior: cursor stays in place, no beep)
+        CommandResult::Success
     }
 }
 

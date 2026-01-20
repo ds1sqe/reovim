@@ -9,7 +9,7 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_driver_session::SessionRuntime,
+    reovim_driver_session::{BufferApi, SessionRuntime},
     reovim_kernel::api::v1::{CommandId, Edit, Position},
 };
 
@@ -126,10 +126,18 @@ impl CommandHandler for JoinLines {
         };
 
         let count = args.count().unwrap_or(1);
-        let mut buffer = buffer_arc.write();
-        let current_line = buffer.position().line;
-        let mut line_count = buffer.line_count();
-        let cursor_before = buffer.position();
+
+        // Get position and line count via BufferApi
+        let Some(pos) = runtime.buffer_position(buffer_id) else {
+            return CommandResult::error("Failed to get buffer position");
+        };
+        let current_line = pos.line;
+        let cursor_before = pos;
+
+        let Some(mut line_count) = runtime.buffer_line_count(buffer_id) else {
+            return CommandResult::error("Failed to get line count");
+        };
+
         let mut edits: Vec<Edit> = Vec::new();
 
         for _ in 0..count {
@@ -138,16 +146,21 @@ impl CommandHandler for JoinLines {
                 break;
             }
 
-            // Move to end of current line
-            let line_len = buffer.line_len(current_line).unwrap_or(0);
-            buffer.set_position(Position::new(current_line, line_len));
+            // Get line length via BufferApi
+            let line_len = runtime
+                .buffer_line_len(buffer_id, current_line)
+                .unwrap_or(0);
+
+            // Move to end of current line via BufferApi
+            runtime.set_buffer_position(buffer_id, Position::new(current_line, line_len));
 
             // Delete newline (joins the lines)
+            let mut buffer = buffer_arc.write();
             let edit = buffer.delete(1);
             edits.push(edit);
 
             // Delete leading whitespace of what was the next line
-            let new_line_content = buffer.line(current_line).unwrap_or("");
+            let new_line_content = buffer.line(current_line).unwrap_or("").to_owned();
             let after_join = &new_line_content[line_len..];
             let leading_ws = after_join.chars().take_while(|c| c.is_whitespace()).count();
 
@@ -165,10 +178,8 @@ impl CommandHandler for JoinLines {
 
             // Update line count for next iteration
             line_count = buffer.line_count();
+            drop(buffer);
         }
-
-        let _cursor_after = buffer.position();
-        drop(buffer);
 
         if edits.is_empty() {
             return CommandResult::Success;

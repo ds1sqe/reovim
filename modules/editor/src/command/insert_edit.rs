@@ -6,7 +6,7 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::SessionRuntime,
+    reovim_driver_session::{BufferApi, SessionRuntime},
     reovim_kernel::api::v1::{CommandId, OptionScopeId},
 };
 
@@ -56,23 +56,26 @@ impl CommandHandler for InsertNewline {
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
 
-        let mut buffer = buffer_arc.write();
-        let pos = buffer.position();
+        // Get position via BufferApi
+        let Some(pos) = runtime.buffer_position(buffer_id) else {
+            return CommandResult::error("Failed to get buffer position");
+        };
 
         // Get indent from current line if autoindent is enabled
         let indent = if autoindent {
-            buffer
-                .line(pos.line)
-                .map(|line| get_line_indent(line).to_owned())
+            runtime
+                .buffer_line(buffer_id, pos.line)
+                .map(|line| get_line_indent(&line).to_owned())
                 .unwrap_or_default()
         } else {
             String::new()
         };
 
-        let cursor_before = buffer.position();
+        let cursor_before = pos;
 
         // Insert newline + indent (splits the line at cursor position)
         let insert_text = format!("\n{indent}");
+        let mut buffer = buffer_arc.write();
         let edit = buffer.insert(&insert_text);
 
         // Cursor is now at end of indent on new line
@@ -132,8 +135,10 @@ impl CommandHandler for InsertTab {
             "\t".to_string()
         };
 
+        // Get position via BufferApi
+        let _cursor_before = runtime.buffer_position(buffer_id);
+
         let mut buffer = buffer_arc.write();
-        let _cursor_before = buffer.position();
         let _edit = buffer.insert(&text);
         let _cursor_after = buffer.position();
         drop(buffer);

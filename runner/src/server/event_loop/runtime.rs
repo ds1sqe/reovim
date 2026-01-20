@@ -164,6 +164,26 @@ impl BufferApi for AppStateRuntime<'_> {
             .map(|state| Position::new(state.cursor.line, state.cursor.column))
     }
 
+    fn buffer_position(&self, buffer: BufferId) -> Option<Position> {
+        self.kernel
+            .buffers
+            .get(buffer)
+            .map(|buf| buf.read().position())
+    }
+
+    fn set_buffer_position(&mut self, buffer: BufferId, pos: Position) {
+        if let Some(buf) = self.kernel.buffers.get(buffer) {
+            buf.write().set_position(pos);
+        }
+    }
+
+    fn buffer_line_len(&self, buffer: BufferId, line: usize) -> Option<usize> {
+        self.kernel
+            .buffers
+            .get(buffer)
+            .and_then(|buf| buf.read().line_len(line))
+    }
+
     fn selection(&self, _buffer: BufferId) -> Option<Selection> {
         // Selection not yet implemented
         None
@@ -319,6 +339,10 @@ impl CommandApi for AppStateRuntime<'_> {
 impl ChangeTracker for AppStateRuntime<'_> {
     fn take_changes(&mut self) -> StateChanges {
         std::mem::take(&mut self.changes)
+    }
+
+    fn record_cursor_move(&mut self, buffer: BufferId) {
+        self.changes.record_cursor_move(buffer);
     }
 }
 

@@ -20,7 +20,7 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::{SessionRuntime, TransitionContext, api::ModeApi},
+    reovim_driver_session::{BufferApi, SessionRuntime, TransitionContext, api::ModeApi},
     reovim_kernel::api::v1::{CommandId, Position},
 };
 
@@ -64,18 +64,14 @@ impl Command for EnterInsertModeAppend {
 impl CommandHandler for EnterInsertModeAppend {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         // Move cursor right first, then enter insert mode
-        // NOTE: Uses escape hatch for buffer access until BufferApi covers cursor movement
         if let Some(buffer_id) = args.buffer_id()
-            && let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id)
+            && let Some(pos) = runtime.buffer_position(buffer_id)
+            && let Some(line_len) = runtime.buffer_line_len(buffer_id, pos.line)
         {
-            let mut buffer = buffer_arc.write();
-            let pos = buffer.position();
-            let line_len = buffer.line_len(pos.line).unwrap_or(0);
             // Move right only if not at end of line
             if pos.column < line_len {
-                buffer.set_position(Position::new(pos.line, pos.column + 1));
+                runtime.set_buffer_position(buffer_id, Position::new(pos.line, pos.column + 1));
             }
-            drop(buffer);
         }
 
         runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
@@ -100,16 +96,11 @@ impl Command for ExitToNormal {
 impl CommandHandler for ExitToNormal {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         // Move cursor left one position when exiting insert mode (Vim behavior)
-        // NOTE: Uses escape hatch for buffer access until BufferApi covers cursor movement
         if let Some(buffer_id) = args.buffer_id()
-            && let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id)
+            && let Some(pos) = runtime.buffer_position(buffer_id)
+            && pos.column > 0
         {
-            let mut buffer = buffer_arc.write();
-            let pos = buffer.position();
-            if pos.column > 0 {
-                buffer.set_position(Position::new(pos.line, pos.column - 1));
-            }
-            drop(buffer);
+            runtime.set_buffer_position(buffer_id, Position::new(pos.line, pos.column - 1));
         }
 
         runtime.set_mode(VimMode::NORMAL_ID, TransitionContext::new());

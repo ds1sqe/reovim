@@ -45,10 +45,33 @@ pub trait BufferApi: Send {
     /// Returns `None` if the buffer doesn't exist.
     fn buffer_line_count(&self, buffer: BufferId) -> Option<usize>;
 
-    /// Get cursor position in a buffer.
+    /// Get cursor position in a buffer (window cursor).
     ///
+    /// Returns the cursor position from the window displaying this buffer.
     /// Returns `None` if no window displays this buffer.
+    ///
+    /// **Note:** This is the *window* cursor, not the buffer's internal position.
+    /// For the buffer's intrinsic position, use [`buffer_position`](Self::buffer_position).
     fn cursor_position(&self, buffer: BufferId) -> Option<Position>;
+
+    /// Get buffer's internal position.
+    ///
+    /// Returns the buffer's intrinsic cursor position (stored in kernel).
+    /// This may differ from the window cursor position.
+    ///
+    /// Returns `None` if the buffer doesn't exist.
+    fn buffer_position(&self, buffer: BufferId) -> Option<Position>;
+
+    /// Set buffer's internal position.
+    ///
+    /// Updates the buffer's intrinsic cursor position (stored in kernel).
+    /// Does not affect the window cursor position.
+    fn set_buffer_position(&mut self, buffer: BufferId, pos: Position);
+
+    /// Get the length of a line in characters.
+    ///
+    /// Returns `None` if the buffer doesn't exist or line is out of bounds.
+    fn buffer_line_len(&self, buffer: BufferId, line: usize) -> Option<usize>;
 
     /// Get selection in a buffer.
     ///

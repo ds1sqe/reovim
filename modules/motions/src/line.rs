@@ -9,10 +9,8 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_driver_session::SessionRuntime,
-    reovim_kernel::api::v1::{
-        CommandId, Cursor, KernelContext, LinePosition, Motion, MotionEngine, events::CursorMoved,
-    },
+    reovim_driver_session::{BufferApi, ChangeTracker, SessionRuntime},
+    reovim_kernel::api::v1::{CommandId, Cursor, LinePosition, Motion, MotionEngine, Position},
 };
 
 use crate::ids;
@@ -27,7 +25,7 @@ use crate::ids;
 /// Line position motions (`0`, `$`, `^`) are characterwise.
 #[allow(clippy::cast_possible_truncation)]
 fn execute_line_position(
-    ctx: &KernelContext,
+    runtime: &mut SessionRuntime<'_>,
     args: &CommandContext,
     position: LinePosition,
 ) -> CommandResult {
@@ -35,7 +33,8 @@ fn execute_line_position(
         return CommandResult::error("No active buffer");
     };
 
-    let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+    // Get buffer for motion calculation (requires direct kernel access)
+    let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
         return CommandResult::error("Buffer not found");
     };
 
@@ -70,17 +69,11 @@ fn execute_line_position(
         return CommandResult::Success;
     }
 
-    // Normal mode: move cursor
-    {
-        let mut buffer = buffer_arc.write();
-        buffer.set_position(new_pos);
-    }
+    // Normal mode: move cursor via BufferApi
+    runtime.set_buffer_position(buffer_id, new_pos);
 
-    ctx.event_bus.emit(CursorMoved {
-        buffer_id: buffer_id.as_usize() as u64,
-        from: (old_pos.line as u32, old_pos.column as u32),
-        to: (new_pos.line as u32, new_pos.column as u32),
-    });
+    // Record cursor move via ChangeTracker
+    runtime.record_cursor_move(buffer_id);
 
     CommandResult::Success
 }
@@ -91,7 +84,7 @@ fn execute_line_position(
 /// Document motions (`gg`, `G`) are linewise.
 #[allow(clippy::cast_possible_truncation)]
 fn execute_jump_line(
-    ctx: &KernelContext,
+    runtime: &mut SessionRuntime<'_>,
     args: &CommandContext,
     target_line: Option<usize>,
 ) -> CommandResult {
@@ -99,7 +92,8 @@ fn execute_jump_line(
         return CommandResult::error("No active buffer");
     };
 
-    let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+    // Get buffer for motion calculation (requires direct kernel access)
+    let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
         return CommandResult::error("Buffer not found");
     };
 
@@ -134,17 +128,11 @@ fn execute_jump_line(
         return CommandResult::Success;
     }
 
-    // Normal mode: move cursor
-    {
-        let mut buffer = buffer_arc.write();
-        buffer.set_position(new_pos);
-    }
+    // Normal mode: move cursor via BufferApi
+    runtime.set_buffer_position(buffer_id, new_pos);
 
-    ctx.event_bus.emit(CursorMoved {
-        buffer_id: buffer_id.as_usize() as u64,
-        from: (old_pos.line as u32, old_pos.column as u32),
-        to: (new_pos.line as u32, new_pos.column as u32),
-    });
+    // Record cursor move via ChangeTracker
+    runtime.record_cursor_move(buffer_id);
 
     CommandResult::Success
 }
@@ -173,7 +161,7 @@ impl Command for LineStart {
 
 impl CommandHandler for LineStart {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        execute_line_position(runtime.kernel(), args, LinePosition::Start)
+        execute_line_position(runtime, args, LinePosition::Start)
     }
 }
 
@@ -201,7 +189,7 @@ impl Command for LineEnd {
 
 impl CommandHandler for LineEnd {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        execute_line_position(runtime.kernel(), args, LinePosition::End)
+        execute_line_position(runtime, args, LinePosition::End)
     }
 }
 
@@ -229,7 +217,7 @@ impl Command for FirstNonBlank {
 
 impl CommandHandler for FirstNonBlank {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        execute_line_position(runtime.kernel(), args, LinePosition::FirstNonBlank)
+        execute_line_position(runtime, args, LinePosition::FirstNonBlank)
     }
 }
 
@@ -264,7 +252,7 @@ impl CommandHandler for DocumentStart {
         // gg without count goes to line 0
         // With count, go to that line (1-indexed in vim, convert to 0-indexed)
         let target_line = args.count().map(|c| c.saturating_sub(1));
-        execute_jump_line(runtime.kernel(), args, target_line.or(Some(0)))
+        execute_jump_line(runtime, args, target_line.or(Some(0)))
     }
 }
 
@@ -299,7 +287,7 @@ impl CommandHandler for DocumentEnd {
         // G without count goes to last line (None)
         // With count, go to that line (1-indexed in vim, convert to 0-indexed)
         let target_line = args.count().map(|c| c.saturating_sub(1));
-        execute_jump_line(runtime.kernel(), args, target_line)
+        execute_jump_line(runtime, args, target_line)
     }
 }
 
@@ -348,24 +336,23 @@ impl CommandHandler for WholeLine {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
+        let Some(pos) = runtime.buffer_position(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+        let Some(line_count) = runtime.buffer_line_count(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
-        let buffer = buffer_arc.read();
-        let current_line = buffer.position().line;
-        let line_count = buffer.line_count();
+        let current_line = pos.line;
 
         // Count defaults to 1, meaning the current line only
         // With count > 1, operates on multiple lines
         let count = args.count().unwrap_or(1);
         let end_line = (current_line + count).min(line_count).saturating_sub(1);
 
-        drop(buffer);
-
         // Return linewise range covering the current line(s)
-        let start = reovim_kernel::api::v1::Position::new(current_line, 0);
-        let end = reovim_kernel::api::v1::Position::new(end_line, 0);
+        let start = Position::new(current_line, 0);
+        let end = Position::new(end_line, 0);
 
         // TODO(#394): Return operator range via different mechanism (escape hatch until API supports this)
         let _ = (start, end); // Suppress unused warnings
@@ -400,9 +387,12 @@ mod tests {
         super::*,
         reovim_driver_command::ArgValue,
         reovim_driver_session::{Session, SessionId, SessionRuntime, api::CommandExecutor},
-        reovim_kernel::api::v1::{
-            Buffer, BufferError, BufferId, BufferManager, EventBus, MarkBank, ModeId, ModuleId,
-            OptionRegistry, Position, RegisterBank, RwLock, TextObjectEngine,
+        reovim_kernel::api::{
+            KernelContext,
+            v1::{
+                Buffer, BufferError, BufferId, BufferManager, EventBus, MarkBank, ModeId, ModuleId,
+                OptionRegistry, Position, RegisterBank, RwLock, TextObjectEngine,
+            },
         },
         std::{collections::HashMap, sync::Arc},
     };

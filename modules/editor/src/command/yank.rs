@@ -7,7 +7,7 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_driver_session::SessionRuntime,
+    reovim_driver_session::{BufferApi, SessionRuntime},
     reovim_kernel::api::v1::{CommandId, RegisterContent},
 };
 
@@ -39,30 +39,34 @@ impl CommandHandler for YankLine {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
-        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
+
+        // Get position via BufferApi
+        let Some(pos) = runtime.buffer_position(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
+        let start_line = pos.line;
 
-        let count = args.count().unwrap_or(1);
-        let buffer = buffer_arc.read();
-        let start_line = buffer.position().line;
-        let line_count = buffer.line_count();
+        // Get line count via BufferApi
+        let Some(line_count) = runtime.buffer_line_count(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
 
         // Can't yank from empty buffer
         if line_count == 0 {
             return CommandResult::Success;
         }
 
-        // Collect lines to yank
+        let count = args.count().unwrap_or(1);
+
+        // Collect lines to yank via BufferApi
         let end_line = (start_line + count).min(line_count);
         let mut yanked = String::new();
         for line_idx in start_line..end_line {
-            if let Some(line) = buffer.line(line_idx) {
-                yanked.push_str(line);
+            if let Some(line) = runtime.buffer_line(buffer_id, line_idx) {
+                yanked.push_str(&line);
                 yanked.push('\n');
             }
         }
-        drop(buffer);
 
         // Store in register (use specified register or unnamed)
         let content = RegisterContent::linewise(yanked);

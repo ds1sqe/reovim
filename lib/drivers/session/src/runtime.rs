@@ -46,7 +46,7 @@ use crate::{
     Session, SessionExtension, Window,
     api::{
         BufferApi, BufferError, ChangeTracker, CommandApi, CommandExecutor, ExtensionApi, ModeApi,
-        ModeError, Selection, StateChanges, WindowApi, WindowError,
+        ModeError, RegisterApi, RegisterContent, Selection, StateChanges, WindowApi, WindowError,
     },
     transition::{PopResult, TransitionContext},
 };
@@ -166,13 +166,35 @@ impl BufferApi for SessionRuntime<'_> {
     }
 
     fn cursor_position(&self, buffer: BufferId) -> Option<Position> {
-        // Get from window displaying this buffer
+        // Get from window displaying this buffer (window cursor)
         self.session
             .windows
             .windows
             .iter()
             .find(|w| w.buffer_id == Some(buffer))
             .map(|w| Position::new(w.cursor.line, w.cursor.column))
+    }
+
+    fn buffer_position(&self, buffer: BufferId) -> Option<Position> {
+        // Get from buffer's internal position (kernel)
+        self.kernel
+            .buffers
+            .get(buffer)
+            .map(|buf| buf.read().position())
+    }
+
+    fn set_buffer_position(&mut self, buffer: BufferId, pos: Position) {
+        // Set buffer's internal position (kernel)
+        if let Some(buf) = self.kernel.buffers.get(buffer) {
+            buf.write().set_position(pos);
+        }
+    }
+
+    fn buffer_line_len(&self, buffer: BufferId, line: usize) -> Option<usize> {
+        self.kernel
+            .buffers
+            .get(buffer)
+            .and_then(|buf| buf.read().line_len(line))
     }
 
     fn selection(&self, _buffer: BufferId) -> Option<Selection> {
@@ -313,6 +335,18 @@ impl WindowApi for SessionRuntime<'_> {
     }
 }
 
+// === RegisterApi ===
+
+impl RegisterApi for SessionRuntime<'_> {
+    fn get_register(&self, name: Option<char>) -> Option<RegisterContent> {
+        self.kernel.registers.read().get_by_name(name).cloned()
+    }
+
+    fn set_register(&mut self, name: Option<char>, content: RegisterContent) {
+        self.kernel.registers.write().set_by_name(name, content);
+    }
+}
+
 // === CommandApi ===
 
 impl CommandApi for SessionRuntime<'_> {
@@ -350,6 +384,10 @@ impl ExtensionApi for SessionRuntime<'_> {
 impl ChangeTracker for SessionRuntime<'_> {
     fn take_changes(&mut self) -> StateChanges {
         std::mem::take(&mut self.changes)
+    }
+
+    fn record_cursor_move(&mut self, buffer: BufferId) {
+        self.changes.record_cursor_move(buffer);
     }
 }
 

@@ -51,6 +51,10 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - Changed `CommandHandler::execute` signature from `&mut KernelContext` to `&mut SessionRuntime<'_>`
   - Commands now access session state via Session APIs (ModeApi, BufferApi, WindowApi)
   - Mode commands fully migrated to use `ModeApi::set_mode()` and `push_mode()`
+  - Extended BufferApi with position methods: `buffer_position()`, `set_buffer_position()`, `buffer_line_len()`, `buffer_line_count()`
+  - Created RegisterApi trait: `get_register()`, `set_register()` for register access
+  - Extended ChangeTracker trait with `record_cursor_move()` for cursor change tracking
+  - Migrated cursor commands, motion helpers, and paste commands to use new APIs
   - Added `runtime.kernel()` escape hatch for operations not yet covered by APIs
   - Fixed Session→AppState mode sync for `set_mode()` changes to home mode
   - Test infrastructure updated: added `run_command()` helper for backward compatibility

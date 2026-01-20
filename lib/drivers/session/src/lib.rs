@@ -104,6 +104,6 @@ pub use runtime::SessionRuntime;
 // Session API traits (re-export for convenience)
 pub use api::{
     BufferApi, BufferError, ChangeTracker, CommandApi, CommandExecutor, ExtensionApi, ModeApi,
-    ModeError as ApiModeError, Selection, SelectionMode, SessionApi, SessionApiDyn, StateChanges,
-    WindowApi, WindowError,
+    ModeError as ApiModeError, RegisterApi, RegisterContent, Selection, SelectionMode, SessionApi,
+    SessionApiDyn, StateChanges, WindowApi, WindowError, YankType,
 };

@@ -185,9 +185,20 @@ impl StateChanges {
 ///
 /// Session runtime implements this to allow the runner to take
 /// all accumulated changes at the end of an operation.
+///
+/// # Recording Changes
+///
+/// Commands can record changes via this trait. The runner collects
+/// all changes at the end of an operation to send notifications.
 pub trait ChangeTracker: Send {
     /// Take all accumulated changes, resetting internal state.
     fn take_changes(&mut self) -> StateChanges;
+
+    /// Record that the cursor moved in a buffer.
+    ///
+    /// Commands should call this after moving the cursor via
+    /// `BufferApi::set_buffer_position()`.
+    fn record_cursor_move(&mut self, buffer: BufferId);
 }
 
 #[cfg(test)]

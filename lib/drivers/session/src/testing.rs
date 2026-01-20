@@ -468,4 +468,103 @@ mod tests {
         let test = TestSessionRuntime::with_home_mode(custom_mode.clone());
         test.assert_mode(&custom_mode);
     }
+
+    #[test]
+    fn test_buffer_position_api() {
+        use crate::api::BufferApi;
+
+        let mut test = TestSessionRuntime::with_buffer("hello\nworld");
+        let buffer_id = test.active_buffer().expect("should have active buffer");
+
+        // Initial position should be (0, 0)
+        test.with_runtime(|runtime| {
+            let pos = runtime.buffer_position(buffer_id);
+            assert_eq!(pos, Some(Position::new(0, 0)));
+
+            // Set new position
+            runtime.set_buffer_position(buffer_id, Position::new(1, 3));
+
+            // Verify new position
+            let pos = runtime.buffer_position(buffer_id);
+            assert_eq!(pos, Some(Position::new(1, 3)));
+
+            // Non-existent buffer returns None
+            let fake_id = BufferId::new();
+            assert!(runtime.buffer_position(fake_id).is_none());
+        });
+    }
+
+    #[test]
+    fn test_buffer_line_len_api() {
+        use crate::api::BufferApi;
+
+        let mut test = TestSessionRuntime::with_buffer("hello\nworld!");
+        let buffer_id = test.active_buffer().expect("should have active buffer");
+
+        test.with_runtime(|runtime| {
+            // Check line lengths
+            assert_eq!(runtime.buffer_line_len(buffer_id, 0), Some(5)); // "hello"
+            assert_eq!(runtime.buffer_line_len(buffer_id, 1), Some(6)); // "world!"
+
+            // Out of bounds line
+            assert!(runtime.buffer_line_len(buffer_id, 99).is_none());
+
+            // Non-existent buffer
+            let fake_id = BufferId::new();
+            assert!(runtime.buffer_line_len(fake_id, 0).is_none());
+        });
+    }
+
+    #[test]
+    fn test_buffer_position_vs_cursor_position() {
+        use crate::api::BufferApi;
+
+        let mut test = TestSessionRuntime::with_buffer("hello\nworld");
+        let buffer_id = test.active_buffer().expect("should have active buffer");
+
+        test.with_runtime(|runtime| {
+            // Set buffer position (kernel) and window cursor separately
+            runtime.set_buffer_position(buffer_id, Position::new(1, 2));
+            runtime.move_cursor(buffer_id, Position::new(0, 4));
+
+            // Verify they are independent
+            assert_eq!(runtime.buffer_position(buffer_id), Some(Position::new(1, 2)));
+            assert_eq!(runtime.cursor_position(buffer_id), Some(Position::new(0, 4)));
+        });
+    }
+
+    #[test]
+    fn test_register_api() {
+        use crate::api::{RegisterApi, RegisterContent};
+
+        let mut test = TestSessionRuntime::new();
+
+        test.with_runtime(|runtime| {
+            // Named registers should be initially empty
+            assert!(runtime.get_register(Some('z')).is_none());
+
+            // Set unnamed register
+            runtime.set_register(None, RegisterContent::characterwise("hello"));
+            let content = runtime.get_register(None).expect("should have content");
+            assert_eq!(content.text, "hello");
+            assert!(content.is_characterwise());
+
+            // Set named register
+            runtime.set_register(Some('a'), RegisterContent::linewise("world\n"));
+            let content = runtime
+                .get_register(Some('a'))
+                .expect("should have content");
+            assert_eq!(content.text, "world\n");
+            assert!(content.is_linewise());
+
+            // Overwrite unnamed register
+            runtime.set_register(None, RegisterContent::linewise("replaced\n"));
+            let content = runtime.get_register(None).expect("should have content");
+            assert_eq!(content.text, "replaced\n");
+            assert!(content.is_linewise());
+
+            // Named register unchanged
+            assert_eq!(runtime.get_register(Some('a')).unwrap().text, "world\n");
+        });
+    }
 }

@@ -13,7 +13,7 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_driver_session::SessionRuntime,
+    reovim_driver_session::{BufferApi, SessionRuntime},
     reovim_kernel::api::v1::{CommandId, Position, RegisterContent},
 };
 
@@ -51,9 +51,10 @@ impl CommandHandler for DeleteChar {
         };
 
         let count = args.count().unwrap_or(1);
-        let mut buffer = buffer_arc.write();
-        let pos = buffer.position();
-        let line_len = buffer.line_len(pos.line).unwrap_or(0);
+        let pos = runtime
+            .buffer_position(buffer_id)
+            .unwrap_or_else(|| Position::new(0, 0));
+        let line_len = runtime.buffer_line_len(buffer_id, pos.line).unwrap_or(0);
 
         // Can't delete on empty line or at end of line
         if line_len == 0 || pos.column >= line_len {
@@ -63,12 +64,12 @@ impl CommandHandler for DeleteChar {
         // Delete up to end of line
         let chars_to_delete = count.min(line_len - pos.column);
         if chars_to_delete > 0 {
+            let mut buffer = buffer_arc.write();
             let _cursor_before = buffer.position();
             let _edit = buffer.delete(chars_to_delete);
             let _cursor_after = buffer.position();
             // TODO(#394): Return edit action via different mechanism (escape hatch until API supports this)
         }
-        drop(buffer);
 
         CommandResult::Success
     }
@@ -106,22 +107,25 @@ impl CommandHandler for DeleteCharBefore {
         };
 
         let count = args.count().unwrap_or(1);
-        let mut buffer = buffer_arc.write();
-        let pos = buffer.position();
+        let pos = runtime
+            .buffer_position(buffer_id)
+            .unwrap_or_else(|| Position::new(0, 0));
 
         // Can't delete before column 0
         if pos.column == 0 {
             // In insert mode, join with previous line
             if pos.line > 0 {
-                let prev_line_len = buffer.line_len(pos.line - 1).unwrap_or(0);
+                let prev_line_len = runtime
+                    .buffer_line_len(buffer_id, pos.line - 1)
+                    .unwrap_or(0);
                 let new_pos = Position::new(pos.line - 1, prev_line_len);
-                buffer.set_position(new_pos);
+                runtime.set_buffer_position(buffer_id, new_pos);
+                let mut buffer = buffer_arc.write();
                 let _cursor_before = buffer.position();
                 let _edit = buffer.delete(1); // Delete the newline
                 let _cursor_after = buffer.position();
                 // TODO(#394): Return edit action via different mechanism (escape hatch until API supports this)
             }
-            drop(buffer);
             return CommandResult::Success;
         }
 
@@ -129,11 +133,11 @@ impl CommandHandler for DeleteCharBefore {
         let new_col = pos.column - chars_to_delete;
         let delete_pos = Position::new(pos.line, new_col);
 
-        buffer.set_position(delete_pos);
+        runtime.set_buffer_position(buffer_id, delete_pos);
+        let mut buffer = buffer_arc.write();
         let _cursor_before = buffer.position();
         let _edit = buffer.delete(chars_to_delete);
         let _cursor_after = buffer.position();
-        drop(buffer);
 
         // TODO(#394): Return edit action via different mechanism (escape hatch until API supports this)
         CommandResult::Success
@@ -171,9 +175,8 @@ impl CommandHandler for DeleteLine {
         };
 
         let count = args.count().unwrap_or(1);
-        let mut buffer = buffer_arc.write();
-        let start_line = buffer.position().line;
-        let line_count = buffer.line_count();
+        let start_line = runtime.buffer_position(buffer_id).map_or(0, |p| p.line);
+        let line_count = runtime.buffer_line_count(buffer_id).unwrap_or(0);
 
         if line_count == 0 {
             return CommandResult::Success;
@@ -189,8 +192,8 @@ impl CommandHandler for DeleteLine {
         let mut deleted_text = String::new();
         for i in 0..lines_to_delete {
             let line_idx = start_line + i;
-            if let Some(line) = buffer.line(line_idx) {
-                deleted_text.push_str(line);
+            if let Some(line) = runtime.buffer_line(buffer_id, line_idx) {
+                deleted_text.push_str(&line);
                 deleted_text.push('\n');
             }
         }
@@ -212,7 +215,7 @@ impl CommandHandler for DeleteLine {
         for i in 0..lines_to_delete {
             let line_idx = start_line + i;
             if line_idx < line_count {
-                let line_len = buffer.line_len(line_idx).unwrap_or(0);
+                let line_len = runtime.buffer_line_len(buffer_id, line_idx).unwrap_or(0);
                 chars_to_delete += line_len;
                 // Add 1 for newline unless it's the last line
                 if line_idx + 1 < line_count {
@@ -223,10 +226,12 @@ impl CommandHandler for DeleteLine {
 
         // Handle deleting last line(s) - need to also delete preceding newline
         let end_line = start_line + lines_to_delete;
+        let mut buffer = buffer_arc.write();
         let edit = if end_line >= line_count && start_line > 0 {
             // We're deleting to end of buffer, so delete preceding newline too
-            let new_start =
-                Position::new(start_line - 1, buffer.line_len(start_line - 1).unwrap_or(0));
+            // Use buffer.line_len() directly to avoid TOCTOU - we already hold the write lock
+            let prev_line_len = buffer.line_len(start_line - 1).unwrap_or(0);
+            let new_start = Position::new(start_line - 1, prev_line_len);
             buffer.set_position(new_start);
             buffer.delete(chars_to_delete + 1) // +1 for preceding newline
         } else {
@@ -282,9 +287,10 @@ impl CommandHandler for DeleteToEndOfLine {
             return CommandResult::error("Buffer not found");
         };
 
-        let mut buffer = buffer_arc.write();
-        let pos = buffer.position();
-        let line_len = buffer.line_len(pos.line).unwrap_or(0);
+        let pos = runtime
+            .buffer_position(buffer_id)
+            .unwrap_or_else(|| Position::new(0, 0));
+        let line_len = runtime.buffer_line_len(buffer_id, pos.line).unwrap_or(0);
 
         // Nothing to delete if at or past end of line
         if pos.column >= line_len {
@@ -292,8 +298,8 @@ impl CommandHandler for DeleteToEndOfLine {
         }
 
         // Get text to delete for register
-        let deleted_text = buffer
-            .line(pos.line)
+        let deleted_text = runtime
+            .buffer_line(buffer_id, pos.line)
             .map(|line| line[pos.column..].to_string())
             .unwrap_or_default();
 
@@ -308,10 +314,10 @@ impl CommandHandler for DeleteToEndOfLine {
 
         // Delete from cursor to end of line (not including newline)
         let chars_to_delete = line_len - pos.column;
+        let mut buffer = buffer_arc.write();
         let _cursor_before = buffer.position();
         let _edit = buffer.delete(chars_to_delete);
         let _cursor_after = buffer.position();
-        drop(buffer);
 
         // TODO(#394): Return edit action via different mechanism (escape hatch until API supports this)
         CommandResult::Success
