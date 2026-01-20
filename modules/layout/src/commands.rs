@@ -4,13 +4,14 @@
 //!
 //! # Architecture (Epic #385)
 //!
-//! These commands are stubs that will be implemented when SessionContext
-//! provides direct access to window state. The actual window operations
+//! These commands are stubs that will be implemented when SessionRuntime
+//! provides direct access to window state (#394). The actual window operations
 //! will be performed directly instead of returning action intents.
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_kernel::api::v1::{CommandId, KernelContext},
+    reovim_driver_session::SessionRuntime,
+    reovim_kernel::api::v1::CommandId,
 };
 
 use crate::ids;
@@ -34,8 +35,8 @@ impl Command for SplitHorizontalCmd {
 }
 
 impl CommandHandler for SplitHorizontalCmd {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         CommandResult::Success
     }
 }
@@ -55,8 +56,8 @@ impl Command for SplitVerticalCmd {
 }
 
 impl CommandHandler for SplitVerticalCmd {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         CommandResult::Success
     }
 }
@@ -80,8 +81,8 @@ impl Command for CloseWindowCmd {
 }
 
 impl CommandHandler for CloseWindowCmd {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         CommandResult::Success
     }
 }
@@ -101,8 +102,8 @@ impl Command for CloseOthersCmd {
 }
 
 impl CommandHandler for CloseOthersCmd {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         CommandResult::Success
     }
 }
@@ -126,8 +127,8 @@ impl Command for FocusLeftCmd {
 }
 
 impl CommandHandler for FocusLeftCmd {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         CommandResult::Success
     }
 }
@@ -147,8 +148,8 @@ impl Command for FocusRightCmd {
 }
 
 impl CommandHandler for FocusRightCmd {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         CommandResult::Success
     }
 }
@@ -168,8 +169,8 @@ impl Command for FocusUpCmd {
 }
 
 impl CommandHandler for FocusUpCmd {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         CommandResult::Success
     }
 }
@@ -189,8 +190,8 @@ impl Command for FocusDownCmd {
 }
 
 impl CommandHandler for FocusDownCmd {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         CommandResult::Success
     }
 }
@@ -214,8 +215,8 @@ impl Command for CycleForwardCmd {
 }
 
 impl CommandHandler for CycleForwardCmd {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         CommandResult::Success
     }
 }
@@ -235,8 +236,8 @@ impl Command for CycleBackwardCmd {
 }
 
 impl CommandHandler for CycleBackwardCmd {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         CommandResult::Success
     }
 }
@@ -260,8 +261,8 @@ impl Command for ResizeHeightIncreaseCmd {
 }
 
 impl CommandHandler for ResizeHeightIncreaseCmd {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         CommandResult::Success
     }
 }
@@ -281,8 +282,8 @@ impl Command for ResizeHeightDecreaseCmd {
 }
 
 impl CommandHandler for ResizeHeightDecreaseCmd {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         CommandResult::Success
     }
 }
@@ -302,8 +303,8 @@ impl Command for ResizeWidthIncreaseCmd {
 }
 
 impl CommandHandler for ResizeWidthIncreaseCmd {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         CommandResult::Success
     }
 }
@@ -323,8 +324,8 @@ impl Command for ResizeWidthDecreaseCmd {
 }
 
 impl CommandHandler for ResizeWidthDecreaseCmd {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         CommandResult::Success
     }
 }
@@ -344,8 +345,8 @@ impl Command for ResizeEqualCmd {
 }
 
 impl CommandHandler for ResizeEqualCmd {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         CommandResult::Success
     }
 }

@@ -12,17 +12,18 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_kernel::api::v1::{
-        CommandId, KernelContext, OptionScopeId, Position, events::CursorMoved,
-    },
+    reovim_driver_session::SessionRuntime,
+    reovim_kernel::api::v1::{CommandId, OptionScopeId, Position, events::CursorMoved},
 };
 
 use {super::super::display_lines, crate::ids};
 
 /// Get the tabstop setting for a buffer.
-fn get_tabstop(ctx: &KernelContext, buffer_id: reovim_kernel::api::v1::BufferId) -> usize {
+fn get_tabstop(runtime: &SessionRuntime<'_>, buffer_id: reovim_kernel::api::v1::BufferId) -> usize {
     #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-    ctx.options
+    runtime
+        .kernel()
+        .options
         .get("tabstop", OptionScopeId::Buffer(buffer_id))
         .and_then(|v| v.as_int())
         .map_or(8, |n| n.max(1) as usize)
@@ -56,12 +57,12 @@ impl Command for CursorDisplayDown {
 
 impl CommandHandler for CursorDisplayDown {
     #[allow(clippy::cast_possible_truncation)]
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
@@ -69,7 +70,7 @@ impl CommandHandler for CursorDisplayDown {
         // Note: In the future, this could be retrieved from session state
         // or passed through CommandContext.
         let terminal_width = 80;
-        let tabstop = get_tabstop(ctx, buffer_id);
+        let tabstop = get_tabstop(runtime, buffer_id);
 
         let count = args.count().unwrap_or(1);
         let (old_pos, new_pos) = {
@@ -131,7 +132,7 @@ impl CommandHandler for CursorDisplayDown {
                         buffer.set_position(Position::new(new_line, clamped_col));
                         drop(buffer);
 
-                        ctx.event_bus.emit(CursorMoved {
+                        runtime.kernel().event_bus.emit(CursorMoved {
                             buffer_id: buffer_id.as_usize() as u64,
                             from: (old_pos.line as u32, old_pos.column as u32),
                             to: (new_line as u32, clamped_col as u32),
@@ -168,7 +169,7 @@ impl CommandHandler for CursorDisplayDown {
             (old_pos, new_pos)
         };
 
-        ctx.event_bus.emit(CursorMoved {
+        runtime.kernel().event_bus.emit(CursorMoved {
             buffer_id: buffer_id.as_usize() as u64,
             from: (old_pos.line as u32, old_pos.column as u32),
             to: (new_pos.line as u32, new_pos.column as u32),
@@ -206,12 +207,12 @@ impl Command for CursorDisplayUp {
 
 impl CommandHandler for CursorDisplayUp {
     #[allow(clippy::cast_possible_truncation)]
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
@@ -219,7 +220,7 @@ impl CommandHandler for CursorDisplayUp {
         // Note: In the future, this could be retrieved from session state
         // or passed through CommandContext.
         let terminal_width = 80;
-        let tabstop = get_tabstop(ctx, buffer_id);
+        let tabstop = get_tabstop(runtime, buffer_id);
 
         let count = args.count().unwrap_or(1);
         let (old_pos, new_pos) = {
@@ -275,7 +276,7 @@ impl CommandHandler for CursorDisplayUp {
                         buffer.set_position(Position::new(new_line, clamped_col));
                         drop(buffer);
 
-                        ctx.event_bus.emit(CursorMoved {
+                        runtime.kernel().event_bus.emit(CursorMoved {
                             buffer_id: buffer_id.as_usize() as u64,
                             from: (old_pos.line as u32, old_pos.column as u32),
                             to: (new_line as u32, clamped_col as u32),
@@ -303,7 +304,7 @@ impl CommandHandler for CursorDisplayUp {
             (old_pos, new_pos)
         };
 
-        ctx.event_bus.emit(CursorMoved {
+        runtime.kernel().event_bus.emit(CursorMoved {
             buffer_id: buffer_id.as_usize() as u64,
             from: (old_pos.line as u32, old_pos.column as u32),
             to: (new_pos.line as u32, new_pos.column as u32),

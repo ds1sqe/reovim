@@ -6,21 +6,22 @@
 //!
 //! # Architecture (Epic #385)
 //!
-//! These commands are stubs that will be implemented when `SessionContext`
-//! provides direct access to undo state.
+//! These commands are stubs that will be implemented when `SessionRuntime`
+//! provides direct access to undo state. See #394 for API gap tracking.
 
 use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_kernel::api::v1::{CommandId, KernelContext},
+    reovim_driver_session::SessionRuntime,
+    reovim_kernel::api::v1::CommandId,
 };
 
 use crate::ids;
 
 /// Undo the last change.
 ///
-/// Note: Will be implemented via `SessionContext` when available.
+/// Note: Will be implemented via `SessionRuntime` when API supports this (#394).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct UndoCommand;
 
@@ -47,15 +48,15 @@ impl Command for UndoCommand {
 }
 
 impl CommandHandler for UndoCommand {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         CommandResult::Success
     }
 }
 
 /// Redo the last undone change.
 ///
-/// Note: Will be implemented via `SessionContext` when available.
+/// Note: Will be implemented via `SessionRuntime` when API supports this (#394).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RedoCommand;
 
@@ -82,8 +83,8 @@ impl Command for RedoCommand {
 }
 
 impl CommandHandler for RedoCommand {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         CommandResult::Success
     }
 }

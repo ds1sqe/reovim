@@ -409,6 +409,7 @@ mod tests {
         super::*,
         reovim_driver_command::{ArgSpec, Command, CommandHandler},
         reovim_driver_input::KeyCode,
+        reovim_driver_session::SessionRuntime,
         reovim_kernel::api::v1::{CommandId, KernelContext, Mode, ModeId, ModuleId},
         std::sync::Arc,
     };
@@ -494,7 +495,11 @@ mod tests {
     }
 
     impl CommandHandler for TestCommand {
-        fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
+        fn execute(
+            &self,
+            _runtime: &mut SessionRuntime<'_>,
+            _args: &CommandContext,
+        ) -> CommandResult {
             CommandResult::Success
         }
     }

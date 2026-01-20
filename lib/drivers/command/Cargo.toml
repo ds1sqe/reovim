@@ -13,9 +13,11 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
-# Kernel layer (for CommandId, KernelContext)
+# Kernel layer (for CommandId)
 reovim-kernel = { path = "../../kernel", version = "0.9.1-dev" }
 
-# Driver layer (for VfsDriver, NavigateDirection)
+# Driver layer
+reovim-driver-command-types = { path = "../command-types", version = "0.9.1-dev" }
 reovim-driver-vfs = { path = "../vfs", version = "0.9.1-dev" }
 reovim-driver-display = { path = "../display", version = "0.9.1-dev" }
+reovim-driver-session = { path = "../session", version = "0.9.1-dev" }

@@ -19,6 +19,7 @@ reovim-module-macros = { path = "../../lib/module-macros" }
 reovim-driver-command = { path = "../../lib/drivers/command" }
 reovim-driver-display = { path = "../../lib/drivers/display" }
 reovim-driver-input = { path = "../../lib/drivers/input" }
+reovim-driver-session = { workspace = true }
 
 [lints]
 workspace = true

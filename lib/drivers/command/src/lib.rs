@@ -28,7 +28,8 @@
 //!
 //! ```ignore
 //! use reovim_driver_command::{Command, CommandHandler, CommandContext, CommandResult, ArgSpec, ArgKind};
-//! use reovim_kernel::api::v1::{CommandId, KernelContext, ModuleId};
+//! use reovim_driver_session::SessionRuntime;
+//! use reovim_kernel::api::v1::{CommandId, ModuleId};
 //!
 //! const MY_MODULE: ModuleId = ModuleId::new_const("my-module");
 //!
@@ -49,29 +50,21 @@
 //! }
 //!
 //! impl CommandHandler for CursorDown {
-//!     fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+//!     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
 //!         let count = args.count().unwrap_or(1);
-//!         // Move cursor down by count lines
+//!         // Move cursor down by count lines using runtime.kernel() escape hatch
+//!         // or BufferApi methods
 //!         CommandResult::Success
 //!     }
 //! }
 //! ```
 
 // Internal modules
-mod args;
-mod context;
 mod provider;
-mod result;
 mod traits;
 
-// Re-export argument types
-pub use args::{ArgKind, ArgSpec, ArgValue};
-
-// Re-export context
-pub use context::CommandContext;
-
-// Re-export result types
-pub use result::CommandResult;
+// Re-export from command-types for backwards compatibility
+pub use reovim_driver_command_types::{ArgKind, ArgSpec, ArgValue, CommandContext, CommandResult};
 
 // Re-export provider trait
 pub use provider::CommandProvider;
@@ -83,6 +76,7 @@ pub use traits::{Command, CommandHandler};
 mod tests {
     use {
         super::*,
+        reovim_driver_session::SessionRuntime,
         reovim_kernel::api::v1::{CommandId, ModuleId},
     };
 
@@ -120,6 +114,16 @@ mod tests {
         }
     }
 
+    impl CommandHandler for TestCommand {
+        fn execute(
+            &self,
+            _runtime: &mut SessionRuntime<'_>,
+            _args: &CommandContext,
+        ) -> CommandResult {
+            CommandResult::Success
+        }
+    }
+
     #[test]
     fn test_command_implementation() {
         let cmd = TestCommand;
@@ -127,5 +131,11 @@ mod tests {
         assert_eq!(cmd.description(), "A test command");
         assert_eq!(cmd.args().len(), 1);
         assert_eq!(cmd.names(), &["test", "t"]);
+    }
+
+    #[test]
+    fn test_command_handler_as_trait_object() {
+        let cmd: &dyn CommandHandler = &TestCommand;
+        assert_eq!(cmd.description(), "A test command");
     }
 }

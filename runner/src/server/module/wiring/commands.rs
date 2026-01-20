@@ -118,7 +118,8 @@ mod tests {
     use {
         super::*,
         reovim_driver_command::{ArgSpec, Command, CommandContext, CommandResult},
-        reovim_kernel::api::v1::{CommandId, KernelContext},
+        reovim_driver_session::SessionRuntime,
+        reovim_kernel::api::v1::CommandId,
     };
 
     const TEST_MODULE: ModuleId = ModuleId::new("test-module");
@@ -142,7 +143,11 @@ mod tests {
     }
 
     impl CommandHandler for TestCommandOne {
-        fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
+        fn execute(
+            &self,
+            _runtime: &mut SessionRuntime<'_>,
+            _args: &CommandContext,
+        ) -> CommandResult {
             CommandResult::Success
         }
     }
@@ -164,7 +169,11 @@ mod tests {
     }
 
     impl CommandHandler for TestCommandTwo {
-        fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
+        fn execute(
+            &self,
+            _runtime: &mut SessionRuntime<'_>,
+            _args: &CommandContext,
+        ) -> CommandResult {
             CommandResult::Success
         }
     }

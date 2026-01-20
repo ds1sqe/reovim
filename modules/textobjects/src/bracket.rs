@@ -8,7 +8,8 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_kernel::api::v1::{CommandId, KernelContext, Position, TextObject, TextObjectEngine},
+    reovim_driver_session::SessionRuntime,
+    reovim_kernel::api::v1::{CommandId, Position, TextObject, TextObjectEngine},
 };
 
 use crate::ids;
@@ -20,7 +21,7 @@ use crate::ids;
 /// Execute a bracket text object and return the range.
 #[allow(clippy::significant_drop_tightening)]
 fn execute_bracket_textobj(
-    ctx: &KernelContext,
+    runtime: &SessionRuntime<'_>,
     args: &CommandContext,
     text_object: TextObject,
 ) -> CommandResult {
@@ -28,7 +29,7 @@ fn execute_bracket_textobj(
         return CommandResult::error("No active buffer");
     };
 
-    let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+    let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
         return CommandResult::error("Buffer not found");
     };
 
@@ -48,7 +49,7 @@ fn execute_bracket_textobj(
     // Kernel returns inclusive end, convert to exclusive
     let end_exclusive = Position::new(end.line, end.column + 1);
 
-    // TODO: Return operator range via different mechanism when SessionContext is available
+    // TODO(#394): Return operator range via different mechanism (escape hatch until API supports this)
     // For now, store range somewhere the operator can access
     let _ = (start, end_exclusive); // Suppress unused warnings
     CommandResult::Success
@@ -79,8 +80,8 @@ impl Command for InnerParen {
 }
 
 impl CommandHandler for InnerParen {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        execute_bracket_textobj(ctx, args, TextObject::InnerBracket('('))
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_bracket_textobj(runtime, args, TextObject::InnerBracket('('))
     }
 }
 
@@ -109,8 +110,8 @@ impl Command for AroundParen {
 }
 
 impl CommandHandler for AroundParen {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        execute_bracket_textobj(ctx, args, TextObject::ABracket('('))
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_bracket_textobj(runtime, args, TextObject::ABracket('('))
     }
 }
 
@@ -139,8 +140,8 @@ impl Command for InnerSquareBracket {
 }
 
 impl CommandHandler for InnerSquareBracket {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        execute_bracket_textobj(ctx, args, TextObject::InnerBracket('['))
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_bracket_textobj(runtime, args, TextObject::InnerBracket('['))
     }
 }
 
@@ -169,8 +170,8 @@ impl Command for AroundSquareBracket {
 }
 
 impl CommandHandler for AroundSquareBracket {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        execute_bracket_textobj(ctx, args, TextObject::ABracket('['))
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_bracket_textobj(runtime, args, TextObject::ABracket('['))
     }
 }
 
@@ -199,8 +200,8 @@ impl Command for InnerBrace {
 }
 
 impl CommandHandler for InnerBrace {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        execute_bracket_textobj(ctx, args, TextObject::InnerBracket('{'))
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_bracket_textobj(runtime, args, TextObject::InnerBracket('{'))
     }
 }
 
@@ -229,8 +230,8 @@ impl Command for AroundBrace {
 }
 
 impl CommandHandler for AroundBrace {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        execute_bracket_textobj(ctx, args, TextObject::ABracket('{'))
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_bracket_textobj(runtime, args, TextObject::ABracket('{'))
     }
 }
 
@@ -259,8 +260,8 @@ impl Command for InnerAngle {
 }
 
 impl CommandHandler for InnerAngle {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        execute_bracket_textobj(ctx, args, TextObject::InnerBracket('<'))
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_bracket_textobj(runtime, args, TextObject::InnerBracket('<'))
     }
 }
 
@@ -289,8 +290,8 @@ impl Command for AroundAngle {
 }
 
 impl CommandHandler for AroundAngle {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        execute_bracket_textobj(ctx, args, TextObject::ABracket('<'))
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_bracket_textobj(runtime, args, TextObject::ABracket('<'))
     }
 }
 

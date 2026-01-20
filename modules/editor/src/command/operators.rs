@@ -9,7 +9,8 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_kernel::api::v1::{CommandId, KernelContext},
+    reovim_driver_session::SessionRuntime,
+    reovim_kernel::api::v1::CommandId,
 };
 
 use crate::ids;
@@ -32,8 +33,8 @@ impl Command for EnterDeleteOperator {
 }
 
 impl CommandHandler for EnterDeleteOperator {
-    fn execute(&self, _ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         // Will set pending operator to "delete" and enter operator-pending mode
         let _ = args.register(); // Suppress unused warning
         CommandResult::Success
@@ -58,8 +59,8 @@ impl Command for EnterYankOperator {
 }
 
 impl CommandHandler for EnterYankOperator {
-    fn execute(&self, _ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         // Will set pending operator to "yank" and enter operator-pending mode
         let _ = args.register(); // Suppress unused warning
         CommandResult::Success
@@ -85,8 +86,8 @@ impl Command for EnterChangeOperator {
 }
 
 impl CommandHandler for EnterChangeOperator {
-    fn execute(&self, _ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         // Will set pending operator to "change" and enter operator-pending mode
         let _ = args.register(); // Suppress unused warning
         CommandResult::Success
@@ -111,8 +112,8 @@ impl Command for EnterIndentOperator {
 }
 
 impl CommandHandler for EnterIndentOperator {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         // Will set pending operator to "indent" and enter operator-pending mode
         CommandResult::Success
     }
@@ -136,8 +137,8 @@ impl Command for EnterDedentOperator {
 }
 
 impl CommandHandler for EnterDedentOperator {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         // Will set pending operator to "dedent" and enter operator-pending mode
         CommandResult::Success
     }
@@ -145,7 +146,29 @@ impl CommandHandler for EnterDedentOperator {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {
+        super::*,
+        reovim_driver_command::CommandContext,
+        reovim_driver_session::{Session, SessionId, api::CommandExecutor},
+        reovim_kernel::api::v1::{CommandId as KernelCommandId, KernelContext, ModeId, ModuleId},
+    };
+
+    fn test_mode() -> ModeId {
+        ModeId::new(ModuleId::new("test"), "normal")
+    }
+
+    struct StubExecutor;
+
+    impl CommandExecutor for StubExecutor {
+        fn execute(
+            &self,
+            _cmd: &KernelCommandId,
+            _ctx: &CommandContext,
+            _kernel: &mut KernelContext,
+        ) -> Option<CommandResult> {
+            Some(CommandResult::Success)
+        }
+    }
 
     #[test]
     fn test_enter_delete_operator_id() {
@@ -180,42 +203,57 @@ mod tests {
     #[test]
     fn test_enter_delete_operator_returns_success() {
         // Commands now return Success - actual operator-pending logic
-        // will be handled by the vim resolver via SessionContext
-        let mut ctx = KernelContext::default();
+        // will be handled by the vim resolver via SessionRuntime (see #394)
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
         let args = CommandContext::new();
-        let result = EnterDeleteOperator.execute(&mut ctx, &args);
+        let result = EnterDeleteOperator.execute(&mut runtime, &args);
         assert!(result.is_success());
     }
 
     #[test]
     fn test_enter_yank_operator_returns_success() {
-        let mut ctx = KernelContext::default();
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
         let args = CommandContext::new();
-        let result = EnterYankOperator.execute(&mut ctx, &args);
+        let result = EnterYankOperator.execute(&mut runtime, &args);
         assert!(result.is_success());
     }
 
     #[test]
     fn test_enter_change_operator_returns_success() {
-        let mut ctx = KernelContext::default();
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
         let args = CommandContext::new();
-        let result = EnterChangeOperator.execute(&mut ctx, &args);
+        let result = EnterChangeOperator.execute(&mut runtime, &args);
         assert!(result.is_success());
     }
 
     #[test]
     fn test_enter_indent_operator_returns_success() {
-        let mut ctx = KernelContext::default();
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
         let args = CommandContext::new();
-        let result = EnterIndentOperator.execute(&mut ctx, &args);
+        let result = EnterIndentOperator.execute(&mut runtime, &args);
         assert!(result.is_success());
     }
 
     #[test]
     fn test_enter_dedent_operator_returns_success() {
-        let mut ctx = KernelContext::default();
+        let mut session = Session::new(SessionId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
         let args = CommandContext::new();
-        let result = EnterDedentOperator.execute(&mut ctx, &args);
+        let result = EnterDedentOperator.execute(&mut runtime, &args);
         assert!(result.is_success());
     }
 }

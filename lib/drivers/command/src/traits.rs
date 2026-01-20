@@ -5,8 +5,9 @@
 //! - [`CommandHandler`] - Command execution trait
 
 use {
-    crate::{args::ArgSpec, context::CommandContext, result::CommandResult},
-    reovim_kernel::api::v1::{CommandId, KernelContext},
+    crate::{ArgSpec, CommandContext, CommandResult},
+    reovim_driver_session::SessionRuntime,
+    reovim_kernel::api::v1::CommandId,
 };
 
 /// Self-describing command metadata.
@@ -79,24 +80,41 @@ pub trait Command: Send + Sync + 'static {
 /// - Different execution strategies (sync, async, background)
 /// - Testing command metadata independently
 ///
+/// # Session Runtime
+///
+/// Commands receive a [`SessionRuntime`] which provides access to:
+/// - **`ModeApi`** - Mode stack operations (push, pop, set)
+/// - **`BufferApi`** - Buffer content and cursor operations
+/// - **`WindowApi`** - Window management and focus
+/// - **`ExtensionApi`** - Per-session module state
+/// - **`ChangeTracker`** - State change accumulation
+///
+/// For operations not yet covered by these APIs, use the escape hatch:
+/// ```ignore
+/// let kernel = runtime.kernel();
+/// let buffer = kernel.buffers.get(buffer_id)?;
+/// ```
+///
 /// # Example
 ///
 /// ```ignore
 /// use reovim_driver_command::{Command, CommandHandler, CommandContext, CommandResult};
-/// use reovim_kernel::api::v1::{CommandId, KernelContext, ModuleId};
+/// use reovim_driver_session::{SessionRuntime, ModeApi, TransitionContext};
+/// use reovim_kernel::api::v1::{CommandId, ModuleId};
 ///
-/// struct HelloCommand;
+/// struct EnterInsertMode;
 ///
-/// impl Command for HelloCommand {
+/// impl Command for EnterInsertMode {
 ///     fn id(&self) -> CommandId {
-///         CommandId::new(ModuleId::new("example"), "hello")
+///         CommandId::new(ModuleId::new("vim"), "enter-insert-mode")
 ///     }
-///     fn description(&self) -> &'static str { "Say hello" }
+///     fn description(&self) -> &'static str { "Enter insert mode" }
 /// }
 ///
-/// impl CommandHandler for HelloCommand {
-///     fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-///         println!("Hello!");
+/// impl CommandHandler for EnterInsertMode {
+///     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+///         let insert_mode = ModeId::new(ModuleId::new("vim"), "insert");
+///         runtime.set_mode(insert_mode, TransitionContext::new());
 ///         CommandResult::Success
 ///     }
 /// }
@@ -106,13 +124,13 @@ pub trait CommandHandler: Command {
     ///
     /// # Arguments
     ///
-    /// * `ctx` - The kernel context providing access to buffers, windows, etc.
+    /// * `runtime` - Session runtime providing API trait access and kernel escape hatch
     /// * `args` - The command arguments parsed from user input
     ///
     /// # Returns
     ///
     /// A [`CommandResult`] indicating success, error, or special results like quit.
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult;
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult;
 }
 
 #[cfg(test)]
@@ -131,5 +149,36 @@ mod tests {
         // Verify CommandHandler trait is object-safe
         fn _accepts_ref(_: &dyn CommandHandler) {}
         fn _accepts_box(_: Box<dyn CommandHandler>) {}
+    }
+
+    #[test]
+    fn test_command_handler_signature() {
+        // Verify the new signature compiles with SessionRuntime
+        use reovim_kernel::api::v1::ModuleId;
+
+        struct TestCommand;
+
+        impl Command for TestCommand {
+            fn id(&self) -> CommandId {
+                CommandId::new(ModuleId::new("test"), "test-cmd")
+            }
+            fn description(&self) -> &'static str {
+                "Test command"
+            }
+        }
+
+        impl CommandHandler for TestCommand {
+            fn execute(
+                &self,
+                _runtime: &mut SessionRuntime<'_>,
+                _args: &CommandContext,
+            ) -> CommandResult {
+                CommandResult::Success
+            }
+        }
+
+        // Verify it can be used as trait object
+        let cmd: &dyn CommandHandler = &TestCommand;
+        assert_eq!(cmd.description(), "Test command");
     }
 }

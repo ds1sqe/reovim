@@ -16,7 +16,8 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_kernel::api::v1::{CommandId, KernelContext},
+    reovim_driver_session::SessionRuntime,
+    reovim_kernel::api::v1::CommandId,
 };
 
 use crate::ids;
@@ -46,7 +47,7 @@ impl Command for FindCharForward {
 }
 
 impl CommandHandler for FindCharForward {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         // Intercepted by vim resolver - should not reach here
         CommandResult::Success
     }
@@ -74,7 +75,7 @@ impl Command for FindCharBackward {
 }
 
 impl CommandHandler for FindCharBackward {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         // Intercepted by vim resolver - should not reach here
         CommandResult::Success
     }
@@ -102,7 +103,7 @@ impl Command for TillCharForward {
 }
 
 impl CommandHandler for TillCharForward {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         // Intercepted by vim resolver - should not reach here
         CommandResult::Success
     }
@@ -130,7 +131,7 @@ impl Command for TillCharBackward {
 }
 
 impl CommandHandler for TillCharBackward {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         // Intercepted by vim resolver - should not reach here
         CommandResult::Success
     }
@@ -160,8 +161,8 @@ impl Command for RepeatFindSame {
 }
 
 impl CommandHandler for RepeatFindSame {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement via VimSessionState.last_find when SessionContext is available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via VimSessionState.last_find (escape hatch until API supports this)
         CommandResult::Success
     }
 }
@@ -190,8 +191,8 @@ impl Command for RepeatFindReverse {
 }
 
 impl CommandHandler for RepeatFindReverse {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement via VimSessionState.last_find when SessionContext is available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via VimSessionState.last_find (escape hatch until API supports this)
         CommandResult::Success
     }
 }

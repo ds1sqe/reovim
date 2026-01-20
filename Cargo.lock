@@ -1142,7 +1142,17 @@ dependencies = [
 name = "reovim-driver-command"
 version = "0.9.1-dev"
 dependencies = [
+ "reovim-driver-command-types",
  "reovim-driver-display",
+ "reovim-driver-session",
+ "reovim-driver-vfs",
+ "reovim-kernel",
+]
+
+[[package]]
+name = "reovim-driver-command-types"
+version = "0.9.1-dev"
+dependencies = [
  "reovim-driver-vfs",
  "reovim-kernel",
 ]
@@ -1219,7 +1229,8 @@ dependencies = [
 name = "reovim-driver-session"
 version = "0.9.1-dev"
 dependencies = [
- "reovim-driver-command",
+ "reovim-arch",
+ "reovim-driver-command-types",
  "reovim-kernel",
 ]
 
@@ -1289,6 +1300,7 @@ dependencies = [
  "reovim-driver-command",
  "reovim-driver-display",
  "reovim-driver-input",
+ "reovim-driver-session",
  "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
@@ -1302,6 +1314,7 @@ dependencies = [
  "reovim-driver-command",
  "reovim-driver-display",
  "reovim-driver-input",
+ "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
 ]
@@ -1329,6 +1342,7 @@ version = "0.9.1-dev"
 dependencies = [
  "reovim-driver-command",
  "reovim-driver-display",
+ "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
 ]
@@ -1356,6 +1370,7 @@ name = "reovim-module-motions"
 version = "0.9.1-dev"
 dependencies = [
  "reovim-driver-command",
+ "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
 ]
@@ -1382,6 +1397,7 @@ name = "reovim-module-textobjects"
 version = "0.9.1-dev"
 dependencies = [
  "reovim-driver-command",
+ "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
 ]
@@ -1393,6 +1409,7 @@ dependencies = [
  "reovim-driver-command",
  "reovim-driver-display",
  "reovim-driver-input",
+ "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
 ]

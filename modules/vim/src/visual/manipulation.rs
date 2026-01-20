@@ -9,7 +9,8 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_kernel::api::v1::{CommandId, KernelContext, SelectionMode, events::ModeChanged},
+    reovim_driver_session::{SessionRuntime, TransitionContext, api::ModeApi},
+    reovim_kernel::api::v1::{CommandId, SelectionMode},
 };
 
 use crate::{ids, modes::VimMode};
@@ -32,12 +33,12 @@ impl Command for SwapAnchor {
 }
 
 impl CommandHandler for SwapAnchor {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
@@ -77,30 +78,31 @@ impl Command for ToggleVisualChar {
 }
 
 impl CommandHandler for ToggleVisualChar {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+        let kernel = runtime.kernel();
+
+        let Some(buffer_arc) = kernel.buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
         let mut buffer = buffer_arc.write();
-        let (from_mode, target_mode) =
+        let target_mode =
             if buffer.selection().is_active() && buffer.selection().mode().is_character() {
                 // Already in character mode - exit to normal
                 buffer.selection_mut().clear();
-                ("visual", VimMode::NORMAL_ID)
+                VimMode::NORMAL_ID
             } else {
                 // Switch to character mode
                 buffer.selection_mut().set_mode(SelectionMode::Character);
-                ("visual-line", VimMode::VISUAL_ID)
+                VimMode::VISUAL_ID
             };
         drop(buffer);
 
-        ctx.event_bus
-            .emit(ModeChanged::with_mode_id(from_mode, target_mode));
+        runtime.set_mode(target_mode, TransitionContext::new());
 
         CommandResult::Success
     }
@@ -124,30 +126,30 @@ impl Command for ToggleVisualLine {
 }
 
 impl CommandHandler for ToggleVisualLine {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+        let kernel = runtime.kernel();
+
+        let Some(buffer_arc) = kernel.buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
         let mut buffer = buffer_arc.write();
-        let (from_mode, target_mode) =
-            if buffer.selection().is_active() && buffer.selection().mode().is_line() {
-                // Already in line mode - exit to normal
-                buffer.selection_mut().clear();
-                ("visual-line", VimMode::NORMAL_ID)
-            } else {
-                // Switch to line mode
-                buffer.selection_mut().set_mode(SelectionMode::Line);
-                ("visual", VimMode::VISUAL_LINE_ID)
-            };
+        let target_mode = if buffer.selection().is_active() && buffer.selection().mode().is_line() {
+            // Already in line mode - exit to normal
+            buffer.selection_mut().clear();
+            VimMode::NORMAL_ID
+        } else {
+            // Switch to line mode
+            buffer.selection_mut().set_mode(SelectionMode::Line);
+            VimMode::VISUAL_LINE_ID
+        };
         drop(buffer);
 
-        ctx.event_bus
-            .emit(ModeChanged::with_mode_id(from_mode, target_mode));
+        runtime.set_mode(target_mode, TransitionContext::new());
 
         CommandResult::Success
     }
@@ -171,30 +173,31 @@ impl Command for ToggleVisualBlock {
 }
 
 impl CommandHandler for ToggleVisualBlock {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+        let kernel = runtime.kernel();
+
+        let Some(buffer_arc) = kernel.buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
         let mut buffer = buffer_arc.write();
-        let (from_mode, target_mode) =
-            if buffer.selection().is_active() && buffer.selection().mode().is_block() {
-                // Already in block mode - exit to normal
-                buffer.selection_mut().clear();
-                ("visual-block", VimMode::NORMAL_ID)
-            } else {
-                // Switch to block mode
-                buffer.selection_mut().set_mode(SelectionMode::Block);
-                ("visual", VimMode::VISUAL_BLOCK_ID)
-            };
+        let target_mode = if buffer.selection().is_active() && buffer.selection().mode().is_block()
+        {
+            // Already in block mode - exit to normal
+            buffer.selection_mut().clear();
+            VimMode::NORMAL_ID
+        } else {
+            // Switch to block mode
+            buffer.selection_mut().set_mode(SelectionMode::Block);
+            VimMode::VISUAL_BLOCK_ID
+        };
         drop(buffer);
 
-        ctx.event_bus
-            .emit(ModeChanged::with_mode_id(from_mode, target_mode));
+        runtime.set_mode(target_mode, TransitionContext::new());
 
         CommandResult::Success
     }
@@ -222,8 +225,8 @@ impl Command for ReselectLast {
 }
 
 impl CommandHandler for ReselectLast {
-    fn execute(&self, _ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // TODO: Implement via SessionContext when available
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         // Will signal intent to restore the last visual selection
         CommandResult::Success
     }

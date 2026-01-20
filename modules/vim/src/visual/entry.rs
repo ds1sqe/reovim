@@ -7,7 +7,8 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_kernel::api::v1::{CommandId, KernelContext, SelectionMode, events::ModeChanged},
+    reovim_driver_session::{SessionRuntime, TransitionContext, api::ModeApi},
+    reovim_kernel::api::v1::{CommandId, SelectionMode},
 };
 
 use crate::{ids, modes::VimMode};
@@ -27,12 +28,14 @@ impl Command for EnterVisualMode {
 }
 
 impl CommandHandler for EnterVisualMode {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+        let kernel = runtime.kernel();
+
+        let Some(buffer_arc) = kernel.buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
@@ -43,9 +46,8 @@ impl CommandHandler for EnterVisualMode {
             buffer.selection_mut().start(pos, SelectionMode::Character);
         }
 
-        // Emit mode change event with target ModeId
-        ctx.event_bus
-            .emit(ModeChanged::with_mode_id("normal", VimMode::VISUAL_ID));
+        // Change to visual mode
+        runtime.set_mode(VimMode::VISUAL_ID, TransitionContext::new());
 
         CommandResult::Success
     }
@@ -66,12 +68,14 @@ impl Command for EnterVisualLineMode {
 }
 
 impl CommandHandler for EnterVisualLineMode {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+        let kernel = runtime.kernel();
+
+        let Some(buffer_arc) = kernel.buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
@@ -82,9 +86,8 @@ impl CommandHandler for EnterVisualLineMode {
             buffer.selection_mut().start(pos, SelectionMode::Line);
         }
 
-        // Emit mode change event with target ModeId
-        ctx.event_bus
-            .emit(ModeChanged::with_mode_id("normal", VimMode::VISUAL_LINE_ID));
+        // Change to visual line mode
+        runtime.set_mode(VimMode::VISUAL_LINE_ID, TransitionContext::new());
 
         CommandResult::Success
     }
@@ -105,12 +108,14 @@ impl Command for EnterVisualBlockMode {
 }
 
 impl CommandHandler for EnterVisualBlockMode {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+        let kernel = runtime.kernel();
+
+        let Some(buffer_arc) = kernel.buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
@@ -121,9 +126,8 @@ impl CommandHandler for EnterVisualBlockMode {
             buffer.selection_mut().start(pos, SelectionMode::Block);
         }
 
-        // Emit mode change event with target ModeId
-        ctx.event_bus
-            .emit(ModeChanged::with_mode_id("normal", VimMode::VISUAL_BLOCK_ID));
+        // Change to visual block mode
+        runtime.set_mode(VimMode::VISUAL_BLOCK_ID, TransitionContext::new());
 
         CommandResult::Success
     }

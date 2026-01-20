@@ -1,6 +1,4 @@
-// ============================================================================
-// CommandResult
-// ============================================================================
+//! Command execution result.
 
 /// Result of command execution.
 #[derive(Debug, Clone, PartialEq, Eq)]

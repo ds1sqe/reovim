@@ -8,7 +8,8 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_kernel::api::v1::{CommandId, KernelContext, Position, TextObject, TextObjectEngine},
+    reovim_driver_session::SessionRuntime,
+    reovim_kernel::api::v1::{CommandId, Position, TextObject, TextObjectEngine},
 };
 
 use crate::ids;
@@ -20,7 +21,7 @@ use crate::ids;
 /// Execute a quote text object and return the range.
 #[allow(clippy::significant_drop_tightening)]
 fn execute_quote_textobj(
-    ctx: &KernelContext,
+    runtime: &SessionRuntime<'_>,
     args: &CommandContext,
     text_object: TextObject,
 ) -> CommandResult {
@@ -28,7 +29,7 @@ fn execute_quote_textobj(
         return CommandResult::error("No active buffer");
     };
 
-    let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+    let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
         return CommandResult::error("Buffer not found");
     };
 
@@ -48,7 +49,7 @@ fn execute_quote_textobj(
     // Kernel returns inclusive end, convert to exclusive
     let end_exclusive = Position::new(end.line, end.column + 1);
 
-    // TODO: Return operator range via different mechanism when SessionContext is available
+    // TODO(#394): Return operator range via different mechanism (escape hatch until API supports this)
     let _ = (start, end_exclusive); // Suppress unused warnings
     CommandResult::Success
 }
@@ -82,8 +83,8 @@ impl Command for InnerDoubleQuote {
 }
 
 impl CommandHandler for InnerDoubleQuote {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        execute_quote_textobj(ctx, args, TextObject::InnerQuote('"'))
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_quote_textobj(runtime, args, TextObject::InnerQuote('"'))
     }
 }
 
@@ -116,8 +117,8 @@ impl Command for AroundDoubleQuote {
 }
 
 impl CommandHandler for AroundDoubleQuote {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        execute_quote_textobj(ctx, args, TextObject::AQuote('"'))
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_quote_textobj(runtime, args, TextObject::AQuote('"'))
     }
 }
 
@@ -150,8 +151,8 @@ impl Command for InnerSingleQuote {
 }
 
 impl CommandHandler for InnerSingleQuote {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        execute_quote_textobj(ctx, args, TextObject::InnerQuote('\''))
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_quote_textobj(runtime, args, TextObject::InnerQuote('\''))
     }
 }
 
@@ -184,8 +185,8 @@ impl Command for AroundSingleQuote {
 }
 
 impl CommandHandler for AroundSingleQuote {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        execute_quote_textobj(ctx, args, TextObject::AQuote('\''))
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_quote_textobj(runtime, args, TextObject::AQuote('\''))
     }
 }
 
@@ -218,8 +219,8 @@ impl Command for InnerBacktick {
 }
 
 impl CommandHandler for InnerBacktick {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        execute_quote_textobj(ctx, args, TextObject::InnerQuote('`'))
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_quote_textobj(runtime, args, TextObject::InnerQuote('`'))
     }
 }
 
@@ -252,8 +253,8 @@ impl Command for AroundBacktick {
 }
 
 impl CommandHandler for AroundBacktick {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        execute_quote_textobj(ctx, args, TextObject::AQuote('`'))
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_quote_textobj(runtime, args, TextObject::AQuote('`'))
     }
 }
 

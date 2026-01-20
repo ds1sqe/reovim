@@ -38,7 +38,7 @@
 //! ```
 
 use {
-    reovim_driver_command::{CommandContext, CommandResult},
+    reovim_driver_command_types::{CommandContext, CommandResult},
     reovim_kernel::api::v1::{BufferId, CommandId, KernelContext, ModeId, Position, WindowId},
 };
 

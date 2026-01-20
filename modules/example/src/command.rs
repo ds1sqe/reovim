@@ -7,7 +7,8 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_kernel::api::v1::{CommandId, KernelContext},
+    reovim_driver_session::SessionRuntime,
+    reovim_kernel::api::v1::CommandId,
 };
 
 use crate::EXAMPLE_MODULE;
@@ -43,7 +44,7 @@ impl Command for HelloCommand {
 }
 
 impl CommandHandler for HelloCommand {
-    fn execute(&self, _ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let name = args.string("name").unwrap_or("World");
         // In a real implementation, this would update the display
         // For now, we just succeed
@@ -80,7 +81,7 @@ impl Command for QuitCommand {
 }
 
 impl CommandHandler for QuitCommand {
-    fn execute(&self, _ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         if args.has_bang() {
             CommandResult::ForceQuit
         } else {
@@ -119,7 +120,7 @@ impl Command for EchoCommand {
 }
 
 impl CommandHandler for EchoCommand {
-    fn execute(&self, _ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         args.string("message").map_or_else(
             || CommandResult::error("Message required"),
             |_msg| {

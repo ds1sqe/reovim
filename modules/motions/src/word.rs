@@ -9,6 +9,7 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
+    reovim_driver_session::SessionRuntime,
     reovim_kernel::api::v1::{
         CommandId, Cursor, Direction, KernelContext, Motion, MotionEngine, WordBoundary,
         events::CursorMoved,
@@ -72,7 +73,7 @@ fn execute_word_motion(
         } else {
             (new_pos, old_pos)
         };
-        // TODO: Return operator range via different mechanism when SessionContext is available
+        // TODO(#394): Return operator range via different mechanism (escape hatch until API supports this)
         // Word motions are characterwise
         let _ = (start, range_end); // Suppress unused warnings
         return CommandResult::Success;
@@ -121,8 +122,8 @@ impl Command for WordForward {
 }
 
 impl CommandHandler for WordForward {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        execute_word_motion(ctx, args, Direction::Forward, WordBoundary::Word, false)
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_word_motion(runtime.kernel(), args, Direction::Forward, WordBoundary::Word, false)
     }
 }
 
@@ -153,8 +154,8 @@ impl Command for WordBackward {
 }
 
 impl CommandHandler for WordBackward {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        execute_word_motion(ctx, args, Direction::Backward, WordBoundary::Word, false)
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_word_motion(runtime.kernel(), args, Direction::Backward, WordBoundary::Word, false)
     }
 }
 
@@ -185,8 +186,8 @@ impl Command for WordEnd {
 }
 
 impl CommandHandler for WordEnd {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        execute_word_motion(ctx, args, Direction::Forward, WordBoundary::Word, true)
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_word_motion(runtime.kernel(), args, Direction::Forward, WordBoundary::Word, true)
     }
 }
 
@@ -217,8 +218,14 @@ impl Command for WordForwardBig {
 }
 
 impl CommandHandler for WordForwardBig {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        execute_word_motion(ctx, args, Direction::Forward, WordBoundary::BigWord, false)
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_word_motion(
+            runtime.kernel(),
+            args,
+            Direction::Forward,
+            WordBoundary::BigWord,
+            false,
+        )
     }
 }
 
@@ -249,8 +256,14 @@ impl Command for WordBackwardBig {
 }
 
 impl CommandHandler for WordBackwardBig {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        execute_word_motion(ctx, args, Direction::Backward, WordBoundary::BigWord, false)
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_word_motion(
+            runtime.kernel(),
+            args,
+            Direction::Backward,
+            WordBoundary::BigWord,
+            false,
+        )
     }
 }
 
@@ -281,8 +294,8 @@ impl Command for WordEndBig {
 }
 
 impl CommandHandler for WordEndBig {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        execute_word_motion(ctx, args, Direction::Forward, WordBoundary::BigWord, true)
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_word_motion(runtime.kernel(), args, Direction::Forward, WordBoundary::BigWord, true)
     }
 }
 
@@ -313,8 +326,8 @@ impl Command for WordEndBackward {
 }
 
 impl CommandHandler for WordEndBackward {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        execute_word_motion(ctx, args, Direction::Backward, WordBoundary::Word, true)
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_word_motion(runtime.kernel(), args, Direction::Backward, WordBoundary::Word, true)
     }
 }
 
@@ -345,8 +358,14 @@ impl Command for WordEndBackwardBig {
 }
 
 impl CommandHandler for WordEndBackwardBig {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
-        execute_word_motion(ctx, args, Direction::Backward, WordBoundary::BigWord, true)
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        execute_word_motion(
+            runtime.kernel(),
+            args,
+            Direction::Backward,
+            WordBoundary::BigWord,
+            true,
+        )
     }
 }
 
@@ -378,9 +397,13 @@ mod tests {
     use {
         super::*,
         reovim_driver_command::ArgValue,
-        reovim_kernel::api::v1::{
-            Buffer, BufferError, BufferId, BufferManager, EventBus, MarkBank, OptionRegistry,
-            Position, RegisterBank, RwLock, TextObjectEngine,
+        reovim_driver_session::{Session, SessionId, SessionRuntime, api::CommandExecutor},
+        reovim_kernel::api::{
+            ModeId, ModuleId,
+            v1::{
+                Buffer, BufferError, BufferId, BufferManager, EventBus, MarkBank, OptionRegistry,
+                Position, RegisterBank, RwLock, TextObjectEngine,
+            },
         },
         std::{collections::HashMap, sync::Arc},
     };
@@ -453,6 +476,29 @@ mod tests {
         ctx.buffers.register(buffer)
     }
 
+    fn run_command<C: CommandHandler>(
+        cmd: &C,
+        ctx: &KernelContext,
+        args: &CommandContext,
+    ) -> CommandResult {
+        struct StubExecutor;
+        impl CommandExecutor for StubExecutor {
+            fn execute(
+                &self,
+                _: &CommandId,
+                _: &CommandContext,
+                _: &mut KernelContext,
+            ) -> Option<CommandResult> {
+                Some(CommandResult::Success)
+            }
+        }
+        let home_mode = ModeId::new(ModuleId::new("test"), "normal");
+        let mut session = Session::new(SessionId::new(1), home_mode);
+        let executor = StubExecutor;
+        let mut runtime = SessionRuntime::new(&mut session, ctx, &executor);
+        cmd.execute(&mut runtime, args)
+    }
+
     // =========================================================================
     // Command ID Tests
     // =========================================================================
@@ -514,18 +560,18 @@ mod tests {
 
     #[test]
     fn test_word_forward_no_buffer_returns_error() {
-        let mut ctx = KernelContext::default();
+        let ctx = KernelContext::default();
         let args = CommandContext::new();
-        let result = WordForward.execute(&mut ctx, &args);
+        let result = run_command(&WordForward, &ctx, &args);
         assert!(result.is_error());
     }
 
     #[test]
     fn test_word_forward_invalid_buffer_returns_error() {
-        let mut ctx = KernelContext::default();
+        let ctx = KernelContext::default();
         let mut args = CommandContext::new();
         args.set("buffer_id", ArgValue::BufferId(999));
-        let result = WordForward.execute(&mut ctx, &args);
+        let result = run_command(&WordForward, &ctx, &args);
         assert!(result.is_error());
     }
 
@@ -535,13 +581,13 @@ mod tests {
 
     #[test]
     fn test_word_forward_basic() {
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer_id = setup_buffer(&ctx, "hello world foo");
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = WordForward.execute(&mut ctx, &args);
+        let result = run_command(&WordForward, &ctx, &args);
         assert!(result.is_success());
 
         let buffer = ctx.buffers.get(buffer_id).unwrap();
@@ -551,14 +597,14 @@ mod tests {
 
     #[test]
     fn test_word_forward_with_count() {
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer_id = setup_buffer(&ctx, "one two three four");
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
         args.set("count", ArgValue::Count(2));
 
-        let result = WordForward.execute(&mut ctx, &args);
+        let result = run_command(&WordForward, &ctx, &args);
         assert!(result.is_success());
 
         let buffer = ctx.buffers.get(buffer_id).unwrap();
@@ -568,7 +614,7 @@ mod tests {
 
     #[test]
     fn test_word_forward_across_lines() {
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer_id = setup_buffer(&ctx, "hello\nworld");
 
         // Position at end of first line
@@ -580,7 +626,7 @@ mod tests {
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = WordForward.execute(&mut ctx, &args);
+        let result = run_command(&WordForward, &ctx, &args);
         assert!(result.is_success());
 
         let buffer = ctx.buffers.get(buffer_id).unwrap();
@@ -595,7 +641,7 @@ mod tests {
 
     #[test]
     fn test_word_backward_basic() {
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer_id = setup_buffer(&ctx, "hello world foo");
 
         // Position at 'foo'
@@ -607,7 +653,7 @@ mod tests {
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = WordBackward.execute(&mut ctx, &args);
+        let result = run_command(&WordBackward, &ctx, &args);
         assert!(result.is_success());
 
         let buffer = ctx.buffers.get(buffer_id).unwrap();
@@ -621,13 +667,13 @@ mod tests {
 
     #[test]
     fn test_word_end_basic() {
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer_id = setup_buffer(&ctx, "hello world foo");
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = WordEnd.execute(&mut ctx, &args);
+        let result = run_command(&WordEnd, &ctx, &args);
         assert!(result.is_success());
 
         let buffer = ctx.buffers.get(buffer_id).unwrap();
@@ -641,13 +687,13 @@ mod tests {
 
     #[test]
     fn test_word_forward_big_skips_punctuation() {
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer_id = setup_buffer(&ctx, "hello-world foo");
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = WordForwardBig.execute(&mut ctx, &args);
+        let result = run_command(&WordForwardBig, &ctx, &args);
         assert!(result.is_success());
 
         let buffer = ctx.buffers.get(buffer_id).unwrap();
@@ -657,13 +703,13 @@ mod tests {
 
     #[test]
     fn test_word_forward_small_stops_at_punctuation() {
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer_id = setup_buffer(&ctx, "hello-world foo");
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = WordForward.execute(&mut ctx, &args);
+        let result = run_command(&WordForward, &ctx, &args);
         assert!(result.is_success());
 
         let buffer = ctx.buffers.get(buffer_id).unwrap();
@@ -677,7 +723,7 @@ mod tests {
 
     #[test]
     fn test_word_end_backward_basic() {
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer_id = setup_buffer(&ctx, "hello world foo");
 
         // Position at 'foo'
@@ -689,7 +735,7 @@ mod tests {
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = WordEndBackward.execute(&mut ctx, &args);
+        let result = run_command(&WordEndBackward, &ctx, &args);
         assert!(result.is_success());
 
         let buffer = ctx.buffers.get(buffer_id).unwrap();
@@ -703,7 +749,7 @@ mod tests {
 
     #[test]
     fn test_word_forward_at_buffer_end_is_noop() {
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer_id = setup_buffer(&ctx, "hello");
 
         // Position at end
@@ -715,7 +761,7 @@ mod tests {
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = WordForward.execute(&mut ctx, &args);
+        let result = run_command(&WordForward, &ctx, &args);
         assert!(result.is_success());
 
         let buffer = ctx.buffers.get(buffer_id).unwrap();
@@ -725,13 +771,13 @@ mod tests {
 
     #[test]
     fn test_word_backward_at_buffer_start_is_noop() {
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer_id = setup_buffer(&ctx, "hello world");
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = WordBackward.execute(&mut ctx, &args);
+        let result = run_command(&WordBackward, &ctx, &args);
         assert!(result.is_success());
 
         let buffer = ctx.buffers.get(buffer_id).unwrap();
@@ -741,13 +787,13 @@ mod tests {
 
     #[test]
     fn test_empty_buffer() {
-        let mut ctx = create_test_context();
+        let ctx = create_test_context();
         let buffer_id = setup_buffer(&ctx, "");
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let result = WordForward.execute(&mut ctx, &args);
+        let result = run_command(&WordForward, &ctx, &args);
         assert!(result.is_success()); // No-op, no crash
     }
 }

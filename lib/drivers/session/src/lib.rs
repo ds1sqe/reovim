@@ -76,6 +76,7 @@ mod empty_handler;
 mod extension;
 mod mode;
 mod runtime;
+pub mod testing;
 mod transition;
 mod types;
 

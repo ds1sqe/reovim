@@ -8,7 +8,8 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_kernel::api::v1::{CommandId, KernelContext, Position},
+    reovim_driver_session::SessionRuntime,
+    reovim_kernel::api::v1::{CommandId, Position},
 };
 
 use crate::ids;
@@ -38,11 +39,11 @@ impl Command for PasteAfter {
 }
 
 impl CommandHandler for PasteAfter {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
@@ -51,7 +52,7 @@ impl CommandHandler for PasteAfter {
 
         // Get register content (use specified or unnamed)
         let content = {
-            let registers = ctx.registers.read();
+            let registers = runtime.kernel().registers.read();
             registers.get_by_name(register).cloned()
         };
 
@@ -81,7 +82,7 @@ impl CommandHandler for PasteAfter {
                 buffer.set_position(Position::new(0, 0));
                 let _cursor_after = buffer.position();
                 drop(buffer);
-                // TODO: Return edit action via different mechanism when SessionContext is available
+                // TODO(#394): Return edit action via different mechanism (escape hatch until API supports this)
                 let _ = cursor_before; // Suppress unused warning
                 return CommandResult::Success;
             }
@@ -122,7 +123,7 @@ impl CommandHandler for PasteAfter {
         }
         drop(buffer);
 
-        // TODO: Return edit action via different mechanism when SessionContext is available
+        // TODO(#394): Return edit action via different mechanism (escape hatch until API supports this)
         let _ = cursor_before; // Suppress unused warning
         CommandResult::Success
     }
@@ -153,11 +154,11 @@ impl Command for PasteBefore {
 }
 
 impl CommandHandler for PasteBefore {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
-        let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
+        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
@@ -166,7 +167,7 @@ impl CommandHandler for PasteBefore {
 
         // Get register content (use specified or unnamed)
         let content = {
-            let registers = ctx.registers.read();
+            let registers = runtime.kernel().registers.read();
             registers.get_by_name(register).cloned()
         };
 
@@ -215,7 +216,7 @@ impl CommandHandler for PasteBefore {
         }
         drop(buffer);
 
-        // TODO: Return edit action via different mechanism when SessionContext is available
+        // TODO(#394): Return edit action via different mechanism (escape hatch until API supports this)
         let _ = cursor_before; // Suppress unused warning
         CommandResult::Success
     }

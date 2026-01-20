@@ -11,10 +11,17 @@
 //!
 //! These commands use `VimMode::*_ID` constants directly, which is why they
 //! belong in the vim module rather than the generic editor module.
+//!
+//! # SessionApi Migration (Epic #394)
+//!
+//! These commands use the `ModeApi` trait to switch modes, which updates the
+//! session's mode stack directly. Changes are synced back to `AppState` after
+//! command execution.
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_kernel::api::v1::{CommandId, KernelContext, Position, events::ModeChanged},
+    reovim_driver_session::{SessionRuntime, TransitionContext, api::ModeApi},
+    reovim_kernel::api::v1::{CommandId, Position},
 };
 
 use crate::{ids, modes::VimMode};
@@ -34,11 +41,8 @@ impl Command for EnterInsertMode {
 }
 
 impl CommandHandler for EnterInsertMode {
-    fn execute(&self, ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // Emit mode change event
-        ctx.event_bus
-            .emit(ModeChanged::with_mode_id("normal", VimMode::INSERT_ID));
-
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
         CommandResult::Success
     }
 }
@@ -58,10 +62,11 @@ impl Command for EnterInsertModeAppend {
 }
 
 impl CommandHandler for EnterInsertModeAppend {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         // Move cursor right first, then enter insert mode
+        // NOTE: Uses escape hatch for buffer access until BufferApi covers cursor movement
         if let Some(buffer_id) = args.buffer_id()
-            && let Some(buffer_arc) = ctx.buffers.get(buffer_id)
+            && let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id)
         {
             let mut buffer = buffer_arc.write();
             let pos = buffer.position();
@@ -73,9 +78,7 @@ impl CommandHandler for EnterInsertModeAppend {
             drop(buffer);
         }
 
-        ctx.event_bus
-            .emit(ModeChanged::with_mode_id("normal", VimMode::INSERT_ID));
-
+        runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
         CommandResult::Success
     }
 }
@@ -95,10 +98,11 @@ impl Command for ExitToNormal {
 }
 
 impl CommandHandler for ExitToNormal {
-    fn execute(&self, ctx: &mut KernelContext, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         // Move cursor left one position when exiting insert mode (Vim behavior)
+        // NOTE: Uses escape hatch for buffer access until BufferApi covers cursor movement
         if let Some(buffer_id) = args.buffer_id()
-            && let Some(buffer_arc) = ctx.buffers.get(buffer_id)
+            && let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id)
         {
             let mut buffer = buffer_arc.write();
             let pos = buffer.position();
@@ -108,9 +112,7 @@ impl CommandHandler for ExitToNormal {
             drop(buffer);
         }
 
-        ctx.event_bus
-            .emit(ModeChanged::with_mode_id("insert", VimMode::NORMAL_ID));
-
+        runtime.set_mode(VimMode::NORMAL_ID, TransitionContext::new());
         CommandResult::Success
     }
 }
@@ -134,11 +136,9 @@ impl Command for EnterWindowMode {
 }
 
 impl CommandHandler for EnterWindowMode {
-    fn execute(&self, ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // Emit mode change event
-        ctx.event_bus.emit(ModeChanged::new("normal", "window"));
-
-        // TODO: Mode stack handling via SessionContext when available
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // Window mode is pushed onto the stack (can be exited to return to normal)
+        runtime.push_mode(VimMode::WINDOW_ID, TransitionContext::new());
         CommandResult::Success
     }
 }
@@ -161,12 +161,9 @@ impl Command for ExitOperatorPending {
 }
 
 impl CommandHandler for ExitOperatorPending {
-    fn execute(&self, ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // Emit mode change event
-        ctx.event_bus
-            .emit(ModeChanged::with_mode_id("operator-pending", VimMode::NORMAL_ID));
-
-        // TODO: Mode stack handling via SessionContext when available
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // Cancel pending operator and return to normal mode
+        runtime.set_mode(VimMode::NORMAL_ID, TransitionContext::new());
         CommandResult::Success
     }
 }
@@ -189,12 +186,8 @@ impl Command for EnterCommandLineMode {
 }
 
 impl CommandHandler for EnterCommandLineMode {
-    fn execute(&self, ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        // Emit mode change event
-        ctx.event_bus
-            .emit(ModeChanged::with_mode_id("normal", VimMode::COMMANDLINE_ID));
-
-        // TODO: Mode stack handling via SessionContext when available
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        runtime.set_mode(VimMode::COMMANDLINE_ID, TransitionContext::new());
         CommandResult::Success
     }
 }
@@ -216,11 +209,8 @@ impl Command for ExitCommandLineMode {
 }
 
 impl CommandHandler for ExitCommandLineMode {
-    fn execute(&self, ctx: &mut KernelContext, _args: &CommandContext) -> CommandResult {
-        ctx.event_bus
-            .emit(ModeChanged::with_mode_id("commandline", VimMode::NORMAL_ID));
-
-        // TODO: Mode stack handling via SessionContext when available
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        runtime.set_mode(VimMode::NORMAL_ID, TransitionContext::new());
         CommandResult::Success
     }
 }
