@@ -39,14 +39,18 @@
 
 use {
     reovim_driver_command_types::{CommandContext, CommandResult},
-    reovim_kernel::api::v1::{BufferId, CommandId, KernelContext, ModeId, Position, WindowId},
+    reovim_kernel::api::v1::{
+        BufferId, CommandId, KernelContext, ModeId, Position, SelectionMode as KernelSelectionMode,
+        WindowId,
+    },
 };
 
 use crate::{
     Session, SessionExtension, Window,
     api::{
         BufferApi, BufferError, ChangeTracker, CommandApi, CommandExecutor, ExtensionApi, ModeApi,
-        ModeError, Selection, StateChanges, WindowApi, WindowError,
+        ModeError, RegisterApi, RegisterContent, Selection, SelectionMode, StateChanges, WindowApi,
+        WindowError,
     },
     transition::{PopResult, TransitionContext},
 };
@@ -98,6 +102,38 @@ impl<'a> SessionRuntime<'a> {
     #[must_use]
     pub const fn kernel(&self) -> &KernelContext {
         self.kernel
+    }
+
+    /// Execute a read-only operation on a buffer.
+    ///
+    /// This method provides temporary read access to a buffer for complex
+    /// calculations that need the full buffer interface (e.g., motion
+    /// calculations, text object matching).
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer` - The buffer ID to access
+    /// * `f` - A function that receives a read guard to the buffer
+    ///
+    /// # Returns
+    ///
+    /// `Some(R)` with the function's return value if the buffer exists,
+    /// `None` if the buffer doesn't exist.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let target = runtime.with_buffer_read(buffer_id, |buffer| {
+    ///     MotionEngine::calculate(buffer, &cursor, motion, count)
+    /// });
+    /// ```
+    pub fn with_buffer_read<F, R>(&self, buffer: BufferId, f: F) -> Option<R>
+    where
+        F: FnOnce(&reovim_kernel::api::v1::Buffer) -> R,
+    {
+        let buf_arc = self.kernel.buffers.get(buffer)?;
+        let buf = buf_arc.read();
+        Some(f(&buf))
     }
 }
 
@@ -166,7 +202,7 @@ impl BufferApi for SessionRuntime<'_> {
     }
 
     fn cursor_position(&self, buffer: BufferId) -> Option<Position> {
-        // Get from window displaying this buffer
+        // Get from window displaying this buffer (window cursor)
         self.session
             .windows
             .windows
@@ -175,10 +211,133 @@ impl BufferApi for SessionRuntime<'_> {
             .map(|w| Position::new(w.cursor.line, w.cursor.column))
     }
 
-    fn selection(&self, _buffer: BufferId) -> Option<Selection> {
-        // Selection is stored per-buffer in the kernel
-        // TODO: Implement when selection storage is added to session
-        None
+    fn buffer_position(&self, buffer: BufferId) -> Option<Position> {
+        // Get from buffer's internal position (kernel)
+        self.kernel
+            .buffers
+            .get(buffer)
+            .map(|buf| buf.read().position())
+    }
+
+    fn set_buffer_position(&mut self, buffer: BufferId, pos: Position) {
+        // Set buffer's internal position (kernel)
+        if let Some(buf) = self.kernel.buffers.get(buffer) {
+            buf.write().set_position(pos);
+        }
+    }
+
+    fn buffer_line_len(&self, buffer: BufferId, line: usize) -> Option<usize> {
+        self.kernel
+            .buffers
+            .get(buffer)
+            .and_then(|buf| buf.read().line_len(line))
+    }
+
+    #[allow(clippy::significant_drop_tightening)]
+    fn selection(&self, buffer: BufferId) -> Option<Selection> {
+        let buf_arc = self.kernel.buffers.get(buffer)?;
+        let buf = buf_arc.read();
+
+        let selection = buf.selection();
+        if !selection.is_active() {
+            return None;
+        }
+
+        let anchor = selection.anchor;
+        let cursor = buf.position();
+
+        // Normalize: start should be before end
+        let (start, end) = if anchor <= cursor {
+            (anchor, cursor)
+        } else {
+            (cursor, anchor)
+        };
+
+        // Convert kernel SelectionMode to API SelectionMode
+        let mode = match selection.mode() {
+            KernelSelectionMode::Character => SelectionMode::Character,
+            KernelSelectionMode::Line => SelectionMode::Line,
+            KernelSelectionMode::Block => SelectionMode::Block,
+        };
+
+        Some(Selection::new(start, end, mode))
+    }
+
+    #[allow(clippy::significant_drop_tightening)]
+    fn buffer_text_range(
+        &self,
+        buffer: BufferId,
+        start: Position,
+        end: Position,
+    ) -> Option<String> {
+        let buf_arc = self.kernel.buffers.get(buffer)?;
+        let buf = buf_arc.read();
+
+        // Build the text from the range
+        let mut result = String::new();
+
+        if start.line == end.line {
+            // Single line case
+            if let Some(line) = buf.line(start.line) {
+                let line_chars: Vec<char> = line.chars().collect();
+                let start_col = start.column.min(line_chars.len());
+                let end_col = end.column.min(line_chars.len());
+                result.extend(&line_chars[start_col..end_col]);
+            }
+        } else {
+            // Multi-line case
+            // First line: from start column to end of line
+            if let Some(line) = buf.line(start.line) {
+                let line_chars: Vec<char> = line.chars().collect();
+                let start_col = start.column.min(line_chars.len());
+                result.extend(&line_chars[start_col..]);
+                result.push('\n');
+            }
+
+            // Middle lines: full lines
+            for line_idx in (start.line + 1)..end.line {
+                if let Some(line) = buf.line(line_idx) {
+                    result.push_str(line);
+                    result.push('\n');
+                }
+            }
+
+            // Last line: from start to end column
+            if let Some(line) = buf.line(end.line) {
+                let line_chars: Vec<char> = line.chars().collect();
+                let end_col = end.column.min(line_chars.len());
+                result.extend(&line_chars[..end_col]);
+            }
+        }
+
+        Some(result)
+    }
+
+    fn buffer_content(&self, buffer: BufferId) -> Option<String> {
+        self.kernel
+            .buffers
+            .get(buffer)
+            .map(|buf| buf.read().content())
+    }
+
+    fn buffer_file_path(&self, buffer: BufferId) -> Option<String> {
+        self.kernel
+            .buffers
+            .get(buffer)
+            .and_then(|buf| buf.read().file_path().map(String::from))
+    }
+
+    fn is_buffer_modified(&self, buffer: BufferId) -> Option<bool> {
+        self.kernel
+            .buffers
+            .get(buffer)
+            .map(|buf| buf.read().is_modified())
+    }
+
+    fn set_buffer_modified(&mut self, buffer: BufferId, modified: bool) {
+        if let Some(buf) = self.kernel.buffers.get(buffer) {
+            buf.write().set_modified(modified);
+        }
     }
 
     fn insert_text(&mut self, buffer: BufferId, pos: Position, text: &str) {
@@ -210,8 +369,56 @@ impl BufferApi for SessionRuntime<'_> {
         }
     }
 
-    fn set_selection(&mut self, buffer: BufferId, _sel: Option<Selection>) {
-        // TODO: Implement selection storage
+    fn set_selection(&mut self, buffer: BufferId, sel: Option<Selection>) {
+        if let Some(buf) = self.kernel.buffers.get(buffer) {
+            let mut buf = buf.write();
+            match sel {
+                Some(selection) => {
+                    // Convert API SelectionMode to kernel SelectionMode
+                    let mode = match selection.mode {
+                        SelectionMode::Character => KernelSelectionMode::Character,
+                        SelectionMode::Line => KernelSelectionMode::Line,
+                        SelectionMode::Block => KernelSelectionMode::Block,
+                    };
+                    // Start selection at the start position with given mode
+                    // The "end" is determined by cursor position
+                    buf.selection_mut().start(selection.start, mode);
+                }
+                None => {
+                    // Clear the selection
+                    buf.selection_mut().clear();
+                }
+            }
+        }
+        self.changes.record_selection_change(buffer);
+    }
+
+    fn swap_selection_ends(&mut self, buffer: BufferId) {
+        if let Some(buf) = self.kernel.buffers.get(buffer) {
+            let mut buf = buf.write();
+            if buf.selection().is_active() {
+                // Swap anchor and cursor
+                let old_anchor = buf.selection().anchor;
+                let cursor = buf.position();
+                buf.selection_mut().anchor = cursor;
+                buf.set_position(old_anchor);
+            }
+        }
+        self.changes.record_selection_change(buffer);
+    }
+
+    fn set_selection_mode(&mut self, buffer: BufferId, mode: SelectionMode) {
+        if let Some(buf) = self.kernel.buffers.get(buffer) {
+            let mut buf = buf.write();
+            if buf.selection().is_active() {
+                let kernel_mode = match mode {
+                    SelectionMode::Character => KernelSelectionMode::Character,
+                    SelectionMode::Line => KernelSelectionMode::Line,
+                    SelectionMode::Block => KernelSelectionMode::Block,
+                };
+                buf.selection_mut().set_mode(kernel_mode);
+            }
+        }
         self.changes.record_selection_change(buffer);
     }
 
@@ -313,6 +520,18 @@ impl WindowApi for SessionRuntime<'_> {
     }
 }
 
+// === RegisterApi ===
+
+impl RegisterApi for SessionRuntime<'_> {
+    fn get_register(&self, name: Option<char>) -> Option<RegisterContent> {
+        self.kernel.registers.read().get_by_name(name).cloned()
+    }
+
+    fn set_register(&mut self, name: Option<char>, content: RegisterContent) {
+        self.kernel.registers.write().set_by_name(name, content);
+    }
+}
+
 // === CommandApi ===
 
 impl CommandApi for SessionRuntime<'_> {
@@ -350,6 +569,10 @@ impl ExtensionApi for SessionRuntime<'_> {
 impl ChangeTracker for SessionRuntime<'_> {
     fn take_changes(&mut self) -> StateChanges {
         std::mem::take(&mut self.changes)
+    }
+
+    fn record_cursor_move(&mut self, buffer: BufferId) {
+        self.changes.record_cursor_move(buffer);
     }
 }
 
@@ -496,5 +719,121 @@ mod tests {
         let changes = runtime.take_changes();
         assert!(changes.mode_changed);
         assert!(!runtime.changes.has_changes());
+    }
+
+    #[test]
+    fn test_selection_api() {
+        use crate::testing::TestSessionRuntime;
+
+        // Create test runtime with a buffer
+        let mut test = TestSessionRuntime::with_buffer("hello world");
+
+        // Get the buffer ID
+        let buffer_id = test.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+        // Set buffer position to column 5 (at 'w')
+        test.with_runtime(|runtime| {
+            runtime.set_buffer_position(buffer_id, Position::new(0, 5));
+        });
+
+        // Selection is None initially
+        let sel = test.with_runtime(|runtime| runtime.selection(buffer_id));
+        assert!(sel.is_none());
+
+        // Start a selection at position (0, 0) in character mode via kernel
+        {
+            let buf = test.kernel().buffers.get(buffer_id).unwrap();
+            buf.write()
+                .selection_mut()
+                .start(Position::new(0, 0), KernelSelectionMode::Character);
+        }
+
+        // Now selection should be Some
+        let sel = test.with_runtime(|runtime| runtime.selection(buffer_id));
+        assert!(sel.is_some());
+        let sel = sel.unwrap();
+        assert_eq!(sel.start, Position::new(0, 0));
+        assert_eq!(sel.end, Position::new(0, 5)); // cursor position
+        assert_eq!(sel.mode, SelectionMode::Character);
+
+        // Clear selection via set_selection
+        test.with_runtime(|runtime| {
+            runtime.set_selection(buffer_id, None);
+        });
+
+        // Selection should be None again
+        let sel = test.with_runtime(|runtime| runtime.selection(buffer_id));
+        assert!(sel.is_none());
+
+        // Check changes were recorded
+        assert!(test.changes().selection_changed);
+    }
+
+    #[test]
+    #[allow(clippy::significant_drop_tightening)]
+    fn test_selection_api_set_selection() {
+        use crate::testing::TestSessionRuntime;
+
+        // Create test runtime with a buffer
+        let mut test = TestSessionRuntime::with_buffer("hello world");
+
+        // Get the buffer ID
+        let buffer_id = test.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+        // Set selection via API
+        test.with_runtime(|runtime| {
+            let sel = Selection::line(Position::new(0, 2), Position::new(0, 8));
+            runtime.set_selection(buffer_id, Some(sel));
+        });
+
+        // Verify kernel state was updated
+        {
+            let buf = test.kernel().buffers.get(buffer_id).unwrap();
+            let buf = buf.read();
+            let kernel_sel = buf.selection();
+            assert!(kernel_sel.is_active());
+            assert_eq!(kernel_sel.anchor, Position::new(0, 2));
+            assert_eq!(kernel_sel.mode(), KernelSelectionMode::Line);
+        }
+    }
+
+    #[test]
+    fn test_buffer_text_range_single_line() {
+        use crate::testing::TestSessionRuntime;
+
+        // Create test runtime with a buffer
+        let mut harness = TestSessionRuntime::with_buffer("hello world");
+
+        // Get the buffer ID
+        let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+        // Extract "llo wo" (columns 2-8)
+        let result = harness.with_runtime(|runtime| {
+            runtime.buffer_text_range(buffer_id, Position::new(0, 2), Position::new(0, 8))
+        });
+        assert_eq!(result, Some("llo wo".to_string()));
+    }
+
+    #[test]
+    fn test_buffer_text_range_multi_line() {
+        use crate::testing::TestSessionRuntime;
+
+        // Create test runtime with multi-line content
+        let mut harness = TestSessionRuntime::with_buffer("line one\nline two\nline three");
+
+        // Get the buffer ID
+        let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+        // Extract from middle of first line to middle of last line
+        let result = harness.with_runtime(|runtime| {
+            runtime.buffer_text_range(buffer_id, Position::new(0, 5), Position::new(2, 4))
+        });
+        assert_eq!(result, Some("one\nline two\nline".to_string()));
+
+        // Extract a full line (0,0 to 1,0 gets first line + newline)
+        let result = harness.with_runtime(|runtime| {
+            runtime.buffer_text_range(buffer_id, Position::new(0, 0), Position::new(1, 0))
+        });
+        assert_eq!(result, Some("line one\n".to_string()));
     }
 }

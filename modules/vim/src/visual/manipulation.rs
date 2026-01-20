@@ -9,8 +9,11 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::{SessionRuntime, TransitionContext, api::ModeApi},
-    reovim_kernel::api::v1::{CommandId, SelectionMode},
+    reovim_driver_session::{
+        BufferApi, SessionRuntime, TransitionContext,
+        api::{ModeApi, SelectionMode},
+    },
+    reovim_kernel::api::v1::CommandId,
 };
 
 use crate::{ids, modes::VimMode};
@@ -38,23 +41,13 @@ impl CommandHandler for SwapAnchor {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
-            return CommandResult::error("Buffer not found");
-        };
-
-        let mut buffer = buffer_arc.write();
-
         // Only operate if selection is active
-        if !buffer.selection().is_active() {
+        if runtime.selection(buffer_id).is_none() {
             return CommandResult::Success;
         }
 
         // Swap anchor and cursor
-        let old_anchor = buffer.selection().anchor;
-        let cursor = buffer.position();
-
-        buffer.selection_mut().anchor = cursor;
-        buffer.set_position(old_anchor);
+        runtime.swap_selection_ends(buffer_id);
 
         CommandResult::Success
     }
@@ -83,24 +76,22 @@ impl CommandHandler for ToggleVisualChar {
             return CommandResult::error("No active buffer");
         };
 
-        let kernel = runtime.kernel();
-
-        let Some(buffer_arc) = kernel.buffers.get(buffer_id) else {
-            return CommandResult::error("Buffer not found");
-        };
-
-        let mut buffer = buffer_arc.write();
-        let target_mode =
-            if buffer.selection().is_active() && buffer.selection().mode().is_character() {
+        let target_mode = match runtime.selection(buffer_id) {
+            Some(sel) if sel.mode == SelectionMode::Character => {
                 // Already in character mode - exit to normal
-                buffer.selection_mut().clear();
+                runtime.set_selection(buffer_id, None);
                 VimMode::NORMAL_ID
-            } else {
+            }
+            Some(_) => {
                 // Switch to character mode
-                buffer.selection_mut().set_mode(SelectionMode::Character);
+                runtime.set_selection_mode(buffer_id, SelectionMode::Character);
                 VimMode::VISUAL_ID
-            };
-        drop(buffer);
+            }
+            None => {
+                // No selection - nothing to do
+                return CommandResult::Success;
+            }
+        };
 
         runtime.set_mode(target_mode, TransitionContext::new());
 
@@ -131,23 +122,22 @@ impl CommandHandler for ToggleVisualLine {
             return CommandResult::error("No active buffer");
         };
 
-        let kernel = runtime.kernel();
-
-        let Some(buffer_arc) = kernel.buffers.get(buffer_id) else {
-            return CommandResult::error("Buffer not found");
+        let target_mode = match runtime.selection(buffer_id) {
+            Some(sel) if sel.mode == SelectionMode::Line => {
+                // Already in line mode - exit to normal
+                runtime.set_selection(buffer_id, None);
+                VimMode::NORMAL_ID
+            }
+            Some(_) => {
+                // Switch to line mode
+                runtime.set_selection_mode(buffer_id, SelectionMode::Line);
+                VimMode::VISUAL_LINE_ID
+            }
+            None => {
+                // No selection - nothing to do
+                return CommandResult::Success;
+            }
         };
-
-        let mut buffer = buffer_arc.write();
-        let target_mode = if buffer.selection().is_active() && buffer.selection().mode().is_line() {
-            // Already in line mode - exit to normal
-            buffer.selection_mut().clear();
-            VimMode::NORMAL_ID
-        } else {
-            // Switch to line mode
-            buffer.selection_mut().set_mode(SelectionMode::Line);
-            VimMode::VISUAL_LINE_ID
-        };
-        drop(buffer);
 
         runtime.set_mode(target_mode, TransitionContext::new());
 
@@ -178,24 +168,22 @@ impl CommandHandler for ToggleVisualBlock {
             return CommandResult::error("No active buffer");
         };
 
-        let kernel = runtime.kernel();
-
-        let Some(buffer_arc) = kernel.buffers.get(buffer_id) else {
-            return CommandResult::error("Buffer not found");
+        let target_mode = match runtime.selection(buffer_id) {
+            Some(sel) if sel.mode == SelectionMode::Block => {
+                // Already in block mode - exit to normal
+                runtime.set_selection(buffer_id, None);
+                VimMode::NORMAL_ID
+            }
+            Some(_) => {
+                // Switch to block mode
+                runtime.set_selection_mode(buffer_id, SelectionMode::Block);
+                VimMode::VISUAL_BLOCK_ID
+            }
+            None => {
+                // No selection - nothing to do
+                return CommandResult::Success;
+            }
         };
-
-        let mut buffer = buffer_arc.write();
-        let target_mode = if buffer.selection().is_active() && buffer.selection().mode().is_block()
-        {
-            // Already in block mode - exit to normal
-            buffer.selection_mut().clear();
-            VimMode::NORMAL_ID
-        } else {
-            // Switch to block mode
-            buffer.selection_mut().set_mode(SelectionMode::Block);
-            VimMode::VISUAL_BLOCK_ID
-        };
-        drop(buffer);
 
         runtime.set_mode(target_mode, TransitionContext::new());
 

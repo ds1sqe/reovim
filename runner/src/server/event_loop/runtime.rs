@@ -29,11 +29,12 @@ use {
         PopResult, TransitionContext,
         api::{
             BufferApi, BufferError, ChangeTracker, CommandApi, ModeApi, ModeError, Selection,
-            StateChanges, WindowApi, WindowError,
+            SelectionMode, StateChanges, WindowApi, WindowError,
         },
     },
     reovim_kernel::api::v1::{
-        BufferId, CommandId, KernelContext, ModeId, ModeStack, Position, WindowId,
+        BufferId, CommandId, KernelContext, ModeId, ModeStack, Position,
+        SelectionMode as KernelSelectionMode, WindowId,
     },
 };
 
@@ -164,9 +165,131 @@ impl BufferApi for AppStateRuntime<'_> {
             .map(|state| Position::new(state.cursor.line, state.cursor.column))
     }
 
-    fn selection(&self, _buffer: BufferId) -> Option<Selection> {
-        // Selection not yet implemented
-        None
+    fn buffer_position(&self, buffer: BufferId) -> Option<Position> {
+        self.kernel
+            .buffers
+            .get(buffer)
+            .map(|buf| buf.read().position())
+    }
+
+    fn set_buffer_position(&mut self, buffer: BufferId, pos: Position) {
+        if let Some(buf) = self.kernel.buffers.get(buffer) {
+            buf.write().set_position(pos);
+        }
+    }
+
+    fn buffer_line_len(&self, buffer: BufferId, line: usize) -> Option<usize> {
+        self.kernel
+            .buffers
+            .get(buffer)
+            .and_then(|buf| buf.read().line_len(line))
+    }
+
+    #[allow(clippy::significant_drop_tightening)]
+    fn selection(&self, buffer: BufferId) -> Option<Selection> {
+        let buf_arc = self.kernel.buffers.get(buffer)?;
+        let buf = buf_arc.read();
+
+        let selection = buf.selection();
+        if !selection.is_active() {
+            return None;
+        }
+
+        let anchor = selection.anchor;
+        let cursor = buf.position();
+
+        // Normalize: start should be before end
+        let (start, end) = if anchor <= cursor {
+            (anchor, cursor)
+        } else {
+            (cursor, anchor)
+        };
+
+        // Convert kernel SelectionMode to API SelectionMode
+        let mode = match selection.mode() {
+            KernelSelectionMode::Character => SelectionMode::Character,
+            KernelSelectionMode::Line => SelectionMode::Line,
+            KernelSelectionMode::Block => SelectionMode::Block,
+        };
+
+        Some(Selection::new(start, end, mode))
+    }
+
+    #[allow(clippy::significant_drop_tightening)]
+    fn buffer_text_range(
+        &self,
+        buffer: BufferId,
+        start: Position,
+        end: Position,
+    ) -> Option<String> {
+        let buf_arc = self.kernel.buffers.get(buffer)?;
+        let buf = buf_arc.read();
+
+        // Build the text from the range
+        let mut result = String::new();
+
+        if start.line == end.line {
+            // Single line case
+            if let Some(line) = buf.line(start.line) {
+                let line_chars: Vec<char> = line.chars().collect();
+                let start_col = start.column.min(line_chars.len());
+                let end_col = end.column.min(line_chars.len());
+                result.extend(&line_chars[start_col..end_col]);
+            }
+        } else {
+            // Multi-line case
+            // First line: from start column to end of line
+            if let Some(line) = buf.line(start.line) {
+                let line_chars: Vec<char> = line.chars().collect();
+                let start_col = start.column.min(line_chars.len());
+                result.extend(&line_chars[start_col..]);
+                result.push('\n');
+            }
+
+            // Middle lines: full lines
+            for line_idx in (start.line + 1)..end.line {
+                if let Some(line) = buf.line(line_idx) {
+                    result.push_str(line);
+                    result.push('\n');
+                }
+            }
+
+            // Last line: from start to end column
+            if let Some(line) = buf.line(end.line) {
+                let line_chars: Vec<char> = line.chars().collect();
+                let end_col = end.column.min(line_chars.len());
+                result.extend(&line_chars[..end_col]);
+            }
+        }
+
+        Some(result)
+    }
+
+    fn buffer_content(&self, buffer: BufferId) -> Option<String> {
+        self.kernel
+            .buffers
+            .get(buffer)
+            .map(|buf| buf.read().content())
+    }
+
+    fn buffer_file_path(&self, buffer: BufferId) -> Option<String> {
+        self.kernel
+            .buffers
+            .get(buffer)
+            .and_then(|buf| buf.read().file_path().map(String::from))
+    }
+
+    fn is_buffer_modified(&self, buffer: BufferId) -> Option<bool> {
+        self.kernel
+            .buffers
+            .get(buffer)
+            .map(|buf| buf.read().is_modified())
+    }
+
+    fn set_buffer_modified(&mut self, buffer: BufferId, modified: bool) {
+        if let Some(buf) = self.kernel.buffers.get(buffer) {
+            buf.write().set_modified(modified);
+        }
     }
 
     fn insert_text(&mut self, buffer: BufferId, pos: Position, text: &str) {
@@ -194,7 +317,51 @@ impl BufferApi for AppStateRuntime<'_> {
         }
     }
 
-    fn set_selection(&mut self, buffer: BufferId, _sel: Option<Selection>) {
+    fn set_selection(&mut self, buffer: BufferId, sel: Option<Selection>) {
+        if let Some(buf) = self.kernel.buffers.get(buffer) {
+            let mut buf = buf.write();
+            match sel {
+                Some(selection) => {
+                    let mode = match selection.mode {
+                        SelectionMode::Character => KernelSelectionMode::Character,
+                        SelectionMode::Line => KernelSelectionMode::Line,
+                        SelectionMode::Block => KernelSelectionMode::Block,
+                    };
+                    buf.selection_mut().start(selection.start, mode);
+                }
+                None => {
+                    buf.selection_mut().clear();
+                }
+            }
+        }
+        self.changes.record_selection_change(buffer);
+    }
+
+    fn swap_selection_ends(&mut self, buffer: BufferId) {
+        if let Some(buf) = self.kernel.buffers.get(buffer) {
+            let mut buf = buf.write();
+            if buf.selection().is_active() {
+                let old_anchor = buf.selection().anchor;
+                let cursor = buf.position();
+                buf.selection_mut().anchor = cursor;
+                buf.set_position(old_anchor);
+            }
+        }
+        self.changes.record_selection_change(buffer);
+    }
+
+    fn set_selection_mode(&mut self, buffer: BufferId, mode: SelectionMode) {
+        if let Some(buf) = self.kernel.buffers.get(buffer) {
+            let mut buf = buf.write();
+            if buf.selection().is_active() {
+                let kernel_mode = match mode {
+                    SelectionMode::Character => KernelSelectionMode::Character,
+                    SelectionMode::Line => KernelSelectionMode::Line,
+                    SelectionMode::Block => KernelSelectionMode::Block,
+                };
+                buf.selection_mut().set_mode(kernel_mode);
+            }
+        }
         self.changes.record_selection_change(buffer);
     }
 
@@ -319,6 +486,10 @@ impl CommandApi for AppStateRuntime<'_> {
 impl ChangeTracker for AppStateRuntime<'_> {
     fn take_changes(&mut self) -> StateChanges {
         std::mem::take(&mut self.changes)
+    }
+
+    fn record_cursor_move(&mut self, buffer: BufferId) {
+        self.changes.record_cursor_move(buffer);
     }
 }
 

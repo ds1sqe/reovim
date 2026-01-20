@@ -8,7 +8,7 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_driver_session::SessionRuntime,
+    reovim_driver_session::{BufferApi, RegisterApi, SessionRuntime},
     reovim_kernel::api::v1::{CommandId, Position},
 };
 
@@ -43,18 +43,12 @@ impl CommandHandler for PasteAfter {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
-        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
-            return CommandResult::error("Buffer not found");
-        };
 
         let count = args.count().unwrap_or(1);
         let register = args.register();
 
-        // Get register content (use specified or unnamed)
-        let content = {
-            let registers = runtime.kernel().registers.read();
-            registers.get_by_name(register).cloned()
-        };
+        // Get register content via RegisterApi
+        let content = runtime.get_register(register);
 
         let Some(content) = content else {
             return CommandResult::Success; // Empty register
@@ -64,67 +58,75 @@ impl CommandHandler for PasteAfter {
             return CommandResult::Success; // Nothing to paste
         }
 
-        let mut buffer = buffer_arc.write();
-        let pos = buffer.position();
-        let cursor_before = pos;
+        // Get position via BufferApi
+        let Some(pos) = runtime.buffer_position(buffer_id) else {
+            return CommandResult::error("Failed to get buffer position");
+        };
 
         if content.is_linewise() {
             // Paste below current line
-            let line_count = buffer.line_count();
+            // Get line count via BufferApi
+            let line_count = runtime.buffer_line_count(buffer_id).unwrap_or(0);
 
             // Build paste text (repeated count times, strip trailing newline for clean insert)
             let paste_text = content.text.repeat(count);
             let paste_text = paste_text.trim_end_matches('\n');
 
             if line_count == 0 {
-                // Empty buffer: just insert the content
-                let _edit = buffer.insert(paste_text);
-                buffer.set_position(Position::new(0, 0));
-                let _cursor_after = buffer.position();
-                drop(buffer);
-                // TODO(#394): Return edit action via different mechanism (escape hatch until API supports this)
-                let _ = cursor_before; // Suppress unused warning
+                // Empty buffer: just insert the content at origin
+                runtime.insert_text(buffer_id, Position::new(0, 0), paste_text);
+                runtime.set_buffer_position(buffer_id, Position::new(0, 0));
                 return CommandResult::Success;
             }
 
-            // Move to end of current line
-            let line_len = buffer.line_len(pos.line).unwrap_or(0);
-            buffer.set_position(Position::new(pos.line, line_len));
+            // Get line length via BufferApi
+            let line_len = runtime.buffer_line_len(buffer_id, pos.line).unwrap_or(0);
 
-            // Insert newline then content
+            // Insert newline then content at end of current line
+            let insert_pos = Position::new(pos.line, line_len);
             let insert_text = format!("\n{paste_text}");
-            let _edit = buffer.insert(&insert_text);
+            runtime.insert_text(buffer_id, insert_pos, &insert_text);
 
             // Position cursor on first character of first pasted line
             let new_line = pos.line + 1;
-            buffer.set_position(Position::new(new_line, 0));
+            runtime.set_buffer_position(buffer_id, Position::new(new_line, 0));
         } else {
             // Characterwise: paste after cursor
-            let line_len = buffer.line_len(pos.line).unwrap_or(0);
+            // Get line length via BufferApi
+            let line_len = runtime.buffer_line_len(buffer_id, pos.line).unwrap_or(0);
             let insert_col = if line_len == 0 {
                 0
             } else {
                 (pos.column + 1).min(line_len)
             };
 
-            buffer.set_position(Position::new(pos.line, insert_col));
-
+            let insert_pos = Position::new(pos.line, insert_col);
             let paste_text = content.text.repeat(count);
-            let _edit = buffer.insert(&paste_text);
+            runtime.insert_text(buffer_id, insert_pos, &paste_text);
 
-            // Position cursor at end of pasted text (Vim behavior: last character)
-            let final_pos = buffer.position();
-            let cursor_after = if final_pos.column > 0 {
-                Position::new(final_pos.line, final_pos.column - 1)
+            // Calculate final cursor position (at end of pasted text - 1 for Vim behavior)
+            // Count lines in pasted text
+            let lines_in_paste: Vec<&str> = paste_text.lines().collect();
+            let cursor_after = if lines_in_paste.len() > 1 {
+                // Multi-line paste: cursor at end of last line
+                let last_line_len = lines_in_paste.last().map_or(0, |l| l.chars().count());
+                let final_line = insert_pos.line + lines_in_paste.len() - 1;
+                let col = if last_line_len > 0 {
+                    last_line_len - 1
+                } else {
+                    0
+                };
+                Position::new(final_line, col)
             } else {
-                final_pos
+                // Single-line paste: cursor at end of pasted text - 1
+                let text_len = paste_text.chars().count();
+                let final_col = insert_col + text_len;
+                let col = if final_col > 0 { final_col - 1 } else { 0 };
+                Position::new(pos.line, col)
             };
-            buffer.set_position(cursor_after);
+            runtime.set_buffer_position(buffer_id, cursor_after);
         }
-        drop(buffer);
 
-        // TODO(#394): Return edit action via different mechanism (escape hatch until API supports this)
-        let _ = cursor_before; // Suppress unused warning
         CommandResult::Success
     }
 }
@@ -158,18 +160,12 @@ impl CommandHandler for PasteBefore {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
         };
-        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
-            return CommandResult::error("Buffer not found");
-        };
 
         let count = args.count().unwrap_or(1);
         let register = args.register();
 
-        // Get register content (use specified or unnamed)
-        let content = {
-            let registers = runtime.kernel().registers.read();
-            registers.get_by_name(register).cloned()
-        };
+        // Get register content via RegisterApi
+        let content = runtime.get_register(register);
 
         let Some(content) = content else {
             return CommandResult::Success; // Empty register
@@ -179,9 +175,10 @@ impl CommandHandler for PasteBefore {
             return CommandResult::Success; // Nothing to paste
         }
 
-        let mut buffer = buffer_arc.write();
-        let pos = buffer.position();
-        let cursor_before = pos;
+        // Get position via BufferApi
+        let Some(pos) = runtime.buffer_position(buffer_id) else {
+            return CommandResult::error("Failed to get buffer position");
+        };
 
         // Build paste text (repeated count times)
         let paste_text = content.text.repeat(count);
@@ -191,33 +188,39 @@ impl CommandHandler for PasteBefore {
             // Strip trailing newline for clean insert
             let paste_text = paste_text.trim_end_matches('\n');
 
-            // Move to start of current line
-            buffer.set_position(Position::new(pos.line, 0));
-
-            // Insert content then newline
+            // Insert content then newline at start of current line
+            let insert_pos = Position::new(pos.line, 0);
             let insert_text = format!("{paste_text}\n");
-            let _edit = buffer.insert(&insert_text);
+            runtime.insert_text(buffer_id, insert_pos, &insert_text);
 
             // Position cursor on first character of first pasted line
-            buffer.set_position(Position::new(pos.line, 0));
+            runtime.set_buffer_position(buffer_id, Position::new(pos.line, 0));
         } else {
             // Characterwise: paste at cursor position (before)
-            // Cursor stays at current position, content inserted there
-            let _edit = buffer.insert(&paste_text);
+            runtime.insert_text(buffer_id, pos, &paste_text);
 
-            // Position cursor at end of pasted text (Vim behavior: last character)
-            let final_pos = buffer.position();
-            let cursor_after = if final_pos.column > 0 {
-                Position::new(final_pos.line, final_pos.column - 1)
+            // Calculate final cursor position (at end of pasted text - 1 for Vim behavior)
+            let lines_in_paste: Vec<&str> = paste_text.lines().collect();
+            let cursor_after = if lines_in_paste.len() > 1 {
+                // Multi-line paste: cursor at end of last line
+                let last_line_len = lines_in_paste.last().map_or(0, |l| l.chars().count());
+                let final_line = pos.line + lines_in_paste.len() - 1;
+                let col = if last_line_len > 0 {
+                    last_line_len - 1
+                } else {
+                    0
+                };
+                Position::new(final_line, col)
             } else {
-                final_pos
+                // Single-line paste: cursor at end of pasted text - 1
+                let text_len = paste_text.chars().count();
+                let final_col = pos.column + text_len;
+                let col = if final_col > 0 { final_col - 1 } else { 0 };
+                Position::new(pos.line, col)
             };
-            buffer.set_position(cursor_after);
+            runtime.set_buffer_position(buffer_id, cursor_after);
         }
-        drop(buffer);
 
-        // TODO(#394): Return edit action via different mechanism (escape hatch until API supports this)
-        let _ = cursor_before; // Suppress unused warning
         CommandResult::Success
     }
 }

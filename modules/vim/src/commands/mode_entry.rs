@@ -13,7 +13,7 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::{SessionRuntime, TransitionContext, api::ModeApi},
+    reovim_driver_session::{BufferApi, SessionRuntime, TransitionContext, api::ModeApi},
     reovim_kernel::api::v1::{CommandId, OptionScopeId, Position},
 };
 
@@ -48,21 +48,16 @@ impl Command for EnterInsertFirstNonBlank {
 
 impl CommandHandler for EnterInsertFirstNonBlank {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        let kernel = runtime.kernel();
-
         if let Some(buffer_id) = args.buffer_id()
-            && let Some(buffer_arc) = kernel.buffers.get(buffer_id)
+            && let Some(pos) = runtime.buffer_position(buffer_id)
         {
-            let mut buffer = buffer_arc.write();
-            let pos = buffer.position();
-
             // Find first non-blank character on current line
-            let first_non_blank = buffer
-                .line(pos.line)
-                .map_or(0, |line| line.chars().position(|c| !c.is_whitespace()).unwrap_or(0));
+            let first_non_blank = runtime
+                .buffer_line(buffer_id, pos.line)
+                .map(|line| line.chars().position(|c| !c.is_whitespace()).unwrap_or(0))
+                .unwrap_or(0);
 
-            buffer.set_position(Position::new(pos.line, first_non_blank));
-            drop(buffer);
+            runtime.set_buffer_position(buffer_id, Position::new(pos.line, first_non_blank));
         }
 
         runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
@@ -87,18 +82,12 @@ impl Command for EnterInsertEndOfLine {
 
 impl CommandHandler for EnterInsertEndOfLine {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        let kernel = runtime.kernel();
-
         if let Some(buffer_id) = args.buffer_id()
-            && let Some(buffer_arc) = kernel.buffers.get(buffer_id)
+            && let Some(pos) = runtime.buffer_position(buffer_id)
         {
-            let mut buffer = buffer_arc.write();
-            let pos = buffer.position();
-
             // Move cursor to end of current line
-            let line_len = buffer.line_len(pos.line).unwrap_or(0);
-            buffer.set_position(Position::new(pos.line, line_len));
-            drop(buffer);
+            let line_len = runtime.buffer_line_len(buffer_id, pos.line).unwrap_or(0);
+            runtime.set_buffer_position(buffer_id, Position::new(pos.line, line_len));
         }
 
         runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
@@ -127,51 +116,42 @@ impl CommandHandler for OpenLineBelow {
             return CommandResult::error("No active buffer");
         };
 
-        let kernel = runtime.kernel();
-
-        let Some(buffer_arc) = kernel.buffers.get(buffer_id) else {
-            return CommandResult::error("Buffer not found");
-        };
-
-        // Check autoindent option
-        let autoindent = kernel
+        // Check autoindent option (escape hatch - OptionsApi not yet available)
+        let autoindent = runtime
+            .kernel()
             .options
             .get("autoindent", OptionScopeId::Buffer(buffer_id))
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
 
-        let mut buffer = buffer_arc.write();
-        let pos = buffer.position();
+        let Some(pos) = runtime.buffer_position(buffer_id) else {
+            return CommandResult::error("Failed to get buffer position");
+        };
 
         // Get indent from current line if autoindent is enabled
         let indent = if autoindent {
-            buffer
-                .line(pos.line)
-                .map(|line| get_line_indent(line).to_owned())
+            runtime
+                .buffer_line(buffer_id, pos.line)
+                .map(|line| get_line_indent(&line).to_owned())
                 .unwrap_or_default()
         } else {
             String::new()
         };
 
-        // Move to end of current line
-        let line_len = buffer.line_len(pos.line).unwrap_or(0);
-        buffer.set_position(Position::new(pos.line, line_len));
+        // Get end of current line position
+        let line_len = runtime.buffer_line_len(buffer_id, pos.line).unwrap_or(0);
+        let insert_pos = Position::new(pos.line, line_len);
 
-        // Capture cursor before insert (after move to end of line)
-        let cursor_before = buffer.position();
-
-        // Insert newline + indent
+        // Insert newline + indent at end of current line
         let insert_text = format!("\n{indent}");
-        let edit = buffer.insert(&insert_text);
+        runtime.insert_text(buffer_id, insert_pos, &insert_text);
 
-        // Cursor is now at end of indent on new line
-        let _cursor_after = buffer.position();
-        drop(buffer);
+        // Position cursor at end of indent on new line
+        let indent_len = indent.chars().count();
+        runtime.set_buffer_position(buffer_id, Position::new(pos.line + 1, indent_len));
 
         runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
 
-        // TODO(#394): Return edit action via different mechanism (escape hatch until API supports this)
-        let _ = (buffer_id, edit, cursor_before); // Suppress unused warnings
         CommandResult::Success
     }
 }
@@ -196,52 +176,39 @@ impl CommandHandler for OpenLineAbove {
             return CommandResult::error("No active buffer");
         };
 
-        let kernel = runtime.kernel();
-
-        let Some(buffer_arc) = kernel.buffers.get(buffer_id) else {
-            return CommandResult::error("Buffer not found");
-        };
-
-        // Check autoindent option
-        let autoindent = kernel
+        // Check autoindent option (escape hatch - OptionsApi not yet available)
+        let autoindent = runtime
+            .kernel()
             .options
             .get("autoindent", OptionScopeId::Buffer(buffer_id))
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
 
-        let mut buffer = buffer_arc.write();
-        let pos = buffer.position();
+        let Some(pos) = runtime.buffer_position(buffer_id) else {
+            return CommandResult::error("Failed to get buffer position");
+        };
 
         // Get indent from current line if autoindent is enabled
         let indent = if autoindent {
-            buffer
-                .line(pos.line)
-                .map(|line| get_line_indent(line).to_owned())
+            runtime
+                .buffer_line(buffer_id, pos.line)
+                .map(|line| get_line_indent(&line).to_owned())
                 .unwrap_or_default()
         } else {
             String::new()
         };
 
-        // Move to start of current line
-        buffer.set_position(Position::new(pos.line, 0));
-
-        // Capture cursor before insert
-        let cursor_before = buffer.position();
-
-        // Insert indent + newline before current line content
+        // Insert indent + newline at start of current line
+        let insert_pos = Position::new(pos.line, 0);
         let insert_text = format!("{indent}\n");
-        let edit = buffer.insert(&insert_text);
+        runtime.insert_text(buffer_id, insert_pos, &insert_text);
 
-        // Move cursor to end of indent on the new line (which is now at pos.line)
+        // Position cursor at end of indent on the new line (which is now at pos.line)
         let indent_len = indent.chars().count();
-        buffer.set_position(Position::new(pos.line, indent_len));
-        let _cursor_after = buffer.position();
-        drop(buffer);
+        runtime.set_buffer_position(buffer_id, Position::new(pos.line, indent_len));
 
         runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
 
-        // TODO(#394): Return edit action via different mechanism (escape hatch until API supports this)
-        let _ = (buffer_id, edit, cursor_before); // Suppress unused warnings
         CommandResult::Success
     }
 }

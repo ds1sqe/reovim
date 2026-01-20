@@ -12,8 +12,8 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_driver_session::SessionRuntime,
-    reovim_kernel::api::v1::{CommandId, OptionScopeId, Position, events::CursorMoved},
+    reovim_driver_session::{BufferApi, ChangeTracker, SessionRuntime},
+    reovim_kernel::api::v1::{CommandId, OptionScopeId, Position},
 };
 
 use {super::super::display_lines, crate::ids};
@@ -62,7 +62,11 @@ impl CommandHandler for CursorDisplayDown {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
+        let Some(old_pos) = runtime.buffer_position(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
+
+        let Some(line_count) = runtime.buffer_line_count(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
@@ -73,107 +77,93 @@ impl CommandHandler for CursorDisplayDown {
         let tabstop = get_tabstop(runtime, buffer_id);
 
         let count = args.count().unwrap_or(1);
-        let (old_pos, new_pos) = {
-            let mut buffer = buffer_arc.write();
-            let old_pos = buffer.position();
-            let line_count = buffer.line_count();
 
-            // Get current line content
-            let current_line = buffer.line(old_pos.line).unwrap_or("");
+        // Get current line content
+        let current_line = runtime
+            .buffer_line(buffer_id, old_pos.line)
+            .unwrap_or_default();
 
-            // Use unicode-aware functions for proper tab and CJK handling
-            let display_lines_in_current =
-                display_lines::display_line_count_unicode(current_line, terminal_width, tabstop);
-            let (current_display_line, display_col) = display_lines::display_position_unicode(
-                current_line,
-                old_pos.column,
-                terminal_width,
+        // Use unicode-aware functions for proper tab and CJK handling
+        let display_lines_in_current =
+            display_lines::display_line_count_unicode(&current_line, terminal_width, tabstop);
+        let (current_display_line, display_col) = display_lines::display_position_unicode(
+            &current_line,
+            old_pos.column,
+            terminal_width,
+            tabstop,
+        );
+
+        // Calculate how many display lines we can move within this buffer line
+        let remaining_display_lines =
+            display_lines_in_current.saturating_sub(current_display_line + 1);
+
+        let new_pos = if count <= remaining_display_lines {
+            // Stay on same buffer line, move to next display line
+            let target_display_line = current_display_line + count;
+            let target_display_col = target_display_line * terminal_width + display_col;
+            let new_col = display_lines::buffer_col_from_display_col_unicode(
+                &current_line,
+                target_display_col,
                 tabstop,
             );
+            // Clamp to line length
+            let line_len = current_line.chars().count();
+            let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
+            Position::new(old_pos.line, clamped_col)
+        } else {
+            // Need to move to next buffer line(s)
+            let mut lines_to_move = count - remaining_display_lines;
+            let mut new_line = old_pos.line + 1;
 
-            // Calculate how many display lines we can move within this buffer line
-            let remaining_display_lines =
-                display_lines_in_current.saturating_sub(current_display_line + 1);
+            while lines_to_move > 0 && new_line < line_count {
+                let line = runtime.buffer_line(buffer_id, new_line).unwrap_or_default();
+                let display_count =
+                    display_lines::display_line_count_unicode(&line, terminal_width, tabstop);
 
-            let new_pos = if count <= remaining_display_lines {
-                // Stay on same buffer line, move to next display line
-                let target_display_line = current_display_line + count;
-                let target_display_col = target_display_line * terminal_width + display_col;
-                let new_col = display_lines::buffer_col_from_display_col_unicode(
-                    current_line,
-                    target_display_col,
-                    tabstop,
-                );
-                // Clamp to line length
-                let line_len = current_line.chars().count();
-                let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
-                Position::new(old_pos.line, clamped_col)
-            } else {
-                // Need to move to next buffer line(s)
-                let mut lines_to_move = count - remaining_display_lines;
-                let mut new_line = old_pos.line + 1;
+                if lines_to_move <= display_count {
+                    // Target is within this line
+                    let target_display = lines_to_move - 1;
+                    let target_display_col = target_display * terminal_width + display_col;
+                    let new_col = display_lines::buffer_col_from_display_col_unicode(
+                        &line,
+                        target_display_col,
+                        tabstop,
+                    );
+                    let line_len = line.chars().count();
+                    let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
+                    let target_pos = Position::new(new_line, clamped_col);
+                    runtime.set_buffer_position(buffer_id, target_pos);
 
-                while lines_to_move > 0 && new_line < line_count {
-                    let line = buffer.line(new_line).unwrap_or("");
-                    let display_count =
-                        display_lines::display_line_count_unicode(line, terminal_width, tabstop);
+                    runtime.record_cursor_move(buffer_id);
 
-                    if lines_to_move <= display_count {
-                        // Target is within this line
-                        let target_display = lines_to_move - 1;
-                        let target_display_col = target_display * terminal_width + display_col;
-                        let new_col = display_lines::buffer_col_from_display_col_unicode(
-                            line,
-                            target_display_col,
-                            tabstop,
-                        );
-                        let line_len = line.chars().count();
-                        let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
-                        buffer.set_position(Position::new(new_line, clamped_col));
-                        drop(buffer);
-
-                        runtime.kernel().event_bus.emit(CursorMoved {
-                            buffer_id: buffer_id.as_usize() as u64,
-                            from: (old_pos.line as u32, old_pos.column as u32),
-                            to: (new_line as u32, clamped_col as u32),
-                        });
-
-                        return CommandResult::Success;
-                    }
-                    lines_to_move -= display_count;
-                    new_line += 1;
+                    return CommandResult::Success;
                 }
+                lines_to_move -= display_count;
+                new_line += 1;
+            }
 
-                // Reached end of buffer - go to last line, last display line
-                let last_line = line_count.saturating_sub(1);
-                let last_content = buffer.line(last_line).unwrap_or("");
-                let last_display_count = display_lines::display_line_count_unicode(
-                    last_content,
-                    terminal_width,
-                    tabstop,
-                );
-                let target_display = last_display_count.saturating_sub(1);
-                let target_display_col = target_display * terminal_width + display_col;
-                let new_col = display_lines::buffer_col_from_display_col_unicode(
-                    last_content,
-                    target_display_col,
-                    tabstop,
-                );
-                let line_len = last_content.chars().count();
-                let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
-                Position::new(last_line, clamped_col)
-            };
-
-            buffer.set_position(new_pos);
-            drop(buffer);
-            (old_pos, new_pos)
+            // Reached end of buffer - go to last line, last display line
+            let last_line = line_count.saturating_sub(1);
+            let last_content = runtime
+                .buffer_line(buffer_id, last_line)
+                .unwrap_or_default();
+            let last_display_count =
+                display_lines::display_line_count_unicode(&last_content, terminal_width, tabstop);
+            let target_display = last_display_count.saturating_sub(1);
+            let target_display_col = target_display * terminal_width + display_col;
+            let new_col = display_lines::buffer_col_from_display_col_unicode(
+                &last_content,
+                target_display_col,
+                tabstop,
+            );
+            let line_len = last_content.chars().count();
+            let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
+            Position::new(last_line, clamped_col)
         };
 
-        runtime.kernel().event_bus.emit(CursorMoved {
-            buffer_id: buffer_id.as_usize() as u64,
-            from: (old_pos.line as u32, old_pos.column as u32),
-            to: (new_pos.line as u32, new_pos.column as u32),
-        });
+        runtime.set_buffer_position(buffer_id, new_pos);
+
+        runtime.record_cursor_move(buffer_id);
 
         CommandResult::Success
     }
@@ -212,7 +202,7 @@ impl CommandHandler for CursorDisplayUp {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
+        let Some(old_pos) = runtime.buffer_position(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
@@ -223,92 +213,80 @@ impl CommandHandler for CursorDisplayUp {
         let tabstop = get_tabstop(runtime, buffer_id);
 
         let count = args.count().unwrap_or(1);
-        let (old_pos, new_pos) = {
-            let mut buffer = buffer_arc.write();
-            let old_pos = buffer.position();
 
-            // Get current line content
-            let current_line = buffer.line(old_pos.line).unwrap_or("");
+        // Get current line content
+        let current_line = runtime
+            .buffer_line(buffer_id, old_pos.line)
+            .unwrap_or_default();
 
-            // Use unicode-aware functions for proper tab and CJK handling
-            let (current_display_line, display_col) = display_lines::display_position_unicode(
-                current_line,
-                old_pos.column,
-                terminal_width,
+        // Use unicode-aware functions for proper tab and CJK handling
+        let (current_display_line, display_col) = display_lines::display_position_unicode(
+            &current_line,
+            old_pos.column,
+            terminal_width,
+            tabstop,
+        );
+
+        let new_pos = if count <= current_display_line {
+            // Stay on same buffer line, move to previous display line
+            let target_display_line = current_display_line - count;
+            let target_display_col = target_display_line * terminal_width + display_col;
+            let new_col = display_lines::buffer_col_from_display_col_unicode(
+                &current_line,
+                target_display_col,
                 tabstop,
             );
+            // Clamp to line length
+            let line_len = current_line.chars().count();
+            let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
+            Position::new(old_pos.line, clamped_col)
+        } else {
+            // Need to move to previous buffer line(s)
+            let mut lines_to_move = count - current_display_line;
+            let mut new_line = old_pos.line;
 
-            let new_pos = if count <= current_display_line {
-                // Stay on same buffer line, move to previous display line
-                let target_display_line = current_display_line - count;
-                let target_display_col = target_display_line * terminal_width + display_col;
-                let new_col = display_lines::buffer_col_from_display_col_unicode(
-                    current_line,
-                    target_display_col,
-                    tabstop,
-                );
-                // Clamp to line length
-                let line_len = current_line.chars().count();
-                let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
-                Position::new(old_pos.line, clamped_col)
-            } else {
-                // Need to move to previous buffer line(s)
-                let mut lines_to_move = count - current_display_line;
-                let mut new_line = old_pos.line;
+            while lines_to_move > 0 && new_line > 0 {
+                new_line -= 1;
+                let line = runtime.buffer_line(buffer_id, new_line).unwrap_or_default();
+                let display_count =
+                    display_lines::display_line_count_unicode(&line, terminal_width, tabstop);
 
-                while lines_to_move > 0 && new_line > 0 {
-                    new_line -= 1;
-                    let line = buffer.line(new_line).unwrap_or("");
-                    let display_count =
-                        display_lines::display_line_count_unicode(line, terminal_width, tabstop);
+                if lines_to_move <= display_count {
+                    // Target is within this line (from bottom)
+                    let target_display = display_count - lines_to_move;
+                    let target_display_col = target_display * terminal_width + display_col;
+                    let new_col = display_lines::buffer_col_from_display_col_unicode(
+                        &line,
+                        target_display_col,
+                        tabstop,
+                    );
+                    let line_len = line.chars().count();
+                    let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
+                    let target_pos = Position::new(new_line, clamped_col);
+                    runtime.set_buffer_position(buffer_id, target_pos);
 
-                    if lines_to_move <= display_count {
-                        // Target is within this line (from bottom)
-                        let target_display = display_count - lines_to_move;
-                        let target_display_col = target_display * terminal_width + display_col;
-                        let new_col = display_lines::buffer_col_from_display_col_unicode(
-                            line,
-                            target_display_col,
-                            tabstop,
-                        );
-                        let line_len = line.chars().count();
-                        let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
-                        buffer.set_position(Position::new(new_line, clamped_col));
-                        drop(buffer);
+                    runtime.record_cursor_move(buffer_id);
 
-                        runtime.kernel().event_bus.emit(CursorMoved {
-                            buffer_id: buffer_id.as_usize() as u64,
-                            from: (old_pos.line as u32, old_pos.column as u32),
-                            to: (new_line as u32, clamped_col as u32),
-                        });
-
-                        return CommandResult::Success;
-                    }
-                    lines_to_move -= display_count;
+                    return CommandResult::Success;
                 }
+                lines_to_move -= display_count;
+            }
 
-                // Reached beginning of buffer - go to first line, first display line
-                let first_content = buffer.line(0).unwrap_or("");
-                let new_col = display_lines::buffer_col_from_display_col_unicode(
-                    first_content,
-                    display_col,
-                    tabstop,
-                );
-                let line_len = first_content.chars().count();
-                let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
-                Position::new(0, clamped_col)
-            };
-
-            buffer.set_position(new_pos);
-            drop(buffer);
-            (old_pos, new_pos)
+            // Reached beginning of buffer - go to first line, first display line
+            let first_content = runtime.buffer_line(buffer_id, 0).unwrap_or_default();
+            let new_col = display_lines::buffer_col_from_display_col_unicode(
+                &first_content,
+                display_col,
+                tabstop,
+            );
+            let line_len = first_content.chars().count();
+            let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
+            Position::new(0, clamped_col)
         };
 
-        runtime.kernel().event_bus.emit(CursorMoved {
-            buffer_id: buffer_id.as_usize() as u64,
-            from: (old_pos.line as u32, old_pos.column as u32),
-            to: (new_pos.line as u32, new_pos.column as u32),
-        });
+        runtime.set_buffer_position(buffer_id, new_pos);
+
+        runtime.record_cursor_move(buffer_id);
 
         CommandResult::Success
     }

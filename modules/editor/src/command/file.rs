@@ -9,7 +9,7 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_driver_session::SessionRuntime,
+    reovim_driver_session::{BufferApi, SessionRuntime},
     reovim_kernel::api::v1::CommandId,
 };
 
@@ -68,15 +68,11 @@ impl CommandHandler for WriteBufferCommand {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
+        // Get content and file path from buffer via API
+        let Some(content) = runtime.buffer_content(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
-
-        // Get content and file path from buffer, then release lock
-        let (content, buffer_file_path) = {
-            let buffer = buffer_arc.read();
-            (buffer.content(), buffer.file_path().map(String::from))
-        };
+        let buffer_file_path = runtime.buffer_file_path(buffer_id);
 
         // Try to get path from args first, then from buffer
         let file_path_str = args.string("file").map(String::from).or(buffer_file_path);
@@ -90,8 +86,8 @@ impl CommandHandler for WriteBufferCommand {
         // Write to file via VFS
         match vfs.write(file_path, content.as_bytes()) {
             Ok(()) => {
-                // Clear modified flag
-                buffer_arc.write().set_modified(false);
+                // Clear modified flag via API
+                runtime.set_buffer_modified(buffer_id, false);
                 CommandResult::Success
             }
             Err(e) => CommandResult::error(&format!("Write failed: {e}")),

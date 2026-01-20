@@ -14,8 +14,8 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_driver_session::SessionRuntime,
-    reovim_kernel::api::v1::{CommandId, Position, events::CursorMoved},
+    reovim_driver_session::{BufferApi, ChangeTracker, SessionRuntime},
+    reovim_kernel::api::v1::{CommandId, Position},
 };
 
 use crate::ids;
@@ -49,13 +49,11 @@ impl CommandHandler for CursorUp {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
+        let Some(old_pos) = runtime.buffer_position(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
         let count = args.count().unwrap_or(1);
-        let buffer = buffer_arc.read();
-        let old_pos = buffer.position();
 
         // Calculate new line (saturating sub to handle boundary)
         let new_line = old_pos.line.saturating_sub(count);
@@ -66,10 +64,9 @@ impl CommandHandler for CursorUp {
         }
 
         // Get line length for column clamping
-        let line_len = buffer.line_len(new_line).unwrap_or(0);
+        let line_len = runtime.buffer_line_len(buffer_id, new_line).unwrap_or(0);
         let new_col = old_pos.column.min(line_len);
         let new_pos = Position::new(new_line, new_col);
-        drop(buffer);
 
         // In operator-pending mode, return range for the operator
         // j/k motions are linewise
@@ -81,17 +78,10 @@ impl CommandHandler for CursorUp {
         }
 
         // Normal mode: move cursor
-        {
-            let mut buffer = buffer_arc.write();
-            buffer.set_position(new_pos);
-        }
+        runtime.set_buffer_position(buffer_id, new_pos);
 
-        // Emit CursorMoved event (buffer lock released)
-        runtime.kernel().event_bus.emit(CursorMoved {
-            buffer_id: buffer_id.as_usize() as u64,
-            from: (old_pos.line as u32, old_pos.column as u32),
-            to: (new_pos.line as u32, new_pos.column as u32),
-        });
+        // Record cursor move via ChangeTracker
+        runtime.record_cursor_move(buffer_id);
 
         CommandResult::Success
     }
@@ -126,14 +116,14 @@ impl CommandHandler for CursorDown {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
+        let Some(old_pos) = runtime.buffer_position(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
         let count = args.count().unwrap_or(1);
-        let buffer = buffer_arc.read();
-        let old_pos = buffer.position();
-        let line_count = buffer.line_count();
+        let Some(line_count) = runtime.buffer_line_count(buffer_id) else {
+            return CommandResult::error("Buffer not found");
+        };
 
         // Calculate new line (clamped to last line)
         let max_line = line_count.saturating_sub(1);
@@ -145,10 +135,9 @@ impl CommandHandler for CursorDown {
         }
 
         // Get line length for column clamping
-        let line_len = buffer.line_len(new_line).unwrap_or(0);
+        let line_len = runtime.buffer_line_len(buffer_id, new_line).unwrap_or(0);
         let new_col = old_pos.column.min(line_len);
         let new_pos = Position::new(new_line, new_col);
-        drop(buffer);
 
         // In operator-pending mode, return range for the operator
         // j/k motions are linewise
@@ -160,17 +149,10 @@ impl CommandHandler for CursorDown {
         }
 
         // Normal mode: move cursor
-        {
-            let mut buffer = buffer_arc.write();
-            buffer.set_position(new_pos);
-        }
+        runtime.set_buffer_position(buffer_id, new_pos);
 
-        // Emit CursorMoved event (buffer lock released)
-        runtime.kernel().event_bus.emit(CursorMoved {
-            buffer_id: buffer_id.as_usize() as u64,
-            from: (old_pos.line as u32, old_pos.column as u32),
-            to: (new_pos.line as u32, new_pos.column as u32),
-        });
+        // Record cursor move via ChangeTracker
+        runtime.record_cursor_move(buffer_id);
 
         CommandResult::Success
     }
@@ -205,13 +187,11 @@ impl CommandHandler for CursorLeft {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
+        let Some(old_pos) = runtime.buffer_position(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
         let count = args.count().unwrap_or(1);
-        let buffer = buffer_arc.read();
-        let old_pos = buffer.position();
 
         // Calculate new column (saturating sub to handle boundary)
         let new_col = old_pos.column.saturating_sub(count);
@@ -222,7 +202,6 @@ impl CommandHandler for CursorLeft {
         }
 
         let new_pos = Position::new(old_pos.line, new_col);
-        drop(buffer);
 
         // In operator-pending mode, return range for the operator
         // h/l motions are characterwise
@@ -234,17 +213,10 @@ impl CommandHandler for CursorLeft {
         }
 
         // Normal mode: move cursor
-        {
-            let mut buffer = buffer_arc.write();
-            buffer.set_position(new_pos);
-        }
+        runtime.set_buffer_position(buffer_id, new_pos);
 
-        // Emit CursorMoved event (buffer lock released)
-        runtime.kernel().event_bus.emit(CursorMoved {
-            buffer_id: buffer_id.as_usize() as u64,
-            from: (old_pos.line as u32, old_pos.column as u32),
-            to: (new_pos.line as u32, new_pos.column as u32),
-        });
+        // Record cursor move via ChangeTracker
+        runtime.record_cursor_move(buffer_id);
 
         CommandResult::Success
     }
@@ -279,16 +251,16 @@ impl CommandHandler for CursorRight {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
+        let Some(old_pos) = runtime.buffer_position(buffer_id) else {
             return CommandResult::error("Buffer not found");
         };
 
         let count = args.count().unwrap_or(1);
-        let buffer = buffer_arc.read();
-        let old_pos = buffer.position();
 
         // Get current line length for boundary check
-        let line_len = buffer.line_len(old_pos.line).unwrap_or(0);
+        let line_len = runtime
+            .buffer_line_len(buffer_id, old_pos.line)
+            .unwrap_or(0);
 
         // In normal mode, cursor can't go past the last character.
         // For a line of length N, valid columns are 0..N-1.
@@ -304,7 +276,6 @@ impl CommandHandler for CursorRight {
         }
 
         let new_pos = Position::new(old_pos.line, new_col);
-        drop(buffer);
 
         // In operator-pending mode, return range for the operator
         // h/l motions are characterwise
@@ -316,17 +287,10 @@ impl CommandHandler for CursorRight {
         }
 
         // Normal mode: move cursor
-        {
-            let mut buffer = buffer_arc.write();
-            buffer.set_position(new_pos);
-        }
+        runtime.set_buffer_position(buffer_id, new_pos);
 
-        // Emit CursorMoved event (buffer lock released)
-        runtime.kernel().event_bus.emit(CursorMoved {
-            buffer_id: buffer_id.as_usize() as u64,
-            from: (old_pos.line as u32, old_pos.column as u32),
-            to: (new_pos.line as u32, new_pos.column as u32),
-        });
+        // Record cursor move via ChangeTracker
+        runtime.record_cursor_move(buffer_id);
 
         CommandResult::Success
     }

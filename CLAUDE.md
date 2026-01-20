@@ -257,6 +257,24 @@ cargo run -- tui --tcp 127.0.0.1:12521    # Connect to specific server
 - If no issue exists, create one with `gh issue create` before proceeding
 - Reference the issue in commit messages: `type(scope): description (#ISSUE_NUMBER)`
 
+**Self-Contained Issues Policy:**
+- **Every GitHub issue MUST be completely self-contained**
+- A developer reading ONLY the issue must have ALL information needed to implement it
+- **NEVER reference local files** - No "see `tmp/plan.md`", "details in `~/.claude/plans/...`", or "see file X"
+- **NEVER reference plan files** - All relevant plan content must be copied INTO the issue
+- **NEVER use relative file paths** for repo files - No "see `docs/heritage/legacy-memorial.md`"
+- **DO use git blob permalinks** for repo file references:
+  - Get blob URL: `gh browse <file> --commit HEAD` or GitHub UI
+  - Format: `[Description](https://github.com/owner/repo/blob/<commit-sha>/path/to/file.md)`
+  - Permalinks point to a specific version - paths break when files move or change
+- Include in the issue itself:
+  - Full technical context and architecture decisions
+  - Acceptance criteria and test requirements
+  - Code snippets, type definitions, file paths as needed
+  - Any diagrams or examples (use markdown code blocks)
+- **Epics follow the same rule** - Epic descriptions must be self-sufficient, not depend on external docs
+- Local plan files (`tmp/`, `~/.claude/plans/`) are for Claude sessions only, not for issue references
+
 **Issue Title Format:**
 ```
 type: short description

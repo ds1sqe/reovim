@@ -64,10 +64,14 @@ mod changes;
 mod command;
 mod extension;
 mod mode;
+mod register;
 mod window;
 
 // Buffer API
 pub use buffer::{BufferApi, BufferError, Selection, SelectionMode};
+
+// Register API
+pub use register::{RegisterApi, RegisterContent, YankType};
 
 // Change tracking
 pub use changes::{ChangeTracker, StateChanges};

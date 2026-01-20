@@ -9,71 +9,56 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::{SessionRuntime, TransitionContext, api::ModeApi},
-    reovim_kernel::api::v1::{BufferId, CommandId, KernelContext, Position, SelectionMode},
+    reovim_driver_session::{
+        BufferApi, SessionRuntime, TransitionContext,
+        api::{ModeApi, RegisterApi, RegisterContent, Selection, SelectionMode},
+    },
+    reovim_kernel::api::v1::{CommandId, Position},
 };
-
-use crate::operators::{DeleteOperator, Operator, OperatorContext, Range, YankOperator};
 
 use crate::{ids, modes::VimMode};
 
-/// Helper function to get selection range from buffer.
+/// Calculate the expanded range for a selection.
 ///
-/// Returns (range, `cursor_position`) if selection is active, None otherwise.
-pub(super) fn get_selection_range(
-    ctx: &KernelContext,
-    buffer_id: BufferId,
-) -> Option<(Range, Position)> {
-    let buffer_arc = ctx.buffers.get(buffer_id)?;
-    let buffer = buffer_arc.read();
+/// This converts an API Selection into start/end positions suitable for
+/// text extraction and deletion, taking selection mode into account:
+/// - Character mode: Include character at end position
+/// - Line mode: Expand to full lines including trailing newline
+/// - Block mode: Treat as character range (full block support deferred)
+///
+/// Returns (start, end, is_linewise).
+fn expand_selection_range(
+    selection: &Selection,
+    end_line_len: Option<usize>,
+    total_lines: usize,
+) -> (Position, Position, bool) {
+    let start = selection.start;
+    let end = selection.end;
 
-    let selection = buffer.selection();
-    if !selection.is_active() {
-        return None;
-    }
-
-    let cursor = buffer.position();
-    let anchor = selection.anchor;
-    let mode = selection.mode();
-
-    // Normalize: start should be before end
-    let (start, end) = if anchor < cursor {
-        (anchor, cursor)
-    } else {
-        (cursor, anchor)
-    };
-
-    // Get line info for Line mode (must be done before dropping buffer)
-    let end_line_len = buffer.line_len(end.line).unwrap_or(0);
-    let total_lines = buffer.line_count();
-    drop(buffer);
-
-    // Create range based on selection mode
-    let range = match mode {
+    match selection.mode {
         SelectionMode::Character => {
             // Include the character at end position
-            Range::new(start, Position::new(end.line, end.column + 1))
+            (start, Position::new(end.line, end.column + 1), false)
         }
         SelectionMode::Line => {
             // Expand to full lines, including the trailing newline
             let start = Position::new(start.line, 0);
             // For non-last lines, extend to start of next line (includes newline)
             // For last line, end at line length
+            let end_line_len = end_line_len.unwrap_or(0);
             let end = if end.line + 1 < total_lines {
                 Position::new(end.line + 1, 0)
             } else {
                 Position::new(end.line, end_line_len)
             };
-            Range::linewise(start, end)
+            (start, end, true)
         }
         SelectionMode::Block => {
             // Block mode: for now, treat as character range
             // Full block support is deferred
-            Range::new(start, Position::new(end.line, end.column + 1))
+            (start, Position::new(end.line, end.column + 1), false)
         }
-    };
-
-    Some((range, start))
+    }
 }
 
 /// Delete selection (d in visual mode).
@@ -99,33 +84,38 @@ impl CommandHandler for DeleteSelection {
             return CommandResult::error("No active buffer");
         };
 
-        let kernel = runtime.kernel();
-
-        let Some((range, cursor_pos)) = get_selection_range(kernel, buffer_id) else {
+        // Get selection using API
+        let Some(selection) = runtime.selection(buffer_id) else {
             return CommandResult::Success; // No selection - no-op
         };
 
-        // Execute delete operator
-        let delete_op = DeleteOperator;
-        let mut op_ctx = OperatorContext {
-            kernel,
-            buffer_id,
-            register: args.register(),
-            count: 1,
-        };
+        // Get line info for expanding selection
+        let end_line_len = runtime.buffer_line_len(buffer_id, selection.end.line);
+        let total_lines = runtime.buffer_line_count(buffer_id).unwrap_or(1);
 
-        if let Err(e) = delete_op.execute(&mut op_ctx, range) {
-            return CommandResult::error(&format!("Delete failed: {e}"));
+        // Expand selection to deletion range
+        let (start, end, is_linewise) =
+            expand_selection_range(&selection, end_line_len, total_lines);
+        let cursor_pos = start;
+
+        // Extract text for register
+        if let Some(text) = runtime.buffer_text_range(buffer_id, start, end) {
+            let content = if is_linewise {
+                RegisterContent::linewise(&text)
+            } else {
+                RegisterContent::characterwise(&text)
+            };
+            runtime.set_register(args.register(), content);
         }
+
+        // Delete the range
+        runtime.delete_range(buffer_id, start, end);
 
         // Clear selection and set cursor
-        if let Some(buffer_arc) = kernel.buffers.get(buffer_id) {
-            let mut buffer = buffer_arc.write();
-            buffer.selection_mut().clear();
-            buffer.set_position(cursor_pos);
-        }
+        runtime.set_selection(buffer_id, None);
+        runtime.set_buffer_position(buffer_id, cursor_pos);
 
-        // Mode transition to Normal with target ModeId
+        // Mode transition to Normal
         runtime.set_mode(VimMode::NORMAL_ID, TransitionContext::new());
 
         CommandResult::Success
@@ -155,32 +145,33 @@ impl CommandHandler for YankSelection {
             return CommandResult::error("No active buffer");
         };
 
-        let kernel = runtime.kernel();
-
-        let Some((range, _cursor_pos)) = get_selection_range(kernel, buffer_id) else {
+        // Get selection using API
+        let Some(selection) = runtime.selection(buffer_id) else {
             return CommandResult::Success; // No selection - no-op
         };
 
-        // Execute yank operator
-        let yank_op = YankOperator;
-        let mut op_ctx = OperatorContext {
-            kernel,
-            buffer_id,
-            register: args.register(),
-            count: 1,
-        };
+        // Get line info for expanding selection
+        let end_line_len = runtime.buffer_line_len(buffer_id, selection.end.line);
+        let total_lines = runtime.buffer_line_count(buffer_id).unwrap_or(1);
 
-        if let Err(e) = yank_op.execute(&mut op_ctx, range) {
-            return CommandResult::error(&format!("Yank failed: {e}"));
+        // Expand selection to yank range
+        let (start, end, is_linewise) =
+            expand_selection_range(&selection, end_line_len, total_lines);
+
+        // Extract text for register
+        if let Some(text) = runtime.buffer_text_range(buffer_id, start, end) {
+            let content = if is_linewise {
+                RegisterContent::linewise(&text)
+            } else {
+                RegisterContent::characterwise(&text)
+            };
+            runtime.set_register(args.register(), content);
         }
 
-        // Clear selection (yank doesn't move cursor in Vim, but returns to normal)
-        if let Some(buffer_arc) = kernel.buffers.get(buffer_id) {
-            let mut buffer = buffer_arc.write();
-            buffer.selection_mut().clear();
-        }
+        // Clear selection (yank doesn't delete text or move cursor)
+        runtime.set_selection(buffer_id, None);
 
-        // Mode transition to Normal with target ModeId
+        // Mode transition to Normal
         runtime.set_mode(VimMode::NORMAL_ID, TransitionContext::new());
 
         CommandResult::Success
@@ -209,33 +200,38 @@ impl CommandHandler for ChangeSelection {
             return CommandResult::error("No active buffer");
         };
 
-        let kernel = runtime.kernel();
-
-        let Some((range, cursor_pos)) = get_selection_range(kernel, buffer_id) else {
+        // Get selection using API
+        let Some(selection) = runtime.selection(buffer_id) else {
             return CommandResult::Success; // No selection - no-op
         };
 
-        // Execute delete operator (change = delete + insert mode)
-        let delete_op = DeleteOperator;
-        let mut op_ctx = OperatorContext {
-            kernel,
-            buffer_id,
-            register: args.register(),
-            count: 1,
-        };
+        // Get line info for expanding selection
+        let end_line_len = runtime.buffer_line_len(buffer_id, selection.end.line);
+        let total_lines = runtime.buffer_line_count(buffer_id).unwrap_or(1);
 
-        if let Err(e) = delete_op.execute(&mut op_ctx, range) {
-            return CommandResult::error(&format!("Change failed: {e}"));
+        // Expand selection to deletion range
+        let (start, end, is_linewise) =
+            expand_selection_range(&selection, end_line_len, total_lines);
+        let cursor_pos = start;
+
+        // Extract text for register (change stores deleted text like delete)
+        if let Some(text) = runtime.buffer_text_range(buffer_id, start, end) {
+            let content = if is_linewise {
+                RegisterContent::linewise(&text)
+            } else {
+                RegisterContent::characterwise(&text)
+            };
+            runtime.set_register(args.register(), content);
         }
+
+        // Delete the range
+        runtime.delete_range(buffer_id, start, end);
 
         // Clear selection and set cursor
-        if let Some(buffer_arc) = kernel.buffers.get(buffer_id) {
-            let mut buffer = buffer_arc.write();
-            buffer.selection_mut().clear();
-            buffer.set_position(cursor_pos);
-        }
+        runtime.set_selection(buffer_id, None);
+        runtime.set_buffer_position(buffer_id, cursor_pos);
 
-        // Mode transition to Insert with target ModeId
+        // Mode transition to Insert (change = delete + insert mode)
         runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
 
         CommandResult::Success
@@ -265,38 +261,25 @@ impl CommandHandler for IndentSelection {
             return CommandResult::error("No active buffer");
         };
 
-        let kernel = runtime.kernel();
-
-        let Some(buffer_arc) = kernel.buffers.get(buffer_id) else {
-            return CommandResult::error("Buffer not found");
+        // Get selection to determine line range
+        let Some(selection) = runtime.selection(buffer_id) else {
+            return CommandResult::Success; // No selection - no-op
         };
 
-        let mut buffer = buffer_arc.write();
-        let selection = buffer.selection();
-
-        if !selection.is_active() {
-            return CommandResult::Success; // No selection - no-op
-        }
-
-        let cursor = buffer.position();
-        let anchor = selection.anchor;
-
-        // Get line range
-        let start_line = anchor.line.min(cursor.line);
-        let end_line = anchor.line.max(cursor.line);
+        // Get line range from normalized selection
+        let start_line = selection.start.line;
+        let end_line = selection.end.line;
 
         // Indent each line (add tab/spaces at start)
         // Using 4 spaces as default indent
         let indent = "    ";
         for line_idx in start_line..=end_line {
-            buffer.insert_at(Position::new(line_idx, 0), indent);
+            runtime.insert_text(buffer_id, Position::new(line_idx, 0), indent);
         }
 
         // Clear selection
-        buffer.selection_mut().clear();
+        runtime.set_selection(buffer_id, None);
 
-        // Mode transition to Normal is handled by event loop
-        drop(buffer);
         runtime.set_mode(VimMode::NORMAL_ID, TransitionContext::new());
 
         CommandResult::Success
@@ -326,29 +309,18 @@ impl CommandHandler for DedentSelection {
             return CommandResult::error("No active buffer");
         };
 
-        let kernel = runtime.kernel();
-
-        let Some(buffer_arc) = kernel.buffers.get(buffer_id) else {
-            return CommandResult::error("Buffer not found");
+        // Get selection to determine line range
+        let Some(selection) = runtime.selection(buffer_id) else {
+            return CommandResult::Success; // No selection - no-op
         };
 
-        let mut buffer = buffer_arc.write();
-        let selection = buffer.selection();
-
-        if !selection.is_active() {
-            return CommandResult::Success; // No selection - no-op
-        }
-
-        let cursor = buffer.position();
-        let anchor = selection.anchor;
-
-        // Get line range
-        let start_line = anchor.line.min(cursor.line);
-        let end_line = anchor.line.max(cursor.line);
+        // Get line range from normalized selection
+        let start_line = selection.start.line;
+        let end_line = selection.end.line;
 
         // Dedent each line (remove leading whitespace, up to 4 chars or one tab)
         for line_idx in start_line..=end_line {
-            if let Some(line) = buffer.lines().get(line_idx) {
+            if let Some(line) = runtime.buffer_line(buffer_id, line_idx) {
                 let mut chars_to_remove = 0;
                 for (i, c) in line.chars().enumerate() {
                     if c == '\t' {
@@ -361,16 +333,16 @@ impl CommandHandler for DedentSelection {
                     }
                 }
                 if chars_to_remove > 0 {
-                    buffer.delete_at(Position::new(line_idx, 0), chars_to_remove);
+                    let start = Position::new(line_idx, 0);
+                    let end = Position::new(line_idx, chars_to_remove);
+                    runtime.delete_range(buffer_id, start, end);
                 }
             }
         }
 
         // Clear selection
-        buffer.selection_mut().clear();
+        runtime.set_selection(buffer_id, None);
 
-        // Mode transition to Normal is handled by event loop
-        drop(buffer);
         runtime.set_mode(VimMode::NORMAL_ID, TransitionContext::new());
 
         CommandResult::Success

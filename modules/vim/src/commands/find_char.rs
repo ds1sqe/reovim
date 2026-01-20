@@ -22,7 +22,7 @@
 
 use {
     reovim_driver_command::{ArgValue, Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::SessionRuntime,
+    reovim_driver_session::{BufferApi, SessionRuntime},
     reovim_kernel::api::v1::{CommandId, Motion, MotionEngine},
 };
 
@@ -75,10 +75,6 @@ impl CommandHandler for ExecuteFindChar {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(buffer_arc) = runtime.kernel().buffers.get(buffer_id) else {
-            return CommandResult::error("Buffer not found");
-        };
-
         // Build the find-char motion
         let motion = Motion::FindChar {
             char: target_char,
@@ -90,20 +86,22 @@ impl CommandHandler for ExecuteFindChar {
             till: !inclusive,
         };
 
-        // Calculate motion target
-        let buffer = buffer_arc.read();
-        let target = MotionEngine::calculate(&buffer, buffer.cursor(), motion, count);
-        drop(buffer);
+        // Calculate motion target using with_buffer_read callback
+        let target = runtime.with_buffer_read(buffer_id, |buffer| {
+            MotionEngine::calculate(buffer, buffer.cursor(), motion, count)
+        });
+
+        let Some(target) = target else {
+            return CommandResult::error("Buffer not found");
+        };
 
         // Apply motion if target found
         if let Some(pos) = target {
-            buffer_arc.write().set_position(pos);
-            CommandResult::Success
-        } else {
-            // Character not found - this is not an error, just don't move
-            // (Vim behavior: cursor stays in place, no beep)
-            CommandResult::Success
+            runtime.set_buffer_position(buffer_id, pos);
         }
+        // Character not found - this is not an error, just don't move
+        // (Vim behavior: cursor stays in place, no beep)
+        CommandResult::Success
     }
 }
 

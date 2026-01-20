@@ -9,11 +9,8 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_driver_session::SessionRuntime,
-    reovim_kernel::api::v1::{
-        CommandId, Cursor, Direction, KernelContext, Motion, MotionEngine, WordBoundary,
-        events::CursorMoved,
-    },
+    reovim_driver_session::{BufferApi, ChangeTracker, SessionRuntime},
+    reovim_kernel::api::v1::{CommandId, Cursor, Direction, Motion, MotionEngine, WordBoundary},
 };
 
 use crate::ids;
@@ -28,7 +25,7 @@ use crate::ids;
 /// Word motions are characterwise.
 #[allow(clippy::cast_possible_truncation)]
 fn execute_word_motion(
-    ctx: &KernelContext,
+    runtime: &mut SessionRuntime<'_>,
     args: &CommandContext,
     direction: Direction,
     boundary: WordBoundary,
@@ -38,10 +35,6 @@ fn execute_word_motion(
         return CommandResult::error("No active buffer");
     };
 
-    let Some(buffer_arc) = ctx.buffers.get(buffer_id) else {
-        return CommandResult::error("Buffer not found");
-    };
-
     let count = args.count().unwrap_or(1);
     let motion = Motion::Word {
         direction,
@@ -49,21 +42,26 @@ fn execute_word_motion(
         end,
     };
 
-    let buffer = buffer_arc.read();
-    let cursor = Cursor::new(buffer.position());
-    let old_pos = cursor.position;
+    // Calculate motion using with_buffer_read callback
+    let motion_result = runtime.with_buffer_read(buffer_id, |buffer| {
+        let cursor = Cursor::new(buffer.position());
+        let old_pos = cursor.position;
+        let new_pos = MotionEngine::calculate(buffer, &cursor, motion, count);
+        (old_pos, new_pos)
+    });
 
-    let Some(new_pos) = MotionEngine::calculate(&buffer, &cursor, motion, count) else {
-        drop(buffer);
-        return CommandResult::Success; // No-op if motion fails
+    let Some((old_pos, Some(new_pos))) = motion_result else {
+        // Buffer not found or motion calculation failed
+        return if motion_result.is_none() {
+            CommandResult::error("Buffer not found")
+        } else {
+            CommandResult::Success // No-op if motion fails
+        };
     };
 
     if new_pos == old_pos {
-        drop(buffer);
         return CommandResult::Success; // No movement
     }
-
-    drop(buffer);
 
     // In operator-pending mode, return range for the operator
     if args.is_operator_pending() {
@@ -79,18 +77,11 @@ fn execute_word_motion(
         return CommandResult::Success;
     }
 
-    // Normal mode: move cursor
-    {
-        let mut buffer = buffer_arc.write();
-        buffer.set_position(new_pos);
-    }
+    // Normal mode: move cursor via BufferApi
+    runtime.set_buffer_position(buffer_id, new_pos);
 
-    // Emit CursorMoved event
-    ctx.event_bus.emit(CursorMoved {
-        buffer_id: buffer_id.as_usize() as u64,
-        from: (old_pos.line as u32, old_pos.column as u32),
-        to: (new_pos.line as u32, new_pos.column as u32),
-    });
+    // Record cursor move via ChangeTracker
+    runtime.record_cursor_move(buffer_id);
 
     CommandResult::Success
 }
@@ -123,7 +114,7 @@ impl Command for WordForward {
 
 impl CommandHandler for WordForward {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        execute_word_motion(runtime.kernel(), args, Direction::Forward, WordBoundary::Word, false)
+        execute_word_motion(runtime, args, Direction::Forward, WordBoundary::Word, false)
     }
 }
 
@@ -155,7 +146,7 @@ impl Command for WordBackward {
 
 impl CommandHandler for WordBackward {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        execute_word_motion(runtime.kernel(), args, Direction::Backward, WordBoundary::Word, false)
+        execute_word_motion(runtime, args, Direction::Backward, WordBoundary::Word, false)
     }
 }
 
@@ -187,7 +178,7 @@ impl Command for WordEnd {
 
 impl CommandHandler for WordEnd {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        execute_word_motion(runtime.kernel(), args, Direction::Forward, WordBoundary::Word, true)
+        execute_word_motion(runtime, args, Direction::Forward, WordBoundary::Word, true)
     }
 }
 
@@ -219,13 +210,7 @@ impl Command for WordForwardBig {
 
 impl CommandHandler for WordForwardBig {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        execute_word_motion(
-            runtime.kernel(),
-            args,
-            Direction::Forward,
-            WordBoundary::BigWord,
-            false,
-        )
+        execute_word_motion(runtime, args, Direction::Forward, WordBoundary::BigWord, false)
     }
 }
 
@@ -257,13 +242,7 @@ impl Command for WordBackwardBig {
 
 impl CommandHandler for WordBackwardBig {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        execute_word_motion(
-            runtime.kernel(),
-            args,
-            Direction::Backward,
-            WordBoundary::BigWord,
-            false,
-        )
+        execute_word_motion(runtime, args, Direction::Backward, WordBoundary::BigWord, false)
     }
 }
 
@@ -295,7 +274,7 @@ impl Command for WordEndBig {
 
 impl CommandHandler for WordEndBig {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        execute_word_motion(runtime.kernel(), args, Direction::Forward, WordBoundary::BigWord, true)
+        execute_word_motion(runtime, args, Direction::Forward, WordBoundary::BigWord, true)
     }
 }
 
@@ -327,7 +306,7 @@ impl Command for WordEndBackward {
 
 impl CommandHandler for WordEndBackward {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        execute_word_motion(runtime.kernel(), args, Direction::Backward, WordBoundary::Word, true)
+        execute_word_motion(runtime, args, Direction::Backward, WordBoundary::Word, true)
     }
 }
 
@@ -359,13 +338,7 @@ impl Command for WordEndBackwardBig {
 
 impl CommandHandler for WordEndBackwardBig {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        execute_word_motion(
-            runtime.kernel(),
-            args,
-            Direction::Backward,
-            WordBoundary::BigWord,
-            true,
-        )
+        execute_word_motion(runtime, args, Direction::Backward, WordBoundary::BigWord, true)
     }
 }
 
@@ -399,7 +372,7 @@ mod tests {
         reovim_driver_command::ArgValue,
         reovim_driver_session::{Session, SessionId, SessionRuntime, api::CommandExecutor},
         reovim_kernel::api::{
-            ModeId, ModuleId,
+            KernelContext, ModeId, ModuleId,
             v1::{
                 Buffer, BufferError, BufferId, BufferManager, EventBus, MarkBank, OptionRegistry,
                 Position, RegisterBank, RwLock, TextObjectEngine,

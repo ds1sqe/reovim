@@ -57,6 +57,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Build workspace
         run: cargo build --workspace
+      - name: Build test modules with FFI symbols
+        run: cargo build -p reovim-module-hot-reload-demo --features dynamic
       - name: Run tests
         run: cargo test --workspace
       - name: Run doc tests
