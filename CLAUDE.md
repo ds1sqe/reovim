@@ -360,7 +360,7 @@ When creating PRs with `gh pr create`, do NOT add promotional footers like "Gene
 **Launch Sequence (Start of Work):**
 
 1. **Gather Context**:
-   - Check Epic #150 and related issues via `gh issue view 150` and linked issues
+   - Check Epic and related issues via `gh issue view {Number}` and linked issues
    - Read `tmp/{ISSUE}/*` for context from previous sessions
    - Check recent git logs: `git log --oneline -20`
    - Launch `voyager` agent for codebase understanding if needed
@@ -379,7 +379,7 @@ When creating PRs with `gh pr create`, do NOT add promotional footers like "Gene
      - Acceptance criteria and test targets
 
 4. **Countdown - Go Poll Round 1**:
-   - Launch review agents (mission-control, telemetry, flight-director) in `countdown` mode with `model: "haiku"`
+   - Launch review agents (mission-control, telemetry, flight-director) in `countdown` mode with `model: {model}`
    - Each agent reviews plan for enhancements and missing details
    - Incorporate all feedback into plan
 
@@ -433,7 +433,7 @@ Use `/final-approach [issue]` or run manually:
 
    **Grading:** A+ (exceeds) / A (go for landing) / B (minor fixes) / C (significant) / F (no-go)
    - Each agent writes to `tmp/{ISSUE}/landing/round-{N}/{agent}.md`
-   - **Must achieve A or A+ from ALL THREE agents**
+   - **Must achieve A+ from ALL THREE agents**
    - If ANY agent reports NO-GO → fix issues → go back to Step 2
    - Loop until all agents report GO
 
@@ -480,7 +480,7 @@ Custom agents and skills in `.claude/` provide specialized workflows for this pr
 | `voyager` | Sonnet | Codebase exploration, dependency tracing |
 | `mission-control` | Haiku | Plan compliance, documentation review |
 | `telemetry` | Haiku | Test coverage & quality review |
-| `flight-director` | Haiku | Unix philosophy & code quality review |
+| `flight-director` | Sonnet | Unix philosophy & code quality review |
 
 **Agent Modes (review agents):**
 - **countdown**: T-minus checks before launch (validate plan)
@@ -496,7 +496,7 @@ Custom agents and skills in `.claude/` provide specialized workflows for this pr
 
 | Skill | Command | Purpose |
 |-------|---------|---------|
-| `countdown` | `/countdown [issue]` | Pre-implementation validation with oracle (Opus) + Go Poll (Haiku) |
+| `countdown` | `/countdown [issue]` | Pre-implementation validation with oracle (Opus) + Go Poll  |
 | `final-approach` | `/final-approach [issue]` | Landing sequence with Go Poll (3 agents in reentry mode) |
 
 ### Agent Files

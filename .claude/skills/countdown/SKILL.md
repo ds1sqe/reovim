@@ -17,21 +17,21 @@ The pre-launch sequence for validating a plan before implementation begins.
 
 Countdown is the pre-implementation workflow:
 
-1. **Plan** - Oracle (Opus) creates/refines implementation plan
-2. **Go Poll** - Review agents validate the plan (Haiku)
+1. **Plan** - Oracle creates/refines implementation plan
+2. **Go Poll** - Review agents validate the plan
 3. **Iterate** - Fix issues until all agents report GO
 4. **Launch** - Begin implementation only when validated
 
 ## Sequence
 
-### Phase 1: Oracle Planning (Opus)
+### Phase 1: Oracle Planning
 
 Oracle creates the implementation plan at:
 ```
 ~/.claude/plans/reovim/{issue_number}-{subject}.md
 ```
 
-### Phase 2: Go Poll (Haiku)
+### Phase 2: Go Poll
 
 Review agents validate the plan:
 
@@ -39,11 +39,11 @@ Review agents validate the plan:
 |-------|-------|-------|
 | **mission-control** | Haiku | Plan completeness, phases, acceptance criteria |
 | **telemetry** | Haiku | Test strategy, coverage targets |
-| **flight-director** | Haiku | Architecture, Unix philosophy, layer boundaries |
+| **flight-director** | Sonnet | Architecture, Unix philosophy, layer boundaries |
 
 ## A+ Skip Rule
 
-**If an agent gives A+ in round N, skip that agent in round N+1.**
+**If an agent gives ALL A+ in round N, skip that agent in round N+1.**
 
 ## Output Structure
 
@@ -68,9 +68,9 @@ tmp/{ISSUE}/
 
 ## Success Criteria
 
-**Must achieve A or A+ from ALL THREE review agents** before implementation.
+**Must achieve A+ from ALL THREE review agents** before implementation.
 
-If any agent gives below A:
+If any agent gives below A+:
 1. Refine the plan based on feedback
 2. Re-run `/countdown`
 3. Repeat until all agents report "go"
@@ -168,6 +168,8 @@ End with: "Flight Director: GO / NO-GO" and grade (A+/A/B/C/F).
 
 CRITICAL:
 - Launch `oracle` with `model: "opus"` for planning
-- Launch review agents with `model: "haiku"` for validation
-- Skip agents that received A+ in previous rounds
+- Launch review agents with `model: "{model}"` for validation
+  - `model: "haiku"` for fast, efficient reviews
+  - `model: "sonnet"` for comprehensive, precise reviews
+- Skip agents that received ALL A+ in previous rounds
 - Do NOT start implementation until all agents report GO
