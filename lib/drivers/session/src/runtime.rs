@@ -578,7 +578,7 @@ impl ChangeTracker for SessionRuntime<'_> {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::types::SessionId, reovim_kernel::api::v1::ModuleId};
+    use {super::*, crate::types::ClientId, reovim_kernel::api::v1::ModuleId};
 
     fn test_mode() -> ModeId {
         ModeId::new(ModuleId::new("test"), "normal")
@@ -603,7 +603,7 @@ mod tests {
 
     #[test]
     fn test_mode_api() {
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
 
@@ -635,7 +635,7 @@ mod tests {
 
     #[test]
     fn test_window_api() {
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
 
@@ -682,7 +682,7 @@ mod tests {
             }
         }
 
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
 
@@ -702,7 +702,7 @@ mod tests {
 
     #[test]
     fn test_change_tracking() {
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
 

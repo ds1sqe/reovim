@@ -149,7 +149,7 @@ mod tests {
     use {
         super::*,
         reovim_driver_command::CommandContext,
-        reovim_driver_session::{Session, SessionId, api::CommandExecutor},
+        reovim_driver_session::{ClientId, Session, api::CommandExecutor},
         reovim_kernel::api::v1::{CommandId as KernelCommandId, KernelContext, ModeId, ModuleId},
     };
 
@@ -204,7 +204,7 @@ mod tests {
     fn test_enter_delete_operator_returns_success() {
         // Commands now return Success - actual operator-pending logic
         // will be handled by the vim resolver via SessionRuntime (see #394)
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
@@ -215,7 +215,7 @@ mod tests {
 
     #[test]
     fn test_enter_yank_operator_returns_success() {
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
@@ -226,7 +226,7 @@ mod tests {
 
     #[test]
     fn test_enter_change_operator_returns_success() {
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
@@ -237,7 +237,7 @@ mod tests {
 
     #[test]
     fn test_enter_indent_operator_returns_success() {
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
@@ -248,7 +248,7 @@ mod tests {
 
     #[test]
     fn test_enter_dedent_operator_returns_success() {
-        let mut session = Session::new(SessionId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);

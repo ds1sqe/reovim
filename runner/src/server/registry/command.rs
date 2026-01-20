@@ -148,7 +148,7 @@ impl CommandRegistry {
         app: &mut AppState,
         args: &CommandContext,
     ) -> Option<CommandResult> {
-        use reovim_driver_session::{Session, SessionId, SessionRuntime, Window};
+        use reovim_driver_session::{ClientId, Session, SessionRuntime, Window};
 
         profile_scope!("command_execute", "runner::command");
 
@@ -161,7 +161,7 @@ impl CommandRegistry {
 
             // Create a temporary Session from AppState fields for SessionRuntime
             // This bridges the AppState/Session gap during migration
-            let mut session = Session::new(SessionId::new(1), app.mode_stack.home().clone());
+            let mut session = Session::new(ClientId::new(1), app.mode_stack.home().clone());
 
             // Copy mode stack (excluding home mode which is already set)
             for mode in app.mode_stack.as_slice().iter().skip(1) {

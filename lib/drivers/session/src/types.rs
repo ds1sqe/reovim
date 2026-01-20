@@ -7,7 +7,7 @@
 //! # Design
 //!
 //! - **Session**: Complete per-client state container
-//! - **`SessionId`**: Unique session identifier
+//! - **`ClientId`**: Unique client connection identifier
 //! - **Viewport**: Client viewport dimensions and scroll
 //! - **Window**: Single window with buffer reference
 //! - **`WindowLayout`**: Window arrangement for a session
@@ -16,15 +16,21 @@ use reovim_kernel::api::v1::{BufferId, ModeId, ModeStack, Position, WindowId};
 
 use crate::extension::ExtensionMap;
 
-/// Unique session identifier.
+/// Unique client connection identifier.
 ///
-/// Sessions are identified by a monotonically increasing ID assigned
-/// by the server when the client connects.
+/// Each terminal/TUI that connects to the server gets a unique `ClientId`.
+/// IDs are monotonically increasing and not reused after disconnect.
+///
+/// # Semantics
+///
+/// - **Client**: Individual connection to the server (like tmux clients)
+/// - **Session**: Named editing context (defined in runner layer)
+/// - Multiple clients can attach to the same session
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct SessionId(pub usize);
+pub struct ClientId(pub usize);
 
-impl SessionId {
-    /// Create a new session ID.
+impl ClientId {
+    /// Create a new client ID.
     #[must_use]
     pub const fn new(id: usize) -> Self {
         Self(id)
@@ -37,9 +43,9 @@ impl SessionId {
     }
 }
 
-impl std::fmt::Display for SessionId {
+impl std::fmt::Display for ClientId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "session-{}", self.0)
+        write!(f, "client-{}", self.0)
     }
 }
 
@@ -314,7 +320,7 @@ impl KeySequence {
 /// Complete session (server-side storage for one client).
 ///
 /// Each connected client has its own session with independent state.
-/// Sessions are identified by `SessionId` and contain:
+/// Sessions are identified by `ClientId` and contain:
 ///
 /// - Windows and their layouts
 /// - Mode stack (current editing mode)
@@ -322,8 +328,8 @@ impl KeySequence {
 /// - Module-provided extensions (policy state)
 #[derive(Debug)]
 pub struct Session {
-    /// Unique session identifier.
-    pub id: SessionId,
+    /// Unique client identifier.
+    pub id: ClientId,
     /// Window layout (per-session windows).
     pub windows: WindowLayout,
     /// Mode stack (current mode on top).
@@ -339,7 +345,7 @@ impl Session {
     ///
     /// The home mode is the bottom of the mode stack and cannot be popped.
     #[must_use]
-    pub fn new(id: SessionId, home_mode: ModeId) -> Self {
+    pub fn new(id: ClientId, home_mode: ModeId) -> Self {
         Self {
             id,
             windows: WindowLayout::empty(),
@@ -371,10 +377,10 @@ mod tests {
     }
 
     #[test]
-    fn test_session_id() {
-        let id = SessionId::new(42);
+    fn test_client_id() {
+        let id = ClientId::new(42);
         assert_eq!(id.as_usize(), 42);
-        assert_eq!(id.to_string(), "session-42");
+        assert_eq!(id.to_string(), "client-42");
     }
 
     #[test]
@@ -484,7 +490,7 @@ mod tests {
     #[test]
     fn test_session_new() {
         let mode = test_mode();
-        let session = Session::new(SessionId::new(1), mode.clone());
+        let session = Session::new(ClientId::new(1), mode.clone());
 
         assert_eq!(session.id.as_usize(), 1);
         assert_eq!(session.current_mode(), &mode);
@@ -496,7 +502,7 @@ mod tests {
     #[test]
     fn test_session_active_buffer() {
         let mode = test_mode();
-        let mut session = Session::new(SessionId::new(1), mode);
+        let mut session = Session::new(ClientId::new(1), mode);
 
         assert!(session.active_buffer().is_none());
 

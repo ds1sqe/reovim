@@ -47,6 +47,13 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- Clarified Session vs Client types with tmux-like semantics (#405)
+  - Renamed `driver::SessionId(usize)` to `ClientId(usize)` - identifies client connections
+  - `runner::SessionId(Arc<str>)` unchanged - identifies named editing sessions
+  - Display format updated: "client-{id}" (was "session-{id}")
+  - Clear documentation explaining multi-client session semantics
+  - 15 files updated across driver, modules, and runner layers
+
 - Unified ID types to `usize` with standardized accessor (#412)
   - All numeric ID types (`WindowId`, `SessionId`, `ClientId`) converted from `u64` to `usize`
   - Standardized accessor method: `as_usize()` replaces `raw()`, `as_u64()`, `value()`

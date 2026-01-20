@@ -6,7 +6,7 @@
 //!
 //! This driver provides:
 //!
-//! - **Session types**: Per-client state ([`Session`], [`SessionId`], [`Window`])
+//! - **Session types**: Per-client state ([`Session`], [`ClientId`], [`Window`])
 //! - **Mode lifecycle**: Runtime mode hooks ([`SessionMode`], [`ModeError`])
 //! - **Extension system**: Module per-session state ([`SessionExtension`], [`ExtensionMap`])
 //! - **Empty session handling**: Startup behavior ([`EmptySessionHandler`])
@@ -90,7 +90,7 @@ pub use extension::{ExtensionMap, SessionExtension};
 pub use mode::{ModeError, SessionMode};
 
 // Session types
-pub use types::{CursorPosition, KeySequence, Session, SessionId, Viewport, Window, WindowLayout};
+pub use types::{ClientId, CursorPosition, KeySequence, Session, Viewport, Window, WindowLayout};
 
 // Session context
 pub use context::SessionContext;

@@ -28,7 +28,7 @@
 
 use {
     crate::{
-        Session, SessionId,
+        ClientId, Session,
         api::{CommandExecutor, StateChanges},
         runtime::SessionRuntime,
     },
@@ -82,7 +82,7 @@ impl TestSessionRuntime {
     pub fn new() -> Self {
         let home_mode = ModeId::new(ModuleId::new("test"), "normal");
         Self {
-            session: Session::new(SessionId::new(1), home_mode),
+            session: Session::new(ClientId::new(1), home_mode),
             kernel: Self::make_test_kernel(),
             executor: StubExecutor,
             changes: StateChanges::new(),
@@ -93,7 +93,7 @@ impl TestSessionRuntime {
     #[must_use]
     pub fn with_home_mode(mode: ModeId) -> Self {
         Self {
-            session: Session::new(SessionId::new(1), mode),
+            session: Session::new(ClientId::new(1), mode),
             kernel: Self::make_test_kernel(),
             executor: StubExecutor,
             changes: StateChanges::new(),
