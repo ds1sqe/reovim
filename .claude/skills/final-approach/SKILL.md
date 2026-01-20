@@ -19,7 +19,7 @@ Final Approach is the end-of-mission workflow:
 
 1. **Sync** - Fetch and rebase with upstream
 2. **Check** - Run `./scripts/check.sh`
-3. **Go Poll** - Review agents report status in `reentry` mode (Haiku)
+3. **Go Poll** - Review agents report status in `reentry` mode
 4. **Landing Doc** - Create summary document
 5. **Commit** - Ready for merge
 
@@ -35,7 +35,7 @@ The Go Poll launches review agents (all use Haiku model for speed):
 
 ## A+ Skip Rule
 
-**If an agent gives A+ in round N, skip that agent in round N+1.**
+**If an agent gives ALL A+ in round N, skip that agent in round N+1.**
 
 Example:
 ```
@@ -77,7 +77,7 @@ tmp/{ISSUE}/
 
 ## Success Criteria
 
-**Must achieve A or A+ from ALL THREE agents** before landing.
+**Must achieve A+ from ALL THREE agents** before landing.
 
 If any agent gives below A:
 1. Fix all identified issues
@@ -93,9 +93,9 @@ When invoked, you MUST:
 2. Determine the round number (start at 1, increment for re-reviews)
 3. Check previous round grades - skip agents with A+ from prior rounds
 4. Create the output directory: `tmp/{ISSUE}/landing/round-{N}/`
-5. Launch agents IN PARALLEL using Task tool with `model: "haiku"`
+5. Launch agents IN PARALLEL using Task tool with `model: "haiku/sonnet"`
 6. After all agents complete, summarize the grades in a table
-7. If any grade is below A, list the blocking issues that must be fixed
+7. If any grade is below A +, list the blocking issues that must be fixed
 
 Example agent prompts:
 
@@ -157,4 +157,5 @@ End with: "Flight Director: GO / NO-GO" and grade (A+/A/B/C/F).
 CRITICAL: Launch agents using the Task tool with:
 - `subagent_type` set to the agent name (mission-control, telemetry, flight-director)
 - `model: "haiku"` for fast, efficient reviews
+- `model: "sonnet"` for comprehensive, precise reviews
 - Skip agents that received A+ in previous rounds
