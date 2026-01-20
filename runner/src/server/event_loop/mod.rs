@@ -1,12 +1,17 @@
 //! Main event loop for the runner.
 //!
-//! The event loop is the heart of the runner - it reads key events and
-//! dispatches them to resolvers for handling.
+//! The event loop uses an **emit + process pattern** for key handling:
+//!
+//! 1. **Emit**: `handle_key()` converts and queues the key (non-blocking)
+//! 2. **Process**: `process_events()` resolves with full `&mut self` access
+//!
+//! This pattern avoids borrow checker issues while maintaining clear
+//! separation between event dispatch (mechanism) and key resolution (policy).
 //!
 //! # Design Philosophy
 //!
 //! Following the "mechanism vs policy" principle:
-//! - **Mechanism** (this module): Key dispatch, command execution
+//! - **Mechanism** (this module): Key dispatch via `EventBus`
 //! - **Policy** (modules): Resolvers decide what to do with keys
 //!
 //! The event loop contains NO business logic - resolvers handle everything.
@@ -29,7 +34,7 @@ use {
     },
     reovim_kernel::{
         api::v1::{
-            EventBus, ModeId, Subscription,
+            EventBus, EventSender, ModeId,
             events::{
                 ClientId as KernelClientId, KeyCode, KeyInput, KeyPressEvent, Modifiers, SessionId,
             },
@@ -38,7 +43,14 @@ use {
     },
 };
 
-use handlers::register_key_handler;
+/// Channel buffer capacity for key events.
+///
+/// 1024 is chosen because:
+/// - Far exceeds typical key input rate (< 100 keys/sec)
+/// - Provides buffer for burst input (macros, paste)
+/// - Memory overhead is minimal (`KeyPressEvent` is ~32 bytes)
+/// - Synchronous processing ensures queue rarely exceeds 1
+const KEY_EVENT_CHANNEL_CAPACITY: usize = 1024;
 
 use super::{
     AppState,
@@ -49,14 +61,20 @@ use reovim_module_editor::ResolverRegistry;
 
 /// Main event loop for the runner.
 ///
-/// Dispatches keys to `EventBus` for handler processing.
-/// Uses event-driven architecture for loosely-coupled key handling.
+/// Uses **emit + process pattern** for key handling (#409):
 ///
-/// # `EventBus` Integration (#408)
+/// 1. `handle_key()` - Converts key and emits to channel (non-blocking)
+/// 2. `process_events()` - Resolves with full `&mut self` access
 ///
-/// Keys are emitted as `KeyPressEvent` to the `EventBus`. Registered handlers
-/// process the event and return results. If no handler handles the key,
-/// the fallback path (direct resolver call) is used.
+/// This pattern solves the borrow checker constraint that prevented
+/// handler closures from accessing mutable state.
+///
+/// # Architecture
+///
+/// ```text
+/// handle_key()     → Emit only (non-blocking try_send)
+/// process_events() → Full resolution with &mut self
+/// ```
 pub struct EventLoop {
     /// Driver session (SSOT for `mode_stack`, `active_buffer`, etc.).
     ///
@@ -68,14 +86,28 @@ pub struct EventLoop {
 
     /// `EventBus` for key dispatch (#408).
     ///
-    /// Keys are emitted as `KeyPressEvent` and processed by registered handlers.
+    /// Created with channel for emit + process pattern.
+    /// Keys are emitted via `sender` and processed in `process_events()`.
+    #[allow(dead_code)] // Kept for future handler registration
     event_bus: EventBus,
 
-    /// Key handler subscription (RAII cleanup).
+    /// Sender for emitting key events to the channel.
     ///
-    /// Automatically unregisters handler when `EventLoop` is dropped.
-    #[allow(dead_code)] // Held for RAII cleanup
-    _key_handler_subscription: Subscription,
+    /// Used in `handle_key()` for non-blocking emit.
+    sender: EventSender,
+
+    /// Stores original `KeyEvent` (driver type) for `try_resolver()` access.
+    ///
+    /// # Why Single Slot is Safe
+    ///
+    /// This is a single `Option`, not a queue, because:
+    /// 1. Processing is synchronous: `handle_key()` → `process_events()` → next key
+    /// 2. No concurrent key readers exist (single-threaded event loop)
+    /// 3. `process_events()` always takes the pending key before returning
+    ///
+    /// The kernel `KeyPressEvent` is for `EventBus` routing only; we need the
+    /// original driver `KeyEvent` for resolver compatibility.
+    pending_key_event: Option<KeyEvent>,
 
     /// Registry for mode metadata.
     mode_registry: ModeRegistry,
@@ -102,12 +134,18 @@ impl EventLoop {
     /// Creates a driver session using the provided initial mode.
     /// The initial mode is typically Normal mode.
     ///
-    /// # `EventBus` Setup (#408)
+    /// # Emit + Process Pattern (#409)
     ///
-    /// Creates an `EventBus` and registers a key handler for session 0.
-    /// The handler is a transitional placeholder that returns `NotHandled`,
-    /// allowing the fallback path to process keys until full handler
-    /// implementation is complete.
+    /// Creates an `EventBus` with channel for the emit + process pattern:
+    /// - `handle_key()` emits to channel via `sender`
+    /// - `process_events()` resolves with full `&mut self` access
+    ///
+    /// This replaces the transitional handler approach from #408.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `EventBus::new_with_channel()` fails to create a sender.
+    /// This should never happen as we always create the bus with a channel.
     #[must_use]
     pub fn new(
         app: AppState,
@@ -116,30 +154,23 @@ impl EventLoop {
         command_registry: CommandRegistry,
         keymap_registry: KeymapRegistry,
     ) -> Self {
-        use reovim_kernel::api::v1::EventResult;
-
         // Create driver session with the initial mode (SSOT for mode_stack)
         let driver_session = DriverSession::new(ClientId::new(0), initial_mode);
 
-        // Create EventBus for key dispatch (#408)
-        let event_bus = EventBus::new();
+        // Create EventBus with channel for emit + process pattern (#409)
+        let event_bus = EventBus::new_with_channel(KEY_EVENT_CHANNEL_CAPACITY);
 
-        // Session ID 0 for single-session mode
-        let session_id = SessionId::new(0);
-
-        // Register key handler (transitional: returns NotHandled to use fallback)
-        // Full implementation will move key resolution into the handler
-        let subscription = register_key_handler(&event_bus, session_id, |_event| {
-            // Transitional placeholder - returns NotHandled to trigger fallback
-            // Phase 4 will replace this with full key resolution
-            EventResult::NotHandled
-        });
+        // Get sender for non-blocking emit in handle_key()
+        let sender = event_bus
+            .sender()
+            .expect("EventBus created with channel must have sender");
 
         Self {
             driver_session,
             app,
             event_bus,
-            _key_handler_subscription: subscription,
+            sender,
+            pending_key_event: None,
             mode_registry,
             command_registry,
             keymap_registry,
@@ -168,6 +199,10 @@ impl EventLoop {
 
     /// Run the event loop until quit.
     ///
+    /// Uses emit + process pattern for each key:
+    /// 1. `handle_key()` - Emit only (non-blocking)
+    /// 2. `process_events()` - Resolve with full `&mut self`
+    ///
     /// # Errors
     ///
     /// Returns an error if input reading fails.
@@ -177,11 +212,16 @@ impl EventLoop {
                 break;
             };
             self.handle_key(key);
+            self.process_events();
         }
         Ok(())
     }
 
     /// Run a single iteration (for testing).
+    ///
+    /// Uses emit + process pattern:
+    /// 1. `handle_key()` - Emit only
+    /// 2. `process_events()` - Resolve with full `&mut self`
     ///
     /// # Errors
     ///
@@ -191,24 +231,25 @@ impl EventLoop {
             return Ok(false);
         };
         self.handle_key(key);
+        self.process_events();
         Ok(true)
     }
 
-    /// Handle a single key event.
+    /// Handle a single key event (emit only).
     ///
-    /// Emits `KeyPressEvent` to `EventBus` for handler dispatch (#408).
-    /// If no handler handles the key, falls back to direct resolver call.
+    /// This method ONLY emits - no resolution logic here.
+    /// Resolution happens in `process_events()` which has full `&mut self`.
     ///
-    /// # `EventBus` Flow
+    /// # Emit + Process Pattern (#409)
     ///
-    /// 1. Convert `KeyEvent` to `KeyPressEvent`
-    /// 2. Emit to `EventBus`
-    /// 3. If handled, we're done
-    /// 4. If not handled, fallback to `try_resolver`
+    /// ```text
+    /// handle_key()     → Convert + emit (non-blocking)
+    /// process_events() → Resolve with &mut self access
+    /// ```
     fn handle_key(&mut self, key: KeyEvent) {
         profile_scope!("handle_key", "runner::event_loop");
 
-        // Convert driver KeyEvent to kernel KeyInput for `EventBus`
+        // Convert driver KeyEvent to kernel KeyInput for EventBus
         let key_input = Self::key_event_to_key_input(&key);
         let event = KeyPressEvent::new(
             key_input,
@@ -216,19 +257,36 @@ impl EventLoop {
             KernelClientId::new(0), // Default client
         );
 
-        // Emit to `EventBus` - handler processes synchronously
-        let result = self.event_bus.emit(event);
+        // Store original key for process_events() (resolver needs driver type)
+        self.pending_key_event = Some(key);
 
-        // If handler processed the key, we're done
-        if result.is_handled() || result.is_consumed() {
+        // Emit to channel (non-blocking, for future async/multi-session support)
+        self.sender.try_send(event);
+    }
+
+    /// Process pending key events with full mutable access.
+    ///
+    /// Called immediately after `handle_key()` in the event loop.
+    /// This method has full `&mut self` access, solving the borrow checker
+    /// constraint that prevented resolution in handler closures.
+    ///
+    /// # Emit + Process Pattern (#409)
+    ///
+    /// ```text
+    /// handle_key()     → Emit only (non-blocking try_send)
+    /// process_events() → Full resolution with &mut self
+    /// ```
+    fn process_events(&mut self) {
+        // Take the pending key if any
+        let Some(key) = self.pending_key_event.take() else {
             return;
-        }
+        };
 
-        // Fallback: Direct resolver call (transitional until full handler impl)
+        // Full resolution with mutable access
         if let Some((result, _changes)) = self.try_resolver(&key) {
             self.handle_resolve_result(result);
 
-            // TODO (Phase 4): Broadcast state changes to clients
+            // TODO: Broadcast state changes to clients
             // if changes.has_changes() {
             //     self.broadcast_state_changes(&changes);
             // }
@@ -790,5 +848,193 @@ mod tests {
         let _ = event_loop.command_registry_mut();
         let _ = event_loop.keymap_registry();
         let _ = event_loop.keymap_registry_mut();
+    }
+
+    // =========================================================================
+    // Emit + Process Pattern Tests (#409)
+    // =========================================================================
+
+    #[test]
+    fn test_handle_key_stores_pending_event() {
+        let mut event_loop = create_test_event_loop();
+        let key = KeyEvent::new(KeyCode::Char('j'));
+
+        // Before: no pending event
+        assert!(event_loop.pending_key_event.is_none());
+
+        // Emit phase: key stored
+        event_loop.handle_key(key);
+        assert!(event_loop.pending_key_event.is_some());
+    }
+
+    #[test]
+    fn test_process_events_clears_pending() {
+        let mut event_loop = create_test_event_loop();
+        let key = KeyEvent::new(KeyCode::Char('j'));
+
+        // Store a pending event
+        event_loop.pending_key_event = Some(key);
+        assert!(event_loop.pending_key_event.is_some());
+
+        // Process: event consumed
+        event_loop.process_events();
+        assert!(event_loop.pending_key_event.is_none());
+    }
+
+    #[test]
+    fn test_emit_process_separation() {
+        let mut event_loop = create_test_event_loop();
+        let key = KeyEvent::new(KeyCode::Char('j'));
+
+        // Emit phase: key stored, not processed
+        event_loop.handle_key(key);
+        assert!(event_loop.pending_key_event.is_some());
+
+        // Process phase: key consumed
+        event_loop.process_events();
+        assert!(event_loop.pending_key_event.is_none());
+    }
+
+    #[test]
+    fn test_step_executes_emit_then_process() {
+        let mut keys = vec![KeyEvent::new(KeyCode::Char('j'))].into_iter();
+        let mut event_loop = create_test_event_loop().with_key_reader(move || keys.next());
+
+        // step() should emit then process, leaving no pending event
+        assert!(event_loop.step().unwrap());
+        assert!(event_loop.pending_key_event.is_none());
+    }
+
+    #[test]
+    fn test_try_resolver_returns_none_no_registry() {
+        let mut event_loop = create_test_event_loop();
+        // No resolver registry set
+        assert!(event_loop.resolver_registry.is_none());
+
+        let key = KeyEvent::new(KeyCode::Char('j'));
+        // Should return None gracefully
+        let result = event_loop.try_resolver(&key);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_key_event_conversion_basic() {
+        use super::KeyCode as KernelKeyCode;
+
+        // Test basic key conversion
+        let key = KeyEvent::new(KeyCode::Char('a'));
+        let input = EventLoop::key_event_to_key_input(&key);
+        assert_eq!(input.key, KernelKeyCode::Char('a'));
+
+        let key = KeyEvent::new(KeyCode::Enter);
+        let input = EventLoop::key_event_to_key_input(&key);
+        assert_eq!(input.key, KernelKeyCode::Enter);
+
+        let key = KeyEvent::new(KeyCode::Escape);
+        let input = EventLoop::key_event_to_key_input(&key);
+        assert_eq!(input.key, KernelKeyCode::Esc);
+    }
+
+    #[test]
+    fn test_key_event_conversion_modifiers() {
+        use reovim_driver_input::Modifiers as DriverMods;
+
+        // Ctrl modifier
+        let mut key = KeyEvent::new(KeyCode::Char('a'));
+        key.modifiers = DriverMods::CTRL;
+        let input = EventLoop::key_event_to_key_input(&key);
+        assert!(input.modifiers.ctrl);
+        assert!(!input.modifiers.alt);
+
+        // Alt modifier
+        let mut key = KeyEvent::new(KeyCode::Char('a'));
+        key.modifiers = DriverMods::ALT;
+        let input = EventLoop::key_event_to_key_input(&key);
+        assert!(!input.modifiers.ctrl);
+        assert!(input.modifiers.alt);
+
+        // Combined modifiers
+        let mut key = KeyEvent::new(KeyCode::Char('a'));
+        key.modifiers = DriverMods::CTRL | DriverMods::SHIFT;
+        let input = EventLoop::key_event_to_key_input(&key);
+        assert!(input.modifiers.ctrl);
+        assert!(input.modifiers.shift);
+    }
+
+    // =========================================================================
+    // Command Result Tests
+    // =========================================================================
+
+    #[test]
+    fn test_command_result_quit() {
+        let mut event_loop = create_test_event_loop();
+        assert!(event_loop.app().is_running());
+
+        event_loop.handle_command_result(CommandResult::Quit);
+        assert!(!event_loop.app().is_running());
+    }
+
+    #[test]
+    fn test_command_result_force_quit() {
+        let mut event_loop = create_test_event_loop();
+        assert!(event_loop.app().is_running());
+
+        event_loop.handle_command_result(CommandResult::ForceQuit);
+        assert!(!event_loop.app().is_running());
+    }
+
+    // =========================================================================
+    // Arg Value Conversion Tests
+    // =========================================================================
+
+    #[test]
+    fn test_arg_value_conversion_all_types() {
+        use {reovim_driver_command::ArgValue as CmdArg, reovim_kernel::api::v1::Position};
+
+        // Bool -> Bang
+        let result = EventLoop::convert_arg_value(&InputArgValue::Bool(true));
+        assert!(matches!(result, Some(CmdArg::Bang(true))));
+
+        // Positive Int -> Count
+        let result = EventLoop::convert_arg_value(&InputArgValue::Int(42));
+        assert!(matches!(result, Some(CmdArg::Count(42))));
+
+        // Uint -> Count
+        let result = EventLoop::convert_arg_value(&InputArgValue::Uint(100));
+        assert!(matches!(result, Some(CmdArg::Count(100))));
+
+        // String -> String
+        let result = EventLoop::convert_arg_value(&InputArgValue::String("test".to_string()));
+        assert!(matches!(result, Some(CmdArg::String(s)) if s == "test"));
+
+        // Char -> Char
+        let result = EventLoop::convert_arg_value(&InputArgValue::Char('x'));
+        assert!(matches!(result, Some(CmdArg::Char('x'))));
+
+        // Range -> Range
+        let result = EventLoop::convert_arg_value(&InputArgValue::Range {
+            start: Position::new(0, 0),
+            end: Position::new(10, 0),
+            linewise: true,
+        });
+        assert!(matches!(result, Some(CmdArg::Range(0, 10))));
+
+        // Float -> None (not supported)
+        let result = EventLoop::convert_arg_value(&InputArgValue::Float(1.5));
+        assert!(result.is_none());
+
+        // Position -> None (not supported)
+        let result = EventLoop::convert_arg_value(&InputArgValue::Position(Position::new(0, 0)));
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_arg_value_conversion_negative_int_returns_none() {
+        // Negative Int -> None
+        let result = EventLoop::convert_arg_value(&InputArgValue::Int(-1));
+        assert!(result.is_none());
+
+        let result = EventLoop::convert_arg_value(&InputArgValue::Int(-100));
+        assert!(result.is_none());
     }
 }

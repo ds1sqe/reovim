@@ -56,6 +56,16 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - `EventLoop::handle_key()` now emits events to `EventBus` with fallback to direct resolver
   - Type conversion layer between driver `KeyEvent` and kernel `KeyInput`
 
+- Simplified event loop to emit + process pattern (#409)
+  - `handle_key()` now only emits - stores key and sends to channel, no resolution
+  - New `process_events()` method handles resolution with full `&mut self` access
+  - `run()` and `step()` now call emit + process sequentially
+  - Removed fallback path from `handle_key()` - resolution only in `process_events()`
+  - Added `pending_key_event` field with documented single-slot safety guarantees
+  - Uses `EventBus::new_with_channel(1024)` for future async/multi-session support
+  - Handler infrastructure preserved in `handlers.rs` for future plugin support
+  - Added 13 new tests for emit + process pattern and conversion functions
+
 - Deleted `AppStateRuntime` adapter (~500 lines) - thin runner architecture (#407)
   - Created `RuntimeAdapter` that combines `SessionRuntime` with `WindowRegistry`
   - `RuntimeAdapter` implements all session API traits: `ModeApi`, `BufferApi`, `WindowApi`, `RegisterApi`, `ExtensionApi`, `CommandApi`, `ChangeTracker`

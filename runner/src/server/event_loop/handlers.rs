@@ -1,8 +1,15 @@
 //! Key event handlers for `EventBus` dispatch.
 //!
-//! This module provides the handler registration infrastructure for
-//! event-driven key processing. Handlers are registered per-session
-//! and cleaned up via RAII when the session is destroyed.
+//! This module provides handler registration infrastructure for
+//! future multi-handler scenarios (plugins, extensions).
+//!
+//! # Current Status
+//!
+//! As of #409, the event loop uses direct emit + process pattern.
+//! This infrastructure is preserved for:
+//! - Future plugin-based handlers
+//! - Multi-session event routing
+//! - Handler priority chains
 //!
 //! # Safety Features
 //!
@@ -12,21 +19,14 @@
 //!   when handlers emit key events.
 //! - **Session filtering**: Handlers only process events for their session.
 //!
-//! # Example
+//! # Future Usage
 //!
 //! ```ignore
-//! use runner::server::event_loop::handlers::{RECURSION_LIMIT, register_key_handler};
-//!
-//! let bus = EventBus::new();
-//! let session_id = SessionId::new(0);
-//!
+//! // Future: Plugin registers handler
 //! let _sub = register_key_handler(&bus, session_id, |event| {
-//!     // Process key event
+//!     // Plugin-specific key handling
 //!     EventResult::Handled
 //! });
-//!
-//! // Emit key event
-//! bus.emit(KeyPressEvent::new(key, session_id, client_id));
 //! ```
 
 use std::{
@@ -48,6 +48,7 @@ use reovim_kernel::api::v1::{
 ///
 /// Prevents infinite loops when handlers emit key events.
 /// Set to 16 as a conservative limit (typical recursion is ~3 levels).
+#[allow(dead_code)] // Preserved for future plugin support
 pub const RECURSION_LIMIT: u32 = 16;
 
 // =============================================================================
@@ -62,8 +63,10 @@ thread_local! {
 /// Guard that increments recursion depth on creation and decrements on drop.
 ///
 /// Uses RAII pattern to ensure depth is always decremented, even on panic.
+#[allow(dead_code)] // Preserved for future plugin support
 pub struct RecursionGuard;
 
+#[allow(dead_code)] // Preserved for future plugin support
 impl RecursionGuard {
     /// Try to enter a new recursion level.
     ///
@@ -142,6 +145,7 @@ pub fn reset_recursion_depth() {
 ///     EventResult::Handled
 /// });
 /// ```
+#[allow(dead_code)] // Preserved for future plugin support
 pub fn register_key_handler<F>(bus: &EventBus, session_id: SessionId, handler: F) -> Subscription
 where
     F: Fn(&KeyPressEvent) -> EventResult + Send + Sync + 'static,
