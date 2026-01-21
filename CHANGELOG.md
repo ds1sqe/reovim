@@ -45,6 +45,12 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - Runner no longer directly imports `scratch-buffer` module
   - Wiring infrastructure prepared for dynamic module loading (#265)
 
+- Comprehensive tests for count prefix (#337) and $ motion (#340)
+  - Added 5 $ motion tests to `runner/tests/cursor_movement.rs`: from middle, empty line, single char, with j navigation
+  - Added 6 count prefix edge case tests to `runner/tests/operators.rs`: exceeds lines/chars, 4p paste, 10yy yank, 999j clamp, combined $ and count
+  - 1 test marked ignored: `test_dollar_with_count` (count prefix for $ not yet implemented)
+  - Total enabled tests: 21 cursor_movement + 26 operators (11 tests added)
+
 ### Changed
 
 - Unified `WindowId` to single kernel definition (#410)
