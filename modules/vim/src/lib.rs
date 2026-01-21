@@ -66,7 +66,8 @@ pub use ids::{CHANGE, DELETE, OperatorId, YANK};
 
 // Re-export operators (Epic #385 - operators are vim-specific, merged from operators module)
 pub use operators::{
-    ChangeOperator, DeleteOperator, Operator, OperatorContext, OperatorError, Range, YankOperator,
+    ChangeCommand, ChangeOperator, DeleteCommand, DeleteOperator, Operator, OperatorContext,
+    OperatorError, Range, YankCommand, YankOperator, operator_commands,
 };
 
 // Re-export fallback handler (Epic #372 - Mode Ownership)
@@ -164,6 +165,7 @@ impl CommandProvider for VimModule {
         let mut handlers = Vec::new();
         handlers.extend(commands::mode_commands());
         handlers.extend(visual::visual_commands());
+        handlers.extend(operators::operator_commands()); // Epic #415
         handlers
     }
 }

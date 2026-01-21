@@ -6,6 +6,16 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- Operator-pending mode with resolver registry (#415)
+  - New `ResolverRegistry` in `modules/editor` for mode-specific key handling
+  - `VimNormalResolver` intercepts operator keys (d, y, c) in `ExactWithLonger` branch
+  - `VimOperatorPendingResolver` handles motion execution and line-operator detection (dd, yy, cc)
+  - `VimInsertResolver` for insert mode character handling
+  - Motion commands return `MotionResult` with range info for operators
+  - `PopResult::ExecuteCommand` for operator execution with motion ranges
+  - Runner integrates resolvers via `SessionState::resolve_key()`
+  - Operators work with motions: `dw`, `d$`, `yj`, `cw`, etc.
+
 - Dynamic module loading infrastructure (#390)
   - All 17 modules now support dynamic loading with `crate-type = ["cdylib", "rlib"]`
   - All modules now use `declare_module!` macro for FFI entry point generation

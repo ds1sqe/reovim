@@ -32,6 +32,8 @@ use crate::{
     registry::{CommandRegistry, KeyLookupResult, KeymapRegistry, ModeRegistry},
 };
 
+use reovim_module_editor::ResolverRegistry;
+
 /// Session state combining application state with registries.
 ///
 /// This is the complete state for a single editing session. Each session
@@ -101,6 +103,14 @@ pub struct SessionState {
     /// module loading and isolation (similar to Linux process contexts).
     pub module_registry: ModuleManager,
 
+    /// Registry of mode key resolvers.
+    ///
+    /// Resolvers implement mode-specific key handling policy:
+    /// - Operator interception (d, y, c enter operator-pending mode)
+    /// - Motion handling (w, b, j, k compute ranges)
+    /// - Line-operator detection (dd, yy, cc)
+    pub resolver_registry: ResolverRegistry,
+
     /// Undo persistence manager for disk serialization.
     ///
     /// Handles reading/writing undo trees to `~/.local/share/reovim/undo/`.
@@ -134,6 +144,7 @@ impl SessionState {
             command_registry: CommandRegistry::new(),
             keymap_registry: KeymapRegistry::new(),
             module_registry: ModuleManager::new(),
+            resolver_registry: ResolverRegistry::new(),
             undo_persistence,
         }
     }
@@ -152,6 +163,7 @@ impl SessionState {
         command_registry: CommandRegistry,
         keymap_registry: KeymapRegistry,
         module_registry: ModuleManager,
+        resolver_registry: ResolverRegistry,
         compositor: Option<Box<dyn RootCompositor>>,
     ) -> Self {
         // Initialize undo persistence with platform-specific data directory
@@ -176,6 +188,7 @@ impl SessionState {
             command_registry,
             keymap_registry,
             module_registry,
+            resolver_registry,
             undo_persistence,
         }
     }
@@ -310,6 +323,79 @@ impl SessionState {
     /// Request clients to detach (server continues running).
     pub fn request_detach(&mut self) {
         self.app.request_detach();
+    }
+
+    /// Get the resolver registry.
+    #[must_use]
+    pub const fn resolver_registry(&self) -> &ResolverRegistry {
+        &self.resolver_registry
+    }
+
+    /// Resolve a key event using the resolver registry.
+    ///
+    /// This is the primary key resolution method that handles:
+    /// - Operator interception (d, y, c → operator-pending mode)
+    /// - Mode-specific key handling (via registered resolvers)
+    /// - Extension access for module state (`VimSessionState`)
+    ///
+    /// # Returns
+    ///
+    /// - `Some(ResolveResult)` - if a resolver handled the key
+    /// - `None` - if no resolver is registered for the current mode
+    ///
+    /// # Note
+    ///
+    /// This method requires the `RuntimeAdapter` from `event_loop` module.
+    /// Call `handle_resolve_result()` to process the result.
+    pub fn resolve_key(
+        &mut self,
+        key: &reovim_driver_input::KeyEvent,
+    ) -> Option<(reovim_driver_input::ResolveResult, reovim_driver_session::api::StateChanges)>
+    {
+        use {
+            crate::server::event_loop::RuntimeAdapter,
+            reovim_driver_input::ModeState,
+            reovim_driver_session::{SessionRuntime, api::CommandExecutor},
+        };
+
+        // Stub command executor - commands are executed separately
+        struct StubExecutor;
+        impl CommandExecutor for StubExecutor {
+            fn execute(
+                &self,
+                _cmd: &CommandId,
+                _ctx: &CommandContext,
+                _kernel: &mut reovim_kernel::api::v1::KernelContext,
+            ) -> Option<CommandResult> {
+                Some(CommandResult::Success)
+            }
+        }
+
+        let mode = self.driver_session.current_mode().clone();
+        let mut mode_state = ModeState::new(mode.clone());
+
+        // Create runtime for resolver
+        let stub_executor = StubExecutor;
+        let session_runtime =
+            SessionRuntime::new(&mut self.driver_session, &self.app.kernel, &stub_executor);
+        let mut runtime =
+            RuntimeAdapter::new(session_runtime, &mut self.app.windows, &self.app.kernel);
+
+        // Call resolver
+        // NOTE: Uses app.extensions due to borrow checker - driver_session is already borrowed by runtime
+        let result = self.resolver_registry.resolve_with_session(
+            &mode,
+            key,
+            &mut mode_state,
+            &self.keymap_registry,
+            &mut runtime,
+            &mut self.app.extensions,
+        );
+
+        // Take accumulated changes
+        let changes = reovim_driver_session::api::ChangeTracker::take_changes(&mut runtime);
+
+        result.map(|r| (r, changes))
     }
 }
 

@@ -2,28 +2,23 @@
 //!
 //! Handlers for `input/keys` and related methods.
 
-use std::sync::{Arc, Mutex};
-
 use {
-    reovim_driver_input::{KeyCode, KeySequence, Modifiers},
-    reovim_kernel::api::v1::{EventResult, ModeId, events::ModeChanged},
+    reovim_driver_input::{
+        KeyCode, KeyEvent, KeySequence, ModeTransition, Modifiers, ResolveResult,
+    },
     reovim_protocol::v1::{InputKeysParams, InputKeysResult, RpcError},
 };
 
 use {
     super::super::dispatcher::{HandlerFuture, RpcContext},
-    crate::{
-        registry::KeyLookupResult,
-        session::{StateSnapshot, emit_state_changes},
-    },
+    crate::session::{StateSnapshot, emit_state_changes},
 };
 
 /// Handler for `input/keys` method.
 ///
-/// Parses vim notation keys and processes them through the session's keymap.
-/// Keys are processed one at a time, similar to the event loop, to support
-/// vim-style incremental key matching (e.g., "jj" executes 'j' twice, not
-/// as a two-key binding).
+/// Parses vim notation keys and processes them through mode resolvers.
+/// Keys are processed one at a time using the resolver registry, which
+/// handles vim-style operator-pending mode and mode transitions.
 ///
 /// # Request
 ///
@@ -38,22 +33,14 @@ use {
 /// ```
 ///
 /// Status values:
-/// - `"executed"`: At least one key matched a binding and was executed
-/// - `"pending"`: Final keys are a prefix of a binding, waiting for more
-/// - `"not_found"`: No keys matched any binding
-///
-/// Note: Count prefix digits (1-9 or 0 after other digits) are accumulated
-/// before keymap lookup. The accumulated count is passed to commands via
-/// `CommandContext`. This mirrors the resolver behavior in the event loop.
+/// - `"executed"`: At least one key was handled successfully
+/// - `"pending"`: Final keys are waiting for more input
+/// - `"not_found"`: No resolver handled the final key
 ///
 /// # Panics
 ///
 /// This function will not panic as `InputKeysResult` serialization is infallible.
 #[must_use]
-#[expect(
-    clippy::too_many_lines,
-    reason = "RPC handler with event subscription, key processing loop, and mode tracking - refactoring deferred"
-)]
 pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
     Box::pin(async move {
         // Parse params
@@ -67,157 +54,119 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
         // Capture state BEFORE processing (for notification emission)
         let before = ctx.session.with_state(StateSnapshot::capture).await;
 
-        // Set up mode change tracking (like event_loop does)
-        // Commands emit ModeChanged events which we need to capture and apply
-        let pending_mode_change: Arc<Mutex<Option<ModeId>>> = Arc::new(Mutex::new(None));
-        let pending_clone = Arc::clone(&pending_mode_change);
-
-        // Subscribe to ModeChanged events to capture mode transitions
-        // IMPORTANT: Store the subscription to keep it alive during key processing
-        let _mode_subscription = ctx
-            .session
-            .with_state(|state| {
-                state.app.kernel.event_bus.subscribe::<ModeChanged, _>(
-                    0, // Priority 0 (highest)
-                    move |event| {
-                        if let Some(mode_id) = event.target_mode()
-                            && let Ok(mut guard) = pending_clone.lock()
-                        {
-                            *guard = Some(mode_id.clone());
-                        }
-                        EventResult::Handled
-                    },
-                )
-            })
-            .await;
-
-        // Process keys one at a time, like the event loop does
-        // This allows "jj" to execute 'j' twice rather than looking for a "jj" binding
-        let mut pending = KeySequence::new();
-        let mut any_executed = false;
-        let mut final_result = KeyLookupResult::NotFound;
-
-        // Count prefix accumulation - digits before commands multiply the action
-        // e.g., "3j" moves down 3 lines, "10dd" deletes 10 lines
-        let mut pending_count: Option<usize> = None;
+        // Process keys one at a time through resolvers
+        let mut any_handled = false;
+        let mut final_pending = false;
 
         for key in keys.as_slice() {
-            // Get current mode (may change after each command)
-            let mode = ctx.session.current_mode().await;
-            let mode_name = mode.name();
+            let key_event = KeyEvent::with_modifiers(key.code, key.modifiers);
 
-            tracing::debug!(?key, mode = %mode, mode_name, "Processing key");
+            tracing::debug!(?key_event, "Processing key through resolver");
 
-            // Check for count digit BEFORE processing as command
-            // 1-9 always starts/continues a count, 0 only continues (since 0 is often a command)
-            let is_count_digit = key.modifiers == Modifiers::NONE
-                && match key.code {
-                    KeyCode::Char(c @ '1'..='9') => {
-                        let digit = c.to_digit(10).unwrap_or(0) as usize;
-                        pending_count = Some(pending_count.unwrap_or(0) * 10 + digit);
-                        true
-                    }
-                    KeyCode::Char('0') if pending_count.is_some() => {
-                        pending_count = Some(pending_count.unwrap_or(0) * 10);
-                        true
-                    }
-                    _ => false,
-                };
+            // Resolve the key using mode resolvers
+            if let Some((result, _changes)) = ctx.session.resolve_key(&key_event).await {
+                tracing::debug!(?result, "Resolver returned result");
 
-            if is_count_digit {
-                tracing::debug!(count = ?pending_count, "Accumulated count digit");
-                continue; // Skip keymap lookup for count digits
-            }
+                match result {
+                    ResolveResult::Execute(cmd_id, resolve_ctx) => {
+                        // Build command context from resolve context
+                        let mut cmd_ctx = reovim_driver_command::CommandContext::default();
 
-            pending.push(*key);
+                        if let Some(count) = resolve_ctx.count {
+                            cmd_ctx.set("count", reovim_driver_command::ArgValue::Count(count));
+                        }
 
-            let lookup_result = ctx.session.lookup_keys(&mode, &pending).await;
-            tracing::debug!(?lookup_result, pending = ?pending.to_string(), "Keymap lookup result");
+                        if let Some(reg) = resolve_ctx.register {
+                            cmd_ctx.set("register", reovim_driver_command::ArgValue::Register(reg));
+                        }
 
-            match &lookup_result {
-                KeyLookupResult::Found(cmd_id) => {
-                    tracing::debug!(cmd_id = %cmd_id, "Found command, executing");
-
-                    // Build command context with accumulated count prefix
-                    let mut cmd_ctx = reovim_driver_command::CommandContext::default();
-
-                    // Set current mode name in context for commands that need to
-                    // adjust behavior based on mode (e.g., motions in operator-pending)
-                    cmd_ctx.set_mode_name(mode_name);
-
-                    // Set count from accumulated digits (e.g., "3j" passes count=3 to cursor-down)
-                    if let Some(count) = pending_count.take() {
-                        cmd_ctx.set("count", reovim_driver_command::ArgValue::Count(count));
-                        tracing::debug!(count, "Passing count to command");
-                    }
-
-                    // Execute the command
-                    if let Some(cmd_result) = ctx.session.execute_command(cmd_id, &cmd_ctx).await {
-                        tracing::debug!(?cmd_result, "Command executed, handling result");
-                        ctx.session.handle_command_result(cmd_result).await;
-                    } else {
-                        tracing::warn!(cmd_id = %cmd_id, "Command not found in registry");
-                    }
-
-                    // Apply any pending mode change from ModeChanged events
-                    let new_mode = pending_mode_change
-                        .lock()
-                        .ok()
-                        .and_then(|mut guard| guard.take());
-                    if let Some(ref new_mode) = new_mode {
-                        tracing::debug!(new_mode = %new_mode, "Applying mode change from event");
-                        ctx.session
-                            .with_state_mut(|state| {
-                                // Use driver_session as SSOT for mode_stack
-                                state.mode_stack_mut().set(new_mode.clone());
-                            })
-                            .await;
-                    }
-
-                    any_executed = true;
-                    pending.clear();
-                    final_result = KeyLookupResult::Found(cmd_id.clone());
-                }
-                KeyLookupResult::Prefix => {
-                    // Keep accumulating keys
-                    final_result = KeyLookupResult::Prefix;
-                }
-                KeyLookupResult::NotFound => {
-                    // No binding found - try character insertion for Insert mode
-                    if let KeyCode::Char(ch) = key.code {
-                        // Only insert if no modifiers (except Shift for uppercase)
-                        if key.modifiers.is_empty() || key.modifiers == Modifiers::SHIFT {
-                            tracing::debug!(char = %ch, mode = %mode_name, "Attempting char insert");
-                            let inserted = ctx.session.insert_char(ch).await;
-                            tracing::debug!(inserted = %inserted, "Char insert result");
-                            if inserted {
-                                any_executed = true;
+                        // Transfer metadata (convert from input ArgValue to command ArgValue)
+                        for (key, value) in resolve_ctx.metadata {
+                            if let Some(v) = convert_input_arg_to_command_arg(&value) {
+                                let static_key: &'static str = Box::leak(key.into_boxed_str());
+                                cmd_ctx.set(static_key, v);
                             }
                         }
+
+                        // Execute the command
+                        if let Some(cmd_result) =
+                            ctx.session.execute_command(&cmd_id, &cmd_ctx).await
+                        {
+                            tracing::debug!(?cmd_result, "Command executed");
+                            ctx.session.handle_command_result(cmd_result).await;
+
+                            // Per #388: Call on_command_complete for pending operators
+                            // This handles the motion execution in operator-pending mode
+                            if let Some(transition) = ctx
+                                .session
+                                .with_state_mut(try_resolver_on_command_complete)
+                                .await
+                            {
+                                handle_mode_transition_async(&ctx, transition).await;
+                            }
+                        }
+
+                        any_handled = true;
+                        final_pending = false;
                     }
-                    // Clear pending keys and count - unrecognized key cancels count
-                    pending.clear();
-                    pending_count = None;
-                    final_result = KeyLookupResult::NotFound;
+
+                    ResolveResult::ModeTransition(transition) => {
+                        handle_mode_transition_async(&ctx, transition).await;
+                        any_handled = true;
+                        final_pending = false;
+                    }
+
+                    ResolveResult::Pending => {
+                        final_pending = true;
+                    }
+
+                    ResolveResult::InsertChar(ch) => {
+                        ctx.session.insert_char(ch).await;
+                        any_handled = true;
+                        final_pending = false;
+                    }
+
+                    ResolveResult::NotHandled => {
+                        // Try character insertion as fallback
+                        if let KeyCode::Char(ch) = key.code
+                            && (key.modifiers.is_empty() || key.modifiers == Modifiers::SHIFT)
+                            && ctx.session.insert_char(ch).await
+                        {
+                            any_handled = true;
+                        }
+                        final_pending = false;
+                    }
+
+                    ResolveResult::Completed => {
+                        // Resolver handled everything internally
+                        any_handled = true;
+                        final_pending = false;
+                    }
                 }
+            } else {
+                // No resolver for current mode - try character insertion
+                tracing::debug!("No resolver for mode, trying char insert");
+                if let KeyCode::Char(ch) = key.code
+                    && (key.modifiers.is_empty() || key.modifiers == Modifiers::SHIFT)
+                    && ctx.session.insert_char(ch).await
+                {
+                    any_handled = true;
+                }
+                final_pending = false;
             }
         }
 
         // Determine final status
-        let result = if any_executed {
-            // At least one command was executed
-            if pending.is_empty() {
-                InputKeysResult::executed()
-            } else {
-                // Executed something but have leftover pending keys (prefix)
+        let result = if any_handled {
+            if final_pending {
                 InputKeysResult::pending()
+            } else {
+                InputKeysResult::executed()
             }
+        } else if final_pending {
+            InputKeysResult::pending()
         } else {
-            // No commands executed
-            match final_result {
-                KeyLookupResult::Prefix => InputKeysResult::pending(),
-                _ => InputKeysResult::not_found(),
-            }
+            InputKeysResult::not_found()
         };
 
         // Capture state AFTER and emit notifications for any changes
@@ -226,6 +175,144 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
 
         Ok(serde_json::to_value(result).expect("InputKeysResult serialization cannot fail"))
     })
+}
+
+/// Convert input layer `ArgValue` to command layer `ArgValue`.
+///
+/// These are different types because input and command layers have different needs.
+fn convert_input_arg_to_command_arg(
+    value: &reovim_driver_input::ArgValue,
+) -> Option<reovim_driver_command::ArgValue> {
+    use {reovim_driver_command::ArgValue as CmdArg, reovim_driver_input::ArgValue as InputArg};
+
+    match value {
+        InputArg::Bool(b) => Some(CmdArg::Bang(*b)),
+        InputArg::Int(n) => {
+            // Negative numbers don't map cleanly to command args
+            usize::try_from(*n).ok().map(CmdArg::Count)
+        }
+        InputArg::Uint(n) => usize::try_from(*n).ok().map(CmdArg::Count),
+        InputArg::Float(_) => None, // No command equivalent
+        InputArg::String(s) => Some(CmdArg::String(s.clone())),
+        InputArg::Char(c) => Some(CmdArg::Char(*c)),
+        InputArg::Position(pos) => Some(CmdArg::Position(pos.line, pos.column)),
+        InputArg::Range {
+            start,
+            end,
+            linewise,
+        } => {
+            // For ranges, we store start/end as separate Position args
+            // The linewise flag is stored separately
+            // Command layer expects Range(start_line, end_line) for simple cases
+            if *linewise {
+                Some(CmdArg::Range(start.line, end.line))
+            } else {
+                // For characterwise ranges, store as start position
+                // The range handling is more complex in commands
+                Some(CmdArg::Position(start.line, start.column))
+            }
+        }
+    }
+}
+
+/// Try to call `on_command_complete` on the current mode's resolver.
+///
+/// This handles the post-motion operator execution (e.g., after `w` in `dw`).
+fn try_resolver_on_command_complete(
+    state: &mut crate::session::SessionState,
+) -> Option<ModeTransition> {
+    use {
+        crate::server::event_loop::RuntimeAdapter,
+        reovim_driver_session::{SessionRuntime, api::CommandExecutor},
+    };
+
+    // Stub command executor
+    struct StubExecutor;
+    impl CommandExecutor for StubExecutor {
+        fn execute(
+            &self,
+            _cmd: &reovim_kernel::api::v1::CommandId,
+            _ctx: &reovim_driver_command::CommandContext,
+            _kernel: &mut reovim_kernel::api::v1::KernelContext,
+        ) -> Option<reovim_driver_command::CommandResult> {
+            Some(reovim_driver_command::CommandResult::Success)
+        }
+    }
+
+    let mode = state.driver_session.current_mode().clone();
+
+    // Get resolver for current mode
+    let resolver = state.resolver_registry.get(&mode)?;
+
+    // Create runtime
+    let stub_executor = StubExecutor;
+    let session_runtime =
+        SessionRuntime::new(&mut state.driver_session, &state.app.kernel, &stub_executor);
+    let mut runtime =
+        RuntimeAdapter::new(session_runtime, &mut state.app.windows, &state.app.kernel);
+
+    // Call on_command_complete
+    resolver.on_command_complete(&mut runtime, &mut state.app.extensions)
+}
+
+/// Handle mode transition asynchronously.
+async fn handle_mode_transition_async(ctx: &RpcContext, transition: ModeTransition) {
+    match transition {
+        ModeTransition::Push { mode, context: _ } => {
+            ctx.session
+                .with_state_mut(|state| {
+                    state.mode_stack_mut().push(mode);
+                })
+                .await;
+        }
+
+        ModeTransition::Pop { result } => {
+            // Handle pop result before actually popping
+            if let Some(ref pop_result) = result {
+                handle_pop_result_async(ctx, pop_result).await;
+            }
+            ctx.session
+                .with_state_mut(|state| {
+                    state.mode_stack_mut().pop();
+                })
+                .await;
+        }
+
+        ModeTransition::Set { mode, context: _ } => {
+            ctx.session
+                .with_state_mut(|state| {
+                    state.mode_stack_mut().set(mode);
+                })
+                .await;
+        }
+    }
+}
+
+/// Handle pop result (`ExecuteCommand`) asynchronously.
+async fn handle_pop_result_async(ctx: &RpcContext, result: &reovim_driver_session::PopResult) {
+    use reovim_driver_session::PopResult;
+
+    match result {
+        PopResult::ExecuteCommand { command, args } => {
+            let mut cmd_ctx = reovim_driver_command::CommandContext::new();
+
+            // Transfer all arguments from the pop result
+            for (key, value) in args {
+                let static_key: &'static str = Box::leak(key.clone().into_boxed_str());
+                cmd_ctx.set(static_key, value.clone());
+            }
+
+            // Execute the command
+            if let Some(cmd_result) = ctx.session.execute_command(command, &cmd_ctx).await {
+                tracing::debug!(?cmd_result, "Pop result command executed");
+                ctx.session.handle_command_result(cmd_result).await;
+            }
+        }
+
+        PopResult::Cancelled | PopResult::Data { .. } => {
+            // Nothing to do - operator was cancelled or data returned without command
+        }
+    }
 }
 
 #[cfg(test)]
@@ -289,7 +376,7 @@ mod tests {
 
         assert!(result.is_ok());
         let value = result.unwrap();
-        // With an empty keymap, all keys should be not_found
+        // With an empty keymap/no resolver, all keys should be not_found
         assert_eq!(value.get("status").unwrap().as_str().unwrap(), "not_found");
     }
 }

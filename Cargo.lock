@@ -1190,6 +1190,7 @@ version = "0.9.1-dev"
 dependencies = [
  "bitflags 2.10.0",
  "reovim-arch",
+ "reovim-driver-command-types",
  "reovim-driver-session",
  "reovim-kernel",
 ]
@@ -1422,6 +1423,7 @@ name = "reovim-module-vim"
 version = "0.9.1-dev"
 dependencies = [
  "reovim-driver-command",
+ "reovim-driver-command-types",
  "reovim-driver-input",
  "reovim-driver-session",
  "reovim-kernel",

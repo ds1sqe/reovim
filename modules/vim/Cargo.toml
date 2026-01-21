@@ -17,6 +17,7 @@ dynamic = []  # Enable FFI entry points for standalone dynamic loading
 reovim-kernel = { path = "../../lib/kernel" }
 reovim-module-macros = { path = "../../lib/module-macros" }
 reovim-driver-command = { path = "../../lib/drivers/command" }
+reovim-driver-command-types = { path = "../../lib/drivers/command-types" }
 reovim-driver-input = { path = "../../lib/drivers/input" }
 reovim-driver-session = { path = "../../lib/drivers/session" }
 reovim-module-editor = { path = "../editor" }

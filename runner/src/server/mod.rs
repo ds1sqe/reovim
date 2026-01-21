@@ -867,8 +867,14 @@ impl Server {
 /// This is the entry point for creating sessions that have working keybindings.
 /// Used by both `ensure_default_session()` and `handle_client()`.
 fn create_session_with_defaults(id: SessionId) -> Arc<Session> {
-    let (mode_registry, command_registry, keymap_registry, module_registry, compositor) =
-        build_default_registries();
+    let (
+        mode_registry,
+        command_registry,
+        keymap_registry,
+        module_registry,
+        resolver_registry,
+        compositor,
+    ) = build_default_registries();
 
     // Use auto-detected entry mode from registry, or fall back to hardcoded default
     let initial_mode = mode_registry
@@ -892,6 +898,7 @@ fn create_session_with_defaults(id: SessionId) -> Arc<Session> {
         command_registry,
         keymap_registry,
         module_registry,
+        resolver_registry,
         compositor,
     )
 }
@@ -974,18 +981,21 @@ fn static_module_factory(name: &str) -> Option<Box<dyn Module>> {
 /// 1. Dynamic modules from XDG paths (`~/.local/share/reovim/modules/`)
 /// 2. Static fallback for modules not found in paths
 ///
-/// Returns the registries plus the compositor from the layout module (if any).
+/// Returns the registries plus resolver registry and compositor from the layout module (if any).
 #[allow(clippy::too_many_lines)]
+#[allow(clippy::type_complexity)]
 fn build_default_registries() -> (
     ModeRegistry,
     CommandRegistry,
     KeymapRegistry,
     ModuleManager,
+    reovim_module_editor::ResolverRegistry,
     Option<Box<dyn RootCompositor>>,
 ) {
     let mut mode_registry = ModeRegistry::new();
     let mut command_registry = CommandRegistry::new();
     let mut keymap_registry = KeymapRegistry::new();
+    let mut resolver_registry = reovim_module_editor::ResolverRegistry::new();
 
     // Load module configuration from ~/.config/reovim/config.toml
     let module_config = ModuleConfig::load().unwrap_or_else(|e| {
@@ -1093,6 +1103,14 @@ fn build_default_registries() -> (
         }
     }
 
+    // Register vim mode resolvers for operator-pending mode support (Epic #415)
+    // These implement the policy for handling operators (d, y, c) and motions
+    resolver_registry.register(reovim_module_vim::VimNormalResolver::new());
+    resolver_registry.register(reovim_module_vim::VimInsertResolver::new());
+    resolver_registry.register(reovim_module_vim::VimOperatorPendingResolver::new());
+
+    tracing::info!(count = resolver_registry.len(), "registered vim mode resolvers");
+
     // Load user keymap configuration from ~/.config/reovim/keymap.toml
     // User bindings are registered at the User layer (highest priority)
     match config::KeymapConfig::load() {
@@ -1168,7 +1186,14 @@ fn build_default_registries() -> (
         tracing::info!(module = %layout_module_id, "extracted compositor from layout module");
     }
 
-    (mode_registry, command_registry, keymap_registry, module_manager, compositor)
+    (
+        mode_registry,
+        command_registry,
+        keymap_registry,
+        module_manager,
+        resolver_registry,
+        compositor,
+    )
 }
 
 impl Default for Server {

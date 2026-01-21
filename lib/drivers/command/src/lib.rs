@@ -64,7 +64,9 @@ mod provider;
 mod traits;
 
 // Re-export from command-types for backwards compatibility
-pub use reovim_driver_command_types::{ArgKind, ArgSpec, ArgValue, CommandContext, CommandResult};
+pub use reovim_driver_command_types::{
+    ArgKind, ArgSpec, ArgValue, CommandContext, CommandResult, MotionType,
+};
 
 // Re-export provider trait
 pub use provider::CommandProvider;

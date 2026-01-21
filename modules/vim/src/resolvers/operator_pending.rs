@@ -3,17 +3,22 @@
 //! After pressing an operator (d, y, c), we enter operator-pending mode
 //! and wait for a motion or text object to define the range.
 
-use std::sync::RwLock;
+use std::{collections::HashMap, sync::RwLock};
 
 use {
+    reovim_driver_command_types::ArgValue,
     reovim_driver_input::{
-        KeyCode, KeyEvent, KeyLookupState, KeySequence, ModeKeyResolver, ModeState, ModeTransition,
-        Modifiers, PopResult, ResolveContext, ResolveInput, ResolveResult,
+        ExtensionMap, KeyCode, KeyEvent, KeyLookupState, KeySequence, ModeKeyResolver, ModeState,
+        ModeTransition, Modifiers, PopResult, ResolveContext, ResolveInput, ResolveResult,
+        SessionApiDyn,
     },
-    reovim_kernel::api::v1::{ModeId, Position},
+    reovim_kernel::api::v1::{CommandId, ModeId, ModuleId, Position},
 };
 
-use crate::modes::VimMode;
+use crate::{
+    modes::VimMode,
+    session_state::{PendingMotion, VimSessionState},
+};
 
 /// Vim operator-pending mode key resolver.
 ///
@@ -139,6 +144,42 @@ impl VimOperatorPendingResolver {
             || (key.code == KeyCode::Char('[') && key.modifiers.contains(Modifiers::CTRL))
     }
 
+    /// Determine if a motion command is linewise.
+    ///
+    /// This is vim policy knowledge - the resolver knows which motions
+    /// are linewise vs characterwise based on the command name.
+    ///
+    /// # Linewise Motions
+    /// - j, k (line up/down)
+    /// - gg, G (document start/end)
+    /// - H, M, L (screen positions)
+    /// - {, } (paragraph motions)
+    /// - +, - (line motions)
+    ///
+    /// # Characterwise Motions (default)
+    /// - w, b, e, W, B, E (word motions)
+    /// - h, l (character motions)
+    /// - 0, $, ^ (line position motions)
+    /// - f, F, t, T (find-char motions)
+    fn is_linewise_motion(cmd: &CommandId) -> bool {
+        let name = cmd.name();
+        matches!(
+            name,
+            "move-down"
+                | "move-up"
+                | "document-start"
+                | "document-end"
+                | "screen-top"
+                | "screen-middle"
+                | "screen-bottom"
+                | "paragraph-forward"
+                | "paragraph-backward"
+                | "next-line"
+                | "prev-line"
+                | "whole-line"
+        )
+    }
+
     /// Build a resolve context with the current state.
     fn build_context(&self, keys: KeySequence) -> ResolveContext {
         let count = self.take_count();
@@ -155,6 +196,11 @@ impl VimOperatorPendingResolver {
     ///
     /// When the same operator key is pressed twice (dd, yy, cc), it operates
     /// on the whole current line.
+    ///
+    /// # Note
+    ///
+    /// This version uses `state.transition_context` which is deprecated.
+    /// Use `is_line_operator_ext` with `VimSessionState` for new code.
     fn is_line_operator(key: &KeyEvent, state: &ModeState) -> bool {
         // Check if the key matches the pending operator
         // This requires access to the transition context
@@ -181,6 +227,37 @@ impl VimOperatorPendingResolver {
         false
     }
 
+    /// Check if key is the operator key for line operation (extensions-based).
+    ///
+    /// Epic #415: Uses `VimSessionState` from extensions instead of
+    /// `state.transition_context` which the runner ignores.
+    ///
+    /// When the same operator key is pressed twice (dd, yy, cc), it operates
+    /// on the whole current line.
+    fn is_line_operator_ext(key: &KeyEvent, extensions: &ExtensionMap) -> bool {
+        if let Some(vim) = extensions.get::<VimSessionState>()
+            && let Some(ref pending) = vim.pending_operator
+        {
+            // Match operator name to expected key
+            let op_key = match pending.operator_id.name() {
+                "delete" => Some('d'),
+                "yank" => Some('y'),
+                "change" => Some('c'),
+                "indent" => Some('>'),
+                "dedent" => Some('<'),
+                _ => None,
+            };
+
+            if let Some(expected) = op_key
+                && key.modifiers == Modifiers::NONE
+                && let KeyCode::Char(c) = key.code
+            {
+                return c == expected;
+            }
+        }
+        false
+    }
+
     /// Extract operator info from transition context (SSOT).
     ///
     /// Returns `(operator, count, register)` from the mode state's transition context.
@@ -188,8 +265,6 @@ impl VimOperatorPendingResolver {
     fn extract_operator_info(
         state: &ModeState,
     ) -> (reovim_kernel::api::v1::CommandId, Option<usize>, Option<char>) {
-        use reovim_kernel::api::v1::{CommandId, ModuleId};
-
         if let Some(ctx) = &state.transition_context {
             let operator = ctx
                 .pending_operator
@@ -199,6 +274,61 @@ impl VimOperatorPendingResolver {
         } else {
             // Fallback - should not happen in normal operation
             (CommandId::new(ModuleId::new("noop"), "noop"), None, None)
+        }
+    }
+
+    /// Extract operator info from VimSessionState (Epic #415 approach).
+    ///
+    /// This is the preferred method when using `resolve_with_session()` as it
+    /// accesses the canonical vim state stored by the normal resolver.
+    fn extract_operator_from_vim_state(
+        &self,
+        extensions: &mut ExtensionMap,
+    ) -> (CommandId, Option<usize>, Option<char>) {
+        if let Some(vim) = extensions.get_mut::<VimSessionState>()
+            && let Some(pending) = vim.pending_operator.take()
+        {
+            // Convert OperatorId (vim-specific) to CommandId (kernel type)
+            let operator =
+                CommandId::new(pending.operator_id.module().clone(), pending.operator_id.name());
+            return (operator, pending.count, pending.register);
+        }
+        // Fallback - should not happen in normal operation
+        (CommandId::new(ModuleId::new("noop"), "noop"), None, None)
+    }
+
+    /// Build a PopResult::ExecuteCommand with operator arguments.
+    ///
+    /// This is the vim module building the complete command context.
+    /// Runner just executes - no vim knowledge needed.
+    fn build_operator_pop_result(
+        operator: CommandId,
+        start: Position,
+        end: Position,
+        linewise: bool,
+        count: Option<usize>,
+        register: Option<char>,
+    ) -> PopResult {
+        let mut args = HashMap::new();
+
+        // Set linewise flag
+        args.insert("linewise".to_string(), ArgValue::Bang(linewise));
+
+        // Set range positions
+        args.insert("range_start".to_string(), ArgValue::Position(start.line, start.column));
+        args.insert("range_end".to_string(), ArgValue::Position(end.line, end.column));
+
+        // Set count (defaults to 1)
+        args.insert("count".to_string(), ArgValue::Count(count.unwrap_or(1)));
+
+        // Set register if specified
+        if let Some(reg) = register {
+            args.insert("register".to_string(), ArgValue::Register(reg));
+        }
+
+        PopResult::ExecuteCommand {
+            command: operator,
+            args,
         }
     }
 }
@@ -230,15 +360,14 @@ impl ModeKeyResolver for VimOperatorPendingResolver {
             // Extract operator info from transition context (SSOT)
             let (operator, count, register) = Self::extract_operator_info(state);
             return ResolveResult::ModeTransition(ModeTransition::Pop {
-                result: Some(PopResult::OperatorRange {
+                result: Some(Self::build_operator_pop_result(
                     operator,
-                    // Placeholder positions - runner will calculate actual line range
-                    start: Position::new(0, 0),
-                    end: Position::new(0, 0),
-                    linewise: true,
+                    Position::new(0, 0), // Placeholder - runner calculates line range
+                    Position::new(0, 0),
+                    true, // linewise
                     count,
                     register,
-                }),
+                )),
             });
         }
 
@@ -278,15 +407,14 @@ impl ModeKeyResolver for VimOperatorPendingResolver {
             let _motion_count = self.take_count();
             self.clear_pending_keys();
             return ResolveResult::ModeTransition(ModeTransition::Pop {
-                result: Some(PopResult::OperatorRange {
+                result: Some(Self::build_operator_pop_result(
                     operator,
-                    // Placeholder positions - runner will calculate actual line range
-                    start: Position::new(0, 0),
-                    end: Position::new(0, 0),
-                    linewise: true,
+                    Position::new(0, 0), // Placeholder - runner calculates line range
+                    Position::new(0, 0),
+                    true, // linewise
                     count,
                     register,
-                }),
+                )),
             });
         }
 
@@ -317,6 +445,207 @@ impl ModeKeyResolver for VimOperatorPendingResolver {
                 })
             }
         }
+    }
+
+    /// Resolve key with session API access.
+    ///
+    /// This is the primary resolution method for operator-pending mode in Epic #415.
+    /// Instead of executing motions directly (which isn't supported), it returns
+    /// `Execute` and lets the runner orchestrate the two-step flow.
+    ///
+    /// # Flow
+    ///
+    /// 1. Handle special keys (Escape, counts, line operators)
+    /// 2. Look up motion in keymap
+    /// 3. If motion found:
+    ///    - Store cursor position BEFORE in VimSessionState
+    ///    - Return Execute(motion_cmd) - runner will execute it
+    ///    - Operator stays pending - runner will complete after motion
+    fn resolve_with_session(
+        &self,
+        key: &KeyEvent,
+        _state: &mut ModeState,
+        input: &ResolveInput<'_>,
+        session: &mut dyn SessionApiDyn,
+        extensions: &mut ExtensionMap,
+    ) -> ResolveResult {
+        eprintln!("[DEBUG OP-PENDING] resolve_with_session called with key: {:?}", key);
+
+        // Escape cancels the pending operator
+        if Self::is_escape(key) {
+            // Clear vim session state
+            if let Some(vim) = extensions.get_mut::<VimSessionState>() {
+                vim.pending_operator = None;
+            }
+            self.clear_state();
+            return ResolveResult::ModeTransition(ModeTransition::Pop {
+                result: Some(PopResult::Cancelled),
+            });
+        }
+
+        // Check for count digit
+        if self.is_count_digit(key) {
+            self.accumulate_count(key);
+            return ResolveResult::Pending;
+        }
+
+        // Check for line operator (dd, yy, cc)
+        // Epic #415: Use is_line_operator_ext which reads from VimSessionState
+        // (not state.transition_context which the runner ignores)
+        if Self::is_line_operator_ext(key, extensions) {
+            // Get operator info from VimSessionState (Epic #415 approach)
+            let (operator, count, register) = self.extract_operator_from_vim_state(extensions);
+            let motion_count = self.take_count().unwrap_or(1);
+            self.clear_pending_keys();
+
+            // For linewise operations, get current cursor position to determine line range
+            let (start, end) = if let Some(buffer_id) = session.active_buffer()
+                && let Some(cursor_pos) = session.cursor_position(buffer_id)
+            {
+                // Linewise range: start of current line to start of (line + count)
+                // The delete operator will delete entire lines when is_linewise=true
+                let start = Position::new(cursor_pos.line, 0);
+                let end_line = cursor_pos.line + count.unwrap_or(1) * motion_count;
+                let end = Position::new(end_line, 0);
+                (start, end)
+            } else {
+                // Fallback if no cursor position (shouldn't happen)
+                (Position::new(0, 0), Position::new(1, 0))
+            };
+
+            return ResolveResult::ModeTransition(ModeTransition::Pop {
+                result: Some(Self::build_operator_pop_result(
+                    operator, start, end, true, // linewise
+                    count, register,
+                )),
+            });
+        }
+
+        // Add to pending keys for motion/text-object lookup
+        self.push_pending_key(*key);
+        let keys = self.get_pending_keys();
+
+        // Query keymap for motion/text-object
+        let lookup_state = input.keymap.query(input.mode, &keys);
+        eprintln!(
+            "[DEBUG OP-PENDING] keymap query for {:?} in mode {:?}: {:?}",
+            keys, input.mode, lookup_state
+        );
+
+        match lookup_state {
+            KeyLookupState::ExactWithLonger { exact: cmd } | KeyLookupState::ExactOnly(cmd) => {
+                // Motion found - store state for on_command_complete hook
+
+                // Per #388: Store motion type in VimSessionState BEFORE dispatch.
+                // The resolver knows which motions are linewise vs characterwise.
+                let linewise = Self::is_linewise_motion(&cmd);
+
+                if let Some(vim) = extensions.get_mut::<VimSessionState>() {
+                    // Store pending motion info
+                    vim.pending_motion = Some(PendingMotion::new(linewise));
+
+                    // Store start position in pending operator
+                    if let Some(buffer) = session.active_buffer()
+                        && let Some(start_pos) = session.cursor_position(buffer)
+                        && let Some(ref mut pending) = vim.pending_operator
+                    {
+                        pending.start_position = Some(start_pos);
+                        // Include motion count
+                        if let Some(motion_count) = self.take_count() {
+                            pending.motion_count = Some(motion_count);
+                        }
+                    }
+                }
+
+                // Build context with count
+                let ctx = self.build_context(keys);
+                self.clear_pending_keys();
+
+                // Return Execute - runner calls on_command_complete after motion
+                ResolveResult::Execute(cmd, ctx)
+            }
+            KeyLookupState::PrefixOnly => {
+                // Wait for more keys (e.g., 'i' might become 'iw')
+                ResolveResult::Pending
+            }
+            KeyLookupState::NotFound => {
+                // Unknown motion - cancel the operator
+                if let Some(vim) = extensions.get_mut::<VimSessionState>() {
+                    vim.pending_operator = None;
+                }
+                self.clear_state();
+                ResolveResult::ModeTransition(ModeTransition::Pop {
+                    result: Some(PopResult::Cancelled),
+                })
+            }
+        }
+    }
+
+    /// Complete pending operator after command execution (Epic #415, Issue #388).
+    ///
+    /// Called by the runner after any command executes successfully.
+    /// Checks `VimSessionState` for pending motion info and completes
+    /// the operator if needed.
+    ///
+    /// # Flow
+    ///
+    /// 1. Check `VimSessionState` for `pending_motion` (set before dispatch)
+    /// 2. Check for `pending_operator` with start position
+    /// 3. Get current cursor position (end of motion) from session
+    /// 4. Build `PopResult::OperatorRange` with the range
+    /// 5. Return `ModeTransition::Pop` to complete the operator
+    fn on_command_complete(
+        &self,
+        session: &mut dyn SessionApiDyn,
+        extensions: &mut ExtensionMap,
+    ) -> Option<ModeTransition> {
+        eprintln!("[DEBUG OP-PENDING] on_command_complete called");
+
+        // Get pending motion and operator from VimSessionState
+        let vim = extensions.get_mut::<VimSessionState>()?;
+        eprintln!(
+            "[DEBUG OP-PENDING] Got VimSessionState, pending_motion={:?}, pending_operator={:?}",
+            vim.pending_motion.is_some(),
+            vim.pending_operator.is_some()
+        );
+
+        // Take pending motion - if none, this wasn't a dispatched motion
+        let motion = vim.pending_motion.take()?;
+        eprintln!("[DEBUG OP-PENDING] Got pending_motion: linewise={}", motion.linewise);
+
+        // Take pending operator
+        let pending = vim.pending_operator.take()?;
+        eprintln!("[DEBUG OP-PENDING] Got pending_operator: {:?}", pending.operator_id);
+
+        // Need start position to calculate range
+        let start_pos = pending.start_position?;
+
+        // Get current cursor position (end of motion)
+        let buffer_id = session.active_buffer()?;
+        let end_pos = session.cursor_position(buffer_id)?;
+
+        // Normalize range (start <= end for characterwise)
+        let (range_start, range_end) = if start_pos <= end_pos {
+            (start_pos, end_pos)
+        } else {
+            (end_pos, start_pos)
+        };
+
+        // Build operator command ID
+        let operator =
+            CommandId::new(pending.operator_id.module().clone(), pending.operator_id.name());
+
+        // Return mode transition to complete the operator
+        Some(ModeTransition::Pop {
+            result: Some(Self::build_operator_pop_result(
+                operator,
+                range_start,
+                range_end,
+                motion.linewise,
+                pending.count,
+                pending.register,
+            )),
+        })
     }
 
     fn mode_id(&self) -> &ModeId {
@@ -419,10 +748,11 @@ mod tests {
         let result = resolver.resolve(&key('d'), &mut state);
 
         if let ResolveResult::ModeTransition(ModeTransition::Pop { result: Some(r) }) = result {
-            if let PopResult::OperatorRange { linewise, .. } = r {
-                assert!(linewise);
+            if let PopResult::ExecuteCommand { args, .. } = r {
+                // Check linewise flag is set to true
+                assert_eq!(args.get("linewise"), Some(&ArgValue::Bang(true)));
             } else {
-                panic!("expected OperatorRange");
+                panic!("expected ExecuteCommand");
             }
         } else {
             panic!("expected ModeTransition::Pop");
@@ -437,10 +767,11 @@ mod tests {
         let result = resolver.resolve(&key('y'), &mut state);
 
         if let ResolveResult::ModeTransition(ModeTransition::Pop { result: Some(r) }) = result {
-            if let PopResult::OperatorRange { linewise, .. } = r {
-                assert!(linewise);
+            if let PopResult::ExecuteCommand { args, .. } = r {
+                // Check linewise flag is set to true
+                assert_eq!(args.get("linewise"), Some(&ArgValue::Bang(true)));
             } else {
-                panic!("expected OperatorRange");
+                panic!("expected ExecuteCommand");
             }
         } else {
             panic!("expected ModeTransition::Pop");
@@ -674,10 +1005,11 @@ mod tests {
         let result = resolver.resolve_with_keymap(&key('d'), &mut state, &input);
 
         if let ResolveResult::ModeTransition(ModeTransition::Pop { result: Some(r) }) = result {
-            if let PopResult::OperatorRange { linewise, .. } = r {
-                assert!(linewise);
+            if let PopResult::ExecuteCommand { args, .. } = r {
+                // Check linewise flag is set to true
+                assert_eq!(args.get("linewise"), Some(&ArgValue::Bang(true)));
             } else {
-                panic!("expected OperatorRange");
+                panic!("expected ExecuteCommand");
             }
         } else {
             panic!("expected ModeTransition::Pop");

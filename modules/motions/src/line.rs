@@ -10,7 +10,7 @@ use {
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
     reovim_driver_session::{BufferApi, ChangeTracker, SessionRuntime},
-    reovim_kernel::api::v1::{CommandId, Cursor, LinePosition, Motion, MotionEngine, Position},
+    reovim_kernel::api::v1::{CommandId, Cursor, LinePosition, Motion, MotionEngine},
 };
 
 use crate::ids;
@@ -55,26 +55,15 @@ fn execute_line_position(
         return CommandResult::Success; // No movement
     }
 
-    // In operator-pending mode, return range for the operator
-    if args.is_operator_pending() {
-        // Determine range direction - start should be before end
-        let (start, range_end) = if new_pos.column >= old_pos.column {
-            (old_pos, new_pos)
-        } else {
-            (new_pos, old_pos)
-        };
-        // TODO(#394): Return operator range via different mechanism (escape hatch until API supports this)
-        // Line position motions are characterwise
-        let _ = (start, range_end); // Suppress unused warnings
-        return CommandResult::Success;
-    }
-
-    // Normal mode: move cursor via BufferApi
+    // Move cursor via BufferApi (both normal and operator-pending modes)
     runtime.set_buffer_position(buffer_id, new_pos);
 
     // Record cursor move via ChangeTracker
     runtime.record_cursor_move(buffer_id);
 
+    // Per #388: motions just return Success. The vim resolver stores motion
+    // type info in VimSessionState BEFORE dispatching, then completes the
+    // operator in its post-command hook.
     CommandResult::Success
 }
 
@@ -114,26 +103,15 @@ fn execute_jump_line(
         return CommandResult::Success; // No movement
     }
 
-    // In operator-pending mode, return range for the operator
-    if args.is_operator_pending() {
-        // Determine range direction - start line should be before end line
-        let (start, range_end) = if new_pos.line >= old_pos.line {
-            (old_pos, new_pos)
-        } else {
-            (new_pos, old_pos)
-        };
-        // TODO(#394): Return operator range via different mechanism (escape hatch until API supports this)
-        // Document motions are linewise
-        let _ = (start, range_end); // Suppress unused warnings
-        return CommandResult::Success;
-    }
-
-    // Normal mode: move cursor via BufferApi
+    // Move cursor via BufferApi (both normal and operator-pending modes)
     runtime.set_buffer_position(buffer_id, new_pos);
 
     // Record cursor move via ChangeTracker
     runtime.record_cursor_move(buffer_id);
 
+    // Per #388: motions just return Success. The vim resolver stores motion
+    // type info in VimSessionState BEFORE dispatching, then completes the
+    // operator in its post-command hook.
     CommandResult::Success
 }
 
@@ -325,37 +303,10 @@ impl Command for WholeLine {
 }
 
 impl CommandHandler for WholeLine {
-    #[allow(clippy::cast_possible_truncation)]
-    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        // This motion only makes sense in operator-pending mode
-        if !args.is_operator_pending() {
-            return CommandResult::Success; // No-op in normal mode
-        }
-
-        let Some(buffer_id) = args.buffer_id() else {
-            return CommandResult::error("No active buffer");
-        };
-
-        let Some(pos) = runtime.buffer_position(buffer_id) else {
-            return CommandResult::error("Buffer not found");
-        };
-        let Some(line_count) = runtime.buffer_line_count(buffer_id) else {
-            return CommandResult::error("Buffer not found");
-        };
-
-        let current_line = pos.line;
-
-        // Count defaults to 1, meaning the current line only
-        // With count > 1, operates on multiple lines
-        let count = args.count().unwrap_or(1);
-        let end_line = (current_line + count).min(line_count).saturating_sub(1);
-
-        // Return linewise range covering the current line(s)
-        let start = Position::new(current_line, 0);
-        let end = Position::new(end_line, 0);
-
-        // TODO(#394): Return operator range via different mechanism (escape hatch until API supports this)
-        let _ = (start, end); // Suppress unused warnings
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // WholeLine is used for operator doubling (dd, yy, cc).
+        // Per #388: motions just return Success. The vim resolver already
+        // knows dd/yy/cc are linewise and handles this in is_line_operator().
         CommandResult::Success
     }
 }

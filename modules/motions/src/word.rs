@@ -63,26 +63,15 @@ fn execute_word_motion(
         return CommandResult::Success; // No movement
     }
 
-    // In operator-pending mode, return range for the operator
-    if args.is_operator_pending() {
-        // Determine range direction - start should be before end
-        let (start, range_end) = if direction == Direction::Forward {
-            (old_pos, new_pos)
-        } else {
-            (new_pos, old_pos)
-        };
-        // TODO(#394): Return operator range via different mechanism (escape hatch until API supports this)
-        // Word motions are characterwise
-        let _ = (start, range_end); // Suppress unused warnings
-        return CommandResult::Success;
-    }
-
-    // Normal mode: move cursor via BufferApi
+    // Move cursor via BufferApi (both normal and operator-pending modes)
     runtime.set_buffer_position(buffer_id, new_pos);
 
     // Record cursor move via ChangeTracker
     runtime.record_cursor_move(buffer_id);
 
+    // Per #388: motions just return Success. The vim resolver stores motion
+    // type info in VimSessionState BEFORE dispatching, then completes the
+    // operator in its post-command hook.
     CommandResult::Success
 }
 

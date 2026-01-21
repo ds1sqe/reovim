@@ -66,7 +66,7 @@ pub use reovim_driver_session::{PopResult, SessionApi, SessionApiDyn, Transition
 /// Common arguments for operator operations.
 ///
 /// Extracted to avoid field duplication across context types (DRY principle).
-/// Used by `TransitionContext`, `ResolveContext`, and `PopResult::OperatorRange`.
+/// Used by `TransitionContext` and `ResolveContext`.
 ///
 /// # Example
 ///
@@ -473,6 +473,60 @@ pub trait ModeKeyResolver: Send + Sync {
         self.resolve_with_extensions(key, state, input, extensions)
     }
 
+    /// Hook called after a command executes successfully.
+    ///
+    /// Called by the runner after executing a command that returns `Success`.
+    /// This allows resolvers to complete pending operations.
+    ///
+    /// # Architecture (Issue #388, Epic #415)
+    ///
+    /// This method keeps vim-specific operator completion logic in the vim module
+    /// instead of the runner, maintaining the mechanism/policy separation:
+    /// - **Runner (mechanism)**: Executes commands, calls this hook after success
+    /// - **Resolver (policy)**: Checks its stored state, completes pending operations
+    ///
+    /// Per #388, `CommandResult` has no `Motion` variant. Instead, the resolver
+    /// stores motion type info in `VimSessionState` BEFORE dispatching the motion,
+    /// then uses this hook to complete the operator.
+    ///
+    /// # Example Use Case: `dw` (delete word)
+    ///
+    /// 1. `d` key → Normal resolver stores pending operator, pushes operator-pending mode
+    /// 2. `w` key → Operator-pending resolver:
+    ///    - Stores start position in `VimSessionState`
+    ///    - Stores motion type (characterwise for 'w') in `VimSessionState`
+    ///    - Returns `Execute(word-forward)`
+    /// 3. Runner executes motion → `CommandResult::Success`
+    /// 4. Runner calls `on_command_complete(session, extensions)`
+    /// 5. Operator-pending resolver:
+    ///    - Checks `VimSessionState` for pending motion
+    ///    - Gets end position from session
+    ///    - Builds `PopResult::ExecuteCommand` with operator and args
+    ///    - Returns `Some(ModeTransition::Pop { result: ExecuteCommand })`
+    /// 6. Runner handles the mode transition (executes the operator command)
+    ///
+    /// # Arguments
+    ///
+    /// * `session` - Session API for cursor/buffer access
+    /// * `extensions` - Per-session extension storage (e.g., `VimSessionState`)
+    ///
+    /// # Returns
+    ///
+    /// * `Some(ModeTransition)` - Resolver wants to complete a pending operation
+    /// * `None` - No pending operation to complete
+    ///
+    /// # Default Implementation
+    ///
+    /// Returns `None` - most modes don't have pending operations.
+    fn on_command_complete(
+        &self,
+        _session: &mut dyn SessionApiDyn,
+        _extensions: &mut ExtensionMap,
+    ) -> Option<ModeTransition> {
+        // Default: no pending operation to complete
+        None
+    }
+
     /// Which mode this resolver handles.
     fn mode_id(&self) -> &ModeId;
 
@@ -849,7 +903,9 @@ impl ModeState {
 
 #[cfg(test)]
 mod tests {
-    use reovim_kernel::api::v1::ModuleId;
+    use std::collections::HashMap;
+
+    use {reovim_driver_command_types::ArgValue as CmdArgValue, reovim_kernel::api::v1::ModuleId};
 
     use super::*;
 
@@ -1040,35 +1096,26 @@ mod tests {
 
     #[test]
     fn test_mode_transition_pop() {
+        let mut args = HashMap::new();
+        args.insert("linewise".to_string(), CmdArgValue::Bang(false));
+        args.insert("count".to_string(), CmdArgValue::Count(2));
+        args.insert("register".to_string(), CmdArgValue::Register('a'));
+
         let trans = ModeTransition::Pop {
-            result: Some(PopResult::OperatorRange {
-                operator: test_command(),
-                start: Position::new(0, 0),
-                end: Position::new(0, 5),
-                linewise: false,
-                count: Some(2),
-                register: Some('a'),
+            result: Some(PopResult::ExecuteCommand {
+                command: test_command(),
+                args,
             }),
         };
 
         if let ModeTransition::Pop { result: Some(r) } = trans {
-            if let PopResult::OperatorRange {
-                operator,
-                start,
-                end,
-                linewise,
-                count,
-                register,
-            } = r
-            {
-                assert_eq!(operator, test_command());
-                assert_eq!(start, Position::new(0, 0));
-                assert_eq!(end, Position::new(0, 5));
-                assert!(!linewise);
-                assert_eq!(count, Some(2));
-                assert_eq!(register, Some('a'));
+            if let PopResult::ExecuteCommand { command, args } = r {
+                assert_eq!(command, test_command());
+                assert_eq!(args.get("linewise"), Some(&CmdArgValue::Bang(false)));
+                assert_eq!(args.get("count"), Some(&CmdArgValue::Count(2)));
+                assert_eq!(args.get("register"), Some(&CmdArgValue::Register('a')));
             } else {
-                panic!("expected OperatorRange");
+                panic!("expected ExecuteCommand");
             }
         } else {
             panic!("expected Pop with result");

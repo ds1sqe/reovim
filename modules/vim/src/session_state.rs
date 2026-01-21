@@ -27,7 +27,7 @@
 //! }
 //! ```
 
-use reovim_driver_session::SessionExtension;
+use {reovim_driver_session::SessionExtension, reovim_kernel::api::v1::Position};
 
 use crate::ids::OperatorId;
 
@@ -42,6 +42,16 @@ pub struct VimSessionState {
     /// When a user presses an operator key in normal mode, the operator
     /// is stored here until a motion provides the text range.
     pub pending_operator: Option<PendingOperator>,
+
+    /// Pending motion info (Epic #415, Issue #388).
+    ///
+    /// When the operator-pending resolver dispatches a motion, it stores
+    /// the motion type here. After the motion executes, `on_command_complete`
+    /// uses this to complete the operator with the correct linewise flag.
+    ///
+    /// This replaces `CommandResult::Motion` - motion type is resolver policy,
+    /// not command mechanism.
+    pub pending_motion: Option<PendingMotion>,
 
     /// Pending character operation (f, F, t, T, r).
     ///
@@ -90,6 +100,7 @@ impl VimSessionState {
     /// Called when an operation is cancelled (e.g., pressing Escape).
     pub fn clear_pending(&mut self) {
         self.pending_operator = None;
+        self.pending_motion = None;
         self.pending_char = None;
         self.pending_count = None;
         self.pending_register = None;
@@ -131,6 +142,17 @@ pub struct PendingOperator {
     ///
     /// If None, uses the default (unnamed) register.
     pub register: Option<char>,
+
+    /// Start position captured when entering operator-pending mode.
+    ///
+    /// Epic #415: The cursor position when the operator was initiated.
+    /// After motion executes, this forms the start of the range.
+    pub start_position: Option<Position>,
+
+    /// Motion count (e.g., `3` in `d3w`).
+    ///
+    /// Epic #415: Separate from operator count for correct multiplication.
+    pub motion_count: Option<usize>,
 }
 
 impl PendingOperator {
@@ -141,6 +163,8 @@ impl PendingOperator {
             operator_id,
             count: None,
             register: None,
+            start_position: None,
+            motion_count: None,
         }
     }
 
@@ -156,6 +180,54 @@ impl PendingOperator {
     pub const fn with_register(mut self, register: char) -> Self {
         self.register = Some(register);
         self
+    }
+
+    /// Set the start position (captured when entering operator-pending mode).
+    #[must_use]
+    pub const fn with_start_position(mut self, pos: Position) -> Self {
+        self.start_position = Some(pos);
+        self
+    }
+
+    /// Set the motion count.
+    #[must_use]
+    pub const fn with_motion_count(mut self, count: usize) -> Self {
+        self.motion_count = Some(count);
+        self
+    }
+}
+
+/// Pending motion info for operator completion (Epic #415, Issue #388).
+///
+/// When the operator-pending resolver dispatches a motion, it stores
+/// info here. After the motion executes, `on_command_complete` uses
+/// this to complete the operator.
+///
+/// This replaces `CommandResult::Motion` - motion type classification
+/// is resolver policy knowledge, not command mechanism.
+#[derive(Debug, Clone, Copy)]
+pub struct PendingMotion {
+    /// Whether the motion is linewise (j, k, gg, G) or characterwise (w, b, h, l, $).
+    pub linewise: bool,
+}
+
+impl PendingMotion {
+    /// Create a new pending motion.
+    #[must_use]
+    pub const fn new(linewise: bool) -> Self {
+        Self { linewise }
+    }
+
+    /// Create a characterwise pending motion (w, b, h, l, $, etc.).
+    #[must_use]
+    pub const fn characterwise() -> Self {
+        Self { linewise: false }
+    }
+
+    /// Create a linewise pending motion (j, k, gg, G, etc.).
+    #[must_use]
+    pub const fn linewise() -> Self {
+        Self { linewise: true }
     }
 }
 

@@ -115,6 +115,7 @@ impl Session {
         command_registry: CommandRegistry,
         keymap_registry: KeymapRegistry,
         module_registry: ModuleManager,
+        resolver_registry: reovim_module_editor::ResolverRegistry,
         compositor: Option<Box<dyn RootCompositor>>,
     ) -> Arc<Self> {
         Arc::new(Self {
@@ -127,6 +128,7 @@ impl Session {
                 command_registry,
                 keymap_registry,
                 module_registry,
+                resolver_registry,
                 compositor,
             )),
             clients: ClientRegistry::new(),
@@ -277,6 +279,25 @@ impl Session {
     {
         let mut state = self.state.write().await;
         f(&mut state)
+    }
+
+    /// Resolve a key event using the resolver registry.
+    ///
+    /// This method uses mode resolvers to handle vim-style key resolution:
+    /// - Operator interception (d, y, c → operator-pending mode)
+    /// - Motion handling in operator-pending mode
+    /// - Mode-specific policy application
+    ///
+    /// # Returns
+    ///
+    /// - `Some((ResolveResult, StateChanges))` - if a resolver handled the key
+    /// - `None` - if no resolver is registered for the current mode
+    pub async fn resolve_key(
+        &self,
+        key: &reovim_driver_input::KeyEvent,
+    ) -> Option<(reovim_driver_input::ResolveResult, reovim_driver_session::api::StateChanges)>
+    {
+        self.with_state_mut(|state| state.resolve_key(key)).await
     }
 
     /// Handle a command result from command execution.

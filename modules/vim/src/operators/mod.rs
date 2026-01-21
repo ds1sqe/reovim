@@ -16,6 +16,7 @@
 //! This is why they live in the vim module, not as a separate module.
 
 mod change;
+mod commands;
 mod delete;
 mod types;
 mod yank;
@@ -23,7 +24,11 @@ mod yank;
 // Re-export operator types
 pub use types::{Operator, OperatorContext, OperatorError, Range};
 
+// Re-export operator implementations
 pub use {change::ChangeOperator, delete::DeleteOperator, yank::YankOperator};
+
+// Re-export command wrappers (Epic #415)
+pub use commands::{ChangeCommand, DeleteCommand, YankCommand, operator_commands};
 
 /// Returns all operators provided by this module.
 #[must_use]

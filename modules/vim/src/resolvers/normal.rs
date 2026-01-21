@@ -11,15 +11,17 @@ use std::sync::RwLock;
 use {
     reovim_driver_input::{
         ArgValue, ExtensionMap, KeyCode, KeyEvent, KeyLookupState, KeySequence, ModeKeyResolver,
-        ModeState, Modifiers, ResolveContext, ResolveInput, ResolveResult,
+        ModeState, ModeTransition, Modifiers, ResolveContext, ResolveInput, ResolveResult,
+        TransitionContext,
     },
-    reovim_kernel::api::v1::ModeId,
+    reovim_kernel::api::v1::{CommandId, ModeId},
+    reovim_module_editor as editor,
 };
 
 use crate::{
-    ids::EXECUTE_FIND_CHAR,
+    ids::{self, EXECUTE_FIND_CHAR},
     modes::VimMode,
-    session_state::{PendingCharOp, VimSessionState},
+    session_state::{PendingCharOp, PendingOperator, VimSessionState},
 };
 
 /// Vim normal mode key resolver.
@@ -295,6 +297,42 @@ impl VimNormalResolver {
             _ => None,
         }
     }
+
+    /// Classify a command as an operator entry, if applicable.
+    ///
+    /// Returns the corresponding `OperatorId` if the command is one of the
+    /// enter-*-operator commands (d, y, c), otherwise returns `None`.
+    ///
+    /// This enables the resolver to intercept operator commands and push
+    /// operator-pending mode rather than executing the command directly.
+    ///
+    /// # Why intercept here?
+    ///
+    /// The enter-*-operator commands in the editor module are "shell" commands
+    /// (they do nothing). The real work is done by:
+    /// 1. This resolver: intercepts and pushes operator-pending mode
+    /// 2. Operator-pending resolver: captures motion and returns range
+    /// 3. Runner: executes the operator on the range
+    ///
+    /// # Compile-time Safety
+    ///
+    /// This function uses hard-typed comparisons against the editor module's
+    /// `CommandId` constants. If those constants are renamed or removed, this
+    /// code will fail to compile rather than silently break at runtime.
+    fn classify_operator_command(
+        cmd: &reovim_kernel::api::v1::CommandId,
+    ) -> Option<ids::OperatorId> {
+        // Hard-typed check using editor module constants (compile-time safe)
+        if *cmd == editor::ids::ENTER_DELETE_OPERATOR {
+            Some(ids::DELETE.clone())
+        } else if *cmd == editor::ids::ENTER_YANK_OPERATOR {
+            Some(ids::YANK.clone())
+        } else if *cmd == editor::ids::ENTER_CHANGE_OPERATOR {
+            Some(ids::CHANGE.clone())
+        } else {
+            None
+        }
+    }
 }
 
 impl Default for VimNormalResolver {
@@ -506,8 +544,46 @@ impl ModeKeyResolver for VimNormalResolver {
 
         // Apply Vim policy
         match lookup_state {
-            KeyLookupState::ExactWithLonger { .. } => {
-                // Wait for longer sequence (d might become dd)
+            KeyLookupState::ExactWithLonger { exact: cmd } => {
+                // Epic #415: Operators MUST be intercepted immediately
+                // Even though dd exists, we don't wait - operator-pending mode handles dd
+                // via the is_line_operator check when the second 'd' is pressed.
+                if let Some(operator_id) = Self::classify_operator_command(&cmd) {
+                    // Build pending operator with count and register from accumulated state
+                    let count = vim.pending_count.take();
+                    let register = vim.pending_register.take();
+                    let mut pending = PendingOperator::new(operator_id.clone());
+                    if let Some(c) = count {
+                        pending = pending.with_count(c);
+                    }
+                    if let Some(r) = register {
+                        pending = pending.with_register(r);
+                    }
+
+                    // Store in vim session state
+                    vim.pending_operator = Some(pending);
+
+                    // Convert OperatorId to CommandId for TransitionContext
+                    let operator_cmd =
+                        CommandId::new(operator_id.module().clone(), operator_id.name());
+
+                    // Build transition context with operator, count and register
+                    let mut ctx = TransitionContext::new().operator(operator_cmd);
+                    if let Some(c) = count {
+                        ctx = ctx.count(c);
+                    }
+                    if let Some(r) = register {
+                        ctx = ctx.register(r);
+                    }
+
+                    self.clear_pending_keys();
+                    return ResolveResult::ModeTransition(ModeTransition::Push {
+                        mode: VimMode::OPERATOR_PENDING_ID,
+                        context: ctx,
+                    });
+                }
+
+                // Not an operator - wait for longer sequence
                 ResolveResult::Pending
             }
             KeyLookupState::ExactOnly(cmd) => {
@@ -518,6 +594,44 @@ impl ModeKeyResolver for VimNormalResolver {
                     vim.pending_char = Some(pending_op);
                     self.clear_pending_keys();
                     return ResolveResult::Pending;
+                }
+
+                // Epic #415 - Intercept operator commands (d, y, c)
+                // Instead of executing enter-*-operator commands (which do nothing),
+                // store the pending operator and push operator-pending mode.
+                if let Some(operator_id) = Self::classify_operator_command(&cmd) {
+                    // Build pending operator with count and register from accumulated state
+                    let count = vim.pending_count.take();
+                    let register = vim.pending_register.take();
+                    let mut pending = PendingOperator::new(operator_id.clone());
+                    if let Some(c) = count {
+                        pending = pending.with_count(c);
+                    }
+                    if let Some(r) = register {
+                        pending = pending.with_register(r);
+                    }
+
+                    // Store in vim session state
+                    vim.pending_operator = Some(pending);
+
+                    // Convert OperatorId to CommandId for TransitionContext
+                    let operator_cmd =
+                        CommandId::new(operator_id.module().clone(), operator_id.name());
+
+                    // Build transition context with operator, count and register
+                    let mut ctx = TransitionContext::new().operator(operator_cmd);
+                    if let Some(c) = count {
+                        ctx = ctx.count(c);
+                    }
+                    if let Some(r) = register {
+                        ctx = ctx.register(r);
+                    }
+
+                    self.clear_pending_keys();
+                    return ResolveResult::ModeTransition(ModeTransition::Push {
+                        mode: VimMode::OPERATOR_PENDING_ID,
+                        context: ctx,
+                    });
                 }
 
                 // Execute with context containing count and register
@@ -1053,5 +1167,257 @@ mod tests {
         // Directly test take_register filters sentinel
         let reg = resolver.take_register();
         assert!(reg.is_none(), "Sentinel should not be returned");
+    }
+
+    // ========================================================================
+    // Operator interception tests (Epic #415 - Operator-pending mode)
+    // ========================================================================
+    //
+    // These tests verify that operator commands (d, y, c) are intercepted and
+    // return ModeTransition::Push to operator-pending mode.
+
+    use reovim_driver_session::ExtensionMap;
+
+    /// Module ID for editor commands.
+    const EDITOR_MODULE: ModuleId = ModuleId::new("editor");
+
+    /// Mock keymap that returns operator commands.
+    impl MockKeymap {
+        fn enter_delete_operator() -> Self {
+            Self {
+                response: KeyLookupState::ExactOnly(CommandId::new(
+                    EDITOR_MODULE,
+                    "enter-delete-operator",
+                )),
+            }
+        }
+
+        fn enter_yank_operator() -> Self {
+            Self {
+                response: KeyLookupState::ExactOnly(CommandId::new(
+                    EDITOR_MODULE,
+                    "enter-yank-operator",
+                )),
+            }
+        }
+
+        fn enter_change_operator() -> Self {
+            Self {
+                response: KeyLookupState::ExactOnly(CommandId::new(
+                    EDITOR_MODULE,
+                    "enter-change-operator",
+                )),
+            }
+        }
+    }
+
+    fn resolve_with_ext(
+        resolver: &VimNormalResolver,
+        key: &KeyEvent,
+        state: &mut ModeState,
+        input: &ResolveInput<'_>,
+        extensions: &mut ExtensionMap,
+    ) -> ResolveResult {
+        resolver.resolve_with_extensions(key, state, input, extensions)
+    }
+
+    #[test]
+    fn test_d_returns_mode_transition_push() {
+        // Pressing 'd' should return ModeTransition::Push to operator-pending mode.
+        let resolver = VimNormalResolver::new();
+        let mut state = test_state();
+        let keymap = MockKeymap::enter_delete_operator();
+        let input = resolve_input(&keymap);
+        let mut extensions = ExtensionMap::new();
+
+        let result = resolve_with_ext(&resolver, &key('d'), &mut state, &input, &mut extensions);
+
+        match result {
+            ResolveResult::ModeTransition(ModeTransition::Push { mode, .. }) => {
+                assert_eq!(mode, VimMode::OPERATOR_PENDING_ID, "Should push operator-pending mode");
+            }
+            _ => panic!("Expected ModeTransition::Push, got {result:?}"),
+        }
+    }
+
+    #[test]
+    fn test_y_returns_mode_transition_push() {
+        // Pressing 'y' should return ModeTransition::Push to operator-pending mode.
+        let resolver = VimNormalResolver::new();
+        let mut state = test_state();
+        let keymap = MockKeymap::enter_yank_operator();
+        let input = resolve_input(&keymap);
+        let mut extensions = ExtensionMap::new();
+
+        let result = resolve_with_ext(&resolver, &key('y'), &mut state, &input, &mut extensions);
+
+        match result {
+            ResolveResult::ModeTransition(ModeTransition::Push { mode, .. }) => {
+                assert_eq!(mode, VimMode::OPERATOR_PENDING_ID, "Should push operator-pending mode");
+            }
+            _ => panic!("Expected ModeTransition::Push, got {result:?}"),
+        }
+    }
+
+    #[test]
+    fn test_c_returns_mode_transition_push() {
+        // Pressing 'c' should return ModeTransition::Push to operator-pending mode.
+        let resolver = VimNormalResolver::new();
+        let mut state = test_state();
+        let keymap = MockKeymap::enter_change_operator();
+        let input = resolve_input(&keymap);
+        let mut extensions = ExtensionMap::new();
+
+        let result = resolve_with_ext(&resolver, &key('c'), &mut state, &input, &mut extensions);
+
+        match result {
+            ResolveResult::ModeTransition(ModeTransition::Push { mode, .. }) => {
+                assert_eq!(mode, VimMode::OPERATOR_PENDING_ID, "Should push operator-pending mode");
+            }
+            _ => panic!("Expected ModeTransition::Push, got {result:?}"),
+        }
+    }
+
+    #[test]
+    fn test_operator_stores_pending_in_vim_state() {
+        // Pressing 'd' should store PendingOperator in VimSessionState.
+        let resolver = VimNormalResolver::new();
+        let mut state = test_state();
+        let keymap = MockKeymap::enter_delete_operator();
+        let input = resolve_input(&keymap);
+        let mut extensions = ExtensionMap::new();
+
+        let _ = resolve_with_ext(&resolver, &key('d'), &mut state, &input, &mut extensions);
+
+        // Check that VimSessionState has the pending operator
+        let vim = extensions
+            .get::<VimSessionState>()
+            .expect("VimSessionState should exist");
+        assert!(vim.pending_operator.is_some(), "Should have pending operator");
+        assert_eq!(
+            vim.pending_operator.as_ref().unwrap().operator_id,
+            crate::ids::DELETE,
+            "Operator should be DELETE"
+        );
+    }
+
+    #[test]
+    fn test_count_flows_to_operator_context() {
+        // '3d' should pass count=3 to the pending operator.
+        let resolver = VimNormalResolver::new();
+        let mut state = test_state();
+        let keymap = MockKeymap::enter_delete_operator();
+        let input = resolve_input(&keymap);
+        let mut extensions = ExtensionMap::new();
+
+        // Initialize VimSessionState with a count
+        {
+            let vim = extensions.get_or_insert::<VimSessionState>();
+            vim.pending_count = Some(3);
+        }
+
+        let _ = resolve_with_ext(&resolver, &key('d'), &mut state, &input, &mut extensions);
+
+        // Check that the count was passed to the pending operator
+        let vim = extensions
+            .get::<VimSessionState>()
+            .expect("VimSessionState should exist");
+        let pending = vim
+            .pending_operator
+            .as_ref()
+            .expect("Should have pending operator");
+        assert_eq!(pending.count, Some(3), "Count should be 3");
+    }
+
+    #[test]
+    fn test_register_flows_to_operator_context() {
+        // '"ad' should pass register='a' to the pending operator.
+        let resolver = VimNormalResolver::new();
+        let mut state = test_state();
+        let keymap = MockKeymap::enter_delete_operator();
+        let input = resolve_input(&keymap);
+        let mut extensions = ExtensionMap::new();
+
+        // Initialize VimSessionState with a register
+        {
+            let vim = extensions.get_or_insert::<VimSessionState>();
+            vim.pending_register = Some('a');
+        }
+
+        let _ = resolve_with_ext(&resolver, &key('d'), &mut state, &input, &mut extensions);
+
+        // Check that the register was passed to the pending operator
+        let vim = extensions
+            .get::<VimSessionState>()
+            .expect("VimSessionState should exist");
+        let pending = vim
+            .pending_operator
+            .as_ref()
+            .expect("Should have pending operator");
+        assert_eq!(pending.register, Some('a'), "Register should be 'a'");
+    }
+
+    #[test]
+    fn test_count_and_register_flow_together() {
+        // '"a3d' should pass both count=3 and register='a'.
+        let resolver = VimNormalResolver::new();
+        let mut state = test_state();
+        let keymap = MockKeymap::enter_delete_operator();
+        let input = resolve_input(&keymap);
+        let mut extensions = ExtensionMap::new();
+
+        // Initialize VimSessionState with both count and register
+        {
+            let vim = extensions.get_or_insert::<VimSessionState>();
+            vim.pending_count = Some(3);
+            vim.pending_register = Some('a');
+        }
+
+        let result = resolve_with_ext(&resolver, &key('d'), &mut state, &input, &mut extensions);
+
+        // Check the pending operator has both
+        let vim = extensions
+            .get::<VimSessionState>()
+            .expect("VimSessionState should exist");
+        let pending = vim
+            .pending_operator
+            .as_ref()
+            .expect("Should have pending operator");
+        assert_eq!(pending.count, Some(3), "Count should be 3");
+        assert_eq!(pending.register, Some('a'), "Register should be 'a'");
+
+        // Check the transition context also has both
+        if let ResolveResult::ModeTransition(ModeTransition::Push { context, .. }) = result {
+            assert_eq!(context.count, Some(3), "Context count should be 3");
+            assert_eq!(context.register, Some('a'), "Context register should be 'a'");
+        } else {
+            panic!("Expected ModeTransition::Push");
+        }
+    }
+
+    #[test]
+    fn test_operator_clears_pending_count_and_register() {
+        // After intercepting operator, pending_count and pending_register should be cleared.
+        let resolver = VimNormalResolver::new();
+        let mut state = test_state();
+        let keymap = MockKeymap::enter_delete_operator();
+        let input = resolve_input(&keymap);
+        let mut extensions = ExtensionMap::new();
+
+        // Initialize VimSessionState with count and register
+        {
+            let vim = extensions.get_or_insert::<VimSessionState>();
+            vim.pending_count = Some(5);
+            vim.pending_register = Some('b');
+        }
+
+        let _ = resolve_with_ext(&resolver, &key('d'), &mut state, &input, &mut extensions);
+
+        // pending_count and pending_register should be None (consumed)
+        let vim = extensions
+            .get::<VimSessionState>()
+            .expect("VimSessionState should exist");
+        assert!(vim.pending_count.is_none(), "pending_count should be cleared");
+        assert!(vim.pending_register.is_none(), "pending_register should be cleared");
     }
 }

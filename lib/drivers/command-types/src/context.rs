@@ -205,6 +205,36 @@ impl CommandContext {
             _ => None,
         }
     }
+
+    /// Get the start position for operator ranges (Epic #415).
+    ///
+    /// Returns `(line, column)` of the range start position.
+    #[must_use]
+    pub fn range_start(&self) -> Option<(usize, usize)> {
+        match self.args.get("range_start") {
+            Some(ArgValue::Position(line, col)) => Some((*line, *col)),
+            _ => None,
+        }
+    }
+
+    /// Get the end position for operator ranges (Epic #415).
+    ///
+    /// Returns `(line, column)` of the range end position.
+    #[must_use]
+    pub fn range_end(&self) -> Option<(usize, usize)> {
+        match self.args.get("range_end") {
+            Some(ArgValue::Position(line, col)) => Some((*line, *col)),
+            _ => None,
+        }
+    }
+
+    /// Check if this is a linewise operation (Epic #415).
+    ///
+    /// When true, operators should expand the range to full lines.
+    #[must_use]
+    pub fn is_linewise(&self) -> bool {
+        matches!(self.args.get("linewise"), Some(ArgValue::Bang(true)))
+    }
 }
 
 #[cfg(test)]

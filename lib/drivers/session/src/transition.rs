@@ -32,7 +32,9 @@
 //! session.pop_mode(Some(result));
 //! ```
 
-use reovim_kernel::api::v1::{CommandId, Position};
+use std::collections::HashMap;
+
+use {reovim_driver_command_types::ArgValue, reovim_kernel::api::v1::CommandId};
 
 /// Context passed when entering a new mode.
 ///
@@ -96,64 +98,41 @@ impl TransitionContext {
 
 /// Result returned when popping from a mode.
 ///
-/// The parent mode uses this to complete its operation:
-/// - Operator-pending returns range for the operator
-/// - Search returns the search pattern
-/// - Command-line returns the entered command
+/// This is the mechanism for modes to request command execution when popping.
+/// The runner executes the command - it doesn't know what the command does.
+///
+/// # Design
+///
+/// Runner is pure mechanism. Modules (vim, etc.) build the complete command
+/// with all arguments. Runner just executes what it's given.
 #[derive(Debug, Clone)]
 pub enum PopResult {
-    /// Operator completed with a range.
+    /// Execute a command with arguments.
     ///
-    /// The parent mode (normal) should execute the pending operator
-    /// on this range.
-    OperatorRange {
-        /// The operator command to execute.
-        operator: CommandId,
-        /// Start position of the range.
-        start: Position,
-        /// End position of the range.
-        end: Position,
-        /// Whether the range is linewise (full lines).
-        linewise: bool,
-        /// Count applied to the operator.
-        count: Option<usize>,
-        /// Target register for the operation.
-        register: Option<char>,
-    },
-
-    /// Text object selected.
-    TextObject {
-        /// Start position.
-        start: Position,
-        /// End position.
-        end: Position,
-        /// Whether the selection is linewise.
-        linewise: bool,
-        /// Whether this is an "inner" (i) or "around" (a) text object.
-        inner: bool,
+    /// The mode has built a complete command with all necessary arguments.
+    /// Runner executes the command without knowing its semantics.
+    ///
+    /// # Example
+    ///
+    /// Vim operator-pending mode builds: `delete` command with range args.
+    /// Runner sees: "execute this command with these args" - no vim knowledge.
+    ExecuteCommand {
+        /// The command to execute.
+        command: CommandId,
+        /// Arguments for the command (module builds these).
+        args: HashMap<String, ArgValue>,
     },
 
     /// User cancelled the operation (Escape pressed).
     Cancelled,
 
-    /// Search pattern entered.
-    SearchPattern {
-        /// The search pattern.
-        pattern: String,
-        /// Search direction (forward = true, backward = false).
-        forward: bool,
-    },
-
-    /// Command-line command entered.
-    CommandLine {
-        /// The entered command string.
-        command: String,
-    },
-
-    /// Character input completed (for f/t/r commands).
-    CharInput {
-        /// The entered character.
-        char: char,
+    /// Data result (no command to execute, just return data).
+    ///
+    /// Used when a mode needs to return information to its parent
+    /// without executing a command.
+    Data {
+        /// Key-value pairs returned from the mode.
+        values: HashMap<String, ArgValue>,
     },
 }
 
@@ -200,43 +179,36 @@ mod tests {
     }
 
     #[test]
-    fn test_pop_result_operator_range() {
-        let result = PopResult::OperatorRange {
-            operator: test_command(),
-            start: Position::new(0, 0),
-            end: Position::new(0, 5),
-            linewise: false,
-            count: Some(2),
-            register: Some('a'),
+    fn test_pop_result_execute_command() {
+        let mut args = HashMap::new();
+        args.insert("count".to_string(), ArgValue::Count(2));
+        args.insert("register".to_string(), ArgValue::Register('a'));
+
+        let result = PopResult::ExecuteCommand {
+            command: test_command(),
+            args,
         };
 
-        if let PopResult::OperatorRange {
-            linewise,
-            count,
-            register,
-            ..
-        } = result
-        {
-            assert!(!linewise);
-            assert_eq!(count, Some(2));
-            assert_eq!(register, Some('a'));
+        if let PopResult::ExecuteCommand { command, args } = result {
+            assert_eq!(command.name(), "delete");
+            assert_eq!(args.get("count"), Some(&ArgValue::Count(2)));
+            assert_eq!(args.get("register"), Some(&ArgValue::Register('a')));
         } else {
-            panic!("expected OperatorRange");
+            panic!("expected ExecuteCommand");
         }
     }
 
     #[test]
-    fn test_pop_result_search_pattern() {
-        let result = PopResult::SearchPattern {
-            pattern: "foo".to_string(),
-            forward: true,
-        };
+    fn test_pop_result_data() {
+        let mut values = HashMap::new();
+        values.insert("pattern".to_string(), ArgValue::String("foo".to_string()));
 
-        if let PopResult::SearchPattern { pattern, forward } = result {
-            assert_eq!(pattern, "foo");
-            assert!(forward);
+        let result = PopResult::Data { values };
+
+        if let PopResult::Data { values } = result {
+            assert_eq!(values.get("pattern"), Some(&ArgValue::String("foo".to_string())));
         } else {
-            panic!("expected SearchPattern");
+            panic!("expected Data");
         }
     }
 }
