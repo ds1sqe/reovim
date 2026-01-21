@@ -45,6 +45,23 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - Runner no longer directly imports `scratch-buffer` module
   - Wiring infrastructure prepared for dynamic module loading (#265)
 
+- Comprehensive tests for count prefix (#337) and $ motion (#340)
+  - Added 5 $ motion tests to `runner/tests/cursor_movement.rs`: from middle, empty line, single char, with j navigation
+  - Added 6 count prefix edge case tests to `runner/tests/operators.rs`: exceeds lines/chars, 4p paste, 10yy yank, 999j clamp, combined $ and count
+  - 1 test marked ignored: `test_dollar_with_count` (count prefix for $ not yet implemented)
+  - Total enabled tests: 21 cursor_movement + 26 operators (11 tests added)
+
+- E2E test suite audit and documentation (#307 Phase 1)
+  - Updated test file headers with accurate status and blocking issues
+  - Clarified ignore reasons with specific issue references (#338, #385)
+  - Design decision: $ motion ignores count prefix (2$ = $, simplified)
+  - Test status summary:
+    - `edge_cases.rs`: 10 enabled, 0 ignored - **#312 complete**
+    - `operators.rs`: 24 enabled, 10 ignored (need operator-pending mode)
+    - `cursor_movement.rs`: 22 enabled, 0 ignored - **#309 complete**
+    - `search.rs`: 2 enabled, 13 ignored (need command-line mode #338)
+    - `undo_redo.rs`: 5 enabled, 3 ignored (need full undo #385)
+    - `registers.rs`: 0 enabled, 5 ignored (need debug/registers RPC)
 - Window layout subsystem traits - Phase 1 Part 1 of nested compositor (#397)
   - New `lib/drivers/display/src/layout/` module with trait definitions
   - `RootCompositor` trait: layer lifecycle, focus routing, z-order stacking

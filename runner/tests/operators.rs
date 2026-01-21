@@ -1,9 +1,10 @@
 //! Operator integration tests (delete, yank, paste, change).
 //!
-//! **Status**: 18 tests enabled, 10 tests require operator-pending mode.
+//! **Status**: 24 tests enabled, 10 tests require operator-pending mode.
 //!
 //! Operator-pending mode (d+motion, y+motion, c+motion) is not yet implemented.
 //! Tests using direct bindings (dd, yy, cc, x, 5dd, 3x, etc.) work.
+//! Count prefix edge cases fully covered (#337).
 //!
 //! Run `cargo test --ignored` to run the remaining ignored tests.
 
@@ -348,4 +349,86 @@ async fn test_d_escape_cancels() {
         .await;
     result.assert_buffer_eq("hello world");
     result.assert_normal_mode();
+}
+
+// ============================================================================
+// COUNT PREFIX EDGE CASES - Issue #337
+// ============================================================================
+
+#[tokio::test]
+async fn test_count_delete_exceeds_lines() {
+    // 100dd on 3 lines should delete all 3
+    let result = IntegrationTest::new()
+        .await
+        .with_buffer("one\ntwo\nthree")
+        .send_keys("100dd")
+        .run()
+        .await;
+    // Buffer should have only empty line (kernel keeps at least 1 line)
+    result.assert_buffer_eq("");
+}
+
+#[tokio::test]
+async fn test_count_delete_char_exceeds_line() {
+    // 100x on "hello" deletes all 5 chars
+    let result = IntegrationTest::new()
+        .await
+        .with_buffer("hello")
+        .send_keys("100x")
+        .run()
+        .await;
+    // All characters deleted
+    result.assert_buffer_eq("");
+}
+
+#[tokio::test]
+async fn test_4p_paste_four_times() {
+    // 4p pastes 4 times (mentioned in #337 issue)
+    let result = IntegrationTest::new()
+        .await
+        .with_buffer("a")
+        .send_keys("yy4p")
+        .run()
+        .await;
+    // Original + 4 pastes = 5 lines of "a"
+    result.assert_buffer_eq("a\na\na\na\na");
+}
+
+#[tokio::test]
+async fn test_count_yank_exceeds_lines() {
+    // 10yy on 2 lines yanks both, then p pastes
+    let result = IntegrationTest::new()
+        .await
+        .with_buffer("one\ntwo")
+        .send_keys("10yyGp")
+        .run()
+        .await;
+    // Should paste both lines after last line
+    result.assert_buffer_eq("one\ntwo\none\ntwo");
+}
+
+#[tokio::test]
+async fn test_large_count_movement() {
+    // 999j on 3 lines clamps to last line
+    let result = IntegrationTest::new()
+        .await
+        .with_buffer("one\ntwo\nthree")
+        .send_keys("999j")
+        .run()
+        .await;
+    // Cursor should be on line 2 (last line, 0-indexed)
+    result.assert_cursor(2, 0);
+}
+
+#[tokio::test]
+async fn test_dollar_then_count_h() {
+    // Go to EOL then move back with count
+    let result = IntegrationTest::new()
+        .await
+        .with_buffer("hello world")
+        .send_keys("$3h")
+        .run()
+        .await;
+    // At 'd' (col 10), 3h -> col 7 ('o' in "world")
+    result.assert_cursor(0, 7);
 }

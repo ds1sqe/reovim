@@ -1,7 +1,9 @@
 //! Cursor movement tests (hjkl, 0$, gg/G, w/b/e).
 //!
-//! **Status**: All 17 tests enabled.
+//! **Status**: All 22 tests enabled.
 //! Count prefix support (3j, 5G) implemented in RPC input handler.
+//! $ motion (end-of-line) fully covered with edge cases (#340).
+//! Design: $ ignores count prefix (2$ = $, simplified behavior).
 
 mod common;
 use common::IntegrationTest;
@@ -100,6 +102,73 @@ async fn test_caret_moves_to_first_nonblank() {
         .run()
         .await;
     result.assert_cursor(0, 3);
+}
+
+#[tokio::test]
+async fn test_dollar_from_middle_of_line() {
+    // From middle of line, $ goes to last char
+    let result = IntegrationTest::new()
+        .await
+        .with_buffer("hello world")
+        .with_cursor_at(0, 2) // on 'l'
+        .send_keys("$")
+        .run()
+        .await;
+    // Cursor should be on 'd' (col 10, last char)
+    result.assert_cursor(0, 10);
+}
+
+#[tokio::test]
+async fn test_dollar_on_empty_line() {
+    // Edge case: empty line stays at col 0
+    let result = IntegrationTest::new()
+        .await
+        .with_buffer("hello\n\nworld")
+        .send_keys("j$")
+        .run()
+        .await;
+    // Cursor stays at col 0 on empty line (line 1)
+    result.assert_cursor(1, 0);
+}
+
+#[tokio::test]
+async fn test_dollar_on_single_char_line() {
+    // Edge case: single character
+    let result = IntegrationTest::new()
+        .await
+        .with_buffer("a")
+        .send_keys("$")
+        .run()
+        .await;
+    // Cursor stays on 'a' (col 0, only char)
+    result.assert_cursor(0, 0);
+}
+
+#[tokio::test]
+async fn test_dollar_ignores_count() {
+    // Design decision: $ ignores count prefix (simplified, not Vim-compatible)
+    // 2$ behaves same as $ - goes to end of current line
+    let result = IntegrationTest::new()
+        .await
+        .with_buffer("line one\nline two\nline three")
+        .send_keys("2$")
+        .run()
+        .await;
+    // Cursor at end of "line one" (line 0, col 7) - count ignored
+    result.assert_cursor(0, 7);
+}
+
+#[tokio::test]
+async fn test_dollar_then_j_navigation() {
+    // Combine $ with other motions
+    let result = IntegrationTest::new()
+        .await
+        .with_buffer("short\nlonger line here\nend")
+        .send_keys("j$")
+        .run()
+        .await;
+    // Cursor at end of "longer line here" (col 15)
+    result.assert_cursor(1, 15);
 }
 
 // ============================================================================

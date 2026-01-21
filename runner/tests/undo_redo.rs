@@ -1,6 +1,11 @@
 //! Undo/redo tests (u, Ctrl-R).
 //!
-//! **Status**: 5 tests enabled, 3 tests require undo implementation via `SessionContext` (#385).
+//! **Status**: 5 tests enabled, 3 tests require full undo implementation (#385).
+//! - `test_undo_delete_line` - single dd undo not working
+//! - `test_multiple_undo` - multiple undo steps not working
+//! - `test_undo_insert` - insert mode undo not working
+//!
+//! Run `cargo test --ignored` to run the remaining ignored tests.
 
 mod common;
 use common::IntegrationTest;

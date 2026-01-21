@@ -1,8 +1,8 @@
 //! Search integration tests (/, ?, n, N, *, #).
 //!
-//! **Status**: 2 tests enabled, 15 tests require additional features
-//! - 10 tests require command-line mode for / and ? search patterns
-//! - 3 tests require search implementation via `SessionContext` (#385)
+//! **Status**: 2 tests enabled, 13 tests require additional features.
+//! - 10 tests require command-line mode for `/` and `?` search patterns (#338)
+//! - 3 tests require `*` and `#` word search implementation (#385)
 //!
 //! Run `cargo test --ignored` to run the remaining ignored tests.
 
