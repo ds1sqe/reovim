@@ -286,6 +286,27 @@ impl SplitNode {
             }
         }
     }
+
+    /// Reset all split ratios to 0.5 recursively.
+    ///
+    /// This equalizes space among siblings at each level of the tree.
+    #[must_use]
+    pub fn equalize_ratios(self) -> Self {
+        match self {
+            Self::Leaf(_) => self,
+            Self::Split {
+                direction,
+                ratio: _,
+                first,
+                second,
+            } => Self::Split {
+                direction,
+                ratio: 0.5, // Reset to equal split
+                first: Box::new(first.equalize_ratios()),
+                second: Box::new(second.equalize_ratios()),
+            },
+        }
+    }
 }
 
 /// Split a rectangle according to direction and ratio.
@@ -473,6 +494,119 @@ impl SplitTree {
             self.root = Some(root_clone);
         }
         false
+    }
+
+    // =========================================================================
+    // Winnr Support (vim-compatible window ordering)
+    // =========================================================================
+
+    /// Get windows in winnr order (top-to-bottom, left-to-right).
+    ///
+    /// # Winnr Algorithm
+    ///
+    /// Windows are sorted by their geometry:
+    /// 1. First by y coordinate (top to bottom)
+    /// 2. Then by x coordinate (left to right)
+    ///
+    /// This matches vim's winnr assignment.
+    ///
+    /// ```text
+    /// ┌────┬────┐
+    /// │ 1  │ 2  │  winnr assignment
+    /// ├────┼────┤
+    /// │ 3  │ 4  │
+    /// └────┴────┘
+    /// ```
+    #[must_use]
+    pub fn windows_in_winnr_order(&self, screen_size: (u16, u16)) -> Vec<WindowId> {
+        let mut bounds = self.calculate_bounds(screen_size);
+        // Sort by (y, x) - top-to-bottom, left-to-right
+        bounds.sort_by_key(|(_, rect)| (rect.y, rect.x));
+        bounds.into_iter().map(|(id, _)| id).collect()
+    }
+
+    /// Get winnr (1-indexed) for a window.
+    ///
+    /// Returns `None` if the window is not in the tree.
+    #[must_use]
+    pub fn winnr(&self, window: WindowId, screen_size: (u16, u16)) -> Option<usize> {
+        let winnr_order = self.windows_in_winnr_order(screen_size);
+        winnr_order
+            .iter()
+            .position(|&id| id == window)
+            .map(|pos| pos + 1) // 1-indexed
+    }
+
+    /// Find neighbor to focus when closing a window.
+    ///
+    /// Prefers the next window in winnr order, falls back to previous.
+    /// This matches vim's behavior when closing with `:close`.
+    ///
+    /// # Returns
+    ///
+    /// - `Some(WindowId)` - The window to focus next
+    /// - `None` - This was the last window
+    #[must_use]
+    pub fn neighbor_for_focus(
+        &self,
+        closing: WindowId,
+        screen_size: (u16, u16),
+    ) -> Option<WindowId> {
+        let winnr_order = self.windows_in_winnr_order(screen_size);
+        let pos = winnr_order.iter().position(|&id| id == closing)?;
+
+        // Prefer next window, fallback to previous
+        if pos + 1 < winnr_order.len() {
+            Some(winnr_order[pos + 1])
+        } else if pos > 0 {
+            Some(winnr_order[pos - 1])
+        } else {
+            None // This was the last window
+        }
+    }
+
+    /// Cycle to next/previous window in winnr order.
+    ///
+    /// Wraps around at boundaries.
+    ///
+    /// # Arguments
+    ///
+    /// * `from` - Current window
+    /// * `forward` - Direction (true = next, false = previous)
+    /// * `screen_size` - Screen dimensions for winnr calculation
+    ///
+    /// # Returns
+    ///
+    /// The target window, or `None` if only one window exists.
+    #[must_use]
+    pub fn cycle(
+        &self,
+        from: WindowId,
+        forward: bool,
+        screen_size: (u16, u16),
+    ) -> Option<WindowId> {
+        let winnr_order = self.windows_in_winnr_order(screen_size);
+        if winnr_order.len() <= 1 {
+            return None;
+        }
+
+        let pos = winnr_order.iter().position(|&id| id == from)?;
+        let next_pos = if forward {
+            (pos + 1) % winnr_order.len()
+        } else {
+            (pos + winnr_order.len() - 1) % winnr_order.len()
+        };
+
+        Some(winnr_order[next_pos])
+    }
+
+    /// Reset all split ratios to 0.5 (equalize).
+    ///
+    /// This distributes space equally among siblings at each level.
+    pub fn equalize(&mut self) {
+        if let Some(root) = self.root.take() {
+            self.root = Some(root.equalize_ratios());
+        }
     }
 }
 
@@ -724,5 +858,179 @@ mod tests {
         } else {
             panic!("Expected Split node");
         }
+    }
+
+    // =========================================================================
+    // Winnr Tests
+    // =========================================================================
+
+    #[test]
+    fn test_windows_in_winnr_order_vertical_split() {
+        let mut tree = SplitTree::new();
+        let first = tree.add_first_window();
+        let second = tree.split_window(first, SplitDirection::Vertical).unwrap();
+
+        // Vertical split: first on left (x=0), second on right (x=40)
+        let winnr = tree.windows_in_winnr_order((80, 24));
+
+        // Both have same y=0, so sorted by x: first (x=0) < second (x=40)
+        assert_eq!(winnr.len(), 2);
+        assert_eq!(winnr[0], first);
+        assert_eq!(winnr[1], second);
+    }
+
+    #[test]
+    fn test_windows_in_winnr_order_horizontal_split() {
+        let mut tree = SplitTree::new();
+        let first = tree.add_first_window();
+        let second = tree
+            .split_window(first, SplitDirection::Horizontal)
+            .unwrap();
+
+        // Horizontal split: first on top (y=0), second on bottom (y=12)
+        let winnr = tree.windows_in_winnr_order((80, 24));
+
+        // Sorted by y: first (y=0) < second (y=12)
+        assert_eq!(winnr.len(), 2);
+        assert_eq!(winnr[0], first);
+        assert_eq!(winnr[1], second);
+    }
+
+    #[test]
+    fn test_windows_in_winnr_order_grid_layout() {
+        let mut tree = SplitTree::new();
+        let w1 = tree.add_first_window();
+        let w2 = tree.split_window(w1, SplitDirection::Vertical).unwrap();
+        let w3 = tree.split_window(w1, SplitDirection::Horizontal).unwrap();
+        let w4 = tree.split_window(w2, SplitDirection::Horizontal).unwrap();
+
+        // Layout:
+        // +----+----+
+        // | w1 | w2 |
+        // +----+----+
+        // | w3 | w4 |
+        // +----+----+
+        //
+        // winnr order: w1 (0,0), w2 (40,0), w3 (0,12), w4 (40,12)
+        let winnr = tree.windows_in_winnr_order((80, 24));
+
+        assert_eq!(winnr.len(), 4);
+        assert_eq!(winnr[0], w1); // (0,0)
+        assert_eq!(winnr[1], w2); // (40,0)
+        assert_eq!(winnr[2], w3); // (0,12)
+        assert_eq!(winnr[3], w4); // (40,12)
+    }
+
+    #[test]
+    fn test_winnr_single_window() {
+        let mut tree = SplitTree::new();
+        let w1 = tree.add_first_window();
+
+        assert_eq!(tree.winnr(w1, (80, 24)), Some(1)); // 1-indexed
+    }
+
+    #[test]
+    fn test_winnr_grid_layout() {
+        let mut tree = SplitTree::new();
+        let w1 = tree.add_first_window();
+        let w2 = tree.split_window(w1, SplitDirection::Vertical).unwrap();
+        let w3 = tree.split_window(w1, SplitDirection::Horizontal).unwrap();
+        let w4 = tree.split_window(w2, SplitDirection::Horizontal).unwrap();
+
+        assert_eq!(tree.winnr(w1, (80, 24)), Some(1));
+        assert_eq!(tree.winnr(w2, (80, 24)), Some(2));
+        assert_eq!(tree.winnr(w3, (80, 24)), Some(3));
+        assert_eq!(tree.winnr(w4, (80, 24)), Some(4));
+    }
+
+    #[test]
+    fn test_neighbor_for_focus_single_window() {
+        let mut tree = SplitTree::new();
+        let w1 = tree.add_first_window();
+
+        // No neighbor for single window
+        assert_eq!(tree.neighbor_for_focus(w1, (80, 24)), None);
+    }
+
+    #[test]
+    fn test_neighbor_for_focus_two_windows() {
+        let mut tree = SplitTree::new();
+        let w1 = tree.add_first_window();
+        let w2 = tree.split_window(w1, SplitDirection::Vertical).unwrap();
+
+        // Closing w1 (winnr=1) -> focus goes to w2 (next)
+        assert_eq!(tree.neighbor_for_focus(w1, (80, 24)), Some(w2));
+        // Closing w2 (winnr=2) -> focus goes to w1 (prev, since no next)
+        assert_eq!(tree.neighbor_for_focus(w2, (80, 24)), Some(w1));
+    }
+
+    #[test]
+    fn test_neighbor_for_focus_middle_window() {
+        let mut tree = SplitTree::new();
+        let w1 = tree.add_first_window();
+        let w2 = tree.split_window(w1, SplitDirection::Vertical).unwrap();
+        let w3 = tree.split_window(w2, SplitDirection::Vertical).unwrap();
+
+        // Closing w2 (middle) -> focus goes to w3 (next)
+        assert_eq!(tree.neighbor_for_focus(w2, (80, 24)), Some(w3));
+    }
+
+    #[test]
+    fn test_cycle_forward() {
+        let mut tree = SplitTree::new();
+        let w1 = tree.add_first_window();
+        let w2 = tree.split_window(w1, SplitDirection::Vertical).unwrap();
+        let w3 = tree.split_window(w2, SplitDirection::Vertical).unwrap();
+
+        // Cycle forward from w1 -> w2
+        assert_eq!(tree.cycle(w1, true, (80, 24)), Some(w2));
+        // Cycle forward from w2 -> w3
+        assert_eq!(tree.cycle(w2, true, (80, 24)), Some(w3));
+        // Cycle forward from w3 -> w1 (wrap)
+        assert_eq!(tree.cycle(w3, true, (80, 24)), Some(w1));
+    }
+
+    #[test]
+    fn test_cycle_backward() {
+        let mut tree = SplitTree::new();
+        let w1 = tree.add_first_window();
+        let w2 = tree.split_window(w1, SplitDirection::Vertical).unwrap();
+        let w3 = tree.split_window(w2, SplitDirection::Vertical).unwrap();
+
+        // Cycle backward from w3 -> w2
+        assert_eq!(tree.cycle(w3, false, (80, 24)), Some(w2));
+        // Cycle backward from w2 -> w1
+        assert_eq!(tree.cycle(w2, false, (80, 24)), Some(w1));
+        // Cycle backward from w1 -> w3 (wrap)
+        assert_eq!(tree.cycle(w1, false, (80, 24)), Some(w3));
+    }
+
+    #[test]
+    fn test_cycle_single_window() {
+        let mut tree = SplitTree::new();
+        let w1 = tree.add_first_window();
+
+        // Cycle with single window returns None
+        assert_eq!(tree.cycle(w1, true, (80, 24)), None);
+        assert_eq!(tree.cycle(w1, false, (80, 24)), None);
+    }
+
+    #[test]
+    fn test_equalize() {
+        let mut tree = SplitTree::new();
+        let w1 = tree.add_first_window();
+        let _w2 = tree.split_window(w1, SplitDirection::Vertical).unwrap();
+
+        // Adjust ratio away from 0.5
+        tree.adjust_ratio(w1, 0.2);
+
+        // Equalize should reset to 0.5
+        tree.equalize();
+
+        // Bounds should be equal after equalize
+        let bounds = tree.calculate_bounds((80, 24));
+        assert_eq!(bounds.len(), 2);
+        assert_eq!(bounds[0].1.width, 40);
+        assert_eq!(bounds[1].1.width, 40);
     }
 }

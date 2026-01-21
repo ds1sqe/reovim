@@ -38,6 +38,7 @@ pub mod decoration;
 mod error;
 mod frame;
 mod highlight;
+pub mod layout;
 mod mode;
 mod policy;
 mod render;
@@ -148,4 +149,42 @@ pub use style::{
 
 pub use ui::{
     Alignment, align, display_width, pad_left, pad_right, truncate_end, truncate_start, wrap_text,
+};
+
+// ============================================================================
+// Window Layout Subsystem (Epic #403 - Nested Compositor Architecture)
+// ============================================================================
+//
+// Hyprland-inspired window management with nested layers.
+// Each layer is a self-contained compositor with Tiled, Float, and Overlay zones.
+// ============================================================================
+
+pub use layout::{
+    // Layer types
+    Anchor,
+    // View management and index types
+    ColIndex,
+    // Compositor traits
+    CompositeResult,
+    // Zone traits
+    FloatingLayer,
+    FloatingWindow,
+    Layer,
+    LayerConfig,
+    LayerId,
+    LineIndex,
+    MIN_WINDOW_HEIGHT,
+    MIN_WINDOW_WIDTH,
+    OverlayConstraints,
+    OverlayLayer,
+    OverlayWindow,
+    Position,
+    RootCompositor,
+    TiledLayer,
+    View,
+    ViewManager,
+    WindowError,
+    WindowLayerCompositor,
+    WindowPlacement,
+    Zone,
 };

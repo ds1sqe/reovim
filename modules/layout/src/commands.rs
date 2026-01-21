@@ -1,16 +1,13 @@
 //! Window management commands.
 //!
 //! Commands for window splitting, closing, focus navigation, and resizing.
-//!
-//! # Architecture (Epic #385)
-//!
-//! These commands are stubs pending WindowApi extensions (#397).
-//! Implementation requires window positional data for directional
-//! navigation (left/right/up/down) and resize operations.
+//! All commands use the `CompositorApi` trait to interact with the window
+//! layout system.
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::SessionRuntime,
+    reovim_driver_display::{NavigateDirection, SplitDirection},
+    reovim_driver_session::{CompositorApi, SessionRuntime},
     reovim_kernel::api::v1::CommandId,
 };
 
@@ -35,9 +32,16 @@ impl Command for SplitHorizontalCmd {
 }
 
 impl CommandHandler for SplitHorizontalCmd {
-    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        // TODO(#397): Implement when WindowApi has positional navigation
-        CommandResult::Success
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        match runtime.split(SplitDirection::Horizontal) {
+            Ok(window) => {
+                if let Err(e) = runtime.focus(window) {
+                    return CommandResult::Error(e.to_string());
+                }
+                CommandResult::Success
+            }
+            Err(e) => CommandResult::Error(e.to_string()),
+        }
     }
 }
 
@@ -56,9 +60,16 @@ impl Command for SplitVerticalCmd {
 }
 
 impl CommandHandler for SplitVerticalCmd {
-    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        // TODO(#397): Implement when WindowApi has positional navigation
-        CommandResult::Success
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        match runtime.split(SplitDirection::Vertical) {
+            Ok(window) => {
+                if let Err(e) = runtime.focus(window) {
+                    return CommandResult::Error(e.to_string());
+                }
+                CommandResult::Success
+            }
+            Err(e) => CommandResult::Error(e.to_string()),
+        }
     }
 }
 
@@ -81,9 +92,16 @@ impl Command for CloseWindowCmd {
 }
 
 impl CommandHandler for CloseWindowCmd {
-    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        // TODO(#397): Implement when WindowApi has positional navigation
-        CommandResult::Success
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        match runtime.close_current_window() {
+            Ok(neighbor) => {
+                if let Err(e) = runtime.focus(neighbor) {
+                    return CommandResult::Error(e.to_string());
+                }
+                CommandResult::Success
+            }
+            Err(e) => CommandResult::Error(e.to_string()),
+        }
     }
 }
 
@@ -102,9 +120,11 @@ impl Command for CloseOthersCmd {
 }
 
 impl CommandHandler for CloseOthersCmd {
-    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        // TODO(#397): Implement when WindowApi has positional navigation
-        CommandResult::Success
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        match runtime.close_others() {
+            Ok(()) => CommandResult::Success,
+            Err(e) => CommandResult::Error(e.to_string()),
+        }
     }
 }
 
@@ -127,9 +147,16 @@ impl Command for FocusLeftCmd {
 }
 
 impl CommandHandler for FocusLeftCmd {
-    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        // TODO(#397): Implement when WindowApi has positional navigation
-        CommandResult::Success
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        match runtime.navigate(NavigateDirection::Left) {
+            Ok(window) => {
+                if let Err(e) = runtime.focus(window) {
+                    return CommandResult::Error(e.to_string());
+                }
+                CommandResult::Success
+            }
+            Err(e) => CommandResult::Error(e.to_string()),
+        }
     }
 }
 
@@ -148,9 +175,16 @@ impl Command for FocusRightCmd {
 }
 
 impl CommandHandler for FocusRightCmd {
-    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        // TODO(#397): Implement when WindowApi has positional navigation
-        CommandResult::Success
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        match runtime.navigate(NavigateDirection::Right) {
+            Ok(window) => {
+                if let Err(e) = runtime.focus(window) {
+                    return CommandResult::Error(e.to_string());
+                }
+                CommandResult::Success
+            }
+            Err(e) => CommandResult::Error(e.to_string()),
+        }
     }
 }
 
@@ -169,9 +203,16 @@ impl Command for FocusUpCmd {
 }
 
 impl CommandHandler for FocusUpCmd {
-    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        // TODO(#397): Implement when WindowApi has positional navigation
-        CommandResult::Success
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        match runtime.navigate(NavigateDirection::Up) {
+            Ok(window) => {
+                if let Err(e) = runtime.focus(window) {
+                    return CommandResult::Error(e.to_string());
+                }
+                CommandResult::Success
+            }
+            Err(e) => CommandResult::Error(e.to_string()),
+        }
     }
 }
 
@@ -190,9 +231,16 @@ impl Command for FocusDownCmd {
 }
 
 impl CommandHandler for FocusDownCmd {
-    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        // TODO(#397): Implement when WindowApi has positional navigation
-        CommandResult::Success
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        match runtime.navigate(NavigateDirection::Down) {
+            Ok(window) => {
+                if let Err(e) = runtime.focus(window) {
+                    return CommandResult::Error(e.to_string());
+                }
+                CommandResult::Success
+            }
+            Err(e) => CommandResult::Error(e.to_string()),
+        }
     }
 }
 
@@ -215,9 +263,16 @@ impl Command for CycleForwardCmd {
 }
 
 impl CommandHandler for CycleForwardCmd {
-    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        // TODO(#397): Implement when WindowApi has positional navigation
-        CommandResult::Success
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        match runtime.cycle(true) {
+            Ok(window) => {
+                if let Err(e) = runtime.focus(window) {
+                    return CommandResult::Error(e.to_string());
+                }
+                CommandResult::Success
+            }
+            Err(e) => CommandResult::Error(e.to_string()),
+        }
     }
 }
 
@@ -236,9 +291,16 @@ impl Command for CycleBackwardCmd {
 }
 
 impl CommandHandler for CycleBackwardCmd {
-    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        // TODO(#397): Implement when WindowApi has positional navigation
-        CommandResult::Success
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        match runtime.cycle(false) {
+            Ok(window) => {
+                if let Err(e) = runtime.focus(window) {
+                    return CommandResult::Error(e.to_string());
+                }
+                CommandResult::Success
+            }
+            Err(e) => CommandResult::Error(e.to_string()),
+        }
     }
 }
 
@@ -261,9 +323,12 @@ impl Command for ResizeHeightIncreaseCmd {
 }
 
 impl CommandHandler for ResizeHeightIncreaseCmd {
-    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        // TODO(#397): Implement when WindowApi has positional navigation
-        CommandResult::Success
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // Increase height = push bottom edge down
+        match runtime.resize(NavigateDirection::Down, 1) {
+            Ok(()) => CommandResult::Success,
+            Err(e) => CommandResult::Error(e.to_string()),
+        }
     }
 }
 
@@ -282,9 +347,12 @@ impl Command for ResizeHeightDecreaseCmd {
 }
 
 impl CommandHandler for ResizeHeightDecreaseCmd {
-    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        // TODO(#397): Implement when WindowApi has positional navigation
-        CommandResult::Success
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // Decrease height = pull bottom edge up (negative delta)
+        match runtime.resize(NavigateDirection::Down, -1) {
+            Ok(()) => CommandResult::Success,
+            Err(e) => CommandResult::Error(e.to_string()),
+        }
     }
 }
 
@@ -303,9 +371,12 @@ impl Command for ResizeWidthIncreaseCmd {
 }
 
 impl CommandHandler for ResizeWidthIncreaseCmd {
-    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        // TODO(#397): Implement when WindowApi has positional navigation
-        CommandResult::Success
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // Increase width = push right edge right
+        match runtime.resize(NavigateDirection::Right, 1) {
+            Ok(()) => CommandResult::Success,
+            Err(e) => CommandResult::Error(e.to_string()),
+        }
     }
 }
 
@@ -324,9 +395,12 @@ impl Command for ResizeWidthDecreaseCmd {
 }
 
 impl CommandHandler for ResizeWidthDecreaseCmd {
-    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        // TODO(#397): Implement when WindowApi has positional navigation
-        CommandResult::Success
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // Decrease width = pull right edge left (negative delta)
+        match runtime.resize(NavigateDirection::Right, -1) {
+            Ok(()) => CommandResult::Success,
+            Err(e) => CommandResult::Error(e.to_string()),
+        }
     }
 }
 
@@ -345,9 +419,11 @@ impl Command for ResizeEqualCmd {
 }
 
 impl CommandHandler for ResizeEqualCmd {
-    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        // TODO(#397): Implement when WindowApi has positional navigation
-        CommandResult::Success
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        match runtime.equalize() {
+            Ok(()) => CommandResult::Success,
+            Err(e) => CommandResult::Error(e.to_string()),
+        }
     }
 }
 

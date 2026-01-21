@@ -62,6 +62,7 @@
 mod buffer;
 mod changes;
 mod command;
+mod compositor;
 mod extension;
 mod mode;
 mod register;
@@ -69,6 +70,9 @@ mod window;
 
 // Buffer API
 pub use buffer::{BufferApi, BufferError, Selection, SelectionMode};
+
+// Compositor API
+pub use compositor::{CompositorApi, CompositorError};
 
 // Register API
 pub use register::{RegisterApi, RegisterContent, YankType};

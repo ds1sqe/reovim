@@ -15,6 +15,8 @@ categories.workspace = true
 reovim-kernel = { path = "../../kernel" }
 # Command types for CommandContext, CommandResult (avoids circular dependency)
 reovim-driver-command-types = { path = "../command-types" }
+# Display driver for compositor traits (Rect, WindowPlacement, etc.)
+reovim-driver-display = { path = "../display" }
 # Platform abstraction (RwLock for test buffer manager)
 reovim-arch = { path = "../../arch" }
 
