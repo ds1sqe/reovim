@@ -19,6 +19,7 @@ use std::sync::Arc;
 
 use {
     reovim_driver_command::{CommandContext, CommandResult},
+    reovim_driver_display::layout::RootCompositor,
     reovim_driver_input::{ExtensionMap, FallbackContext},
     reovim_driver_session::{ClientId, Session as DriverSession},
     reovim_driver_vfs::VfsDriver,
@@ -142,6 +143,7 @@ impl SessionState {
     /// Used when modules need to populate registries before creating
     /// the session state.
     #[must_use]
+    #[allow(clippy::too_many_arguments)]
     pub fn with_registries(
         kernel: KernelContext,
         initial_mode: ModeId,
@@ -150,6 +152,7 @@ impl SessionState {
         command_registry: CommandRegistry,
         keymap_registry: KeymapRegistry,
         module_registry: ModuleManager,
+        compositor: Option<Box<dyn RootCompositor>>,
     ) -> Self {
         // Initialize undo persistence with platform-specific data directory
         let data_dir = reovim_arch::dirs::data_local_dir()
@@ -158,7 +161,12 @@ impl SessionState {
 
         // Create driver session (SSOT for session state)
         // ClientId(0) for single-session model
-        let driver_session = DriverSession::new(ClientId::new(0), initial_mode);
+        let mut driver_session = DriverSession::new(ClientId::new(0), initial_mode);
+
+        // Set compositor if provided by a module
+        if let Some(c) = compositor {
+            driver_session.set_compositor(c);
+        }
 
         Self {
             driver_session,

@@ -9,6 +9,7 @@ use tokio::sync::RwLock;
 
 use {
     reovim_driver_command::{CommandContext, CommandResult},
+    reovim_driver_display::layout::RootCompositor,
     reovim_driver_input::KeySequence,
     reovim_driver_vfs::VfsDriver,
     reovim_kernel::api::v1::{CommandId, KernelContext, ModeId},
@@ -114,6 +115,7 @@ impl Session {
         command_registry: CommandRegistry,
         keymap_registry: KeymapRegistry,
         module_registry: ModuleManager,
+        compositor: Option<Box<dyn RootCompositor>>,
     ) -> Arc<Self> {
         Arc::new(Self {
             id,
@@ -125,6 +127,7 @@ impl Session {
                 command_registry,
                 keymap_registry,
                 module_registry,
+                compositor,
             )),
             clients: ClientRegistry::new(),
         })

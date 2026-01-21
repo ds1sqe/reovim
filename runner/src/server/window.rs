@@ -102,7 +102,7 @@ impl WindowRegistry {
             windows: HashMap::new(),
             active_window: None,
             next_id: 1, // Start from 1 (0 often means "none")
-            layout: TilingLayout::new(),
+            layout: TilingLayout::default(),
             focus_policy: VimFocusPolicy::new(),
         }
     }

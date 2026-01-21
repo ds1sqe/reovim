@@ -1231,6 +1231,7 @@ version = "0.9.1-dev"
 dependencies = [
  "reovim-arch",
  "reovim-driver-command-types",
+ "reovim-driver-display",
  "reovim-kernel",
 ]
 
@@ -1284,10 +1285,12 @@ dependencies = [
 name = "reovim-module-defaults"
 version = "0.9.1-dev"
 dependencies = [
+ "reovim-driver-display",
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-commands",
  "reovim-module-keymap",
+ "reovim-module-layout",
  "reovim-module-macros",
  "reovim-module-scratch-buffer",
  "reovim-module-vim",

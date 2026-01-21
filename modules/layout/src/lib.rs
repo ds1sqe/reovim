@@ -1,71 +1,54 @@
 //! Window Layout Module
 //!
 //! This module provides window tiling and focus navigation for reovim.
-//! It implements the `LayoutPolicy` and `FocusPolicy` traits from the display driver.
 //!
 //! # Architecture
 //!
 //! Following the kernel's "mechanism vs policy" principle:
-//! - **Mechanism** (display driver): `LayoutPolicy`, `FocusPolicy` traits
-//! - **Policy** (this module): `TilingLayout`, `VimFocusPolicy` implementations
+//! - **Mechanism** (display driver): `RootCompositor`, `WindowLayerCompositor`, `TiledLayer` traits
+//! - **Policy** (this module): `HybridCompositor`, `DefaultLayer`, `TilingLayout` implementations
 //!
 //! # Components
 //!
-//! - [`TilingLayout`]: Window arrangement using a split tree
-//! - [`VimFocusPolicy`]: Vim-style directional navigation (hjkl)
+//! - [`HybridCompositor`]: Multi-layer compositor implementing `RootCompositor`
+//! - [`DefaultLayer`]: Single-layer compositor implementing `WindowLayerCompositor`
+//! - [`TilingLayout`]: Window arrangement using a split tree, implements `TiledLayer`
 //! - [`SplitTree`]: Binary tree for managing window splits
 //!
-//! # Keybindings
+//! # Commands
 //!
-//! This module registers keybindings for window mode (after `<C-w>`):
-//! - `h/j/k/l`: Move focus left/down/up/right
-//! - `w/W`: Cycle focus forward/backward
-//! - `s`: Horizontal split (`:split`)
-//! - `v`: Vertical split (`:vsplit`)
-//! - `c`: Close window (`:close`)
-//! - `o`: Close other windows (`:only`)
-//! - `+/-/=`: Resize windows
-//!
-//! # Example
-//!
-//! ```ignore
-//! use reovim_module_layout::{TilingLayout, VimFocusPolicy};
-//! use reovim_driver_display::{LayoutPolicy, FocusPolicy, SplitDirection};
-//!
-//! let mut layout = TilingLayout::new();
-//! let w1 = layout.add_first_window();
-//! let w2 = layout.split_vertical(w1).unwrap();
-//!
-//! let views = layout.arrange((80, 24), &[w1, w2]);
-//!
-//! let focus = VimFocusPolicy::new();
-//! // Navigate from w1 to w2 (right)
-//! let next = focus.next(NavigateDirection::Right, w1, &views);
-//! assert_eq!(next, Some(w2));
-//! ```
+//! This module provides window management commands (see [`commands`] module):
+//! - Split: horizontal, vertical
+//! - Close: current window, other windows
+//! - Navigate: left, right, up, down
+//! - Cycle: next, previous
+//! - Resize: increase/decrease height/width, equalize
 
 pub mod commands;
+mod compositor;
 mod focus;
 pub mod ids;
+mod layer;
 mod split;
 mod tiling;
 
 pub use {
     commands::all_commands,
+    compositor::HybridCompositor,
     focus::VimFocusPolicy,
+    layer::DefaultLayer,
     split::{SplitNode, SplitTree},
     tiling::TilingLayout,
 };
 
 use reovim_kernel::api::v1::{
-    KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
-    pr_info,
+    Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version, pr_info,
 };
 
 /// Window layout module.
 ///
 /// Manages window tiling, splits, and focus navigation.
-/// Provides keybindings for window mode operations.
+/// Provides compositor and commands for window management.
 pub struct LayoutModule;
 
 impl LayoutModule {
@@ -105,159 +88,9 @@ impl Module for LayoutModule {
         Ok(())
     }
 
-    fn keybindings(&self) -> Vec<KeybindingRegistration> {
-        vec![
-            // ====================================================================
-            // Focus Navigation (window mode, after <C-w>)
-            // ====================================================================
-            KeybindingRegistration::new("h", ids::FOCUS_LEFT)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Move focus to left window"),
-            KeybindingRegistration::new("j", ids::FOCUS_DOWN)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Move focus to window below"),
-            KeybindingRegistration::new("k", ids::FOCUS_UP)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Move focus to window above"),
-            KeybindingRegistration::new("l", ids::FOCUS_RIGHT)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Move focus to right window"),
-            // Arrow keys as aliases
-            KeybindingRegistration::new("<Left>", ids::FOCUS_LEFT)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Move focus to left window"),
-            KeybindingRegistration::new("<Down>", ids::FOCUS_DOWN)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Move focus to window below"),
-            KeybindingRegistration::new("<Up>", ids::FOCUS_UP)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Move focus to window above"),
-            KeybindingRegistration::new("<Right>", ids::FOCUS_RIGHT)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Move focus to right window"),
-            // ====================================================================
-            // Focus Cycling
-            // ====================================================================
-            KeybindingRegistration::new("w", ids::FOCUS_NEXT)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Cycle focus to next window"),
-            KeybindingRegistration::new("W", ids::FOCUS_PREV)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Cycle focus to previous window"),
-            KeybindingRegistration::new("p", ids::FOCUS_PREV)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Go to previous (last accessed) window"),
-            // ====================================================================
-            // Window Splitting
-            // ====================================================================
-            KeybindingRegistration::new("s", ids::SPLIT_HORIZONTAL)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Split window horizontally (:split)"),
-            KeybindingRegistration::new("v", ids::SPLIT_VERTICAL)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Split window vertically (:vsplit)"),
-            KeybindingRegistration::new("n", ids::SPLIT_NEW)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Create new window with empty buffer"),
-            // ====================================================================
-            // Window Closing
-            // ====================================================================
-            KeybindingRegistration::new("c", ids::CLOSE_WINDOW)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Close current window (:close)"),
-            KeybindingRegistration::new("q", ids::CLOSE_WINDOW)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Close current window"),
-            KeybindingRegistration::new("o", ids::CLOSE_OTHERS)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Close all other windows (:only)"),
-            // ====================================================================
-            // Window Resizing
-            // ====================================================================
-            KeybindingRegistration::new("+", ids::RESIZE_HEIGHT_INCREASE)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Increase window height"),
-            KeybindingRegistration::new("-", ids::RESIZE_HEIGHT_DECREASE)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Decrease window height"),
-            KeybindingRegistration::new(">", ids::RESIZE_WIDTH_INCREASE)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Increase window width"),
-            KeybindingRegistration::new("<", ids::RESIZE_WIDTH_DECREASE)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Decrease window width"),
-            KeybindingRegistration::new("=", ids::RESIZE_EQUAL)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Make all windows equal size"),
-            KeybindingRegistration::new("_", ids::RESIZE_MAX_HEIGHT)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Maximize window height"),
-            KeybindingRegistration::new("|", ids::RESIZE_MAX_WIDTH)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Maximize window width"),
-            // ====================================================================
-            // Window Movement
-            // ====================================================================
-            KeybindingRegistration::new("H", ids::MOVE_WINDOW_LEFT)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Move window to far left"),
-            KeybindingRegistration::new("J", ids::MOVE_WINDOW_DOWN)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Move window to bottom"),
-            KeybindingRegistration::new("K", ids::MOVE_WINDOW_UP)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Move window to top"),
-            KeybindingRegistration::new("L", ids::MOVE_WINDOW_RIGHT)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Move window to far right"),
-            KeybindingRegistration::new("r", ids::ROTATE_WINDOWS)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Rotate windows downwards"),
-            KeybindingRegistration::new("R", ids::ROTATE_WINDOWS_REVERSE)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Rotate windows upwards"),
-            KeybindingRegistration::new("x", ids::SWAP_WINDOW)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Exchange window with next"),
-            // ====================================================================
-            // Tab Operations (for future tab support)
-            // ====================================================================
-            KeybindingRegistration::new("T", ids::MOVE_TO_NEW_TAB)
-                .with_modes(&["window"])
-                .with_category("window")
-                .with_description("Move current window to new tab"),
-        ]
+    fn compositor(&self) -> Option<Box<dyn std::any::Any + Send + Sync>> {
+        use reovim_driver_display::layout::CompositorBox;
+        Some(Box::new(CompositorBox::new(Box::new(HybridCompositor::with_main_layer()))))
     }
 }
 
@@ -288,69 +121,5 @@ mod tests {
         assert_eq!(version.major, 0);
         assert_eq!(version.minor, 9);
         assert_eq!(version.patch, 0);
-    }
-
-    #[test]
-    fn test_keybindings_not_empty() {
-        let module = LayoutModule::new();
-        let bindings = module.keybindings();
-        assert!(!bindings.is_empty());
-    }
-
-    #[test]
-    fn test_keybindings_have_window_mode() {
-        let module = LayoutModule::new();
-        let bindings = module.keybindings();
-
-        // All bindings should be in window mode
-        for binding in &bindings {
-            assert!(
-                binding.modes.contains(&"window"),
-                "Binding '{}' should be in window mode",
-                binding.keys
-            );
-        }
-    }
-
-    #[test]
-    fn test_keybindings_have_category() {
-        let module = LayoutModule::new();
-        let bindings = module.keybindings();
-
-        // All bindings should have window category
-        for binding in &bindings {
-            assert_eq!(
-                binding.category,
-                Some("window"),
-                "Binding '{}' should have window category",
-                binding.keys
-            );
-        }
-    }
-
-    #[test]
-    fn test_essential_keybindings_present() {
-        let module = LayoutModule::new();
-        let bindings = module.keybindings();
-
-        let keys: Vec<_> = bindings.iter().map(|b| b.keys).collect();
-
-        // Navigation
-        assert!(keys.contains(&"h"), "Missing 'h' binding");
-        assert!(keys.contains(&"j"), "Missing 'j' binding");
-        assert!(keys.contains(&"k"), "Missing 'k' binding");
-        assert!(keys.contains(&"l"), "Missing 'l' binding");
-
-        // Cycling
-        assert!(keys.contains(&"w"), "Missing 'w' binding");
-        assert!(keys.contains(&"W"), "Missing 'W' binding");
-
-        // Splitting
-        assert!(keys.contains(&"s"), "Missing 's' binding");
-        assert!(keys.contains(&"v"), "Missing 'v' binding");
-
-        // Closing
-        assert!(keys.contains(&"c"), "Missing 'c' binding");
-        assert!(keys.contains(&"o"), "Missing 'o' binding");
     }
 }

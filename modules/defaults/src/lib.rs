@@ -33,11 +33,15 @@ use {reovim_module_commands::ExCommandHandler, reovim_module_vim::Operator};
 // Re-export sub-modules for direct access
 pub use {
     reovim_module_commands as commands, reovim_module_keymap as keymap,
-    reovim_module_scratch_buffer as scratch_buffer, reovim_module_vim as vim,
+    reovim_module_layout as layout, reovim_module_scratch_buffer as scratch_buffer,
+    reovim_module_vim as vim,
 };
 
 // Re-export driver trait for handler type
 pub use reovim_driver_session::EmptySessionHandler;
+
+// Re-export compositor trait for type declarations
+pub use reovim_driver_display::layout::RootCompositor;
 
 /// Default modules bundle.
 ///
@@ -155,6 +159,24 @@ pub fn keybindings() -> Vec<KeybindingRegistration> {
 #[must_use]
 pub const fn empty_session_handler() -> scratch_buffer::ScratchBufferHandler {
     scratch_buffer::ScratchBufferHandler
+}
+
+/// Get the default compositor for window layout.
+///
+/// Returns `HybridCompositor` with a main layer already set up.
+/// This provides a nested compositor architecture with tiled/float/overlay zones.
+///
+/// # Example
+///
+/// ```ignore
+/// use reovim_module_defaults::compositor;
+///
+/// let compositor = compositor();
+/// session.set_compositor(Box::new(compositor));
+/// ```
+#[must_use]
+pub fn compositor() -> layout::HybridCompositor {
+    layout::HybridCompositor::with_main_layer()
 }
 
 // Generate FFI entry points for dynamic loading (only when building standalone cdylib)
