@@ -45,6 +45,20 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - Runner no longer directly imports `scratch-buffer` module
   - Wiring infrastructure prepared for dynamic module loading (#265)
 
+- Window layout subsystem traits - Phase 1 of nested compositor (#397)
+  - New `lib/drivers/display/src/layout/` module with trait definitions
+  - `RootCompositor` trait: layer lifecycle, focus routing, z-order stacking
+  - `WindowLayerCompositor` trait: per-layer tiled/float/overlay zone management
+  - `TiledLayer` trait: vim-style splits with navigate, resize, equalize, cycle
+  - `FloatingLayer` trait: free-positioned windows (stub for Phase 2)
+  - `OverlayLayer` trait: popups and menus (stub for Phase 3)
+  - `ViewManager` trait: per-window content state (cursor, scroll)
+  - Core types: `Layer`, `LayerId`, `Zone`, `WindowPlacement`, `Anchor`, `View`, `Position`
+  - Strong-typed index newtypes: `LineIndex`, `ColIndex` prevent mixing line/column indices
+  - `WindowError` enum with vim-compatible error codes (E444, E36, E94)
+  - Hyprland-inspired architecture with nested layers and z-order computation
+  - Part of Epic #403 (Window Subsystem)
+
 ### Changed
 
 - Unified `WindowId` to single kernel definition (#410)
