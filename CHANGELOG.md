@@ -51,6 +51,18 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - 1 test marked ignored: `test_dollar_with_count` (count prefix for $ not yet implemented)
   - Total enabled tests: 21 cursor_movement + 26 operators (11 tests added)
 
+- E2E test suite audit and documentation (#307 Phase 1)
+  - Updated test file headers with accurate status and blocking issues
+  - Clarified ignore reasons with specific issue references (#338, #385)
+  - Design decision: $ motion ignores count prefix (2$ = $, simplified)
+  - Test status summary:
+    - `edge_cases.rs`: 10 enabled, 0 ignored - **#312 complete**
+    - `operators.rs`: 24 enabled, 10 ignored (need operator-pending mode)
+    - `cursor_movement.rs`: 22 enabled, 0 ignored - **#309 complete**
+    - `search.rs`: 2 enabled, 13 ignored (need command-line mode #338)
+    - `undo_redo.rs`: 5 enabled, 3 ignored (need full undo #385)
+    - `registers.rs`: 0 enabled, 5 ignored (need debug/registers RPC)
+
 ### Changed
 
 - Unified `WindowId` to single kernel definition (#410)

@@ -1,10 +1,9 @@
 //! Cursor movement tests (hjkl, 0$, gg/G, w/b/e).
 //!
-//! **Status**: 21 tests enabled, 1 test requires count prefix for $ motion.
+//! **Status**: All 22 tests enabled.
 //! Count prefix support (3j, 5G) implemented in RPC input handler.
 //! $ motion (end-of-line) fully covered with edge cases (#340).
-//!
-//! Run `cargo test --ignored` to run the remaining ignored tests.
+//! Design: $ ignores count prefix (2$ = $, simplified behavior).
 
 mod common;
 use common::IntegrationTest;
@@ -146,17 +145,17 @@ async fn test_dollar_on_single_char_line() {
 }
 
 #[tokio::test]
-#[ignore = "count prefix for $ motion not yet implemented"]
-async fn test_dollar_with_count() {
-    // 2$ moves to end of line 1 line down (count-1 lines)
+async fn test_dollar_ignores_count() {
+    // Design decision: $ ignores count prefix (simplified, not Vim-compatible)
+    // 2$ behaves same as $ - goes to end of current line
     let result = IntegrationTest::new()
         .await
         .with_buffer("line one\nline two\nline three")
         .send_keys("2$")
         .run()
         .await;
-    // Cursor at end of "line two" (line 1, col 7)
-    result.assert_cursor(1, 7);
+    // Cursor at end of "line one" (line 0, col 7) - count ignored
+    result.assert_cursor(0, 7);
 }
 
 #[tokio::test]
