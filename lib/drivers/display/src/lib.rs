@@ -161,12 +161,30 @@ pub use ui::{
 
 pub use layout::{
     // Layer types
-    Anchor, Layer, LayerConfig, LayerId, OverlayConstraints, WindowPlacement, Zone,
-    // Compositor traits
-    CompositeResult, RootCompositor, WindowError, WindowLayerCompositor,
-    // Zone traits
-    FloatingLayer, FloatingWindow, OverlayLayer, OverlayWindow, TiledLayer,
-    MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH,
+    Anchor,
     // View management and index types
-    ColIndex, LineIndex, Position, View, ViewManager,
+    ColIndex,
+    // Compositor traits
+    CompositeResult,
+    // Zone traits
+    FloatingLayer,
+    FloatingWindow,
+    Layer,
+    LayerConfig,
+    LayerId,
+    LineIndex,
+    MIN_WINDOW_HEIGHT,
+    MIN_WINDOW_WIDTH,
+    OverlayConstraints,
+    OverlayLayer,
+    OverlayWindow,
+    Position,
+    RootCompositor,
+    TiledLayer,
+    View,
+    ViewManager,
+    WindowError,
+    WindowLayerCompositor,
+    WindowPlacement,
+    Zone,
 };

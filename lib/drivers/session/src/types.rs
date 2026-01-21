@@ -12,7 +12,10 @@
 //! - **Window**: Single window with buffer reference
 //! - **`WindowLayout`**: Window arrangement for a session
 
-use reovim_kernel::api::v1::{BufferId, ModeId, ModeStack, Position, WindowId};
+use {
+    reovim_driver_display::layout::RootCompositor,
+    reovim_kernel::api::v1::{BufferId, ModeId, ModeStack, Position, WindowId},
+};
 
 use crate::extension::ExtensionMap;
 
@@ -340,12 +343,16 @@ impl KeySequence {
 /// `terminal_size` here is the session-level default. Per-client dimensions
 /// may differ and are stored in `ClientViewport` at the runner layer.
 /// The precedence rule is: `ClientViewport` (if exists) > Session default.
-#[derive(Debug)]
 pub struct Session {
     /// Unique client identifier.
     pub id: ClientId,
     /// Window layout (per-session windows).
     pub windows: WindowLayout,
+    /// Window compositor for layout management.
+    ///
+    /// The compositor manages window geometry, splits, and navigation.
+    /// This is set by the layout module during session initialization.
+    pub compositor: Option<Box<dyn RootCompositor>>,
     /// Mode stack (current mode on top).
     pub mode_stack: ModeStack,
     /// Keys accumulated but not yet processed.
@@ -364,22 +371,57 @@ pub struct Session {
     terminal_size: (u16, u16),
 }
 
+impl std::fmt::Debug for Session {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Session")
+            .field("id", &self.id)
+            .field("windows", &self.windows)
+            .field("compositor", &self.compositor.as_ref().map(|_| "..."))
+            .field("mode_stack", &self.mode_stack)
+            .field("pending_keys", &self.pending_keys)
+            .field("extensions", &self.extensions)
+            .field("active_buffer", &self.active_buffer)
+            .field("terminal_size", &self.terminal_size)
+            .finish()
+    }
+}
+
 impl Session {
     /// Create a new session with a home mode.
     ///
     /// The home mode is the bottom of the mode stack and cannot be popped.
     /// Terminal size defaults to VT100 standard (80x24).
+    /// Compositor is initialized as `None` and should be set by the layout module.
     #[must_use]
     pub fn new(id: ClientId, home_mode: ModeId) -> Self {
         Self {
             id,
             windows: WindowLayout::empty(),
+            compositor: None,
             mode_stack: ModeStack::new(home_mode),
             pending_keys: KeySequence::new(),
             extensions: ExtensionMap::new(),
             active_buffer: None,
             terminal_size: (80, 24), // VT100 default
         }
+    }
+
+    /// Set the compositor for this session.
+    ///
+    /// Called by the layout module during session initialization.
+    pub fn set_compositor(&mut self, compositor: Box<dyn RootCompositor>) {
+        self.compositor = Some(compositor);
+    }
+
+    /// Get a reference to the compositor.
+    #[must_use]
+    pub fn compositor(&self) -> Option<&dyn RootCompositor> {
+        self.compositor.as_deref()
+    }
+
+    /// Get a mutable reference to the compositor.
+    pub fn compositor_mut(&mut self) -> Option<&mut (dyn RootCompositor + 'static)> {
+        self.compositor.as_deref_mut()
     }
 
     /// Get the current mode.

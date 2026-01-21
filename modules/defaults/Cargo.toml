@@ -22,7 +22,9 @@ reovim-module-vim = { path = "../vim" }
 # Note: operators merged into vim (Epic #385)
 reovim-module-commands = { path = "../commands" }
 reovim-module-scratch-buffer = { path = "../scratch-buffer" }
+reovim-module-layout = { path = "../layout" }
 reovim-driver-session = { workspace = true }
+reovim-driver-display = { workspace = true }
 
 [lints]
 workspace = true

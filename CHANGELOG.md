@@ -45,7 +45,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - Runner no longer directly imports `scratch-buffer` module
   - Wiring infrastructure prepared for dynamic module loading (#265)
 
-- Window layout subsystem traits - Phase 1 of nested compositor (#397)
+- Window layout subsystem traits - Phase 1 Part 1 of nested compositor (#397)
   - New `lib/drivers/display/src/layout/` module with trait definitions
   - `RootCompositor` trait: layer lifecycle, focus routing, z-order stacking
   - `WindowLayerCompositor` trait: per-layer tiled/float/overlay zone management
@@ -57,6 +57,18 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - Strong-typed index newtypes: `LineIndex`, `ColIndex` prevent mixing line/column indices
   - `WindowError` enum with vim-compatible error codes (E444, E36, E94)
   - Hyprland-inspired architecture with nested layers and z-order computation
+  - Part of Epic #403 (Window Subsystem)
+
+- Window layout subsystem implementation - Phase 1 Part 2 of nested compositor (#397)
+  - `TilingLayout` implements `TiledLayer` trait with full window management
+  - `SplitTree` enhanced with winnr ordering (top-to-bottom, left-to-right)
+  - `HybridCompositor` implements `RootCompositor` for multi-layer management
+  - `DefaultLayer` implements `WindowLayerCompositor` with tiled zone support
+  - `CompositorApi` trait in session driver for high-level window operations
+  - `SessionRuntime` implements `CompositorApi` with full compositor integration
+  - All 15 window commands implemented: split, close, navigate, cycle, resize
+  - Module provides compositor via `compositor()` method, runner extracts via `Any`
+  - Keybinding configuration is policy - left to editor personality modules
   - Part of Epic #403 (Window Subsystem)
 
 ### Changed

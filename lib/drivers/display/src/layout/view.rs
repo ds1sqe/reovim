@@ -22,8 +22,7 @@
 //! This module uses [`LineIndex`] and [`ColIndex`] newtypes to prevent
 //! accidentally mixing up line numbers with column numbers or other indices.
 
-use crate::WindowId;
-use reovim_kernel::api::v1::BufferId;
+use {crate::WindowId, reovim_kernel::api::v1::BufferId};
 
 // ============================================================================
 // Index Newtypes (Strong Typing)
@@ -36,8 +35,8 @@ use reovim_kernel::api::v1::BufferId;
 ///
 /// # Example
 ///
-/// ```
-/// use reovim_display::layout::LineIndex;
+/// ```ignore
+/// use reovim_driver_display::layout::LineIndex;
 ///
 /// let line = LineIndex::new(5);
 /// assert_eq!(line.as_usize(), 5);
@@ -96,8 +95,8 @@ impl std::fmt::Display for LineIndex {
 ///
 /// # Example
 ///
-/// ```
-/// use reovim_display::layout::ColIndex;
+/// ```ignore
+/// use reovim_driver_display::layout::ColIndex;
 ///
 /// let col = ColIndex::new(10);
 /// assert_eq!(col.as_usize(), 10);

@@ -220,6 +220,7 @@ use std::{
 
 use {
     reovim_arch::sync::RwLock,
+    reovim_driver_display::layout::{CompositorBox, RootCompositor},
     reovim_driver_vfs::{StandardVfs, VfsDriver},
     reovim_kernel::api::v1::{
         EventBus, KernelContext, MarkBank, ModeId, Module, ModuleContext, ModuleId, MotionEngine,
@@ -229,6 +230,7 @@ use {
     reovim_module_defaults,
     reovim_module_editor::EditorModule,
     reovim_module_keymap::KeymapModule,
+    reovim_module_layout::LayoutModule,
     reovim_module_motions::MotionsModule,
     // Note: operators merged into vim (Epic #385)
     reovim_module_vim::{VimMode, VimModule},
@@ -865,7 +867,7 @@ impl Server {
 /// This is the entry point for creating sessions that have working keybindings.
 /// Used by both `ensure_default_session()` and `handle_client()`.
 fn create_session_with_defaults(id: SessionId) -> Arc<Session> {
-    let (mode_registry, command_registry, keymap_registry, module_registry) =
+    let (mode_registry, command_registry, keymap_registry, module_registry, compositor) =
         build_default_registries();
 
     // Use auto-detected entry mode from registry, or fall back to hardcoded default
@@ -890,6 +892,7 @@ fn create_session_with_defaults(id: SessionId) -> Arc<Session> {
         command_registry,
         keymap_registry,
         module_registry,
+        compositor,
     )
 }
 
@@ -970,8 +973,16 @@ fn static_module_factory(name: &str) -> Option<Box<dyn Module>> {
 /// Module loading follows this precedence:
 /// 1. Dynamic modules from XDG paths (`~/.local/share/reovim/modules/`)
 /// 2. Static fallback for modules not found in paths
+///
+/// Returns the registries plus the compositor from the layout module (if any).
 #[allow(clippy::too_many_lines)]
-fn build_default_registries() -> (ModeRegistry, CommandRegistry, KeymapRegistry, ModuleManager) {
+fn build_default_registries() -> (
+    ModeRegistry,
+    CommandRegistry,
+    KeymapRegistry,
+    ModuleManager,
+    Option<Box<dyn RootCompositor>>,
+) {
     let mut mode_registry = ModeRegistry::new();
     let mut command_registry = CommandRegistry::new();
     let mut keymap_registry = KeymapRegistry::new();
@@ -1117,7 +1128,47 @@ fn build_default_registries() -> (ModeRegistry, CommandRegistry, KeymapRegistry,
         }
     }
 
-    (mode_registry, command_registry, keymap_registry, module_manager)
+    // Wire layout module - provides window management compositor and keybindings
+    let mut layout_module = LayoutModule::new();
+    let layout_module_id = layout_module.id();
+
+    // Initialize the module
+    let layout_ctx = ModuleContext::default();
+    let _init_result = layout_module.init(&layout_ctx);
+
+    // Wire layout keybindings (window mode: hjkl, splits, etc.)
+    let layout_keybindings = layout_module.keybindings();
+    match wire_module_keybindings(
+        &layout_module_id,
+        &layout_keybindings,
+        &mut keymap_registry,
+        &mode_registry,
+    ) {
+        Ok(stats) => {
+            tracing::info!(
+                module = %layout_module_id,
+                wired = stats.keybindings_wired,
+                skipped = stats.keybindings_skipped,
+                "wired layout keybindings"
+            );
+        }
+        Err(e) => {
+            tracing::error!(module = %layout_module_id, error = %e, "failed to wire layout keybindings");
+        }
+    }
+
+    // Extract compositor from layout module via Module::compositor()
+    // Uses type erasure (Any) to cross layer boundaries - see issue #417
+    let compositor: Option<Box<dyn RootCompositor>> = layout_module
+        .compositor()
+        .and_then(|boxed_any| boxed_any.downcast::<CompositorBox>().ok())
+        .map(|compositor_box| compositor_box.into_inner());
+
+    if compositor.is_some() {
+        tracing::info!(module = %layout_module_id, "extracted compositor from layout module");
+    }
+
+    (mode_registry, command_registry, keymap_registry, module_manager, compositor)
 }
 
 impl Default for Server {

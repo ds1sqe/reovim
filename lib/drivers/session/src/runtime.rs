@@ -39,6 +39,10 @@
 
 use {
     reovim_driver_command_types::{CommandContext, CommandResult},
+    reovim_driver_display::{
+        NavigateDirection, Rect, SplitDirection,
+        layout::{LayerId, WindowPlacement},
+    },
     reovim_kernel::api::v1::{
         BufferId, CommandId, KernelContext, ModeId, Position, SelectionMode as KernelSelectionMode,
         WindowId,
@@ -48,9 +52,9 @@ use {
 use crate::{
     Session, SessionExtension, Window,
     api::{
-        BufferApi, BufferError, ChangeTracker, CommandApi, CommandExecutor, ExtensionApi, ModeApi,
-        ModeError, RegisterApi, RegisterContent, Selection, SelectionMode, StateChanges, WindowApi,
-        WindowError,
+        BufferApi, BufferError, ChangeTracker, CommandApi, CommandExecutor, CompositorApi,
+        CompositorError, ExtensionApi, ModeApi, ModeError, RegisterApi, RegisterContent, Selection,
+        SelectionMode, StateChanges, WindowApi, WindowError,
     },
     transition::{PopResult, TransitionContext},
 };
@@ -60,31 +64,53 @@ use crate::{
 /// Bundles `Session` + `KernelContext` + `CommandExecutor`.
 /// Changes accumulate internally; runner takes at end via [`take_changes`].
 ///
+/// # Compositor Integration
+///
+/// The compositor is accessed via `session.compositor`. When present,
+/// `CompositorApi` methods delegate to it. When absent, they return errors.
+///
 /// [`take_changes`]: ChangeTracker::take_changes
 pub struct SessionRuntime<'a> {
-    /// Per-session state (mode stack, windows, extensions).
+    /// Per-session state (mode stack, windows, extensions, compositor).
     session: &'a mut Session,
     /// Kernel context (buffers, registers, marks).
     kernel: &'a KernelContext,
     /// Command executor for looking up and running commands.
     executor: &'a dyn CommandExecutor,
+    /// Cached screen size for compositor operations.
+    screen: Rect,
     /// Accumulated changes - runner takes at end.
     changes: StateChanges,
 }
 
 impl<'a> SessionRuntime<'a> {
     /// Create a new runtime.
+    ///
+    /// The compositor is accessed via `session.compositor`.
+    /// Use `session.set_compositor()` before creating the runtime
+    /// for full window management support.
     pub fn new(
         session: &'a mut Session,
         kernel: &'a KernelContext,
         executor: &'a dyn CommandExecutor,
     ) -> Self {
+        let screen = {
+            let (width, height) = session.terminal_size();
+            Rect::new(0, 0, width, height)
+        };
         Self {
             session,
             kernel,
             executor,
+            screen,
             changes: StateChanges::new(),
         }
+    }
+
+    /// Check if compositor is available.
+    #[must_use]
+    pub fn has_compositor(&self) -> bool {
+        self.session.compositor.is_some()
     }
 
     /// Get direct access to the session.
@@ -573,6 +599,231 @@ impl ChangeTracker for SessionRuntime<'_> {
 
     fn record_cursor_move(&mut self, buffer: BufferId) {
         self.changes.record_cursor_move(buffer);
+    }
+}
+
+// === CompositorApi ===
+
+impl CompositorApi for SessionRuntime<'_> {
+    fn navigate(&self, direction: NavigateDirection) -> Result<WindowId, CompositorError> {
+        let compositor = self
+            .session
+            .compositor
+            .as_ref()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        let active = compositor
+            .active_layer()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        let layer = compositor
+            .layer_compositor(active)
+            .ok_or(CompositorError::LayerNotFound(active))?;
+
+        let from = layer.focused().ok_or(CompositorError::NoFocusedWindow)?;
+
+        layer
+            .navigate_tiled(from, direction)
+            .ok_or(CompositorError::NoNeighbor(direction))
+    }
+
+    fn split(&mut self, direction: SplitDirection) -> Result<WindowId, CompositorError> {
+        let compositor = self
+            .session
+            .compositor
+            .as_mut()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        let active = compositor
+            .active_layer()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        let layer = compositor
+            .layer_compositor_mut(active)
+            .ok_or(CompositorError::LayerNotFound(active))?;
+
+        let from = layer.focused().ok_or(CompositorError::NoFocusedWindow)?;
+
+        let new_window = layer
+            .split_tiled(from, direction)
+            .ok_or(CompositorError::NotEnoughRoom)?;
+
+        // Focus moves to new window automatically in split_tiled
+        self.changes.record_window_created(new_window);
+        Ok(new_window)
+    }
+
+    fn close_current_window(&mut self) -> Result<WindowId, CompositorError> {
+        use reovim_driver_display::layout::Zone;
+
+        let compositor = self
+            .session
+            .compositor
+            .as_mut()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        let active = compositor
+            .active_layer()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        let layer = compositor
+            .layer_compositor_mut(active)
+            .ok_or(CompositorError::LayerNotFound(active))?;
+
+        let current = layer.focused().ok_or(CompositorError::NoFocusedWindow)?;
+
+        // Check if this is the last window
+        if layer.windows_in_zone(Zone::Tiled).len() <= 1 {
+            return Err(CompositorError::CannotCloseLastWindow);
+        }
+
+        let neighbor = layer
+            .close_tiled(current)
+            .ok_or(CompositorError::CannotCloseLastWindow)?;
+
+        self.changes.record_window_closed(current);
+        Ok(neighbor)
+    }
+
+    fn close_others(&mut self) -> Result<(), CompositorError> {
+        use reovim_driver_display::layout::Zone;
+
+        let compositor = self
+            .session
+            .compositor
+            .as_mut()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        let active = compositor
+            .active_layer()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        let layer = compositor
+            .layer_compositor_mut(active)
+            .ok_or(CompositorError::LayerNotFound(active))?;
+
+        let current = layer.focused().ok_or(CompositorError::NoFocusedWindow)?;
+
+        // Get all windows except current
+        let windows: Vec<WindowId> = layer
+            .windows_in_zone(Zone::Tiled)
+            .into_iter()
+            .filter(|&w| w != current)
+            .collect();
+
+        // Close all other windows
+        for window in windows {
+            layer.close_tiled(window);
+            self.changes.record_window_closed(window);
+        }
+
+        Ok(())
+    }
+
+    fn resize(&mut self, direction: NavigateDirection, delta: i16) -> Result<(), CompositorError> {
+        let compositor = self
+            .session
+            .compositor
+            .as_mut()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        let active = compositor
+            .active_layer()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        let layer = compositor
+            .layer_compositor_mut(active)
+            .ok_or(CompositorError::LayerNotFound(active))?;
+
+        let current = layer.focused().ok_or(CompositorError::NoFocusedWindow)?;
+
+        layer.resize_tiled(current, direction, delta);
+        self.changes.window_changed = true;
+        Ok(())
+    }
+
+    fn equalize(&mut self) -> Result<(), CompositorError> {
+        let compositor = self
+            .session
+            .compositor
+            .as_mut()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        let active = compositor
+            .active_layer()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        let layer = compositor
+            .layer_compositor_mut(active)
+            .ok_or(CompositorError::LayerNotFound(active))?;
+
+        layer.equalize_tiled();
+        self.changes.window_changed = true;
+        Ok(())
+    }
+
+    fn cycle(&self, forward: bool) -> Result<WindowId, CompositorError> {
+        let compositor = self
+            .session
+            .compositor
+            .as_ref()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        let active = compositor
+            .active_layer()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        let layer = compositor
+            .layer_compositor(active)
+            .ok_or(CompositorError::LayerNotFound(active))?;
+
+        let from = layer.focused().ok_or(CompositorError::NoFocusedWindow)?;
+
+        layer
+            .cycle_tiled(from, forward)
+            .ok_or(CompositorError::NoFocusedWindow)
+    }
+
+    fn focus(&mut self, window: WindowId) -> Result<(), CompositorError> {
+        let compositor = self
+            .session
+            .compositor
+            .as_mut()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        // set_focus also activates the layer containing the window
+        compositor.set_focus(window);
+        self.changes.record_focus_change();
+        Ok(())
+    }
+
+    fn focused_window(&self) -> Option<WindowId> {
+        self.session.compositor.as_ref()?.focused()
+    }
+
+    fn compositor_window_count(&self) -> usize {
+        self.session
+            .compositor
+            .as_ref()
+            .map_or(0, |c| c.window_count())
+    }
+
+    fn arrange(&self, screen: Rect) -> Vec<WindowPlacement> {
+        self.session
+            .compositor
+            .as_ref()
+            .map_or_else(Vec::new, |c| c.composite(screen).placements)
+    }
+
+    fn active_layer(&self) -> Option<LayerId> {
+        self.session.compositor.as_ref()?.active_layer()
+    }
+
+    fn set_screen(&mut self, screen: Rect) {
+        self.screen = screen;
+        if let Some(compositor) = self.session.compositor.as_mut() {
+            compositor.set_screen(screen);
+        }
     }
 }
 

@@ -8,8 +8,10 @@
 //!
 //! This trait will be implemented in Phase 3 (#399).
 
-use super::layer::{OverlayConstraints, WindowPlacement};
-use crate::{Rect, WindowId};
+use {
+    super::layer::{OverlayConstraints, WindowPlacement, ZOrder},
+    crate::{Rect, WindowId},
+};
 
 /// Overlay window state.
 #[derive(Debug, Clone)]
@@ -21,7 +23,7 @@ pub struct OverlayWindow {
     /// Computed screen bounds.
     pub computed_bounds: Rect,
     /// Z-order within overlay zone.
-    pub z_order: u16,
+    pub z_order: ZOrder,
 }
 
 /// Overlay layer manages pop-ups and temporary UI elements.

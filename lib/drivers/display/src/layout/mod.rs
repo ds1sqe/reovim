@@ -45,18 +45,20 @@ mod view;
 
 // Layer types
 pub use layer::{
-    Anchor, Layer, LayerConfig, LayerId, OverlayConstraints, WindowPlacement, Zone,
+    Anchor, Layer, LayerConfig, LayerId, OverlayConstraints, WindowPlacement, ZOrder, Zone,
 };
 
 // Compositor traits and types
 pub use compositor::{
-    CompositeResult, RootCompositor, WindowError, WindowLayerCompositor,
+    CompositeResult, CompositorBox, RootCompositor, WindowError, WindowLayerCompositor,
 };
 
 // Zone-specific traits
-pub use tiled::{TiledLayer, MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH};
-pub use floating::{FloatingLayer, FloatingWindow};
-pub use overlay::{OverlayLayer, OverlayWindow};
+pub use {
+    floating::{FloatingLayer, FloatingWindow},
+    overlay::{OverlayLayer, OverlayWindow},
+    tiled::{MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH, TiledLayer},
+};
 
 // View management and index types
 pub use view::{ColIndex, LineIndex, Position, View, ViewManager};

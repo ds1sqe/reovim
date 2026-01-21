@@ -29,8 +29,10 @@
 //! └────┴────┘
 //! ```
 
-use super::layer::WindowPlacement;
-use crate::{NavigateDirection, Rect, SplitDirection, WindowId};
+use {
+    super::layer::WindowPlacement,
+    crate::{NavigateDirection, Rect, SplitDirection, WindowId},
+};
 
 /// Tiled layer manages vim-style split windows.
 ///
@@ -186,7 +188,7 @@ mod tests {
 
     #[test]
     fn test_min_dimensions() {
-        assert!(MIN_WINDOW_WIDTH >= 1);
-        assert!(MIN_WINDOW_HEIGHT >= 1);
+        const { assert!(MIN_WINDOW_WIDTH >= 1) };
+        const { assert!(MIN_WINDOW_HEIGHT >= 1) };
     }
 }

@@ -74,6 +74,63 @@ impl Zone {
     }
 }
 
+/// Z-order value for window stacking.
+///
+/// Lower values are rendered first (background), higher values on top.
+/// Each layer has a base z-order, and zones/windows add offsets:
+///
+/// ```text
+/// Layer 0 (z_base=0):   Tiled=0-9, Float=10-49, Overlay=50-99
+/// Layer 1 (z_base=100): Tiled=100-109, Float=110-149, Overlay=150-199
+/// ```
+///
+/// # Type Safety
+///
+/// Using a newtype prevents accidentally mixing z-order values with
+/// other `u16` values like dimensions or positions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct ZOrder(u16);
+
+impl ZOrder {
+    /// Create a new z-order value.
+    #[must_use]
+    pub const fn new(value: u16) -> Self {
+        Self(value)
+    }
+
+    /// Get the raw z-order value.
+    #[must_use]
+    pub const fn as_u16(self) -> u16 {
+        self.0
+    }
+
+    /// Compute the base z-order for a layer.
+    ///
+    /// Each layer gets 100 z-order slots (0-99, 100-199, etc.).
+    #[must_use]
+    pub const fn layer_base(layer_id: LayerId) -> Self {
+        Self(layer_id.as_u16() * 100)
+    }
+
+    /// Compute the final z-order for a window.
+    ///
+    /// # Arguments
+    ///
+    /// * `layer_base` - Base z-order for the layer
+    /// * `zone` - Which zone the window is in
+    /// * `index` - Window index within the zone (for stacking order)
+    #[must_use]
+    pub const fn for_window(layer_base: Self, zone: Zone, index: u16) -> Self {
+        Self(layer_base.0 + zone.z_offset() + index)
+    }
+
+    /// Add an offset to the z-order.
+    #[must_use]
+    pub const fn offset(self, delta: u16) -> Self {
+        Self(self.0 + delta)
+    }
+}
+
 /// A Layer is a self-contained mini-compositor.
 ///
 /// Each layer contains three zones (Tiled, Float, Overlay) and can be
@@ -84,8 +141,8 @@ pub struct Layer {
     pub id: LayerId,
     /// Human-readable label for shortcuts (e.g., "main", "term", "1").
     pub label: String,
-    /// Base z-order (layers stack: 100, 200, 300...).
-    pub z_base: u16,
+    /// Base z-order (layers stack: 0, 100, 200...).
+    pub z_base: ZOrder,
     /// Screen bounds this layer occupies.
     pub bounds: Rect,
     /// Opacity (0.0 = transparent, 1.0 = opaque). Future use.
@@ -97,7 +154,7 @@ pub struct Layer {
 impl Layer {
     /// Create a new layer with default settings.
     #[must_use]
-    pub fn new(id: LayerId, label: impl Into<String>, z_base: u16) -> Self {
+    pub fn new(id: LayerId, label: impl Into<String>, z_base: ZOrder) -> Self {
         Self {
             id,
             label: label.into(),
@@ -119,8 +176,8 @@ impl Layer {
     ///
     /// Absolute z-order value for rendering.
     #[must_use]
-    pub const fn z_for(&self, zone: Zone, index: u16) -> u16 {
-        self.z_base + zone.z_offset() + index
+    pub const fn z_for(&self, zone: Zone, index: u16) -> ZOrder {
+        ZOrder::for_window(self.z_base, zone, index)
     }
 }
 
@@ -139,7 +196,7 @@ pub struct WindowPlacement {
     /// Computed screen bounds.
     pub bounds: Rect,
     /// Computed z-order for rendering.
-    pub z_order: u16,
+    pub z_order: ZOrder,
     /// Whether the window is currently visible.
     pub visible: bool,
     /// Whether the window can receive focus.
@@ -154,7 +211,7 @@ impl WindowPlacement {
         layer_id: LayerId,
         zone: Zone,
         bounds: Rect,
-        z_order: u16,
+        z_order: ZOrder,
     ) -> Self {
         Self {
             window_id,
@@ -336,19 +393,19 @@ mod tests {
 
     #[test]
     fn test_layer_z_for() {
-        let layer = Layer::new(LayerId::new(1), "main", 100);
+        let layer = Layer::new(LayerId::new(1), "main", ZOrder::new(100));
 
         // Tiled windows: 100, 101, 102...
-        assert_eq!(layer.z_for(Zone::Tiled, 0), 100);
-        assert_eq!(layer.z_for(Zone::Tiled, 5), 105);
+        assert_eq!(layer.z_for(Zone::Tiled, 0), ZOrder::new(100));
+        assert_eq!(layer.z_for(Zone::Tiled, 5), ZOrder::new(105));
 
         // Float windows: 110, 111, 112...
-        assert_eq!(layer.z_for(Zone::Float, 0), 110);
-        assert_eq!(layer.z_for(Zone::Float, 3), 113);
+        assert_eq!(layer.z_for(Zone::Float, 0), ZOrder::new(110));
+        assert_eq!(layer.z_for(Zone::Float, 3), ZOrder::new(113));
 
         // Overlay windows: 150, 151, 152...
-        assert_eq!(layer.z_for(Zone::Overlay, 0), 150);
-        assert_eq!(layer.z_for(Zone::Overlay, 2), 152);
+        assert_eq!(layer.z_for(Zone::Overlay, 0), ZOrder::new(150));
+        assert_eq!(layer.z_for(Zone::Overlay, 2), ZOrder::new(152));
     }
 
     #[test]
@@ -365,14 +422,47 @@ mod tests {
             LayerId::new(0),
             Zone::Tiled,
             Rect::new(0, 0, 80, 24),
-            100,
+            ZOrder::new(100),
         );
 
         assert_eq!(placement.window_id, window_id);
         assert_eq!(placement.zone, Zone::Tiled);
-        assert_eq!(placement.z_order, 100);
+        assert_eq!(placement.z_order, ZOrder::new(100));
         assert!(placement.visible);
         assert!(placement.focusable);
+    }
+
+    #[test]
+    fn test_z_order_layer_base() {
+        assert_eq!(ZOrder::layer_base(LayerId::new(0)), ZOrder::new(0));
+        assert_eq!(ZOrder::layer_base(LayerId::new(1)), ZOrder::new(100));
+        assert_eq!(ZOrder::layer_base(LayerId::new(2)), ZOrder::new(200));
+    }
+
+    #[test]
+    fn test_z_order_for_window() {
+        let base = ZOrder::layer_base(LayerId::new(1));
+
+        // Tiled: base + 0 + index
+        assert_eq!(ZOrder::for_window(base, Zone::Tiled, 0), ZOrder::new(100));
+        assert_eq!(ZOrder::for_window(base, Zone::Tiled, 5), ZOrder::new(105));
+
+        // Float: base + 10 + index
+        assert_eq!(ZOrder::for_window(base, Zone::Float, 0), ZOrder::new(110));
+        assert_eq!(ZOrder::for_window(base, Zone::Float, 3), ZOrder::new(113));
+
+        // Overlay: base + 50 + index
+        assert_eq!(ZOrder::for_window(base, Zone::Overlay, 0), ZOrder::new(150));
+    }
+
+    #[test]
+    fn test_z_order_comparison() {
+        let z1 = ZOrder::new(100);
+        let z2 = ZOrder::new(150);
+
+        assert!(z1 < z2);
+        assert!(z2 > z1);
+        assert_eq!(z1, ZOrder::new(100));
     }
 
     #[test]

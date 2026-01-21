@@ -7,8 +7,10 @@
 //!
 //! This trait will be implemented in Phase 2 (#398).
 
-use super::layer::WindowPlacement;
-use crate::{Rect, WindowId};
+use {
+    super::layer::{WindowPlacement, ZOrder},
+    crate::{Rect, WindowId},
+};
 
 /// Floating window state.
 #[derive(Debug, Clone)]
@@ -18,7 +20,7 @@ pub struct FloatingWindow {
     /// Window bounds (position and size).
     pub bounds: Rect,
     /// Z-order within float zone.
-    pub z_order: u16,
+    pub z_order: ZOrder,
 }
 
 /// Floating layer manages freely-positioned windows.

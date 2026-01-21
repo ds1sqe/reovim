@@ -201,6 +201,12 @@ pub trait Module: Send + Sync + 'static {
     /// the runner calls handlers in priority order until one returns
     /// an action.
     ///
+    /// # TODO(#417)
+    ///
+    /// This returns only metadata. The actual handler is provided separately
+    /// via the defaults module. See issue #417 for `UniqueProvider` abstraction
+    /// that would unify registration and handler provision.
+    ///
     /// # Example
     ///
     /// ```ignore
@@ -214,6 +220,33 @@ pub trait Module: Send + Sync + 'static {
     /// ```
     fn empty_session_handlers(&self) -> Vec<EmptySessionHandlerRegistration> {
         Vec::new()
+    }
+
+    /// Get module-provided compositor (if any).
+    ///
+    /// Returns a type-erased compositor that can be downcast by the runner.
+    /// The runner expects this to contain a `Box<dyn RootCompositor>` wrapped
+    /// in a `CompositorBox` from the display driver.
+    ///
+    /// # TODO(#417)
+    ///
+    /// This uses `Any`-based type erasure which is not ideal. See issue #417
+    /// for `UniqueProvider` abstraction that would maintain type safety across
+    /// layer boundaries without requiring the kernel to depend on driver types.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use reovim_driver_display::layout::CompositorBox;
+    ///
+    /// fn compositor(&self) -> Option<Box<dyn Any + Send + Sync>> {
+    ///     Some(Box::new(CompositorBox::new(
+    ///         Box::new(MyCompositor::new())
+    ///     )))
+    /// }
+    /// ```
+    fn compositor(&self) -> Option<Box<dyn std::any::Any + Send + Sync>> {
+        None
     }
 
     // ========================================================================
