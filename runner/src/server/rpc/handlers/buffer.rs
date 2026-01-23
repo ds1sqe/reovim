@@ -213,13 +213,11 @@ pub fn buffer_open_file(ctx: RpcContext, params: serde_json::Value) -> HandlerFu
                 // Use driver_session as SSOT for active_buffer
                 state.set_session_active_buffer(Some(id));
 
-                // Load undo history from disk (graceful: log errors, don't fail)
-                let loaded = state.app.undo_registry.load_graceful(
-                    id,
-                    &params.path,
-                    &state.undo_persistence,
-                    state.vfs.as_ref(),
-                );
+                // Epic #417 Part 2: Load undo history via UndoProvider from ServiceRegistry
+                let loaded = state
+                    .app
+                    .get_undo_provider()
+                    .is_some_and(|p| p.load_graceful(id, &params.path, state.vfs.as_ref()));
 
                 (id, loaded)
             })
@@ -321,18 +319,21 @@ pub fn buffer_write_file(ctx: RpcContext, params: serde_json::Value) -> HandlerF
                     buffer_arc.write().set_modified(false);
                 }
 
-                // Persist undo history (log errors, don't fail the write)
-                match state.app.undo_registry.persist(
-                    buffer_id,
-                    &file_path,
-                    &state.undo_persistence,
-                    state.vfs.as_ref(),
-                ) {
-                    Ok(()) => true,
-                    Err(e) => {
-                        tracing::warn!("Failed to persist undo history for '{}': {}", file_path, e);
-                        false
+                // Epic #417 Part 2: Persist undo history via UndoProvider from ServiceRegistry
+                if let Some(undo_provider) = state.app.get_undo_provider() {
+                    match undo_provider.persist(buffer_id, &file_path, state.vfs.as_ref()) {
+                        Ok(()) => true,
+                        Err(e) => {
+                            tracing::warn!(
+                                "Failed to persist undo history for '{}': {}",
+                                file_path,
+                                e
+                            );
+                            false
+                        }
                     }
+                } else {
+                    false
                 }
             })
             .await;

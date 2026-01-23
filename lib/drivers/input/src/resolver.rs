@@ -31,20 +31,16 @@
 //! ```text
 //! 1. Normal mode receives 'd'
 //!    └─ VimNormalResolver.resolve('d', state)
-//!    └─ Returns: ModeTransition::Push {
-//!         mode: "operator-pending",
-//!         context: { pending_operator: "delete" }
-//!       }
+//!    └─ Returns: ModeTransition::Set { mode: "vim:delete" }
 //!
-//! 2. EventLoop pushes operator-pending mode
+//! 2. EventLoop sets delete mode
 //!
-//! 3. Operator-pending mode receives 'w'
-//!    └─ OperatorPendingResolver.resolve('w', state)
-//!    └─ Returns: ModeTransition::Pop {
-//!         result: OperatorRange { start: (0,0), end: (0,5) }
-//!       }
+//! 3. Delete mode receives 'w'
+//!    └─ VimDeleteResolver.resolve('w', state)
+//!    └─ Dispatches word motion, captures range
+//!    └─ Returns: Delete text + ModeTransition::Set { mode: "vim:normal" }
 //!
-//! 4. EventLoop pops mode, executes delete on range
+//! 4. EventLoop returns to normal mode
 //! ```
 
 use std::collections::HashMap;
@@ -228,7 +224,7 @@ impl<'a> ResolveInput<'a> {
 /// - Operator-pending state (d awaiting motion)
 ///
 /// Each editing style implements different resolvers:
-/// - Vim: `VimNormalResolver`, `VimInsertResolver`, `VimOperatorPendingResolver`
+/// - Vim: `VimNormalResolver`, `VimInsertResolver`, `VimDeleteResolver`, `VimYankResolver`, `VimChangeResolver`
 /// - Emacs: `EmacsResolver` (single mode with prefix handling)
 /// - etc.
 ///

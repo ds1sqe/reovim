@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use {
     reovim_driver_command_types::ArgValue,
     reovim_driver_input::{
-        KeyCode, KeyEvent, KeyLookupState, KeySequence, Modifiers, ModeTransition, PopResult,
+        KeyCode, KeyEvent, KeyLookupState, KeySequence, ModeTransition, Modifiers, PopResult,
     },
     reovim_kernel::api::v1::{CommandId, ModeId, Position},
 };
@@ -186,14 +186,8 @@ pub fn build_operator_execute(
     args.insert("linewise".to_string(), ArgValue::Bang(linewise));
 
     // Set range positions
-    args.insert(
-        "range_start".to_string(),
-        ArgValue::Position(start.line, start.column),
-    );
-    args.insert(
-        "range_end".to_string(),
-        ArgValue::Position(end.line, end.column),
-    );
+    args.insert("range_start".to_string(), ArgValue::Position(start.line, start.column));
+    args.insert("range_end".to_string(), ArgValue::Position(end.line, end.column));
 
     // Set count (defaults to 1)
     args.insert("count".to_string(), ArgValue::Count(count.unwrap_or(1)));
@@ -388,10 +382,7 @@ mod tests {
     #[test]
     fn test_is_escape() {
         assert!(is_escape(&KeyEvent::new(KeyCode::Escape)));
-        assert!(is_escape(&KeyEvent::with_modifiers(
-            KeyCode::Char('['),
-            Modifiers::CTRL
-        )));
+        assert!(is_escape(&KeyEvent::with_modifiers(KeyCode::Char('['), Modifiers::CTRL)));
         assert!(!is_escape(&key('d')));
     }
 

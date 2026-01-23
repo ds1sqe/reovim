@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use {
     reovim_arch::sync::RwLock,
+    reovim_driver_buffer::TestBufferManager,
     reovim_driver_vfs::{MockVfs, VfsDriver},
     reovim_kernel::api::v1::{
         EventBus, KernelContext, MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry,
@@ -12,7 +13,6 @@ use {
 };
 
 use crate::{
-    buffer_manager::SimpleBufferManager,
     server::{client::Client, rpc::RpcContext, transport::TransportWriter},
     session::{ClientId, Session, SessionId},
 };
@@ -40,7 +40,7 @@ pub fn test_session() -> Arc<Session> {
 /// Create a test session with working buffer management.
 ///
 /// Unlike [`test_session`] which uses stubs, this creates a session
-/// with a real `SimpleBufferManager` that can create and store buffers.
+/// with a real `TestBufferManager` that can create and store buffers.
 #[must_use]
 pub fn test_session_with_buffers() -> Arc<Session> {
     Session::new(
@@ -52,10 +52,13 @@ pub fn test_session_with_buffers() -> Arc<Session> {
 }
 
 /// Create a real `KernelContext` with working buffer management.
+///
+/// Epic #417 Part 2: Uses `TestBufferManager` from driver layer.
+/// Runner has zero knowledge of module types.
 fn real_kernel_context() -> KernelContext {
     KernelContext::new(
         Arc::new(EventBus::new()),
-        Arc::new(SimpleBufferManager::new()),
+        Arc::new(TestBufferManager::new()),
         Arc::new(MotionEngine),
         Arc::new(TextObjectEngine),
         Arc::new(RwLock::new(RegisterBank::new())),

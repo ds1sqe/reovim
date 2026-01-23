@@ -10,7 +10,7 @@ use tokio::sync::RwLock;
 use {
     reovim_driver_command::{CommandContext, CommandResult},
     reovim_driver_display::layout::RootCompositor,
-    reovim_driver_input::KeySequence,
+    reovim_driver_input::{KeySequence, ResolverRegistry},
     reovim_driver_vfs::VfsDriver,
     reovim_kernel::api::v1::{CommandId, KernelContext, ModeId},
 };
@@ -115,7 +115,7 @@ impl Session {
         command_registry: CommandRegistry,
         keymap_registry: KeymapRegistry,
         module_registry: ModuleManager,
-        resolver_registry: reovim_module_editor::ResolverRegistry,
+        resolver_registry: ResolverRegistry,
         compositor: Option<Box<dyn RootCompositor>>,
     ) -> Arc<Self> {
         Arc::new(Self {
@@ -192,20 +192,18 @@ impl Session {
     /// Acquires a write lock on the session state.
     /// Returns `None` if the command isn't registered.
     ///
-    /// The VFS is automatically populated in the command context from
-    /// the session state, so commands have access to file operations.
+    /// # Context Population (Epic #415)
+    ///
+    /// VFS and `buffer_id` are now populated in `command_registry.execute()`,
+    /// eliminating the double clone that was previously done here.
     pub async fn execute_command(
         &self,
         id: &CommandId,
         args: &CommandContext,
     ) -> Option<CommandResult> {
         let mut state = self.state.write().await;
-
-        // Create command context with VFS populated
-        let mut args_with_vfs = args.clone();
-        args_with_vfs.set_vfs(state.vfs.clone());
-
-        state.execute_command(id, &args_with_vfs)
+        // Context enrichment (VFS, buffer_id) happens in command_registry.execute()
+        state.execute_command(id, args)
     }
 
     /// Check if the current mode accepts character input.

@@ -117,29 +117,15 @@ pub mod server;
 // Manager daemon for instance coordination
 pub mod manager;
 
-// Search engine for / and ? commands
-pub mod search;
-
 // Client modules (TUI and CLI)
 pub mod client;
 
-// Buffer manager implementation
-pub mod buffer_manager;
+// Epic #417 Part 2: Undo functionality is now provided via dyn UndoProvider
+// from ServiceRegistry. The undo module handles persistence internally.
 
-// Undo registry for per-buffer undo trees
-pub mod undo_registry;
-
-// Undo persistence for writing undo trees to disk
-pub mod undo_persistence;
-
-// Re-export SimpleBufferManager
-pub use buffer_manager::SimpleBufferManager;
-
-// Re-export UndoRegistry
-pub use undo_registry::UndoRegistry;
-
-// Re-export UndoPersistence
-pub use undo_persistence::UndoPersistence;
+// Epic #417 Part 2: UndoProvider is now queried from ServiceRegistry
+// The undo module handles persistence internally via the UndoProvider trait.
+// Runner no longer needs UndoRegistry or UndoPersistence types.
 
 // Re-exports for backwards compatibility and convenience
 pub use server::{

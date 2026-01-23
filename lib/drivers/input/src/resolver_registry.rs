@@ -2,15 +2,32 @@
 //!
 //! The registry maps mode IDs to their resolvers and provides lookup
 //! functionality for the event loop.
+//!
+//! # Architecture
+//!
+//! This is a **mechanism** (storage/lookup) - policy implementations
+//! live in modules (e.g., vim, editor). The registry:
+//!
+//! - Stores `Arc<dyn ModeKeyResolver>` indexed by `ModeId`
+//! - Provides resolution methods with increasing capability
+//! - Supports mode inheritance (fallback to parent mode)
+//!
+//! # Note
+//!
+//! Moved from `modules/editor/` to `lib/drivers/input/` in Epic #417
+//! to maintain proper mechanism/policy separation. The registry is pure
+//! mechanism (`HashMap` storage), while resolver implementations are policy.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{Arc, RwLock},
+};
 
-use {
-    reovim_driver_input::{
-        ExtensionMap, KeyEvent, KeymapQuery, ModeKeyResolver, ModeState, ResolveInput,
-        ResolveResult, SessionApiDyn,
-    },
-    reovim_kernel::api::v1::ModeId,
+use reovim_kernel::api::v1::ModeId;
+
+use crate::{
+    ExtensionMap, KeyEvent, KeymapQuery, ModeKeyResolver, ModeState, ResolveInput, ResolveResult,
+    SessionApiDyn,
 };
 
 /// Registry for mode key resolvers.
@@ -20,16 +37,17 @@ use {
 ///
 /// # Thread Safety
 ///
-/// Resolvers are stored as `Arc<dyn ModeKeyResolver>` to allow shared
-/// access from multiple threads (e.g., during async command execution).
+/// Uses `RwLock` for interior mutability, allowing modules to register
+/// resolvers during `init()` through a shared reference.
+/// Resolvers are stored as `Arc<dyn ModeKeyResolver>` for shared access.
 ///
 /// # Example
 ///
 /// ```ignore
-/// use reovim_module_editor::ResolverRegistry;
+/// use reovim_driver_input::ResolverRegistry;
 /// use reovim_module_vim::{VimNormalResolver, VimInsertResolver};
 ///
-/// let mut registry = ResolverRegistry::new();
+/// let registry = ResolverRegistry::new();
 ///
 /// // Register Vim resolvers (from vim module)
 /// registry.register(VimNormalResolver::new());
@@ -40,70 +58,131 @@ use {
 ///     let result = resolver.resolve(&key, &mut state);
 /// }
 /// ```
-#[derive(Default)]
 pub struct ResolverRegistry {
     /// Resolvers indexed by mode ID.
-    resolvers: HashMap<ModeId, Arc<dyn ModeKeyResolver>>,
+    resolvers: RwLock<HashMap<ModeId, Arc<dyn ModeKeyResolver>>>,
 }
 
 impl ResolverRegistry {
     /// Create a new empty registry.
     #[must_use]
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            resolvers: RwLock::new(HashMap::new()),
+        }
     }
 
     /// Register a resolver for its mode.
     ///
     /// The resolver's `mode_id()` is used as the key. If a resolver
     /// for that mode already exists, it is replaced.
-    pub fn register<R: ModeKeyResolver + 'static>(&mut self, resolver: R) {
+    ///
+    /// # Panics
+    ///
+    /// Panics if the lock is poisoned.
+    pub fn register<R: ModeKeyResolver + 'static>(&self, resolver: R) {
         let mode_id = resolver.mode_id().clone();
-        self.resolvers.insert(mode_id, Arc::new(resolver));
+        self.resolvers
+            .write()
+            .expect("ResolverRegistry lock poisoned")
+            .insert(mode_id, Arc::new(resolver));
     }
 
     /// Register a resolver wrapped in Arc.
     ///
     /// Use this when you need to share the resolver reference.
-    pub fn register_arc(&mut self, resolver: Arc<dyn ModeKeyResolver>) {
+    ///
+    /// # Panics
+    ///
+    /// Panics if the lock is poisoned.
+    pub fn register_arc(&self, resolver: Arc<dyn ModeKeyResolver>) {
         let mode_id = resolver.mode_id().clone();
-        self.resolvers.insert(mode_id, resolver);
+        self.resolvers
+            .write()
+            .expect("ResolverRegistry lock poisoned")
+            .insert(mode_id, resolver);
     }
 
     /// Get the resolver for a mode.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the lock is poisoned.
     #[must_use]
     pub fn get(&self, mode: &ModeId) -> Option<Arc<dyn ModeKeyResolver>> {
-        self.resolvers.get(mode).cloned()
+        self.resolvers
+            .read()
+            .expect("ResolverRegistry lock poisoned")
+            .get(mode)
+            .cloned()
     }
 
     /// Check if a resolver is registered for a mode.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the lock is poisoned.
     #[must_use]
     pub fn has(&self, mode: &ModeId) -> bool {
-        self.resolvers.contains_key(mode)
+        self.resolvers
+            .read()
+            .expect("ResolverRegistry lock poisoned")
+            .contains_key(mode)
     }
 
     /// Remove a resolver for a mode.
     ///
     /// Returns the removed resolver, if any.
-    pub fn remove(&mut self, mode: &ModeId) -> Option<Arc<dyn ModeKeyResolver>> {
-        self.resolvers.remove(mode)
+    ///
+    /// # Panics
+    ///
+    /// Panics if the lock is poisoned.
+    pub fn remove(&self, mode: &ModeId) -> Option<Arc<dyn ModeKeyResolver>> {
+        self.resolvers
+            .write()
+            .expect("ResolverRegistry lock poisoned")
+            .remove(mode)
     }
 
     /// Get the number of registered resolvers.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the lock is poisoned.
     #[must_use]
     pub fn len(&self) -> usize {
-        self.resolvers.len()
+        self.resolvers
+            .read()
+            .expect("ResolverRegistry lock poisoned")
+            .len()
     }
 
     /// Check if the registry is empty.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the lock is poisoned.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.resolvers.is_empty()
+        self.resolvers
+            .read()
+            .expect("ResolverRegistry lock poisoned")
+            .is_empty()
     }
 
     /// Get all registered mode IDs.
-    pub fn modes(&self) -> impl Iterator<Item = &ModeId> {
-        self.resolvers.keys()
+    ///
+    /// # Panics
+    ///
+    /// Panics if the lock is poisoned.
+    #[must_use]
+    pub fn modes(&self) -> Vec<ModeId> {
+        self.resolvers
+            .read()
+            .expect("ResolverRegistry lock poisoned")
+            .keys()
+            .cloned()
+            .collect()
     }
 
     /// Resolve a key event for a mode with keymap access.
@@ -261,14 +340,23 @@ impl ResolverRegistry {
     }
 }
 
+impl Default for ResolverRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl std::fmt::Debug for ResolverRegistry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ResolverRegistry")
-            .field("modes", &self.resolvers.keys().collect::<Vec<_>>())
-            .field("count", &self.resolvers.len())
+            .field("modes", &self.modes())
+            .field("count", &self.len())
             .finish()
     }
 }
+
+// Implement Service so ResolverRegistry can be stored in ServiceRegistry (Epic #417 Part 3)
+impl reovim_kernel::api::v1::Service for ResolverRegistry {}
 
 #[cfg(test)]
 mod tests {

@@ -28,11 +28,14 @@ use {
     reovim_kernel::api::v1::{ModeId, Position},
 };
 
-use super::operator_common::{
-    KeymapAction, OperatorState, OperatorType, apply_keymap_policy, build_cancelled,
-    build_operator_execute, is_count_digit, is_escape, is_line_operator_key, is_linewise_motion,
+use {
+    super::operator_common::{
+        KeymapAction, OperatorState, OperatorType, apply_keymap_policy, build_cancelled,
+        build_operator_execute, is_count_digit, is_escape, is_line_operator_key,
+        is_linewise_motion,
+    },
+    crate::{modes::VimMode, session_state::PendingMotion},
 };
-use crate::{modes::VimMode, session_state::PendingMotion};
 
 /// Vim delete mode key resolver.
 ///
@@ -67,11 +70,7 @@ impl VimDeleteResolver {
         Self {
             mode_id: VimMode::DELETE_ID,
             parent_mode_id: VimMode::NORMAL_ID,
-            state: RwLock::new(OperatorState::with_context(
-                OperatorType::Delete,
-                count,
-                register,
-            )),
+            state: RwLock::new(OperatorState::with_context(OperatorType::Delete, count, register)),
         }
     }
 
@@ -262,16 +261,21 @@ impl ModeKeyResolver for VimDeleteResolver {
             drop(state);
 
             // Get cursor position to calculate line range
+            // For linewise delete, range is [start_line..=end_line] (inclusive)
+            // So dd on line 0 with count=1: start=0, end=0 (delete 1 line)
+            // And 2dd on line 0: start=0, end=1 (delete 2 lines)
             let (start, end) = if let Some(buffer_id) = session.active_buffer()
                 && let Some(cursor_pos) = session.buffer_position(buffer_id)
             {
                 let start = Position::new(cursor_pos.line, 0);
                 let total_count = count.unwrap_or(1) * motion_count;
-                let end_line = cursor_pos.line + total_count;
+                // end_line is inclusive, so subtract 1 from count
+                let end_line = cursor_pos.line + total_count - 1;
                 let end = Position::new(end_line, 0);
                 (start, end)
             } else {
-                (Position::new(0, 0), Position::new(1, 0))
+                // Fallback: delete line 0
+                (Position::new(0, 0), Position::new(0, 0))
             };
 
             return ResolveResult::ModeTransition(ModeTransition::Pop {

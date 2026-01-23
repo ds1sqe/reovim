@@ -9,11 +9,14 @@ mod cmdline;
 pub use cmdline::CommandLineState;
 
 use {
-    crate::{UndoRegistry, server::window::WindowRegistry},
+    crate::server::window::WindowRegistry,
     reovim_arch::sync::RwLock,
     reovim_driver_display::WindowId,
     reovim_driver_input::{ExtensionMap, FallbackContext, KeySequence},
-    reovim_kernel::api::v1::{Buffer, BufferId, Edit, KernelContext, ModeId, Position},
+    reovim_driver_undo::{UndoKey, UndoProvider, UndoProviderRegistry},
+    reovim_kernel::api::v1::{
+        Buffer, BufferId, Edit, KernelContext, ModeId, Position, ServiceRegistry,
+    },
     std::sync::Arc,
 };
 
@@ -48,6 +51,12 @@ pub struct AppState {
     /// Kernel context providing access to all kernel services.
     pub kernel: KernelContext,
 
+    /// Service registry for cross-module service discovery.
+    ///
+    /// Modules register their services here during init for other modules
+    /// and the runner to discover. See [`ServiceRegistry`] for usage.
+    pub services: Arc<ServiceRegistry>,
+
     /// Pending key sequence for multi-key bindings.
     ///
     /// For sequences like `gg` or `<C-w>h`, keys accumulate here until
@@ -72,12 +81,8 @@ pub struct AppState {
     /// Kept for backward compatibility.
     pub terminal_height: u16,
 
-    /// Per-buffer undo registry.
-    ///
-    /// Maintains separate undo trees for each buffer, enabling per-buffer
-    /// undo/redo operations. Each buffer has its own isolated undo history.
-    pub undo_registry: UndoRegistry,
-
+    // Epic #417 Part 2: undo_registry removed. Undo operations now use
+    // dyn UndoProvider from ServiceRegistry via get_undo_provider().
     /// Window registry for multi-window support.
     ///
     /// Tracks window state, layout, and focus. Each window has its own
@@ -121,15 +126,31 @@ impl AppState {
     pub fn new(kernel: KernelContext) -> Self {
         Self {
             kernel,
+            services: Arc::new(ServiceRegistry::new()),
             pending_keys: KeySequence::new(),
             running: true,
             terminal_width: 80,
             terminal_height: 24,
-            undo_registry: UndoRegistry::new(),
+            // Epic #417 Part 2: undo operations via UndoProvider from ServiceRegistry
             windows: WindowRegistry::new(),
             cmdline: CommandLineState::new(),
             extensions: ExtensionMap::new(),
         }
+    }
+
+    /// Get the undo provider from the service registry.
+    ///
+    /// Epic #417 Part 2: Undo is now accessed via `dyn UndoProvider` from
+    /// `ServiceRegistry`. This replaces the old `undo_registry` field.
+    ///
+    /// # Returns
+    ///
+    /// The registered `UndoProvider`, or `None` if no undo module is loaded.
+    #[must_use]
+    pub fn get_undo_provider(&self) -> Option<Arc<dyn UndoProvider>> {
+        self.services
+            .get::<UndoProviderRegistry>()
+            .and_then(|registry| registry.get(&UndoKey::Buffer))
     }
 
     /// Request the application to quit.
@@ -247,8 +268,10 @@ impl FallbackContext for AppState {
         cursor_before: Position,
         cursor_after: Position,
     ) {
-        self.undo_registry
-            .record(buffer_id, edits, cursor_before, cursor_after);
+        // Epic #417 Part 2: Query UndoProvider from ServiceRegistry
+        if let Some(undo_provider) = self.get_undo_provider() {
+            undo_provider.record(buffer_id, edits, cursor_before, cursor_after);
+        }
     }
 
     fn accumulate_edit(
@@ -260,8 +283,10 @@ impl FallbackContext for AppState {
     ) {
         // For now, just record directly
         // TODO: Implement batching via extensions when SessionContext is available
-        self.undo_registry
-            .record(buffer_id, vec![edit], cursor_before, cursor_after);
+        // Epic #417 Part 2: Query UndoProvider from ServiceRegistry
+        if let Some(undo_provider) = self.get_undo_provider() {
+            undo_provider.record(buffer_id, vec![edit], cursor_before, cursor_after);
+        }
     }
 
     fn flush_pending_edits(&mut self) {
@@ -330,46 +355,9 @@ mod tests {
         assert_eq!(app.terminal_height, 40);
     }
 
-    #[test]
-    fn test_app_state_has_undo_registry() {
-        let kernel = KernelContext::default();
-        let app = AppState::new(kernel);
-
-        // AppState should initialize with empty UndoRegistry
-        assert_eq!(app.undo_registry.buffer_count(), 0);
-    }
-
-    #[test]
-    fn test_app_state_undo_registry_accessible() {
-        let kernel = KernelContext::default();
-        let mut app = AppState::new(kernel);
-
-        // Can call undo_registry.record()
-        let buffer_id = BufferId::from_raw(1);
-        let edit = Edit::insert(Position::new(0, 0), "hello");
-        app.undo_registry
-            .record(buffer_id, vec![edit], Position::new(0, 0), Position::new(0, 5));
-
-        assert!(app.undo_registry.has_history(buffer_id));
-    }
-
-    #[test]
-    fn test_app_state_undo_registry_per_buffer() {
-        let kernel = KernelContext::default();
-        let mut app = AppState::new(kernel);
-
-        let buffer1 = BufferId::from_raw(1);
-        let buffer2 = BufferId::from_raw(2);
-
-        // Record edit to buffer1
-        let edit = Edit::insert(Position::new(0, 0), "hello");
-        app.undo_registry
-            .record(buffer1, vec![edit], Position::new(0, 0), Position::new(0, 5));
-
-        // buffer1 has history, buffer2 does not (isolated)
-        assert!(app.undo_registry.has_history(buffer1));
-        assert!(!app.undo_registry.has_history(buffer2));
-    }
+    // Epic #417 Part 2: undo_registry tests removed.
+    // Undo is now accessed via dyn UndoProvider from ServiceRegistry.
+    // Test coverage for undo operations is in modules/undo/src/registry.rs.
 
     // ========================================================================
     // Window Management Tests

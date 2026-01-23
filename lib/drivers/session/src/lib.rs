@@ -74,6 +74,8 @@ pub mod api;
 mod context;
 mod empty_handler;
 mod extension;
+mod handler_key;
+mod handler_registry;
 mod mode;
 mod runtime;
 pub mod testing;
@@ -108,3 +110,6 @@ pub use api::{
     RegisterContent, Selection, SelectionMode, SessionApi, SessionApiDyn, StateChanges, WindowApi,
     WindowError, YankType,
 };
+
+// Re-export typed key and registry (Epic #417 - UniqueProvider abstraction)
+pub use {handler_key::SessionHandlerKey, handler_registry::SessionHandlerRegistry};

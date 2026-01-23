@@ -34,11 +34,11 @@ const CHANGE_MODE: &str = "vim:change";
 pub fn delete_bindings() -> Vec<KeybindingRegistration> {
     let mut bindings = vec![
         // Exit operator mode
-        KeybindingRegistration::new("<Esc>", vim::EXIT_OPERATOR_PENDING)
+        KeybindingRegistration::new("<Esc>", vim::CANCEL_TO_NORMAL)
             .with_modes(&[DELETE_MODE])
             .with_category("mode")
             .with_description("Cancel delete"),
-        KeybindingRegistration::new("<C-c>", vim::EXIT_OPERATOR_PENDING)
+        KeybindingRegistration::new("<C-c>", vim::CANCEL_TO_NORMAL)
             .with_modes(&[DELETE_MODE])
             .with_category("mode")
             .with_description("Cancel delete"),
@@ -66,11 +66,11 @@ pub fn delete_bindings() -> Vec<KeybindingRegistration> {
 pub fn yank_bindings() -> Vec<KeybindingRegistration> {
     let mut bindings = vec![
         // Exit operator mode
-        KeybindingRegistration::new("<Esc>", vim::EXIT_OPERATOR_PENDING)
+        KeybindingRegistration::new("<Esc>", vim::CANCEL_TO_NORMAL)
             .with_modes(&[YANK_MODE])
             .with_category("mode")
             .with_description("Cancel yank"),
-        KeybindingRegistration::new("<C-c>", vim::EXIT_OPERATOR_PENDING)
+        KeybindingRegistration::new("<C-c>", vim::CANCEL_TO_NORMAL)
             .with_modes(&[YANK_MODE])
             .with_category("mode")
             .with_description("Cancel yank"),
@@ -98,11 +98,11 @@ pub fn yank_bindings() -> Vec<KeybindingRegistration> {
 pub fn change_bindings() -> Vec<KeybindingRegistration> {
     let mut bindings = vec![
         // Exit operator mode
-        KeybindingRegistration::new("<Esc>", vim::EXIT_OPERATOR_PENDING)
+        KeybindingRegistration::new("<Esc>", vim::CANCEL_TO_NORMAL)
             .with_modes(&[CHANGE_MODE])
             .with_category("mode")
             .with_description("Cancel change"),
-        KeybindingRegistration::new("<C-c>", vim::EXIT_OPERATOR_PENDING)
+        KeybindingRegistration::new("<C-c>", vim::CANCEL_TO_NORMAL)
             .with_modes(&[CHANGE_MODE])
             .with_category("mode")
             .with_description("Cancel change"),
@@ -864,11 +864,7 @@ mod tests {
     fn test_yank_mode_specific() {
         let bindings = yank_bindings();
         for b in &bindings {
-            assert!(
-                b.modes.contains(&YANK_MODE),
-                "binding {} should be for vim:yank mode",
-                b.keys
-            );
+            assert!(b.modes.contains(&YANK_MODE), "binding {} should be for vim:yank mode", b.keys);
         }
     }
 

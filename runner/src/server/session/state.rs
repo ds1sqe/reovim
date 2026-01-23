@@ -27,12 +27,15 @@ use {
 };
 
 use crate::{
-    AppState, UndoPersistence,
+    AppState,
     module::ModuleManager,
     registry::{CommandRegistry, KeyLookupResult, KeymapRegistry, ModeRegistry},
 };
 
-use reovim_module_editor::ResolverRegistry;
+// Epic #417 Part 2: UndoPersistence removed. Persistence is now internal to
+// the undo module's UndoProvider implementation.
+
+use reovim_driver_input::ResolverRegistry;
 
 /// Session state combining application state with registries.
 ///
@@ -110,11 +113,9 @@ pub struct SessionState {
     /// - Motion handling (w, b, j, k compute ranges)
     /// - Line-operator detection (dd, yy, cc)
     pub resolver_registry: ResolverRegistry,
-
-    /// Undo persistence manager for disk serialization.
-    ///
-    /// Handles reading/writing undo trees to `~/.local/share/reovim/undo/`.
-    pub undo_persistence: UndoPersistence,
+    // Epic #417 Part 2: undo_persistence removed.
+    // Persistence is now internal to the undo module's UndoProvider implementation.
+    // Use app.get_undo_provider() to access undo functionality.
 }
 
 impl SessionState {
@@ -127,10 +128,8 @@ impl SessionState {
     /// * `vfs` - The virtual filesystem driver for file operations
     #[must_use]
     pub fn new(kernel: KernelContext, initial_mode: ModeId, vfs: Arc<dyn VfsDriver>) -> Self {
-        // Initialize undo persistence with platform-specific data directory
-        let data_dir = reovim_arch::dirs::data_local_dir()
-            .map_or_else(|| std::path::PathBuf::from(".reovim"), |d| d.join("reovim"));
-        let undo_persistence = UndoPersistence::new(&data_dir);
+        // Epic #417 Part 2: undo persistence removed from SessionState.
+        // Persistence is now internal to UndoProvider (in undo module).
 
         // Create driver session (SSOT for session state)
         // ClientId(0) for single-session model
@@ -145,7 +144,6 @@ impl SessionState {
             keymap_registry: KeymapRegistry::new(),
             module_registry: ModuleManager::new(),
             resolver_registry: ResolverRegistry::new(),
-            undo_persistence,
         }
     }
 
@@ -166,10 +164,8 @@ impl SessionState {
         resolver_registry: ResolverRegistry,
         compositor: Option<Box<dyn RootCompositor>>,
     ) -> Self {
-        // Initialize undo persistence with platform-specific data directory
-        let data_dir = reovim_arch::dirs::data_local_dir()
-            .map_or_else(|| std::path::PathBuf::from(".reovim"), |d| d.join("reovim"));
-        let undo_persistence = UndoPersistence::new(&data_dir);
+        // Epic #417 Part 2: undo persistence removed from SessionState.
+        // Persistence is now internal to UndoProvider (in undo module).
 
         // Create driver session (SSOT for session state)
         // ClientId(0) for single-session model
@@ -196,7 +192,6 @@ impl SessionState {
             keymap_registry,
             module_registry,
             resolver_registry,
-            undo_persistence,
         }
     }
 
@@ -294,6 +289,11 @@ impl SessionState {
     ///
     /// Flushes any pending edits before execution to ensure undo batching
     /// works correctly (commands break insert mode batches).
+    ///
+    /// # Context Population (Epic #415)
+    ///
+    /// VFS is passed from `SessionState` to the command registry,
+    /// where all context enrichment happens in a single clone.
     #[must_use]
     pub fn execute_command(
         &mut self,
@@ -304,8 +304,9 @@ impl SessionState {
         // (any command breaks insert mode batching)
         self.app.flush_pending_edits();
         // Use driver_session as SSOT for mode_stack and active_buffer
+        // Pass VFS to command registry for context enrichment (Epic #415)
         self.command_registry
-            .execute(id, &mut self.driver_session, &mut self.app, args)
+            .execute(id, &mut self.driver_session, &mut self.app, &self.vfs, args)
     }
 
     /// Check if the current mode accepts character input.

@@ -23,25 +23,23 @@
 //! ```
 
 use reovim_kernel::api::v1::{
-    EmptySessionHandlerRegistration, KeybindingRegistration, Module, ModuleContext, ModuleError,
-    ModuleId, ProbeResult, Version,
+    KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
 };
+
+// Epic #417 Part 2: Removed pub use re-exports.
+// defaults is now ONLY a module list. Runner imports directly from module crates.
 
 // Import traits from their respective modules (mechanism vs policy)
 use {reovim_module_commands::ExCommandHandler, reovim_module_vim::Operator};
 
-// Re-export sub-modules for direct access
-pub use {
-    reovim_module_commands as commands, reovim_module_keymap as keymap,
-    reovim_module_layout as layout, reovim_module_scratch_buffer as scratch_buffer,
-    reovim_module_vim as vim,
+// Internal-only imports for create_modules() and helper functions
+use {
+    reovim_module_buffer_simple as buffer_simple, reovim_module_commands as commands,
+    reovim_module_editor as editor, reovim_module_keymap as keymap, reovim_module_layout as layout,
+    reovim_module_motions as motions, reovim_module_scratch_buffer as scratch_buffer,
+    reovim_module_search as search, reovim_module_undo as undo,
+    reovim_module_vfs_local as vfs_local, reovim_module_vim as vim,
 };
-
-// Re-export driver trait for handler type
-pub use reovim_driver_session::EmptySessionHandler;
-
-// Re-export compositor trait for type declarations
-pub use reovim_driver_display::layout::RootCompositor;
 
 /// Default modules bundle.
 ///
@@ -60,12 +58,31 @@ impl DefaultsModule {
     ///
     /// Returns a vector of boxed module instances that can be loaded
     /// into the module registry.
+    ///
+    /// # Module Categories
+    ///
+    /// - **Service modules**: Provide services via `ServiceRegistry` (undo, buffer, search, vfs)
+    /// - **Policy modules**: Define behavior (vim, editor, motions, layout)
+    ///
+    /// All modules are initialized in order - service modules first so that
+    /// policy modules can depend on their services.
     #[must_use]
     pub fn create_modules() -> Vec<Box<dyn Module>> {
         vec![
+            // Service modules (Epic #417) - register providers during init()
+            Box::new(undo::UndoModule::new()),
+            Box::new(buffer_simple::BufferSimpleModule::new()),
+            Box::new(search::SearchModule::new()),
+            Box::new(scratch_buffer::ScratchBufferModule::new()),
+            Box::new(vfs_local::VfsLocalModule::new()),
+            // Utility modules
             Box::new(keymap::KeymapModule),
-            // Note: operators merged into vim module (Epic #385)
             Box::new(commands::CommandsModule),
+            // Policy modules (Epic #417 Part 3) - register commands/keybindings during init()
+            Box::new(editor::EditorModule),
+            Box::new(motions::MotionsModule),
+            Box::new(vim::VimModule::new()),
+            Box::new(layout::LayoutModule::new()),
         ]
     }
 }
@@ -93,9 +110,20 @@ impl Module for DefaultsModule {
         // This module depends on its sub-modules
         // Note: operators merged into vim module (Epic #385)
         vec![
+            // Service modules (Epic #417)
+            ModuleId::new("undo"),
+            ModuleId::new("buffer-simple"),
+            ModuleId::new("search"),
+            ModuleId::new("scratch-buffer"),
+            ModuleId::new("vfs-local"),
+            // Utility modules
             ModuleId::new("keymap"),
             ModuleId::new("commands"),
-            ModuleId::new("scratch-buffer"),
+            // Policy modules (Epic #417 Part 3)
+            ModuleId::new("editor"),
+            ModuleId::new("motions"),
+            ModuleId::new("vim"),
+            ModuleId::new("layout"),
         ]
     }
 
@@ -110,16 +138,6 @@ impl Module for DefaultsModule {
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
         // Aggregate keybindings from vim module
         vim::VimModule::new().keybindings()
-    }
-
-    fn empty_session_handlers(&self) -> Vec<EmptySessionHandlerRegistration> {
-        // Expose empty session handler registration from scratch-buffer
-        // The runner will use empty_session_handler() to get the actual handler
-        vec![
-            EmptySessionHandlerRegistration::new("defaults:scratch-buffer")
-                .with_description("Create empty scratch buffer on startup")
-                .with_priority(100),
-        ]
     }
 }
 
@@ -139,26 +157,6 @@ pub fn commands() -> Vec<Box<dyn ExCommandHandler>> {
 #[must_use]
 pub fn keybindings() -> Vec<KeybindingRegistration> {
     vim::bindings::all()
-}
-
-/// Get the default empty session handler.
-///
-/// Returns `ScratchBufferHandler` which creates an empty buffer
-/// when a session starts with no files. This centralizes the
-/// default policy in the `defaults` module.
-///
-/// # Example
-///
-/// ```ignore
-/// use std::sync::Arc;
-/// use reovim_module_defaults::empty_session_handler;
-///
-/// let handler = Arc::new(empty_session_handler());
-/// registry.register(handler);
-/// ```
-#[must_use]
-pub const fn empty_session_handler() -> scratch_buffer::ScratchBufferHandler {
-    scratch_buffer::ScratchBufferHandler
 }
 
 /// Get the default compositor for window layout.
@@ -203,15 +201,21 @@ mod tests {
     fn test_defaults_has_dependencies() {
         let module = DefaultsModule::new();
         let deps = module.dependencies();
-        // keymap, commands, scratch-buffer (operators merged into vim - Epic #385)
-        assert_eq!(deps.len(), 3);
+        // Service modules (5): undo, buffer-simple, search, scratch-buffer, vfs-local
+        // Utility modules (2): keymap, commands
+        // Policy modules (4): editor, motions, vim, layout
+        // Total: 11 modules (Epic #417 Part 3)
+        assert_eq!(deps.len(), 11);
     }
 
     #[test]
     fn test_create_modules() {
         let modules = DefaultsModule::create_modules();
-        // keymap, commands (operators merged into vim - Epic #385)
-        assert_eq!(modules.len(), 2);
+        // Service modules (5): undo, buffer-simple, search, scratch-buffer, vfs-local
+        // Utility modules (2): keymap, commands
+        // Policy modules (4): editor, motions, vim, layout
+        // Total: 11 modules (Epic #417 Part 3)
+        assert_eq!(modules.len(), 11);
     }
 
     #[test]
@@ -230,64 +234,5 @@ mod tests {
     fn test_keybindings_not_empty() {
         let bindings = keybindings();
         assert!(!bindings.is_empty());
-    }
-
-    #[test]
-    fn test_defaults_has_empty_session_handlers() {
-        let module = DefaultsModule::new();
-        let handlers = module.empty_session_handlers();
-        assert_eq!(handlers.len(), 1);
-    }
-
-    #[test]
-    fn test_empty_session_handler_registration_id() {
-        let module = DefaultsModule::new();
-        let handlers = module.empty_session_handlers();
-        assert_eq!(handlers[0].id, "defaults:scratch-buffer");
-    }
-
-    #[test]
-    fn test_empty_session_handler_registration_priority() {
-        let module = DefaultsModule::new();
-        let handlers = module.empty_session_handlers();
-        assert_eq!(handlers[0].priority, 100);
-    }
-
-    #[test]
-    fn test_empty_session_handler_factory() {
-        use {
-            reovim_driver_session::{EmptySessionAction, EmptySessionContext, EmptySessionHandler},
-            std::path::Path,
-        };
-
-        let handler = empty_session_handler();
-
-        // Handler should create buffer when no files specified
-        let ctx = EmptySessionContext {
-            session_id: 1,
-            file_args: &[],
-            cwd: Path::new("/home/user"),
-        };
-        let action = handler.handle(&ctx);
-        assert!(matches!(action, EmptySessionAction::CreateBuffer { .. }));
-    }
-
-    #[test]
-    fn test_empty_session_handler_defers_when_files_specified() {
-        use {
-            reovim_driver_session::{EmptySessionAction, EmptySessionContext, EmptySessionHandler},
-            std::path::Path,
-        };
-
-        let handler = empty_session_handler();
-        let files = vec!["file.txt".to_string()];
-
-        let ctx = EmptySessionContext {
-            session_id: 1,
-            file_args: &files,
-            cwd: Path::new("/home/user"),
-        };
-        let action = handler.handle(&ctx);
-        assert!(matches!(action, EmptySessionAction::None));
     }
 }

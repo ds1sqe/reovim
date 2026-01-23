@@ -61,6 +61,7 @@
 
 // Internal modules
 mod provider;
+mod registry;
 mod traits;
 
 // Re-export from command-types for backwards compatibility
@@ -70,6 +71,9 @@ pub use reovim_driver_command_types::{
 
 // Re-export provider trait
 pub use provider::CommandProvider;
+
+// Re-export registry for ServiceRegistry (Epic #417 Part 3)
+pub use registry::CommandHandlerStore;
 
 // Re-export traits
 pub use traits::{Command, CommandHandler};

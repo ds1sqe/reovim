@@ -22,9 +22,14 @@ mod runtime_adapter;
 
 pub use {error::EventLoopError, runtime_adapter::RuntimeAdapter};
 
-use reovim_driver_session::{
-    ClientId, Session as DriverSession, SessionRuntime,
-    api::{CommandExecutor, StateChanges},
+use std::sync::Arc;
+
+use {
+    reovim_driver_session::{
+        ClientId, Session as DriverSession, SessionRuntime,
+        api::{CommandExecutor, StateChanges},
+    },
+    reovim_driver_vfs::VfsDriver,
 };
 
 use {
@@ -57,7 +62,7 @@ use super::{
     registry::{CommandRegistry, KeymapRegistry, ModeRegistry},
 };
 
-use reovim_module_editor::ResolverRegistry;
+use reovim_driver_input::ResolverRegistry;
 
 /// Main event loop for the runner.
 ///
@@ -126,6 +131,11 @@ pub struct EventLoop {
 
     /// Registry for mode key resolvers.
     resolver_registry: Option<ResolverRegistry>,
+
+    /// Virtual filesystem driver for file operations.
+    ///
+    /// Passed to `command_registry.execute()` for context enrichment (Epic #415).
+    vfs: Arc<dyn VfsDriver>,
 }
 
 impl EventLoop {
@@ -153,6 +163,7 @@ impl EventLoop {
         mode_registry: ModeRegistry,
         command_registry: CommandRegistry,
         keymap_registry: KeymapRegistry,
+        vfs: Arc<dyn VfsDriver>,
     ) -> Self {
         // Create driver session with the initial mode (SSOT for mode_stack)
         let driver_session = DriverSession::new(ClientId::new(0), initial_mode);
@@ -177,6 +188,7 @@ impl EventLoop {
             key_reader: None,
             last_error: None,
             resolver_registry: None,
+            vfs,
         }
     }
 
@@ -468,6 +480,7 @@ impl EventLoop {
                     &cmd_id,
                     &mut self.driver_session,
                     &mut self.app,
+                    &self.vfs,
                     &cmd_ctx,
                 ) {
                     eprintln!("[DEBUG] Command result: {result:?}");
@@ -550,6 +563,7 @@ impl EventLoop {
                     command,
                     &mut self.driver_session,
                     &mut self.app,
+                    &self.vfs,
                     &ctx,
                 ) {
                     self.handle_command_result(result);
@@ -713,6 +727,7 @@ mod tests {
         reovim_driver_command::{ArgSpec, Command, CommandHandler},
         reovim_driver_input::KeyCode,
         reovim_driver_session::SessionRuntime,
+        reovim_driver_vfs::MockVfs,
         reovim_kernel::api::v1::{CommandId, KernelContext, Mode, ModeId, ModuleId},
         std::sync::Arc,
     };
@@ -774,6 +789,7 @@ mod tests {
         let kernel = KernelContext::default();
         let app = AppState::new(kernel);
         let initial_mode = test_mode();
+        let vfs: Arc<dyn VfsDriver> = Arc::new(MockVfs::new());
 
         let mut mode_registry = ModeRegistry::new();
         mode_registry.register_mode(TestMode::Command);
@@ -785,6 +801,7 @@ mod tests {
             mode_registry,
             CommandRegistry::new(),
             KeymapRegistry::new(),
+            vfs,
         )
     }
 

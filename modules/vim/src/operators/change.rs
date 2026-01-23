@@ -48,9 +48,51 @@ impl Operator for ChangeOperator {
         // Build deleted text from lines
         let mut deleted_text = String::new();
         let lines = buffer.lines();
+        let line_count = lines.len();
 
-        if start.line == end.line {
-            // Single line deletion
+        if range.is_linewise {
+            // Linewise change: delete content of lines from start.line to end.line (inclusive)
+            // Unlike delete, change keeps ONE line for insertion (Vim behavior)
+            // Clamp end.line to last valid line to handle counts exceeding buffer
+            let clamped_end = end.line.min(line_count.saturating_sub(1));
+
+            for line_idx in start.line..=clamped_end {
+                if let Some(line) = lines.get(line_idx) {
+                    deleted_text.push_str(line);
+                    deleted_text.push('\n');
+                }
+            }
+
+            // For linewise change (cc):
+            // - Delete content of all affected lines
+            // - Keep ONE empty line at start.line for insertion
+            // This means: delete from (start.line, 0) to (clamped_end, end_of_content),
+            // then if multiple lines, delete the extra newlines to leave just one line
+            let delete_start = reovim_kernel::api::v1::Position::new(start.line, 0);
+            let delete_end = if clamped_end + 1 < line_count {
+                // Not the last line - delete content but preserve start.line's newline
+                // So delete from (start.line, 0) to (clamped_end + 1, 0), then we're on next line
+                // Actually for cc on middle line, we want to replace lines with one empty line
+                // Delete everything from start to clamped_end (including their newlines except last)
+                // Let's delete to end of clamped_end, then the newline stays
+                if let Some(end_line_content) = lines.get(clamped_end) {
+                    // Delete all lines but keep start.line as empty (with its newline)
+                    // Delete from start.line to end of clamped_end content, plus all intermediate newlines
+                    reovim_kernel::api::v1::Position::new(clamped_end, end_line_content.chars().count())
+                } else {
+                    reovim_kernel::api::v1::Position::new(clamped_end, 0)
+                }
+            } else if let Some(last_line) = lines.get(clamped_end) {
+                // End line is last line - delete to end of content (keep line structure)
+                reovim_kernel::api::v1::Position::new(clamped_end, last_line.chars().count())
+            } else {
+                // Fallback
+                reovim_kernel::api::v1::Position::new(clamped_end, 0)
+            };
+
+            buffer.delete_range(delete_start, delete_end);
+        } else if start.line == end.line {
+            // Single line characterwise change
             if let Some(line) = lines.get(start.line) {
                 let start_col = start.column.min(line.len());
                 let end_col = end.column.min(line.len());
@@ -58,8 +100,9 @@ impl Operator for ChangeOperator {
                     deleted_text.push_str(&line[start_col..end_col]);
                 }
             }
+            buffer.delete_range(start, end);
         } else {
-            // Multi-line deletion
+            // Multi-line characterwise change
             for line_idx in start.line..=end.line {
                 if let Some(line) = lines.get(line_idx) {
                     if line_idx == start.line {
@@ -75,10 +118,8 @@ impl Operator for ChangeOperator {
                     }
                 }
             }
+            buffer.delete_range(start, end);
         }
-
-        // Delete the text from buffer
-        buffer.delete_range(start, end);
         drop(buffer);
 
         // Store in register - linewise if the range was linewise

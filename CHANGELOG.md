@@ -6,6 +6,15 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- UniqueProvider service abstraction Phase 6b - runner cleanup (#417)
+  - Deleted 924 lines of redundant code from runner
+  - Removed `runner/src/search.rs` (unused, module version exists)
+  - Removed `runner/src/undo_persistence.rs` (migrated to `modules/undo`)
+  - Removed `runner/src/buffer_manager.rs` (migrated to `modules/buffer-simple`)
+  - Runner now imports `SimpleBufferManager` and `UndoPersistence` from `reovim_module_defaults`
+  - `UndoRegistry` kept in runner (persistence-integration wrapper using module types)
+  - Part of Epic #417 mechanism/policy separation
+
 - Operator-pending mode with resolver registry (#415)
   - New `ResolverRegistry` in `modules/editor` for mode-specific key handling
   - `VimNormalResolver` intercepts operator keys (d, y, c) in `ExactWithLonger` branch

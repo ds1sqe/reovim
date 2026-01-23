@@ -12,7 +12,7 @@
 //! # Components
 //!
 //! - [`command`]: Cursor movement, delete, yank, paste, and other text operations
-//! - [`ResolverRegistry`]: Motion and text object resolvers
+//! - [`ResolverRegistry`]: Motion and text object resolvers (re-exported from driver)
 //!
 //! # Note
 //!
@@ -32,7 +32,7 @@
 //! ```
 
 use {
-    reovim_driver_command::{CommandHandler, CommandProvider},
+    reovim_driver_command::{CommandHandler, CommandHandlerStore, CommandProvider},
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
 };
 
@@ -80,7 +80,13 @@ impl Module for EditorModule {
         Version::new(0, 9, 0)
     }
 
-    fn init(&mut self, _ctx: &ModuleContext) -> ProbeResult {
+    fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
+        // Epic #417 Part 3: Self-register commands
+        let command_store = ctx.services.get_or_create::<CommandHandlerStore>();
+        for handler in self.command_handlers() {
+            command_store.add(handler);
+        }
+
         ProbeResult::Success
     }
 

@@ -13,7 +13,7 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::SessionRuntime,
+    reovim_driver_session::{SessionRuntime, TransitionContext, api::ModeApi},
     reovim_kernel::api::v1::{CommandId, Position},
 };
 
@@ -103,8 +103,17 @@ impl Command for ChangeCommand {
 impl CommandHandler for ChangeCommand {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         use super::ChangeOperator;
-        execute_operator(&ChangeOperator, runtime, args)
-        // Note: Insert mode transition is handled by ChangeOperator
+        use crate::modes::VimMode;
+
+        // Execute the change operator (delete text)
+        let result = execute_operator(&ChangeOperator, runtime, args);
+
+        // If successful, enter insert mode (change = delete + insert)
+        if matches!(result, CommandResult::Success) {
+            runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
+        }
+
+        result
     }
 }
 

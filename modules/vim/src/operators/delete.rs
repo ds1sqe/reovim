@@ -49,7 +49,11 @@ impl Operator for DeleteOperator {
             // Linewise deletion: delete entire lines from start.line to end.line (inclusive)
             // Ignore column values - always delete full lines
             let line_count = lines.len();
-            for line_idx in start.line..=end.line {
+
+            // Clamp end.line to last valid line to handle counts exceeding buffer
+            let clamped_end = end.line.min(line_count.saturating_sub(1));
+
+            for line_idx in start.line..=clamped_end {
                 if let Some(line) = lines.get(line_idx) {
                     deleted_text.push_str(line);
                     deleted_text.push('\n');
@@ -60,17 +64,17 @@ impl Operator for DeleteOperator {
             let delete_start = reovim_kernel::api::v1::Position::new(start.line, 0);
 
             // Calculate end position:
-            // - If next line exists, point to start of next line (deletes through end.line's newline)
-            // - If end.line is last line, point to end of its content (no trailing newline)
-            let delete_end = if end.line + 1 < line_count {
+            // - If next line exists, point to start of next line (deletes through clamped_end's newline)
+            // - If clamped_end is last line, point to end of its content (no trailing newline)
+            let delete_end = if clamped_end + 1 < line_count {
                 // Next line exists - point to its start
-                reovim_kernel::api::v1::Position::new(end.line + 1, 0)
-            } else if let Some(last_line) = lines.get(end.line) {
+                reovim_kernel::api::v1::Position::new(clamped_end + 1, 0)
+            } else if let Some(last_line) = lines.get(clamped_end) {
                 // End line is last line - point to end of its content
-                reovim_kernel::api::v1::Position::new(end.line, last_line.chars().count())
+                reovim_kernel::api::v1::Position::new(clamped_end, last_line.chars().count())
             } else {
                 // Fallback (shouldn't happen in normal operation)
-                reovim_kernel::api::v1::Position::new(end.line, 0)
+                reovim_kernel::api::v1::Position::new(clamped_end, 0)
             };
 
             // Store in register as linewise

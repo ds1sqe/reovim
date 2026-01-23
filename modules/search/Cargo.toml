@@ -1,0 +1,33 @@
+[package]
+name = "reovim-module-search"
+version = "0.9.1-dev"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Search module for reovim - regex-based pattern matching"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Kernel types
+reovim-kernel = { path = "../../lib/kernel", version = "0.9.1-dev" }
+
+# Driver for SearchProvider trait
+reovim-driver-search = { path = "../../lib/drivers/search", version = "0.9.1-dev" }
+
+# Module macros for FFI entry points
+reovim-module-macros = { path = "../../lib/module-macros", version = "0.9.1-dev" }
+
+# Regex engine
+regex = "1.10"
+
+# Logging
+tracing.workspace = true
+
+[features]
+# Enable for building as standalone dynamic library
+dynamic = []

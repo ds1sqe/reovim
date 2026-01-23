@@ -51,11 +51,18 @@ mod convert;
 mod error;
 mod fallback;
 mod key;
+mod keybinding_store;
 mod lifecycle;
 mod lookup;
 mod mode;
+mod mode_key;
+mod mode_registry;
+mod mode_store;
+mod module_ext;
 mod mouse;
+mod provider;
 mod resolver;
+mod resolver_registry;
 mod traits;
 
 // Re-export error types
@@ -99,3 +106,21 @@ pub use lifecycle::{ModeLifecycleHandler, NopLifecycleHandler};
 // Re-export session extension types (Epic #385 - Server Simplification)
 // Needed for ModeKeyResolver::resolve_with_extensions()
 pub use reovim_driver_session::ExtensionMap;
+
+// Re-export provider types (Epic #415 - Module provider hooks)
+pub use {
+    module_ext::DefaultModeProviderModule,
+    provider::{DefaultModeProvider, ProviderPriority},
+};
+
+// Re-export typed key and registry (Epic #417 - UniqueProvider abstraction)
+pub use {mode_key::ModeProviderKey, mode_registry::ModeProviderRegistry};
+
+// Re-export resolver registry (Epic #417 - moved from modules/editor)
+pub use resolver_registry::ResolverRegistry;
+
+// Re-export mode store (Epic #417 Part 3 - module self-registration)
+pub use mode_store::{ModeInfo, ModeInfoStore};
+
+// Re-export keybinding store (Epic #417 Part 3 - module self-registration)
+pub use keybinding_store::KeybindingStore;

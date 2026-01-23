@@ -5,7 +5,6 @@
 //! - Exit to normal mode (Escape)
 //! - Enter window mode (Ctrl-W)
 //! - Enter/exit command-line mode
-//! - Exit operator-pending mode
 //!
 //! # Epic #372 - Mode Ownership
 //!
@@ -134,26 +133,25 @@ impl CommandHandler for EnterWindowMode {
     }
 }
 
-/// Exit operator-pending mode (Escape cancels the operator).
+/// Cancel and return to normal mode (no cursor adjustment).
 ///
-/// This command is called when the user presses Escape while in operator-pending
-/// mode. It clears the pending operator state and returns to normal mode.
+/// Used by operator modes (delete, yank, change) when the user presses Escape.
+/// Unlike `ExitToNormal`, this does not adjust the cursor position.
 #[derive(Debug, Clone, Copy, Default)]
-pub struct ExitOperatorPending;
+pub struct CancelToNormal;
 
-impl Command for ExitOperatorPending {
+impl Command for CancelToNormal {
     fn id(&self) -> CommandId {
-        ids::EXIT_OPERATOR_PENDING
+        ids::CANCEL_TO_NORMAL
     }
 
     fn description(&self) -> &'static str {
-        "Cancel pending operator and return to normal mode"
+        "Cancel and return to normal mode"
     }
 }
 
-impl CommandHandler for ExitOperatorPending {
+impl CommandHandler for CancelToNormal {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        // Cancel pending operator and return to normal mode
         runtime.set_mode(VimMode::NORMAL_ID, TransitionContext::new());
         CommandResult::Success
     }

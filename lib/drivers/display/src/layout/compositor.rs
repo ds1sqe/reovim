@@ -165,6 +165,24 @@ pub trait RootCompositor: Send + Sync {
 
     /// Find which layer contains a window.
     fn layer_of(&self, window: WindowId) -> Option<LayerId>;
+
+    /// Clone this compositor into a new boxed instance.
+    ///
+    /// This allows extracting a fresh owned compositor from shared storage
+    /// (like `ServiceRegistry`'s `Arc<dyn RootCompositor>`). Implementations
+    /// that support `Clone` can simply use `Box::new(self.clone())`.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Get compositor from ServiceRegistry (Arc)
+    /// let arc_compositor = registry.get(&CompositorKey::Root)?;
+    ///
+    /// // Convert to owned Box for DriverSession
+    /// let box_compositor = arc_compositor.boxed_clone();
+    /// driver_session.set_compositor(box_compositor);
+    /// ```
+    fn boxed_clone(&self) -> Box<dyn RootCompositor>;
 }
 
 /// Window layer compositor manages windows within a single layer.
@@ -341,31 +359,6 @@ impl std::fmt::Display for WindowError {
 }
 
 impl std::error::Error for WindowError {}
-
-/// Wrapper for type-erased compositor transport.
-///
-/// Used to pass compositors from modules to the runner via `Module::compositor()`.
-/// The runner downcasts from `Box<dyn Any>` to `CompositorBox` to extract the compositor.
-///
-/// # TODO(#417)
-///
-/// This is a workaround for layer boundary constraints. See issue #417 for
-/// `UniqueProvider` abstraction that would eliminate type erasure.
-pub struct CompositorBox(pub Box<dyn RootCompositor>);
-
-impl CompositorBox {
-    /// Create a new compositor box.
-    #[must_use]
-    pub fn new(compositor: Box<dyn RootCompositor>) -> Self {
-        Self(compositor)
-    }
-
-    /// Extract the compositor.
-    #[must_use]
-    pub fn into_inner(self) -> Box<dyn RootCompositor> {
-        self.0
-    }
-}
 
 #[cfg(test)]
 mod tests {

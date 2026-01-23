@@ -9,11 +9,14 @@ mod tests {
 
     use {reovim_driver_input::ModeKeyResolver, reovim_module_editor::ResolverRegistry};
 
-    use crate::{VimInsertResolver, VimMode, VimNormalResolver, VimOperatorPendingResolver};
+    use crate::{
+        VimChangeResolver, VimDeleteResolver, VimInsertResolver, VimMode, VimNormalResolver,
+        VimYankResolver,
+    };
 
     #[test]
     fn test_register_vim_normal_resolver() {
-        let mut registry = ResolverRegistry::new();
+        let registry = ResolverRegistry::new();
 
         registry.register(VimNormalResolver::new());
 
@@ -23,21 +26,25 @@ mod tests {
 
     #[test]
     fn test_register_all_vim_resolvers() {
-        let mut registry = ResolverRegistry::new();
+        let registry = ResolverRegistry::new();
 
         registry.register(VimNormalResolver::new());
         registry.register(VimInsertResolver::new());
-        registry.register(VimOperatorPendingResolver::new());
+        registry.register(VimDeleteResolver::new());
+        registry.register(VimYankResolver::new());
+        registry.register(VimChangeResolver::new());
 
-        assert_eq!(registry.len(), 3);
+        assert_eq!(registry.len(), 5);
         assert!(registry.has(&VimMode::NORMAL_ID));
         assert!(registry.has(&VimMode::INSERT_ID));
-        assert!(registry.has(&VimMode::OPERATOR_PENDING_ID));
+        assert!(registry.has(&VimMode::DELETE_ID));
+        assert!(registry.has(&VimMode::YANK_ID));
+        assert!(registry.has(&VimMode::CHANGE_ID));
     }
 
     #[test]
     fn test_get_vim_resolver() {
-        let mut registry = ResolverRegistry::new();
+        let registry = ResolverRegistry::new();
         registry.register(VimNormalResolver::new());
 
         let resolver = registry.get(&VimMode::NORMAL_ID);
@@ -47,7 +54,7 @@ mod tests {
 
     #[test]
     fn test_remove_vim_resolver() {
-        let mut registry = ResolverRegistry::new();
+        let registry = ResolverRegistry::new();
         registry.register(VimNormalResolver::new());
 
         let removed = registry.remove(&VimMode::NORMAL_ID);
@@ -58,16 +65,16 @@ mod tests {
 
     #[test]
     fn test_vim_resolvers_iterator() {
-        let mut registry = ResolverRegistry::new();
+        let registry = ResolverRegistry::new();
         registry.register(VimNormalResolver::new());
         registry.register(VimInsertResolver::new());
 
-        assert_eq!(registry.modes().count(), 2);
+        assert_eq!(registry.modes().len(), 2);
     }
 
     #[test]
     fn test_vim_resolver_replacement() {
-        let mut registry = ResolverRegistry::new();
+        let registry = ResolverRegistry::new();
 
         registry.register(VimNormalResolver::new());
         assert_eq!(registry.len(), 1);
@@ -79,7 +86,7 @@ mod tests {
 
     #[test]
     fn test_register_vim_resolver_arc() {
-        let mut registry = ResolverRegistry::new();
+        let registry = ResolverRegistry::new();
         let resolver: Arc<dyn ModeKeyResolver> = Arc::new(VimNormalResolver::new());
 
         registry.register_arc(resolver);
@@ -89,7 +96,7 @@ mod tests {
 
     #[test]
     fn test_debug_with_vim_resolvers() {
-        let mut registry = ResolverRegistry::new();
+        let registry = ResolverRegistry::new();
         registry.register(VimNormalResolver::new());
 
         let debug = format!("{registry:?}");

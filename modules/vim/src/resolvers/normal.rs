@@ -1319,10 +1319,6 @@ mod tests {
             .get::<VimSessionState>()
             .expect("VimSessionState should exist");
         assert_eq!(vim.pending_count, Some(3), "pending_count should be preserved");
-        assert_eq!(
-            vim.pending_register,
-            Some('a'),
-            "pending_register should be preserved"
-        );
+        assert_eq!(vim.pending_register, Some('a'), "pending_register should be preserved");
     }
 }

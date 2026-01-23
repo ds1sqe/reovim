@@ -1,12 +1,30 @@
-//! Simple buffer manager implementation.
+//! Simple buffer manager module for reovim.
 //!
-//! Provides the concrete implementation of the `BufferManager` trait
-//! for the runner application. Ported from `archive/runner/src/buffer_manager.rs`.
+//! Provides the `SimpleBufferManager` implementation of the `BufferManager` trait.
+//!
+//! # Architecture
+//!
+//! Following the mechanism/policy separation:
+//! - **Mechanism**: `BufferManager` trait (in kernel)
+//! - **Policy**: `SimpleBufferManager` (this module) provides implementation
+//!
+//! # Design Philosophy
+//!
+//! - **No I/O operations**: File loading/saving is VFS driver's job
+//! - **No syntax attachment**: Syntax is handled by modules (policy)
+//! - **Thread-safe**: All operations are safe for concurrent access
+//! - **Simple**: Just manages buffer storage, nothing more
+
+use std::sync::Arc;
 
 use {
     reovim_arch::sync::RwLock,
-    reovim_kernel::api::v1::{Buffer, BufferError, BufferId, BufferManager},
-    std::{collections::HashMap, sync::Arc},
+    reovim_driver_buffer::{BufferManagerKey, BufferManagerRegistry},
+    reovim_kernel::api::v1::{
+        Buffer, BufferError, BufferId, BufferManager, Module, ModuleContext, ModuleError, ModuleId,
+        ProbeResult, Version, pr_info,
+    },
+    std::collections::HashMap,
 };
 
 /// Simple buffer manager implementation.
@@ -82,6 +100,57 @@ impl BufferManager for SimpleBufferManager {
     }
 }
 
+/// Buffer simple module instance.
+///
+/// Provides the `SimpleBufferManager` for buffer storage.
+pub struct BufferSimpleModule;
+
+impl BufferSimpleModule {
+    /// Create a new buffer simple module.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for BufferSimpleModule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Module for BufferSimpleModule {
+    fn id(&self) -> ModuleId {
+        ModuleId::new("buffer-simple")
+    }
+
+    fn name(&self) -> &'static str {
+        "Simple Buffer Manager"
+    }
+
+    fn version(&self) -> Version {
+        Version::new(0, 9, 0)
+    }
+
+    fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
+        // Register buffer manager with typed key (Epic #417)
+        let buffer_registry = ctx.services.get_or_create::<BufferManagerRegistry>();
+        buffer_registry.register(BufferManagerKey::Simple, Arc::new(SimpleBufferManager::new()));
+
+        pr_info!("Buffer simple module initialized");
+        ProbeResult::Success
+    }
+
+    fn exit(&mut self) -> Result<(), ModuleError> {
+        pr_info!("Buffer simple module exiting");
+        Ok(())
+    }
+}
+
+// Generate FFI entry points for dynamic loading (only when building standalone cdylib)
+#[cfg(feature = "dynamic")]
+reovim_module_macros::declare_module!(BufferSimpleModule);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -129,5 +198,17 @@ mod tests {
         assert_eq!(list.len(), 2);
         assert!(list.contains(&id1));
         assert!(list.contains(&id2));
+    }
+
+    #[test]
+    fn test_module_id() {
+        let module = BufferSimpleModule::new();
+        assert_eq!(module.id().as_str(), "buffer-simple");
+    }
+
+    #[test]
+    fn test_module_name() {
+        let module = BufferSimpleModule::new();
+        assert_eq!(module.name(), "Simple Buffer Manager");
     }
 }

@@ -21,6 +21,9 @@ use std::collections::HashMap;
 use {
     reovim_driver_display::{FocusPolicy, LayoutPolicy, NavigateDirection, WindowId, WindowView},
     reovim_kernel::api::v1::{BufferId, Position},
+    // TODO(Epic #417): Refactor to use trait objects from ServiceRegistry
+    // This import violates clean architecture but is needed for default layout/focus.
+    // Future: Register LayoutPolicy and FocusPolicy implementations in ServiceRegistry.
     reovim_module_layout::{TilingLayout, VimFocusPolicy},
 };
 

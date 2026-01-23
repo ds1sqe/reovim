@@ -37,8 +37,14 @@
 //! // Returns ~180 Vim keybindings
 //! ```
 
+use std::sync::Arc;
+
 use {
-    reovim_driver_command::{CommandHandler, CommandProvider},
+    reovim_driver_command::{CommandHandler, CommandHandlerStore, CommandProvider},
+    reovim_driver_input::{
+        KeybindingStore, ModeInfo, ModeInfoStore, ModeProviderKey, ModeProviderRegistry,
+        ResolverRegistry,
+    },
     reovim_kernel::api::v1::*,
 };
 
@@ -48,6 +54,7 @@ pub mod fallback;
 pub mod ids;
 pub mod modes;
 pub mod operators;
+pub mod providers;
 pub mod resolvers;
 pub mod session_state;
 pub mod visual;
@@ -58,10 +65,11 @@ mod registry_integration;
 // Re-export mode types (Epic #372 - Mode Ownership)
 pub use modes::{VIM_MODULE, VimMode};
 
+// Re-export provider types (Epic #415 - Module provider hooks)
+pub use providers::{VimDefaultModeProvider, VimModuleProviderExt};
+
 // Re-export session state (Epic #385 - Server Simplification)
-// PendingOperator is deprecated but still exported for backward compatibility
-#[allow(deprecated)]
-pub use session_state::{LastFind, PendingCharOp, PendingOperator, VimSessionState};
+pub use session_state::{LastFind, PendingCharOp, VimSessionState};
 
 // Re-export OperatorId (Epic #385 - operators are vim policy, not kernel mechanism)
 pub use ids::{CHANGE, DELETE, OperatorId, YANK};
@@ -79,13 +87,10 @@ pub use fallback::VimFallbackHandler;
 pub use commands::{
     ChangeLine, ChangeToEndOfLine, EnterCommandLineMode, EnterInsertEndOfLine,
     EnterInsertFirstNonBlank, EnterInsertMode, EnterInsertModeAppend, EnterWindowMode,
-    ExecuteFindChar, ExitCommandLineMode, ExitOperatorPending, ExitToNormal, OpenLineAbove,
-    OpenLineBelow,
+    ExecuteFindChar, ExitCommandLineMode, ExitToNormal, OpenLineAbove, OpenLineBelow,
 };
 
 // Re-export resolvers
-#[allow(deprecated)]
-pub use resolvers::VimOperatorPendingResolver;
 pub use resolvers::{
     VimChangeResolver, VimDeleteResolver, VimInsertResolver, VimNormalResolver, VimYankResolver,
 };
@@ -151,7 +156,35 @@ impl Module for VimModule {
         Version::new(0, 9, 0)
     }
 
-    fn init(&mut self, _ctx: &ModuleContext) -> ProbeResult {
+    fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
+        // Register default mode provider with typed key (Epic #417)
+        let mode_registry = ctx.services.get_or_create::<ModeProviderRegistry>();
+        mode_registry.register(ModeProviderKey::Entry, Arc::new(VimDefaultModeProvider::new()));
+
+        // Epic #417 Part 3: Self-register modes
+        let mode_store = ctx.services.get_or_create::<ModeInfoStore>();
+        for mode in VimMode::ALL {
+            mode_store.add(ModeInfo::from_mode(*mode));
+        }
+
+        // Epic #417 Part 3: Self-register resolvers
+        let resolver_registry = ctx.services.get_or_create::<ResolverRegistry>();
+        resolver_registry.register(resolvers::VimNormalResolver::new());
+        resolver_registry.register(resolvers::VimInsertResolver::new());
+        resolver_registry.register(resolvers::VimDeleteResolver::new());
+        resolver_registry.register(resolvers::VimYankResolver::new());
+        resolver_registry.register(resolvers::VimChangeResolver::new());
+
+        // Epic #417 Part 3: Self-register commands
+        let command_store = ctx.services.get_or_create::<CommandHandlerStore>();
+        for handler in self.command_handlers() {
+            command_store.add(handler);
+        }
+
+        // Epic #417 Part 3: Self-register keybindings
+        let keybinding_store = ctx.services.get_or_create::<KeybindingStore>();
+        keybinding_store.add_all(self.keybindings());
+
         pr_info!("Vim module initialized");
         ProbeResult::Success
     }
@@ -242,9 +275,9 @@ mod tests {
     }
 
     #[test]
-    fn test_operator_pending_mode_bindings() {
-        let bindings = bindings::operator_pending::bindings();
-        assert!(!bindings.is_empty(), "Operator-pending mode should have bindings");
+    fn test_operator_modes_bindings() {
+        let bindings = bindings::operator_modes::all_operator_bindings();
+        assert!(!bindings.is_empty(), "Operator modes should have bindings");
     }
 
     #[test]
@@ -259,16 +292,11 @@ mod tests {
         let normal = bindings::normal::bindings();
         let insert = bindings::insert::bindings();
         let visual = bindings::visual::bindings();
-        let op_pending = bindings::operator_pending::bindings();
         let operator_modes = bindings::operator_modes::all_operator_bindings();
         let cmdline = bindings::commandline::bindings();
 
-        let expected_total = normal.len()
-            + insert.len()
-            + visual.len()
-            + op_pending.len()
-            + operator_modes.len()
-            + cmdline.len();
+        let expected_total =
+            normal.len() + insert.len() + visual.len() + operator_modes.len() + cmdline.len();
         assert_eq!(all.len(), expected_total, "all() should aggregate all mode bindings");
     }
 }

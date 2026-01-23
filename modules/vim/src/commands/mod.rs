@@ -25,8 +25,8 @@ pub use {
     change::{ChangeLine, ChangeToEndOfLine},
     find_char::ExecuteFindChar,
     mode::{
-        EnterCommandLineMode, EnterInsertMode, EnterInsertModeAppend, EnterWindowMode,
-        ExitCommandLineMode, ExitOperatorPending, ExitToNormal,
+        CancelToNormal, EnterCommandLineMode, EnterInsertMode, EnterInsertModeAppend,
+        EnterWindowMode, ExitCommandLineMode, ExitToNormal,
     },
     mode_entry::{EnterInsertEndOfLine, EnterInsertFirstNonBlank, OpenLineAbove, OpenLineBelow},
 };
@@ -42,7 +42,7 @@ pub fn mode_commands() -> Vec<Box<dyn CommandHandler>> {
         Box::new(EnterInsertModeAppend),
         Box::new(ExitToNormal),
         Box::new(EnterWindowMode),
-        Box::new(ExitOperatorPending),
+        Box::new(CancelToNormal),
         Box::new(EnterCommandLineMode),
         Box::new(ExitCommandLineMode),
         // Mode entry variations
