@@ -21,10 +21,18 @@ reovim-module-keymap = { path = "../keymap" }
 reovim-module-vim = { path = "../vim" }
 # Note: operators merged into vim (Epic #385)
 reovim-module-commands = { path = "../commands" }
+reovim-module-editor = { path = "../editor" }
+reovim-module-motions = { path = "../motions" }
+reovim-module-undotree = { path = "../undotree" }
 reovim-module-scratch-buffer = { path = "../scratch-buffer" }
 reovim-module-layout = { path = "../layout" }
+reovim-module-vfs-local = { path = "../vfs-local" }
+reovim-module-undo = { path = "../undo" }
+reovim-module-buffer-simple = { path = "../buffer-simple" }
+reovim-module-search = { path = "../search" }
 reovim-driver-session = { workspace = true }
 reovim-driver-display = { workspace = true }
+reovim-driver-vfs = { workspace = true }
 
 [lints]
 workspace = true

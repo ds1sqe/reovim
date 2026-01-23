@@ -16,4 +16,5 @@ workspace = true
 reovim-kernel = { path = "../../kernel", version = "0.9.1-dev" }
 reovim-arch = { path = "../../arch", version = "0.9.1-dev" }
 reovim-driver-session = { path = "../session", version = "0.9.1-dev" }
+reovim-driver-command-types = { path = "../command-types", version = "0.9.1-dev" }
 bitflags = "2.4"

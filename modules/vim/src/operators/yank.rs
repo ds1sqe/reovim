@@ -43,8 +43,21 @@ impl Operator for YankOperator {
         let mut yanked_text = String::new();
         let lines = buffer.lines();
 
-        if start.line == end.line {
-            // Single line yank
+        if range.is_linewise {
+            // Linewise yank: copy entire lines from start.line to end.line (inclusive)
+            // Ignore column values - always yank full lines
+            // Clamp end.line to last valid line to handle counts exceeding buffer
+            let line_count = lines.len();
+            let clamped_end = end.line.min(line_count.saturating_sub(1));
+
+            for line_idx in start.line..=clamped_end {
+                if let Some(line) = lines.get(line_idx) {
+                    yanked_text.push_str(line);
+                    yanked_text.push('\n');
+                }
+            }
+        } else if start.line == end.line {
+            // Single line characterwise yank
             if let Some(line) = lines.get(start.line) {
                 let start_col = start.column.min(line.len());
                 let end_col = end.column.min(line.len());
@@ -53,7 +66,7 @@ impl Operator for YankOperator {
                 }
             }
         } else {
-            // Multi-line yank
+            // Multi-line characterwise yank
             for line_idx in start.line..=end.line {
                 if let Some(line) = lines.get(line_idx) {
                     if line_idx == start.line {

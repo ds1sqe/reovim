@@ -1,0 +1,39 @@
+[package]
+name = "reovim-module-undo"
+version = "0.9.1-dev"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Undo module for reovim - per-buffer undo/redo with persistence"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Kernel types
+reovim-kernel = { path = "../../lib/kernel", version = "0.9.1-dev" }
+
+# Driver for UndoProvider trait
+reovim-driver-undo = { path = "../../lib/drivers/undo", version = "0.9.1-dev" }
+
+# VFS driver for persistence
+reovim-driver-vfs = { path = "../../lib/drivers/vfs", version = "0.9.1-dev" }
+
+# Protocol for serialization
+reovim-protocol = { path = "../../lib/protocol", version = "0.9.1-dev" }
+
+# Platform abstraction for RwLock
+reovim-arch = { path = "../../lib/arch", version = "0.9.1-dev" }
+
+# Module macros for FFI entry points
+reovim-module-macros = { path = "../../lib/module-macros", version = "0.9.1-dev" }
+
+# Logging
+tracing.workspace = true
+
+[features]
+# Enable for building as standalone dynamic library
+dynamic = []

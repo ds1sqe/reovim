@@ -35,6 +35,8 @@
 //! - [`view`] - `ViewManager` trait for per-window content state
 
 mod compositor;
+mod compositor_key;
+mod compositor_registry;
 mod floating;
 mod layer;
 mod overlay;
@@ -49,9 +51,7 @@ pub use layer::{
 };
 
 // Compositor traits and types
-pub use compositor::{
-    CompositeResult, CompositorBox, RootCompositor, WindowError, WindowLayerCompositor,
-};
+pub use compositor::{CompositeResult, RootCompositor, WindowError, WindowLayerCompositor};
 
 // Zone-specific traits
 pub use {
@@ -62,3 +62,6 @@ pub use {
 
 // View management and index types
 pub use view::{ColIndex, LineIndex, Position, View, ViewManager};
+
+// Re-export typed key and registry (Epic #417 - UniqueProvider abstraction)
+pub use {compositor_key::CompositorKey, compositor_registry::CompositorRegistry};

@@ -3,13 +3,29 @@
 //! Implements Vim-style key handling policy for each mode:
 //! - Normal: count prefixes, register selection, operator entry
 //! - Insert: character insertion, escape handling
-//! - Operator-pending: motion/text-object completion
+//! - Delete/Yank/Change: dedicated operator modes
+//!
+//! # Architecture (Epic #415, #417)
+//!
+//! Each operator has its own dedicated mode and resolver:
+//! - `VimDeleteResolver` for `vim:delete` mode
+//! - `VimYankResolver` for `vim:yank` mode
+//! - `VimChangeResolver` for `vim:change` mode
+//!
+//! Benefits:
+//! - Mode carries operator semantics (no runtime lookup)
+//! - Each resolver is focused (~300 lines)
+//! - Statusline shows "DELETE"/"YANK"/"CHANGE"
 
+mod change;
+mod delete;
 mod insert;
 mod normal;
-mod operator_pending;
+pub mod operator_common;
+mod yank;
 
-pub use {
-    insert::VimInsertResolver, normal::VimNormalResolver,
-    operator_pending::VimOperatorPendingResolver,
-};
+// Dedicated operator resolvers (Epic #415)
+pub use {change::VimChangeResolver, delete::VimDeleteResolver, yank::VimYankResolver};
+
+// Other resolvers
+pub use {insert::VimInsertResolver, normal::VimNormalResolver};

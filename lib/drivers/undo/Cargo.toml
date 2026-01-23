@@ -1,0 +1,23 @@
+[package]
+name = "reovim-driver-undo"
+version = "0.9.1-dev"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Undo provider driver for reovim - defines UndoProvider trait and registry"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Kernel types for BufferId, Edit, Position, UndoResult, UndoTree
+reovim-kernel = { path = "../../kernel", version = "0.9.1-dev" }
+
+# VFS driver for persistence methods
+reovim-driver-vfs = { path = "../vfs", version = "0.9.1-dev" }
+
+# Logging for load_graceful default implementation
+tracing = { workspace = true }

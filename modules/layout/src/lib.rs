@@ -41,8 +41,13 @@ pub use {
     tiling::TilingLayout,
 };
 
-use reovim_kernel::api::v1::{
-    Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version, pr_info,
+use std::sync::Arc;
+
+use {
+    reovim_driver_display::layout::{CompositorKey, CompositorRegistry},
+    reovim_kernel::api::v1::{
+        Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version, pr_info,
+    },
 };
 
 /// Window layout module.
@@ -78,7 +83,12 @@ impl Module for LayoutModule {
         Version::new(0, 9, 0)
     }
 
-    fn init(&mut self, _ctx: &ModuleContext) -> ProbeResult {
+    fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
+        // Register compositor with typed key (Epic #417)
+        let compositor_registry = ctx.services.get_or_create::<CompositorRegistry>();
+        compositor_registry
+            .register(CompositorKey::Root, Arc::new(HybridCompositor::with_main_layer()));
+
         pr_info!("Layout module initialized");
         ProbeResult::Success
     }
@@ -86,11 +96,6 @@ impl Module for LayoutModule {
     fn exit(&mut self) -> Result<(), ModuleError> {
         pr_info!("Layout module exiting");
         Ok(())
-    }
-
-    fn compositor(&self) -> Option<Box<dyn std::any::Any + Send + Sync>> {
-        use reovim_driver_display::layout::CompositorBox;
-        Some(Box::new(CompositorBox::new(Box::new(HybridCompositor::with_main_layer()))))
     }
 }
 

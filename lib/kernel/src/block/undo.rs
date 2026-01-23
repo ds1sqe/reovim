@@ -114,7 +114,7 @@ pub struct UndoResult {
 /// The tree has a configurable maximum number of nodes. When exceeded,
 /// the oldest nodes are pruned (but the path from root to current is
 /// always preserved).
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct UndoTree {
     /// All nodes in the tree.
     nodes: Vec<UndoNode>,

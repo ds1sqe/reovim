@@ -26,10 +26,7 @@ pub use {
     flags::RegistrationFlags,
     id::ModuleId,
     probe::ModuleProbe,
-    registration::{
-        CommandRegistration, EmptySessionHandlerRegistration, EventHandlerRegistration,
-        KeybindingRegistration,
-    },
+    registration::{CommandRegistration, EventHandlerRegistration, KeybindingRegistration},
     state::{ModuleInfo, ModuleState},
 };
 
@@ -37,6 +34,9 @@ use super::{
     context::ModuleContext,
     version::{API_VERSION, Version},
 };
+
+// Import BufferId for on_buffer_focus hook
+use crate::mm::BufferId;
 
 /// Trait for all loadable modules.
 ///
@@ -176,6 +176,93 @@ pub trait Module: Send + Sync + 'static {
     fn exit(&mut self) -> Result<(), ModuleError>;
 
     // ========================================================================
+    // Lifecycle Hooks (Epic #417 Part 2)
+    // ========================================================================
+
+    /// Called after ALL modules are loaded (post-init phase).
+    ///
+    /// Use for cross-module discovery via `ServiceRegistry`. At this point,
+    /// all modules have completed their `init()` and registered their services.
+    ///
+    /// # Use Cases
+    ///
+    /// - Query services registered by other modules
+    /// - Set up inter-module communication channels
+    /// - Perform late initialization that depends on other modules
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// fn on_all_loaded(&mut self, ctx: &ModuleContext) {
+    ///     // Now safe to query services from other modules
+    ///     if let Some(lsp) = ctx.services.get::<dyn LspProvider>() {
+    ///         self.lsp_client = Some(lsp);
+    ///     }
+    /// }
+    /// ```
+    fn on_all_loaded(&mut self, _ctx: &ModuleContext) {
+        // Default: no-op
+    }
+
+    /// Called when session focuses on a buffer.
+    ///
+    /// Use for lazy initialization of buffer-specific state. This hook is
+    /// called whenever the active buffer changes, allowing modules to:
+    ///
+    /// - Load buffer-specific configuration
+    /// - Initialize syntax highlighting
+    /// - Set up LSP connections for the buffer's language
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer_id` - The newly focused buffer
+    /// * `ctx` - Module context for accessing kernel services
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// fn on_buffer_focus(&mut self, buffer_id: BufferId, ctx: &ModuleContext) {
+    ///     // Load undo history for this buffer
+    ///     if let Some(undo_provider) = ctx.services.get::<dyn UndoProvider>() {
+    ///         undo_provider.load_graceful(buffer_id, &self.buffer_path);
+    ///     }
+    /// }
+    /// ```
+    fn on_buffer_focus(&mut self, _buffer_id: BufferId, _ctx: &ModuleContext) {
+        // Default: no-op
+    }
+
+    /// Called before module unload for cleanup.
+    ///
+    /// Unlike `exit()`, this hook is specifically for releasing resources
+    /// registered with the kernel (services, event handlers, etc.).
+    ///
+    /// # Difference from `exit()`
+    ///
+    /// - `exit()`: General cleanup, may fail
+    /// - `on_unload()`: Release kernel resources, should not fail
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// fn on_unload(&mut self) -> Result<(), ModuleError> {
+    ///     // Unregister services
+    ///     if let Some(registry) = self.service_registry.take() {
+    ///         registry.unregister_all();
+    ///     }
+    ///     Ok(())
+    /// }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns `ModuleError` if resource release fails.
+    fn on_unload(&mut self) -> Result<(), ModuleError> {
+        // Default: no-op
+        Ok(())
+    }
+
+    // ========================================================================
     // Registration (method-based per Clean Arch Proposal)
     // ========================================================================
 
@@ -192,61 +279,6 @@ pub trait Module: Send + Sync + 'static {
     /// Get event handler registrations.
     fn event_handlers(&self) -> Vec<EventHandlerRegistration> {
         Vec::new()
-    }
-
-    /// Get empty session handler registrations.
-    ///
-    /// Modules return handler registrations here to participate in
-    /// empty session handling. When a session starts with no buffers,
-    /// the runner calls handlers in priority order until one returns
-    /// an action.
-    ///
-    /// # TODO(#417)
-    ///
-    /// This returns only metadata. The actual handler is provided separately
-    /// via the defaults module. See issue #417 for `UniqueProvider` abstraction
-    /// that would unify registration and handler provision.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// fn empty_session_handlers(&self) -> Vec<EmptySessionHandlerRegistration> {
-    ///     vec![
-    ///         EmptySessionHandlerRegistration::new("my-module:welcome")
-    ///             .with_description("Show welcome screen")
-    ///             .with_priority(50),
-    ///     ]
-    /// }
-    /// ```
-    fn empty_session_handlers(&self) -> Vec<EmptySessionHandlerRegistration> {
-        Vec::new()
-    }
-
-    /// Get module-provided compositor (if any).
-    ///
-    /// Returns a type-erased compositor that can be downcast by the runner.
-    /// The runner expects this to contain a `Box<dyn RootCompositor>` wrapped
-    /// in a `CompositorBox` from the display driver.
-    ///
-    /// # TODO(#417)
-    ///
-    /// This uses `Any`-based type erasure which is not ideal. See issue #417
-    /// for `UniqueProvider` abstraction that would maintain type safety across
-    /// layer boundaries without requiring the kernel to depend on driver types.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use reovim_driver_display::layout::CompositorBox;
-    ///
-    /// fn compositor(&self) -> Option<Box<dyn Any + Send + Sync>> {
-    ///     Some(Box::new(CompositorBox::new(
-    ///         Box::new(MyCompositor::new())
-    ///     )))
-    /// }
-    /// ```
-    fn compositor(&self) -> Option<Box<dyn std::any::Any + Send + Sync>> {
-        None
     }
 
     // ========================================================================

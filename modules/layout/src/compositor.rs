@@ -337,6 +337,10 @@ impl RootCompositor for HybridCompositor {
         }
         None
     }
+
+    fn boxed_clone(&self) -> Box<dyn RootCompositor> {
+        Box::new(self.clone())
+    }
 }
 
 #[cfg(test)]

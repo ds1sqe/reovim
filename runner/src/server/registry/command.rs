@@ -17,6 +17,7 @@ use {
     reovim_driver_session::{
         Session as DriverSession, SessionRuntime, Window, api::CommandExecutor,
     },
+    reovim_driver_vfs::VfsDriver,
     reovim_kernel::{
         api::v1::{CommandId, KernelContext, ModuleId},
         profile_scope,
@@ -146,21 +147,38 @@ impl CommandRegistry {
     /// `Some(CommandResult)` if the command was found and executed,
     /// `None` if the command wasn't registered.
     #[must_use]
+    /// Execute a command by ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - Command ID to execute
+    /// * `driver_session` - Driver session for state access
+    /// * `app` - Application state (kernel, windows, etc.)
+    /// * `vfs` - VFS driver for file operations
+    /// * `args` - Command context with arguments
+    ///
+    /// # Context Population (Epic #415)
+    ///
+    /// All context enrichment happens here in a single clone:
+    /// - `buffer_id` from `driver_session`
+    /// - `vfs` from the VFS provider registry
     pub fn execute(
         &self,
         id: &CommandId,
         driver_session: &mut DriverSession,
         app: &mut AppState,
+        vfs: &Arc<dyn VfsDriver>,
         args: &CommandContext,
     ) -> Option<CommandResult> {
         profile_scope!("command_execute", "runner::command");
 
         self.entries.get(id).map(|entry| {
-            // Clone args and populate buffer ID from driver_session (SSOT)
+            // Single clone point for context enrichment (Epic #415)
             let mut ctx = args.clone();
             if let Some(buffer_id) = driver_session.active_buffer() {
                 ctx.set_buffer_id(buffer_id);
             }
+            ctx.set_vfs(Arc::clone(vfs));
 
             // Copy windows from WindowRegistry to driver_session's WindowLayout
             // (SessionRuntime needs window state for cursor operations)
@@ -279,8 +297,13 @@ mod tests {
         super::*,
         reovim_driver_command::{ArgSpec, Command},
         reovim_driver_session::{ClientId, SessionRuntime},
+        reovim_driver_vfs::MockVfs,
         reovim_kernel::api::v1::ModuleId,
     };
+
+    fn test_vfs() -> Arc<dyn VfsDriver> {
+        Arc::new(MockVfs::new())
+    }
 
     // Test command implementation
     struct TestCommand {
@@ -363,9 +386,10 @@ mod tests {
         let mode = reovim_kernel::api::v1::ModeId::new(ModuleId::new("test"), "normal");
         let mut driver_session = DriverSession::new(ClientId::new(0), mode);
         let mut app = AppState::new(kernel);
+        let vfs = test_vfs();
         let args = CommandContext::new();
 
-        let result = registry.execute(&id, &mut driver_session, &mut app, &args);
+        let result = registry.execute(&id, &mut driver_session, &mut app, &vfs, &args);
         assert_eq!(result, Some(CommandResult::Success));
     }
 
@@ -378,9 +402,10 @@ mod tests {
         let mode = reovim_kernel::api::v1::ModeId::new(ModuleId::new("test"), "normal");
         let mut driver_session = DriverSession::new(ClientId::new(0), mode);
         let mut app = AppState::new(kernel);
+        let vfs = test_vfs();
         let args = CommandContext::new();
 
-        let result = registry.execute(&unknown_id, &mut driver_session, &mut app, &args);
+        let result = registry.execute(&unknown_id, &mut driver_session, &mut app, &vfs, &args);
         assert!(result.is_none());
     }
 

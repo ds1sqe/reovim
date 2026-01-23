@@ -183,8 +183,11 @@ pub const EXIT_COMMANDLINE: CommandId = CommandId::new(MODULE, "exit-commandline
 /// Enter window mode (Ctrl-w).
 pub const ENTER_WINDOW_MODE: CommandId = CommandId::new(MODULE, "enter-window-mode");
 
-/// Exit operator-pending mode (Esc).
-pub const EXIT_OPERATOR_PENDING: CommandId = CommandId::new(MODULE, "exit-operator-pending");
+/// Cancel and return to normal mode (no cursor adjustment).
+///
+/// Used by operator modes (delete, yank, change) when escape is pressed.
+/// Unlike `EXIT_INSERT`, this does not adjust cursor position.
+pub const CANCEL_TO_NORMAL: CommandId = CommandId::new(MODULE, "cancel-to-normal");
 
 // =============================================================================
 // Find-Char Motion Execution (Epic #385 - Resolver-based)

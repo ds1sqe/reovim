@@ -303,75 +303,6 @@ impl EventHandlerRegistration {
     }
 }
 
-/// Empty session handler registration descriptor.
-///
-/// Modules return these from `empty_session_handlers()` to register
-/// handlers for the empty session state.
-///
-/// Linux equivalent: Like a device driver's `probe()` registration -
-/// declares what to do when a particular condition (empty session) is met.
-///
-/// # Priority Convention
-///
-/// - 0-50: Core handlers (system-level)
-/// - 100: Default module priority
-/// - 200+: Late/fallback handlers
-#[derive(Debug, Clone)]
-pub struct EmptySessionHandlerRegistration {
-    /// Unique handler identifier (e.g., `"defaults:scratch-buffer"`).
-    pub id: &'static str,
-
-    /// Human-readable description.
-    pub description: &'static str,
-
-    /// Handler priority (lower = called first).
-    pub priority: u32,
-
-    /// Registration flags.
-    pub flags: RegistrationFlags,
-}
-
-impl EmptySessionHandlerRegistration {
-    /// Create a new registration with required id.
-    #[must_use]
-    pub const fn new(id: &'static str) -> Self {
-        Self {
-            id,
-            description: "",
-            priority: 100,
-            flags: RegistrationFlags::new(),
-        }
-    }
-
-    /// Set description.
-    #[must_use]
-    pub const fn with_description(mut self, desc: &'static str) -> Self {
-        self.description = desc;
-        self
-    }
-
-    /// Set priority.
-    #[must_use]
-    pub const fn with_priority(mut self, priority: u32) -> Self {
-        self.priority = priority;
-        self
-    }
-
-    /// Set core priority (clamped to 0-50).
-    #[must_use]
-    pub const fn core_priority(mut self, priority: u32) -> Self {
-        self.priority = if priority > 50 { 50 } else { priority };
-        self
-    }
-
-    /// Set registration flags.
-    #[must_use]
-    pub const fn with_flags(mut self, flags: RegistrationFlags) -> Self {
-        self.flags = flags;
-        self
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use {super::*, crate::api::module::ModuleId};
@@ -511,40 +442,6 @@ mod tests {
         assert_eq!(reg.priority, 50); // Clamped
 
         let reg = EventHandlerRegistration::new("BufferChanged").core_priority(0);
-        assert_eq!(reg.priority, 0);
-    }
-
-    #[test]
-    fn test_empty_session_handler_registration_new() {
-        let reg = EmptySessionHandlerRegistration::new("scratch-buffer:handler");
-        assert_eq!(reg.id, "scratch-buffer:handler");
-        assert_eq!(reg.description, "");
-        assert_eq!(reg.priority, 100); // Default module priority
-    }
-
-    #[test]
-    fn test_empty_session_handler_registration_builder() {
-        let reg = EmptySessionHandlerRegistration::new("defaults:scratch-buffer")
-            .with_description("Create empty scratch buffer on startup")
-            .with_priority(100)
-            .with_flags(RegistrationFlags::deferrable());
-
-        assert_eq!(reg.id, "defaults:scratch-buffer");
-        assert_eq!(reg.description, "Create empty scratch buffer on startup");
-        assert_eq!(reg.priority, 100);
-        assert!(reg.flags.deferrable);
-    }
-
-    #[test]
-    fn test_empty_session_handler_core_priority() {
-        // Core priority clamped to 0-50
-        let reg = EmptySessionHandlerRegistration::new("core:init").core_priority(25);
-        assert_eq!(reg.priority, 25);
-
-        let reg = EmptySessionHandlerRegistration::new("core:init").core_priority(100);
-        assert_eq!(reg.priority, 50); // Clamped
-
-        let reg = EmptySessionHandlerRegistration::new("core:init").core_priority(0);
         assert_eq!(reg.priority, 0);
     }
 }

@@ -7,7 +7,7 @@
 //!
 //! ```text
 //! ┌─────────────────────────────────────────────────────────┐
-//! │                  SessionRegistry                         │
+//! │  SessionRegistry                                        │
 //! │  ├── Session "default"                                  │
 //! │  │   └── SessionState (AppState + Registries)           │
 //! │  ├── Session "project-x"                                │

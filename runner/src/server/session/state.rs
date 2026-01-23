@@ -27,10 +27,15 @@ use {
 };
 
 use crate::{
-    AppState, UndoPersistence,
+    AppState,
     module::ModuleManager,
     registry::{CommandRegistry, KeyLookupResult, KeymapRegistry, ModeRegistry},
 };
+
+// Epic #417 Part 2: UndoPersistence removed. Persistence is now internal to
+// the undo module's UndoProvider implementation.
+
+use reovim_driver_input::ResolverRegistry;
 
 /// Session state combining application state with registries.
 ///
@@ -101,10 +106,16 @@ pub struct SessionState {
     /// module loading and isolation (similar to Linux process contexts).
     pub module_registry: ModuleManager,
 
-    /// Undo persistence manager for disk serialization.
+    /// Registry of mode key resolvers.
     ///
-    /// Handles reading/writing undo trees to `~/.local/share/reovim/undo/`.
-    pub undo_persistence: UndoPersistence,
+    /// Resolvers implement mode-specific key handling policy:
+    /// - Operator interception (d, y, c enter operator-pending mode)
+    /// - Motion handling (w, b, j, k compute ranges)
+    /// - Line-operator detection (dd, yy, cc)
+    pub resolver_registry: ResolverRegistry,
+    // Epic #417 Part 2: undo_persistence removed.
+    // Persistence is now internal to the undo module's UndoProvider implementation.
+    // Use app.get_undo_provider() to access undo functionality.
 }
 
 impl SessionState {
@@ -117,10 +128,8 @@ impl SessionState {
     /// * `vfs` - The virtual filesystem driver for file operations
     #[must_use]
     pub fn new(kernel: KernelContext, initial_mode: ModeId, vfs: Arc<dyn VfsDriver>) -> Self {
-        // Initialize undo persistence with platform-specific data directory
-        let data_dir = reovim_arch::dirs::data_local_dir()
-            .map_or_else(|| std::path::PathBuf::from(".reovim"), |d| d.join("reovim"));
-        let undo_persistence = UndoPersistence::new(&data_dir);
+        // Epic #417 Part 2: undo persistence removed from SessionState.
+        // Persistence is now internal to UndoProvider (in undo module).
 
         // Create driver session (SSOT for session state)
         // ClientId(0) for single-session model
@@ -134,7 +143,7 @@ impl SessionState {
             command_registry: CommandRegistry::new(),
             keymap_registry: KeymapRegistry::new(),
             module_registry: ModuleManager::new(),
-            undo_persistence,
+            resolver_registry: ResolverRegistry::new(),
         }
     }
 
@@ -152,12 +161,11 @@ impl SessionState {
         command_registry: CommandRegistry,
         keymap_registry: KeymapRegistry,
         module_registry: ModuleManager,
+        resolver_registry: ResolverRegistry,
         compositor: Option<Box<dyn RootCompositor>>,
     ) -> Self {
-        // Initialize undo persistence with platform-specific data directory
-        let data_dir = reovim_arch::dirs::data_local_dir()
-            .map_or_else(|| std::path::PathBuf::from(".reovim"), |d| d.join("reovim"));
-        let undo_persistence = UndoPersistence::new(&data_dir);
+        // Epic #417 Part 2: undo persistence removed from SessionState.
+        // Persistence is now internal to UndoProvider (in undo module).
 
         // Create driver session (SSOT for session state)
         // ClientId(0) for single-session model
@@ -168,6 +176,13 @@ impl SessionState {
             driver_session.set_compositor(c);
         }
 
+        // Set initial active buffer if kernel has any buffers
+        // (e.g., scratch buffer created by empty session handler)
+        let buffer_ids = kernel.buffers.list();
+        if let Some(&first_buffer) = buffer_ids.first() {
+            driver_session.set_active_buffer(Some(first_buffer));
+        }
+
         Self {
             driver_session,
             app: AppState::new(kernel),
@@ -176,7 +191,7 @@ impl SessionState {
             command_registry,
             keymap_registry,
             module_registry,
-            undo_persistence,
+            resolver_registry,
         }
     }
 
@@ -274,6 +289,11 @@ impl SessionState {
     ///
     /// Flushes any pending edits before execution to ensure undo batching
     /// works correctly (commands break insert mode batches).
+    ///
+    /// # Context Population (Epic #415)
+    ///
+    /// VFS is passed from `SessionState` to the command registry,
+    /// where all context enrichment happens in a single clone.
     #[must_use]
     pub fn execute_command(
         &mut self,
@@ -284,8 +304,9 @@ impl SessionState {
         // (any command breaks insert mode batching)
         self.app.flush_pending_edits();
         // Use driver_session as SSOT for mode_stack and active_buffer
+        // Pass VFS to command registry for context enrichment (Epic #415)
         self.command_registry
-            .execute(id, &mut self.driver_session, &mut self.app, args)
+            .execute(id, &mut self.driver_session, &mut self.app, &self.vfs, args)
     }
 
     /// Check if the current mode accepts character input.
@@ -310,6 +331,79 @@ impl SessionState {
     /// Request clients to detach (server continues running).
     pub fn request_detach(&mut self) {
         self.app.request_detach();
+    }
+
+    /// Get the resolver registry.
+    #[must_use]
+    pub const fn resolver_registry(&self) -> &ResolverRegistry {
+        &self.resolver_registry
+    }
+
+    /// Resolve a key event using the resolver registry.
+    ///
+    /// This is the primary key resolution method that handles:
+    /// - Operator interception (d, y, c → operator-pending mode)
+    /// - Mode-specific key handling (via registered resolvers)
+    /// - Extension access for module state (`VimSessionState`)
+    ///
+    /// # Returns
+    ///
+    /// - `Some(ResolveResult)` - if a resolver handled the key
+    /// - `None` - if no resolver is registered for the current mode
+    ///
+    /// # Note
+    ///
+    /// This method requires the `RuntimeAdapter` from `event_loop` module.
+    /// Call `handle_resolve_result()` to process the result.
+    pub fn resolve_key(
+        &mut self,
+        key: &reovim_driver_input::KeyEvent,
+    ) -> Option<(reovim_driver_input::ResolveResult, reovim_driver_session::api::StateChanges)>
+    {
+        use {
+            crate::server::event_loop::RuntimeAdapter,
+            reovim_driver_input::ModeState,
+            reovim_driver_session::{SessionRuntime, api::CommandExecutor},
+        };
+
+        // Stub command executor - commands are executed separately
+        struct StubExecutor;
+        impl CommandExecutor for StubExecutor {
+            fn execute(
+                &self,
+                _cmd: &CommandId,
+                _ctx: &CommandContext,
+                _kernel: &mut reovim_kernel::api::v1::KernelContext,
+            ) -> Option<CommandResult> {
+                Some(CommandResult::Success)
+            }
+        }
+
+        let mode = self.driver_session.current_mode().clone();
+        let mut mode_state = ModeState::new(mode.clone());
+
+        // Create runtime for resolver
+        let stub_executor = StubExecutor;
+        let session_runtime =
+            SessionRuntime::new(&mut self.driver_session, &self.app.kernel, &stub_executor);
+        let mut runtime =
+            RuntimeAdapter::new(session_runtime, &mut self.app.windows, &self.app.kernel);
+
+        // Call resolver
+        // NOTE: Uses app.extensions due to borrow checker - driver_session is already borrowed by runtime
+        let result = self.resolver_registry.resolve_with_session(
+            &mode,
+            key,
+            &mut mode_state,
+            &self.keymap_registry,
+            &mut runtime,
+            &mut self.app.extensions,
+        );
+
+        // Take accumulated changes
+        let changes = reovim_driver_session::api::ChangeTracker::take_changes(&mut runtime);
+
+        result.map(|r| (r, changes))
     }
 }
 

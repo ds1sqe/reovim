@@ -22,9 +22,14 @@ mod runtime_adapter;
 
 pub use {error::EventLoopError, runtime_adapter::RuntimeAdapter};
 
-use reovim_driver_session::{
-    ClientId, Session as DriverSession, SessionRuntime,
-    api::{CommandExecutor, StateChanges},
+use std::sync::Arc;
+
+use {
+    reovim_driver_session::{
+        ClientId, Session as DriverSession, SessionRuntime,
+        api::{CommandExecutor, StateChanges},
+    },
+    reovim_driver_vfs::VfsDriver,
 };
 
 use {
@@ -57,7 +62,7 @@ use super::{
     registry::{CommandRegistry, KeymapRegistry, ModeRegistry},
 };
 
-use reovim_module_editor::ResolverRegistry;
+use reovim_driver_input::ResolverRegistry;
 
 /// Main event loop for the runner.
 ///
@@ -126,6 +131,11 @@ pub struct EventLoop {
 
     /// Registry for mode key resolvers.
     resolver_registry: Option<ResolverRegistry>,
+
+    /// Virtual filesystem driver for file operations.
+    ///
+    /// Passed to `command_registry.execute()` for context enrichment (Epic #415).
+    vfs: Arc<dyn VfsDriver>,
 }
 
 impl EventLoop {
@@ -153,6 +163,7 @@ impl EventLoop {
         mode_registry: ModeRegistry,
         command_registry: CommandRegistry,
         keymap_registry: KeymapRegistry,
+        vfs: Arc<dyn VfsDriver>,
     ) -> Self {
         // Create driver session with the initial mode (SSOT for mode_stack)
         let driver_session = DriverSession::new(ClientId::new(0), initial_mode);
@@ -177,6 +188,7 @@ impl EventLoop {
             key_reader: None,
             last_error: None,
             resolver_registry: None,
+            vfs,
         }
     }
 
@@ -431,6 +443,7 @@ impl EventLoop {
 
     /// Handle a resolve result from a mode key resolver.
     fn handle_resolve_result(&mut self, result: ResolveResult) {
+        eprintln!("[DEBUG] handle_resolve_result: {result:?}");
         match result {
             ResolveResult::Execute(cmd_id, ctx) => {
                 let mut cmd_ctx = CommandContext::new();
@@ -457,12 +470,31 @@ impl EventLoop {
                     }
                 }
 
+                eprintln!(
+                    "[DEBUG] Executing command {} in mode {}",
+                    cmd_id,
+                    cmd_ctx.mode_name().unwrap_or("unknown")
+                );
+
                 if let Some(result) = self.command_registry.execute(
                     &cmd_id,
                     &mut self.driver_session,
                     &mut self.app,
+                    &self.vfs,
                     &cmd_ctx,
                 ) {
+                    eprintln!("[DEBUG] Command result: {result:?}");
+
+                    // Per #388: Call post-command hook on resolver to complete
+                    // pending operations (e.g., operator+motion in vim).
+                    // Resolver stores motion type info BEFORE dispatch, so no
+                    // need for CommandResult::Motion variant.
+                    if result.is_success()
+                        && let Some(transition) = self.try_resolver_on_command_complete()
+                    {
+                        self.handle_mode_transition(transition);
+                    }
+
                     self.handle_command_result(result);
                 }
             }
@@ -507,37 +539,66 @@ impl EventLoop {
 
     /// Handle a pop result from a mode.
     ///
-    /// SSOT: All operator info comes from `PopResult`, not `AppState`.
+    /// Pure mechanism: executes whatever command the mode provides.
+    /// Runner has no knowledge of what the command does or why.
     fn handle_pop_result(&mut self, result: &PopResult) {
-        if let PopResult::OperatorRange {
-            operator,
-            linewise: true,
-            count,
-            register,
-            ..
-        } = result
-        {
-            let mut ctx = CommandContext::new();
-            ctx.set("linewise", reovim_driver_command::ArgValue::Bang(true));
-            ctx.set("count", reovim_driver_command::ArgValue::Count(count.unwrap_or(1)));
+        match result {
+            PopResult::ExecuteCommand { command, args } => {
+                let mut ctx = CommandContext::new();
 
-            if let Some(reg) = register {
-                ctx.set("register", reovim_driver_command::ArgValue::Register(*reg));
+                // Transfer all arguments from the pop result
+                for (key, value) in args {
+                    // Leak the key to get &'static str (args come from module, long-lived)
+                    let static_key: &'static str = Box::leak(key.clone().into_boxed_str());
+                    ctx.set(static_key, value.clone());
+                }
+
+                // Set active buffer
+                if let Some(buffer_id) = self.driver_session.active_buffer() {
+                    ctx.set_buffer_id(buffer_id);
+                }
+
+                // Execute the command - runner doesn't know what it does
+                if let Some(result) = self.command_registry.execute(
+                    command,
+                    &mut self.driver_session,
+                    &mut self.app,
+                    &self.vfs,
+                    &ctx,
+                ) {
+                    self.handle_command_result(result);
+                }
             }
-
-            if let Some(buffer_id) = self.driver_session.active_buffer() {
-                ctx.set_buffer_id(buffer_id);
-            }
-
-            if let Some(result) = self.command_registry.execute(
-                operator,
-                &mut self.driver_session,
-                &mut self.app,
-                &ctx,
-            ) {
-                self.handle_command_result(result);
+            PopResult::Cancelled | PopResult::Data { .. } => {
+                // Cancelled: nothing to execute
+                // Data: parent mode handles, runner doesn't care
             }
         }
+    }
+
+    /// Call resolver's `on_command_complete` hook (Epic #415, Issue #388).
+    ///
+    /// After a command executes successfully, the current mode's resolver
+    /// may have pending operations to complete (e.g., operator+motion in vim).
+    ///
+    /// This keeps vim-specific logic in the vim module - the runner just
+    /// calls the hook and handles any resulting mode transition.
+    fn try_resolver_on_command_complete(&mut self) -> Option<ModeTransition> {
+        let registry = self.resolver_registry.as_ref()?;
+        let mode = self.driver_session.mode_stack.current().clone();
+
+        // Get the resolver for the current mode
+        let resolver = registry.get(&mode)?;
+
+        // Create RuntimeAdapter for session API access
+        let stub_executor = StubCommandExecutor;
+        let session_runtime =
+            SessionRuntime::new(&mut self.driver_session, &self.app.kernel, &stub_executor);
+        let mut runtime =
+            RuntimeAdapter::new(session_runtime, &mut self.app.windows, &self.app.kernel);
+
+        // Call the hook - resolver decides if there's anything to complete
+        resolver.on_command_complete(&mut runtime, &mut self.app.extensions)
     }
 
     /// Read next key event.
@@ -666,6 +727,7 @@ mod tests {
         reovim_driver_command::{ArgSpec, Command, CommandHandler},
         reovim_driver_input::KeyCode,
         reovim_driver_session::SessionRuntime,
+        reovim_driver_vfs::MockVfs,
         reovim_kernel::api::v1::{CommandId, KernelContext, Mode, ModeId, ModuleId},
         std::sync::Arc,
     };
@@ -727,6 +789,7 @@ mod tests {
         let kernel = KernelContext::default();
         let app = AppState::new(kernel);
         let initial_mode = test_mode();
+        let vfs: Arc<dyn VfsDriver> = Arc::new(MockVfs::new());
 
         let mut mode_registry = ModeRegistry::new();
         mode_registry.register_mode(TestMode::Command);
@@ -738,6 +801,7 @@ mod tests {
             mode_registry,
             CommandRegistry::new(),
             KeymapRegistry::new(),
+            vfs,
         )
     }
 

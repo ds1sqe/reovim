@@ -21,6 +21,9 @@ members = [
     "lib/drivers/ffi",
     "lib/drivers/ffi-python",
     "lib/drivers/session",
+    "lib/drivers/undo",
+    "lib/drivers/buffer",
+    "lib/drivers/search",
 
     # Platform abstraction
     "lib/arch",
@@ -104,6 +107,9 @@ reovim-driver-trace = { path = "./lib/drivers/trace", version = "0.9.1-dev" }
 reovim-driver-ffi = { path = "./lib/drivers/ffi", version = "0.9.1-dev" }
 reovim-driver-ffi-python = { path = "./lib/drivers/ffi-python", version = "0.9.1-dev" }
 reovim-driver-session = { path = "./lib/drivers/session", version = "0.9.1-dev" }
+reovim-driver-undo = { path = "./lib/drivers/undo", version = "0.9.1-dev" }
+reovim-driver-buffer = { path = "./lib/drivers/buffer", version = "0.9.1-dev" }
+reovim-driver-search = { path = "./lib/drivers/search", version = "0.9.1-dev" }
 
 # Python FFI
 pyo3 = { version = "0.27", features = ["auto-initialize"] }
@@ -122,6 +128,9 @@ reovim-module-layout = { path = "./modules/layout", version = "0.9.1-dev" }
 reovim-module-editor = { path = "./modules/editor", version = "0.9.1-dev" }
 reovim-module-motions = { path = "./modules/motions", version = "0.9.1-dev" }
 reovim-module-textobjects = { path = "./modules/textobjects", version = "0.9.1-dev" }
+reovim-module-undo = { path = "./modules/undo", version = "0.9.1-dev" }
+reovim-module-buffer-simple = { path = "./modules/buffer-simple", version = "0.9.1-dev" }
+reovim-module-search = { path = "./modules/search", version = "0.9.1-dev" }
 
 # CLI
 clap = { version = "4", features = ["derive"] }

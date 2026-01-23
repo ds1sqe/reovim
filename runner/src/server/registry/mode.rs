@@ -71,6 +71,23 @@ impl ModeEntry {
         }
     }
 
+    /// Create a mode entry from `ModeInfo` (Epic #417 Part 3).
+    ///
+    /// Used when extracting modes from `ModeInfoStore`.
+    #[must_use]
+    pub fn from_info(info: reovim_driver_input::ModeInfo) -> Self {
+        Self {
+            id: info.id,
+            display_name: info.display_name,
+            cursor_style: info.cursor_style,
+            accepts_char_input: info.accepts_char_input,
+            has_selection: info.has_selection,
+            inherits_from: info.inherits_from,
+            is_entry: info.is_entry,
+            owner: None,
+        }
+    }
+
     /// Set the owning module for this mode entry.
     #[must_use]
     pub fn with_owner(mut self, owner: ModuleId) -> Self {

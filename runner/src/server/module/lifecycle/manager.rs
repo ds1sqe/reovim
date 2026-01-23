@@ -14,7 +14,7 @@ use std::{
 
 use {
     reovim_arch::sync::Mutex,
-    reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ModuleState},
+    reovim_kernel::api::v1::{BufferId, Module, ModuleContext, ModuleError, ModuleId, ModuleState},
 };
 
 use {
@@ -211,6 +211,22 @@ impl ModuleManager {
                 ModuleState::Failed(format!("deferred after {MAX_DEFER_PASSES} retry passes")),
             );
         }
+
+        // 5. Call on_all_loaded for all successfully initialized modules (Epic #417 Part 2)
+        // Collect running modules first to avoid borrow conflicts
+        let running_ids: Vec<ModuleId> = inner
+            .states
+            .iter()
+            .filter(|(_, state)| matches!(state, ModuleState::Running))
+            .map(|(id, _)| id.clone())
+            .collect();
+
+        for id in running_ids {
+            if let Some(handle) = inner.loader.modules.get_mut(&id) {
+                tracing::debug!(module = %id, "calling on_all_loaded");
+                handle.on_all_loaded(ctx);
+            }
+        }
         drop(inner);
 
         Ok(())
@@ -251,8 +267,11 @@ impl ModuleManager {
             });
         }
 
-        // Call exit on module
+        // Call on_unload then exit on module (Epic #417 Part 2)
         if let Some(handle) = inner.loader.modules.get_mut(id) {
+            // Call on_unload first to release kernel resources
+            handle.on_unload()?;
+            // Then call exit for general cleanup
             handle.exit()?;
         }
 
@@ -312,7 +331,8 @@ impl ModuleManager {
 
     /// Shutdown all modules in reverse initialization order.
     ///
-    /// Always succeeds even if individual module exits fail (continues shutdown).
+    /// Calls `on_unload` then `exit` on each module. Always succeeds even if
+    /// individual module exits fail (continues shutdown).
     pub fn shutdown(&self) {
         let mut inner = self.inner.lock();
 
@@ -323,6 +343,12 @@ impl ModuleManager {
             if inner.states.get(&id) == Some(&ModuleState::Running)
                 && let Some(handle) = inner.loader.modules.get_mut(&id)
             {
+                // Call on_unload first to release kernel resources (Epic #417 Part 2)
+                if let Err(e) = handle.on_unload() {
+                    tracing::error!(module = %id, error = %e, "on_unload failed");
+                    // Continue shutdown even if on_unload fails
+                }
+
                 if let Err(e) = handle.exit() {
                     tracing::error!(module = %id, error = %e, "exit failed");
                     // Continue shutdown even if one module fails
@@ -348,6 +374,29 @@ impl ModuleManager {
     pub fn init_order(&self) -> Vec<ModuleId> {
         let inner = self.inner.lock();
         inner.init_order.clone()
+    }
+
+    /// Notify all running modules that a buffer has been focused (Epic #417 Part 2).
+    ///
+    /// Called when the active buffer changes. Allows modules to perform
+    /// lazy initialization of buffer-specific state (e.g., loading undo history).
+    pub fn notify_buffer_focus(&self, buffer_id: BufferId, ctx: &ModuleContext) {
+        let mut inner = self.inner.lock();
+
+        // Collect running modules to avoid borrow conflicts
+        let running_ids: Vec<ModuleId> = inner
+            .states
+            .iter()
+            .filter(|(_, state)| matches!(state, ModuleState::Running))
+            .map(|(id, _)| id.clone())
+            .collect();
+
+        for id in running_ids {
+            if let Some(handle) = inner.loader.modules.get_mut(&id) {
+                tracing::trace!(module = %id, buffer = ?buffer_id, "calling on_buffer_focus");
+                handle.on_buffer_focus(buffer_id, ctx);
+            }
+        }
     }
 
     /// Get modules that depend on the given module.
@@ -533,6 +582,7 @@ impl ModuleManagerInner {
         // Create module-specific context with per-module directories
         let module_ctx = ModuleContext::new(
             ctx.kernel.clone(),
+            ctx.services.clone(),
             ctx.data_dir.join(id.as_str()),
             ctx.cache_dir.join(id.as_str()),
         );

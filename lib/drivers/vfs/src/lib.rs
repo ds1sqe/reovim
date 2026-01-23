@@ -70,7 +70,11 @@ mod error;
 mod filetype;
 mod metadata;
 mod mock;
+mod module_ext;
 mod path;
+mod provider;
+mod registry;
+mod scheme;
 mod standard;
 mod traits;
 mod watch;
@@ -98,3 +102,12 @@ pub use watch::{WatchEvent, WatchHandle, WatchId};
 
 // Re-export traits and related types
 pub use traits::{DirEntry, FileHandle, FileWatcher, OpenOptions, SeekFrom, VfsDriver};
+
+// Re-export provider types (Epic #415 - Module provider hooks)
+pub use {
+    module_ext::VfsProviderModule,
+    provider::{ProviderPriority, VfsProvider},
+};
+
+// Re-export typed key and registry (Epic #417 - UniqueProvider abstraction)
+pub use {registry::VfsProviderRegistry, scheme::VfsScheme};

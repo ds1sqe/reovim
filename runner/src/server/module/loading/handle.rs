@@ -10,7 +10,7 @@ use std::{
 use {
     libloading::Library,
     reovim_kernel::api::v1::{
-        Module, ModuleContext, ModuleError, ModuleId, ModuleProbe, ProbeResult, Version,
+        BufferId, Module, ModuleContext, ModuleError, ModuleId, ModuleProbe, ProbeResult, Version,
     },
 };
 
@@ -247,6 +247,47 @@ impl ModuleHandle {
         } else {
             Err(ModuleError::NotLoaded(self.id.clone()))
         }
+    }
+
+    // ========================================================================
+    // Lifecycle Hooks (Epic #417 Part 2)
+    // ========================================================================
+
+    /// Call `on_all_loaded` hook for post-init cross-module discovery.
+    ///
+    /// Called after ALL modules are initialized. For static modules, calls
+    /// the trait method directly. Dynamic modules are skipped (no FFI support).
+    pub fn on_all_loaded(&mut self, ctx: &ModuleContext) {
+        if let Some(ref mut module) = self.static_module {
+            module.on_all_loaded(ctx);
+        }
+        // Dynamic modules: no FFI support for lifecycle hooks yet
+    }
+
+    /// Call `on_buffer_focus` hook when active buffer changes.
+    ///
+    /// For static modules, calls the trait method directly.
+    /// Dynamic modules are skipped (no FFI support).
+    pub fn on_buffer_focus(&mut self, buffer_id: BufferId, ctx: &ModuleContext) {
+        if let Some(ref mut module) = self.static_module {
+            module.on_buffer_focus(buffer_id, ctx);
+        }
+        // Dynamic modules: no FFI support for lifecycle hooks yet
+    }
+
+    /// Call `on_unload` hook before module removal.
+    ///
+    /// For static modules, calls the trait method directly.
+    /// Dynamic modules are skipped (no FFI support).
+    ///
+    /// # Errors
+    ///
+    /// Returns `ModuleError` if resource release fails.
+    pub fn on_unload(&mut self) -> Result<(), ModuleError> {
+        self.static_module
+            .as_mut()
+            .map_or(Ok(()), |module| module.on_unload())
+        // Dynamic modules: no FFI support for lifecycle hooks yet
     }
 
     // ========================================================================

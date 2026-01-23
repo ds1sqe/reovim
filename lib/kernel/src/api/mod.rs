@@ -34,6 +34,8 @@ mod context;
 mod debug;
 // Note: pub(crate) to allow core/mode.rs to access ModuleId
 pub(crate) mod module;
+// Service registry for cross-module service discovery
+mod service;
 mod version;
 
 // Note: The following modules have been removed as part of the kernel-driver

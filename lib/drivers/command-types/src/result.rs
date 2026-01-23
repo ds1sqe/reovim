@@ -1,6 +1,16 @@
 //! Command execution result.
+//!
+//! Per issue #388, `CommandResult` has only 5 variants. Vim-specific
+//! behavior (operator-pending, motion types) is handled by the vim
+//! resolver via `VimSessionState`, not via command results.
 
 /// Result of command execution.
+///
+/// # Design (Issue #388)
+///
+/// This enum is intentionally minimal. Vim-specific behavior like
+/// operator-pending mode and motion types are policy concerns handled
+/// by the vim module's resolver, not by command results.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CommandResult {
     /// Command executed successfully.

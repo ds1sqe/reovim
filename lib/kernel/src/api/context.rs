@@ -11,7 +11,7 @@ use crate::{
     ipc::EventBus,
 };
 
-use super::{buffer_manager::BufferManager, module::ModuleId};
+use super::{buffer_manager::BufferManager, module::ModuleId, service::ServiceRegistry};
 
 // ============================================================================
 // KernelContext
@@ -99,7 +99,8 @@ impl fmt::Debug for KernelContext {
 
 /// Context provided to modules during initialization.
 ///
-/// Extends `KernelContext` with module-specific paths for data and cache storage.
+/// Extends `KernelContext` with module-specific paths for data and cache storage,
+/// plus access to the cross-module service registry.
 /// This is passed to `Module::init()` and provides everything a module needs
 /// to initialize itself.
 ///
@@ -117,6 +118,9 @@ impl fmt::Debug for KernelContext {
 ///         let config_path = ctx.data_dir.join("config.toml");
 ///         let cache_path = ctx.cache_dir.join("cache.bin");
 ///
+///         // Register services for other modules to discover
+///         ctx.services.register(Arc::new(MyService::new()));
+///
 ///         ProbeResult::Success
 ///     }
 /// }
@@ -125,6 +129,11 @@ impl fmt::Debug for KernelContext {
 pub struct ModuleContext {
     /// Kernel context for core services.
     pub kernel: KernelContext,
+    /// Service registry for cross-module service discovery.
+    ///
+    /// Modules can register their services here during `init()` for other
+    /// modules to discover. See [`ServiceRegistry`] for usage patterns.
+    pub services: Arc<ServiceRegistry>,
     /// Module's data directory (persistent storage).
     ///
     /// e.g., `~/.local/share/reovim/modules/<module-id>/`
@@ -143,9 +152,16 @@ pub struct ModuleContext {
 impl ModuleContext {
     /// Create a new module context.
     #[must_use]
-    pub const fn new(kernel: KernelContext, data_dir: PathBuf, cache_dir: PathBuf) -> Self {
+    #[allow(clippy::missing_const_for_fn)] // Arc::new is not const
+    pub fn new(
+        kernel: KernelContext,
+        services: Arc<ServiceRegistry>,
+        data_dir: PathBuf,
+        cache_dir: PathBuf,
+    ) -> Self {
         Self {
             kernel,
+            services,
             data_dir,
             cache_dir,
             loaded_optional_deps: Vec::new(),
@@ -154,14 +170,17 @@ impl ModuleContext {
 
     /// Create a module context with optional dependencies info.
     #[must_use]
-    pub const fn with_optional_deps(
+    #[allow(clippy::missing_const_for_fn)] // Arc::new is not const
+    pub fn with_optional_deps(
         kernel: KernelContext,
+        services: Arc<ServiceRegistry>,
         data_dir: PathBuf,
         cache_dir: PathBuf,
         loaded_optional_deps: Vec<ModuleId>,
     ) -> Self {
         Self {
             kernel,
+            services,
             data_dir,
             cache_dir,
             loaded_optional_deps,
@@ -212,6 +231,7 @@ impl fmt::Debug for ModuleContext {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ModuleContext")
             .field("kernel", &self.kernel)
+            .field("services", &self.services)
             .field("data_dir", &self.data_dir)
             .field("cache_dir", &self.cache_dir)
             .field("loaded_optional_deps", &self.loaded_optional_deps)
@@ -227,6 +247,7 @@ impl Default for ModuleContext {
     fn default() -> Self {
         Self {
             kernel: KernelContext::default(),
+            services: Arc::new(ServiceRegistry::new()),
             data_dir: PathBuf::from("/tmp/reovim-test/data"),
             cache_dir: PathBuf::from("/tmp/reovim-test/cache"),
             loaded_optional_deps: Vec::new(),

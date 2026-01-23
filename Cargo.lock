@@ -1093,22 +1093,20 @@ dependencies = [
  "pyo3",
  "regex",
  "reovim-arch",
+ "reovim-driver-buffer",
  "reovim-driver-command",
  "reovim-driver-display",
  "reovim-driver-ffi-python",
  "reovim-driver-input",
+ "reovim-driver-search",
  "reovim-driver-session",
+ "reovim-driver-undo",
  "reovim-driver-vfs",
  "reovim-kernel",
- "reovim-module-commands",
  "reovim-module-defaults",
  "reovim-module-editor",
  "reovim-module-hot-reload-demo",
- "reovim-module-keymap",
  "reovim-module-layout",
- "reovim-module-motions",
- "reovim-module-undotree",
- "reovim-module-vim",
  "reovim-protocol",
  "serde",
  "serde_json",
@@ -1135,6 +1133,14 @@ name = "reovim-bench"
 version = "0.9.1-dev"
 dependencies = [
  "criterion",
+ "reovim-kernel",
+]
+
+[[package]]
+name = "reovim-driver-buffer"
+version = "0.9.1-dev"
+dependencies = [
+ "reovim-arch",
  "reovim-kernel",
 ]
 
@@ -1190,6 +1196,7 @@ version = "0.9.1-dev"
 dependencies = [
  "bitflags 2.10.0",
  "reovim-arch",
+ "reovim-driver-command-types",
  "reovim-driver-session",
  "reovim-kernel",
 ]
@@ -1226,6 +1233,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-driver-search"
+version = "0.9.1-dev"
+dependencies = [
+ "reovim-kernel",
+]
+
+[[package]]
 name = "reovim-driver-session"
 version = "0.9.1-dev"
 dependencies = [
@@ -1252,6 +1266,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-driver-undo"
+version = "0.9.1-dev"
+dependencies = [
+ "reovim-driver-vfs",
+ "reovim-kernel",
+ "tracing",
+]
+
+[[package]]
 name = "reovim-driver-vfs"
 version = "0.9.1-dev"
 dependencies = [
@@ -1274,6 +1297,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-module-buffer-simple"
+version = "0.9.1-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-driver-buffer",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "tracing",
+]
+
+[[package]]
 name = "reovim-module-commands"
 version = "0.9.1-dev"
 dependencies = [
@@ -1287,12 +1321,20 @@ version = "0.9.1-dev"
 dependencies = [
  "reovim-driver-display",
  "reovim-driver-session",
+ "reovim-driver-vfs",
  "reovim-kernel",
+ "reovim-module-buffer-simple",
  "reovim-module-commands",
+ "reovim-module-editor",
  "reovim-module-keymap",
  "reovim-module-layout",
  "reovim-module-macros",
+ "reovim-module-motions",
  "reovim-module-scratch-buffer",
+ "reovim-module-search",
+ "reovim-module-undo",
+ "reovim-module-undotree",
+ "reovim-module-vfs-local",
  "reovim-module-vim",
 ]
 
@@ -1396,6 +1438,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-module-search"
+version = "0.9.1-dev"
+dependencies = [
+ "regex",
+ "reovim-driver-search",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "tracing",
+]
+
+[[package]]
 name = "reovim-module-textobjects"
 version = "0.9.1-dev"
 dependencies = [
@@ -1403,6 +1456,19 @@ dependencies = [
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-module-undo"
+version = "0.9.1-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-driver-undo",
+ "reovim-driver-vfs",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-protocol",
+ "tracing",
 ]
 
 [[package]]
@@ -1418,10 +1484,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-module-vfs-local"
+version = "0.9.1-dev"
+dependencies = [
+ "reovim-driver-vfs",
+ "reovim-kernel",
+ "reovim-module-macros",
+]
+
+[[package]]
 name = "reovim-module-vim"
 version = "0.9.1-dev"
 dependencies = [
  "reovim-driver-command",
+ "reovim-driver-command-types",
  "reovim-driver-input",
  "reovim-driver-session",
  "reovim-kernel",

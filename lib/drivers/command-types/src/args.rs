@@ -69,7 +69,7 @@ pub enum ArgKind {
 }
 
 /// Argument value parsed from user input.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ArgValue {
     /// A numeric count.
     Count(usize),
@@ -89,6 +89,8 @@ pub enum ArgValue {
     BufferId(usize),
     /// A single character (e.g., for find-char targets).
     Char(char),
+    /// A position (line, column) for operator ranges (Epic #415).
+    Position(usize, usize),
 }
 
 #[cfg(test)]

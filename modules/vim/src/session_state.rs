@@ -7,12 +7,18 @@
 //! # Design
 //!
 //! The vim module owns all vim-specific state:
-//! - Pending operator (d, y, c waiting for motion)
+//! - Pending motion info (for operator completion)
 //! - Pending character operations (f, F, t, T, r)
 //! - Last find for ; and , repeat
 //! - Numeric count prefix
 //! - Register selection
 //! - Repeat state for . command
+//!
+//! # Note on Operators (Epic #415)
+//!
+//! Operator state (d, y, c) is owned by dedicated mode resolvers
+//! (`VimDeleteResolver`, `VimYankResolver`, `VimChangeResolver`), not by
+//! this session state. Each resolver maintains its own `OperatorState`.
 //!
 //! # Example
 //!
@@ -20,28 +26,35 @@
 //! use reovim_module_vim::VimSessionState;
 //! use reovim_driver_session::SessionRuntime;
 //!
-//! fn check_operator_pending(runtime: &SessionRuntime) -> bool {
+//! fn check_pending_char(runtime: &SessionRuntime) -> bool {
 //!     ctx.ext::<VimSessionState>()
-//!         .map(|vim| vim.pending_operator.is_some())
+//!         .map(|vim| vim.pending_char.is_some())
 //!         .unwrap_or(false)
 //! }
 //! ```
 
 use reovim_driver_session::SessionExtension;
 
-use crate::ids::OperatorId;
-
 /// Vim-specific per-session state.
 ///
 /// Stored via [`SessionExtension`], accessed by vim resolvers and commands.
 /// Each client session has its own independent vim state.
+///
+/// # Note on Operators (Epic #415)
+///
+/// Operator state (d, y, c) is owned by dedicated mode resolvers, not here.
+/// See `VimDeleteResolver`, `VimYankResolver`, `VimChangeResolver`.
 #[derive(Debug, Default)]
 pub struct VimSessionState {
-    /// Pending operator waiting for a motion (d, y, c).
+    /// Pending motion info (Epic #415, Issue #388).
     ///
-    /// When a user presses an operator key in normal mode, the operator
-    /// is stored here until a motion provides the text range.
-    pub pending_operator: Option<PendingOperator>,
+    /// When the operator resolver dispatches a motion, it stores the motion type
+    /// here. After the motion executes, `on_command_complete` uses this to
+    /// complete the operator with the correct linewise flag.
+    ///
+    /// This replaces `CommandResult::Motion` - motion type is resolver policy,
+    /// not command mechanism.
+    pub pending_motion: Option<PendingMotion>,
 
     /// Pending character operation (f, F, t, T, r).
     ///
@@ -77,10 +90,14 @@ impl VimSessionState {
     /// Check if there is any pending state.
     ///
     /// Returns `true` if any vim operation is waiting for input.
+    ///
+    /// # Note (Epic #415)
+    ///
+    /// This no longer checks `pending_operator` - the dedicated operator
+    /// resolvers (DELETE, YANK, CHANGE) own their state directly.
     #[must_use]
     pub fn is_pending(&self) -> bool {
-        self.pending_operator.is_some()
-            || self.pending_char.is_some()
+        self.pending_char.is_some()
             || self.pending_count.is_some()
             || self.pending_register.is_some()
     }
@@ -88,8 +105,14 @@ impl VimSessionState {
     /// Clear all pending state.
     ///
     /// Called when an operation is cancelled (e.g., pressing Escape).
+    ///
+    /// # Note (Epic #415)
+    ///
+    /// Operator state (d, y, c) is managed by dedicated mode resolvers
+    /// (`VimDeleteResolver`, `VimYankResolver`, `VimChangeResolver`),
+    /// not by this method.
     pub fn clear_pending(&mut self) {
-        self.pending_operator = None;
+        self.pending_motion = None;
         self.pending_char = None;
         self.pending_count = None;
         self.pending_register = None;
@@ -110,52 +133,37 @@ impl VimSessionState {
     }
 }
 
-/// Pending operator waiting for a motion.
+/// Pending motion info for operator completion (Epic #415, Issue #388).
 ///
-/// When an operator key (d, y, c) is pressed in normal mode, the operator
-/// waits for a motion to define the text range. This struct captures the
-/// operator and any modifiers while waiting.
-#[derive(Debug, Clone)]
-pub struct PendingOperator {
-    /// The operator being applied.
-    ///
-    /// Uses strong `OperatorId` type instead of string.
-    pub operator_id: OperatorId,
-
-    /// Count applied before the operator (e.g., `2d` in `2dw`).
-    ///
-    /// Combined with motion count to get total count.
-    pub count: Option<usize>,
-
-    /// Target register for the operation.
-    ///
-    /// If None, uses the default (unnamed) register.
-    pub register: Option<char>,
+/// When the operator-pending resolver dispatches a motion, it stores
+/// info here. After the motion executes, `on_command_complete` uses
+/// this to complete the operator.
+///
+/// This replaces `CommandResult::Motion` - motion type classification
+/// is resolver policy knowledge, not command mechanism.
+#[derive(Debug, Clone, Copy)]
+pub struct PendingMotion {
+    /// Whether the motion is linewise (j, k, gg, G) or characterwise (w, b, h, l, $).
+    pub linewise: bool,
 }
 
-impl PendingOperator {
-    /// Create a new pending operator.
+impl PendingMotion {
+    /// Create a new pending motion.
     #[must_use]
-    pub const fn new(operator_id: OperatorId) -> Self {
-        Self {
-            operator_id,
-            count: None,
-            register: None,
-        }
+    pub const fn new(linewise: bool) -> Self {
+        Self { linewise }
     }
 
-    /// Create a pending operator with count.
+    /// Create a characterwise pending motion (w, b, h, l, $, etc.).
     #[must_use]
-    pub const fn with_count(mut self, count: usize) -> Self {
-        self.count = Some(count);
-        self
+    pub const fn characterwise() -> Self {
+        Self { linewise: false }
     }
 
-    /// Create a pending operator with register.
+    /// Create a linewise pending motion (j, k, gg, G, etc.).
     #[must_use]
-    pub const fn with_register(mut self, register: char) -> Self {
-        self.register = Some(register);
-        self
+    pub const fn linewise() -> Self {
+        Self { linewise: true }
     }
 }
 
@@ -240,16 +248,11 @@ impl LastFind {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::ids::DELETE};
-
-    fn test_operator() -> OperatorId {
-        DELETE.clone()
-    }
+    use super::*;
 
     #[test]
     fn test_vim_session_state_default() {
         let state = VimSessionState::default();
-        assert!(state.pending_operator.is_none());
         assert!(state.pending_char.is_none());
         assert!(state.last_find.is_none());
         assert!(state.pending_count.is_none());
@@ -277,25 +280,6 @@ mod tests {
         state.pending_count = Some(5);
         assert_eq!(state.take_count(), 5);
         assert!(state.pending_count.is_none()); // Cleared
-    }
-
-    #[test]
-    fn test_pending_operator_new() {
-        let op = PendingOperator::new(test_operator());
-        assert!(op.count.is_none());
-        assert!(op.register.is_none());
-    }
-
-    #[test]
-    fn test_pending_operator_with_count() {
-        let op = PendingOperator::new(test_operator()).with_count(3);
-        assert_eq!(op.count, Some(3));
-    }
-
-    #[test]
-    fn test_pending_operator_with_register() {
-        let op = PendingOperator::new(test_operator()).with_register('a');
-        assert_eq!(op.register, Some('a'));
     }
 
     #[test]

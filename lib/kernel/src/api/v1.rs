@@ -191,10 +191,15 @@ pub use crate::{pr_debug, pr_err, pr_info, pr_trace, pr_warn};
 // ============================================================================
 
 pub use super::module::{
-    CommandRegistration, EmptySessionHandlerRegistration, EventHandlerRegistration,
-    KeybindingRegistration, Module, ModuleError, ModuleId, ModuleInfo, ModuleProbe, ModuleState,
-    ProbeResult, RegistrationFlags,
+    CommandRegistration, EventHandlerRegistration, KeybindingRegistration, Module, ModuleError,
+    ModuleId, ModuleInfo, ModuleProbe, ModuleState, ProbeResult, RegistrationFlags,
 };
+
+// ============================================================================
+// Service Registry (api/service.rs)
+// ============================================================================
+
+pub use super::service::{MultiServiceRegistry, Service, ServiceKey, ServiceRegistry};
 
 // Note: SyntaxHighlight trait has been moved to lib/drivers/syntax/
 

@@ -3,6 +3,7 @@
 //! This crate provides the fundamental types for the command system:
 //! - [`CommandContext`] - Carries all inputs for command execution
 //! - [`CommandResult`] - Result of command execution
+//! - [`MotionType`] - Motion classification for operator-pending mode
 //! - [`ArgSpec`], [`ArgKind`], [`ArgValue`] - Argument specifications
 //!
 //! # Design
@@ -13,10 +14,12 @@
 
 mod args;
 mod context;
+mod motion;
 mod result;
 
 pub use {
     args::{ArgKind, ArgSpec, ArgValue},
     context::CommandContext,
+    motion::MotionType,
     result::CommandResult,
 };

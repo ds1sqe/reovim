@@ -270,7 +270,12 @@ pub fn module_reload(ctx: RpcContext, params: serde_json::Value) -> HandlerFutur
                 let cache_dir = dirs::cache_dir()
                     .unwrap_or_else(|| PathBuf::from("."))
                     .join("reovim");
-                ModuleContext::new(state.app.kernel.clone(), data_dir, cache_dir)
+                ModuleContext::new(
+                    state.app.kernel.clone(),
+                    state.app.services.clone(),
+                    data_dir,
+                    cache_dir,
+                )
             })
             .await;
 

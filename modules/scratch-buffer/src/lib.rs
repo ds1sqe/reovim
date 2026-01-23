@@ -15,8 +15,13 @@
 //! - **Mechanism**: `EmptySessionHandler` trait (in `reovim-driver-session`)
 //! - **Policy**: `ScratchBufferHandler` (this module) decides to create a buffer
 
+use std::sync::Arc;
+
 use {
-    reovim_driver_session::{EmptySessionAction, EmptySessionContext, EmptySessionHandler},
+    reovim_driver_session::{
+        EmptySessionAction, EmptySessionContext, EmptySessionHandler, SessionHandlerKey,
+        SessionHandlerRegistry,
+    },
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
 };
 
@@ -99,7 +104,11 @@ impl Module for ScratchBufferModule {
         Version::new(0, 9, 0)
     }
 
-    fn init(&mut self, _ctx: &ModuleContext) -> ProbeResult {
+    fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
+        // Register empty session handler with typed key (Epic #417)
+        let handler_registry = ctx.services.get_or_create::<SessionHandlerRegistry>();
+        handler_registry.register(SessionHandlerKey::Empty, Arc::new(ScratchBufferHandler));
+
         ProbeResult::Success
     }
 

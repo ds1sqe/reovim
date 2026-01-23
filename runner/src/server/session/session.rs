@@ -10,7 +10,7 @@ use tokio::sync::RwLock;
 use {
     reovim_driver_command::{CommandContext, CommandResult},
     reovim_driver_display::layout::RootCompositor,
-    reovim_driver_input::KeySequence,
+    reovim_driver_input::{KeySequence, ResolverRegistry},
     reovim_driver_vfs::VfsDriver,
     reovim_kernel::api::v1::{CommandId, KernelContext, ModeId},
 };
@@ -115,6 +115,7 @@ impl Session {
         command_registry: CommandRegistry,
         keymap_registry: KeymapRegistry,
         module_registry: ModuleManager,
+        resolver_registry: ResolverRegistry,
         compositor: Option<Box<dyn RootCompositor>>,
     ) -> Arc<Self> {
         Arc::new(Self {
@@ -127,6 +128,7 @@ impl Session {
                 command_registry,
                 keymap_registry,
                 module_registry,
+                resolver_registry,
                 compositor,
             )),
             clients: ClientRegistry::new(),
@@ -190,20 +192,18 @@ impl Session {
     /// Acquires a write lock on the session state.
     /// Returns `None` if the command isn't registered.
     ///
-    /// The VFS is automatically populated in the command context from
-    /// the session state, so commands have access to file operations.
+    /// # Context Population (Epic #415)
+    ///
+    /// VFS and `buffer_id` are now populated in `command_registry.execute()`,
+    /// eliminating the double clone that was previously done here.
     pub async fn execute_command(
         &self,
         id: &CommandId,
         args: &CommandContext,
     ) -> Option<CommandResult> {
         let mut state = self.state.write().await;
-
-        // Create command context with VFS populated
-        let mut args_with_vfs = args.clone();
-        args_with_vfs.set_vfs(state.vfs.clone());
-
-        state.execute_command(id, &args_with_vfs)
+        // Context enrichment (VFS, buffer_id) happens in command_registry.execute()
+        state.execute_command(id, args)
     }
 
     /// Check if the current mode accepts character input.
@@ -277,6 +277,25 @@ impl Session {
     {
         let mut state = self.state.write().await;
         f(&mut state)
+    }
+
+    /// Resolve a key event using the resolver registry.
+    ///
+    /// This method uses mode resolvers to handle vim-style key resolution:
+    /// - Operator interception (d, y, c → operator-pending mode)
+    /// - Motion handling in operator-pending mode
+    /// - Mode-specific policy application
+    ///
+    /// # Returns
+    ///
+    /// - `Some((ResolveResult, StateChanges))` - if a resolver handled the key
+    /// - `None` - if no resolver is registered for the current mode
+    pub async fn resolve_key(
+        &self,
+        key: &reovim_driver_input::KeyEvent,
+    ) -> Option<(reovim_driver_input::ResolveResult, reovim_driver_session::api::StateChanges)>
+    {
+        self.with_state_mut(|state| state.resolve_key(key)).await
     }
 
     /// Handle a command result from command execution.
