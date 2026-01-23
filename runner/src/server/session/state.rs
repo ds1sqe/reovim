@@ -180,6 +180,13 @@ impl SessionState {
             driver_session.set_compositor(c);
         }
 
+        // Set initial active buffer if kernel has any buffers
+        // (e.g., scratch buffer created by empty session handler)
+        let buffer_ids = kernel.buffers.list();
+        if let Some(&first_buffer) = buffer_ids.first() {
+            driver_session.set_active_buffer(Some(first_buffer));
+        }
+
         Self {
             driver_session,
             app: AppState::new(kernel),

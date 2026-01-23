@@ -39,15 +39,23 @@ use crate::ids::OperatorId;
 pub struct VimSessionState {
     /// Pending operator waiting for a motion (d, y, c).
     ///
-    /// When a user presses an operator key in normal mode, the operator
-    /// is stored here until a motion provides the text range.
+    /// # Deprecated (Epic #415)
+    ///
+    /// The dedicated operator modes (DELETE, YANK, CHANGE) now own their state
+    /// directly in the resolver. This field is only used by the deprecated
+    /// `VimOperatorPendingResolver`.
+    #[deprecated(
+        since = "0.9.0",
+        note = "Use dedicated operator modes (DELETE, YANK, CHANGE) instead. Each resolver owns its state."
+    )]
+    #[allow(deprecated)] // Field uses deprecated type
     pub pending_operator: Option<PendingOperator>,
 
     /// Pending motion info (Epic #415, Issue #388).
     ///
-    /// When the operator-pending resolver dispatches a motion, it stores
-    /// the motion type here. After the motion executes, `on_command_complete`
-    /// uses this to complete the operator with the correct linewise flag.
+    /// When the operator resolver dispatches a motion, it stores the motion type
+    /// here. After the motion executes, `on_command_complete` uses this to
+    /// complete the operator with the correct linewise flag.
     ///
     /// This replaces `CommandResult::Motion` - motion type is resolver policy,
     /// not command mechanism.
@@ -87,10 +95,14 @@ impl VimSessionState {
     /// Check if there is any pending state.
     ///
     /// Returns `true` if any vim operation is waiting for input.
+    ///
+    /// # Note (Epic #415)
+    ///
+    /// This no longer checks `pending_operator` - the dedicated operator
+    /// resolvers (DELETE, YANK, CHANGE) own their state directly.
     #[must_use]
     pub fn is_pending(&self) -> bool {
-        self.pending_operator.is_some()
-            || self.pending_char.is_some()
+        self.pending_char.is_some()
             || self.pending_count.is_some()
             || self.pending_register.is_some()
     }
@@ -98,6 +110,12 @@ impl VimSessionState {
     /// Clear all pending state.
     ///
     /// Called when an operation is cancelled (e.g., pressing Escape).
+    ///
+    /// # Note (Epic #415)
+    ///
+    /// This no longer clears `pending_operator` - the dedicated operator
+    /// resolvers (DELETE, YANK, CHANGE) manage their own state clearing.
+    #[allow(deprecated)] // We still clear it for backward compatibility
     pub fn clear_pending(&mut self) {
         self.pending_operator = None;
         self.pending_motion = None;
@@ -126,6 +144,16 @@ impl VimSessionState {
 /// When an operator key (d, y, c) is pressed in normal mode, the operator
 /// waits for a motion to define the text range. This struct captures the
 /// operator and any modifiers while waiting.
+///
+/// # Deprecated (Epic #415)
+///
+/// The dedicated operator modes (DELETE, YANK, CHANGE) now own their state
+/// via `OperatorState` in their respective resolvers. This struct is only
+/// used by the deprecated `VimOperatorPendingResolver`.
+#[deprecated(
+    since = "0.9.0",
+    note = "Use dedicated operator modes. Each resolver owns its state via OperatorState."
+)]
 #[derive(Debug, Clone)]
 pub struct PendingOperator {
     /// The operator being applied.
@@ -155,6 +183,7 @@ pub struct PendingOperator {
     pub motion_count: Option<usize>,
 }
 
+#[allow(deprecated)] // Implementing methods on deprecated struct
 impl PendingOperator {
     /// Create a new pending operator.
     #[must_use]
@@ -311,6 +340,7 @@ impl LastFind {
 }
 
 #[cfg(test)]
+#[allow(deprecated)] // Tests for deprecated PendingOperator still need to work
 mod tests {
     use {super::*, crate::ids::DELETE};
 
@@ -319,6 +349,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)] // Testing deprecated field
     fn test_vim_session_state_default() {
         let state = VimSessionState::default();
         assert!(state.pending_operator.is_none());

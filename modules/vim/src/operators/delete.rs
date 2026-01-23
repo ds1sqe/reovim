@@ -45,51 +45,85 @@ impl Operator for DeleteOperator {
         let mut deleted_text = String::new();
         let lines = buffer.lines();
 
-        if start.line == end.line {
-            // Single line deletion
-            if let Some(line) = lines.get(start.line) {
-                let start_col = start.column.min(line.len());
-                let end_col = end.column.min(line.len());
-                if start_col < end_col {
-                    deleted_text.push_str(&line[start_col..end_col]);
-                }
-            }
-        } else {
-            // Multi-line deletion
+        if range.is_linewise {
+            // Linewise deletion: delete entire lines from start.line to end.line (inclusive)
+            // Ignore column values - always delete full lines
+            let line_count = lines.len();
             for line_idx in start.line..=end.line {
                 if let Some(line) = lines.get(line_idx) {
-                    if line_idx == start.line {
-                        let start_col = start.column.min(line.len());
-                        deleted_text.push_str(&line[start_col..]);
-                        deleted_text.push('\n');
-                    } else if line_idx == end.line {
-                        let end_col = end.column.min(line.len());
-                        deleted_text.push_str(&line[..end_col]);
-                    } else {
-                        deleted_text.push_str(line);
-                        deleted_text.push('\n');
+                    deleted_text.push_str(line);
+                    deleted_text.push('\n');
+                }
+            }
+
+            // For linewise, adjust the actual deletion range to cover full lines
+            let delete_start = reovim_kernel::api::v1::Position::new(start.line, 0);
+
+            // Calculate end position:
+            // - If next line exists, point to start of next line (deletes through end.line's newline)
+            // - If end.line is last line, point to end of its content (no trailing newline)
+            let delete_end = if end.line + 1 < line_count {
+                // Next line exists - point to its start
+                reovim_kernel::api::v1::Position::new(end.line + 1, 0)
+            } else if let Some(last_line) = lines.get(end.line) {
+                // End line is last line - point to end of its content
+                reovim_kernel::api::v1::Position::new(end.line, last_line.chars().count())
+            } else {
+                // Fallback (shouldn't happen in normal operation)
+                reovim_kernel::api::v1::Position::new(end.line, 0)
+            };
+
+            // Store in register as linewise
+            let content = RegisterContent::linewise(deleted_text);
+            ctx.kernel
+                .registers
+                .write()
+                .set_by_name(ctx.register, content);
+
+            // Delete entire lines
+            buffer.delete_range(delete_start, delete_end);
+        } else {
+            // Characterwise deletion
+            if start.line == end.line {
+                // Single line deletion
+                if let Some(line) = lines.get(start.line) {
+                    let start_col = start.column.min(line.len());
+                    let end_col = end.column.min(line.len());
+                    if start_col < end_col {
+                        deleted_text.push_str(&line[start_col..end_col]);
+                    }
+                }
+            } else {
+                // Multi-line deletion
+                for line_idx in start.line..=end.line {
+                    if let Some(line) = lines.get(line_idx) {
+                        if line_idx == start.line {
+                            let start_col = start.column.min(line.len());
+                            deleted_text.push_str(&line[start_col..]);
+                            deleted_text.push('\n');
+                        } else if line_idx == end.line {
+                            let end_col = end.column.min(line.len());
+                            deleted_text.push_str(&line[..end_col]);
+                        } else {
+                            deleted_text.push_str(line);
+                            deleted_text.push('\n');
+                        }
                     }
                 }
             }
+
+            // Store in register as characterwise
+            let content = RegisterContent::characterwise(deleted_text);
+            ctx.kernel
+                .registers
+                .write()
+                .set_by_name(ctx.register, content);
+
+            // Delete the text from buffer
+            buffer.delete_range(start, end);
         }
 
-        // Store in register - linewise if the range was linewise
-        let content = if range.is_linewise {
-            RegisterContent::linewise(deleted_text)
-        } else {
-            RegisterContent::characterwise(deleted_text)
-        };
-
-        // Use set_by_name which handles named registers (a-z) and append (A-Z)
-        ctx.kernel
-            .registers
-            .write()
-            .set_by_name(ctx.register, content);
-
-        // Delete the text from buffer
-        buffer.delete_range(start, end);
         drop(buffer);
-
         Ok(())
     }
 

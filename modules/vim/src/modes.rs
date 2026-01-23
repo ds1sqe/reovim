@@ -14,7 +14,10 @@
 //! Modes form an inheritance hierarchy for keybinding fallback:
 //!
 //! ```text
-//! Normal ─┬─ OperatorPending
+//! Normal ─┬─ OperatorPending (deprecated)
+//!         ├─ Delete
+//!         ├─ Yank
+//!         ├─ Change
 //!         ├─ Window
 //!         └─ Visual ─┬─ VisualLine
 //!                    └─ VisualBlock
@@ -54,13 +57,22 @@ pub enum VimMode {
     /// Command line mode - ex commands.
     CommandLine = 6,
     /// Operator-pending mode - waiting for motion/text object.
+    /// DEPRECATED: Use Delete, Yank, or Change modes instead.
+    #[deprecated(note = "Use Delete, Yank, or Change modes instead")]
     OperatorPending = 7,
     /// Window mode - window management (<C-w> prefix).
     Window = 8,
+    /// Delete operator mode - waiting for motion to delete.
+    Delete = 9,
+    /// Yank operator mode - waiting for motion to yank.
+    Yank = 10,
+    /// Change operator mode - waiting for motion to change.
+    Change = 11,
 }
 
 impl VimMode {
     /// All Vim modes for registration.
+    #[allow(deprecated)]
     pub const ALL: &'static [Self] = &[
         Self::Normal,
         Self::Insert,
@@ -69,8 +81,11 @@ impl VimMode {
         Self::VisualBlock,
         Self::Replace,
         Self::CommandLine,
-        Self::OperatorPending,
+        Self::OperatorPending, // Deprecated but kept for compatibility
         Self::Window,
+        Self::Delete,
+        Self::Yank,
+        Self::Change,
     ];
 
     // ========================================================================
@@ -104,8 +119,18 @@ impl VimMode {
 
     /// Mode ID for Window mode.
     pub const WINDOW_ID: ModeId = ModeId::with_discriminant(VIM_MODULE, "window", 8);
+
+    /// Mode ID for Delete mode.
+    pub const DELETE_ID: ModeId = ModeId::with_discriminant(VIM_MODULE, "delete", 9);
+
+    /// Mode ID for Yank mode.
+    pub const YANK_ID: ModeId = ModeId::with_discriminant(VIM_MODULE, "yank", 10);
+
+    /// Mode ID for Change mode.
+    pub const CHANGE_ID: ModeId = ModeId::with_discriminant(VIM_MODULE, "change", 11);
 }
 
+#[allow(deprecated)]
 impl Mode for VimMode {
     fn module() -> ModuleId {
         VIM_MODULE
@@ -128,6 +153,9 @@ impl Mode for VimMode {
             Self::CommandLine => "command",
             Self::OperatorPending => "operator-pending",
             Self::Window => "window",
+            Self::Delete => "delete",
+            Self::Yank => "yank",
+            Self::Change => "change",
         };
         ModeId::with_discriminant(VIM_MODULE, name, self.discriminant())
     }
@@ -144,6 +172,9 @@ impl Mode for VimMode {
             Self::CommandLine => "COMMAND",
             Self::OperatorPending => "OP-PENDING",
             Self::Window => "WINDOW",
+            Self::Delete => "DELETE",
+            Self::Yank => "YANK",
+            Self::Change => "CHANGE",
         }
     }
 
@@ -154,7 +185,9 @@ impl Mode for VimMode {
             }
             Self::Insert | Self::CommandLine => CursorStyle::Bar,
             Self::Replace => CursorStyle::Underline,
-            Self::OperatorPending | Self::Window => CursorStyle::Block,
+            Self::OperatorPending | Self::Window | Self::Delete | Self::Yank | Self::Change => {
+                CursorStyle::Block
+            }
         }
     }
 
@@ -168,7 +201,10 @@ impl Mode for VimMode {
 
     fn inherits_from(&self) -> Option<Self> {
         match self {
-            Self::OperatorPending | Self::Window => Some(Self::Normal),
+            // Operator modes and window mode inherit from normal
+            Self::OperatorPending | Self::Window | Self::Delete | Self::Yank | Self::Change => {
+                Some(Self::Normal)
+            }
             Self::Visual => Some(Self::Normal),
             Self::VisualLine | Self::VisualBlock => Some(Self::Visual),
             Self::Replace => Some(Self::Insert),
@@ -185,6 +221,7 @@ impl Mode for VimMode {
 // Tests
 // ============================================================================
 
+#[allow(deprecated)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -206,6 +243,10 @@ mod tests {
         assert_eq!(VimMode::CommandLine.discriminant(), 6);
         assert_eq!(VimMode::OperatorPending.discriminant(), 7);
         assert_eq!(VimMode::Window.discriminant(), 8);
+        // New operator modes
+        assert_eq!(VimMode::Delete.discriminant(), 9);
+        assert_eq!(VimMode::Yank.discriminant(), 10);
+        assert_eq!(VimMode::Change.discriminant(), 11);
     }
 
     #[test]
@@ -219,6 +260,10 @@ mod tests {
         assert_eq!(VimMode::CommandLine.display_name(), "COMMAND");
         assert_eq!(VimMode::OperatorPending.display_name(), "OP-PENDING");
         assert_eq!(VimMode::Window.display_name(), "WINDOW");
+        // New operator modes show more informative names
+        assert_eq!(VimMode::Delete.display_name(), "DELETE");
+        assert_eq!(VimMode::Yank.display_name(), "YANK");
+        assert_eq!(VimMode::Change.display_name(), "CHANGE");
     }
 
     #[test]
@@ -232,6 +277,10 @@ mod tests {
         assert_eq!(VimMode::CommandLine.cursor_style(), CursorStyle::Bar);
         assert_eq!(VimMode::OperatorPending.cursor_style(), CursorStyle::Block);
         assert_eq!(VimMode::Window.cursor_style(), CursorStyle::Block);
+        // New operator modes use block cursor
+        assert_eq!(VimMode::Delete.cursor_style(), CursorStyle::Block);
+        assert_eq!(VimMode::Yank.cursor_style(), CursorStyle::Block);
+        assert_eq!(VimMode::Change.cursor_style(), CursorStyle::Block);
     }
 
     #[test]
@@ -245,6 +294,10 @@ mod tests {
         assert!(VimMode::CommandLine.accepts_char_input());
         assert!(!VimMode::OperatorPending.accepts_char_input());
         assert!(!VimMode::Window.accepts_char_input());
+        // New operator modes don't accept char input
+        assert!(!VimMode::Delete.accepts_char_input());
+        assert!(!VimMode::Yank.accepts_char_input());
+        assert!(!VimMode::Change.accepts_char_input());
     }
 
     #[test]
@@ -258,6 +311,10 @@ mod tests {
         assert!(!VimMode::CommandLine.has_selection());
         assert!(!VimMode::OperatorPending.has_selection());
         assert!(!VimMode::Window.has_selection());
+        // New operator modes don't have selection
+        assert!(!VimMode::Delete.has_selection());
+        assert!(!VimMode::Yank.has_selection());
+        assert!(!VimMode::Change.has_selection());
     }
 
     #[test]
@@ -284,6 +341,11 @@ mod tests {
         // OperatorPending/Window: inherit from Normal
         assert_eq!(VimMode::OperatorPending.inherits_from(), Some(VimMode::Normal));
         assert_eq!(VimMode::Window.inherits_from(), Some(VimMode::Normal));
+
+        // New operator modes: inherit from Normal (allows motion keys)
+        assert_eq!(VimMode::Delete.inherits_from(), Some(VimMode::Normal));
+        assert_eq!(VimMode::Yank.inherits_from(), Some(VimMode::Normal));
+        assert_eq!(VimMode::Change.inherits_from(), Some(VimMode::Normal));
     }
 
     #[test]
@@ -310,7 +372,8 @@ mod tests {
 
     #[test]
     fn test_vim_mode_all_count() {
-        assert_eq!(VimMode::ALL.len(), 9);
+        // 9 original modes + 3 new operator modes = 12
+        assert_eq!(VimMode::ALL.len(), 12);
     }
 
     #[test]

@@ -59,6 +59,8 @@ mod registry_integration;
 pub use modes::{VIM_MODULE, VimMode};
 
 // Re-export session state (Epic #385 - Server Simplification)
+// PendingOperator is deprecated but still exported for backward compatibility
+#[allow(deprecated)]
 pub use session_state::{LastFind, PendingCharOp, PendingOperator, VimSessionState};
 
 // Re-export OperatorId (Epic #385 - operators are vim policy, not kernel mechanism)
@@ -82,7 +84,11 @@ pub use commands::{
 };
 
 // Re-export resolvers
-pub use resolvers::{VimInsertResolver, VimNormalResolver, VimOperatorPendingResolver};
+#[allow(deprecated)]
+pub use resolvers::VimOperatorPendingResolver;
+pub use resolvers::{
+    VimChangeResolver, VimDeleteResolver, VimInsertResolver, VimNormalResolver, VimYankResolver,
+};
 
 // Re-export visual mode commands
 pub use visual::{
@@ -254,10 +260,15 @@ mod tests {
         let insert = bindings::insert::bindings();
         let visual = bindings::visual::bindings();
         let op_pending = bindings::operator_pending::bindings();
+        let operator_modes = bindings::operator_modes::all_operator_bindings();
         let cmdline = bindings::commandline::bindings();
 
-        let expected_total =
-            normal.len() + insert.len() + visual.len() + op_pending.len() + cmdline.len();
+        let expected_total = normal.len()
+            + insert.len()
+            + visual.len()
+            + op_pending.len()
+            + operator_modes.len()
+            + cmdline.len();
         assert_eq!(all.len(), expected_total, "all() should aggregate all mode bindings");
     }
 }

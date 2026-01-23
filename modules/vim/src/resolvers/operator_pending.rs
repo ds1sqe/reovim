@@ -500,7 +500,7 @@ impl ModeKeyResolver for VimOperatorPendingResolver {
 
             // For linewise operations, get current cursor position to determine line range
             let (start, end) = if let Some(buffer_id) = session.active_buffer()
-                && let Some(cursor_pos) = session.cursor_position(buffer_id)
+                && let Some(cursor_pos) = session.buffer_position(buffer_id)
             {
                 // Linewise range: start of current line to start of (line + count)
                 // The delete operator will delete entire lines when is_linewise=true
@@ -540,25 +540,33 @@ impl ModeKeyResolver for VimOperatorPendingResolver {
                 // The resolver knows which motions are linewise vs characterwise.
                 let linewise = Self::is_linewise_motion(&cmd);
 
+                // Take motion count ONCE - use for both storing and passing to command
+                let motion_count = self.take_count();
+
                 if let Some(vim) = extensions.get_mut::<VimSessionState>() {
                     // Store pending motion info
                     vim.pending_motion = Some(PendingMotion::new(linewise));
 
                     // Store start position in pending operator
                     if let Some(buffer) = session.active_buffer()
-                        && let Some(start_pos) = session.cursor_position(buffer)
+                        && let Some(start_pos) = session.buffer_position(buffer)
                         && let Some(ref mut pending) = vim.pending_operator
                     {
                         pending.start_position = Some(start_pos);
                         // Include motion count
-                        if let Some(motion_count) = self.take_count() {
-                            pending.motion_count = Some(motion_count);
+                        if let Some(count) = motion_count {
+                            pending.motion_count = Some(count);
                         }
                     }
                 }
 
-                // Build context with count
-                let ctx = self.build_context(keys);
+                // Build context with motion count (so motion executes with correct count)
+                let ctx = ResolveContext {
+                    count: motion_count,
+                    register: None,
+                    keys,
+                    metadata: std::collections::HashMap::new(),
+                };
                 self.clear_pending_keys();
 
                 // Return Execute - runner calls on_command_complete after motion
@@ -622,7 +630,7 @@ impl ModeKeyResolver for VimOperatorPendingResolver {
 
         // Get current cursor position (end of motion)
         let buffer_id = session.active_buffer()?;
-        let end_pos = session.cursor_position(buffer_id)?;
+        let end_pos = session.buffer_position(buffer_id)?;
 
         // Normalize range (start <= end for characterwise)
         let (range_start, range_end) = if start_pos <= end_pos {

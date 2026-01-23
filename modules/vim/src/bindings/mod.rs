@@ -4,13 +4,16 @@
 //! - `normal` - Normal mode (hjkl, operators, etc.)
 //! - `insert` - Insert mode (Escape, etc.)
 //! - `visual` - Visual mode (selection commands)
-//! - `operator_pending` - Operator-pending mode (motions after d/y/c)
+//! - `operator_pending` - Operator-pending mode (DEPRECATED, kept for compatibility)
+//! - `operator_modes` - Dedicated operator modes: delete, yank, change (Epic #415)
 //! - `commandline` - Command-line mode (: commands)
 
 pub mod commandline;
 pub mod insert;
 pub mod normal;
+#[allow(deprecated)]
 pub mod operator_pending;
+pub mod operator_modes;
 pub mod visual;
 
 use reovim_kernel::api::v1::KeybindingRegistration;
@@ -19,12 +22,14 @@ use reovim_kernel::api::v1::KeybindingRegistration;
 ///
 /// This collects bindings from all modes into a single vector.
 #[must_use]
+#[allow(deprecated)]
 pub fn all() -> Vec<KeybindingRegistration> {
     let mut bindings = Vec::new();
     bindings.extend(normal::bindings());
     bindings.extend(insert::bindings());
     bindings.extend(visual::bindings());
-    bindings.extend(operator_pending::bindings());
+    bindings.extend(operator_pending::bindings()); // Deprecated but kept for compatibility
+    bindings.extend(operator_modes::all_operator_bindings()); // New dedicated modes
     bindings.extend(commandline::bindings());
     bindings
 }

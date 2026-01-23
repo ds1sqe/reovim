@@ -987,6 +987,8 @@ impl TuiApp {
             Ok(Err(e)) => return Err(e),
             Err(_) => {
                 tracing::debug!("Screen content timeout, skipping render");
+                // Return early - don't flush the cleared buffer which would blank the screen
+                return Ok(());
             }
         }
 
@@ -1267,8 +1269,9 @@ impl TuiApp {
                         return Ok(content.to_string());
                     }
                     // Not screen content - route to handle_response for CLI query correlation
+                    // and continue waiting for the actual screen content response
                     self.handle_response(response);
-                    return Ok(String::new());
+                    // Continue the loop to wait for the screen content response
                 }
                 ServerMessage::Notification(notification) => {
                     // Handle notifications while waiting

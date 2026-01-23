@@ -1107,7 +1107,14 @@ fn build_default_registries() -> (
     // These implement the policy for handling operators (d, y, c) and motions
     resolver_registry.register(reovim_module_vim::VimNormalResolver::new());
     resolver_registry.register(reovim_module_vim::VimInsertResolver::new());
+    #[allow(deprecated)] // Keep for backward compatibility during transition
     resolver_registry.register(reovim_module_vim::VimOperatorPendingResolver::new());
+
+    // Register dedicated operator mode resolvers (Epic #415)
+    // Each operator (d, y, c) has its own mode with resolver-owned state
+    resolver_registry.register(reovim_module_vim::VimDeleteResolver::new());
+    resolver_registry.register(reovim_module_vim::VimYankResolver::new());
+    resolver_registry.register(reovim_module_vim::VimChangeResolver::new());
 
     tracing::info!(count = resolver_registry.len(), "registered vim mode resolvers");
 
