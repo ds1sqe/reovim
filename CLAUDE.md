@@ -273,6 +273,43 @@ cargo run -- tui --tcp 127.0.0.1:12521    # Connect to specific server
 - If no issue exists, create one with `gh issue create` before proceeding
 - Reference the issue in commit messages: `type(scope): description (#ISSUE_NUMBER)`
 
+**Deferral Protocol (MANDATORY):**
+
+When deferring work (skipping a test, leaving a TODO, postponing a feature), you MUST:
+
+1. **Create a draft proposal** - Write `tmp/deferral-draft-{topic}.md` with:
+   ```markdown
+   # Deferral Proposal: {topic}
+
+   ## What
+   [Description of deferred work]
+
+   ## Why
+   [Reason for deferring]
+
+   ## Draft Issue
+   - Title: `fix: {description}`
+   - Body: [Acceptance criteria, context]
+
+   ## Code Reference
+   [File and line where `#[ignore]` or `// TODO` will be added]
+   ```
+2. **Continue working** - Don't block on approval
+3. **Mention at finish** - At end of work session, remind user: "Review deferral draft at `tmp/deferral-draft-*.md`"
+4. **After user approval** - Create issue with `gh issue create`, update code with issue reference
+
+**Never create tracking issues without user approval.** The draft file gives user control over what gets tracked and how.
+
+Example workflow:
+```
+[During work] Claude encounters failing test
+[During work] Claude creates tmp/deferral-draft-dG-motion.md
+[During work] Claude continues with other tasks
+[At finish]  Claude: "Review deferral draft at tmp/deferral-draft-dG-motion.md"
+[User]       Reviews and approves
+[Claude]     Creates issue #429, updates #[ignore = "... (#429)"]
+```
+
 **Self-Contained Issues Policy:**
 - **Every GitHub issue MUST be completely self-contained**
 - A developer reading ONLY the issue must have ALL information needed to implement it
@@ -658,7 +695,7 @@ The statusline is rendered at the bottom of the screen with inverse colors.
 
 ### Integration Test Infrastructure
 
-Phase 7 integration tests use a fluent builder API in `runner/tests/common/`:
+Phase 7 integration tests use a fluent builder API in `runner/src/testing/`:
 
 ```rust
 // Single-client test example
@@ -669,6 +706,18 @@ let result = IntegrationTest::new()
     .run()
     .await;
 result.assert_buffer_eq("world");
+
+// Step-by-step test with per-key assertions (Issue #428)
+let trace = StepTest::new()
+    .await
+    .with_buffer("hello world")
+    .step("d")
+        .expect_mode_contains("DELETE")
+    .step("w")
+        .expect_buffer("world")
+    .run()
+    .await;
+trace.assert_ok();
 
 // Multi-client test example
 MultiClientTest::with_clients(2)
@@ -684,7 +733,17 @@ MultiClientTest::with_clients(2)
 **Key components:**
 - `TestServerHarness` - Spawns server on OS-assigned port, auto-cleanup via Drop
 - `IntegrationTest` - Fluent builder for single-client tests, temp file cleanup
+- `StepTest` - Per-keystroke state tracking with inline assertions
 - `MultiClientTest` - Multi-client concurrent testing
-- `TestResult` - Assertions: `assert_buffer_eq!`, `assert_cursor!`, `assert_mode!`
+- `TestResult` - Assertions: `assert_buffer_eq!`, `assert_cursor!`, `assert_register!`, `assert_mode!`
 
-**Note:** Integration tests are `#[ignore]` pending module loading. Run with `cargo test --ignored`.
+**Per-test log capture (Issue #428):**
+- Logs are saved to `{module}/tmp/test-logs/{test_name}_{timestamp}.log`
+- Example: `modules/vim/tmp/test-logs/test_dw_delete_word_20260124_140503.log`
+- Failed assertions include log path hint: `Server log: tmp/test-logs/...`
+- Access via `result.log_path()` or `trace.log_path()`
+
+**Module loading troubleshooting:**
+- If tests behave unexpectedly, check logs for `WARN module not found`
+- This indicates `.so` files are outdated - run `./scripts/build-module.sh <module> --install`
+- Verify FFI symbols with the install script output
