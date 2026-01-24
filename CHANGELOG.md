@@ -6,6 +6,14 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- All operator E2E tests enabled and passing (#308)
+  - 57 operator tests now pass (exceeds original 28 planned)
+  - Tests migrated from `runner/tests/operators.rs` to `modules/vim/tests/operators.rs`
+  - Zero `#[ignore]` attributes remaining in operator tests
+  - Coverage includes: delete (d, dd, x, X), yank (y, yy), change (c, cc), paste (p, P)
+  - Count prefixes: 5dd, 3x, 2dj, 2cw all working
+  - Step-by-step debug tests with per-key assertions
+
 - Per-test server log capture for integration tests (#428, #431)
   - All test harness spawn methods now capture server stderr to per-test log files
   - `TestServerHarness::spawn()` auto-extracts test name from thread (recommended)
