@@ -155,13 +155,7 @@ impl StepTest {
     ///
     /// Panics if server fails to spawn.
     pub async fn new() -> Self {
-        // Get test name from current thread (set by cargo test)
-        let test_name = std::thread::current()
-            .name()
-            .unwrap_or("unknown_step_test")
-            .to_string();
-
-        let harness = TestServerHarness::spawn_with_log(&test_name)
+        let harness = TestServerHarness::spawn()
             .await
             .expect("Failed to spawn server");
         let config = ConnectionConfig::tcp("127.0.0.1", harness.port());
@@ -590,9 +584,9 @@ impl StepTrace {
         eprintln!("\n────────────────────────────────────────────────────────────");
 
         if self.failed_expectations.is_empty() {
-            eprintln!("✓ All expectations passed");
+            eprintln!("OK: All expectations passed");
         } else {
-            eprintln!("✗ {} expectation(s) failed:", self.failed_expectations.len());
+            eprintln!("FAIL: {} expectation(s) failed:", self.failed_expectations.len());
             for failure in &self.failed_expectations {
                 eprintln!("  - {failure}");
             }

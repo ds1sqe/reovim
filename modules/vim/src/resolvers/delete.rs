@@ -195,15 +195,15 @@ impl ModeKeyResolver for VimDeleteResolver {
 
         match apply_keymap_policy(&lookup_state) {
             KeymapAction::Execute(cmd) => {
-                // Calculate effective count BEFORE taking motion_count
-                let effective_count = state.effective_count();
+                // Get explicit count - None if no count specified
+                let explicit_count = state.explicit_count();
                 let _motion_count = state.take_motion_count();
                 state.clear_keys();
                 drop(state);
 
-                // Build context with effective count (operator_count * motion_count)
+                // Build context with explicit count (None if not specified)
                 let ctx = ResolveContext {
-                    count: Some(effective_count),
+                    count: explicit_count,
                     register: None,
                     keys,
                     metadata: std::collections::HashMap::new(),
@@ -327,15 +327,14 @@ impl ModeKeyResolver for VimDeleteResolver {
         match apply_keymap_policy(&lookup_state) {
             KeymapAction::Execute(cmd) => {
                 let linewise = is_linewise_motion(&cmd);
-                // Calculate effective count BEFORE taking motion_count
-                // For 2dw: operator_count=2, motion_count=None → effective=2
-                // For d2w: operator_count=None, motion_count=2 → effective=2
-                // For 2d3w: operator_count=2, motion_count=3 → effective=6
-                let effective_count = state.effective_count();
+                // Get explicit count - None if no count specified, Some(n) if specified.
+                // This preserves "no count" semantics for motions like G/gg where
+                // "G" (no count) means last line, but "1G" means line 1.
+                let explicit_count = state.explicit_count();
                 tracing::debug!(
                     operator_count = ?state.operator_count,
                     motion_count = ?state.motion_count,
-                    effective_count,
+                    explicit_count = ?explicit_count,
                     cmd = %cmd,
                     linewise,
                     "delete resolver: executing motion"
@@ -361,9 +360,10 @@ impl ModeKeyResolver for VimDeleteResolver {
 
                 drop(state);
 
-                // Build context with effective count (operator_count * motion_count)
+                // Build context with explicit count (None if not specified)
+                // This allows motions like G to distinguish "no count" from "count=1"
                 let ctx = ResolveContext {
-                    count: Some(effective_count),
+                    count: explicit_count,
                     register: None,
                     keys,
                     metadata: std::collections::HashMap::new(),

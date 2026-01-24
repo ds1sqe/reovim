@@ -78,7 +78,7 @@ impl Operator for DeleteOperator {
             };
 
             // Store in register as linewise (handles +/* via ClipboardProvider)
-            let content = RegisterContent::linewise(deleted_text);
+            let content = RegisterContent::linewise(deleted_text.clone());
             registers::store_to_register(ctx.kernel, ctx.register, &content);
             registers::push_to_history(ctx.kernel, &content);
 

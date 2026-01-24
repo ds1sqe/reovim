@@ -6,17 +6,26 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
-- Per-test server log capture for integration tests (#428)
-  - `TestServerHarness::spawn_with_log(test_name)` captures server stderr to per-test log files
+- All operator E2E tests enabled and passing (#308)
+  - 57 operator tests now pass (exceeds original 28 planned)
+  - Tests migrated from `runner/tests/operators.rs` to `modules/vim/tests/operators.rs`
+  - Zero `#[ignore]` attributes remaining in operator tests
+  - Coverage includes: delete (d, dd, x, X), yank (y, yy), change (c, cc), paste (p, P)
+  - Count prefixes: 5dd, 3x, 2dj, 2cw all working
+  - Step-by-step debug tests with per-key assertions
+
+- Per-test server log capture for integration tests (#428, #431)
+  - All test harness spawn methods now capture server stderr to per-test log files
+  - `TestServerHarness::spawn()` auto-extracts test name from thread (recommended)
+  - `TestServerHarness::spawn_with_name(name)` for explicit test naming
   - Logs saved to `tmp/test-logs/{test_name}_{timestamp}.log`
   - Background tokio task streams logs during test execution
   - `REOVIM_LOG=debug` by default for full tracing visibility
-  - `IntegrationTest::log_path()` and `StepTest::log_path()` expose log location
+  - `IntegrationTest`, `StepTest`, and `MultiClientTest` all capture logs
+  - `log_path()` accessor available on all test builders
   - `TestResult` assertions include log path hint on failure
   - `StepTrace::print_trace()` shows log path for debugging
-  - Replaces manual file-based debug logging with proper `tracing::debug!()` calls
-  - Added `tracing` dependency to vim module for resolver instrumentation
-  - Operator resolvers (delete, yank, change) now emit debug traces for count flow
+  - Warning: Do not use `std::fs::OpenOptions` for debug logging - use harness log capture
 
 - UniqueProvider service abstraction Phase 6b - runner cleanup (#417)
   - Deleted 924 lines of redundant code from runner
@@ -118,6 +127,14 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - Module provides compositor via `compositor()` method, runner extracts via `Any`
   - Keybinding configuration is policy - left to editor personality modules
   - Part of Epic #403 (Window Subsystem)
+
+### Fixed
+
+- `dG` motion now correctly deletes to end of document (#429)
+  - Added `explicit_count()` method to `OperatorState` to preserve "no count" vs "count=1" semantics
+  - Motions like `G` (last line without count) and `1G` (line 1 with explicit count) now work correctly
+  - Updated delete, yank, and change operator resolvers to use `explicit_count()`
+  - `dgg`, `yG`, `cgg` and similar operator+motion combinations now behave correctly
 
 ### Changed
 

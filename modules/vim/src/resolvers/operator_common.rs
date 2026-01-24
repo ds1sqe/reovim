@@ -384,6 +384,23 @@ impl OperatorState {
         op * motion
     }
 
+    /// Get count only if explicitly specified (not defaulted).
+    ///
+    /// Returns `None` if no count was given, `Some(n)` if count was given.
+    /// This preserves the distinction between "no count" and "count=1" for
+    /// motions like G/gg where these have different semantics:
+    /// - `G` (no count) → last line
+    /// - `1G` (count=1) → line 1
+    #[must_use]
+    pub fn explicit_count(&self) -> Option<usize> {
+        match (self.operator_count, self.motion_count) {
+            (None, None) => None,
+            (Some(op), None) => Some(op),
+            (None, Some(motion)) => Some(motion),
+            (Some(op), Some(motion)) => Some(op * motion),
+        }
+    }
+
     /// Check if we have a motion count.
     #[must_use]
     pub fn has_motion_count(&self) -> bool {
@@ -550,6 +567,24 @@ mod tests {
 
         state.motion_count = Some(3);
         assert_eq!(state.effective_count(), 6); // 2 * 3
+    }
+
+    #[test]
+    fn test_operator_state_explicit_count() {
+        // #429: explicit_count() returns None when no count specified
+        let mut state = OperatorState::new(OperatorType::Delete);
+        assert_eq!(state.explicit_count(), None); // No counts -> None
+
+        state.operator_count = Some(2);
+        assert_eq!(state.explicit_count(), Some(2)); // Only operator count
+
+        state.operator_count = None;
+        state.motion_count = Some(3);
+        assert_eq!(state.explicit_count(), Some(3)); // Only motion count
+
+        state.operator_count = Some(2);
+        state.motion_count = Some(3);
+        assert_eq!(state.explicit_count(), Some(6)); // Both -> product
     }
 
     #[test]

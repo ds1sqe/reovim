@@ -182,14 +182,14 @@ impl ModeKeyResolver for VimChangeResolver {
 
         match apply_keymap_policy(&lookup_state) {
             KeymapAction::Execute(cmd) => {
-                // Calculate effective count BEFORE taking motion_count
-                let effective_count = state.effective_count();
+                // Get explicit count - None if no count specified
+                let explicit_count = state.explicit_count();
                 let _motion_count = state.take_motion_count();
                 state.clear_keys();
                 drop(state);
 
                 let ctx = ResolveContext {
-                    count: Some(effective_count),
+                    count: explicit_count,
                     register: None,
                     keys,
                     metadata: std::collections::HashMap::new(),
@@ -301,15 +301,13 @@ impl ModeKeyResolver for VimChangeResolver {
         match apply_keymap_policy(&lookup_state) {
             KeymapAction::Execute(cmd) => {
                 let linewise = is_linewise_motion(&cmd);
-                // Calculate effective count BEFORE taking motion_count
-                // For 2cw: operator_count=2, motion_count=None → effective=2
-                // For c2w: operator_count=None, motion_count=2 → effective=2
-                // For 2c3w: operator_count=2, motion_count=3 → effective=6
-                let effective_count = state.effective_count();
+                // Get explicit count - None if no count specified.
+                // This preserves "no count" semantics for motions like G/gg.
+                let explicit_count = state.explicit_count();
                 tracing::debug!(
                     operator_count = ?state.operator_count,
                     motion_count = ?state.motion_count,
-                    effective_count,
+                    explicit_count = ?explicit_count,
                     cmd = %cmd,
                     "change resolver: executing motion"
                 );
@@ -333,7 +331,7 @@ impl ModeKeyResolver for VimChangeResolver {
                 drop(state);
 
                 let ctx = ResolveContext {
-                    count: Some(effective_count),
+                    count: explicit_count,
                     register: None,
                     keys,
                     metadata: std::collections::HashMap::new(),

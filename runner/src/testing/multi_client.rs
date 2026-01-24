@@ -117,17 +117,31 @@ pub struct MultiClientTest {
 impl MultiClientTest {
     /// Create test with N clients.
     ///
+    /// Server logs are captured to `tmp/test-logs/{test_name}_server_{timestamp}.log`.
+    ///
     /// # Panics
     ///
     /// Panics if server fails to spawn.
     pub async fn with_clients(n: usize) -> Self {
+        // Extract test name with suffix for unique log files
+        let test_name = std::thread::current()
+            .name()
+            .unwrap_or("unknown_multi_test")
+            .to_string();
+
         Self {
-            harness: TestServerHarness::spawn()
+            harness: TestServerHarness::spawn_with_name(&format!("{test_name}_server"))
                 .await
                 .expect("Failed to spawn server"),
             client_count: n,
             initial_content: None,
         }
+    }
+
+    /// Get the path to the server log file for debugging.
+    #[must_use]
+    pub fn log_path(&self) -> Option<&std::path::Path> {
+        self.harness.log_path()
     }
 
     /// Set initial buffer content (shared by all clients).
