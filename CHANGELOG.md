@@ -119,6 +119,14 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - Keybinding configuration is policy - left to editor personality modules
   - Part of Epic #403 (Window Subsystem)
 
+### Fixed
+
+- `dG` motion now correctly deletes to end of document (#429)
+  - Added `explicit_count()` method to `OperatorState` to preserve "no count" vs "count=1" semantics
+  - Motions like `G` (last line without count) and `1G` (line 1 with explicit count) now work correctly
+  - Updated delete, yank, and change operator resolvers to use `explicit_count()`
+  - `dgg`, `yG`, `cgg` and similar operator+motion combinations now behave correctly
+
 ### Changed
 
 - Unified `WindowId` to single kernel definition (#410)

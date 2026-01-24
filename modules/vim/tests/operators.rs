@@ -538,9 +538,8 @@ async fn test_de_delete_to_word_end() {
 }
 
 /// dG - delete from current line to end of document
-/// Issue #429: G motion with delete operator not working correctly
+/// Fixed in #429: explicit_count() preserves "no count" semantics for G motion
 #[tokio::test]
-#[ignore = "G motion with delete operator needs investigation - Issue #429"]
 async fn test_dg_delete_to_doc_end() {
     let result = IntegrationTest::new()
         .await
@@ -564,6 +563,34 @@ async fn test_dgg_delete_to_doc_start() {
         .await;
     // G moves to last line, dgg deletes all lines (to start)
     result.assert_buffer_eq("");
+}
+
+/// d2G - delete from current line to line 2 (explicit count)
+/// Verifies that explicit count still works with G motion (#429)
+#[tokio::test]
+async fn test_d2g_delete_to_line_2() {
+    let result = IntegrationTest::new()
+        .await
+        .with_buffer("line 1\nline 2\nline 3\nline 4")
+        .send_keys("d2G")
+        .run()
+        .await;
+    // d2G from line 0 deletes to line 1 (2G = line 2, 0-indexed = line 1)
+    result.assert_buffer_eq("line 3\nline 4");
+}
+
+/// dgg from middle of buffer
+/// Verifies gg motion works correctly with delete (#429)
+#[tokio::test]
+async fn test_dgg_from_middle() {
+    let result = IntegrationTest::new()
+        .await
+        .with_buffer("line 1\nline 2\nline 3")
+        .send_keys("jdgg")
+        .run()
+        .await;
+    // j moves to line 1, dgg deletes lines 0-1
+    result.assert_buffer_eq("line 3");
 }
 
 // ============================================================================
