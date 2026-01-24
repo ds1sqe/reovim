@@ -29,8 +29,8 @@ use {
 use {
     super::operator_common::{
         KeymapAction, OperatorState, OperatorType, apply_keymap_policy, build_cancelled,
-        build_operator_execute, is_count_digit, is_escape, is_line_operator_key,
-        is_linewise_motion,
+        build_operator_execute, is_count_digit, is_escape, is_inclusive_motion,
+        is_line_operator_key, is_linewise_motion, is_word_forward_motion,
     },
     crate::{modes::VimMode, session_state::PendingMotion},
 };
@@ -169,16 +169,27 @@ impl ModeKeyResolver for VimChangeResolver {
         state.push_key(*key);
         let keys = state.keys();
 
-        let lookup_state = input.keymap.query(input.mode, &keys);
+        // First try the current mode, then fall back to parent mode for motions
+        let lookup_state = {
+            let state = input.keymap.query(input.mode, &keys);
+            if matches!(state, reovim_driver_input::KeyLookupState::NotFound) {
+                // Motion bindings are in normal mode, not operator modes
+                input.keymap.query(&self.parent_mode_id, &keys)
+            } else {
+                state
+            }
+        };
 
         match apply_keymap_policy(&lookup_state) {
             KeymapAction::Execute(cmd) => {
-                let motion_count = state.take_motion_count();
+                // Calculate effective count BEFORE taking motion_count
+                let effective_count = state.effective_count();
+                let _motion_count = state.take_motion_count();
                 state.clear_keys();
                 drop(state);
 
                 let ctx = ResolveContext {
-                    count: motion_count,
+                    count: Some(effective_count),
                     register: None,
                     keys,
                     metadata: std::collections::HashMap::new(),
@@ -207,6 +218,8 @@ impl ModeKeyResolver for VimChangeResolver {
         session: &mut dyn SessionApiDyn,
         extensions: &mut ExtensionMap,
     ) -> ResolveResult {
+        tracing::debug!(key = ?key, "change resolver: resolve_with_session");
+
         if is_escape(key) {
             self.clear_state();
             return ResolveResult::ModeTransition(build_cancelled());
@@ -219,6 +232,13 @@ impl ModeKeyResolver for VimChangeResolver {
             if let Some(vim) = extensions.get_mut::<crate::VimSessionState>() {
                 state.operator_count = vim.pending_count.take();
                 state.register = vim.pending_register.take();
+                tracing::debug!(
+                    operator_count = ?state.operator_count,
+                    register = ?state.register,
+                    "change resolver: initialized from VimSessionState"
+                );
+            } else {
+                tracing::warn!("change resolver: VimSessionState not found in extensions");
             }
             state.initialized = true;
         }
@@ -267,12 +287,33 @@ impl ModeKeyResolver for VimChangeResolver {
         state.push_key(*key);
         let keys = state.keys();
 
-        let lookup_state = input.keymap.query(input.mode, &keys);
+        // First try the current mode, then fall back to parent mode for motions
+        let lookup_state = {
+            let state = input.keymap.query(input.mode, &keys);
+            if matches!(state, reovim_driver_input::KeyLookupState::NotFound) {
+                // Motion bindings are in normal mode, not operator modes
+                input.keymap.query(&self.parent_mode_id, &keys)
+            } else {
+                state
+            }
+        };
 
         match apply_keymap_policy(&lookup_state) {
             KeymapAction::Execute(cmd) => {
                 let linewise = is_linewise_motion(&cmd);
-                let motion_count = state.take_motion_count();
+                // Calculate effective count BEFORE taking motion_count
+                // For 2cw: operator_count=2, motion_count=None → effective=2
+                // For c2w: operator_count=None, motion_count=2 → effective=2
+                // For 2c3w: operator_count=2, motion_count=3 → effective=6
+                let effective_count = state.effective_count();
+                tracing::debug!(
+                    operator_count = ?state.operator_count,
+                    motion_count = ?state.motion_count,
+                    effective_count,
+                    cmd = %cmd,
+                    "change resolver: executing motion"
+                );
+                let _motion_count = state.take_motion_count();
                 state.clear_keys();
 
                 if let Some(buffer) = session.active_buffer()
@@ -281,14 +322,18 @@ impl ModeKeyResolver for VimChangeResolver {
                     state.set_start_position(start_pos);
                 }
 
+                // Inclusive motions need end position adjustment ($ returns ON last char)
+                let inclusive = !linewise && is_inclusive_motion(&cmd);
+                let word_forward = !linewise && is_word_forward_motion(&cmd);
                 if let Some(vim) = extensions.get_mut::<crate::VimSessionState>() {
-                    vim.pending_motion = Some(PendingMotion::new(linewise));
+                    vim.pending_motion =
+                        Some(PendingMotion::new(linewise, inclusive, word_forward));
                 }
 
                 drop(state);
 
                 let ctx = ResolveContext {
-                    count: motion_count,
+                    count: Some(effective_count),
                     register: None,
                     keys,
                     metadata: std::collections::HashMap::new(),
@@ -323,10 +368,35 @@ impl ModeKeyResolver for VimChangeResolver {
         let buffer_id = session.active_buffer()?;
         let end_pos = session.buffer_position(buffer_id)?;
 
-        let (range_start, range_end) = if start_pos <= end_pos {
-            (start_pos, end_pos)
-        } else {
-            (end_pos, start_pos)
+        // Normalize range and adjust for motion type
+        //
+        // Special case: `cw` and `cW` in Vim behave like `ce` and `cE` respectively.
+        // They change to the END of the current word, not to the start of the next word.
+        // This is documented Vim behavior (`:help cw`).
+        let (range_start, range_end) = {
+            // First normalize direction (start <= end)
+            let (start, end) = if start_pos <= end_pos {
+                (start_pos, end_pos)
+            } else {
+                (end_pos, start_pos)
+            };
+
+            // For inclusive characterwise motions, make end exclusive
+            // ($ returns cursor ON last char, but Range.end is exclusive)
+            if !motion.linewise && motion.inclusive {
+                (start, Position::new(end.line, end.column + 1))
+            } else if motion.word_forward {
+                // For change operator, `cw` should behave like `ce` - change to
+                // end of word, not including trailing whitespace. This means we
+                // need to subtract 1 from exclusive word-forward motions.
+                // The motion puts cursor at start of next word (col 6 for "hello world"),
+                // but we only want to change "hello" (cols 0-4), so end should be col 5.
+                //
+                // This is documented Vim behavior (`:help cw`).
+                (start, Position::new(end.line, end.column.saturating_sub(1)))
+            } else {
+                (start, end)
+            }
         };
 
         let count = state.operator_count;
@@ -440,6 +510,7 @@ mod tests {
     use reovim_kernel::api::v1::ModuleId;
 
     const TEST_MODULE: ModuleId = ModuleId::new("test");
+    const EDITOR_MODULE: ModuleId = ModuleId::new("editor");
 
     struct MockKeymap {
         response: reovim_driver_input::KeyLookupState,
@@ -452,6 +523,15 @@ mod tests {
                     TEST_MODULE,
                     cmd,
                 )),
+            }
+        }
+
+        /// Create a keymap that returns ExactWithLonger (simulating 'c' with 'cc' as longer match)
+        fn exact_with_longer_editor(cmd: &'static str) -> Self {
+            Self {
+                response: reovim_driver_input::KeyLookupState::ExactWithLonger {
+                    exact: CommandId::new(EDITOR_MODULE, cmd),
+                },
             }
         }
     }
@@ -485,6 +565,161 @@ mod tests {
             assert_eq!(cmd.name(), "word-forward");
         } else {
             panic!("expected Execute, got {:?}", result);
+        }
+    }
+
+    // =========================================================================
+    // Test operator_count with effective_count (Epic #415)
+    // =========================================================================
+
+    #[test]
+    fn test_operator_count_with_context() {
+        // This test verifies: when operator_count=2, effective_count should be 2
+        // Simulates the flow after entering change mode with a count
+        let resolver = VimChangeResolver::with_context(Some(2), None);
+        let mut mstate = test_state();
+        let keymap = MockKeymap::exact_only("word-forward");
+        let input = resolve_input(&keymap);
+
+        // Resolver processes 'w' with pre-set operator_count=2
+        let result = resolver.resolve_with_keymap(&key('w'), &mut mstate, &input);
+
+        // Verify: should execute motion with count=2
+        if let ResolveResult::Execute(cmd, ctx) = result {
+            assert_eq!(cmd.name(), "word-forward");
+            assert_eq!(ctx.count, Some(2), "effective_count should be 2 for 2cw");
+        } else {
+            panic!("expected Execute, got {:?}", result);
+        }
+    }
+
+    #[test]
+    fn test_operator_count_multiplied_with_motion_count() {
+        // This test verifies: 2c3w should have effective_count=6
+        let resolver = VimChangeResolver::with_context(Some(2), None);
+        let mut mstate = test_state();
+        let keymap = MockKeymap::exact_only("word-forward");
+        let input = resolve_input(&keymap);
+
+        // Process '3' (motion count)
+        let result = resolver.resolve_with_keymap(&key('3'), &mut mstate, &input);
+        assert!(matches!(result, ResolveResult::Pending));
+
+        // Process 'w' (motion)
+        let result = resolver.resolve_with_keymap(&key('w'), &mut mstate, &input);
+
+        // Verify: should execute motion with count=6 (2*3)
+        if let ResolveResult::Execute(cmd, ctx) = result {
+            assert_eq!(cmd.name(), "word-forward");
+            assert_eq!(ctx.count, Some(6), "effective_count should be 6 for 2c3w");
+        } else {
+            panic!("expected Execute, got {:?}", result);
+        }
+    }
+
+    // =========================================================================
+    // Test VimSessionState flow (the actual 2cw flow)
+    // =========================================================================
+
+    #[test]
+    fn test_full_2cw_flow() {
+        // This test simulates the FULL flow of typing "2cw":
+        // 1. Normal resolver processes '2' -> stores pending_count=2
+        // 2. Normal resolver processes 'c' -> mode transition to CHANGE
+        // 3. Change resolver processes 'w' -> should read pending_count=2
+
+        use {crate::resolvers::VimNormalResolver, reovim_driver_session::ExtensionMap};
+
+        // Shared extensions map (like in the runner)
+        let mut extensions = ExtensionMap::new();
+
+        // Step 1: Normal resolver processes '2'
+        {
+            let normal_resolver = VimNormalResolver::new();
+            let mut state = reovim_driver_input::ModeState::new(VimMode::NORMAL_ID);
+            let keymap = MockKeymap::exact_only("word-forward"); // Doesn't matter for count digit
+            let input = resolve_input(&keymap);
+
+            let result = normal_resolver.resolve_with_extensions(
+                &key('2'),
+                &mut state,
+                &input,
+                &mut extensions,
+            );
+            assert!(
+                matches!(result, ResolveResult::Pending),
+                "Expected Pending after '2', got {:?}",
+                result
+            );
+        }
+
+        // Verify pending_count is set after step 1
+        {
+            let vim = extensions
+                .get::<crate::VimSessionState>()
+                .expect("VimSessionState should exist");
+            assert_eq!(vim.pending_count, Some(2), "After '2', pending_count should be Some(2)");
+        }
+
+        // Step 2: Normal resolver processes 'c'
+        // Note: Real keymap returns ExactWithLonger because 'cc' exists as longer match
+        // Also uses 'editor' module, not 'test' module
+        {
+            let normal_resolver = VimNormalResolver::new();
+            let mut state = reovim_driver_input::ModeState::new(VimMode::NORMAL_ID);
+            let keymap = MockKeymap::exact_with_longer_editor("enter-change-operator");
+            let input = resolve_input(&keymap);
+
+            let result = normal_resolver.resolve_with_extensions(
+                &key('c'),
+                &mut state,
+                &input,
+                &mut extensions,
+            );
+            assert!(
+                matches!(result, ResolveResult::ModeTransition(ModeTransition::Push { .. })),
+                "Expected ModeTransition::Push after 'c', got {:?}",
+                result
+            );
+        }
+
+        // Verify pending_count is STILL set after step 2 (not consumed by normal resolver)
+        {
+            let vim = extensions
+                .get::<crate::VimSessionState>()
+                .expect("VimSessionState should exist");
+            assert_eq!(
+                vim.pending_count,
+                Some(2),
+                "After 'c', pending_count should STILL be Some(2)"
+            );
+        }
+
+        // Step 3: Verify pending_count is still available for change resolver
+        // Note: We can't fully test resolve_with_session without a complex mock,
+        // but we verify the state is correct. The test_operator_count_with_context
+        // test verifies that the resolver works correctly when operator_count is set.
+        {
+            // Verify pending_count is still Some(2) after mode transition
+            let vim = extensions
+                .get::<crate::VimSessionState>()
+                .expect("VimSessionState");
+            assert_eq!(
+                vim.pending_count,
+                Some(2),
+                "After mode transition to CHANGE, pending_count should still be Some(2)"
+            );
+
+            // The change resolver's resolve_with_session will:
+            // 1. Check state.initialized (false for new resolver)
+            // 2. Call extensions.get_mut::<VimSessionState>() - should find it
+            // 3. Take pending_count - should get Some(2)
+            // 4. Store in state.operator_count
+            // 5. Calculate effective_count = operator_count * motion_count = 2 * 1 = 2
+
+            // The test_operator_count_with_context test verifies this logic works
+            // when operator_count is pre-set. This test verifies the normal resolver
+            // correctly preserves pending_count through the mode transition.
         }
     }
 }

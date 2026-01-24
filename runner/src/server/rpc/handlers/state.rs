@@ -88,12 +88,15 @@ pub fn state_cursor(ctx: RpcContext, _params: serde_json::Value) -> HandlerFutur
         }; // Lock dropped before acquiring session lock
 
         // Query cursor position from session state
-        // Falls back to (0, 0) if no active buffer
+        // Falls back to session's active buffer if client viewport has none,
+        // then to (0, 0) if no buffer at all
         let cursor = ctx
             .session
             .with_state(|state| {
-                // Get cursor from client's active buffer
-                if let Some(buffer_id) = active_buffer
+                // Try client's active buffer first, fall back to session's active buffer
+                let buffer_id = active_buffer.or_else(|| state.session_active_buffer());
+
+                if let Some(buffer_id) = buffer_id
                     && let Some(buffer_arc) = state.app.kernel.buffers.get(buffer_id)
                 {
                     let pos = buffer_arc.read().position();
@@ -102,7 +105,7 @@ pub fn state_cursor(ctx: RpcContext, _params: serde_json::Value) -> HandlerFutur
                         column: pos.column,
                     };
                 }
-                // Fallback when no active buffer
+                // Fallback when no buffer at all
                 CursorInfo { line: 0, column: 0 }
             })
             .await;

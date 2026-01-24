@@ -132,11 +132,11 @@ pub fn is_line_operator_key(key: &KeyEvent, operator: OperatorType) -> bool {
 /// are linewise vs characterwise based on the command name.
 ///
 /// # Linewise Motions
-/// - j, k (line up/down)
-/// - gg, G (document start/end)
-/// - H, M, L (screen positions)
-/// - {, } (paragraph motions)
-/// - +, - (line motions)
+/// - j, k (line up/down) - `cursor-down`, `cursor-up`
+/// - gg, G (document start/end) - `document-start`, `document-end`
+/// - H, M, L (screen positions) - `screen-top`, `screen-middle`, `screen-bottom`
+/// - {, } (paragraph motions) - `paragraph-forward`, `paragraph-backward`
+/// - +, - (line motions) - `next-line`, `prev-line`
 /// - whole-line (for dd, yy, cc)
 ///
 /// # Characterwise Motions (default)
@@ -149,18 +149,78 @@ pub fn is_linewise_motion(cmd: &CommandId) -> bool {
     let name = cmd.name();
     matches!(
         name,
-        "move-down"
-            | "move-up"
+        // j, k - cursor up/down (editor module)
+        "cursor-down"
+            | "cursor-up"
+            // gg, G - document start/end (motions module)
             | "document-start"
             | "document-end"
+            // H, M, L - screen positions
             | "screen-top"
             | "screen-middle"
             | "screen-bottom"
+            // {, } - paragraph motions
             | "paragraph-forward"
             | "paragraph-backward"
+            // +, - - next/prev line
             | "next-line"
             | "prev-line"
+            // Special: whole-line for dd, yy, cc
             | "whole-line"
+    )
+}
+
+/// Determine if a motion is inclusive (cursor lands ON last char).
+///
+/// This is vim policy knowledge - classifies motions by their end position semantics.
+///
+/// # Inclusive Motions
+/// - $: line-end (cursor on last char)
+/// - e, E: word-end (cursor on last char of word)
+/// - f, F: find-char (cursor on found char)
+/// - t, T: till-char (cursor before/after found char)
+/// - G: document-end (cursor on last line)
+/// - %: match-bracket (cursor on matching bracket)
+///
+/// # Exclusive Motions (default)
+/// - w, W, b, B: word motions (cursor at start of next/prev word)
+/// - h, l: character motions (cursor moves by 1)
+/// - 0, ^: line-start motions (cursor at start)
+///
+/// For characterwise inclusive motions, the Range.end (which is exclusive)
+/// needs to be adjusted by +1 to include the character under the cursor.
+#[must_use]
+pub fn is_inclusive_motion(cmd: &CommandId) -> bool {
+    let name = cmd.name();
+    matches!(
+        name,
+        "line-end"           // $
+            | "word-end"     // e
+            | "word-end-big" // E
+            | "find-char"    // f
+            | "find-char-back" // F
+            | "till-char"    // t
+            | "till-char-back" // T
+            | "match-bracket" // %
+    )
+}
+
+/// Determine if a motion is word-forward (w, W).
+///
+/// This is used for the `cw` special case in Vim: `cw` behaves like `ce`
+/// (change to end of word, not to start of next word).
+/// See `:help cw` for Vim documentation.
+///
+/// Word-forward motions move cursor to the START of the next word,
+/// but when used with the change operator, they should only change
+/// to the END of the current word (excluding trailing whitespace).
+#[must_use]
+pub fn is_word_forward_motion(cmd: &CommandId) -> bool {
+    let name = cmd.name();
+    matches!(
+        name,
+        "word-forward"      // w
+            | "word-forward-big" // W
     )
 }
 
@@ -423,10 +483,25 @@ mod tests {
         use reovim_kernel::api::v1::ModuleId;
 
         let editor = ModuleId::new("editor");
+        let motions = ModuleId::new("motions");
 
-        assert!(is_linewise_motion(&CommandId::new(editor.clone(), "move-down")));
-        assert!(is_linewise_motion(&CommandId::new(editor.clone(), "whole-line")));
+        // j, k are linewise
+        assert!(is_linewise_motion(&CommandId::new(editor.clone(), "cursor-down")));
+        assert!(is_linewise_motion(&CommandId::new(editor.clone(), "cursor-up")));
+
+        // gg, G are linewise
+        assert!(is_linewise_motion(&CommandId::new(motions.clone(), "document-start")));
+        assert!(is_linewise_motion(&CommandId::new(motions.clone(), "document-end")));
+
+        // whole-line for dd, yy, cc
+        assert!(is_linewise_motion(&CommandId::new(motions.clone(), "whole-line")));
+
+        // h, l are NOT linewise
         assert!(!is_linewise_motion(&CommandId::new(editor.clone(), "cursor-left")));
+        assert!(!is_linewise_motion(&CommandId::new(editor.clone(), "cursor-right")));
+
+        // word motions are NOT linewise
+        assert!(!is_linewise_motion(&CommandId::new(motions, "word-forward")));
     }
 
     #[test]

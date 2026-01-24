@@ -267,15 +267,17 @@ async fn handle_mode_transition_async(ctx: &RpcContext, transition: ModeTransiti
         }
 
         ModeTransition::Pop { result } => {
-            // Handle pop result before actually popping
-            if let Some(ref pop_result) = result {
-                handle_pop_result_async(ctx, pop_result).await;
-            }
+            // Pop first, THEN handle result
+            // This ensures commands that transition to a new mode (like change→insert)
+            // operate on the base mode, not the mode being popped.
             ctx.session
                 .with_state_mut(|state| {
                     state.mode_stack_mut().pop();
                 })
                 .await;
+            if let Some(ref pop_result) = result {
+                handle_pop_result_async(ctx, pop_result).await;
+            }
         }
 
         ModeTransition::Set { mode, context: _ } => {

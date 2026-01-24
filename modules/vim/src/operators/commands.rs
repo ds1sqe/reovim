@@ -74,7 +74,37 @@ impl Command for YankCommand {
 
 impl CommandHandler for YankCommand {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        execute_operator(&YankOperator, runtime, args)
+        use reovim_driver_session::api::BufferApi;
+
+        // In Vim, after yank the cursor should be restored to the start of the yanked range.
+        // Get the range start BEFORE executing the yank, so we can restore cursor after.
+        let (start_line, start_col) = args.range_start().unwrap_or((0, 0));
+        let restore_pos = Position::new(start_line, start_col);
+
+        let cur_pos = args.buffer_id().and_then(|id| runtime.buffer_position(id));
+        tracing::debug!(
+            range_start = ?restore_pos,
+            current_pos = ?cur_pos,
+            "yank command: before execute"
+        );
+
+        let result = execute_operator(&YankOperator, runtime, args);
+
+        // Restore cursor to start of yanked range (Vim behavior)
+        if matches!(result, CommandResult::Success)
+            && let Some(buffer_id) = args.buffer_id()
+        {
+            runtime.set_buffer_position(buffer_id, restore_pos);
+
+            let cur_pos = runtime.buffer_position(buffer_id);
+            tracing::debug!(
+                restored_to = ?restore_pos,
+                current_pos = ?cur_pos,
+                "yank command: cursor restored"
+            );
+        }
+
+        result
     }
 }
 

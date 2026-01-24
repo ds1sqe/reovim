@@ -1795,6 +1795,7 @@ dependencies = [
  "reovim-module-motions",
  "reovim-module-textobjects",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

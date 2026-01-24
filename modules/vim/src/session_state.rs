@@ -141,29 +141,85 @@ impl VimSessionState {
 ///
 /// This replaces `CommandResult::Motion` - motion type classification
 /// is resolver policy knowledge, not command mechanism.
+///
+/// # Motion Semantics
+///
+/// - **Linewise**: The motion affects entire lines (j, k, gg, G)
+/// - **Inclusive**: The cursor lands ON the last character of the range ($, e, f, t)
+/// - **Exclusive**: The cursor lands at the START of the next unit (w, b, h, l)
+/// - **Word Forward**: The motion is word-forward (w, W) - needs special handling for `c`
+///
+/// For operators, exclusive motions work directly with `Range.end` (which is exclusive),
+/// but inclusive motions need +1 adjustment to include the character under the cursor.
 #[derive(Debug, Clone, Copy)]
 pub struct PendingMotion {
     /// Whether the motion is linewise (j, k, gg, G) or characterwise (w, b, h, l, $).
     pub linewise: bool,
+    /// Whether the motion is inclusive (cursor lands ON last char).
+    ///
+    /// Inclusive motions: $, e, E, f, F, t, T, G, gg, %
+    /// Exclusive motions: w, W, b, B, h, l, 0, ^
+    ///
+    /// For characterwise inclusive motions, the end position must be
+    /// adjusted by +1 to convert to exclusive range semantics.
+    pub inclusive: bool,
+    /// Whether this is a word-forward motion (w, W).
+    ///
+    /// This is used by the change operator for the `cw` special case:
+    /// `cw` behaves like `ce` (change to end of word, not to start of next word).
+    /// See `:help cw` in Vim for documentation of this behavior.
+    pub word_forward: bool,
 }
 
 impl PendingMotion {
-    /// Create a new pending motion.
+    /// Create a new pending motion with explicit flags.
     #[must_use]
-    pub const fn new(linewise: bool) -> Self {
-        Self { linewise }
+    pub const fn new(linewise: bool, inclusive: bool, word_forward: bool) -> Self {
+        Self {
+            linewise,
+            inclusive,
+            word_forward,
+        }
     }
 
-    /// Create a characterwise pending motion (w, b, h, l, $, etc.).
+    /// Create a characterwise exclusive pending motion (w, b, h, l, etc.).
     #[must_use]
     pub const fn characterwise() -> Self {
-        Self { linewise: false }
+        Self {
+            linewise: false,
+            inclusive: false,
+            word_forward: false,
+        }
+    }
+
+    /// Create a characterwise inclusive pending motion ($, e, f, t, etc.).
+    #[must_use]
+    pub const fn characterwise_inclusive() -> Self {
+        Self {
+            linewise: false,
+            inclusive: true,
+            word_forward: false,
+        }
     }
 
     /// Create a linewise pending motion (j, k, gg, G, etc.).
     #[must_use]
     pub const fn linewise() -> Self {
-        Self { linewise: true }
+        Self {
+            linewise: true,
+            inclusive: false,
+            word_forward: false,
+        }
+    }
+
+    /// Create a word-forward motion (w, W) for special cw handling.
+    #[must_use]
+    pub const fn word_forward() -> Self {
+        Self {
+            linewise: false,
+            inclusive: false,
+            word_forward: true,
+        }
     }
 }
 

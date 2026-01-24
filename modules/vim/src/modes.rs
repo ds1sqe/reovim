@@ -55,7 +55,7 @@ pub enum VimMode {
     Replace = 5,
     /// Command line mode - ex commands.
     CommandLine = 6,
-    /// Window mode - window management (<C-w> prefix).
+    /// Window mode - window management (`<C-w>` prefix).
     Window = 8,
     /// Delete operator mode - waiting for motion to delete.
     Delete = 9,

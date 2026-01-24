@@ -33,7 +33,6 @@ async fn test_dd_populates_unnamed_register() {
 }
 
 #[tokio::test]
-#[ignore = "requires operator-pending mode for yw motion"]
 async fn test_yw_char_yank_type() {
     let result = IntegrationTest::new()
         .await
