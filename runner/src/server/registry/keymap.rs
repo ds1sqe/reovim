@@ -143,7 +143,7 @@ impl KeymapRegistry {
         });
 
         // Sort by layer (highest first) for efficient lookup
-        key_entries.sort_by(|a, b| b.layer.cmp(&a.layer));
+        key_entries.sort_by_key(|entry| std::cmp::Reverse(entry.layer));
     }
 
     /// Register a keybinding at a specific layer with module ownership.
@@ -173,7 +173,7 @@ impl KeymapRegistry {
         });
 
         // Sort by layer (highest first)
-        key_entries.sort_by(|a, b| b.layer.cmp(&a.layer));
+        key_entries.sort_by_key(|entry| std::cmp::Reverse(entry.layer));
     }
 
     /// Get the effective binding for a key sequence (highest layer wins).
@@ -284,7 +284,7 @@ impl KeymapRegistry {
         });
 
         // Sort by layer (highest first)
-        key_entries.sort_by(|a, b| b.layer.cmp(&a.layer));
+        key_entries.sort_by_key(|entry| std::cmp::Reverse(entry.layer));
     }
 
     // ========================================================================

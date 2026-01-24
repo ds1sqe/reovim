@@ -19,6 +19,8 @@ reovim-driver-command-types = { path = "../command-types" }
 reovim-driver-display = { path = "../display" }
 # Platform abstraction (RwLock for test buffer manager)
 reovim-arch = { path = "../../arch" }
+# Clipboard driver for system clipboard and history (RegisterApi routing)
+reovim-driver-clipboard = { path = "../clipboard" }
 
 [lints]
 workspace = true

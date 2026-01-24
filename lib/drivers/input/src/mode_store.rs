@@ -173,8 +173,7 @@ impl std::fmt::Debug for ModeInfoStore {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use reovim_kernel::api::v1::ModuleId;
+    use {super::*, reovim_kernel::api::v1::ModuleId};
 
     // Mock mode for testing
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

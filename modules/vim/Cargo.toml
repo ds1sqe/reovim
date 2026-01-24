@@ -24,3 +24,9 @@ reovim-module-editor = { path = "../editor" }
 reovim-module-motions = { path = "../motions" }
 # Note: operators module merged into vim (Epic #385)
 reovim-module-textobjects = { path = "../textobjects" }
+reovim-driver-clipboard = { path = "../../lib/drivers/clipboard" }
+
+[dev-dependencies]
+# Integration test harness from runner
+reovim = { path = "../../runner" }
+tokio = { workspace = true }

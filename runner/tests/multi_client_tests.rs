@@ -5,15 +5,14 @@
 //! Tests verify that multiple clients can connect to the same server
 //! and see changes made by other clients.
 
-mod common;
-use common::MultiClientTest;
+use runner::testing::MultiClientTest;
 
 #[tokio::test]
 async fn test_two_clients_read_same_buffer() {
     MultiClientTest::with_clients(2)
         .await
         .with_buffer("")
-        .run(|mut clients| async move {
+        .run(|clients| async move {
             // Client 0 opens a buffer first
             clients[0].open_buffer("").await.unwrap();
 
@@ -35,7 +34,7 @@ async fn test_clients_see_changes() {
     MultiClientTest::with_clients(2)
         .await
         .with_buffer("")
-        .run(|mut clients| async move {
+        .run(|clients| async move {
             // Client 0 opens a buffer first
             clients[0].open_buffer("").await.unwrap();
 
@@ -55,9 +54,9 @@ async fn test_three_clients_concurrent() {
     MultiClientTest::with_clients(3)
         .await
         .with_buffer("")
-        .run(|mut clients| async move {
+        .run(|clients| async move {
             // All clients should connect successfully
-            for (i, client) in clients.iter_mut().enumerate() {
+            for (i, client) in clients.iter().enumerate() {
                 let cursor = client.get_cursor().await;
                 assert!(cursor.is_ok(), "Client {i} should get cursor");
             }

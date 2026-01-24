@@ -156,8 +156,8 @@ mod tests {
             category: None,
             enabled: true,
             priority: 0,
-            depends_on: None,
-            flags: None,
+            depends_on: &[],
+            flags: reovim_kernel::api::v1::RegistrationFlags::new(),
         }
     }
 

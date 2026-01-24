@@ -1,10 +1,10 @@
 [package]
-name = "reovim-module-undo"
+name = "reovim-module-clipboard"
 version = "0.9.1-dev"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "Undo module for reovim - per-buffer undo/redo with persistence"
+description = "Clipboard module for reovim - system clipboard access and yank history"
 repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
@@ -16,14 +16,8 @@ workspace = true
 # Kernel types
 reovim-kernel = { path = "../../lib/kernel", version = "0.9.1-dev" }
 
-# Driver for UndoProvider trait
-reovim-driver-undo = { path = "../../lib/drivers/undo", version = "0.9.1-dev" }
-
-# VFS driver for persistence
-reovim-driver-vfs = { path = "../../lib/drivers/vfs", version = "0.9.1-dev" }
-
-# Protocol for serialization
-reovim-protocol = { path = "../../lib/protocol", version = "0.9.1-dev" }
+# Driver for ClipboardProvider trait
+reovim-driver-clipboard = { path = "../../lib/drivers/clipboard", version = "0.9.1-dev" }
 
 # Platform abstraction for RwLock
 reovim-arch = { path = "../../lib/arch", version = "0.9.1-dev" }
@@ -31,13 +25,11 @@ reovim-arch = { path = "../../lib/arch", version = "0.9.1-dev" }
 # Module macros for FFI entry points
 reovim-module-macros = { path = "../../lib/module-macros", version = "0.9.1-dev" }
 
+# System clipboard access
+arboard.workspace = true
+
 # Logging
 tracing.workspace = true
-
-[dev-dependencies]
-# Integration test harness from runner
-reovim = { path = "../../runner" }
-tokio = { workspace = true }
 
 [features]
 # Enable for building as standalone dynamic library

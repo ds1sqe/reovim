@@ -18,6 +18,7 @@
 mod change;
 mod commands;
 mod delete;
+mod registers;
 mod types;
 mod yank;
 

@@ -30,6 +30,7 @@ reovim-module-vfs-local = { path = "../vfs-local" }
 reovim-module-undo = { path = "../undo" }
 reovim-module-buffer-simple = { path = "../buffer-simple" }
 reovim-module-search = { path = "../search" }
+reovim-module-clipboard = { path = "../clipboard" }
 reovim-driver-session = { workspace = true }
 reovim-driver-display = { workspace = true }
 reovim-driver-vfs = { workspace = true }

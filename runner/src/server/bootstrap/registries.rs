@@ -20,10 +20,11 @@ use {
 
 use crate::server::{
     config,
-    module::{ModuleConfig, ModuleLoader, ModuleManager, load_from_config, wire_module_keybindings},
+    module::{
+        ModuleConfig, ModuleLoader, ModuleManager, load_from_config, wire_module_keybindings,
+    },
     registry::{self, CommandRegistry, EmptySessionHandlerRegistry, KeymapRegistry, ModeRegistry},
 };
-
 
 /// Build the empty session handler registry.
 ///
@@ -192,8 +193,12 @@ pub fn build_default_registries() -> (
     if let Some(keybinding_store) = services.get::<KeybindingStore>() {
         let keybindings = keybinding_store.take_keybindings();
         let module_id = reovim_kernel::api::v1::ModuleId::new("defaults");
-        match wire_module_keybindings(&module_id, &keybindings, &mut keymap_registry, &mode_registry)
-        {
+        match wire_module_keybindings(
+            &module_id,
+            &keybindings,
+            &mut keymap_registry,
+            &mode_registry,
+        ) {
             Ok(stats) => {
                 tracing::info!(
                     wired = stats.keybindings_wired,
@@ -212,18 +217,19 @@ pub fn build_default_registries() -> (
     // Epic #417 Part 3: Get resolvers from ServiceRegistry (VimModule registered during init)
     // Clone the inner data since we need an owned ResolverRegistry for the return tuple.
     // We need to access the underlying data and clone it.
-    let resolver_registry = services
-        .get::<ResolverRegistry>()
-        .map_or_else(ResolverRegistry::new, |arc| {
-            // Create a new registry and copy resolvers from the ServiceRegistry one
-            let new_registry = ResolverRegistry::new();
-            for mode in arc.modes() {
-                if let Some(resolver) = arc.get(&mode) {
-                    new_registry.register_arc(resolver);
+    let resolver_registry =
+        services
+            .get::<ResolverRegistry>()
+            .map_or_else(ResolverRegistry::new, |arc| {
+                // Create a new registry and copy resolvers from the ServiceRegistry one
+                let new_registry = ResolverRegistry::new();
+                for mode in arc.modes() {
+                    if let Some(resolver) = arc.get(&mode) {
+                        new_registry.register_arc(resolver);
+                    }
                 }
-            }
-            new_registry
-        });
+                new_registry
+            });
     tracing::info!(count = resolver_registry.len(), "using resolvers from ServiceRegistry");
 
     // Epic #417 Part 3: Extract default mode provider from ServiceRegistry

@@ -19,11 +19,23 @@ pub struct VersionResult {
     /// Git commit hash (short form, e.g., "abc1234").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub git_hash: Option<String>,
-    /// Build date in ISO 8601 format.
+    /// Git commit hash (full 40-char form).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub git_commit: Option<String>,
+    /// Whether the working directory has uncommitted changes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub git_dirty: Option<bool>,
+    /// Build date in ISO 8601 format (date only, legacy).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub build_date: Option<String>,
+    /// Build timestamp in full ISO 8601 format (with time).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub build_timestamp: Option<String>,
     /// Rust version used for compilation.
     pub rust_version: String,
+    /// Target triple (e.g., "x86_64-unknown-linux-gnu").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
 }
 
 /// Result for `debug/uptime` method.
@@ -395,13 +407,20 @@ mod tests {
         let result = VersionResult {
             version: "0.9.0".to_string(),
             git_hash: Some("abc1234".to_string()),
+            git_commit: Some("abc1234567890abcdef1234567890abcdef123456".to_string()),
+            git_dirty: Some(false),
             build_date: Some("2025-01-14".to_string()),
+            build_timestamp: Some("2025-01-14T10:30:00+0000".to_string()),
             rust_version: "1.92.0".to_string(),
+            target: Some("x86_64-unknown-linux-gnu".to_string()),
         };
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("\"version\":\"0.9.0\""));
         assert!(json.contains("\"git_hash\":\"abc1234\""));
+        assert!(json.contains("\"git_commit\":"));
+        assert!(json.contains("\"git_dirty\":false"));
         assert!(json.contains("\"rust_version\":\"1.92.0\""));
+        assert!(json.contains("\"target\":\"x86_64-unknown-linux-gnu\""));
     }
 
     #[test]
@@ -409,12 +428,20 @@ mod tests {
         let result = VersionResult {
             version: "0.9.0".to_string(),
             git_hash: None,
+            git_commit: None,
+            git_dirty: None,
             build_date: None,
+            build_timestamp: None,
             rust_version: "1.92.0".to_string(),
+            target: None,
         };
         let json = serde_json::to_string(&result).unwrap();
         assert!(!json.contains("git_hash"));
+        assert!(!json.contains("git_commit"));
+        assert!(!json.contains("git_dirty"));
         assert!(!json.contains("build_date"));
+        assert!(!json.contains("build_timestamp"));
+        assert!(!json.contains("target"));
     }
 
     #[test]

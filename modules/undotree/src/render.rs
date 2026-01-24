@@ -259,7 +259,7 @@ mod tests {
     #[test]
     fn test_format_time_minutes() {
         let now = Instant::now();
-        let timestamp = now.checked_sub(Duration::from_secs(180)).unwrap();
+        let timestamp = now.checked_sub(Duration::from_mins(3)).unwrap();
         let formatted = UndotreeRenderer::format_time_ago(timestamp, now);
         assert_eq!(formatted, "3m ago");
     }
@@ -267,7 +267,7 @@ mod tests {
     #[test]
     fn test_format_time_hours() {
         let now = Instant::now();
-        let timestamp = now.checked_sub(Duration::from_secs(7200)).unwrap();
+        let timestamp = now.checked_sub(Duration::from_hours(2)).unwrap();
         let formatted = UndotreeRenderer::format_time_ago(timestamp, now);
         assert_eq!(formatted, "2h ago");
     }
@@ -275,7 +275,7 @@ mod tests {
     #[test]
     fn test_format_time_days() {
         let now = Instant::now();
-        let timestamp = now.checked_sub(Duration::from_secs(86400)).unwrap();
+        let timestamp = now.checked_sub(Duration::from_hours(24)).unwrap();
         let formatted = UndotreeRenderer::format_time_ago(timestamp, now);
         assert_eq!(formatted, "1d ago");
     }
@@ -371,7 +371,7 @@ mod tests {
     #[test]
     fn test_format_time_boundary_60_seconds() {
         let now = Instant::now();
-        let timestamp = now.checked_sub(Duration::from_secs(60)).unwrap();
+        let timestamp = now.checked_sub(Duration::from_mins(1)).unwrap();
         let formatted = UndotreeRenderer::format_time_ago(timestamp, now);
         assert_eq!(formatted, "1m ago");
     }
@@ -379,7 +379,7 @@ mod tests {
     #[test]
     fn test_format_time_boundary_59_minutes() {
         let now = Instant::now();
-        let timestamp = now.checked_sub(Duration::from_secs(59 * 60)).unwrap();
+        let timestamp = now.checked_sub(Duration::from_mins(59)).unwrap();
         let formatted = UndotreeRenderer::format_time_ago(timestamp, now);
         assert_eq!(formatted, "59m ago");
     }
@@ -387,7 +387,7 @@ mod tests {
     #[test]
     fn test_format_time_boundary_60_minutes() {
         let now = Instant::now();
-        let timestamp = now.checked_sub(Duration::from_secs(60 * 60)).unwrap();
+        let timestamp = now.checked_sub(Duration::from_hours(1)).unwrap();
         let formatted = UndotreeRenderer::format_time_ago(timestamp, now);
         assert_eq!(formatted, "1h ago");
     }
@@ -395,7 +395,7 @@ mod tests {
     #[test]
     fn test_format_time_boundary_23_hours() {
         let now = Instant::now();
-        let timestamp = now.checked_sub(Duration::from_secs(23 * 3600)).unwrap();
+        let timestamp = now.checked_sub(Duration::from_hours(23)).unwrap();
         let formatted = UndotreeRenderer::format_time_ago(timestamp, now);
         assert_eq!(formatted, "23h ago");
     }

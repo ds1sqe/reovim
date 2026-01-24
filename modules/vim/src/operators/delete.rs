@@ -4,7 +4,7 @@
 
 use reovim_kernel::api::v1::RegisterContent;
 
-use super::{Operator, OperatorContext, OperatorError, Range};
+use super::{Operator, OperatorContext, OperatorError, Range, registers};
 
 /// Delete operator - cuts text to register.
 ///
@@ -77,12 +77,10 @@ impl Operator for DeleteOperator {
                 reovim_kernel::api::v1::Position::new(clamped_end, 0)
             };
 
-            // Store in register as linewise
+            // Store in register as linewise (handles +/* via ClipboardProvider)
             let content = RegisterContent::linewise(deleted_text);
-            ctx.kernel
-                .registers
-                .write()
-                .set_by_name(ctx.register, content);
+            registers::store_to_register(ctx.kernel, ctx.register, &content);
+            registers::push_to_history(ctx.kernel, &content);
 
             // Delete entire lines
             buffer.delete_range(delete_start, delete_end);
@@ -116,12 +114,10 @@ impl Operator for DeleteOperator {
                 }
             }
 
-            // Store in register as characterwise
+            // Store in register as characterwise (handles +/* via ClipboardProvider)
             let content = RegisterContent::characterwise(deleted_text);
-            ctx.kernel
-                .registers
-                .write()
-                .set_by_name(ctx.register, content);
+            registers::store_to_register(ctx.kernel, ctx.register, &content);
+            registers::push_to_history(ctx.kernel, &content);
 
             // Delete the text from buffer
             buffer.delete_range(start, end);

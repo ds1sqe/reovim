@@ -24,6 +24,7 @@ members = [
     "lib/drivers/undo",
     "lib/drivers/buffer",
     "lib/drivers/search",
+    "lib/drivers/clipboard",
 
     # Platform abstraction
     "lib/arch",
@@ -110,6 +111,7 @@ reovim-driver-session = { path = "./lib/drivers/session", version = "0.9.1-dev" 
 reovim-driver-undo = { path = "./lib/drivers/undo", version = "0.9.1-dev" }
 reovim-driver-buffer = { path = "./lib/drivers/buffer", version = "0.9.1-dev" }
 reovim-driver-search = { path = "./lib/drivers/search", version = "0.9.1-dev" }
+reovim-driver-clipboard = { path = "./lib/drivers/clipboard", version = "0.9.1-dev" }
 
 # Python FFI
 pyo3 = { version = "0.27", features = ["auto-initialize"] }
@@ -131,6 +133,7 @@ reovim-module-textobjects = { path = "./modules/textobjects", version = "0.9.1-d
 reovim-module-undo = { path = "./modules/undo", version = "0.9.1-dev" }
 reovim-module-buffer-simple = { path = "./modules/buffer-simple", version = "0.9.1-dev" }
 reovim-module-search = { path = "./modules/search", version = "0.9.1-dev" }
+reovim-module-clipboard = { path = "./modules/clipboard", version = "0.9.1-dev" }
 
 # CLI
 clap = { version = "4", features = ["derive"] }
@@ -138,3 +141,6 @@ clap = { version = "4", features = ["derive"] }
 # Configuration
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"
+
+# Clipboard
+arboard = "3"

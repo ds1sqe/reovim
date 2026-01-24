@@ -217,9 +217,12 @@ mod tests {
         crate::TEXTOBJECTS_MODULE,
         reovim_driver_command::ArgValue,
         reovim_driver_session::{ClientId, Session, api::CommandExecutor},
-        reovim_kernel::api::v1::{
-            Buffer, BufferError, BufferId, BufferManager, CommandId, EventBus, KernelContext,
-            MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry, RegisterBank, RwLock,
+        reovim_kernel::api::{
+            ServiceRegistry,
+            v1::{
+                Buffer, BufferError, BufferId, BufferManager, CommandId, EventBus, KernelContext,
+                MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry, RegisterBank, RwLock,
+            },
         },
         std::{collections::HashMap, sync::Arc},
     };
@@ -302,6 +305,7 @@ mod tests {
             Arc::new(RwLock::new(RegisterBank::new())),
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::default()),
+            Arc::new(ServiceRegistry::new()),
         )
     }
 

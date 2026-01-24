@@ -72,8 +72,7 @@ pub fn save_buffer_for_recovery(
         buffer_id,
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0)
+            .map_or(0, |d| d.as_secs())
     );
 
     let path = dir.join(&filename);
@@ -117,7 +116,7 @@ pub fn list_recovery_files() -> std::io::Result<Vec<PathBuf>> {
     }
 
     // Sort by modification time (newest first)
-    files.sort_by(|a, b| b.1.cmp(&a.1));
+    files.sort_by_key(|b| std::cmp::Reverse(b.1));
 
     Ok(files.into_iter().map(|(p, _)| p).collect())
 }

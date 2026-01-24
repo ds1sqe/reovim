@@ -63,7 +63,8 @@ impl TestSessionRuntime {
     /// Create a `KernelContext` that uses a real buffer manager for testing.
     fn make_test_kernel() -> KernelContext {
         use reovim_kernel::api::v1::{
-            EventBus, MarkBank, MotionEngine, OptionRegistry, RegisterBank, TextObjectEngine,
+            EventBus, MarkBank, MotionEngine, OptionRegistry, RegisterBank, ServiceRegistry,
+            TextObjectEngine,
         };
 
         KernelContext::new(
@@ -74,6 +75,7 @@ impl TestSessionRuntime {
             Arc::new(RwLock::new(RegisterBank::new())),
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::new()),
+            Arc::new(ServiceRegistry::new()),
         )
     }
 

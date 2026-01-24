@@ -1,16 +1,13 @@
 //! Register tests (unnamed, named, yank types).
 //!
-//! **Status**: All 5 tests require additional features.
-//! - 4 tests require `debug/registers` RPC endpoint to return register contents
-//! - 1 test requires register selection prefix (`"a`) support
-//!
-//! Run `cargo test --ignored` to run the remaining ignored tests.
+//! Tests for register functionality including:
+//! - Unnamed register (`"`) population via yy/dd
+//! - Yank types (linewise vs characterwise)
+//! - Named register selection (`"a`) - requires prefix support
 
-mod common;
-use common::IntegrationTest;
+use runner::testing::IntegrationTest;
 
 #[tokio::test]
-#[ignore = "requires debug/registers RPC to return register contents"]
 async fn test_yy_populates_unnamed_register() {
     let result = IntegrationTest::new()
         .await
@@ -20,11 +17,10 @@ async fn test_yy_populates_unnamed_register() {
         .await;
 
     // Check unnamed register via debug/registers
-    result.assert_register("\"", "hello\n", "line");
+    result.assert_register("\"", "hello\n", "linewise");
 }
 
 #[tokio::test]
-#[ignore = "requires debug/registers RPC to return register contents"]
 async fn test_dd_populates_unnamed_register() {
     let result = IntegrationTest::new()
         .await
@@ -33,11 +29,11 @@ async fn test_dd_populates_unnamed_register() {
         .run()
         .await;
 
-    result.assert_register("\"", "hello\n", "line");
+    result.assert_register("\"", "hello\n", "linewise");
 }
 
 #[tokio::test]
-#[ignore = "requires debug/registers RPC to return register contents"]
+#[ignore = "requires operator-pending mode for yw motion"]
 async fn test_yw_char_yank_type() {
     let result = IntegrationTest::new()
         .await
@@ -46,7 +42,7 @@ async fn test_yw_char_yank_type() {
         .run()
         .await;
 
-    result.assert_register("\"", "hello ", "char");
+    result.assert_register("\"", "hello ", "characterwise");
 }
 
 #[tokio::test]
@@ -59,7 +55,7 @@ async fn test_named_register_a() {
         .run()
         .await;
 
-    result.assert_register("a", "hello\n", "line");
+    result.assert_register("a", "hello\n", "linewise");
 }
 
 #[tokio::test]

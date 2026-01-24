@@ -1,21 +1,47 @@
-//! Common test utilities for integration tests.
+//! Integration test harness for reovim.
 //!
-//! This module provides:
-//! - `IntegrationTest`: Fluent builder for single-client tests
-//! - `MultiClientTest`: Builder for concurrent multi-client tests
-//! - Assertion macros for buffer, cursor, register, and mode verification
-//! - Helper functions for locating demo modules
+//! This module provides the **mechanism** layer for integration testing.
+//! Modules use this harness to define their test **policy** (what to test).
+//!
+//! # Architecture (Mechanism vs Policy)
+//!
+//! ```text
+//! runner/src/testing/     ← MECHANISM (this module)
+//! ├── harness.rs          - Server process lifecycle
+//! ├── integration.rs      - Single-client test builder
+//! ├── multi_client.rs     - Multi-client test builder
+//! └── assertions.rs       - Assertion macros
+//!
+//! modules/vim/tests/      ← POLICY (module-specific tests)
+//! ├── operators.rs        - What operators to test
+//! ├── registers.rs        - What register behaviors to verify
+//! └── cursor_movement.rs  - What cursor behaviors to verify
+//! ```
+//!
+//! # Example Usage (in module tests)
+//!
+//! ```ignore
+//! use runner::testing::{IntegrationTest, TestResult};
+//!
+//! #[tokio::test]
+//! async fn test_dd_deletes_line() {
+//!     let result = IntegrationTest::new()
+//!         .await
+//!         .with_buffer("hello\nworld")
+//!         .send_keys("dd")
+//!         .run()
+//!         .await;
+//!     result.assert_buffer_eq("world");
+//! }
+//! ```
 
-// Allow unused code in test utilities - each test file uses different subsets
+// Allow unused code - each consumer uses different subsets
 #![allow(dead_code)]
-#![allow(unused_imports)]
 
 mod assertions;
 mod harness;
 mod integration;
 mod multi_client;
-
-use std::path::PathBuf;
 
 pub use {
     harness::TestServerHarness,
@@ -23,9 +49,16 @@ pub use {
     multi_client::{MultiClientTest, TestClient},
 };
 
+// Re-export macros at crate level for external use
+pub use assertions::{
+    assert_buffer_eq, assert_completes_within, assert_cursor, assert_mode, assert_register,
+};
+
 // ============================================================================
 // Demo Module Helpers (for module_loading.rs tests)
 // ============================================================================
+
+use std::path::PathBuf;
 
 /// Get the path to the demo module shared library.
 ///
@@ -100,45 +133,5 @@ pub const fn demo_module_filename() -> &'static str {
     #[cfg(target_os = "windows")]
     {
         "reovim_module_hot_reload_demo.dll"
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_demo_module_path_exists() {
-        let path = demo_module_path();
-        assert!(
-            path.exists(),
-            "Demo module should exist at {path:?}. Make sure to run `cargo build -p reovim-module-hot-reload-demo` first.",
-        );
-    }
-
-    #[test]
-    fn test_demo_module_filename() {
-        let filename = demo_module_filename();
-
-        #[cfg(target_os = "linux")]
-        assert!(
-            std::path::Path::new(filename)
-                .extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("so"))
-        );
-
-        #[cfg(target_os = "macos")]
-        assert!(
-            std::path::Path::new(filename)
-                .extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("dylib"))
-        );
-
-        #[cfg(target_os = "windows")]
-        assert!(
-            std::path::Path::new(filename)
-                .extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("dll"))
-        );
     }
 }

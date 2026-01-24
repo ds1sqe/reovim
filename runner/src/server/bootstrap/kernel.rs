@@ -21,12 +21,12 @@ use {
 ///
 /// # Arguments
 ///
-/// * `services` - `ServiceRegistry` to query `BufferManager` from
+/// * `services` - `ServiceRegistry` to query `BufferManager` from and store in context
 ///
 /// # Panics
 ///
 /// Panics if no `BufferManager` is registered in `ServiceRegistry`.
-pub fn real_kernel_context(services: &ServiceRegistry) -> KernelContext {
+pub fn real_kernel_context(services: Arc<ServiceRegistry>) -> KernelContext {
     let option_registry = Arc::new(OptionRegistry::new());
     register_default_options(&option_registry);
 
@@ -45,6 +45,7 @@ pub fn real_kernel_context(services: &ServiceRegistry) -> KernelContext {
         Arc::new(RwLock::new(RegisterBank::new())),
         Arc::new(RwLock::new(MarkBank::new())),
         option_registry,
+        services,
     )
 }
 
