@@ -28,8 +28,8 @@ use {
 use {
     super::operator_common::{
         KeymapAction, OperatorState, OperatorType, apply_keymap_policy, build_cancelled,
-        build_operator_execute, is_count_digit, is_escape, is_line_operator_key,
-        is_linewise_motion,
+        build_operator_execute, is_count_digit, is_escape, is_inclusive_motion,
+        is_line_operator_key, is_linewise_motion, is_word_forward_motion,
     },
     crate::{modes::VimMode, session_state::PendingMotion},
 };
@@ -167,16 +167,27 @@ impl ModeKeyResolver for VimYankResolver {
         state.push_key(*key);
         let keys = state.keys();
 
-        let lookup_state = input.keymap.query(input.mode, &keys);
+        // First try the current mode, then fall back to parent mode for motions
+        let lookup_state = {
+            let state = input.keymap.query(input.mode, &keys);
+            if matches!(state, reovim_driver_input::KeyLookupState::NotFound) {
+                // Motion bindings are in normal mode, not operator modes
+                input.keymap.query(&self.parent_mode_id, &keys)
+            } else {
+                state
+            }
+        };
 
         match apply_keymap_policy(&lookup_state) {
             KeymapAction::Execute(cmd) => {
-                let motion_count = state.take_motion_count();
+                // Calculate effective count BEFORE taking motion_count
+                let effective_count = state.effective_count();
+                let _motion_count = state.take_motion_count();
                 state.clear_keys();
                 drop(state);
 
                 let ctx = ResolveContext {
-                    count: motion_count,
+                    count: Some(effective_count),
                     register: None,
                     keys,
                     metadata: std::collections::HashMap::new(),
@@ -205,6 +216,8 @@ impl ModeKeyResolver for VimYankResolver {
         session: &mut dyn SessionApiDyn,
         extensions: &mut ExtensionMap,
     ) -> ResolveResult {
+        tracing::debug!(key = ?key, "yank resolver: resolve_with_session");
+
         if is_escape(key) {
             self.clear_state();
             return ResolveResult::ModeTransition(build_cancelled());
@@ -217,6 +230,11 @@ impl ModeKeyResolver for VimYankResolver {
             if let Some(vim) = extensions.get_mut::<crate::VimSessionState>() {
                 state.operator_count = vim.pending_count.take();
                 state.register = vim.pending_register.take();
+                tracing::debug!(
+                    operator_count = ?state.operator_count,
+                    register = ?state.register,
+                    "yank resolver: initialized from VimSessionState"
+                );
             }
             state.initialized = true;
         }
@@ -265,12 +283,34 @@ impl ModeKeyResolver for VimYankResolver {
         state.push_key(*key);
         let keys = state.keys();
 
-        let lookup_state = input.keymap.query(input.mode, &keys);
+        // First try the current mode, then fall back to parent mode for motions
+        let lookup_state = {
+            let state = input.keymap.query(input.mode, &keys);
+            if matches!(state, reovim_driver_input::KeyLookupState::NotFound) {
+                // Motion bindings are in normal mode, not operator modes
+                input.keymap.query(&self.parent_mode_id, &keys)
+            } else {
+                state
+            }
+        };
 
         match apply_keymap_policy(&lookup_state) {
             KeymapAction::Execute(cmd) => {
                 let linewise = is_linewise_motion(&cmd);
-                let motion_count = state.take_motion_count();
+                // Calculate effective count BEFORE taking motion_count
+                // For 2yw: operator_count=2, motion_count=None → effective=2
+                // For y2w: operator_count=None, motion_count=2 → effective=2
+                // For 2y3w: operator_count=2, motion_count=3 → effective=6
+                let effective_count = state.effective_count();
+                tracing::debug!(
+                    operator_count = ?state.operator_count,
+                    motion_count = ?state.motion_count,
+                    effective_count,
+                    cmd = %cmd,
+                    linewise,
+                    "yank resolver: executing motion"
+                );
+                let _motion_count = state.take_motion_count();
                 state.clear_keys();
 
                 if let Some(buffer) = session.active_buffer()
@@ -279,14 +319,18 @@ impl ModeKeyResolver for VimYankResolver {
                     state.set_start_position(start_pos);
                 }
 
+                // Inclusive motions need end position adjustment ($ returns ON last char)
+                let inclusive = !linewise && is_inclusive_motion(&cmd);
+                let word_forward = !linewise && is_word_forward_motion(&cmd);
                 if let Some(vim) = extensions.get_mut::<crate::VimSessionState>() {
-                    vim.pending_motion = Some(PendingMotion::new(linewise));
+                    vim.pending_motion =
+                        Some(PendingMotion::new(linewise, inclusive, word_forward));
                 }
 
                 drop(state);
 
                 let ctx = ResolveContext {
-                    count: motion_count,
+                    count: Some(effective_count),
                     register: None,
                     keys,
                     metadata: std::collections::HashMap::new(),
@@ -321,10 +365,22 @@ impl ModeKeyResolver for VimYankResolver {
         let buffer_id = session.active_buffer()?;
         let end_pos = session.buffer_position(buffer_id)?;
 
-        let (range_start, range_end) = if start_pos <= end_pos {
-            (start_pos, end_pos)
-        } else {
-            (end_pos, start_pos)
+        // Normalize range and adjust for motion type
+        let (range_start, range_end) = {
+            // First normalize direction (start <= end)
+            let (start, end) = if start_pos <= end_pos {
+                (start_pos, end_pos)
+            } else {
+                (end_pos, start_pos)
+            };
+
+            // For inclusive characterwise motions, make end exclusive
+            // ($ returns cursor ON last char, but Range.end is exclusive)
+            if !motion.linewise && motion.inclusive {
+                (start, Position::new(end.line, end.column + 1))
+            } else {
+                (start, end)
+            }
         };
 
         let count = state.operator_count;

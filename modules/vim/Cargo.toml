@@ -25,6 +25,7 @@ reovim-module-motions = { path = "../motions" }
 # Note: operators module merged into vim (Epic #385)
 reovim-module-textobjects = { path = "../textobjects" }
 reovim-driver-clipboard = { path = "../../lib/drivers/clipboard" }
+tracing = { workspace = true }
 
 [dev-dependencies]
 # Integration test harness from runner

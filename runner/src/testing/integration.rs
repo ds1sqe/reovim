@@ -60,13 +60,22 @@ pub struct IntegrationTest {
 }
 
 impl IntegrationTest {
-    /// Create new test (spawns server).
+    /// Create new test with automatic log capture (spawns server).
+    ///
+    /// Server logs are captured to `tmp/test-logs/{test_name}_{timestamp}.log`.
+    /// This is invaluable for debugging test failures.
     ///
     /// # Panics
     ///
     /// Panics if server fails to spawn.
     pub async fn new() -> Self {
-        let harness = TestServerHarness::spawn()
+        // Get test name from current thread (set by cargo test)
+        let test_name = std::thread::current()
+            .name()
+            .unwrap_or("unknown_test")
+            .to_string();
+
+        let harness = TestServerHarness::spawn_with_log(&test_name)
             .await
             .expect("Failed to spawn server");
         let config = ConnectionConfig::tcp("127.0.0.1", harness.port());
@@ -78,6 +87,14 @@ impl IntegrationTest {
             key_sequences: Vec::new(),
             default_delay: DEFAULT_DELAY_MS,
         }
+    }
+
+    /// Get the path to the server log file for debugging.
+    ///
+    /// Returns `None` if log capture is not enabled.
+    #[must_use]
+    pub fn log_path(&self) -> Option<&std::path::Path> {
+        self.harness.log_path()
     }
 
     /// Make an RPC call with a fresh connection (avoids stale notification issues).
@@ -270,7 +287,7 @@ impl IntegrationTest {
             mode_display: mode["display"].as_str().unwrap_or("").to_string(),
             edit_mode: mode["edit_mode"].as_str().unwrap_or("").to_string(),
             registers,
-            _harness: self.harness,
+            harness: self.harness,
             temp_path: Some(temp_path),
         }
     }
@@ -299,7 +316,7 @@ pub struct TestResult {
     pub edit_mode: String,
     /// Register contents.
     pub registers: HashMap<String, RegisterInfo>,
-    _harness: TestServerHarness,
+    harness: TestServerHarness,
     temp_path: Option<String>,
 }
 
@@ -312,14 +329,31 @@ impl Drop for TestResult {
 }
 
 impl TestResult {
+    /// Get the path to the server log file for debugging.
+    ///
+    /// Returns `None` if log capture is not enabled.
+    #[must_use]
+    pub fn log_path(&self) -> Option<&std::path::Path> {
+        self.harness.log_path()
+    }
+
+    /// Format log path hint for assertion messages.
+    fn log_hint(&self) -> String {
+        self.log_path()
+            .map(|p| format!("\n\n📋 Server log: {}", p.display()))
+            .unwrap_or_default()
+    }
+
     /// Assert buffer equals expected (trimmed).
     pub fn assert_buffer_eq(&self, expected: &str) {
-        assert_eq!(
-            self.buffer_content.trim_end(),
-            expected.trim_end(),
-            "Buffer content mismatch\nExpected:\n{}\nActual:\n{}",
+        assert!(
+            self.buffer_content.trim_end() == expected.trim_end(),
+            "assertion `left == right` failed: Buffer content mismatch\n\
+             Expected:\n{}\n\
+             Actual:\n{}{}",
             expected,
-            self.buffer_content
+            self.buffer_content,
+            self.log_hint()
         );
     }
 
@@ -327,22 +361,23 @@ impl TestResult {
     pub fn assert_buffer_contains(&self, expected: &str) {
         assert!(
             self.buffer_content.contains(expected),
-            "Buffer does not contain '{}'\nActual:\n{}",
+            "Buffer does not contain '{}'\nActual:\n{}{}",
             expected,
-            self.buffer_content
+            self.buffer_content,
+            self.log_hint()
         );
     }
 
     /// Assert cursor position (line, col) - 0-indexed.
     pub fn assert_cursor(&self, line: u16, col: u16) {
-        assert_eq!(
-            (self.cursor_line, self.cursor_column),
-            (line, col),
-            "Cursor mismatch: expected (line={}, col={}), got (line={}, col={})",
+        assert!(
+            (self.cursor_line, self.cursor_column) == (line, col),
+            "Cursor mismatch: expected (line={}, col={}), got (line={}, col={}){}",
             line,
             col,
             self.cursor_line,
-            self.cursor_column
+            self.cursor_column,
+            self.log_hint()
         );
     }
 
@@ -350,56 +385,69 @@ impl TestResult {
     pub fn assert_register(&self, reg: &str, expected_content: &str, expected_type: &str) {
         let register = self.registers.get(reg).unwrap_or_else(|| {
             panic!(
-                "Register '{}' not found. Available: {:?}",
+                "Register '{}' not found. Available: {:?}{}",
                 reg,
-                self.registers.keys().collect::<Vec<_>>()
+                self.registers.keys().collect::<Vec<_>>(),
+                self.log_hint()
             )
         });
-        assert_eq!(
-            register.content.trim_end(),
-            expected_content.trim_end(),
-            "Register '{}' content mismatch\nExpected: '{}'\nActual: '{}'",
+        assert!(
+            register.content.trim_end() == expected_content.trim_end(),
+            "Register '{}' content mismatch\nExpected: '{}'\nActual: '{}'{}",
             reg,
             expected_content,
-            register.content
+            register.content,
+            self.log_hint()
         );
-        assert_eq!(
-            register.yank_type, expected_type,
-            "Register '{}' type mismatch\nExpected: '{}'\nActual: '{}'",
-            reg, expected_type, register.yank_type
+        assert!(
+            register.yank_type == expected_type,
+            "Register '{}' type mismatch\nExpected: '{}'\nActual: '{}'{}",
+            reg,
+            expected_type,
+            register.yank_type,
+            self.log_hint()
         );
     }
 
     /// Assert in normal mode.
     pub fn assert_normal_mode(&self) {
-        assert!(
-            self.edit_mode.to_lowercase().contains("normal")
-                || self.mode_display.to_uppercase().contains("NORMAL"),
-            "Expected normal mode, got: {} ({})",
-            self.mode_display,
-            self.edit_mode
-        );
+        if !self.edit_mode.to_lowercase().contains("normal")
+            && !self.mode_display.to_uppercase().contains("NORMAL")
+        {
+            panic!(
+                "Expected normal mode, got: {} ({}){}",
+                self.mode_display,
+                self.edit_mode,
+                self.log_hint()
+            );
+        }
     }
 
     /// Assert in insert mode.
     pub fn assert_insert_mode(&self) {
-        assert!(
-            self.edit_mode.to_lowercase().contains("insert")
-                || self.mode_display.to_uppercase().contains("INSERT"),
-            "Expected insert mode, got: {} ({})",
-            self.mode_display,
-            self.edit_mode
-        );
+        if !self.edit_mode.to_lowercase().contains("insert")
+            && !self.mode_display.to_uppercase().contains("INSERT")
+        {
+            panic!(
+                "Expected insert mode, got: {} ({}){}",
+                self.mode_display,
+                self.edit_mode,
+                self.log_hint()
+            );
+        }
     }
 
     /// Assert in visual mode.
     pub fn assert_visual_mode(&self) {
-        assert!(
-            self.edit_mode.to_lowercase().contains("visual")
-                || self.mode_display.to_uppercase().contains("VISUAL"),
-            "Expected visual mode, got: {} ({})",
-            self.mode_display,
-            self.edit_mode
-        );
+        if !self.edit_mode.to_lowercase().contains("visual")
+            && !self.mode_display.to_uppercase().contains("VISUAL")
+        {
+            panic!(
+                "Expected visual mode, got: {} ({}){}",
+                self.mode_display,
+                self.edit_mode,
+                self.log_hint()
+            );
+        }
     }
 }
