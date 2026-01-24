@@ -3,10 +3,22 @@
 //! This is the core **mechanism** for integration testing - it handles
 //! server lifecycle without any knowledge of what's being tested.
 //!
-//! # Log Capture (#428)
+//! # Log Capture (#428, #431)
 //!
-//! The harness can capture server stderr to a per-test log file for debugging.
-//! Use `spawn_with_log(test_name)` to enable automatic log capture.
+//! All spawned servers automatically capture stderr to per-test log files.
+//! Use `spawn()` for automatic test name extraction from thread name, or
+//! `spawn_with_name(name)` for explicit naming.
+//!
+//! # Debug Logging
+//!
+//! **DO NOT use `std::fs::OpenOptions` for debug logging in tests.**
+//!
+//! If you need debug output during test development, use the built-in log
+//! capture infrastructure (`spawn()` or `spawn_with_name()`). Writing directly
+//! to files with `OpenOptions` creates cleanup burdens and can leave debug
+//! artifacts in the codebase.
+//!
+//! Server logs are automatically captured to `tmp/test-logs/{test_name}_{timestamp}.log`.
 
 // Test infrastructure - suppress pedantic docs requirements
 #![allow(clippy::missing_errors_doc)]
@@ -49,33 +61,9 @@ fn binary_path() -> PathBuf {
         .join("target/debug/reovim")
 }
 
-/// Read "Listening on 127.0.0.1:<port>" from stderr, consuming the reader.
-///
-/// This is the original function that discards stderr after port extraction.
-async fn read_port_from_stderr(
-    process: &mut Child,
-) -> Result<u16, Box<dyn std::error::Error + Send + Sync>> {
-    let stderr = process.stderr.take().ok_or("Failed to capture stderr")?;
-    let mut reader = BufReader::new(stderr).lines();
-
-    while let Some(line) = reader.next_line().await? {
-        if line.starts_with("Warning:") {
-            continue;
-        }
-        if line.contains("!!!! PANIC !!!!") {
-            return Err(format!("Server panicked: {line}").into());
-        }
-        if let Some(rest) = line.strip_prefix("Listening on 127.0.0.1:") {
-            return rest.parse::<u16>().map_err(Into::into);
-        }
-    }
-    Err("Server exited without outputting port".into())
-}
-
 /// Read port from stderr and return the reader for continued use.
 ///
-/// Unlike `read_port_from_stderr`, this returns the reader so logs can continue
-/// to be captured after port extraction.
+/// Returns the reader so logs can continue to be captured after port extraction.
 async fn read_port_preserving_reader(
     stderr: ChildStderr,
 ) -> Result<
@@ -138,9 +126,9 @@ fn spawn_log_capture_task(
 ///
 /// # Log Capture
 ///
-/// Use `spawn_with_log(test_name)` to automatically capture server logs
-/// to `tmp/test-logs/{test_name}_{timestamp}.log`. This is invaluable for
-/// debugging test failures as it preserves the server's tracing output.
+/// All spawn methods capture server logs to `tmp/test-logs/{test_name}_{timestamp}.log`.
+/// - `spawn()` - Auto-extracts test name from thread (recommended)
+/// - `spawn_with_name(name)` - Explicit test name for custom naming
 pub struct TestServerHarness {
     process: Child,
     port: u16,
@@ -152,10 +140,12 @@ pub struct TestServerHarness {
 }
 
 impl TestServerHarness {
-    /// Spawn server on OS-assigned port (without log capture).
+    /// Spawn server with automatic log capture.
     ///
-    /// For debugging test failures, prefer `spawn_with_log()` which captures
-    /// server output to a file.
+    /// Server stderr is captured to `tmp/test-logs/{test_name}_{timestamp}.log`.
+    /// Test name is auto-extracted from the current thread name (set by cargo test).
+    ///
+    /// For explicit test naming, use `spawn_with_name()`.
     ///
     /// # Errors
     ///
@@ -163,33 +153,16 @@ impl TestServerHarness {
     /// - Binary not found at expected path
     /// - Server fails to start within timeout
     /// - Server panics during startup
+    /// - Log directory cannot be created
     pub async fn spawn() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let log_level = std::env::var("REOVIM_LOG").unwrap_or_else(|_| "warn".to_string());
-        let _test_id = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
-
-        let mut process = Command::new(binary_path())
-            .args(["server", "--tcp", "0"])
-            .env("REOVIM_LOG", log_level)
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()?;
-
-        let port =
-            tokio::time::timeout(SERVER_STARTUP_TIMEOUT, read_port_from_stderr(&mut process))
-                .await
-                .map_err(|_| "Server startup timed out (10s)")?
-                .map_err(|e| format!("Failed to read port: {e}"))?;
-
-        Ok(Self {
-            process,
-            port,
-            log_file: None,
-            log_task: None,
-        })
+        let test_name = std::thread::current()
+            .name()
+            .unwrap_or("unknown_test")
+            .to_string();
+        Self::spawn_with_name(&test_name).await
     }
 
-    /// Spawn server with automatic log capture to a per-test file.
+    /// Spawn server with explicit test name for log capture.
     ///
     /// Server stderr is captured to `tmp/test-logs/{test_name}_{timestamp}.log`.
     /// This is invaluable for debugging test failures as it preserves the
@@ -199,12 +172,15 @@ impl TestServerHarness {
     /// The server is started with `REOVIM_LOG=debug` by default for full
     /// tracing visibility.
     ///
+    /// Use this when you need a custom test name (e.g., multi-client tests
+    /// with a `_server` suffix).
+    ///
     /// # Example
     ///
     /// ```ignore
-    /// let harness = TestServerHarness::spawn_with_log("test_yj_yank").await?;
+    /// let harness = TestServerHarness::spawn_with_name("test_multi_client_server").await?;
     /// // ... run test ...
-    /// // On failure, check: tmp/test-logs/test_yj_yank_20260124_120000.log
+    /// // On failure, check: tmp/test-logs/test_multi_client_server_20260124_120000.log
     /// ```
     ///
     /// # Errors
@@ -214,7 +190,7 @@ impl TestServerHarness {
     /// - Server fails to start within timeout
     /// - Server panics during startup
     /// - Log directory cannot be created
-    pub async fn spawn_with_log(
+    pub async fn spawn_with_name(
         test_name: &str,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         // Create log directory
@@ -265,10 +241,10 @@ impl TestServerHarness {
         self.port
     }
 
-    /// Get the path to the log file (if log capture is enabled).
+    /// Get the path to the log file.
     ///
-    /// Returns `None` if the harness was created with `spawn()` instead
-    /// of `spawn_with_log()`.
+    /// Returns the path to the log file where server stderr is captured.
+    /// All spawn methods enable log capture, so this always returns `Some`.
     #[must_use]
     pub fn log_path(&self) -> Option<&Path> {
         self.log_file.as_deref()

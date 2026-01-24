@@ -6,17 +6,18 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
-- Per-test server log capture for integration tests (#428)
-  - `TestServerHarness::spawn_with_log(test_name)` captures server stderr to per-test log files
+- Per-test server log capture for integration tests (#428, #431)
+  - All test harness spawn methods now capture server stderr to per-test log files
+  - `TestServerHarness::spawn()` auto-extracts test name from thread (recommended)
+  - `TestServerHarness::spawn_with_name(name)` for explicit test naming
   - Logs saved to `tmp/test-logs/{test_name}_{timestamp}.log`
   - Background tokio task streams logs during test execution
   - `REOVIM_LOG=debug` by default for full tracing visibility
-  - `IntegrationTest::log_path()` and `StepTest::log_path()` expose log location
+  - `IntegrationTest`, `StepTest`, and `MultiClientTest` all capture logs
+  - `log_path()` accessor available on all test builders
   - `TestResult` assertions include log path hint on failure
   - `StepTrace::print_trace()` shows log path for debugging
-  - Replaces manual file-based debug logging with proper `tracing::debug!()` calls
-  - Added `tracing` dependency to vim module for resolver instrumentation
-  - Operator resolvers (delete, yank, change) now emit debug traces for count flow
+  - Warning: Do not use `std::fs::OpenOptions` for debug logging - use harness log capture
 
 - UniqueProvider service abstraction Phase 6b - runner cleanup (#417)
   - Deleted 924 lines of redundant code from runner
