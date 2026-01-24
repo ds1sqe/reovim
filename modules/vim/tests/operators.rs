@@ -114,7 +114,6 @@ async fn test_3x_count_delete() {
 }
 
 #[tokio::test]
-#[ignore = "requires operator-pending mode (d/y/c + motion)"]
 async fn test_dw_delete_word() {
     let result = IntegrationTest::new()
         .await
@@ -150,7 +149,6 @@ async fn test_dj_delete_two_lines() {
 }
 
 #[tokio::test]
-#[ignore = "requires operator-pending mode (d/y/c + motion)"]
 async fn test_db_delete_backward_word() {
     let result = IntegrationTest::new()
         .await
@@ -226,7 +224,6 @@ async fn test_2yy_yank_count() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires operator-pending mode (d/y/c + motion)"]
 async fn test_dd_p_paste_after() {
     let result = IntegrationTest::new()
         .await
@@ -312,7 +309,6 @@ async fn test_c_dollar_change_to_eol() {
 }
 
 #[tokio::test]
-#[ignore = "cc cursor positioning (#421)"]
 async fn test_cc_change_line() {
     let result = IntegrationTest::new()
         .await
@@ -408,7 +404,6 @@ async fn test_count_yank_exceeds_lines() {
 }
 
 #[tokio::test]
-#[ignore = "cursor always at (0,0) (#425)"]
 async fn test_large_count_movement() {
     // 999j on 3 lines clamps to last line
     let result = IntegrationTest::new()
@@ -422,7 +417,6 @@ async fn test_large_count_movement() {
 }
 
 #[tokio::test]
-#[ignore = "cursor always at (0,0) (#425)"]
 async fn test_dollar_then_count_h() {
     // Go to EOL then move back with count
     let result = IntegrationTest::new()
@@ -433,4 +427,53 @@ async fn test_dollar_then_count_h() {
         .await;
     // At 'd' (col 10), 3h -> col 7 ('o' in "world")
     result.assert_cursor(0, 7);
+}
+
+// Debug test for #421
+#[tokio::test]
+async fn debug_cc_no_text() {
+    let result = IntegrationTest::new()
+        .await
+        .with_buffer("line 1\nline 2\nline 3")
+        .send_keys("jcc<Esc>")
+        .run()
+        .await;
+
+    eprintln!("DEBUG cc without text:");
+    eprintln!("  Buffer: {:?}", result.buffer_content);
+    eprintln!("  Cursor: ({}, {})", result.cursor_line, result.cursor_column);
+    eprintln!("  Mode: {}", result.edit_mode);
+
+    result.assert_buffer_eq("line 1\n\nline 3");
+}
+
+#[tokio::test]
+async fn debug_cc_single_char() {
+    // First check state after cc (before typing)
+    let after_cc = IntegrationTest::new()
+        .await
+        .with_buffer("line 1\nline 2\nline 3")
+        .send_keys("jcc")
+        .run()
+        .await;
+
+    eprintln!("DEBUG after jcc (in insert mode):");
+    eprintln!("  Buffer: {:?}", after_cc.buffer_content);
+    eprintln!("  Cursor: ({}, {})", after_cc.cursor_line, after_cc.cursor_column);
+    eprintln!("  Mode: {}", after_cc.edit_mode);
+
+    // Now check what happens when we type X
+    let after_x = IntegrationTest::new()
+        .await
+        .with_buffer("line 1\nline 2\nline 3")
+        .send_keys("jccX<Esc>")
+        .run()
+        .await;
+
+    eprintln!("DEBUG after jccX<Esc>:");
+    eprintln!("  Buffer: {:?}", after_x.buffer_content);
+    eprintln!("  Cursor: ({}, {})", after_x.cursor_line, after_x.cursor_column);
+    eprintln!("  Mode: {}", after_x.edit_mode);
+
+    after_x.assert_buffer_eq("line 1\nX\nline 3");
 }
