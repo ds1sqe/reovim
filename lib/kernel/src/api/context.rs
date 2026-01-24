@@ -54,10 +54,16 @@ pub struct KernelContext {
     pub marks: Arc<RwLock<MarkBank>>,
     /// Option registry for editor settings.
     pub options: Arc<OptionRegistry>,
+    /// Service registry for cross-module service discovery.
+    ///
+    /// Provides access to driver and module services like `ClipboardProvider`.
+    /// This is the same registry used in `ModuleContext.services`.
+    pub services: Arc<ServiceRegistry>,
 }
 
 impl KernelContext {
     /// Create a new kernel context.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         event_bus: Arc<EventBus>,
         buffers: Arc<dyn BufferManager>,
@@ -66,6 +72,7 @@ impl KernelContext {
         registers: Arc<RwLock<RegisterBank>>,
         marks: Arc<RwLock<MarkBank>>,
         options: Arc<OptionRegistry>,
+        services: Arc<ServiceRegistry>,
     ) -> Self {
         Self {
             event_bus,
@@ -75,6 +82,7 @@ impl KernelContext {
             registers,
             marks,
             options,
+            services,
         }
     }
 }
@@ -89,6 +97,7 @@ impl fmt::Debug for KernelContext {
             .field("registers", &"Arc<RwLock<RegisterBank>>")
             .field("marks", &"Arc<RwLock<MarkBank>>")
             .field("options", &"Arc<OptionRegistry>")
+            .field("services", &"Arc<ServiceRegistry>")
             .finish()
     }
 }
@@ -270,6 +279,7 @@ impl Default for KernelContext {
             registers: Arc::new(RwLock::new(RegisterBank::new())),
             marks: Arc::new(RwLock::new(MarkBank::new())),
             options: Arc::new(OptionRegistry::new()),
+            services: Arc::new(ServiceRegistry::new()),
         }
     }
 }

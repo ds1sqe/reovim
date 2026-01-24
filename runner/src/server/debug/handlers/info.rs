@@ -15,13 +15,20 @@ use super::super::infrastructure::{start_time_iso, uptime_human, uptime_seconds}
 #[must_use]
 pub fn debug_version(_ctx: RpcContext, _params: serde_json::Value) -> HandlerFuture {
     Box::pin(async move {
+        // Parse git_dirty from "true"/"false" string
+        let git_dirty = option_env!("REOVIM_GIT_DIRTY").and_then(|s| s.parse::<bool>().ok());
+
         let result = VersionResult {
             version: env!("CARGO_PKG_VERSION").to_string(),
             git_hash: option_env!("REOVIM_GIT_HASH").map(ToString::to_string),
+            git_commit: option_env!("REOVIM_GIT_COMMIT").map(ToString::to_string),
+            git_dirty,
             build_date: option_env!("REOVIM_BUILD_DATE").map(ToString::to_string),
+            build_timestamp: option_env!("REOVIM_BUILD_TIMESTAMP").map(ToString::to_string),
             rust_version: option_env!("REOVIM_RUST_VERSION")
                 .unwrap_or("unknown")
                 .to_string(),
+            target: option_env!("REOVIM_TARGET").map(ToString::to_string),
         };
 
         serde_json::to_value(result)

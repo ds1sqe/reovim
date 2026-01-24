@@ -339,7 +339,7 @@ mod tests {
         reovim_driver_command::ArgValue,
         reovim_driver_session::{ClientId, Session, SessionRuntime, api::CommandExecutor},
         reovim_kernel::api::{
-            KernelContext,
+            KernelContext, ServiceRegistry,
             v1::{
                 Buffer, BufferError, BufferId, BufferManager, EventBus, MarkBank, ModeId, ModuleId,
                 OptionRegistry, Position, RegisterBank, RwLock, TextObjectEngine,
@@ -407,6 +407,7 @@ mod tests {
             Arc::new(RwLock::new(RegisterBank::new())),
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::default()),
+            Arc::new(ServiceRegistry::new()),
         )
     }
 

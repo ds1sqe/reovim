@@ -38,6 +38,7 @@
 //! ```
 
 use {
+    reovim_driver_clipboard::{ClipboardKey, ClipboardProviderRegistry},
     reovim_driver_command_types::{CommandContext, CommandResult},
     reovim_driver_display::{
         NavigateDirection, Rect, SplitDirection,
@@ -550,11 +551,80 @@ impl WindowApi for SessionRuntime<'_> {
 
 impl RegisterApi for SessionRuntime<'_> {
     fn get_register(&self, name: Option<char>) -> Option<RegisterContent> {
-        self.kernel.registers.read().get_by_name(name).cloned()
+        match name {
+            // System clipboard (+)
+            Some('+') => {
+                if let Some(registry) = self.kernel.services.get::<ClipboardProviderRegistry>()
+                    && let Some(provider) = registry.get(&ClipboardKey::Default)
+                    && let Ok(Some(text)) = provider.paste_from_clipboard()
+                {
+                    return Some(RegisterContent::characterwise(text));
+                }
+                None
+            }
+
+            // Selection clipboard (*)
+            Some('*') => {
+                if let Some(registry) = self.kernel.services.get::<ClipboardProviderRegistry>()
+                    && let Some(provider) = registry.get(&ClipboardKey::Default)
+                    && let Ok(Some(text)) = provider.paste_from_selection()
+                {
+                    return Some(RegisterContent::characterwise(text));
+                }
+                None
+            }
+
+            // Numbered registers (0-9) - yank history
+            Some(n) if n.is_ascii_digit() => {
+                if let Some(registry) = self.kernel.services.get::<ClipboardProviderRegistry>()
+                    && let Some(provider) = registry.get(&ClipboardKey::Default)
+                {
+                    return provider.get_numbered(n);
+                }
+                None
+            }
+
+            // Named registers (a-z, A-Z) and unnamed - use kernel's RegisterBank
+            _ => self.kernel.registers.read().get_by_name(name).cloned(),
+        }
     }
 
     fn set_register(&mut self, name: Option<char>, content: RegisterContent) {
-        self.kernel.registers.write().set_by_name(name, content);
+        match name {
+            // System clipboard (+)
+            Some('+') => {
+                if let Some(registry) = self.kernel.services.get::<ClipboardProviderRegistry>()
+                    && let Some(provider) = registry.get(&ClipboardKey::Default)
+                {
+                    let _ = provider.copy_to_clipboard(&content.text);
+                    return;
+                }
+                // Fallback: store in kernel's registers
+                self.kernel.registers.write().set_by_name(name, content);
+            }
+
+            // Selection clipboard (*)
+            Some('*') => {
+                if let Some(registry) = self.kernel.services.get::<ClipboardProviderRegistry>()
+                    && let Some(provider) = registry.get(&ClipboardKey::Default)
+                {
+                    let _ = provider.copy_to_selection(&content.text);
+                    return;
+                }
+                // Fallback: store in kernel's registers
+                self.kernel.registers.write().set_by_name(name, content);
+            }
+
+            // Numbered registers (0-9) are read-only (populated by history)
+            Some(n) if n.is_ascii_digit() => {
+                // Ignore writes to numbered registers - they're managed by history
+            }
+
+            // Named registers (a-z, A-Z) and unnamed - use kernel's RegisterBank
+            _ => {
+                self.kernel.registers.write().set_by_name(name, content);
+            }
+        }
     }
 }
 

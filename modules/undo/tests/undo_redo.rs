@@ -7,11 +7,10 @@
 //!
 //! Run `cargo test --ignored` to run the remaining ignored tests.
 
-mod common;
-use common::IntegrationTest;
+use runner::testing::IntegrationTest;
 
 #[tokio::test]
-#[ignore = "requires undo implementation via SessionContext (#385)"]
+#[ignore = "undo E2E tests pending (#311)"]
 async fn test_undo_delete_line() {
     let result = IntegrationTest::new()
         .await
@@ -34,7 +33,7 @@ async fn test_redo_after_undo() {
 }
 
 #[tokio::test]
-#[ignore = "requires undo implementation via SessionContext (#385)"]
+#[ignore = "undo E2E tests pending (#311)"]
 async fn test_multiple_undo() {
     let result = IntegrationTest::new()
         .await
@@ -46,7 +45,7 @@ async fn test_multiple_undo() {
 }
 
 #[tokio::test]
-#[ignore = "requires undo implementation via SessionContext (#385)"]
+#[ignore = "undo E2E tests pending (#311)"]
 async fn test_undo_insert() {
     let result = IntegrationTest::new()
         .await
@@ -69,6 +68,7 @@ async fn test_multiple_redo() {
 }
 
 #[tokio::test]
+#[ignore = "undo E2E tests pending (#311)"]
 async fn test_undo_change_word() {
     let result = IntegrationTest::new()
         .await

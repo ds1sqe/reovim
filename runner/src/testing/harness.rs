@@ -1,5 +1,11 @@
 //! Test server harness that spawns a reovim server process.
-//! Ported from archive/lib/core/src/testing/server.rs
+//!
+//! This is the core **mechanism** for integration testing - it handles
+//! server lifecycle without any knowledge of what's being tested.
+
+// Test infrastructure - suppress pedantic docs requirements
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::missing_panics_doc)]
 
 use std::{
     path::PathBuf,
@@ -54,14 +60,23 @@ async fn read_port_from_stderr(
     Err("Server exited without outputting port".into())
 }
 
-/// Test harness that spawns a server process
+/// Test harness that spawns a server process.
+///
+/// Automatically cleans up the server process when dropped.
 pub struct TestServerHarness {
     process: Child,
     port: u16,
 }
 
 impl TestServerHarness {
-    /// Spawn server on OS-assigned port
+    /// Spawn server on OS-assigned port.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if:
+    /// - Binary not found at expected path
+    /// - Server fails to start within timeout
+    /// - Server panics during startup
     pub async fn spawn() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let log_level = std::env::var("REOVIM_LOG").unwrap_or_else(|_| "warn".to_string());
         let _test_id = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
@@ -83,7 +98,7 @@ impl TestServerHarness {
         Ok(Self { process, port })
     }
 
-    /// Get the port
+    /// Get the port the server is listening on.
     #[must_use]
     pub const fn port(&self) -> u16 {
         self.port

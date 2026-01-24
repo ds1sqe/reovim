@@ -49,7 +49,7 @@ use super::{
 const MESSAGE_CHANNEL_SIZE: usize = 256;
 
 /// Timeout for prefix mode (2 seconds).
-const PREFIX_TIMEOUT: Duration = Duration::from_millis(2000);
+const PREFIX_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Maximum concurrent pending CLI query requests.
 const MAX_PENDING_REQUESTS: usize = 16;

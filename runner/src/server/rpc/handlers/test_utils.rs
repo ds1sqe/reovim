@@ -8,7 +8,7 @@ use {
     reovim_driver_vfs::{MockVfs, VfsDriver},
     reovim_kernel::api::v1::{
         EventBus, KernelContext, MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry,
-        RegisterBank, TextObjectEngine,
+        RegisterBank, ServiceRegistry, TextObjectEngine,
     },
 };
 
@@ -64,6 +64,7 @@ fn real_kernel_context() -> KernelContext {
         Arc::new(RwLock::new(RegisterBank::new())),
         Arc::new(RwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
+        Arc::new(ServiceRegistry::new()),
     )
 }
 

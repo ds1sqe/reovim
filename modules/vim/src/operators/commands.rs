@@ -102,8 +102,7 @@ impl Command for ChangeCommand {
 
 impl CommandHandler for ChangeCommand {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        use super::ChangeOperator;
-        use crate::modes::VimMode;
+        use {super::ChangeOperator, crate::modes::VimMode};
 
         // Execute the change operator (delete text)
         let result = execute_operator(&ChangeOperator, runtime, args);

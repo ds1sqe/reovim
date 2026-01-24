@@ -46,7 +46,8 @@ pub fn create_session_with_defaults(id: SessionId) -> Arc<Session> {
         .expect("VFS provider must be registered by vfs-local module");
 
     // Create kernel context (Epic #417 Part 2: queries BufferManager from ServiceRegistry)
-    let kernel = super::real_kernel_context(&services);
+    // Pass services Arc so kernel has access to ClipboardProvider and other services
+    let kernel = super::real_kernel_context(Arc::clone(&services));
 
     // Handle empty session: create buffer if handlers indicate so
     let empty_session_registry = super::build_empty_session_registry(&services);

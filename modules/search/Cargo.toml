@@ -28,6 +28,11 @@ regex = "1.10"
 # Logging
 tracing.workspace = true
 
+[dev-dependencies]
+# Integration test harness from runner
+reovim = { path = "../../runner" }
+tokio = { workspace = true }
+
 [features]
 # Enable for building as standalone dynamic library
 dynamic = []

@@ -4,8 +4,7 @@
 //!
 //! Run `cargo test --ignored` to run the remaining ignored tests.
 
-mod common;
-use common::IntegrationTest;
+use runner::testing::IntegrationTest;
 
 // ============================================================================
 // EMPTY BUFFER

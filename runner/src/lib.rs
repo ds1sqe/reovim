@@ -114,6 +114,9 @@
 // All server-specific code lives in the server module
 pub mod server;
 
+// Integration test harness (mechanism layer for module tests)
+pub mod testing;
+
 // Manager daemon for instance coordination
 pub mod manager;
 

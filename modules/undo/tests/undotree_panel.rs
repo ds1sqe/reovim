@@ -4,11 +4,10 @@
 //! These tests verify the complete workflow from opening the panel
 //! to navigating and applying undo states.
 
-mod common;
-use common::IntegrationTest;
+use runner::testing::{IntegrationTest, TestResult};
 
 /// Assert the result is in undotree mode.
-fn assert_undotree_mode(result: &common::TestResult) {
+fn assert_undotree_mode(result: &TestResult) {
     assert!(
         result.edit_mode.to_lowercase().contains("undotree")
             || result.mode_display.to_uppercase().contains("UNDOTREE"),

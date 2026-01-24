@@ -120,8 +120,7 @@ impl UndoFileFormat {
             original_path,
             created_at: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0),
+                .map_or(0, |d| d.as_secs()),
             reovim_version: env!("CARGO_PKG_VERSION").to_string(),
             tree,
         }

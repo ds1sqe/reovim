@@ -22,7 +22,8 @@
 // Allow comparisons that are always true due to type limits (u32 >= 0)
 #![allow(unused_comparisons)]
 
-mod common;
+// Use demo_module_path from the testing harness
+use runner::testing::demo_module_path;
 
 use std::ffi::c_void;
 
@@ -64,7 +65,7 @@ type FreeStateFn = unsafe extern "C" fn(*mut u8, usize);
 
 #[test]
 fn test_module_load_dynamic() {
-    let path = common::demo_module_path();
+    let path = demo_module_path();
     assert!(path.exists(), "Demo module not found at {path:?}");
 
     // SAFETY: We're loading a trusted module built by this project
@@ -110,7 +111,7 @@ fn test_module_load_dynamic() {
 
 #[test]
 fn test_module_probe_metadata() {
-    let path = common::demo_module_path();
+    let path = demo_module_path();
 
     // SAFETY: We're loading a trusted module
     let library = unsafe { Library::new(&path).expect("Failed to load library") };
@@ -127,7 +128,7 @@ fn test_module_probe_metadata() {
 
 #[test]
 fn test_module_init_exit_lifecycle() {
-    let path = common::demo_module_path();
+    let path = demo_module_path();
 
     // SAFETY: We're loading a trusted module
     let library = unsafe { Library::new(&path).expect("Failed to load library") };
@@ -160,7 +161,7 @@ fn test_module_init_exit_lifecycle() {
 
 #[test]
 fn test_module_hot_reload_state_preservation() {
-    let path = common::demo_module_path();
+    let path = demo_module_path();
 
     // SAFETY: We're loading a trusted module
     let library = unsafe { Library::new(&path).expect("Failed to load library") };
@@ -222,7 +223,7 @@ fn test_module_hot_reload_state_preservation() {
 
 #[test]
 fn test_state_version_forward_compatible() {
-    let path = common::demo_module_path();
+    let path = demo_module_path();
 
     // SAFETY: We're loading a trusted module
     let library = unsafe { Library::new(&path).expect("Failed to load library") };
@@ -265,7 +266,7 @@ fn test_state_version_forward_compatible() {
 
 #[test]
 fn test_state_version_too_new_rejected() {
-    let path = common::demo_module_path();
+    let path = demo_module_path();
 
     // SAFETY: We're loading a trusted module
     let library = unsafe { Library::new(&path).expect("Failed to load library") };
@@ -291,7 +292,7 @@ fn test_state_version_too_new_rejected() {
 
 #[test]
 fn test_state_corrupt_data_rejected() {
-    let path = common::demo_module_path();
+    let path = demo_module_path();
 
     // SAFETY: We're loading a trusted module
     let library = unsafe { Library::new(&path).expect("Failed to load library") };
@@ -320,7 +321,7 @@ fn test_state_corrupt_data_rejected() {
 
 #[test]
 fn test_api_version_check() {
-    let path = common::demo_module_path();
+    let path = demo_module_path();
 
     // SAFETY: We're loading a trusted module
     let library = unsafe { Library::new(&path).expect("Failed to load library") };
@@ -341,7 +342,7 @@ fn test_api_version_check() {
 
 #[test]
 fn test_null_pointer_handling() {
-    let path = common::demo_module_path();
+    let path = demo_module_path();
 
     // SAFETY: We're loading a trusted module
     let library = unsafe { Library::new(&path).expect("Failed to load library") };

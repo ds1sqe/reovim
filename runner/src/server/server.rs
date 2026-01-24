@@ -84,6 +84,25 @@ impl Server {
         // Quiet mode when ready_signal is set (no stderr output)
         debug::init(self.config.ready_signal);
 
+        // Log version info at startup (#419)
+        let git_hash = option_env!("REOVIM_GIT_HASH").unwrap_or("unknown");
+        let git_commit = option_env!("REOVIM_GIT_COMMIT").unwrap_or("unknown");
+        let git_dirty = option_env!("REOVIM_GIT_DIRTY") == Some("true");
+        let build_timestamp = option_env!("REOVIM_BUILD_TIMESTAMP").unwrap_or("unknown");
+        let rust_version = option_env!("REOVIM_RUST_VERSION").unwrap_or("unknown");
+        let target = option_env!("REOVIM_TARGET").unwrap_or("unknown");
+
+        tracing::info!(
+            version = env!("CARGO_PKG_VERSION"),
+            git_hash = git_hash,
+            git_commit = git_commit,
+            git_dirty = git_dirty,
+            build_timestamp = build_timestamp,
+            rust = rust_version,
+            target = target,
+            "reovim server starting"
+        );
+
         // Load modules from configuration
         self.load_modules();
 

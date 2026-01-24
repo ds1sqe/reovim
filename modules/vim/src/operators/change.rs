@@ -4,7 +4,7 @@
 
 use reovim_kernel::api::v1::RegisterContent;
 
-use super::{Operator, OperatorContext, OperatorError, Range};
+use super::{Operator, OperatorContext, OperatorError, Range, registers};
 
 /// Change operator - cuts text and signals insert mode.
 ///
@@ -78,7 +78,10 @@ impl Operator for ChangeOperator {
                 if let Some(end_line_content) = lines.get(clamped_end) {
                     // Delete all lines but keep start.line as empty (with its newline)
                     // Delete from start.line to end of clamped_end content, plus all intermediate newlines
-                    reovim_kernel::api::v1::Position::new(clamped_end, end_line_content.chars().count())
+                    reovim_kernel::api::v1::Position::new(
+                        clamped_end,
+                        end_line_content.chars().count(),
+                    )
                 } else {
                     reovim_kernel::api::v1::Position::new(clamped_end, 0)
                 }
@@ -122,18 +125,15 @@ impl Operator for ChangeOperator {
         }
         drop(buffer);
 
-        // Store in register - linewise if the range was linewise
+        // Store in register - linewise if the range was linewise (handles +/* via ClipboardProvider)
         let content = if range.is_linewise {
             RegisterContent::linewise(deleted_text)
         } else {
             RegisterContent::characterwise(deleted_text)
         };
 
-        // Use set_by_name which handles named registers (a-z) and append (A-Z)
-        ctx.kernel
-            .registers
-            .write()
-            .set_by_name(ctx.register, content);
+        registers::store_to_register(ctx.kernel, ctx.register, &content);
+        registers::push_to_history(ctx.kernel, &content);
 
         // Note: Insert mode transition is handled by the caller
         // The runner/display driver should check operator id and enter insert mode

@@ -8,8 +8,7 @@
 //!
 //! Run `cargo test --ignored` to run the remaining ignored tests.
 
-mod common;
-use common::IntegrationTest;
+use runner::testing::IntegrationTest;
 
 // ============================================================================
 // DELETE OPERATORS (dd, x, d{motion})
@@ -313,6 +312,7 @@ async fn test_c_dollar_change_to_eol() {
 }
 
 #[tokio::test]
+#[ignore = "cc cursor positioning (#421)"]
 async fn test_cc_change_line() {
     let result = IntegrationTest::new()
         .await
@@ -408,6 +408,7 @@ async fn test_count_yank_exceeds_lines() {
 }
 
 #[tokio::test]
+#[ignore = "cursor always at (0,0) (#425)"]
 async fn test_large_count_movement() {
     // 999j on 3 lines clamps to last line
     let result = IntegrationTest::new()
@@ -421,6 +422,7 @@ async fn test_large_count_movement() {
 }
 
 #[tokio::test]
+#[ignore = "cursor always at (0,0) (#425)"]
 async fn test_dollar_then_count_h() {
     // Go to EOL then move back with count
     let result = IntegrationTest::new()

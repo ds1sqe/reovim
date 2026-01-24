@@ -164,10 +164,13 @@ mod tests {
         super::*,
         reovim_driver_command::{ArgKind, ArgValue, Command, CommandContext, CommandResult},
         reovim_driver_session::{ClientId, Session, SessionRuntime, api::CommandExecutor},
-        reovim_kernel::api::v1::{
-            Buffer, BufferError, BufferId, BufferManager, CommandId as KernelCommandId, EventBus,
-            KernelContext, MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry, Position,
-            RegisterBank, RegisterContent, RwLock, TextObjectEngine,
+        reovim_kernel::api::{
+            ServiceRegistry,
+            v1::{
+                Buffer, BufferError, BufferId, BufferManager, CommandId as KernelCommandId,
+                EventBus, KernelContext, MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry,
+                Position, RegisterBank, RegisterContent, RwLock, TextObjectEngine,
+            },
         },
         std::{collections::HashMap, sync::Arc},
     };
@@ -250,6 +253,7 @@ mod tests {
             Arc::new(RwLock::new(RegisterBank::new())),
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::default()),
+            Arc::new(ServiceRegistry::new()),
         )
     }
 

@@ -4,7 +4,7 @@
 
 use reovim_kernel::api::v1::RegisterContent;
 
-use super::{Operator, OperatorContext, OperatorError, Range};
+use super::{Operator, OperatorContext, OperatorError, Range, registers};
 
 /// Yank operator - copies text to register.
 ///
@@ -84,7 +84,7 @@ impl Operator for YankOperator {
             }
         }
 
-        // Release the buffer lock before acquiring register lock
+        // Release the buffer lock before register operations
         drop(buffer);
 
         // Store in register - linewise if the range was linewise
@@ -94,14 +94,13 @@ impl Operator for YankOperator {
             RegisterContent::characterwise(yanked_text)
         };
 
-        // Use set_by_name which handles:
-        // - None or '"' -> unnamed register
-        // - 'a'-'z' -> named register
-        // - 'A'-'Z' -> append to named register
-        ctx.kernel
-            .registers
-            .write()
-            .set_by_name(ctx.register, content);
+        // Store to the specified register (handles +, *, a-z, etc.)
+        // Uses ClipboardProvider for +/* registers, RegisterBank for others
+        registers::store_to_register(ctx.kernel, ctx.register, &content);
+
+        // Push to history for numbered registers (0-9)
+        // This happens on every yank regardless of target register
+        registers::push_to_history(ctx.kernel, &content);
 
         Ok(())
     }
