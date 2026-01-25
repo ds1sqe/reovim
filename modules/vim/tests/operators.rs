@@ -827,3 +827,39 @@ async fn debug_step_d_dollar() {
     eprintln!("\nExpected buffer: \"he\"");
     eprintln!("Actual buffer: {:?}", final_state.buffer);
 }
+
+// ============================================================================
+// LAST-LINE DELETION REGRESSION TESTS (Issue #434)
+// ============================================================================
+
+/// Regression test for #434: 2dd spanning to last line should work correctly
+#[tokio::test]
+async fn test_2dd_deletes_to_end_of_buffer() {
+    let result = IntegrationTest::new()
+        .await
+        .with_buffer("first\nsecond\nthird")
+        .send_keys("j2dd") // Move to line 2, delete 2 lines (to end)
+        .run()
+        .await;
+
+    // Should have exactly "first" - deleted "second" and "third"
+    result.assert_buffer_eq("first");
+    // Cursor should be at end of remaining line
+    result.assert_cursor(0, 4);
+}
+
+/// Regression test for #434: undo should correctly restore deleted last line
+#[tokio::test]
+async fn test_undo_dd_last_line() {
+    let result = IntegrationTest::new()
+        .await
+        .with_buffer("first\nsecond")
+        .send_keys("jddu") // Move to line 2, delete it, undo
+        .run()
+        .await;
+
+    // Should restore the buffer to original state
+    result.assert_buffer_eq("first\nsecond");
+    // Cursor should be back on second line
+    result.assert_cursor(1, 0);
+}

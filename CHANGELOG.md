@@ -18,6 +18,13 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - Integration tests now correctly use worktree-built modules instead of
   globally installed modules. Test harness sets `REOVIM_MODULE_PATH` to
   `target/debug/` automatically. (#433)
+- **Delete operator**: Fixed linewise deletion of last line leaving an empty
+  trailing line. `dd` on the last line now correctly includes the preceding
+  newline, matching Vim behavior. (#434)
+- **Delete operator**: Fixed undo for last-line deletion. The undo now correctly
+  restores the preceding newline. (#434)
+- **RPC handler**: Fixed `PopResult::ExecuteCommand` not setting `buffer_id` in
+  command context, which caused delete/yank operators to fail silently. (#434)
 
 ### Removed
 

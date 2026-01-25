@@ -45,7 +45,6 @@ async fn test_yw_char_yank_type() {
 }
 
 #[tokio::test]
-#[ignore = "Named register prefix (#434)"]
 async fn test_named_register_a() {
     let result = IntegrationTest::new()
         .await
@@ -57,8 +56,38 @@ async fn test_named_register_a() {
     result.assert_register("a", "hello\n", "linewise");
 }
 
+/// Test that dd on last line of 2-line buffer leaves single line
 #[tokio::test]
-#[ignore = "Named register prefix (#434)"]
+async fn test_dd_last_line_of_two() {
+    let result = IntegrationTest::new()
+        .await
+        .with_buffer("hello\nworld")
+        .send_keys("jdd")
+        .run()
+        .await;
+
+    // After deleting last line, should have just "hello" - no trailing empty line
+    result.assert_buffer_eq("hello");
+    // Cursor should be at end of remaining line (last valid position)
+    result.assert_cursor(0, 4);
+}
+
+/// Debug: Test jdd followed by p to isolate paste behavior
+#[tokio::test]
+async fn test_jdd_then_p() {
+    let result = IntegrationTest::new()
+        .await
+        .with_buffer("hello\nworld")
+        .send_keys("jddp") // Delete world, paste from unnamed register
+        .run()
+        .await;
+
+    // dd puts "world\n" in unnamed register, p pastes it below
+    // Expected: "hello\nworld"
+    result.assert_buffer_eq("hello\nworld");
+}
+
+#[tokio::test]
 async fn test_named_register_paste() {
     let result = IntegrationTest::new()
         .await
