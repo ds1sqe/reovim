@@ -45,7 +45,7 @@ async fn test_yw_char_yank_type() {
 }
 
 #[tokio::test]
-#[ignore = "requires register selection prefix (\"a) support"]
+#[ignore = "Named register prefix (#434)"]
 async fn test_named_register_a() {
     let result = IntegrationTest::new()
         .await
@@ -58,7 +58,7 @@ async fn test_named_register_a() {
 }
 
 #[tokio::test]
-#[ignore = "requires register selection (\"a) prefix support"]
+#[ignore = "Named register prefix (#434)"]
 async fn test_named_register_paste() {
     let result = IntegrationTest::new()
         .await

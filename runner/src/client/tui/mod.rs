@@ -109,11 +109,6 @@ pub struct TuiArgs {
     #[arg(long, value_name = "ADDR")]
     pub tcp: Option<String>,
 
-    /// Connect to server via Unix socket (legacy, use -S instead).
-    #[cfg(unix)]
-    #[arg(long, value_name = "PATH", hide = true)]
-    pub socket: Option<PathBuf>,
-
     /// Enable debug mode (statusline + frame capture).
     ///
     /// Shows a debug statusline at the bottom of the screen and
@@ -143,9 +138,8 @@ impl TuiArgs {
     /// `ConnectionConfig::from_flags` directly.
     #[must_use]
     pub fn into_config(self) -> ConnectionConfig {
-        // Handle legacy --socket flag (maps to -S)
         #[cfg(unix)]
-        let socket_path = self.socket_path.or(self.socket);
+        let socket_path = self.socket_path;
         #[cfg(not(unix))]
         let socket_path = self.socket_path;
 

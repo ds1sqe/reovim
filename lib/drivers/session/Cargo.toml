@@ -21,6 +21,8 @@ reovim-driver-display = { path = "../display" }
 reovim-arch = { path = "../../arch" }
 # Clipboard driver for system clipboard and history (RegisterApi routing)
 reovim-driver-clipboard = { path = "../clipboard" }
+# Undo driver for UndoApi implementation
+reovim-driver-undo = { path = "../undo" }
 
 [lints]
 workspace = true

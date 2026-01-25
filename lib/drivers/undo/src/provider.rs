@@ -87,6 +87,39 @@ pub trait UndoProvider: Send + Sync {
     fn get_tree(&self, buffer_id: BufferId) -> Option<UndoTree>;
 
     // ========================================================================
+    // Batch Methods (Insert Mode Undo Grouping)
+    // ========================================================================
+
+    /// Begin a batch for accumulating edits.
+    ///
+    /// While a batch is active, `record()` calls accumulate edits instead of
+    /// creating separate undo entries. Call `end_batch()` to commit all
+    /// accumulated edits as a single undo entry.
+    ///
+    /// This is used for Vim-style insert mode undo: all characters typed
+    /// during a single insert session become one undo entry.
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer_id` - The buffer to start batching for
+    /// * `cursor_before` - Cursor position at batch start (for undo restoration)
+    fn begin_batch(&self, buffer_id: BufferId, cursor_before: Position);
+
+    /// End the current batch and commit accumulated edits.
+    ///
+    /// All edits recorded since `begin_batch()` are committed as a single
+    /// undo entry. If no edits were recorded, nothing is committed.
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer_id` - The buffer to end batching for
+    /// * `cursor_after` - Cursor position at batch end (for redo restoration)
+    fn end_batch(&self, buffer_id: BufferId, cursor_after: Position);
+
+    /// Check if a batch is currently active for a buffer.
+    fn is_batching(&self, buffer_id: BufferId) -> bool;
+
+    // ========================================================================
     // Persistence Methods (Epic #417 Part 2)
     // ========================================================================
 

@@ -5,8 +5,8 @@
 
 use {
     reovim_driver_input::{
-        KeyCode, KeyEvent, ModeKeyResolver, ModeState, ModeTransition, Modifiers, ResolveResult,
-        TransitionContext,
+        ExtensionMap, KeyCode, KeyEvent, KeyLookupState, KeySequence, ModeKeyResolver, ModeState,
+        Modifiers, ResolveContext, ResolveInput, ResolveResult, SessionApiDyn,
     },
     reovim_kernel::api::v1::ModeId,
 };
@@ -80,12 +80,11 @@ impl Default for VimInsertResolver {
 
 impl ModeKeyResolver for VimInsertResolver {
     fn resolve(&self, key: &KeyEvent, _state: &mut ModeState) -> ResolveResult {
-        // Escape exits insert mode
+        // Escape is NOT handled here - let keybinding call EXIT_INSERT command
+        // This ensures undo batching is properly ended via the command.
+        // The keybinding for <Esc> maps to vim:exit-insert command.
         if Self::is_escape(key) {
-            return ResolveResult::ModeTransition(ModeTransition::Set {
-                mode: VimMode::NORMAL_ID,
-                context: TransitionContext::new(),
-            });
+            return ResolveResult::NotHandled;
         }
 
         // Check for insertable character
@@ -96,6 +95,54 @@ impl ModeKeyResolver for VimInsertResolver {
         // Other keys (Backspace, arrows, Ctrl+sequences) go to keymap lookup
         // Return NotHandled to let the runner do the lookup
         ResolveResult::NotHandled
+    }
+
+    /// Insert mode key resolution with session access.
+    ///
+    /// This method handles keymap lookup for non-insertable keys like Escape,
+    /// Backspace, and arrow keys. When a key is not insertable, we query the
+    /// keymap to find a bound command.
+    ///
+    /// # Architecture
+    ///
+    /// Insert mode differs from normal mode:
+    /// - Insertable characters (letters, numbers, etc.) return `InsertChar`
+    /// - Non-insertable keys (Escape, Backspace, arrows) query the keymap
+    ///
+    /// This enables Escape to trigger the `vim:exit-insert` command, which
+    /// properly ends undo batching before switching to normal mode.
+    fn resolve_with_session(
+        &self,
+        key: &KeyEvent,
+        _state: &mut ModeState,
+        input: &ResolveInput<'_>,
+        _session: &mut dyn SessionApiDyn,
+        _extensions: &mut ExtensionMap,
+    ) -> ResolveResult {
+        // Check for insertable character first
+        if let Some(c) = Self::is_insertable(key) {
+            return ResolveResult::InsertChar(c);
+        }
+
+        // Non-insertable key - query keymap for binding
+        // Use single-key lookup (insert mode has no multi-key sequences)
+        let keys = KeySequence::from_keys(&[*key]);
+        let lookup_state = input.keymap.query(input.mode, &keys);
+
+        match lookup_state {
+            KeyLookupState::ExactOnly(cmd) | KeyLookupState::ExactWithLonger { exact: cmd, .. } => {
+                // Found a binding - execute it
+                ResolveResult::Execute(cmd, ResolveContext::new())
+            }
+            KeyLookupState::PrefixOnly => {
+                // Waiting for more keys (unlikely in insert mode)
+                ResolveResult::Pending
+            }
+            KeyLookupState::NotFound => {
+                // No binding - let runner handle (may be ignored)
+                ResolveResult::NotHandled
+            }
+        }
     }
 
     fn mode_id(&self) -> &ModeId {
@@ -172,31 +219,24 @@ mod tests {
     }
 
     #[test]
-    fn test_escape_exits() {
+    fn test_escape_not_handled() {
+        // Escape is NOT handled by resolver - let keybinding call EXIT_INSERT command
+        // This ensures undo batching is properly ended via the command.
         let resolver = VimInsertResolver::new();
         let mut state = test_state();
 
         let result = resolver.resolve(&KeyEvent::new(KeyCode::Escape), &mut state);
-
-        if let ResolveResult::ModeTransition(ModeTransition::Set { mode, .. }) = result {
-            assert_eq!(mode, VimMode::NORMAL_ID);
-        } else {
-            panic!("expected ModeTransition::Set");
-        }
+        assert!(matches!(result, ResolveResult::NotHandled));
     }
 
     #[test]
-    fn test_ctrl_bracket_exits() {
+    fn test_ctrl_bracket_not_handled() {
+        // Ctrl+[ is NOT handled by resolver - let keybinding call EXIT_INSERT command
         let resolver = VimInsertResolver::new();
         let mut state = test_state();
 
         let result = resolver.resolve(&key_with_mod('[', Modifiers::CTRL), &mut state);
-
-        if let ResolveResult::ModeTransition(ModeTransition::Set { mode, .. }) = result {
-            assert_eq!(mode, VimMode::NORMAL_ID);
-        } else {
-            panic!("expected ModeTransition::Set for Ctrl+[");
-        }
+        assert!(matches!(result, ResolveResult::NotHandled));
     }
 
     #[test]

@@ -124,9 +124,13 @@ impl AppState {
     /// Use `SessionState::driver_session` for these values.
     #[must_use]
     pub fn new(kernel: KernelContext) -> Self {
+        // Use the kernel's service registry - modules registered their services there
+        // during init() (e.g., UndoProviderRegistry, ClipboardProvider).
+        // Previously this created a new empty ServiceRegistry, which broke undo.
+        let services = Arc::clone(&kernel.services);
         Self {
             kernel,
-            services: Arc::new(ServiceRegistry::new()),
+            services,
             pending_keys: KeySequence::new(),
             running: true,
             terminal_width: 80,

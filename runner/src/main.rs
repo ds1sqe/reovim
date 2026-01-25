@@ -68,20 +68,6 @@ struct Args {
     /// Files to open on startup.
     #[arg(value_name = "FILE")]
     files: Vec<PathBuf>,
-
-    // Legacy flags (hidden for backwards compatibility)
-    #[arg(short, long, hide = true)]
-    server: bool,
-
-    #[arg(long, hide = true)]
-    listen_tcp: Option<u16>,
-
-    #[cfg(unix)]
-    #[arg(long, hide = true)]
-    listen_socket: Option<PathBuf>,
-
-    #[arg(long, hide = true)]
-    stdio: bool,
 }
 
 /// Main command dispatcher.
@@ -121,12 +107,6 @@ enum ManagerAction {
 fn main() {
     let args = Args::parse();
 
-    // Handle legacy flags
-    if args.command.is_none() && has_legacy_flags(&args) {
-        run_server(build_legacy_server_config(&args));
-        return;
-    }
-
     match args.command {
         Some(Command::Server(srv_args)) => {
             run_server(srv_args.into_config());
@@ -164,29 +144,6 @@ fn main() {
                 run_integrated(&args.files, debug_config);
             }
         }
-    }
-}
-
-const fn has_legacy_flags(args: &Args) -> bool {
-    #[cfg(unix)]
-    return args.server || args.listen_tcp.is_some() || args.listen_socket.is_some() || args.stdio;
-    #[cfg(not(unix))]
-    return args.server || args.listen_tcp.is_some() || args.stdio;
-}
-
-#[allow(clippy::option_if_let_else)]
-fn build_legacy_server_config(args: &Args) -> ServerConfig {
-    #[cfg(unix)]
-    if let Some(ref path) = args.listen_socket {
-        return ServerConfig::unix_socket(path);
-    }
-
-    if args.stdio {
-        ServerConfig::stdio()
-    } else if let Some(port) = args.listen_tcp {
-        ServerConfig::tcp(port)
-    } else {
-        ServerConfig::tcp_with_fallback()
     }
 }
 

@@ -44,9 +44,10 @@ use {
         NavigateDirection, Rect, SplitDirection,
         layout::{LayerId, WindowPlacement},
     },
+    reovim_driver_undo::{UndoKey, UndoProviderRegistry},
     reovim_kernel::api::v1::{
-        BufferId, CommandId, KernelContext, ModeId, Position, SelectionMode as KernelSelectionMode,
-        WindowId,
+        BufferId, CommandId, Edit, KernelContext, ModeId, Position,
+        SelectionMode as KernelSelectionMode, UndoResult, WindowId,
     },
 };
 
@@ -55,7 +56,7 @@ use crate::{
     api::{
         BufferApi, BufferError, ChangeTracker, CommandApi, CommandExecutor, CompositorApi,
         CompositorError, ExtensionApi, ModeApi, ModeError, RegisterApi, RegisterContent, Selection,
-        SelectionMode, StateChanges, WindowApi, WindowError,
+        SelectionMode, StateChanges, UndoApi, WindowApi, WindowError,
     },
     transition::{PopResult, TransitionContext},
 };
@@ -369,14 +370,55 @@ impl BufferApi for SessionRuntime<'_> {
 
     fn insert_text(&mut self, buffer: BufferId, pos: Position, text: &str) {
         if let Some(buf) = self.kernel.buffers.get(buffer) {
+            let cursor_before = {
+                let b = buf.read();
+                b.position()
+            };
+
             buf.write().insert_at(pos, text);
+
+            let cursor_after = {
+                let b = buf.read();
+                b.position()
+            };
+
+            // Record edit for undo
+            let edit = Edit::Insert {
+                position: pos,
+                text: text.to_string(),
+            };
+            self.record_edit(buffer, vec![edit], cursor_before, cursor_after);
+
             self.changes.record_buffer_modified(buffer);
         }
     }
 
     fn delete_range(&mut self, buffer: BufferId, start: Position, end: Position) {
         if let Some(buf) = self.kernel.buffers.get(buffer) {
-            buf.write().delete_range(start, end);
+            let cursor_before = {
+                let b = buf.read();
+                b.position()
+            };
+
+            let deleted_text = {
+                let mut b = buf.write();
+                b.delete_range(start, end)
+            };
+
+            let cursor_after = {
+                let b = buf.read();
+                b.position()
+            };
+
+            // Record edit for undo
+            if !deleted_text.is_empty() {
+                let edit = Edit::Delete {
+                    position: start,
+                    text: deleted_text,
+                };
+                self.record_edit(buffer, vec![edit], cursor_before, cursor_after);
+            }
+
             self.changes.record_buffer_modified(buffer);
         }
     }
@@ -625,6 +667,104 @@ impl RegisterApi for SessionRuntime<'_> {
                 self.kernel.registers.write().set_by_name(name, content);
             }
         }
+    }
+}
+
+// === UndoApi ===
+
+impl UndoApi for SessionRuntime<'_> {
+    fn undo(&mut self, buffer: BufferId) -> Option<UndoResult> {
+        let undo_provider = self
+            .kernel
+            .services
+            .get::<UndoProviderRegistry>()?
+            .get(&UndoKey::Buffer)?;
+
+        let result = undo_provider.undo(buffer)?;
+
+        // Apply the inverse edits to the buffer
+        if let Some(buf) = self.kernel.buffers.get(buffer) {
+            let mut buf = buf.write();
+            for edit in &result.edits {
+                match edit {
+                    Edit::Insert { position, text } => {
+                        buf.insert_at(*position, text);
+                    }
+                    Edit::Delete { position, text } => {
+                        buf.delete_at(*position, text.chars().count());
+                    }
+                }
+            }
+            buf.set_position(result.cursor);
+        }
+
+        self.changes.record_buffer_modified(buffer);
+        self.changes.record_cursor_move(buffer);
+
+        Some(result)
+    }
+
+    fn redo(&mut self, buffer: BufferId) -> Option<UndoResult> {
+        let undo_provider = self
+            .kernel
+            .services
+            .get::<UndoProviderRegistry>()?
+            .get(&UndoKey::Buffer)?;
+
+        let result = undo_provider.redo(buffer)?;
+
+        // Apply the edits to the buffer
+        if let Some(buf) = self.kernel.buffers.get(buffer) {
+            let mut buf = buf.write();
+            for edit in &result.edits {
+                match edit {
+                    Edit::Insert { position, text } => {
+                        buf.insert_at(*position, text);
+                    }
+                    Edit::Delete { position, text } => {
+                        buf.delete_at(*position, text.chars().count());
+                    }
+                }
+            }
+            buf.set_position(result.cursor);
+        }
+
+        self.changes.record_buffer_modified(buffer);
+        self.changes.record_cursor_move(buffer);
+
+        Some(result)
+    }
+
+    fn record_edit(
+        &mut self,
+        buffer: BufferId,
+        edits: Vec<Edit>,
+        cursor_before: Position,
+        cursor_after: Position,
+    ) {
+        if let Some(undo_registry) = self.kernel.services.get::<UndoProviderRegistry>()
+            && let Some(undo_provider) = undo_registry.get(&UndoKey::Buffer)
+        {
+            undo_provider.record(buffer, edits, cursor_before, cursor_after);
+        }
+    }
+
+    fn can_undo(&self, buffer: BufferId) -> bool {
+        self.kernel
+            .services
+            .get::<UndoProviderRegistry>()
+            .and_then(|registry| registry.get(&UndoKey::Buffer))
+            .and_then(|provider| provider.get_tree(buffer))
+            .is_some_and(|tree| tree.can_undo())
+    }
+
+    fn can_redo(&self, buffer: BufferId) -> bool {
+        self.kernel
+            .services
+            .get::<UndoProviderRegistry>()
+            .and_then(|registry| registry.get(&UndoKey::Buffer))
+            .and_then(|provider| provider.get_tree(buffer))
+            .is_some_and(|tree| tree.can_redo())
     }
 }
 

@@ -109,7 +109,34 @@ Built-in implementations:
 
 Modules provide policy implementations (e.g., `EditorFallbackHandler` inserts characters in Insert mode).
 
+## Mode Key Resolution
+
+The input driver provides a **resolver chain** for mode-specific key handling. See [Resolver Chain Architecture](./resolver-chain.md) for the complete documentation.
+
+```rust
+pub trait ModeKeyResolver: Send + Sync {
+    fn mode_id(&self) -> &ModeId;
+    fn inherits_from(&self) -> Option<&ModeId>;
+
+    // Resolution chain (each level can be overridden)
+    fn resolve(&self, key: &KeyEvent, state: &mut ModeState) -> ResolveResult;
+    fn resolve_with_keymap(&self, ...) -> ResolveResult;      // + keymap access
+    fn resolve_with_extensions(&self, ...) -> ResolveResult;  // + extension data
+    fn resolve_with_session(&self, ...) -> ResolveResult;     // + session access
+}
+```
+
+Modules register resolvers for their modes:
+
+```rust
+// In vim module init()
+resolver_registry.register(VimNormalResolver::new());
+resolver_registry.register(VimInsertResolver::new());
+resolver_registry.register(VimVisualResolver::new());
+```
+
 ## Related Documents
 
+- [Resolver Chain Architecture](./resolver-chain.md) - Full resolver documentation
 - [Driver Overview](../overview.md) - Driver layer architecture
 - [Display Driver](../display/overview.md) - Cursor styles per mode

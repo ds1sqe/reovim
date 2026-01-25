@@ -44,11 +44,6 @@ pub struct CliArgs {
     #[arg(long, value_name = "ADDR")]
     pub tcp: Option<String>,
 
-    /// Connect to server via Unix socket (legacy, use -S instead).
-    #[cfg(unix)]
-    #[arg(long, value_name = "PATH", hide = true)]
-    pub socket: Option<PathBuf>,
-
     /// Start interactive REPL mode.
     #[arg(short = 'i', long)]
     pub repl: bool,
@@ -71,9 +66,8 @@ impl CliArgs {
     /// `ConnectionConfig::from_flags` directly.
     #[must_use]
     pub fn into_config(&self) -> ConnectionConfig {
-        // Handle legacy --socket flag (maps to -S)
         #[cfg(unix)]
-        let socket_path = self.socket_path.as_ref().or(self.socket.as_ref());
+        let socket_path = self.socket_path.as_ref();
         #[cfg(not(unix))]
         let socket_path = self.socket_path.as_ref();
 

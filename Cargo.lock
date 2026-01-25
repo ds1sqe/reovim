@@ -1468,6 +1468,7 @@ dependencies = [
  "reovim-driver-command-types",
  "reovim-driver-session",
  "reovim-kernel",
+ "tracing",
 ]
 
 [[package]]
@@ -1516,6 +1517,7 @@ dependencies = [
  "reovim-driver-clipboard",
  "reovim-driver-command-types",
  "reovim-driver-display",
+ "reovim-driver-undo",
  "reovim-kernel",
 ]
 
@@ -1789,6 +1791,7 @@ dependencies = [
  "reovim-driver-command-types",
  "reovim-driver-input",
  "reovim-driver-session",
+ "reovim-driver-undo",
  "reovim-kernel",
  "reovim-module-editor",
  "reovim-module-macros",

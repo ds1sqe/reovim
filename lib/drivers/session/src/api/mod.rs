@@ -12,6 +12,7 @@
 //! | [`BufferApi`] | Buffer content and lifecycle |
 //! | [`WindowApi`] | Window management and focus |
 //! | [`CommandApi`] | Command execution |
+//! | [`UndoApi`] | Undo/redo operations |
 //! | [`ExtensionApi`] | Module per-session state |
 //! | [`ChangeTracker`] | Accumulated change collection |
 //!
@@ -66,6 +67,7 @@ mod compositor;
 mod extension;
 mod mode;
 mod register;
+mod undo;
 mod window;
 
 // Buffer API
@@ -88,6 +90,9 @@ pub use extension::ExtensionApi;
 
 // Mode API
 pub use mode::{ModeApi, ModeError};
+
+// Undo API
+pub use undo::UndoApi;
 
 // Window API
 pub use window::{WindowApi, WindowError};
@@ -126,10 +131,16 @@ pub use window::{WindowApi, WindowError};
 ///     ResolveResult::Completed
 /// }
 /// ```
-pub trait SessionApiDyn: ModeApi + BufferApi + WindowApi + CommandApi + ChangeTracker {}
+pub trait SessionApiDyn:
+    ModeApi + BufferApi + WindowApi + CommandApi + UndoApi + ChangeTracker
+{
+}
 
 // Blanket implementation for SessionApiDyn
-impl<T> SessionApiDyn for T where T: ModeApi + BufferApi + WindowApi + CommandApi + ChangeTracker {}
+impl<T> SessionApiDyn for T where
+    T: ModeApi + BufferApi + WindowApi + CommandApi + UndoApi + ChangeTracker
+{
+}
 
 /// Full session API for generic bounds (not dyn-compatible).
 ///

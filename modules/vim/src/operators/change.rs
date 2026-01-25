@@ -2,7 +2,10 @@
 //!
 //! Reference: lib/core/src/command/builtin/operator.rs (concept-extraction, not migration)
 
-use reovim_kernel::api::v1::RegisterContent;
+use {
+    reovim_driver_undo::{UndoKey, UndoProviderRegistry},
+    reovim_kernel::api::v1::{Edit, RegisterContent},
+};
 
 use super::{Operator, OperatorContext, OperatorError, Range, registers};
 
@@ -41,6 +44,9 @@ impl Operator for ChangeOperator {
 
         let mut buffer = buffer_arc.write();
 
+        // Capture cursor before changes for undo
+        let cursor_before = buffer.position();
+
         // Get text before deleting
         let start = range.start;
         let end = range.end;
@@ -49,6 +55,9 @@ impl Operator for ChangeOperator {
         let mut deleted_text = String::new();
         let lines = buffer.lines();
         let line_count = lines.len();
+
+        // Track what was actually deleted for undo
+        let delete_pos;
 
         if range.is_linewise {
             // Linewise change: delete content of lines from start.line to end.line (inclusive)
@@ -93,6 +102,7 @@ impl Operator for ChangeOperator {
                 reovim_kernel::api::v1::Position::new(clamped_end, 0)
             };
 
+            delete_pos = delete_start;
             buffer.delete_range(delete_start, delete_end);
         } else if start.line == end.line {
             // Single line characterwise change
@@ -103,6 +113,7 @@ impl Operator for ChangeOperator {
                     deleted_text.push_str(&line[start_col..end_col]);
                 }
             }
+            delete_pos = start;
             buffer.delete_range(start, end);
         } else {
             // Multi-line characterwise change
@@ -121,9 +132,26 @@ impl Operator for ChangeOperator {
                     }
                 }
             }
+            delete_pos = start;
             buffer.delete_range(start, end);
         }
+
+        // Capture cursor after changes
+        let cursor_after = buffer.position();
+
         drop(buffer);
+
+        // Record edit for undo
+        if !deleted_text.is_empty()
+            && let Some(undo_registry) = ctx.kernel.services.get::<UndoProviderRegistry>()
+            && let Some(undo_provider) = undo_registry.get(&UndoKey::Buffer)
+        {
+            let edit = Edit::Delete {
+                position: delete_pos,
+                text: deleted_text.clone(),
+            };
+            undo_provider.record(ctx.buffer_id, vec![edit], cursor_before, cursor_after);
+        }
 
         // Store in register - linewise if the range was linewise (handles +/* via ClipboardProvider)
         let content = if range.is_linewise {

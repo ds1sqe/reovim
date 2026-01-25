@@ -20,10 +20,35 @@
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{BufferApi, SessionRuntime, TransitionContext, api::ModeApi},
+    reovim_driver_undo::{UndoKey, UndoProviderRegistry},
     reovim_kernel::api::v1::{CommandId, Position},
 };
 
 use crate::{ids, modes::VimMode};
+
+/// Start undo batching for insert mode.
+///
+/// All edits until `end_insert_batch` are grouped as a single undo entry.
+fn begin_insert_batch(runtime: &SessionRuntime<'_>, buffer_id: reovim_kernel::api::v1::BufferId) {
+    if let Some(pos) = runtime.buffer_position(buffer_id)
+        && let Some(undo_registry) = runtime.kernel().services.get::<UndoProviderRegistry>()
+        && let Some(undo_provider) = undo_registry.get(&UndoKey::Buffer)
+    {
+        undo_provider.begin_batch(buffer_id, pos);
+    }
+}
+
+/// End undo batching for insert mode.
+///
+/// Commits all accumulated edits as a single undo entry.
+fn end_insert_batch(runtime: &SessionRuntime<'_>, buffer_id: reovim_kernel::api::v1::BufferId) {
+    if let Some(pos) = runtime.buffer_position(buffer_id)
+        && let Some(undo_registry) = runtime.kernel().services.get::<UndoProviderRegistry>()
+        && let Some(undo_provider) = undo_registry.get(&UndoKey::Buffer)
+    {
+        undo_provider.end_batch(buffer_id, pos);
+    }
+}
 
 /// Enter insert mode (before cursor).
 #[derive(Debug, Clone, Copy, Default)]
@@ -40,7 +65,11 @@ impl Command for EnterInsertMode {
 }
 
 impl CommandHandler for EnterInsertMode {
-    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        // Start undo batching for insert mode
+        if let Some(buffer_id) = args.buffer_id() {
+            begin_insert_batch(runtime, buffer_id);
+        }
         runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
         CommandResult::Success
     }
@@ -63,14 +92,17 @@ impl Command for EnterInsertModeAppend {
 impl CommandHandler for EnterInsertModeAppend {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         // Move cursor right first, then enter insert mode
-        if let Some(buffer_id) = args.buffer_id()
-            && let Some(pos) = runtime.buffer_position(buffer_id)
-            && let Some(line_len) = runtime.buffer_line_len(buffer_id, pos.line)
-        {
-            // Move right only if not at end of line
-            if pos.column < line_len {
-                runtime.set_buffer_position(buffer_id, Position::new(pos.line, pos.column + 1));
+        if let Some(buffer_id) = args.buffer_id() {
+            if let Some(pos) = runtime.buffer_position(buffer_id)
+                && let Some(line_len) = runtime.buffer_line_len(buffer_id, pos.line)
+            {
+                // Move right only if not at end of line
+                if pos.column < line_len {
+                    runtime.set_buffer_position(buffer_id, Position::new(pos.line, pos.column + 1));
+                }
             }
+            // Start undo batching for insert mode
+            begin_insert_batch(runtime, buffer_id);
         }
 
         runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
@@ -94,12 +126,16 @@ impl Command for ExitToNormal {
 
 impl CommandHandler for ExitToNormal {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        // Move cursor left one position when exiting insert mode (Vim behavior)
-        if let Some(buffer_id) = args.buffer_id()
-            && let Some(pos) = runtime.buffer_position(buffer_id)
-            && pos.column > 0
-        {
-            runtime.set_buffer_position(buffer_id, Position::new(pos.line, pos.column - 1));
+        if let Some(buffer_id) = args.buffer_id() {
+            // End undo batching - commits all insert edits as one undo entry
+            end_insert_batch(runtime, buffer_id);
+
+            // Move cursor left one position when exiting insert mode (Vim behavior)
+            if let Some(pos) = runtime.buffer_position(buffer_id)
+                && pos.column > 0
+            {
+                runtime.set_buffer_position(buffer_id, Position::new(pos.line, pos.column - 1));
+            }
         }
 
         runtime.set_mode(VimMode::NORMAL_ID, TransitionContext::new());

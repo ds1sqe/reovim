@@ -689,9 +689,8 @@ mod tests {
     }
 
     #[test]
-    fn test_undo_command_returns_success() {
-        // Commands now return Success - actual undo logic
-        // will be handled by SessionRuntime (see #394 for API gap)
+    fn test_undo_command_returns_error_without_buffer() {
+        // Undo requires an active buffer - returns error when none is set
         let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
@@ -699,11 +698,12 @@ mod tests {
         let args = CommandContext::new();
 
         let result = UndoCommand.execute(&mut runtime, &args);
-        assert!(result.is_success());
+        assert!(result.is_error());
     }
 
     #[test]
-    fn test_redo_command_returns_success() {
+    fn test_redo_command_returns_error_without_buffer() {
+        // Redo requires an active buffer - returns error when none is set
         let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
@@ -711,11 +711,12 @@ mod tests {
         let args = CommandContext::new();
 
         let result = RedoCommand.execute(&mut runtime, &args);
-        assert!(result.is_success());
+        assert!(result.is_error());
     }
 
     #[test]
     fn test_undo_command_with_count() {
+        // Undo with count still requires an active buffer
         let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
@@ -724,13 +725,12 @@ mod tests {
         args.set("count", ArgValue::Count(5));
 
         let result = UndoCommand.execute(&mut runtime, &args);
-        // Commands return Success - count is accessed but actual undo
-        // will be handled by SessionRuntime (see #394)
-        assert!(result.is_success());
+        assert!(result.is_error()); // No buffer = error
     }
 
     #[test]
     fn test_redo_command_with_count() {
+        // Redo with count still requires an active buffer
         let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
@@ -739,7 +739,7 @@ mod tests {
         args.set("count", ArgValue::Count(3));
 
         let result = RedoCommand.execute(&mut runtime, &args);
-        assert!(result.is_success());
+        assert!(result.is_error()); // No buffer = error
     }
 
     #[test]
@@ -767,8 +767,8 @@ mod tests {
     }
 
     #[test]
-    fn test_undo_command_does_not_require_buffer_id() {
-        // Undo commands return Success without requiring buffer_id
+    fn test_undo_command_requires_active_buffer() {
+        // Undo commands DO require an active buffer (from session, not from args)
         let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
@@ -776,12 +776,12 @@ mod tests {
         let args = CommandContext::new();
 
         let result = UndoCommand.execute(&mut runtime, &args);
-        assert!(!result.is_error());
-        assert!(result.is_success());
+        assert!(result.is_error()); // No active buffer = error
     }
 
     #[test]
-    fn test_redo_command_does_not_require_buffer_id() {
+    fn test_redo_command_requires_active_buffer() {
+        // Redo commands DO require an active buffer (from session, not from args)
         let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
@@ -789,8 +789,7 @@ mod tests {
         let args = CommandContext::new();
 
         let result = RedoCommand.execute(&mut runtime, &args);
-        assert!(!result.is_error());
-        assert!(result.is_success());
+        assert!(result.is_error()); // No active buffer = error
     }
 
     // =========================================================================

@@ -32,11 +32,13 @@ use {
         PopResult, SessionExtension, SessionRuntime, TransitionContext,
         api::{
             BufferApi, BufferError, ChangeTracker, CommandApi, ExtensionApi, ModeApi, ModeError,
-            RegisterApi, RegisterContent, Selection, SelectionMode, StateChanges, WindowApi,
-            WindowError,
+            RegisterApi, RegisterContent, Selection, SelectionMode, StateChanges, UndoApi,
+            WindowApi, WindowError,
         },
     },
-    reovim_kernel::api::v1::{BufferId, CommandId, KernelContext, ModeId, Position, WindowId},
+    reovim_kernel::api::v1::{
+        BufferId, CommandId, Edit, KernelContext, ModeId, Position, UndoResult, WindowId,
+    },
 };
 
 use crate::server::window::WindowRegistry;
@@ -330,6 +332,38 @@ impl RegisterApi for RuntimeAdapter<'_> {
 
     fn set_register(&mut self, name: Option<char>, content: RegisterContent) {
         self.session_runtime.set_register(name, content);
+    }
+}
+
+// === UndoApi ===
+// Delegate to SessionRuntime
+
+impl UndoApi for RuntimeAdapter<'_> {
+    fn undo(&mut self, buffer: BufferId) -> Option<UndoResult> {
+        self.session_runtime.undo(buffer)
+    }
+
+    fn redo(&mut self, buffer: BufferId) -> Option<UndoResult> {
+        self.session_runtime.redo(buffer)
+    }
+
+    fn record_edit(
+        &mut self,
+        buffer: BufferId,
+        edits: Vec<Edit>,
+        cursor_before: Position,
+        cursor_after: Position,
+    ) {
+        self.session_runtime
+            .record_edit(buffer, edits, cursor_before, cursor_after);
+    }
+
+    fn can_undo(&self, buffer: BufferId) -> bool {
+        self.session_runtime.can_undo(buffer)
+    }
+
+    fn can_redo(&self, buffer: BufferId) -> bool {
+        self.session_runtime.can_redo(buffer)
     }
 }
 

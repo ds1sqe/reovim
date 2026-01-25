@@ -2,7 +2,10 @@
 //!
 //! Reference: lib/core/src/command/builtin/operator.rs (concept-extraction, not migration)
 
-use reovim_kernel::api::v1::RegisterContent;
+use {
+    reovim_driver_undo::{UndoKey, UndoProviderRegistry},
+    reovim_kernel::api::v1::{Edit, RegisterContent},
+};
 
 use super::{Operator, OperatorContext, OperatorError, Range, registers};
 
@@ -82,8 +85,25 @@ impl Operator for DeleteOperator {
             registers::store_to_register(ctx.kernel, ctx.register, &content);
             registers::push_to_history(ctx.kernel, &content);
 
+            // Record cursor before delete
+            let cursor_before = buffer.position();
+
             // Delete entire lines
             buffer.delete_range(delete_start, delete_end);
+
+            // Record cursor after delete and record edit for undo
+            let cursor_after = buffer.position();
+
+            // Record edit for undo
+            if let Some(undo_registry) = ctx.kernel.services.get::<UndoProviderRegistry>()
+                && let Some(undo_provider) = undo_registry.get(&UndoKey::Buffer)
+            {
+                let edit = Edit::Delete {
+                    position: delete_start,
+                    text: deleted_text.clone(),
+                };
+                undo_provider.record(ctx.buffer_id, vec![edit], cursor_before, cursor_after);
+            }
         } else {
             // Characterwise deletion
             if start.line == end.line {
@@ -115,12 +135,29 @@ impl Operator for DeleteOperator {
             }
 
             // Store in register as characterwise (handles +/* via ClipboardProvider)
-            let content = RegisterContent::characterwise(deleted_text);
+            let content = RegisterContent::characterwise(deleted_text.clone());
             registers::store_to_register(ctx.kernel, ctx.register, &content);
             registers::push_to_history(ctx.kernel, &content);
 
+            // Record cursor before delete
+            let cursor_before = buffer.position();
+
             // Delete the text from buffer
             buffer.delete_range(start, end);
+
+            // Record cursor after delete and record edit for undo
+            let cursor_after = buffer.position();
+
+            // Record edit for undo
+            if let Some(undo_registry) = ctx.kernel.services.get::<UndoProviderRegistry>()
+                && let Some(undo_provider) = undo_registry.get(&UndoKey::Buffer)
+            {
+                let edit = Edit::Delete {
+                    position: start,
+                    text: deleted_text,
+                };
+                undo_provider.record(ctx.buffer_id, vec![edit], cursor_before, cursor_after);
+            }
         }
 
         drop(buffer);

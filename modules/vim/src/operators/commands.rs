@@ -132,7 +132,22 @@ impl Command for ChangeCommand {
 
 impl CommandHandler for ChangeCommand {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        use {super::ChangeOperator, crate::modes::VimMode};
+        use {
+            super::ChangeOperator,
+            crate::modes::VimMode,
+            reovim_driver_session::BufferApi,
+            reovim_driver_undo::{UndoKey, UndoProviderRegistry},
+        };
+
+        // Start undo batching BEFORE the delete - both the delete and subsequent
+        // insert edits should be grouped as a single undo entry
+        if let Some(buffer_id) = args.buffer_id()
+            && let Some(pos) = runtime.buffer_position(buffer_id)
+            && let Some(undo_registry) = runtime.kernel().services.get::<UndoProviderRegistry>()
+            && let Some(undo_provider) = undo_registry.get(&UndoKey::Buffer)
+        {
+            undo_provider.begin_batch(buffer_id, pos);
+        }
 
         // Execute the change operator (delete text)
         let result = execute_operator(&ChangeOperator, runtime, args);

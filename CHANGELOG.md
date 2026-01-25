@@ -6,6 +6,13 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- Undo E2E tests fully passing with proper batching (#311)
+  - All 9 undo/redo integration tests pass
+  - `VimInsertResolver` now overrides `resolve_with_session` for keymap lookup
+  - Insert mode Escape triggers `vim:exit-insert` command for proper undo batching
+  - `ChangeCommand` starts undo batch BEFORE delete (batch includes both delete + inserts)
+  - Tests: `test_undo_insert`, `test_undo_change_word`, `test_multiple_undo`, etc.
+
 - All operator E2E tests enabled and passing (#308)
   - 57 operator tests now pass (exceeds original 28 planned)
   - Tests migrated from `runner/tests/operators.rs` to `modules/vim/tests/operators.rs`
