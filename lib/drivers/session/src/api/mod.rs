@@ -62,16 +62,24 @@
 
 mod buffer;
 mod changes;
+mod cmdline;
 mod command;
 mod compositor;
 mod extension;
 mod mode;
 mod register;
+mod search;
 mod undo;
 mod window;
 
 // Buffer API
 pub use buffer::{BufferApi, BufferError, Selection, SelectionMode};
+
+// Cmdline state extension
+pub use cmdline::{CmdlinePrompt, CmdlineState};
+
+// Search state extension
+pub use search::SearchState;
 
 // Compositor API
 pub use compositor::{CompositorApi, CompositorError};

@@ -543,6 +543,7 @@ impl ModeKeyResolver for VimNormalResolver {
 
         // Query keymap for facts about what bindings exist
         let lookup_state = input.keymap.query(input.mode, &keys);
+        tracing::warn!(?key.code, %input.mode, %keys, ?lookup_state, "Normal resolver query");
 
         // Apply Vim policy
         match lookup_state {

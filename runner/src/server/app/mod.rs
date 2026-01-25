@@ -6,7 +6,7 @@
 
 mod cmdline;
 
-pub use cmdline::CommandLineState;
+pub use cmdline::{CommandLineState, PromptType};
 
 use {
     crate::server::window::WindowRegistry,
@@ -89,10 +89,9 @@ pub struct AppState {
     /// cursor position, allowing multiple views of the same buffer.
     pub windows: WindowRegistry,
 
-    /// Command-line mode state for : commands.
+    /// Command-line mode state for `:`, `/`, and `?` commands.
     ///
-    /// Tracks input buffer and whether command-line mode is active.
-    /// Used for Ex-style commands like `:w`, `:q`, `:set`, etc.
+    /// Tracks input buffer and prompt type for Ex commands and search patterns.
     pub cmdline: CommandLineState,
 
     /// Per-session module extensions (Epic #385).

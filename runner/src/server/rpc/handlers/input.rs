@@ -41,6 +41,7 @@ use {
 ///
 /// This function will not panic as `InputKeysResult` serialization is infallible.
 #[must_use]
+#[allow(clippy::too_many_lines)]
 pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
     Box::pin(async move {
         // Parse params
@@ -61,11 +62,11 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
         for key in keys.as_slice() {
             let key_event = KeyEvent::with_modifiers(key.code, key.modifiers);
 
-            tracing::debug!(?key_event, "Processing key through resolver");
+            tracing::warn!(?key_event, "Processing key through resolver");
 
             // Resolve the key using mode resolvers
             if let Some((result, _changes)) = ctx.session.resolve_key(&key_event).await {
-                tracing::debug!(?result, "Resolver returned result");
+                tracing::warn!(?result, "Resolver returned result");
 
                 match result {
                     ResolveResult::Execute(cmd_id, resolve_ctx) => {
@@ -104,6 +105,10 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
                             {
                                 handle_mode_transition_async(&ctx, transition).await;
                             }
+
+                            // Per #435: Execute cmdline action if cmdline was deactivated
+                            // (e.g., Enter in search mode executes the search)
+                            ctx.session.execute_cmdline_and_deactivate().await;
                         }
 
                         any_handled = true;
@@ -121,7 +126,14 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
                     }
 
                     ResolveResult::InsertChar(ch) => {
-                        ctx.session.insert_char(ch).await;
+                        // Route character to appropriate target:
+                        // - Cmdline buffer when cmdline is active (/, ?, :)
+                        // - Document buffer otherwise (insert mode)
+                        if ctx.session.is_cmdline_active().await {
+                            ctx.session.cmdline_insert_char(ch).await;
+                        } else {
+                            ctx.session.insert_char(ch).await;
+                        }
                         any_handled = true;
                         final_pending = false;
                     }

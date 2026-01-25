@@ -272,13 +272,13 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
             .with_category("scroll")
             .with_description("Scroll cursor line to bottom"),
         // ====================================================================
-        // Search
+        // Search (#435 - Search Input Mode)
         // ====================================================================
-        KeybindingRegistration::new("/", motions::SEARCH_FORWARD)
+        KeybindingRegistration::new("/", vim::ENTER_SEARCH_FORWARD)
             .with_modes(&["vim:normal"])
             .with_category("search")
             .with_description("Search forward"),
-        KeybindingRegistration::new("?", motions::SEARCH_BACKWARD)
+        KeybindingRegistration::new("?", vim::ENTER_SEARCH_BACKWARD)
             .with_modes(&["vim:normal"])
             .with_category("search")
             .with_description("Search backward"),

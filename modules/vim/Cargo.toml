@@ -26,6 +26,7 @@ reovim-module-motions = { path = "../motions" }
 reovim-module-textobjects = { path = "../textobjects" }
 reovim-driver-clipboard = { path = "../../lib/drivers/clipboard" }
 reovim-driver-undo = { path = "../../lib/drivers/undo" }
+reovim-driver-search = { path = "../../lib/drivers/search" }
 tracing = { workspace = true }
 
 [dev-dependencies]

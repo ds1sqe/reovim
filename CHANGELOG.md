@@ -13,12 +13,16 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - `ChangeCommand` starts undo batch BEFORE delete (batch includes both delete + inserts)
   - Tests: `test_undo_insert`, `test_undo_change_word`, `test_multiple_undo`, etc.
 
-- Search E2E tests for `*`, `#`, `n`, `N` commands (#310)
-  - 5 search tests passing: word forward/backward, search repeat with n, not-found, regex boundary
-  - `SearchState` session extension stores last pattern and direction for repeat
-  - Implemented `search_word()` for `*`/`#` (word under cursor + boundary)
-  - Implemented `search_and_move()` with both `set_buffer_position()` and `move_cursor()`
-  - 10 tests ignored: `/` and `?` require command-line mode (deferred to Phase 8, #338)
+- Search input mode for `/` and `?` commands (#435)
+  - All 15 search E2E tests now pass (was 5, now includes `/` and `?` patterns)
+  - `/pattern<Enter>` searches forward, `?pattern<Enter>` searches backward
+  - `n` repeats search in same direction, `N` in opposite direction
+  - `*` and `#` search word under cursor forward/backward
+  - `SearchState` moved to driver layer for shared access between runner and modules
+  - Reuses `CommandLine` mode with `PromptType` enum (Command, SearchForward, SearchBackward)
+  - `CmdlineState` extension tracks prompt type and cancelled state
+  - Fixed backward search to properly find matches before cursor position
+  - Fixed `#` (backward word search) to skip current word and find previous occurrence
 
 - All operator E2E tests enabled and passing (#308)
   - 57 operator tests now pass (exceeds original 28 planned)

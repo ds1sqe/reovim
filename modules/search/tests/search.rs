@@ -1,9 +1,6 @@
 //! Search integration tests (/, ?, n, N, *, #).
 //!
-//! **Status**: 5 tests enabled, 10 tests require search input mode.
-//! - 10 tests require search input mode for `/` and `?` patterns (#435)
-//!
-//! Run `cargo test --ignored` to run the remaining ignored tests.
+//! **Status**: All 15 tests enabled after implementing search input mode (#435).
 
 use runner::testing::IntegrationTest;
 
@@ -12,7 +9,6 @@ use runner::testing::IntegrationTest;
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires search input mode for / (#435)"]
 async fn test_search_forward_basic() {
     let result = IntegrationTest::new()
         .await
@@ -24,7 +20,6 @@ async fn test_search_forward_basic() {
 }
 
 #[tokio::test]
-#[ignore = "requires search input mode for / (#435)"]
 async fn test_search_forward_multiline() {
     let result = IntegrationTest::new()
         .await
@@ -36,7 +31,6 @@ async fn test_search_forward_multiline() {
 }
 
 #[tokio::test]
-#[ignore = "requires search input mode for / (#435)"]
 async fn test_search_forward_wrap() {
     let result = IntegrationTest::new()
         .await
@@ -54,7 +48,6 @@ async fn test_search_forward_wrap() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires search input mode for ? (#435)"]
 async fn test_search_backward_basic() {
     let result = IntegrationTest::new()
         .await
@@ -68,7 +61,6 @@ async fn test_search_backward_basic() {
 }
 
 #[tokio::test]
-#[ignore = "requires search input mode for ? (#435)"]
 async fn test_search_backward_multiline() {
     let result = IntegrationTest::new()
         .await
@@ -85,7 +77,6 @@ async fn test_search_backward_multiline() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires search input mode for / (#435)"]
 async fn test_search_next() {
     let result = IntegrationTest::new()
         .await
@@ -94,12 +85,11 @@ async fn test_search_next() {
         .send_keys("n")
         .run()
         .await;
-    // First search lands on "foo" at 0, n moves to next "foo" at 8
-    result.assert_cursor(0, 8);
+    // /foo<Enter> finds NEXT match at 8, n finds next at 16
+    result.assert_cursor(0, 16);
 }
 
 #[tokio::test]
-#[ignore = "requires search input mode for / (#435)"]
 async fn test_search_next_multiple() {
     let result = IntegrationTest::new()
         .await
@@ -108,12 +98,11 @@ async fn test_search_next_multiple() {
         .send_keys("nn")
         .run()
         .await;
-    // First search lands on "foo" at 0, nn moves to "foo" at 16
-    result.assert_cursor(0, 16);
+    // /foo<Enter> → 8, n → 16, n → 0 (wraps)
+    result.assert_cursor(0, 0);
 }
 
 #[tokio::test]
-#[ignore = "requires search input mode for / (#435)"]
 async fn test_search_previous() {
     let result = IntegrationTest::new()
         .await
@@ -174,7 +163,6 @@ async fn test_search_word_with_n() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires search input mode for / (#435)"]
 async fn test_search_cancel_with_escape() {
     let result = IntegrationTest::new()
         .await
@@ -191,7 +179,6 @@ async fn test_search_cancel_with_escape() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires search input mode for / (#435)"]
 async fn test_search_regex_pattern() {
     let result = IntegrationTest::new()
         .await

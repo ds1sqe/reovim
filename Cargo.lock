@@ -1517,6 +1517,7 @@ dependencies = [
  "reovim-driver-clipboard",
  "reovim-driver-command-types",
  "reovim-driver-display",
+ "reovim-driver-search",
  "reovim-driver-undo",
  "reovim-kernel",
 ]
@@ -1792,6 +1793,7 @@ dependencies = [
  "reovim-driver-command",
  "reovim-driver-command-types",
  "reovim-driver-input",
+ "reovim-driver-search",
  "reovim-driver-session",
  "reovim-driver-undo",
  "reovim-kernel",

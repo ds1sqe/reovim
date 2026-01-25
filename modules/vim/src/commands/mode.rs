@@ -19,7 +19,11 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::{BufferApi, SessionRuntime, TransitionContext, api::ModeApi},
+    reovim_driver_search::Direction,
+    reovim_driver_session::{
+        BufferApi, CmdlinePrompt, CmdlineState, SessionRuntime, TransitionContext,
+        api::{ExtensionApi, ModeApi, SearchState},
+    },
     reovim_driver_undo::{UndoKey, UndoProviderRegistry},
     reovim_kernel::api::v1::{CommandId, Position},
 };
@@ -212,6 +216,10 @@ impl Command for EnterCommandLineMode {
 
 impl CommandHandler for EnterCommandLineMode {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // Activate cmdline with command prompt
+        runtime
+            .ext_mut::<CmdlineState>()
+            .enter(CmdlinePrompt::Command);
         runtime.set_mode(VimMode::COMMANDLINE_ID, TransitionContext::new());
         CommandResult::Success
     }
@@ -235,7 +243,119 @@ impl Command for ExitCommandLineMode {
 
 impl CommandHandler for ExitCommandLineMode {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // Check if this is a search (pending_search set)
+        let pending = {
+            let search_state = runtime.ext_mut::<SearchState>();
+            search_state.take_pending_search()
+        };
+
+        if let Some(direction) = pending {
+            // Store the direction for the runner to execute search
+            runtime.ext_mut::<SearchState>().last_direction = direction;
+        }
+
+        // Deactivate cmdline
+        runtime.ext_mut::<CmdlineState>().exit();
         runtime.set_mode(VimMode::NORMAL_ID, TransitionContext::new());
+        CommandResult::Success
+    }
+}
+
+/// Cancel command-line mode without executing (Escape).
+///
+/// Unlike `ExitCommandLineMode`, this clears the pending search and cmdline
+/// input without executing any action.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CancelCommandLineMode;
+
+impl Command for CancelCommandLineMode {
+    fn id(&self) -> CommandId {
+        ids::CANCEL_COMMANDLINE
+    }
+
+    fn description(&self) -> &'static str {
+        "Cancel command-line mode without executing"
+    }
+}
+
+impl CommandHandler for CancelCommandLineMode {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // Clear any pending search - we're canceling, not executing
+        runtime.ext_mut::<SearchState>().clear_pending_search();
+
+        // Cancel cmdline (signals to runner: don't execute)
+        runtime.ext_mut::<CmdlineState>().cancel();
+        runtime.set_mode(VimMode::NORMAL_ID, TransitionContext::new());
+        CommandResult::Success
+    }
+}
+
+// =============================================================================
+// Search Mode Entry Commands (#435)
+// =============================================================================
+
+/// Enter search forward mode (`/`).
+///
+/// Sets pending search direction to Forward and enters command-line mode.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct EnterSearchForward;
+
+impl Command for EnterSearchForward {
+    fn id(&self) -> CommandId {
+        ids::ENTER_SEARCH_FORWARD
+    }
+
+    fn description(&self) -> &'static str {
+        "Enter search forward mode (/)"
+    }
+}
+
+impl CommandHandler for EnterSearchForward {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        eprintln!("[DEBUG] EnterSearchForward command executed");
+        // Set pending search direction
+        runtime
+            .ext_mut::<SearchState>()
+            .start_pending_search(Direction::Forward);
+        // Activate cmdline with search forward prompt
+        runtime
+            .ext_mut::<CmdlineState>()
+            .enter(CmdlinePrompt::SearchForward);
+        // Enter command-line mode
+        runtime.set_mode(VimMode::COMMANDLINE_ID, TransitionContext::new());
+        eprintln!("[DEBUG] Entered commandline mode with SearchForward prompt");
+        CommandResult::Success
+    }
+}
+
+/// Enter search backward mode (`?`).
+///
+/// Sets pending search direction to Backward and enters command-line mode.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct EnterSearchBackward;
+
+impl Command for EnterSearchBackward {
+    fn id(&self) -> CommandId {
+        ids::ENTER_SEARCH_BACKWARD
+    }
+
+    fn description(&self) -> &'static str {
+        "Enter search backward mode (?)"
+    }
+}
+
+impl CommandHandler for EnterSearchBackward {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // Set pending search direction
+        runtime
+            .ext_mut::<SearchState>()
+            .start_pending_search(Direction::Backward);
+        // Activate cmdline with search backward prompt
+        runtime
+            .ext_mut::<CmdlineState>()
+            .enter(CmdlinePrompt::SearchBackward);
+        // Enter command-line mode
+        runtime.set_mode(VimMode::COMMANDLINE_ID, TransitionContext::new());
         CommandResult::Success
     }
 }

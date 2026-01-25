@@ -23,6 +23,8 @@ reovim-arch = { path = "../../arch" }
 reovim-driver-clipboard = { path = "../clipboard" }
 # Undo driver for UndoApi implementation
 reovim-driver-undo = { path = "../undo" }
+# Search driver for Direction type (SearchState)
+reovim-driver-search = { path = "../search" }
 
 [lints]
 workspace = true

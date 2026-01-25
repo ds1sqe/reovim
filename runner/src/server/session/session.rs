@@ -213,6 +213,214 @@ impl Session {
         self.state.read().await.mode_accepts_char_input()
     }
 
+    /// Check if command-line mode is active.
+    ///
+    /// When cmdline is active, character input should go to the cmdline buffer
+    /// instead of the document buffer.
+    ///
+    /// This checks the `CmdlineState` session extension set by commands like
+    /// `enter-search-forward`, NOT the `app.cmdline` state which is synced
+    /// by the event loop.
+    ///
+    /// Acquires a read lock on the session state.
+    pub async fn is_cmdline_active(&self) -> bool {
+        use reovim_driver_session::api::CmdlineState;
+        self.state
+            .read()
+            .await
+            .driver_session
+            .extensions
+            .get::<CmdlineState>()
+            .is_some_and(CmdlineState::is_active)
+    }
+
+    /// Insert a character into the command-line buffer.
+    ///
+    /// Use this when cmdline is active to route characters to the cmdline
+    /// instead of the document buffer.
+    ///
+    /// This first syncs the cmdline state from `driver_session.extensions` to
+    /// `app.cmdline` (if needed), then inserts the character.
+    ///
+    /// Acquires a write lock on the session state.
+    pub async fn cmdline_insert_char(&self, ch: char) {
+        use {
+            crate::server::PromptType,
+            reovim_driver_session::api::{CmdlinePrompt, CmdlineState},
+        };
+
+        self.with_state_mut(|state| {
+            // Sync cmdline state from extension (like event loop does)
+            let ext_active = state
+                .driver_session
+                .extensions
+                .get::<CmdlineState>()
+                .is_some_and(CmdlineState::is_active);
+
+            if ext_active && !state.app.cmdline.is_active() {
+                // Sync prompt type from extension to app.cmdline
+                let prompt_type = state
+                    .driver_session
+                    .extensions
+                    .get::<CmdlineState>()
+                    .map_or(CmdlinePrompt::Command, CmdlineState::prompt);
+
+                let runner_prompt = match prompt_type {
+                    CmdlinePrompt::Command => PromptType::Command,
+                    CmdlinePrompt::SearchForward => PromptType::SearchForward,
+                    CmdlinePrompt::SearchBackward => PromptType::SearchBackward,
+                };
+
+                state.app.cmdline.enter_with_prompt(runner_prompt);
+            }
+
+            state.app.cmdline.insert_char(ch);
+        })
+        .await;
+    }
+
+    /// Execute the cmdline action and deactivate cmdline.
+    ///
+    /// Called when a command deactivates cmdline (e.g., Enter in search mode).
+    /// This executes the search if the prompt was `/` or `?`.
+    ///
+    /// Acquires a write lock on the session state.
+    #[allow(clippy::too_many_lines)]
+    pub async fn execute_cmdline_and_deactivate(&self) {
+        use {
+            crate::server::PromptType,
+            reovim_driver_search::{Direction, SearchKey, SearchProviderRegistry},
+            reovim_driver_session::api::{CmdlinePrompt, CmdlineState, SearchState},
+        };
+
+        self.with_state_mut(|state| {
+            // First sync cmdline if needed (in case chars were inserted)
+            let ext_active = state
+                .driver_session
+                .extensions
+                .get::<CmdlineState>()
+                .is_some_and(CmdlineState::is_active);
+
+            if ext_active && !state.app.cmdline.is_active() {
+                // Sync prompt type from extension to app.cmdline
+                let prompt_type = state
+                    .driver_session
+                    .extensions
+                    .get::<CmdlineState>()
+                    .map_or(CmdlinePrompt::Command, CmdlineState::prompt);
+
+                let runner_prompt = match prompt_type {
+                    CmdlinePrompt::Command => PromptType::Command,
+                    CmdlinePrompt::SearchForward => PromptType::SearchForward,
+                    CmdlinePrompt::SearchBackward => PromptType::SearchBackward,
+                };
+
+                state.app.cmdline.enter_with_prompt(runner_prompt);
+            }
+
+            // Check if cmdline was deactivated (extension is inactive)
+            let ext_inactive = state
+                .driver_session
+                .extensions
+                .get::<CmdlineState>()
+                .is_none_or(|s| !s.is_active());
+
+            if ext_inactive && state.app.cmdline.is_active() {
+                // Execute the cmdline action based on prompt type
+                let prompt = state.app.cmdline.prompt_type();
+                let input = state.app.cmdline.input().to_string();
+
+                // Check if cmdline was cancelled (Escape) vs executed (Enter)
+                let was_cancelled = state
+                    .driver_session
+                    .extensions
+                    .get::<CmdlineState>()
+                    .is_some_and(CmdlineState::was_cancelled);
+
+                if !input.is_empty() && !was_cancelled {
+                    match prompt {
+                        PromptType::SearchForward | PromptType::SearchBackward => {
+                            let direction = if prompt == PromptType::SearchForward {
+                                Direction::Forward
+                            } else {
+                                Direction::Backward
+                            };
+
+                            // Get search provider
+                            if let Some(search_registry) =
+                                state.app.services.get::<SearchProviderRegistry>()
+                            {
+                                // Get cursor position
+                                let cursor_pos = state
+                                    .session_active_buffer()
+                                    .and_then(|id| state.app.kernel.buffers.get(id))
+                                    .map(|b| b.read().position())
+                                    .unwrap_or_default();
+
+                                // Get buffer
+                                let buffer_id = state.session_active_buffer();
+                                let buffer_arc =
+                                    buffer_id.and_then(|id| state.app.kernel.buffers.get(id));
+
+                                if let Some(buffer_arc) = buffer_arc {
+                                    // Find the match
+                                    let search_result = {
+                                        let buffer = buffer_arc.read();
+                                        tracing::warn!(
+                                            ?cursor_pos,
+                                            ?direction,
+                                            ?input,
+                                            "Executing search"
+                                        );
+                                        search_registry.get(&SearchKey::Regex).and_then(
+                                            |provider| {
+                                                provider
+                                                    .find_next(
+                                                        &buffer, cursor_pos, &input, direction,
+                                                        true,
+                                                    )
+                                                    .ok()
+                                                    .flatten()
+                                            },
+                                        )
+                                    };
+                                    tracing::warn!(?search_result, "Search result");
+
+                                    if let Some(m) = search_result {
+                                        // Update buffer's cursor
+                                        buffer_arc.write().set_position(m.start);
+
+                                        // Update window registry cursor
+                                        if let Some(win_id) = state.app.windows.active_window()
+                                            && let Some(win_state) =
+                                                state.app.windows.get_mut(win_id)
+                                        {
+                                            win_state.cursor = m.start;
+                                        }
+                                    }
+
+                                    // Store pattern for n/N repeat (#435)
+                                    state
+                                        .driver_session
+                                        .extensions
+                                        .get_or_insert::<SearchState>()
+                                        .set(input, direction);
+                                }
+                            }
+                        }
+                        PromptType::Command => {
+                            // Ex command execution - not implemented yet
+                        }
+                    }
+                }
+
+                // Deactivate cmdline
+                state.app.cmdline.cancel();
+            }
+        })
+        .await;
+    }
+
     /// Insert a character at the cursor position in the active buffer.
     ///
     /// This is the fallback behavior for unmatched keys in modes that accept
