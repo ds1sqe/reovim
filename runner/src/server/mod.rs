@@ -63,7 +63,6 @@ mod server;
 mod server_config;
 pub mod session;
 pub mod transport;
-pub mod window;
 
 // Re-exports for public API
 pub use {
@@ -80,7 +79,6 @@ pub use {
     server::Server,
     // Server configuration (Epic #417 Part 2)
     server_config::{ServerConfig, TransportMode},
-    window::{WindowRegistry, WindowState},
 };
 
 // Server struct moved to server.rs (Epic #417 Part 2)

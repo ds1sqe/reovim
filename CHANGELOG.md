@@ -6,6 +6,13 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Window mode**: Added `<C-w>` prefix for window management commands. Supports
+  navigation (h/j/k/l), splitting (s/v), closing (c/q/o), resizing (+/-/>/</=),
+  and cycling (w/W/p). Each command executes and returns to normal mode. (#438)
+- **Compositor infrastructure**: Layout module now self-registers 15 window
+  commands via `CommandHandlerStore`. Runner no longer imports from policy
+  modules, fixing architecture violation. (#438)
+
 ### Changed
 
 - **BREAKING**: `REOVIM_MODULE_PATH` now prepends to search paths instead of

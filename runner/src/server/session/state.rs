@@ -353,7 +353,6 @@ impl SessionState {
     ///
     /// # Note
     ///
-    /// This method requires the `RuntimeAdapter` from `event_loop` module.
     /// Call `handle_resolve_result()` to process the result.
     pub fn resolve_key(
         &mut self,
@@ -361,7 +360,6 @@ impl SessionState {
     ) -> Option<(reovim_driver_input::ResolveResult, reovim_driver_session::api::StateChanges)>
     {
         use {
-            crate::server::event_loop::RuntimeAdapter,
             reovim_driver_input::ModeState,
             reovim_driver_session::{SessionRuntime, api::CommandExecutor},
         };
@@ -382,12 +380,10 @@ impl SessionState {
         let mode = self.driver_session.current_mode().clone();
         let mut mode_state = ModeState::new(mode.clone());
 
-        // Create runtime for resolver
+        // Create SessionRuntime for resolver access to session state
         let stub_executor = StubExecutor;
-        let session_runtime =
-            SessionRuntime::new(&mut self.driver_session, &self.app.kernel, &stub_executor);
         let mut runtime =
-            RuntimeAdapter::new(session_runtime, &mut self.app.windows, &self.app.kernel);
+            SessionRuntime::new(&mut self.driver_session, &self.app.kernel, &stub_executor);
 
         // Call resolver
         // NOTE: Uses app.extensions due to borrow checker - driver_session is already borrowed by runtime

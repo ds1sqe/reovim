@@ -8,31 +8,24 @@
 //!
 //! # Multi-Window Support
 //!
-//! When multiple windows are present, this handler composes their content
-//! into a single screen representation, with separators between windows.
+//! Multi-window rendering will use `Session.compositor` when available (Phase 2).
+//! Currently renders single-window mode based on active buffer.
 
 use {
-    reovim_driver_display::WindowView,
     reovim_kernel::api::v1::BufferId,
     reovim_protocol::v1::{RpcError, ScreenContentResult, ScreenFormat, StateScreenContentParams},
 };
 
 use super::super::dispatcher::{HandlerFuture, RpcContext};
 
-/// Vertical separator character for window borders.
-const VSEP: char = '│';
-
-/// Horizontal separator character for window borders.
-const HSEP: char = '─';
-
 /// Handler for `state/screen_content` method.
 ///
 /// Returns screen content in requested format (`plain_text`, `raw_ansi`, `cell_grid`).
 ///
-/// The handler supports multi-window rendering:
-/// - Gets window views from the window registry
-/// - Renders each window's buffer content within its bounds
-/// - Adds separators between windows
+/// # Multi-Window Support
+///
+/// Multi-window rendering will use `Session.compositor` when available (Phase 2).
+/// Currently renders single-window mode based on active buffer.
 ///
 /// # Request
 ///
@@ -61,16 +54,9 @@ pub fn state_screen_content(ctx: RpcContext, params: serde_json::Value) -> Handl
                 // Use driver_session as SSOT for terminal size
                 let (width, height) = state.session_terminal_size();
 
-                // Get window views from registry
-                let window_views = state.app.windows.arrange((width, height));
-
-                // If no windows or single window, fall back to simple single-buffer render
-                if window_views.len() <= 1 {
-                    return render_single_window(state, params.format, width, height);
-                }
-
-                // Multi-window render
-                render_multi_window(state, &window_views, params.format, width, height)
+                // Currently uses single-window rendering mode.
+                // Multi-window rendering via Session.compositor will be added in Phase 2.
+                render_single_window(state, params.format, width, height)
             })
             .await;
 
@@ -113,155 +99,8 @@ fn render_single_window(
     format_content(&content, format, content_width.max(1), content_height.max(1))
 }
 
-/// Render screen with multiple windows.
-fn render_multi_window(
-    state: &crate::session::SessionState,
-    views: &[WindowView],
-    format: ScreenFormat,
-    width: u16,
-    height: u16,
-) -> ScreenContentResult {
-    // Build a character grid for the screen
-    let w = usize::from(width);
-    let h = usize::from(height);
-    let mut grid: Vec<Vec<char>> = vec![vec![' '; w]; h];
-
-    // Track which window is active for potential highlighting
-    let active_window = state.app.windows.active_window();
-
-    // Render each window's content into the grid
-    for view in views {
-        let buffer_content = state
-            .app
-            .windows
-            .get(view.window_id)
-            .and_then(|ws| ws.buffer_id)
-            .and_then(|id| state.app.kernel.buffers.get(id))
-            .map(|arc| {
-                let buf = arc.read();
-                buf.content()
-            })
-            .unwrap_or_default();
-
-        let lines: Vec<&str> = buffer_content.lines().collect();
-        let bounds = &view.bounds;
-
-        // Render buffer lines into the window area
-        for (row_idx, line) in lines.iter().take(bounds.height as usize).enumerate() {
-            let y = bounds.y as usize + row_idx;
-            if y >= h {
-                break;
-            }
-
-            for (col_idx, ch) in line.chars().take(bounds.width as usize).enumerate() {
-                let x = bounds.x as usize + col_idx;
-                if x >= w {
-                    break;
-                }
-                grid[y][x] = ch;
-            }
-        }
-    }
-
-    // Find separator positions (where windows meet)
-    let separators = find_separators(views, width, height);
-
-    // Draw separators
-    for (x, y, is_vertical) in separators {
-        let ux = x as usize;
-        let uy = y as usize;
-        if ux < w && uy < h {
-            grid[uy][ux] = if is_vertical { VSEP } else { HSEP };
-        }
-    }
-
-    // Add active window indicator (mark corners with different char)
-    if let Some(view) = active_window.and_then(|id| views.iter().find(|v| v.window_id == id)) {
-        let bounds = &view.bounds;
-        // Mark top-left corner of active window (if within bounds)
-        let corner_x = bounds.x.saturating_sub(1) as usize;
-        let corner_y = bounds.y.saturating_sub(1) as usize;
-        if corner_x < w && corner_y < h && (bounds.x > 0 || bounds.y > 0) {
-            // Use a special char to mark active window corner
-            if grid[corner_y][corner_x] == VSEP || grid[corner_y][corner_x] == HSEP {
-                grid[corner_y][corner_x] = '┼';
-            }
-        }
-    }
-
-    // Convert grid to string
-    let content: String = grid
-        .iter()
-        .map(|row| row.iter().collect::<String>())
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    format_content(&content, format, width, height)
-}
-
-/// Find separator positions between windows.
-///
-/// Returns a list of (x, y, `is_vertical`) tuples indicating where separators should be drawn.
-fn find_separators(views: &[WindowView], width: u16, height: u16) -> Vec<(u16, u16, bool)> {
-    let mut separators = Vec::new();
-
-    for i in 0..views.len() {
-        for j in (i + 1)..views.len() {
-            let a = &views[i].bounds;
-            let b = &views[j].bounds;
-
-            // Check for vertical separator (windows side by side)
-            // Window A is to the left of Window B
-            if a.x + a.width == b.x && a.y < b.y + b.height && b.y < a.y + a.height {
-                let sep_x = a.x + a.width;
-                if sep_x > 0 && sep_x <= width {
-                    let y_start = a.y.max(b.y);
-                    let y_end = (a.y + a.height).min(b.y + b.height).min(height);
-                    for y in y_start..y_end {
-                        separators.push((sep_x - 1, y, true));
-                    }
-                }
-            }
-            // Window B is to the left of Window A
-            if b.x + b.width == a.x && b.y < a.y + a.height && a.y < b.y + b.height {
-                let sep_x = b.x + b.width;
-                if sep_x > 0 && sep_x <= width {
-                    let y_start = a.y.max(b.y);
-                    let y_end = (a.y + a.height).min(b.y + b.height).min(height);
-                    for y in y_start..y_end {
-                        separators.push((sep_x - 1, y, true));
-                    }
-                }
-            }
-
-            // Check for horizontal separator (windows stacked)
-            // Window A is above Window B
-            if a.y + a.height == b.y && a.x < b.x + b.width && b.x < a.x + a.width {
-                let sep_y = a.y + a.height;
-                if sep_y > 0 && sep_y <= height {
-                    let x_start = a.x.max(b.x);
-                    let x_end = (a.x + a.width).min(b.x + b.width).min(width);
-                    for x in x_start..x_end {
-                        separators.push((x, sep_y - 1, false));
-                    }
-                }
-            }
-            // Window B is above Window A
-            if b.y + b.height == a.y && b.x < a.x + a.width && a.x < b.x + b.width {
-                let sep_y = b.y + b.height;
-                if sep_y > 0 && sep_y <= height {
-                    let x_start = a.x.max(b.x);
-                    let x_end = (a.x + a.width).min(b.x + b.width).min(width);
-                    for x in x_start..x_end {
-                        separators.push((x, sep_y - 1, false));
-                    }
-                }
-            }
-        }
-    }
-
-    separators
-}
+// Multi-window rendering will be implemented in Phase 2 using Session.compositor.
+// The compositor provides CompositeResult with all window placements in z-order.
 
 /// Format content according to the requested screen format.
 fn format_content(
@@ -497,73 +336,8 @@ mod tests {
         assert_eq!(cells[1][1].get("char").unwrap().as_str().unwrap(), "D");
     }
 
-    // ========================================================================
-    // Multi-Window Rendering Tests
-    // ========================================================================
-
-    #[test]
-    fn test_find_separators_vertical_split() {
-        use reovim_driver_display::{Rect, WindowId, WindowView};
-
-        // Two windows side by side (vertical split)
-        // Window 1: 0,0 to 39,24 (left half)
-        // Window 2: 40,0 to 79,24 (right half)
-        let views = vec![
-            WindowView::new(WindowId::from_raw(1), Rect::new(0, 0, 40, 24)),
-            WindowView::new(WindowId::from_raw(2), Rect::new(40, 0, 40, 24)),
-        ];
-
-        let separators = super::find_separators(&views, 80, 24);
-
-        // Should have 24 separator positions (one per row) at x=39
-        assert!(!separators.is_empty());
-
-        // All separators should be vertical
-        for (x, y, is_vertical) in &separators {
-            assert!(is_vertical, "Expected vertical separator at ({x}, {y})");
-            assert_eq!(*x, 39, "Separator x should be 39");
-            assert!(*y < 24, "Separator y should be < 24");
-        }
-    }
-
-    #[test]
-    fn test_find_separators_horizontal_split() {
-        use reovim_driver_display::{Rect, WindowId, WindowView};
-
-        // Two windows stacked (horizontal split)
-        // Window 1: 0,0 to 80,12 (top half)
-        // Window 2: 0,12 to 80,12 (bottom half)
-        let views = vec![
-            WindowView::new(WindowId::from_raw(1), Rect::new(0, 0, 80, 12)),
-            WindowView::new(WindowId::from_raw(2), Rect::new(0, 12, 80, 12)),
-        ];
-
-        let separators = super::find_separators(&views, 80, 24);
-
-        // Should have 80 separator positions (one per column) at y=11
-        assert!(!separators.is_empty());
-
-        // All separators should be horizontal
-        for (x, y, is_vertical) in &separators {
-            assert!(!is_vertical, "Expected horizontal separator at ({x}, {y})");
-            assert_eq!(*y, 11, "Separator y should be 11");
-            assert!(*x < 80, "Separator x should be < 80");
-        }
-    }
-
-    #[test]
-    fn test_find_separators_no_adjacent_windows() {
-        use reovim_driver_display::{Rect, WindowId, WindowView};
-
-        // Single window - no separators needed
-        let views = vec![WindowView::new(
-            WindowId::from_raw(1),
-            Rect::new(0, 0, 80, 24),
-        )];
-
-        let separators = super::find_separators(&views, 80, 24);
-        assert!(separators.is_empty(), "Single window should have no separators");
-    }
+    // Multi-window rendering tests will be added in Phase 2 when
+    // compositor-based window layout is implemented.
 
     #[test]
     fn test_format_content_plain_text() {

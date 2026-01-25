@@ -177,6 +177,8 @@ impl Module for VimModule {
         resolver_registry.register(resolvers::VimYankResolver::new());
         resolver_registry.register(resolvers::VimChangeResolver::new());
         resolver_registry.register(resolvers::VimCommandLineResolver::new());
+        // Epic #438: Window mode resolver
+        resolver_registry.register(resolvers::VimWindowResolver::new());
 
         // Epic #417 Part 3: Self-register commands
         let command_store = ctx.services.get_or_create::<CommandHandlerStore>();
@@ -297,9 +299,14 @@ mod tests {
         let visual = bindings::visual::bindings();
         let operator_modes = bindings::operator_modes::all_operator_bindings();
         let cmdline = bindings::commandline::bindings();
+        let window = bindings::window::bindings();
 
-        let expected_total =
-            normal.len() + insert.len() + visual.len() + operator_modes.len() + cmdline.len();
+        let expected_total = normal.len()
+            + insert.len()
+            + visual.len()
+            + operator_modes.len()
+            + cmdline.len()
+            + window.len();
         assert_eq!(all.len(), expected_total, "all() should aggregate all mode bindings");
     }
 }

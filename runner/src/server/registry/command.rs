@@ -14,9 +14,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use {
     reovim_driver_command::{CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::{
-        Session as DriverSession, SessionRuntime, Window, api::CommandExecutor,
-    },
+    reovim_driver_session::{Session as DriverSession, SessionRuntime, api::CommandExecutor},
     reovim_driver_vfs::VfsDriver,
     reovim_kernel::{
         api::v1::{CommandId, KernelContext, ModuleId},
@@ -180,40 +178,14 @@ impl CommandRegistry {
             }
             ctx.set_vfs(Arc::clone(vfs));
 
-            // Copy windows from WindowRegistry to driver_session's WindowLayout
-            // (SessionRuntime needs window state for cursor operations)
-            // NOTE: CommandHandler::execute takes &mut SessionRuntime specifically,
-            // so we must use SessionRuntime with manual window syncing here.
-            driver_session.windows.clear();
-            for win_id in app.windows.windows() {
-                if let Some(state) = app.windows.get(win_id) {
-                    let mut window = Window::new();
-                    window.buffer_id = state.buffer_id;
-                    window.cursor.line = state.cursor.line;
-                    window.cursor.column = state.cursor.column;
-                    driver_session.windows.add(window);
-                }
-            }
-
             // Create SessionRuntime for command execution
+            // SessionRuntime uses driver_session.windows (SSOT for window state)
+            // No need to copy/sync - driver_session.windows IS the window state
             let stub_executor = StubCommandExecutor;
             let mut runtime = SessionRuntime::new(driver_session, &app.kernel, &stub_executor);
 
             // Execute command
-            let result = entry.handler.execute(&mut runtime, &ctx);
-
-            // Sync window cursor changes back to WindowRegistry
-            let window_ids: Vec<_> = app.windows.windows().collect();
-            for (idx, window) in driver_session.windows.windows.iter().enumerate() {
-                if let Some(&win_id) = window_ids.get(idx)
-                    && let Some(state) = app.windows.get_mut(win_id)
-                {
-                    state.cursor.line = window.cursor.line;
-                    state.cursor.column = window.cursor.column;
-                }
-            }
-
-            result
+            entry.handler.execute(&mut runtime, &ctx)
         })
     }
 

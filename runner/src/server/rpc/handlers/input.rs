@@ -229,10 +229,7 @@ fn convert_input_arg_to_command_arg(
 fn try_resolver_on_command_complete(
     state: &mut crate::session::SessionState,
 ) -> Option<ModeTransition> {
-    use {
-        crate::server::event_loop::RuntimeAdapter,
-        reovim_driver_session::{SessionRuntime, api::CommandExecutor},
-    };
+    use reovim_driver_session::{SessionRuntime, api::CommandExecutor};
 
     // Stub command executor
     struct StubExecutor;
@@ -252,12 +249,10 @@ fn try_resolver_on_command_complete(
     // Get resolver for current mode
     let resolver = state.resolver_registry.get(&mode)?;
 
-    // Create runtime
+    // Create SessionRuntime for session API access
     let stub_executor = StubExecutor;
-    let session_runtime =
-        SessionRuntime::new(&mut state.driver_session, &state.app.kernel, &stub_executor);
     let mut runtime =
-        RuntimeAdapter::new(session_runtime, &mut state.app.windows, &state.app.kernel);
+        SessionRuntime::new(&mut state.driver_session, &state.app.kernel, &stub_executor);
 
     // Call on_command_complete
     resolver.on_command_complete(&mut runtime, &mut state.app.extensions)

@@ -9,9 +9,7 @@ mod cmdline;
 pub use cmdline::{CommandLineState, PromptType};
 
 use {
-    crate::server::window::WindowRegistry,
     reovim_arch::sync::RwLock,
-    reovim_driver_display::WindowId,
     reovim_driver_input::{ExtensionMap, FallbackContext, KeySequence},
     reovim_driver_undo::{UndoKey, UndoProvider, UndoProviderRegistry},
     reovim_kernel::api::v1::{
@@ -83,12 +81,10 @@ pub struct AppState {
 
     // Epic #417 Part 2: undo_registry removed. Undo operations now use
     // dyn UndoProvider from ServiceRegistry via get_undo_provider().
-    /// Window registry for multi-window support.
-    ///
-    /// Tracks window state, layout, and focus. Each window has its own
-    /// cursor position, allowing multiple views of the same buffer.
-    pub windows: WindowRegistry,
 
+    // Window state is now managed by driver::Session.windows (WindowLayout)
+    // and driver::Session.compositor (RootCompositor). WindowRegistry was
+    // removed in #438 to fix architecture violation.
     /// Command-line mode state for `:`, `/`, and `?` commands.
     ///
     /// Tracks input buffer and prompt type for Ex commands and search patterns.
@@ -135,7 +131,7 @@ impl AppState {
             terminal_width: 80,
             terminal_height: 24,
             // Epic #417 Part 2: undo operations via UndoProvider from ServiceRegistry
-            windows: WindowRegistry::new(),
+            // Window state moved to driver::Session (#438)
             cmdline: CommandLineState::new(),
             extensions: ExtensionMap::new(),
         }
@@ -187,53 +183,15 @@ impl AppState {
     }
 
     // ========================================================================
-    // Window Management Methods
+    // Window Management
     // ========================================================================
-
-    /// Get the currently active window ID.
-    #[must_use]
-    pub const fn active_window(&self) -> Option<WindowId> {
-        self.windows.active_window()
-    }
-
-    /// Find the first window displaying a given buffer.
-    #[must_use]
-    pub fn window_for_buffer(&self, buffer_id: BufferId) -> Option<WindowId> {
-        self.windows.windows().find(|&win_id| {
-            self.windows
-                .get(win_id)
-                .is_some_and(|state| state.buffer_id == Some(buffer_id))
-        })
-    }
-
-    /// Get the buffer displayed in a given window.
-    #[must_use]
-    pub fn buffer_for_window(&self, window_id: WindowId) -> Option<BufferId> {
-        self.windows
-            .get(window_id)
-            .and_then(|state| state.buffer_id)
-    }
-
-    /// Ensure a window exists when setting the active buffer.
-    ///
-    /// For backward compatibility with single-window usage, this creates
-    /// a window if none exist when a buffer is set as active.
-    ///
-    /// NOTE: This only updates the window registry. The SSOT for `active_buffer`
-    /// is now `driver::Session::active_buffer`. Use `SessionState::set_session_active_buffer()`
-    /// to set the actual active buffer.
-    pub fn set_active_buffer_with_window(&mut self, buffer_id: BufferId) {
-        // If no windows exist, create one
-        if self.windows.is_empty() {
-            let window_id = self.windows.create_window(Some(buffer_id));
-            self.windows.set_active_window(window_id);
-        } else if let Some(active) = self.windows.active_window() {
-            // Update the active window's buffer
-            if let Some(state) = self.windows.get_mut(active) {
-                state.buffer_id = Some(buffer_id);
-            }
-        }
-    }
+    //
+    // Window state is now managed by driver::Session:
+    // - Session.windows: WindowLayout (windows, cursors, viewports)
+    // - Session.compositor: Box<dyn RootCompositor> (layout algorithm)
+    //
+    // Access window state via SessionState::driver_session instead.
+    // Removed in #438 to fix architecture violation.
 }
 
 /// `FallbackContext` implementation for `AppState`.
@@ -365,89 +323,10 @@ mod tests {
     // ========================================================================
     // Window Management Tests
     // ========================================================================
-
-    #[test]
-    fn test_app_state_has_window_registry() {
-        let kernel = KernelContext::default();
-        let app = AppState::new(kernel);
-
-        // Initially no windows
-        assert!(app.windows.is_empty());
-        assert!(app.active_window().is_none());
-    }
-
-    #[test]
-    fn test_app_state_active_window_initially_none() {
-        let kernel = KernelContext::default();
-        let app = AppState::new(kernel);
-
-        assert!(app.active_window().is_none());
-        assert_eq!(app.windows.window_count(), 0);
-    }
-
-    #[test]
-    fn test_app_state_create_window_on_buffer_set() {
-        let kernel = KernelContext::default();
-        let mut app = AppState::new(kernel);
-
-        let buffer_id = BufferId::new();
-
-        // Set active buffer with window creation
-        app.set_active_buffer_with_window(buffer_id);
-
-        // Should have created a window
-        assert_eq!(app.windows.window_count(), 1);
-        assert!(app.active_window().is_some());
-
-        // The window should contain the buffer
-        let win_id = app.active_window().unwrap();
-        assert_eq!(app.buffer_for_window(win_id), Some(buffer_id));
-    }
-
-    #[test]
-    fn test_app_state_backward_compat_single_buffer() {
-        let kernel = KernelContext::default();
-        let mut app = AppState::new(kernel);
-
-        // Old single-buffer workflow:
-        // 1. Create buffer
-        // 2. Set as active with window
-        // 3. Edit buffer
-
-        let buffer_id = BufferId::new();
-        app.set_active_buffer_with_window(buffer_id);
-
-        // Verify window was created
-        assert!(app.active_window().is_some());
-
-        // Window should have the buffer
-        let win = app.active_window().unwrap();
-        assert_eq!(app.buffer_for_window(win), Some(buffer_id));
-
-        // Set another buffer - should reuse existing window
-        let buffer_id2 = BufferId::new();
-        app.set_active_buffer_with_window(buffer_id2);
-
-        // Still one window, but with new buffer
-        assert_eq!(app.windows.window_count(), 1);
-        assert_eq!(app.buffer_for_window(win), Some(buffer_id2));
-    }
-
-    #[test]
-    fn test_app_state_window_for_buffer() {
-        let kernel = KernelContext::default();
-        let mut app = AppState::new(kernel);
-
-        let buffer_id = BufferId::new();
-        app.set_active_buffer_with_window(buffer_id);
-
-        // Should find the window for this buffer
-        let found = app.window_for_buffer(buffer_id);
-        assert!(found.is_some());
-        assert_eq!(found, app.active_window());
-
-        // Should not find window for non-existent buffer
-        let other_buffer = BufferId::new();
-        assert!(app.window_for_buffer(other_buffer).is_none());
-    }
+    //
+    // Window management tests were removed in #438. Window state is now
+    // managed by driver::Session.windows (WindowLayout) and
+    // driver::Session.compositor (RootCompositor).
+    //
+    // See driver::session tests for window layout testing.
 }

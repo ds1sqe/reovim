@@ -6,12 +6,14 @@
 //! - `visual` - Visual mode (selection commands)
 //! - `operator_modes` - Dedicated operator modes: delete, yank, change (Epic #415)
 //! - `commandline` - Command-line mode (: commands)
+//! - `window` - Window mode (`<C-w>` commands) (Epic #438)
 
 pub mod commandline;
 pub mod insert;
 pub mod normal;
 pub mod operator_modes;
 pub mod visual;
+pub mod window;
 
 use reovim_kernel::api::v1::KeybindingRegistration;
 
@@ -26,5 +28,6 @@ pub fn all() -> Vec<KeybindingRegistration> {
     bindings.extend(visual::bindings());
     bindings.extend(operator_modes::all_operator_bindings());
     bindings.extend(commandline::bindings());
+    bindings.extend(window::bindings());
     bindings
 }

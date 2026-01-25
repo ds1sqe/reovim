@@ -390,12 +390,12 @@ impl Session {
                                         // Update buffer's cursor
                                         buffer_arc.write().set_position(m.start);
 
-                                        // Update window registry cursor
-                                        if let Some(win_id) = state.app.windows.active_window()
-                                            && let Some(win_state) =
-                                                state.app.windows.get_mut(win_id)
+                                        // Update window cursor in driver_session
+                                        if let Some(window) =
+                                            state.driver_session.windows.active_mut()
                                         {
-                                            win_state.cursor = m.start;
+                                            window.cursor.line = m.start.line;
+                                            window.cursor.column = m.start.column;
                                         }
                                     }
 
