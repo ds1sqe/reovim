@@ -8,8 +8,9 @@ This document chronicles Reovim's transformation from a monolithic editor to a *
 
 ```
 Phase 0-4 ──> Phase 5 ──> Phase 6 ──> Phase 7 ──> Phase 8 ──> Phase 9 ──> Phase 10 ──> Phase 11
-Foundation    Implement   Decouple    Features    Foundation  Features    Languages    Release
-   ✅            ✅          ✅          🚧         (future)    (future)    (future)    (future)
+Foundation    Implement   Decouple    Features    Window+     Features    Languages    Release
+                                                  Plugins
+   ✅            ✅          ✅          ✅          🚧        (future)    (future)    (future)
 ```
 
 ---
@@ -119,7 +120,7 @@ See [Phase 5 Extraction Strategy](./phase5-extraction.md) for methodology.
 
 ---
 
-## Phase 7: Feature Completion 🚧
+## Phase 7: Feature Completion ✅
 
 **Goal:** Basic editor functionality - open, edit, save files with Vim-like operations.
 
@@ -207,72 +208,85 @@ All four streams developed in parallel and merged via PR #272.
 └─────────────────────────────────────────────────────┘
                       │
 ══════════════════════╧═══════════════════════════════
-              NOW UNBLOCKED (streams done)
+              ALL COMPLETED ✅
 ┌─────────────────────────────────────────────────────┐
-│  #241 Text Objects    ← CAN START                   │
-│  #242 Visual Mode     ← CAN START                   │
-│  #264 Default Policy  ← CAN START                   │
-│  #265 Full E2E        ← needs #264                  │
+│  #241 Text Objects    ✅ Done                       │
+│  #242 Visual Mode     ✅ Done                       │
+│  #310 Search E2E      ✅ Done                       │
+│  #311 Undo E2E        ✅ Done                       │
+│  #333 Named Registers ✅ Done                       │
+│  #338 Command-line    ✅ Done                       │
 └─────────────────────────────────────────────────────┘
 ```
 
 ### Phase 7 Metrics
 
-- **Issues:** 21 (17 done, 4 remaining)
-- **Lines Changed:** ~8,500+ (streams A-D)
-- **Tests:** 407+ passing
+- **Issues:** 25+ (all done)
+- **Lines Changed:** ~12,000+
+- **Tests:** 450+ passing
 
 ---
 
-## Phase 8: Foundation (Future)
+## Phase 8: Window Subsystem + Basic Plugins 🚧
 
-**Goal:** Complete deferred Phase 7 items + basic plugins + TUI infrastructure.
+**Goal:** Nested compositor architecture + basic plugins + color/theme system.
+
+**Epic:** #403
 
 This phase builds the foundation that Phase 9 features will depend on.
 
-### Deferred Phase 7 Items
+### Window Subsystem (Phase 8 Scope)
 
-| Item | Description | Dependency |
-|------|-------------|------------|
-| Undo E2E (#311) | Wire `UndoApi` to SessionRuntime | None |
-| Search E2E (#310) | Implement search via command-line mode | Command-line |
-| Named registers | `"a-z` register prefix parsing | None |
-| Text objects | `iw`, `a"`, `i(`, etc. | Operators |
-| Visual mode polish | Edge cases, block mode | Selection API |
+| Phase | Issue | Title | Status |
+|-------|-------|-------|--------|
+| 1 | #438 | Core compositor infrastructure | 🚧 In Progress |
+| 2 | #398 | Floating window layer | Planned |
+| 3 | #399 | Overlay/popup layer | Planned |
 
-### Command-Line Mode (Critical Foundation)
-
-| Feature | Keys | Enables |
-|---------|------|---------|
-| Ex-commands | `:` | `:w`, `:q`, `:e`, `:set` |
-| Forward search | `/` | Search patterns |
-| Backward search | `?` | Reverse search |
-| Input handling | `<CR>`, `<Esc>`, `<BS>` | All above |
+**Window System Deliverables:**
+- `RootCompositor` + `LayerCompositor` traits in display driver
+- `HybridCompositor` implementation in modules/layout
+- 15 `<C-w>` commands (h/j/k/l, s/v, c/o, +/-/>/</=)
+- Binary split tree for tiled windows
+- Floating window toggle and positioning
+- Overlay system for popups/autocomplete
 
 ### Basic Plugins (Category A)
 
 Extracted from `archive/plugins/features/`:
 
-| Plugin | Purpose | Priority |
-|--------|---------|----------|
-| **statusline** | Mode, file, position display | High |
-| **which-key** | Key hint popups | High |
-| **notification** | User feedback messages | Medium |
-| **pair** | Auto-close brackets | Medium |
+| Issue | Plugin | Purpose | Priority | Depends On |
+|-------|--------|---------|----------|------------|
+| #441 | **statusline** | Mode, file, position display | High | Overlay (#399) |
+| #442 | **which-key** | Key hint popups | High | Overlay (#399) |
+| #443 | **notification** | User feedback messages | Medium | Overlay (#399) |
+| #440 | **pair** | Auto-close brackets | Medium | None |
 
-### TUI Infrastructure
+### Infrastructure
 
-| Component | Epic/Issue | Purpose |
-|-----------|------------|---------|
-| Window system | #403 Phase 1 | Splits, focus, `<C-w>` commands |
-| Overlay system | #403 Phase 3 | Popups, menus, hints |
-| Color/theme system | TBD | Syntax colors, UI styling |
+| Issue | Component | Purpose |
+|-------|-----------|---------|
+| #439 | Color/theme system | Syntax colors, UI styling |
+
+### Deferred to Phase 9
+
+| Phase | Issue | Title |
+|-------|-------|-------|
+| 4 | #400 | Layer transparency and passthrough |
+| 5 | #401 | Tab pages for workspace organization |
 
 ---
 
 ## Phase 9: Feature Plugins (Future)
 
 **Goal:** Extract feature plugins from archive. Battle-tests Phase 8 foundation.
+
+### Window System Completion (from Phase 8)
+
+| Phase | Issue | Title |
+|-------|-------|-------|
+| 4 | #400 | Layer transparency and passthrough |
+| 5 | #401 | Tab pages for workspace organization |
 
 ### Code Intelligence
 
@@ -470,25 +484,28 @@ Patterns and insights discovered during the architecture overhaul:
 - [x] CLI client enables scripting
 - [x] Debug endpoints for introspection
 
-### Phase 7 (In Progress)
+### Phase 7 ✅
 
 - [x] Basic editing: open, edit, save files
 - [x] Cursor movement, operators
-- [ ] Undo/redo E2E tests (#311)
-- [ ] Search E2E tests (#310)
-- [ ] Visual mode polish
-- [ ] Text objects
+- [x] Undo/redo E2E tests (#311)
+- [x] Search E2E tests (#310)
+- [x] Visual mode (#242)
+- [x] Text objects (#241)
+- [x] Command-line mode (`:`, `/`, `?`) (#338, #435)
+- [x] Named registers (`"a-z`) (#333)
 
-### Phase 8 (Foundation)
+### Phase 8 (In Progress)
 
-- [ ] Command-line mode (`:`, `/`, `?`)
-- [ ] Named registers (`"a-z`)
-- [ ] Basic plugins: statusline, which-key, notification, pair
-- [ ] Window system (#403 core)
+- [ ] Window system Phases 1-3 (#438, #398, #399)
+- [ ] 15 `<C-w>` commands
 - [ ] Overlay system for popups
+- [ ] Basic plugins (#440 pair, #441 statusline, #442 which-key, #443 notification)
+- [ ] Color/theme system (#439)
 
 ### Phase 9 (Feature Plugins)
 
+- [ ] Window system Phases 4-5 (#400, #401)
 - [ ] treesitter, lsp, completion
 - [ ] microscope, pickers, explorer
 - [ ] context, sticky-context, range-finder
@@ -497,7 +514,6 @@ Patterns and insights discovered during the architecture overhaul:
 
 - [ ] Language plugins from archive/
 - [ ] profiles, settings-menu, health-check
-- [ ] Advanced window features (#403 Phase 2-5)
 
 ### Phase 11 (Release)
 
