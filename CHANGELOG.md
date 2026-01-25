@@ -4,7 +4,46 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [Unreleased] - v0.9.1-dev
 
+### Changed
+
+- Removed backward compatibility patterns (#427)
+  - Removed `runner::fallback` re-export module (use `reovim_driver_input` directly)
+  - Removed `ModuleRegistry` type alias (use `ModuleManager`)
+  - Removed hidden legacy CLI flags (`--server`, `--listen-tcp`, `--listen-socket`, `--stdio`)
+  - Removed hidden `--socket` flag from CLI and TUI (use `-S` / `--socket-path`)
+  - `VimInsertResolver` migrated from `resolve_with_session()` to `resolve_with_keymap()`
+
+### Deprecated
+
+- `window_active_buffer()` - use `active_buffer()` instead
+- `ModeKeyResolver::resolve()` - override `resolve_with_keymap()` instead
+- `ProfileGuard` - use `profile_scope!()` macro instead
+- `KeymapRegistry::register()` - use `register_at_layer()` instead
+- `KeymapRegistry::register_for_module()` - use `register_at_layer_for_module()` instead
+
+### Removed
+
+- `ModeKeyResolver::resolve()` implementations from vim resolvers (migrated to `resolve_with_keymap()`)
+
 ### Added
+
+- Undo E2E tests fully passing with proper batching (#311)
+  - All 9 undo/redo integration tests pass
+  - `VimInsertResolver` now overrides `resolve_with_session` for keymap lookup
+  - Insert mode Escape triggers `vim:exit-insert` command for proper undo batching
+  - `ChangeCommand` starts undo batch BEFORE delete (batch includes both delete + inserts)
+  - Tests: `test_undo_insert`, `test_undo_change_word`, `test_multiple_undo`, etc.
+
+- Search input mode for `/` and `?` commands (#435)
+  - All 15 search E2E tests now pass (was 5, now includes `/` and `?` patterns)
+  - `/pattern<Enter>` searches forward, `?pattern<Enter>` searches backward
+  - `n` repeats search in same direction, `N` in opposite direction
+  - `*` and `#` search word under cursor forward/backward
+  - `SearchState` moved to driver layer for shared access between runner and modules
+  - Reuses `CommandLine` mode with `PromptType` enum (Command, SearchForward, SearchBackward)
+  - `CmdlineState` extension tracks prompt type and cancelled state
+  - Fixed backward search to properly find matches before cursor position
+  - Fixed `#` (backward word search) to skip current word and find previous occurrence
 
 - All operator E2E tests enabled and passing (#308)
   - 57 operator tests now pass (exceeds original 28 planned)

@@ -125,28 +125,35 @@ fn find_backward(
     wrap: bool,
     buffer: &Buffer,
 ) -> Option<SearchMatch> {
-    let search_end = cursor_byte.min(content.len());
+    // Search the entire content and filter by match start position.
+    // Vim's backward search finds matches where match.start() < cursor.
+    // This handles matches that span across the cursor position correctly.
+    let all_matches: Vec<_> = regex.find_iter(content).collect();
 
-    // Search before cursor
-    if search_end > 0 {
-        let matches: Vec<_> = regex.find_iter(&content[..search_end]).collect();
-        if let Some(m) = matches.last() {
+    // Find matches that start before cursor
+    let before_cursor: Vec<_> = all_matches
+        .iter()
+        .filter(|m| m.start() < cursor_byte)
+        .collect();
+
+    if let Some(m) = before_cursor.last() {
+        return Some(SearchMatch {
+            start: byte_to_position(buffer, m.start()),
+            end: byte_to_position(buffer, m.end()),
+        });
+    }
+
+    // Wrap to end if enabled - find matches that start at or after cursor
+    if wrap {
+        let at_or_after: Vec<_> = all_matches
+            .iter()
+            .filter(|m| m.start() >= cursor_byte)
+            .collect();
+
+        if let Some(m) = at_or_after.last() {
             return Some(SearchMatch {
                 start: byte_to_position(buffer, m.start()),
                 end: byte_to_position(buffer, m.end()),
-            });
-        }
-    }
-
-    // Wrap to end if enabled
-    if wrap && cursor_byte < content.len() {
-        let matches: Vec<_> = regex.find_iter(&content[cursor_byte..]).collect();
-        if let Some(m) = matches.last() {
-            let start_byte = cursor_byte + m.start();
-            let end_byte = cursor_byte + m.end();
-            return Some(SearchMatch {
-                start: byte_to_position(buffer, start_byte),
-                end: byte_to_position(buffer, end_byte),
             });
         }
     }
@@ -344,13 +351,9 @@ mod tests {
     fn test_find_wrap_backward() {
         let engine = SearchEngine;
         let buffer = create_test_buffer("hello world hello");
-        let result = engine.find_next(
-            &buffer,
-            Position::new(0, 2), // After first "hello"
-            "hello",
-            Direction::Backward,
-            true,
-        );
+        // Cursor at column 0 - no matches start before this position
+        let result =
+            engine.find_next(&buffer, Position::new(0, 0), "hello", Direction::Backward, true);
 
         assert!(result.is_ok());
         let m = result.unwrap().unwrap();

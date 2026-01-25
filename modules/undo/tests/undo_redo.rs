@@ -7,10 +7,9 @@
 //!
 //! Run `cargo test --ignored` to run the remaining ignored tests.
 
-use runner::testing::IntegrationTest;
+use runner::testing::{IntegrationTest, StepTest};
 
 #[tokio::test]
-#[ignore = "undo E2E tests pending (#311)"]
 async fn test_undo_delete_line() {
     let result = IntegrationTest::new()
         .await
@@ -33,7 +32,6 @@ async fn test_redo_after_undo() {
 }
 
 #[tokio::test]
-#[ignore = "undo E2E tests pending (#311)"]
 async fn test_multiple_undo() {
     let result = IntegrationTest::new()
         .await
@@ -45,7 +43,6 @@ async fn test_multiple_undo() {
 }
 
 #[tokio::test]
-#[ignore = "undo E2E tests pending (#311)"]
 async fn test_undo_insert() {
     let result = IntegrationTest::new()
         .await
@@ -68,7 +65,6 @@ async fn test_multiple_redo() {
 }
 
 #[tokio::test]
-#[ignore = "undo E2E tests pending (#311)"]
 async fn test_undo_change_word() {
     let result = IntegrationTest::new()
         .await
@@ -101,4 +97,38 @@ async fn test_redo_nothing_to_redo() {
         .run()
         .await;
     result.assert_buffer_eq("hello");
+}
+
+// ============================================================================
+// DEBUG: Step-by-step tests to trace insert mode issue
+// ============================================================================
+
+/// Debug test for insert mode - trace each key step by step
+#[tokio::test]
+async fn debug_step_insert_escape() {
+    let trace = StepTest::new()
+        .await
+        .with_buffer("")
+        .step("i")
+        .expect_mode_contains("INSERT")
+        .step("h")
+        .expect_buffer("h")
+        .step("e")
+        .expect_buffer("he")
+        .step("l")
+        .step("l")
+        .step("o")
+        .expect_buffer("hello")
+        .step("<Esc>")
+        .expect_mode_contains("NORMAL")
+        .step("u")
+        .expect_buffer("")
+        .run()
+        .await;
+
+    trace.print_trace();
+
+    let final_state = trace.final_state();
+    eprintln!("\nFinal buffer: {:?}", final_state.buffer);
+    eprintln!("Final mode: {} ({})", final_state.mode_display, final_state.edit_mode);
 }

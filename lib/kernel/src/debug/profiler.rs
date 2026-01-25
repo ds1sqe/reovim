@@ -424,11 +424,13 @@ impl Drop for ProfileScope {
 ///     // ... do work ...
 /// } // time recorded to histogram when guard drops
 /// ```
+#[deprecated(since = "0.9.5", note = "Use profile_scope!() macro instead")]
 pub struct ProfileGuard {
     name: &'static str,
     start: Instant,
 }
 
+#[allow(deprecated)]
 impl ProfileGuard {
     /// Create a new profile guard that will record to the named histogram.
     #[must_use]
@@ -440,6 +442,7 @@ impl ProfileGuard {
     }
 }
 
+#[allow(deprecated)]
 impl Drop for ProfileGuard {
     #[allow(clippy::cast_possible_truncation)] // Microsecond truncation acceptable
     fn drop(&mut self) {
@@ -561,6 +564,7 @@ macro_rules! profile {
 // =============================================================================
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use std::{
         sync::atomic::{AtomicU64, Ordering},

@@ -14,10 +14,21 @@
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{BufferApi, SessionRuntime, TransitionContext, api::ModeApi},
-    reovim_kernel::api::v1::{CommandId, OptionScopeId, Position},
+    reovim_driver_undo::{UndoKey, UndoProviderRegistry},
+    reovim_kernel::api::v1::{BufferId, CommandId, OptionScopeId, Position},
 };
 
 use crate::{ids, modes::VimMode};
+
+/// Start undo batching for insert mode.
+fn begin_insert_batch(runtime: &SessionRuntime<'_>, buffer_id: BufferId) {
+    if let Some(pos) = runtime.buffer_position(buffer_id)
+        && let Some(undo_registry) = runtime.kernel().services.get::<UndoProviderRegistry>()
+        && let Some(undo_provider) = undo_registry.get(&UndoKey::Buffer)
+    {
+        undo_provider.begin_batch(buffer_id, pos);
+    }
+}
 
 /// Extract the leading whitespace (indent) from a line.
 ///
@@ -48,16 +59,18 @@ impl Command for EnterInsertFirstNonBlank {
 
 impl CommandHandler for EnterInsertFirstNonBlank {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        if let Some(buffer_id) = args.buffer_id()
-            && let Some(pos) = runtime.buffer_position(buffer_id)
-        {
-            // Find first non-blank character on current line
-            let first_non_blank = runtime
-                .buffer_line(buffer_id, pos.line)
-                .map(|line| line.chars().position(|c| !c.is_whitespace()).unwrap_or(0))
-                .unwrap_or(0);
+        if let Some(buffer_id) = args.buffer_id() {
+            if let Some(pos) = runtime.buffer_position(buffer_id) {
+                // Find first non-blank character on current line
+                let first_non_blank = runtime
+                    .buffer_line(buffer_id, pos.line)
+                    .map(|line| line.chars().position(|c| !c.is_whitespace()).unwrap_or(0))
+                    .unwrap_or(0);
 
-            runtime.set_buffer_position(buffer_id, Position::new(pos.line, first_non_blank));
+                runtime.set_buffer_position(buffer_id, Position::new(pos.line, first_non_blank));
+            }
+            // Start undo batching for insert mode
+            begin_insert_batch(runtime, buffer_id);
         }
 
         runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
@@ -82,12 +95,14 @@ impl Command for EnterInsertEndOfLine {
 
 impl CommandHandler for EnterInsertEndOfLine {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        if let Some(buffer_id) = args.buffer_id()
-            && let Some(pos) = runtime.buffer_position(buffer_id)
-        {
-            // Move cursor to end of current line
-            let line_len = runtime.buffer_line_len(buffer_id, pos.line).unwrap_or(0);
-            runtime.set_buffer_position(buffer_id, Position::new(pos.line, line_len));
+        if let Some(buffer_id) = args.buffer_id() {
+            if let Some(pos) = runtime.buffer_position(buffer_id) {
+                // Move cursor to end of current line
+                let line_len = runtime.buffer_line_len(buffer_id, pos.line).unwrap_or(0);
+                runtime.set_buffer_position(buffer_id, Position::new(pos.line, line_len));
+            }
+            // Start undo batching for insert mode
+            begin_insert_batch(runtime, buffer_id);
         }
 
         runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
@@ -150,6 +165,9 @@ impl CommandHandler for OpenLineBelow {
         let indent_len = indent.chars().count();
         runtime.set_buffer_position(buffer_id, Position::new(pos.line + 1, indent_len));
 
+        // Start undo batching for insert mode
+        begin_insert_batch(runtime, buffer_id);
+
         runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
 
         CommandResult::Success
@@ -206,6 +224,9 @@ impl CommandHandler for OpenLineAbove {
         // Position cursor at end of indent on the new line (which is now at pos.line)
         let indent_len = indent.chars().count();
         runtime.set_buffer_position(buffer_id, Position::new(pos.line, indent_len));
+
+        // Start undo batching for insert mode
+        begin_insert_batch(runtime, buffer_id);
 
         runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
 

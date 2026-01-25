@@ -11,18 +11,19 @@ use crate::ids as vim;
 pub fn bindings() -> Vec<KeybindingRegistration> {
     vec![
         // ====================================================================
-        // Exit command-line mode
+        // Cancel command-line mode (Escape)
         // ====================================================================
-        KeybindingRegistration::new("<Esc>", vim::EXIT_COMMANDLINE)
+        KeybindingRegistration::new("<Esc>", vim::CANCEL_COMMANDLINE)
             .with_modes(&["vim:command"])
             .with_category("mode")
             .with_description("Cancel and exit command-line mode"),
-        KeybindingRegistration::new("<C-c>", vim::EXIT_COMMANDLINE)
+        KeybindingRegistration::new("<C-c>", vim::CANCEL_COMMANDLINE)
             .with_modes(&["vim:command"])
             .with_category("mode")
             .with_description("Cancel and exit command-line mode"),
-        // Note: Enter key for executing commands will be added when command
-        // execution is implemented. For now, Enter just exits.
+        // ====================================================================
+        // Execute command-line (Enter)
+        // ====================================================================
         KeybindingRegistration::new("<CR>", vim::EXIT_COMMANDLINE)
             .with_modes(&["vim:command"])
             .with_category("mode")

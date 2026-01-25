@@ -3,6 +3,7 @@
 //! Implements Vim-style key handling policy for each mode:
 //! - Normal: count prefixes, register selection, operator entry
 //! - Insert: character insertion, escape handling
+//! - CommandLine: input capture for `:`, `/`, `?`
 //! - Delete/Yank/Change: dedicated operator modes
 //!
 //! # Architecture (Epic #415, #417)
@@ -18,6 +19,7 @@
 //! - Statusline shows "DELETE"/"YANK"/"CHANGE"
 
 mod change;
+mod commandline;
 mod delete;
 mod insert;
 mod normal;
@@ -28,4 +30,6 @@ mod yank;
 pub use {change::VimChangeResolver, delete::VimDeleteResolver, yank::VimYankResolver};
 
 // Other resolvers
-pub use {insert::VimInsertResolver, normal::VimNormalResolver};
+pub use {
+    commandline::VimCommandLineResolver, insert::VimInsertResolver, normal::VimNormalResolver,
+};

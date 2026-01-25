@@ -5,8 +5,8 @@
 
 use {
     reovim_driver_input::{
-        KeyCode, KeyEvent, ModeKeyResolver, ModeState, ModeTransition, Modifiers, ResolveResult,
-        TransitionContext,
+        KeyCode, KeyEvent, KeyLookupState, KeySequence, ModeKeyResolver, ModeState, Modifiers,
+        ResolveContext, ResolveInput, ResolveResult,
     },
     reovim_kernel::api::v1::ModeId,
 };
@@ -63,13 +63,6 @@ impl VimInsertResolver {
             _ => None,
         }
     }
-
-    /// Check if this is an escape key to exit insert mode.
-    fn is_escape(key: &KeyEvent) -> bool {
-        // Escape or Ctrl+[ both exit insert mode
-        key.code == KeyCode::Escape
-            || (key.code == KeyCode::Char('[') && key.modifiers.contains(Modifiers::CTRL))
-    }
 }
 
 impl Default for VimInsertResolver {
@@ -79,23 +72,50 @@ impl Default for VimInsertResolver {
 }
 
 impl ModeKeyResolver for VimInsertResolver {
-    fn resolve(&self, key: &KeyEvent, _state: &mut ModeState) -> ResolveResult {
-        // Escape exits insert mode
-        if Self::is_escape(key) {
-            return ResolveResult::ModeTransition(ModeTransition::Set {
-                mode: VimMode::NORMAL_ID,
-                context: TransitionContext::new(),
-            });
-        }
-
-        // Check for insertable character
+    /// Insert mode key resolution with keymap lookup.
+    ///
+    /// This method handles keymap lookup for non-insertable keys like Escape,
+    /// Backspace, and arrow keys. When a key is not insertable, we query the
+    /// keymap to find a bound command.
+    ///
+    /// # Architecture
+    ///
+    /// Insert mode differs from normal mode:
+    /// - Insertable characters (letters, numbers, etc.) return `InsertChar`
+    /// - Non-insertable keys (Escape, Backspace, arrows) query the keymap
+    ///
+    /// This enables Escape to trigger the `vim:exit-insert` command, which
+    /// properly ends undo batching before switching to normal mode.
+    fn resolve_with_keymap(
+        &self,
+        key: &KeyEvent,
+        _state: &mut ModeState,
+        input: &ResolveInput<'_>,
+    ) -> ResolveResult {
+        // Check for insertable character first
         if let Some(c) = Self::is_insertable(key) {
             return ResolveResult::InsertChar(c);
         }
 
-        // Other keys (Backspace, arrows, Ctrl+sequences) go to keymap lookup
-        // Return NotHandled to let the runner do the lookup
-        ResolveResult::NotHandled
+        // Non-insertable key - query keymap for binding
+        // Use single-key lookup (insert mode has no multi-key sequences)
+        let keys = KeySequence::from_keys(&[*key]);
+        let lookup_state = input.keymap.query(input.mode, &keys);
+
+        match lookup_state {
+            KeyLookupState::ExactOnly(cmd) | KeyLookupState::ExactWithLonger { exact: cmd, .. } => {
+                // Found a binding - execute it
+                ResolveResult::Execute(cmd, ResolveContext::new())
+            }
+            KeyLookupState::PrefixOnly => {
+                // Waiting for more keys (unlikely in insert mode)
+                ResolveResult::Pending
+            }
+            KeyLookupState::NotFound => {
+                // No binding - let runner handle (may be ignored)
+                ResolveResult::NotHandled
+            }
+        }
     }
 
     fn mode_id(&self) -> &ModeId {
@@ -115,6 +135,11 @@ impl ModeKeyResolver for VimInsertResolver {
 
 #[cfg(test)]
 mod tests {
+    use {
+        reovim_driver_input::{KeyLookupState, KeySequence, KeymapQuery},
+        reovim_kernel::api::v1::ModeId,
+    };
+
     use super::*;
 
     fn key(c: char) -> KeyEvent {
@@ -129,6 +154,21 @@ mod tests {
         ModeState::new(VimMode::INSERT_ID)
     }
 
+    /// Mock keymap that always returns NotFound (no bindings).
+    struct NotFoundKeymap;
+
+    impl KeymapQuery for NotFoundKeymap {
+        fn query(&self, _mode: &ModeId, _keys: &KeySequence) -> KeyLookupState {
+            KeyLookupState::NotFound
+        }
+    }
+
+    fn resolve_input(keymap: &impl KeymapQuery) -> ResolveInput<'_> {
+        static EMPTY_KEYS: KeySequence = KeySequence::new();
+        static MODE: ModeId = VimMode::INSERT_ID;
+        ResolveInput::new(&EMPTY_KEYS, &MODE, keymap)
+    }
+
     #[test]
     fn test_new_resolver() {
         let resolver = VimInsertResolver::new();
@@ -139,17 +179,19 @@ mod tests {
     fn test_insert_character() {
         let resolver = VimInsertResolver::new();
         let mut state = test_state();
+        let keymap = NotFoundKeymap;
+        let input = resolve_input(&keymap);
 
-        let result = resolver.resolve(&key('a'), &mut state);
+        let result = resolver.resolve_with_keymap(&key('a'), &mut state, &input);
         assert!(matches!(result, ResolveResult::InsertChar('a')));
 
-        let result = resolver.resolve(&key('Z'), &mut state);
+        let result = resolver.resolve_with_keymap(&key('Z'), &mut state, &input);
         assert!(matches!(result, ResolveResult::InsertChar('Z')));
 
-        let result = resolver.resolve(&key('5'), &mut state);
+        let result = resolver.resolve_with_keymap(&key('5'), &mut state, &input);
         assert!(matches!(result, ResolveResult::InsertChar('5')));
 
-        let result = resolver.resolve(&key(' '), &mut state);
+        let result = resolver.resolve_with_keymap(&key(' '), &mut state, &input);
         assert!(matches!(result, ResolveResult::InsertChar(' ')));
     }
 
@@ -157,8 +199,10 @@ mod tests {
     fn test_insert_tab() {
         let resolver = VimInsertResolver::new();
         let mut state = test_state();
+        let keymap = NotFoundKeymap;
+        let input = resolve_input(&keymap);
 
-        let result = resolver.resolve(&KeyEvent::new(KeyCode::Tab), &mut state);
+        let result = resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Tab), &mut state, &input);
         assert!(matches!(result, ResolveResult::InsertChar('\t')));
     }
 
@@ -166,46 +210,51 @@ mod tests {
     fn test_insert_enter() {
         let resolver = VimInsertResolver::new();
         let mut state = test_state();
+        let keymap = NotFoundKeymap;
+        let input = resolve_input(&keymap);
 
-        let result = resolver.resolve(&KeyEvent::new(KeyCode::Enter), &mut state);
+        let result =
+            resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Enter), &mut state, &input);
         assert!(matches!(result, ResolveResult::InsertChar('\n')));
     }
 
     #[test]
-    fn test_escape_exits() {
+    fn test_escape_not_handled() {
+        // Escape is NOT handled by resolver - let keybinding call EXIT_INSERT command
+        // This ensures undo batching is properly ended via the command.
         let resolver = VimInsertResolver::new();
         let mut state = test_state();
+        let keymap = NotFoundKeymap;
+        let input = resolve_input(&keymap);
 
-        let result = resolver.resolve(&KeyEvent::new(KeyCode::Escape), &mut state);
-
-        if let ResolveResult::ModeTransition(ModeTransition::Set { mode, .. }) = result {
-            assert_eq!(mode, VimMode::NORMAL_ID);
-        } else {
-            panic!("expected ModeTransition::Set");
-        }
+        let result =
+            resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
+        assert!(matches!(result, ResolveResult::NotHandled));
     }
 
     #[test]
-    fn test_ctrl_bracket_exits() {
+    fn test_ctrl_bracket_not_handled() {
+        // Ctrl+[ is NOT handled by resolver - let keybinding call EXIT_INSERT command
         let resolver = VimInsertResolver::new();
         let mut state = test_state();
+        let keymap = NotFoundKeymap;
+        let input = resolve_input(&keymap);
 
-        let result = resolver.resolve(&key_with_mod('[', Modifiers::CTRL), &mut state);
-
-        if let ResolveResult::ModeTransition(ModeTransition::Set { mode, .. }) = result {
-            assert_eq!(mode, VimMode::NORMAL_ID);
-        } else {
-            panic!("expected ModeTransition::Set for Ctrl+[");
-        }
+        let result =
+            resolver.resolve_with_keymap(&key_with_mod('[', Modifiers::CTRL), &mut state, &input);
+        assert!(matches!(result, ResolveResult::NotHandled));
     }
 
     #[test]
     fn test_ctrl_char_not_inserted() {
         let resolver = VimInsertResolver::new();
         let mut state = test_state();
+        let keymap = NotFoundKeymap;
+        let input = resolve_input(&keymap);
 
         // Ctrl+H should NOT insert 'h', but go to keymap (for backspace behavior)
-        let result = resolver.resolve(&key_with_mod('h', Modifiers::CTRL), &mut state);
+        let result =
+            resolver.resolve_with_keymap(&key_with_mod('h', Modifiers::CTRL), &mut state, &input);
         assert!(matches!(result, ResolveResult::NotHandled));
     }
 
@@ -213,9 +262,12 @@ mod tests {
     fn test_alt_char_not_inserted() {
         let resolver = VimInsertResolver::new();
         let mut state = test_state();
+        let keymap = NotFoundKeymap;
+        let input = resolve_input(&keymap);
 
         // Alt+a should NOT insert 'a'
-        let result = resolver.resolve(&key_with_mod('a', Modifiers::ALT), &mut state);
+        let result =
+            resolver.resolve_with_keymap(&key_with_mod('a', Modifiers::ALT), &mut state, &input);
         assert!(matches!(result, ResolveResult::NotHandled));
     }
 
@@ -223,9 +275,12 @@ mod tests {
     fn test_backspace_not_handled() {
         let resolver = VimInsertResolver::new();
         let mut state = test_state();
+        let keymap = NotFoundKeymap;
+        let input = resolve_input(&keymap);
 
         // Backspace goes to keymap lookup
-        let result = resolver.resolve(&KeyEvent::new(KeyCode::Backspace), &mut state);
+        let result =
+            resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Backspace), &mut state, &input);
         assert!(matches!(result, ResolveResult::NotHandled));
     }
 
@@ -233,11 +288,14 @@ mod tests {
     fn test_arrow_keys_not_handled() {
         let resolver = VimInsertResolver::new();
         let mut state = test_state();
+        let keymap = NotFoundKeymap;
+        let input = resolve_input(&keymap);
 
-        let result = resolver.resolve(&KeyEvent::new(KeyCode::Left), &mut state);
+        let result =
+            resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Left), &mut state, &input);
         assert!(matches!(result, ResolveResult::NotHandled));
 
-        let result = resolver.resolve(&KeyEvent::new(KeyCode::Up), &mut state);
+        let result = resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Up), &mut state, &input);
         assert!(matches!(result, ResolveResult::NotHandled));
     }
 
@@ -257,9 +315,12 @@ mod tests {
     fn test_shift_allowed_for_uppercase() {
         let resolver = VimInsertResolver::new();
         let mut state = test_state();
+        let keymap = NotFoundKeymap;
+        let input = resolve_input(&keymap);
 
         // Shift+a (uppercase A) should insert
-        let result = resolver.resolve(&key_with_mod('A', Modifiers::SHIFT), &mut state);
+        let result =
+            resolver.resolve_with_keymap(&key_with_mod('A', Modifiers::SHIFT), &mut state, &input);
         assert!(matches!(result, ResolveResult::InsertChar('A')));
     }
 }

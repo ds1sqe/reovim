@@ -177,7 +177,10 @@ pub const EXIT_VISUAL: CommandId = CommandId::new(MODULE, "exit-visual");
 /// Enter command-line mode (:).
 pub const ENTER_COMMANDLINE: CommandId = CommandId::new(MODULE, "enter-commandline");
 
-/// Exit command-line mode (Esc).
+/// Cancel command-line mode without executing (Esc).
+pub const CANCEL_COMMANDLINE: CommandId = CommandId::new(MODULE, "cancel-commandline");
+
+/// Execute command-line and exit (Enter).
 pub const EXIT_COMMANDLINE: CommandId = CommandId::new(MODULE, "exit-commandline");
 
 /// Enter window mode (Ctrl-w).
@@ -188,6 +191,20 @@ pub const ENTER_WINDOW_MODE: CommandId = CommandId::new(MODULE, "enter-window-mo
 /// Used by operator modes (delete, yank, change) when escape is pressed.
 /// Unlike `EXIT_INSERT`, this does not adjust cursor position.
 pub const CANCEL_TO_NORMAL: CommandId = CommandId::new(MODULE, "cancel-to-normal");
+
+// =============================================================================
+// Search Mode Entry (#435)
+// =============================================================================
+
+/// Enter search forward mode (/).
+///
+/// Sets pending search direction to Forward and enters command-line mode.
+pub const ENTER_SEARCH_FORWARD: CommandId = CommandId::new(MODULE, "enter-search-forward");
+
+/// Enter search backward mode (?).
+///
+/// Sets pending search direction to Backward and enters command-line mode.
+pub const ENTER_SEARCH_BACKWARD: CommandId = CommandId::new(MODULE, "enter-search-backward");
 
 // =============================================================================
 // Find-Char Motion Execution (Epic #385 - Resolver-based)

@@ -1468,6 +1468,7 @@ dependencies = [
  "reovim-driver-command-types",
  "reovim-driver-session",
  "reovim-kernel",
+ "tracing",
 ]
 
 [[package]]
@@ -1516,6 +1517,8 @@ dependencies = [
  "reovim-driver-clipboard",
  "reovim-driver-command-types",
  "reovim-driver-display",
+ "reovim-driver-search",
+ "reovim-driver-undo",
  "reovim-kernel",
 ]
 
@@ -1698,9 +1701,11 @@ name = "reovim-module-motions"
 version = "0.9.1-dev"
 dependencies = [
  "reovim-driver-command",
+ "reovim-driver-search",
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
+ "tracing",
 ]
 
 [[package]]
@@ -1788,7 +1793,9 @@ dependencies = [
  "reovim-driver-command",
  "reovim-driver-command-types",
  "reovim-driver-input",
+ "reovim-driver-search",
  "reovim-driver-session",
+ "reovim-driver-undo",
  "reovim-kernel",
  "reovim-module-editor",
  "reovim-module-macros",

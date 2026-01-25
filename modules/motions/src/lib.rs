@@ -32,7 +32,10 @@ pub mod find_char;
 pub mod ids;
 pub mod line;
 pub mod search;
+pub mod search_state;
 pub mod word;
+
+pub use search_state::SearchState;
 
 /// Module identifier for motions module.
 pub const MOTIONS_MODULE: ModuleId = ModuleId::new("motions");

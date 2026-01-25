@@ -300,6 +300,7 @@ impl KeymapRegistry {
     /// * `mode` - The mode in which this binding is active
     /// * `keys` - The key sequence that triggers the binding
     /// * `command` - The command to execute
+    #[deprecated(since = "0.9.5", note = "Use register_at_layer() instead")]
     pub fn register(&mut self, mode: &ModeId, keys: KeySequence, command: CommandId) {
         self.register_at_layer(BindingLayer::Policy, mode, keys, command);
     }
@@ -307,6 +308,7 @@ impl KeymapRegistry {
     /// Register a keybinding at the Policy layer with module ownership.
     ///
     /// This is the legacy API. New code should use [`Self::register_at_layer_for_module`].
+    #[deprecated(since = "0.9.5", note = "Use register_at_layer_for_module() instead")]
     pub fn register_for_module(
         &mut self,
         mode: &ModeId,
@@ -343,6 +345,7 @@ impl KeymapRegistry {
     ///
     /// Convenience method that parses the key sequence from a string.
     /// Returns `false` if the string couldn't be parsed.
+    #[allow(deprecated)]
     pub fn register_str(&mut self, mode: &ModeId, keys: &str, command: CommandId) -> bool {
         KeySequence::parse(keys).is_some_and(|seq| {
             self.register(mode, seq, command);
@@ -482,6 +485,7 @@ impl KeymapQuery for KeymapRegistry {
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use {super::*, reovim_kernel::api::v1::ModuleId};
 
@@ -515,6 +519,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_keymap_registry_register() {
         let mut registry = KeymapRegistry::new();
         let mode = test_mode();

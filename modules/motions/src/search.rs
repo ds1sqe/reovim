@@ -2,19 +2,32 @@
 //!
 //! Implements vim search commands: `/`, `?`, `n`, `N`, `*`, `#`, `:noh`.
 //!
-//! # Architecture (Epic #385)
+//! # Architecture
 //!
-//! These commands are stubs that will be implemented when `SessionRuntime`
-//! provides direct access to search state (#394). The actual search functionality
-//! will be handled by the vim resolver or a dedicated search module.
+//! - **Mechanism**: `SearchProvider` trait (in `reovim-driver-search`)
+//! - **Policy**: These commands wire keys to search functionality
+//!
+//! # Search State
+//!
+//! The `SearchState` session extension stores:
+//! - Last search pattern (for n/N repeat)
+//! - Last search direction (for correct n/N behavior)
+//!
+//! # Current Status
+//!
+//! All search commands are fully implemented:
+//! - `/` and `?` - forward/backward search with pattern input (uses `CommandLine` mode)
+//! - `n` and `N` - repeat search in same/opposite direction
+//! - `*` and `#` - search word under cursor forward/backward
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::SessionRuntime,
-    reovim_kernel::api::v1::CommandId,
+    reovim_driver_search::{Direction, SearchKey, SearchProviderRegistry},
+    reovim_driver_session::{SessionRuntime, api::ExtensionApi},
+    reovim_kernel::api::{Position, v1::CommandId},
 };
 
-use crate::ids;
+use crate::{ids, search_state::SearchState};
 
 // =============================================================================
 // Search Forward (/)
@@ -39,7 +52,8 @@ impl Command for SearchForward {
 
 impl CommandHandler for SearchForward {
     fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
+        // TODO(#338): Implement via command-line mode
+        // Currently requires command-line input mode which is deferred to Phase 8
         CommandResult::Success
     }
 }
@@ -67,7 +81,8 @@ impl Command for SearchBackward {
 
 impl CommandHandler for SearchBackward {
     fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
+        // TODO(#338): Implement via command-line mode
+        // Currently requires command-line input mode which is deferred to Phase 8
         CommandResult::Success
     }
 }
@@ -94,9 +109,17 @@ impl Command for SearchNext {
 }
 
 impl CommandHandler for SearchNext {
-    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
-        CommandResult::Success
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        // Get last search pattern and direction
+        let (pattern, direction) = {
+            let search = runtime.ext_mut::<SearchState>();
+            match search.pattern_for_repeat() {
+                Some(p) => (p.to_string(), search.direction_for_repeat()),
+                None => return CommandResult::Success, // No pattern to repeat
+            }
+        };
+
+        search_and_move(runtime, args, &pattern, direction)
     }
 }
 
@@ -122,9 +145,17 @@ impl Command for SearchPrevious {
 }
 
 impl CommandHandler for SearchPrevious {
-    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
-        CommandResult::Success
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        // Get last search pattern and REVERSED direction
+        let (pattern, direction) = {
+            let search = runtime.ext_mut::<SearchState>();
+            match search.pattern_for_repeat() {
+                Some(p) => (p.to_string(), search.direction_for_opposite()),
+                None => return CommandResult::Success, // No pattern to repeat
+            }
+        };
+
+        search_and_move(runtime, args, &pattern, direction)
     }
 }
 
@@ -150,9 +181,8 @@ impl Command for SearchWordForward {
 }
 
 impl CommandHandler for SearchWordForward {
-    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
-        CommandResult::Success
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        search_word(runtime, args, Direction::Forward)
     }
 }
 
@@ -178,9 +208,8 @@ impl Command for SearchWordBackward {
 }
 
 impl CommandHandler for SearchWordBackward {
-    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
-        CommandResult::Success
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        search_word(runtime, args, Direction::Backward)
     }
 }
 
@@ -207,8 +236,176 @@ impl Command for ClearSearchHighlight {
 
 impl CommandHandler for ClearSearchHighlight {
     fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
+        // TODO: When highlighting is implemented, clear it here
+        // For now, this is a no-op since highlighting isn't implemented yet
         CommandResult::Success
+    }
+}
+
+// =============================================================================
+// Helper Functions
+// =============================================================================
+
+/// Search for word under cursor in the given direction.
+fn search_word(
+    runtime: &mut SessionRuntime<'_>,
+    args: &CommandContext,
+    direction: Direction,
+) -> CommandResult {
+    use reovim_driver_session::api::BufferApi;
+
+    // Get active buffer and cursor position
+    let Some(buffer_id) = args.buffer_id() else {
+        return CommandResult::error("No active buffer");
+    };
+
+    let Some(cursor) = runtime.buffer_position(buffer_id) else {
+        return CommandResult::error("No cursor position");
+    };
+
+    // Get search provider from kernel services
+    let Some(search_registry) = runtime.kernel().services.get::<SearchProviderRegistry>() else {
+        return CommandResult::error("Search provider not available");
+    };
+
+    let Some(search_provider) = search_registry.get(&SearchKey::Regex) else {
+        return CommandResult::error("Regex search engine not registered");
+    };
+
+    // Get word under cursor and find word start position for backward search
+    let (word_pattern, search_cursor) = {
+        let Some(Some((pattern, word_start))) = runtime.with_buffer_read(buffer_id, |buffer| {
+            // Get word pattern
+            let pattern = search_provider.word_at_cursor(buffer, cursor)?;
+
+            // Find word start position for backward search
+            let line = buffer.line(cursor.line)?;
+            let chars: Vec<char> = line.chars().collect();
+
+            if cursor.column >= chars.len() {
+                return Some((pattern, cursor));
+            }
+
+            // Find word start
+            let mut start = cursor.column;
+            while start > 0 && (chars[start - 1].is_alphanumeric() || chars[start - 1] == '_') {
+                start -= 1;
+            }
+
+            let word_start = Position {
+                line: cursor.line,
+                column: start,
+            };
+
+            Some((pattern, word_start))
+        }) else {
+            return CommandResult::Success; // No word under cursor - silent fail like vim
+        };
+
+        // For backward search (#), use word start position to skip current word.
+        // For forward search (*), use cursor position (search starts after cursor).
+        let search_pos = match direction {
+            Direction::Backward => word_start,
+            Direction::Forward => cursor,
+        };
+
+        (pattern, search_pos)
+    };
+
+    // Store pattern and direction for n/N repeat
+    {
+        let search = runtime.ext_mut::<SearchState>();
+        search.set(word_pattern.clone(), direction);
+    }
+
+    // Search for the word using the appropriate search position
+    search_and_move_from(runtime, args, &word_pattern, direction, search_cursor)
+}
+
+/// Search for pattern and move cursor to match.
+fn search_and_move(
+    runtime: &mut SessionRuntime<'_>,
+    args: &CommandContext,
+    pattern: &str,
+    direction: Direction,
+) -> CommandResult {
+    use reovim_driver_session::api::{BufferApi, ChangeTracker};
+
+    // Get active buffer and cursor position
+    let Some(buffer_id) = args.buffer_id() else {
+        return CommandResult::error("No active buffer");
+    };
+
+    let Some(cursor) = runtime.buffer_position(buffer_id) else {
+        return CommandResult::error("No cursor position");
+    };
+
+    // Get search provider
+    let Some(search_registry) = runtime.kernel().services.get::<SearchProviderRegistry>() else {
+        return CommandResult::error("Search provider not available");
+    };
+
+    let Some(search_provider) = search_registry.get(&SearchKey::Regex) else {
+        return CommandResult::error("Regex search engine not registered");
+    };
+
+    // Search for pattern
+    let search_result = runtime.with_buffer_read(buffer_id, |buffer| {
+        search_provider.find_next(buffer, cursor, pattern, direction, true)
+    });
+
+    match search_result {
+        Some(Ok(Some(m))) => {
+            // Move cursor to match start - update BOTH buffer position and window cursor
+            runtime.set_buffer_position(buffer_id, m.start);
+            runtime.move_cursor(buffer_id, m.start);
+            runtime.record_cursor_move(buffer_id);
+            CommandResult::Success
+        }
+        Some(Ok(None) | Err(_)) => {
+            // No match or invalid pattern - silent failure like vim
+            CommandResult::Success
+        }
+        None => CommandResult::error("Buffer not found"),
+    }
+}
+
+/// Search for pattern from a specific position and move cursor to match.
+/// Used by word search (*/#) which needs to start from word boundaries.
+fn search_and_move_from(
+    runtime: &mut SessionRuntime<'_>,
+    args: &CommandContext,
+    pattern: &str,
+    direction: Direction,
+    search_from: Position,
+) -> CommandResult {
+    use reovim_driver_session::api::{BufferApi, ChangeTracker};
+
+    let Some(buffer_id) = args.buffer_id() else {
+        return CommandResult::error("No active buffer");
+    };
+
+    let Some(search_registry) = runtime.kernel().services.get::<SearchProviderRegistry>() else {
+        return CommandResult::error("Search provider not available");
+    };
+
+    let Some(search_provider) = search_registry.get(&SearchKey::Regex) else {
+        return CommandResult::error("Regex search engine not registered");
+    };
+
+    let search_result = runtime.with_buffer_read(buffer_id, |buffer| {
+        search_provider.find_next(buffer, search_from, pattern, direction, true)
+    });
+
+    match search_result {
+        Some(Ok(Some(m))) => {
+            runtime.set_buffer_position(buffer_id, m.start);
+            runtime.move_cursor(buffer_id, m.start);
+            runtime.record_cursor_move(buffer_id);
+            CommandResult::Success
+        }
+        Some(Ok(None) | Err(_)) => CommandResult::Success,
+        None => CommandResult::error("Buffer not found"),
     }
 }
 

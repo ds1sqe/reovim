@@ -62,6 +62,17 @@ pub struct UndoRegistry {
     trees: RwLock<HashMap<BufferId, UndoTree>>,
     /// Base directory for undo files (e.g., `~/.local/share/reovim/undo/`).
     undo_dir: PathBuf,
+    /// Active batches for insert mode undo grouping.
+    batches: RwLock<HashMap<BufferId, PendingBatch>>,
+}
+
+/// Pending batch of edits for insert mode undo grouping.
+#[derive(Debug)]
+struct PendingBatch {
+    /// Accumulated edits in order.
+    edits: Vec<Edit>,
+    /// Cursor position at batch start.
+    cursor_before: Position,
 }
 
 impl Default for UndoRegistry {
@@ -89,6 +100,7 @@ impl UndoRegistry {
         Self {
             trees: RwLock::new(HashMap::new()),
             undo_dir: data_dir.join(UNDO_SUBDIR),
+            batches: RwLock::new(HashMap::new()),
         }
     }
 
@@ -156,6 +168,17 @@ impl UndoProvider for UndoRegistry {
         cursor_before: Position,
         cursor_after: Position,
     ) {
+        // Check if batching is active for this buffer
+        let mut batches = self.batches.write();
+        if let Some(batch) = batches.get_mut(&buffer_id) {
+            // Accumulate edits into the batch
+            batch.edits.extend(edits);
+            // cursor_before is set at batch start, cursor_after will be set at end
+            return;
+        }
+        drop(batches);
+
+        // No active batch - record immediately
         self.trees
             .write()
             .entry(buffer_id)
@@ -177,6 +200,39 @@ impl UndoProvider for UndoRegistry {
 
     fn get_tree(&self, buffer_id: BufferId) -> Option<UndoTree> {
         self.get_tree_cloned(buffer_id)
+    }
+
+    fn begin_batch(&self, buffer_id: BufferId, cursor_before: Position) {
+        let mut batches = self.batches.write();
+        batches.insert(
+            buffer_id,
+            PendingBatch {
+                edits: Vec::new(),
+                cursor_before,
+            },
+        );
+    }
+
+    fn end_batch(&self, buffer_id: BufferId, cursor_after: Position) {
+        let batch = {
+            let mut batches = self.batches.write();
+            batches.remove(&buffer_id)
+        };
+
+        // If there was an active batch with edits, commit them
+        if let Some(batch) = batch
+            && !batch.edits.is_empty()
+        {
+            self.trees.write().entry(buffer_id).or_default().push(
+                batch.edits,
+                batch.cursor_before,
+                cursor_after,
+            );
+        }
+    }
+
+    fn is_batching(&self, buffer_id: BufferId) -> bool {
+        self.batches.read().contains_key(&buffer_id)
     }
 
     fn persist(

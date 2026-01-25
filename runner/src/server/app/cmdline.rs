@@ -1,24 +1,58 @@
-//! Command-line mode state for : commands.
+//! Command-line mode state for `:`, `/`, and `?` commands.
 //!
-//! Tracks input buffer and command history for Vim-style Ex commands.
-//! Similar to search.rs but for command-line mode instead of search.
+//! Tracks input buffer and prompt type for Vim-style Ex commands and search.
+//! History support can be added later.
 
 // ============================================================================
 // Command-line Infrastructure
 // ============================================================================
 
+/// Type of prompt being displayed.
+///
+/// Distinguishes between Ex commands (`:`) and search patterns (`/`, `?`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PromptType {
+    /// Ex command prompt (`:`)
+    #[default]
+    Command,
+    /// Forward search prompt (`/`)
+    SearchForward,
+    /// Backward search prompt (`?`)
+    SearchBackward,
+}
+
+impl PromptType {
+    /// Get the prompt character for display.
+    #[must_use]
+    pub const fn char(self) -> char {
+        match self {
+            Self::Command => ':',
+            Self::SearchForward => '/',
+            Self::SearchBackward => '?',
+        }
+    }
+
+    /// Check if this is a search prompt.
+    #[must_use]
+    pub const fn is_search(self) -> bool {
+        matches!(self, Self::SearchForward | Self::SearchBackward)
+    }
+}
+
 /// Command-line state for the session.
 ///
 /// Tracks input buffer and whether command-line mode is active.
-/// History support can be added later.
+/// Used for Ex commands (`:`) and search patterns (`/`, `?`).
 #[derive(Debug, Clone, Default)]
 pub struct CommandLineState {
-    /// Input buffer for current command.
+    /// Input buffer for current command/pattern.
     pub input_buffer: String,
     /// Whether we're in command-line mode.
     pub active: bool,
     /// Cursor position within input buffer.
     pub cursor_pos: usize,
+    /// Type of prompt (command or search).
+    pub prompt_type: PromptType,
 }
 
 impl CommandLineState {
@@ -28,11 +62,17 @@ impl CommandLineState {
         Self::default()
     }
 
-    /// Enter command-line mode.
+    /// Enter command-line mode with default (Command) prompt.
     pub fn enter(&mut self) {
+        self.enter_with_prompt(PromptType::Command);
+    }
+
+    /// Enter command-line mode with specified prompt type.
+    pub fn enter_with_prompt(&mut self, prompt: PromptType) {
         self.active = true;
         self.input_buffer.clear();
         self.cursor_pos = 0;
+        self.prompt_type = prompt;
     }
 
     /// Cancel command-line mode (Esc).
@@ -40,11 +80,13 @@ impl CommandLineState {
         self.active = false;
         self.input_buffer.clear();
         self.cursor_pos = 0;
+        self.prompt_type = PromptType::Command;
     }
 
-    /// Complete command-line input and return the command.
+    /// Complete command-line input and return the input string.
     ///
     /// Returns None if no input or not active.
+    /// The `prompt_type` is preserved for the caller to check.
     pub fn complete(&mut self) -> Option<String> {
         if !self.active || self.input_buffer.is_empty() {
             self.active = false;
@@ -54,10 +96,17 @@ impl CommandLineState {
         }
 
         self.active = false;
-        let command = std::mem::take(&mut self.input_buffer);
+        let input = std::mem::take(&mut self.input_buffer);
         self.cursor_pos = 0;
+        // Note: prompt_type is preserved so caller can check it
 
-        Some(command)
+        Some(input)
+    }
+
+    /// Get the current prompt type.
+    #[must_use]
+    pub const fn prompt_type(&self) -> PromptType {
+        self.prompt_type
     }
 
     /// Insert a character at cursor position.

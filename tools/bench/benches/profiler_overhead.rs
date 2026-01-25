@@ -19,6 +19,7 @@ fn bench_profile_scope_nop(c: &mut Criterion) {
 }
 
 /// Benchmark: ProfileGuard (legacy, records to MetricsRegistry).
+#[allow(deprecated)]
 fn bench_profile_guard(c: &mut Criterion) {
     c.bench_function("profiler/guard_legacy", |b| {
         b.iter(|| {

@@ -58,9 +58,11 @@ use {
 const KEY_EVENT_CHANNEL_CAPACITY: usize = 1024;
 
 use super::{
-    AppState,
+    AppState, PromptType,
     registry::{CommandRegistry, KeymapRegistry, ModeRegistry},
 };
+
+use reovim_driver_session::{CmdlinePrompt, CmdlineState};
 
 use reovim_driver_input::ResolverRegistry;
 
@@ -298,12 +300,117 @@ impl EventLoop {
         if let Some((result, _changes)) = self.try_resolver(&key) {
             self.handle_resolve_result(result);
 
+            // Sync cmdline state with current mode (#435)
+            self.sync_cmdline_state();
+
             // TODO: Broadcast state changes to clients
             // if changes.has_changes() {
             //     self.broadcast_state_changes(&changes);
             // }
         }
         // No resolver = key ignored (resolver handles everything)
+    }
+
+    /// Sync cmdline state based on `CmdlineState` extension.
+    ///
+    /// Policy (modules) sets `CmdlineState.active` when entering cmdline mode.
+    /// Mechanism (runner) syncs the display state accordingly.
+    fn sync_cmdline_state(&mut self) {
+        let ext_state = self.app.extensions.get::<CmdlineState>();
+
+        // Check if policy has activated cmdline (via extension)
+        let policy_active = ext_state.is_some_and(CmdlineState::is_active);
+
+        if policy_active && !self.app.cmdline.is_active() {
+            // Policy activated cmdline: sync prompt type
+            let prompt_type = ext_state.map_or(CmdlinePrompt::Command, CmdlineState::prompt);
+
+            let runner_prompt = match prompt_type {
+                CmdlinePrompt::Command => PromptType::Command,
+                CmdlinePrompt::SearchForward => PromptType::SearchForward,
+                CmdlinePrompt::SearchBackward => PromptType::SearchBackward,
+            };
+
+            self.app.cmdline.enter_with_prompt(runner_prompt);
+            eprintln!("[DEBUG] Activated cmdline with prompt: {runner_prompt:?}");
+        } else if !policy_active && self.app.cmdline.is_active() {
+            // Policy deactivated cmdline: execute any pending action, then sync
+            self.execute_cmdline_action();
+            self.app.cmdline.cancel();
+            eprintln!("[DEBUG] Deactivated cmdline");
+        }
+    }
+
+    /// Execute the cmdline action based on prompt type.
+    ///
+    /// For search prompts, this executes the search and moves cursor.
+    fn execute_cmdline_action(&mut self) {
+        use reovim_driver_search::{Direction, SearchKey, SearchProviderRegistry};
+
+        let prompt = self.app.cmdline.prompt_type();
+        let input = self.app.cmdline.input().to_string();
+
+        if input.is_empty() {
+            return;
+        }
+
+        match prompt {
+            PromptType::SearchForward | PromptType::SearchBackward => {
+                let direction = if prompt == PromptType::SearchForward {
+                    Direction::Forward
+                } else {
+                    Direction::Backward
+                };
+
+                // Execute search using SearchProviderRegistry
+                if let Some(search_registry) = self.app.services.get::<SearchProviderRegistry>()
+                    && let Some(buffer_id) = self.driver_session.active_buffer()
+                {
+                    // Get cursor position from active window
+                    let cursor_pos = self
+                        .app
+                        .windows
+                        .active_window()
+                        .and_then(|win_id| self.app.windows.get(win_id))
+                        .map(|state| state.cursor)
+                        .unwrap_or_default();
+
+                    if let Some(buffer_arc) = self.app.kernel.buffers.get(buffer_id) {
+                        // Find the match position (with read lock)
+                        let search_result = {
+                            let buffer = buffer_arc.read();
+                            search_registry.get(&SearchKey::Regex).and_then(|provider| {
+                                provider
+                                    .find_next(&buffer, cursor_pos, &input, direction, true)
+                                    .ok()
+                                    .flatten()
+                            })
+                        }; // Read lock dropped
+
+                        match search_result {
+                            Some(m) => {
+                                // Update buffer's internal cursor position (SSOT for RPC)
+                                buffer_arc.write().set_position(m.start);
+                                // Update window registry cursor (for rendering)
+                                if let Some(win_id) = self.app.windows.active_window()
+                                    && let Some(state) = self.app.windows.get_mut(win_id)
+                                {
+                                    state.cursor = m.start;
+                                }
+                                eprintln!("[DEBUG] Search found at {m_start:?}", m_start = m.start);
+                            }
+                            None => {
+                                self.set_error(format!("Pattern not found: {input}"));
+                            }
+                        }
+                    }
+                }
+            }
+            PromptType::Command => {
+                // TODO: Execute Ex command
+                eprintln!("[DEBUG] Ex command: {input}");
+            }
+        }
     }
 
     /// Convert driver `KeyEvent` to kernel `KeyInput`.
@@ -503,14 +610,20 @@ impl EventLoop {
                 self.handle_mode_transition(transition);
             }
 
+            // InsertChar: insert character into current input context (cmdline or buffer)
+            ResolveResult::InsertChar(ch) => {
+                // Command-line mode: insert into cmdline buffer
+                if self.app.cmdline.is_active() {
+                    self.app.cmdline.insert_char(ch);
+                    eprintln!("[DEBUG] InsertChar '{ch}' → cmdline: {}", self.app.cmdline.input());
+                }
+                // Note: For regular insert mode, the resolver returns Execute with insert command
+            }
+
             // Pending: wait for more keys
-            // InsertChar: resolvers should return Execute with insert command
             // NotHandled: key not handled, ignore
             // Completed: resolver already did everything via SessionApi, changes are tracked
-            ResolveResult::Pending
-            | ResolveResult::InsertChar(_)
-            | ResolveResult::NotHandled
-            | ResolveResult::Completed => {}
+            ResolveResult::Pending | ResolveResult::NotHandled | ResolveResult::Completed => {}
         }
     }
 

@@ -6,7 +6,7 @@
 
 mod cmdline;
 
-pub use cmdline::CommandLineState;
+pub use cmdline::{CommandLineState, PromptType};
 
 use {
     crate::server::window::WindowRegistry,
@@ -89,10 +89,9 @@ pub struct AppState {
     /// cursor position, allowing multiple views of the same buffer.
     pub windows: WindowRegistry,
 
-    /// Command-line mode state for : commands.
+    /// Command-line mode state for `:`, `/`, and `?` commands.
     ///
-    /// Tracks input buffer and whether command-line mode is active.
-    /// Used for Ex-style commands like `:w`, `:q`, `:set`, etc.
+    /// Tracks input buffer and prompt type for Ex commands and search patterns.
     pub cmdline: CommandLineState,
 
     /// Per-session module extensions (Epic #385).
@@ -124,9 +123,13 @@ impl AppState {
     /// Use `SessionState::driver_session` for these values.
     #[must_use]
     pub fn new(kernel: KernelContext) -> Self {
+        // Use the kernel's service registry - modules registered their services there
+        // during init() (e.g., UndoProviderRegistry, ClipboardProvider).
+        // Previously this created a new empty ServiceRegistry, which broke undo.
+        let services = Arc::clone(&kernel.services);
         Self {
             kernel,
-            services: Arc::new(ServiceRegistry::new()),
+            services,
             pending_keys: KeySequence::new(),
             running: true,
             terminal_width: 80,

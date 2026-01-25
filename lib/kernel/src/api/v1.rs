@@ -235,6 +235,7 @@ pub use super::debug::{
 // Profiling (debug/profiler.rs)
 // ============================================================================
 
+#[allow(deprecated)]
 pub use crate::debug::{
     // Profiler trait and types
     NopProfiler,

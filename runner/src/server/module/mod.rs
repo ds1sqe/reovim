@@ -80,9 +80,3 @@ pub use {
         WiringStats, wire_module_commands, wire_module_keybindings,
     },
 };
-
-// Backwards compatibility alias: ModuleRegistry -> ModuleManager
-// This allows existing code to use the old name during migration
-#[doc(hidden)]
-#[deprecated(since = "0.9.0", note = "Use ModuleManager instead")]
-pub type ModuleRegistry = ModuleManager;

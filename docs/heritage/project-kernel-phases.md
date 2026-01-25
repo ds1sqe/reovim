@@ -7,9 +7,9 @@ This document chronicles Reovim's transformation from a monolithic editor to a *
 ## Overview
 
 ```
-Phase 0-4 ──> Phase 5 ──> Phase 6 ──> Phase 7 ──> Phase 8
-Foundation    Implement   Decouple    Features    Extract
-   ✅            ✅          ✅          🚧
+Phase 0-4 ──> Phase 5 ──> Phase 6 ──> Phase 7 ──> Phase 8 ──> Phase 9 ──> Phase 10 ──> Phase 11
+Foundation    Implement   Decouple    Features    Foundation  Features    Languages    Release
+   ✅            ✅          ✅          🚧         (future)    (future)    (future)    (future)
 ```
 
 ---
@@ -224,27 +224,196 @@ All four streams developed in parallel and merged via PR #272.
 
 ---
 
-## Phase 8: Feature Extraction (Future)
+## Phase 8: Foundation (Future)
 
-**Goal:** Extract and re-implement features from `archive/` using new architecture.
+**Goal:** Complete deferred Phase 7 items + basic plugins + TUI infrastructure.
 
-Following the same **concept-extraction** methodology as Phase 5:
+This phase builds the foundation that Phase 9 features will depend on.
+
+### Deferred Phase 7 Items
+
+| Item | Description | Dependency |
+|------|-------------|------------|
+| Undo E2E (#311) | Wire `UndoApi` to SessionRuntime | None |
+| Search E2E (#310) | Implement search via command-line mode | Command-line |
+| Named registers | `"a-z` register prefix parsing | None |
+| Text objects | `iw`, `a"`, `i(`, etc. | Operators |
+| Visual mode polish | Edge cases, block mode | Selection API |
+
+### Command-Line Mode (Critical Foundation)
+
+| Feature | Keys | Enables |
+|---------|------|---------|
+| Ex-commands | `:` | `:w`, `:q`, `:e`, `:set` |
+| Forward search | `/` | Search patterns |
+| Backward search | `?` | Reverse search |
+| Input handling | `<CR>`, `<Esc>`, `<BS>` | All above |
+
+### Basic Plugins (Category A)
+
+Extracted from `archive/plugins/features/`:
+
+| Plugin | Purpose | Priority |
+|--------|---------|----------|
+| **statusline** | Mode, file, position display | High |
+| **which-key** | Key hint popups | High |
+| **notification** | User feedback messages | Medium |
+| **pair** | Auto-close brackets | Medium |
+
+### TUI Infrastructure
+
+| Component | Epic/Issue | Purpose |
+|-----------|------------|---------|
+| Window system | #403 Phase 1 | Splits, focus, `<C-w>` commands |
+| Overlay system | #403 Phase 3 | Popups, menus, hints |
+| Color/theme system | TBD | Syntax colors, UI styling |
+
+---
+
+## Phase 9: Feature Plugins (Future)
+
+**Goal:** Extract feature plugins from archive. Battle-tests Phase 8 foundation.
+
+### Code Intelligence
+
+| Plugin | Purpose | Depends On |
+|--------|---------|------------|
+| **treesitter** | Syntax parsing, highlighting | Syntax driver |
+| **lsp** | Language servers, diagnostics | Async, popups |
+| **completion** | Autocomplete menu | Overlay, LSP |
+| **cmdline-completion** | `:` command completion | Command-line mode |
+
+### Navigation
+
+| Plugin | Purpose | Depends On |
+|--------|---------|------------|
+| **microscope** | Fuzzy finder (files, symbols) | Overlay, async |
+| **pickers** | Buffer/file/help pickers | Microscope |
+| **explorer** | File tree sidebar | Window system |
+| **range-finder** | Jump labels (like hop.nvim) | Overlay |
+
+### Context
+
+| Plugin | Purpose | Depends On |
+|--------|---------|------------|
+| **context** | Cursor context tracking | Treesitter |
+| **sticky-context** | Sticky function headers | Context, treesitter |
+
+### Phase 9 Feedback Loop
+
+Phase 9 will discover Phase 8 gaps. Budget ~20% of Phase 9 time for fixing
+foundation issues exposed by feature plugin development.
+
+---
+
+## Phase 10: Language Plugins (Future)
+
+**Goal:** Extract language plugins from archive. Battle-tests Phase 8+9.
+
+### Language Support
+
+Extracted from `archive/plugins/languages/`:
+
+| Plugin | Language(s) |
+|--------|-------------|
+| **rust** | Rust (rust-analyzer) |
+| **python** | Python (pyright/pylsp) |
+| **javascript** | JS/TS (tsserver) |
+| **c** | C/C++ (clangd) |
+| **markdown** | Markdown (preview, rendering) |
+| **json** | JSON (schema validation) |
+| **toml** | TOML (config files) |
+| **bash** | Shell scripts |
+
+### Customization & Polish
+
+| Plugin | Purpose |
+|--------|---------|
+| **profiles** | User config profiles |
+| **settings-menu** | GUI settings editor |
+| **health-check** | `:checkhealth` diagnostics |
+| **landing** | Startup screen |
+
+### Advanced Window Features
+
+| Component | Epic/Issue | Purpose |
+|-----------|------------|---------|
+| Floating windows | #403 Phase 2 | Toggle float, move/resize |
+| Transparency | #403 Phase 4 | Layer opacity |
+| Tab pages | #403 Phase 5 | Workspace organization |
+
+### Phase 10 Feedback Loop
+
+Language plugins are the heaviest consumers of the feature stack. They will
+expose edge cases in LSP, treesitter, completion, and window management.
+Budget ~20% for fixing Phase 8+9 issues discovered during language plugin work.
+
+---
+
+## Phase 11: Release (Future)
+
+**Goal:** Feature parity with v0.8.1, close Epic #150.
+
+### Verification
+
+- [ ] All archive plugins extracted or explicitly deferred
+- [ ] Feature parity checklist against v0.8.1
+- [ ] Performance benchmarks meet targets
+- [ ] Documentation complete
+
+### Polish
+
+- [ ] Bug fixes from Phase 8-10 feedback
+- [ ] UX refinements from dogfooding
+- [ ] Error messages and edge cases
+
+### Release Criteria
+
+- [ ] All E2E tests passing
+- [ ] Zero known critical bugs
+- [ ] README and user guide updated
+- [ ] CHANGELOG complete
+
+### Scope Boundary
+
+**Epic #150 ends here.** New features, new language support, or broader
+expansion targets are out of scope and should be tracked in new epics.
+
+---
+
+## Beyond #150: Future Directions
+
+After Epic #150 achieves v0.8.1 feature parity, new epics may explore:
+
+| Area | Examples | Epic |
+|------|----------|------|
+| **New Languages** | Go, Zig, Lua, Ruby | TBD |
+| **GUI Client** | Native desktop app | TBD |
+| **Web Client** | Browser-based editor | TBD |
+| **Remote Editing** | SSH, containers, cloud | TBD |
+| **Plugin API** | Third-party plugin system | TBD |
+| **Collaboration** | Multi-user editing | TBD |
+
+These are explicitly **out of scope** for #150 to keep the epic bounded and measurable.
+
+---
+
+## Battle-Testing Philosophy
+
+Each phase validates the previous through actual usage:
 
 ```
-archive/plugins/features/    →    modules/
-archive/plugins/languages/   →    modules/ + lib/drivers/
-archive/lib/lsp/             →    lib/drivers/lsp/ (enhanced)
+Phase 8 (Foundation)     Phase 9 (Features)      Phase 10 (Languages)
+─────────────────────    ──────────────────      ────────────────────
+Build base               Build on Phase 8        Stress-test 8+9
+                         Discover 8's gaps       Discover 8+9's gaps
+                         Fix foundation          Fix discovered issues
+                                ↓                        ↓
+                         ~20% backflow           ~20% backflow
 ```
 
-| Category | Examples | Target |
-|----------|----------|--------|
-| **UI Components** | statusline, explorer, which-key | Modules |
-| **Editing Features** | completion, pair, snippets | Modules |
-| **Navigation** | microscope, pickers, range-finder | Modules |
-| **Language Support** | LSP, treesitter, formatters | Drivers + Modules |
-| **Rendering** | markdown decoration, table rendering | Drivers + Modules |
-
-Study archived code → Design for new architecture → Implement fresh
+You cannot design perfect abstractions without consumers using them.
+Phase 10 language plugins are the real validation of the architecture.
 
 ---
 
@@ -301,13 +470,41 @@ Patterns and insights discovered during the architecture overhaul:
 - [x] CLI client enables scripting
 - [x] Debug endpoints for introspection
 
-### Remaining (Phase 7-8)
+### Phase 7 (In Progress)
 
-- [ ] Basic editing: open, edit, save files
-- [ ] Cursor movement, visual mode, operators
-- [ ] Multi-client with independent viewports
-- [ ] ~425+ tests passing
+- [x] Basic editing: open, edit, save files
+- [x] Cursor movement, operators
+- [ ] Undo/redo E2E tests (#311)
+- [ ] Search E2E tests (#310)
+- [ ] Visual mode polish
+- [ ] Text objects
+
+### Phase 8 (Foundation)
+
+- [ ] Command-line mode (`:`, `/`, `?`)
+- [ ] Named registers (`"a-z`)
+- [ ] Basic plugins: statusline, which-key, notification, pair
+- [ ] Window system (#403 core)
+- [ ] Overlay system for popups
+
+### Phase 9 (Feature Plugins)
+
+- [ ] treesitter, lsp, completion
+- [ ] microscope, pickers, explorer
+- [ ] context, sticky-context, range-finder
+
+### Phase 10 (Language Plugins)
+
+- [ ] Language plugins from archive/
+- [ ] profiles, settings-menu, health-check
+- [ ] Advanced window features (#403 Phase 2-5)
+
+### Phase 11 (Release)
+
+- [ ] Feature parity with v0.8.1
 - [ ] Performance benchmarks
+- [ ] Documentation complete
+- [ ] Epic #150 closed
 
 ---
 

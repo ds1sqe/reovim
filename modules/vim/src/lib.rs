@@ -86,13 +86,15 @@ pub use fallback::VimFallbackHandler;
 // Re-export mode commands (Epic #372 - Mode Ownership)
 pub use commands::{
     ChangeLine, ChangeToEndOfLine, EnterCommandLineMode, EnterInsertEndOfLine,
-    EnterInsertFirstNonBlank, EnterInsertMode, EnterInsertModeAppend, EnterWindowMode,
-    ExecuteFindChar, ExitCommandLineMode, ExitToNormal, OpenLineAbove, OpenLineBelow,
+    EnterInsertFirstNonBlank, EnterInsertMode, EnterInsertModeAppend, EnterSearchBackward,
+    EnterSearchForward, EnterWindowMode, ExecuteFindChar, ExitCommandLineMode, ExitToNormal,
+    OpenLineAbove, OpenLineBelow,
 };
 
 // Re-export resolvers
 pub use resolvers::{
-    VimChangeResolver, VimDeleteResolver, VimInsertResolver, VimNormalResolver, VimYankResolver,
+    VimChangeResolver, VimCommandLineResolver, VimDeleteResolver, VimInsertResolver,
+    VimNormalResolver, VimYankResolver,
 };
 
 // Re-export visual mode commands
@@ -174,6 +176,7 @@ impl Module for VimModule {
         resolver_registry.register(resolvers::VimDeleteResolver::new());
         resolver_registry.register(resolvers::VimYankResolver::new());
         resolver_registry.register(resolvers::VimChangeResolver::new());
+        resolver_registry.register(resolvers::VimCommandLineResolver::new());
 
         // Epic #417 Part 3: Self-register commands
         let command_store = ctx.services.get_or_create::<CommandHandlerStore>();

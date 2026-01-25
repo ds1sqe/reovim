@@ -118,6 +118,7 @@ impl std::error::Error for WiringError {}
 /// Mode names are looked up in the mode registry to get the correct `ModeId`
 /// with proper discriminant. If a mode is not found, it falls back to creating
 /// a `ModeId` with discriminant 0 (for forward compatibility with new modes).
+#[allow(deprecated)]
 pub fn wire_module_keybindings(
     module_id: &ModuleId,
     keybindings: &[KeybindingRegistration],

@@ -151,14 +151,3 @@ pub use server::{
 // Re-export submodules for backwards compatibility
 // Note: server::client is NOT re-exported to avoid conflict with runner::client (TUI/CLI)
 pub use server::{module, notification, registry, session, transport};
-
-// Backwards compat: allow `runner::fallback::*`
-pub mod fallback {
-    //! Fallback handlers for unhandled input.
-    //!
-    //! These types are now defined in `reovim-driver-input` but re-exported here
-    //! for backwards compatibility.
-    pub use reovim_driver_input::{
-        BeepFallback, FallbackContext, FallbackResult, InputFallbackHandler, NoOpFallback,
-    };
-}
