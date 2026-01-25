@@ -1,6 +1,6 @@
 [package]
 name = "reovim-module-clipboard"
-version = "0.9.1-dev"
+version = "0.9.2-dev"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -14,16 +14,16 @@ workspace = true
 
 [dependencies]
 # Kernel types
-reovim-kernel = { path = "../../lib/kernel", version = "0.9.1-dev" }
+reovim-kernel = { path = "../../lib/kernel", version = "0.9.2-dev" }
 
 # Driver for ClipboardProvider trait
-reovim-driver-clipboard = { path = "../../lib/drivers/clipboard", version = "0.9.1-dev" }
+reovim-driver-clipboard = { path = "../../lib/drivers/clipboard", version = "0.9.2-dev" }
 
 # Platform abstraction for RwLock
-reovim-arch = { path = "../../lib/arch", version = "0.9.1-dev" }
+reovim-arch = { path = "../../lib/arch", version = "0.9.2-dev" }
 
 # Module macros for FFI entry points
-reovim-module-macros = { path = "../../lib/module-macros", version = "0.9.1-dev" }
+reovim-module-macros = { path = "../../lib/module-macros", version = "0.9.2-dev" }
 
 # System clipboard access
 arboard.workspace = true

@@ -1,6 +1,6 @@
 # Future Directions
 
-## Current State (v0.9.1)
+## Current State (v0.9.2)
 
 Mechanism/policy separation complete for:
 

@@ -1,6 +1,6 @@
 [package]
 name = "reovim-driver-net"
-version = "0.9.1-dev"
+version = "0.9.2-dev"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -14,10 +14,10 @@ workspace = true
 
 [dependencies]
 # Only depends on kernel layer
-reovim-kernel = { path = "../../kernel", version = "0.9.1-dev" }
+reovim-kernel = { path = "../../kernel", version = "0.9.2-dev" }
 
 # Platform abstraction (for dirs, local transport)
-reovim-arch = { path = "../../arch", version = "0.9.1-dev" }
+reovim-arch = { path = "../../arch", version = "0.9.2-dev" }
 
 # Protocol types (shared RPC definitions)
 reovim-protocol = { workspace = true }
