@@ -1,6 +1,6 @@
 [package]
 name = "reovim-module-mode-manager"
-version = "0.9.1-dev"
+version = "0.9.2-dev"
 edition = "2024"
 rust-version = "1.92"
 description = "Mode state management module for reovim"

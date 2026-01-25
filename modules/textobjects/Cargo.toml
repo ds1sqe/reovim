@@ -1,6 +1,6 @@
 [package]
 name = "reovim-module-textobjects"
-version = "0.9.1-dev"
+version = "0.9.2-dev"
 edition.workspace = true
 license.workspace = true
 description = "Vim text objects (iw, aw, i\", a\", etc.) for reovim - POLICY module"
