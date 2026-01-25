@@ -344,39 +344,6 @@ impl Default for VimNormalResolver {
 }
 
 impl ModeKeyResolver for VimNormalResolver {
-    fn resolve(&self, key: &KeyEvent, _state: &mut ModeState) -> ResolveResult {
-        // Handle escape - reset state and stay in normal mode
-        if key.code == KeyCode::Escape {
-            self.clear_state();
-            return ResolveResult::NotHandled;
-        }
-
-        // Check for register prefix waiting for character
-        if self.is_waiting_for_register() {
-            return self.handle_register_char(key);
-        }
-
-        // Check for register prefix start
-        if Self::is_register_prefix(key) {
-            *self.pending_register.write().expect("lock poisoned") = Some('"'); // Sentinel
-            return ResolveResult::Pending;
-        }
-
-        // Check for count digit
-        if self.is_count_digit(key) {
-            self.accumulate_count(key);
-            return ResolveResult::Pending;
-        }
-
-        // Add to pending keys for lookup
-        self.push_pending_key(*key);
-        let _keys = self.get_pending_keys();
-
-        // Legacy: return NotHandled to let the runner do the lookup
-        // Use resolve_with_keymap for keymap-aware resolution
-        ResolveResult::NotHandled
-    }
-
     /// Vim-style key resolution with keymap access.
     ///
     /// This method queries the keymap and applies Vim policy to determine
@@ -622,6 +589,10 @@ impl ModeKeyResolver for VimNormalResolver {
 
 #[cfg(test)]
 mod tests {
+    use reovim_driver_input::{KeyLookupState, KeySequence, KeymapQuery};
+
+    use reovim_kernel::api::v1::{CommandId, ModuleId};
+
     use super::*;
 
     fn key(c: char) -> KeyEvent {
@@ -634,6 +605,22 @@ mod tests {
 
     fn test_state() -> ModeState {
         ModeState::new(VimMode::NORMAL_ID)
+    }
+
+    /// Mock keymap that always returns NotFound (no bindings).
+    struct NotFoundKeymap;
+
+    impl KeymapQuery for NotFoundKeymap {
+        fn query(&self, _mode: &ModeId, _keys: &KeySequence) -> KeyLookupState {
+            KeyLookupState::NotFound
+        }
+    }
+
+    fn resolve_input_notfound() -> ResolveInput<'static> {
+        static KEYMAP: NotFoundKeymap = NotFoundKeymap;
+        static EMPTY_KEYS: KeySequence = KeySequence::new();
+        static MODE: ModeId = VimMode::NORMAL_ID;
+        ResolveInput::new(&EMPTY_KEYS, &MODE, &KEYMAP)
     }
 
     #[test]
@@ -782,11 +769,13 @@ mod tests {
     fn test_resolve_escape_resets() {
         let resolver = VimNormalResolver::new();
         let mut state = test_state();
+        let input = resolve_input_notfound();
 
         resolver.accumulate_count(&key('3'));
         *resolver.pending_register.write().unwrap() = Some('a');
 
-        let result = resolver.resolve(&KeyEvent::new(KeyCode::Escape), &mut state);
+        let result =
+            resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
 
         assert!(matches!(result, ResolveResult::NotHandled));
         assert!(resolver.pending_count().is_none());
@@ -797,12 +786,13 @@ mod tests {
     fn test_resolve_count_digit() {
         let resolver = VimNormalResolver::new();
         let mut state = test_state();
+        let input = resolve_input_notfound();
 
-        let result = resolver.resolve(&key('3'), &mut state);
+        let result = resolver.resolve_with_keymap(&key('3'), &mut state, &input);
         assert!(matches!(result, ResolveResult::Pending));
         assert_eq!(resolver.pending_count(), Some(3));
 
-        let result = resolver.resolve(&key('5'), &mut state);
+        let result = resolver.resolve_with_keymap(&key('5'), &mut state, &input);
         assert!(matches!(result, ResolveResult::Pending));
         assert_eq!(resolver.pending_count(), Some(35));
     }
@@ -811,12 +801,13 @@ mod tests {
     fn test_resolve_register_prefix() {
         let resolver = VimNormalResolver::new();
         let mut state = test_state();
+        let input = resolve_input_notfound();
 
-        let result = resolver.resolve(&key('"'), &mut state);
+        let result = resolver.resolve_with_keymap(&key('"'), &mut state, &input);
         assert!(matches!(result, ResolveResult::Pending));
         assert!(resolver.is_waiting_for_register());
 
-        let result = resolver.resolve(&key('a'), &mut state);
+        let result = resolver.resolve_with_keymap(&key('a'), &mut state, &input);
         assert!(matches!(result, ResolveResult::Pending));
         assert_eq!(resolver.pending_register(), Some('a'));
     }
@@ -839,10 +830,6 @@ mod tests {
     //
     // These tests verify that resolve_with_keymap correctly applies Vim policy
     // based on the KeyLookupState returned by the keymap.
-
-    use reovim_driver_input::KeymapQuery;
-
-    use reovim_kernel::api::v1::{CommandId, ModuleId};
 
     /// Test module ID for creating command IDs.
     const TEST_MODULE: ModuleId = ModuleId::new("test");

@@ -88,47 +88,6 @@ impl Default for VimChangeResolver {
 }
 
 impl ModeKeyResolver for VimChangeResolver {
-    fn resolve(&self, key: &KeyEvent, _state: &mut ModeState) -> ResolveResult {
-        // Escape cancels the operator
-        if is_escape(key) {
-            self.clear_state();
-            return ResolveResult::ModeTransition(build_cancelled());
-        }
-
-        let mut state = self.state.write().expect("lock poisoned");
-
-        // Check for count digit
-        if is_count_digit(key, state.has_motion_count()) {
-            state.accumulate_motion_count(key);
-            return ResolveResult::Pending;
-        }
-
-        // Check for line operator (cc)
-        if is_line_operator_key(key, OperatorType::Change) {
-            let count = state.operator_count;
-            let motion_count = state.take_motion_count().unwrap_or(1);
-            let register = state.register;
-            drop(state);
-
-            return ResolveResult::ModeTransition(ModeTransition::Pop {
-                result: Some(build_operator_execute(
-                    OperatorType::Change,
-                    Position::new(0, 0),
-                    Position::new(0, 0),
-                    true, // linewise
-                    Some(count.unwrap_or(1) * motion_count),
-                    register,
-                )),
-            });
-        }
-
-        // Add to pending keys for motion lookup
-        state.push_key(*key);
-        drop(state);
-
-        ResolveResult::NotHandled
-    }
-
     fn resolve_with_keymap(
         &self,
         key: &KeyEvent,
@@ -433,8 +392,8 @@ impl ModeKeyResolver for VimChangeResolver {
 #[cfg(test)]
 mod tests {
     use {
-        reovim_driver_input::{KeyCode, PopResult},
-        reovim_kernel::api::v1::CommandId,
+        reovim_driver_input::{KeyCode, KeyLookupState, KeySequence, KeymapQuery, PopResult},
+        reovim_kernel::api::v1::{CommandId, ModuleId},
     };
 
     use super::*;
@@ -445,6 +404,51 @@ mod tests {
 
     fn test_state() -> ModeState {
         ModeState::new(VimMode::CHANGE_ID)
+    }
+
+    /// Mock keymap that always returns NotFound (no bindings).
+    struct NotFoundKeymap;
+
+    impl KeymapQuery for NotFoundKeymap {
+        fn query(&self, _mode: &ModeId, _keys: &KeySequence) -> KeyLookupState {
+            KeyLookupState::NotFound
+        }
+    }
+
+    const TEST_MODULE: ModuleId = ModuleId::new("test");
+    const EDITOR_MODULE: ModuleId = ModuleId::new("editor");
+
+    struct MockKeymap {
+        response: KeyLookupState,
+    }
+
+    impl MockKeymap {
+        fn exact_only(cmd: &'static str) -> Self {
+            Self {
+                response: KeyLookupState::ExactOnly(CommandId::new(TEST_MODULE, cmd)),
+            }
+        }
+
+        /// Create a keymap that returns ExactWithLonger (simulating 'c' with 'cc' as longer match)
+        fn exact_with_longer_editor(cmd: &'static str) -> Self {
+            Self {
+                response: KeyLookupState::ExactWithLonger {
+                    exact: CommandId::new(EDITOR_MODULE, cmd),
+                },
+            }
+        }
+    }
+
+    impl KeymapQuery for MockKeymap {
+        fn query(&self, _mode: &ModeId, _keys: &KeySequence) -> KeyLookupState {
+            self.response.clone()
+        }
+    }
+
+    fn resolve_input(keymap: &impl KeymapQuery) -> ResolveInput<'_> {
+        static EMPTY_KEYS: KeySequence = KeySequence::new();
+        static MODE: ModeId = VimMode::CHANGE_ID;
+        ResolveInput::new(&EMPTY_KEYS, &MODE, keymap)
     }
 
     #[test]
@@ -458,8 +462,11 @@ mod tests {
     fn test_escape_cancels() {
         let resolver = VimChangeResolver::new();
         let mut state = test_state();
+        let keymap = NotFoundKeymap;
+        let input = resolve_input(&keymap);
 
-        let result = resolver.resolve(&KeyEvent::new(KeyCode::Escape), &mut state);
+        let result =
+            resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
 
         if let ResolveResult::ModeTransition(ModeTransition::Pop { result: Some(r) }) = result {
             assert!(matches!(r, PopResult::Cancelled));
@@ -472,8 +479,10 @@ mod tests {
     fn test_line_operator_cc() {
         let resolver = VimChangeResolver::new();
         let mut state = test_state();
+        let keymap = NotFoundKeymap;
+        let input = resolve_input(&keymap);
 
-        let result = resolver.resolve(&key('c'), &mut state);
+        let result = resolver.resolve_with_keymap(&key('c'), &mut state, &input);
 
         if let ResolveResult::ModeTransition(ModeTransition::Pop { result: Some(r) }) = result {
             if let PopResult::ExecuteCommand { args, .. } = r {
@@ -493,61 +502,12 @@ mod tests {
     fn test_count_digit() {
         let resolver = VimChangeResolver::new();
         let mut state = test_state();
+        let keymap = NotFoundKeymap;
+        let input = resolve_input(&keymap);
 
-        let result = resolver.resolve(&key('3'), &mut state);
+        let result = resolver.resolve_with_keymap(&key('3'), &mut state, &input);
         assert!(matches!(result, ResolveResult::Pending));
         assert_eq!(resolver.state().motion_count, Some(3));
-    }
-
-    // =========================================================================
-    // Keymap-aware tests
-    // =========================================================================
-
-    use reovim_driver_input::{KeySequence, KeymapQuery};
-
-    use reovim_kernel::api::v1::ModuleId;
-
-    const TEST_MODULE: ModuleId = ModuleId::new("test");
-    const EDITOR_MODULE: ModuleId = ModuleId::new("editor");
-
-    struct MockKeymap {
-        response: reovim_driver_input::KeyLookupState,
-    }
-
-    impl MockKeymap {
-        fn exact_only(cmd: &'static str) -> Self {
-            Self {
-                response: reovim_driver_input::KeyLookupState::ExactOnly(CommandId::new(
-                    TEST_MODULE,
-                    cmd,
-                )),
-            }
-        }
-
-        /// Create a keymap that returns ExactWithLonger (simulating 'c' with 'cc' as longer match)
-        fn exact_with_longer_editor(cmd: &'static str) -> Self {
-            Self {
-                response: reovim_driver_input::KeyLookupState::ExactWithLonger {
-                    exact: CommandId::new(EDITOR_MODULE, cmd),
-                },
-            }
-        }
-    }
-
-    impl KeymapQuery for MockKeymap {
-        fn query(
-            &self,
-            _mode: &ModeId,
-            _keys: &KeySequence,
-        ) -> reovim_driver_input::KeyLookupState {
-            self.response.clone()
-        }
-    }
-
-    fn resolve_input(keymap: &impl KeymapQuery) -> ResolveInput<'_> {
-        static EMPTY_KEYS: KeySequence = KeySequence::new();
-        static MODE: ModeId = VimMode::CHANGE_ID;
-        ResolveInput::new(&EMPTY_KEYS, &MODE, keymap)
     }
 
     #[test]

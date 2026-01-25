@@ -52,22 +52,6 @@ impl VimCommandLineResolver {
             _ => None,
         }
     }
-
-    /// Check if this is an escape key to cancel command-line mode.
-    fn is_escape(key: &KeyEvent) -> bool {
-        key.code == KeyCode::Escape
-            || (key.code == KeyCode::Char('[') && key.modifiers.contains(Modifiers::CTRL))
-    }
-
-    /// Check if this is the enter key to execute.
-    const fn is_enter(key: &KeyEvent) -> bool {
-        matches!(key.code, KeyCode::Enter)
-    }
-
-    /// Check if this is backspace.
-    const fn is_backspace(key: &KeyEvent) -> bool {
-        matches!(key.code, KeyCode::Backspace)
-    }
 }
 
 impl Default for VimCommandLineResolver {
@@ -77,21 +61,6 @@ impl Default for VimCommandLineResolver {
 }
 
 impl ModeKeyResolver for VimCommandLineResolver {
-    fn resolve(&self, key: &KeyEvent, _state: &mut ModeState) -> ResolveResult {
-        // Escape, Enter, Backspace are handled by keybindings
-        if Self::is_escape(key) || Self::is_enter(key) || Self::is_backspace(key) {
-            return ResolveResult::NotHandled;
-        }
-
-        // Check for insertable character
-        if let Some(c) = Self::is_insertable(key) {
-            return ResolveResult::InsertChar(c);
-        }
-
-        // Other keys (arrows, etc.) - let keymap handle
-        ResolveResult::NotHandled
-    }
-
     fn resolve_with_keymap(
         &self,
         key: &KeyEvent,
@@ -140,6 +109,8 @@ impl ModeKeyResolver for VimCommandLineResolver {
 
 #[cfg(test)]
 mod tests {
+    use reovim_driver_input::KeymapQuery;
+
     use super::*;
 
     fn key(c: char) -> KeyEvent {
@@ -154,6 +125,21 @@ mod tests {
         ModeState::new(VimMode::COMMANDLINE_ID)
     }
 
+    /// Mock keymap that always returns NotFound (no bindings).
+    struct NotFoundKeymap;
+
+    impl KeymapQuery for NotFoundKeymap {
+        fn query(&self, _mode: &ModeId, _keys: &KeySequence) -> KeyLookupState {
+            KeyLookupState::NotFound
+        }
+    }
+
+    fn resolve_input(keymap: &impl KeymapQuery) -> ResolveInput<'_> {
+        static EMPTY_KEYS: KeySequence = KeySequence::new();
+        static MODE: ModeId = VimMode::COMMANDLINE_ID;
+        ResolveInput::new(&EMPTY_KEYS, &MODE, keymap)
+    }
+
     #[test]
     fn test_new_resolver() {
         let resolver = VimCommandLineResolver::new();
@@ -164,14 +150,16 @@ mod tests {
     fn test_insert_character() {
         let resolver = VimCommandLineResolver::new();
         let mut state = test_state();
+        let keymap = NotFoundKeymap;
+        let input = resolve_input(&keymap);
 
-        let result = resolver.resolve(&key('w'), &mut state);
+        let result = resolver.resolve_with_keymap(&key('w'), &mut state, &input);
         assert!(matches!(result, ResolveResult::InsertChar('w')));
 
-        let result = resolver.resolve(&key('q'), &mut state);
+        let result = resolver.resolve_with_keymap(&key('q'), &mut state, &input);
         assert!(matches!(result, ResolveResult::InsertChar('q')));
 
-        let result = resolver.resolve(&key(' '), &mut state);
+        let result = resolver.resolve_with_keymap(&key(' '), &mut state, &input);
         assert!(matches!(result, ResolveResult::InsertChar(' ')));
     }
 
@@ -179,8 +167,11 @@ mod tests {
     fn test_escape_not_handled() {
         let resolver = VimCommandLineResolver::new();
         let mut state = test_state();
+        let keymap = NotFoundKeymap;
+        let input = resolve_input(&keymap);
 
-        let result = resolver.resolve(&KeyEvent::new(KeyCode::Escape), &mut state);
+        let result =
+            resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
         assert!(matches!(result, ResolveResult::NotHandled));
     }
 
@@ -188,8 +179,11 @@ mod tests {
     fn test_enter_not_handled() {
         let resolver = VimCommandLineResolver::new();
         let mut state = test_state();
+        let keymap = NotFoundKeymap;
+        let input = resolve_input(&keymap);
 
-        let result = resolver.resolve(&KeyEvent::new(KeyCode::Enter), &mut state);
+        let result =
+            resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Enter), &mut state, &input);
         assert!(matches!(result, ResolveResult::NotHandled));
     }
 
@@ -197,8 +191,11 @@ mod tests {
     fn test_backspace_not_handled() {
         let resolver = VimCommandLineResolver::new();
         let mut state = test_state();
+        let keymap = NotFoundKeymap;
+        let input = resolve_input(&keymap);
 
-        let result = resolver.resolve(&KeyEvent::new(KeyCode::Backspace), &mut state);
+        let result =
+            resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Backspace), &mut state, &input);
         assert!(matches!(result, ResolveResult::NotHandled));
     }
 
@@ -206,8 +203,11 @@ mod tests {
     fn test_ctrl_char_not_inserted() {
         let resolver = VimCommandLineResolver::new();
         let mut state = test_state();
+        let keymap = NotFoundKeymap;
+        let input = resolve_input(&keymap);
 
-        let result = resolver.resolve(&key_with_mod('c', Modifiers::CTRL), &mut state);
+        let result =
+            resolver.resolve_with_keymap(&key_with_mod('c', Modifiers::CTRL), &mut state, &input);
         assert!(matches!(result, ResolveResult::NotHandled));
     }
 

@@ -272,7 +272,10 @@ pub trait ModeKeyResolver: Send + Sync {
     /// # Returns
     ///
     /// A `ResolveResult` indicating what action to take.
-    fn resolve(&self, key: &KeyEvent, state: &mut ModeState) -> ResolveResult;
+    #[deprecated(since = "0.9.5", note = "Override resolve_with_keymap() instead")]
+    fn resolve(&self, _key: &KeyEvent, _state: &mut ModeState) -> ResolveResult {
+        panic!("resolve() is removed - implement resolve_with_keymap() instead")
+    }
 
     /// Process a key event with access to keymap queries.
     ///
@@ -318,6 +321,7 @@ pub trait ModeKeyResolver: Send + Sync {
     ///     }
     /// }
     /// ```
+    #[allow(deprecated)]
     fn resolve_with_keymap(
         &self,
         key: &KeyEvent,
@@ -325,6 +329,7 @@ pub trait ModeKeyResolver: Send + Sync {
         _input: &ResolveInput<'_>,
     ) -> ResolveResult {
         // Default: delegate to legacy resolve() for backward compatibility
+        // Note: Resolvers should override this method instead
         self.resolve(key, state)
     }
 

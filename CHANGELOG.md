@@ -4,6 +4,27 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [Unreleased] - v0.9.1-dev
 
+### Changed
+
+- Removed backward compatibility patterns (#427)
+  - Removed `runner::fallback` re-export module (use `reovim_driver_input` directly)
+  - Removed `ModuleRegistry` type alias (use `ModuleManager`)
+  - Removed hidden legacy CLI flags (`--server`, `--listen-tcp`, `--listen-socket`, `--stdio`)
+  - Removed hidden `--socket` flag from CLI and TUI (use `-S` / `--socket-path`)
+  - `VimInsertResolver` migrated from `resolve_with_session()` to `resolve_with_keymap()`
+
+### Deprecated
+
+- `window_active_buffer()` - use `active_buffer()` instead
+- `ModeKeyResolver::resolve()` - override `resolve_with_keymap()` instead
+- `ProfileGuard` - use `profile_scope!()` macro instead
+- `KeymapRegistry::register()` - use `register_at_layer()` instead
+- `KeymapRegistry::register_for_module()` - use `register_at_layer_for_module()` instead
+
+### Removed
+
+- `ModeKeyResolver::resolve()` implementations from vim resolvers (migrated to `resolve_with_keymap()`)
+
 ### Added
 
 - Undo E2E tests fully passing with proper batching (#311)

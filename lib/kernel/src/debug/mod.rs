@@ -66,7 +66,7 @@ pub use trace::{TraceEvent, TracePoint, TraceSink, emit_trace, set_trace_sink};
 pub use metrics::{Counter, Histogram, MetricsRegistry, MetricsSnapshot, metrics};
 
 // Re-export profiler types
-#[allow(unused_imports)]
+#[allow(unused_imports, deprecated)]
 pub use profiler::{
     NopProfiler, ProfileGuard, ProfileScope, Profiler, SetProfilerError, SpanData, SpanId,
     profiler, set_profiler,

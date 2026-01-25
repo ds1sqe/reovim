@@ -459,6 +459,7 @@ impl Session {
     ///
     /// This is kept for backward compatibility. Prefer `active_buffer()`.
     #[must_use]
+    #[deprecated(since = "0.9.5", note = "Use active_buffer() instead")]
     pub fn window_active_buffer(&self) -> Option<BufferId> {
         self.windows.active().and_then(|w| w.buffer_id)
     }
@@ -617,6 +618,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_session_window_active_buffer() {
         let mode = test_mode();
         let mut session = Session::new(ClientId::new(1), mode);
