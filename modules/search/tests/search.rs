@@ -1,8 +1,7 @@
 //! Search integration tests (/, ?, n, N, *, #).
 //!
-//! **Status**: 2 tests enabled, 13 tests require additional features.
-//! - 10 tests require command-line mode for `/` and `?` search patterns (#338)
-//! - 3 tests require `*` and `#` word search implementation (#385)
+//! **Status**: 5 tests enabled, 10 tests require search input mode.
+//! - 10 tests require search input mode for `/` and `?` patterns (#435)
 //!
 //! Run `cargo test --ignored` to run the remaining ignored tests.
 
@@ -13,7 +12,7 @@ use runner::testing::IntegrationTest;
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires command-line mode for / search (#338)"]
+#[ignore = "requires search input mode for / (#435)"]
 async fn test_search_forward_basic() {
     let result = IntegrationTest::new()
         .await
@@ -25,7 +24,7 @@ async fn test_search_forward_basic() {
 }
 
 #[tokio::test]
-#[ignore = "requires command-line mode for / search (#338)"]
+#[ignore = "requires search input mode for / (#435)"]
 async fn test_search_forward_multiline() {
     let result = IntegrationTest::new()
         .await
@@ -37,7 +36,7 @@ async fn test_search_forward_multiline() {
 }
 
 #[tokio::test]
-#[ignore = "requires command-line mode for / search (#338)"]
+#[ignore = "requires search input mode for / (#435)"]
 async fn test_search_forward_wrap() {
     let result = IntegrationTest::new()
         .await
@@ -55,7 +54,7 @@ async fn test_search_forward_wrap() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires command-line mode for ? search (#338)"]
+#[ignore = "requires search input mode for ? (#435)"]
 async fn test_search_backward_basic() {
     let result = IntegrationTest::new()
         .await
@@ -69,7 +68,7 @@ async fn test_search_backward_basic() {
 }
 
 #[tokio::test]
-#[ignore = "requires command-line mode for ? search (#338)"]
+#[ignore = "requires search input mode for ? (#435)"]
 async fn test_search_backward_multiline() {
     let result = IntegrationTest::new()
         .await
@@ -86,7 +85,7 @@ async fn test_search_backward_multiline() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires command-line mode for / search (#338)"]
+#[ignore = "requires search input mode for / (#435)"]
 async fn test_search_next() {
     let result = IntegrationTest::new()
         .await
@@ -100,7 +99,7 @@ async fn test_search_next() {
 }
 
 #[tokio::test]
-#[ignore = "requires command-line mode for / search (#338)"]
+#[ignore = "requires search input mode for / (#435)"]
 async fn test_search_next_multiple() {
     let result = IntegrationTest::new()
         .await
@@ -114,7 +113,7 @@ async fn test_search_next_multiple() {
 }
 
 #[tokio::test]
-#[ignore = "requires command-line mode for / search (#338)"]
+#[ignore = "requires search input mode for / (#435)"]
 async fn test_search_previous() {
     let result = IntegrationTest::new()
         .await
@@ -133,7 +132,6 @@ async fn test_search_previous() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires search implementation via SessionContext (#385)"]
 async fn test_search_word_forward() {
     let result = IntegrationTest::new()
         .await
@@ -146,7 +144,6 @@ async fn test_search_word_forward() {
 }
 
 #[tokio::test]
-#[ignore = "requires search implementation via SessionContext (#385)"]
 async fn test_search_word_backward() {
     let result = IntegrationTest::new()
         .await
@@ -160,7 +157,6 @@ async fn test_search_word_backward() {
 }
 
 #[tokio::test]
-#[ignore = "requires search implementation via SessionContext (#385)"]
 async fn test_search_word_with_n() {
     let result = IntegrationTest::new()
         .await
@@ -178,7 +174,7 @@ async fn test_search_word_with_n() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires command-line mode for / search (#338)"]
+#[ignore = "requires search input mode for / (#435)"]
 async fn test_search_cancel_with_escape() {
     let result = IntegrationTest::new()
         .await
@@ -195,7 +191,7 @@ async fn test_search_cancel_with_escape() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires command-line mode for / search (#338)"]
+#[ignore = "requires search input mode for / (#435)"]
 async fn test_search_regex_pattern() {
     let result = IntegrationTest::new()
         .await

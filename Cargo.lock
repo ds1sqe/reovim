@@ -1700,9 +1700,11 @@ name = "reovim-module-motions"
 version = "0.9.1-dev"
 dependencies = [
  "reovim-driver-command",
+ "reovim-driver-search",
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
+ "tracing",
 ]
 
 [[package]]
