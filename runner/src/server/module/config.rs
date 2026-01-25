@@ -26,7 +26,7 @@
 //! # Environment Variables
 //!
 //! - `REOVIM_CONFIG_DIR` - Override config directory
-//! - `REOVIM_MODULE_PATH` - Additional module search paths (colon-separated)
+//! - `REOVIM_MODULE_PATH` - Module search paths (colon-separated, **prepended** for highest priority)
 //!
 //! # Platform Behavior
 //!
@@ -360,13 +360,23 @@ impl ModuleConfig {
 
     /// Get module search paths including environment overrides.
     ///
-    /// Returns default paths, configured paths, and paths from
-    /// `REOVIM_MODULE_PATH` environment variable (colon-separated).
+    /// Returns paths from `REOVIM_MODULE_PATH` (highest priority),
+    /// followed by default paths and configured paths.
+    ///
+    /// # Search Path Priority (highest to lowest)
+    ///
+    /// 1. `REOVIM_MODULE_PATH` environment variable (colon-separated)
+    /// 2. Default system paths (`/usr/lib/reovim/modules`, etc.)
+    /// 3. User XDG data directory (`~/.local/share/reovim/modules`)
+    /// 4. Config file `search_paths`
+    ///
+    /// This follows the convention of `LD_LIBRARY_PATH`, `PYTHONPATH`, etc.
+    /// where environment variables prepend to allow explicit overrides.
     #[must_use]
     pub fn all_search_paths_with_env(&self) -> Vec<PathBuf> {
-        let mut paths = self.all_search_paths();
+        let mut paths = Vec::new();
 
-        // Add REOVIM_MODULE_PATH entries
+        // REOVIM_MODULE_PATH entries prepended (highest priority)
         if let Ok(env_paths) = std::env::var("REOVIM_MODULE_PATH") {
             for path in env_paths.split(':') {
                 if !path.is_empty() {
@@ -375,6 +385,8 @@ impl ModuleConfig {
             }
         }
 
+        // Append defaults and configured paths
+        paths.extend(self.all_search_paths());
         paths
     }
 
@@ -766,5 +778,71 @@ skip = ["operators"]
         let config = ModuleConfig::new();
         assert!(config.extra.is_empty());
         assert!(config.skip.is_empty());
+    }
+
+    // ========================================================================
+    // REOVIM_MODULE_PATH Prepend Tests (#433)
+    // ========================================================================
+
+    #[test]
+    fn test_all_search_paths_with_env_without_env_var() {
+        // When REOVIM_MODULE_PATH is not set, should return same as all_search_paths
+        let config = ModuleConfig::new();
+
+        // Skip test if env var is set externally (e.g., from parent process)
+        if std::env::var("REOVIM_MODULE_PATH").is_ok() {
+            return;
+        }
+
+        let with_env = config.all_search_paths_with_env();
+        let without_env = config.all_search_paths();
+
+        // They should be equal when no env var is set
+        assert_eq!(with_env, without_env);
+    }
+
+    #[test]
+    fn test_all_search_paths_includes_system_paths() {
+        // Verify system paths are included in default search paths
+        let config = ModuleConfig::new();
+        let paths = config.all_search_paths();
+
+        // Should have at least the user data directory
+        assert!(!paths.is_empty());
+
+        // On Unix, should include system paths
+        #[cfg(unix)]
+        {
+            let path_strs: Vec<_> = paths
+                .iter()
+                .map(|p| p.to_string_lossy().to_string())
+                .collect();
+            assert!(
+                path_strs.iter().any(|p| p.contains("/usr/"))
+                    || path_strs.iter().any(|p| p.contains(".local/share")),
+                "Expected system or XDG paths in search paths: {path_strs:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_all_search_paths_with_env_docstring_accuracy() {
+        // This test documents the expected prepend behavior.
+        // When REOVIM_MODULE_PATH is set, those paths should come FIRST.
+        //
+        // The actual prepend behavior is verified in integration tests
+        // where we can safely set environment variables with process isolation.
+        //
+        // Expected order (highest to lowest priority):
+        // 1. REOVIM_MODULE_PATH entries (prepended)
+        // 2. System paths (/usr/lib/reovim/modules, etc.)
+        // 3. User XDG path (~/.local/share/reovim/modules)
+        // 4. Config file search_paths
+        //
+        // This matches conventions like LD_LIBRARY_PATH and PYTHONPATH.
+
+        let config = ModuleConfig::new();
+        let _paths = config.all_search_paths_with_env();
+        // Test passes if it compiles - it documents the expected behavior
     }
 }

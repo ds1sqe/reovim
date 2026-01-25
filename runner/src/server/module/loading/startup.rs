@@ -88,10 +88,26 @@ pub fn load_from_config(
     let search_paths = config.all_search_paths_with_env();
     let modules_to_load = config.effective_modules();
 
+    // Log search paths with priority indication (#433)
+    let env_module_path = std::env::var("REOVIM_MODULE_PATH").ok();
+    if let Some(ref env_path) = env_module_path {
+        tracing::info!(
+            env_path = %env_path,
+            "REOVIM_MODULE_PATH set (highest priority)"
+        );
+    }
+
     tracing::info!(
+        first_path = ?search_paths.first(),
+        total_paths = search_paths.len(),
+        "Module search paths (highest priority first)"
+    );
+    tracing::debug!(all_paths = ?search_paths, "Full module search path list");
+
+    tracing::info!(
+        count = modules_to_load.len(),
         modules = ?modules_to_load,
-        search_paths = ?search_paths,
-        "loading modules from config"
+        "Loading modules"
     );
 
     for module_name in modules_to_load {

@@ -62,12 +62,8 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
         for key in keys.as_slice() {
             let key_event = KeyEvent::with_modifiers(key.code, key.modifiers);
 
-            tracing::warn!(?key_event, "Processing key through resolver");
-
             // Resolve the key using mode resolvers
             if let Some((result, _changes)) = ctx.session.resolve_key(&key_event).await {
-                tracing::warn!(?result, "Resolver returned result");
-
                 match result {
                     ResolveResult::Execute(cmd_id, resolve_ctx) => {
                         // Build command context from resolve context
@@ -316,9 +312,18 @@ async fn handle_pop_result_async(ctx: &RpcContext, result: &reovim_driver_sessio
                 cmd_ctx.set(static_key, value.clone());
             }
 
+            // Set active buffer (required for operators like delete/yank)
+            // Without this, operators can't find the buffer to operate on
+            if let Some(buffer_id) = ctx
+                .session
+                .with_state(crate::session::SessionState::session_active_buffer)
+                .await
+            {
+                cmd_ctx.set_buffer_id(buffer_id);
+            }
+
             // Execute the command
             if let Some(cmd_result) = ctx.session.execute_command(command, &cmd_ctx).await {
-                tracing::debug!(?cmd_result, "Pop result command executed");
                 ctx.session.handle_command_result(cmd_result).await;
             }
         }
