@@ -61,6 +61,21 @@ fn binary_path() -> PathBuf {
         .join("target/debug/reovim")
 }
 
+/// Get the workspace's target/debug directory for module loading.
+///
+/// Integration tests should use modules built in the current worktree,
+/// not globally installed modules from `~/.local/share/reovim/modules/`.
+///
+/// This is set as `REOVIM_MODULE_PATH` which is prepended to the search
+/// paths, ensuring worktree modules take priority over global ones.
+fn workspace_module_dir() -> PathBuf {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    PathBuf::from(manifest_dir)
+        .parent()
+        .expect("Failed to find workspace root")
+        .join("target/debug")
+}
+
 /// Read port from stderr and return the reader for continued use.
 ///
 /// Returns the reader so logs can continue to be captured after port extraction.
@@ -206,9 +221,13 @@ impl TestServerHarness {
         // Use debug level by default for test log capture
         let log_level = std::env::var("REOVIM_LOG").unwrap_or_else(|_| "debug".to_string());
 
+        // Use worktree modules instead of globally installed ones (#433)
+        let module_dir = workspace_module_dir();
+
         let mut process = Command::new(binary_path())
             .args(["server", "--tcp", "0"])
             .env("REOVIM_LOG", log_level)
+            .env("REOVIM_MODULE_PATH", &module_dir)
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
             .kill_on_drop(true)
@@ -258,5 +277,53 @@ impl Drop for TestServerHarness {
         // We use start_kill() which is non-blocking, then try_wait() to reap.
         let _ = self.process.start_kill();
         let _ = self.process.try_wait();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_workspace_module_dir_ends_with_target_debug() {
+        let dir = workspace_module_dir();
+        assert!(
+            dir.ends_with("target/debug"),
+            "Expected path ending with target/debug, got: {}",
+            dir.display()
+        );
+    }
+
+    #[test]
+    fn test_workspace_module_dir_is_absolute() {
+        let dir = workspace_module_dir();
+        assert!(dir.is_absolute(), "Expected absolute path, got: {}", dir.display());
+    }
+
+    #[test]
+    fn test_binary_path_ends_with_reovim() {
+        let path = binary_path();
+        assert!(
+            path.ends_with("target/debug/reovim"),
+            "Expected path ending with target/debug/reovim, got: {}",
+            path.display()
+        );
+    }
+
+    #[test]
+    fn test_binary_and_module_share_workspace_root() {
+        // Both binary_path() and workspace_module_dir() should resolve
+        // to paths under the same workspace root
+        let binary = binary_path();
+        let modules = workspace_module_dir();
+
+        let binary_parent = binary.parent().expect("binary should have parent");
+        assert_eq!(
+            binary_parent,
+            modules,
+            "Binary parent ({}) should equal module dir ({})",
+            binary_parent.display(),
+            modules.display()
+        );
     }
 }

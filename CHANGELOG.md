@@ -8,7 +8,16 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **BREAKING**: `REOVIM_MODULE_PATH` now prepends to search paths instead of
+  appending. This gives the environment variable highest priority, matching
+  the convention of `LD_LIBRARY_PATH`, `PYTHONPATH`, etc. Users who relied
+  on the previous append behavior should adjust their module organization. (#433)
+
 ### Fixed
+
+- Integration tests now correctly use worktree-built modules instead of
+  globally installed modules. Test harness sets `REOVIM_MODULE_PATH` to
+  `target/debug/` automatically. (#433)
 
 ### Removed
 
