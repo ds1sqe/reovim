@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::types::{BufferId, Position};
+use super::types::{BufferId, Position, WireLayoutChangeKind, WireLayoutInfo};
 
 // Notification type name constants
 
@@ -26,6 +26,9 @@ pub const LOG_ENTRY: &str = "notification/log_entry";
 
 /// Detach notification (client should disconnect).
 pub const DETACH: &str = "notification/detach";
+
+/// Layout changed notification.
+pub const LAYOUT_CHANGED: &str = "notification/layout_changed";
 
 // Notification payload types
 
@@ -234,6 +237,38 @@ impl DetachPayload {
     }
 }
 
+/// Payload for layout changed notification.
+///
+/// Sent to clients when the window layout changes (split, close, focus, resize).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LayoutChangedPayload {
+    /// Type of layout change that occurred.
+    pub kind: WireLayoutChangeKind,
+    /// Full layout state after the change.
+    pub layout: WireLayoutInfo,
+}
+
+impl LayoutChangedPayload {
+    /// Create a new layout changed payload.
+    #[must_use]
+    pub const fn new(kind: WireLayoutChangeKind, layout: WireLayoutInfo) -> Self {
+        Self { kind, layout }
+    }
+
+    /// Convert payload to JSON-RPC notification.
+    ///
+    /// # Panics
+    ///
+    /// This function will not panic as `LayoutChangedPayload` serialization is infallible.
+    #[must_use]
+    pub fn into_notification(self) -> super::messages::RpcNotification {
+        super::messages::RpcNotification::new(
+            LAYOUT_CHANGED,
+            serde_json::to_value(self).expect("LayoutChangedPayload serialization cannot fail"),
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -435,5 +470,62 @@ mod tests {
         let notification = payload.into_notification();
         assert_eq!(notification.jsonrpc, "2.0");
         assert_eq!(notification.method, DETACH);
+    }
+
+    // Layout changed notification tests (#444)
+
+    #[test]
+    fn test_layout_changed_constant() {
+        assert!(LAYOUT_CHANGED.starts_with("notification/"));
+        assert_eq!(LAYOUT_CHANGED, "notification/layout_changed");
+    }
+
+    #[test]
+    fn test_layout_changed_payload_split() {
+        use super::super::types::{
+            WireLayoutChangeKind, WireLayoutInfo, WireSplitDirection, WireWindowId,
+        };
+
+        let kind = WireLayoutChangeKind::Split {
+            new_window: WireWindowId(1),
+            direction: WireSplitDirection::Vertical,
+        };
+        let layout = WireLayoutInfo::single_window(80, 24, None);
+        let payload = LayoutChangedPayload::new(kind, layout);
+
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains("\"kind\""));
+        assert!(json.contains("\"layout\""));
+        assert!(json.contains("\"type\":\"split\""));
+    }
+
+    #[test]
+    fn test_layout_changed_payload_into_notification() {
+        use super::super::types::{WireLayoutChangeKind, WireLayoutInfo};
+
+        let kind = WireLayoutChangeKind::Equalize;
+        let layout = WireLayoutInfo::default();
+        let payload = LayoutChangedPayload::new(kind, layout);
+
+        let notification = payload.into_notification();
+        assert_eq!(notification.jsonrpc, "2.0");
+        assert_eq!(notification.method, LAYOUT_CHANGED);
+    }
+
+    #[test]
+    fn test_layout_changed_payload_roundtrip() {
+        use super::super::types::{WireLayoutChangeKind, WireLayoutInfo, WireWindowId};
+
+        let kind = WireLayoutChangeKind::Focus {
+            from: Some(WireWindowId(0)),
+            to: WireWindowId(1),
+        };
+        let layout = WireLayoutInfo::single_window(120, 40, None);
+        let payload = LayoutChangedPayload::new(kind, layout);
+
+        let json = serde_json::to_string(&payload).unwrap();
+        let parsed: LayoutChangedPayload = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.layout.window_count, 1);
     }
 }

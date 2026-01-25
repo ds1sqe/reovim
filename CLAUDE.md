@@ -693,6 +693,60 @@ The statusline is rendered at the bottom of the screen with inverse colors.
 
 **Example**: `<C-w>h` tests failed randomly because `mode_for_command()` didn't recognize `enter_window_mode`, so the local mode wasn't updated before the next key was looked up. This looked like a race condition but was actually a **missing match arm**.
 
+### Debugging Multi-Window and Layout Issues
+
+**Common symptoms and causes:**
+
+1. **TUI not syncing with server state**
+   - **Symptom**: Server has correct state (verified via CLI), but TUI shows stale data
+   - **Cause**: Push notifications not being sent for state changes
+   - **Check**: Verify `emit_from_state_changes()` is called with correct `StateChanges`
+   - **Key file**: `runner/src/server/rpc/handlers/input.rs` - accumulates and emits changes
+
+2. **Focus indicator at wrong position**
+   - **Symptom**: `▪` appears at x=0 instead of focused window's position
+   - **Cause**: Window ID comparison finding wrong placement
+   - **Debug**: Add logging in `render_multi_window()` to trace `focused_id` and found placement
+
+3. **Window separators incomplete**
+   - **Symptom**: Missing `│`, `─`, or `┼` characters
+   - **Cause**: Border drawing not checking for existing characters
+   - **Key file**: `runner/src/server/rpc/handlers/screen.rs` - `draw_window_separators()`
+
+**Notification model (Push vs Pull):**
+
+| Type | Method | Use Case |
+|------|--------|----------|
+| **Pull** | RPC call (`state/layout`, `content`) | CLI queries, debugging |
+| **Push** | `layout_changed` notification | TUI real-time updates |
+
+- TUI caches layout from push notifications
+- CLI always queries fresh data from server
+- If push is broken, TUI shows stale data but CLI works
+
+**Manual testing workflow:**
+
+```bash
+# Start server
+./target/release/reovim server --tcp 13000 &
+
+# Test via CLI (Pull - always fresh)
+./target/release/reovim cli --tcp 127.0.0.1:13000 --format json layout
+
+# Test via TUI (Push - depends on notifications)
+./target/release/reovim tui --tcp 127.0.0.1:13000 --debug
+```
+
+**Key files for layout/notification debugging:**
+
+| File | Purpose |
+|------|---------|
+| `runner/src/server/rpc/handlers/input.rs` | Key processing, change accumulation |
+| `runner/src/server/rpc/handlers/screen.rs` | Screen content rendering, separators |
+| `runner/src/server/session/notify.rs` | Notification emission logic |
+| `runner/src/client/tui/app.rs` | TUI notification handling, layout caching |
+| `modules/layout/src/compositor.rs` | Layout management, focus tracking |
+
 ### Integration Test Infrastructure
 
 Phase 7 integration tests use a fluent builder API in `runner/src/testing/`:

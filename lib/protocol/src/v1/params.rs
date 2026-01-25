@@ -103,6 +103,26 @@ pub struct ModuleReloadParams {
     pub id: String,
 }
 
+/// Parameters for `state/layout` method.
+///
+/// Empty params - just queries current layout state.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct StateLayoutParams {
+    // Empty for now - future: could add viewport hints
+}
+
+/// Parameters for `state/window_content` method (#444).
+///
+/// Requests content for a specific window.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StateWindowContentParams {
+    /// Window ID to get content for.
+    pub window_id: super::types::WireWindowId,
+    /// Output format.
+    #[serde(default)]
+    pub format: ScreenFormat,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -180,5 +200,20 @@ mod tests {
         };
         let json = serde_json::to_string(&params).unwrap();
         assert!(json.contains("\"id\":\"hot-reload-demo\""));
+    }
+
+    #[test]
+    fn test_state_layout_params_default() {
+        let params = StateLayoutParams::default();
+        let json = serde_json::to_string(&params).unwrap();
+        // Empty struct serializes as empty object
+        assert_eq!(json, "{}");
+    }
+
+    #[test]
+    fn test_state_layout_params_deserialize() {
+        let params: StateLayoutParams = serde_json::from_str("{}").unwrap();
+        // Should deserialize without error
+        let _ = params;
     }
 }

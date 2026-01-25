@@ -11,7 +11,8 @@ use {
 
 use {
     super::super::dispatcher::{HandlerFuture, RpcContext},
-    crate::session::{StateSnapshot, emit_state_changes},
+    crate::session::{StateSnapshot, emit_from_state_changes, emit_state_changes},
+    reovim_driver_session::api::StateChanges,
 };
 
 /// Handler for `input/keys` method.
@@ -58,12 +59,15 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
         // Process keys one at a time through resolvers
         let mut any_handled = false;
         let mut final_pending = false;
+        let mut accumulated_changes = StateChanges::new();
 
         for key in keys.as_slice() {
             let key_event = KeyEvent::with_modifiers(key.code, key.modifiers);
 
             // Resolve the key using mode resolvers
-            if let Some((result, _changes)) = ctx.session.resolve_key(&key_event).await {
+            if let Some((result, changes)) = ctx.session.resolve_key(&key_event).await {
+                // Accumulate changes from each key for later notification
+                accumulated_changes.merge(changes);
                 match result {
                     ResolveResult::Execute(cmd_id, resolve_ctx) => {
                         // Build command context from resolve context
@@ -180,6 +184,12 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
         // Capture state AFTER and emit notifications for any changes
         let after = ctx.session.with_state(StateSnapshot::capture).await;
         emit_state_changes(&ctx.session, &before, &after).await;
+
+        // Emit layout/focus changes (not captured by snapshots)
+        // StateChanges from resolvers include focus_changed, window_created, etc.
+        if accumulated_changes.has_changes() {
+            emit_from_state_changes(&ctx.session, &accumulated_changes).await;
+        }
 
         Ok(serde_json::to_value(result).expect("InputKeysResult serialization cannot fail"))
     })

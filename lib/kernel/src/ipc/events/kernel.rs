@@ -328,6 +328,83 @@ pub struct ViewportScrolled {
 impl Event for ViewportScrolled {}
 
 // =============================================================================
+// Layout Events
+// =============================================================================
+
+/// Direction of a window split.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SplitDirection {
+    /// Horizontal split (windows stacked top/bottom).
+    Horizontal,
+    /// Vertical split (windows side by side).
+    Vertical,
+}
+
+/// Type of layout change that occurred.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LayoutChangeKind {
+    /// Window was split.
+    Split {
+        /// ID of the new window created by the split.
+        new_window: u64,
+        /// Direction of the split.
+        direction: SplitDirection,
+    },
+    /// Window was closed.
+    Close {
+        /// ID of the closed window.
+        closed_window: u64,
+        /// ID of the window that received focus (if any).
+        new_focus: Option<u64>,
+    },
+    /// Focus changed to a different window.
+    Focus {
+        /// Previous focused window (if any).
+        from: Option<u64>,
+        /// New focused window.
+        to: u64,
+    },
+    /// Window was resized.
+    Resize {
+        /// ID of the resized window.
+        window: u64,
+    },
+    /// All windows were equalized in size.
+    Equalize,
+}
+
+/// Layout changed event.
+///
+/// Emitted after any layout operation (split, close, focus, resize, equalize).
+/// This is the primary event for notifying clients of layout changes.
+///
+/// The runner subscribes to this event and converts it to an RPC notification
+/// for connected clients.
+///
+/// # Example
+///
+/// ```ignore
+/// use reovim_kernel::api::v1::{EventBus, EventResult, events::kernel::LayoutChanged};
+///
+/// let bus = EventBus::new();
+/// let _sub = bus.subscribe::<LayoutChanged, _>(100, |event| {
+///     println!("Layout changed: {:?}", event.kind);
+///     EventResult::Handled
+/// });
+/// ```
+#[derive(Debug, Clone)]
+pub struct LayoutChanged {
+    /// Type of layout change that occurred.
+    pub kind: LayoutChangeKind,
+    /// Total window count after the change.
+    pub window_count: usize,
+    /// Currently focused window (if any).
+    pub focused_window: Option<u64>,
+}
+
+impl Event for LayoutChanged {}
+
+// =============================================================================
 // File Events
 // =============================================================================
 
@@ -525,5 +602,110 @@ mod tests {
             assert!(priority::NORMAL < priority::PLUGIN);
             assert!(priority::PLUGIN < priority::LOW);
         }
+    }
+
+    // Layout event tests (#444)
+
+    #[test]
+    fn test_split_direction() {
+        let h = SplitDirection::Horizontal;
+        let v = SplitDirection::Vertical;
+        assert_ne!(h, v);
+        assert_eq!(h, SplitDirection::Horizontal);
+        assert_eq!(v, SplitDirection::Vertical);
+    }
+
+    #[test]
+    fn test_layout_change_kind_split() {
+        let kind = LayoutChangeKind::Split {
+            new_window: 1,
+            direction: SplitDirection::Vertical,
+        };
+        if let LayoutChangeKind::Split {
+            new_window,
+            direction,
+        } = kind
+        {
+            assert_eq!(new_window, 1);
+            assert_eq!(direction, SplitDirection::Vertical);
+        } else {
+            panic!("Expected Split kind");
+        }
+    }
+
+    #[test]
+    fn test_layout_change_kind_close() {
+        let kind = LayoutChangeKind::Close {
+            closed_window: 2,
+            new_focus: Some(1),
+        };
+        if let LayoutChangeKind::Close {
+            closed_window,
+            new_focus,
+        } = kind
+        {
+            assert_eq!(closed_window, 2);
+            assert_eq!(new_focus, Some(1));
+        } else {
+            panic!("Expected Close kind");
+        }
+    }
+
+    #[test]
+    fn test_layout_change_kind_focus() {
+        let kind = LayoutChangeKind::Focus {
+            from: Some(0),
+            to: 1,
+        };
+        if let LayoutChangeKind::Focus { from, to } = kind {
+            assert_eq!(from, Some(0));
+            assert_eq!(to, 1);
+        } else {
+            panic!("Expected Focus kind");
+        }
+    }
+
+    #[test]
+    fn test_layout_change_kind_resize() {
+        let kind = LayoutChangeKind::Resize { window: 0 };
+        if let LayoutChangeKind::Resize { window } = kind {
+            assert_eq!(window, 0);
+        } else {
+            panic!("Expected Resize kind");
+        }
+    }
+
+    #[test]
+    fn test_layout_change_kind_equalize() {
+        let kind = LayoutChangeKind::Equalize;
+        assert_eq!(kind, LayoutChangeKind::Equalize);
+    }
+
+    #[test]
+    fn test_layout_changed_event() {
+        let event = LayoutChanged {
+            kind: LayoutChangeKind::Split {
+                new_window: 1,
+                direction: SplitDirection::Horizontal,
+            },
+            window_count: 2,
+            focused_window: Some(1),
+        };
+        assert_eq!(event.window_count, 2);
+        assert_eq!(event.focused_window, Some(1));
+    }
+
+    #[test]
+    fn test_layout_changed_no_focus() {
+        let event = LayoutChanged {
+            kind: LayoutChangeKind::Close {
+                closed_window: 0,
+                new_focus: None,
+            },
+            window_count: 0,
+            focused_window: None,
+        };
+        assert_eq!(event.window_count, 0);
+        assert!(event.focused_window.is_none());
     }
 }

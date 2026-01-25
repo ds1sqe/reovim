@@ -110,6 +110,8 @@ pub enum CliAction {
         /// Output format: `plain_text`, `raw_ansi`, `cell_grid`.
         format: Option<String>,
     },
+    /// Get window layout info.
+    Layout,
     /// List buffers.
     Buffers,
     /// Get buffer content.

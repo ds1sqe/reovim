@@ -56,6 +56,15 @@ pub async fn cmd_screen_content(
         .await
 }
 
+/// Get window layout info.
+///
+/// # Errors
+///
+/// Returns error if RPC call fails.
+pub async fn cmd_layout(client: &mut RpcClient) -> Result<Value, RpcClientError> {
+    client.call("state/layout", json!({})).await
+}
+
 /// List all buffers.
 ///
 /// # Errors

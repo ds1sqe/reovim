@@ -181,6 +181,19 @@ impl SessionState {
         let buffer_ids = kernel.buffers.list();
         if let Some(&first_buffer) = buffer_ids.first() {
             driver_session.set_active_buffer(Some(first_buffer));
+
+            // Create initial window in compositor for the first buffer.
+            // This ensures there's always a window to display content and to split from.
+            if let Some(compositor) = driver_session.compositor_mut()
+                && let Some(active_layer) = compositor.active_layer()
+                && let Some(layer) = compositor.layer_compositor_mut(active_layer)
+                && layer
+                    .windows_in_zone(reovim_driver_display::layout::Zone::Tiled)
+                    .is_empty()
+            {
+                let _window_id = layer.add_tiled();
+                tracing::debug!("Created initial window in compositor");
+            }
         }
 
         Self {

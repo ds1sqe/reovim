@@ -35,10 +35,12 @@
 //! ```
 
 use {
+    reovim_driver_display::Rect,
     reovim_driver_session::api::StateChanges,
     reovim_protocol::v1::{
         BufferId as ProtocolBufferId, BufferModifiedPayload, CursorMovedPayload,
-        ModeChangedPayload, ModeInfo, RenderCompletePayload,
+        LayoutChangedPayload, ModeChangedPayload, ModeInfo, RenderCompletePayload,
+        WireLayoutChangeKind, WireLayoutInfo, WireWindowId,
     },
 };
 
@@ -159,6 +161,89 @@ async fn emit_render_complete(
         NotificationBroadcaster::broadcast_to_buffer(session, buffer_id, &json).await;
     } else {
         NotificationBroadcaster::broadcast_to_session(session, &json).await;
+    }
+}
+
+/// Determine layout change kind from `StateChanges`.
+///
+/// Maps the change tracking to appropriate wire format kind.
+fn determine_layout_change_kind(changes: &StateChanges) -> WireLayoutChangeKind {
+    // Priority: Split > Close > Focus > Resize > Equalize
+    if let Some(&window_id) = changes.windows_created.first() {
+        // Window was created - this is a split
+        WireLayoutChangeKind::Split {
+            new_window: WireWindowId::from(window_id.as_usize()),
+            // We don't know the direction from StateChanges, default to vertical
+            direction: reovim_protocol::v1::WireSplitDirection::Vertical,
+        }
+    } else if let Some(&window_id) = changes.windows_closed.first() {
+        // Window was closed
+        WireLayoutChangeKind::Close {
+            closed_window: WireWindowId::from(window_id.as_usize()),
+            new_focus: None, // Will be filled by the layout info
+        }
+    } else if changes.focus_changed {
+        // Focus changed (we don't have from/to in StateChanges)
+        WireLayoutChangeKind::Focus {
+            from: None,
+            to: WireWindowId::from(0), // Default, will need layout context
+        }
+    } else {
+        // Generic window change (resize, equalize, etc.)
+        WireLayoutChangeKind::Equalize
+    }
+}
+
+/// Get current layout info from session state.
+#[allow(clippy::option_if_let_else)] // if/else is clearer than map_or_else here
+fn get_layout_info(state: &SessionState, width: u16, height: u16) -> WireLayoutInfo {
+    use reovim_protocol::v1::{WireLayerId, WireRect, WireWindowPlacement, WireZone};
+
+    let screen = Rect::new(0, 0, width, height);
+
+    // Get compositor from driver_session
+    if let Some(compositor) = state.driver_session.compositor() {
+        use reovim_driver_display::layout::Zone;
+
+        let result = compositor.composite(screen);
+
+        // Convert to wire format
+        let windows: Vec<WireWindowPlacement> = result
+            .placements
+            .iter()
+            .map(|p| WireWindowPlacement {
+                window_id: WireWindowId::from(p.window_id.as_usize()),
+                layer_id: WireLayerId::from(p.layer_id.as_u16() as usize),
+                zone: match p.zone {
+                    Zone::Tiled => WireZone::Tiled,
+                    Zone::Float => WireZone::Float,
+                    Zone::Overlay => WireZone::Overlay,
+                },
+                bounds: WireRect::new(p.bounds.x, p.bounds.y, p.bounds.width, p.bounds.height),
+                z_order: p.z_order.as_u16(),
+                visible: p.visible,
+                focusable: p.focusable,
+                buffer_id: None, // TODO: window-buffer mapping (#440)
+            })
+            .collect();
+
+        WireLayoutInfo {
+            screen: WireRect::new(
+                result.screen.x,
+                result.screen.y,
+                result.screen.width,
+                result.screen.height,
+            ),
+            windows,
+            focused_window: result.focused.map(|id| WireWindowId::from(id.as_usize())),
+            active_layer: result
+                .active_layer
+                .map(|id| WireLayerId::from(id.as_u16() as usize)),
+            window_count: result.placements.len(),
+        }
+    } else {
+        // No compositor - single window fallback
+        WireLayoutInfo::single_window(width, height, None)
     }
 }
 
@@ -297,8 +382,25 @@ pub async fn emit_from_state_changes(session: &Session, changes: &StateChanges) 
     // TODO: Handle buffer lifecycle notifications (created, deleted, renamed)
     // These would require new notification types in the protocol
 
-    // TODO: Handle window change notifications (created, closed, focus)
-    // These would require new notification types in the protocol
+    // Layout changed - broadcast to ALL clients (layout is session-wide)
+    if changes.window_changed || changes.focus_changed {
+        // Determine the kind of layout change
+        let kind = determine_layout_change_kind(changes);
+
+        // Get current layout from compositor using session's terminal size
+        let layout_info = session
+            .with_state(|state| {
+                let (width, height) = state.session_terminal_size();
+                get_layout_info(state, width, height)
+            })
+            .await;
+
+        let payload = LayoutChangedPayload::new(kind, layout_info);
+        let json = serde_json::to_string(&payload.into_notification())
+            .expect("LayoutChangedPayload serialization cannot fail");
+        NotificationBroadcaster::broadcast_to_session(session, &json).await;
+        any_emitted = true;
+    }
 
     // Emit render_complete if any notifications were sent
     if any_emitted {
@@ -573,5 +675,93 @@ mod tests {
 
         changes.record_mode_change();
         assert!(changes.has_changes());
+    }
+
+    // ==========================================================================
+    // Layout notification tests (#444)
+    // ==========================================================================
+
+    #[tokio::test]
+    async fn test_emit_from_changes_window_created() {
+        use reovim_kernel::api::v1::WindowId;
+
+        let session = test_session();
+        let window_id = WindowId::new();
+
+        let mut changes = StateChanges::new();
+        changes.record_window_created(window_id);
+
+        // Should not panic with no clients
+        // Should emit layout_changed notification
+        emit_from_state_changes(&session, &changes).await;
+    }
+
+    #[tokio::test]
+    async fn test_emit_from_changes_window_closed() {
+        use reovim_kernel::api::v1::WindowId;
+
+        let session = test_session();
+        let window_id = WindowId::new();
+
+        let mut changes = StateChanges::new();
+        changes.record_window_closed(window_id);
+
+        // Should not panic with no clients
+        // Should emit layout_changed notification
+        emit_from_state_changes(&session, &changes).await;
+    }
+
+    #[tokio::test]
+    async fn test_emit_from_changes_focus_changed() {
+        let session = test_session();
+
+        let mut changes = StateChanges::new();
+        changes.record_focus_change();
+
+        // Should not panic with no clients
+        // Should emit layout_changed notification for focus change
+        emit_from_state_changes(&session, &changes).await;
+    }
+
+    #[test]
+    fn test_determine_layout_change_kind_split() {
+        use reovim_kernel::api::v1::WindowId;
+
+        let mut changes = StateChanges::new();
+        let window_id = WindowId::new();
+        changes.record_window_created(window_id);
+
+        let kind = determine_layout_change_kind(&changes);
+        assert!(matches!(kind, WireLayoutChangeKind::Split { .. }));
+    }
+
+    #[test]
+    fn test_determine_layout_change_kind_close() {
+        use reovim_kernel::api::v1::WindowId;
+
+        let mut changes = StateChanges::new();
+        let window_id = WindowId::new();
+        changes.record_window_closed(window_id);
+
+        let kind = determine_layout_change_kind(&changes);
+        assert!(matches!(kind, WireLayoutChangeKind::Close { .. }));
+    }
+
+    #[test]
+    fn test_determine_layout_change_kind_focus() {
+        let mut changes = StateChanges::new();
+        changes.record_focus_change();
+
+        let kind = determine_layout_change_kind(&changes);
+        assert!(matches!(kind, WireLayoutChangeKind::Focus { .. }));
+    }
+
+    #[test]
+    fn test_determine_layout_change_kind_equalize_fallback() {
+        let mut changes = StateChanges::new();
+        changes.window_changed = true; // Generic window change
+
+        let kind = determine_layout_change_kind(&changes);
+        assert!(matches!(kind, WireLayoutChangeKind::Equalize));
     }
 }

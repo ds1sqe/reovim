@@ -56,6 +56,18 @@ pub const STATE_MICROSCOPE: &str = "state/microscope";
 /// Get windows state.
 pub const STATE_WINDOWS: &str = "state/windows";
 
+/// Get window layout state.
+///
+/// Returns the complete layout tree with window positions, focus state,
+/// and layer information. Used by TUI to render multi-window layouts.
+pub const STATE_LAYOUT: &str = "state/layout";
+
+/// Get content for a specific window.
+///
+/// Returns rendered content for a single window, allowing clients to
+/// compose multi-window displays or update individual windows.
+pub const STATE_WINDOW_CONTENT: &str = "state/window_content";
+
 // Visual methods (for debugging and AI understanding)
 
 /// Get visual snapshot.

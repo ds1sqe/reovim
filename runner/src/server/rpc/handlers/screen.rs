@@ -8,10 +8,12 @@
 //!
 //! # Multi-Window Support
 //!
-//! Multi-window rendering will use `Session.compositor` when available (Phase 2).
-//! Currently renders single-window mode based on active buffer.
+//! When a compositor is available, renders content for each window within its
+//! bounds from the compositor's layout. Currently all windows share the active
+//! buffer (vim-like behavior where splits show the same content initially).
 
 use {
+    reovim_driver_display::Rect,
     reovim_kernel::api::v1::BufferId,
     reovim_protocol::v1::{RpcError, ScreenContentResult, ScreenFormat, StateScreenContentParams},
 };
@@ -24,8 +26,8 @@ use super::super::dispatcher::{HandlerFuture, RpcContext};
 ///
 /// # Multi-Window Support
 ///
-/// Multi-window rendering will use `Session.compositor` when available (Phase 2).
-/// Currently renders single-window mode based on active buffer.
+/// When a compositor is available with multiple windows, renders each window's
+/// content within its bounds and composes them into a single screen.
 ///
 /// # Request
 ///
@@ -53,15 +55,163 @@ pub fn state_screen_content(ctx: RpcContext, params: serde_json::Value) -> Handl
             .with_state(|state| {
                 // Use driver_session as SSOT for terminal size
                 let (width, height) = state.session_terminal_size();
+                let screen = Rect::new(0, 0, width, height);
 
-                // Currently uses single-window rendering mode.
-                // Multi-window rendering via Session.compositor will be added in Phase 2.
+                // Check if compositor has multiple windows
+                if let Some(compositor) = state.driver_session.compositor() {
+                    let composite = compositor.composite(screen);
+                    if composite.placements.len() > 1 {
+                        // Multi-window mode: render each window within its bounds
+                        return render_multi_window(
+                            state,
+                            params.format,
+                            width,
+                            height,
+                            &composite.placements,
+                            composite.focused,
+                        );
+                    }
+                }
+
+                // Single-window mode (no compositor or single window)
                 render_single_window(state, params.format, width, height)
             })
             .await;
 
         Ok(serde_json::to_value(result).expect("ScreenContentResult serialization cannot fail"))
     })
+}
+
+/// Render screen with multiple windows from compositor layout.
+///
+/// Each window's content is rendered within its bounds on the screen.
+/// Currently all windows share the active buffer (vim-like split behavior).
+///
+/// The focused window is indicated with a `▪` at its top-left corner.
+fn render_multi_window(
+    state: &crate::session::SessionState,
+    format: ScreenFormat,
+    width: u16,
+    height: u16,
+    placements: &[reovim_driver_display::layout::WindowPlacement],
+    focused: Option<reovim_driver_display::WindowId>,
+) -> ScreenContentResult {
+    // Get the active buffer content (shared by all windows for now)
+    let content = state
+        .session_active_buffer()
+        .and_then(|id: BufferId| state.app.kernel.buffers.get(id))
+        .map(|arc| {
+            let buf = arc.read();
+            buf.content()
+        })
+        .unwrap_or_default();
+
+    let lines: Vec<&str> = content.lines().collect();
+
+    // Create a 2D screen buffer
+    let mut screen: Vec<Vec<char>> = vec![vec![' '; width as usize]; height as usize];
+
+    // Render each window's content within its bounds
+    for placement in placements.iter().filter(|p| p.visible) {
+        render_window_content(&mut screen, placement, &lines);
+    }
+
+    // Draw window separators (borders between windows)
+    draw_window_separators(&mut screen, placements, width, height);
+
+    // Draw focus indicator at top-left of focused window
+    if let Some(focused_id) = focused
+        && let Some(focused_placement) = placements.iter().find(|p| p.window_id == focused_id)
+    {
+        let bounds = &focused_placement.bounds;
+        if (bounds.y as usize) < screen.len()
+            && (bounds.x as usize) < screen[bounds.y as usize].len()
+        {
+            screen[bounds.y as usize][bounds.x as usize] = '▪';
+        }
+    }
+
+    // Convert screen buffer to string
+    let screen_content: String = screen
+        .iter()
+        .map(|row| row.iter().collect::<String>())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    format_content(&screen_content, format, width, height)
+}
+
+/// Render a single window's content within its bounds on the screen buffer.
+fn render_window_content(
+    screen: &mut [Vec<char>],
+    placement: &reovim_driver_display::layout::WindowPlacement,
+    lines: &[&str],
+) {
+    let bounds = &placement.bounds;
+
+    // Render buffer lines within window bounds
+    for (win_row, line_idx) in (0..bounds.height).zip(0..lines.len()) {
+        let screen_y = bounds.y as usize + win_row as usize;
+        if screen_y >= screen.len() {
+            break;
+        }
+
+        let line = lines.get(line_idx).copied().unwrap_or("");
+        for (win_col, ch) in line.chars().take(bounds.width as usize).enumerate() {
+            let screen_x = bounds.x as usize + win_col;
+            if screen_x < screen[screen_y].len() {
+                screen[screen_y][screen_x] = ch;
+            }
+        }
+    }
+}
+
+/// Draw separators between windows using box drawing characters.
+///
+/// Handles intersections by checking for existing separators:
+/// - `│` + `─` = `┼` (cross intersection)
+/// - `─` + `│` = `┼` (cross intersection)
+fn draw_window_separators(
+    screen: &mut [Vec<char>],
+    placements: &[reovim_driver_display::layout::WindowPlacement],
+    width: u16,
+    height: u16,
+) {
+    // Find vertical and horizontal separator positions
+    // Vertical separators: where window right edge meets another window's left edge
+    // Horizontal separators: where window bottom edge meets another window's top edge
+
+    for placement in placements.iter().filter(|p| p.visible) {
+        let bounds = &placement.bounds;
+
+        // Draw right border if not at screen edge
+        let right_x = bounds.x + bounds.width;
+        if right_x < width {
+            for y in bounds.y..(bounds.y + bounds.height) {
+                if (y as usize) < screen.len() && (right_x as usize) < screen[y as usize].len() {
+                    // Check if this position already has a horizontal bar
+                    let current = screen[y as usize][right_x as usize];
+                    screen[y as usize][right_x as usize] =
+                        if current == '─' { '┼' } else { '│' };
+                }
+            }
+        }
+
+        // Draw bottom border if not at screen edge
+        let bottom_y = bounds.y + bounds.height;
+        if bottom_y < height {
+            for x in bounds.x..(bounds.x + bounds.width) {
+                if (bottom_y as usize) < screen.len()
+                    && (x as usize) < screen[bottom_y as usize].len()
+                {
+                    // Check if this position already has a vertical bar
+                    let current = screen[bottom_y as usize][x as usize];
+                    screen[bottom_y as usize][x as usize] =
+                        if current == '│' { '┼' } else { '─' };
+                }
+            }
+        }
+    }
 }
 
 /// Render screen with a single window or no windows.
@@ -336,8 +486,120 @@ mod tests {
         assert_eq!(cells[1][1].get("char").unwrap().as_str().unwrap(), "D");
     }
 
-    // Multi-window rendering tests will be added in Phase 2 when
-    // compositor-based window layout is implemented.
+    // Multi-window separator tests
+
+    #[test]
+    fn test_draw_separators_vertical() {
+        use reovim_driver_display::layout::{LayerId, WindowPlacement, ZOrder, Zone};
+
+        let mut screen: Vec<Vec<char>> = vec![vec![' '; 10]; 5];
+        let placements = vec![
+            WindowPlacement::new(
+                reovim_driver_display::WindowId::from_raw(1),
+                LayerId::new(0),
+                Zone::Tiled,
+                Rect::new(0, 0, 5, 5),
+                ZOrder::new(0),
+            ),
+            WindowPlacement::new(
+                reovim_driver_display::WindowId::from_raw(2),
+                LayerId::new(0),
+                Zone::Tiled,
+                Rect::new(5, 0, 5, 5),
+                ZOrder::new(0),
+            ),
+        ];
+
+        super::draw_window_separators(&mut screen, &placements, 10, 5);
+
+        // Vertical separator at x=5 for all rows
+        for (y, row) in screen.iter().enumerate().take(5) {
+            assert_eq!(row[5], '│', "Vertical separator missing at row {y}");
+        }
+    }
+
+    #[test]
+    fn test_draw_separators_horizontal() {
+        use reovim_driver_display::layout::{LayerId, WindowPlacement, ZOrder, Zone};
+
+        let mut screen: Vec<Vec<char>> = vec![vec![' '; 10]; 6];
+        let placements = vec![
+            WindowPlacement::new(
+                reovim_driver_display::WindowId::from_raw(1),
+                LayerId::new(0),
+                Zone::Tiled,
+                Rect::new(0, 0, 10, 3),
+                ZOrder::new(0),
+            ),
+            WindowPlacement::new(
+                reovim_driver_display::WindowId::from_raw(2),
+                LayerId::new(0),
+                Zone::Tiled,
+                Rect::new(0, 3, 10, 3),
+                ZOrder::new(0),
+            ),
+        ];
+
+        super::draw_window_separators(&mut screen, &placements, 10, 6);
+
+        // Horizontal separator at y=3 for all columns
+        for (x, &ch) in screen[3].iter().enumerate().take(10) {
+            assert_eq!(ch, '─', "Horizontal separator missing at col {x}");
+        }
+    }
+
+    #[test]
+    fn test_draw_separators_intersection() {
+        use reovim_driver_display::layout::{LayerId, WindowPlacement, ZOrder, Zone};
+
+        let mut screen: Vec<Vec<char>> = vec![vec![' '; 10]; 6];
+        // 2x2 grid of windows
+        let placements = vec![
+            WindowPlacement::new(
+                reovim_driver_display::WindowId::from_raw(1),
+                LayerId::new(0),
+                Zone::Tiled,
+                Rect::new(0, 0, 5, 3), // Top-left
+                ZOrder::new(0),
+            ),
+            WindowPlacement::new(
+                reovim_driver_display::WindowId::from_raw(2),
+                LayerId::new(0),
+                Zone::Tiled,
+                Rect::new(5, 0, 5, 3), // Top-right
+                ZOrder::new(0),
+            ),
+            WindowPlacement::new(
+                reovim_driver_display::WindowId::from_raw(3),
+                LayerId::new(0),
+                Zone::Tiled,
+                Rect::new(0, 3, 5, 3), // Bottom-left
+                ZOrder::new(0),
+            ),
+            WindowPlacement::new(
+                reovim_driver_display::WindowId::from_raw(4),
+                LayerId::new(0),
+                Zone::Tiled,
+                Rect::new(5, 3, 5, 3), // Bottom-right
+                ZOrder::new(0),
+            ),
+        ];
+
+        super::draw_window_separators(&mut screen, &placements, 10, 6);
+
+        // Intersection at (5, 3) should be '┼'
+        assert_eq!(screen[3][5], '┼', "Intersection should be cross, got '{}'", screen[3][5]);
+
+        // Vertical separators at x=5
+        for y in [0, 1, 2, 4, 5] {
+            assert_eq!(screen[y][5], '│', "Vertical separator missing at row {y}");
+        }
+
+        // Horizontal separators at y=3
+        for x in [0, 1, 2, 3, 4, 6, 7, 8, 9] {
+            assert_eq!(screen[3][x], '─', "Horizontal separator missing at col {x}");
+        }
+    }
 
     #[test]
     fn test_format_content_plain_text() {

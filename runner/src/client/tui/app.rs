@@ -14,11 +14,11 @@ use {
     crossterm::event::{Event, EventStream, KeyCode, KeyModifiers},
     futures::StreamExt,
     reovim_protocol::v1::{
-        RpcNotification, RpcResponse,
+        RpcNotification, RpcResponse, WireLayoutInfo,
         notifications::{
             BUFFER_MODIFIED, BufferModifiedPayload, CURSOR_MOVED, CursorMovedPayload, DETACH,
-            DetachPayload, LOG_ENTRY, LogEntryPayload, MODE_CHANGED, ModeChangedPayload,
-            RENDER_COMPLETE, RenderCompletePayload,
+            DetachPayload, LAYOUT_CHANGED, LOG_ENTRY, LayoutChangedPayload, LogEntryPayload,
+            MODE_CHANGED, ModeChangedPayload, RENDER_COMPLETE, RenderCompletePayload,
         },
     },
     serde_json::json,
@@ -139,6 +139,8 @@ struct TuiState {
     last_error: Option<String>,
     /// When the error occurred (for auto-clear after 5 seconds).
     error_timestamp: Option<Instant>,
+    /// Current layout state from server (#444).
+    layout: Option<WireLayoutInfo>,
 }
 
 /// TUI application.
@@ -249,6 +251,15 @@ impl TuiApp {
             }
         };
 
+        // Get initial layout state (#444)
+        let initial_layout = match client.call("state/layout", json!({})).await {
+            Ok(result) => serde_json::from_value::<WireLayoutInfo>(result).ok(),
+            Err(e) => {
+                tracing::debug!("Failed to get initial layout: {e}");
+                None
+            }
+        };
+
         // Register for buffer notifications by setting the active buffer.
         // This is required to receive buffer-scoped notifications like cursor_moved,
         // buffer_modified, and render_complete which trigger TUI updates.
@@ -328,6 +339,7 @@ impl TuiApp {
                 last_key: None,
                 last_error: None,
                 error_timestamp: None,
+                layout: initial_layout, // Initial layout from server (#444)
             },
             log_buffer: TuiLogBuffer::new(DEFAULT_TUI_LOG_CAPACITY),
             log_panel: LogPanelState::new(),
@@ -865,6 +877,23 @@ impl TuiApp {
                     tracing::trace!("Log entry received: {:?}", payload.level);
                 }
             }
+            LAYOUT_CHANGED => {
+                if let Ok(payload) =
+                    serde_json::from_value::<LayoutChangedPayload>(notification.params)
+                {
+                    tracing::debug!(
+                        "Layout changed: {:?}, windows: {}",
+                        payload.kind,
+                        payload.layout.window_count
+                    );
+                    self.state.layout = Some(payload.layout);
+                    self.state.needs_redraw = true;
+                    self.debug_log(&format!(
+                        "Layout changed: {} windows",
+                        self.state.layout.as_ref().map_or(0, |l| l.window_count)
+                    ));
+                }
+            }
             DETACH => {
                 // Server requested client to detach - disconnect gracefully
                 if let Ok(payload) =
@@ -992,6 +1021,9 @@ impl TuiApp {
             }
         }
 
+        // Draw window borders for multi-window layouts (#444)
+        self.draw_window_borders();
+
         // Calculate panel heights and positions
         let statusline_height: u16 = u16::from(self.debug_config.is_some());
         let available_height = height.saturating_sub(statusline_height);
@@ -1055,6 +1087,94 @@ impl TuiApp {
         self.renderer.flush()?;
 
         Ok(())
+    }
+
+    /// Draw window borders based on layout state (#444).
+    ///
+    /// Renders window separators for multi-window layouts. Each window's
+    /// borders are drawn based on its bounds from `WireLayoutInfo`.
+    ///
+    /// Uses box drawing characters:
+    /// - `│` for vertical separators
+    /// - `─` for horizontal separators
+    /// - `┼` for intersections
+    fn draw_window_borders(&mut self) {
+        use reovim_protocol::v1::WireZone;
+
+        let Some(layout) = &self.state.layout else {
+            return;
+        };
+
+        // Only draw borders if more than one window
+        if layout.window_count <= 1 {
+            return;
+        }
+
+        let (width, height) = self.last_size;
+        if width == 0 || height == 0 {
+            return;
+        }
+
+        // Reserve space for debug statusline
+        let available_height = height.saturating_sub(u16::from(self.debug_config.is_some()));
+
+        // Style for window borders
+        let border_style = Style::default().fg(reovim_driver_display::Color::DarkGrey);
+
+        // Draw separator for each window that has a right or bottom neighbor
+        for placement in &layout.windows {
+            // Only draw borders for tiled windows
+            if placement.zone != WireZone::Tiled || !placement.visible {
+                continue;
+            }
+
+            let bounds = &placement.bounds;
+
+            // Draw right border (vertical separator) if not at screen edge
+            let right_edge = bounds.x + bounds.width;
+            if right_edge < width {
+                for y in bounds.y..bounds.y.saturating_add(bounds.height).min(available_height) {
+                    self.frame_renderer
+                        .buffer_mut()
+                        .write_str(right_edge, y, "│", &border_style);
+                }
+            }
+
+            // Draw bottom border (horizontal separator) if not at screen edge
+            let bottom_edge = bounds.y + bounds.height;
+            if bottom_edge < available_height {
+                for x in bounds.x..bounds.x.saturating_add(bounds.width).min(width) {
+                    self.frame_renderer
+                        .buffer_mut()
+                        .write_str(x, bottom_edge, "─", &border_style);
+                }
+            }
+
+            // Draw intersection if both borders exist
+            if right_edge < width && bottom_edge < available_height {
+                self.frame_renderer.buffer_mut().write_str(
+                    right_edge,
+                    bottom_edge,
+                    "┼",
+                    &border_style,
+                );
+            }
+        }
+
+        // Highlight focused window border if exists
+        if let Some(focused_id) = &layout.focused_window
+            && let Some(focused) = layout.windows.iter().find(|w| &w.window_id == focused_id)
+        {
+            let focus_style = Style::default().fg(reovim_driver_display::Color::Blue);
+            let bounds = &focused.bounds;
+
+            // Draw a subtle focus indicator at the top-left of focused window
+            if bounds.x < width && bounds.y < available_height {
+                self.frame_renderer
+                    .buffer_mut()
+                    .write_str(bounds.x, bounds.y, "▪", &focus_style);
+            }
+        }
     }
 
     /// Write debug statusline to frame buffer.

@@ -504,6 +504,7 @@ fn run_cli(config: &ConnectionConfig, action: &CliAction, format: &str) {
                 cmd::cmd_screen_content(&mut client, format.as_deref().unwrap_or("plain_text"))
                     .await
             }
+            CliAction::Layout => cmd::cmd_layout(&mut client).await,
             CliAction::Buffers => cmd::cmd_buffer_list(&mut client).await,
             CliAction::Buffer { id } => cmd::cmd_buffer_content(&mut client, *id).await,
             CliAction::Open { path } => cmd::cmd_buffer_open(&mut client, path).await,
