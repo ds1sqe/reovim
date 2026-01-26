@@ -13,6 +13,7 @@ mod screen;
 mod server;
 mod state;
 pub mod stub;
+mod tui;
 
 #[cfg(test)]
 pub mod test_utils;
@@ -32,4 +33,5 @@ pub use {
         state_ascii_art, state_layer_info, state_microscope, state_telescope,
         state_visual_snapshot, state_windows,
     },
+    tui::tui_capture,
 };

@@ -90,6 +90,15 @@ pub const EDITOR_SET_ACTIVE_BUFFER: &str = "editor/set_active_buffer";
 /// Quit the editor.
 pub const EDITOR_QUIT: &str = "editor/quit";
 
+// TUI methods
+
+/// Capture TUI frame via RPC relay.
+///
+/// This method is relayed by the server to a connected TUI client,
+/// which responds with rendered frame content. Requires a TUI client
+/// to be connected (interactive or headless mode).
+pub const TUI_CAPTURE: &str = "tui/capture";
+
 // Server methods
 
 /// Kill the server.
@@ -161,5 +170,11 @@ mod tests {
         assert!(STATE_MODE.contains('/'));
         assert!(BUFFER_GET_CONTENT.contains('/'));
         assert!(EDITOR_RESIZE.contains('/'));
+    }
+
+    #[test]
+    fn test_tui_capture_method() {
+        assert_eq!(TUI_CAPTURE, "tui/capture");
+        assert!(TUI_CAPTURE.contains('/'));
     }
 }

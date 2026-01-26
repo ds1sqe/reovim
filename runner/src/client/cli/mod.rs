@@ -105,10 +105,19 @@ pub enum CliAction {
     Cursor,
     /// Get screen dimensions.
     Screen,
-    /// Get screen content.
+    /// Get screen content (server-side rendering).
     Content {
         /// Output format: `plain_text`, `raw_ansi`, `cell_grid`.
         format: Option<String>,
+    },
+    /// Capture TUI frame via relay (#447).
+    ///
+    /// Requests a frame capture from the connected TUI client.
+    /// Requires a TUI (interactive or headless) to be connected.
+    Capture {
+        /// Output format: `plain_text`, `raw_ansi`.
+        #[arg(short, long, default_value = "raw_ansi")]
+        format: String,
     },
     /// Get window layout info.
     Layout,

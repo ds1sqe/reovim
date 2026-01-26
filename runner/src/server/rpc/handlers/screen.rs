@@ -2,6 +2,15 @@
 //!
 //! Handler for `state/screen_content` method.
 //!
+//! # Server vs TUI Rendering (#447)
+//!
+//! This handler provides **raw buffer content** without ANSI styling.
+//! For properly rendered output with ANSI colors and syntax highlighting,
+//! use `tui/capture` which relays requests to a connected TUI client.
+//!
+//! - **`state/screen_content`**: Raw buffer text, window layout, no styling
+//! - **`tui/capture`**: Full rendered output with ANSI colors (requires TUI)
+//!
 //! Note: The headless server doesn't have an actual terminal screen.
 //! This handler returns the content of the active buffer formatted
 //! according to the requested format.
@@ -262,8 +271,8 @@ fn format_content(
     let formatted_content = match format {
         ScreenFormat::PlainText => content.to_string(),
         ScreenFormat::RawAnsi => {
-            // For headless server, just return plain text
-            // Real ANSI would require a terminal emulator
+            // Server-side raw_ansi returns plain text (no styling).
+            // For proper ANSI output with colors, use `tui/capture` (#447).
             content.to_string()
         }
         ScreenFormat::CellGrid => {

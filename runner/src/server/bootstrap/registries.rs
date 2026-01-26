@@ -18,6 +18,8 @@ use {
     reovim_kernel::api::v1::{KernelContext, ModuleContext, ServiceRegistry},
 };
 
+use crate::server::capture::CaptureTracker;
+
 use crate::server::{
     config,
     module::{
@@ -122,6 +124,11 @@ pub fn build_default_registries() -> (
 
     // Create shared ServiceRegistry for Epic #417 typed key pattern
     let services = Arc::new(ServiceRegistry::new());
+
+    // Register CaptureTracker for TUI capture relay (#447)
+    // This is server-specific, not module-provided, so we register it directly.
+    services.register(Arc::new(CaptureTracker::new()));
+    tracing::debug!("registered CaptureTracker in ServiceRegistry (#447)");
 
     // Initialize defaults bundle modules (Epic #417 Phase 5)
     // Modules register their services (undo, buffer, search, scratch-buffer) during init()

@@ -6,6 +6,13 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **TUI frame capture via RPC relay**: Added `reovim cli capture` command and
+  `tui/capture` RPC method for capturing TUI frames with ANSI colors. Flow:
+  CLI → Server → TUI → Server → CLI. Requires a connected TUI client. (#447)
+- **Headless TUI mode**: Added `--headless` flag to TUI client for CI/scripting.
+  Runs without TTY, responds to capture requests only. (#447)
+- **Shared render core**: Extracted `RenderCore` and `RenderState` for shared
+  rendering between interactive and headless TUI clients. (#447)
 - **Window mode**: Added `<C-w>` prefix for window management commands. Supports
   navigation (h/j/k/l), splitting (s/v), closing (c/q/o), resizing (+/-/>/</=),
   and cycling (w/W/p). Each command executes and returns to normal mode. (#438)

@@ -40,6 +40,7 @@ use reovim_protocol::v1::{
     MODULE_LOAD, MODULE_RELOAD, MODULE_UNLOAD, SERVER_KILL, STATE_ASCII_ART, STATE_CURSOR,
     STATE_LAYER_INFO, STATE_LAYOUT, STATE_MICROSCOPE, STATE_MODE, STATE_SCREEN,
     STATE_SCREEN_CONTENT, STATE_SELECTION, STATE_TELESCOPE, STATE_VISUAL_SNAPSHOT, STATE_WINDOWS,
+    TUI_CAPTURE,
 };
 
 use super::debug;
@@ -93,6 +94,9 @@ pub fn create_default_dispatcher() -> RpcDispatcher {
 
     // Server methods
     dispatcher.register(SERVER_KILL, handlers::server_kill);
+
+    // TUI methods (#447)
+    dispatcher.register(TUI_CAPTURE, handlers::tui_capture);
 
     // Debug methods
     debug::register_handlers(&mut dispatcher);
@@ -148,7 +152,10 @@ mod tests {
         // state/layout handler added (#444)
         assert!(dispatcher.has_method(STATE_LAYOUT));
 
-        // 17 implemented + 9 stubs + 13 debug (2 info + 4 inspect + 2 metrics + 4 log + 1 snapshot) = 40 total
-        assert_eq!(dispatcher.method_count(), 40);
+        // tui/capture handler added (#447)
+        assert!(dispatcher.has_method(TUI_CAPTURE));
+
+        // 17 implemented + 9 stubs + 13 debug (2 info + 4 inspect + 2 metrics + 4 log + 1 snapshot) + 1 TUI = 41 total
+        assert_eq!(dispatcher.method_count(), 41);
     }
 }

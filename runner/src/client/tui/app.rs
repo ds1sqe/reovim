@@ -5,7 +5,6 @@
 
 use std::{
     collections::HashMap,
-    fmt::Write as _,
     io::{self, Write},
     time::{Duration, Instant},
 };
@@ -14,11 +13,13 @@ use {
     crossterm::event::{Event, EventStream, KeyCode, KeyModifiers},
     futures::StreamExt,
     reovim_protocol::v1::{
-        RpcNotification, RpcResponse, WireLayoutInfo,
+        RpcNotification, RpcResponse, ScreenContentResult, ScreenFormat, WireLayoutInfo,
         notifications::{
-            BUFFER_MODIFIED, BufferModifiedPayload, CURSOR_MOVED, CursorMovedPayload, DETACH,
-            DetachPayload, LAYOUT_CHANGED, LOG_ENTRY, LayoutChangedPayload, LogEntryPayload,
-            MODE_CHANGED, ModeChangedPayload, RENDER_COMPLETE, RenderCompletePayload,
+            BUFFER_MODIFIED, BufferModifiedPayload, CAPTURE_REQUEST, CAPTURE_RESPONSE,
+            CURSOR_MOVED, CaptureRequestPayload, CaptureResponsePayload, CursorMovedPayload,
+            DETACH, DetachPayload, LAYOUT_CHANGED, LOG_ENTRY, LayoutChangedPayload,
+            LogEntryPayload, MODE_CHANGED, ModeChangedPayload, RENDER_COMPLETE,
+            RenderCompletePayload,
         },
     },
     serde_json::json,
@@ -32,7 +33,7 @@ use crate::client::common::{
     ConnectionConfig, ConnectionReader, RpcClient, RpcClientError, RpcWriter, ServerMessage,
 };
 
-use reovim_driver_display::{ColorMode, FrameRenderer, Style};
+use reovim_driver_display::{FrameRenderer, Style};
 
 use super::{
     cli_executor,
@@ -43,6 +44,7 @@ use super::{
     log_panel::LogPanelState,
     log_render::render_panel as render_log_panel,
     render::Renderer,
+    render_core::{self, RenderState},
 };
 
 /// Channel buffer size for server messages.
@@ -445,7 +447,7 @@ impl TuiApp {
                 msg = self.message_rx.recv() => {
                     match msg {
                         Some(ServerMessage::Notification(notification)) => {
-                            self.handle_notification(notification);
+                            self.handle_notification(notification).await;
                         }
                         Some(ServerMessage::Response(response)) => {
                             self.handle_response(response);
@@ -812,9 +814,62 @@ impl TuiApp {
         Ok(())
     }
 
+    /// Handle a capture request notification (#447).
+    ///
+    /// Responds to `tui/capture-request` from server with frame content.
+    async fn handle_capture_request(&mut self, params: serde_json::Value) {
+        let Ok(payload) = serde_json::from_value::<CaptureRequestPayload>(params) else {
+            tracing::warn!("Failed to parse capture request payload");
+            return;
+        };
+
+        tracing::debug!(
+            "Received capture request {} (format: {:?})",
+            payload.request_id,
+            payload.format
+        );
+
+        // Build frame content using the shared render core
+        let render_state = self.to_render_state();
+        let content = render_core::build_frame_content(
+            &render_state,
+            self.frame_renderer.buffer(),
+            payload.format,
+        );
+
+        // Send capture response back to server
+        let response = CaptureResponsePayload::new(
+            payload.request_id,
+            ScreenContentResult {
+                width: self.last_size.0,
+                height: self.last_size.1,
+                format: payload.format,
+                content,
+            },
+        );
+
+        if let Err(e) = self
+            .rpc_writer
+            .send_notification(
+                CAPTURE_RESPONSE,
+                serde_json::to_value(&response)
+                    .expect("CaptureResponsePayload serialization cannot fail"),
+            )
+            .await
+        {
+            tracing::warn!("Failed to send capture response: {e}");
+        } else {
+            tracing::debug!("Sent capture response {}", payload.request_id);
+        }
+    }
+
     /// Handle a server notification.
-    fn handle_notification(&mut self, notification: RpcNotification) {
+    ///
+    /// Handles both state update notifications (mode, cursor, etc.) and
+    /// capture requests (#447) for frame capture via RPC relay.
+    async fn handle_notification(&mut self, notification: RpcNotification) {
         match notification.method.as_str() {
+            CAPTURE_REQUEST => self.handle_capture_request(notification.params).await,
             MODE_CHANGED => {
                 if let Ok(payload) =
                     serde_json::from_value::<ModeChangedPayload>(notification.params)
@@ -1281,84 +1336,29 @@ impl TuiApp {
     /// Reads directly from `frame_renderer.buffer()` - the same source
     /// that was flushed to stdout. This ensures capture = render.
     ///
-    /// Format designed for easy parsing by language models:
-    /// - Clear section markers with `===`
-    /// - Key-value metadata
-    /// - Explicit line numbers in `[N]` format
-    /// - ANSI codes preserved for styled content (e.g., inverse statusline)
+    /// Delegates to `render_core::build_frame_content` which can be shared
+    /// with `HeadlessClient`.
     fn build_frame_content(&self) -> String {
-        let (width, height) = self.last_size;
-        if width == 0 || height == 0 {
-            return String::new();
+        let render_state = self.to_render_state();
+        render_core::build_frame_content(
+            &render_state,
+            self.frame_renderer.buffer(),
+            ScreenFormat::RawAnsi,
+        )
+    }
+
+    /// Convert current TUI state to a `RenderState` for frame capture.
+    fn to_render_state(&self) -> RenderState {
+        RenderState {
+            width: self.last_size.0,
+            height: self.last_size.1,
+            mode_display: self.state.mode_display.clone(),
+            cursor_line: self.state.cursor_line,
+            cursor_column: self.state.cursor_column,
+            modules: self.state.modules.clone(),
+            server_address: self.server_address.clone(),
+            log_panel_visible: self.log_panel.visible,
         }
-
-        let mut output = String::new();
-
-        // Metadata section (key: value format for easy parsing)
-        let now = chrono::Local::now();
-        let timestamp = now.format("%Y-%m-%d %H:%M:%S %z").to_string();
-        let mode = self.state.mode_display.as_deref().unwrap_or("UNKNOWN");
-        let cursor_line = self.state.cursor_line;
-        let cursor_col = self.state.cursor_column;
-        let modules_count = self.state.modules.len();
-
-        let _ = writeln!(output, "=== FRAME CAPTURE ===");
-        let _ = writeln!(output, "timestamp: {timestamp}");
-        let _ = writeln!(output, "screen_size: {width}x{height}");
-        let _ = writeln!(output, "server: {}", self.server_address);
-        let _ = writeln!(output, "mode: {mode}");
-        let _ = writeln!(output, "cursor: line={cursor_line}, col={cursor_col}");
-        let _ = writeln!(output, "modules: {modules_count}");
-        let _ = writeln!(output, "log_panel_visible: {}", self.log_panel.visible);
-
-        // Read screen content directly from frame buffer
-        let buffer = self.frame_renderer.buffer();
-        let buf_height = buffer.height();
-
-        let _ = writeln!(output, "\n=== SCREEN CONTENT ({width} cols x {buf_height} rows) ===");
-
-        // Read each row from frame buffer
-        for y in 0..buf_height {
-            let mut line = String::new();
-            let mut current_style: Option<Style> = None;
-
-            if let Some(row) = buffer.row(y) {
-                for cell in row {
-                    if cell.is_continuation {
-                        continue;
-                    }
-
-                    // Track style changes for ANSI output
-                    let cell_style = &cell.style;
-                    if current_style.as_ref() != Some(cell_style) {
-                        // Close previous style if any
-                        if current_style.is_some() {
-                            line.push_str("\x1b[0m");
-                        }
-                        // Open new style if not default
-                        let ansi = cell_style.to_ansi_start(ColorMode::TrueColor);
-                        if !ansi.is_empty() {
-                            line.push_str(&ansi);
-                        }
-                        current_style = Some(cell_style.clone());
-                    }
-
-                    line.push(cell.char);
-                }
-
-                // Close any open style
-                if current_style.is_some() {
-                    line.push_str("\x1b[0m");
-                }
-            }
-
-            // Use [N] format for easy regex matching
-            let _ = writeln!(output, "[{}] {}", y + 1, line);
-        }
-
-        let _ = writeln!(output, "=== END FRAME ===");
-
-        output
     }
 
     /// Write a message to the debug session log.
@@ -1395,7 +1395,7 @@ impl TuiApp {
                 }
                 ServerMessage::Notification(notification) => {
                     // Handle notifications while waiting
-                    self.handle_notification(notification);
+                    self.handle_notification(notification).await;
                 }
             }
         }

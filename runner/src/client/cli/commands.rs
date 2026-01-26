@@ -56,6 +56,29 @@ pub async fn cmd_screen_content(
         .await
 }
 
+/// Capture TUI frame via relay (#447).
+///
+/// Sends a capture request to the server, which relays it to a connected
+/// TUI client. The TUI responds with rendered frame content including
+/// ANSI codes, metadata, and layout information.
+///
+/// # Arguments
+///
+/// * `client` - RPC client connection
+/// * `format` - Output format: `plain_text`, `raw_ansi`, or `cell_grid`
+///
+/// # Errors
+///
+/// Returns error if:
+/// - RPC call fails
+/// - No TUI client is connected to handle the capture
+/// - Capture request times out (5 seconds)
+pub async fn cmd_capture(client: &mut RpcClient, format: &str) -> Result<Value, RpcClientError> {
+    client
+        .call("tui/capture", json!({ "format": format }))
+        .await
+}
+
 /// Get window layout info.
 ///
 /// # Errors

@@ -255,9 +255,14 @@ cargo run -- cli cursor                   # Get cursor position
 cargo run -- cli --format json mode       # JSON output format
 cargo run -- cli -i                       # Interactive REPL mode
 
+# TUI frame capture (#447) - requires connected TUI
+cargo run -- cli capture                  # Capture with raw_ansi (ANSI colors)
+cargo run -- cli capture --format plain_text  # Plain text without colors
+
 # Explicit TUI client (connects to running server)
 cargo run -- tui                          # Auto-discover server
 cargo run -- tui --tcp 127.0.0.1:12521    # Connect to specific server
+cargo run -- tui --headless               # Headless mode (no TTY, for CI/scripting)
 ```
 
 ## Git Commits

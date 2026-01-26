@@ -48,6 +48,7 @@
 mod app;
 mod args;
 mod bootstrap;
+pub mod capture;
 pub mod client;
 pub mod config;
 pub mod debug;
