@@ -3,6 +3,8 @@
 //! Each RPC method has a corresponding result type that defines
 //! the expected response structure.
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 use super::types::{
@@ -31,6 +33,16 @@ pub struct StateWindowContentResult {
     pub format: ScreenFormat,
     /// Window content (in requested format).
     pub content: String,
+}
+
+/// Result for `state/options` method (#445).
+///
+/// Contains option values as a map of name to JSON value.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StateOptionsResult {
+    /// Option values as JSON values.
+    /// Values can be bool, int, or string depending on the option type.
+    pub options: HashMap<String, serde_json::Value>,
 }
 
 /// Result for `state/screen_content` method.
@@ -364,5 +376,19 @@ mod tests {
         assert!(json.contains("\"bounds\""));
         assert!(json.contains("\"format\":\"plain_text\""));
         assert!(json.contains("\"content\":\"Hello, Window!\""));
+    }
+
+    #[test]
+    fn test_state_options_result() {
+        use std::collections::HashMap;
+        let mut options = HashMap::new();
+        options.insert("number".to_string(), serde_json::json!(true));
+        options.insert("relativenumber".to_string(), serde_json::json!(false));
+
+        let result = StateOptionsResult { options };
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("\"options\""));
+        assert!(json.contains("\"number\":true"));
+        assert!(json.contains("\"relativenumber\":false"));
     }
 }

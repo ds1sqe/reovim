@@ -88,7 +88,7 @@ pub use compositor::{CompositorApi, CompositorError};
 pub use register::{RegisterApi, RegisterContent, YankType};
 
 // Change tracking
-pub use changes::{ChangeTracker, StateChanges};
+pub use changes::{ChangeTracker, OptionChange, StateChanges};
 
 // Command API
 pub use command::{CommandApi, CommandExecutor};

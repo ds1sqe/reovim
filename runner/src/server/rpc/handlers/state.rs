@@ -1,14 +1,16 @@
 //! State-related RPC handlers.
 //!
-//! Handlers for `state/mode`, `state/cursor`, and related methods.
+//! Handlers for `state/mode`, `state/cursor`, `state/options`, and related methods.
+
+use std::collections::HashMap;
 
 use {
     reovim_driver_display::Rect,
-    reovim_kernel::api::v1::BufferId as KernelBufferId,
+    reovim_kernel::api::v1::{BufferId as KernelBufferId, OptionScopeId, WindowId},
     reovim_protocol::v1::{
         BufferId as ProtocolBufferId, CursorInfo, ModeInfo, Position, ScreenInfo, SelectionInfo,
-        SelectionMode, WireLayerId, WireLayoutInfo, WireRect, WireWindowId, WireWindowPlacement,
-        WireZone,
+        SelectionMode, StateOptionsParams, StateOptionsResult, WireLayerId, WireLayoutInfo,
+        WireRect, WireWindowId, WireWindowPlacement, WireZone,
     },
 };
 
@@ -345,6 +347,90 @@ fn single_window_layout(
     )
 }
 
+/// Handler for `state/options` method (#445).
+///
+/// Returns editor option values with optional filtering.
+///
+/// # Request
+///
+/// ```json
+/// {"jsonrpc": "2.0", "id": 1, "method": "state/options", "params": {}}
+/// ```
+///
+/// Or with filtering:
+///
+/// ```json
+/// {"jsonrpc": "2.0", "id": 1, "method": "state/options", "params": {"names": ["number", "relativenumber"]}}
+/// ```
+///
+/// # Response
+///
+/// ```json
+/// {"jsonrpc": "2.0", "id": 1, "result": {"options": {"number": true, "relativenumber": false}}}
+/// ```
+///
+/// # Errors
+///
+/// Returns RPC error -32602 (Invalid params) if `window_id` is specified but not found.
+///
+/// # Panics
+///
+/// Panics if `StateOptionsResult` serialization fails (should not happen).
+#[must_use]
+pub fn state_options(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
+    Box::pin(async move {
+        // Parse params (empty object is valid - returns all options)
+        let params: StateOptionsParams = serde_json::from_value(params).unwrap_or_default();
+
+        // Determine scope for option lookup
+        let scope = params.window_id.map_or(OptionScopeId::Global, |window_id| {
+            OptionScopeId::Window(WindowId::from_raw(window_id))
+        });
+
+        // Query options from session state
+        let result = ctx
+            .session
+            .with_state(|state| {
+                let registry = &state.app.kernel.options;
+                let mut options = HashMap::new();
+
+                // Get option names to query
+                let names: Vec<String> = params
+                    .names
+                    .as_ref()
+                    .map_or_else(|| registry.list_all(), Clone::clone);
+
+                // Query each option
+                for name in names {
+                    if let Some(value) = registry.get(&name, scope) {
+                        // Convert OptionValue to JSON
+                        let json_value = match value {
+                            reovim_kernel::api::v1::OptionValue::Bool(b) => {
+                                serde_json::Value::Bool(b)
+                            }
+                            reovim_kernel::api::v1::OptionValue::Integer(i) => {
+                                serde_json::Value::Number(i.into())
+                            }
+                            reovim_kernel::api::v1::OptionValue::String(s) => {
+                                serde_json::Value::String(s)
+                            }
+                            reovim_kernel::api::v1::OptionValue::Choice { value, .. } => {
+                                serde_json::Value::String(value)
+                            }
+                        };
+                        options.insert(name, json_value);
+                    }
+                    // Note: Unknown option names are silently skipped (not an error)
+                }
+
+                StateOptionsResult { options }
+            })
+            .await;
+
+        Ok(serde_json::to_value(result).expect("StateOptionsResult serialization cannot fail"))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -522,5 +608,64 @@ mod tests {
 
         // Optional fields (may or may not be present)
         // focused_window and active_layer can be null
+    }
+
+    // Options handler tests (#445)
+
+    #[tokio::test]
+    async fn test_state_options_empty_params() {
+        let ctx = test_ctx();
+
+        let result = state_options(ctx, serde_json::json!({})).await;
+
+        assert!(result.is_ok());
+        let value = result.unwrap();
+        assert!(value.get("options").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_state_options_with_names_filter() {
+        let ctx = test_ctx();
+
+        // Request specific options
+        let result =
+            state_options(ctx, serde_json::json!({"names": ["number", "relativenumber"]})).await;
+
+        assert!(result.is_ok());
+        let value = result.unwrap();
+        let options = value.get("options").and_then(|v| v.as_object());
+        assert!(options.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_state_options_returns_registered_options() {
+        use reovim_kernel::api::v1::{OptionScope, OptionSpec, OptionValue};
+
+        let session = test_session();
+        let client_id = ClientId::new(1);
+        let client = test_client(session.id().clone(), client_id);
+
+        // Register a test option
+        session
+            .with_state(|state| {
+                let _ = state.app.kernel.options.register(
+                    OptionSpec::new("test_option", "Test option", OptionValue::bool(true))
+                        .with_scope(OptionScope::Global),
+                );
+            })
+            .await;
+
+        let ctx = RpcContext {
+            session,
+            client_id,
+            client,
+        };
+
+        let result = state_options(ctx, serde_json::json!({"names": ["test_option"]})).await;
+
+        assert!(result.is_ok());
+        let value = result.unwrap();
+        let options = value.get("options").unwrap();
+        assert_eq!(options.get("test_option"), Some(&serde_json::json!(true)));
     }
 }

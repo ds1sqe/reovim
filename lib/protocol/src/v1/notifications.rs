@@ -33,6 +33,11 @@ pub const DETACH: &str = "notification/detach";
 /// Layout changed notification.
 pub const LAYOUT_CHANGED: &str = "notification/layout_changed";
 
+/// Option changed notification.
+///
+/// Sent to clients when an editor option changes.
+pub const OPTION_CHANGED: &str = "notification/option_changed";
+
 /// TUI capture request notification.
 ///
 /// Sent by server to TUI client to request a frame capture.
@@ -278,6 +283,55 @@ impl LayoutChangedPayload {
         super::messages::RpcNotification::new(
             LAYOUT_CHANGED,
             serde_json::to_value(self).expect("LayoutChangedPayload serialization cannot fail"),
+        )
+    }
+}
+
+/// Payload for option changed notification (#445).
+///
+/// Sent to clients when an editor option changes value.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OptionChangedPayload {
+    /// Name of the option that changed.
+    pub name: String,
+    /// New value of the option (bool, int, or string).
+    pub value: serde_json::Value,
+    /// Window ID if this is a window-scoped change, None for global.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub window_id: Option<usize>,
+}
+
+impl OptionChangedPayload {
+    /// Create a new option changed payload for a global option.
+    #[must_use]
+    pub fn global(name: impl Into<String>, value: serde_json::Value) -> Self {
+        Self {
+            name: name.into(),
+            value,
+            window_id: None,
+        }
+    }
+
+    /// Create a new option changed payload for a window-scoped option.
+    #[must_use]
+    pub fn window(name: impl Into<String>, value: serde_json::Value, window_id: usize) -> Self {
+        Self {
+            name: name.into(),
+            value,
+            window_id: Some(window_id),
+        }
+    }
+
+    /// Convert payload to JSON-RPC notification.
+    ///
+    /// # Panics
+    ///
+    /// This function will not panic as `OptionChangedPayload` serialization is infallible.
+    #[must_use]
+    pub fn into_notification(self) -> super::messages::RpcNotification {
+        super::messages::RpcNotification::new(
+            OPTION_CHANGED,
+            serde_json::to_value(self).expect("OptionChangedPayload serialization cannot fail"),
         )
     }
 }
@@ -716,5 +770,71 @@ mod tests {
         let notification = payload.into_notification();
         assert_eq!(notification.jsonrpc, "2.0");
         assert_eq!(notification.method, CAPTURE_RESPONSE);
+    }
+
+    // Option changed notification tests (#445)
+
+    #[test]
+    fn test_option_changed_constant() {
+        assert!(OPTION_CHANGED.starts_with("notification/"));
+        assert_eq!(OPTION_CHANGED, "notification/option_changed");
+    }
+
+    #[test]
+    fn test_option_changed_payload_global() {
+        let payload = OptionChangedPayload::global("number", serde_json::json!(true));
+        assert_eq!(payload.name, "number");
+        assert_eq!(payload.value, serde_json::json!(true));
+        assert!(payload.window_id.is_none());
+    }
+
+    #[test]
+    fn test_option_changed_payload_window() {
+        let payload = OptionChangedPayload::window("relativenumber", serde_json::json!(true), 42);
+        assert_eq!(payload.name, "relativenumber");
+        assert_eq!(payload.value, serde_json::json!(true));
+        assert_eq!(payload.window_id, Some(42));
+    }
+
+    #[test]
+    fn test_option_changed_payload_serialization() {
+        // Global option (no window_id in JSON)
+        let payload = OptionChangedPayload::global("number", serde_json::json!(true));
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains("\"name\":\"number\""));
+        assert!(json.contains("\"value\":true"));
+        assert!(!json.contains("window_id")); // Skipped when None
+
+        // Window-scoped option
+        let payload = OptionChangedPayload::window("tabstop", serde_json::json!(4), 7);
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains("\"name\":\"tabstop\""));
+        assert!(json.contains("\"value\":4"));
+        assert!(json.contains("\"window_id\":7"));
+    }
+
+    #[test]
+    fn test_option_changed_payload_roundtrip() {
+        let payload = OptionChangedPayload::window("shiftwidth", serde_json::json!(2), 3);
+        let json = serde_json::to_string(&payload).unwrap();
+        let decoded: OptionChangedPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.name, "shiftwidth");
+        assert_eq!(decoded.value, serde_json::json!(2));
+        assert_eq!(decoded.window_id, Some(3));
+    }
+
+    #[test]
+    fn test_option_changed_payload_into_notification() {
+        let payload = OptionChangedPayload::global("number", serde_json::json!(false));
+        let notification = payload.into_notification();
+        assert_eq!(notification.jsonrpc, "2.0");
+        assert_eq!(notification.method, OPTION_CHANGED);
+    }
+
+    #[test]
+    fn test_option_changed_payload_string_value() {
+        let payload = OptionChangedPayload::global("colorscheme", serde_json::json!("gruvbox"));
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains("\"value\":\"gruvbox\""));
     }
 }

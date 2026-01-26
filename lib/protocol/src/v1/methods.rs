@@ -68,6 +68,12 @@ pub const STATE_LAYOUT: &str = "state/layout";
 /// compose multi-window displays or update individual windows.
 pub const STATE_WINDOW_CONTENT: &str = "state/window_content";
 
+/// Get editor option values.
+///
+/// Returns option values with optional filtering by window ID and option names.
+/// Options can be bool, int, or string depending on the option type.
+pub const STATE_OPTIONS: &str = "state/options";
+
 // Visual methods (for debugging and AI understanding)
 
 /// Get visual snapshot.

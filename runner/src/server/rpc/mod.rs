@@ -38,7 +38,7 @@ use reovim_protocol::v1::{
     BUFFER_GET_CONTENT, BUFFER_LIST, BUFFER_OPEN_FILE, BUFFER_SET_CONTENT, BUFFER_WRITE_FILE,
     COMMAND_EXECUTE, EDITOR_QUIT, EDITOR_RESIZE, EDITOR_SET_ACTIVE_BUFFER, INPUT_KEYS, MODULE_LIST,
     MODULE_LOAD, MODULE_RELOAD, MODULE_UNLOAD, SERVER_KILL, STATE_ASCII_ART, STATE_CURSOR,
-    STATE_LAYER_INFO, STATE_LAYOUT, STATE_MICROSCOPE, STATE_MODE, STATE_SCREEN,
+    STATE_LAYER_INFO, STATE_LAYOUT, STATE_MICROSCOPE, STATE_MODE, STATE_OPTIONS, STATE_SCREEN,
     STATE_SCREEN_CONTENT, STATE_SELECTION, STATE_TELESCOPE, STATE_VISUAL_SNAPSHOT, STATE_WINDOWS,
     TUI_CAPTURE,
 };
@@ -70,6 +70,7 @@ pub fn create_default_dispatcher() -> RpcDispatcher {
 
     // State methods (implemented)
     dispatcher.register(STATE_LAYOUT, handlers::state_layout);
+    dispatcher.register(STATE_OPTIONS, handlers::state_options);
 
     // State methods (stubs)
     dispatcher.register(STATE_SELECTION, handlers::state_selection);
@@ -155,7 +156,10 @@ mod tests {
         // tui/capture handler added (#447)
         assert!(dispatcher.has_method(TUI_CAPTURE));
 
-        // 17 implemented + 9 stubs + 13 debug (2 info + 4 inspect + 2 metrics + 4 log + 1 snapshot) + 1 TUI = 41 total
-        assert_eq!(dispatcher.method_count(), 41);
+        // state/options handler added (#445)
+        assert!(dispatcher.has_method(STATE_OPTIONS));
+
+        // 18 implemented + 9 stubs + 13 debug (2 info + 4 inspect + 2 metrics + 4 log + 1 snapshot) + 1 TUI = 42 total
+        assert_eq!(dispatcher.method_count(), 42);
     }
 }

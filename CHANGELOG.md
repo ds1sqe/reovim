@@ -6,6 +6,13 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Line number display modes**: Added support for `:set number` and `:set
+  relativenumber` options with absolute, relative, and hybrid display modes.
+  Server-side rendering via `state/screen_content` with reactive notifications
+  via `OPTION_CHANGED`. Ex commands `:set number`, `:set nonumber`, and toggle
+  via `:set number!` are supported. (#445)
+- **Option query RPC**: New `state/options` RPC method queries editor options
+  with optional filtering by name and window scope. (#445)
 - **TUI frame capture via RPC relay**: Added `reovim cli capture` command and
   `tui/capture` RPC method for capturing TUI frames with ANSI colors. Flow:
   CLI → Server → TUI → Server → CLI. Requires a connected TUI client. (#447)

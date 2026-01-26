@@ -37,10 +37,11 @@
 use {
     reovim_driver_display::Rect,
     reovim_driver_session::api::StateChanges,
+    reovim_kernel::api::v1::OptionValue,
     reovim_protocol::v1::{
         BufferId as ProtocolBufferId, BufferModifiedPayload, CursorMovedPayload,
-        LayoutChangedPayload, ModeChangedPayload, ModeInfo, RenderCompletePayload,
-        WireLayoutChangeKind, WireLayoutInfo, WireWindowId,
+        LayoutChangedPayload, ModeChangedPayload, ModeInfo, OptionChangedPayload,
+        RenderCompletePayload, WireLayoutChangeKind, WireLayoutInfo, WireWindowId,
     },
 };
 
@@ -161,6 +162,16 @@ async fn emit_render_complete(
         NotificationBroadcaster::broadcast_to_buffer(session, buffer_id, &json).await;
     } else {
         NotificationBroadcaster::broadcast_to_session(session, &json).await;
+    }
+}
+
+/// Convert `OptionValue` to JSON value for notification payload.
+fn option_value_to_json(value: &OptionValue) -> serde_json::Value {
+    match value {
+        OptionValue::Bool(b) => serde_json::Value::Bool(*b),
+        OptionValue::Integer(i) => serde_json::Value::Number((*i).into()),
+        OptionValue::String(s) => serde_json::Value::String(s.clone()),
+        OptionValue::Choice { value, .. } => serde_json::Value::String(value.clone()),
     }
 }
 
@@ -292,6 +303,10 @@ fn get_layout_info(state: &SessionState, width: u16, height: u16) -> WireLayoutI
     clippy::useless_let_if_seq,
     reason = "any_emitted is set in multiple conditionals, not a single if/else"
 )]
+#[expect(
+    clippy::too_many_lines,
+    reason = "notification emission requires handling each change type separately"
+)]
 pub async fn emit_from_state_changes(session: &Session, changes: &StateChanges) {
     if !changes.has_changes() {
         return;
@@ -381,6 +396,21 @@ pub async fn emit_from_state_changes(session: &Session, changes: &StateChanges) 
 
     // TODO: Handle buffer lifecycle notifications (created, deleted, renamed)
     // These would require new notification types in the protocol
+
+    // Option changed - broadcast to ALL clients (options affect display)
+    if changes.option_changed {
+        for change in &changes.options_changed {
+            let payload = OptionChangedPayload {
+                name: change.name.clone(),
+                value: option_value_to_json(&change.value),
+                window_id: change.window_id.map(|w| w.as_usize()),
+            };
+            let json = serde_json::to_string(&payload.into_notification())
+                .expect("OptionChangedPayload serialization cannot fail");
+            NotificationBroadcaster::broadcast_to_session(session, &json).await;
+            any_emitted = true;
+        }
+    }
 
     // Layout changed - broadcast to ALL clients (layout is session-wide)
     if changes.window_changed || changes.focus_changed {
@@ -763,5 +793,93 @@ mod tests {
 
         let kind = determine_layout_change_kind(&changes);
         assert!(matches!(kind, WireLayoutChangeKind::Equalize));
+    }
+
+    // ==========================================================================
+    // Option notification tests (#445)
+    // ==========================================================================
+
+    #[test]
+    fn test_option_value_to_json_bool() {
+        use {super::option_value_to_json, reovim_kernel::api::v1::OptionValue};
+
+        let value = option_value_to_json(&OptionValue::Bool(true));
+        assert_eq!(value, serde_json::Value::Bool(true));
+
+        let value = option_value_to_json(&OptionValue::Bool(false));
+        assert_eq!(value, serde_json::Value::Bool(false));
+    }
+
+    #[test]
+    fn test_option_value_to_json_integer() {
+        use {super::option_value_to_json, reovim_kernel::api::v1::OptionValue};
+
+        let value = option_value_to_json(&OptionValue::Integer(42));
+        assert_eq!(value, serde_json::Value::Number(42.into()));
+    }
+
+    #[test]
+    fn test_option_value_to_json_string() {
+        use {super::option_value_to_json, reovim_kernel::api::v1::OptionValue};
+
+        let value = option_value_to_json(&OptionValue::String("gruvbox".to_string()));
+        assert_eq!(value, serde_json::Value::String("gruvbox".to_string()));
+    }
+
+    #[test]
+    fn test_option_value_to_json_choice() {
+        use {super::option_value_to_json, reovim_kernel::api::v1::OptionValue};
+
+        let value = option_value_to_json(&OptionValue::Choice {
+            value: "light".to_string(),
+            choices: vec!["light".to_string(), "dark".to_string()],
+        });
+        assert_eq!(value, serde_json::Value::String("light".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_emit_from_changes_option_changed() {
+        use reovim_kernel::api::v1::OptionValue;
+
+        let session = test_session();
+        let mut changes = StateChanges::new();
+        changes.record_global_option_change("number", OptionValue::bool(true));
+
+        // Should not panic with no clients
+        emit_from_state_changes(&session, &changes).await;
+
+        assert!(changes.option_changed);
+        assert_eq!(changes.options_changed.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_emit_from_changes_multiple_option_changes() {
+        use reovim_kernel::api::v1::OptionValue;
+
+        let session = test_session();
+        let mut changes = StateChanges::new();
+        changes.record_global_option_change("number", OptionValue::bool(true));
+        changes.record_global_option_change("relativenumber", OptionValue::bool(true));
+
+        // Should emit both option changes without panicking
+        emit_from_state_changes(&session, &changes).await;
+
+        assert_eq!(changes.options_changed.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_emit_from_changes_window_scoped_option() {
+        use reovim_kernel::api::v1::{OptionValue, WindowId};
+
+        let session = test_session();
+        let window_id = WindowId::new();
+        let mut changes = StateChanges::new();
+        changes.record_window_option_change("number", OptionValue::bool(true), window_id);
+
+        // Should not panic with no clients
+        emit_from_state_changes(&session, &changes).await;
+
+        assert!(changes.option_changed);
+        assert_eq!(changes.options_changed[0].window_id, Some(window_id));
     }
 }

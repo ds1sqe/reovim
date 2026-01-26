@@ -18,8 +18,8 @@ use {
             BUFFER_MODIFIED, BufferModifiedPayload, CAPTURE_REQUEST, CAPTURE_RESPONSE,
             CURSOR_MOVED, CaptureRequestPayload, CaptureResponsePayload, CursorMovedPayload,
             DETACH, DetachPayload, LAYOUT_CHANGED, LOG_ENTRY, LayoutChangedPayload,
-            LogEntryPayload, MODE_CHANGED, ModeChangedPayload, RENDER_COMPLETE,
-            RenderCompletePayload,
+            LogEntryPayload, MODE_CHANGED, ModeChangedPayload, OPTION_CHANGED,
+            OptionChangedPayload, RENDER_COMPLETE, RenderCompletePayload,
         },
     },
     serde_json::json,
@@ -143,6 +143,9 @@ struct TuiState {
     error_timestamp: Option<Instant>,
     /// Current layout state from server (#444).
     layout: Option<WireLayoutInfo>,
+    /// Cached option values from server (#445).
+    /// Used for line number rendering and other client-side display decisions.
+    options: HashMap<String, serde_json::Value>,
 }
 
 /// TUI application.
@@ -262,6 +265,23 @@ impl TuiApp {
             }
         };
 
+        // Get initial options (#445) - for line number display etc.
+        let initial_options = match client.call("state/options", json!({})).await {
+            Ok(result) => result
+                .get("options")
+                .and_then(|v| v.as_object())
+                .map(|obj| {
+                    obj.iter()
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect::<HashMap<String, serde_json::Value>>()
+                })
+                .unwrap_or_default(),
+            Err(e) => {
+                tracing::debug!("Failed to get initial options: {e}");
+                HashMap::new()
+            }
+        };
+
         // Register for buffer notifications by setting the active buffer.
         // This is required to receive buffer-scoped notifications like cursor_moved,
         // buffer_modified, and render_complete which trigger TUI updates.
@@ -341,7 +361,8 @@ impl TuiApp {
                 last_key: None,
                 last_error: None,
                 error_timestamp: None,
-                layout: initial_layout, // Initial layout from server (#444)
+                layout: initial_layout,   // Initial layout from server (#444)
+                options: initial_options, // Initial options from server (#445)
             },
             log_buffer: TuiLogBuffer::new(DEFAULT_TUI_LOG_CAPACITY),
             log_panel: LogPanelState::new(),
@@ -867,6 +888,10 @@ impl TuiApp {
     ///
     /// Handles both state update notifications (mode, cursor, etc.) and
     /// capture requests (#447) for frame capture via RPC relay.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "notification handling requires separate logic for each notification type"
+    )]
     async fn handle_notification(&mut self, notification: RpcNotification) {
         match notification.method.as_str() {
             CAPTURE_REQUEST => self.handle_capture_request(notification.params).await,
@@ -946,6 +971,28 @@ impl TuiApp {
                     self.debug_log(&format!(
                         "Layout changed: {} windows",
                         self.state.layout.as_ref().map_or(0, |l| l.window_count)
+                    ));
+                }
+            }
+            OPTION_CHANGED => {
+                // #445: Update cached options when server notifies of change
+                if let Ok(payload) =
+                    serde_json::from_value::<OptionChangedPayload>(notification.params)
+                {
+                    tracing::debug!(
+                        "Option changed: {} = {:?} (window: {:?})",
+                        payload.name,
+                        payload.value,
+                        payload.window_id
+                    );
+                    // Update the cached option value
+                    self.state
+                        .options
+                        .insert(payload.name.clone(), payload.value.clone());
+                    self.state.needs_redraw = true;
+                    self.debug_log(&format!(
+                        "Option changed: {} = {}",
+                        payload.name, payload.value
                     ));
                 }
             }
@@ -1530,6 +1577,39 @@ mod tests {
         let payload: RenderCompletePayload = serde_json::from_value(params).unwrap();
         // Just verify it parses - payload is currently empty
         let _ = payload;
+    }
+
+    // === Option notification tests (#445) ===
+
+    #[test]
+    fn test_option_changed_payload_parsing_global() {
+        let params = json!({
+            "name": "number",
+            "value": true
+        });
+        let payload: OptionChangedPayload = serde_json::from_value(params).unwrap();
+        assert_eq!(payload.name, "number");
+        assert_eq!(payload.value, json!(true));
+        assert!(payload.window_id.is_none());
+    }
+
+    #[test]
+    fn test_option_changed_payload_parsing_window() {
+        let params = json!({
+            "name": "relativenumber",
+            "value": false,
+            "window_id": 42
+        });
+        let payload: OptionChangedPayload = serde_json::from_value(params).unwrap();
+        assert_eq!(payload.name, "relativenumber");
+        assert_eq!(payload.value, json!(false));
+        assert_eq!(payload.window_id, Some(42));
+    }
+
+    #[test]
+    fn test_tui_state_options_default_empty() {
+        let state = TuiState::default();
+        assert!(state.options.is_empty());
     }
 
     #[test]

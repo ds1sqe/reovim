@@ -22,12 +22,79 @@
 //! buffer (vim-like behavior where splits show the same content initially).
 
 use {
-    reovim_driver_display::Rect,
-    reovim_kernel::api::v1::BufferId,
+    reovim_driver_display::{LineNumberMode, Rect},
+    reovim_kernel::api::v1::{BufferId, OptionRegistry, OptionScopeId, OptionValue},
     reovim_protocol::v1::{RpcError, ScreenContentResult, ScreenFormat, StateScreenContentParams},
 };
 
 use super::super::dispatcher::{HandlerFuture, RpcContext};
+
+/// Determine line number mode from option registry (#445).
+///
+/// - `number` only → Absolute
+/// - `relativenumber` only → Relative
+/// - Both `number` and `relativenumber` → Hybrid
+/// - Neither → None
+fn line_number_mode_from_options(registry: &OptionRegistry) -> LineNumberMode {
+    let number = registry
+        .get("number", OptionScopeId::Global)
+        .is_some_and(|v| matches!(v, OptionValue::Bool(true)));
+    let relativenumber = registry
+        .get("relativenumber", OptionScopeId::Global)
+        .is_some_and(|v| matches!(v, OptionValue::Bool(true)));
+
+    match (number, relativenumber) {
+        (true, true) => LineNumberMode::Hybrid,
+        (true, false) => LineNumberMode::Absolute,
+        (false, true) => LineNumberMode::Relative,
+        (false, false) => LineNumberMode::None,
+    }
+}
+
+/// Calculate gutter width for line numbers.
+fn calculate_gutter_width(mode: LineNumberMode, total_lines: usize) -> usize {
+    if mode == LineNumberMode::None {
+        return 0;
+    }
+    // Digits needed + 1 space padding
+    let digits = if total_lines == 0 {
+        1
+    } else {
+        #[allow(
+            clippy::cast_precision_loss,
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss
+        )]
+        let d = ((total_lines as f64).log10().floor() as usize) + 1;
+        d
+    };
+    digits + 1 // digits + space after
+}
+
+/// Format a line number based on mode.
+fn format_line_number(
+    mode: LineNumberMode,
+    line_idx: usize,
+    cursor_line: usize,
+    width: usize,
+) -> String {
+    match mode {
+        LineNumberMode::None => String::new(),
+        LineNumberMode::Absolute => format!("{:>width$} ", line_idx + 1),
+        LineNumberMode::Relative => {
+            let rel = line_idx.abs_diff(cursor_line);
+            format!("{rel:>width$} ")
+        }
+        LineNumberMode::Hybrid => {
+            if line_idx == cursor_line {
+                format!("{:>width$} ", line_idx + 1)
+            } else {
+                let rel = line_idx.abs_diff(cursor_line);
+                format!("{rel:>width$} ")
+            }
+        }
+    }
+}
 
 /// Handler for `state/screen_content` method.
 ///
@@ -105,24 +172,29 @@ fn render_multi_window(
     placements: &[reovim_driver_display::layout::WindowPlacement],
     focused: Option<reovim_driver_display::WindowId>,
 ) -> ScreenContentResult {
+    // Get line number mode from options (#445)
+    let line_mode = line_number_mode_from_options(&state.app.kernel.options);
+
     // Get the active buffer content (shared by all windows for now)
-    let content = state
+    let (content, cursor_line) = state
         .session_active_buffer()
         .and_then(|id: BufferId| state.app.kernel.buffers.get(id))
         .map(|arc| {
             let buf = arc.read();
-            buf.content()
+            (buf.content(), buf.position().line)
         })
         .unwrap_or_default();
 
     let lines: Vec<&str> = content.lines().collect();
+    let total_lines = lines.len();
+    let gutter_width = calculate_gutter_width(line_mode, total_lines);
 
     // Create a 2D screen buffer
     let mut screen: Vec<Vec<char>> = vec![vec![' '; width as usize]; height as usize];
 
     // Render each window's content within its bounds
     for placement in placements.iter().filter(|p| p.visible) {
-        render_window_content(&mut screen, placement, &lines);
+        render_window_content(&mut screen, placement, &lines, line_mode, cursor_line, gutter_width);
     }
 
     // Draw window separators (borders between windows)
@@ -151,10 +223,15 @@ fn render_multi_window(
 }
 
 /// Render a single window's content within its bounds on the screen buffer.
+///
+/// Includes line numbers when `line_mode` is not `None` (#445).
 fn render_window_content(
     screen: &mut [Vec<char>],
     placement: &reovim_driver_display::layout::WindowPlacement,
     lines: &[&str],
+    line_mode: LineNumberMode,
+    cursor_line: usize,
+    gutter_width: usize,
 ) {
     let bounds = &placement.bounds;
 
@@ -165,9 +242,24 @@ fn render_window_content(
             break;
         }
 
+        // Render line number first (#445)
+        let line_num_str =
+            format_line_number(line_mode, line_idx, cursor_line, gutter_width.saturating_sub(1));
+        for (col, ch) in line_num_str.chars().enumerate() {
+            let screen_x = bounds.x as usize + col;
+            #[allow(clippy::cast_possible_truncation)]
+            let col_u16 = col as u16;
+            if screen_x < screen[screen_y].len() && col_u16 < bounds.width {
+                screen[screen_y][screen_x] = ch;
+            }
+        }
+
+        // Render content after line number
         let line = lines.get(line_idx).copied().unwrap_or("");
-        for (win_col, ch) in line.chars().take(bounds.width as usize).enumerate() {
-            let screen_x = bounds.x as usize + win_col;
+        let content_start = bounds.x as usize + gutter_width;
+        let content_width = (bounds.width as usize).saturating_sub(gutter_width);
+        for (col, ch) in line.chars().take(content_width).enumerate() {
+            let screen_x = content_start + col;
             if screen_x < screen[screen_y].len() {
                 screen[screen_y][screen_x] = ch;
             }
@@ -233,29 +325,47 @@ fn render_single_window(
     _width: u16,
     _height: u16,
 ) -> ScreenContentResult {
+    // Get line number mode from options (#445)
+    let line_mode = line_number_mode_from_options(&state.app.kernel.options);
+
     // Use driver_session SSOT for active_buffer
-    let content = state
+    let (content, cursor_line) = state
         .session_active_buffer()
         .and_then(|id: BufferId| state.app.kernel.buffers.get(id))
         .map(|arc| {
             let buf = arc.read();
-            buf.content()
+            (buf.content(), buf.position().line)
         })
         .unwrap_or_default();
 
-    // Calculate dimensions from content (backward compatible behavior)
+    // Calculate dimensions from content
     let lines: Vec<&str> = content.lines().collect();
+    let total_lines = lines.len();
+    let gutter_width = calculate_gutter_width(line_mode, total_lines);
+
+    // Build content with line numbers (#445)
+    let rendered_content: String = if line_mode == LineNumberMode::None {
+        content.clone()
+    } else {
+        lines
+            .iter()
+            .enumerate()
+            .map(|(idx, line)| {
+                let num =
+                    format_line_number(line_mode, idx, cursor_line, gutter_width.saturating_sub(1));
+                format!("{num}{line}")
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+
     #[allow(clippy::cast_possible_truncation)]
-    let content_height = lines.len().min(usize::from(u16::MAX)) as u16;
+    let content_height = total_lines.min(usize::from(u16::MAX)) as u16;
     #[allow(clippy::cast_possible_truncation)]
-    let content_width = lines
-        .iter()
-        .map(|l| l.len())
-        .max()
-        .unwrap_or(80)
+    let content_width = (lines.iter().map(|l| l.len()).max().unwrap_or(80) + gutter_width)
         .min(usize::from(u16::MAX)) as u16;
 
-    format_content(&content, format, content_width.max(1), content_height.max(1))
+    format_content(&rendered_content, format, content_width.max(1), content_height.max(1))
 }
 
 // Multi-window rendering will be implemented in Phase 2 using Session.compositor.
@@ -633,5 +743,120 @@ mod tests {
         assert_eq!(cells[0].len(), 2);
         assert_eq!(cells[0][0].get("char").unwrap().as_str().unwrap(), "A");
         assert_eq!(cells[0][1].get("char").unwrap().as_str().unwrap(), "B");
+    }
+
+    // === Line number rendering tests (#445) ===
+
+    #[test]
+    fn test_line_number_mode_from_options_none() {
+        use reovim_kernel::api::v1::OptionRegistry;
+        let registry = OptionRegistry::new();
+        let mode = super::line_number_mode_from_options(&registry);
+        assert_eq!(mode, LineNumberMode::None);
+    }
+
+    #[test]
+    fn test_line_number_mode_from_options_absolute() {
+        use reovim_kernel::api::v1::{OptionRegistry, OptionScope, OptionSpec, OptionValue};
+        let registry = OptionRegistry::new();
+        registry
+            .register(
+                OptionSpec::new("number", "Line numbers", OptionValue::bool(true))
+                    .with_scope(OptionScope::Window),
+            )
+            .unwrap();
+        let mode = super::line_number_mode_from_options(&registry);
+        assert_eq!(mode, LineNumberMode::Absolute);
+    }
+
+    #[test]
+    fn test_line_number_mode_from_options_relative() {
+        use reovim_kernel::api::v1::{OptionRegistry, OptionScope, OptionSpec, OptionValue};
+        let registry = OptionRegistry::new();
+        registry
+            .register(
+                OptionSpec::new("relativenumber", "Relative numbers", OptionValue::bool(true))
+                    .with_scope(OptionScope::Window),
+            )
+            .unwrap();
+        let mode = super::line_number_mode_from_options(&registry);
+        assert_eq!(mode, LineNumberMode::Relative);
+    }
+
+    #[test]
+    fn test_line_number_mode_from_options_hybrid() {
+        use reovim_kernel::api::v1::{OptionRegistry, OptionScope, OptionSpec, OptionValue};
+        let registry = OptionRegistry::new();
+        registry
+            .register(
+                OptionSpec::new("number", "Line numbers", OptionValue::bool(true))
+                    .with_scope(OptionScope::Window),
+            )
+            .unwrap();
+        registry
+            .register(
+                OptionSpec::new("relativenumber", "Relative numbers", OptionValue::bool(true))
+                    .with_scope(OptionScope::Window),
+            )
+            .unwrap();
+        let mode = super::line_number_mode_from_options(&registry);
+        assert_eq!(mode, LineNumberMode::Hybrid);
+    }
+
+    #[test]
+    fn test_calculate_gutter_width_none_mode() {
+        assert_eq!(super::calculate_gutter_width(LineNumberMode::None, 100), 0);
+    }
+
+    #[test]
+    fn test_calculate_gutter_width_small_file() {
+        // 9 lines = 1 digit + 1 space = 2
+        assert_eq!(super::calculate_gutter_width(LineNumberMode::Absolute, 9), 2);
+    }
+
+    #[test]
+    fn test_calculate_gutter_width_medium_file() {
+        // 99 lines = 2 digits + 1 space = 3
+        assert_eq!(super::calculate_gutter_width(LineNumberMode::Absolute, 99), 3);
+    }
+
+    #[test]
+    fn test_calculate_gutter_width_large_file() {
+        // 999 lines = 3 digits + 1 space = 4
+        assert_eq!(super::calculate_gutter_width(LineNumberMode::Absolute, 999), 4);
+    }
+
+    #[test]
+    fn test_format_line_number_absolute() {
+        let s = super::format_line_number(LineNumberMode::Absolute, 0, 0, 2);
+        assert_eq!(s, " 1 ");
+        let s = super::format_line_number(LineNumberMode::Absolute, 9, 0, 2);
+        assert_eq!(s, "10 ");
+    }
+
+    #[test]
+    fn test_format_line_number_relative() {
+        // Cursor on line 5, checking line 3 (distance = 2)
+        let s = super::format_line_number(LineNumberMode::Relative, 3, 5, 2);
+        assert_eq!(s, " 2 ");
+        // Cursor line shows 0
+        let s = super::format_line_number(LineNumberMode::Relative, 5, 5, 2);
+        assert_eq!(s, " 0 ");
+    }
+
+    #[test]
+    fn test_format_line_number_hybrid() {
+        // Cursor line shows absolute number
+        let s = super::format_line_number(LineNumberMode::Hybrid, 5, 5, 2);
+        assert_eq!(s, " 6 ");
+        // Non-cursor lines show relative
+        let s = super::format_line_number(LineNumberMode::Hybrid, 3, 5, 2);
+        assert_eq!(s, " 2 ");
+    }
+
+    #[test]
+    fn test_format_line_number_none() {
+        let s = super::format_line_number(LineNumberMode::None, 0, 0, 2);
+        assert!(s.is_empty());
     }
 }

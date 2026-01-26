@@ -123,6 +123,19 @@ pub struct StateWindowContentParams {
     pub format: ScreenFormat,
 }
 
+/// Parameters for `state/options` method (#445).
+///
+/// Queries editor option values with optional filtering.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct StateOptionsParams {
+    /// Window ID for window-scoped options. If None, uses focused window.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub window_id: Option<usize>,
+    /// Filter by option names. If None, returns all registered options.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub names: Option<Vec<String>>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -215,5 +228,36 @@ mod tests {
         let params: StateLayoutParams = serde_json::from_str("{}").unwrap();
         // Should deserialize without error
         let _ = params;
+    }
+
+    #[test]
+    fn test_state_options_params_default() {
+        let params = StateOptionsParams::default();
+        let json = serde_json::to_string(&params).unwrap();
+        // Empty struct serializes as empty object
+        assert_eq!(json, "{}");
+    }
+
+    #[test]
+    fn test_state_options_params_with_window_id() {
+        let params = StateOptionsParams {
+            window_id: Some(42),
+            names: None,
+        };
+        let json = serde_json::to_string(&params).unwrap();
+        assert!(json.contains("\"window_id\":42"));
+        assert!(!json.contains("\"names\""));
+    }
+
+    #[test]
+    fn test_state_options_params_with_names() {
+        let params = StateOptionsParams {
+            window_id: None,
+            names: Some(vec!["number".to_string(), "relativenumber".to_string()]),
+        };
+        let json = serde_json::to_string(&params).unwrap();
+        assert!(json.contains("\"names\""));
+        assert!(json.contains("\"number\""));
+        assert!(!json.contains("\"window_id\""));
     }
 }

@@ -108,7 +108,10 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
 
                             // Per #435: Execute cmdline action if cmdline was deactivated
                             // (e.g., Enter in search mode executes the search)
-                            ctx.session.execute_cmdline_and_deactivate().await;
+                            // Per #445: Merge option changes from :set commands
+                            let cmdline_changes =
+                                ctx.session.execute_cmdline_and_deactivate().await;
+                            accumulated_changes.merge(cmdline_changes);
                         }
 
                         any_handled = true;

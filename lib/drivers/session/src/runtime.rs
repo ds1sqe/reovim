@@ -46,7 +46,7 @@ use {
     },
     reovim_driver_undo::{UndoKey, UndoProviderRegistry},
     reovim_kernel::api::v1::{
-        BufferId, CommandId, Edit, KernelContext, ModeId, Position,
+        BufferId, CommandId, Edit, KernelContext, ModeId, OptionValue, Position,
         SelectionMode as KernelSelectionMode, UndoResult, WindowId,
         events::kernel::{LayoutChangeKind, LayoutChanged, SplitDirection as KernelSplitDirection},
     },
@@ -163,6 +163,30 @@ impl<'a> SessionRuntime<'a> {
         let buf_arc = self.kernel.buffers.get(buffer)?;
         let buf = buf_arc.read();
         Some(f(&buf))
+    }
+
+    // === Option Change Tracking (#445) ===
+
+    /// Record a global option change for notification emission.
+    ///
+    /// Call this after setting a global option via `kernel.options.set()`.
+    /// The change will be emitted as an `OPTION_CHANGED` notification.
+    pub fn record_global_option_change(&mut self, name: impl Into<String>, value: OptionValue) {
+        self.changes.record_global_option_change(name, value);
+    }
+
+    /// Record a window-scoped option change for notification emission.
+    ///
+    /// Call this after setting a window option via `kernel.options.set()`.
+    /// The change will be emitted as an `OPTION_CHANGED` notification.
+    pub fn record_window_option_change(
+        &mut self,
+        name: impl Into<String>,
+        value: OptionValue,
+        window_id: WindowId,
+    ) {
+        self.changes
+            .record_window_option_change(name, value, window_id);
     }
 }
 

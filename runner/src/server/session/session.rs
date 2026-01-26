@@ -282,18 +282,25 @@ impl Session {
     /// Execute the cmdline action and deactivate cmdline.
     ///
     /// Called when a command deactivates cmdline (e.g., Enter in search mode).
-    /// This executes the search if the prompt was `/` or `?`.
+    /// This executes the search if the prompt was `/` or `?`, or executes Ex commands
+    /// like `:set number`.
+    ///
+    /// Returns `StateChanges` that should be merged into the accumulated changes
+    /// for notification emission. This is necessary because Ex commands like `:set`
+    /// need to emit `OPTION_CHANGED` notifications.
     ///
     /// Acquires a write lock on the session state.
     #[allow(clippy::too_many_lines)]
-    pub async fn execute_cmdline_and_deactivate(&self) {
+    pub async fn execute_cmdline_and_deactivate(&self) -> reovim_driver_session::api::StateChanges {
         use {
             crate::server::PromptType,
             reovim_driver_search::{Direction, SearchKey, SearchProviderRegistry},
-            reovim_driver_session::api::{CmdlinePrompt, CmdlineState, SearchState},
+            reovim_driver_session::api::{CmdlinePrompt, CmdlineState, SearchState, StateChanges},
         };
 
         self.with_state_mut(|state| {
+            let mut changes = StateChanges::new();
+
             // First sync cmdline if needed (in case chars were inserted)
             let ext_active = state
                 .driver_session
@@ -409,7 +416,8 @@ impl Session {
                             }
                         }
                         PromptType::Command => {
-                            // Ex command execution - not implemented yet
+                            // Execute Ex command (#445)
+                            Self::execute_ex_command(&input, state, &mut changes);
                         }
                     }
                 }
@@ -417,8 +425,184 @@ impl Session {
                 // Deactivate cmdline
                 state.app.cmdline.cancel();
             }
+
+            changes
         })
-        .await;
+        .await
+    }
+
+    /// Execute an Ex command and record any state changes.
+    ///
+    /// Currently supports:
+    /// - `:set <option>` - enable a boolean option (e.g., `:set number`)
+    /// - `:set no<option>` - disable a boolean option (e.g., `:set nonumber`)
+    /// - `:set <option>!` - toggle a boolean option
+    /// - `:set <option>=<value>` - set option to value (integer/string)
+    fn execute_ex_command(
+        input: &str,
+        state: &SessionState,
+        changes: &mut reovim_driver_session::api::StateChanges,
+    ) {
+        let input = input.trim();
+
+        // Parse :set command
+        if let Some(args) = input
+            .strip_prefix("set ")
+            .or_else(|| input.strip_prefix("se "))
+        {
+            Self::execute_set_command(args.trim(), state, changes);
+        } else if input == "set" || input == "se" {
+            // :set without arguments - show all options (not implemented)
+            tracing::debug!("Ex command ':set' without arguments (show all) not implemented");
+        } else {
+            tracing::debug!(?input, "Unknown Ex command");
+        }
+    }
+
+    /// Execute a :set command with the given arguments.
+    ///
+    /// Syntax:
+    /// - `set option` - enable boolean option
+    /// - `set nooption` - disable boolean option
+    /// - `set option!` - toggle boolean option
+    /// - `set option=value` - set option value
+    fn execute_set_command(
+        args: &str,
+        state: &SessionState,
+        changes: &mut reovim_driver_session::api::StateChanges,
+    ) {
+        use reovim_kernel::api::v1::{OptionScopeId, OptionValue};
+
+        // Handle multiple space-separated options
+        for arg in args.split_whitespace() {
+            // Parse the option syntax
+            if let Some(name) = arg.strip_prefix("no") {
+                // :set nooption - disable boolean
+                if state
+                    .app
+                    .kernel
+                    .options
+                    .get(name, OptionScopeId::Global)
+                    .is_some()
+                {
+                    let value = OptionValue::Bool(false);
+                    if state
+                        .app
+                        .kernel
+                        .options
+                        .set(name, value.clone(), OptionScopeId::Global)
+                        .is_ok()
+                    {
+                        changes.record_global_option_change(name, value);
+                        tracing::debug!(?name, "Disabled option");
+                    }
+                } else {
+                    tracing::debug!(?name, "Unknown option in :set no<option>");
+                }
+            } else if let Some(name) = arg.strip_suffix('!') {
+                // :set option! - toggle boolean
+                if let Some(current) = state.app.kernel.options.get(name, OptionScopeId::Global) {
+                    if let OptionValue::Bool(b) = current {
+                        let value = OptionValue::Bool(!b);
+                        if state
+                            .app
+                            .kernel
+                            .options
+                            .set(name, value.clone(), OptionScopeId::Global)
+                            .is_ok()
+                        {
+                            changes.record_global_option_change(name, value);
+                            tracing::debug!(?name, toggled_to = !b, "Toggled option");
+                        }
+                    } else {
+                        tracing::debug!(?name, "Cannot toggle non-boolean option");
+                    }
+                } else {
+                    tracing::debug!(?name, "Unknown option in :set <option>!");
+                }
+            } else if let Some((name, value_str)) = arg.split_once('=') {
+                // :set option=value
+                Self::set_option_value(name, value_str, state, changes);
+            } else {
+                // :set option - enable boolean (or query, not implemented)
+                let name = arg;
+                if state
+                    .app
+                    .kernel
+                    .options
+                    .get(name, OptionScopeId::Global)
+                    .is_some()
+                {
+                    let value = OptionValue::Bool(true);
+                    if state
+                        .app
+                        .kernel
+                        .options
+                        .set(name, value.clone(), OptionScopeId::Global)
+                        .is_ok()
+                    {
+                        changes.record_global_option_change(name, value);
+                        tracing::debug!(?name, "Enabled option");
+                    }
+                } else {
+                    tracing::debug!(?name, "Unknown option in :set <option>");
+                }
+            }
+        }
+    }
+
+    /// Set an option to a specific value (for :set option=value syntax).
+    fn set_option_value(
+        name: &str,
+        value_str: &str,
+        state: &SessionState,
+        changes: &mut reovim_driver_session::api::StateChanges,
+    ) {
+        use reovim_kernel::api::v1::{OptionScopeId, OptionValue};
+
+        // Try to infer the type from current option value
+        if let Some(current) = state.app.kernel.options.get(name, OptionScopeId::Global) {
+            let new_value = match current {
+                OptionValue::Bool(_) => {
+                    // Parse boolean: true/false, yes/no, 1/0
+                    match value_str.to_lowercase().as_str() {
+                        "true" | "yes" | "1" => Some(OptionValue::Bool(true)),
+                        "false" | "no" | "0" => Some(OptionValue::Bool(false)),
+                        _ => None,
+                    }
+                }
+                OptionValue::Integer(_) => value_str.parse::<i64>().ok().map(OptionValue::Integer),
+                OptionValue::String(_) => Some(OptionValue::String(value_str.to_string())),
+                OptionValue::Choice { choices, .. } => {
+                    if choices.contains(&value_str.to_string()) {
+                        Some(OptionValue::Choice {
+                            value: value_str.to_string(),
+                            choices,
+                        })
+                    } else {
+                        tracing::debug!(?name, ?value_str, ?choices, "Invalid choice for option");
+                        None
+                    }
+                }
+            };
+
+            if let Some(value) = new_value {
+                if state
+                    .app
+                    .kernel
+                    .options
+                    .set(name, value.clone(), OptionScopeId::Global)
+                    .is_ok()
+                {
+                    changes.record_global_option_change(name, value);
+                    tracing::debug!(?name, ?value_str, "Set option value");
+                }
+            } else {
+                tracing::debug!(?name, ?value_str, "Invalid value for option type");
+            }
+        } else {
+            tracing::debug!(?name, "Unknown option in :set <option>=<value>");
+        }
     }
 
     /// Insert a character at the cursor position in the active buffer.
