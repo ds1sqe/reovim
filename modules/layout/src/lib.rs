@@ -26,6 +26,7 @@
 
 pub mod commands;
 mod compositor;
+mod floatzone;
 mod focus;
 pub mod ids;
 mod layer;
@@ -35,6 +36,7 @@ mod tiling;
 pub use {
     commands::all_commands,
     compositor::HybridCompositor,
+    floatzone::FloatZone,
     focus::VimFocusPolicy,
     layer::DefaultLayer,
     split::{SplitNode, SplitTree},

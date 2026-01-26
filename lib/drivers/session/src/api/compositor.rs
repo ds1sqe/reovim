@@ -199,6 +199,41 @@ pub trait CompositorApi {
 
     /// Update screen size (on terminal resize).
     fn set_screen(&mut self, screen: Rect);
+
+    // =========================================================================
+    // Float Zone Operations (#398)
+    // =========================================================================
+
+    /// Toggle the current window between tiled and float zones.
+    ///
+    /// If the window is tiled, it becomes a floating window (80% centered).
+    /// If the window is floating, it returns to the tiled zone.
+    ///
+    /// # Errors
+    ///
+    /// - `NoActiveLayer` - No layer is active
+    /// - `NoFocusedWindow` - No window is focused
+    fn toggle_float(&mut self) -> Result<(), CompositorError>;
+
+    /// Raise the current float window to the front.
+    ///
+    /// No-op if the current window is not a float.
+    ///
+    /// # Errors
+    ///
+    /// - `NoActiveLayer` - No layer is active
+    /// - `NoFocusedWindow` - No window is focused
+    fn raise_float(&mut self) -> Result<(), CompositorError>;
+
+    /// Lower the current float window to the back.
+    ///
+    /// No-op if the current window is not a float.
+    ///
+    /// # Errors
+    ///
+    /// - `NoActiveLayer` - No layer is active
+    /// - `NoFocusedWindow` - No window is focused
+    fn lower_float(&mut self) -> Result<(), CompositorError>;
 }
 
 #[cfg(test)]

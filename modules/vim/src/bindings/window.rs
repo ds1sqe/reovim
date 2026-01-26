@@ -33,6 +33,12 @@
 //! - `>` - Increase window width
 //! - `<` - Decrease window width
 //! - `=` - Equalize all window sizes
+//!
+//! # Float Zone (f/]/[)
+//!
+//! - `f` - Toggle between tiled and floating
+//! - `]` - Raise float to front
+//! - `[` - Lower float to back
 
 use {reovim_kernel::api::v1::KeybindingRegistration, reovim_module_layout::ids as layout};
 
@@ -149,6 +155,21 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&["vim:window"])
             .with_category("window")
             .with_description("Equalize all window sizes"),
+        // ====================================================================
+        // Float Zone (#398)
+        // ====================================================================
+        KeybindingRegistration::new("f", layout::TOGGLE_FLOAT)
+            .with_modes(&["vim:window"])
+            .with_category("window")
+            .with_description("Toggle between tiled and floating"),
+        KeybindingRegistration::new("]", layout::RAISE_FLOAT)
+            .with_modes(&["vim:window"])
+            .with_category("window")
+            .with_description("Raise float to front"),
+        KeybindingRegistration::new("[", layout::LOWER_FLOAT)
+            .with_modes(&["vim:window"])
+            .with_category("window")
+            .with_description("Lower float to back"),
         // ====================================================================
         // Escape back to normal mode
         // ====================================================================

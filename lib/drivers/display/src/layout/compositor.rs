@@ -264,6 +264,9 @@ pub trait WindowLayerCompositor: Send + Sync {
     /// Bring to front within float zone.
     fn raise_float(&mut self, window: WindowId);
 
+    /// Send to back within float zone.
+    fn lower_float(&mut self, window: WindowId);
+
     /// Close floating window.
     fn close_float(&mut self, window: WindowId);
 

@@ -1128,6 +1128,77 @@ impl CompositorApi for SessionRuntime<'_> {
             compositor.set_screen(screen);
         }
     }
+
+    // =========================================================================
+    // Float Zone Operations (#398)
+    // =========================================================================
+
+    fn toggle_float(&mut self) -> Result<(), CompositorError> {
+        let compositor = self
+            .session
+            .compositor
+            .as_mut()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        let active = compositor
+            .active_layer()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        let layer = compositor
+            .layer_compositor_mut(active)
+            .ok_or(CompositorError::LayerNotFound(active))?;
+
+        let current = layer.focused().ok_or(CompositorError::NoFocusedWindow)?;
+
+        layer.toggle_float(current);
+        self.changes.window_changed = true;
+
+        Ok(())
+    }
+
+    fn raise_float(&mut self) -> Result<(), CompositorError> {
+        let compositor = self
+            .session
+            .compositor
+            .as_mut()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        let active = compositor
+            .active_layer()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        let layer = compositor
+            .layer_compositor_mut(active)
+            .ok_or(CompositorError::LayerNotFound(active))?;
+
+        let current = layer.focused().ok_or(CompositorError::NoFocusedWindow)?;
+
+        layer.raise_float(current);
+
+        Ok(())
+    }
+
+    fn lower_float(&mut self) -> Result<(), CompositorError> {
+        let compositor = self
+            .session
+            .compositor
+            .as_mut()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        let active = compositor
+            .active_layer()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        let layer = compositor
+            .layer_compositor_mut(active)
+            .ok_or(CompositorError::LayerNotFound(active))?;
+
+        let current = layer.focused().ok_or(CompositorError::NoFocusedWindow)?;
+
+        layer.lower_float(current);
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]

@@ -428,6 +428,79 @@ impl CommandHandler for ResizeEqualCmd {
 }
 
 // =============================================================================
+// Float Zone Commands (#398)
+// =============================================================================
+
+/// Toggle window between tiled and floating zones.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ToggleFloatCmd;
+
+impl Command for ToggleFloatCmd {
+    fn id(&self) -> CommandId {
+        ids::TOGGLE_FLOAT
+    }
+
+    fn description(&self) -> &'static str {
+        "Toggle window between tiled and floating"
+    }
+}
+
+impl CommandHandler for ToggleFloatCmd {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        match runtime.toggle_float() {
+            Ok(()) => CommandResult::Success,
+            Err(e) => CommandResult::Error(e.to_string()),
+        }
+    }
+}
+
+/// Raise floating window to front of float zone.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RaiseFloatCmd;
+
+impl Command for RaiseFloatCmd {
+    fn id(&self) -> CommandId {
+        ids::RAISE_FLOAT
+    }
+
+    fn description(&self) -> &'static str {
+        "Raise floating window to front"
+    }
+}
+
+impl CommandHandler for RaiseFloatCmd {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        match runtime.raise_float() {
+            Ok(()) => CommandResult::Success,
+            Err(e) => CommandResult::Error(e.to_string()),
+        }
+    }
+}
+
+/// Lower floating window to back of float zone.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct LowerFloatCmd;
+
+impl Command for LowerFloatCmd {
+    fn id(&self) -> CommandId {
+        ids::LOWER_FLOAT
+    }
+
+    fn description(&self) -> &'static str {
+        "Lower floating window to back"
+    }
+}
+
+impl CommandHandler for LowerFloatCmd {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        match runtime.lower_float() {
+            Ok(()) => CommandResult::Success,
+            Err(e) => CommandResult::Error(e.to_string()),
+        }
+    }
+}
+
+// =============================================================================
 // Command Collection
 // =============================================================================
 
@@ -458,6 +531,10 @@ pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
         Box::new(ResizeWidthIncreaseCmd),
         Box::new(ResizeWidthDecreaseCmd),
         Box::new(ResizeEqualCmd),
+        // Float zone (#398)
+        Box::new(ToggleFloatCmd),
+        Box::new(RaiseFloatCmd),
+        Box::new(LowerFloatCmd),
     ]
 }
 
@@ -469,7 +546,7 @@ mod tests {
     fn test_all_commands_not_empty() {
         let commands = all_commands();
         assert!(!commands.is_empty());
-        assert_eq!(commands.len(), 15); // 2 split + 2 close + 4 focus + 2 cycle + 5 resize
+        assert_eq!(commands.len(), 18); // 2 split + 2 close + 4 focus + 2 cycle + 5 resize + 3 float
     }
 
     #[test]

@@ -26,6 +26,11 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **Compositor infrastructure**: Layout module now self-registers 15 window
   commands via `CommandHandlerStore`. Runner no longer imports from policy
   modules, fixing architecture violation. (#438)
+- **Floating window layer**: Implemented float zone within the nested compositor
+  architecture. Windows can toggle between tiled and floating with `<C-w>f`.
+  Float windows are rendered above tiled windows and can be reordered with
+  `<C-w>]` (raise) and `<C-w>[` (lower). Navigation (h/j/k/l) and cycling (w/W)
+  work seamlessly between tiled and float windows using spatial proximity. (#398)
 
 ### Changed
 
