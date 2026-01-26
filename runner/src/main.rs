@@ -15,7 +15,7 @@ use {
         client::{
             cli::{self, CliAction, CliArgs, OutputFormat},
             common::{ConnectionConfig, rpc::ServerMessage},
-            tui::{TuiApp, TuiArgs},
+            tui::{HeadlessClient, TuiApp, TuiArgs},
         },
         manager::{ManagerClient, ManagerDaemon, is_manager_alive},
         server::SrvArgs,
@@ -113,9 +113,14 @@ fn main() {
         }
 
         Some(Command::Tui(tui_args) | Command::Attach(tui_args)) => {
+            let headless = tui_args.headless;
             let debug_config = tui_args.into_debug_config();
             let config = tui_args.into_config();
-            run_tui(&config, debug_config);
+            if headless {
+                run_headless(&config);
+            } else {
+                run_tui(&config, debug_config);
+            }
         }
 
         Some(Command::Cli(cli_args)) => {
@@ -404,6 +409,28 @@ fn run_tui(config: &ConnectionConfig, debug_config: Option<runner::client::tui::
     });
 }
 
+fn run_headless(config: &ConnectionConfig) {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to create runtime");
+
+    rt.block_on(async {
+        match HeadlessClient::connect(config).await {
+            Ok(mut client) => {
+                if let Err(e) = client.run().await {
+                    eprintln!("Headless client error: {e}");
+                    process::exit(1);
+                }
+            }
+            Err(e) => {
+                eprintln!("Connection failed: {e}");
+                process::exit(1);
+            }
+        }
+    });
+}
+
 fn run_repl(config: &ConnectionConfig) {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -504,6 +531,8 @@ fn run_cli(config: &ConnectionConfig, action: &CliAction, format: &str) {
                 cmd::cmd_screen_content(&mut client, format.as_deref().unwrap_or("plain_text"))
                     .await
             }
+            CliAction::Capture { format } => cmd::cmd_capture(&mut client, format).await,
+            CliAction::Layout => cmd::cmd_layout(&mut client).await,
             CliAction::Buffers => cmd::cmd_buffer_list(&mut client).await,
             CliAction::Buffer { id } => cmd::cmd_buffer_content(&mut client, *id).await,
             CliAction::Open { path } => cmd::cmd_buffer_open(&mut client, path).await,
@@ -576,6 +605,7 @@ fn run_cli(config: &ConnectionConfig, action: &CliAction, format: &str) {
                     CliAction::Cursor => "cursor",
                     CliAction::Screen => "screen",
                     CliAction::Content { .. } => "content",
+                    CliAction::Capture { .. } => "capture",
                     CliAction::Buffers => "buffers",
                     CliAction::LogTail { .. } => "log-tail",
                     _ => "",

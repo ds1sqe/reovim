@@ -1,12 +1,16 @@
 //! State-related RPC handlers.
 //!
-//! Handlers for `state/mode`, `state/cursor`, and related methods.
+//! Handlers for `state/mode`, `state/cursor`, `state/options`, and related methods.
+
+use std::collections::HashMap;
 
 use {
-    reovim_kernel::api::v1::BufferId as KernelBufferId,
+    reovim_driver_display::Rect,
+    reovim_kernel::api::v1::{BufferId as KernelBufferId, OptionScopeId, WindowId},
     reovim_protocol::v1::{
         BufferId as ProtocolBufferId, CursorInfo, ModeInfo, Position, ScreenInfo, SelectionInfo,
-        SelectionMode,
+        SelectionMode, StateOptionsParams, StateOptionsResult, WireLayerId, WireLayoutInfo,
+        WireRect, WireWindowId, WireWindowPlacement, WireZone,
     },
 };
 
@@ -227,9 +231,209 @@ pub fn state_selection(ctx: RpcContext, _params: serde_json::Value) -> HandlerFu
     })
 }
 
+/// Handler for `state/layout` method.
+///
+/// Returns the current window layout state from the compositor.
+///
+/// If no compositor is attached, returns a single-window layout covering
+/// the full screen (backwards compatible with single-window mode).
+///
+/// # Request
+///
+/// ```json
+/// {"jsonrpc": "2.0", "id": 1, "method": "state/layout", "params": {}}
+/// ```
+///
+/// # Response
+///
+/// ```json
+/// {
+///   "screen": {"x": 0, "y": 0, "width": 80, "height": 24},
+///   "windows": [...],
+///   "focused_window": 0,
+///   "active_layer": 0,
+///   "window_count": 1
+/// }
+/// ```
+///
+/// # Panics
+///
+/// This function will not panic as `WireLayoutInfo` serialization is infallible.
+#[must_use]
+#[allow(clippy::option_if_let_else)] // if/else is clearer than map_or_else here
+pub fn state_layout(ctx: RpcContext, _params: serde_json::Value) -> HandlerFuture {
+    Box::pin(async move {
+        // Read client's viewport dimensions (Level 2 lock)
+        let (width, height) = {
+            let viewport = ctx.client.viewport().read().await;
+            (viewport.terminal_width, viewport.terminal_height)
+        }; // Lock dropped before session lock
+
+        let screen = Rect::new(0, 0, width, height);
+
+        // Query layout from session state
+        let layout_info = ctx
+            .session
+            .with_state(|state| {
+                // Get compositor from driver_session
+                if let Some(compositor) = state.driver_session.compositor() {
+                    // Get composite result with all window placements
+                    let result = compositor.composite(screen);
+
+                    // Convert to wire format
+                    convert_composite_to_wire(&result)
+                } else {
+                    // No compositor - single window fallback
+                    single_window_layout(width, height, state.session_active_buffer())
+                }
+            })
+            .await;
+
+        Ok(serde_json::to_value(layout_info).expect("WireLayoutInfo serialization cannot fail"))
+    })
+}
+
+/// Convert compositor result to wire format.
+fn convert_composite_to_wire(
+    result: &reovim_driver_display::layout::CompositeResult,
+) -> WireLayoutInfo {
+    use reovim_driver_display::layout::Zone;
+
+    let windows: Vec<WireWindowPlacement> = result
+        .placements
+        .iter()
+        .map(|p| WireWindowPlacement {
+            window_id: WireWindowId::from(p.window_id.as_usize()),
+            layer_id: WireLayerId::from(p.layer_id.as_u16() as usize),
+            zone: match p.zone {
+                Zone::Tiled => WireZone::Tiled,
+                Zone::Float => WireZone::Float,
+                Zone::Overlay => WireZone::Overlay,
+            },
+            bounds: WireRect::new(p.bounds.x, p.bounds.y, p.bounds.width, p.bounds.height),
+            z_order: p.z_order.as_u16(),
+            visible: p.visible,
+            focusable: p.focusable,
+            buffer_id: None, // TODO: window-buffer mapping (#440)
+        })
+        .collect();
+
+    WireLayoutInfo {
+        screen: WireRect::new(
+            result.screen.x,
+            result.screen.y,
+            result.screen.width,
+            result.screen.height,
+        ),
+        windows,
+        focused_window: result.focused.map(|id| WireWindowId::from(id.as_usize())),
+        active_layer: result
+            .active_layer
+            .map(|id| WireLayerId::from(id.as_u16() as usize)),
+        window_count: result.placements.len(),
+    }
+}
+
+/// Create single-window layout when no compositor is attached.
+fn single_window_layout(
+    width: u16,
+    height: u16,
+    active_buffer: Option<KernelBufferId>,
+) -> WireLayoutInfo {
+    WireLayoutInfo::single_window(
+        width,
+        height,
+        active_buffer.map(|id| ProtocolBufferId::from(id.as_usize())),
+    )
+}
+
+/// Handler for `state/options` method (#445).
+///
+/// Returns editor option values with optional filtering.
+///
+/// # Request
+///
+/// ```json
+/// {"jsonrpc": "2.0", "id": 1, "method": "state/options", "params": {}}
+/// ```
+///
+/// Or with filtering:
+///
+/// ```json
+/// {"jsonrpc": "2.0", "id": 1, "method": "state/options", "params": {"names": ["number", "relativenumber"]}}
+/// ```
+///
+/// # Response
+///
+/// ```json
+/// {"jsonrpc": "2.0", "id": 1, "result": {"options": {"number": true, "relativenumber": false}}}
+/// ```
+///
+/// # Errors
+///
+/// Returns RPC error -32602 (Invalid params) if `window_id` is specified but not found.
+///
+/// # Panics
+///
+/// Panics if `StateOptionsResult` serialization fails (should not happen).
+#[must_use]
+pub fn state_options(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
+    Box::pin(async move {
+        // Parse params (empty object is valid - returns all options)
+        let params: StateOptionsParams = serde_json::from_value(params).unwrap_or_default();
+
+        // Determine scope for option lookup
+        let scope = params.window_id.map_or(OptionScopeId::Global, |window_id| {
+            OptionScopeId::Window(WindowId::from_raw(window_id))
+        });
+
+        // Query options from session state
+        let result = ctx
+            .session
+            .with_state(|state| {
+                let registry = &state.app.kernel.options;
+                let mut options = HashMap::new();
+
+                // Get option names to query
+                let names: Vec<String> = params
+                    .names
+                    .as_ref()
+                    .map_or_else(|| registry.list_all(), Clone::clone);
+
+                // Query each option
+                for name in names {
+                    if let Some(value) = registry.get(&name, scope) {
+                        // Convert OptionValue to JSON
+                        let json_value = match value {
+                            reovim_kernel::api::v1::OptionValue::Bool(b) => {
+                                serde_json::Value::Bool(b)
+                            }
+                            reovim_kernel::api::v1::OptionValue::Integer(i) => {
+                                serde_json::Value::Number(i.into())
+                            }
+                            reovim_kernel::api::v1::OptionValue::String(s) => {
+                                serde_json::Value::String(s)
+                            }
+                            reovim_kernel::api::v1::OptionValue::Choice { value, .. } => {
+                                serde_json::Value::String(value)
+                            }
+                        };
+                        options.insert(name, json_value);
+                    }
+                    // Note: Unknown option names are silently skipped (not an error)
+                }
+
+                StateOptionsResult { options }
+            })
+            .await;
+
+        Ok(serde_json::to_value(result).expect("StateOptionsResult serialization cannot fail"))
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, tokio::sync::watch};
 
     use crate::{
         server::rpc::{
@@ -321,6 +525,7 @@ mod tests {
             session,
             client_id,
             client,
+            shutdown_tx: watch::channel(false).0,
         };
 
         let result = state_screen(ctx, serde_json::json!({})).await;
@@ -329,5 +534,141 @@ mod tests {
         let value = result.unwrap();
         assert_eq!(value.get("width").and_then(serde_json::Value::as_u64), Some(200));
         assert_eq!(value.get("height").and_then(serde_json::Value::as_u64), Some(50));
+    }
+
+    // Layout handler tests (#444)
+
+    #[tokio::test]
+    async fn test_state_layout_single_window() {
+        let ctx = test_ctx();
+
+        let result = state_layout(ctx, serde_json::json!({})).await;
+
+        assert!(result.is_ok());
+        let value = result.unwrap();
+
+        // Should have screen dimensions
+        assert!(value.get("screen").is_some());
+
+        // Should have windows array
+        let windows = value.get("windows").and_then(|v| v.as_array());
+        assert!(windows.is_some());
+
+        // Single window layout (no compositor)
+        assert_eq!(
+            value
+                .get("window_count")
+                .and_then(serde_json::Value::as_u64),
+            Some(1)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_state_layout_screen_dimensions() {
+        let session = test_session();
+        let client_id = ClientId::new(1);
+        let client = test_client(session.id().clone(), client_id);
+
+        // Set viewport dimensions
+        {
+            let mut viewport = client.viewport().write().await;
+            viewport.terminal_width = 120;
+            viewport.terminal_height = 40;
+        }
+
+        let ctx = RpcContext {
+            session,
+            client_id,
+            client,
+            shutdown_tx: watch::channel(false).0,
+        };
+
+        let result = state_layout(ctx, serde_json::json!({})).await;
+        assert!(result.is_ok());
+
+        let value = result.unwrap();
+        let screen = value.get("screen").unwrap();
+
+        // Check screen matches viewport
+        assert_eq!(screen.get("width").and_then(serde_json::Value::as_u64), Some(120));
+        assert_eq!(screen.get("height").and_then(serde_json::Value::as_u64), Some(40));
+    }
+
+    #[tokio::test]
+    async fn test_state_layout_response_fields() {
+        let ctx = test_ctx();
+
+        let result = state_layout(ctx, serde_json::json!({})).await;
+        assert!(result.is_ok());
+
+        let value = result.unwrap();
+
+        // Required fields
+        assert!(value.get("screen").is_some());
+        assert!(value.get("windows").is_some());
+        assert!(value.get("window_count").is_some());
+
+        // Optional fields (may or may not be present)
+        // focused_window and active_layer can be null
+    }
+
+    // Options handler tests (#445)
+
+    #[tokio::test]
+    async fn test_state_options_empty_params() {
+        let ctx = test_ctx();
+
+        let result = state_options(ctx, serde_json::json!({})).await;
+
+        assert!(result.is_ok());
+        let value = result.unwrap();
+        assert!(value.get("options").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_state_options_with_names_filter() {
+        let ctx = test_ctx();
+
+        // Request specific options
+        let result =
+            state_options(ctx, serde_json::json!({"names": ["number", "relativenumber"]})).await;
+
+        assert!(result.is_ok());
+        let value = result.unwrap();
+        let options = value.get("options").and_then(|v| v.as_object());
+        assert!(options.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_state_options_returns_registered_options() {
+        use reovim_kernel::api::v1::{OptionScope, OptionSpec, OptionValue};
+
+        let session = test_session();
+        let client_id = ClientId::new(1);
+        let client = test_client(session.id().clone(), client_id);
+
+        // Register a test option
+        session
+            .with_state(|state| {
+                let _ = state.app.kernel.options.register(
+                    OptionSpec::new("test_option", "Test option", OptionValue::bool(true))
+                        .with_scope(OptionScope::Global),
+                );
+            })
+            .await;
+
+        let ctx = RpcContext {
+            session,
+            client_id,
+            client,
+            shutdown_tx: watch::channel(false).0,
+        };
+
+        let result = state_options(ctx, serde_json::json!({"names": ["test_option"]})).await;
+
+        assert!(result.is_ok());
+        let value = result.unwrap();
+        let options = value.get("options").unwrap();
+        assert_eq!(options.get("test_option"), Some(&serde_json::json!(true)));
     }
 }

@@ -38,8 +38,9 @@ use reovim_protocol::v1::{
     BUFFER_GET_CONTENT, BUFFER_LIST, BUFFER_OPEN_FILE, BUFFER_SET_CONTENT, BUFFER_WRITE_FILE,
     COMMAND_EXECUTE, EDITOR_QUIT, EDITOR_RESIZE, EDITOR_SET_ACTIVE_BUFFER, INPUT_KEYS, MODULE_LIST,
     MODULE_LOAD, MODULE_RELOAD, MODULE_UNLOAD, SERVER_KILL, STATE_ASCII_ART, STATE_CURSOR,
-    STATE_LAYER_INFO, STATE_MICROSCOPE, STATE_MODE, STATE_SCREEN, STATE_SCREEN_CONTENT,
-    STATE_SELECTION, STATE_TELESCOPE, STATE_VISUAL_SNAPSHOT, STATE_WINDOWS,
+    STATE_LAYER_INFO, STATE_LAYOUT, STATE_MICROSCOPE, STATE_MODE, STATE_OPTIONS, STATE_SCREEN,
+    STATE_SCREEN_CONTENT, STATE_SELECTION, STATE_TELESCOPE, STATE_VISUAL_SNAPSHOT, STATE_WINDOWS,
+    TUI_CAPTURE,
 };
 
 use super::debug;
@@ -67,6 +68,10 @@ pub fn create_default_dispatcher() -> RpcDispatcher {
     dispatcher.register(STATE_CURSOR, handlers::state_cursor);
     dispatcher.register(STATE_SCREEN_CONTENT, handlers::state_screen_content);
 
+    // State methods (implemented)
+    dispatcher.register(STATE_LAYOUT, handlers::state_layout);
+    dispatcher.register(STATE_OPTIONS, handlers::state_options);
+
     // State methods (stubs)
     dispatcher.register(STATE_SELECTION, handlers::state_selection);
     dispatcher.register(STATE_SCREEN, handlers::state_screen);
@@ -90,6 +95,9 @@ pub fn create_default_dispatcher() -> RpcDispatcher {
 
     // Server methods
     dispatcher.register(SERVER_KILL, handlers::server_kill);
+
+    // TUI methods (#447)
+    dispatcher.register(TUI_CAPTURE, handlers::tui_capture);
 
     // Debug methods
     debug::register_handlers(&mut dispatcher);
@@ -142,7 +150,16 @@ mod tests {
         // Server handlers
         assert!(dispatcher.has_method(SERVER_KILL));
 
-        // 16 implemented + 9 stubs + 13 debug (2 info + 4 inspect + 2 metrics + 4 log + 1 snapshot) = 39 total
-        assert_eq!(dispatcher.method_count(), 39);
+        // state/layout handler added (#444)
+        assert!(dispatcher.has_method(STATE_LAYOUT));
+
+        // tui/capture handler added (#447)
+        assert!(dispatcher.has_method(TUI_CAPTURE));
+
+        // state/options handler added (#445)
+        assert!(dispatcher.has_method(STATE_OPTIONS));
+
+        // 18 implemented + 9 stubs + 13 debug (2 info + 4 inspect + 2 metrics + 4 log + 1 snapshot) + 1 TUI = 42 total
+        assert_eq!(dispatcher.method_count(), 42);
     }
 }

@@ -63,20 +63,24 @@ pub mod app;
 pub mod cli_executor;
 pub mod cli_panel;
 pub mod cli_render;
+pub mod headless;
 pub mod input;
 pub mod log_buffer;
 pub mod log_panel;
 pub mod log_render;
 pub mod render;
+pub mod render_core;
 
 pub use {
     app::TuiApp,
     cli_panel::{CliHistoryEntry, CliPanelState, CliResult},
+    headless::HeadlessClient,
     input::InputHandler,
     log_buffer::{LevelColor, TuiLogBuffer, TuiLogEntry},
     log_panel::LogPanelState,
     log_render::{format_entry, render_panel},
     render::Renderer,
+    render_core::{RenderState, build_frame_content},
 };
 
 /// TUI mode CLI arguments.
@@ -127,6 +131,13 @@ pub struct TuiArgs {
     /// Used in log filenames. Default: "default"
     #[arg(long, value_name = "NAME")]
     pub debug_name: Option<String>,
+
+    /// Run in headless mode (no TTY required).
+    ///
+    /// Connects to the server and responds to capture requests only.
+    /// Useful for CI/testing and programmatic frame capture.
+    #[arg(long)]
+    pub headless: bool,
 }
 
 impl TuiArgs {

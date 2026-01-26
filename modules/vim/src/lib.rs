@@ -177,6 +177,8 @@ impl Module for VimModule {
         resolver_registry.register(resolvers::VimYankResolver::new());
         resolver_registry.register(resolvers::VimChangeResolver::new());
         resolver_registry.register(resolvers::VimCommandLineResolver::new());
+        // Epic #438: Window mode resolver
+        resolver_registry.register(resolvers::VimWindowResolver::new());
 
         // Epic #417 Part 3: Self-register commands
         let command_store = ctx.services.get_or_create::<CommandHandlerStore>();
@@ -187,6 +189,30 @@ impl Module for VimModule {
         // Epic #417 Part 3: Self-register keybindings
         let keybinding_store = ctx.services.get_or_create::<KeybindingStore>();
         keybinding_store.add_all(self.keybindings());
+
+        // Epic #445: Register line number options
+        if let Err(e) = ctx.kernel.options.register(
+            OptionSpec::new("number", "Show line numbers", OptionValue::bool(false))
+                .with_short("nu")
+                .with_scope(OptionScope::Window),
+        ) {
+            return ProbeResult::Failed(ModuleError::InitFailed(format!(
+                "Failed to register 'number' option: {e}"
+            )));
+        }
+        if let Err(e) = ctx.kernel.options.register(
+            OptionSpec::new(
+                "relativenumber",
+                "Show relative line numbers",
+                OptionValue::bool(false),
+            )
+            .with_short("rnu")
+            .with_scope(OptionScope::Window),
+        ) {
+            return ProbeResult::Failed(ModuleError::InitFailed(format!(
+                "Failed to register 'relativenumber' option: {e}"
+            )));
+        }
 
         pr_info!("Vim module initialized");
         ProbeResult::Success
@@ -297,9 +323,96 @@ mod tests {
         let visual = bindings::visual::bindings();
         let operator_modes = bindings::operator_modes::all_operator_bindings();
         let cmdline = bindings::commandline::bindings();
+        let window = bindings::window::bindings();
 
-        let expected_total =
-            normal.len() + insert.len() + visual.len() + operator_modes.len() + cmdline.len();
+        let expected_total = normal.len()
+            + insert.len()
+            + visual.len()
+            + operator_modes.len()
+            + cmdline.len()
+            + window.len();
         assert_eq!(all.len(), expected_total, "all() should aggregate all mode bindings");
+    }
+
+    // ========================================================================
+    // Epic #445: Line number option tests
+    // ========================================================================
+
+    #[test]
+    fn test_line_number_options_registered() {
+        let mut module = VimModule::new();
+        let ctx = ModuleContext::default();
+
+        let result = module.init(&ctx);
+        assert!(
+            matches!(result, ProbeResult::Success),
+            "Vim module should initialize successfully"
+        );
+
+        // Verify 'number' option is registered
+        assert!(ctx.kernel.options.contains("number"), "'number' option should be registered");
+
+        // Verify 'relativenumber' option is registered
+        assert!(
+            ctx.kernel.options.contains("relativenumber"),
+            "'relativenumber' option should be registered"
+        );
+    }
+
+    #[test]
+    fn test_line_number_option_aliases() {
+        let mut module = VimModule::new();
+        let ctx = ModuleContext::default();
+        module.init(&ctx);
+
+        // Verify short alias 'nu' resolves to 'number'
+        assert_eq!(
+            ctx.kernel.options.resolve_name("nu"),
+            Some("number".to_string()),
+            "'nu' should be an alias for 'number'"
+        );
+
+        // Verify short alias 'rnu' resolves to 'relativenumber'
+        assert_eq!(
+            ctx.kernel.options.resolve_name("rnu"),
+            Some("relativenumber".to_string()),
+            "'rnu' should be an alias for 'relativenumber'"
+        );
+    }
+
+    #[test]
+    fn test_line_number_option_defaults() {
+        let mut module = VimModule::new();
+        let ctx = ModuleContext::default();
+        module.init(&ctx);
+
+        // Both options should default to false
+        let number_val = ctx.kernel.options.get_global("number");
+        assert_eq!(number_val, Some(OptionValue::bool(false)), "'number' should default to false");
+
+        let rnu_val = ctx.kernel.options.get_global("relativenumber");
+        assert_eq!(
+            rnu_val,
+            Some(OptionValue::bool(false)),
+            "'relativenumber' should default to false"
+        );
+    }
+
+    #[test]
+    fn test_line_number_option_scope() {
+        let mut module = VimModule::new();
+        let ctx = ModuleContext::default();
+        module.init(&ctx);
+
+        // Both options should have Window scope
+        let number_spec = ctx.kernel.options.get_spec("number").unwrap();
+        assert_eq!(number_spec.scope, OptionScope::Window, "'number' should have Window scope");
+
+        let rnu_spec = ctx.kernel.options.get_spec("relativenumber").unwrap();
+        assert_eq!(
+            rnu_spec.scope,
+            OptionScope::Window,
+            "'relativenumber' should have Window scope"
+        );
     }
 }

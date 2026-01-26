@@ -8,8 +8,9 @@ use super::super::dispatcher::{HandlerFuture, RpcContext};
 
 /// Handler for `server/kill` method.
 ///
-/// Requests the server to shut down gracefully by setting the session's
-/// quit flag. The server will exit after completing any pending operations.
+/// Requests the server to shut down gracefully by:
+/// 1. Setting the session's quit flag
+/// 2. Signaling the server's accept loop to exit
 ///
 /// # Request
 ///
@@ -29,8 +30,13 @@ use super::super::dispatcher::{HandlerFuture, RpcContext};
 #[must_use]
 pub fn server_kill(ctx: RpcContext, _params: serde_json::Value) -> HandlerFuture {
     Box::pin(async move {
-        // Request the session to quit
+        // Request the session to quit (for session-level cleanup)
         ctx.session.request_quit().await;
+
+        // Signal the server's accept loop to exit (#446)
+        // This bridges the RPC handler to the server's main loop.
+        // Using watch::send which preserves state even if sent during accept().
+        let _ = ctx.shutdown_tx.send(true);
 
         Ok(serde_json::to_value(OkResult::new()).expect("OkResult serialization cannot fail"))
     })

@@ -2,37 +2,108 @@
 //!
 //! Handler for `state/screen_content` method.
 //!
+//! # Server vs TUI Rendering (#447)
+//!
+//! This handler provides **raw buffer content** without ANSI styling.
+//! For properly rendered output with ANSI colors and syntax highlighting,
+//! use `tui/capture` which relays requests to a connected TUI client.
+//!
+//! - **`state/screen_content`**: Raw buffer text, window layout, no styling
+//! - **`tui/capture`**: Full rendered output with ANSI colors (requires TUI)
+//!
 //! Note: The headless server doesn't have an actual terminal screen.
 //! This handler returns the content of the active buffer formatted
 //! according to the requested format.
 //!
 //! # Multi-Window Support
 //!
-//! When multiple windows are present, this handler composes their content
-//! into a single screen representation, with separators between windows.
+//! When a compositor is available, renders content for each window within its
+//! bounds from the compositor's layout. Currently all windows share the active
+//! buffer (vim-like behavior where splits show the same content initially).
 
 use {
-    reovim_driver_display::WindowView,
-    reovim_kernel::api::v1::BufferId,
+    reovim_driver_display::{LineNumberMode, Rect},
+    reovim_kernel::api::v1::{BufferId, OptionRegistry, OptionScopeId, OptionValue},
     reovim_protocol::v1::{RpcError, ScreenContentResult, ScreenFormat, StateScreenContentParams},
 };
 
 use super::super::dispatcher::{HandlerFuture, RpcContext};
 
-/// Vertical separator character for window borders.
-const VSEP: char = '│';
+/// Determine line number mode from option registry (#445).
+///
+/// - `number` only → Absolute
+/// - `relativenumber` only → Relative
+/// - Both `number` and `relativenumber` → Hybrid
+/// - Neither → None
+fn line_number_mode_from_options(registry: &OptionRegistry) -> LineNumberMode {
+    let number = registry
+        .get("number", OptionScopeId::Global)
+        .is_some_and(|v| matches!(v, OptionValue::Bool(true)));
+    let relativenumber = registry
+        .get("relativenumber", OptionScopeId::Global)
+        .is_some_and(|v| matches!(v, OptionValue::Bool(true)));
 
-/// Horizontal separator character for window borders.
-const HSEP: char = '─';
+    match (number, relativenumber) {
+        (true, true) => LineNumberMode::Hybrid,
+        (true, false) => LineNumberMode::Absolute,
+        (false, true) => LineNumberMode::Relative,
+        (false, false) => LineNumberMode::None,
+    }
+}
+
+/// Calculate gutter width for line numbers.
+fn calculate_gutter_width(mode: LineNumberMode, total_lines: usize) -> usize {
+    if mode == LineNumberMode::None {
+        return 0;
+    }
+    // Digits needed + 1 space padding
+    let digits = if total_lines == 0 {
+        1
+    } else {
+        #[allow(
+            clippy::cast_precision_loss,
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss
+        )]
+        let d = ((total_lines as f64).log10().floor() as usize) + 1;
+        d
+    };
+    digits + 1 // digits + space after
+}
+
+/// Format a line number based on mode.
+fn format_line_number(
+    mode: LineNumberMode,
+    line_idx: usize,
+    cursor_line: usize,
+    width: usize,
+) -> String {
+    match mode {
+        LineNumberMode::None => String::new(),
+        LineNumberMode::Absolute => format!("{:>width$} ", line_idx + 1),
+        LineNumberMode::Relative => {
+            let rel = line_idx.abs_diff(cursor_line);
+            format!("{rel:>width$} ")
+        }
+        LineNumberMode::Hybrid => {
+            if line_idx == cursor_line {
+                format!("{:>width$} ", line_idx + 1)
+            } else {
+                let rel = line_idx.abs_diff(cursor_line);
+                format!("{rel:>width$} ")
+            }
+        }
+    }
+}
 
 /// Handler for `state/screen_content` method.
 ///
 /// Returns screen content in requested format (`plain_text`, `raw_ansi`, `cell_grid`).
 ///
-/// The handler supports multi-window rendering:
-/// - Gets window views from the window registry
-/// - Renders each window's buffer content within its bounds
-/// - Adds separators between windows
+/// # Multi-Window Support
+///
+/// When a compositor is available with multiple windows, renders each window's
+/// content within its bounds and composes them into a single screen.
 ///
 /// # Request
 ///
@@ -60,22 +131,188 @@ pub fn state_screen_content(ctx: RpcContext, params: serde_json::Value) -> Handl
             .with_state(|state| {
                 // Use driver_session as SSOT for terminal size
                 let (width, height) = state.session_terminal_size();
+                let screen = Rect::new(0, 0, width, height);
 
-                // Get window views from registry
-                let window_views = state.app.windows.arrange((width, height));
-
-                // If no windows or single window, fall back to simple single-buffer render
-                if window_views.len() <= 1 {
-                    return render_single_window(state, params.format, width, height);
+                // Check if compositor has multiple windows
+                if let Some(compositor) = state.driver_session.compositor() {
+                    let composite = compositor.composite(screen);
+                    if composite.placements.len() > 1 {
+                        // Multi-window mode: render each window within its bounds
+                        return render_multi_window(
+                            state,
+                            params.format,
+                            width,
+                            height,
+                            &composite.placements,
+                            composite.focused,
+                        );
+                    }
                 }
 
-                // Multi-window render
-                render_multi_window(state, &window_views, params.format, width, height)
+                // Single-window mode (no compositor or single window)
+                render_single_window(state, params.format, width, height)
             })
             .await;
 
         Ok(serde_json::to_value(result).expect("ScreenContentResult serialization cannot fail"))
     })
+}
+
+/// Render screen with multiple windows from compositor layout.
+///
+/// Each window's content is rendered within its bounds on the screen.
+/// Currently all windows share the active buffer (vim-like split behavior).
+///
+/// The focused window is indicated with a `▪` at its top-left corner.
+fn render_multi_window(
+    state: &crate::session::SessionState,
+    format: ScreenFormat,
+    width: u16,
+    height: u16,
+    placements: &[reovim_driver_display::layout::WindowPlacement],
+    focused: Option<reovim_driver_display::WindowId>,
+) -> ScreenContentResult {
+    // Get line number mode from options (#445)
+    let line_mode = line_number_mode_from_options(&state.app.kernel.options);
+
+    // Get the active buffer content (shared by all windows for now)
+    let (content, cursor_line) = state
+        .session_active_buffer()
+        .and_then(|id: BufferId| state.app.kernel.buffers.get(id))
+        .map(|arc| {
+            let buf = arc.read();
+            (buf.content(), buf.position().line)
+        })
+        .unwrap_or_default();
+
+    let lines: Vec<&str> = content.lines().collect();
+    let total_lines = lines.len();
+    let gutter_width = calculate_gutter_width(line_mode, total_lines);
+
+    // Create a 2D screen buffer
+    let mut screen: Vec<Vec<char>> = vec![vec![' '; width as usize]; height as usize];
+
+    // Render each window's content within its bounds
+    for placement in placements.iter().filter(|p| p.visible) {
+        render_window_content(&mut screen, placement, &lines, line_mode, cursor_line, gutter_width);
+    }
+
+    // Draw window separators (borders between windows)
+    draw_window_separators(&mut screen, placements, width, height);
+
+    // Draw focus indicator at top-left of focused window
+    if let Some(focused_id) = focused
+        && let Some(focused_placement) = placements.iter().find(|p| p.window_id == focused_id)
+    {
+        let bounds = &focused_placement.bounds;
+        if (bounds.y as usize) < screen.len()
+            && (bounds.x as usize) < screen[bounds.y as usize].len()
+        {
+            screen[bounds.y as usize][bounds.x as usize] = '▪';
+        }
+    }
+
+    // Convert screen buffer to string
+    let screen_content: String = screen
+        .iter()
+        .map(|row| row.iter().collect::<String>())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    format_content(&screen_content, format, width, height)
+}
+
+/// Render a single window's content within its bounds on the screen buffer.
+///
+/// Includes line numbers when `line_mode` is not `None` (#445).
+fn render_window_content(
+    screen: &mut [Vec<char>],
+    placement: &reovim_driver_display::layout::WindowPlacement,
+    lines: &[&str],
+    line_mode: LineNumberMode,
+    cursor_line: usize,
+    gutter_width: usize,
+) {
+    let bounds = &placement.bounds;
+
+    // Render buffer lines within window bounds
+    for (win_row, line_idx) in (0..bounds.height).zip(0..lines.len()) {
+        let screen_y = bounds.y as usize + win_row as usize;
+        if screen_y >= screen.len() {
+            break;
+        }
+
+        // Render line number first (#445)
+        let line_num_str =
+            format_line_number(line_mode, line_idx, cursor_line, gutter_width.saturating_sub(1));
+        for (col, ch) in line_num_str.chars().enumerate() {
+            let screen_x = bounds.x as usize + col;
+            #[allow(clippy::cast_possible_truncation)]
+            let col_u16 = col as u16;
+            if screen_x < screen[screen_y].len() && col_u16 < bounds.width {
+                screen[screen_y][screen_x] = ch;
+            }
+        }
+
+        // Render content after line number
+        let line = lines.get(line_idx).copied().unwrap_or("");
+        let content_start = bounds.x as usize + gutter_width;
+        let content_width = (bounds.width as usize).saturating_sub(gutter_width);
+        for (col, ch) in line.chars().take(content_width).enumerate() {
+            let screen_x = content_start + col;
+            if screen_x < screen[screen_y].len() {
+                screen[screen_y][screen_x] = ch;
+            }
+        }
+    }
+}
+
+/// Draw separators between windows using box drawing characters.
+///
+/// Handles intersections by checking for existing separators:
+/// - `│` + `─` = `┼` (cross intersection)
+/// - `─` + `│` = `┼` (cross intersection)
+fn draw_window_separators(
+    screen: &mut [Vec<char>],
+    placements: &[reovim_driver_display::layout::WindowPlacement],
+    width: u16,
+    height: u16,
+) {
+    // Find vertical and horizontal separator positions
+    // Vertical separators: where window right edge meets another window's left edge
+    // Horizontal separators: where window bottom edge meets another window's top edge
+
+    for placement in placements.iter().filter(|p| p.visible) {
+        let bounds = &placement.bounds;
+
+        // Draw right border if not at screen edge
+        let right_x = bounds.x + bounds.width;
+        if right_x < width {
+            for y in bounds.y..(bounds.y + bounds.height) {
+                if (y as usize) < screen.len() && (right_x as usize) < screen[y as usize].len() {
+                    // Check if this position already has a horizontal bar
+                    let current = screen[y as usize][right_x as usize];
+                    screen[y as usize][right_x as usize] =
+                        if current == '─' { '┼' } else { '│' };
+                }
+            }
+        }
+
+        // Draw bottom border if not at screen edge
+        let bottom_y = bounds.y + bounds.height;
+        if bottom_y < height {
+            for x in bounds.x..(bounds.x + bounds.width) {
+                if (bottom_y as usize) < screen.len()
+                    && (x as usize) < screen[bottom_y as usize].len()
+                {
+                    // Check if this position already has a vertical bar
+                    let current = screen[bottom_y as usize][x as usize];
+                    screen[bottom_y as usize][x as usize] =
+                        if current == '│' { '┼' } else { '─' };
+                }
+            }
+        }
+    }
 }
 
 /// Render screen with a single window or no windows.
@@ -88,180 +325,51 @@ fn render_single_window(
     _width: u16,
     _height: u16,
 ) -> ScreenContentResult {
+    // Get line number mode from options (#445)
+    let line_mode = line_number_mode_from_options(&state.app.kernel.options);
+
     // Use driver_session SSOT for active_buffer
-    let content = state
+    let (content, cursor_line) = state
         .session_active_buffer()
         .and_then(|id: BufferId| state.app.kernel.buffers.get(id))
         .map(|arc| {
             let buf = arc.read();
-            buf.content()
+            (buf.content(), buf.position().line)
         })
         .unwrap_or_default();
 
-    // Calculate dimensions from content (backward compatible behavior)
+    // Calculate dimensions from content
     let lines: Vec<&str> = content.lines().collect();
+    let total_lines = lines.len();
+    let gutter_width = calculate_gutter_width(line_mode, total_lines);
+
+    // Build content with line numbers (#445)
+    let rendered_content: String = if line_mode == LineNumberMode::None {
+        content.clone()
+    } else {
+        lines
+            .iter()
+            .enumerate()
+            .map(|(idx, line)| {
+                let num =
+                    format_line_number(line_mode, idx, cursor_line, gutter_width.saturating_sub(1));
+                format!("{num}{line}")
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+
     #[allow(clippy::cast_possible_truncation)]
-    let content_height = lines.len().min(usize::from(u16::MAX)) as u16;
+    let content_height = total_lines.min(usize::from(u16::MAX)) as u16;
     #[allow(clippy::cast_possible_truncation)]
-    let content_width = lines
-        .iter()
-        .map(|l| l.len())
-        .max()
-        .unwrap_or(80)
+    let content_width = (lines.iter().map(|l| l.len()).max().unwrap_or(80) + gutter_width)
         .min(usize::from(u16::MAX)) as u16;
 
-    format_content(&content, format, content_width.max(1), content_height.max(1))
+    format_content(&rendered_content, format, content_width.max(1), content_height.max(1))
 }
 
-/// Render screen with multiple windows.
-fn render_multi_window(
-    state: &crate::session::SessionState,
-    views: &[WindowView],
-    format: ScreenFormat,
-    width: u16,
-    height: u16,
-) -> ScreenContentResult {
-    // Build a character grid for the screen
-    let w = usize::from(width);
-    let h = usize::from(height);
-    let mut grid: Vec<Vec<char>> = vec![vec![' '; w]; h];
-
-    // Track which window is active for potential highlighting
-    let active_window = state.app.windows.active_window();
-
-    // Render each window's content into the grid
-    for view in views {
-        let buffer_content = state
-            .app
-            .windows
-            .get(view.window_id)
-            .and_then(|ws| ws.buffer_id)
-            .and_then(|id| state.app.kernel.buffers.get(id))
-            .map(|arc| {
-                let buf = arc.read();
-                buf.content()
-            })
-            .unwrap_or_default();
-
-        let lines: Vec<&str> = buffer_content.lines().collect();
-        let bounds = &view.bounds;
-
-        // Render buffer lines into the window area
-        for (row_idx, line) in lines.iter().take(bounds.height as usize).enumerate() {
-            let y = bounds.y as usize + row_idx;
-            if y >= h {
-                break;
-            }
-
-            for (col_idx, ch) in line.chars().take(bounds.width as usize).enumerate() {
-                let x = bounds.x as usize + col_idx;
-                if x >= w {
-                    break;
-                }
-                grid[y][x] = ch;
-            }
-        }
-    }
-
-    // Find separator positions (where windows meet)
-    let separators = find_separators(views, width, height);
-
-    // Draw separators
-    for (x, y, is_vertical) in separators {
-        let ux = x as usize;
-        let uy = y as usize;
-        if ux < w && uy < h {
-            grid[uy][ux] = if is_vertical { VSEP } else { HSEP };
-        }
-    }
-
-    // Add active window indicator (mark corners with different char)
-    if let Some(view) = active_window.and_then(|id| views.iter().find(|v| v.window_id == id)) {
-        let bounds = &view.bounds;
-        // Mark top-left corner of active window (if within bounds)
-        let corner_x = bounds.x.saturating_sub(1) as usize;
-        let corner_y = bounds.y.saturating_sub(1) as usize;
-        if corner_x < w && corner_y < h && (bounds.x > 0 || bounds.y > 0) {
-            // Use a special char to mark active window corner
-            if grid[corner_y][corner_x] == VSEP || grid[corner_y][corner_x] == HSEP {
-                grid[corner_y][corner_x] = '┼';
-            }
-        }
-    }
-
-    // Convert grid to string
-    let content: String = grid
-        .iter()
-        .map(|row| row.iter().collect::<String>())
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    format_content(&content, format, width, height)
-}
-
-/// Find separator positions between windows.
-///
-/// Returns a list of (x, y, `is_vertical`) tuples indicating where separators should be drawn.
-fn find_separators(views: &[WindowView], width: u16, height: u16) -> Vec<(u16, u16, bool)> {
-    let mut separators = Vec::new();
-
-    for i in 0..views.len() {
-        for j in (i + 1)..views.len() {
-            let a = &views[i].bounds;
-            let b = &views[j].bounds;
-
-            // Check for vertical separator (windows side by side)
-            // Window A is to the left of Window B
-            if a.x + a.width == b.x && a.y < b.y + b.height && b.y < a.y + a.height {
-                let sep_x = a.x + a.width;
-                if sep_x > 0 && sep_x <= width {
-                    let y_start = a.y.max(b.y);
-                    let y_end = (a.y + a.height).min(b.y + b.height).min(height);
-                    for y in y_start..y_end {
-                        separators.push((sep_x - 1, y, true));
-                    }
-                }
-            }
-            // Window B is to the left of Window A
-            if b.x + b.width == a.x && b.y < a.y + a.height && a.y < b.y + b.height {
-                let sep_x = b.x + b.width;
-                if sep_x > 0 && sep_x <= width {
-                    let y_start = a.y.max(b.y);
-                    let y_end = (a.y + a.height).min(b.y + b.height).min(height);
-                    for y in y_start..y_end {
-                        separators.push((sep_x - 1, y, true));
-                    }
-                }
-            }
-
-            // Check for horizontal separator (windows stacked)
-            // Window A is above Window B
-            if a.y + a.height == b.y && a.x < b.x + b.width && b.x < a.x + a.width {
-                let sep_y = a.y + a.height;
-                if sep_y > 0 && sep_y <= height {
-                    let x_start = a.x.max(b.x);
-                    let x_end = (a.x + a.width).min(b.x + b.width).min(width);
-                    for x in x_start..x_end {
-                        separators.push((x, sep_y - 1, false));
-                    }
-                }
-            }
-            // Window B is above Window A
-            if b.y + b.height == a.y && b.x < a.x + a.width && a.x < b.x + b.width {
-                let sep_y = b.y + b.height;
-                if sep_y > 0 && sep_y <= height {
-                    let x_start = a.x.max(b.x);
-                    let x_end = (a.x + a.width).min(b.x + b.width).min(width);
-                    for x in x_start..x_end {
-                        separators.push((x, sep_y - 1, false));
-                    }
-                }
-            }
-        }
-    }
-
-    separators
-}
+// Multi-window rendering will be implemented in Phase 2 using Session.compositor.
+// The compositor provides CompositeResult with all window placements in z-order.
 
 /// Format content according to the requested screen format.
 fn format_content(
@@ -273,8 +381,8 @@ fn format_content(
     let formatted_content = match format {
         ScreenFormat::PlainText => content.to_string(),
         ScreenFormat::RawAnsi => {
-            // For headless server, just return plain text
-            // Real ANSI would require a terminal emulator
+            // Server-side raw_ansi returns plain text (no styling).
+            // For proper ANSI output with colors, use `tui/capture` (#447).
             content.to_string()
         }
         ScreenFormat::CellGrid => {
@@ -497,72 +605,119 @@ mod tests {
         assert_eq!(cells[1][1].get("char").unwrap().as_str().unwrap(), "D");
     }
 
-    // ========================================================================
-    // Multi-Window Rendering Tests
-    // ========================================================================
+    // Multi-window separator tests
 
     #[test]
-    fn test_find_separators_vertical_split() {
-        use reovim_driver_display::{Rect, WindowId, WindowView};
+    fn test_draw_separators_vertical() {
+        use reovim_driver_display::layout::{LayerId, WindowPlacement, ZOrder, Zone};
 
-        // Two windows side by side (vertical split)
-        // Window 1: 0,0 to 39,24 (left half)
-        // Window 2: 40,0 to 79,24 (right half)
-        let views = vec![
-            WindowView::new(WindowId::from_raw(1), Rect::new(0, 0, 40, 24)),
-            WindowView::new(WindowId::from_raw(2), Rect::new(40, 0, 40, 24)),
+        let mut screen: Vec<Vec<char>> = vec![vec![' '; 10]; 5];
+        let placements = vec![
+            WindowPlacement::new(
+                reovim_driver_display::WindowId::from_raw(1),
+                LayerId::new(0),
+                Zone::Tiled,
+                Rect::new(0, 0, 5, 5),
+                ZOrder::new(0),
+            ),
+            WindowPlacement::new(
+                reovim_driver_display::WindowId::from_raw(2),
+                LayerId::new(0),
+                Zone::Tiled,
+                Rect::new(5, 0, 5, 5),
+                ZOrder::new(0),
+            ),
         ];
 
-        let separators = super::find_separators(&views, 80, 24);
+        super::draw_window_separators(&mut screen, &placements, 10, 5);
 
-        // Should have 24 separator positions (one per row) at x=39
-        assert!(!separators.is_empty());
-
-        // All separators should be vertical
-        for (x, y, is_vertical) in &separators {
-            assert!(is_vertical, "Expected vertical separator at ({x}, {y})");
-            assert_eq!(*x, 39, "Separator x should be 39");
-            assert!(*y < 24, "Separator y should be < 24");
+        // Vertical separator at x=5 for all rows
+        for (y, row) in screen.iter().enumerate().take(5) {
+            assert_eq!(row[5], '│', "Vertical separator missing at row {y}");
         }
     }
 
     #[test]
-    fn test_find_separators_horizontal_split() {
-        use reovim_driver_display::{Rect, WindowId, WindowView};
+    fn test_draw_separators_horizontal() {
+        use reovim_driver_display::layout::{LayerId, WindowPlacement, ZOrder, Zone};
 
-        // Two windows stacked (horizontal split)
-        // Window 1: 0,0 to 80,12 (top half)
-        // Window 2: 0,12 to 80,12 (bottom half)
-        let views = vec![
-            WindowView::new(WindowId::from_raw(1), Rect::new(0, 0, 80, 12)),
-            WindowView::new(WindowId::from_raw(2), Rect::new(0, 12, 80, 12)),
+        let mut screen: Vec<Vec<char>> = vec![vec![' '; 10]; 6];
+        let placements = vec![
+            WindowPlacement::new(
+                reovim_driver_display::WindowId::from_raw(1),
+                LayerId::new(0),
+                Zone::Tiled,
+                Rect::new(0, 0, 10, 3),
+                ZOrder::new(0),
+            ),
+            WindowPlacement::new(
+                reovim_driver_display::WindowId::from_raw(2),
+                LayerId::new(0),
+                Zone::Tiled,
+                Rect::new(0, 3, 10, 3),
+                ZOrder::new(0),
+            ),
         ];
 
-        let separators = super::find_separators(&views, 80, 24);
+        super::draw_window_separators(&mut screen, &placements, 10, 6);
 
-        // Should have 80 separator positions (one per column) at y=11
-        assert!(!separators.is_empty());
-
-        // All separators should be horizontal
-        for (x, y, is_vertical) in &separators {
-            assert!(!is_vertical, "Expected horizontal separator at ({x}, {y})");
-            assert_eq!(*y, 11, "Separator y should be 11");
-            assert!(*x < 80, "Separator x should be < 80");
+        // Horizontal separator at y=3 for all columns
+        for (x, &ch) in screen[3].iter().enumerate().take(10) {
+            assert_eq!(ch, '─', "Horizontal separator missing at col {x}");
         }
     }
 
     #[test]
-    fn test_find_separators_no_adjacent_windows() {
-        use reovim_driver_display::{Rect, WindowId, WindowView};
+    fn test_draw_separators_intersection() {
+        use reovim_driver_display::layout::{LayerId, WindowPlacement, ZOrder, Zone};
 
-        // Single window - no separators needed
-        let views = vec![WindowView::new(
-            WindowId::from_raw(1),
-            Rect::new(0, 0, 80, 24),
-        )];
+        let mut screen: Vec<Vec<char>> = vec![vec![' '; 10]; 6];
+        // 2x2 grid of windows
+        let placements = vec![
+            WindowPlacement::new(
+                reovim_driver_display::WindowId::from_raw(1),
+                LayerId::new(0),
+                Zone::Tiled,
+                Rect::new(0, 0, 5, 3), // Top-left
+                ZOrder::new(0),
+            ),
+            WindowPlacement::new(
+                reovim_driver_display::WindowId::from_raw(2),
+                LayerId::new(0),
+                Zone::Tiled,
+                Rect::new(5, 0, 5, 3), // Top-right
+                ZOrder::new(0),
+            ),
+            WindowPlacement::new(
+                reovim_driver_display::WindowId::from_raw(3),
+                LayerId::new(0),
+                Zone::Tiled,
+                Rect::new(0, 3, 5, 3), // Bottom-left
+                ZOrder::new(0),
+            ),
+            WindowPlacement::new(
+                reovim_driver_display::WindowId::from_raw(4),
+                LayerId::new(0),
+                Zone::Tiled,
+                Rect::new(5, 3, 5, 3), // Bottom-right
+                ZOrder::new(0),
+            ),
+        ];
 
-        let separators = super::find_separators(&views, 80, 24);
-        assert!(separators.is_empty(), "Single window should have no separators");
+        super::draw_window_separators(&mut screen, &placements, 10, 6);
+
+        // Intersection at (5, 3) should be '┼'
+        assert_eq!(screen[3][5], '┼', "Intersection should be cross, got '{}'", screen[3][5]);
+
+        // Vertical separators at x=5
+        for y in [0, 1, 2, 4, 5] {
+            assert_eq!(screen[y][5], '│', "Vertical separator missing at row {y}");
+        }
+
+        // Horizontal separators at y=3
+        for x in [0, 1, 2, 3, 4, 6, 7, 8, 9] {
+            assert_eq!(screen[3][x], '─', "Horizontal separator missing at col {x}");
+        }
     }
 
     #[test]
@@ -588,5 +743,120 @@ mod tests {
         assert_eq!(cells[0].len(), 2);
         assert_eq!(cells[0][0].get("char").unwrap().as_str().unwrap(), "A");
         assert_eq!(cells[0][1].get("char").unwrap().as_str().unwrap(), "B");
+    }
+
+    // === Line number rendering tests (#445) ===
+
+    #[test]
+    fn test_line_number_mode_from_options_none() {
+        use reovim_kernel::api::v1::OptionRegistry;
+        let registry = OptionRegistry::new();
+        let mode = super::line_number_mode_from_options(&registry);
+        assert_eq!(mode, LineNumberMode::None);
+    }
+
+    #[test]
+    fn test_line_number_mode_from_options_absolute() {
+        use reovim_kernel::api::v1::{OptionRegistry, OptionScope, OptionSpec, OptionValue};
+        let registry = OptionRegistry::new();
+        registry
+            .register(
+                OptionSpec::new("number", "Line numbers", OptionValue::bool(true))
+                    .with_scope(OptionScope::Window),
+            )
+            .unwrap();
+        let mode = super::line_number_mode_from_options(&registry);
+        assert_eq!(mode, LineNumberMode::Absolute);
+    }
+
+    #[test]
+    fn test_line_number_mode_from_options_relative() {
+        use reovim_kernel::api::v1::{OptionRegistry, OptionScope, OptionSpec, OptionValue};
+        let registry = OptionRegistry::new();
+        registry
+            .register(
+                OptionSpec::new("relativenumber", "Relative numbers", OptionValue::bool(true))
+                    .with_scope(OptionScope::Window),
+            )
+            .unwrap();
+        let mode = super::line_number_mode_from_options(&registry);
+        assert_eq!(mode, LineNumberMode::Relative);
+    }
+
+    #[test]
+    fn test_line_number_mode_from_options_hybrid() {
+        use reovim_kernel::api::v1::{OptionRegistry, OptionScope, OptionSpec, OptionValue};
+        let registry = OptionRegistry::new();
+        registry
+            .register(
+                OptionSpec::new("number", "Line numbers", OptionValue::bool(true))
+                    .with_scope(OptionScope::Window),
+            )
+            .unwrap();
+        registry
+            .register(
+                OptionSpec::new("relativenumber", "Relative numbers", OptionValue::bool(true))
+                    .with_scope(OptionScope::Window),
+            )
+            .unwrap();
+        let mode = super::line_number_mode_from_options(&registry);
+        assert_eq!(mode, LineNumberMode::Hybrid);
+    }
+
+    #[test]
+    fn test_calculate_gutter_width_none_mode() {
+        assert_eq!(super::calculate_gutter_width(LineNumberMode::None, 100), 0);
+    }
+
+    #[test]
+    fn test_calculate_gutter_width_small_file() {
+        // 9 lines = 1 digit + 1 space = 2
+        assert_eq!(super::calculate_gutter_width(LineNumberMode::Absolute, 9), 2);
+    }
+
+    #[test]
+    fn test_calculate_gutter_width_medium_file() {
+        // 99 lines = 2 digits + 1 space = 3
+        assert_eq!(super::calculate_gutter_width(LineNumberMode::Absolute, 99), 3);
+    }
+
+    #[test]
+    fn test_calculate_gutter_width_large_file() {
+        // 999 lines = 3 digits + 1 space = 4
+        assert_eq!(super::calculate_gutter_width(LineNumberMode::Absolute, 999), 4);
+    }
+
+    #[test]
+    fn test_format_line_number_absolute() {
+        let s = super::format_line_number(LineNumberMode::Absolute, 0, 0, 2);
+        assert_eq!(s, " 1 ");
+        let s = super::format_line_number(LineNumberMode::Absolute, 9, 0, 2);
+        assert_eq!(s, "10 ");
+    }
+
+    #[test]
+    fn test_format_line_number_relative() {
+        // Cursor on line 5, checking line 3 (distance = 2)
+        let s = super::format_line_number(LineNumberMode::Relative, 3, 5, 2);
+        assert_eq!(s, " 2 ");
+        // Cursor line shows 0
+        let s = super::format_line_number(LineNumberMode::Relative, 5, 5, 2);
+        assert_eq!(s, " 0 ");
+    }
+
+    #[test]
+    fn test_format_line_number_hybrid() {
+        // Cursor line shows absolute number
+        let s = super::format_line_number(LineNumberMode::Hybrid, 5, 5, 2);
+        assert_eq!(s, " 6 ");
+        // Non-cursor lines show relative
+        let s = super::format_line_number(LineNumberMode::Hybrid, 3, 5, 2);
+        assert_eq!(s, " 2 ");
+    }
+
+    #[test]
+    fn test_format_line_number_none() {
+        let s = super::format_line_number(LineNumberMode::None, 0, 0, 2);
+        assert!(s.is_empty());
     }
 }

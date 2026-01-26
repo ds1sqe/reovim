@@ -11,7 +11,8 @@ use {
 
 use {
     super::super::dispatcher::{HandlerFuture, RpcContext},
-    crate::session::{StateSnapshot, emit_state_changes},
+    crate::session::{StateSnapshot, emit_from_state_changes, emit_state_changes},
+    reovim_driver_session::api::StateChanges,
 };
 
 /// Handler for `input/keys` method.
@@ -58,12 +59,15 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
         // Process keys one at a time through resolvers
         let mut any_handled = false;
         let mut final_pending = false;
+        let mut accumulated_changes = StateChanges::new();
 
         for key in keys.as_slice() {
             let key_event = KeyEvent::with_modifiers(key.code, key.modifiers);
 
             // Resolve the key using mode resolvers
-            if let Some((result, _changes)) = ctx.session.resolve_key(&key_event).await {
+            if let Some((result, changes)) = ctx.session.resolve_key(&key_event).await {
+                // Accumulate changes from each key for later notification
+                accumulated_changes.merge(changes);
                 match result {
                     ResolveResult::Execute(cmd_id, resolve_ctx) => {
                         // Build command context from resolve context
@@ -104,7 +108,10 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
 
                             // Per #435: Execute cmdline action if cmdline was deactivated
                             // (e.g., Enter in search mode executes the search)
-                            ctx.session.execute_cmdline_and_deactivate().await;
+                            // Per #445: Merge option changes from :set commands
+                            let cmdline_changes =
+                                ctx.session.execute_cmdline_and_deactivate().await;
+                            accumulated_changes.merge(cmdline_changes);
                         }
 
                         any_handled = true;
@@ -181,6 +188,12 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
         let after = ctx.session.with_state(StateSnapshot::capture).await;
         emit_state_changes(&ctx.session, &before, &after).await;
 
+        // Emit layout/focus changes (not captured by snapshots)
+        // StateChanges from resolvers include focus_changed, window_created, etc.
+        if accumulated_changes.has_changes() {
+            emit_from_state_changes(&ctx.session, &accumulated_changes).await;
+        }
+
         Ok(serde_json::to_value(result).expect("InputKeysResult serialization cannot fail"))
     })
 }
@@ -229,10 +242,7 @@ fn convert_input_arg_to_command_arg(
 fn try_resolver_on_command_complete(
     state: &mut crate::session::SessionState,
 ) -> Option<ModeTransition> {
-    use {
-        crate::server::event_loop::RuntimeAdapter,
-        reovim_driver_session::{SessionRuntime, api::CommandExecutor},
-    };
+    use reovim_driver_session::{SessionRuntime, api::CommandExecutor};
 
     // Stub command executor
     struct StubExecutor;
@@ -252,12 +262,10 @@ fn try_resolver_on_command_complete(
     // Get resolver for current mode
     let resolver = state.resolver_registry.get(&mode)?;
 
-    // Create runtime
+    // Create SessionRuntime for session API access
     let stub_executor = StubExecutor;
-    let session_runtime =
-        SessionRuntime::new(&mut state.driver_session, &state.app.kernel, &stub_executor);
     let mut runtime =
-        RuntimeAdapter::new(session_runtime, &mut state.app.windows, &state.app.kernel);
+        SessionRuntime::new(&mut state.driver_session, &state.app.kernel, &stub_executor);
 
     // Call on_command_complete
     resolver.on_command_complete(&mut runtime, &mut state.app.extensions)

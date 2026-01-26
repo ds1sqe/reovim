@@ -5,7 +5,6 @@
 
 use std::{
     collections::HashMap,
-    fmt::Write as _,
     io::{self, Write},
     time::{Duration, Instant},
 };
@@ -14,11 +13,13 @@ use {
     crossterm::event::{Event, EventStream, KeyCode, KeyModifiers},
     futures::StreamExt,
     reovim_protocol::v1::{
-        RpcNotification, RpcResponse,
+        RpcNotification, RpcResponse, ScreenContentResult, ScreenFormat, WireLayoutInfo,
         notifications::{
-            BUFFER_MODIFIED, BufferModifiedPayload, CURSOR_MOVED, CursorMovedPayload, DETACH,
-            DetachPayload, LOG_ENTRY, LogEntryPayload, MODE_CHANGED, ModeChangedPayload,
-            RENDER_COMPLETE, RenderCompletePayload,
+            BUFFER_MODIFIED, BufferModifiedPayload, CAPTURE_REQUEST, CAPTURE_RESPONSE,
+            CURSOR_MOVED, CaptureRequestPayload, CaptureResponsePayload, CursorMovedPayload,
+            DETACH, DetachPayload, LAYOUT_CHANGED, LOG_ENTRY, LayoutChangedPayload,
+            LogEntryPayload, MODE_CHANGED, ModeChangedPayload, OPTION_CHANGED,
+            OptionChangedPayload, RENDER_COMPLETE, RenderCompletePayload,
         },
     },
     serde_json::json,
@@ -32,7 +33,7 @@ use crate::client::common::{
     ConnectionConfig, ConnectionReader, RpcClient, RpcClientError, RpcWriter, ServerMessage,
 };
 
-use reovim_driver_display::{ColorMode, FrameRenderer, Style};
+use reovim_driver_display::{FrameRenderer, Style};
 
 use super::{
     cli_executor,
@@ -43,6 +44,7 @@ use super::{
     log_panel::LogPanelState,
     log_render::render_panel as render_log_panel,
     render::Renderer,
+    render_core::{self, RenderState},
 };
 
 /// Channel buffer size for server messages.
@@ -139,6 +141,11 @@ struct TuiState {
     last_error: Option<String>,
     /// When the error occurred (for auto-clear after 5 seconds).
     error_timestamp: Option<Instant>,
+    /// Current layout state from server (#444).
+    layout: Option<WireLayoutInfo>,
+    /// Cached option values from server (#445).
+    /// Used for line number rendering and other client-side display decisions.
+    options: HashMap<String, serde_json::Value>,
 }
 
 /// TUI application.
@@ -249,6 +256,32 @@ impl TuiApp {
             }
         };
 
+        // Get initial layout state (#444)
+        let initial_layout = match client.call("state/layout", json!({})).await {
+            Ok(result) => serde_json::from_value::<WireLayoutInfo>(result).ok(),
+            Err(e) => {
+                tracing::debug!("Failed to get initial layout: {e}");
+                None
+            }
+        };
+
+        // Get initial options (#445) - for line number display etc.
+        let initial_options = match client.call("state/options", json!({})).await {
+            Ok(result) => result
+                .get("options")
+                .and_then(|v| v.as_object())
+                .map(|obj| {
+                    obj.iter()
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect::<HashMap<String, serde_json::Value>>()
+                })
+                .unwrap_or_default(),
+            Err(e) => {
+                tracing::debug!("Failed to get initial options: {e}");
+                HashMap::new()
+            }
+        };
+
         // Register for buffer notifications by setting the active buffer.
         // This is required to receive buffer-scoped notifications like cursor_moved,
         // buffer_modified, and render_complete which trigger TUI updates.
@@ -328,6 +361,8 @@ impl TuiApp {
                 last_key: None,
                 last_error: None,
                 error_timestamp: None,
+                layout: initial_layout,   // Initial layout from server (#444)
+                options: initial_options, // Initial options from server (#445)
             },
             log_buffer: TuiLogBuffer::new(DEFAULT_TUI_LOG_CAPACITY),
             log_panel: LogPanelState::new(),
@@ -433,7 +468,7 @@ impl TuiApp {
                 msg = self.message_rx.recv() => {
                     match msg {
                         Some(ServerMessage::Notification(notification)) => {
-                            self.handle_notification(notification);
+                            self.handle_notification(notification).await;
                         }
                         Some(ServerMessage::Response(response)) => {
                             self.handle_response(response);
@@ -800,9 +835,66 @@ impl TuiApp {
         Ok(())
     }
 
+    /// Handle a capture request notification (#447).
+    ///
+    /// Responds to `tui/capture-request` from server with frame content.
+    async fn handle_capture_request(&mut self, params: serde_json::Value) {
+        let Ok(payload) = serde_json::from_value::<CaptureRequestPayload>(params) else {
+            tracing::warn!("Failed to parse capture request payload");
+            return;
+        };
+
+        tracing::debug!(
+            "Received capture request {} (format: {:?})",
+            payload.request_id,
+            payload.format
+        );
+
+        // Build frame content using the shared render core
+        let render_state = self.to_render_state();
+        let content = render_core::build_frame_content(
+            &render_state,
+            self.frame_renderer.buffer(),
+            payload.format,
+        );
+
+        // Send capture response back to server
+        let response = CaptureResponsePayload::new(
+            payload.request_id,
+            ScreenContentResult {
+                width: self.last_size.0,
+                height: self.last_size.1,
+                format: payload.format,
+                content,
+            },
+        );
+
+        if let Err(e) = self
+            .rpc_writer
+            .send_notification(
+                CAPTURE_RESPONSE,
+                serde_json::to_value(&response)
+                    .expect("CaptureResponsePayload serialization cannot fail"),
+            )
+            .await
+        {
+            tracing::warn!("Failed to send capture response: {e}");
+        } else {
+            tracing::debug!("Sent capture response {}", payload.request_id);
+        }
+    }
+
     /// Handle a server notification.
-    fn handle_notification(&mut self, notification: RpcNotification) {
+    ///
+    /// Handles both state update notifications (mode, cursor, etc.) and
+    /// capture requests (#447) for frame capture via RPC relay.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "notification handling requires separate logic for each notification type"
+    )]
+    async fn handle_notification(&mut self, notification: RpcNotification) {
         match notification.method.as_str() {
+            CAPTURE_REQUEST => self.handle_capture_request(notification.params).await,
             MODE_CHANGED => {
                 if let Ok(payload) =
                     serde_json::from_value::<ModeChangedPayload>(notification.params)
@@ -863,6 +955,45 @@ impl TuiApp {
                         self.state.needs_redraw = true;
                     }
                     tracing::trace!("Log entry received: {:?}", payload.level);
+                }
+            }
+            LAYOUT_CHANGED => {
+                if let Ok(payload) =
+                    serde_json::from_value::<LayoutChangedPayload>(notification.params)
+                {
+                    tracing::debug!(
+                        "Layout changed: {:?}, windows: {}",
+                        payload.kind,
+                        payload.layout.window_count
+                    );
+                    self.state.layout = Some(payload.layout);
+                    self.state.needs_redraw = true;
+                    self.debug_log(&format!(
+                        "Layout changed: {} windows",
+                        self.state.layout.as_ref().map_or(0, |l| l.window_count)
+                    ));
+                }
+            }
+            OPTION_CHANGED => {
+                // #445: Update cached options when server notifies of change
+                if let Ok(payload) =
+                    serde_json::from_value::<OptionChangedPayload>(notification.params)
+                {
+                    tracing::debug!(
+                        "Option changed: {} = {:?} (window: {:?})",
+                        payload.name,
+                        payload.value,
+                        payload.window_id
+                    );
+                    // Update the cached option value
+                    self.state
+                        .options
+                        .insert(payload.name.clone(), payload.value.clone());
+                    self.state.needs_redraw = true;
+                    self.debug_log(&format!(
+                        "Option changed: {} = {}",
+                        payload.name, payload.value
+                    ));
                 }
             }
             DETACH => {
@@ -992,6 +1123,9 @@ impl TuiApp {
             }
         }
 
+        // Draw window borders for multi-window layouts (#444)
+        self.draw_window_borders();
+
         // Calculate panel heights and positions
         let statusline_height: u16 = u16::from(self.debug_config.is_some());
         let available_height = height.saturating_sub(statusline_height);
@@ -1055,6 +1189,94 @@ impl TuiApp {
         self.renderer.flush()?;
 
         Ok(())
+    }
+
+    /// Draw window borders based on layout state (#444).
+    ///
+    /// Renders window separators for multi-window layouts. Each window's
+    /// borders are drawn based on its bounds from `WireLayoutInfo`.
+    ///
+    /// Uses box drawing characters:
+    /// - `│` for vertical separators
+    /// - `─` for horizontal separators
+    /// - `┼` for intersections
+    fn draw_window_borders(&mut self) {
+        use reovim_protocol::v1::WireZone;
+
+        let Some(layout) = &self.state.layout else {
+            return;
+        };
+
+        // Only draw borders if more than one window
+        if layout.window_count <= 1 {
+            return;
+        }
+
+        let (width, height) = self.last_size;
+        if width == 0 || height == 0 {
+            return;
+        }
+
+        // Reserve space for debug statusline
+        let available_height = height.saturating_sub(u16::from(self.debug_config.is_some()));
+
+        // Style for window borders
+        let border_style = Style::default().fg(reovim_driver_display::Color::DarkGrey);
+
+        // Draw separator for each window that has a right or bottom neighbor
+        for placement in &layout.windows {
+            // Only draw borders for tiled windows
+            if placement.zone != WireZone::Tiled || !placement.visible {
+                continue;
+            }
+
+            let bounds = &placement.bounds;
+
+            // Draw right border (vertical separator) if not at screen edge
+            let right_edge = bounds.x + bounds.width;
+            if right_edge < width {
+                for y in bounds.y..bounds.y.saturating_add(bounds.height).min(available_height) {
+                    self.frame_renderer
+                        .buffer_mut()
+                        .write_str(right_edge, y, "│", &border_style);
+                }
+            }
+
+            // Draw bottom border (horizontal separator) if not at screen edge
+            let bottom_edge = bounds.y + bounds.height;
+            if bottom_edge < available_height {
+                for x in bounds.x..bounds.x.saturating_add(bounds.width).min(width) {
+                    self.frame_renderer
+                        .buffer_mut()
+                        .write_str(x, bottom_edge, "─", &border_style);
+                }
+            }
+
+            // Draw intersection if both borders exist
+            if right_edge < width && bottom_edge < available_height {
+                self.frame_renderer.buffer_mut().write_str(
+                    right_edge,
+                    bottom_edge,
+                    "┼",
+                    &border_style,
+                );
+            }
+        }
+
+        // Highlight focused window border if exists
+        if let Some(focused_id) = &layout.focused_window
+            && let Some(focused) = layout.windows.iter().find(|w| &w.window_id == focused_id)
+        {
+            let focus_style = Style::default().fg(reovim_driver_display::Color::Blue);
+            let bounds = &focused.bounds;
+
+            // Draw a subtle focus indicator at the top-left of focused window
+            if bounds.x < width && bounds.y < available_height {
+                self.frame_renderer
+                    .buffer_mut()
+                    .write_str(bounds.x, bounds.y, "▪", &focus_style);
+            }
+        }
     }
 
     /// Write debug statusline to frame buffer.
@@ -1161,84 +1383,29 @@ impl TuiApp {
     /// Reads directly from `frame_renderer.buffer()` - the same source
     /// that was flushed to stdout. This ensures capture = render.
     ///
-    /// Format designed for easy parsing by language models:
-    /// - Clear section markers with `===`
-    /// - Key-value metadata
-    /// - Explicit line numbers in `[N]` format
-    /// - ANSI codes preserved for styled content (e.g., inverse statusline)
+    /// Delegates to `render_core::build_frame_content` which can be shared
+    /// with `HeadlessClient`.
     fn build_frame_content(&self) -> String {
-        let (width, height) = self.last_size;
-        if width == 0 || height == 0 {
-            return String::new();
+        let render_state = self.to_render_state();
+        render_core::build_frame_content(
+            &render_state,
+            self.frame_renderer.buffer(),
+            ScreenFormat::RawAnsi,
+        )
+    }
+
+    /// Convert current TUI state to a `RenderState` for frame capture.
+    fn to_render_state(&self) -> RenderState {
+        RenderState {
+            width: self.last_size.0,
+            height: self.last_size.1,
+            mode_display: self.state.mode_display.clone(),
+            cursor_line: self.state.cursor_line,
+            cursor_column: self.state.cursor_column,
+            modules: self.state.modules.clone(),
+            server_address: self.server_address.clone(),
+            log_panel_visible: self.log_panel.visible,
         }
-
-        let mut output = String::new();
-
-        // Metadata section (key: value format for easy parsing)
-        let now = chrono::Local::now();
-        let timestamp = now.format("%Y-%m-%d %H:%M:%S %z").to_string();
-        let mode = self.state.mode_display.as_deref().unwrap_or("UNKNOWN");
-        let cursor_line = self.state.cursor_line;
-        let cursor_col = self.state.cursor_column;
-        let modules_count = self.state.modules.len();
-
-        let _ = writeln!(output, "=== FRAME CAPTURE ===");
-        let _ = writeln!(output, "timestamp: {timestamp}");
-        let _ = writeln!(output, "screen_size: {width}x{height}");
-        let _ = writeln!(output, "server: {}", self.server_address);
-        let _ = writeln!(output, "mode: {mode}");
-        let _ = writeln!(output, "cursor: line={cursor_line}, col={cursor_col}");
-        let _ = writeln!(output, "modules: {modules_count}");
-        let _ = writeln!(output, "log_panel_visible: {}", self.log_panel.visible);
-
-        // Read screen content directly from frame buffer
-        let buffer = self.frame_renderer.buffer();
-        let buf_height = buffer.height();
-
-        let _ = writeln!(output, "\n=== SCREEN CONTENT ({width} cols x {buf_height} rows) ===");
-
-        // Read each row from frame buffer
-        for y in 0..buf_height {
-            let mut line = String::new();
-            let mut current_style: Option<Style> = None;
-
-            if let Some(row) = buffer.row(y) {
-                for cell in row {
-                    if cell.is_continuation {
-                        continue;
-                    }
-
-                    // Track style changes for ANSI output
-                    let cell_style = &cell.style;
-                    if current_style.as_ref() != Some(cell_style) {
-                        // Close previous style if any
-                        if current_style.is_some() {
-                            line.push_str("\x1b[0m");
-                        }
-                        // Open new style if not default
-                        let ansi = cell_style.to_ansi_start(ColorMode::TrueColor);
-                        if !ansi.is_empty() {
-                            line.push_str(&ansi);
-                        }
-                        current_style = Some(cell_style.clone());
-                    }
-
-                    line.push(cell.char);
-                }
-
-                // Close any open style
-                if current_style.is_some() {
-                    line.push_str("\x1b[0m");
-                }
-            }
-
-            // Use [N] format for easy regex matching
-            let _ = writeln!(output, "[{}] {}", y + 1, line);
-        }
-
-        let _ = writeln!(output, "=== END FRAME ===");
-
-        output
     }
 
     /// Write a message to the debug session log.
@@ -1275,7 +1442,7 @@ impl TuiApp {
                 }
                 ServerMessage::Notification(notification) => {
                     // Handle notifications while waiting
-                    self.handle_notification(notification);
+                    self.handle_notification(notification).await;
                 }
             }
         }
@@ -1410,6 +1577,39 @@ mod tests {
         let payload: RenderCompletePayload = serde_json::from_value(params).unwrap();
         // Just verify it parses - payload is currently empty
         let _ = payload;
+    }
+
+    // === Option notification tests (#445) ===
+
+    #[test]
+    fn test_option_changed_payload_parsing_global() {
+        let params = json!({
+            "name": "number",
+            "value": true
+        });
+        let payload: OptionChangedPayload = serde_json::from_value(params).unwrap();
+        assert_eq!(payload.name, "number");
+        assert_eq!(payload.value, json!(true));
+        assert!(payload.window_id.is_none());
+    }
+
+    #[test]
+    fn test_option_changed_payload_parsing_window() {
+        let params = json!({
+            "name": "relativenumber",
+            "value": false,
+            "window_id": 42
+        });
+        let payload: OptionChangedPayload = serde_json::from_value(params).unwrap();
+        assert_eq!(payload.name, "relativenumber");
+        assert_eq!(payload.value, json!(false));
+        assert_eq!(payload.window_id, Some(42));
+    }
+
+    #[test]
+    fn test_tui_state_options_default_empty() {
+        let state = TuiState::default();
+        assert!(state.options.is_empty());
     }
 
     #[test]

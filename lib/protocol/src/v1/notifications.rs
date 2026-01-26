@@ -5,7 +5,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::types::{BufferId, Position};
+use super::{
+    results::ScreenContentResult,
+    types::{BufferId, Position, ScreenFormat, WireLayoutChangeKind, WireLayoutInfo},
+};
 
 // Notification type name constants
 
@@ -26,6 +29,24 @@ pub const LOG_ENTRY: &str = "notification/log_entry";
 
 /// Detach notification (client should disconnect).
 pub const DETACH: &str = "notification/detach";
+
+/// Layout changed notification.
+pub const LAYOUT_CHANGED: &str = "notification/layout_changed";
+
+/// Option changed notification.
+///
+/// Sent to clients when an editor option changes.
+pub const OPTION_CHANGED: &str = "notification/option_changed";
+
+/// TUI capture request notification.
+///
+/// Sent by server to TUI client to request a frame capture.
+pub const CAPTURE_REQUEST: &str = "tui/capture-request";
+
+/// TUI capture response notification.
+///
+/// Sent by TUI client to server with the captured frame content.
+pub const CAPTURE_RESPONSE: &str = "tui/capture-response";
 
 // Notification payload types
 
@@ -234,6 +255,153 @@ impl DetachPayload {
     }
 }
 
+/// Payload for layout changed notification.
+///
+/// Sent to clients when the window layout changes (split, close, focus, resize).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LayoutChangedPayload {
+    /// Type of layout change that occurred.
+    pub kind: WireLayoutChangeKind,
+    /// Full layout state after the change.
+    pub layout: WireLayoutInfo,
+}
+
+impl LayoutChangedPayload {
+    /// Create a new layout changed payload.
+    #[must_use]
+    pub const fn new(kind: WireLayoutChangeKind, layout: WireLayoutInfo) -> Self {
+        Self { kind, layout }
+    }
+
+    /// Convert payload to JSON-RPC notification.
+    ///
+    /// # Panics
+    ///
+    /// This function will not panic as `LayoutChangedPayload` serialization is infallible.
+    #[must_use]
+    pub fn into_notification(self) -> super::messages::RpcNotification {
+        super::messages::RpcNotification::new(
+            LAYOUT_CHANGED,
+            serde_json::to_value(self).expect("LayoutChangedPayload serialization cannot fail"),
+        )
+    }
+}
+
+/// Payload for option changed notification (#445).
+///
+/// Sent to clients when an editor option changes value.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OptionChangedPayload {
+    /// Name of the option that changed.
+    pub name: String,
+    /// New value of the option (bool, int, or string).
+    pub value: serde_json::Value,
+    /// Window ID if this is a window-scoped change, None for global.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub window_id: Option<usize>,
+}
+
+impl OptionChangedPayload {
+    /// Create a new option changed payload for a global option.
+    #[must_use]
+    pub fn global(name: impl Into<String>, value: serde_json::Value) -> Self {
+        Self {
+            name: name.into(),
+            value,
+            window_id: None,
+        }
+    }
+
+    /// Create a new option changed payload for a window-scoped option.
+    #[must_use]
+    pub fn window(name: impl Into<String>, value: serde_json::Value, window_id: usize) -> Self {
+        Self {
+            name: name.into(),
+            value,
+            window_id: Some(window_id),
+        }
+    }
+
+    /// Convert payload to JSON-RPC notification.
+    ///
+    /// # Panics
+    ///
+    /// This function will not panic as `OptionChangedPayload` serialization is infallible.
+    #[must_use]
+    pub fn into_notification(self) -> super::messages::RpcNotification {
+        super::messages::RpcNotification::new(
+            OPTION_CHANGED,
+            serde_json::to_value(self).expect("OptionChangedPayload serialization cannot fail"),
+        )
+    }
+}
+
+/// Payload for TUI capture request notification (#447).
+///
+/// Sent by server to TUI client to request a frame capture.
+/// TUI responds with `CaptureResponsePayload`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CaptureRequestPayload {
+    /// Correlation ID to match request with response.
+    pub request_id: u64,
+    /// Requested output format.
+    #[serde(default)]
+    pub format: ScreenFormat,
+}
+
+impl CaptureRequestPayload {
+    /// Create a new capture request payload.
+    #[must_use]
+    pub const fn new(request_id: u64, format: ScreenFormat) -> Self {
+        Self { request_id, format }
+    }
+
+    /// Convert payload to JSON-RPC notification.
+    ///
+    /// # Panics
+    ///
+    /// This function will not panic as `CaptureRequestPayload` serialization is infallible.
+    #[must_use]
+    pub fn into_notification(self) -> super::messages::RpcNotification {
+        super::messages::RpcNotification::new(
+            CAPTURE_REQUEST,
+            serde_json::to_value(self).expect("CaptureRequestPayload serialization cannot fail"),
+        )
+    }
+}
+
+/// Payload for TUI capture response notification (#447).
+///
+/// Sent by TUI client to server with the captured frame content.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CaptureResponsePayload {
+    /// Correlation ID matching the original request.
+    pub request_id: u64,
+    /// Captured frame content.
+    pub result: ScreenContentResult,
+}
+
+impl CaptureResponsePayload {
+    /// Create a new capture response payload.
+    #[must_use]
+    pub const fn new(request_id: u64, result: ScreenContentResult) -> Self {
+        Self { request_id, result }
+    }
+
+    /// Convert payload to JSON-RPC notification.
+    ///
+    /// # Panics
+    ///
+    /// This function will not panic as `CaptureResponsePayload` serialization is infallible.
+    #[must_use]
+    pub fn into_notification(self) -> super::messages::RpcNotification {
+        super::messages::RpcNotification::new(
+            CAPTURE_RESPONSE,
+            serde_json::to_value(self).expect("CaptureResponsePayload serialization cannot fail"),
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -435,5 +603,238 @@ mod tests {
         let notification = payload.into_notification();
         assert_eq!(notification.jsonrpc, "2.0");
         assert_eq!(notification.method, DETACH);
+    }
+
+    // Layout changed notification tests (#444)
+
+    #[test]
+    fn test_layout_changed_constant() {
+        assert!(LAYOUT_CHANGED.starts_with("notification/"));
+        assert_eq!(LAYOUT_CHANGED, "notification/layout_changed");
+    }
+
+    #[test]
+    fn test_layout_changed_payload_split() {
+        use super::super::types::{
+            WireLayoutChangeKind, WireLayoutInfo, WireSplitDirection, WireWindowId,
+        };
+
+        let kind = WireLayoutChangeKind::Split {
+            new_window: WireWindowId(1),
+            direction: WireSplitDirection::Vertical,
+        };
+        let layout = WireLayoutInfo::single_window(80, 24, None);
+        let payload = LayoutChangedPayload::new(kind, layout);
+
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains("\"kind\""));
+        assert!(json.contains("\"layout\""));
+        assert!(json.contains("\"type\":\"split\""));
+    }
+
+    #[test]
+    fn test_layout_changed_payload_into_notification() {
+        use super::super::types::{WireLayoutChangeKind, WireLayoutInfo};
+
+        let kind = WireLayoutChangeKind::Equalize;
+        let layout = WireLayoutInfo::default();
+        let payload = LayoutChangedPayload::new(kind, layout);
+
+        let notification = payload.into_notification();
+        assert_eq!(notification.jsonrpc, "2.0");
+        assert_eq!(notification.method, LAYOUT_CHANGED);
+    }
+
+    #[test]
+    fn test_layout_changed_payload_roundtrip() {
+        use super::super::types::{WireLayoutChangeKind, WireLayoutInfo, WireWindowId};
+
+        let kind = WireLayoutChangeKind::Focus {
+            from: Some(WireWindowId(0)),
+            to: WireWindowId(1),
+        };
+        let layout = WireLayoutInfo::single_window(120, 40, None);
+        let payload = LayoutChangedPayload::new(kind, layout);
+
+        let json = serde_json::to_string(&payload).unwrap();
+        let parsed: LayoutChangedPayload = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.layout.window_count, 1);
+    }
+
+    // TUI capture notification tests (#447)
+
+    #[test]
+    fn test_capture_request_constant() {
+        assert_eq!(CAPTURE_REQUEST, "tui/capture-request");
+    }
+
+    #[test]
+    fn test_capture_response_constant() {
+        assert_eq!(CAPTURE_RESPONSE, "tui/capture-response");
+    }
+
+    #[test]
+    fn test_capture_request_payload_new() {
+        let payload = CaptureRequestPayload::new(42, ScreenFormat::RawAnsi);
+        assert_eq!(payload.request_id, 42);
+        assert_eq!(payload.format, ScreenFormat::RawAnsi);
+    }
+
+    #[test]
+    fn test_capture_request_payload_serialization() {
+        let payload = CaptureRequestPayload::new(123, ScreenFormat::PlainText);
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains("\"request_id\":123"));
+        assert!(json.contains("\"format\":\"plain_text\""));
+    }
+
+    #[test]
+    fn test_capture_request_payload_roundtrip() {
+        let payload = CaptureRequestPayload::new(42, ScreenFormat::RawAnsi);
+        let json = serde_json::to_string(&payload).unwrap();
+        let decoded: CaptureRequestPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(payload, decoded);
+    }
+
+    #[test]
+    fn test_capture_request_payload_default_format() {
+        // Missing format should default to PlainText
+        let json = r#"{"request_id":1}"#;
+        let payload: CaptureRequestPayload = serde_json::from_str(json).unwrap();
+        assert_eq!(payload.format, ScreenFormat::PlainText);
+    }
+
+    #[test]
+    fn test_capture_request_payload_into_notification() {
+        let payload = CaptureRequestPayload::new(1, ScreenFormat::RawAnsi);
+        let notification = payload.into_notification();
+        assert_eq!(notification.jsonrpc, "2.0");
+        assert_eq!(notification.method, CAPTURE_REQUEST);
+    }
+
+    #[test]
+    fn test_capture_response_payload_new() {
+        let result = ScreenContentResult {
+            width: 80,
+            height: 24,
+            format: ScreenFormat::RawAnsi,
+            content: "test content".to_string(),
+        };
+        let payload = CaptureResponsePayload::new(42, result);
+        assert_eq!(payload.request_id, 42);
+        assert_eq!(payload.result.width, 80);
+        assert_eq!(payload.result.content, "test content");
+    }
+
+    #[test]
+    fn test_capture_response_payload_serialization() {
+        let result = ScreenContentResult {
+            width: 120,
+            height: 40,
+            format: ScreenFormat::PlainText,
+            content: "hello world".to_string(),
+        };
+        let payload = CaptureResponsePayload::new(123, result);
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains("\"request_id\":123"));
+        assert!(json.contains("\"width\":120"));
+        assert!(json.contains("\"height\":40"));
+        assert!(json.contains("\"content\":\"hello world\""));
+    }
+
+    #[test]
+    fn test_capture_response_payload_roundtrip() {
+        let result = ScreenContentResult {
+            width: 80,
+            height: 24,
+            format: ScreenFormat::CellGrid,
+            content: "{}".to_string(),
+        };
+        let payload = CaptureResponsePayload::new(42, result);
+        let json = serde_json::to_string(&payload).unwrap();
+        let decoded: CaptureResponsePayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.request_id, 42);
+        assert_eq!(decoded.result.width, 80);
+    }
+
+    #[test]
+    fn test_capture_response_payload_into_notification() {
+        let result = ScreenContentResult {
+            width: 80,
+            height: 24,
+            format: ScreenFormat::PlainText,
+            content: String::new(),
+        };
+        let payload = CaptureResponsePayload::new(1, result);
+        let notification = payload.into_notification();
+        assert_eq!(notification.jsonrpc, "2.0");
+        assert_eq!(notification.method, CAPTURE_RESPONSE);
+    }
+
+    // Option changed notification tests (#445)
+
+    #[test]
+    fn test_option_changed_constant() {
+        assert!(OPTION_CHANGED.starts_with("notification/"));
+        assert_eq!(OPTION_CHANGED, "notification/option_changed");
+    }
+
+    #[test]
+    fn test_option_changed_payload_global() {
+        let payload = OptionChangedPayload::global("number", serde_json::json!(true));
+        assert_eq!(payload.name, "number");
+        assert_eq!(payload.value, serde_json::json!(true));
+        assert!(payload.window_id.is_none());
+    }
+
+    #[test]
+    fn test_option_changed_payload_window() {
+        let payload = OptionChangedPayload::window("relativenumber", serde_json::json!(true), 42);
+        assert_eq!(payload.name, "relativenumber");
+        assert_eq!(payload.value, serde_json::json!(true));
+        assert_eq!(payload.window_id, Some(42));
+    }
+
+    #[test]
+    fn test_option_changed_payload_serialization() {
+        // Global option (no window_id in JSON)
+        let payload = OptionChangedPayload::global("number", serde_json::json!(true));
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains("\"name\":\"number\""));
+        assert!(json.contains("\"value\":true"));
+        assert!(!json.contains("window_id")); // Skipped when None
+
+        // Window-scoped option
+        let payload = OptionChangedPayload::window("tabstop", serde_json::json!(4), 7);
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains("\"name\":\"tabstop\""));
+        assert!(json.contains("\"value\":4"));
+        assert!(json.contains("\"window_id\":7"));
+    }
+
+    #[test]
+    fn test_option_changed_payload_roundtrip() {
+        let payload = OptionChangedPayload::window("shiftwidth", serde_json::json!(2), 3);
+        let json = serde_json::to_string(&payload).unwrap();
+        let decoded: OptionChangedPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.name, "shiftwidth");
+        assert_eq!(decoded.value, serde_json::json!(2));
+        assert_eq!(decoded.window_id, Some(3));
+    }
+
+    #[test]
+    fn test_option_changed_payload_into_notification() {
+        let payload = OptionChangedPayload::global("number", serde_json::json!(false));
+        let notification = payload.into_notification();
+        assert_eq!(notification.jsonrpc, "2.0");
+        assert_eq!(notification.method, OPTION_CHANGED);
+    }
+
+    #[test]
+    fn test_option_changed_payload_string_value() {
+        let payload = OptionChangedPayload::global("colorscheme", serde_json::json!("gruvbox"));
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains("\"value\":\"gruvbox\""));
     }
 }

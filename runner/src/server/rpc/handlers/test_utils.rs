@@ -10,6 +10,7 @@ use {
         EventBus, KernelContext, MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry,
         RegisterBank, ServiceRegistry, TextObjectEngine,
     },
+    tokio::sync::watch,
 };
 
 use crate::{
@@ -86,6 +87,7 @@ pub fn test_ctx() -> RpcContext {
         session,
         client_id,
         client,
+        shutdown_tx: watch::channel(false).0,
     }
 }
 
@@ -98,5 +100,6 @@ pub fn test_ctx_with_session(session: Arc<Session>) -> RpcContext {
         session,
         client_id,
         client,
+        shutdown_tx: watch::channel(false).0,
     }
 }

@@ -3,10 +3,13 @@
 //! Each RPC method has a corresponding result type that defines
 //! the expected response structure.
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 use super::types::{
-    BufferId, BufferInfo, CursorInfo, ModeInfo, ScreenFormat, ScreenInfo, SelectionInfo, WindowInfo,
+    BufferId, BufferInfo, CursorInfo, ModeInfo, ScreenFormat, ScreenInfo, SelectionInfo,
+    WindowInfo, WireLayoutInfo, WireRect, WireWindowId,
 };
 
 /// Result type aliases for state methods.
@@ -14,6 +17,33 @@ pub type StateCursorResult = CursorInfo;
 pub type StateModeResult = ModeInfo;
 pub type StateSelectionResult = SelectionInfo;
 pub type StateScreenResult = ScreenInfo;
+/// Result for `state/layout` method.
+pub type StateLayoutResult = WireLayoutInfo;
+
+/// Result for `state/window_content` method (#444).
+///
+/// Contains rendered content for a specific window.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StateWindowContentResult {
+    /// Window ID.
+    pub window_id: WireWindowId,
+    /// Window bounds within screen.
+    pub bounds: WireRect,
+    /// Content format.
+    pub format: ScreenFormat,
+    /// Window content (in requested format).
+    pub content: String,
+}
+
+/// Result for `state/options` method (#445).
+///
+/// Contains option values as a map of name to JSON value.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StateOptionsResult {
+    /// Option values as JSON values.
+    /// Values can be bool, int, or string depending on the option type.
+    pub options: HashMap<String, serde_json::Value>,
+}
 
 /// Result for `state/screen_content` method.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -331,5 +361,34 @@ mod tests {
         let result = InputKeysResult::not_found();
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("\"status\":\"not_found\""));
+    }
+
+    #[test]
+    fn test_state_window_content_result() {
+        let result = StateWindowContentResult {
+            window_id: WireWindowId::from(1),
+            bounds: WireRect::new(0, 0, 40, 12),
+            format: ScreenFormat::PlainText,
+            content: "Hello, Window!".to_string(),
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("\"window_id\":1"));
+        assert!(json.contains("\"bounds\""));
+        assert!(json.contains("\"format\":\"plain_text\""));
+        assert!(json.contains("\"content\":\"Hello, Window!\""));
+    }
+
+    #[test]
+    fn test_state_options_result() {
+        use std::collections::HashMap;
+        let mut options = HashMap::new();
+        options.insert("number".to_string(), serde_json::json!(true));
+        options.insert("relativenumber".to_string(), serde_json::json!(false));
+
+        let result = StateOptionsResult { options };
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("\"options\""));
+        assert!(json.contains("\"number\":true"));
+        assert!(json.contains("\"relativenumber\":false"));
     }
 }

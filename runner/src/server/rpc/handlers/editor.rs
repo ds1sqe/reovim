@@ -2,7 +2,10 @@
 //!
 //! Handlers for `editor/resize`, `editor/quit`, `editor/set_active_buffer`, and related methods.
 
-use {reovim_kernel::api::v1::BufferId, reovim_protocol::v1::RpcError, serde::Deserialize};
+use {
+    reovim_driver_display::Rect, reovim_kernel::api::v1::BufferId, reovim_protocol::v1::RpcError,
+    serde::Deserialize,
+};
 
 use super::super::dispatcher::{HandlerFuture, RpcContext};
 
@@ -17,12 +20,18 @@ pub struct EditorResizeParams {
 
 /// Handler for `editor/resize` method.
 ///
-/// Updates the terminal dimensions in the client's viewport.
+/// Updates the terminal dimensions in the client's viewport and compositor.
 ///
 /// # Per-Client Viewport
 ///
 /// Each client has independent terminal dimensions, allowing different
 /// clients to have different window sizes (e.g., different terminal emulators).
+///
+/// # Compositor Screen Update
+///
+/// The compositor's screen is also updated to ensure window navigation and
+/// layout calculations use the correct dimensions. In multi-client scenarios,
+/// the compositor uses the size of the most recently resized client.
 ///
 /// # Request
 ///
@@ -56,6 +65,21 @@ pub fn editor_resize(ctx: RpcContext, params: serde_json::Value) -> HandlerFutur
             viewport.terminal_width = params.width;
             viewport.terminal_height = params.height;
         } // Lock dropped
+
+        // Update session terminal size and compositor screen (Level 1 lock)
+        // This ensures navigation and layout calculations use correct dimensions
+        ctx.session
+            .with_state_mut(|state| {
+                // Update session-level terminal size
+                state.set_session_terminal_size(params.width, params.height);
+
+                // Update compositor's screen for navigation calculations
+                if let Some(compositor) = state.driver_session.compositor_mut() {
+                    let screen = Rect::new(0, 0, params.width, params.height);
+                    compositor.set_screen(screen);
+                }
+            })
+            .await;
 
         Ok(serde_json::json!({"ok": true}))
     })
@@ -183,7 +207,7 @@ pub fn editor_set_active_buffer(ctx: RpcContext, params: serde_json::Value) -> H
 
 #[cfg(test)]
 mod tests {
-    use {super::*, std::sync::Arc};
+    use {super::*, std::sync::Arc, tokio::sync::watch};
 
     use crate::{
         server::rpc::{
@@ -205,6 +229,7 @@ mod tests {
             session,
             client_id,
             client: Arc::clone(&client),
+            shutdown_tx: watch::channel(false).0,
         };
 
         let result = editor_resize(ctx, serde_json::json!({"width": 120, "height": 40})).await;
@@ -259,6 +284,7 @@ mod tests {
             session,
             client_id,
             client: Arc::clone(&client),
+            shutdown_tx: watch::channel(false).0,
         };
 
         // Test max u16 values
@@ -288,6 +314,7 @@ mod tests {
             session: Arc::clone(&session),
             client_id,
             client,
+            shutdown_tx: watch::channel(false).0,
         };
 
         let result = editor_quit(ctx, serde_json::json!({})).await;
@@ -309,6 +336,7 @@ mod tests {
             session: Arc::clone(&session),
             client_id,
             client: Arc::clone(&client),
+            shutdown_tx: watch::channel(false).0,
         };
         let _ = editor_resize(ctx1, serde_json::json!({"width": 100, "height": 30})).await;
 
@@ -316,6 +344,7 @@ mod tests {
             session,
             client_id,
             client: Arc::clone(&client),
+            shutdown_tx: watch::channel(false).0,
         };
         let _ = editor_resize(ctx2, serde_json::json!({"width": 150, "height": 45})).await;
 
@@ -380,6 +409,7 @@ mod tests {
             session,
             client_id,
             client: Arc::clone(&client),
+            shutdown_tx: watch::channel(false).0,
         };
 
         // Set the active buffer
@@ -432,6 +462,7 @@ mod tests {
             session: Arc::clone(&session),
             client_id,
             client: Arc::clone(&client),
+            shutdown_tx: watch::channel(false).0,
         };
         let _ =
             editor_set_active_buffer(ctx1, serde_json::json!({"buffer_id": buffer1.as_usize()}))
@@ -442,6 +473,7 @@ mod tests {
             session,
             client_id,
             client: Arc::clone(&client),
+            shutdown_tx: watch::channel(false).0,
         };
         let result =
             editor_set_active_buffer(ctx2, serde_json::json!({"buffer_id": buffer2.as_usize()}))
@@ -494,6 +526,7 @@ mod tests {
             session: Arc::clone(&session),
             client_id,
             client: Arc::clone(&client),
+            shutdown_tx: watch::channel(false).0,
         };
         let _ = editor_set_active_buffer(ctx, serde_json::json!({"buffer_id": buffer2.as_usize()}))
             .await;
@@ -517,6 +550,7 @@ mod tests {
             session,
             client_id,
             client: Arc::clone(&client),
+            shutdown_tx: watch::channel(false).0,
         };
         let _ =
             editor_set_active_buffer(ctx2, serde_json::json!({"buffer_id": buffer1.as_usize()}))
@@ -583,6 +617,7 @@ mod tests {
             session: Arc::clone(&session),
             client_id,
             client: Arc::clone(&client),
+            shutdown_tx: watch::channel(false).0,
         };
         let _ =
             editor_set_active_buffer(ctx1, serde_json::json!({"buffer_id": buffer2.as_usize()}))
@@ -592,6 +627,7 @@ mod tests {
             session: Arc::clone(&session),
             client_id,
             client: Arc::clone(&client),
+            shutdown_tx: watch::channel(false).0,
         };
         let _ =
             editor_set_active_buffer(ctx2, serde_json::json!({"buffer_id": buffer3.as_usize()}))
@@ -601,6 +637,7 @@ mod tests {
             session,
             client_id,
             client: Arc::clone(&client),
+            shutdown_tx: watch::channel(false).0,
         };
         let _ =
             editor_set_active_buffer(ctx3, serde_json::json!({"buffer_id": buffer1.as_usize()}))

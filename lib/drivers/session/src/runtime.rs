@@ -46,8 +46,9 @@ use {
     },
     reovim_driver_undo::{UndoKey, UndoProviderRegistry},
     reovim_kernel::api::v1::{
-        BufferId, CommandId, Edit, KernelContext, ModeId, Position,
+        BufferId, CommandId, Edit, KernelContext, ModeId, OptionValue, Position,
         SelectionMode as KernelSelectionMode, UndoResult, WindowId,
+        events::kernel::{LayoutChangeKind, LayoutChanged, SplitDirection as KernelSplitDirection},
     },
 };
 
@@ -162,6 +163,30 @@ impl<'a> SessionRuntime<'a> {
         let buf_arc = self.kernel.buffers.get(buffer)?;
         let buf = buf_arc.read();
         Some(f(&buf))
+    }
+
+    // === Option Change Tracking (#445) ===
+
+    /// Record a global option change for notification emission.
+    ///
+    /// Call this after setting a global option via `kernel.options.set()`.
+    /// The change will be emitted as an `OPTION_CHANGED` notification.
+    pub fn record_global_option_change(&mut self, name: impl Into<String>, value: OptionValue) {
+        self.changes.record_global_option_change(name, value);
+    }
+
+    /// Record a window-scoped option change for notification emission.
+    ///
+    /// Call this after setting a window option via `kernel.options.set()`.
+    /// The change will be emitted as an `OPTION_CHANGED` notification.
+    pub fn record_window_option_change(
+        &mut self,
+        name: impl Into<String>,
+        value: OptionValue,
+        window_id: WindowId,
+    ) {
+        self.changes
+            .record_window_option_change(name, value, window_id);
     }
 }
 
@@ -814,6 +839,29 @@ impl ChangeTracker for SessionRuntime<'_> {
 
 // === CompositorApi ===
 
+/// Convert driver `SplitDirection` to kernel `SplitDirection`.
+const fn to_kernel_split_direction(dir: SplitDirection) -> KernelSplitDirection {
+    match dir {
+        SplitDirection::Horizontal => KernelSplitDirection::Horizontal,
+        SplitDirection::Vertical => KernelSplitDirection::Vertical,
+    }
+}
+
+impl SessionRuntime<'_> {
+    /// Emit a `LayoutChanged` event via the kernel's event bus.
+    fn emit_layout_event(&self, kind: LayoutChangeKind) {
+        let (window_count, focused_window) =
+            self.session.compositor.as_ref().map_or((0, None), |c| {
+                (c.window_count(), c.focused().map(|id| id.as_usize() as u64))
+            });
+        self.kernel.event_bus.emit(LayoutChanged {
+            kind,
+            window_count,
+            focused_window,
+        });
+    }
+}
+
 impl CompositorApi for SessionRuntime<'_> {
     fn navigate(&self, direction: NavigateDirection) -> Result<WindowId, CompositorError> {
         let compositor = self
@@ -860,6 +908,13 @@ impl CompositorApi for SessionRuntime<'_> {
 
         // Focus moves to new window automatically in split_tiled
         self.changes.record_window_created(new_window);
+
+        // Emit layout changed event
+        self.emit_layout_event(LayoutChangeKind::Split {
+            new_window: new_window.as_usize() as u64,
+            direction: to_kernel_split_direction(direction),
+        });
+
         Ok(new_window)
     }
 
@@ -892,6 +947,13 @@ impl CompositorApi for SessionRuntime<'_> {
             .ok_or(CompositorError::CannotCloseLastWindow)?;
 
         self.changes.record_window_closed(current);
+
+        // Emit layout changed event
+        self.emit_layout_event(LayoutChangeKind::Close {
+            closed_window: current.as_usize() as u64,
+            new_focus: Some(neighbor.as_usize() as u64),
+        });
+
         Ok(neighbor)
     }
 
@@ -921,10 +983,19 @@ impl CompositorApi for SessionRuntime<'_> {
             .filter(|&w| w != current)
             .collect();
 
-        // Close all other windows
-        for window in windows {
-            layer.close_tiled(window);
-            self.changes.record_window_closed(window);
+        // Close all other windows and emit events
+        for window in &windows {
+            layer.close_tiled(*window);
+            self.changes.record_window_closed(*window);
+        }
+
+        // Emit a single layout changed event for the batch close operation
+        // Use the last closed window in the event (if any windows were closed)
+        if let Some(&last_closed) = windows.last() {
+            self.emit_layout_event(LayoutChangeKind::Close {
+                closed_window: last_closed.as_usize() as u64,
+                new_focus: Some(current.as_usize() as u64),
+            });
         }
 
         Ok(())
@@ -949,6 +1020,12 @@ impl CompositorApi for SessionRuntime<'_> {
 
         layer.resize_tiled(current, direction, delta);
         self.changes.window_changed = true;
+
+        // Emit layout changed event
+        self.emit_layout_event(LayoutChangeKind::Resize {
+            window: current.as_usize() as u64,
+        });
+
         Ok(())
     }
 
@@ -969,6 +1046,10 @@ impl CompositorApi for SessionRuntime<'_> {
 
         layer.equalize_tiled();
         self.changes.window_changed = true;
+
+        // Emit layout changed event
+        self.emit_layout_event(LayoutChangeKind::Equalize);
+
         Ok(())
     }
 
@@ -1001,9 +1082,21 @@ impl CompositorApi for SessionRuntime<'_> {
             .as_mut()
             .ok_or(CompositorError::NoActiveLayer)?;
 
+        // Get the previous focused window before changing focus
+        let previous_focus = compositor.focused();
+
         // set_focus also activates the layer containing the window
         compositor.set_focus(window);
         self.changes.record_focus_change();
+
+        // Emit layout changed event (only if focus actually changed)
+        if previous_focus != Some(window) {
+            self.emit_layout_event(LayoutChangeKind::Focus {
+                from: previous_focus.map(|w| w.as_usize() as u64),
+                to: window.as_usize() as u64,
+            });
+        }
+
         Ok(())
     }
 

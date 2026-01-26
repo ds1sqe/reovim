@@ -6,6 +6,27 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Line number display modes**: Added support for `:set number` and `:set
+  relativenumber` options with absolute, relative, and hybrid display modes.
+  Server-side rendering via `state/screen_content` with reactive notifications
+  via `OPTION_CHANGED`. Ex commands `:set number`, `:set nonumber`, and toggle
+  via `:set number!` are supported. (#445)
+- **Option query RPC**: New `state/options` RPC method queries editor options
+  with optional filtering by name and window scope. (#445)
+- **TUI frame capture via RPC relay**: Added `reovim cli capture` command and
+  `tui/capture` RPC method for capturing TUI frames with ANSI colors. Flow:
+  CLI → Server → TUI → Server → CLI. Requires a connected TUI client. (#447)
+- **Headless TUI mode**: Added `--headless` flag to TUI client for CI/scripting.
+  Runs without TTY, responds to capture requests only. (#447)
+- **Shared render core**: Extracted `RenderCore` and `RenderState` for shared
+  rendering between interactive and headless TUI clients. (#447)
+- **Window mode**: Added `<C-w>` prefix for window management commands. Supports
+  navigation (h/j/k/l), splitting (s/v), closing (c/q/o), resizing (+/-/>/</=),
+  and cycling (w/W/p). Each command executes and returns to normal mode. (#438)
+- **Compositor infrastructure**: Layout module now self-registers 15 window
+  commands via `CommandHandlerStore`. Runner no longer imports from policy
+  modules, fixing architecture violation. (#438)
+
 ### Changed
 
 - **BREAKING**: `REOVIM_MODULE_PATH` now prepends to search paths instead of
@@ -25,6 +46,15 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   restores the preceding newline. (#434)
 - **RPC handler**: Fixed `PopResult::ExecuteCommand` not setting `buffer_id` in
   command context, which caused delete/yank operators to fail silently. (#434)
+- **CLI kill command**: Fixed `cli kill` not terminating the server. The shutdown
+  signal now properly bridges from RPC handler to accept loop using a watch
+  channel instead of Notify, which preserves state during accept. (#446)
+- **CLI list command**: Fixed `cli list` only finding servers on ports 12522-12531.
+  Now scans /proc for reovim processes listening on any TCP port, enabling
+  discovery of servers started with `--tcp 0` (random port). (#446)
+- **Module FFI symbols**: Fixed hot-reload-demo module missing FFI entry points
+  by enabling the `dynamic` feature by default. This resolved 9 failing
+  module_loading integration tests. (#448)
 
 ### Removed
 

@@ -13,6 +13,7 @@ mod screen;
 mod server;
 mod state;
 pub mod stub;
+mod tui;
 
 #[cfg(test)]
 pub mod test_utils;
@@ -27,9 +28,10 @@ pub use {
     module::{module_list, module_load, module_reload, module_unload},
     screen::state_screen_content,
     server::server_kill,
-    state::{state_cursor, state_mode, state_screen, state_selection},
+    state::{state_cursor, state_layout, state_mode, state_options, state_screen, state_selection},
     stub::{
         state_ascii_art, state_layer_info, state_microscope, state_telescope,
         state_visual_snapshot, state_windows,
     },
+    tui::tui_capture,
 };

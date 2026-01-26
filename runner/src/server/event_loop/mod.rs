@@ -18,9 +18,8 @@
 
 mod error;
 pub mod handlers;
-mod runtime_adapter;
 
-pub use {error::EventLoopError, runtime_adapter::RuntimeAdapter};
+pub use error::EventLoopError;
 
 use std::sync::Arc;
 
@@ -366,13 +365,14 @@ impl EventLoop {
                 if let Some(search_registry) = self.app.services.get::<SearchProviderRegistry>()
                     && let Some(buffer_id) = self.driver_session.active_buffer()
                 {
-                    // Get cursor position from active window
+                    // Get cursor position from active window in driver_session
                     let cursor_pos = self
-                        .app
+                        .driver_session
                         .windows
-                        .active_window()
-                        .and_then(|win_id| self.app.windows.get(win_id))
-                        .map(|state| state.cursor)
+                        .active()
+                        .map(|w| {
+                            reovim_kernel::api::v1::Position::new(w.cursor.line, w.cursor.column)
+                        })
                         .unwrap_or_default();
 
                     if let Some(buffer_arc) = self.app.kernel.buffers.get(buffer_id) {
@@ -391,11 +391,10 @@ impl EventLoop {
                             Some(m) => {
                                 // Update buffer's internal cursor position (SSOT for RPC)
                                 buffer_arc.write().set_position(m.start);
-                                // Update window registry cursor (for rendering)
-                                if let Some(win_id) = self.app.windows.active_window()
-                                    && let Some(state) = self.app.windows.get_mut(win_id)
-                                {
-                                    state.cursor = m.start;
+                                // Update window cursor in driver_session
+                                if let Some(window) = self.driver_session.windows.active_mut() {
+                                    window.cursor.line = m.start.line;
+                                    window.cursor.column = m.start.column;
                                 }
                                 eprintln!("[DEBUG] Search found at {m_start:?}", m_start = m.start);
                             }
@@ -522,13 +521,11 @@ impl EventLoop {
         let mode = self.driver_session.mode_stack.current().clone();
         let mut mode_state = ModeState::new(mode.clone());
 
-        // Create RuntimeAdapter combining SessionRuntime with WindowRegistry.
-        // This replaces AppStateRuntime with proper delegation to driver layer.
+        // Create SessionRuntime for session API access.
+        // SessionRuntime implements all session APIs using Session.windows and Session.compositor.
         let stub_executor = StubCommandExecutor;
-        let session_runtime =
-            SessionRuntime::new(&mut self.driver_session, &self.app.kernel, &stub_executor);
         let mut runtime =
-            RuntimeAdapter::new(session_runtime, &mut self.app.windows, &self.app.kernel);
+            SessionRuntime::new(&mut self.driver_session, &self.app.kernel, &stub_executor);
 
         // Resolvers access session state via SessionApiDyn + extensions
         // Extensions contain module-specific state (e.g., VimSessionState)
@@ -703,12 +700,10 @@ impl EventLoop {
         // Get the resolver for the current mode
         let resolver = registry.get(&mode)?;
 
-        // Create RuntimeAdapter for session API access
+        // Create SessionRuntime for session API access
         let stub_executor = StubCommandExecutor;
-        let session_runtime =
-            SessionRuntime::new(&mut self.driver_session, &self.app.kernel, &stub_executor);
         let mut runtime =
-            RuntimeAdapter::new(session_runtime, &mut self.app.windows, &self.app.kernel);
+            SessionRuntime::new(&mut self.driver_session, &self.app.kernel, &stub_executor);
 
         // Call the hook - resolver decides if there's anything to complete
         resolver.on_command_complete(&mut runtime, &mut self.app.extensions)

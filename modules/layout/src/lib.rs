@@ -44,6 +44,7 @@ pub use {
 use std::sync::Arc;
 
 use {
+    reovim_driver_command::{CommandHandler, CommandHandlerStore, CommandProvider},
     reovim_driver_display::layout::{CompositorKey, CompositorRegistry},
     reovim_kernel::api::v1::{
         Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version, pr_info,
@@ -89,6 +90,12 @@ impl Module for LayoutModule {
         compositor_registry
             .register(CompositorKey::Root, Arc::new(HybridCompositor::with_main_layer()));
 
+        // Epic #438: Self-register window commands
+        let command_store = ctx.services.get_or_create::<CommandHandlerStore>();
+        for handler in commands::all_commands() {
+            command_store.add(handler);
+        }
+
         pr_info!("Layout module initialized");
         ProbeResult::Success
     }
@@ -96,6 +103,12 @@ impl Module for LayoutModule {
     fn exit(&mut self) -> Result<(), ModuleError> {
         pr_info!("Layout module exiting");
         Ok(())
+    }
+}
+
+impl CommandProvider for LayoutModule {
+    fn command_handlers(&self) -> Vec<Box<dyn CommandHandler>> {
+        commands::all_commands()
     }
 }
 

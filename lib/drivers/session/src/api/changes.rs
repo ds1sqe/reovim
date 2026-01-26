@@ -24,7 +24,40 @@
 //! }
 //! ```
 
-use reovim_kernel::api::v1::{BufferId, WindowId};
+use reovim_kernel::api::v1::{BufferId, OptionValue, WindowId};
+
+/// Represents a single option change.
+#[derive(Debug, Clone)]
+pub struct OptionChange {
+    /// Name of the option that changed.
+    pub name: String,
+    /// New value.
+    pub value: OptionValue,
+    /// Window ID if window-scoped, None if global.
+    pub window_id: Option<WindowId>,
+}
+
+impl OptionChange {
+    /// Create a global option change.
+    #[must_use]
+    pub fn global(name: impl Into<String>, value: OptionValue) -> Self {
+        Self {
+            name: name.into(),
+            value,
+            window_id: None,
+        }
+    }
+
+    /// Create a window-scoped option change.
+    #[must_use]
+    pub fn window(name: impl Into<String>, value: OptionValue, window_id: WindowId) -> Self {
+        Self {
+            name: name.into(),
+            value,
+            window_id: Some(window_id),
+        }
+    }
+}
 
 /// Tracks what changed during an operation.
 ///
@@ -72,6 +105,13 @@ pub struct StateChanges {
     pub windows_closed: Vec<WindowId>,
     /// Whether window focus changed.
     pub focus_changed: bool,
+
+    // === Option Changes (#445) ===
+    /// Whether any option changed.
+    pub option_changed: bool,
+    /// Options that changed.
+    /// Each entry contains name, value, and optional `window_id`.
+    pub options_changed: Vec<OptionChange>,
 }
 
 impl StateChanges {
@@ -95,6 +135,7 @@ impl StateChanges {
             || !self.windows_created.is_empty()
             || !self.windows_closed.is_empty()
             || self.focus_changed
+            || self.option_changed
     }
 
     /// Merge another `StateChanges` into this one.
@@ -112,6 +153,8 @@ impl StateChanges {
         self.windows_created.extend(other.windows_created);
         self.windows_closed.extend(other.windows_closed);
         self.focus_changed |= other.focus_changed;
+        self.option_changed |= other.option_changed;
+        self.options_changed.extend(other.options_changed);
     }
 
     // === Recording helpers ===
@@ -178,6 +221,27 @@ impl StateChanges {
         if !self.affected_buffers.contains(&buffer) {
             self.affected_buffers.push(buffer);
         }
+    }
+
+    /// Record that an option changed.
+    pub fn record_option_change(&mut self, change: OptionChange) {
+        self.option_changed = true;
+        self.options_changed.push(change);
+    }
+
+    /// Record a global option change.
+    pub fn record_global_option_change(&mut self, name: impl Into<String>, value: OptionValue) {
+        self.record_option_change(OptionChange::global(name, value));
+    }
+
+    /// Record a window-scoped option change.
+    pub fn record_window_option_change(
+        &mut self,
+        name: impl Into<String>,
+        value: OptionValue,
+        window_id: WindowId,
+    ) {
+        self.record_option_change(OptionChange::window(name, value, window_id));
     }
 }
 
@@ -325,5 +389,62 @@ mod tests {
         assert!(!changes.mode_changed);
         assert!(!changes.cursor_moved);
         assert!(changes.modified_buffers.is_empty());
+    }
+
+    // === Option change tests (#445) ===
+
+    #[test]
+    fn test_option_change_global() {
+        let change = OptionChange::global("number", OptionValue::bool(true));
+        assert_eq!(change.name, "number");
+        assert_eq!(change.value, OptionValue::bool(true));
+        assert!(change.window_id.is_none());
+    }
+
+    #[test]
+    fn test_option_change_window() {
+        let window = WindowId::new();
+        let change = OptionChange::window("relativenumber", OptionValue::bool(true), window);
+        assert_eq!(change.name, "relativenumber");
+        assert_eq!(change.window_id, Some(window));
+    }
+
+    #[test]
+    fn test_record_option_change() {
+        let mut changes = StateChanges::new();
+        assert!(!changes.has_changes());
+        assert!(!changes.option_changed);
+
+        changes.record_global_option_change("number", OptionValue::bool(true));
+
+        assert!(changes.has_changes());
+        assert!(changes.option_changed);
+        assert_eq!(changes.options_changed.len(), 1);
+        assert_eq!(changes.options_changed[0].name, "number");
+    }
+
+    #[test]
+    fn test_record_window_option_change() {
+        let mut changes = StateChanges::new();
+        let window = WindowId::new();
+
+        changes.record_window_option_change("number", OptionValue::bool(true), window);
+
+        assert!(changes.option_changed);
+        assert_eq!(changes.options_changed.len(), 1);
+        assert_eq!(changes.options_changed[0].window_id, Some(window));
+    }
+
+    #[test]
+    fn test_merge_option_changes() {
+        let mut a = StateChanges::new();
+        a.record_global_option_change("number", OptionValue::bool(true));
+
+        let mut b = StateChanges::new();
+        b.record_global_option_change("relativenumber", OptionValue::bool(false));
+
+        a.merge(b);
+        assert!(a.option_changed);
+        assert_eq!(a.options_changed.len(), 2);
     }
 }

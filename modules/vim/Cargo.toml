@@ -27,6 +27,8 @@ reovim-module-textobjects = { path = "../textobjects" }
 reovim-driver-clipboard = { path = "../../lib/drivers/clipboard" }
 reovim-driver-undo = { path = "../../lib/drivers/undo" }
 reovim-driver-search = { path = "../../lib/drivers/search" }
+# Layout module for window command IDs (Epic #438)
+reovim-module-layout = { path = "../layout" }
 tracing = { workspace = true }
 
 [dev-dependencies]

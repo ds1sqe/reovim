@@ -24,10 +24,14 @@ mod delete;
 mod insert;
 mod normal;
 pub mod operator_common;
+mod window;
 mod yank;
 
 // Dedicated operator resolvers (Epic #415)
 pub use {change::VimChangeResolver, delete::VimDeleteResolver, yank::VimYankResolver};
+
+// Window mode resolver (Epic #438)
+pub use window::VimWindowResolver;
 
 // Other resolvers
 pub use {
