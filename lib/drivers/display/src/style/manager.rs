@@ -121,6 +121,57 @@ impl ThemeManager {
     }
 }
 
+// Implement Service marker trait for ServiceRegistry integration (#439)
+impl reovim_kernel::api::v1::Service for ThemeManager {}
+
+// ============================================================================
+// SharedThemeManager - RwLock wrapper for ServiceRegistry (#439)
+// ============================================================================
+
+use reovim_arch::sync::RwLock;
+
+/// Thread-safe wrapper for `ThemeManager` for `ServiceRegistry`.
+///
+/// This newtype wrapper allows `ThemeManager` to be stored in `ServiceRegistry`
+/// while enabling mutation via `RwLock`. Use `read()` and `write()` to access
+/// the inner manager.
+///
+/// # Example
+///
+/// ```ignore
+/// use reovim_driver_display::style::SharedThemeManager;
+///
+/// // Register in ServiceRegistry
+/// let manager = SharedThemeManager::new(BuiltinTheme::Dark.load());
+/// services.register(Arc::new(manager));
+///
+/// // Access later
+/// let shared = services.get::<SharedThemeManager>().unwrap();
+/// let name = shared.read().current_theme_name();
+/// shared.write().set_theme(BuiltinTheme::Light.load());
+/// ```
+pub struct SharedThemeManager(RwLock<ThemeManager>);
+
+impl SharedThemeManager {
+    /// Create a new shared theme manager.
+    #[must_use]
+    pub fn new(theme: Arc<dyn super::theme::ThemeProvider>) -> Self {
+        Self(RwLock::new(ThemeManager::new(theme)))
+    }
+
+    /// Acquire a read lock on the theme manager.
+    pub fn read(&self) -> reovim_arch::sync::RwLockReadGuard<'_, ThemeManager> {
+        self.0.read()
+    }
+
+    /// Acquire a write lock on the theme manager.
+    pub fn write(&self) -> reovim_arch::sync::RwLockWriteGuard<'_, ThemeManager> {
+        self.0.write()
+    }
+}
+
+impl reovim_kernel::api::v1::Service for SharedThemeManager {}
+
 #[cfg(test)]
 mod tests {
     use reovim_arch::Color;

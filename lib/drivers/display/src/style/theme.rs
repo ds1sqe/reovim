@@ -86,14 +86,20 @@ struct SimpleBuiltinTheme {
 }
 
 impl ThemeProvider for SimpleBuiltinTheme {
-    fn get_style(&self, _group: &str) -> Option<Style> {
-        // TODO: Implement actual theme lookups with full style definitions
-        // For now, return None to use default styles
-        None
+    fn get_style(&self, group: &str) -> Option<Style> {
+        super::builtin::get_palette(self.variant)
+            .get(group)
+            .cloned()
     }
 
     fn name(&self) -> &str {
         self.variant.name()
+    }
+
+    fn default_style(&self) -> Style {
+        // Return foreground style as default
+        self.get_style(super::groups::FOREGROUND)
+            .unwrap_or_default()
     }
 }
 
@@ -118,5 +124,57 @@ mod tests {
     fn test_builtin_theme_all() {
         let all = BuiltinTheme::all();
         assert_eq!(all.len(), 3);
+    }
+
+    // =========================================================================
+    // Theme Completeness Tests (#439)
+    // =========================================================================
+
+    #[test]
+    fn test_dark_theme_all_groups_defined() {
+        let theme = BuiltinTheme::Dark.load();
+        for group in super::super::groups::ALL_GROUPS {
+            assert!(theme.get_style(group).is_some(), "Dark theme missing group: {group}");
+        }
+    }
+
+    #[test]
+    fn test_light_theme_all_groups_defined() {
+        let theme = BuiltinTheme::Light.load();
+        for group in super::super::groups::ALL_GROUPS {
+            assert!(theme.get_style(group).is_some(), "Light theme missing group: {group}");
+        }
+    }
+
+    #[test]
+    fn test_tokyo_night_all_groups_defined() {
+        let theme = BuiltinTheme::TokyoNightOrange.load();
+        for group in super::super::groups::ALL_GROUPS {
+            assert!(
+                theme.get_style(group).is_some(),
+                "TokyoNightOrange theme missing group: {group}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_theme_colors_are_different() {
+        let dark = BuiltinTheme::Dark.load();
+        let light = BuiltinTheme::Light.load();
+
+        // Keywords should have different colors between themes
+        let dark_keyword = dark.get_style(super::super::groups::KEYWORD).unwrap();
+        let light_keyword = light.get_style(super::super::groups::KEYWORD).unwrap();
+        assert_ne!(dark_keyword.fg, light_keyword.fg);
+    }
+
+    #[test]
+    fn test_default_style_returns_foreground() {
+        let theme = BuiltinTheme::Dark.load();
+        let default = theme.default_style();
+        let foreground = theme.get_style(super::super::groups::FOREGROUND).unwrap();
+
+        // Default style should match foreground
+        assert_eq!(default.fg, foreground.fg);
     }
 }

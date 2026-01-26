@@ -48,14 +48,17 @@
 //! for now. This theme system uses string-based group names for flexibility.
 //! Future Phase 6 may migrate `HighlightGroup` to this driver.
 
+mod builtin;
+pub mod groups;
 mod icons;
 mod manager;
 mod theme;
 
 pub use {
+    groups::ALL_GROUPS,
     icons::{
         BuiltinFileIconProvider, IconDef, IconProvider, IconRegistry, IconSet, file_icons, ui_icons,
     },
-    manager::ThemeManager,
+    manager::{SharedThemeManager, ThemeManager},
     theme::{BuiltinTheme, ThemeProvider},
 };

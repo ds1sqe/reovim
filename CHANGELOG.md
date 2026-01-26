@@ -38,6 +38,14 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   per layer with automatic clamping to screen bounds. Overlays render above all
   tiled and float windows without stealing focus. Infrastructure only; consumer
   systems (autocomplete, hover, command palette) to follow. (#399)
+- **Color and theme system**: Implemented centralized theme system with 3 built-in
+  themes (dark, light, tokyo-night-orange). Themes define 34 highlight groups for
+  syntax (keyword, function, string, comment, etc.), UI elements (statusline,
+  line numbers, cursor, selection, borders), and diagnostics (error, warning,
+  info, hint). Switch themes at runtime with `:colorscheme <name>`. Theme system
+  follows mechanism/policy separation: driver layer provides `ThemeProvider` trait
+  and `ThemeManager`, module layer provides `:colorscheme` command. Supports 16,
+  256, and true color terminals with automatic color mode detection. (#439)
 
 ### Changed
 

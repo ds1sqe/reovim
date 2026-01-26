@@ -130,6 +130,15 @@ pub fn build_default_registries() -> (
     services.register(Arc::new(CaptureTracker::new()));
     tracing::debug!("registered CaptureTracker in ServiceRegistry (#447)");
 
+    // Register SharedThemeManager with default Dark theme (#439)
+    // Theme is server-specific (policy), ThemeManager is driver mechanism.
+    {
+        use reovim_driver_display::style::{BuiltinTheme, SharedThemeManager};
+        let theme_manager = SharedThemeManager::new(BuiltinTheme::Dark.load());
+        services.register(Arc::new(theme_manager));
+        tracing::debug!("registered SharedThemeManager in ServiceRegistry (#439)");
+    }
+
     // Initialize defaults bundle modules (Epic #417 Phase 5)
     // Modules register their services (undo, buffer, search, scratch-buffer) during init()
     let defaults_init_ctx = ModuleContext::new(
