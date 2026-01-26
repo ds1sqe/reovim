@@ -1,15 +1,15 @@
 //! Default layer implementation for the nested compositor.
 //!
 //! This module provides `DefaultLayer`, which implements `WindowLayerCompositor`
-//! with tiled and float zones.
+//! with tiled, float, and overlay zones.
 //!
 //! # Architecture
 //!
 //! ```text
 //! DefaultLayer (implements WindowLayerCompositor)
-//! ├── Tiled Zone  (TilingLayout)  ✓ Implemented
-//! ├── Float Zone  (FloatZone)     ✓ Implemented (#398)
-//! └── Overlay Zone (stub)         ← Phase 3
+//! ├── Tiled Zone   (TilingLayout)  ✓ Implemented
+//! ├── Float Zone   (FloatZone)     ✓ Implemented (#398)
+//! └── Overlay Zone (OverlayZone)   ✓ Implemented (#399)
 //! ```
 //!
 //! # Focus Model
@@ -20,21 +20,21 @@
 use reovim_driver_display::{
     NavigateDirection, Rect, SplitDirection, WindowId,
     layout::{
-        FloatingLayer, LayerId, OverlayConstraints, TiledLayer, WindowLayerCompositor,
-        WindowPlacement, ZOrder, Zone,
+        FloatingLayer, LayerId, OverlayConstraints, OverlayLayer, TiledLayer,
+        WindowLayerCompositor, WindowPlacement, ZOrder, Zone,
     },
 };
 
-use crate::{FloatZone, TilingLayout};
+use crate::{FloatZone, OverlayZone, TilingLayout};
 
-/// Default layer implementation with tiled and float zones.
+/// Default layer implementation with tiled, float, and overlay zones.
 ///
-/// This compositor wraps both `TilingLayout` (tiled zone) and `FloatZone`
-/// (floating windows), implementing `WindowLayerCompositor`.
+/// This compositor wraps `TilingLayout` (tiled zone), `FloatZone` (floating
+/// windows), and `OverlayZone` (popups/menus), implementing `WindowLayerCompositor`.
 ///
 /// # Thread Safety
 ///
-/// `DefaultLayer` is `Send + Sync` because both zone managers are `Send + Sync`.
+/// `DefaultLayer` is `Send + Sync` because all zone managers are `Send + Sync`.
 #[derive(Debug, Clone)]
 pub struct DefaultLayer {
     /// Layer identifier.
@@ -45,8 +45,12 @@ pub struct DefaultLayer {
     tiled: TilingLayout,
     /// Float zone manager.
     float: FloatZone,
+    /// Overlay zone manager (#399).
+    overlay: OverlayZone,
     /// Next float window ID (DefaultLayer generates IDs for float zone).
     next_float_id: usize,
+    /// Next overlay window ID (DefaultLayer generates IDs for overlay zone).
+    next_overlay_id: usize,
     /// Currently focused window.
     focused: Option<WindowId>,
     /// Cached screen bounds for navigation/cycle.
@@ -68,7 +72,9 @@ impl DefaultLayer {
             label: label.into(),
             tiled: TilingLayout::new(id, Zone::Tiled, z_base),
             float: FloatZone::new(id, z_base),
+            overlay: OverlayZone::new(id, z_base),
             next_float_id: 1000, // Start float IDs at 1000 to avoid collision with tiled
+            next_overlay_id: 2000, // Start overlay IDs at 2000 to avoid collision with float
             focused: None,
             screen: Rect::new(0, 0, 80, 24), // Default screen size
         }
@@ -125,10 +131,15 @@ impl WindowLayerCompositor for DefaultLayer {
     }
 
     fn arrange(&self, bounds: Rect) -> Vec<WindowPlacement> {
-        // Get placements from both zones
+        // Get placements from tiled and float zones first
         let mut placements = TiledLayer::arrange(&self.tiled, bounds);
         placements.extend(FloatingLayer::arrange(&self.float));
-        // Sort by z-order for correct rendering (tiled first, then float)
+
+        // Get overlay placements (needs existing placements for anchor resolution)
+        // Overlays can reference tiled/float window positions via Cursor/Below anchors
+        placements.extend(OverlayLayer::arrange(&self.overlay, bounds, &placements));
+
+        // Sort by z-order for correct rendering (tiled < float < overlay)
         placements.sort_by_key(|p| p.z_order);
         placements
     }
@@ -249,19 +260,28 @@ impl WindowLayerCompositor for DefaultLayer {
     }
 
     // =========================================================================
-    // Overlay Zone (Phase 3 stubs)
+    // Overlay Zone (#399)
     // =========================================================================
 
-    fn show_overlay(&mut self, _constraints: OverlayConstraints) -> WindowId {
-        unimplemented!("Overlay zone not implemented in Phase 1")
+    fn show_overlay(&mut self, constraints: OverlayConstraints) -> WindowId {
+        // Generate a new window ID (DefaultLayer owns ID allocation for overlays)
+        let id = WindowId::from_raw(self.next_overlay_id);
+        self.next_overlay_id += 1;
+        OverlayLayer::show(&mut self.overlay, id, constraints);
+        // Note: Overlays do NOT auto-focus (they are temporary UI above content)
+        id
     }
 
-    fn hide_overlay(&mut self, _window: WindowId) {
-        unimplemented!("Overlay zone not implemented in Phase 1")
+    fn hide_overlay(&mut self, window: WindowId) {
+        OverlayLayer::hide(&mut self.overlay, window);
     }
 
-    fn resize_overlay(&mut self, _window: WindowId, _width: u16, _height: u16) {
-        unimplemented!("Overlay zone not implemented in Phase 1")
+    fn resize_overlay(&mut self, window: WindowId, width: u16, height: u16) {
+        OverlayLayer::update_size(&mut self.overlay, window, width, height);
+    }
+
+    fn hide_all_overlays(&mut self) {
+        OverlayLayer::hide_all(&mut self.overlay);
     }
 
     // =========================================================================
@@ -280,7 +300,7 @@ impl WindowLayerCompositor for DefaultLayer {
         match zone {
             Zone::Tiled => TiledLayer::windows(&self.tiled),
             Zone::Float => FloatingLayer::windows(&self.float),
-            Zone::Overlay => Vec::new(), // Phase 3
+            Zone::Overlay => OverlayLayer::visible_overlays(&self.overlay),
         }
     }
 
@@ -289,6 +309,8 @@ impl WindowLayerCompositor for DefaultLayer {
             Some(Zone::Tiled)
         } else if FloatingLayer::contains(&self.float, window) {
             Some(Zone::Float)
+        } else if OverlayLayer::is_visible(&self.overlay, window) {
+            Some(Zone::Overlay)
         } else {
             None
         }
@@ -718,5 +740,116 @@ mod tests {
             .unwrap()
             .window_id;
         assert_eq!(top_float, float2, "float2 should be on top after lowering float1");
+    }
+
+    // =========================================================================
+    // Overlay Zone Tests (#399 Phase 2)
+    // =========================================================================
+
+    #[test]
+    fn test_default_layer_show_overlay() {
+        let mut layer = DefaultLayer::new(LayerId::new(0), "main");
+        let constraints = OverlayConstraints::centered().with_size(40, 10);
+
+        let id = layer.show_overlay(constraints);
+
+        assert!(layer.windows_in_zone(Zone::Overlay).contains(&id));
+        assert_eq!(layer.zone_of(id), Some(Zone::Overlay));
+    }
+
+    #[test]
+    fn test_default_layer_hide_overlay() {
+        let mut layer = DefaultLayer::new(LayerId::new(0), "main");
+        let id = layer.show_overlay(OverlayConstraints::centered().with_size(40, 10));
+
+        assert!(layer.windows_in_zone(Zone::Overlay).contains(&id));
+
+        layer.hide_overlay(id);
+
+        assert!(!layer.windows_in_zone(Zone::Overlay).contains(&id));
+        assert_eq!(layer.zone_of(id), None);
+    }
+
+    #[test]
+    fn test_default_layer_overlay_does_not_auto_focus() {
+        let mut layer = DefaultLayer::new(LayerId::new(0), "main");
+        let tiled_id = layer.add_tiled();
+
+        // Tiled window should be focused
+        assert_eq!(layer.focused(), Some(tiled_id));
+
+        // Show overlay - focus should NOT change
+        let _overlay_id = layer.show_overlay(OverlayConstraints::centered().with_size(40, 10));
+
+        // Focus should still be on tiled window
+        assert_eq!(layer.focused(), Some(tiled_id));
+    }
+
+    #[test]
+    fn test_default_layer_arrange_includes_overlay() {
+        let mut layer = DefaultLayer::new(LayerId::new(0), "main");
+        layer.set_screen(Rect::new(0, 0, 80, 24));
+        let tiled_id = layer.add_tiled();
+        let overlay_id = layer.show_overlay(OverlayConstraints::centered().with_size(40, 10));
+
+        let placements = layer.arrange(Rect::new(0, 0, 80, 24));
+
+        assert_eq!(placements.len(), 2);
+        let window_ids: Vec<_> = placements.iter().map(|p| p.window_id).collect();
+        assert!(window_ids.contains(&tiled_id));
+        assert!(window_ids.contains(&overlay_id));
+    }
+
+    #[test]
+    fn test_overlay_z_order_above_float() {
+        let mut layer = DefaultLayer::new(LayerId::new(0), "main");
+        layer.set_screen(Rect::new(0, 0, 80, 24));
+        let _tiled_id = layer.add_tiled();
+        let _float_id = layer.create_float(Rect::new(10, 5, 60, 20));
+        let _overlay_id = layer.show_overlay(OverlayConstraints::centered().with_size(40, 10));
+
+        let placements = layer.arrange(Rect::new(0, 0, 80, 24));
+
+        // Find placements by zone
+        let tiled_placement = placements.iter().find(|p| p.zone == Zone::Tiled).unwrap();
+        let float_placement = placements.iter().find(|p| p.zone == Zone::Float).unwrap();
+        let overlay_placement = placements.iter().find(|p| p.zone == Zone::Overlay).unwrap();
+
+        // Z-order: Tiled < Float < Overlay
+        assert!(tiled_placement.z_order < float_placement.z_order, "Float should be above tiled");
+        assert!(
+            float_placement.z_order < overlay_placement.z_order,
+            "Overlay should be above float"
+        );
+    }
+
+    #[test]
+    fn test_default_layer_hide_all_overlays() {
+        let mut layer = DefaultLayer::new(LayerId::new(0), "main");
+        let _id1 = layer.show_overlay(OverlayConstraints::at_position(10, 10).with_size(20, 5));
+        let _id2 = layer.show_overlay(OverlayConstraints::at_position(30, 15).with_size(25, 8));
+        let _id3 = layer.show_overlay(OverlayConstraints::centered().with_size(40, 10));
+
+        assert_eq!(layer.windows_in_zone(Zone::Overlay).len(), 3);
+
+        layer.hide_all_overlays();
+
+        assert_eq!(layer.windows_in_zone(Zone::Overlay).len(), 0);
+    }
+
+    #[test]
+    fn test_default_layer_resize_overlay() {
+        let mut layer = DefaultLayer::new(LayerId::new(0), "main");
+        layer.set_screen(Rect::new(0, 0, 80, 24));
+        let id = layer.show_overlay(OverlayConstraints::centered().with_size(20, 10));
+
+        // Resize to larger
+        layer.resize_overlay(id, 40, 15);
+
+        // Check new size in placements
+        let placements = layer.arrange(Rect::new(0, 0, 80, 24));
+        let overlay = placements.iter().find(|p| p.window_id == id).unwrap();
+        assert_eq!(overlay.bounds.width, 40);
+        assert_eq!(overlay.bounds.height, 15);
     }
 }

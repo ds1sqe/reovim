@@ -18,9 +18,15 @@
 //! WindowLayerCompositor.navigate_tiled(from, Left)
 //! ```
 //!
+//! # Overlay Operations (#399)
+//!
+//! Overlays are temporary UI elements (popups, menus, tooltips) that appear
+//! above all other windows. They do NOT auto-focus when shown - focus remains
+//! on the underlying tiled/float window.
+//!
 use reovim_driver_display::{
     NavigateDirection, Rect, SplitDirection, WindowId,
-    layout::{LayerId, WindowPlacement},
+    layout::{LayerId, OverlayConstraints, WindowPlacement},
 };
 
 /// Errors from compositor operations.
@@ -234,6 +240,66 @@ pub trait CompositorApi {
     /// - `NoActiveLayer` - No layer is active
     /// - `NoFocusedWindow` - No window is focused
     fn lower_float(&mut self) -> Result<(), CompositorError>;
+
+    // =========================================================================
+    // Overlay Zone Operations (#399)
+    // =========================================================================
+
+    /// Show an overlay with constraints.
+    ///
+    /// Creates a new overlay positioned according to the constraints.
+    /// Overlays do NOT auto-focus - they are temporary UI elements that
+    /// appear above content without stealing keyboard input.
+    ///
+    /// # Arguments
+    ///
+    /// * `constraints` - Positioning constraints (anchor, preferred size, max size)
+    ///
+    /// # Returns
+    ///
+    /// The window ID of the new overlay.
+    ///
+    /// # Errors
+    ///
+    /// - `NoActiveLayer` - No layer is active
+    fn show_overlay(
+        &mut self,
+        constraints: OverlayConstraints,
+    ) -> Result<WindowId, CompositorError>;
+
+    /// Hide (remove) an overlay.
+    ///
+    /// # Arguments
+    ///
+    /// * `window` - The overlay window ID to hide
+    ///
+    /// # Errors
+    ///
+    /// - `NoActiveLayer` - No layer is active
+    fn hide_overlay(&mut self, window: WindowId) -> Result<(), CompositorError>;
+
+    /// Resize an overlay.
+    ///
+    /// Updates the preferred size of the overlay.
+    ///
+    /// # Errors
+    ///
+    /// - `NoActiveLayer` - No layer is active
+    fn resize_overlay(
+        &mut self,
+        window: WindowId,
+        width: u16,
+        height: u16,
+    ) -> Result<(), CompositorError>;
+
+    /// Hide all overlays in the active layer.
+    ///
+    /// Useful for commands like "dismiss all popups" (Escape key behavior).
+    ///
+    /// # Errors
+    ///
+    /// - `NoActiveLayer` - No layer is active
+    fn hide_all_overlays(&mut self) -> Result<(), CompositorError>;
 }
 
 #[cfg(test)]

@@ -42,7 +42,7 @@ use {
     reovim_driver_command_types::{CommandContext, CommandResult},
     reovim_driver_display::{
         NavigateDirection, Rect, SplitDirection,
-        layout::{LayerId, WindowPlacement},
+        layout::{LayerId, OverlayConstraints, WindowPlacement},
     },
     reovim_driver_undo::{UndoKey, UndoProviderRegistry},
     reovim_kernel::api::v1::{
@@ -1197,6 +1197,95 @@ impl CompositorApi for SessionRuntime<'_> {
 
         layer.lower_float(current);
 
+        Ok(())
+    }
+
+    // =========================================================================
+    // Overlay Zone Operations (#399)
+    // =========================================================================
+
+    fn show_overlay(
+        &mut self,
+        constraints: OverlayConstraints,
+    ) -> Result<WindowId, CompositorError> {
+        let compositor = self
+            .session
+            .compositor
+            .as_mut()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        let active = compositor
+            .active_layer()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        let layer = compositor
+            .layer_compositor_mut(active)
+            .ok_or(CompositorError::LayerNotFound(active))?;
+
+        let id = layer.show_overlay(constraints);
+        // Note: Overlays do NOT auto-focus
+        Ok(id)
+    }
+
+    fn hide_overlay(&mut self, window: WindowId) -> Result<(), CompositorError> {
+        let compositor = self
+            .session
+            .compositor
+            .as_mut()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        let active = compositor
+            .active_layer()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        let layer = compositor
+            .layer_compositor_mut(active)
+            .ok_or(CompositorError::LayerNotFound(active))?;
+
+        layer.hide_overlay(window);
+        Ok(())
+    }
+
+    fn resize_overlay(
+        &mut self,
+        window: WindowId,
+        width: u16,
+        height: u16,
+    ) -> Result<(), CompositorError> {
+        let compositor = self
+            .session
+            .compositor
+            .as_mut()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        let active = compositor
+            .active_layer()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        let layer = compositor
+            .layer_compositor_mut(active)
+            .ok_or(CompositorError::LayerNotFound(active))?;
+
+        layer.resize_overlay(window, width, height);
+        Ok(())
+    }
+
+    fn hide_all_overlays(&mut self) -> Result<(), CompositorError> {
+        let compositor = self
+            .session
+            .compositor
+            .as_mut()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        let active = compositor
+            .active_layer()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        let layer = compositor
+            .layer_compositor_mut(active)
+            .ok_or(CompositorError::LayerNotFound(active))?;
+
+        layer.hide_all_overlays();
         Ok(())
     }
 }

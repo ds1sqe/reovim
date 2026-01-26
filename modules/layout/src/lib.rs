@@ -30,6 +30,7 @@ mod floatzone;
 mod focus;
 pub mod ids;
 mod layer;
+mod overlayzone;
 mod split;
 mod tiling;
 
@@ -39,6 +40,7 @@ pub use {
     floatzone::FloatZone,
     focus::VimFocusPolicy,
     layer::DefaultLayer,
+    overlayzone::OverlayZone,
     split::{SplitNode, SplitTree},
     tiling::TilingLayout,
 };
