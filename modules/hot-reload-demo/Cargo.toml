@@ -11,7 +11,7 @@ license = "AGPL-3.0-only"
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = []
+default = ["dynamic"]  # Always enable FFI for this demo/test module
 dynamic = []  # Enable FFI entry points for standalone dynamic loading
 
 [dependencies]

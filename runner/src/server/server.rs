@@ -8,6 +8,8 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
+use tokio::sync::watch;
+
 use crate::server::{
     bootstrap, debug, handler, instance,
     module::{ModuleConfig, ModuleManager},
@@ -45,18 +47,31 @@ pub struct Server {
 
     /// Shutdown flag for graceful termination.
     shutdown: AtomicBool,
+
+    /// Shutdown signal sender for waking the accept loop from RPC handlers.
+    ///
+    /// This channel bridges RPC handlers (like `server/kill`) to the accept loop.
+    /// When `true` is sent, the accept loop exits gracefully.
+    /// Using `watch` channel because it preserves state even if sent while no one is waiting.
+    shutdown_tx: watch::Sender<bool>,
+
+    /// Shutdown signal receiver (cloned for each client handler).
+    shutdown_rx: watch::Receiver<bool>,
 }
 
 impl Server {
     /// Create a new server with the given configuration.
     #[must_use]
     pub fn new(config: ServerConfig) -> Self {
+        let (shutdown_tx, shutdown_rx) = watch::channel(false);
         Self {
             config,
             sessions: Arc::new(SessionRegistry::new()),
             dispatcher: Arc::new(create_default_dispatcher()),
             module_registry: Arc::new(ModuleManager::new()),
             shutdown: AtomicBool::new(false),
+            shutdown_tx,
+            shutdown_rx,
         }
     }
 
@@ -131,6 +146,7 @@ impl Server {
     /// Run the server with a listener transport (TCP or Unix socket).
     ///
     /// Accepts connections in a loop and spawns a task for each client.
+    #[allow(clippy::too_many_lines)]
     async fn run_listener(
         &self,
         listener: TransportListener,
@@ -189,41 +205,61 @@ impl Server {
             );
         }
 
-        // Accept loop
-        while !self.shutdown.load(Ordering::Relaxed) {
-            match listener.accept().await {
-                Ok((reader, writer)) => {
-                    tracing::info!("New connection");
-
-                    // Generate unique client ID
-                    let client_id = self.sessions.next_client_id();
-
-                    // Clone Arcs for the spawned task
-                    let sessions = Arc::clone(&self.sessions);
-                    let dispatcher = Arc::clone(&self.dispatcher);
-                    let session_id = default_session_id.clone();
-                    let default_mode = self.config.effective_default_mode();
-
-                    // Spawn client handler task
-                    tokio::spawn(async move {
-                        if let Err(e) = handler::handle_client(
-                            reader,
-                            writer,
-                            client_id,
-                            session_id,
-                            sessions,
-                            dispatcher,
-                            default_mode,
-                        )
-                        .await
-                        {
-                            tracing::error!("Client {client_id:?} error: {e}");
-                        }
-                        tracing::info!("Client {client_id:?} disconnected");
-                    });
+        // Accept loop with shutdown signal
+        let mut shutdown_rx = self.shutdown_rx.clone();
+        loop {
+            tokio::select! {
+                // Check for shutdown signal from RPC handlers (e.g., server/kill)
+                _ = shutdown_rx.changed() => {
+                    if *shutdown_rx.borrow() {
+                        tracing::info!("Shutdown signal received");
+                        break;
+                    }
                 }
-                Err(e) => {
-                    tracing::error!("Accept error: {e}");
+                // Check manual shutdown flag
+                () = async {}, if self.shutdown.load(Ordering::Relaxed) => {
+                    tracing::info!("Shutdown flag set");
+                    break;
+                }
+                // Accept new connections
+                result = listener.accept() => {
+                    match result {
+                        Ok((reader, writer)) => {
+                            tracing::info!("New connection");
+
+                            // Generate unique client ID
+                            let client_id = self.sessions.next_client_id();
+
+                            // Clone Arcs for the spawned task
+                            let sessions = Arc::clone(&self.sessions);
+                            let dispatcher = Arc::clone(&self.dispatcher);
+                            let session_id = default_session_id.clone();
+                            let default_mode = self.config.effective_default_mode();
+                            let shutdown_tx = self.shutdown_tx.clone();
+
+                            // Spawn client handler task
+                            tokio::spawn(async move {
+                                if let Err(e) = handler::handle_client(
+                                    reader,
+                                    writer,
+                                    client_id,
+                                    session_id,
+                                    sessions,
+                                    dispatcher,
+                                    default_mode,
+                                    shutdown_tx,
+                                )
+                                .await
+                                {
+                                    tracing::error!("Client {client_id:?} error: {e}");
+                                }
+                                tracing::info!("Client {client_id:?} disconnected");
+                            });
+                        }
+                        Err(e) => {
+                            tracing::error!("Accept error: {e}");
+                        }
+                    }
                 }
             }
         }
@@ -272,6 +308,7 @@ impl Server {
             Arc::clone(&self.sessions),
             Arc::clone(&self.dispatcher),
             default_mode,
+            self.shutdown_tx.clone(),
         )
         .await?;
 
@@ -341,8 +378,14 @@ impl Server {
     }
 
     /// Request server shutdown.
+    ///
+    /// Sets the shutdown flag AND sends via watch channel.
+    /// Both mechanisms are used for reliability:
+    /// - Flag: Checked on next loop iteration
+    /// - Channel: Wakes up if waiting on `accept()`
     pub fn shutdown(&self) {
         self.shutdown.store(true, Ordering::Relaxed);
+        let _ = self.shutdown_tx.send(true);
     }
 
     /// Check if shutdown has been requested.

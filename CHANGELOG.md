@@ -46,6 +46,15 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   restores the preceding newline. (#434)
 - **RPC handler**: Fixed `PopResult::ExecuteCommand` not setting `buffer_id` in
   command context, which caused delete/yank operators to fail silently. (#434)
+- **CLI kill command**: Fixed `cli kill` not terminating the server. The shutdown
+  signal now properly bridges from RPC handler to accept loop using a watch
+  channel instead of Notify, which preserves state during accept. (#446)
+- **CLI list command**: Fixed `cli list` only finding servers on ports 12522-12531.
+  Now scans /proc for reovim processes listening on any TCP port, enabling
+  discovery of servers started with `--tcp 0` (random port). (#446)
+- **Module FFI symbols**: Fixed hot-reload-demo module missing FFI entry points
+  by enabling the `dynamic` feature by default. This resolved 9 failing
+  module_loading integration tests. (#448)
 
 ### Removed
 

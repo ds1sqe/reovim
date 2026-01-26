@@ -4,6 +4,8 @@
 
 use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
 
+use tokio::sync::watch;
+
 use {
     reovim_kernel::profile_scope,
     reovim_protocol::v1::{RpcError, RpcRequest, RpcResponse},
@@ -20,6 +22,7 @@ use crate::{
 /// - The session with editor state
 /// - The client ID for targeted responses/notifications
 /// - Direct client reference for viewport access
+/// - Shutdown signal for server termination
 #[derive(Clone)]
 pub struct RpcContext {
     /// The session this request is for.
@@ -37,6 +40,14 @@ pub struct RpcContext {
     ///
     /// This avoids needing to look up the client from the registry on every handler call.
     pub client: Arc<Client>,
+
+    /// Shutdown signal sender for server termination.
+    ///
+    /// RPC handlers (like `server/kill`) can signal shutdown by calling
+    /// `send(true)`. The server's accept loop listens for this signal via a
+    /// cloned receiver. Using `watch` channel because it preserves state
+    /// even if sent while the accept loop is waiting on `accept()`.
+    pub shutdown_tx: watch::Sender<bool>,
 }
 
 /// Result type for RPC handlers.
@@ -186,6 +197,7 @@ mod tests {
             session,
             client_id,
             client,
+            shutdown_tx: watch::channel(false).0,
         };
 
         let request = RpcRequest::new(1, "echo", serde_json::json!({"key": "value"}));
@@ -208,6 +220,7 @@ mod tests {
             session,
             client_id,
             client,
+            shutdown_tx: watch::channel(false).0,
         };
 
         let request = RpcRequest::new(1, "error", serde_json::json!({}));
@@ -227,6 +240,7 @@ mod tests {
             session,
             client_id,
             client,
+            shutdown_tx: watch::channel(false).0,
         };
 
         let request = RpcRequest::new(1, "unknown", serde_json::json!({}));
@@ -249,6 +263,7 @@ mod tests {
             session,
             client_id,
             client,
+            shutdown_tx: watch::channel(false).0,
         };
 
         let request = RpcRequest::notification("notify", serde_json::json!({}));

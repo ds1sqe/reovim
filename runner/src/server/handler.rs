@@ -10,6 +10,7 @@ use {
         RpcError, RpcNotification, RpcRequest, RpcResponse,
         notifications::{CAPTURE_RESPONSE, CaptureResponsePayload},
     },
+    tokio::sync::watch,
 };
 
 use crate::server::{
@@ -35,6 +36,8 @@ use crate::server::{
 /// * `sessions` - Session registry for looking up sessions
 /// * `dispatcher` - RPC dispatcher for handling requests
 /// * `default_mode` - Default mode ID for new sessions
+/// * `shutdown_tx` - Watch channel sender to trigger server shutdown (for `server/kill`)
+#[allow(clippy::too_many_arguments)]
 pub async fn handle_client(
     mut reader: TransportReader,
     writer: TransportWriter,
@@ -43,6 +46,7 @@ pub async fn handle_client(
     sessions: Arc<SessionRegistry>,
     dispatcher: Arc<RpcDispatcher>,
     _default_mode: ModeId,
+    shutdown_tx: watch::Sender<bool>,
 ) -> std::io::Result<()> {
     // Get or create the session with default registries (keybindings wired)
     let session = sessions
@@ -59,6 +63,7 @@ pub async fn handle_client(
         session: Arc::clone(&session),
         client_id,
         client: Arc::clone(&client),
+        shutdown_tx,
     };
 
     // Read loop

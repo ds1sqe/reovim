@@ -60,7 +60,44 @@ async fn test_cli_list_servers() {
     let servers = discovery::list_servers();
     // We can't assert exact count since other servers might be running
     // Just verify the function doesn't panic
-    assert!(servers.len() <= 10, "At most 10 ports scanned");
+    // Note: Since #446, we also scan /proc for reovim processes on any port,
+    // so there's no upper limit on the number of servers discovered.
+    assert!(
+        servers.iter().all(|s| s.port > 0),
+        "All discovered servers should have valid ports"
+    );
+}
+
+/// Test that `server/kill` RPC actually terminates the server (#446).
+///
+/// This is an end-to-end test that verifies the shutdown signal propagates
+/// from the RPC handler through the watch channel to the accept loop.
+#[tokio::test]
+async fn test_server_kill_terminates_server() {
+    let server = TestServer::spawn().await;
+    let port = server.port;
+    let config = server.config();
+
+    // Connect and send kill command
+    let mut client = RpcClient::connect(&config)
+        .await
+        .expect("Should connect to server");
+
+    let result = client.call("server/kill", json!({})).await;
+    assert!(result.is_ok(), "server/kill should succeed");
+
+    // Give the server time to process shutdown
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // Verify server is no longer accepting connections
+    let reconnect_result = RpcClient::connect(&ConnectionConfig::tcp("127.0.0.1", port)).await;
+    assert!(
+        reconnect_result.is_err(),
+        "Server should no longer accept connections after kill"
+    );
+
+    // Clean up the handle (server already shut down, but abort anyway)
+    server.handle.abort();
 }
 
 #[tokio::test]

@@ -46,13 +46,21 @@ impl ServerInfo {
     }
 }
 
-/// List running reovim servers by scanning ports.
+/// List running reovim servers.
 ///
-/// Checks ports 12521-12530 for listening servers.
+/// Discovery strategy:
+/// 1. Scan known ports (12522-12531) for any listening servers
+/// 2. Scan /proc for reovim processes listening on any port (Linux only)
+///
+/// Results are deduplicated by port.
 #[must_use]
 pub fn list_servers() -> Vec<ServerInfo> {
-    let mut servers = Vec::new();
+    use std::collections::HashSet;
 
+    let mut servers = Vec::new();
+    let mut seen_ports = HashSet::new();
+
+    // Phase 1: Scan known port range (fast, works on all platforms)
     for port in DEFAULT_PORT..DEFAULT_PORT + PORT_FALLBACK_COUNT {
         if is_port_open(DEFAULT_HOST, port) {
             let mut info = ServerInfo::new(port);
@@ -63,7 +71,17 @@ pub fn list_servers() -> Vec<ServerInfo> {
                 info = info.with_pid(pid);
             }
 
+            seen_ports.insert(port);
             servers.push(info);
+        }
+    }
+
+    // Phase 2: Scan /proc for reovim processes on any port (Linux only)
+    #[cfg(target_os = "linux")]
+    for (port, pid) in find_reovim_listening_ports() {
+        if !seen_ports.contains(&port) && is_port_open(DEFAULT_HOST, port) {
+            servers.push(ServerInfo::new(port).with_pid(pid));
+            seen_ports.insert(port);
         }
     }
 
@@ -144,6 +162,111 @@ fn find_pid_for_port(port: u16) -> Option<u32> {
     }
 
     None
+}
+
+/// Find all reovim processes and their listening TCP ports.
+///
+/// Scans /proc to find processes named "reovim" that are listening on TCP sockets.
+/// Returns a vector of (port, pid) tuples.
+///
+/// This enables discovery of servers running on non-standard ports (e.g., `--tcp 0`
+/// which assigns a random high port).
+#[cfg(target_os = "linux")]
+fn find_reovim_listening_ports() -> Vec<(u16, u32)> {
+    use std::{collections::HashMap, fs};
+
+    let mut results = Vec::new();
+
+    // Step 1: Build map of socket inode -> port from /proc/net/tcp
+    // Only include sockets in LISTEN state (0A)
+    let mut inode_to_port: HashMap<u64, u16> = HashMap::new();
+
+    if let Ok(tcp_content) = fs::read_to_string("/proc/net/tcp") {
+        for line in tcp_content.lines().skip(1) {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() < 10 {
+                continue;
+            }
+
+            // Check state - 0A = LISTEN
+            if parts[3] != "0A" {
+                continue;
+            }
+
+            // Parse port from local_address (format: IP:PORT in hex)
+            let local_addr = parts[1];
+            if let Some(port_hex) = local_addr.split(':').nth(1)
+                && let Ok(port) = u16::from_str_radix(port_hex, 16)
+            {
+                // Get inode (parts[9])
+                if let Ok(inode) = parts[9].parse::<u64>() {
+                    inode_to_port.insert(inode, port);
+                }
+            }
+        }
+    }
+
+    if inode_to_port.is_empty() {
+        return results;
+    }
+
+    // Step 2: Scan /proc for reovim processes
+    let Ok(proc_dir) = fs::read_dir("/proc") else {
+        return results;
+    };
+
+    for entry in proc_dir.flatten() {
+        let pid_str = entry.file_name().to_string_lossy().to_string();
+        let Ok(pid) = pid_str.parse::<u32>() else {
+            continue;
+        };
+
+        // Check if this is a reovim process
+        let comm_path = format!("/proc/{pid}/comm");
+        let Ok(comm) = fs::read_to_string(&comm_path) else {
+            continue;
+        };
+        let comm = comm.trim();
+
+        // Match "reovim" or "reovim-server" etc.
+        if !comm.starts_with("reovim") {
+            continue;
+        }
+
+        // Step 3: Find listening sockets for this process
+        let fd_path = format!("/proc/{pid}/fd");
+        let Ok(fd_dir) = fs::read_dir(&fd_path) else {
+            continue;
+        };
+
+        for fd_entry in fd_dir.flatten() {
+            let Ok(link) = fs::read_link(fd_entry.path()) else {
+                continue;
+            };
+
+            let link_str = link.to_string_lossy();
+
+            // Check if this is a socket
+            if !link_str.starts_with("socket:[") {
+                continue;
+            }
+
+            // Extract inode from "socket:[12345]"
+            let inode_str = link_str
+                .trim_start_matches("socket:[")
+                .trim_end_matches(']');
+            let Ok(inode) = inode_str.parse::<u64>() else {
+                continue;
+            };
+
+            // Check if this socket is in our listening ports map
+            if let Some(&port) = inode_to_port.get(&inode) {
+                results.push((port, pid));
+            }
+        }
+    }
+
+    results
 }
 
 /// Auto-discover a server and return connection config.

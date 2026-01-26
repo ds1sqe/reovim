@@ -433,7 +433,7 @@ pub fn state_options(ctx: RpcContext, params: serde_json::Value) -> HandlerFutur
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, tokio::sync::watch};
 
     use crate::{
         server::rpc::{
@@ -525,6 +525,7 @@ mod tests {
             session,
             client_id,
             client,
+            shutdown_tx: watch::channel(false).0,
         };
 
         let result = state_screen(ctx, serde_json::json!({})).await;
@@ -579,6 +580,7 @@ mod tests {
             session,
             client_id,
             client,
+            shutdown_tx: watch::channel(false).0,
         };
 
         let result = state_layout(ctx, serde_json::json!({})).await;
@@ -659,6 +661,7 @@ mod tests {
             session,
             client_id,
             client,
+            shutdown_tx: watch::channel(false).0,
         };
 
         let result = state_options(ctx, serde_json::json!({"names": ["test_option"]})).await;
