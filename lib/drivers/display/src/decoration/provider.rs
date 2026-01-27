@@ -2,8 +2,28 @@
 //!
 //! Plugins implement `DecorationProvider` to supply decorations for their
 //! specific functionality (e.g., markdown concealment, search highlighting).
+//!
+//! Two provider types are available:
+//!
+//! - `DecorationProvider`: Per-buffer provider, refreshed with buffer content
+//! - `BufferDecorationSource`: Global provider that takes `buffer_id` in queries
+//!
+//! # Architecture
+//!
+//! ```text
+//! Per-buffer: DecorationProvider (created by factory for each buffer)
+//!   - Markdown concealment
+//!   - Syntax highlighting
+//!
+//! Global: BufferDecorationSource (single instance, queries with buffer_id)
+//!   - Rainbow brackets (SharedPairState)
+//!   - Search highlighting
+//! ```
 
-use super::types::{Decoration, DecorationGroup};
+use {
+    super::types::{Decoration, DecorationGroup},
+    reovim_kernel::api::v1::BufferId,
+};
 
 /// Trait for decoration sources.
 ///
@@ -78,6 +98,68 @@ pub trait DecorationProviderFactory: Send + Sync {
     fn supported_languages(&self) -> &[&str] {
         &[]
     }
+}
+
+// ============================================================================
+// Buffer Decoration Source (global providers with buffer_id awareness)
+// ============================================================================
+
+/// Trait for global decoration sources that manage state across all buffers.
+///
+/// Unlike `DecorationProvider` which is per-buffer, `BufferDecorationSource`
+/// maintains global state and accepts `buffer_id` in queries. This is suitable
+/// for features like rainbow brackets where a single service tracks all buffers.
+///
+/// # Example
+///
+/// ```ignore
+/// // Pair module implements this trait
+/// impl BufferDecorationSource for SharedPairState {
+///     fn name(&self) -> &'static str { "rainbow-brackets" }
+///     fn group(&self) -> DecorationGroup { DecorationGroup::Syntax }
+///
+///     fn decorations_for_buffer(
+///         &self,
+///         buffer_id: BufferId,
+///         content: &str,
+///         cursor: (usize, usize),
+///     ) -> Vec<Decoration> {
+///         // Generate rainbow bracket decorations for this buffer
+///     }
+/// }
+/// ```
+///
+/// # Architecture
+///
+/// This follows mechanism/policy separation:
+/// - **Mechanism** (this driver): Trait definition
+/// - **Policy** (modules): Implementations like `SharedPairState`
+pub trait BufferDecorationSource: Send + Sync {
+    /// Source name for debugging and logging.
+    fn name(&self) -> &'static str;
+
+    /// Priority group for layering.
+    ///
+    /// Decorations from higher-priority groups override those from lower groups.
+    fn group(&self) -> DecorationGroup;
+
+    /// Get decorations for a specific buffer.
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer_id` - The buffer to get decorations for
+    /// * `content` - Current buffer content (for computing bracket positions)
+    /// * `cursor` - Current cursor position (line, col) for matched pair highlighting
+    ///
+    /// # Returns
+    ///
+    /// Vector of decorations for the buffer
+    fn decorations_for_buffer(
+        &self,
+        buffer_id: BufferId,
+        content: &str,
+        cursor: (usize, usize),
+    ) -> Vec<Decoration>;
 }
 
 #[cfg(test)]

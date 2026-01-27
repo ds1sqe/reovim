@@ -129,9 +129,10 @@ pub use builder::{ComponentId, DisplayInfo, DisplayInfoBuilder, DisplayRegistry}
 // ============================================================================
 
 pub use decoration::{
-    BufferDecorations, ConcealedLine, Decoration, DecorationGroup, DecorationProvider,
-    DecorationProviderFactory, DecorationRef, DecorationStore, Span, apply_conceals,
-    display_to_source_col, source_to_display_col,
+    BufferDecorationSource, BufferDecorationSourceRegistry, BufferDecorations, ConcealedLine,
+    Decoration, DecorationGroup, DecorationProvider, DecorationProviderFactory,
+    DecorationProviderKey, DecorationProviderRegistry, DecorationRef, DecorationSourceKey,
+    DecorationStore, Span, apply_conceals, display_to_source_col, source_to_display_col,
 };
 
 // ============================================================================
@@ -140,7 +141,7 @@ pub use decoration::{
 
 pub use style::{
     BuiltinFileIconProvider, BuiltinTheme, IconDef, IconProvider, IconRegistry, IconSet,
-    ThemeManager, ThemeProvider,
+    StyleGroupRegistry, ThemeManager, ThemeProvider,
 };
 
 // ============================================================================

@@ -4,6 +4,8 @@
 //! dependency cycle. The display driver owns these types as they are
 //! fundamentally about display/rendering.
 
+use std::{fmt, str::FromStr};
+
 use reovim_arch::Color;
 
 // =============================================================================
@@ -130,6 +132,111 @@ impl Attributes {
             || self.contains(Self::CURLY_UNDERLINE)
             || self.contains(Self::DOTTED_UNDERLINE)
             || self.contains(Self::DASHED_UNDERLINE)
+    }
+}
+
+/// Parse comma-separated attribute names into `Attributes`.
+///
+/// # Supported Names
+///
+/// Standard: `bold`, `italic`, `underline`, `strikethrough`, `reverse`, `blink`, `dim`
+/// Extended: `double_underline`, `curly_underline`, `dotted_underline`, `dashed_underline`,
+///           `overline`, `hidden`
+///
+/// # Example
+///
+/// ```ignore
+/// let attrs: Attributes = "bold,italic,underline".parse().unwrap();
+/// assert!(attrs.contains(Attributes::BOLD));
+/// ```
+impl FromStr for Attributes {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut attrs = Self::new();
+        for attr in s.split(',') {
+            match attr.trim().to_lowercase().as_str() {
+                "bold" => attrs.set(Self::BOLD),
+                "italic" => attrs.set(Self::ITALIC),
+                "underline" => attrs.set(Self::UNDERLINE),
+                "strikethrough" => attrs.set(Self::STRIKETHROUGH),
+                "reverse" => attrs.set(Self::REVERSE),
+                "blink" => attrs.set(Self::BLINK),
+                "dim" => attrs.set(Self::DIM),
+                "double_underline" => attrs.set(Self::DOUBLE_UNDERLINE),
+                "curly_underline" => attrs.set(Self::CURLY_UNDERLINE),
+                "dotted_underline" => attrs.set(Self::DOTTED_UNDERLINE),
+                "dashed_underline" => attrs.set(Self::DASHED_UNDERLINE),
+                "overline" => attrs.set(Self::OVERLINE),
+                "hidden" => attrs.set(Self::HIDDEN),
+                _ => {} // Ignore unknown attributes
+            }
+        }
+        Ok(attrs)
+    }
+}
+
+/// Display attributes as comma-separated canonical names.
+///
+/// The output order is deterministic: standard attributes first (in bit order),
+/// then extended attributes.
+///
+/// # Example
+///
+/// ```ignore
+/// let attrs = Attributes::new();
+/// attrs.set(Attributes::BOLD);
+/// attrs.set(Attributes::ITALIC);
+/// assert_eq!(attrs.to_string(), "bold,italic");
+/// ```
+impl fmt::Display for Attributes {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut parts = Vec::new();
+
+        // Standard attributes (bits 0-6)
+        if self.contains(Self::BOLD) {
+            parts.push("bold");
+        }
+        if self.contains(Self::ITALIC) {
+            parts.push("italic");
+        }
+        if self.contains(Self::UNDERLINE) {
+            parts.push("underline");
+        }
+        if self.contains(Self::STRIKETHROUGH) {
+            parts.push("strikethrough");
+        }
+        if self.contains(Self::REVERSE) {
+            parts.push("reverse");
+        }
+        if self.contains(Self::BLINK) {
+            parts.push("blink");
+        }
+        if self.contains(Self::DIM) {
+            parts.push("dim");
+        }
+
+        // Extended attributes (bits 7-12)
+        if self.contains(Self::DOUBLE_UNDERLINE) {
+            parts.push("double_underline");
+        }
+        if self.contains(Self::CURLY_UNDERLINE) {
+            parts.push("curly_underline");
+        }
+        if self.contains(Self::DOTTED_UNDERLINE) {
+            parts.push("dotted_underline");
+        }
+        if self.contains(Self::DASHED_UNDERLINE) {
+            parts.push("dashed_underline");
+        }
+        if self.contains(Self::OVERLINE) {
+            parts.push("overline");
+        }
+        if self.contains(Self::HIDDEN) {
+            parts.push("hidden");
+        }
+
+        write!(f, "{}", parts.join(","))
     }
 }
 
@@ -352,6 +459,48 @@ impl Style {
     #[must_use]
     pub const fn ansi_reset() -> &'static str {
         RESET_STYLE
+    }
+
+    /// Build `Style` from wire format strings (RPC deserialization).
+    ///
+    /// This is the inverse of the JSON cell format used in `screen_content`.
+    /// Uses `Color::parse()` for colors and `Attributes::from_str()` for attributes.
+    ///
+    /// # Wire Format
+    ///
+    /// The special value `"default"` means "no color specified - use terminal default".
+    /// This is different from `Color::Reset` which explicitly resets styling.
+    ///
+    /// # Arguments
+    ///
+    /// * `fg` - Foreground color string (e.g., "red", "#ff0000", "ansi:196", "default")
+    /// * `bg` - Background color string
+    /// * `attrs` - Comma-separated attribute names (e.g., "bold,italic")
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let style = Style::from_wire(Some("red"), Some("#000000"), Some("bold,underline"));
+    /// assert_eq!(style.fg, Some(Color::Red));
+    /// assert!(style.attributes.contains(Attributes::BOLD));
+    /// ```
+    #[must_use]
+    pub fn from_wire(fg: Option<&str>, bg: Option<&str>, attrs: Option<&str>) -> Self {
+        // Helper: parse color, treating "default" as None (terminal default)
+        let parse_wire_color = |s: &str| -> Option<Color> {
+            if s == "default" {
+                None
+            } else {
+                Color::parse(s)
+            }
+        };
+
+        Self {
+            fg: fg.and_then(parse_wire_color),
+            bg: bg.and_then(parse_wire_color),
+            attributes: attrs.map_or_else(Attributes::new, |s| s.parse().unwrap_or_default()),
+            underline_color: None,
+        }
     }
 }
 
@@ -614,5 +763,149 @@ mod tests {
         let rgb = Color::Rgb { r: 255, g: 0, b: 0 };
         let converted = downgrade_color(rgb, ColorMode::Color256);
         assert!(matches!(converted, Color::AnsiValue(_)));
+    }
+
+    // =========================================================================
+    // Attributes FromStr / Display tests
+    // =========================================================================
+
+    #[test]
+    fn test_attributes_from_str_single() {
+        let attrs: Attributes = "bold".parse().unwrap();
+        assert!(attrs.contains(Attributes::BOLD));
+        assert!(!attrs.contains(Attributes::ITALIC));
+    }
+
+    #[test]
+    fn test_attributes_from_str_multiple() {
+        let attrs: Attributes = "bold,italic,underline".parse().unwrap();
+        assert!(attrs.contains(Attributes::BOLD));
+        assert!(attrs.contains(Attributes::ITALIC));
+        assert!(attrs.contains(Attributes::UNDERLINE));
+        assert!(!attrs.contains(Attributes::REVERSE));
+    }
+
+    #[test]
+    fn test_attributes_from_str_case_insensitive() {
+        let attrs: Attributes = "BOLD,Italic,UNDERLINE".parse().unwrap();
+        assert!(attrs.contains(Attributes::BOLD));
+        assert!(attrs.contains(Attributes::ITALIC));
+        assert!(attrs.contains(Attributes::UNDERLINE));
+    }
+
+    #[test]
+    fn test_attributes_from_str_with_spaces() {
+        let attrs: Attributes = "bold , italic , underline".parse().unwrap();
+        assert!(attrs.contains(Attributes::BOLD));
+        assert!(attrs.contains(Attributes::ITALIC));
+        assert!(attrs.contains(Attributes::UNDERLINE));
+    }
+
+    #[test]
+    fn test_attributes_from_str_extended() {
+        let attrs: Attributes = "curly_underline,overline,hidden".parse().unwrap();
+        assert!(attrs.contains(Attributes::CURLY_UNDERLINE));
+        assert!(attrs.contains(Attributes::OVERLINE));
+        assert!(attrs.contains(Attributes::HIDDEN));
+    }
+
+    #[test]
+    fn test_attributes_from_str_unknown_ignored() {
+        let attrs: Attributes = "bold,foobar,italic".parse().unwrap();
+        assert!(attrs.contains(Attributes::BOLD));
+        assert!(attrs.contains(Attributes::ITALIC));
+    }
+
+    #[test]
+    fn test_attributes_display_single() {
+        let mut attrs = Attributes::new();
+        attrs.set(Attributes::BOLD);
+        assert_eq!(attrs.to_string(), "bold");
+    }
+
+    #[test]
+    fn test_attributes_display_multiple() {
+        let mut attrs = Attributes::new();
+        attrs.set(Attributes::BOLD);
+        attrs.set(Attributes::ITALIC);
+        attrs.set(Attributes::UNDERLINE);
+        assert_eq!(attrs.to_string(), "bold,italic,underline");
+    }
+
+    #[test]
+    fn test_attributes_display_empty() {
+        let attrs = Attributes::new();
+        assert_eq!(attrs.to_string(), "");
+    }
+
+    #[test]
+    fn test_attributes_roundtrip() {
+        // Test that parse(to_string()) == original
+        let mut original = Attributes::new();
+        original.set(Attributes::BOLD);
+        original.set(Attributes::ITALIC);
+        original.set(Attributes::CURLY_UNDERLINE);
+
+        let s = original.to_string();
+        let parsed: Attributes = s.parse().unwrap();
+        assert_eq!(parsed.0, original.0);
+    }
+
+    // =========================================================================
+    // Style::from_wire tests
+    // =========================================================================
+
+    #[test]
+    fn test_style_from_wire_full() {
+        let style = Style::from_wire(Some("red"), Some("#000000"), Some("bold,italic"));
+        assert_eq!(style.fg, Some(Color::Red));
+        assert_eq!(style.bg, Some(Color::Rgb { r: 0, g: 0, b: 0 }));
+        assert!(style.attributes.contains(Attributes::BOLD));
+        assert!(style.attributes.contains(Attributes::ITALIC));
+    }
+
+    #[test]
+    fn test_style_from_wire_colors_only() {
+        let style = Style::from_wire(Some("blue"), Some("ansi:196"), None);
+        assert_eq!(style.fg, Some(Color::Blue));
+        assert_eq!(style.bg, Some(Color::AnsiValue(196)));
+        assert_eq!(style.attributes.0, 0);
+    }
+
+    #[test]
+    fn test_style_from_wire_none() {
+        let style = Style::from_wire(None, None, None);
+        assert!(style.fg.is_none());
+        assert!(style.bg.is_none());
+        assert_eq!(style.attributes.0, 0);
+    }
+
+    #[test]
+    fn test_style_from_wire_default_color() {
+        // "default" means no color (uses terminal default)
+        let style = Style::from_wire(Some("default"), Some("default"), None);
+        assert!(style.fg.is_none());
+        assert!(style.bg.is_none());
+    }
+
+    #[test]
+    fn test_style_from_wire_hex_colors() {
+        let style = Style::from_wire(Some("#ff5500"), Some("#003366"), None);
+        assert_eq!(
+            style.fg,
+            Some(Color::Rgb {
+                r: 255,
+                g: 85,
+                b: 0
+            })
+        );
+        assert_eq!(
+            style.bg,
+            Some(Color::Rgb {
+                r: 0,
+                g: 51,
+                b: 102
+            })
+        );
     }
 }

@@ -50,13 +50,17 @@
 //! ```
 
 mod conceal;
+mod key;
 mod provider;
+mod registry;
 mod store;
 mod types;
 
 pub use {
     conceal::{ConcealedLine, apply_conceals, display_to_source_col, source_to_display_col},
-    provider::{DecorationProvider, DecorationProviderFactory},
+    key::{DecorationProviderKey, DecorationSourceKey},
+    provider::{BufferDecorationSource, DecorationProvider, DecorationProviderFactory},
+    registry::{BufferDecorationSourceRegistry, DecorationProviderRegistry},
     store::{BufferDecorations, DecorationRef, DecorationStore},
     types::{Decoration, DecorationGroup, Span},
 };

@@ -190,6 +190,65 @@ fn write_plain_content(output: &mut String, buffer: &FrameBuffer, buf_height: u1
     }
 }
 
+// ============================================================================
+// Cell Grid Parsing (shared by TuiApp and HeadlessClient) - #440
+// ============================================================================
+
+/// Parse cell style from JSON cell object.
+///
+/// Converts JSON fg/bg/attrs to `Style` for rainbow bracket colors.
+/// Parse cell style from JSON cell object.
+///
+/// Delegates to `Style::from_wire()` for parsing colors and attributes.
+/// This is the single source of truth for wire format parsing.
+#[must_use]
+pub fn parse_cell_style(cell: &serde_json::Value) -> Style {
+    Style::from_wire(
+        cell.get("fg").and_then(|v| v.as_str()),
+        cell.get("bg").and_then(|v| v.as_str()),
+        cell.get("attrs").and_then(|v| v.as_str()),
+    )
+}
+
+/// Write `cell_grid` content to frame buffer with decoration colors.
+///
+/// Parses the JSON cell grid format and applies per-cell styles for
+/// rainbow brackets and other decorations.
+pub fn write_cell_grid_to_buffer(buffer: &mut FrameBuffer, content: &str, width: u16, height: u16) {
+    // Try to parse as JSON cell grid
+    let cells: Result<Vec<Vec<serde_json::Value>>, _> = serde_json::from_str(content);
+
+    if let Ok(rows) = cells {
+        // Write each cell with its decoration style
+        for (y, row) in rows.iter().enumerate().take(height as usize) {
+            #[allow(clippy::cast_possible_truncation)]
+            let y_u16 = y as u16;
+
+            for (x, cell) in row.iter().enumerate().take(width as usize) {
+                let ch = cell
+                    .get("char")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| s.chars().next())
+                    .unwrap_or(' ');
+
+                let style = parse_cell_style(cell);
+
+                #[allow(clippy::cast_possible_truncation)]
+                let x_u16 = x as u16;
+                buffer.put_char(x_u16, y_u16, ch, &style);
+            }
+        }
+    } else {
+        // Fallback to plain text if JSON parsing fails
+        let default_style = Style::default();
+        for (y, line) in content.lines().enumerate().take(height as usize) {
+            #[allow(clippy::cast_possible_truncation)]
+            let y_u16 = y as u16;
+            buffer.write_str(0, y_u16, line, &default_style);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

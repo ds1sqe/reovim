@@ -15,8 +15,23 @@ use {
     reovim_driver_search::{SearchKey, SearchProviderRegistry},
     reovim_driver_session::{EmptySessionContext, SessionHandlerKey, SessionHandlerRegistry},
     reovim_driver_undo::{UndoKey, UndoProviderRegistry},
-    reovim_kernel::api::v1::{KernelContext, ModuleContext, ServiceRegistry},
+    reovim_kernel::api::v1::{
+        EventBus, KernelContext, Module, ModuleContext, Service, ServiceRegistry,
+    },
 };
+
+/// Holder for defaults bundle modules (#440).
+///
+/// Modules that register event subscriptions must be kept alive for the
+/// subscriptions to remain active (RAII pattern). This holder stores
+/// initialized modules and is registered in `ServiceRegistry`.
+struct DefaultsModuleHolder {
+    /// Modules kept alive for their event subscriptions. Never read, only held.
+    #[allow(dead_code)]
+    modules: Vec<Box<dyn Module>>,
+}
+
+impl Service for DefaultsModuleHolder {}
 
 use crate::server::capture::CaptureTracker;
 
@@ -99,7 +114,8 @@ pub fn handle_empty_session(kernel: &KernelContext, registry: &EmptySessionHandl
 /// 1. Dynamic modules from XDG paths (`~/.local/share/reovim/modules/`)
 /// 2. Static fallback for modules not found in paths
 ///
-/// Returns the registries plus resolver registry, compositor, and provider registries.
+/// Returns the registries plus resolver registry, compositor, provider registries,
+/// and kernel context (for sharing event bus with session).
 ///
 /// # Panics
 ///
@@ -116,6 +132,7 @@ pub fn build_default_registries() -> (
     Option<Box<dyn RootCompositor>>,
     registry::DefaultModeProviderRegistry,
     Arc<ServiceRegistry>,
+    KernelContext,
 ) {
     let mut mode_registry = ModeRegistry::new();
     let mut command_registry = CommandRegistry::new();
@@ -139,14 +156,31 @@ pub fn build_default_registries() -> (
         tracing::debug!("registered SharedThemeManager in ServiceRegistry (#439)");
     }
 
+    // Create shared EventBus FIRST - before any module initialization (#440)
+    // This bus will be used by both modules (for subscriptions) and session (for emitting)
+    let shared_event_bus = Arc::new(EventBus::new());
+
+    // Create minimal kernel context for module initialization
+    // Uses the shared event bus so modules can subscribe to events
+    // Note: Uses default() for other fields since modules mainly need event_bus and services
+    let module_init_kernel = KernelContext::with_event_bus_and_services(
+        Arc::clone(&shared_event_bus),
+        Arc::clone(&services),
+    );
+
     // Initialize defaults bundle modules (Epic #417 Phase 5)
     // Modules register their services (undo, buffer, search, scratch-buffer) during init()
+    // Use the shared event bus so modules can subscribe to events (#440)
     let defaults_init_ctx = ModuleContext::new(
-        KernelContext::default(),
+        module_init_kernel,
         services.clone(),
         PathBuf::from("/tmp/reovim-init/defaults/data"),
         PathBuf::from("/tmp/reovim-init/defaults/cache"),
     );
+
+    // CRITICAL (#440): Collect and store modules to keep event subscriptions alive.
+    // Modules use RAII for subscriptions - when the module drops, subscriptions are canceled.
+    let mut defaults_modules: Vec<Box<dyn Module>> = Vec::new();
     for mut module in reovim_module_defaults::DefaultsModule::create_modules() {
         let module_id = module.id();
         match module.init(&defaults_init_ctx) {
@@ -157,7 +191,20 @@ pub fn build_default_registries() -> (
                 tracing::warn!(module = %module_id, ?result, "defaults module init returned non-success");
             }
         }
+        defaults_modules.push(module);
     }
+
+    // Store modules in ServiceRegistry to keep them alive for session lifetime (#440)
+    let module_count = defaults_modules.len();
+    services.register(Arc::new(DefaultsModuleHolder {
+        modules: defaults_modules,
+    }));
+    tracing::info!(count = module_count, "stored defaults modules in ServiceRegistry (#440)");
+
+    // Create real kernel context AFTER modules are initialized (#440)
+    // BufferManager is now available in ServiceRegistry
+    // Uses the same event bus that modules subscribed to
+    let kernel = super::real_kernel_context_with_event_bus(Arc::clone(&services), shared_event_bus);
 
     // VFS provider now comes from vfs-local module via ServiceRegistry (Epic #417)
 
@@ -358,5 +405,6 @@ pub fn build_default_registries() -> (
         compositor,
         mode_providers,
         services,
+        kernel,
     )
 }

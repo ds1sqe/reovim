@@ -26,7 +26,29 @@ use {
 /// # Panics
 ///
 /// Panics if no `BufferManager` is registered in `ServiceRegistry`.
+#[allow(dead_code)] // Used in test utilities
 pub fn real_kernel_context(services: Arc<ServiceRegistry>) -> KernelContext {
+    real_kernel_context_with_event_bus(services, Arc::new(EventBus::new()))
+}
+
+/// Create a real `KernelContext` with a pre-existing event bus.
+///
+/// This variant allows sharing an event bus between modules and the session (#440).
+/// Modules subscribe to the event bus during init, and the session uses
+/// the same bus to emit events.
+///
+/// # Arguments
+///
+/// * `services` - `ServiceRegistry` to query `BufferManager` from
+/// * `event_bus` - Shared event bus for module subscriptions
+///
+/// # Panics
+///
+/// Panics if no `BufferManager` is registered in `ServiceRegistry`.
+pub fn real_kernel_context_with_event_bus(
+    services: Arc<ServiceRegistry>,
+    event_bus: Arc<EventBus>,
+) -> KernelContext {
     let option_registry = Arc::new(OptionRegistry::new());
     register_default_options(&option_registry);
 
@@ -38,7 +60,7 @@ pub fn real_kernel_context(services: Arc<ServiceRegistry>) -> KernelContext {
         .expect("BufferManager must be registered by buffer-simple module");
 
     KernelContext::new(
-        Arc::new(EventBus::new()),
+        event_bus,
         buffer_manager,
         Arc::new(MotionEngine),
         Arc::new(TextObjectEngine),

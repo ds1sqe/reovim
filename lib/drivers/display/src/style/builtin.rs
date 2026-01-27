@@ -1,12 +1,15 @@
 //! Built-in theme color definitions.
 //!
-//! Each theme provides complete color definitions for all 34 highlight groups.
+//! Each theme provides complete color definitions for all 34 built-in highlight groups.
 //! Uses `std::sync::LazyLock` for efficient one-time initialization.
 //!
 //! # Architecture
 //!
 //! This is part of the **mechanism layer**. It provides the actual color data
 //! that themes need, but doesn't decide WHEN to use these colors (that's policy).
+//!
+//! Module-specific groups (e.g., rainbow brackets) are registered by modules
+//! via `StyleGroupRegistry` at runtime.
 //!
 //! # Available Themes
 //!

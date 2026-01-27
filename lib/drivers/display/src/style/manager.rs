@@ -1,12 +1,21 @@
 //! Theme manager for runtime theme management.
 //!
 //! Provides centralized theme management with support for overrides.
+//!
+//! # Lookup Order
+//!
+//! When getting a style for a group, the 4-tier lookup is:
+//!
+//! 1. **User overrides** (`set_override`)
+//! 2. **Current theme** (`ThemeProvider.get_style`)
+//! 3. **Module defaults** (`StyleGroupRegistry`) - modules register their defaults
+//! 4. **Theme default** (`ThemeProvider.default_style`)
 
 use std::{collections::HashMap, sync::Arc};
 
 use crate::highlight::Style;
 
-use super::theme::ThemeProvider;
+use super::{registry::StyleGroupRegistry, theme::ThemeProvider};
 
 /// Manages the current theme and user overrides.
 ///
@@ -14,6 +23,15 @@ use super::theme::ThemeProvider;
 ///
 /// The runner creates and owns the `ThemeManager`. This is a policy decision
 /// (which theme to use), not mechanism.
+///
+/// # 4-Tier Lookup
+///
+/// ```text
+/// 1. User overrides (set_override)
+/// 2. Current theme (ThemeProvider.get_style)
+/// 3. Module defaults (StyleGroupRegistry)
+/// 4. ThemeProvider.default_style()
+/// ```
 ///
 /// # Example
 ///
@@ -26,7 +44,7 @@ use super::theme::ThemeProvider;
 /// // Override a specific style
 /// manager.set_override("keyword", keyword_style);
 ///
-/// // Get style (checks overrides first, then theme)
+/// // Get style (checks 4 tiers: overrides → theme → module defaults → fallback)
 /// let style = manager.get_style("keyword");
 /// ```
 pub struct ThemeManager {
@@ -34,6 +52,8 @@ pub struct ThemeManager {
     current: Arc<dyn ThemeProvider>,
     /// User style overrides (take precedence over theme)
     overrides: HashMap<String, Style>,
+    /// Module-provided style defaults (fallback when theme doesn't define a group)
+    module_defaults: Option<Arc<StyleGroupRegistry>>,
 }
 
 impl ThemeManager {
@@ -43,6 +63,7 @@ impl ThemeManager {
         Self {
             current: theme,
             overrides: HashMap::new(),
+            module_defaults: None,
         }
     }
 
@@ -61,6 +82,20 @@ impl ThemeManager {
     #[must_use]
     pub fn current_theme_name(&self) -> &str {
         self.current.name()
+    }
+
+    /// Set the module defaults registry.
+    ///
+    /// Modules register their style group defaults here during `init()`.
+    /// The registry is used as tier 3 in the lookup order.
+    pub fn set_module_defaults(&mut self, registry: Arc<StyleGroupRegistry>) {
+        self.module_defaults = Some(registry);
+    }
+
+    /// Get the module defaults registry.
+    #[must_use]
+    pub const fn module_defaults(&self) -> Option<&Arc<StyleGroupRegistry>> {
+        self.module_defaults.as_ref()
     }
 
     /// Set a style override for a highlight group.
@@ -94,30 +129,58 @@ impl ThemeManager {
 
     /// Get the style for a highlight group.
     ///
-    /// Checks overrides first, then falls back to the theme.
-    /// If neither has the group, returns the theme's default style.
+    /// Uses 4-tier lookup order:
+    /// 1. User overrides (`set_override`)
+    /// 2. Current theme (`ThemeProvider.get_style`)
+    /// 3. Module defaults (`StyleGroupRegistry`)
+    /// 4. Theme default (`ThemeProvider.default_style`)
     #[must_use]
     pub fn get_style(&self, group: &str) -> Style {
-        // Check overrides first
+        // Tier 1: User overrides
         if let Some(style) = self.overrides.get(group) {
             return style.clone();
         }
 
-        // Fall back to theme
-        self.current
-            .get_style(group)
-            .unwrap_or_else(|| self.current.default_style())
+        // Tier 2: Current theme
+        if let Some(style) = self.current.get_style(group) {
+            return style;
+        }
+
+        // Tier 3: Module defaults
+        if let Some(ref registry) = self.module_defaults
+            && let Some(style) = registry.get(group)
+        {
+            return style;
+        }
+
+        // Tier 4: Theme default
+        self.current.default_style()
     }
 
     /// Get the style for a highlight group, returning None if not found.
     ///
-    /// Unlike `get_style`, this doesn't fall back to a default.
+    /// Checks tiers 1-3 only (overrides → theme → module defaults).
+    /// Unlike `get_style`, this doesn't fall back to the theme's default style.
     #[must_use]
     pub fn try_get_style(&self, group: &str) -> Option<Style> {
-        self.overrides
-            .get(group)
-            .cloned()
-            .or_else(|| self.current.get_style(group))
+        // Tier 1: User overrides
+        if let Some(style) = self.overrides.get(group) {
+            return Some(style.clone());
+        }
+
+        // Tier 2: Current theme
+        if let Some(style) = self.current.get_style(group) {
+            return Some(style);
+        }
+
+        // Tier 3: Module defaults
+        if let Some(ref registry) = self.module_defaults
+            && let Some(style) = registry.get(group)
+        {
+            return Some(style);
+        }
+
+        None
     }
 }
 
@@ -157,6 +220,17 @@ impl SharedThemeManager {
     #[must_use]
     pub fn new(theme: Arc<dyn super::theme::ThemeProvider>) -> Self {
         Self(RwLock::new(ThemeManager::new(theme)))
+    }
+
+    /// Create a new shared theme manager with module defaults registry.
+    #[must_use]
+    pub fn with_module_defaults(
+        theme: Arc<dyn super::theme::ThemeProvider>,
+        registry: Arc<StyleGroupRegistry>,
+    ) -> Self {
+        let mut manager = ThemeManager::new(theme);
+        manager.set_module_defaults(registry);
+        Self(RwLock::new(manager))
     }
 
     /// Acquire a read lock on the theme manager.
@@ -239,5 +313,59 @@ mod tests {
 
         manager.set_theme(BuiltinTheme::Light.load());
         assert_eq!(manager.current_theme_name(), "light");
+    }
+
+    #[test]
+    fn test_theme_manager_four_tier_lookup() {
+        use super::StyleGroupRegistry;
+
+        let mut manager = ThemeManager::new(BuiltinTheme::Dark.load());
+
+        // Create module defaults registry
+        let registry = Arc::new(StyleGroupRegistry::new());
+        let module_style = Style::new().fg(Color::Cyan);
+        registry.register("module.custom", module_style);
+        manager.set_module_defaults(registry);
+
+        // Tier 3: Module defaults - not in theme, not in overrides
+        let style = manager.get_style("module.custom");
+        assert_eq!(style.fg, Some(Color::Cyan));
+
+        // Tier 2: Theme takes precedence over module defaults
+        // keyword is in theme, so it should come from theme
+        let theme_style = manager.get_style("keyword");
+        assert!(theme_style.fg.is_some());
+        assert_ne!(theme_style.fg, Some(Color::Cyan)); // Different from module style
+
+        // Tier 1: Override takes precedence over everything
+        let override_style = Style::new().fg(Color::Magenta);
+        manager.set_override("module.custom", override_style);
+        let style = manager.get_style("module.custom");
+        assert_eq!(style.fg, Some(Color::Magenta));
+
+        // Tier 4: Fallback to theme default for unknown groups
+        let unknown_style = manager.get_style("nonexistent.group");
+        assert_eq!(unknown_style, manager.current_theme().default_style());
+    }
+
+    #[test]
+    fn test_theme_manager_try_get_style_tiers() {
+        use super::StyleGroupRegistry;
+
+        let mut manager = ThemeManager::new(BuiltinTheme::Dark.load());
+
+        // Create module defaults registry
+        let registry = Arc::new(StyleGroupRegistry::new());
+        registry.register("module.test", Style::new().fg(Color::Green));
+        manager.set_module_defaults(registry);
+
+        // Should find in module defaults (tier 3)
+        assert!(manager.try_get_style("module.test").is_some());
+
+        // Should find in theme (tier 2)
+        assert!(manager.try_get_style("keyword").is_some());
+
+        // Should not find unknown (no tier 4 fallback in try_get_style)
+        assert!(manager.try_get_style("nonexistent").is_none());
     }
 }

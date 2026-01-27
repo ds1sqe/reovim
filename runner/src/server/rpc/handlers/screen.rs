@@ -21,8 +21,10 @@
 //! bounds from the compositor's layout. Currently all windows share the active
 //! buffer (vim-like behavior where splits show the same content initially).
 
+use std::collections::HashMap;
+
 use {
-    reovim_driver_display::{LineNumberMode, Rect},
+    reovim_driver_display::{BufferDecorationSourceRegistry, Decoration, LineNumberMode, Rect},
     reovim_kernel::api::v1::{BufferId, OptionRegistry, OptionScopeId, OptionValue},
     reovim_protocol::v1::{RpcError, ScreenContentResult, ScreenFormat, StateScreenContentParams},
 };
@@ -94,6 +96,197 @@ fn format_line_number(
             }
         }
     }
+}
+
+/// Create the selection style (REVERSE for visibility).
+fn selection_style() -> reovim_driver_display::Style {
+    use reovim_driver_display::{Attributes, Style};
+    let mut attrs = Attributes::new();
+    attrs.set(Attributes::REVERSE);
+    Style {
+        fg: None,
+        bg: None,
+        underline_color: None,
+        attributes: attrs,
+    }
+}
+
+/// Generate character-wise selection decorations.
+#[allow(clippy::cast_possible_truncation)]
+fn char_selection_decorations(
+    start: reovim_kernel::api::v1::Position,
+    end: reovim_kernel::api::v1::Position,
+    style: reovim_driver_display::Style,
+) -> Vec<Decoration> {
+    use reovim_driver_display::Span;
+    let mut decorations = Vec::new();
+
+    if start.line == end.line {
+        // Single line selection
+        let span = Span::line(start.line as u32, start.column as u32, (end.column + 1) as u32);
+        decorations.push(Decoration::InlineStyle { span, style });
+    } else {
+        // Multi-line: first line
+        let first = Span::new(start.line as u32, start.column as u32, start.line as u32, u32::MAX);
+        decorations.push(Decoration::InlineStyle {
+            span: first,
+            style: style.clone(),
+        });
+        // Middle lines
+        for line in (start.line + 1)..end.line {
+            let mid = Span::new(line as u32, 0, line as u32, u32::MAX);
+            decorations.push(Decoration::InlineStyle {
+                span: mid,
+                style: style.clone(),
+            });
+        }
+        // Last line
+        let last = Span::line(end.line as u32, 0, (end.column + 1) as u32);
+        decorations.push(Decoration::InlineStyle { span: last, style });
+    }
+    decorations
+}
+
+/// Generate visual selection decorations (#440).
+///
+/// Creates decorations for the currently selected text range in visual mode.
+/// Uses REVERSE attribute for visibility (inverts fg/bg colors).
+fn generate_selection_decorations(
+    state: &crate::session::SessionState,
+    buffer_id: BufferId,
+    cursor: (usize, usize),
+) -> Vec<Decoration> {
+    use reovim_kernel::api::v1::{Position, Selection, SelectionMode};
+
+    // Get selection state from buffer (read lock released immediately)
+    let selection: Selection = {
+        let Some(buffer_arc) = state.app.kernel.buffers.get(buffer_id) else {
+            return Vec::new();
+        };
+        buffer_arc.read().selection()
+    };
+
+    if !selection.is_active() {
+        return Vec::new();
+    }
+
+    let cursor_pos = Position::new(cursor.0, cursor.1);
+    let style = selection_style();
+    let mut decorations = Vec::new();
+
+    match selection.mode() {
+        SelectionMode::Character => {
+            if let Some((start, end)) = selection.bounds(cursor_pos) {
+                decorations = char_selection_decorations(start, end, style);
+            }
+        }
+        SelectionMode::Line => {
+            if let Some((start_line, end_line)) = selection.line_bounds(cursor_pos) {
+                for line in start_line..=end_line {
+                    #[allow(clippy::cast_possible_truncation)]
+                    let span =
+                        reovim_driver_display::Span::new(line as u32, 0, line as u32, u32::MAX);
+                    decorations.push(Decoration::InlineStyle {
+                        span,
+                        style: style.clone(),
+                    });
+                }
+            }
+        }
+        SelectionMode::Block => {
+            if let Some((top_left, bottom_right)) = selection.block_bounds(cursor_pos) {
+                for line in top_left.line..=bottom_right.line {
+                    #[allow(clippy::cast_possible_truncation)]
+                    let span = reovim_driver_display::Span::line(
+                        line as u32,
+                        top_left.column as u32,
+                        (bottom_right.column + 1) as u32,
+                    );
+                    decorations.push(Decoration::InlineStyle {
+                        span,
+                        style: style.clone(),
+                    });
+                }
+            }
+        }
+    }
+    decorations
+}
+
+/// Generate decorations for a buffer from all registered decoration sources (#440).
+///
+/// Queries `BufferDecorationSourceRegistry` from `ServiceRegistry` and collects
+/// decorations from all registered sources (e.g., rainbow brackets, search highlights).
+/// Also generates visual selection decorations directly from buffer state.
+/// This provides generic decoration support without depending on specific modules.
+fn generate_buffer_decorations(
+    state: &crate::session::SessionState,
+    buffer_id: BufferId,
+    content: &str,
+    cursor: (usize, usize),
+) -> Vec<Decoration> {
+    let mut decorations = Vec::new();
+
+    // Generate visual selection decorations first (lower priority - can be overridden)
+    decorations.extend(generate_selection_decorations(state, buffer_id, cursor));
+
+    // Query BufferDecorationSourceRegistry from ServiceRegistry
+    let Some(registry) = state
+        .app
+        .kernel
+        .services
+        .get::<BufferDecorationSourceRegistry>()
+    else {
+        return decorations;
+    };
+
+    // Iterate ALL registered decoration sources generically
+    // This follows mechanism/policy separation: the runner has no knowledge
+    // of which specific modules registered which sources (pair, search, etc.)
+    for key in registry.keys() {
+        if let Some(source) = registry.get(&key) {
+            decorations.extend(source.decorations_for_buffer(buffer_id, content, cursor));
+        }
+    }
+
+    decorations
+}
+
+/// Build a decoration lookup map: (line, col) -> Style.
+///
+/// Used for efficient lookup when building cell grid.
+/// Handles both single-line and multi-line spans (for visual selection).
+fn build_decoration_map(
+    decorations: &[Decoration],
+) -> HashMap<(usize, usize), reovim_driver_display::Style> {
+    let mut map = HashMap::new();
+    for decoration in decorations {
+        if let Decoration::InlineStyle { span, style } = decoration {
+            let start_line = span.start_line as usize;
+            let end_line = span.end_line as usize;
+
+            for line in start_line..=end_line {
+                // Determine column range for this line
+                let start_col = if line == start_line {
+                    span.start_col as usize
+                } else {
+                    0
+                };
+                let end_col = if line == end_line {
+                    span.end_col as usize
+                } else {
+                    // For lines before the last, extend to a reasonable max
+                    // (actual line length will clip this in rendering)
+                    256
+                };
+
+                for col in start_col..end_col {
+                    map.insert((line, col), style.clone());
+                }
+            }
+        }
+    }
+    map
 }
 
 /// Handler for `state/screen_content` method.
@@ -176,18 +369,24 @@ fn render_multi_window(
     let line_mode = line_number_mode_from_options(&state.app.kernel.options);
 
     // Get the active buffer content (shared by all windows for now)
-    let (content, cursor_line) = state
+    let (buffer_id, content, cursor_line, cursor_col) = state
         .session_active_buffer()
-        .and_then(|id: BufferId| state.app.kernel.buffers.get(id))
-        .map(|arc| {
-            let buf = arc.read();
-            (buf.content(), buf.position().line)
+        .and_then(|id: BufferId| {
+            state.app.kernel.buffers.get(id).map(|arc| {
+                let buf = arc.read();
+                (id, buf.content(), buf.position().line, buf.position().column)
+            })
         })
         .unwrap_or_default();
 
     let lines: Vec<&str> = content.lines().collect();
     let total_lines = lines.len();
     let gutter_width = calculate_gutter_width(line_mode, total_lines);
+
+    // Generate rainbow bracket decorations (#440)
+    let decorations =
+        generate_buffer_decorations(state, buffer_id, &content, (cursor_line, cursor_col));
+    let decoration_map = build_decoration_map(&decorations);
 
     // Create a 2D screen buffer
     let mut screen: Vec<Vec<char>> = vec![vec![' '; width as usize]; height as usize];
@@ -219,7 +418,7 @@ fn render_multi_window(
         .collect::<Vec<_>>()
         .join("\n");
 
-    format_content(&screen_content, format, width, height)
+    format_content(&screen_content, format, width, height, &decoration_map, gutter_width)
 }
 
 /// Render a single window's content within its bounds on the screen buffer.
@@ -329,12 +528,13 @@ fn render_single_window(
     let line_mode = line_number_mode_from_options(&state.app.kernel.options);
 
     // Use driver_session SSOT for active_buffer
-    let (content, cursor_line) = state
+    let (buffer_id, content, cursor_line, cursor_col) = state
         .session_active_buffer()
-        .and_then(|id: BufferId| state.app.kernel.buffers.get(id))
-        .map(|arc| {
-            let buf = arc.read();
-            (buf.content(), buf.position().line)
+        .and_then(|id: BufferId| {
+            state.app.kernel.buffers.get(id).map(|arc| {
+                let buf = arc.read();
+                (id, buf.content(), buf.position().line, buf.position().column)
+            })
         })
         .unwrap_or_default();
 
@@ -342,6 +542,11 @@ fn render_single_window(
     let lines: Vec<&str> = content.lines().collect();
     let total_lines = lines.len();
     let gutter_width = calculate_gutter_width(line_mode, total_lines);
+
+    // Generate rainbow bracket decorations (#440)
+    let decorations =
+        generate_buffer_decorations(state, buffer_id, &content, (cursor_line, cursor_col));
+    let decoration_map = build_decoration_map(&decorations);
 
     // Build content with line numbers (#445)
     let rendered_content: String = if line_mode == LineNumberMode::None {
@@ -365,18 +570,36 @@ fn render_single_window(
     let content_width = (lines.iter().map(|l| l.len()).max().unwrap_or(80) + gutter_width)
         .min(usize::from(u16::MAX)) as u16;
 
-    format_content(&rendered_content, format, content_width.max(1), content_height.max(1))
+    format_content(
+        &rendered_content,
+        format,
+        content_width.max(1),
+        content_height.max(1),
+        &decoration_map,
+        gutter_width,
+    )
 }
 
 // Multi-window rendering will be implemented in Phase 2 using Session.compositor.
 // The compositor provides CompositeResult with all window placements in z-order.
 
 /// Format content according to the requested screen format.
+///
+/// # Arguments
+///
+/// * `content` - The text content to format
+/// * `format` - The output format (`PlainText`, `RawAnsi`, `CellGrid`)
+/// * `width` - Screen width
+/// * `height` - Screen height
+/// * `decoration_map` - Style decorations by position (line, col) for rainbow brackets (#440)
+/// * `gutter_width` - Width of line number gutter (for column offset in decorations)
 fn format_content(
     content: &str,
     format: ScreenFormat,
     width: u16,
     height: u16,
+    decoration_map: &HashMap<(usize, usize), reovim_driver_display::Style>,
+    gutter_width: usize,
 ) -> ScreenContentResult {
     let formatted_content = match format {
         ScreenFormat::PlainText => content.to_string(),
@@ -386,18 +609,45 @@ fn format_content(
             content.to_string()
         }
         ScreenFormat::CellGrid => {
-            // Return JSON cell grid representation
+            // Return JSON cell grid representation with rainbow bracket colors (#440)
             let lines: Vec<&str> = content.lines().collect();
             let cells: Vec<Vec<serde_json::Value>> = lines
                 .iter()
-                .map(|line| {
+                .enumerate()
+                .map(|(line_idx, line)| {
                     line.chars()
-                        .map(|c| {
-                            serde_json::json!({
-                                "char": c.to_string(),
-                                "fg": "default",
-                                "bg": "default"
-                            })
+                        .enumerate()
+                        .map(|(col_idx, c)| {
+                            // Check for decoration at this position
+                            // Account for gutter width when looking up decorations
+                            let content_col = col_idx.saturating_sub(gutter_width);
+                            let style = decoration_map.get(&(line_idx, content_col));
+
+                            let (fg, bg, attrs) = style.map_or_else(
+                                || ("default".to_string(), "default".to_string(), String::new()),
+                                |s| {
+                                    (
+                                        color_to_string(s.fg),
+                                        color_to_string(s.bg),
+                                        attributes_to_string(s.attributes),
+                                    )
+                                },
+                            );
+
+                            if attrs.is_empty() {
+                                serde_json::json!({
+                                    "char": c.to_string(),
+                                    "fg": fg,
+                                    "bg": bg
+                                })
+                            } else {
+                                serde_json::json!({
+                                    "char": c.to_string(),
+                                    "fg": fg,
+                                    "bg": bg,
+                                    "attrs": attrs
+                                })
+                            }
                         })
                         .collect()
                 })
@@ -412,6 +662,52 @@ fn format_content(
         format,
         content: formatted_content,
     }
+}
+
+/// Convert a Color to a string representation for JSON output.
+fn color_to_string(color: Option<reovim_arch::Color>) -> String {
+    match color {
+        None | Some(reovim_arch::Color::Reset) => "default".to_string(),
+        Some(reovim_arch::Color::Black) => "black".to_string(),
+        Some(reovim_arch::Color::DarkGrey) => "#555555".to_string(),
+        Some(reovim_arch::Color::Red) => "red".to_string(),
+        Some(reovim_arch::Color::DarkRed) => "#aa0000".to_string(),
+        Some(reovim_arch::Color::Green) => "green".to_string(),
+        Some(reovim_arch::Color::DarkGreen) => "#00aa00".to_string(),
+        Some(reovim_arch::Color::Yellow) => "yellow".to_string(),
+        Some(reovim_arch::Color::DarkYellow) => "#aaaa00".to_string(),
+        Some(reovim_arch::Color::Blue) => "blue".to_string(),
+        Some(reovim_arch::Color::DarkBlue) => "#0000aa".to_string(),
+        Some(reovim_arch::Color::Magenta) => "magenta".to_string(),
+        Some(reovim_arch::Color::DarkMagenta) => "#aa00aa".to_string(),
+        Some(reovim_arch::Color::Cyan) => "cyan".to_string(),
+        Some(reovim_arch::Color::DarkCyan) => "#00aaaa".to_string(),
+        Some(reovim_arch::Color::White) => "white".to_string(),
+        Some(reovim_arch::Color::Grey) => "#aaaaaa".to_string(),
+        Some(reovim_arch::Color::Rgb { r, g, b }) => format!("#{r:02x}{g:02x}{b:02x}"),
+        Some(reovim_arch::Color::AnsiValue(n)) => format!("ansi:{n}"),
+    }
+}
+
+/// Convert Attributes to a string representation for JSON output.
+fn attributes_to_string(attrs: reovim_driver_display::Attributes) -> String {
+    let mut parts = Vec::new();
+    if attrs.contains(reovim_driver_display::Attributes::BOLD) {
+        parts.push("bold");
+    }
+    if attrs.contains(reovim_driver_display::Attributes::ITALIC) {
+        parts.push("italic");
+    }
+    if attrs.contains(reovim_driver_display::Attributes::UNDERLINE) {
+        parts.push("underline");
+    }
+    if attrs.contains(reovim_driver_display::Attributes::REVERSE) {
+        parts.push("reverse");
+    }
+    if attrs.contains(reovim_driver_display::Attributes::STRIKETHROUGH) {
+        parts.push("strikethrough");
+    }
+    parts.join(",")
 }
 
 #[cfg(test)]
@@ -723,7 +1019,9 @@ mod tests {
     #[test]
     fn test_format_content_plain_text() {
         let content = "Hello\nWorld";
-        let result = super::format_content(content, ScreenFormat::PlainText, 10, 5);
+        let decoration_map = HashMap::new();
+        let result =
+            super::format_content(content, ScreenFormat::PlainText, 10, 5, &decoration_map, 0);
 
         assert_eq!(result.content, "Hello\nWorld");
         assert_eq!(result.width, 10);
@@ -734,7 +1032,9 @@ mod tests {
     #[test]
     fn test_format_content_cell_grid() {
         let content = "AB";
-        let result = super::format_content(content, ScreenFormat::CellGrid, 10, 5);
+        let decoration_map = HashMap::new();
+        let result =
+            super::format_content(content, ScreenFormat::CellGrid, 10, 5, &decoration_map, 0);
 
         // Should be valid JSON
         let cells: Vec<Vec<serde_json::Value>> =
@@ -743,6 +1043,47 @@ mod tests {
         assert_eq!(cells[0].len(), 2);
         assert_eq!(cells[0][0].get("char").unwrap().as_str().unwrap(), "A");
         assert_eq!(cells[0][1].get("char").unwrap().as_str().unwrap(), "B");
+    }
+
+    #[test]
+    fn test_format_content_cell_grid_with_decorations() {
+        use reovim_driver_display::{Color, Style};
+
+        // Create content with a bracket
+        let content = "(A)";
+
+        // Create a decoration map with color at position (0, 0) for the '('
+        let mut decoration_map = HashMap::new();
+        let style = Style {
+            fg: Some(Color::Red),
+            bg: None,
+            underline_color: None,
+            attributes: reovim_driver_display::Attributes::default(),
+        };
+        decoration_map.insert((0, 0), style);
+
+        let result =
+            super::format_content(content, ScreenFormat::CellGrid, 10, 5, &decoration_map, 0);
+
+        // Parse the JSON
+        let cells: Vec<Vec<serde_json::Value>> =
+            serde_json::from_str(&result.content).expect("Should be valid JSON");
+
+        // First character '(' should have red foreground
+        let first_cell = &cells[0][0];
+        assert_eq!(first_cell.get("char").unwrap().as_str().unwrap(), "(");
+        assert_eq!(first_cell.get("fg").unwrap().as_str().unwrap(), "red");
+        assert_eq!(first_cell.get("bg").unwrap().as_str().unwrap(), "default");
+
+        // Second character 'A' should have default colors
+        let second_cell = &cells[0][1];
+        assert_eq!(second_cell.get("char").unwrap().as_str().unwrap(), "A");
+        assert_eq!(second_cell.get("fg").unwrap().as_str().unwrap(), "default");
+
+        // Third character ')' should have default colors
+        let third_cell = &cells[0][2];
+        assert_eq!(third_cell.get("char").unwrap().as_str().unwrap(), ")");
+        assert_eq!(third_cell.get("fg").unwrap().as_str().unwrap(), "default");
     }
 
     // === Line number rendering tests (#445) ===

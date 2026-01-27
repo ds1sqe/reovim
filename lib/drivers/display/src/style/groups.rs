@@ -15,6 +15,9 @@
 //! - **UI** (17 groups): Editor chrome like statusline, line numbers, borders
 //! - **Diagnostic** (4 groups): LSP diagnostics like errors and warnings
 //!
+//! Additional groups (e.g., rainbow brackets) are registered by modules via
+//! `StyleGroupRegistry` at runtime.
+//!
 //! # Example
 //!
 //! ```ignore
@@ -141,9 +144,11 @@ pub const DIAGNOSTIC_HINT: &str = "diagnostic.hint";
 // All Groups (for testing completeness)
 // ============================================================================
 
-/// All highlight groups (34 total).
+/// All built-in highlight groups (34 total).
 ///
 /// Used by tests to verify theme completeness.
+/// Additional groups (e.g., rainbow brackets) are registered by modules
+/// via `StyleGroupRegistry` at runtime.
 pub const ALL_GROUPS: &[&str] = &[
     // Syntax (13)
     KEYWORD,
@@ -191,6 +196,7 @@ mod tests {
     #[test]
     fn test_all_groups_count() {
         // 13 syntax + 17 UI + 4 diagnostic = 34 groups
+        // Module-specific groups (e.g., rainbow brackets) are registered via StyleGroupRegistry
         assert_eq!(ALL_GROUPS.len(), 34);
     }
 

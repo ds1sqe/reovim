@@ -52,6 +52,7 @@ mod builtin;
 pub mod groups;
 mod icons;
 mod manager;
+mod registry;
 mod theme;
 
 pub use {
@@ -60,5 +61,6 @@ pub use {
         BuiltinFileIconProvider, IconDef, IconProvider, IconRegistry, IconSet, file_icons, ui_icons,
     },
     manager::{SharedThemeManager, ThemeManager},
+    registry::StyleGroupRegistry,
     theme::{BuiltinTheme, ThemeProvider},
 };

@@ -12,7 +12,10 @@ use {
     reovim_driver_display::layout::RootCompositor,
     reovim_driver_input::{KeySequence, ResolverRegistry},
     reovim_driver_vfs::VfsDriver,
-    reovim_kernel::api::v1::{CommandId, KernelContext, ModeId},
+    reovim_kernel::api::v1::{
+        CommandId, KernelContext, ModeId,
+        events::kernel::{BufferModified, Modification},
+    },
 };
 
 use {
@@ -612,6 +615,7 @@ impl Session {
     /// was inserted, `false` if not (no active buffer, mode doesn't accept input).
     ///
     /// Acquires a write lock on the session state.
+    /// Emits `BufferModified` event for auto-pair and other modules.
     pub async fn insert_char(&self, ch: char) -> bool {
         use reovim_driver_input::FallbackContext;
 
@@ -641,6 +645,25 @@ impl Session {
             state
                 .app
                 .accumulate_edit(buffer_id, edit, cursor_before, cursor_after);
+
+            // Emit BufferModified event for auto-pair and other modules (#440)
+            #[allow(clippy::cast_possible_truncation)]
+            {
+                let handler_count = state.app.kernel.event_bus.handler_count::<BufferModified>();
+                let result = state.app.kernel.event_bus.emit(BufferModified {
+                    buffer_id: buffer_id.as_usize() as u64,
+                    modification: Modification::Insert {
+                        start: (cursor_before.line as u32, cursor_before.column as u32),
+                        text: ch.to_string(),
+                    },
+                });
+                tracing::trace!(
+                    char = %ch,
+                    handlers = handler_count,
+                    result = ?result,
+                    "BufferModified event emitted for insert_char"
+                );
+            }
 
             true
         })

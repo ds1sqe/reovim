@@ -439,9 +439,23 @@ impl BufferApi for SessionRuntime<'_> {
             if !deleted_text.is_empty() {
                 let edit = Edit::Delete {
                     position: start,
-                    text: deleted_text,
+                    text: deleted_text.clone(),
                 };
                 self.record_edit(buffer, vec![edit], cursor_before, cursor_after);
+
+                // Emit BufferModified event for pair module and other subscribers (#440)
+                #[allow(clippy::cast_possible_truncation)]
+                {
+                    use reovim_kernel::api::v1::events::kernel::{BufferModified, Modification};
+                    self.kernel.event_bus.emit(BufferModified {
+                        buffer_id: buffer.as_usize() as u64,
+                        modification: Modification::Delete {
+                            start: (start.line as u32, start.column as u32),
+                            end: (end.line as u32, end.column as u32),
+                            text: deleted_text,
+                        },
+                    });
+                }
             }
 
             self.changes.record_buffer_modified(buffer);

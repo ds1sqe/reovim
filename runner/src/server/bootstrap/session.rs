@@ -26,6 +26,7 @@ pub fn create_session_with_defaults(id: SessionId) -> Arc<Session> {
         compositor,
         _mode_providers, // TODO(Epic #417 Part 3): Remove when build_default_registries() is simplified
         services,
+        kernel, // Shared kernel context for event bus (#440)
     ) = super::build_default_registries();
 
     // Query mode provider from ServiceRegistry using typed key (Epic #417)
@@ -45,9 +46,8 @@ pub fn create_session_with_defaults(id: SessionId) -> Arc<Session> {
         .and_then(|registry| registry.get(&VfsScheme::File))
         .expect("VFS provider must be registered by vfs-local module");
 
-    // Create kernel context (Epic #417 Part 2: queries BufferManager from ServiceRegistry)
-    // Pass services Arc so kernel has access to ClipboardProvider and other services
-    let kernel = super::real_kernel_context(Arc::clone(&services));
+    // Kernel context is shared from build_default_registries (#440)
+    // This ensures modules and session use the same event bus
 
     // Handle empty session: create buffer if handlers indicate so
     let empty_session_registry = super::build_empty_session_registry(&services);
