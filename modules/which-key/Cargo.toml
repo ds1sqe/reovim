@@ -1,0 +1,30 @@
+[package]
+name = "reovim-module-which-key"
+version = "0.9.2-dev"
+edition = "2024"
+rust-version = "1.92"
+description = "Which-key popup module for reovim - shows available keybindings"
+license = "AGPL-3.0-only"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+dynamic = []  # Enable FFI entry points for standalone dynamic loading
+
+[dependencies]
+reovim-kernel = { path = "../../lib/kernel" }
+reovim-module-macros = { path = "../../lib/module-macros" }
+reovim-driver-command = { path = "../../lib/drivers/command" }
+reovim-driver-command-types = { path = "../../lib/drivers/command-types" }
+reovim-driver-input = { path = "../../lib/drivers/input" }
+reovim-driver-display = { path = "../../lib/drivers/display" }
+reovim-driver-session = { path = "../../lib/drivers/session" }
+arc-swap = "1.7"
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+reovim = { path = "../../runner" }
+tokio = { workspace = true }

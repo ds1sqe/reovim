@@ -1852,6 +1852,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-module-which-key"
+version = "0.9.2-dev"
+dependencies = [
+ "arc-swap",
+ "reovim",
+ "reovim-driver-command",
+ "reovim-driver-command-types",
+ "reovim-driver-display",
+ "reovim-driver-input",
+ "reovim-driver-session",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "reovim-module-window-ops"
 version = "0.9.2-dev"
 dependencies = [

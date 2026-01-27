@@ -356,6 +356,34 @@ pub trait KeymapQuery: Send + Sync {
             KeyLookupState::PrefixOnly | KeyLookupState::NotFound => None,
         }
     }
+
+    /// Get all bindings that start with a given prefix.
+    ///
+    /// Returns bindings where the key sequence starts with `prefix` but is longer
+    /// than `prefix`. This is used by which-key to show available completions.
+    ///
+    /// # Arguments
+    ///
+    /// * `mode` - The mode to query bindings for
+    /// * `prefix` - The prefix to filter by
+    ///
+    /// # Returns
+    ///
+    /// A vector of (full key sequence, command ID) pairs for bindings that
+    /// extend the given prefix. The caller can extract the suffix by skipping
+    /// `prefix.len()` keys from the full sequence.
+    ///
+    /// # Default Implementation
+    ///
+    /// Returns an empty vector. Override in implementations that have
+    /// access to the full binding registry.
+    fn bindings_with_prefix(
+        &self,
+        _mode: &ModeId,
+        _prefix: &KeySequence,
+    ) -> Vec<(KeySequence, CommandId)> {
+        Vec::new()
+    }
 }
 
 #[cfg(test)]

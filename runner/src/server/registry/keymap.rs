@@ -422,6 +422,62 @@ impl KeymapRegistry {
             .unwrap_or_default()
     }
 
+    /// Get all bindings that start with a given prefix (for which-key popup).
+    ///
+    /// Returns bindings where the key sequence starts with `prefix` but is longer
+    /// than `prefix`. Respects layer hierarchy (highest layer wins) and excludes
+    /// removed bindings.
+    ///
+    /// # Arguments
+    ///
+    /// * `mode` - The mode to query bindings for
+    /// * `prefix` - The prefix to filter by
+    ///
+    /// # Returns
+    ///
+    /// A vector of (full key sequence, command ID) pairs for bindings that
+    /// extend the given prefix.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // If registry has: g → goto, gg → goto-top, gj → goto-down, j → down
+    /// let bindings = registry.bindings_with_prefix(&mode, &g_keys);
+    /// // Returns: [(gg, goto-top), (gj, goto-down)]
+    /// // Does NOT include: (g, goto) - exact match excluded
+    /// // Does NOT include: (j, down) - doesn't start with g
+    /// ```
+    #[must_use]
+    pub fn bindings_with_prefix(
+        &self,
+        mode: &ModeId,
+        prefix: &KeySequence,
+    ) -> Vec<(KeySequence, CommandId)> {
+        self.entries
+            .get(mode)
+            .map(|mode_entries| {
+                mode_entries
+                    .iter()
+                    .filter(|(keys, _)| {
+                        // Must start with prefix AND be longer than prefix
+                        keys.starts_with(prefix) && *keys != prefix
+                    })
+                    .filter_map(|(keys, entries)| {
+                        // Get effective binding (first entry is highest layer due to sorting)
+                        entries.first().and_then(|entry| {
+                            // Exclude removed bindings
+                            if entry.removed {
+                                None
+                            } else {
+                                Some((keys.clone(), entry.command.clone()))
+                            }
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     /// Get the number of unique key sequences with bindings for a mode.
     #[must_use]
     pub fn binding_count(&self, mode: &ModeId) -> usize {
@@ -481,6 +537,15 @@ impl KeymapQuery for KeymapRegistry {
     fn get_exact(&self, mode: &ModeId, keys: &KeySequence) -> Option<CommandId> {
         // Delegate to get_binding (which returns effective binding considering layers)
         self.get_binding(mode, keys)
+    }
+
+    fn bindings_with_prefix(
+        &self,
+        mode: &ModeId,
+        prefix: &KeySequence,
+    ) -> Vec<(KeySequence, CommandId)> {
+        // Delegate to the inherent method
+        Self::bindings_with_prefix(self, mode, prefix)
     }
 }
 
@@ -1262,5 +1327,175 @@ mod tests {
 
         // Should still return None (no binding to shadow)
         assert!(registry.get_binding(&mode, &keys).is_none());
+    }
+
+    // ========================================================================
+    // bindings_with_prefix tests (which-key support)
+    // ========================================================================
+
+    #[test]
+    fn test_bindings_with_prefix_basic() {
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+
+        // Register g, gg, gj, and unrelated j
+        registry.register_str(&mode, "g", test_command("goto"));
+        registry.register_str(&mode, "gg", test_command("goto-top"));
+        registry.register_str(&mode, "gj", test_command("goto-down"));
+        registry.register_str(&mode, "j", test_command("cursor-down"));
+
+        let g = KeySequence::parse("g").unwrap();
+        let bindings = registry.bindings_with_prefix(&mode, &g);
+
+        // Should return gg and gj, but NOT g (exact match) or j (doesn't start with g)
+        assert_eq!(bindings.len(), 2);
+
+        let keys: Vec<_> = bindings.iter().map(|(k, _)| k.clone()).collect();
+        let gg = KeySequence::parse("gg").unwrap();
+        let gj = KeySequence::parse("gj").unwrap();
+        assert!(keys.contains(&gg));
+        assert!(keys.contains(&gj));
+    }
+
+    #[test]
+    fn test_bindings_with_prefix_empty_prefix() {
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+
+        registry.register_str(&mode, "j", test_command("cursor-down"));
+        registry.register_str(&mode, "k", test_command("cursor-up"));
+
+        // Empty prefix should return all bindings
+        let empty = KeySequence::new();
+        let bindings = registry.bindings_with_prefix(&mode, &empty);
+
+        assert_eq!(bindings.len(), 2);
+    }
+
+    #[test]
+    fn test_bindings_with_prefix_no_matches() {
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+
+        registry.register_str(&mode, "j", test_command("cursor-down"));
+        registry.register_str(&mode, "k", test_command("cursor-up"));
+
+        // z has no bindings starting with it
+        let z = KeySequence::parse("z").unwrap();
+        let bindings = registry.bindings_with_prefix(&mode, &z);
+
+        assert!(bindings.is_empty());
+    }
+
+    #[test]
+    fn test_bindings_with_prefix_excludes_exact_match() {
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+
+        // Only register the exact key sequence
+        registry.register_str(&mode, "g", test_command("goto"));
+
+        let g = KeySequence::parse("g").unwrap();
+        let bindings = registry.bindings_with_prefix(&mode, &g);
+
+        // g itself is not included (exact match excluded)
+        assert!(bindings.is_empty());
+    }
+
+    #[test]
+    fn test_bindings_with_prefix_respects_layers() {
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+        let gg = KeySequence::parse("gg").unwrap();
+
+        // Policy layer: gg → goto-top
+        registry.register_at_layer(
+            BindingLayer::Policy,
+            &mode,
+            gg.clone(),
+            test_command("goto-top"),
+        );
+
+        // User layer: gg → custom-goto-top (overrides)
+        registry.register_at_layer(
+            BindingLayer::User,
+            &mode,
+            gg.clone(),
+            test_command("custom-goto-top"),
+        );
+
+        let g = KeySequence::parse("g").unwrap();
+        let bindings = registry.bindings_with_prefix(&mode, &g);
+
+        // Should return user's binding, not policy's
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(bindings[0].1, test_command("custom-goto-top"));
+    }
+
+    #[test]
+    fn test_bindings_with_prefix_excludes_removed() {
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+
+        // Policy layer: gg → goto-top, gj → goto-down
+        registry.register_at_layer(
+            BindingLayer::Policy,
+            &mode,
+            KeySequence::parse("gg").unwrap(),
+            test_command("goto-top"),
+        );
+        registry.register_at_layer(
+            BindingLayer::Policy,
+            &mode,
+            KeySequence::parse("gj").unwrap(),
+            test_command("goto-down"),
+        );
+
+        // User removes gg
+        registry.remove_at_layer(
+            BindingLayer::User,
+            &mode,
+            KeySequence::parse("gg").unwrap(),
+        );
+
+        let g = KeySequence::parse("g").unwrap();
+        let bindings = registry.bindings_with_prefix(&mode, &g);
+
+        // Should only return gj (gg is removed)
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(bindings[0].1, test_command("goto-down"));
+    }
+
+    #[test]
+    fn test_bindings_with_prefix_multi_key_prefix() {
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+
+        // Register <C-w>h and <C-w>j
+        registry.register_str(&mode, "<C-w>h", test_command("window-left"));
+        registry.register_str(&mode, "<C-w>j", test_command("window-down"));
+        registry.register_str(&mode, "<C-w>", test_command("window-mode"));
+
+        let ctrl_w = KeySequence::parse("<C-w>").unwrap();
+        let bindings = registry.bindings_with_prefix(&mode, &ctrl_w);
+
+        // Should return <C-w>h and <C-w>j, but not <C-w> itself
+        assert_eq!(bindings.len(), 2);
+    }
+
+    #[test]
+    fn test_bindings_with_prefix_unknown_mode() {
+        let mut registry = KeymapRegistry::new();
+        let normal = test_mode_normal();
+        let visual = test_mode_visual();
+
+        // Register in normal mode only
+        registry.register_str(&normal, "gg", test_command("goto-top"));
+
+        let g = KeySequence::parse("g").unwrap();
+
+        // Query in visual mode - should return empty
+        let bindings = registry.bindings_with_prefix(&visual, &g);
+        assert!(bindings.is_empty());
     }
 }

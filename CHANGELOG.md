@@ -101,6 +101,15 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   integration helper. Added 8 new highlight groups: `sign_column`,
   `gutter_separator`, `git.add`, `git.change`, `git.delete`, `fold.open`,
   `fold.closed`, `bookmark`. (#455)
+- **Which-key plugin**: Added which-key module that displays available keybindings
+  in a popup overlay after a configurable timeout when a prefix key is pressed.
+  Features include: (1) Timeout popup - after pressing a prefix key (like `g`),
+  shows available bindings after 500ms (configurable). (2) Immediate popup -
+  press `?` after a prefix (like `g?`) to show bindings immediately. (3) Filtering -
+  type to narrow down displayed bindings. (4) Lock-free rendering via ArcSwap
+  for render thread performance. (5) Bottom-positioned overlay that adapts to
+  screen size. Module provides `WhichKeyService` for timer management and
+  `WhichKeySessionExt` for per-session state. (#442)
 
 ### Changed
 
