@@ -75,6 +75,20 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   Delete, Left, Right, Home, End, Ctrl+A/E/H) when cmdline is active, routing
   them to `CmdlineBuffer` methods. This is Phase 1 infrastructure; floating
   popup rendering in TUI to follow. (#451)
+- **Extensible statusline system**: Implemented lualine-inspired statusline with
+  sections (A-B-C | X-Y-Z), pluggable components, and mode-specific theming.
+  Mechanism layer (`lib/drivers/display/src/statusline/`) defines traits:
+  `ComponentProvider`, `StatuslineProvider`, with types for sections, height
+  calculation, multi-row layout, and truncation. Policy layer (`modules/statusline/`)
+  provides `DefaultStatuslineProvider` with built-in components: mode (with
+  NORMAL=blue, INSERT=green, VISUAL=magenta coloring), filename (with [+]/[RO]
+  indicators), position (line:col with percentage), and filetype. Dynamic height
+  adapts to screen size with overflow strategies (Truncate, Wrap, Redistribute).
+  Powerline-style separators with proper color transitions. Cross-module
+  extensibility via `ComponentProviderRegistry` - other modules can register
+  custom components (example: BranchComponent for git, DiagnosticsComponent for
+  LSP). Component visibility conditions support WhenModified, WhenInGitRepo,
+  InModes, etc. Priority-based truncation respects component importance. (#441)
 
 ### Changed
 

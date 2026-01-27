@@ -43,6 +43,7 @@ mod mode;
 mod policy;
 mod render;
 mod screen;
+pub mod statusline;
 pub mod style;
 mod traits;
 pub mod ui;
@@ -188,4 +189,48 @@ pub use layout::{
     WindowLayerCompositor,
     WindowPlacement,
     Zone,
+};
+
+// ============================================================================
+// Statusline System (Issue #441 - Extensible Statusline)
+// ============================================================================
+//
+// Lualine-inspired statusline with sections (A-B-C | X-Y-Z),
+// pluggable components, and mode-specific theming.
+// ============================================================================
+
+pub use statusline::{
+    // Component API
+    ComponentContext,
+    ComponentOutput,
+    ComponentProvider,
+    ComponentProviderKey,
+    ComponentProviderRegistry,
+    // Height configuration
+    ContentMetrics,
+    DiagnosticCounts,
+    HeightConfig,
+    HeightResult,
+    // Multi-row layout
+    LayoutCalculator,
+    MultiRowLayout,
+    OverflowStrategy,
+    RowContent,
+    ScreenThreshold,
+    // Section types
+    Section,
+    SectionId,
+    SectionPosition,
+    // Provider traits
+    StatuslineProvider,
+    StatuslineProviderKey,
+    StatuslineProviderRegistry,
+    // Renderer
+    StatuslineRendererConfig,
+    StatuslineSeparator,
+    calculate_height,
+    calculate_height_from_sections,
+    calculate_height_with_metrics,
+    render_sections,
+    truncate_sections,
 };
