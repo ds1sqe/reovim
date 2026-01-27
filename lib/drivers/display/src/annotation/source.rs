@@ -59,6 +59,7 @@
 
 use {
     super::types::{Annotation, AnnotationKind},
+    crate::window_renderer::LineNumberMode,
     reovim_kernel::api::v1::BufferId,
     std::ops::Range,
 };
@@ -73,11 +74,7 @@ use {
 /// ```
 /// use reovim_driver_display::annotation::AnnotationContext;
 ///
-/// let context = AnnotationContext {
-///     total_lines: 100,
-///     cursor_line: 50,
-///     mode: String::from("NORMAL"),
-/// };
+/// let context = AnnotationContext::new(100, 50, "NORMAL");
 ///
 /// assert_eq!(context.total_lines, 100);
 /// assert_eq!(context.cursor_line, 50);
@@ -92,6 +89,12 @@ pub struct AnnotationContext {
 
     /// Current editor mode (e.g., "NORMAL", "INSERT").
     pub mode: String,
+
+    /// Line number display mode (set by caller based on options).
+    ///
+    /// When `Some`, sources should use this mode for line number display.
+    /// When `None`, sources use their default/stored mode.
+    pub line_number_mode: Option<LineNumberMode>,
 }
 
 impl AnnotationContext {
@@ -102,6 +105,23 @@ impl AnnotationContext {
             total_lines,
             cursor_line,
             mode: mode.into(),
+            line_number_mode: None,
+        }
+    }
+
+    /// Create a context with line number mode specified.
+    #[must_use]
+    pub fn with_line_number_mode(
+        total_lines: usize,
+        cursor_line: usize,
+        mode: impl Into<String>,
+        line_number_mode: LineNumberMode,
+    ) -> Self {
+        Self {
+            total_lines,
+            cursor_line,
+            mode: mode.into(),
+            line_number_mode: Some(line_number_mode),
         }
     }
 
@@ -115,7 +135,14 @@ impl AnnotationContext {
             total_lines,
             cursor_line: 0,
             mode: String::new(),
+            line_number_mode: None,
         }
+    }
+
+    /// Get the line number mode if set.
+    #[must_use]
+    pub const fn line_number_mode(&self) -> Option<LineNumberMode> {
+        self.line_number_mode
     }
 }
 

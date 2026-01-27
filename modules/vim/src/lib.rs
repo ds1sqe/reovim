@@ -41,6 +41,9 @@ use std::sync::Arc;
 
 use {
     reovim_driver_command::{CommandHandler, CommandHandlerStore, CommandProvider},
+    reovim_driver_display::{
+        GutterRenderer, GutterRendererKey, GutterRendererRegistry, LineNumberMode,
+    },
     reovim_driver_input::{
         KeybindingStore, ModeInfo, ModeInfoStore, ModeProviderKey, ModeProviderRegistry,
         ResolverRegistry,
@@ -214,6 +217,24 @@ impl Module for VimModule {
                 "Failed to register 'relativenumber' option: {e}"
             )));
         }
+
+        // Epic #458: Register GutterRenderer with LineNumberSource and LineNumberPresenter
+        // Mode is dynamic - AnnotationContext will carry the actual mode from options
+        let mut gutter_renderer = GutterRenderer::new();
+        gutter_renderer
+            .register_source(annotation::create_line_number_source(LineNumberMode::Absolute));
+        gutter_renderer.register_presenter(annotation::create_line_number_presenter());
+
+        tracing::info!(
+            sources = gutter_renderer.source_count(),
+            presenters = gutter_renderer.presenter_count(),
+            "VimModule: created GutterRenderer"
+        );
+
+        let renderer_registry = ctx.services.get_or_create::<GutterRendererRegistry>();
+        renderer_registry.register(GutterRendererKey::Default, Arc::new(gutter_renderer));
+
+        tracing::info!("VimModule: registered GutterRenderer in ServiceRegistry");
 
         pr_info!("Vim module initialized");
         ProbeResult::Success
@@ -415,5 +436,29 @@ mod tests {
             OptionScope::Window,
             "'relativenumber' should have Window scope"
         );
+    }
+
+    // ========================================================================
+    // Epic #458: GutterRenderer registration test
+    // ========================================================================
+
+    #[test]
+    fn test_gutter_renderer_registered() {
+        let mut module = VimModule::new();
+        let ctx = ModuleContext::default();
+        module.init(&ctx);
+
+        // Verify GutterRenderer is registered in ServiceRegistry
+        let registry = ctx.services.get::<GutterRendererRegistry>();
+        assert!(registry.is_some(), "GutterRendererRegistry should be created");
+
+        let registry = registry.unwrap();
+        let renderer = registry.get(&GutterRendererKey::Default);
+        assert!(renderer.is_some(), "GutterRenderer should be registered with Default key");
+
+        // Verify renderer has source and presenter
+        let renderer = renderer.unwrap();
+        assert_eq!(renderer.source_count(), 1, "Should have 1 source registered");
+        assert_eq!(renderer.presenter_count(), 1, "Should have 1 presenter registered");
     }
 }

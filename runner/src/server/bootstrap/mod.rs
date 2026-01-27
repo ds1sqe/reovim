@@ -13,9 +13,8 @@ mod kernel;
 mod registries;
 mod session;
 
-pub use kernel::real_kernel_context_with_event_bus;
-// register_default_options is internal to kernel.rs
 pub use {
+    kernel::real_kernel_context_with_options,
     registries::{build_default_registries, build_empty_session_registry, handle_empty_session},
     session::create_session_with_defaults,
 };

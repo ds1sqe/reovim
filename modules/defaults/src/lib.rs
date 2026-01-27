@@ -80,11 +80,8 @@ impl DefaultsModule {
             Box::new(vfs_local::VfsLocalModule::new()),
             Box::new(clipboard::ClipboardModule::new()),
             Box::new(pair::PairModule::new()),
-<<<<<<< HEAD
             Box::new(cmdline::CmdlineModule::new()), // #451: Cmdline UI module
-=======
-            Box::new(statusline::StatuslineModule::new()),
->>>>>>> 0588203
+            Box::new(statusline::StatuslineModule::new()), // #441: Statusline module
             // Utility modules
             Box::new(keymap::KeymapModule),
             Box::new(commands::CommandsModule),
@@ -215,35 +212,21 @@ mod tests {
     fn test_defaults_has_dependencies() {
         let module = DefaultsModule::new();
         let deps = module.dependencies();
-<<<<<<< HEAD
-        // Service modules (8): undo, buffer-simple, search, scratch-buffer, vfs-local, clipboard, pair, cmdline
+        // Service modules (9): undo, buffer-simple, search, scratch-buffer, vfs-local, clipboard, pair, cmdline, statusline
         // Utility modules (2): keymap, commands
         // Policy modules (4): editor, motions, vim, layout
-        // Total: 14 modules (Epic #417 Part 3 + #423 + #440 + #451)
-=======
-        // Service modules (8): undo, buffer-simple, search, scratch-buffer, vfs-local, clipboard, pair, statusline
-        // Utility modules (2): keymap, commands
-        // Policy modules (4): editor, motions, vim, layout
-        // Total: 14 modules (Epic #417 Part 3 + #423 + #440 + #441)
->>>>>>> 0588203
-        assert_eq!(deps.len(), 14);
+        // Total: 15 modules (Epic #417 Part 3 + #423 + #440 + #441 + #451)
+        assert_eq!(deps.len(), 15);
     }
 
     #[test]
     fn test_create_modules() {
         let modules = DefaultsModule::create_modules();
-<<<<<<< HEAD
-        // Service modules (8): undo, buffer-simple, search, scratch-buffer, vfs-local, clipboard, pair, cmdline
+        // Service modules (9): undo, buffer-simple, search, scratch-buffer, vfs-local, clipboard, pair, cmdline, statusline
         // Utility modules (2): keymap, commands
         // Policy modules (4): editor, motions, vim, layout
-        // Total: 14 modules (Epic #417 Part 3 + #423 + #440 + #451)
-=======
-        // Service modules (8): undo, buffer-simple, search, scratch-buffer, vfs-local, clipboard, pair, statusline
-        // Utility modules (2): keymap, commands
-        // Policy modules (4): editor, motions, vim, layout
-        // Total: 14 modules (Epic #417 Part 3 + #423 + #440 + #441)
->>>>>>> 0588203
-        assert_eq!(modules.len(), 14);
+        // Total: 15 modules (Epic #417 Part 3 + #423 + #440 + #441 + #451)
+        assert_eq!(modules.len(), 15);
     }
 
     #[test]

@@ -80,13 +80,16 @@ impl AnnotationSource for LineNumberSource {
         range: std::ops::Range<usize>,
         context: &AnnotationContext,
     ) -> Vec<Annotation> {
-        if self.mode == LineNumberMode::None {
+        // Use context mode if provided, otherwise fall back to stored mode
+        let mode = context.line_number_mode().unwrap_or(self.mode);
+
+        if mode == LineNumberMode::None {
             return vec![];
         }
 
         range
             .map(|line| {
-                let number = match self.mode {
+                let number = match mode {
                     LineNumberMode::None => unreachable!(),
                     LineNumberMode::Absolute => line + 1,
                     LineNumberMode::Relative => line.abs_diff(context.cursor_line),
@@ -302,6 +305,54 @@ mod tests {
 
         let source_none = LineNumberSource::new(LineNumberMode::None);
         assert!(!source_none.has_annotations(BufferId::new()));
+    }
+
+    #[test]
+    fn test_source_uses_context_mode_when_provided() {
+        // Source stored with Absolute mode
+        let source = LineNumberSource::absolute();
+
+        // Context provides Relative mode - should override stored mode
+        let context =
+            AnnotationContext::with_line_number_mode(10, 5, "normal", LineNumberMode::Relative);
+        let annotations = source.annotations(BufferId::new(), 4..7, &context);
+
+        assert_eq!(annotations.len(), 3);
+        // Line 4: |4-5| = 1 (relative, not absolute 5)
+        assert_eq!(annotations[0].payload.as_number(), Some(1));
+        // Line 5: |5-5| = 0 (cursor line in relative)
+        assert_eq!(annotations[1].payload.as_number(), Some(0));
+        // Line 6: |6-5| = 1 (relative, not absolute 7)
+        assert_eq!(annotations[2].payload.as_number(), Some(1));
+    }
+
+    #[test]
+    fn test_source_uses_stored_mode_when_context_mode_none() {
+        // Source stored with Absolute mode
+        let source = LineNumberSource::absolute();
+
+        // Context without line_number_mode - should use stored mode
+        let context = AnnotationContext::new(10, 5, "normal");
+        let annotations = source.annotations(BufferId::new(), 0..3, &context);
+
+        assert_eq!(annotations.len(), 3);
+        // Should use Absolute mode (stored)
+        assert_eq!(annotations[0].payload.as_number(), Some(1));
+        assert_eq!(annotations[1].payload.as_number(), Some(2));
+        assert_eq!(annotations[2].payload.as_number(), Some(3));
+    }
+
+    #[test]
+    fn test_source_context_mode_none_returns_empty() {
+        // Source stored with Absolute mode
+        let source = LineNumberSource::absolute();
+
+        // Context provides None mode - should return empty
+        let context =
+            AnnotationContext::with_line_number_mode(10, 5, "normal", LineNumberMode::None);
+        let annotations = source.annotations(BufferId::new(), 0..10, &context);
+
+        assert!(annotations.is_empty());
     }
 
     // ========================================================================

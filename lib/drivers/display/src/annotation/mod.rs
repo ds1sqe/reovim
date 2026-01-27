@@ -71,7 +71,10 @@ mod types;
 pub use {
     composer::{ComposedLine, ComposerBuilder, GutterComposer},
     config::{ColumnConfig, GutterConfig, VisibilityMode},
-    integration::{AnnotationSourceKey, AnnotationSourceRegistry, GutterRenderer},
+    integration::{
+        AnnotationSourceKey, AnnotationSourceRegistry, GutterRenderer, GutterRendererKey,
+        GutterRendererRegistry,
+    },
     presenter::{
         AnnotationPresenter, ColumnWidth, GutterCell, KindPattern, PresentedOutput,
         PresenterContext,

@@ -58,6 +58,33 @@ impl AnnotationSourceKey {
 pub type AnnotationSourceRegistry = MultiServiceRegistry<AnnotationSourceKey, dyn AnnotationSource>;
 
 // ============================================================================
+// Gutter Renderer Registry
+// ============================================================================
+
+/// Key for gutter renderer lookup.
+///
+/// Used to register and lookup gutter renderers in a service registry.
+/// Following the pattern from Epic #417 (`ServiceRegistry` pattern).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum GutterRendererKey {
+    /// Default gutter renderer (line numbers, signs, fold markers, etc.)
+    Default,
+}
+
+impl ServiceKey for GutterRendererKey {
+    fn service_name() -> &'static str {
+        "GutterRenderer"
+    }
+}
+
+/// Registry for gutter renderers.
+///
+/// Uses the kernel's `MultiServiceRegistry` pattern for type-safe lookup.
+/// Modules register their `GutterRenderer` instances during initialization,
+/// and the runner queries them when rendering screen content.
+pub type GutterRendererRegistry = MultiServiceRegistry<GutterRendererKey, GutterRenderer>;
+
+// ============================================================================
 // Gutter Renderer
 // ============================================================================
 
@@ -318,6 +345,17 @@ mod tests {
     fn test_annotation_source_key() {
         let key = AnnotationSourceKey::new("line_number");
         assert_eq!(key.0, "line_number");
+    }
+
+    #[test]
+    fn test_gutter_renderer_key_service_name() {
+        assert_eq!(GutterRendererKey::service_name(), "GutterRenderer");
+    }
+
+    #[test]
+    fn test_gutter_renderer_key_default() {
+        let key = GutterRendererKey::Default;
+        assert_eq!(key, GutterRendererKey::Default);
     }
 
     #[test]

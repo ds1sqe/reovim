@@ -160,12 +160,18 @@ pub fn build_default_registries() -> (
     // This bus will be used by both modules (for subscriptions) and session (for emitting)
     let shared_event_bus = Arc::new(EventBus::new());
 
+    // Create shared OptionRegistry (#458) - modules register options during init()
+    // and the session uses the same registry for :set commands and rendering.
+    let shared_options = Arc::new(reovim_kernel::api::v1::OptionRegistry::new());
+    super::kernel::register_default_options(&shared_options);
+
     // Create minimal kernel context for module initialization
-    // Uses the shared event bus so modules can subscribe to events
-    // Note: Uses default() for other fields since modules mainly need event_bus and services
-    let module_init_kernel = KernelContext::with_event_bus_and_services(
+    // Uses the shared event bus and options so modules can subscribe to events
+    // and register options (#458)
+    let module_init_kernel = KernelContext::with_event_bus_services_and_options(
         Arc::clone(&shared_event_bus),
         Arc::clone(&services),
+        Arc::clone(&shared_options),
     );
 
     // Initialize defaults bundle modules (Epic #417 Phase 5)
@@ -201,10 +207,15 @@ pub fn build_default_registries() -> (
     }));
     tracing::info!(count = module_count, "stored defaults modules in ServiceRegistry (#440)");
 
-    // Create real kernel context AFTER modules are initialized (#440)
+    // Create real kernel context AFTER modules are initialized (#440, #458)
     // BufferManager is now available in ServiceRegistry
     // Uses the same event bus that modules subscribed to
-    let kernel = super::real_kernel_context_with_event_bus(Arc::clone(&services), shared_event_bus);
+    // Uses the same options registry that modules registered options in (#458)
+    let kernel = super::real_kernel_context_with_options(
+        Arc::clone(&services),
+        shared_event_bus,
+        shared_options,
+    );
 
     // VFS provider now comes from vfs-local module via ServiceRegistry (Epic #417)
 

@@ -167,7 +167,8 @@ pub use annotation::{
     AnnotationPresenter, AnnotationSource, AnnotationSourceKey, AnnotationSourceRegistry,
     AnnotationStore, AnnotationTarget, BufferAnnotationStore, ColumnConfig, ColumnWidth,
     ComposedLine, ComposerBuilder, GutterCell, GutterComposer, GutterConfig, GutterRenderer,
-    KindPattern, PresentedOutput, PresenterContext, PresenterRegistry, SourceId, VisibilityMode,
+    GutterRendererKey, GutterRendererRegistry, KindPattern, PresentedOutput, PresenterContext,
+    PresenterRegistry, SourceId, VisibilityMode,
 };
 
 // ============================================================================
