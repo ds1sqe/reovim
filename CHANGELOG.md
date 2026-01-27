@@ -6,6 +6,15 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Client core extraction (Phase 5)**: Created `lib/clients/core/` crate
+  (reovim-client-core v0.9.3-dev) as the standalone client connection library.
+  Provides TCP/Unix socket connection abstraction (`Connection`, `ConnectionConfig`),
+  server discovery via port scanning (`list_servers`, `ServerInfo`), and JSON-RPC
+  v1 client (`RpcClient`, `RpcWriter`). Used "copy" approach - runner keeps its
+  own copy unchanged while new crate provides identical functionality. This enables
+  future TUI and CLI extraction in Phases 6-7. All 18 unit tests pass. Part of
+  Epic #465 Phase 5. (#465)
+
 - **New thin runner (Phase 4)**: Created `apps/reovim/` crate (reovim-app v0.9.3-dev)
   as the new architecture binary. This thin CLI wrapper uses `lib/server/` directly,
   demonstrating the server/client split. Binary named `reovim-new` for parallel

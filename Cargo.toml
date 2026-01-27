@@ -32,6 +32,9 @@ members = [
     # Server layer (v0.9.3 - Epic #465)
     "lib/server",
 
+    # Client layer (v0.9.3 - Epic #465 Phase 5)
+    "lib/clients/core",
+
     # Module macros
     "lib/module-macros",
 
@@ -105,6 +108,9 @@ reovim-server = { path = "./lib/server", version = "0.9.3-dev" }
 
 # Application binaries - v0.9.3 for server/client split (Epic #465)
 reovim-app = { path = "./apps/reovim", version = "0.9.3-dev" }
+
+# Client layer - v0.9.3 for server/client split (Epic #465 Phase 5)
+reovim-client-core = { path = "./lib/clients/core", version = "0.9.3-dev" }
 
 # Driver crates
 reovim-driver-command-types = { path = "./lib/drivers/command-types", version = "0.9.2-dev" }
