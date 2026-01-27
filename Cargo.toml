@@ -35,7 +35,10 @@ members = [
     # Module macros
     "lib/module-macros",
 
-    # Runner (main binary)
+    # Applications (v0.9.3 - Epic #465 Phase 4)
+    "apps/reovim",
+
+    # Runner (legacy main binary)
     "runner",
 
     # Tools (non-legacy)
@@ -99,6 +102,9 @@ reovim-protocol = { path = "./lib/protocol", version = "0.9.3-dev" }
 
 # Server layer - v0.9.3 for server/client split (Epic #465)
 reovim-server = { path = "./lib/server", version = "0.9.3-dev" }
+
+# Application binaries - v0.9.3 for server/client split (Epic #465)
+reovim-app = { path = "./apps/reovim", version = "0.9.3-dev" }
 
 # Driver crates
 reovim-driver-command-types = { path = "./lib/drivers/command-types", version = "0.9.2-dev" }

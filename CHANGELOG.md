@@ -6,6 +6,13 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **New thin runner (Phase 4)**: Created `apps/reovim/` crate (reovim-app v0.9.3-dev)
+  as the new architecture binary. This thin CLI wrapper uses `lib/server/` directly,
+  demonstrating the server/client split. Binary named `reovim-new` for parallel
+  installation during migration. Supports server mode with `--tcp`, `--grpc` (feature-
+  gated), and `--socket` (Unix) transport options. Establishes `apps/` directory
+  pattern for future applications (GUI, web). Part of Epic #465 Phase 4. (#465)
+
 - **Server crate extraction (Phase 3)**: Created new `lib/server/` crate
   (reovim-server v0.9.3-dev) as the foundation for server/client split. Implements
   session management with `SessionRegistry` (lock-free via `ArcSwap`), `Session`

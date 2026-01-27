@@ -1777,6 +1777,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-app"
+version = "0.9.3-dev"
+dependencies = [
+ "clap",
+ "reovim-server",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "reovim-arch"
 version = "0.9.2-dev"
 dependencies = [
@@ -2288,6 +2299,29 @@ dependencies = [
  "tempfile",
  "tonic",
  "tonic-build",
+]
+
+[[package]]
+name = "reovim-server"
+version = "0.9.3-dev"
+dependencies = [
+ "arc-swap",
+ "parking_lot",
+ "reovim-arch",
+ "reovim-driver-buffer",
+ "reovim-driver-command",
+ "reovim-driver-command-types",
+ "reovim-driver-display",
+ "reovim-driver-input",
+ "reovim-driver-vfs",
+ "reovim-kernel",
+ "reovim-protocol",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tonic",
+ "tracing",
 ]
 
 [[package]]
