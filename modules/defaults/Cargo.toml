@@ -34,6 +34,7 @@ reovim-module-clipboard = { path = "../clipboard" }
 reovim-module-pair = { path = "../pair" }
 reovim-module-cmdline = { path = "../cmdline" }
 reovim-module-statusline = { path = "../statusline" }
+reovim-module-which-key = { path = "../which-key" }
 reovim-driver-session = { workspace = true }
 reovim-driver-display = { workspace = true }
 reovim-driver-vfs = { workspace = true }

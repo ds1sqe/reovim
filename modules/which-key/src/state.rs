@@ -13,14 +13,15 @@
 //! 2. **Per-session timer state** (`WhichKeySessionExt`) - Stored in session's
 //!    `ExtensionMap`, tracks timer handles for each session
 
-use std::sync::Arc;
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
-use arc_swap::ArcSwap;
-use reovim_driver_input::{KeyEvent, KeySequence};
-use reovim_driver_session::SessionExtension;
-use reovim_kernel::api::v1::ModeId;
-use tokio::sync::mpsc;
+use {
+    arc_swap::ArcSwap,
+    reovim_driver_input::{KeyEvent, KeySequence},
+    reovim_driver_session::SessionExtension,
+    reovim_kernel::api::v1::ModeId,
+    tokio::sync::mpsc,
+};
 
 /// A single binding entry to display in the popup.
 #[derive(Debug, Clone)]
@@ -55,9 +56,10 @@ impl BindingEntry {
 }
 
 /// The visibility state of the which-key popup.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum WhichKeyVisibility {
     /// Popup is hidden, no timer running.
+    #[default]
     Hidden,
 
     /// Timer is running, waiting to show popup.
@@ -75,12 +77,6 @@ pub enum WhichKeyVisibility {
         /// The mode when the prefix was entered.
         mode: ModeId,
     },
-}
-
-impl Default for WhichKeyVisibility {
-    fn default() -> Self {
-        Self::Hidden
-    }
 }
 
 impl WhichKeyVisibility {
@@ -296,6 +292,38 @@ impl Default for WhichKeyState {
 }
 
 // ============================================================================
+// Service Wrapper for ServiceRegistry
+// ============================================================================
+
+/// Wrapper for registering the which-key cache in ServiceRegistry.
+///
+/// This allows the input handler to access the cache without
+/// knowing about the which-key module internals.
+pub struct WhichKeyCacheHandle(pub Arc<ArcSwap<WhichKeyCache>>);
+
+impl WhichKeyCacheHandle {
+    /// Create a new cache handle.
+    #[must_use]
+    pub fn new(cache: Arc<ArcSwap<WhichKeyCache>>) -> Self {
+        Self(cache)
+    }
+
+    /// Get the inner cache handle.
+    #[must_use]
+    pub fn inner(&self) -> &Arc<ArcSwap<WhichKeyCache>> {
+        &self.0
+    }
+
+    /// Get a clone of the cache handle.
+    #[must_use]
+    pub fn clone_inner(&self) -> Arc<ArcSwap<WhichKeyCache>> {
+        Arc::clone(&self.0)
+    }
+}
+
+impl reovim_kernel::api::v1::Service for WhichKeyCacheHandle {}
+
+// ============================================================================
 // Session Extension (per-session timer state)
 // ============================================================================
 
@@ -327,6 +355,9 @@ pub struct WhichKeySessionExt {
 
     /// Window ID of the overlay (when visible).
     overlay_window_id: Option<reovim_kernel::api::v1::WindowId>,
+
+    /// Shared cache handle (set when timer is scheduled).
+    cache: Option<Arc<ArcSwap<WhichKeyCache>>>,
 }
 
 impl Default for WhichKeySessionExt {
@@ -335,6 +366,7 @@ impl Default for WhichKeySessionExt {
             timer_handle: None,
             timeout: Duration::from_millis(500), // Default timeout
             overlay_window_id: None,
+            cache: None,
         }
     }
 }
@@ -353,6 +385,7 @@ impl WhichKeySessionExt {
             timer_handle: None,
             timeout,
             overlay_window_id: None,
+            cache: None,
         }
     }
 
@@ -370,6 +403,19 @@ impl WhichKeySessionExt {
     /// Clear the overlay window ID.
     pub fn clear_overlay_window_id(&mut self) {
         self.overlay_window_id = None;
+    }
+
+    /// Set the shared cache handle.
+    pub fn set_cache(&mut self, cache: Arc<ArcSwap<WhichKeyCache>>) {
+        self.cache = Some(cache);
+    }
+
+    /// Get a snapshot of the current cache state.
+    ///
+    /// Returns `None` if no cache has been set.
+    #[must_use]
+    pub fn cache_snapshot(&self) -> Option<Arc<WhichKeyCache>> {
+        self.cache.as_ref().map(|c| c.load_full())
     }
 
     /// Schedule showing the popup after the configured timeout.
@@ -533,9 +579,11 @@ impl Drop for WhichKeySessionExt {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use reovim_driver_input::{KeyCode, KeyEvent};
-    use reovim_kernel::api::v1::ModuleId;
+    use {
+        super::*,
+        reovim_driver_input::{KeyCode, KeyEvent},
+        reovim_kernel::api::v1::ModuleId,
+    };
 
     // Test module ID for which-key tests
     const TEST_MODULE: ModuleId = ModuleId::new("which-key-test");

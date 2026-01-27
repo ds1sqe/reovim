@@ -19,13 +19,12 @@
 //! - Cache updates for visibility state
 //! - Coordination with the saturator task
 
-use std::sync::Arc;
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
-use arc_swap::ArcSwap;
-use reovim_driver_input::KeySequence;
-use reovim_kernel::api::v1::ModeId;
-use tokio::sync::mpsc;
+use {
+    arc_swap::ArcSwap, reovim_driver_input::KeySequence, reovim_kernel::api::v1::ModeId,
+    tokio::sync::mpsc,
+};
 
 use crate::state::{FilterRequest, WhichKeyCache, WhichKeyVisibility};
 
@@ -228,8 +227,7 @@ impl Drop for WhichKeyService {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use reovim_kernel::api::v1::ModuleId;
+    use {super::*, reovim_kernel::api::v1::ModuleId};
 
     fn test_cache() -> Arc<ArcSwap<WhichKeyCache>> {
         Arc::new(ArcSwap::new(Arc::new(WhichKeyCache::new())))

@@ -45,8 +45,7 @@
 
 use std::sync::Arc;
 
-use arc_swap::ArcSwap;
-use reovim_kernel::api::v1::*;
+use {arc_swap::ArcSwap, reovim_kernel::api::v1::*};
 
 pub mod commands;
 pub mod config;
@@ -56,13 +55,18 @@ pub mod render;
 pub mod service;
 pub mod state;
 
-pub use commands::{WhichKeyCloseCommand, WhichKeyFilterCommand, WhichKeyShowCommand};
-pub use config::WhichKeyConfig;
-pub use filter::{filter_bindings, spawn_saturator, CommandDescriptionProvider};
-pub use ids::{MODULE, WHICH_KEY_CLOSE, WHICH_KEY_FILTER, WHICH_KEY_SHOW};
-pub use render::{bottom_overlay_constraints, calculate_dimensions, render_popup};
-pub use service::WhichKeyService;
-pub use state::{BindingEntry, FilterRequest, SaturatorHandle, WhichKeyCache, WhichKeySessionExt, WhichKeyState, WhichKeyVisibility};
+pub use {
+    commands::{WhichKeyCloseCommand, WhichKeyFilterCommand, WhichKeyShowCommand},
+    config::WhichKeyConfig,
+    filter::{CommandDescriptionProvider, filter_bindings, spawn_saturator},
+    ids::{MODULE, WHICH_KEY_CLOSE, WHICH_KEY_FILTER, WHICH_KEY_SHOW},
+    render::{bottom_overlay_constraints, calculate_dimensions, render_popup},
+    service::WhichKeyService,
+    state::{
+        BindingEntry, FilterRequest, SaturatorHandle, WhichKeyCache, WhichKeyCacheHandle,
+        WhichKeySessionExt, WhichKeyState, WhichKeyVisibility,
+    },
+};
 
 /// Module ID for which-key.
 pub const MODULE_ID: &str = "which-key";
@@ -138,19 +142,23 @@ impl Module for WhichKeyModule {
         Version::new(0, 9, 0)
     }
 
-    fn init(&mut self, _ctx: &ModuleContext) -> ProbeResult {
+    fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
         if !self.config.enabled {
             pr_info!("Which-key module disabled by configuration");
             return ProbeResult::Success;
         }
 
         // Create state (cache and handle storage)
-        self.state = Some(WhichKeyState::new());
+        let state = WhichKeyState::new();
 
-        pr_info!(
-            "Which-key module initialized (timeout: {}ms)",
-            self.config.timeout_ms
-        );
+        // Register cache in ServiceRegistry for input handler access (#457)
+        let cache_handle = WhichKeyCacheHandle::new(state.cache_handle());
+        ctx.services.register(Arc::new(cache_handle));
+        tracing::debug!("which-key: registered WhichKeyCacheHandle in ServiceRegistry");
+
+        self.state = Some(state);
+
+        pr_info!("Which-key module initialized (timeout: {}ms)", self.config.timeout_ms);
         ProbeResult::Success
     }
 

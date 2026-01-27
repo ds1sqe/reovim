@@ -16,10 +16,12 @@
 
 use std::sync::Arc;
 
-use arc_swap::ArcSwap;
-use reovim_driver_input::{KeySequence, KeymapQuery};
-use reovim_kernel::api::v1::CommandId;
-use tokio::sync::mpsc;
+use {
+    arc_swap::ArcSwap,
+    reovim_driver_input::{KeySequence, KeymapQuery},
+    reovim_kernel::api::v1::CommandId,
+    tokio::sync::mpsc,
+};
 
 use crate::state::{BindingEntry, FilterRequest, SaturatorHandle, WhichKeyCache};
 
@@ -156,11 +158,12 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::state::FilterRequest;
-    use reovim_kernel::api::v1::ModuleId;
-    use reovim_kernel::api::v1::ModeId;
-    use std::collections::HashMap;
+    use {
+        super::*,
+        crate::state::FilterRequest,
+        reovim_kernel::api::v1::{ModeId, ModuleId},
+        std::collections::HashMap,
+    };
 
     // Mock description provider for testing
     struct MockDescriptions {
@@ -334,20 +337,12 @@ mod tests {
 
         let mut keymap = MockKeymap::new();
         let mode = test_mode();
-        keymap.add(
-            mode.clone(),
-            KeySequence::parse("gg").unwrap(),
-            test_cmd("goto-top"),
-        );
+        keymap.add(mode.clone(), KeySequence::parse("gg").unwrap(), test_cmd("goto-top"));
 
         let mut descriptions = MockDescriptions::new();
         descriptions.add(test_cmd("goto-top"), "Go to top");
 
-        let handle = spawn_saturator(
-            Arc::clone(&cache),
-            Arc::new(keymap),
-            Arc::new(descriptions),
-        );
+        let handle = spawn_saturator(Arc::clone(&cache), Arc::new(keymap), Arc::new(descriptions));
 
         // Send a filter request
         let req = FilterRequest::new(mode, KeySequence::parse("g").unwrap());
@@ -374,11 +369,8 @@ mod tests {
         drop(handle.tx);
 
         // Task should complete gracefully
-        let result = tokio::time::timeout(
-            tokio::time::Duration::from_millis(100),
-            handle.task,
-        )
-        .await;
+        let result =
+            tokio::time::timeout(tokio::time::Duration::from_millis(100), handle.task).await;
 
         assert!(result.is_ok(), "Task should complete when channel closes");
     }

@@ -11,10 +11,14 @@ use {
 
 use {
     super::super::dispatcher::{HandlerFuture, RpcContext},
-    crate::session::{
-        StateSnapshot, emit_cmdline_changed, emit_from_state_changes, emit_state_changes,
+    crate::{
+        server::registry::WhichKeySaturatorSender,
+        session::{
+            StateSnapshot, emit_cmdline_changed, emit_from_state_changes, emit_state_changes,
+        },
     },
     reovim_driver_session::api::StateChanges,
+    reovim_module_which_key::{WhichKeyCacheHandle, WhichKeySessionExt},
 };
 
 /// Handler for `input/keys` method.
@@ -84,6 +88,13 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
                 accumulated_changes.merge(changes);
                 match result {
                     ResolveResult::Execute(cmd_id, resolve_ctx) => {
+                        // Cancel which-key timer on command execution (#457)
+                        cancel_which_key(&ctx).await;
+                        // Clear pending keys on sequence completion (#457)
+                        ctx.session
+                            .with_state_mut(|state| state.driver_session.pending_keys.clear())
+                            .await;
+
                         // Build command context from resolve context
                         let mut cmd_ctx = reovim_driver_command::CommandContext::default();
 
@@ -136,16 +147,38 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
                     }
 
                     ResolveResult::ModeTransition(transition) => {
+                        // Cancel which-key timer on mode transition (#457)
+                        cancel_which_key(&ctx).await;
+                        // Clear pending keys on sequence completion (#457)
+                        ctx.session
+                            .with_state_mut(|state| state.driver_session.pending_keys.clear())
+                            .await;
+
                         handle_mode_transition_async(&ctx, transition).await;
                         any_handled = true;
                         final_pending = false;
                     }
 
                     ResolveResult::Pending => {
+                        // Track pending key in session for which-key (#457)
+                        let key_str =
+                            KeySequence::from_keys(std::slice::from_ref(&key_event)).to_string();
+                        ctx.session
+                            .with_state_mut(|state| state.driver_session.pending_keys.push(key_str))
+                            .await;
+                        // Schedule which-key popup on pending keys (#457)
+                        schedule_which_key_show(&ctx).await;
                         final_pending = true;
                     }
 
                     ResolveResult::InsertChar(ch) => {
+                        // Cancel which-key timer on char insert (#457)
+                        cancel_which_key(&ctx).await;
+                        // Clear pending keys on sequence completion (#457)
+                        ctx.session
+                            .with_state_mut(|state| state.driver_session.pending_keys.clear())
+                            .await;
+
                         // Route character to appropriate target:
                         // - Cmdline buffer when cmdline is active (/, ?, :)
                         // - Document buffer otherwise (insert mode)
@@ -162,6 +195,13 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
                     }
 
                     ResolveResult::NotHandled => {
+                        // Cancel which-key timer on not handled (#457)
+                        cancel_which_key(&ctx).await;
+                        // Clear pending keys on sequence completion (#457)
+                        ctx.session
+                            .with_state_mut(|state| state.driver_session.pending_keys.clear())
+                            .await;
+
                         // Try character insertion as fallback
                         if let KeyCode::Char(ch) = key.code
                             && (key.modifiers.is_empty() || key.modifiers == Modifiers::SHIFT)
@@ -173,6 +213,13 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
                     }
 
                     ResolveResult::Completed => {
+                        // Cancel which-key timer on completion (#457)
+                        cancel_which_key(&ctx).await;
+                        // Clear pending keys on sequence completion (#457)
+                        ctx.session
+                            .with_state_mut(|state| state.driver_session.pending_keys.clear())
+                            .await;
+
                         // Resolver handled everything internally
                         any_handled = true;
                         final_pending = false;
@@ -423,6 +470,84 @@ async fn handle_cmdline_key(ctx: &RpcContext, key: &KeyEvent) -> bool {
         }
         _ => false,
     }
+}
+
+// ============================================================================
+// Which-Key Integration (#457)
+// ============================================================================
+
+/// Schedule showing the which-key popup on pending keys.
+///
+/// Accesses the which-key cache from `ServiceRegistry` and schedules a timer
+/// to show the popup after the configured timeout.
+async fn schedule_which_key_show(ctx: &RpcContext) {
+    ctx.session
+        .with_state_mut(|state| {
+            // Get pending keys from driver session (SSOT, not app.pending_keys)
+            // Convert session's KeySequence (Vec<String>) to input's KeySequence (Vec<KeyEvent>)
+            let session_pending = &state.driver_session.pending_keys;
+            if session_pending.is_empty() {
+                tracing::trace!("which-key: no pending keys, skipping schedule");
+                return;
+            }
+            let pending_str = session_pending.as_string();
+            let Some(pending_keys) = KeySequence::parse(&pending_str) else {
+                tracing::warn!("which-key: failed to parse pending keys: {}", pending_str);
+                return;
+            };
+            tracing::debug!("which-key: scheduling show for {:?}", pending_keys);
+
+            // Get current mode
+            let mode = state.driver_session.current_mode().clone();
+
+            // Get cache handle from ServiceRegistry
+            let Some(cache_handle_ref) = state.app.kernel.services.get::<WhichKeyCacheHandle>()
+            else {
+                tracing::trace!("which-key: cache not registered, skipping schedule");
+                return;
+            };
+            let cache_handle = cache_handle_ref.clone_inner();
+
+            // Get saturator sender from ServiceRegistry (optional - works without it)
+            let saturator_tx = state
+                .app
+                .kernel
+                .services
+                .get::<WhichKeySaturatorSender>()
+                .map(|s| s.clone_sender());
+
+            // Get or create session extension
+            let ext = state.extensions_mut().get_or_insert::<WhichKeySessionExt>();
+
+            // Set cache on extension if not already set
+            if ext.cache_snapshot().is_none() {
+                ext.set_cache(cache_handle.clone());
+            }
+
+            // Schedule show (timer will fire after timeout)
+            ext.schedule_show(pending_keys, mode, cache_handle, saturator_tx);
+        })
+        .await;
+}
+
+/// Cancel the which-key timer on key completion.
+///
+/// Called when a key sequence completes (command executed, mode changed, etc.)
+async fn cancel_which_key(ctx: &RpcContext) {
+    ctx.session
+        .with_state_mut(|state| {
+            // Get cache handle from ServiceRegistry
+            let cache_handle = match state.app.kernel.services.get::<WhichKeyCacheHandle>() {
+                Some(handle) => handle.clone_inner(),
+                None => return,
+            };
+
+            // Get session extension if it exists
+            if let Some(ext) = state.extensions_mut().get_mut::<WhichKeySessionExt>() {
+                ext.cancel(&cache_handle);
+            }
+        })
+        .await;
 }
 
 #[cfg(test)]

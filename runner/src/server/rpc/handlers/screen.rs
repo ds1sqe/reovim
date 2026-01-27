@@ -26,11 +26,13 @@ use std::collections::HashMap;
 use {
     reovim_driver_display::{
         AnnotationContext, BufferDecorationSourceRegistry, ComposedLine, Decoration,
-        GutterRendererKey, GutterRendererRegistry, LineNumberMode, Rect,
+        GutterRendererKey, GutterRendererRegistry, LineNumberMode, OverlayContentRegistry, Rect,
+        Zone,
     },
     reovim_kernel::api::v1::{
         BufferId, OptionRegistry, OptionScopeId, OptionValue, ServiceRegistry,
     },
+    reovim_module_which_key::{WhichKeyCacheHandle, WhichKeyVisibility},
     reovim_protocol::v1::{RpcError, ScreenContentResult, ScreenFormat, StateScreenContentParams},
 };
 
@@ -429,7 +431,31 @@ fn render_multi_window(
     let mut screen: Vec<Vec<char>> = vec![vec![' '; width as usize]; height as usize];
 
     // Render each window's content within its bounds
+    // Check for overlay content before falling back to buffer content (#457)
+    let overlay_registry = state.app.kernel.services.get::<OverlayContentRegistry>();
+
     for placement in placements.iter().filter(|p| p.visible) {
+        // Check if this is an overlay window with custom content (#457)
+        if placement.zone == Zone::Overlay
+            && let Some(registry) = &overlay_registry
+        {
+            // Check all registered providers for content
+            let mut rendered_overlay = false;
+            for key in registry.keys() {
+                if let Some(provider) = registry.get(&key)
+                    && let Some(overlay_lines) = provider.content_for(placement.window_id)
+                {
+                    render_overlay_lines(&mut screen, placement, &overlay_lines);
+                    rendered_overlay = true;
+                    break;
+                }
+            }
+            if rendered_overlay {
+                continue;
+            }
+        }
+
+        // Regular window rendering (tiled, float, or overlay without content)
         render_window_content(&mut screen, placement, &lines, &gutter_lines, gutter_width);
     }
 
@@ -447,6 +473,9 @@ fn render_multi_window(
             screen[bounds.y as usize][bounds.x as usize] = '▪';
         }
     }
+
+    // Render which-key popup directly from cache visibility (#457)
+    render_which_key_popup(state, &mut screen, width as usize, height as usize);
 
     // Convert screen buffer to string
     let screen_content: String = screen
@@ -495,6 +524,57 @@ fn render_window_content(
         let content_width = (bounds.width as usize).saturating_sub(gutter_width);
         for (col, ch) in line.chars().take(content_width).enumerate() {
             let screen_x = content_start + col;
+            if screen_x < screen[screen_y].len() {
+                screen[screen_y][screen_x] = ch;
+            }
+        }
+    }
+}
+
+/// Render pre-formatted overlay content (#457).
+///
+/// # Safety
+///
+/// This function validates all bounds before writing to screen buffer.
+/// Out-of-bounds placements are silently clipped (no panic).
+fn render_overlay_lines(
+    screen: &mut [Vec<char>],
+    placement: &reovim_driver_display::layout::WindowPlacement,
+    lines: &[String],
+) {
+    let bounds = &placement.bounds;
+
+    // Early return for invalid bounds
+    if screen.is_empty() || bounds.width == 0 || bounds.height == 0 {
+        return;
+    }
+
+    let screen_height = screen.len();
+    let screen_width = screen.first().map_or(0, Vec::len);
+
+    // Validate placement is within screen bounds
+    if bounds.y as usize >= screen_height || bounds.x as usize >= screen_width {
+        tracing::warn!(
+            "Overlay placement out of bounds: ({}, {}) vs screen ({}, {})",
+            bounds.x,
+            bounds.y,
+            screen_width,
+            screen_height
+        );
+        return;
+    }
+
+    for (row, line) in lines.iter().enumerate() {
+        let screen_y = bounds.y as usize + row;
+        if screen_y >= screen_height {
+            break; // Silent clipping, no panic
+        }
+        if row >= bounds.height as usize {
+            break; // Don't exceed window height
+        }
+
+        for (col, ch) in line.chars().take(bounds.width as usize).enumerate() {
+            let screen_x = bounds.x as usize + col;
             if screen_x < screen[screen_y].len() {
                 screen[screen_y][screen_x] = ch;
             }
@@ -593,29 +673,132 @@ fn render_single_window(
         generate_buffer_decorations(state, buffer_id, &content, (cursor_line, cursor_col));
     let decoration_map = build_decoration_map(&decorations);
 
-    // Build content with gutter from GutterRenderer (#458)
-    let rendered_content: String = if gutter_width == 0 {
-        content.clone()
-    } else {
-        lines
-            .iter()
-            .enumerate()
-            .map(|(idx, line)| {
-                let gutter_str = gutter_lines
-                    .get(idx)
-                    .map(|gl| gl.cells.iter().map(|c| c.char).collect::<String>())
-                    .unwrap_or_default();
-                format!("{gutter_str}{line}")
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
-    };
+    // Create a 2D screen buffer for which-key popup support (#457)
+    let mut screen: Vec<Vec<char>> = vec![vec![' '; width as usize]; height as usize];
 
-    format_content(&rendered_content, format, width, height, &decoration_map, gutter_width)
+    // Render buffer content to screen (with gutter from GutterRenderer #458)
+    for (win_row, line_idx) in (0..height).zip(0..lines.len()) {
+        let screen_y = win_row as usize;
+        if screen_y >= screen.len() {
+            break;
+        }
+
+        // Render gutter cells from GutterRenderer (#458)
+        if let Some(gutter_line) = gutter_lines.get(line_idx) {
+            for (col, cell) in gutter_line.cells.iter().enumerate() {
+                if col < screen[screen_y].len() {
+                    screen[screen_y][col] = cell.char;
+                }
+            }
+        }
+
+        // Render content after gutter
+        let line = lines.get(line_idx).copied().unwrap_or("");
+        let content_start = gutter_width;
+        let content_width = (width as usize).saturating_sub(gutter_width);
+        for (col, ch) in line.chars().take(content_width).enumerate() {
+            let screen_x = content_start + col;
+            if screen_x < screen[screen_y].len() {
+                screen[screen_y][screen_x] = ch;
+            }
+        }
+    }
+
+    // Render which-key popup directly from cache visibility (#457)
+    render_which_key_popup(state, &mut screen, width as usize, height as usize);
+
+    // Convert screen buffer to string
+    let screen_content: String = screen
+        .iter()
+        .map(|row| row.iter().collect::<String>())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    format_content(&screen_content, format, width, height, &decoration_map, gutter_width)
 }
 
 // Multi-window rendering will be implemented in Phase 2 using Session.compositor.
 // The compositor provides CompositeResult with all window placements in z-order.
+
+/// Render the which-key popup on the screen buffer (#457).
+///
+/// Checks the `WhichKeyCacheHandle` visibility state from `ServiceRegistry`.
+/// If visibility is `Showing`, renders the popup with available bindings
+/// centered at the bottom of the screen.
+///
+/// This bypasses the compositor overlay system for simpler integration -
+/// the popup is rendered directly onto the screen buffer.
+fn render_which_key_popup(
+    state: &crate::session::SessionState,
+    screen: &mut [Vec<char>],
+    width: usize,
+    height: usize,
+) {
+    let Some(cache_handle) = state.app.kernel.services.get::<WhichKeyCacheHandle>() else {
+        return;
+    };
+
+    let cache = cache_handle.inner().load();
+    let WhichKeyVisibility::Showing { prefix, .. } = &cache.visibility else {
+        return;
+    };
+
+    // Calculate popup dimensions based on bindings
+    let bindings = &cache.bindings;
+    if bindings.is_empty() {
+        return;
+    }
+
+    let popup_height = bindings.len().min(10);
+    let popup_width = 60.min(width);
+    let popup_y = height.saturating_sub(popup_height + 2);
+    let popup_x = width.saturating_sub(popup_width) / 2;
+
+    // Render popup border (top)
+    if popup_y > 0 && popup_y < screen.len() {
+        let border_top = format!("┌{:─^width$}┐", " Which Key ", width = popup_width - 2);
+        for (col, ch) in border_top.chars().enumerate() {
+            let x = popup_x + col;
+            if x < screen[popup_y].len() {
+                screen[popup_y][x] = ch;
+            }
+        }
+    }
+
+    // Render bindings
+    for (idx, entry) in bindings.iter().take(popup_height).enumerate() {
+        let row_y = popup_y + 1 + idx;
+        if let Some(row) = screen.get_mut(row_y) {
+            // Format: │ suffix → description │
+            let suffix_str = format!("{}", entry.suffix);
+            let desc = &entry.description;
+            let content =
+                format!("│ {:>6} → {:<width$} │", suffix_str, desc, width = popup_width - 14);
+
+            for (col, ch) in content.chars().enumerate() {
+                let x = popup_x + col;
+                if x < row.len() && col < popup_width {
+                    row[x] = ch;
+                }
+            }
+        }
+    }
+
+    // Render popup border (bottom)
+    let border_y = popup_y + 1 + popup_height;
+    if border_y < screen.len() {
+        let border_bottom =
+            format!("└{:─^width$}┘", format!(" {} ", prefix), width = popup_width - 2);
+        for (col, ch) in border_bottom.chars().enumerate() {
+            let x = popup_x + col;
+            if x < screen[border_y].len() {
+                screen[border_y][x] = ch;
+            }
+        }
+    }
+
+    tracing::debug!("which-key: rendered popup with {} bindings", bindings.len());
+}
 
 /// Format content according to the requested screen format.
 ///

@@ -1368,6 +1368,7 @@ dependencies = [
  "reovim-module-defaults",
  "reovim-module-editor",
  "reovim-module-hot-reload-demo",
+ "reovim-module-which-key",
  "reovim-protocol",
  "serde",
  "serde_json",
@@ -1643,6 +1644,7 @@ dependencies = [
  "reovim-module-undotree",
  "reovim-module-vfs-local",
  "reovim-module-vim",
+ "reovim-module-which-key",
 ]
 
 [[package]]

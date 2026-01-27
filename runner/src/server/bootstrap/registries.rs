@@ -8,7 +8,10 @@ use std::{path::PathBuf, sync::Arc};
 use {
     reovim_driver_buffer::{BufferManagerKey, BufferManagerRegistry},
     reovim_driver_command::CommandHandlerStore,
-    reovim_driver_display::layout::{CompositorKey, CompositorRegistry, RootCompositor},
+    reovim_driver_display::{
+        OverlayContentKey, OverlayContentRegistry,
+        layout::{CompositorKey, CompositorRegistry, RootCompositor},
+    },
     reovim_driver_input::{
         KeybindingStore, ModeInfoStore, ModeProviderKey, ModeProviderRegistry, ResolverRegistry,
     },
@@ -147,6 +150,23 @@ pub fn build_default_registries() -> (
     services.register(Arc::new(CaptureTracker::new()));
     tracing::debug!("registered CaptureTracker in ServiceRegistry (#447)");
 
+    // Register OverlayContentRegistry with OverlayContentStorage provider (#457)
+    // This provides storage for overlay popup content (which-key, diagnostics, etc.)
+    // The storage is also registered standalone for direct write access from modules.
+    {
+        use reovim_driver_display::OverlayContentStorage;
+        let overlay_registry = OverlayContentRegistry::new();
+        let provider = Arc::new(OverlayContentStorage::new());
+
+        // Register storage standalone for direct module access (writes)
+        services.register(Arc::clone(&provider));
+
+        // Register in registry for renderer access (reads)
+        overlay_registry.register(OverlayContentKey::new("which-key"), provider);
+        services.register(Arc::new(overlay_registry));
+        tracing::debug!("registered OverlayContentRegistry in ServiceRegistry (#457)");
+    }
+
     // Register SharedThemeManager with default Dark theme (#439)
     // Theme is server-specific (policy), ThemeManager is driver mechanism.
     {
@@ -240,6 +260,35 @@ pub fn build_default_registries() -> (
 
     // Create ModuleManager from the loader
     let module_manager = ModuleManager::with_loader(loader);
+
+    // Initialize dynamically loaded modules (#457)
+    // Modules need init() called to register their services in ServiceRegistry
+    // Skip modules that might conflict with defaults bundle (editor, motions, vim)
+    // Only init non-core modules like which-key
+    let core_modules = [
+        "editor",
+        "motions",
+        "vim",
+        "layout",
+        "operators",
+        "keymap",
+        "commands",
+    ];
+    for module_id in &load_stats.dynamic_loaded {
+        // Skip core modules that are already initialized via defaults bundle
+        if core_modules.contains(&module_id.as_str()) {
+            tracing::debug!(module = %module_id, "skipping dynamic init (already in defaults)");
+            continue;
+        }
+        match module_manager.init_module(module_id, &defaults_init_ctx) {
+            Ok(()) => {
+                tracing::info!(module = %module_id, "initialized dynamic module (#457)");
+            }
+            Err(e) => {
+                tracing::warn!(module = %module_id, error = %e, "failed to initialize dynamic module");
+            }
+        }
+    }
 
     // Epic #417 Part 3: Extract modes from ModeInfoStore (modules registered during init)
     if let Some(mode_store) = services.get::<ModeInfoStore>() {
@@ -415,6 +464,60 @@ pub fn build_default_registries() -> (
     // PANIC FAST: Validate essential providers exist (Epic #415)
     // VFS now validated via ServiceRegistry (Epic #417)
     mode_providers.validate();
+
+    // ========================================================================
+    // Which-Key Saturator Spawning (#457)
+    // ========================================================================
+    //
+    // The saturator is a background task that filters keybindings and updates
+    // the which-key cache. It needs:
+    // - Cache handle (from WhichKeyCacheHandle in ServiceRegistry)
+    // - KeymapQuery (from keymap_registry)
+    // - CommandDescriptionProvider (wrapper around command_registry)
+    //
+    // The sender is registered in ServiceRegistry for input handler access.
+    {
+        use {
+            crate::server::registry::WhichKeySaturatorSender,
+            reovim_module_which_key::{
+                CommandDescriptionProvider, WhichKeyCacheHandle, spawn_saturator,
+            },
+        };
+
+        // Wrapper for CommandRegistry that implements CommandDescriptionProvider
+        struct CommandRegistryDescriptions {
+            registry: Arc<CommandRegistry>,
+        }
+
+        impl CommandDescriptionProvider for CommandRegistryDescriptions {
+            fn description(&self, id: &reovim_kernel::api::v1::CommandId) -> Option<&str> {
+                self.registry.get(id).map(|h| h.description())
+            }
+        }
+
+        // Spawn saturator if which-key cache is available
+        if let Some(cache_handle) = services.get::<WhichKeyCacheHandle>() {
+            let cache = cache_handle.clone_inner();
+
+            // Create KeymapQuery wrapper (KeymapRegistry implements KeymapQuery)
+            let keymap_query: Arc<KeymapRegistry> = Arc::new(keymap_registry.clone());
+
+            // Create CommandDescriptionProvider wrapper
+            let descriptions = Arc::new(CommandRegistryDescriptions {
+                registry: Arc::new(command_registry.clone()),
+            });
+
+            // Spawn the saturator background task
+            let saturator_handle = spawn_saturator(cache, keymap_query, descriptions);
+
+            // Register the sender for input handler access
+            services.register(Arc::new(WhichKeySaturatorSender::new(saturator_handle.tx)));
+
+            tracing::info!("which-key: saturator spawned and sender registered (#457)");
+        } else {
+            tracing::debug!("which-key: cache not available, skipping saturator spawn");
+        }
+    }
 
     (
         mode_registry,

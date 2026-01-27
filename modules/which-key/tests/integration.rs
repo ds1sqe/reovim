@@ -2,9 +2,23 @@
 //!
 //! These tests verify the which-key popup behavior end-to-end.
 //!
-//! **Status**: Tests are `#[ignore]` pending full overlay integration (#442).
+//! **Status**: Tests are `#[ignore]` pending overlay query infrastructure.
 //! The unit tests in the module cover all core functionality. These E2E tests
-//! will be enabled once the overlay rendering path is complete.
+//! require an RPC endpoint to query overlay state, which is tracked in:
+//! - Issue #462: which-key overlay query test infrastructure
+//!
+//! # What's Implemented (#457)
+//!
+//! - Input handler integration (schedule_show/cancel on pending keys)
+//! - Saturator spawning and binding filtering
+//! - Overlay content storage and rendering
+//! - Timer-based popup showing
+//!
+//! # What's Deferred
+//!
+//! - RPC endpoint for overlay state queries
+//! - `has_overlay()` and `assert_overlay_contains()` test APIs
+//! - Timer injection for deterministic CI tests
 //!
 //! # Test Categories
 //!
@@ -27,7 +41,7 @@
 /// 2. Press `?`
 /// 3. Popup appears immediately showing `gg`, `gd`, `gf`, etc.
 #[tokio::test]
-#[ignore = "Pending full overlay integration (#442)"]
+#[ignore = "Requires overlay query test infrastructure (#462)"]
 async fn test_g_question_shows_bindings() {
     // let result = IntegrationTest::new()
     //     .await
@@ -47,7 +61,7 @@ async fn test_g_question_shows_bindings() {
 /// 2. Press `<Escape>`
 /// 3. Popup disappears
 #[tokio::test]
-#[ignore = "Pending full overlay integration (#442)"]
+#[ignore = "Requires overlay query test infrastructure (#462)"]
 async fn test_escape_closes_popup() {
     // let result = IntegrationTest::new()
     //     .await
@@ -66,7 +80,7 @@ async fn test_escape_closes_popup() {
 /// 2. Press `g` (completes `gg` motion)
 /// 3. Cursor moves to first line
 #[tokio::test]
-#[ignore = "Pending full overlay integration (#442)"]
+#[ignore = "Requires overlay query test infrastructure (#462)"]
 async fn test_typing_executes_command() {
     // let result = IntegrationTest::new()
     //     .await
@@ -85,7 +99,7 @@ async fn test_typing_executes_command() {
 /// 2. Wait 600ms (500ms timeout + buffer)
 /// 3. Popup appears showing g-prefixed bindings
 #[tokio::test]
-#[ignore = "Pending full overlay integration (#442)"]
+#[ignore = "Requires overlay query test infrastructure (#462)"]
 async fn test_timeout_shows_popup() {
     // let result = IntegrationTest::new()
     //     .await
@@ -109,7 +123,7 @@ async fn test_timeout_shows_popup() {
 /// 2. Press `?`
 /// 3. Popup shows "No bindings found"
 #[tokio::test]
-#[ignore = "Pending full overlay integration (#442)"]
+#[ignore = "Requires overlay query test infrastructure (#462)"]
 async fn test_no_bindings_shows_message() {
     // let result = IntegrationTest::new()
     //     .await
@@ -126,7 +140,7 @@ async fn test_no_bindings_shows_message() {
 /// Expected behavior:
 /// - No crash, error logged, feature degrades gracefully
 #[tokio::test]
-#[ignore = "Pending full overlay integration (#442)"]
+#[ignore = "Requires overlay query test infrastructure (#462)"]
 async fn test_overlay_failure_graceful() {
     // This test would need to disable the compositor to verify graceful degradation
     todo!("Implement error path testing")
@@ -137,7 +151,7 @@ async fn test_overlay_failure_graceful() {
 /// Expected behavior:
 /// - Module disabled, no crash, functionality skipped
 #[tokio::test]
-#[ignore = "Pending full overlay integration (#442)"]
+#[ignore = "Requires overlay query test infrastructure (#462)"]
 async fn test_service_unavailable_graceful() {
     // This test would need to disable the which-key module
     todo!("Implement disabled module testing")
@@ -148,7 +162,7 @@ async fn test_service_unavailable_graceful() {
 /// Expected behavior:
 /// - Warning logged, popup continues to work (shows stale data)
 #[tokio::test]
-#[ignore = "Pending full overlay integration (#442)"]
+#[ignore = "Requires overlay query test infrastructure (#462)"]
 async fn test_saturator_crash_graceful() {
     // This test would need to kill the saturator task
     todo!("Implement saturator crash recovery testing")
@@ -164,7 +178,7 @@ async fn test_saturator_crash_graceful() {
 /// - CJK characters display at correct width
 /// - Box drawing characters align properly
 #[tokio::test]
-#[ignore = "Pending full overlay integration (#442)"]
+#[ignore = "Requires overlay query test infrastructure (#462)"]
 async fn test_unicode_in_descriptions() {
     todo!("Test Unicode rendering in popup")
 }
@@ -174,7 +188,7 @@ async fn test_unicode_in_descriptions() {
 /// Expected behavior:
 /// - `g?g?` shows popup once, not twice
 #[tokio::test]
-#[ignore = "Pending full overlay integration (#442)"]
+#[ignore = "Requires overlay query test infrastructure (#462)"]
 async fn test_rapid_question_press() {
     todo!("Test idempotent popup show")
 }
@@ -185,7 +199,7 @@ async fn test_rapid_question_press() {
 /// - Show popup, type non-matching filter
 /// - Shows "No matches" message
 #[tokio::test]
-#[ignore = "Pending full overlay integration (#442)"]
+#[ignore = "Requires overlay query test infrastructure (#462)"]
 async fn test_filter_to_zero_results() {
     todo!("Test filter exhaustion")
 }
@@ -197,7 +211,7 @@ async fn test_filter_to_zero_results() {
 /// - Enter insert mode with `i`
 /// - Popup closes
 #[tokio::test]
-#[ignore = "Pending full overlay integration (#442)"]
+#[ignore = "Requires overlay query test infrastructure (#462)"]
 async fn test_mode_switch_closes_popup() {
     todo!("Test mode transition behavior")
 }
@@ -208,7 +222,7 @@ async fn test_mode_switch_closes_popup() {
 /// - Prefix with only one binding
 /// - Popup still shows that binding
 #[tokio::test]
-#[ignore = "Pending full overlay integration (#442)"]
+#[ignore = "Requires overlay query test infrastructure (#462)"]
 async fn test_single_match_shows_popup() {
     todo!("Test single binding display")
 }
@@ -219,7 +233,7 @@ async fn test_single_match_shows_popup() {
 /// - Long prefix sequence displays correctly
 /// - Popup shows remaining bindings
 #[tokio::test]
-#[ignore = "Pending full overlay integration (#442)"]
+#[ignore = "Requires overlay query test infrastructure (#462)"]
 async fn test_very_long_prefix() {
     todo!("Test long prefix handling")
 }
@@ -232,7 +246,7 @@ async fn test_very_long_prefix() {
 ///
 /// Uses deterministic delay to test timing behavior.
 #[tokio::test]
-#[ignore = "Pending full overlay integration (#442)"]
+#[ignore = "Requires overlay query test infrastructure (#462)"]
 async fn test_timeout_with_delay() {
     // Use with_delay(650) for 500ms timeout + 150ms buffer
     todo!("Test timeout with delay")
@@ -245,7 +259,7 @@ async fn test_timeout_with_delay() {
 /// 2. Quickly press `g` (completes `gg`)
 /// 3. No popup appears
 #[tokio::test]
-#[ignore = "Pending full overlay integration (#442)"]
+#[ignore = "Requires overlay query test infrastructure (#462)"]
 async fn test_quick_complete_cancels() {
     todo!("Test timer cancellation on completion")
 }
@@ -257,7 +271,7 @@ async fn test_quick_complete_cancels() {
 /// 2. Press `<Escape>` before timeout
 /// 3. No popup appears
 #[tokio::test]
-#[ignore = "Pending full overlay integration (#442)"]
+#[ignore = "Requires overlay query test infrastructure (#462)"]
 async fn test_escape_during_wait_cancels() {
     todo!("Test escape cancels timer")
 }
@@ -269,7 +283,7 @@ async fn test_escape_during_wait_cancels() {
 /// 2. Press `z` (changes prefix to `gz`)
 /// 3. Timer restarts for `gz` prefix
 #[tokio::test]
-#[ignore = "Pending full overlay integration (#442)"]
+#[ignore = "Requires overlay query test infrastructure (#462)"]
 async fn test_prefix_change_restarts_timer() {
     todo!("Test timer restart on prefix change")
 }

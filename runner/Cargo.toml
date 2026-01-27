@@ -35,6 +35,9 @@ reovim-driver-search = { path = "../lib/drivers/search" }
 # Default modules bundle - provides module list (Epic #417)
 reovim-module-defaults = { path = "../modules/defaults" }
 
+# Which-key module - for type access in input handler (#457)
+reovim-module-which-key = { path = "../modules/which-key" }
+
 # Layout module removed in #438 - window state now in driver::Session
 # Layout policy modules self-register via defaults bundle
 

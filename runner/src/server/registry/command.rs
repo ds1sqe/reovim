@@ -27,6 +27,7 @@ use {
 use crate::AppState;
 
 /// Entry in the command registry with optional ownership tracking.
+#[derive(Clone)]
 struct CommandEntry {
     /// The command handler.
     handler: Arc<dyn CommandHandler>,
@@ -58,7 +59,7 @@ struct CommandEntry {
 ///     // Handle result
 /// }
 /// ```
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct CommandRegistry {
     entries: HashMap<CommandId, CommandEntry>,
 }

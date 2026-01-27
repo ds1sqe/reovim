@@ -19,11 +19,20 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::{SessionRuntime, api::CompositorApi, api::ExtensionApi},
+    reovim_driver_display::OverlayContentStorage,
+    reovim_driver_input::KeySequence,
+    reovim_driver_session::{
+        SessionRuntime,
+        api::{CompositorApi, ExtensionApi},
+    },
     reovim_kernel::api::v1::CommandId,
 };
 
-use crate::{ids, render::bottom_overlay_constraints, state::WhichKeySessionExt};
+use crate::{
+    ids,
+    render::{bottom_overlay_constraints, render_popup},
+    state::WhichKeySessionExt,
+};
 
 /// Command to show the which-key popup immediately.
 ///
@@ -46,8 +55,20 @@ impl CommandHandler for WhichKeyShowCommand {
         // Get screen size for positioning
         let (width, height) = runtime.session().terminal_size();
 
-        // Default popup height (will be updated when bindings are rendered)
-        let popup_height: u16 = 10;
+        // Get the cache snapshot to access bindings and prefix
+        let ext = runtime.ext_mut::<WhichKeySessionExt>();
+        let (prefix, bindings) = ext
+            .cache_snapshot()
+            .map(|cache| {
+                let prefix = cache.visibility.prefix().cloned().unwrap_or_default();
+                let bindings = cache.bindings.clone();
+                (prefix, bindings)
+            })
+            .unwrap_or_else(|| (KeySequence::new(), Vec::new()));
+
+        // Render popup content
+        let lines = render_popup(&prefix, &bindings, width, height / 2);
+        let popup_height = lines.len() as u16;
 
         // Create bottom-anchored overlay constraints
         let constraints = bottom_overlay_constraints(width, height, popup_height);
@@ -58,6 +79,20 @@ impl CommandHandler for WhichKeyShowCommand {
                 // Store the overlay window ID in session extension
                 let ext = runtime.ext_mut::<WhichKeySessionExt>();
                 ext.set_overlay_window_id(window_id);
+
+                // Register content with OverlayContentStorage (#457)
+                // Use graceful degradation - popup shows even if storage unavailable
+                if let Some(storage) = runtime.kernel().services.get::<OverlayContentStorage>() {
+                    // Convert kernel::WindowId to driver::WindowId
+                    let driver_window_id =
+                        reovim_driver_display::WindowId::from_raw(window_id.as_usize());
+                    storage.set_content(driver_window_id, lines);
+                    tracing::debug!("which-key: content registered for window {:?}", window_id);
+                } else {
+                    tracing::warn!(
+                        "which-key: OverlayContentStorage not available, overlay will be empty"
+                    );
+                }
 
                 tracing::debug!(
                     "which-key: popup shown at bottom, size {}x{}",
@@ -99,6 +134,15 @@ impl CommandHandler for WhichKeyCloseCommand {
         if let Some(window_id) = ext.overlay_window_id() {
             // Clear the overlay ID first
             ext.clear_overlay_window_id();
+
+            // Remove content from OverlayContentStorage (#457)
+            // Use graceful degradation - proceed with hide even if storage unavailable
+            if let Some(storage) = runtime.kernel().services.get::<OverlayContentStorage>() {
+                let driver_window_id =
+                    reovim_driver_display::WindowId::from_raw(window_id.as_usize());
+                storage.remove(driver_window_id);
+                tracing::debug!("which-key: content removed for window {:?}", window_id);
+            }
 
             // Hide the overlay
             if let Err(e) = runtime.hide_overlay(window_id) {
@@ -144,8 +188,7 @@ impl CommandHandler for WhichKeyFilterCommand {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::ids::MODULE;
+    use {super::*, crate::ids::MODULE};
 
     #[test]
     fn test_show_command_id() {

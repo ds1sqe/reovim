@@ -21,14 +21,18 @@ mod command;
 mod empty_session;
 mod keymap;
 mod mode;
+mod overlay_content;
 mod provider;
+mod which_key;
 
 pub use {
     command::{CommandQuerySnapshot, CommandRegistry},
     empty_session::EmptySessionHandlerRegistry,
     keymap::KeymapRegistry,
     mode::{ModeEntry, ModeRegistry},
+    overlay_content::RunnerOverlayContent,
     provider::DefaultModeProviderRegistry,
+    which_key::WhichKeySaturatorSender,
 };
 
 // Re-export KeyLookupResult from driver (moved from keymap.rs in Epic #353)

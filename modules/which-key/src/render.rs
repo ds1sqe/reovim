@@ -198,25 +198,13 @@ fn render_binding_line(binding: &BindingEntry, key_width: usize, box_width: usiz
     let description = truncate_to_width(&binding.description, available_desc_width);
 
     // Build the line content
-    let content = format!(
-        "{}{}{}{}",
-        key_str,
-        " ".repeat(key_padding),
-        ARROW,
-        description
-    );
+    let content = format!("{}{}{}{}", key_str, " ".repeat(key_padding), ARROW, description);
 
     // Pad to fill the box width
     let content_width = display_width(&content);
     let padding = box_width.saturating_sub(content_width);
 
-    format!(
-        "{}{}{}{}",
-        BORDER_VERTICAL,
-        content,
-        " ".repeat(padding),
-        BORDER_VERTICAL
-    )
+    format!("{}{}{}{}", BORDER_VERTICAL, content, " ".repeat(padding), BORDER_VERTICAL)
 }
 
 /// Render a message line (centered).
@@ -288,15 +276,13 @@ fn truncate_to_width(s: &str, max_width: usize) -> String {
     } else {
         // Truncate and add "..."
         let mut result = String::new();
-        let mut current_width = 0;
         let target_width = max_width - 3; // Reserve 3 for "..."
 
-        for c in s.chars() {
+        for (current_width, c) in s.chars().enumerate() {
             if current_width >= target_width {
                 break;
             }
             result.push(c);
-            current_width += 1;
         }
 
         result.push_str("...");
@@ -368,11 +354,10 @@ const MIN_POPUP_HEIGHT: u16 = 3;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use reovim_driver_input::KeySequence;
+    use {super::*, reovim_driver_input::KeySequence};
 
     fn binding(suffix: &str, description: &str) -> BindingEntry {
-        let seq = KeySequence::parse(suffix).unwrap_or_else(|| KeySequence::new());
+        let seq = KeySequence::parse(suffix).unwrap_or_default();
         BindingEntry::new(seq, description)
     }
 
@@ -388,10 +373,7 @@ mod tests {
     #[test]
     fn test_render_bindings_format() {
         let prefix = KeySequence::parse("g").unwrap();
-        let bindings = vec![
-            binding("g", "Go to top"),
-            binding("d", "Go to definition"),
-        ];
+        let bindings = vec![binding("g", "Go to top"), binding("d", "Go to definition")];
 
         let lines = render_popup(&prefix, &bindings, 40, 10);
 
@@ -425,10 +407,7 @@ mod tests {
     #[test]
     fn test_render_unicode_descriptions() {
         let prefix = KeySequence::new();
-        let bindings = vec![
-            binding("a", "Hello World"),
-            binding("b", "Japanese Text"),
-        ];
+        let bindings = vec![binding("a", "Hello World"), binding("b", "Japanese Text")];
 
         let lines = render_popup(&prefix, &bindings, 40, 10);
 
@@ -439,10 +418,7 @@ mod tests {
     #[test]
     fn test_render_special_keys() {
         let prefix = KeySequence::parse("<C-w>").unwrap();
-        let bindings = vec![
-            binding("h", "Window left"),
-            binding("j", "Window down"),
-        ];
+        let bindings = vec![binding("h", "Window left"), binding("j", "Window down")];
 
         let lines = render_popup(&prefix, &bindings, 40, 10);
 
@@ -472,10 +448,7 @@ mod tests {
     #[test]
     fn test_calculate_dimensions() {
         let prefix = KeySequence::new();
-        let bindings = vec![
-            binding("g", "Go to top"),
-            binding("d", "Definition"),
-        ];
+        let bindings = vec![binding("g", "Go to top"), binding("d", "Definition")];
 
         let (width, height) = calculate_dimensions(&prefix, &bindings, 40, 10);
 

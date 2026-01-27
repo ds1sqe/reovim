@@ -42,6 +42,7 @@ use {
     reovim_module_scratch_buffer as scratch_buffer, reovim_module_search as search,
     reovim_module_statusline as statusline, reovim_module_undo as undo,
     reovim_module_vfs_local as vfs_local, reovim_module_vim as vim,
+    reovim_module_which_key as which_key,
 };
 
 /// Default modules bundle.
@@ -81,7 +82,7 @@ impl DefaultsModule {
             Box::new(clipboard::ClipboardModule::new()),
             Box::new(pair::PairModule::new()),
             Box::new(cmdline::CmdlineModule::new()), // #451: Cmdline UI module
-            Box::new(statusline::StatuslineModule::new()), // #441: Statusline module
+            Box::new(statusline::StatuslineModule::new()), // #441: Extensible statusline
             // Utility modules
             Box::new(keymap::KeymapModule),
             Box::new(commands::CommandsModule),
@@ -90,6 +91,7 @@ impl DefaultsModule {
             Box::new(motions::MotionsModule),
             Box::new(vim::VimModule::new()),
             Box::new(layout::LayoutModule::new()),
+            Box::new(which_key::WhichKeyModule::new()),
         ]
     }
 }
@@ -135,6 +137,7 @@ impl Module for DefaultsModule {
             ModuleId::new("motions"),
             ModuleId::new("vim"),
             ModuleId::new("layout"),
+            ModuleId::new("which-key"),
         ]
     }
 
@@ -214,9 +217,9 @@ mod tests {
         let deps = module.dependencies();
         // Service modules (9): undo, buffer-simple, search, scratch-buffer, vfs-local, clipboard, pair, cmdline, statusline
         // Utility modules (2): keymap, commands
-        // Policy modules (4): editor, motions, vim, layout
-        // Total: 15 modules (Epic #417 Part 3 + #423 + #440 + #441 + #451)
-        assert_eq!(deps.len(), 15);
+        // Policy modules (5): editor, motions, vim, layout, which-key
+        // Total: 16 modules (Epic #417 Part 3 + #423 + #440 + #441 + #451 + #457)
+        assert_eq!(deps.len(), 16);
     }
 
     #[test]
@@ -224,9 +227,9 @@ mod tests {
         let modules = DefaultsModule::create_modules();
         // Service modules (9): undo, buffer-simple, search, scratch-buffer, vfs-local, clipboard, pair, cmdline, statusline
         // Utility modules (2): keymap, commands
-        // Policy modules (4): editor, motions, vim, layout
-        // Total: 15 modules (Epic #417 Part 3 + #423 + #440 + #441 + #451)
-        assert_eq!(modules.len(), 15);
+        // Policy modules (5): editor, motions, vim, layout, which-key
+        // Total: 16 modules (Epic #417 Part 3 + #423 + #440 + #441 + #451 + #457)
+        assert_eq!(modules.len(), 16);
     }
 
     #[test]

@@ -92,7 +92,7 @@ struct KeybindingEntry {
 /// // query() returns facts for ModeKeyResolver to decide behavior
 /// let state = registry.query(&normal, &keys);
 /// ```
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct KeymapRegistry {
     /// Bindings organized by mode, then by key sequence, then by layer.
     /// Each key sequence can have multiple entries (one per layer).
@@ -1417,12 +1417,7 @@ mod tests {
         );
 
         // User layer: gg → custom-goto-top (overrides)
-        registry.register_at_layer(
-            BindingLayer::User,
-            &mode,
-            gg.clone(),
-            test_command("custom-goto-top"),
-        );
+        registry.register_at_layer(BindingLayer::User, &mode, gg, test_command("custom-goto-top"));
 
         let g = KeySequence::parse("g").unwrap();
         let bindings = registry.bindings_with_prefix(&mode, &g);
@@ -1452,11 +1447,7 @@ mod tests {
         );
 
         // User removes gg
-        registry.remove_at_layer(
-            BindingLayer::User,
-            &mode,
-            KeySequence::parse("gg").unwrap(),
-        );
+        registry.remove_at_layer(BindingLayer::User, &mode, KeySequence::parse("gg").unwrap());
 
         let g = KeySequence::parse("g").unwrap();
         let bindings = registry.bindings_with_prefix(&mode, &g);

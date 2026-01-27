@@ -41,6 +41,7 @@ mod frame;
 mod highlight;
 pub mod layout;
 mod mode;
+pub mod overlay_content;
 mod policy;
 mod render;
 mod screen;
@@ -251,4 +252,16 @@ pub use statusline::{
     calculate_height_with_metrics,
     render_sections,
     truncate_sections,
+};
+
+// ============================================================================
+// Overlay Content System (Issue #457 - Which-Key Integration)
+// ============================================================================
+//
+// Mechanism for overlay windows to display custom content (popups, menus).
+// Modules register content providers via ServiceRegistry.
+// ============================================================================
+
+pub use overlay_content::{
+    OverlayContentKey, OverlayContentProvider, OverlayContentRegistry, OverlayContentStorage,
 };
