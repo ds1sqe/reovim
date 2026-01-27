@@ -38,6 +38,11 @@ pub const LAYOUT_CHANGED: &str = "notification/layout_changed";
 /// Sent to clients when an editor option changes.
 pub const OPTION_CHANGED: &str = "notification/option_changed";
 
+/// Cmdline changed notification (#451).
+///
+/// Sent to clients when cmdline state changes (show/hide/input update).
+pub const CMDLINE_CHANGED: &str = "notification/cmdline_changed";
+
 /// TUI capture request notification.
 ///
 /// Sent by server to TUI client to request a frame capture.
@@ -332,6 +337,84 @@ impl OptionChangedPayload {
         super::messages::RpcNotification::new(
             OPTION_CHANGED,
             serde_json::to_value(self).expect("OptionChangedPayload serialization cannot fail"),
+        )
+    }
+}
+
+/// Prompt type for cmdline.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WireCmdlinePrompt {
+    /// Ex command prompt (`:`)
+    #[default]
+    Command,
+    /// Forward search prompt (`/`)
+    SearchForward,
+    /// Backward search prompt (`?`)
+    SearchBackward,
+}
+
+impl WireCmdlinePrompt {
+    /// Get the prompt character for display.
+    #[must_use]
+    pub const fn char(self) -> char {
+        match self {
+            Self::Command => ':',
+            Self::SearchForward => '/',
+            Self::SearchBackward => '?',
+        }
+    }
+}
+
+/// Payload for cmdline changed notification (#451).
+///
+/// Sent to clients when cmdline state changes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CmdlineChangedPayload {
+    /// Whether cmdline is visible/active.
+    pub visible: bool,
+    /// The prompt type (`:`, `/`, `?`).
+    pub prompt: WireCmdlinePrompt,
+    /// Current input text.
+    pub input: String,
+    /// Cursor position within input.
+    pub cursor: usize,
+}
+
+impl CmdlineChangedPayload {
+    /// Create a payload for showing cmdline.
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)] // String is not const-compatible
+    pub fn show(prompt: WireCmdlinePrompt, input: String, cursor: usize) -> Self {
+        Self {
+            visible: true,
+            prompt,
+            input,
+            cursor,
+        }
+    }
+
+    /// Create a payload for hiding cmdline.
+    #[must_use]
+    pub const fn hide() -> Self {
+        Self {
+            visible: false,
+            prompt: WireCmdlinePrompt::Command,
+            input: String::new(),
+            cursor: 0,
+        }
+    }
+
+    /// Convert payload to JSON-RPC notification.
+    ///
+    /// # Panics
+    ///
+    /// This function will not panic as `CmdlineChangedPayload` serialization is infallible.
+    #[must_use]
+    pub fn into_notification(self) -> super::messages::RpcNotification {
+        super::messages::RpcNotification::new(
+            CMDLINE_CHANGED,
+            serde_json::to_value(self).expect("CmdlineChangedPayload serialization cannot fail"),
         )
     }
 }

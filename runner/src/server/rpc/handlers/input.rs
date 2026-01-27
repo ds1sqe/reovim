@@ -11,7 +11,9 @@ use {
 
 use {
     super::super::dispatcher::{HandlerFuture, RpcContext},
-    crate::session::{StateSnapshot, emit_from_state_changes, emit_state_changes},
+    crate::session::{
+        StateSnapshot, emit_cmdline_changed, emit_from_state_changes, emit_state_changes,
+    },
     reovim_driver_session::api::StateChanges,
 };
 
@@ -69,6 +71,8 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
             // These keys are intercepted when cmdline is active:
             // - Backspace, Delete, Left, Right, Home, End
             if cmdline_active && handle_cmdline_key(&ctx, &key_event).await {
+                // Emit cmdline changed notification after editing
+                emit_cmdline_changed(&ctx.session).await;
                 any_handled = true;
                 final_pending = false;
                 continue;
@@ -122,6 +126,9 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
                             let cmdline_changes =
                                 ctx.session.execute_cmdline_and_deactivate().await;
                             accumulated_changes.merge(cmdline_changes);
+
+                            // Emit cmdline changed notification (may be hide or show)
+                            emit_cmdline_changed(&ctx.session).await;
                         }
 
                         any_handled = true;
@@ -145,6 +152,8 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
                         let active = ctx.session.is_cmdline_active().await;
                         if active {
                             ctx.session.cmdline_insert_char(ch).await;
+                            // Emit cmdline changed notification after character insert
+                            emit_cmdline_changed(&ctx.session).await;
                         } else {
                             ctx.session.insert_char(ch).await;
                         }

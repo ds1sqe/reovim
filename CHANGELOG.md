@@ -6,6 +6,13 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Command-line UI Phase 1-2**: Implemented cmdline state management and popup
+  rendering for search (/, ?) and Ex command (:) modes. Characters route to
+  cmdline buffer when active. Supports editing keys (Backspace, Delete, Left,
+  Right, Home, End, Ctrl+A, Ctrl+E). Floating popup renders at screen top with
+  box drawing characters showing prompt and input with block cursor. Popup
+  appears on activation and hides on execution (Enter) or cancellation (Esc).
+  Both interactive TUI and headless mode support cmdline rendering. (#451)
 - **Line number display modes**: Added support for `:set number` and `:set
   relativenumber` options with absolute, relative, and hybrid display modes.
   Server-side rendering via `state/screen_content` with reactive notifications

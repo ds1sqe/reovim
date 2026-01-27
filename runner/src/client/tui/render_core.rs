@@ -7,7 +7,7 @@ use std::fmt::Write as _;
 
 use {
     reovim_driver_display::{ColorMode, FrameBuffer, Style},
-    reovim_protocol::v1::ScreenFormat,
+    reovim_protocol::v1::{ScreenFormat, notifications::WireCmdlinePrompt},
 };
 
 /// Render state containing the information needed for frame capture.
@@ -33,6 +33,14 @@ pub struct RenderState {
     pub server_address: String,
     /// Whether log panel is visible.
     pub log_panel_visible: bool,
+    /// Whether cmdline popup is visible (#451).
+    pub cmdline_visible: bool,
+    /// Cmdline prompt type (#451).
+    pub cmdline_prompt: WireCmdlinePrompt,
+    /// Cmdline input text (#451).
+    pub cmdline_input: String,
+    /// Cmdline cursor position (#451).
+    pub cmdline_cursor: usize,
 }
 
 impl RenderState {

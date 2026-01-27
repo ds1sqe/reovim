@@ -9,9 +9,10 @@ use {
     reovim_protocol::v1::{
         RpcNotification, RpcResponse, ScreenContentResult,
         notifications::{
-            CAPTURE_REQUEST, CAPTURE_RESPONSE, CURSOR_MOVED, CaptureRequestPayload,
-            CaptureResponsePayload, CursorMovedPayload, LAYOUT_CHANGED, LayoutChangedPayload,
-            MODE_CHANGED, ModeChangedPayload,
+            CAPTURE_REQUEST, CAPTURE_RESPONSE, CMDLINE_CHANGED, CURSOR_MOVED,
+            CaptureRequestPayload, CaptureResponsePayload, CmdlineChangedPayload,
+            CursorMovedPayload, LAYOUT_CHANGED, LayoutChangedPayload, MODE_CHANGED,
+            ModeChangedPayload, WireCmdlinePrompt,
         },
     },
     serde_json::json,
@@ -157,6 +158,11 @@ impl HeadlessClient {
             modules,
             server_address,
             log_panel_visible: false,
+            // #451: Cmdline state (updated via notifications)
+            cmdline_visible: false,
+            cmdline_prompt: WireCmdlinePrompt::Command,
+            cmdline_input: String::new(),
+            cmdline_cursor: 0,
         };
 
         // Create frame buffer with default size
@@ -262,6 +268,17 @@ impl HeadlessClient {
                     }
                 }
             }
+            CMDLINE_CHANGED => {
+                // #451: Update cmdline state for frame capture
+                if let Ok(payload) =
+                    serde_json::from_value::<CmdlineChangedPayload>(notification.params.clone())
+                {
+                    self.render_state.cmdline_visible = payload.visible;
+                    self.render_state.cmdline_prompt = payload.prompt;
+                    self.render_state.cmdline_input = payload.input;
+                    self.render_state.cmdline_cursor = payload.cursor;
+                }
+            }
             _ => {
                 // Ignore other notifications
                 tracing::trace!("Ignoring notification: {}", notification.method);
@@ -309,6 +326,9 @@ impl HeadlessClient {
             // Continue with current buffer state (may be stale/empty)
         }
 
+        // Render cmdline popup if visible (#451)
+        self.render_cmdline_popup();
+
         // Build frame content (now from populated buffer)
         let content = build_frame_content(&self.render_state, &self.frame_buffer, payload.format);
 
@@ -347,6 +367,71 @@ impl HeadlessClient {
         self.render_state.height = height;
         self.frame_buffer = FrameBuffer::new(width, height);
         tracing::info!("Resized to {}x{}", width, height);
+    }
+
+    /// Render cmdline popup to frame buffer (#451).
+    ///
+    /// Called before frame capture to overlay cmdline popup on screen content.
+    fn render_cmdline_popup(&mut self) {
+        use reovim_driver_display::Style;
+
+        if !self.render_state.cmdline_visible {
+            return;
+        }
+
+        let width = self.render_state.width;
+        let height = self.render_state.height;
+        if width < 10 || height < 5 {
+            return; // Not enough space
+        }
+
+        // Calculate popup dimensions and position
+        let popup_width = (width * 2 / 3).max(30).min(width - 4);
+        let popup_x = (width - popup_width) / 2;
+        let popup_y: u16 = 2; // Fixed position near top
+
+        // Build popup content
+        let prompt_char = self.render_state.cmdline_prompt.char();
+        let input = &self.render_state.cmdline_input;
+        let cursor_pos = self.render_state.cmdline_cursor;
+
+        // Calculate content width (inside borders)
+        let content_width = popup_width.saturating_sub(4) as usize;
+
+        // Build content line with cursor
+        let mut content = format!("{prompt_char}{input}");
+        let cursor_display_pos = cursor_pos + 1;
+        if cursor_display_pos <= content.len() {
+            content.insert(cursor_display_pos, '\u{2588}'); // Block cursor █
+        } else {
+            content.push('\u{2588}');
+        }
+
+        // Pad or truncate content
+        if content.len() < content_width {
+            content.push_str(&" ".repeat(content_width - content.len()));
+        } else if content.len() > content_width {
+            content.truncate(content_width);
+        }
+
+        // Border style
+        let border_style = Style::default().fg(reovim_driver_display::Color::DarkGrey);
+        let content_style = Style::default();
+
+        // Draw top border
+        let top_border = format!("╭{}╮", "─".repeat(popup_width.saturating_sub(2) as usize));
+        self.frame_buffer
+            .write_str(popup_x, popup_y, &top_border, &border_style);
+
+        // Draw content line
+        let content_line = format!("│ {content} │");
+        self.frame_buffer
+            .write_str(popup_x, popup_y + 1, &content_line, &content_style);
+
+        // Draw bottom border
+        let bottom_border = format!("╰{}╯", "─".repeat(popup_width.saturating_sub(2) as usize));
+        self.frame_buffer
+            .write_str(popup_x, popup_y + 2, &bottom_border, &border_style);
     }
 
     /// Wait for a response with matching ID, processing notifications meanwhile.
@@ -465,6 +550,17 @@ impl HeadlessClient {
                     {
                         self.resize(new_width, new_height);
                     }
+                }
+            }
+            CMDLINE_CHANGED => {
+                // #451: Update cmdline state for frame capture
+                if let Ok(payload) =
+                    serde_json::from_value::<CmdlineChangedPayload>(notification.params.clone())
+                {
+                    self.render_state.cmdline_visible = payload.visible;
+                    self.render_state.cmdline_prompt = payload.prompt;
+                    self.render_state.cmdline_input = payload.input;
+                    self.render_state.cmdline_cursor = payload.cursor;
                 }
             }
             _ => {}

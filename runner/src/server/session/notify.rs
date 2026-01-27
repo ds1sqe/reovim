@@ -39,9 +39,10 @@ use {
     reovim_driver_session::api::StateChanges,
     reovim_kernel::api::v1::OptionValue,
     reovim_protocol::v1::{
-        BufferId as ProtocolBufferId, BufferModifiedPayload, CursorMovedPayload,
-        LayoutChangedPayload, ModeChangedPayload, ModeInfo, OptionChangedPayload,
-        RenderCompletePayload, WireLayoutChangeKind, WireLayoutInfo, WireWindowId,
+        BufferId as ProtocolBufferId, BufferModifiedPayload, CmdlineChangedPayload,
+        CursorMovedPayload, LayoutChangedPayload, ModeChangedPayload, ModeInfo,
+        OptionChangedPayload, RenderCompletePayload, WireCmdlinePrompt, WireLayoutChangeKind,
+        WireLayoutInfo, WireWindowId,
     },
 };
 
@@ -440,6 +441,53 @@ pub async fn emit_from_state_changes(session: &Session, changes: &StateChanges) 
             .await;
         emit_render_complete(session, active_buffer).await;
     }
+}
+
+/// Emit cmdline changed notification (#451).
+///
+/// Broadcasts the current cmdline state to all clients in the session.
+/// Called after cmdline activation, deactivation, or input changes.
+///
+/// # Arguments
+///
+/// * `session` - The session to broadcast to
+///
+/// # Panics
+///
+/// Panics if notification serialization fails, which should never happen
+/// as the notification types implement `Serialize` correctly.
+pub async fn emit_cmdline_changed(session: &Session) {
+    use reovim_driver_session::api::{CmdlinePrompt, CmdlineState};
+
+    // Get cmdline state from session
+    let payload = session
+        .with_state(|state| {
+            // Check CmdlineState extension (SSOT for active/prompt)
+            let ext = state.driver_session.extensions.get::<CmdlineState>();
+
+            if let Some(cmdline_state) = ext
+                && cmdline_state.is_active()
+            {
+                // Cmdline is active - get prompt and buffer state
+                let prompt = match cmdline_state.prompt() {
+                    CmdlinePrompt::Command => WireCmdlinePrompt::Command,
+                    CmdlinePrompt::SearchForward => WireCmdlinePrompt::SearchForward,
+                    CmdlinePrompt::SearchBackward => WireCmdlinePrompt::SearchBackward,
+                };
+                let input = state.app.cmdline.input().to_string();
+                let cursor = state.app.cmdline.cursor();
+
+                CmdlineChangedPayload::show(prompt, input, cursor)
+            } else {
+                // Cmdline is inactive
+                CmdlineChangedPayload::hide()
+            }
+        })
+        .await;
+
+    let json = serde_json::to_string(&payload.into_notification())
+        .expect("CmdlineChangedPayload serialization cannot fail");
+    NotificationBroadcaster::broadcast_to_session(session, &json).await;
 }
 
 #[cfg(test)]

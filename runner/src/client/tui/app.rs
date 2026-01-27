@@ -16,10 +16,11 @@ use {
         RpcNotification, RpcResponse, ScreenContentResult, ScreenFormat, WireLayoutInfo,
         notifications::{
             BUFFER_MODIFIED, BufferModifiedPayload, CAPTURE_REQUEST, CAPTURE_RESPONSE,
-            CURSOR_MOVED, CaptureRequestPayload, CaptureResponsePayload, CursorMovedPayload,
-            DETACH, DetachPayload, LAYOUT_CHANGED, LOG_ENTRY, LayoutChangedPayload,
-            LogEntryPayload, MODE_CHANGED, ModeChangedPayload, OPTION_CHANGED,
-            OptionChangedPayload, RENDER_COMPLETE, RenderCompletePayload,
+            CMDLINE_CHANGED, CURSOR_MOVED, CaptureRequestPayload, CaptureResponsePayload,
+            CmdlineChangedPayload, CursorMovedPayload, DETACH, DetachPayload, LAYOUT_CHANGED,
+            LOG_ENTRY, LayoutChangedPayload, LogEntryPayload, MODE_CHANGED, ModeChangedPayload,
+            OPTION_CHANGED, OptionChangedPayload, RENDER_COMPLETE, RenderCompletePayload,
+            WireCmdlinePrompt,
         },
     },
     serde_json::json,
@@ -146,6 +147,21 @@ struct TuiState {
     /// Cached option values from server (#445).
     /// Used for line number rendering and other client-side display decisions.
     options: HashMap<String, serde_json::Value>,
+    /// Cmdline state from server (#451).
+    cmdline: CmdlineState,
+}
+
+/// Cmdline UI state (#451).
+#[derive(Debug, Default)]
+struct CmdlineState {
+    /// Whether cmdline is visible.
+    visible: bool,
+    /// The prompt type (`:`, `/`, `?`).
+    prompt: WireCmdlinePrompt,
+    /// Current input text.
+    input: String,
+    /// Cursor position within input.
+    cursor: usize,
 }
 
 /// TUI application.
@@ -363,6 +379,7 @@ impl TuiApp {
                 error_timestamp: None,
                 layout: initial_layout,   // Initial layout from server (#444)
                 options: initial_options, // Initial options from server (#445)
+                cmdline: CmdlineState::default(), // Cmdline UI (#451)
             },
             log_buffer: TuiLogBuffer::new(DEFAULT_TUI_LOG_CAPACITY),
             log_panel: LogPanelState::new(),
@@ -1007,6 +1024,18 @@ impl TuiApp {
                     ));
                 }
             }
+            CMDLINE_CHANGED => {
+                // #451: Update cmdline UI state when server notifies of change
+                if let Ok(payload) =
+                    serde_json::from_value::<CmdlineChangedPayload>(notification.params)
+                {
+                    self.state.cmdline.visible = payload.visible;
+                    self.state.cmdline.prompt = payload.prompt;
+                    self.state.cmdline.input = payload.input;
+                    self.state.cmdline.cursor = payload.cursor;
+                    self.state.needs_redraw = true;
+                }
+            }
             DETACH => {
                 // Server requested client to detach - disconnect gracefully
                 if let Ok(payload) =
@@ -1121,6 +1150,9 @@ impl TuiApp {
 
         // Draw window borders for multi-window layouts (#444)
         self.draw_window_borders();
+
+        // Draw cmdline popup if active (#451)
+        self.render_cmdline_popup();
 
         // Calculate panel heights and positions
         let statusline_height: u16 = u16::from(self.debug_config.is_some());
@@ -1401,6 +1433,11 @@ impl TuiApp {
             modules: self.state.modules.clone(),
             server_address: self.server_address.clone(),
             log_panel_visible: self.log_panel.visible,
+            // #451: Cmdline state for frame capture
+            cmdline_visible: self.state.cmdline.visible,
+            cmdline_prompt: self.state.cmdline.prompt,
+            cmdline_input: self.state.cmdline.input.clone(),
+            cmdline_cursor: self.state.cmdline.cursor,
         }
     }
 
@@ -1504,6 +1541,79 @@ impl TuiApp {
                     .write_str(0, y_u16, line, &default_style);
             }
         }
+    }
+
+    /// Render cmdline popup to frame buffer (#451).
+    ///
+    /// Draws a floating popup at the top of the screen when cmdline is active.
+    /// Uses box drawing characters for borders.
+    fn render_cmdline_popup(&mut self) {
+        if !self.state.cmdline.visible {
+            return;
+        }
+
+        let (width, height) = self.last_size;
+        if width < 10 || height < 5 {
+            return; // Not enough space
+        }
+
+        // Calculate popup dimensions and position
+        let popup_width = (width * 2 / 3).max(30).min(width - 4);
+        let popup_x = (width - popup_width) / 2;
+        let popup_y: u16 = 2; // Fixed position near top
+
+        // Build popup content
+        let prompt_char = self.state.cmdline.prompt.char();
+        let input = &self.state.cmdline.input;
+        let cursor_pos = self.state.cmdline.cursor;
+
+        // Calculate content width (inside borders)
+        let content_width = popup_width.saturating_sub(4) as usize; // 2 border + 2 padding
+
+        // Build content line with cursor
+        let mut content = format!("{prompt_char}{input}");
+        // Insert cursor character at position
+        let cursor_display_pos = cursor_pos + 1; // +1 for prompt char
+        if cursor_display_pos <= content.len() {
+            content.insert(cursor_display_pos, '\u{2588}'); // Block cursor █
+        } else {
+            content.push('\u{2588}');
+        }
+
+        // Pad or truncate content
+        if content.len() < content_width {
+            content.push_str(&" ".repeat(content_width - content.len()));
+        } else if content.len() > content_width {
+            content.truncate(content_width);
+        }
+
+        // Border style (subtle)
+        let border_style = Style::default().fg(reovim_driver_display::Color::DarkGrey);
+        let content_style = Style::default();
+
+        // Draw top border
+        let top_border = format!("╭{}╮", "─".repeat(popup_width.saturating_sub(2) as usize));
+        self.frame_renderer
+            .buffer_mut()
+            .write_str(popup_x, popup_y, &top_border, &border_style);
+
+        // Draw content line
+        let content_line = format!("│ {content} │");
+        self.frame_renderer.buffer_mut().write_str(
+            popup_x,
+            popup_y + 1,
+            &content_line,
+            &content_style,
+        );
+
+        // Draw bottom border
+        let bottom_border = format!("╰{}╯", "─".repeat(popup_width.saturating_sub(2) as usize));
+        self.frame_renderer.buffer_mut().write_str(
+            popup_x,
+            popup_y + 2,
+            &bottom_border,
+            &border_style,
+        );
     }
 
     /// Quit the application.
