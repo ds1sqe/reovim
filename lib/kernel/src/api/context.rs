@@ -280,6 +280,30 @@ impl KernelContext {
         event_bus: Arc<EventBus>,
         services: Arc<ServiceRegistry>,
     ) -> Self {
+        Self::with_event_bus_services_and_options(
+            event_bus,
+            services,
+            Arc::new(OptionRegistry::new()),
+        )
+    }
+
+    /// Create a `KernelContext` with shared event bus, services, and options.
+    ///
+    /// This variant allows sharing the option registry between module init
+    /// and the final session context (#458). Modules can register options
+    /// during `init()` and they will be available in the session.
+    ///
+    /// # Arguments
+    ///
+    /// * `event_bus` - Shared event bus for subscriptions
+    /// * `services` - Shared service registry
+    /// * `options` - Shared option registry
+    #[must_use]
+    pub fn with_event_bus_services_and_options(
+        event_bus: Arc<EventBus>,
+        services: Arc<ServiceRegistry>,
+        options: Arc<OptionRegistry>,
+    ) -> Self {
         use crate::core::{MarkBank, MotionEngine, RegisterBank, TextObjectEngine};
 
         Self {
@@ -289,7 +313,7 @@ impl KernelContext {
             text_objects: Arc::new(TextObjectEngine),
             registers: Arc::new(RwLock::new(RegisterBank::new())),
             marks: Arc::new(RwLock::new(MarkBank::new())),
-            options: Arc::new(OptionRegistry::new()),
+            options,
             services,
         }
     }

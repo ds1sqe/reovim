@@ -89,6 +89,18 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   custom components (example: BranchComponent for git, DiagnosticsComponent for
   LSP). Component visibility conditions support WhenModified, WhenInGitRepo,
   InModes, etc. Priority-based truncation respects component importance. (#441)
+- **Generic annotation system**: Implemented unified architecture for displaying
+  per-line information in the gutter. Core types: `AnnotationKind` (hierarchical
+  identifiers like `"diagnostic.error"`), `AnnotationTarget` (line/range/point/buffer),
+  `AnnotationPayload` (number/text/severity/state). Architecture follows mechanism/
+  policy separation: display driver provides traits (`AnnotationSource`,
+  `AnnotationPresenter`), storage (`AnnotationStore`), and composition
+  (`GutterComposer`); vim module provides policy implementations
+  (`LineNumberSource`, `LineNumberPresenter`). Data flow: Sources -> Store ->
+  Presenters -> Composer -> Gutter Cells. Added `GutterRenderer` high-level
+  integration helper. Added 8 new highlight groups: `sign_column`,
+  `gutter_separator`, `git.add`, `git.change`, `git.delete`, `fold.open`,
+  `fold.closed`, `bookmark`. (#455)
 
 ### Changed
 
@@ -106,9 +118,27 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   deserialization, eliminating ~100 lines of duplicated parsing code. The
   `ThemeManager` now uses 4-tier lookup: user overrides → theme → module
   defaults → theme fallback. (#440)
+- **Annotation system wiring**: Wired the generic annotation system (#455) into
+  the screen handler rendering pipeline. (1) Added `GutterRendererKey` and
+  `GutterRendererRegistry` following Epic #417 `ServiceRegistry` pattern. (2)
+  Vim module registers `GutterRenderer` with `LineNumberSource`/`LineNumberPresenter`
+  during init. (3) Extended `AnnotationContext` with optional `line_number_mode`
+  for dynamic mode switching from options. (4) Screen handler uses `render_gutter()`
+  helper that queries registry and falls back gracefully when not available. (5)
+  Removed duplicate `calculate_gutter_width()` and `format_line_number()` functions
+  from screen handler - now delegated to annotation system. Proper mechanism/policy
+  separation: display driver provides registry traits, vim module provides policy
+  implementations. (#458)
 
 ### Fixed
 
+- **Shared OptionRegistry**: Fixed module-registered options not being accessible
+  in the session. Modules registering options during `init()` wrote to a different
+  `OptionRegistry` than the one used by the session for `:set` commands. Solution:
+  create shared `OptionRegistry` before module init and pass to both
+  `KernelContext::with_event_bus_services_and_options()` and
+  `real_kernel_context_with_options()`. This enables `:set number` to work
+  correctly with the annotation system. (#458)
 - Integration tests now correctly use worktree-built modules instead of
   globally installed modules. Test harness sets `REOVIM_MODULE_PATH` to
   `target/debug/` automatically. (#433)

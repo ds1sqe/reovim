@@ -24,8 +24,13 @@
 use std::collections::HashMap;
 
 use {
-    reovim_driver_display::{BufferDecorationSourceRegistry, Decoration, LineNumberMode, Rect},
-    reovim_kernel::api::v1::{BufferId, OptionRegistry, OptionScopeId, OptionValue},
+    reovim_driver_display::{
+        AnnotationContext, BufferDecorationSourceRegistry, ComposedLine, Decoration,
+        GutterRendererKey, GutterRendererRegistry, LineNumberMode, Rect,
+    },
+    reovim_kernel::api::v1::{
+        BufferId, OptionRegistry, OptionScopeId, OptionValue, ServiceRegistry,
+    },
     reovim_protocol::v1::{RpcError, ScreenContentResult, ScreenFormat, StateScreenContentParams},
 };
 
@@ -38,64 +43,84 @@ use super::super::dispatcher::{HandlerFuture, RpcContext};
 /// - Both `number` and `relativenumber` → Hybrid
 /// - Neither → None
 fn line_number_mode_from_options(registry: &OptionRegistry) -> LineNumberMode {
-    let number = registry
-        .get("number", OptionScopeId::Global)
+    let number_val = registry.get("number", OptionScopeId::Global);
+    let number = number_val
+        .as_ref()
         .is_some_and(|v| matches!(v, OptionValue::Bool(true)));
-    let relativenumber = registry
-        .get("relativenumber", OptionScopeId::Global)
+    let relativenumber_val = registry.get("relativenumber", OptionScopeId::Global);
+    let relativenumber = relativenumber_val
+        .as_ref()
         .is_some_and(|v| matches!(v, OptionValue::Bool(true)));
 
-    match (number, relativenumber) {
+    let mode = match (number, relativenumber) {
         (true, true) => LineNumberMode::Hybrid,
         (true, false) => LineNumberMode::Absolute,
         (false, true) => LineNumberMode::Relative,
         (false, false) => LineNumberMode::None,
-    }
-}
-
-/// Calculate gutter width for line numbers.
-fn calculate_gutter_width(mode: LineNumberMode, total_lines: usize) -> usize {
-    if mode == LineNumberMode::None {
-        return 0;
-    }
-    // Digits needed + 1 space padding
-    let digits = if total_lines == 0 {
-        1
-    } else {
-        #[allow(
-            clippy::cast_precision_loss,
-            clippy::cast_possible_truncation,
-            clippy::cast_sign_loss
-        )]
-        let d = ((total_lines as f64).log10().floor() as usize) + 1;
-        d
     };
-    digits + 1 // digits + space after
+
+    tracing::debug!(
+        ?number_val,
+        ?relativenumber_val,
+        number,
+        relativenumber,
+        ?mode,
+        "line_number_mode_from_options"
+    );
+
+    mode
 }
 
-/// Format a line number based on mode.
-fn format_line_number(
-    mode: LineNumberMode,
-    line_idx: usize,
+/// Render gutter for a line range using `GutterRenderer` or fallback.
+///
+/// Returns (`gutter_width`, `composed_lines`) where:
+/// - `gutter_width`: total width of gutter in characters
+/// - `composed_lines`: one `ComposedLine` per line in the range
+///
+/// If `GutterRenderer` is not registered (e.g., vim module not loaded),
+/// falls back to no gutter (width 0, empty lines).
+fn render_gutter(
+    services: &ServiceRegistry,
+    buffer_id: BufferId,
+    range: std::ops::Range<usize>,
+    total_lines: usize,
     cursor_line: usize,
-    width: usize,
-) -> String {
-    match mode {
-        LineNumberMode::None => String::new(),
-        LineNumberMode::Absolute => format!("{:>width$} ", line_idx + 1),
-        LineNumberMode::Relative => {
-            let rel = line_idx.abs_diff(cursor_line);
-            format!("{rel:>width$} ")
-        }
-        LineNumberMode::Hybrid => {
-            if line_idx == cursor_line {
-                format!("{:>width$} ", line_idx + 1)
-            } else {
-                let rel = line_idx.abs_diff(cursor_line);
-                format!("{rel:>width$} ")
-            }
-        }
+    mode_str: &str,
+    line_mode: LineNumberMode,
+) -> (usize, Vec<ComposedLine>) {
+    // Try to get GutterRenderer from ServiceRegistry
+    let registry_opt = services.get::<GutterRendererRegistry>();
+    if registry_opt.is_none() {
+        tracing::warn!("GutterRendererRegistry not found in ServiceRegistry");
+        return (0, vec![]);
     }
+
+    let registry = registry_opt.unwrap();
+    let renderer_opt = registry.get(&GutterRendererKey::Default);
+    if renderer_opt.is_none() {
+        tracing::warn!("GutterRenderer not registered with Default key");
+        return (0, vec![]);
+    }
+
+    let renderer = renderer_opt.unwrap();
+
+    // Build annotation context with line number mode from options
+    let context =
+        AnnotationContext::with_line_number_mode(total_lines, cursor_line, mode_str, line_mode);
+
+    let width = renderer.total_width(&context);
+    let lines = renderer.render(buffer_id, range, &context);
+
+    tracing::debug!(
+        width,
+        lines_count = lines.len(),
+        total_lines,
+        cursor_line,
+        ?line_mode,
+        "render_gutter succeeded"
+    );
+
+    (width, lines)
 }
 
 /// Create the selection style (REVERSE for visibility).
@@ -382,7 +407,18 @@ fn render_multi_window(
 
     let lines: Vec<&str> = content.lines().collect();
     let total_lines = lines.len();
-    let gutter_width = calculate_gutter_width(line_mode, total_lines);
+
+    // Epic #458: Use GutterRenderer for line numbers
+    let mode_str = state.current_mode().name();
+    let (gutter_width, gutter_lines) = render_gutter(
+        &state.app.kernel.services,
+        buffer_id,
+        0..total_lines,
+        total_lines,
+        cursor_line,
+        mode_str,
+        line_mode,
+    );
 
     // Generate rainbow bracket decorations (#440)
     let decorations =
@@ -394,7 +430,7 @@ fn render_multi_window(
 
     // Render each window's content within its bounds
     for placement in placements.iter().filter(|p| p.visible) {
-        render_window_content(&mut screen, placement, &lines, line_mode, cursor_line, gutter_width);
+        render_window_content(&mut screen, placement, &lines, &gutter_lines, gutter_width);
     }
 
     // Draw window separators (borders between windows)
@@ -424,13 +460,12 @@ fn render_multi_window(
 
 /// Render a single window's content within its bounds on the screen buffer.
 ///
-/// Includes line numbers when `line_mode` is not `None` (#445).
+/// Uses pre-rendered gutter lines from `GutterRenderer` (#458).
 fn render_window_content(
     screen: &mut [Vec<char>],
     placement: &reovim_driver_display::layout::WindowPlacement,
     lines: &[&str],
-    line_mode: LineNumberMode,
-    cursor_line: usize,
+    gutter_lines: &[ComposedLine],
     gutter_width: usize,
 ) {
     let bounds = &placement.bounds;
@@ -442,19 +477,19 @@ fn render_window_content(
             break;
         }
 
-        // Render line number first (#445)
-        let line_num_str =
-            format_line_number(line_mode, line_idx, cursor_line, gutter_width.saturating_sub(1));
-        for (col, ch) in line_num_str.chars().enumerate() {
-            let screen_x = bounds.x as usize + col;
-            #[allow(clippy::cast_possible_truncation)]
-            let col_u16 = col as u16;
-            if screen_x < screen[screen_y].len() && col_u16 < bounds.width {
-                screen[screen_y][screen_x] = ch;
+        // Render gutter cells from GutterRenderer (#458)
+        if let Some(gutter_line) = gutter_lines.get(line_idx) {
+            for (col, cell) in gutter_line.cells.iter().enumerate() {
+                let screen_x = bounds.x as usize + col;
+                #[allow(clippy::cast_possible_truncation)]
+                let col_u16 = col as u16;
+                if screen_x < screen[screen_y].len() && col_u16 < bounds.width {
+                    screen[screen_y][screen_x] = cell.char;
+                }
             }
         }
 
-        // Render content after line number
+        // Render content after gutter
         let line = lines.get(line_idx).copied().unwrap_or("");
         let content_start = bounds.x as usize + gutter_width;
         let content_width = (bounds.width as usize).saturating_sub(gutter_width);
@@ -540,52 +575,43 @@ fn render_single_window(
 
     let lines: Vec<&str> = content.lines().collect();
     let total_lines = lines.len();
-    let gutter_width = calculate_gutter_width(line_mode, total_lines);
+
+    // Epic #458: Use GutterRenderer for line numbers
+    let mode_str = state.current_mode().name();
+    let (gutter_width, gutter_lines) = render_gutter(
+        &state.app.kernel.services,
+        buffer_id,
+        0..total_lines,
+        total_lines,
+        cursor_line,
+        mode_str,
+        line_mode,
+    );
 
     // Generate rainbow bracket decorations (#440)
     let decorations =
         generate_buffer_decorations(state, buffer_id, &content, (cursor_line, cursor_col));
     let decoration_map = build_decoration_map(&decorations);
 
-    // Create a 2D screen buffer (full height for content - TUI handles statusline)
-    let mut screen: Vec<Vec<char>> = vec![vec![' '; width as usize]; height as usize];
+    // Build content with gutter from GutterRenderer (#458)
+    let rendered_content: String = if gutter_width == 0 {
+        content.clone()
+    } else {
+        lines
+            .iter()
+            .enumerate()
+            .map(|(idx, line)| {
+                let gutter_str = gutter_lines
+                    .get(idx)
+                    .map(|gl| gl.cells.iter().map(|c| c.char).collect::<String>())
+                    .unwrap_or_default();
+                format!("{gutter_str}{line}")
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
 
-    // Render buffer content to screen (with line numbers)
-    for (win_row, line_idx) in (0..height).zip(0..lines.len()) {
-        let screen_y = win_row as usize;
-        if screen_y >= screen.len() {
-            break;
-        }
-
-        // Render line number first (#445)
-        let line_num_str =
-            format_line_number(line_mode, line_idx, cursor_line, gutter_width.saturating_sub(1));
-        for (col, ch) in line_num_str.chars().enumerate() {
-            if col < screen[screen_y].len() {
-                screen[screen_y][col] = ch;
-            }
-        }
-
-        // Render content after line number
-        let line = lines.get(line_idx).copied().unwrap_or("");
-        let content_start = gutter_width;
-        let content_width = (width as usize).saturating_sub(gutter_width);
-        for (col, ch) in line.chars().take(content_width).enumerate() {
-            let screen_x = content_start + col;
-            if screen_x < screen[screen_y].len() {
-                screen[screen_y][screen_x] = ch;
-            }
-        }
-    }
-
-    // Convert screen buffer to string
-    let screen_content: String = screen
-        .iter()
-        .map(|row| row.iter().collect::<String>())
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    format_content(&screen_content, format, width, height, &decoration_map, gutter_width)
+    format_content(&rendered_content, format, width, height, &decoration_map, gutter_width)
 }
 
 // Multi-window rendering will be implemented in Phase 2 using Session.compositor.
@@ -898,12 +924,9 @@ mod tests {
         let cells: Vec<Vec<serde_json::Value>> =
             serde_json::from_str(content).expect("Cell grid should be valid JSON");
 
-        // Should have at least 2 rows for content + 1 for statusline (#441)
-        // Actual height is terminal-based (default 24 in tests)
-        assert!(
-            cells.len() >= 3,
-            "Screen should have at least 3 rows (2 content + 1 statusline)"
-        );
+        // Should have at least 2 rows for content (AB and CD)
+        // Note: statusline is rendered client-side (TUI), not in state/screen_content
+        assert!(cells.len() >= 2, "Screen should have at least 2 rows for buffer content");
 
         // Verify terminal width - all rows should have consistent width
         let width = cells[0].len();
@@ -1161,60 +1184,99 @@ mod tests {
         assert_eq!(mode, LineNumberMode::Hybrid);
     }
 
+    // ========================================================================
+    // render_gutter tests (Epic #458)
+    //
+    // These tests verify the fallback behavior in render_gutter when
+    // GutterRenderer is not registered. Full integration tests with
+    // LineNumberSource/Presenter are in modules/vim/src/annotation/line_number.rs.
+    // ========================================================================
+
     #[test]
-    fn test_calculate_gutter_width_none_mode() {
-        assert_eq!(super::calculate_gutter_width(LineNumberMode::None, 100), 0);
+    fn test_render_gutter_fallback_when_registry_empty() {
+        use reovim_kernel::api::v1::{BufferId, ServiceRegistry};
+
+        let services = ServiceRegistry::new();
+        // Don't register GutterRendererRegistry - test fallback
+        let buffer_id = BufferId::new();
+        let range = 0..10;
+        let total_lines = 100;
+        let cursor_line = 50;
+        let mode_str = "NORMAL";
+        let line_mode = LineNumberMode::Absolute;
+
+        let (width, lines) = super::render_gutter(
+            &services,
+            buffer_id,
+            range,
+            total_lines,
+            cursor_line,
+            mode_str,
+            line_mode,
+        );
+
+        // Fallback returns width 0 and empty vec (not one per line)
+        assert_eq!(width, 0);
+        assert!(lines.is_empty());
     }
 
     #[test]
-    fn test_calculate_gutter_width_small_file() {
-        // 9 lines = 1 digit + 1 space = 2
-        assert_eq!(super::calculate_gutter_width(LineNumberMode::Absolute, 9), 2);
+    fn test_render_gutter_fallback_returns_zero_width() {
+        use reovim_kernel::api::v1::{BufferId, ServiceRegistry};
+
+        let services = ServiceRegistry::new();
+        let buffer_id = BufferId::new();
+        let range = 0..20;
+        let total_lines = 1000;
+        let cursor_line = 500;
+        let mode_str = "INSERT";
+        let line_mode = LineNumberMode::Hybrid;
+
+        let (width, lines) = super::render_gutter(
+            &services,
+            buffer_id,
+            range,
+            total_lines,
+            cursor_line,
+            mode_str,
+            line_mode,
+        );
+
+        // Regardless of total_lines or mode, fallback always returns 0 width
+        assert_eq!(width, 0);
+        assert!(lines.is_empty());
     }
 
     #[test]
-    fn test_calculate_gutter_width_medium_file() {
-        // 99 lines = 2 digits + 1 space = 3
-        assert_eq!(super::calculate_gutter_width(LineNumberMode::Absolute, 99), 3);
-    }
+    fn test_render_gutter_with_empty_registry() {
+        use {
+            reovim_driver_display::GutterRendererRegistry,
+            reovim_kernel::api::v1::{BufferId, ServiceRegistry},
+        };
 
-    #[test]
-    fn test_calculate_gutter_width_large_file() {
-        // 999 lines = 3 digits + 1 space = 4
-        assert_eq!(super::calculate_gutter_width(LineNumberMode::Absolute, 999), 4);
-    }
+        let services = ServiceRegistry::new();
+        // Create the registry but don't register any renderer
+        let _registry = services.get_or_create::<GutterRendererRegistry>();
 
-    #[test]
-    fn test_format_line_number_absolute() {
-        let s = super::format_line_number(LineNumberMode::Absolute, 0, 0, 2);
-        assert_eq!(s, " 1 ");
-        let s = super::format_line_number(LineNumberMode::Absolute, 9, 0, 2);
-        assert_eq!(s, "10 ");
-    }
+        let buffer_id = BufferId::new();
+        let range = 5..15;
+        let total_lines = 50;
+        let cursor_line = 10;
+        let mode_str = "NORMAL";
+        let line_mode = LineNumberMode::Relative;
 
-    #[test]
-    fn test_format_line_number_relative() {
-        // Cursor on line 5, checking line 3 (distance = 2)
-        let s = super::format_line_number(LineNumberMode::Relative, 3, 5, 2);
-        assert_eq!(s, " 2 ");
-        // Cursor line shows 0
-        let s = super::format_line_number(LineNumberMode::Relative, 5, 5, 2);
-        assert_eq!(s, " 0 ");
-    }
+        let (width, lines) = super::render_gutter(
+            &services,
+            buffer_id,
+            range,
+            total_lines,
+            cursor_line,
+            mode_str,
+            line_mode,
+        );
 
-    #[test]
-    fn test_format_line_number_hybrid() {
-        // Cursor line shows absolute number
-        let s = super::format_line_number(LineNumberMode::Hybrid, 5, 5, 2);
-        assert_eq!(s, " 6 ");
-        // Non-cursor lines show relative
-        let s = super::format_line_number(LineNumberMode::Hybrid, 3, 5, 2);
-        assert_eq!(s, " 2 ");
-    }
-
-    #[test]
-    fn test_format_line_number_none() {
-        let s = super::format_line_number(LineNumberMode::None, 0, 0, 2);
-        assert!(s.is_empty());
+        // Registry exists but no renderer registered - fallback
+        assert_eq!(width, 0);
+        assert!(lines.is_empty());
     }
 }

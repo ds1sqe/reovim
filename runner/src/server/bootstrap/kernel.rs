@@ -51,7 +51,29 @@ pub fn real_kernel_context_with_event_bus(
 ) -> KernelContext {
     let option_registry = Arc::new(OptionRegistry::new());
     register_default_options(&option_registry);
+    real_kernel_context_with_options(services, event_bus, option_registry)
+}
 
+/// Create a real `KernelContext` with a shared `OptionRegistry`.
+///
+/// This variant allows sharing the option registry between the module init context
+/// and the final session context (#458). Modules register options during `init()`
+/// into this shared registry.
+///
+/// # Arguments
+///
+/// * `services` - `ServiceRegistry` to query `BufferManager` from
+/// * `event_bus` - Shared event bus for module subscriptions
+/// * `option_registry` - Pre-existing option registry (may have module-registered options)
+///
+/// # Panics
+///
+/// Panics if no `BufferManager` is registered in `ServiceRegistry`.
+pub fn real_kernel_context_with_options(
+    services: Arc<ServiceRegistry>,
+    event_bus: Arc<EventBus>,
+    option_registry: Arc<OptionRegistry>,
+) -> KernelContext {
     // Query BufferManager from ServiceRegistry (Epic #417 Part 2)
     // Module registered it during init(), runner doesn't know concrete type
     let buffer_manager = services
@@ -76,7 +98,7 @@ pub fn real_kernel_context_with_event_bus(
 /// These options are registered at startup and available to all modules.
 /// Following mechanism vs policy: the registry (mechanism) is in kernel,
 /// the option definitions (policy) are here in the runner.
-fn register_default_options(registry: &OptionRegistry) {
+pub fn register_default_options(registry: &OptionRegistry) {
     // Indentation options
     let _ = registry.register(
         OptionSpec::new(
