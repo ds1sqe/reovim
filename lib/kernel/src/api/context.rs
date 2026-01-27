@@ -264,6 +264,37 @@ impl Default for ModuleContext {
     }
 }
 
+impl KernelContext {
+    /// Create a `KernelContext` with a shared event bus and services.
+    ///
+    /// Uses stub implementations for other fields. Useful for module
+    /// initialization where modules need to subscribe to events but
+    /// don't need buffer management yet (#440).
+    ///
+    /// # Arguments
+    ///
+    /// * `event_bus` - Shared event bus for subscriptions
+    /// * `services` - Shared service registry
+    #[must_use]
+    pub fn with_event_bus_and_services(
+        event_bus: Arc<EventBus>,
+        services: Arc<ServiceRegistry>,
+    ) -> Self {
+        use crate::core::{MarkBank, MotionEngine, RegisterBank, TextObjectEngine};
+
+        Self {
+            event_bus,
+            buffers: Arc::new(StubBufferManager),
+            motion: Arc::new(MotionEngine),
+            text_objects: Arc::new(TextObjectEngine),
+            registers: Arc::new(RwLock::new(RegisterBank::new())),
+            marks: Arc::new(RwLock::new(MarkBank::new())),
+            options: Arc::new(OptionRegistry::new()),
+            services,
+        }
+    }
+}
+
 impl Default for KernelContext {
     /// Create a default `KernelContext` for testing purposes.
     ///

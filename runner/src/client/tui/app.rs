@@ -43,7 +43,7 @@ use super::{
     log_buffer::{DEFAULT_TUI_LOG_CAPACITY, TuiLogBuffer},
     log_panel::LogPanelState,
     log_render::render_panel as render_log_panel,
-    render::Renderer,
+    render::{CursorStyleKind, Renderer},
     render_core::{self, RenderState},
 };
 
@@ -902,6 +902,17 @@ impl TuiApp {
                     let new_mode = payload.mode.display.clone();
                     self.state.mode_display = Some(payload.mode.display);
                     self.state.needs_redraw = true;
+
+                    // Update cursor style based on edit mode (#440)
+                    let cursor_style = match payload.mode.edit_mode.as_str() {
+                        "Insert" => CursorStyleKind::Bar,
+                        "Replace" => CursorStyleKind::Underline,
+                        _ => CursorStyleKind::Block, // Normal, Visual, etc.
+                    };
+                    if let Err(e) = self.renderer.set_cursor_style(cursor_style) {
+                        tracing::warn!("Failed to set cursor style: {e}");
+                    }
+
                     tracing::debug!("Mode changed to: {:?}", self.state.mode_display);
                     self.debug_log(&format!("Mode changed: {new_mode}"));
                 }
@@ -1061,15 +1072,7 @@ impl TuiApp {
 
     /// Render the current screen state.
     async fn render(&mut self) -> Result<(), TuiError> {
-        // Request screen content from server
-        let _ = self
-            .rpc_writer
-            .send_request("state/screen_content", json!({ "format": "raw_ansi" }))
-            .await;
-
-        // Wait a bit for the response and read it
-        // In a fully async model, we'd handle this via the message channel
-        // For now, we do a simple refresh
+        // Refresh screen using cell_grid format which includes decoration colors (#440)
         self.refresh_screen().await?;
         Ok(())
     }
@@ -1091,10 +1094,10 @@ impl TuiApp {
         // Clear back buffer
         self.frame_renderer.buffer_mut().clear();
 
-        // Request screen content from server
+        // Request screen content from server with cell_grid format for decoration colors (#440)
         let _ = self
             .rpc_writer
-            .send_request("state/screen_content", json!({ "format": "plain_text" }))
+            .send_request("state/screen_content", json!({ "format": "cell_grid" }))
             .await;
 
         // Read response and write to frame buffer
@@ -1105,15 +1108,8 @@ impl TuiApp {
         .await
         {
             Ok(Ok(content)) => {
-                // Write server content to frame buffer (line by line)
-                let default_style = Style::default();
-                for (y, line) in content.lines().enumerate().take(height as usize) {
-                    #[allow(clippy::cast_possible_truncation)]
-                    let y_u16 = y as u16;
-                    self.frame_renderer
-                        .buffer_mut()
-                        .write_str(0, y_u16, line, &default_style);
-                }
+                // Parse cell_grid JSON and write with decoration styles (#440)
+                self.write_cell_grid_to_buffer(&content, width, height);
             }
             Ok(Err(e)) => return Err(e),
             Err(_) => {
@@ -1465,6 +1461,49 @@ impl TuiApp {
             .await
             .map_err(TuiError::Rpc)?;
         Ok(())
+    }
+
+    /// Write `cell_grid` content to frame buffer with decoration colors (#440).
+    ///
+    /// Parses the JSON cell grid format and applies per-cell styles for
+    /// rainbow brackets and other decorations.
+    fn write_cell_grid_to_buffer(&mut self, content: &str, width: u16, height: u16) {
+        // Try to parse as JSON cell grid
+        let cells: Result<Vec<Vec<serde_json::Value>>, _> = serde_json::from_str(content);
+
+        if let Ok(rows) = cells {
+            // Write each cell with its decoration style
+            for (y, row) in rows.iter().enumerate().take(height as usize) {
+                #[allow(clippy::cast_possible_truncation)]
+                let y_u16 = y as u16;
+
+                for (x, cell) in row.iter().enumerate().take(width as usize) {
+                    let ch = cell
+                        .get("char")
+                        .and_then(|v| v.as_str())
+                        .and_then(|s| s.chars().next())
+                        .unwrap_or(' ');
+
+                    let style = render_core::parse_cell_style(cell);
+
+                    #[allow(clippy::cast_possible_truncation)]
+                    let x_u16 = x as u16;
+                    self.frame_renderer
+                        .buffer_mut()
+                        .put_char(x_u16, y_u16, ch, &style);
+                }
+            }
+        } else {
+            // Fallback to plain text if JSON parsing fails
+            let default_style = Style::default();
+            for (y, line) in content.lines().enumerate().take(height as usize) {
+                #[allow(clippy::cast_possible_truncation)]
+                let y_u16 = y as u16;
+                self.frame_renderer
+                    .buffer_mut()
+                    .write_str(0, y_u16, line, &default_style);
+            }
+        }
     }
 
     /// Quit the application.

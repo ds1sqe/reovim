@@ -5,7 +5,7 @@
 //! enabling the CLI → Server → TUI → Server → CLI frame capture flow.
 
 use {
-    reovim_driver_display::{FrameBuffer, Style},
+    reovim_driver_display::FrameBuffer,
     reovim_protocol::v1::{
         RpcNotification, RpcResponse, ScreenContentResult,
         notifications::{
@@ -23,7 +23,7 @@ use crate::client::common::{
     ConnectionConfig, ConnectionReader, RpcClient, RpcClientError, RpcWriter, ServerMessage,
 };
 
-use super::render_core::{RenderState, build_frame_content};
+use super::render_core::{RenderState, build_frame_content, write_cell_grid_to_buffer};
 
 /// Default terminal size for headless mode.
 const DEFAULT_WIDTH: u16 = 80;
@@ -389,14 +389,15 @@ impl HeadlessClient {
     ///
     /// This makes the headless TUI behave like the interactive TUI by fetching
     /// actual buffer content from the server before building capture responses.
+    /// Uses `cell_grid` format to preserve decoration colors (#440).
     async fn refresh_frame_buffer(&mut self) -> Result<(), HeadlessError> {
         // Clear frame buffer
         self.frame_buffer.clear();
 
-        // Request screen content from server
+        // Request screen content from server with cell_grid format for decoration colors (#440)
         let request_id = self
             .rpc_writer
-            .send_request("state/screen_content", json!({ "format": "plain_text" }))
+            .send_request("state/screen_content", json!({ "format": "cell_grid" }))
             .await
             .map_err(HeadlessError::Rpc)?;
 
@@ -409,19 +410,15 @@ impl HeadlessClient {
             .and_then(|v| v.as_str())
             .unwrap_or("");
 
-        // Write content to frame buffer (line by line, like interactive TUI)
-        let default_style = Style::default();
-        for (y, line) in content
-            .lines()
-            .enumerate()
-            .take(self.render_state.height as usize)
-        {
-            #[allow(clippy::cast_possible_truncation)]
-            self.frame_buffer
-                .write_str(0, y as u16, line, &default_style);
-        }
+        // Write cell_grid content to frame buffer with decoration styles (#440)
+        write_cell_grid_to_buffer(
+            &mut self.frame_buffer,
+            content,
+            self.render_state.width,
+            self.render_state.height,
+        );
 
-        tracing::debug!("Refreshed frame buffer with {} lines", content.lines().count());
+        tracing::debug!("Refreshed frame buffer from cell_grid");
         Ok(())
     }
 

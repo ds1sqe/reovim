@@ -113,3 +113,16 @@ pub const SWAP_WINDOW: CommandId = CommandId::new(MODULE, "swap-window");
 
 /// Move current window to new tab (T).
 pub const MOVE_TO_NEW_TAB: CommandId = CommandId::new(MODULE, "move-to-new-tab");
+
+// =============================================================================
+// Float Zone Operations (#398)
+// =============================================================================
+
+/// Toggle window between tiled and floating zones.
+pub const TOGGLE_FLOAT: CommandId = CommandId::new(MODULE, "toggle-float");
+
+/// Raise floating window to front of float zone.
+pub const RAISE_FLOAT: CommandId = CommandId::new(MODULE, "raise-float");
+
+/// Lower floating window to back of float zone.
+pub const LOWER_FLOAT: CommandId = CommandId::new(MODULE, "lower-float");

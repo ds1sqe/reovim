@@ -4,9 +4,15 @@
 //! all other windows, such as autocomplete popups, hover documentation,
 //! and command palettes.
 //!
-//! # Future Work
+//! # Anchor Resolution
 //!
-//! This trait will be implemented in Phase 3 (#399).
+//! Overlays use anchor-based positioning. The `arrange()` method receives
+//! `window_placements` from the compositor so that anchors like `Cursor`
+//! and `Below` can resolve positions relative to other windows.
+//!
+//! # Implementation
+//!
+//! See `modules/layout/src/overlayzone.rs` for the policy implementation.
 
 use {
     super::layer::{OverlayConstraints, WindowPlacement, ZOrder},
@@ -41,11 +47,14 @@ pub trait OverlayLayer: Send + Sync {
     /// # Arguments
     ///
     /// * `screen` - Screen bounds for computing overlay positions
+    /// * `window_placements` - Existing window placements from tiled/float zones,
+    ///   used for anchor resolution (e.g., `Anchor::Cursor` needs to know where
+    ///   the referenced window is positioned)
     ///
     /// # Returns
     ///
     /// Window placements sorted by z-order (lowest first).
-    fn arrange(&self, screen: Rect) -> Vec<WindowPlacement>;
+    fn arrange(&self, screen: Rect, window_placements: &[WindowPlacement]) -> Vec<WindowPlacement>;
 
     /// Show an overlay with constraints.
     ///

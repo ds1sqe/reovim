@@ -264,6 +264,9 @@ pub trait WindowLayerCompositor: Send + Sync {
     /// Bring to front within float zone.
     fn raise_float(&mut self, window: WindowId);
 
+    /// Send to back within float zone.
+    fn lower_float(&mut self, window: WindowId);
+
     /// Close floating window.
     fn close_float(&mut self, window: WindowId);
 
@@ -274,12 +277,13 @@ pub trait WindowLayerCompositor: Send + Sync {
     fn toggle_float(&mut self, window: WindowId);
 
     // ========================================================================
-    // Overlay Zone
+    // Overlay Zone (#399)
     // ========================================================================
 
     /// Show overlay with constraints.
     ///
     /// Creates a new overlay positioned according to the constraints.
+    /// Overlays do NOT auto-focus (they are temporary UI above content).
     fn show_overlay(&mut self, constraints: OverlayConstraints) -> WindowId;
 
     /// Hide overlay.
@@ -287,6 +291,9 @@ pub trait WindowLayerCompositor: Send + Sync {
 
     /// Update overlay size.
     fn resize_overlay(&mut self, window: WindowId, width: u16, height: u16);
+
+    /// Hide all overlays in this layer.
+    fn hide_all_overlays(&mut self);
 
     // ========================================================================
     // Focus

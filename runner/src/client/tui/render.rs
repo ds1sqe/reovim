@@ -5,11 +5,23 @@
 use std::io::{self, Stdout, Write};
 
 use crossterm::{
-    cursor,
+    cursor::{self, SetCursorStyle},
     event::DisableMouseCapture,
     execute,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
 };
+
+/// Cursor style kind for terminal rendering.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CursorStyleKind {
+    /// Block cursor (default for normal mode).
+    #[default]
+    Block,
+    /// Vertical bar cursor (for insert mode).
+    Bar,
+    /// Underline cursor (for replace mode).
+    Underline,
+}
 
 /// Terminal renderer.
 pub struct Renderer {
@@ -124,6 +136,20 @@ impl Renderer {
     /// Returns error if hide fails.
     pub fn hide_cursor(&mut self) -> io::Result<()> {
         execute!(self.stdout, cursor::Hide)
+    }
+
+    /// Set cursor style (block, bar, underline).
+    ///
+    /// # Errors
+    ///
+    /// Returns error if style change fails.
+    pub fn set_cursor_style(&mut self, style: CursorStyleKind) -> io::Result<()> {
+        let crossterm_style = match style {
+            CursorStyleKind::Block => SetCursorStyle::SteadyBlock,
+            CursorStyleKind::Bar => SetCursorStyle::SteadyBar,
+            CursorStyleKind::Underline => SetCursorStyle::SteadyUnderScore,
+        };
+        execute!(self.stdout, crossterm_style)
     }
 
     /// Flush output buffer.

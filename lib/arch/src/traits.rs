@@ -5,7 +5,7 @@
 //!
 //! All types defined here have NO external dependencies (std only).
 
-use std::{io, time::Duration};
+use std::{fmt, io, str::FromStr, time::Duration};
 
 // =============================================================================
 // Color
@@ -63,6 +63,229 @@ pub enum Color {
         /// Blue component (0-255).
         b: u8,
     },
+}
+
+// =============================================================================
+// Color Parsing and Display
+// =============================================================================
+
+/// Error type for color parsing with detailed diagnostics.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseColorError {
+    /// The input that failed to parse.
+    pub input: String,
+    /// The kind of error.
+    pub kind: ParseColorErrorKind,
+}
+
+/// Specific error kind for color parsing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParseColorErrorKind {
+    /// Invalid hex color length (must be 3 or 6 hex digits after #).
+    InvalidHexLength,
+    /// Invalid hex digit in color string.
+    InvalidHexDigit,
+    /// Invalid RGB function format.
+    InvalidRgbFormat,
+    /// Invalid ANSI index (must be 0-255).
+    InvalidAnsiIndex,
+    /// Unknown color name.
+    UnknownColorName,
+}
+
+impl fmt::Display for ParseColorError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.kind {
+            ParseColorErrorKind::InvalidHexLength => {
+                write!(f, "invalid hex color '{}': must be #rgb or #rrggbb", self.input)
+            }
+            ParseColorErrorKind::InvalidHexDigit => {
+                write!(f, "invalid hex digit in color '{}'", self.input)
+            }
+            ParseColorErrorKind::InvalidRgbFormat => {
+                write!(f, "invalid RGB format '{}': use rgb(r,g,b)", self.input)
+            }
+            ParseColorErrorKind::InvalidAnsiIndex => {
+                write!(f, "invalid ANSI index '{}': must be 0-255", self.input)
+            }
+            ParseColorErrorKind::UnknownColorName => {
+                write!(f, "unknown color name '{}'", self.input)
+            }
+        }
+    }
+}
+
+impl std::error::Error for ParseColorError {}
+
+impl FromStr for Color {
+    type Err = ParseColorError;
+
+    /// Parse a color from string.
+    ///
+    /// Supports multiple formats:
+    /// - Named colors: `red`, `green`, `blue`, etc. (case-insensitive)
+    /// - Hex colors: `#rgb`, `#rrggbb`
+    /// - ANSI 256 colors: `ansi:N` where N is 0-255
+    /// - RGB function: `rgb(r,g,b)`
+    /// - Default/reset: `default`, `reset`
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use reovim_arch::Color;
+    ///
+    /// assert_eq!("red".parse::<Color>().unwrap(), Color::Red);
+    /// assert_eq!("#ff0000".parse::<Color>().unwrap(), Color::Rgb { r: 255, g: 0, b: 0 });
+    /// assert_eq!("ansi:196".parse::<Color>().unwrap(), Color::AnsiValue(196));
+    /// ```
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let lower = s.to_lowercase();
+        let err = |kind| ParseColorError {
+            input: s.to_string(),
+            kind,
+        };
+
+        // Named colors (case-insensitive)
+        match lower.as_str() {
+            "default" | "reset" => return Ok(Self::Reset),
+            "black" => return Ok(Self::Black),
+            "red" => return Ok(Self::Red),
+            "green" => return Ok(Self::Green),
+            "yellow" => return Ok(Self::Yellow),
+            "blue" => return Ok(Self::Blue),
+            "magenta" => return Ok(Self::Magenta),
+            "cyan" => return Ok(Self::Cyan),
+            "white" => return Ok(Self::White),
+            "grey" | "gray" => return Ok(Self::Grey),
+            "darkgrey" | "darkgray" => return Ok(Self::DarkGrey),
+            "darkred" => return Ok(Self::DarkRed),
+            "darkgreen" => return Ok(Self::DarkGreen),
+            "darkyellow" => return Ok(Self::DarkYellow),
+            "darkblue" => return Ok(Self::DarkBlue),
+            "darkmagenta" => return Ok(Self::DarkMagenta),
+            "darkcyan" => return Ok(Self::DarkCyan),
+            _ => {}
+        }
+
+        // Hex colors: #rgb or #rrggbb
+        if let Some(hex) = s.strip_prefix('#') {
+            return Self::parse_hex(hex, s);
+        }
+
+        // ANSI 256 colors: ansi:N
+        if let Some(n_str) = lower.strip_prefix("ansi:") {
+            return n_str
+                .parse::<u8>()
+                .map(Self::AnsiValue)
+                .map_err(|_| err(ParseColorErrorKind::InvalidAnsiIndex));
+        }
+
+        // RGB function: rgb(r,g,b)
+        if lower.starts_with("rgb(") && lower.ends_with(')') {
+            return Self::parse_rgb_func(&lower[4..lower.len() - 1], s);
+        }
+
+        Err(err(ParseColorErrorKind::UnknownColorName))
+    }
+}
+
+impl Color {
+    /// Parse a hex color string (without the # prefix).
+    fn parse_hex(hex: &str, original: &str) -> Result<Self, ParseColorError> {
+        let err = |kind| ParseColorError {
+            input: original.to_string(),
+            kind,
+        };
+
+        match hex.len() {
+            6 => {
+                let r = u8::from_str_radix(&hex[0..2], 16)
+                    .map_err(|_| err(ParseColorErrorKind::InvalidHexDigit))?;
+                let g = u8::from_str_radix(&hex[2..4], 16)
+                    .map_err(|_| err(ParseColorErrorKind::InvalidHexDigit))?;
+                let b = u8::from_str_radix(&hex[4..6], 16)
+                    .map_err(|_| err(ParseColorErrorKind::InvalidHexDigit))?;
+                Ok(Self::Rgb { r, g, b })
+            }
+            3 => {
+                // #rgb -> #rrggbb (double each digit)
+                let r = u8::from_str_radix(&hex[0..1], 16)
+                    .map_err(|_| err(ParseColorErrorKind::InvalidHexDigit))?;
+                let g = u8::from_str_radix(&hex[1..2], 16)
+                    .map_err(|_| err(ParseColorErrorKind::InvalidHexDigit))?;
+                let b = u8::from_str_radix(&hex[2..3], 16)
+                    .map_err(|_| err(ParseColorErrorKind::InvalidHexDigit))?;
+                Ok(Self::Rgb {
+                    r: r * 17,
+                    g: g * 17,
+                    b: b * 17,
+                })
+            }
+            _ => Err(err(ParseColorErrorKind::InvalidHexLength)),
+        }
+    }
+
+    /// Parse RGB function content: "r,g,b".
+    fn parse_rgb_func(content: &str, original: &str) -> Result<Self, ParseColorError> {
+        let err = || ParseColorError {
+            input: original.to_string(),
+            kind: ParseColorErrorKind::InvalidRgbFormat,
+        };
+
+        let parts: Vec<&str> = content.split(',').map(str::trim).collect();
+        if parts.len() != 3 {
+            return Err(err());
+        }
+
+        let r: u8 = parts[0].parse().map_err(|_| err())?;
+        let g: u8 = parts[1].parse().map_err(|_| err())?;
+        let b: u8 = parts[2].parse().map_err(|_| err())?;
+
+        Ok(Self::Rgb { r, g, b })
+    }
+
+    /// Convenience method that returns `Option` instead of `Result`.
+    ///
+    /// Wraps `FromStr` for compatibility with existing code.
+    #[must_use]
+    pub fn parse(s: &str) -> Option<Self> {
+        s.parse().ok()
+    }
+}
+
+impl fmt::Display for Color {
+    /// Format color as a canonical string representation.
+    ///
+    /// Output format:
+    /// - Named colors: lowercase name (e.g., `red`, `darkblue`)
+    /// - RGB colors: `#rrggbb` hex format
+    /// - ANSI 256 colors: `ansi:N`
+    /// - Reset: `default`
+    ///
+    /// Guarantees round-trip safety: `color.to_string().parse() == Ok(color)`.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Reset => write!(f, "default"),
+            Self::Black => write!(f, "black"),
+            Self::Red => write!(f, "red"),
+            Self::Green => write!(f, "green"),
+            Self::Yellow => write!(f, "yellow"),
+            Self::Blue => write!(f, "blue"),
+            Self::Magenta => write!(f, "magenta"),
+            Self::Cyan => write!(f, "cyan"),
+            Self::White => write!(f, "white"),
+            Self::Grey => write!(f, "grey"),
+            Self::DarkGrey => write!(f, "darkgrey"),
+            Self::DarkRed => write!(f, "darkred"),
+            Self::DarkGreen => write!(f, "darkgreen"),
+            Self::DarkYellow => write!(f, "darkyellow"),
+            Self::DarkBlue => write!(f, "darkblue"),
+            Self::DarkMagenta => write!(f, "darkmagenta"),
+            Self::DarkCyan => write!(f, "darkcyan"),
+            Self::Rgb { r, g, b } => write!(f, "#{r:02x}{g:02x}{b:02x}"),
+            Self::AnsiValue(n) => write!(f, "ansi:{n}"),
+        }
+    }
 }
 
 // =============================================================================
@@ -615,6 +838,179 @@ pub trait SignalHandler: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // =========================================================================
+    // Color Parsing Tests
+    // =========================================================================
+
+    #[test]
+    fn test_color_parse_named() {
+        assert_eq!("red".parse::<Color>().unwrap(), Color::Red);
+        assert_eq!("RED".parse::<Color>().unwrap(), Color::Red);
+        assert_eq!("Red".parse::<Color>().unwrap(), Color::Red);
+        assert_eq!("green".parse::<Color>().unwrap(), Color::Green);
+        assert_eq!("blue".parse::<Color>().unwrap(), Color::Blue);
+        assert_eq!("yellow".parse::<Color>().unwrap(), Color::Yellow);
+        assert_eq!("magenta".parse::<Color>().unwrap(), Color::Magenta);
+        assert_eq!("cyan".parse::<Color>().unwrap(), Color::Cyan);
+        assert_eq!("white".parse::<Color>().unwrap(), Color::White);
+        assert_eq!("black".parse::<Color>().unwrap(), Color::Black);
+        assert_eq!("grey".parse::<Color>().unwrap(), Color::Grey);
+        assert_eq!("gray".parse::<Color>().unwrap(), Color::Grey);
+        assert_eq!("darkred".parse::<Color>().unwrap(), Color::DarkRed);
+        assert_eq!("darkgrey".parse::<Color>().unwrap(), Color::DarkGrey);
+        assert_eq!("darkgray".parse::<Color>().unwrap(), Color::DarkGrey);
+    }
+
+    #[test]
+    fn test_color_parse_default() {
+        assert_eq!("default".parse::<Color>().unwrap(), Color::Reset);
+        assert_eq!("reset".parse::<Color>().unwrap(), Color::Reset);
+    }
+
+    #[test]
+    fn test_color_parse_hex() {
+        assert_eq!("#ff0000".parse::<Color>().unwrap(), Color::Rgb { r: 255, g: 0, b: 0 });
+        assert_eq!("#00ff00".parse::<Color>().unwrap(), Color::Rgb { r: 0, g: 255, b: 0 });
+        assert_eq!("#0000ff".parse::<Color>().unwrap(), Color::Rgb { r: 0, g: 0, b: 255 });
+        assert_eq!(
+            "#abcdef".parse::<Color>().unwrap(),
+            Color::Rgb {
+                r: 171,
+                g: 205,
+                b: 239
+            }
+        );
+    }
+
+    #[test]
+    fn test_color_parse_hex_short() {
+        // #rgb expands to #rrggbb
+        assert_eq!("#f00".parse::<Color>().unwrap(), Color::Rgb { r: 255, g: 0, b: 0 });
+        assert_eq!("#0f0".parse::<Color>().unwrap(), Color::Rgb { r: 0, g: 255, b: 0 });
+        assert_eq!(
+            "#abc".parse::<Color>().unwrap(),
+            Color::Rgb {
+                r: 170,
+                g: 187,
+                b: 204
+            }
+        );
+    }
+
+    #[test]
+    fn test_color_parse_ansi() {
+        assert_eq!("ansi:196".parse::<Color>().unwrap(), Color::AnsiValue(196));
+        assert_eq!("ansi:0".parse::<Color>().unwrap(), Color::AnsiValue(0));
+        assert_eq!("ansi:255".parse::<Color>().unwrap(), Color::AnsiValue(255));
+        assert_eq!("ANSI:100".parse::<Color>().unwrap(), Color::AnsiValue(100));
+    }
+
+    #[test]
+    fn test_color_parse_rgb_func() {
+        assert_eq!("rgb(255,0,0)".parse::<Color>().unwrap(), Color::Rgb { r: 255, g: 0, b: 0 });
+        assert_eq!("rgb(0, 255, 0)".parse::<Color>().unwrap(), Color::Rgb { r: 0, g: 255, b: 0 });
+        assert_eq!(
+            "RGB(100,150,200)".parse::<Color>().unwrap(),
+            Color::Rgb {
+                r: 100,
+                g: 150,
+                b: 200
+            }
+        );
+    }
+
+    #[test]
+    fn test_color_parse_errors() {
+        assert!("#ff00".parse::<Color>().is_err()); // Wrong length
+        assert!("#gggggg".parse::<Color>().is_err()); // Invalid hex
+        assert!("ansi:300".parse::<Color>().is_err()); // Out of range
+        assert!("unknown".parse::<Color>().is_err()); // Unknown name
+        assert!("rgb(1,2)".parse::<Color>().is_err()); // Missing component
+    }
+
+    #[test]
+    fn test_color_display() {
+        assert_eq!(Color::Red.to_string(), "red");
+        assert_eq!(Color::DarkBlue.to_string(), "darkblue");
+        assert_eq!(Color::Reset.to_string(), "default");
+        assert_eq!(Color::Rgb { r: 255, g: 0, b: 0 }.to_string(), "#ff0000");
+        assert_eq!(
+            Color::Rgb {
+                r: 171,
+                g: 205,
+                b: 239
+            }
+            .to_string(),
+            "#abcdef"
+        );
+        assert_eq!(Color::AnsiValue(196).to_string(), "ansi:196");
+    }
+
+    #[test]
+    fn test_color_roundtrip() {
+        // All named colors should roundtrip
+        let named_colors = [
+            Color::Reset,
+            Color::Black,
+            Color::Red,
+            Color::Green,
+            Color::Yellow,
+            Color::Blue,
+            Color::Magenta,
+            Color::Cyan,
+            Color::White,
+            Color::Grey,
+            Color::DarkGrey,
+            Color::DarkRed,
+            Color::DarkGreen,
+            Color::DarkYellow,
+            Color::DarkBlue,
+            Color::DarkMagenta,
+            Color::DarkCyan,
+        ];
+        for color in named_colors {
+            let s = color.to_string();
+            let parsed: Color = s.parse().unwrap();
+            assert_eq!(parsed, color, "roundtrip failed for {color:?}");
+        }
+
+        // RGB colors should roundtrip
+        let rgb_colors = [
+            Color::Rgb { r: 255, g: 0, b: 0 },
+            Color::Rgb { r: 0, g: 255, b: 0 },
+            Color::Rgb { r: 0, g: 0, b: 255 },
+            Color::Rgb {
+                r: 171,
+                g: 205,
+                b: 239,
+            },
+        ];
+        for color in rgb_colors {
+            let s = color.to_string();
+            let parsed: Color = s.parse().unwrap();
+            assert_eq!(parsed, color, "roundtrip failed for {color:?}");
+        }
+
+        // ANSI colors should roundtrip
+        for n in [0, 15, 100, 196, 255] {
+            let color = Color::AnsiValue(n);
+            let s = color.to_string();
+            let parsed: Color = s.parse().unwrap();
+            assert_eq!(parsed, color, "roundtrip failed for {color:?}");
+        }
+    }
+
+    #[test]
+    fn test_color_parse_convenience() {
+        assert_eq!(Color::parse("red"), Some(Color::Red));
+        assert_eq!(Color::parse("#ff0000"), Some(Color::Rgb { r: 255, g: 0, b: 0 }));
+        assert_eq!(Color::parse("invalid"), None);
+    }
+
+    // =========================================================================
+    // Existing Tests
+    // =========================================================================
 
     #[test]
     fn test_modifiers_operations() {

@@ -24,6 +24,7 @@
 //! }
 //! ```
 
+mod colorscheme;
 mod quit;
 mod session;
 mod types;
@@ -35,6 +36,7 @@ use reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, Probe
 pub use types::{CommandError, ExCommandContext, ExCommandHandler, Range};
 
 pub use {
+    colorscheme::ColorschemeCommand,
     quit::QuitCommand,
     session::{DetachCommand, KillServerCommand, ServersCommand},
     write::{WriteCommand, WriteQuitCommand},
@@ -47,6 +49,7 @@ pub fn commands() -> Vec<Box<dyn ExCommandHandler>> {
         Box::new(QuitCommand),
         Box::new(WriteCommand),
         Box::new(WriteQuitCommand),
+        Box::new(ColorschemeCommand),
     ];
     // Add session management commands from #350
     cmds.extend(session::commands());
@@ -107,13 +110,14 @@ mod tests {
     #[test]
     fn test_commands_list() {
         let cmds = commands();
-        assert_eq!(cmds.len(), 6); // 3 base + 3 session commands
+        assert_eq!(cmds.len(), 7); // 4 base + 3 session commands
 
         // Check commands are present
         let ids: Vec<_> = cmds.iter().map(|c| c.id()).collect();
         assert!(ids.contains(&"quit"));
         assert!(ids.contains(&"write"));
         assert!(ids.contains(&"write-quit"));
+        assert!(ids.contains(&"colorscheme")); // #439
         // Session commands from #350
         assert!(ids.contains(&"detach"));
         assert!(ids.contains(&"servers"));

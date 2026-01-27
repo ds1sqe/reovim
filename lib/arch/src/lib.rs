@@ -37,7 +37,7 @@ pub mod error;
 pub mod sync;
 pub mod traits;
 
-// Re-export all public types from traits
+// Re-export all public types from traits (including ParseColorError, ParseColorErrorKind)
 pub use traits::*;
 
 #[cfg(unix)]

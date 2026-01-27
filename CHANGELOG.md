@@ -26,6 +26,35 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **Compositor infrastructure**: Layout module now self-registers 15 window
   commands via `CommandHandlerStore`. Runner no longer imports from policy
   modules, fixing architecture violation. (#438)
+- **Floating window layer**: Implemented float zone within the nested compositor
+  architecture. Windows can toggle between tiled and floating with `<C-w>f`.
+  Float windows are rendered above tiled windows and can be reordered with
+  `<C-w>]` (raise) and `<C-w>[` (lower). Navigation (h/j/k/l) and cycling (w/W)
+  work seamlessly between tiled and float windows using spatial proximity. (#398)
+- **Overlay/popup layer**: Implemented overlay zone within the nested compositor
+  for temporary UI elements (popups, menus, tooltips, autocomplete). Overlays
+  use anchor-based positioning: Cursor (below text cursor), Screen (absolute),
+  Center (screen center), or Below (below a window). Supports up to 50 overlays
+  per layer with automatic clamping to screen bounds. Overlays render above all
+  tiled and float windows without stealing focus. Infrastructure only; consumer
+  systems (autocomplete, hover, command palette) to follow. (#399)
+- **Color and theme system**: Implemented centralized theme system with 3 built-in
+  themes (dark, light, tokyo-night-orange). Themes define 41 highlight groups for
+  syntax (keyword, function, string, comment, etc.), UI elements (statusline,
+  line numbers, cursor, selection, borders), diagnostics (error, warning, info,
+  hint), and rainbow brackets (6 colors + unmatched). Switch themes at runtime
+  with `:colorscheme <name>`. Theme system follows mechanism/policy separation:
+  driver layer provides `ThemeProvider` trait and `ThemeManager`, module layer
+  provides `:colorscheme` command. Supports 16, 256, and true color terminals
+  with automatic color mode detection. (#439)
+- **Pair plugin**: Added bracket assistance module with three features: (1)
+  Auto-close brackets - typing `(`, `[`, `{`, backtick, `'`, or `"` inserts the
+  closing character with cursor positioned between. Symmetric pairs (quotes)
+  use atomic tracking to prevent infinite recursion. (2) Rainbow bracket
+  highlighting - nested brackets colored by depth using a 6-color palette that
+  cycles. (3) Matched pair indicator - cursor on a bracket highlights its match
+  with bold + underline. Module registers `SharedPairState` service and subscribes
+  to `CursorMoved`, `BufferModified`, `BufferClosed` events. (#440)
 
 ### Changed
 
@@ -33,6 +62,16 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   appending. This gives the environment variable highest priority, matching
   the convention of `LD_LIBRARY_PATH`, `PYTHONPATH`, etc. Users who relied
   on the previous append behavior should adjust their module organization. (#433)
+- **Display driver mechanism/policy separation**: Refactored display driver to
+  remove all policy leakage. (1) Decoration registry now uses string-based
+  `DecorationSourceKey` instead of enum variants - modules define their own keys
+  (e.g., `"pair.rainbow"`). (2) `StyleGroupRegistry` allows modules to register
+  default styles - rainbow bracket colors moved from driver to pair module.
+  (3) Added idiomatic `FromStr`/`Display` traits for `Color` and `Attributes`
+  with proper error types. (4) `Style::from_wire()` provides unified RPC
+  deserialization, eliminating ~100 lines of duplicated parsing code. The
+  `ThemeManager` now uses 4-tier lookup: user overrides → theme → module
+  defaults → theme fallback. (#440)
 
 ### Fixed
 
@@ -55,6 +94,16 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **Module FFI symbols**: Fixed hot-reload-demo module missing FFI entry points
   by enabling the `dynamic` feature by default. This resolved 9 failing
   module_loading integration tests. (#448)
+- **Pair plugin cursor position**: Fixed cursor position after auto-pair insertion.
+  Now cursor is positioned between brackets `(|)` instead of after `()|`. Added
+  `set_position()` call after `insert_at()` to restore cursor position. (#440)
+- **Pair plugin decoration wiring**: Wired rainbow bracket decorations into TUI
+  rendering pipeline. Created `BufferDecorationSourceRegistry` and
+  `BufferDecorationSourceKey` in display driver for generic decoration lookup.
+  Pair module registers in registry during init. Screen handler queries registry
+  and embeds colors in `cell_grid` format. TUI parses cell_grid and applies
+  per-cell styles to frame buffer. Proper mechanism/policy separation maintained:
+  display driver defines traits, pair module implements them. (#440)
 
 ### Removed
 

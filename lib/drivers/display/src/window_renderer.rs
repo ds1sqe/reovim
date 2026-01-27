@@ -24,6 +24,27 @@
 //! │   gutter width   content area              │
 //! └─────────────────────────────────────────────┘
 //! ```
+//!
+//! # Theme Integration
+//!
+//! Use `WindowRendererConfig::from_theme()` to create a config with theme colors:
+//!
+//! ```ignore
+//! use reovim_driver_display::style::{SharedThemeManager, groups};
+//! use reovim_driver_display::window_renderer::{WindowRenderer, WindowRendererConfig};
+//!
+//! // Get ThemeManager from ServiceRegistry
+//! let shared = services.get::<SharedThemeManager>().unwrap();
+//! let manager = shared.read();
+//!
+//! // Create themed config
+//! let config = WindowRendererConfig::from_theme(&manager);
+//! let default_style = manager.get_style(groups::FOREGROUND);
+//!
+//! // Render with theme colors
+//! let renderer = WindowRenderer::with_config(config);
+//! renderer.render(&content, bounds, &mut buffer, &default_style);
+//! ```
 
 use crate::{
     compositor::Style,
@@ -68,6 +89,35 @@ impl Default for WindowRendererConfig {
             show_cursor: true,
             line_number_style: Style::default(),
             cursor_line_number_style: Style::default(),
+        }
+    }
+}
+
+impl WindowRendererConfig {
+    /// Create a config from a `ThemeManager`.
+    ///
+    /// Extracts line number styles from the theme's highlight groups.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use reovim_driver_display::style::SharedThemeManager;
+    /// use reovim_driver_display::window_renderer::WindowRendererConfig;
+    ///
+    /// let manager = services.get::<SharedThemeManager>().unwrap();
+    /// let config = WindowRendererConfig::from_theme(&manager.read());
+    /// let renderer = WindowRenderer::with_config(config);
+    /// ```
+    #[must_use]
+    pub fn from_theme(manager: &crate::style::ThemeManager) -> Self {
+        use crate::style::groups;
+
+        Self {
+            line_numbers: LineNumberMode::Absolute,
+            line_number_width: 0, // Auto-calculate
+            show_cursor: true,
+            line_number_style: manager.get_style(groups::LINE_NUMBER),
+            cursor_line_number_style: manager.get_style(groups::LINE_NUMBER_ACTIVE),
         }
     }
 }

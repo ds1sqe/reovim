@@ -134,6 +134,7 @@ reovim-module-undo = { path = "./modules/undo", version = "0.9.2-dev" }
 reovim-module-buffer-simple = { path = "./modules/buffer-simple", version = "0.9.2-dev" }
 reovim-module-search = { path = "./modules/search", version = "0.9.2-dev" }
 reovim-module-clipboard = { path = "./modules/clipboard", version = "0.9.2-dev" }
+reovim-module-pair = { path = "./modules/pair", version = "0.9.2-dev" }
 
 # CLI
 clap = { version = "4", features = ["derive"] }
