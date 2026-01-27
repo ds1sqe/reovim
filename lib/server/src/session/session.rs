@@ -26,6 +26,16 @@ impl Session {
         }
     }
 
+    /// Create a new session with a custom state (for testing).
+    #[cfg(test)]
+    #[must_use]
+    pub const fn new_with_state(id: SessionId, state: SessionState) -> Self {
+        Self {
+            id,
+            state: RwLock::new(state),
+        }
+    }
+
     /// Get the session ID.
     #[must_use]
     pub const fn id(&self) -> &SessionId {

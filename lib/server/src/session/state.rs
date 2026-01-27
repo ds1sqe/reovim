@@ -53,8 +53,9 @@ impl Default for SessionState {
 }
 
 impl SessionState {
-    /// Create a session state with a custom kernel context (for testing).
-    #[cfg(test)]
+    /// Create a session state with a custom kernel context.
+    ///
+    /// Useful for testing with non-default buffer managers.
     #[must_use]
     pub const fn with_kernel(kernel: KernelContext) -> Self {
         Self { kernel }

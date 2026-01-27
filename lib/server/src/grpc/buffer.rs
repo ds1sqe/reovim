@@ -216,3 +216,214 @@ impl BufferService for BufferServiceImpl {
         Err(Status::unimplemented("SetContent not yet implemented"))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_registry() -> Arc<SessionRegistry> {
+        let registry = Arc::new(SessionRegistry::new());
+        let session = Arc::new(Session::new(SessionId::new("test")));
+        registry.insert(&session);
+        registry
+    }
+
+    /// Create a registry with a session that has a real buffer manager.
+    fn test_registry_with_buffer_manager() -> (Arc<SessionRegistry>, Arc<Session>) {
+        use {
+            parking_lot::RwLock as ParkingLotRwLock,
+            reovim_driver_buffer::TestBufferManager,
+            reovim_kernel::api::v1::{
+                EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, RegisterBank,
+                ServiceRegistry, TextObjectEngine,
+            },
+        };
+
+        let kernel = KernelContext::new(
+            Arc::new(EventBus::new()),
+            Arc::new(TestBufferManager::new()),
+            Arc::new(MotionEngine),
+            Arc::new(TextObjectEngine),
+            Arc::new(ParkingLotRwLock::new(RegisterBank::new())),
+            Arc::new(ParkingLotRwLock::new(MarkBank::new())),
+            Arc::new(OptionRegistry::new()),
+            Arc::new(ServiceRegistry::new()),
+        );
+
+        let state = crate::session::SessionState::with_kernel(kernel);
+        let session = Arc::new(Session::new_with_state(SessionId::new("test"), state));
+
+        let registry = Arc::new(SessionRegistry::new());
+        registry.insert(&session);
+
+        (registry, session)
+    }
+
+    #[tokio::test]
+    async fn test_get_raw_content_no_session() {
+        let registry = Arc::new(SessionRegistry::new());
+        let service = BufferServiceImpl::new(registry, SessionId::new("nonexistent"));
+
+        let request = Request::new(GetRawContentRequest {
+            buffer_id: None,
+            start_line: None,
+            end_line: None,
+        });
+        let response = service.get_raw_content(request).await;
+
+        assert!(response.is_err());
+        assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
+    }
+
+    #[tokio::test]
+    async fn test_get_raw_content_no_buffer() {
+        let registry = test_registry();
+        let service = BufferServiceImpl::new(registry, SessionId::new("test"));
+
+        let request = Request::new(GetRawContentRequest {
+            buffer_id: None,
+            start_line: None,
+            end_line: None,
+        });
+        let response = service.get_raw_content(request).await;
+
+        assert!(response.is_err());
+        assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
+    }
+
+    #[tokio::test]
+    async fn test_get_raw_content_with_buffer() {
+        let (registry, session) = test_registry_with_buffer_manager();
+
+        session
+            .with_state_mut(|state| {
+                state.create_buffer("hello\nworld");
+            })
+            .await;
+
+        let service = BufferServiceImpl::new(registry, SessionId::new("test"));
+
+        let request = Request::new(GetRawContentRequest {
+            buffer_id: None,
+            start_line: None,
+            end_line: None,
+        });
+        let response = service.get_raw_content(request).await;
+
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+        assert_eq!(resp.lines.len(), 2);
+        assert_eq!(resp.lines[0], "hello");
+        assert_eq!(resp.lines[1], "world");
+    }
+
+    #[tokio::test]
+    async fn test_get_line_count_no_buffer() {
+        let registry = test_registry();
+        let service = BufferServiceImpl::new(registry, SessionId::new("test"));
+
+        let request = Request::new(GetLineCountRequest { buffer_id: None });
+        let response = service.get_line_count(request).await;
+
+        assert!(response.is_err());
+        assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
+    }
+
+    #[tokio::test]
+    async fn test_get_line_count_with_buffer() {
+        let (registry, session) = test_registry_with_buffer_manager();
+
+        session
+            .with_state_mut(|state| {
+                state.create_buffer("line1\nline2\nline3");
+            })
+            .await;
+
+        let service = BufferServiceImpl::new(registry, SessionId::new("test"));
+
+        let request = Request::new(GetLineCountRequest { buffer_id: None });
+        let response = service.get_line_count(request).await;
+
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+        assert_eq!(resp.line_count, 3);
+    }
+
+    #[tokio::test]
+    async fn test_list_buffers_empty() {
+        let registry = test_registry();
+        let service = BufferServiceImpl::new(registry, SessionId::new("test"));
+
+        let request = Request::new(ListBuffersRequest {});
+        let response = service.list(request).await;
+
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+        assert!(resp.buffers.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_list_buffers_with_buffer() {
+        let (registry, session) = test_registry_with_buffer_manager();
+
+        session
+            .with_state_mut(|state| {
+                state.create_buffer("content");
+            })
+            .await;
+
+        let service = BufferServiceImpl::new(registry, SessionId::new("test"));
+
+        let request = Request::new(ListBuffersRequest {});
+        let response = service.list(request).await;
+
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+        assert_eq!(resp.buffers.len(), 1);
+        assert_eq!(resp.buffers[0].line_count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_open_file_unimplemented() {
+        let registry = test_registry();
+        let service = BufferServiceImpl::new(registry, SessionId::new("test"));
+
+        let request = Request::new(OpenFileRequest {
+            path: "test.txt".to_string(),
+        });
+        let response = service.open_file(request).await;
+
+        assert!(response.is_err());
+        assert_eq!(response.unwrap_err().code(), tonic::Code::Unimplemented);
+    }
+
+    #[tokio::test]
+    async fn test_write_file_unimplemented() {
+        let registry = test_registry();
+        let service = BufferServiceImpl::new(registry, SessionId::new("test"));
+
+        let request = Request::new(WriteFileRequest {
+            buffer_id: Some(0),
+            path: None,
+        });
+        let response = service.write_file(request).await;
+
+        assert!(response.is_err());
+        assert_eq!(response.unwrap_err().code(), tonic::Code::Unimplemented);
+    }
+
+    #[tokio::test]
+    async fn test_set_content_unimplemented() {
+        let registry = test_registry();
+        let service = BufferServiceImpl::new(registry, SessionId::new("test"));
+
+        let request = Request::new(SetContentRequest {
+            buffer_id: Some(0),
+            content: "test".to_string(),
+        });
+        let response = service.set_content(request).await;
+
+        assert!(response.is_err());
+        assert_eq!(response.unwrap_err().code(), tonic::Code::Unimplemented);
+    }
+}

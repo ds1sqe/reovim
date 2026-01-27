@@ -96,8 +96,15 @@ impl Server {
     #[cfg(feature = "grpc")]
     async fn run_grpc(&self, port: u16) -> std::io::Result<()> {
         use {
-            crate::grpc::BufferServiceImpl,
-            reovim_protocol::v2::buffer_service_server::BufferServiceServer,
+            crate::grpc::{
+                BufferServiceImpl, InputServiceImpl, ServerServiceImpl, StateServiceImpl,
+            },
+            reovim_protocol::v2::{
+                buffer_service_server::BufferServiceServer,
+                input_service_server::InputServiceServer,
+                server_service_server::ServerServiceServer,
+                state_service_server::StateServiceServer,
+            },
         };
 
         let addr: std::net::SocketAddr = format!("127.0.0.1:{port}")
@@ -107,10 +114,21 @@ impl Server {
         tracing::info!(address = %addr, "Starting gRPC server");
 
         let default_session_id = SessionId::new(&*self.config.default_session_name);
-        let buffer_service = BufferServiceImpl::new(Arc::clone(&self.sessions), default_session_id);
+
+        // Create all gRPC services
+        let buffer_service =
+            BufferServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
+        let input_service =
+            InputServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
+        let state_service =
+            StateServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
+        let server_service = ServerServiceImpl::new(Arc::clone(&self.sessions), default_session_id);
 
         tonic::transport::Server::builder()
             .add_service(BufferServiceServer::new(buffer_service))
+            .add_service(InputServiceServer::new(input_service))
+            .add_service(StateServiceServer::new(state_service))
+            .add_service(ServerServiceServer::new(server_service))
             .serve(addr)
             .await
             .map_err(std::io::Error::other)

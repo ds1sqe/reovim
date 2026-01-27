@@ -6,6 +6,18 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **gRPC v2 CLI client (Phase 7)**: Created `lib/clients/cli/` crate
+  (reovim-client-cli v0.9.3-dev) as the gRPC v2 command-line client. Deprecates
+  JSON-RPC v1 for CLI usage. Implements four gRPC services in `lib/server/`:
+  `InputServiceImpl` (SendKeys with vim notation parsing), `StateServiceImpl`
+  (GetMode, GetCursor - other methods return unimplemented), `ServerServiceImpl`
+  (Ping, Info with uptime/buffer count - Kill returns unimplemented). CLI crate
+  contains `GrpcClient` wrapper over tonic clients, command implementations
+  (keys, mode, cursor, buffers, buffer, ping, version), and clap-based argument
+  parsing with `--grpc` address option and `--format` (plain/json) output.
+  Basic character insertion supported; full vim key resolution deferred.
+  Part of Epic #465 Phase 7. (#465)
+
 - **TUI crate extraction (Phase 6)**: Created `lib/clients/tui/` crate
   (reovim-client-tui v0.9.3-dev) as the standalone TUI client library. Contains
   terminal user interface with crossterm for rendering, async event loop with

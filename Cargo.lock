@@ -1807,6 +1807,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-client-cli"
+version = "0.9.3-dev"
+dependencies = [
+ "clap",
+ "reovim-protocol",
+ "serde_json",
+ "tokio",
+ "tonic",
+ "tracing",
+]
+
+[[package]]
 name = "reovim-client-core"
 version = "0.9.3-dev"
 dependencies = [
