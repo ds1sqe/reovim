@@ -6,6 +6,14 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Server crate extraction (Phase 3)**: Created new `lib/server/` crate
+  (reovim-server v0.9.3-dev) as the foundation for server/client split. Implements
+  session management with `SessionRegistry` (lock-free via `ArcSwap`), `Session`
+  (named editing context), and `SessionState` (kernel wrapper). Server supports
+  multiple transports: TCP with fallback, specific TCP port, Unix socket (Unix),
+  and gRPC (feature-gated). Bridges to gRPC v2 protocol via `BufferServiceImpl`.
+  New crate coexists with old runner - no breaking changes. Part of Epic #465. (#465)
+
 - **gRPC v2 transport (Phase 2)**: Added gRPC transport listener as parallel
   transport option alongside existing TCP/JSON-RPC. Server can start with
   `--grpc <PORT>` flag. Implemented `BufferService` gRPC service with methods:

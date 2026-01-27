@@ -29,6 +29,9 @@ members = [
     # Platform abstraction
     "lib/arch",
 
+    # Server layer (v0.9.3 - Epic #465)
+    "lib/server",
+
     # Module macros
     "lib/module-macros",
 
@@ -94,6 +97,9 @@ reovim-module-macros = { path = "./lib/module-macros", version = "0.9.2-dev" }
 # Protocol (shared RPC types) - v0.9.3 for gRPC v2 protocol (Epic #465)
 reovim-protocol = { path = "./lib/protocol", version = "0.9.3-dev" }
 
+# Server layer - v0.9.3 for server/client split (Epic #465)
+reovim-server = { path = "./lib/server", version = "0.9.3-dev" }
+
 # Driver crates
 reovim-driver-command-types = { path = "./lib/drivers/command-types", version = "0.9.2-dev" }
 reovim-driver-command = { path = "./lib/drivers/command", version = "0.9.2-dev" }
@@ -141,6 +147,7 @@ clap = { version = "4", features = ["derive"] }
 
 # Configuration
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 toml = "0.8"
 
 # Clipboard
