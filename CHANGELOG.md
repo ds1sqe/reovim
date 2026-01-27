@@ -6,6 +6,18 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **TUI crate extraction (Phase 6)**: Created `lib/clients/tui/` crate
+  (reovim-client-tui v0.9.3-dev) as the standalone TUI client library. Contains
+  terminal user interface with crossterm for rendering, async event loop with
+  notifications, and embedded CLI panel. Includes 11 modules: `TuiApp` (main
+  event loop, ~1800 LOC), `HeadlessClient` (CI/capture mode, ~630 LOC),
+  `CliPanelState`/`CliExecutor`/`CliRender` (embedded CLI, ~1250 LOC combined),
+  `LogBuffer`/`LogPanel`/`LogRender` (log panel, ~945 LOC combined),
+  `InputHandler` (keyboard handling, ~224 LOC), `Renderer` (crossterm wrapper,
+  ~186 LOC), `RenderState` (frame capture, ~335 LOC). Uses "copy" approach -
+  runner keeps its own copy unchanged. All 87 unit tests pass. Part of Epic
+  #465 Phase 6. (#465)
+
 - **Client core extraction (Phase 5)**: Created `lib/clients/core/` crate
   (reovim-client-core v0.9.3-dev) as the standalone client connection library.
   Provides TCP/Unix socket connection abstraction (`Connection`, `ConnectionConfig`),

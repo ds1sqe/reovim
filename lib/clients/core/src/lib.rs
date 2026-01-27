@@ -62,11 +62,13 @@
 
 pub mod connection;
 pub mod discovery;
+pub mod output;
 pub mod rpc;
 
 // Re-exports for convenience
 pub use {
     connection::{Connection, ConnectionConfig, ConnectionReader, ConnectionWriter},
     discovery::{ServerInfo, list_servers},
+    output::{OutputFormat, format_output, format_output_for_command},
     rpc::{RpcClient, RpcClientError, RpcWriter, ServerMessage},
 };

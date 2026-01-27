@@ -1817,6 +1817,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-client-tui"
+version = "0.9.3-dev"
+dependencies = [
+ "chrono",
+ "clap",
+ "crossterm",
+ "futures",
+ "reovim-arch",
+ "reovim-client-core",
+ "reovim-driver-display",
+ "reovim-protocol",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "reovim-driver-buffer"
 version = "0.9.2-dev"
 dependencies = [
