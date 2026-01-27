@@ -94,6 +94,10 @@ pub mod log_render;
 pub mod render;
 pub mod render_core;
 
+// gRPC v2 client (Phase 8)
+#[cfg(feature = "grpc")]
+pub mod grpc_client;
+
 pub use {
     app::TuiApp,
     cli_panel::{CliHistoryEntry, CliPanelState, CliResult},
@@ -105,6 +109,10 @@ pub use {
     render::Renderer,
     render_core::{RenderState, build_frame_content},
 };
+
+// gRPC v2 client exports (Phase 8)
+#[cfg(feature = "grpc")]
+pub use grpc_client::{TuiGrpcClient, TuiGrpcError};
 
 /// TUI mode CLI arguments.
 ///

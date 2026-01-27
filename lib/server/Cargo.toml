@@ -11,7 +11,7 @@ homepage.workspace = true
 
 [features]
 default = []
-grpc = ["reovim-protocol/grpc", "dep:tonic"]
+grpc = ["reovim-protocol/grpc", "dep:tonic", "dep:tokio-stream", "dep:futures", "dep:async-stream"]
 
 [dependencies]
 # Core crates
@@ -42,6 +42,9 @@ parking_lot = "0.12"
 
 # gRPC (optional)
 tonic = { version = "0.12", optional = true }
+tokio-stream = { version = "0.1", features = ["sync"], optional = true }
+futures = { workspace = true, optional = true }
+async-stream = { version = "0.3", optional = true }
 
 [dev-dependencies]
 tempfile = "3.0"

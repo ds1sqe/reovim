@@ -1843,6 +1843,8 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tokio-stream",
+ "tonic",
  "tracing",
 ]
 
@@ -2346,6 +2348,8 @@ name = "reovim-server"
 version = "0.9.3-dev"
 dependencies = [
  "arc-swap",
+ "async-stream",
+ "futures",
  "parking_lot",
  "reovim-arch",
  "reovim-driver-buffer",
@@ -2360,6 +2364,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "tokio-stream",
  "tonic",
  "tracing",
 ]
@@ -2771,6 +2776,7 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]

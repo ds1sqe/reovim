@@ -9,12 +9,20 @@ description = "Reovim TUI client - terminal user interface"
 repository.workspace = true
 homepage.workspace = true
 
+[features]
+default = ["grpc"]
+grpc = ["reovim-protocol/grpc", "dep:tonic", "dep:tokio-stream"]
+
 [dependencies]
-# Client core (connection, discovery, RPC, output)
+# Client core (connection, discovery, RPC, output) - v1 JSON-RPC (deprecated)
 reovim-client-core = { workspace = true }
 
-# Protocol types
+# Protocol types (v2 gRPC when grpc feature enabled)
 reovim-protocol = { workspace = true }
+
+# gRPC (optional, default enabled)
+tonic = { workspace = true, optional = true }
+tokio-stream = { version = "0.1", features = ["sync"], optional = true }
 
 # Display driver (FrameBuffer, FrameRenderer, Style)
 reovim-driver-display = { workspace = true }

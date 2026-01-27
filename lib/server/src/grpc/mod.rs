@@ -5,10 +5,11 @@
 
 mod buffer;
 mod input;
+mod notification;
 mod server_service;
 mod state;
 
 pub use {
-    buffer::BufferServiceImpl, input::InputServiceImpl, server_service::ServerServiceImpl,
-    state::StateServiceImpl,
+    buffer::BufferServiceImpl, input::InputServiceImpl, notification::NotificationServiceImpl,
+    server_service::ServerServiceImpl, state::StateServiceImpl,
 };

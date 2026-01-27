@@ -97,11 +97,13 @@ impl Server {
     async fn run_grpc(&self, port: u16) -> std::io::Result<()> {
         use {
             crate::grpc::{
-                BufferServiceImpl, InputServiceImpl, ServerServiceImpl, StateServiceImpl,
+                BufferServiceImpl, InputServiceImpl, NotificationServiceImpl, ServerServiceImpl,
+                StateServiceImpl,
             },
             reovim_protocol::v2::{
                 buffer_service_server::BufferServiceServer,
                 input_service_server::InputServiceServer,
+                notification_service_server::NotificationServiceServer,
                 server_service_server::ServerServiceServer,
                 state_service_server::StateServiceServer,
             },
@@ -122,13 +124,17 @@ impl Server {
             InputServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
         let state_service =
             StateServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
-        let server_service = ServerServiceImpl::new(Arc::clone(&self.sessions), default_session_id);
+        let server_service =
+            ServerServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
+        let notification_service =
+            NotificationServiceImpl::new(Arc::clone(&self.sessions), default_session_id);
 
         tonic::transport::Server::builder()
             .add_service(BufferServiceServer::new(buffer_service))
             .add_service(InputServiceServer::new(input_service))
             .add_service(StateServiceServer::new(state_service))
             .add_service(ServerServiceServer::new(server_service))
+            .add_service(NotificationServiceServer::new(notification_service))
             .serve(addr)
             .await
             .map_err(std::io::Error::other)

@@ -6,6 +6,18 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **NotificationService infrastructure (Phase 8A)**: Implemented gRPC v2
+  NotificationService with server-to-client streaming for real-time notifications.
+  Uses `tokio::sync::broadcast` channel pattern - Session holds broadcast sender,
+  clients subscribe via `subscribe_notifications()`. `NotificationServiceImpl`
+  wraps broadcast receiver in `async_stream::stream!` with event type filtering
+  via `SubscribeRequest.event_types`. Created `TuiGrpcClient` module in
+  `lib/clients/tui/` ready for future TUI migration (wraps Input, State, Buffer,
+  Notification service clients with `subscribe()` method returning
+  `Streaming<Notification>`). Added `grpc` feature to TUI Cargo.toml. This phase
+  lands infrastructure only - full TUI migration deferred to Phase 8B. Part of
+  Epic #465 Phase 8A. (#465)
+
 - **gRPC v2 CLI client (Phase 7)**: Created `lib/clients/cli/` crate
   (reovim-client-cli v0.9.3-dev) as the gRPC v2 command-line client. Deprecates
   JSON-RPC v1 for CLI usage. Implements four gRPC services in `lib/server/`:

@@ -1,8 +1,14 @@
 //! Session - a named editing context.
 
 use parking_lot::RwLock;
+#[cfg(feature = "grpc")]
+use {reovim_protocol::v2::Notification, tokio::sync::broadcast};
 
 use super::{SessionId, SessionState};
+
+/// Default channel capacity for notifications.
+#[cfg(feature = "grpc")]
+const NOTIFICATION_CHANNEL_CAPACITY: usize = 256;
 
 /// A session is a named editing context.
 ///
@@ -14,26 +20,60 @@ pub struct Session {
 
     /// Session state protected by `RwLock`.
     state: RwLock<SessionState>,
+
+    /// Notification broadcast channel (gRPC only).
+    #[cfg(feature = "grpc")]
+    notification_tx: broadcast::Sender<Notification>,
 }
 
 impl Session {
     /// Create a new session with the given ID.
     #[must_use]
     pub fn new(id: SessionId) -> Self {
+        #[cfg(feature = "grpc")]
+        let (notification_tx, _) = broadcast::channel(NOTIFICATION_CHANNEL_CAPACITY);
+
         Self {
             id,
             state: RwLock::new(SessionState::new()),
+            #[cfg(feature = "grpc")]
+            notification_tx,
         }
     }
 
     /// Create a new session with a custom state (for testing).
     #[cfg(test)]
     #[must_use]
-    pub const fn new_with_state(id: SessionId, state: SessionState) -> Self {
+    pub fn new_with_state(id: SessionId, state: SessionState) -> Self {
+        #[cfg(feature = "grpc")]
+        let (notification_tx, _) = broadcast::channel(NOTIFICATION_CHANNEL_CAPACITY);
+
         Self {
             id,
             state: RwLock::new(state),
+            #[cfg(feature = "grpc")]
+            notification_tx,
         }
+    }
+
+    /// Subscribe to notifications (gRPC only).
+    ///
+    /// Returns a receiver for the notification broadcast channel.
+    /// Used by `NotificationService` to stream updates to clients.
+    #[cfg(feature = "grpc")]
+    #[must_use]
+    pub fn subscribe_notifications(&self) -> broadcast::Receiver<Notification> {
+        self.notification_tx.subscribe()
+    }
+
+    /// Emit a notification to all subscribers (gRPC only).
+    ///
+    /// Sends a notification to all connected clients via the broadcast channel.
+    /// If no clients are subscribed, the notification is silently dropped.
+    #[cfg(feature = "grpc")]
+    pub fn emit_notification(&self, notification: Notification) {
+        // Ignore send errors (no subscribers)
+        let _ = self.notification_tx.send(notification);
     }
 
     /// Get the session ID.
@@ -125,10 +165,7 @@ mod tests {
         );
 
         let state = SessionState::with_kernel(kernel);
-        let session = Session {
-            id: SessionId::default(),
-            state: RwLock::new(state),
-        };
+        let session = Session::new_with_state(SessionId::default(), state);
 
         // Create a buffer
         session
