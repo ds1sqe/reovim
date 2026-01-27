@@ -47,6 +47,7 @@
 //! ```
 
 use crate::{
+    annotation::{ComposedLine, GutterComposer, PresenterContext},
     compositor::Style,
     frame::{Cell, FrameBuffer},
     window::Rect,
@@ -404,6 +405,58 @@ impl WindowRenderer {
         let start = top_line.min(lines.len());
         let end = (top_line + height).min(lines.len());
         &lines[start..end]
+    }
+
+    /// Render gutter using the annotation system.
+    ///
+    /// This method uses the generic annotation architecture to render the gutter,
+    /// allowing extensible sources (line numbers, diagnostics, git, etc.) and
+    /// presenters to be composed together.
+    ///
+    /// # Arguments
+    ///
+    /// * `composer` - The gutter composer with sources and presenters
+    /// * `buffer` - The frame buffer to render to
+    /// * `bounds` - The area allocated for the gutter
+    /// * `ctx` - Presenter context with buffer information
+    /// * `first_line` - First visible line index (0-indexed)
+    #[allow(clippy::unused_self)]
+    pub fn render_gutter_annotated(
+        &self,
+        composer: &GutterComposer<'_>,
+        buffer: &mut FrameBuffer,
+        bounds: Rect,
+        ctx: &PresenterContext,
+        first_line: usize,
+    ) {
+        let visible_lines = bounds.height as usize;
+        let end_line = first_line + visible_lines;
+
+        // Compose gutter for visible line range
+        let composed_lines = composer.compose_range(first_line, end_line, ctx);
+
+        // Render each line's gutter cells
+        for (row_idx, line) in composed_lines.iter().enumerate() {
+            #[allow(clippy::cast_possible_truncation)]
+            let y = bounds.y + (row_idx as u16);
+            if y >= bounds.y + bounds.height {
+                break;
+            }
+
+            Self::render_composed_line(buffer, bounds.x, y, line);
+        }
+    }
+
+    /// Render a composed gutter line to the buffer.
+    fn render_composed_line(buffer: &mut FrameBuffer, x: u16, y: u16, line: &ComposedLine) {
+        let mut current_x = x;
+        for cell in &line.cells {
+            buffer.set(current_x, y, Cell::new(cell.char, cell.style.clone()));
+            #[allow(clippy::cast_possible_truncation)]
+            {
+                current_x += cell.width() as u16;
+            }
+        }
     }
 }
 

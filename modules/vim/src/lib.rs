@@ -48,6 +48,7 @@ use {
     reovim_kernel::api::v1::*,
 };
 
+pub mod annotation;
 pub mod bindings;
 pub mod commands;
 pub mod fallback;

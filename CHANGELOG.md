@@ -89,6 +89,18 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   custom components (example: BranchComponent for git, DiagnosticsComponent for
   LSP). Component visibility conditions support WhenModified, WhenInGitRepo,
   InModes, etc. Priority-based truncation respects component importance. (#441)
+- **Generic annotation system**: Implemented unified architecture for displaying
+  per-line information in the gutter. Core types: `AnnotationKind` (hierarchical
+  identifiers like `"diagnostic.error"`), `AnnotationTarget` (line/range/point/buffer),
+  `AnnotationPayload` (number/text/severity/state). Architecture follows mechanism/
+  policy separation: display driver provides traits (`AnnotationSource`,
+  `AnnotationPresenter`), storage (`AnnotationStore`), and composition
+  (`GutterComposer`); vim module provides policy implementations
+  (`LineNumberSource`, `LineNumberPresenter`). Data flow: Sources -> Store ->
+  Presenters -> Composer -> Gutter Cells. Added `GutterRenderer` high-level
+  integration helper. Added 8 new highlight groups: `sign_column`,
+  `gutter_separator`, `git.add`, `git.change`, `git.delete`, `fold.open`,
+  `fold.closed`, `bookmark`. (#455)
 
 ### Changed
 

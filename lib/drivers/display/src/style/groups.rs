@@ -10,10 +10,11 @@
 //!
 //! # Groups
 //!
-//! Groups are organized into three categories:
+//! Groups are organized into four categories:
 //! - **Syntax** (13 groups): Code elements like keywords, functions, strings
 //! - **UI** (17 groups): Editor chrome like statusline, line numbers, borders
 //! - **Diagnostic** (4 groups): LSP diagnostics like errors and warnings
+//! - **Gutter** (8 groups): Annotation system groups (signs, git, folds)
 //!
 //! Additional groups (e.g., rainbow brackets) are registered by modules via
 //! `StyleGroupRegistry` at runtime.
@@ -141,10 +142,38 @@ pub const DIAGNOSTIC_INFO: &str = "diagnostic.info";
 pub const DIAGNOSTIC_HINT: &str = "diagnostic.hint";
 
 // ============================================================================
+// Gutter/Annotation Groups (8 groups) - Issue #455
+// ============================================================================
+
+/// Sign column background (where signs/annotations appear)
+pub const SIGN_COLUMN: &str = "sign_column";
+
+/// Separator between gutter and content area
+pub const GUTTER_SEPARATOR: &str = "gutter_separator";
+
+/// Git added line indicator
+pub const GIT_ADD: &str = "git.add";
+
+/// Git changed line indicator
+pub const GIT_CHANGE: &str = "git.change";
+
+/// Git deleted line indicator
+pub const GIT_DELETE: &str = "git.delete";
+
+/// Fold marker - region is open/expanded
+pub const FOLD_OPEN: &str = "fold.open";
+
+/// Fold marker - region is closed/collapsed
+pub const FOLD_CLOSED: &str = "fold.closed";
+
+/// Bookmark indicator
+pub const BOOKMARK: &str = "bookmark";
+
+// ============================================================================
 // All Groups (for testing completeness)
 // ============================================================================
 
-/// All built-in highlight groups (34 total).
+/// All built-in highlight groups (42 total).
 ///
 /// Used by tests to verify theme completeness.
 /// Additional groups (e.g., rainbow brackets) are registered by modules
@@ -187,6 +216,15 @@ pub const ALL_GROUPS: &[&str] = &[
     DIAGNOSTIC_WARN,
     DIAGNOSTIC_INFO,
     DIAGNOSTIC_HINT,
+    // Gutter/Annotation (8) - Issue #455
+    SIGN_COLUMN,
+    GUTTER_SEPARATOR,
+    GIT_ADD,
+    GIT_CHANGE,
+    GIT_DELETE,
+    FOLD_OPEN,
+    FOLD_CLOSED,
+    BOOKMARK,
 ];
 
 #[cfg(test)]
@@ -195,9 +233,9 @@ mod tests {
 
     #[test]
     fn test_all_groups_count() {
-        // 13 syntax + 17 UI + 4 diagnostic = 34 groups
+        // 13 syntax + 17 UI + 4 diagnostic + 8 gutter = 42 groups
         // Module-specific groups (e.g., rainbow brackets) are registered via StyleGroupRegistry
-        assert_eq!(ALL_GROUPS.len(), 34);
+        assert_eq!(ALL_GROUPS.len(), 42);
     }
 
     #[test]

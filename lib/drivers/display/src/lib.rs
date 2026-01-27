@@ -29,6 +29,7 @@
 // Modules
 // ============================================================================
 
+pub mod annotation;
 mod border;
 pub mod builder;
 mod capabilities;
@@ -151,6 +152,22 @@ pub use style::{
 
 pub use ui::{
     Alignment, align, display_width, pad_left, pad_right, truncate_end, truncate_start, wrap_text,
+};
+
+// ============================================================================
+// Annotation System (Issue #455 - Generic Line Annotation System)
+// ============================================================================
+//
+// Generic annotation system for displaying per-line information in the gutter.
+// Decouples data sources from visual presentation.
+// ============================================================================
+
+pub use annotation::{
+    Annotation, AnnotationContext, AnnotationKind, AnnotationLayer, AnnotationPayload,
+    AnnotationPresenter, AnnotationSource, AnnotationSourceKey, AnnotationSourceRegistry,
+    AnnotationStore, AnnotationTarget, BufferAnnotationStore, ColumnConfig, ColumnWidth,
+    ComposedLine, ComposerBuilder, GutterCell, GutterComposer, GutterConfig, GutterRenderer,
+    KindPattern, PresentedOutput, PresenterContext, PresenterRegistry, SourceId, VisibilityMode,
 };
 
 // ============================================================================

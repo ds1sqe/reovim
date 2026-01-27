@@ -29,6 +29,8 @@ reovim-driver-undo = { path = "../../lib/drivers/undo" }
 reovim-driver-search = { path = "../../lib/drivers/search" }
 # Layout module for window command IDs (Epic #438)
 reovim-module-layout = { path = "../layout" }
+# Display driver for annotation types (#455)
+reovim-driver-display = { path = "../../lib/drivers/display" }
 tracing = { workspace = true }
 
 [dev-dependencies]

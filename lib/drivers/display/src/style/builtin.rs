@@ -1,6 +1,6 @@
 //! Built-in theme color definitions.
 //!
-//! Each theme provides complete color definitions for all 34 built-in highlight groups.
+//! Each theme provides complete color definitions for all 42 built-in highlight groups.
 //! Uses `std::sync::LazyLock` for efficient one-time initialization.
 //!
 //! # Architecture
@@ -371,6 +371,67 @@ static DARK_PALETTE: LazyLock<HashMap<&'static str, Style>> = LazyLock::new(|| {
         }), // Cyan
     );
 
+    // -------------------------------------------------------------------------
+    // Gutter/Annotation colors (8 groups) - Issue #455
+    // -------------------------------------------------------------------------
+    m.insert(groups::SIGN_COLUMN, Style::new()); // Inherit background
+    m.insert(
+        groups::GUTTER_SEPARATOR,
+        Style::new().fg(Color::Rgb {
+            r: 60,
+            g: 64,
+            b: 72,
+        }), // #3c4048 Subtle separator
+    );
+    m.insert(
+        groups::GIT_ADD,
+        Style::new().fg(Color::Rgb {
+            r: 152,
+            g: 195,
+            b: 121,
+        }), // #98c379 Green (matches STRING)
+    );
+    m.insert(
+        groups::GIT_CHANGE,
+        Style::new().fg(Color::Rgb {
+            r: 229,
+            g: 192,
+            b: 123,
+        }), // #e5c07b Yellow (matches TYPE)
+    );
+    m.insert(
+        groups::GIT_DELETE,
+        Style::new().fg(Color::Rgb {
+            r: 224,
+            g: 108,
+            b: 117,
+        }), // #e06c75 Red (matches DIAGNOSTIC_ERROR)
+    );
+    m.insert(
+        groups::FOLD_OPEN,
+        Style::new().fg(Color::Rgb {
+            r: 92,
+            g: 99,
+            b: 112,
+        }), // #5c6370 Grey (matches COMMENT)
+    );
+    m.insert(
+        groups::FOLD_CLOSED,
+        Style::new().fg(Color::Rgb {
+            r: 97,
+            g: 175,
+            b: 239,
+        }), // #61afef Blue (matches FUNCTION)
+    );
+    m.insert(
+        groups::BOOKMARK,
+        Style::new().fg(Color::Rgb {
+            r: 198,
+            g: 120,
+            b: 221,
+        }), // #c678dd Purple (matches KEYWORD)
+    );
+
     m
 });
 
@@ -722,6 +783,67 @@ static LIGHT_PALETTE: LazyLock<HashMap<&'static str, Style>> = LazyLock::new(|| 
         }), // Cyan
     );
 
+    // -------------------------------------------------------------------------
+    // Gutter/Annotation colors (8 groups) - Issue #455
+    // -------------------------------------------------------------------------
+    m.insert(groups::SIGN_COLUMN, Style::new()); // Inherit background
+    m.insert(
+        groups::GUTTER_SEPARATOR,
+        Style::new().fg(Color::Rgb {
+            r: 200,
+            g: 200,
+            b: 200,
+        }), // Light grey separator
+    );
+    m.insert(
+        groups::GIT_ADD,
+        Style::new().fg(Color::Rgb {
+            r: 80,
+            g: 161,
+            b: 79,
+        }), // #50a14f Green
+    );
+    m.insert(
+        groups::GIT_CHANGE,
+        Style::new().fg(Color::Rgb {
+            r: 193,
+            g: 132,
+            b: 1,
+        }), // #c18401 Yellow/Orange
+    );
+    m.insert(
+        groups::GIT_DELETE,
+        Style::new().fg(Color::Rgb {
+            r: 228,
+            g: 86,
+            b: 73,
+        }), // #e45649 Red
+    );
+    m.insert(
+        groups::FOLD_OPEN,
+        Style::new().fg(Color::Rgb {
+            r: 160,
+            g: 160,
+            b: 160,
+        }), // Grey
+    );
+    m.insert(
+        groups::FOLD_CLOSED,
+        Style::new().fg(Color::Rgb {
+            r: 64,
+            g: 120,
+            b: 242,
+        }), // #4078f2 Blue
+    );
+    m.insert(
+        groups::BOOKMARK,
+        Style::new().fg(Color::Rgb {
+            r: 166,
+            g: 38,
+            b: 164,
+        }), // #a626a4 Purple
+    );
+
     m
 });
 
@@ -1070,6 +1192,67 @@ static TOKYO_NIGHT_ORANGE_PALETTE: LazyLock<HashMap<&'static str, Style>> = Lazy
             g: 218,
             b: 202,
         }), // Teal
+    );
+
+    // -------------------------------------------------------------------------
+    // Gutter/Annotation colors (8 groups) - Issue #455
+    // -------------------------------------------------------------------------
+    m.insert(groups::SIGN_COLUMN, Style::new()); // Inherit background
+    m.insert(
+        groups::GUTTER_SEPARATOR,
+        Style::new().fg(Color::Rgb {
+            r: 50,
+            g: 52,
+            b: 66,
+        }), // #323442 Subtle separator
+    );
+    m.insert(
+        groups::GIT_ADD,
+        Style::new().fg(Color::Rgb {
+            r: 158,
+            g: 206,
+            b: 106,
+        }), // #9ece6a Green
+    );
+    m.insert(
+        groups::GIT_CHANGE,
+        Style::new().fg(Color::Rgb {
+            r: 255,
+            g: 158,
+            b: 100,
+        }), // #ff9e64 Orange
+    );
+    m.insert(
+        groups::GIT_DELETE,
+        Style::new().fg(Color::Rgb {
+            r: 247,
+            g: 118,
+            b: 142,
+        }), // #f7768e Red
+    );
+    m.insert(
+        groups::FOLD_OPEN,
+        Style::new().fg(Color::Rgb {
+            r: 86,
+            g: 95,
+            b: 137,
+        }), // #565f89 Grey-blue
+    );
+    m.insert(
+        groups::FOLD_CLOSED,
+        Style::new().fg(Color::Rgb {
+            r: 125,
+            g: 207,
+            b: 255,
+        }), // #7dcfff Cyan
+    );
+    m.insert(
+        groups::BOOKMARK,
+        Style::new().fg(Color::Rgb {
+            r: 187,
+            g: 154,
+            b: 247,
+        }), // #bb9af7 Purple
     );
 
     m
