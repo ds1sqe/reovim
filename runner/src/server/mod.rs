@@ -67,7 +67,7 @@ pub mod transport;
 
 // Re-exports for public API
 pub use {
-    app::{AppState, PromptType},
+    app::AppState,
     // CLI arguments (Epic #417 Part 2)
     args::SrvArgs,
     event_loop::{EventLoop, EventLoopError},

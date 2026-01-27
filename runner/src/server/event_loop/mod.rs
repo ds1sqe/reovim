@@ -57,7 +57,7 @@ use {
 const KEY_EVENT_CHANNEL_CAPACITY: usize = 1024;
 
 use super::{
-    AppState, PromptType,
+    AppState,
     registry::{CommandRegistry, KeymapRegistry, ModeRegistry},
 };
 
@@ -310,43 +310,47 @@ impl EventLoop {
         // No resolver = key ignored (resolver handles everything)
     }
 
-    /// Sync cmdline state based on `CmdlineState` extension.
+    /// Sync cmdline buffer based on `CmdlineState` extension.
     ///
     /// Policy (modules) sets `CmdlineState.active` when entering cmdline mode.
-    /// Mechanism (runner) syncs the display state accordingly.
+    /// Mechanism (runner) clears the buffer when cmdline is deactivated.
+    ///
+    /// # Issue #452
+    ///
+    /// The `CmdlineState` extension is the single source of truth for active
+    /// state and prompt type. The runner's `CmdlineBuffer` only stores text.
     fn sync_cmdline_state(&mut self) {
         let ext_state = self.app.extensions.get::<CmdlineState>();
 
-        // Check if policy has activated cmdline (via extension)
+        // Check if policy has deactivated cmdline (via extension)
         let policy_active = ext_state.is_some_and(CmdlineState::is_active);
 
-        if policy_active && !self.app.cmdline.is_active() {
-            // Policy activated cmdline: sync prompt type
-            let prompt_type = ext_state.map_or(CmdlinePrompt::Command, CmdlineState::prompt);
-
-            let runner_prompt = match prompt_type {
-                CmdlinePrompt::Command => PromptType::Command,
-                CmdlinePrompt::SearchForward => PromptType::SearchForward,
-                CmdlinePrompt::SearchBackward => PromptType::SearchBackward,
-            };
-
-            self.app.cmdline.enter_with_prompt(runner_prompt);
-            eprintln!("[DEBUG] Activated cmdline with prompt: {runner_prompt:?}");
-        } else if !policy_active && self.app.cmdline.is_active() {
-            // Policy deactivated cmdline: execute any pending action, then sync
+        if !policy_active && !self.app.cmdline.is_empty() {
+            // Policy deactivated cmdline: execute any pending action, then clear buffer
             self.execute_cmdline_action();
-            self.app.cmdline.cancel();
-            eprintln!("[DEBUG] Deactivated cmdline");
+            self.app.cmdline.clear();
+            eprintln!("[DEBUG] Deactivated cmdline, cleared buffer");
         }
     }
 
-    /// Execute the cmdline action based on prompt type.
+    /// Execute the cmdline action based on prompt type from `CmdlineState` extension.
     ///
     /// For search prompts, this executes the search and moves cursor.
+    ///
+    /// # Issue #452
+    ///
+    /// Prompt type is now read from `CmdlineState` extension (SSOT), not from
+    /// the buffer. This removes the duplicate `PromptType` enum.
     fn execute_cmdline_action(&mut self) {
         use reovim_driver_search::{Direction, SearchKey, SearchProviderRegistry};
 
-        let prompt = self.app.cmdline.prompt_type();
+        // Get prompt type from CmdlineState extension (SSOT)
+        let prompt = self
+            .app
+            .extensions
+            .get::<CmdlineState>()
+            .map_or(CmdlinePrompt::Command, CmdlineState::prompt);
+
         let input = self.app.cmdline.input().to_string();
 
         if input.is_empty() {
@@ -354,8 +358,8 @@ impl EventLoop {
         }
 
         match prompt {
-            PromptType::SearchForward | PromptType::SearchBackward => {
-                let direction = if prompt == PromptType::SearchForward {
+            CmdlinePrompt::SearchForward | CmdlinePrompt::SearchBackward => {
+                let direction = if prompt == CmdlinePrompt::SearchForward {
                     Direction::Forward
                 } else {
                     Direction::Backward
@@ -405,7 +409,7 @@ impl EventLoop {
                     }
                 }
             }
-            PromptType::Command => {
+            CmdlinePrompt::Command => {
                 // TODO: Execute Ex command
                 eprintln!("[DEBUG] Ex command: {input}");
             }
@@ -610,7 +614,14 @@ impl EventLoop {
             // InsertChar: insert character into current input context (cmdline or buffer)
             ResolveResult::InsertChar(ch) => {
                 // Command-line mode: insert into cmdline buffer
-                if self.app.cmdline.is_active() {
+                // Check CmdlineState extension (SSOT) for active state
+                let cmdline_active = self
+                    .app
+                    .extensions
+                    .get::<CmdlineState>()
+                    .is_some_and(CmdlineState::is_active);
+
+                if cmdline_active {
                     self.app.cmdline.insert_char(ch);
                     eprintln!("[DEBUG] InsertChar '{ch}' → cmdline: {}", self.app.cmdline.input());
                 }

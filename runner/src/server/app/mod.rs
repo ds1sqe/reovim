@@ -6,7 +6,7 @@
 
 mod cmdline;
 
-pub use cmdline::{CommandLineState, PromptType};
+pub use cmdline::CmdlineBuffer;
 
 use {
     reovim_arch::sync::RwLock,
@@ -85,10 +85,11 @@ pub struct AppState {
     // Window state is now managed by driver::Session.windows (WindowLayout)
     // and driver::Session.compositor (RootCompositor). WindowRegistry was
     // removed in #438 to fix architecture violation.
-    /// Command-line mode state for `:`, `/`, and `?` commands.
+    /// Command-line input buffer for `:`, `/`, and `?` commands.
     ///
-    /// Tracks input buffer and prompt type for Ex commands and search patterns.
-    pub cmdline: CommandLineState,
+    /// Only stores input text and cursor position. Active state and prompt
+    /// type come from `CmdlineState` session extension (SSOT).
+    pub cmdline: CmdlineBuffer,
 
     /// Per-session module extensions (Epic #385).
     ///
@@ -132,7 +133,7 @@ impl AppState {
             terminal_height: 24,
             // Epic #417 Part 2: undo operations via UndoProvider from ServiceRegistry
             // Window state moved to driver::Session (#438)
-            cmdline: CommandLineState::new(),
+            cmdline: CmdlineBuffer::new(),
             extensions: ExtensionMap::new(),
         }
     }

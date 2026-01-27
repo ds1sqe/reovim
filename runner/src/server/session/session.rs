@@ -242,41 +242,14 @@ impl Session {
     /// Use this when cmdline is active to route characters to the cmdline
     /// instead of the document buffer.
     ///
-    /// This first syncs the cmdline state from `driver_session.extensions` to
-    /// `app.cmdline` (if needed), then inserts the character.
+    /// Insert a character into the cmdline buffer.
+    ///
+    /// Issue #452: Simplified - no sync needed. The `CmdlineState` extension
+    /// is the SSOT for active state. This just inserts into the buffer.
     ///
     /// Acquires a write lock on the session state.
     pub async fn cmdline_insert_char(&self, ch: char) {
-        use {
-            crate::server::PromptType,
-            reovim_driver_session::api::{CmdlinePrompt, CmdlineState},
-        };
-
         self.with_state_mut(|state| {
-            // Sync cmdline state from extension (like event loop does)
-            let ext_active = state
-                .driver_session
-                .extensions
-                .get::<CmdlineState>()
-                .is_some_and(CmdlineState::is_active);
-
-            if ext_active && !state.app.cmdline.is_active() {
-                // Sync prompt type from extension to app.cmdline
-                let prompt_type = state
-                    .driver_session
-                    .extensions
-                    .get::<CmdlineState>()
-                    .map_or(CmdlinePrompt::Command, CmdlineState::prompt);
-
-                let runner_prompt = match prompt_type {
-                    CmdlinePrompt::Command => PromptType::Command,
-                    CmdlinePrompt::SearchForward => PromptType::SearchForward,
-                    CmdlinePrompt::SearchBackward => PromptType::SearchBackward,
-                };
-
-                state.app.cmdline.enter_with_prompt(runner_prompt);
-            }
-
             state.app.cmdline.insert_char(ch);
         })
         .await;
@@ -292,41 +265,21 @@ impl Session {
     /// for notification emission. This is necessary because Ex commands like `:set`
     /// need to emit `OPTION_CHANGED` notifications.
     ///
+    /// # Issue #452
+    ///
+    /// Simplified: reads prompt type from `CmdlineState` extension (SSOT).
+    /// No more `PromptType` enum duplication.
+    ///
     /// Acquires a write lock on the session state.
     #[allow(clippy::too_many_lines)]
     pub async fn execute_cmdline_and_deactivate(&self) -> reovim_driver_session::api::StateChanges {
         use {
-            crate::server::PromptType,
             reovim_driver_search::{Direction, SearchKey, SearchProviderRegistry},
             reovim_driver_session::api::{CmdlinePrompt, CmdlineState, SearchState, StateChanges},
         };
 
         self.with_state_mut(|state| {
             let mut changes = StateChanges::new();
-
-            // First sync cmdline if needed (in case chars were inserted)
-            let ext_active = state
-                .driver_session
-                .extensions
-                .get::<CmdlineState>()
-                .is_some_and(CmdlineState::is_active);
-
-            if ext_active && !state.app.cmdline.is_active() {
-                // Sync prompt type from extension to app.cmdline
-                let prompt_type = state
-                    .driver_session
-                    .extensions
-                    .get::<CmdlineState>()
-                    .map_or(CmdlinePrompt::Command, CmdlineState::prompt);
-
-                let runner_prompt = match prompt_type {
-                    CmdlinePrompt::Command => PromptType::Command,
-                    CmdlinePrompt::SearchForward => PromptType::SearchForward,
-                    CmdlinePrompt::SearchBackward => PromptType::SearchBackward,
-                };
-
-                state.app.cmdline.enter_with_prompt(runner_prompt);
-            }
 
             // Check if cmdline was deactivated (extension is inactive)
             let ext_inactive = state
@@ -335,10 +288,16 @@ impl Session {
                 .get::<CmdlineState>()
                 .is_none_or(|s| !s.is_active());
 
-            if ext_inactive && state.app.cmdline.is_active() {
-                // Execute the cmdline action based on prompt type
-                let prompt = state.app.cmdline.prompt_type();
-                let input = state.app.cmdline.input().to_string();
+            // Only execute if we have input to process
+            if ext_inactive && !state.app.cmdline.is_empty() {
+                // Get prompt type from CmdlineState extension (SSOT)
+                let prompt = state
+                    .driver_session
+                    .extensions
+                    .get::<CmdlineState>()
+                    .map_or(CmdlinePrompt::Command, CmdlineState::prompt);
+
+                let input = state.app.cmdline.take();
 
                 // Check if cmdline was cancelled (Escape) vs executed (Enter)
                 let was_cancelled = state
@@ -349,8 +308,8 @@ impl Session {
 
                 if !input.is_empty() && !was_cancelled {
                     match prompt {
-                        PromptType::SearchForward | PromptType::SearchBackward => {
-                            let direction = if prompt == PromptType::SearchForward {
+                        CmdlinePrompt::SearchForward | CmdlinePrompt::SearchBackward => {
+                            let direction = if prompt == CmdlinePrompt::SearchForward {
                                 Direction::Forward
                             } else {
                                 Direction::Backward
@@ -418,15 +377,12 @@ impl Session {
                                 }
                             }
                         }
-                        PromptType::Command => {
+                        CmdlinePrompt::Command => {
                             // Execute Ex command (#445)
                             Self::execute_ex_command(&input, state, &mut changes);
                         }
                     }
                 }
-
-                // Deactivate cmdline
-                state.app.cmdline.cancel();
             }
 
             changes

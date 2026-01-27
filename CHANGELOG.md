@@ -107,6 +107,18 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Removed
 
+- **PromptType enum**: Removed duplicate `PromptType` enum from runner layer.
+  `CmdlinePrompt` in driver layer is now the single source of truth for prompt
+  type. Conversion code eliminated from 3 locations. (#452)
+
+### Refactored
+
+- **Cmdline state architecture**: Simplified `CommandLineState` to `CmdlineBuffer`
+  storing only input text and cursor position. Active state, prompt type, and
+  cancellation flag now read from `CmdlineState` session extension (driver layer).
+  This establishes clear SSOT: driver layer owns state flags, runner layer owns
+  input buffer. Removed ~30 lines of redundant code. (#452)
+
 ---
 
 ## Version History
