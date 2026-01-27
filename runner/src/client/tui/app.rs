@@ -1123,7 +1123,8 @@ impl TuiApp {
         self.draw_window_borders();
 
         // Calculate panel heights and positions
-        let statusline_height: u16 = u16::from(self.debug_config.is_some());
+        // Always reserve 1 row for statusline (TUI renders statusline locally)
+        let statusline_height: u16 = 1;
         let available_height = height.saturating_sub(statusline_height);
 
         // Write CLI panel to frame buffer (if visible)
@@ -1213,8 +1214,8 @@ impl TuiApp {
             return;
         }
 
-        // Reserve space for debug statusline
-        let available_height = height.saturating_sub(u16::from(self.debug_config.is_some()));
+        // Reserve space for statusline (always present)
+        let available_height = height.saturating_sub(1);
 
         // Style for window borders
         let border_style = Style::default().fg(reovim_driver_display::Color::DarkGrey);
@@ -1277,13 +1278,12 @@ impl TuiApp {
 
     /// Write debug statusline to frame buffer.
     ///
-    /// Shows error in red if present, otherwise normal status with inverse video.
-    /// Only writes if debug mode is enabled.
+    /// Write statusline to frame buffer (always rendered).
+    ///
+    /// Shows error in red if present, otherwise:
+    /// - Debug mode: detailed status with timestamp, server, modules count
+    /// - Normal mode: simple vim-like status with mode, filename, position
     fn write_statusline_to_buffer(&mut self) {
-        if self.debug_config.is_none() {
-            return;
-        }
-
         let (width, height) = self.last_size;
         if width == 0 || height == 0 {
             return;
@@ -1291,7 +1291,7 @@ impl TuiApp {
 
         let statusline_y = height.saturating_sub(1);
 
-        // If error exists, show in red; otherwise show normal status
+        // If error exists, show in red
         let (line, style) = if let Some(ref err) = self.state.last_error {
             // Error statusline: red background
             let err_line = format!("ERR: {err}");
@@ -1299,20 +1299,42 @@ impl TuiApp {
                 .bg(reovim_driver_display::Color::Red)
                 .fg(reovim_driver_display::Color::White);
             (err_line, style)
-        } else {
-            // Normal statusline: inverse video
+        } else if self.debug_config.is_some() {
+            // Debug mode: detailed statusline
             let now = chrono::Local::now();
             let timestamp = now.format("%y-%m-%d %H:%M:%S %Z").to_string();
             let server = &self.server_address;
             let mode = self.state.mode_display.as_deref().unwrap_or("?");
             let modules_count = self.state.modules.len();
             let last_key = self.state.last_key.as_deref().unwrap_or("-");
-            let cursor = format!("{}:{}", self.state.cursor_line, self.state.cursor_column);
+            let cursor = format!("{}:{}", self.state.cursor_line + 1, self.state.cursor_column + 1);
             let prefix_indicator = if self.prefix_mode { "^B-" } else { "" };
 
             let line = format!(
                 "{prefix_indicator}{timestamp}|{server}|{mode}|k:{last_key}|c:{cursor}|m:{modules_count}"
             );
+            let style = Style::default().reverse();
+            (line, style)
+        } else {
+            // Normal mode: simple vim-like statusline
+            // Format: " MODE  [No Name]              1:1 "
+            let mode = self.state.mode_display.as_deref().unwrap_or("NORMAL");
+            let modified = if self.state.buffer_modified {
+                " [+]"
+            } else {
+                ""
+            };
+            let filename = "[No Name]"; // TODO: Add filename to TuiState when available
+            let line_num = self.state.cursor_line + 1; // 1-indexed display
+            let col_num = self.state.cursor_column + 1; // 1-indexed display
+
+            let left = format!(" {mode}  {filename}{modified}");
+            let right = format!("{line_num}:{col_num} ");
+
+            // Build full line with padding
+            let padding_width = (width as usize).saturating_sub(left.len() + right.len());
+            let line = format!("{left}{:padding_width$}{right}", "");
+
             let style = Style::default().reverse();
             (line, style)
         };

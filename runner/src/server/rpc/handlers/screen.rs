@@ -357,6 +357,7 @@ pub fn state_screen_content(ctx: RpcContext, params: serde_json::Value) -> Handl
 /// Currently all windows share the active buffer (vim-like split behavior).
 ///
 /// The focused window is indicated with a `▪` at its top-left corner.
+/// Statusline rendering is handled by TUI client for performance.
 fn render_multi_window(
     state: &crate::session::SessionState,
     format: ScreenFormat,
@@ -388,7 +389,7 @@ fn render_multi_window(
         generate_buffer_decorations(state, buffer_id, &content, (cursor_line, cursor_col));
     let decoration_map = build_decoration_map(&decorations);
 
-    // Create a 2D screen buffer
+    // Create a 2D screen buffer (full height for content - TUI handles statusline)
     let mut screen: Vec<Vec<char>> = vec![vec![' '; width as usize]; height as usize];
 
     // Render each window's content within its bounds
@@ -516,13 +517,12 @@ fn draw_window_separators(
 
 /// Render screen with a single window or no windows.
 ///
-/// For backward compatibility, single-window mode returns dimensions
-/// based on buffer content, not terminal size.
+/// Uses terminal dimensions for content. Statusline is handled by TUI client.
 fn render_single_window(
     state: &crate::session::SessionState,
     format: ScreenFormat,
-    _width: u16,
-    _height: u16,
+    width: u16,
+    height: u16,
 ) -> ScreenContentResult {
     // Get line number mode from options (#445)
     let line_mode = line_number_mode_from_options(&state.app.kernel.options);
@@ -538,7 +538,6 @@ fn render_single_window(
         })
         .unwrap_or_default();
 
-    // Calculate dimensions from content
     let lines: Vec<&str> = content.lines().collect();
     let total_lines = lines.len();
     let gutter_width = calculate_gutter_width(line_mode, total_lines);
@@ -548,36 +547,45 @@ fn render_single_window(
         generate_buffer_decorations(state, buffer_id, &content, (cursor_line, cursor_col));
     let decoration_map = build_decoration_map(&decorations);
 
-    // Build content with line numbers (#445)
-    let rendered_content: String = if line_mode == LineNumberMode::None {
-        content.clone()
-    } else {
-        lines
-            .iter()
-            .enumerate()
-            .map(|(idx, line)| {
-                let num =
-                    format_line_number(line_mode, idx, cursor_line, gutter_width.saturating_sub(1));
-                format!("{num}{line}")
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
-    };
+    // Create a 2D screen buffer (full height for content - TUI handles statusline)
+    let mut screen: Vec<Vec<char>> = vec![vec![' '; width as usize]; height as usize];
 
-    #[allow(clippy::cast_possible_truncation)]
-    let content_height = total_lines.min(usize::from(u16::MAX)) as u16;
-    #[allow(clippy::cast_possible_truncation)]
-    let content_width = (lines.iter().map(|l| l.len()).max().unwrap_or(80) + gutter_width)
-        .min(usize::from(u16::MAX)) as u16;
+    // Render buffer content to screen (with line numbers)
+    for (win_row, line_idx) in (0..height).zip(0..lines.len()) {
+        let screen_y = win_row as usize;
+        if screen_y >= screen.len() {
+            break;
+        }
 
-    format_content(
-        &rendered_content,
-        format,
-        content_width.max(1),
-        content_height.max(1),
-        &decoration_map,
-        gutter_width,
-    )
+        // Render line number first (#445)
+        let line_num_str =
+            format_line_number(line_mode, line_idx, cursor_line, gutter_width.saturating_sub(1));
+        for (col, ch) in line_num_str.chars().enumerate() {
+            if col < screen[screen_y].len() {
+                screen[screen_y][col] = ch;
+            }
+        }
+
+        // Render content after line number
+        let line = lines.get(line_idx).copied().unwrap_or("");
+        let content_start = gutter_width;
+        let content_width = (width as usize).saturating_sub(gutter_width);
+        for (col, ch) in line.chars().take(content_width).enumerate() {
+            let screen_x = content_start + col;
+            if screen_x < screen[screen_y].len() {
+                screen[screen_y][screen_x] = ch;
+            }
+        }
+    }
+
+    // Convert screen buffer to string
+    let screen_content: String = screen
+        .iter()
+        .map(|row| row.iter().collect::<String>())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    format_content(&screen_content, format, width, height, &decoration_map, gutter_width)
 }
 
 // Multi-window rendering will be implemented in Phase 2 using Session.compositor.
@@ -863,11 +871,14 @@ mod tests {
         assert!(result.is_ok());
         let value = result.unwrap();
 
-        // Verify dimensions match buffer content
-        assert_eq!(value.get("height").unwrap().as_u64().unwrap(), 3);
-        assert_eq!(value.get("width").unwrap().as_u64().unwrap(), 5); // "World" is longest
+        // Dimensions are now terminal-based (default 80x24), not content-based (#441)
+        // Just verify dimensions are present and reasonable
+        let height = value.get("height").unwrap().as_u64().unwrap();
+        let width = value.get("width").unwrap().as_u64().unwrap();
+        assert!(height >= 3, "height should be at least 3 to fit content");
+        assert!(width >= 5, "width should be at least 5 to fit 'World'");
 
-        // Verify content
+        // Verify content is present in the screen
         let content = value.get("content").unwrap().as_str().unwrap();
         assert!(content.contains("Hello"));
         assert!(content.contains("World"));
@@ -887,16 +898,22 @@ mod tests {
         let cells: Vec<Vec<serde_json::Value>> =
             serde_json::from_str(content).expect("Cell grid should be valid JSON");
 
-        // Should have 2 rows
-        assert_eq!(cells.len(), 2);
+        // Should have at least 2 rows for content + 1 for statusline (#441)
+        // Actual height is terminal-based (default 24 in tests)
+        assert!(
+            cells.len() >= 3,
+            "Screen should have at least 3 rows (2 content + 1 statusline)"
+        );
 
-        // First row should have 2 cells (A, B)
-        assert_eq!(cells[0].len(), 2);
+        // Verify terminal width - all rows should have consistent width
+        let width = cells[0].len();
+        assert!(width >= 2, "First row should have at least 2 characters for 'AB'");
+
+        // First row should contain A and B at the start
         assert_eq!(cells[0][0].get("char").unwrap().as_str().unwrap(), "A");
         assert_eq!(cells[0][1].get("char").unwrap().as_str().unwrap(), "B");
 
-        // Second row should have 2 cells (C, D)
-        assert_eq!(cells[1].len(), 2);
+        // Second row should contain C and D at the start
         assert_eq!(cells[1][0].get("char").unwrap().as_str().unwrap(), "C");
         assert_eq!(cells[1][1].get("char").unwrap().as_str().unwrap(), "D");
     }

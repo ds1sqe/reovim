@@ -32,6 +32,7 @@ reovim-module-buffer-simple = { path = "../buffer-simple" }
 reovim-module-search = { path = "../search" }
 reovim-module-clipboard = { path = "../clipboard" }
 reovim-module-pair = { path = "../pair" }
+reovim-module-statusline = { path = "../statusline" }
 reovim-driver-session = { workspace = true }
 reovim-driver-display = { workspace = true }
 reovim-driver-vfs = { workspace = true }
