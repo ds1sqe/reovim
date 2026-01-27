@@ -1,0 +1,50 @@
+// Editor service for editor-level operations.
+
+syntax = "proto3";
+package reovim.v2;
+
+service EditorService {
+  // Resize the terminal/viewport.
+  rpc Resize(ResizeRequest) returns (ResizeResponse);
+
+  // Quit the editor.
+  rpc Quit(QuitRequest) returns (QuitResponse);
+
+  // Set active buffer.
+  rpc SetActiveBuffer(SetActiveBufferRequest) returns (SetActiveBufferResponse);
+
+  // Get active buffer.
+  rpc GetActiveBuffer(GetActiveBufferRequest) returns (GetActiveBufferResponse);
+}
+
+message ResizeRequest {
+  uint64 width = 1;
+  uint64 height = 2;
+}
+
+message ResizeResponse {
+  bool ok = 1;
+}
+
+message QuitRequest {
+  bool force = 1;  // Discard unsaved changes
+}
+
+message QuitResponse {
+  bool ok = 1;
+  optional string error = 2;  // e.g., "unsaved changes"
+}
+
+message SetActiveBufferRequest {
+  uint64 buffer_id = 1;
+}
+
+message SetActiveBufferResponse {
+  bool ok = 1;
+}
+
+message GetActiveBufferRequest {}
+
+message GetActiveBufferResponse {
+  optional uint64 buffer_id = 1;
+}

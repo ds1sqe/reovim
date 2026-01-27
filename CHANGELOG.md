@@ -110,6 +110,13 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   for render thread performance. (5) Bottom-positioned overlay that adapts to
   screen size. Module provides `WhichKeyService` for timer management and
   `WhichKeySessionExt` for per-session state. (#442)
+- **gRPC v2 protocol foundation**: Added protobuf schemas and tonic-build codegen
+  for v2 protocol. Protocol v2 uses gRPC with raw-data model (server provides
+  buffer content, cursor, options; client renders). Defines 7 services:
+  InputService, StateService, BufferService, EditorService, ModuleService,
+  ServerService, NotificationService (streaming). Feature-gated behind `grpc`
+  feature flag. This is foundation-only (Phase 1); runtime gRPC transport to
+  follow in Phase 2. Part of Epic #465 (server/client crate split). (#465)
 
 ### Changed
 

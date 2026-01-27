@@ -1,0 +1,128 @@
+// State service for querying editor state.
+//
+// Philosophy: Returns raw data only. No rendering, no cell grids.
+// Clients (TUI, GUI, Web) decide how to render.
+
+syntax = "proto3";
+package reovim.v2;
+
+import "reovim/v2/common.proto";
+
+service StateService {
+  // Get current mode.
+  rpc GetMode(GetModeRequest) returns (GetModeResponse);
+
+  // Get cursor position.
+  rpc GetCursor(GetCursorRequest) returns (GetCursorResponse);
+
+  // Get editor options.
+  rpc GetOptions(GetOptionsRequest) returns (GetOptionsResponse);
+
+  // Get window layout tree.
+  rpc GetLayout(GetLayoutRequest) returns (GetLayoutResponse);
+
+  // Get visible line range for a window.
+  rpc GetVisibleLines(GetVisibleLinesRequest) returns (GetVisibleLinesResponse);
+
+  // Get selection state.
+  rpc GetSelection(GetSelectionRequest) returns (GetSelectionResponse);
+}
+
+// Mode
+
+message GetModeRequest {}
+
+message GetModeResponse {
+  string name = 1;        // Internal name (e.g., "normal", "insert")
+  string display = 2;     // Display name (e.g., "NORMAL", "INSERT")
+  bool is_insert = 3;     // True if mode accepts text input
+}
+
+// Cursor
+
+message GetCursorRequest {
+  optional uint64 window_id = 1;  // Default: focused window
+}
+
+message GetCursorResponse {
+  uint64 window_id = 1;
+  Position position = 2;  // Buffer-relative (0-indexed)
+}
+
+// Options
+
+message GetOptionsRequest {
+  repeated string names = 1;  // Option names to query (empty = all)
+}
+
+message GetOptionsResponse {
+  map<string, OptionValue> options = 1;
+}
+
+message OptionValue {
+  oneof value {
+    bool bool_value = 1;
+    int64 int_value = 2;
+    string string_value = 3;
+  }
+}
+
+// Layout
+
+message GetLayoutRequest {}
+
+message GetLayoutResponse {
+  WindowNode root = 1;
+  uint64 focused_window_id = 2;
+}
+
+message WindowNode {
+  oneof node {
+    WindowLeaf leaf = 1;
+    WindowSplit split = 2;
+  }
+}
+
+message WindowLeaf {
+  uint64 window_id = 1;
+  uint64 buffer_id = 2;
+  WindowRect rect = 3;
+}
+
+message WindowSplit {
+  SplitDirection direction = 1;
+  repeated WindowNode children = 2;
+}
+
+enum SplitDirection {
+  SPLIT_DIRECTION_UNSPECIFIED = 0;
+  SPLIT_DIRECTION_HORIZONTAL = 1;
+  SPLIT_DIRECTION_VERTICAL = 2;
+}
+
+// WindowRect is imported from common.proto
+
+// Visible lines
+
+message GetVisibleLinesRequest {
+  optional uint64 window_id = 1;  // Default: focused window
+}
+
+message GetVisibleLinesResponse {
+  uint64 window_id = 1;
+  uint64 first_line = 2;    // First visible line (0-indexed)
+  uint64 last_line = 3;     // Last visible line (0-indexed)
+  uint64 viewport_height = 4;
+}
+
+// Selection
+
+message GetSelectionRequest {
+  optional uint64 window_id = 1;
+}
+
+message GetSelectionResponse {
+  bool has_selection = 1;
+  optional Selection selection = 2;
+  optional string visual_mode = 3;  // "char", "line", "block"
+}
