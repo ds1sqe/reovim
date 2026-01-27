@@ -69,17 +69,23 @@ impl CmdlineState {
     }
 
     /// Exit cmdline mode (execute action).
+    ///
+    /// Note: Preserves `prompt` so runner can read it after deactivation
+    /// to determine what action to take (search vs ex command).
     pub const fn exit(&mut self) {
         self.active = false;
         self.cancelled = false;
-        self.prompt = CmdlinePrompt::Command;
+        // prompt is preserved - runner reads it after exit
     }
 
     /// Cancel cmdline mode (don't execute action).
+    ///
+    /// Note: Preserves `prompt` for consistency, though `was_cancelled`
+    /// prevents execution regardless.
     pub const fn cancel(&mut self) {
         self.active = false;
         self.cancelled = true;
-        self.prompt = CmdlinePrompt::Command;
+        // prompt is preserved for consistency
     }
 
     /// Check if cmdline is active.
@@ -136,6 +142,7 @@ mod tests {
 
         state.exit();
         assert!(!state.is_active());
-        assert_eq!(state.prompt(), CmdlinePrompt::Command);
+        // prompt is preserved after exit so runner can read it
+        assert_eq!(state.prompt(), CmdlinePrompt::SearchForward);
     }
 }

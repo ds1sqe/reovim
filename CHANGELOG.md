@@ -60,6 +60,14 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   by name prefix (`search_by_prefix`), exact name (`find_by_name`), or list all
   ex-commands (`list_ex_commands`). Registered in `ServiceRegistry` for module
   access. Foundation for cmdline tab-completion and help systems. (#453)
+- **Cmdline UI module**: Created `modules/cmdline/` for command-line popup UI.
+  Provides `SharedCmdlinePopupState` service for popup visibility and content
+  tracking. UI rendering includes rounded border characters (╭╮╰╯), prompt
+  display (:/?), input text with cursor indicator (█), and horizontal scrolling
+  for long input. Input handler now intercepts cmdline editing keys (Backspace,
+  Delete, Left, Right, Home, End, Ctrl+A/E/H) when cmdline is active, routing
+  them to `CmdlineBuffer` methods. This is Phase 1 infrastructure; floating
+  popup rendering in TUI to follow. (#451)
 
 ### Changed
 

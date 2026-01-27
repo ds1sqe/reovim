@@ -63,6 +63,16 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
 
         for key in keys.as_slice() {
             let key_event = KeyEvent::with_modifiers(key.code, key.modifiers);
+            let cmdline_active = ctx.session.is_cmdline_active().await;
+
+            // Issue #451: Handle cmdline editing keys before resolver
+            // These keys are intercepted when cmdline is active:
+            // - Backspace, Delete, Left, Right, Home, End
+            if cmdline_active && handle_cmdline_key(&ctx, &key_event).await {
+                any_handled = true;
+                final_pending = false;
+                continue;
+            }
 
             // Resolve the key using mode resolvers
             if let Some((result, changes)) = ctx.session.resolve_key(&key_event).await {
@@ -132,7 +142,8 @@ pub fn input_keys(ctx: RpcContext, params: serde_json::Value) -> HandlerFuture {
                         // Route character to appropriate target:
                         // - Cmdline buffer when cmdline is active (/, ?, :)
                         // - Document buffer otherwise (insert mode)
-                        if ctx.session.is_cmdline_active().await {
+                        let active = ctx.session.is_cmdline_active().await;
+                        if active {
                             ctx.session.cmdline_insert_char(ch).await;
                         } else {
                             ctx.session.insert_char(ch).await;
@@ -339,6 +350,69 @@ async fn handle_pop_result_async(ctx: &RpcContext, result: &reovim_driver_sessio
         PopResult::Cancelled | PopResult::Data { .. } => {
             // Nothing to do - operator was cancelled or data returned without command
         }
+    }
+}
+
+/// Handle cmdline-specific editing keys.
+///
+/// Issue #451: When cmdline is active, intercept editing keys before resolver:
+/// - Backspace: Delete character before cursor
+/// - Delete: Delete character at cursor
+/// - Left/Right: Move cursor
+/// - Home/End: Move to start/end
+///
+/// Returns `true` if the key was handled.
+async fn handle_cmdline_key(ctx: &RpcContext, key: &KeyEvent) -> bool {
+    // Only handle keys without modifiers (except Shift for some keys)
+    if !key.modifiers.is_empty() && key.modifiers != Modifiers::SHIFT {
+        // Allow Ctrl+A (Home) and Ctrl+E (End)
+        if key.modifiers == Modifiers::CTRL {
+            match key.code {
+                KeyCode::Char('a') => {
+                    ctx.session.cmdline_cursor_home().await;
+                    return true;
+                }
+                KeyCode::Char('e') => {
+                    ctx.session.cmdline_cursor_end().await;
+                    return true;
+                }
+                KeyCode::Char('h') => {
+                    // Ctrl+H is Backspace on some terminals
+                    ctx.session.cmdline_backspace().await;
+                    return true;
+                }
+                _ => return false,
+            }
+        }
+        return false;
+    }
+
+    match key.code {
+        KeyCode::Backspace => {
+            ctx.session.cmdline_backspace().await;
+            true
+        }
+        KeyCode::Delete => {
+            ctx.session.cmdline_delete_char().await;
+            true
+        }
+        KeyCode::Left => {
+            ctx.session.cmdline_cursor_left().await;
+            true
+        }
+        KeyCode::Right => {
+            ctx.session.cmdline_cursor_right().await;
+            true
+        }
+        KeyCode::Home => {
+            ctx.session.cmdline_cursor_home().await;
+            true
+        }
+        KeyCode::End => {
+            ctx.session.cmdline_cursor_end().await;
+            true
+        }
+        _ => false,
     }
 }
 

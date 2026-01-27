@@ -255,6 +255,66 @@ impl Session {
         .await;
     }
 
+    /// Delete character before cursor in cmdline buffer (Backspace).
+    ///
+    /// Issue #451: Cmdline editing support.
+    pub async fn cmdline_backspace(&self) {
+        self.with_state_mut(|state| {
+            state.app.cmdline.backspace();
+        })
+        .await;
+    }
+
+    /// Move cursor left in cmdline buffer.
+    ///
+    /// Issue #451: Cmdline editing support.
+    pub async fn cmdline_cursor_left(&self) {
+        self.with_state_mut(|state| {
+            state.app.cmdline.cursor_left();
+        })
+        .await;
+    }
+
+    /// Move cursor right in cmdline buffer.
+    ///
+    /// Issue #451: Cmdline editing support.
+    pub async fn cmdline_cursor_right(&self) {
+        self.with_state_mut(|state| {
+            state.app.cmdline.cursor_right();
+        })
+        .await;
+    }
+
+    /// Delete character at cursor in cmdline buffer (Delete key).
+    ///
+    /// Issue #451: Cmdline editing support.
+    pub async fn cmdline_delete_char(&self) {
+        self.with_state_mut(|state| {
+            state.app.cmdline.delete_char();
+        })
+        .await;
+    }
+
+    /// Move cursor to start of cmdline buffer.
+    ///
+    /// Issue #451: Cmdline editing support.
+    pub async fn cmdline_cursor_home(&self) {
+        self.with_state_mut(|state| {
+            state.app.cmdline.cursor_home();
+        })
+        .await;
+    }
+
+    /// Move cursor to end of cmdline buffer.
+    ///
+    /// Issue #451: Cmdline editing support.
+    pub async fn cmdline_cursor_end(&self) {
+        self.with_state_mut(|state| {
+            state.app.cmdline.cursor_end();
+        })
+        .await;
+    }
+
     /// Execute the cmdline action and deactivate cmdline.
     ///
     /// Called when a command deactivates cmdline (e.g., Enter in search mode).
