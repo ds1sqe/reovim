@@ -252,6 +252,15 @@ pub fn build_default_registries() -> (
         tracing::warn!("no CommandHandlerStore in ServiceRegistry - no commands registered");
     }
 
+    // Register CommandQueryService for module access (#453)
+    // Snapshot captures all command metadata for tab completion, help, etc.
+    let command_snapshot = registry::CommandQuerySnapshot::from_registry(&command_registry);
+    services.register(Arc::new(command_snapshot));
+    tracing::info!(
+        count = command_registry.len(),
+        "registered CommandQueryService in ServiceRegistry (#453)"
+    );
+
     // Epic #417 Part 3: Extract keybindings from KeybindingStore (modules registered during init)
     if let Some(keybinding_store) = services.get::<KeybindingStore>() {
         let keybindings = keybinding_store.take_keybindings();

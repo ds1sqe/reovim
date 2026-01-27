@@ -24,7 +24,7 @@ mod mode;
 mod provider;
 
 pub use {
-    command::CommandRegistry,
+    command::{CommandQuerySnapshot, CommandRegistry},
     empty_session::EmptySessionHandlerRegistry,
     keymap::KeymapRegistry,
     mode::{ModeEntry, ModeRegistry},

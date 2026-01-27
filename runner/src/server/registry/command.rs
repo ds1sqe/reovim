@@ -13,11 +13,13 @@
 use std::{collections::HashMap, sync::Arc};
 
 use {
-    reovim_driver_command::{CommandContext, CommandHandler, CommandResult},
+    reovim_driver_command::{
+        CommandContext, CommandHandler, CommandInfo, CommandQueryService, CommandResult,
+    },
     reovim_driver_session::{Session as DriverSession, SessionRuntime, api::CommandExecutor},
     reovim_driver_vfs::VfsDriver,
     reovim_kernel::{
-        api::v1::{CommandId, KernelContext, ModuleId},
+        api::v1::{CommandId, KernelContext, ModuleId, Service},
         profile_scope,
     },
 };
@@ -205,6 +207,17 @@ impl CommandRegistry {
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
+
+    /// Get all command infos for query service.
+    ///
+    /// Used by [`CommandQuerySnapshot`] to capture command metadata.
+    #[must_use]
+    pub fn all_command_infos(&self) -> Vec<CommandInfo> {
+        self.entries
+            .values()
+            .map(|entry| CommandInfo::from_command(&*entry.handler))
+            .collect()
+    }
 }
 
 impl std::fmt::Debug for CommandRegistry {
@@ -213,6 +226,77 @@ impl std::fmt::Debug for CommandRegistry {
             .field("count", &self.entries.len())
             .field("commands", &self.entries.keys().collect::<Vec<_>>())
             .finish()
+    }
+}
+
+// ============================================================================
+// CommandQuerySnapshot - Query Service Implementation (#453)
+// ============================================================================
+
+/// Snapshot of command metadata for query service.
+///
+/// Captures all command info at bootstrap time for module queries.
+/// Commands are static after module loading, so snapshot is sufficient.
+///
+/// # Usage
+///
+/// ```ignore
+/// // In bootstrap:
+/// let snapshot = CommandQuerySnapshot::from_registry(&command_registry);
+/// services.register(Arc::new(snapshot));
+///
+/// // In modules:
+/// let query = services.get::<dyn CommandQueryService>()?;
+/// let matches = query.search_by_prefix("wri");
+/// ```
+pub struct CommandQuerySnapshot {
+    commands: Vec<CommandInfo>,
+}
+
+impl Service for CommandQuerySnapshot {}
+
+impl CommandQuerySnapshot {
+    /// Create snapshot from `CommandRegistry`.
+    ///
+    /// Captures all command metadata at the time of creation.
+    #[must_use]
+    pub fn from_registry(registry: &CommandRegistry) -> Self {
+        Self {
+            commands: registry.all_command_infos(),
+        }
+    }
+}
+
+impl CommandQueryService for CommandQuerySnapshot {
+    fn search_by_prefix(&self, prefix: &str) -> Vec<CommandInfo> {
+        self.commands
+            .iter()
+            .filter(|info| info.names.iter().any(|n| n.starts_with(prefix)))
+            .cloned()
+            .collect()
+    }
+
+    fn find_by_name(&self, name: &str) -> Option<CommandInfo> {
+        self.commands
+            .iter()
+            .find(|info| info.names.iter().any(|n| n == name))
+            .cloned()
+    }
+
+    fn list_ex_commands(&self) -> Vec<CommandInfo> {
+        self.commands
+            .iter()
+            .filter(|info| !info.names.is_empty())
+            .cloned()
+            .collect()
+    }
+
+    fn list_all(&self) -> Vec<CommandInfo> {
+        self.commands.clone()
+    }
+
+    fn count(&self) -> usize {
+        self.commands.len()
     }
 }
 
@@ -459,5 +543,144 @@ mod tests {
         assert_eq!(registry.len(), 1);
         assert!(!registry.contains(&CommandId::new(ModuleId::new("test"), "a-cmd")));
         assert!(registry.contains(&CommandId::new(ModuleId::new("test"), "b-cmd")));
+    }
+
+    // ========================================================================
+    // CommandQuerySnapshot Tests (#453)
+    // ========================================================================
+
+    // Test command with ex-names
+    struct ExCommand {
+        id: CommandId,
+        names: &'static [&'static str],
+    }
+
+    impl ExCommand {
+        fn new(name: &'static str, ex_names: &'static [&'static str]) -> Self {
+            Self {
+                id: CommandId::new(ModuleId::new("test"), name),
+                names: ex_names,
+            }
+        }
+    }
+
+    impl Command for ExCommand {
+        fn id(&self) -> CommandId {
+            self.id.clone()
+        }
+
+        fn description(&self) -> &'static str {
+            "Ex command"
+        }
+
+        fn args(&self) -> Vec<ArgSpec> {
+            vec![]
+        }
+
+        fn names(&self) -> &[&'static str] {
+            self.names
+        }
+    }
+
+    impl CommandHandler for ExCommand {
+        fn execute(
+            &self,
+            _runtime: &mut SessionRuntime<'_>,
+            _args: &CommandContext,
+        ) -> CommandResult {
+            CommandResult::Success
+        }
+    }
+
+    #[test]
+    fn test_command_query_snapshot_from_registry() {
+        let mut registry = CommandRegistry::new();
+        registry.register(Arc::new(ExCommand::new("write-cmd", &["write", "w"])));
+        registry.register(Arc::new(ExCommand::new("quit-cmd", &["quit", "q"])));
+
+        let snapshot = CommandQuerySnapshot::from_registry(&registry);
+        assert_eq!(snapshot.count(), 2);
+    }
+
+    #[test]
+    fn test_command_query_snapshot_search_by_prefix() {
+        let mut registry = CommandRegistry::new();
+        registry.register(Arc::new(ExCommand::new("write-cmd", &["write", "w"])));
+        registry.register(Arc::new(ExCommand::new("wq-cmd", &["wq", "writequit"])));
+        registry.register(Arc::new(ExCommand::new("quit-cmd", &["quit", "q"])));
+
+        let snapshot = CommandQuerySnapshot::from_registry(&registry);
+
+        // Search for "w" prefix
+        let matches = snapshot.search_by_prefix("w");
+        assert_eq!(matches.len(), 2); // write and wq both start with "w"
+
+        // Search for "wri" prefix
+        let matches = snapshot.search_by_prefix("wri");
+        assert_eq!(matches.len(), 2); // "write" and "writequit"
+
+        // Search for "q" prefix
+        let matches = snapshot.search_by_prefix("q");
+        assert_eq!(matches.len(), 1); // only "quit"
+    }
+
+    #[test]
+    fn test_command_query_snapshot_search_by_prefix_empty() {
+        let mut registry = CommandRegistry::new();
+        registry.register(Arc::new(ExCommand::new("write-cmd", &["write", "w"])));
+
+        let snapshot = CommandQuerySnapshot::from_registry(&registry);
+
+        // Empty prefix matches commands with any ex-name
+        let matches = snapshot.search_by_prefix("");
+        assert_eq!(matches.len(), 1);
+    }
+
+    #[test]
+    fn test_command_query_snapshot_find_by_name() {
+        let mut registry = CommandRegistry::new();
+        registry.register(Arc::new(ExCommand::new("write-cmd", &["write", "w"])));
+        registry.register(Arc::new(ExCommand::new("quit-cmd", &["quit", "q"])));
+
+        let snapshot = CommandQuerySnapshot::from_registry(&registry);
+
+        // Find by full name
+        let info = snapshot.find_by_name("write");
+        assert!(info.is_some());
+        assert_eq!(info.unwrap().id.name(), "write-cmd");
+
+        // Find by alias
+        let info = snapshot.find_by_name("w");
+        assert!(info.is_some());
+        assert_eq!(info.unwrap().id.name(), "write-cmd");
+
+        // Not found
+        let info = snapshot.find_by_name("nonexistent");
+        assert!(info.is_none());
+    }
+
+    #[test]
+    fn test_command_query_snapshot_list_ex_commands() {
+        let mut registry = CommandRegistry::new();
+        registry.register(Arc::new(ExCommand::new("write-cmd", &["write", "w"])));
+        registry.register(Arc::new(ExCommand::new("internal-cmd", &[]))); // No ex-names
+
+        let snapshot = CommandQuerySnapshot::from_registry(&registry);
+
+        let ex_cmds = snapshot.list_ex_commands();
+        assert_eq!(ex_cmds.len(), 1);
+        assert_eq!(ex_cmds[0].id.name(), "write-cmd");
+    }
+
+    #[test]
+    fn test_command_query_snapshot_list_all() {
+        let mut registry = CommandRegistry::new();
+        registry.register(Arc::new(ExCommand::new("write-cmd", &["write", "w"])));
+        registry.register(Arc::new(ExCommand::new("internal-cmd", &[])));
+
+        let snapshot = CommandQuerySnapshot::from_registry(&registry);
+
+        let all_cmds = snapshot.list_all();
+        assert_eq!(all_cmds.len(), 2);
     }
 }

@@ -55,6 +55,11 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   cycles. (3) Matched pair indicator - cursor on a bracket highlights its match
   with bold + underline. Module registers `SharedPairState` service and subscribes
   to `CursorMoved`, `BufferModified`, `BufferClosed` events. (#440)
+- **Command query service**: Added `CommandQueryService` trait and `CommandInfo`
+  struct for command discovery and completion. Enables modules to query commands
+  by name prefix (`search_by_prefix`), exact name (`find_by_name`), or list all
+  ex-commands (`list_ex_commands`). Registered in `ServiceRegistry` for module
+  access. Foundation for cmdline tab-completion and help systems. (#453)
 
 ### Changed
 

@@ -61,6 +61,7 @@
 
 // Internal modules
 mod provider;
+mod query;
 mod registry;
 mod traits;
 
@@ -74,6 +75,9 @@ pub use provider::CommandProvider;
 
 // Re-export registry for ServiceRegistry (Epic #417 Part 3)
 pub use registry::CommandHandlerStore;
+
+// Re-export query service (#453)
+pub use query::{CommandInfo, CommandQueryService};
 
 // Re-export traits
 pub use traits::{Command, CommandHandler};
