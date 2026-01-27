@@ -2,10 +2,9 @@
 //!
 //! Contains `SrvArgs` struct for parsing server mode command line arguments.
 
-use clap::Args;
+use {clap::Args, reovim_protocol::instance};
 
 use super::{
-    instance,
     module::ModuleConfig,
     server_config::{ServerConfig, TransportMode},
 };
@@ -56,6 +55,14 @@ pub struct SrvArgs {
     /// Start server in stdio mode (single client, for embedding).
     #[arg(long)]
     pub stdio: bool,
+
+    /// Start server with gRPC transport on specific port.
+    ///
+    /// Uses HTTP/2 and Protocol Buffers for efficient binary communication.
+    /// Suitable for GUI/Web clients. Requires `grpc` feature.
+    #[cfg(feature = "grpc")]
+    #[arg(long, value_name = "PORT")]
+    pub grpc: Option<u16>,
 
     /// Additional module search directory (repeatable).
     ///
@@ -120,6 +127,7 @@ impl SrvArgs {
         }
 
         // Build transport config
+        // Priority: stdio > socket > grpc > tcp > fallback
         let transport = {
             #[cfg(unix)]
             if let Some(path) = self.socket {
@@ -131,10 +139,17 @@ impl SrvArgs {
 
             if self.stdio {
                 TransportMode::Stdio
-            } else if let Some(port) = self.tcp {
-                TransportMode::Tcp { port }
             } else {
-                TransportMode::TcpWithFallback
+                #[cfg(feature = "grpc")]
+                if let Some(port) = self.grpc {
+                    return ServerConfig::grpc(port)
+                        .with_instance_name(&self.instance)
+                        .with_modules(modules)
+                        .with_ready_signal(self.ready_signal);
+                }
+
+                self.tcp
+                    .map_or(TransportMode::TcpWithFallback, |port| TransportMode::Tcp { port })
             }
         };
 
@@ -161,6 +176,8 @@ mod tests {
             #[cfg(unix)]
             socket: None,
             stdio: false,
+            #[cfg(feature = "grpc")]
+            grpc: None,
             module_dirs: vec![],
             load_modules: vec![],
             no_defaults: false,
@@ -180,6 +197,8 @@ mod tests {
             #[cfg(unix)]
             socket: None,
             stdio: false,
+            #[cfg(feature = "grpc")]
+            grpc: None,
             module_dirs: vec![],
             load_modules: vec![],
             no_defaults: false,
@@ -199,6 +218,8 @@ mod tests {
             #[cfg(unix)]
             socket: None,
             stdio: true,
+            #[cfg(feature = "grpc")]
+            grpc: None,
             module_dirs: vec![],
             load_modules: vec![],
             no_defaults: false,
@@ -217,6 +238,8 @@ mod tests {
             #[cfg(unix)]
             socket: None,
             stdio: false,
+            #[cfg(feature = "grpc")]
+            grpc: None,
             module_dirs: vec!["/custom/path".into()],
             load_modules: vec!["my-module".to_string()],
             no_defaults: true,

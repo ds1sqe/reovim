@@ -15,7 +15,7 @@ use tokio::{
     sync::watch,
 };
 
-use crate::server::instance::InstanceRegistry;
+use reovim_protocol::instance::InstanceRegistry;
 
 use super::{
     MANAGER_HOST, MANAGER_PORT,

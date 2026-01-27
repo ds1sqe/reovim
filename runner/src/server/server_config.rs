@@ -40,6 +40,16 @@ pub enum TransportMode {
     /// For process embedding - the parent process communicates
     /// directly via stdin/stdout. Single client only.
     Stdio,
+
+    /// gRPC transport on a specific port.
+    ///
+    /// Uses HTTP/2 and Protocol Buffers for efficient binary communication.
+    /// Suitable for GUI/Web clients that implement client-side rendering.
+    #[cfg(feature = "grpc")]
+    Grpc {
+        /// Port to bind gRPC server to.
+        port: u16,
+    },
 }
 
 /// Server configuration.
@@ -125,6 +135,19 @@ impl ServerConfig {
     pub fn stdio() -> Self {
         Self {
             transport: TransportMode::Stdio,
+            ..Self::default()
+        }
+    }
+
+    /// Create a config for gRPC transport on a specific port.
+    ///
+    /// Uses HTTP/2 and Protocol Buffers for efficient binary communication.
+    /// Requires the `grpc` feature to be enabled.
+    #[cfg(feature = "grpc")]
+    #[must_use]
+    pub fn grpc(port: u16) -> Self {
+        Self {
+            transport: TransportMode::Grpc { port },
             ..Self::default()
         }
     }

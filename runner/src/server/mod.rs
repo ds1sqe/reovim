@@ -53,8 +53,9 @@ pub mod client;
 pub mod config;
 pub mod debug;
 mod event_loop;
+#[cfg(feature = "grpc")]
+pub mod grpc;
 mod handler;
-pub mod instance;
 pub mod module;
 pub mod notification;
 pub mod registry;

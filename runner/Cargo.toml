@@ -10,6 +10,8 @@ license = "AGPL-3.0-only"
 default = []
 # Enable Python module support via PyO3
 python = ["dep:reovim-driver-ffi-python", "dep:pyo3"]
+# Enable gRPC v2 protocol support
+grpc = ["reovim-protocol/grpc", "dep:tonic"]
 
 [lib]
 name = "runner"
@@ -74,6 +76,9 @@ regex = "1"
 
 # CLI argument parsing
 clap = { workspace = true }
+
+# gRPC transport (optional, enabled via `grpc` feature)
+tonic = { version = "0.12", optional = true }
 
 # Terminal handling for TUI client
 crossterm = { workspace = true }

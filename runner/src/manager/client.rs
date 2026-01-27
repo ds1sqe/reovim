@@ -7,7 +7,7 @@ use tokio::{
     net::TcpStream,
 };
 
-use crate::server::instance::InstanceInfo;
+use reovim_protocol::instance::InstanceInfo;
 
 use super::{
     MANAGER_HOST, MANAGER_PORT,

@@ -18,7 +18,7 @@ use tokio::{
 #[cfg(unix)]
 use tokio::net::UnixStream;
 
-use crate::server::instance::{InstanceRegistry, TransportInfo};
+use reovim_protocol::instance::{InstanceRegistry, TransportInfo};
 
 /// Connection configuration.
 #[derive(Debug, Clone)]

@@ -22,8 +22,8 @@ reovim-driver-undo = { path = "../../lib/drivers/undo", version = "0.9.2-dev" }
 # VFS driver for persistence
 reovim-driver-vfs = { path = "../../lib/drivers/vfs", version = "0.9.2-dev" }
 
-# Protocol for serialization
-reovim-protocol = { path = "../../lib/protocol", version = "0.9.2-dev" }
+# Protocol for serialization - v0.9.3 for gRPC v2 protocol (Epic #465)
+reovim-protocol = { path = "../../lib/protocol", version = "0.9.3-dev" }
 
 # Platform abstraction for RwLock
 reovim-arch = { path = "../../lib/arch", version = "0.9.2-dev" }

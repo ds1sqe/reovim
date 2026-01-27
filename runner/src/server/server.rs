@@ -10,8 +10,10 @@ use std::sync::{
 
 use tokio::sync::watch;
 
+use reovim_protocol::instance;
+
 use crate::server::{
-    bootstrap, debug, handler, instance,
+    bootstrap, debug, handler,
     module::{ModuleConfig, ModuleManager},
     rpc::{RpcDispatcher, create_default_dispatcher},
     server_config::ServerConfig,
@@ -140,6 +142,8 @@ impl Server {
                 self.run_listener(listener, &default_session_id).await
             }
             TransportMode::Stdio => self.run_stdio(&default_session_id).await,
+            #[cfg(feature = "grpc")]
+            TransportMode::Grpc { port } => self.run_grpc(*port, &default_session_id).await,
         }
     }
 
@@ -314,6 +318,35 @@ impl Server {
 
         tracing::info!("Stdio client disconnected");
         Ok(())
+    }
+
+    /// Run the server with gRPC transport.
+    ///
+    /// Starts a tonic gRPC server on the specified port.
+    /// Uses HTTP/2 and Protocol Buffers for efficient binary communication.
+    #[cfg(feature = "grpc")]
+    async fn run_grpc(&self, port: u16, default_session_id: &SessionId) -> std::io::Result<()> {
+        use {
+            super::grpc::BufferServiceImpl,
+            reovim_protocol::v2::buffer_service_server::BufferServiceServer,
+        };
+
+        let addr: std::net::SocketAddr = format!("127.0.0.1:{port}")
+            .parse()
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+
+        tracing::info!(address = %addr, "Starting gRPC server");
+
+        // Create gRPC service with access to session registry
+        let buffer_service =
+            BufferServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
+
+        // Build and run tonic server
+        tonic::transport::Server::builder()
+            .add_service(BufferServiceServer::new(buffer_service))
+            .serve(addr)
+            .await
+            .map_err(std::io::Error::other)
     }
 
     /// Create transport info from a listener.

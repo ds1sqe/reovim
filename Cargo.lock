@@ -1771,6 +1771,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "toml 0.8.23",
+ "tonic",
  "tracing",
  "tracing-subscriber",
 ]
@@ -2276,13 +2277,15 @@ dependencies = [
 
 [[package]]
 name = "reovim-protocol"
-version = "0.9.2-dev"
+version = "0.9.3-dev"
 dependencies = [
  "prost",
+ "reovim-arch",
  "reovim-kernel",
  "rmp-serde",
  "serde",
  "serde_json",
+ "tempfile",
  "tonic",
  "tonic-build",
 ]

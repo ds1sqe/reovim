@@ -35,6 +35,7 @@
 //! ```
 
 pub mod codec;
+pub mod instance;
 pub mod v1;
 
 /// Protocol v2: gRPC-based raw-data model.

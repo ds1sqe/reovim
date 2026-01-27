@@ -468,10 +468,8 @@ fn run_cli(config: &ConnectionConfig, action: &CliAction, format: &str) {
         // Handle list command without connection
         if matches!(action, CliAction::List) {
             use {
-                runner::{
-                    manager::{ManagerClient, is_manager_alive},
-                    server::instance::InstanceRegistry,
-                },
+                reovim_protocol::instance::InstanceRegistry,
+                runner::manager::{ManagerClient, is_manager_alive},
                 std::collections::HashSet,
             };
 

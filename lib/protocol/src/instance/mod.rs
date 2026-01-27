@@ -8,7 +8,7 @@
 //! # Usage
 //!
 //! ```ignore
-//! use runner::server::instance::{InstanceInfo, InstanceRegistry, TransportInfo};
+//! use reovim_protocol::instance::{InstanceInfo, InstanceRegistry, TransportInfo};
 //!
 //! // Create registry
 //! let registry = InstanceRegistry::new();

@@ -2,7 +2,27 @@
 
 For old changelog, see `changelog/CHANGELOG-{version}.md`
 
-## [Unreleased] - v0.9.2-dev
+## [Unreleased] - v0.9.3-dev
+
+### Added
+
+- **gRPC v2 transport (Phase 2)**: Added gRPC transport listener as parallel
+  transport option alongside existing TCP/JSON-RPC. Server can start with
+  `--grpc <PORT>` flag. Implemented `BufferService` gRPC service with methods:
+  `GetRawContent` (raw buffer lines), `GetLineCount`, `GetAnnotations` (stub),
+  `List` (all open buffers). Other methods (`OpenFile`, `WriteFile`, `SetContent`)
+  return unimplemented status for Phase 2. The gRPC transport follows v2 protocol
+  philosophy: server provides raw data, client renders. Part of Epic #465. (#465)
+
+- **InstanceRegistry migration**: Moved `InstanceRegistry`, `InstanceInfo`, and
+  `TransportInfo` from `runner/src/server/instance/` to `lib/protocol/src/instance/`.
+  These are protocol-level abstractions used by both client and server. Fixed
+  architectural violation where client code imported from `server::instance`.
+  Part of Epic #465 Phase 2. (#465)
+
+---
+
+## [0.9.2] - v0.9.2-dev
 
 ### Added
 

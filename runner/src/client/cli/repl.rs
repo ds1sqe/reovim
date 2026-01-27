@@ -2,10 +2,11 @@
 //!
 //! Provides a command-line interface for interactive testing.
 
+use reovim_protocol::instance::InstanceRegistry;
+
 use crate::{
     client::common::{ConnectionConfig, RpcClient, discovery},
     manager::{ManagerClient, is_manager_alive},
-    server::instance::InstanceRegistry,
 };
 
 use super::{

@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::server::instance::InstanceInfo;
+use reovim_protocol::instance::InstanceInfo;
 
 /// Manager RPC request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
