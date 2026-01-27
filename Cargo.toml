@@ -10,7 +10,7 @@ members = [
     # Driver layer
     "lib/drivers/command-types",
     "lib/drivers/command",
-    "lib/drivers/display",
+    "lib/drivers/display",  # TODO(#465): Move to client-side in v2
     "lib/drivers/input",
     "lib/drivers/syntax",
     "lib/drivers/lsp",
@@ -43,16 +43,16 @@ members = [
     # Applications (v0.9.3 - Epic #465 Phase 4)
     "apps/reovim",
 
-    # Runner (legacy main binary)
+    # Legacy main binary - TODO(#465): Remove after v2 migration complete
     "runner",
 
-    # Tools (non-legacy)
+    # Tools
     "tools/*",
 
-    # Policy modules
+    # Policy modules - some are v1 render-related, excluded from check.sh
     "modules/*",
 ]
-default-members = ["runner"]
+default-members = ["apps/reovim"]
 
 [workspace.package]
 rust-version = "1.92"
