@@ -1,0 +1,29 @@
+//! gRPC v2 protocol implementation.
+//!
+//! Provides gRPC service implementations that bridge
+//! Protocol v2 types to the session/buffer system.
+//!
+//! # Architecture
+//!
+//! The gRPC services follow the data/presentation separation model:
+//! - Server provides raw data (buffer content, mode, cursor position)
+//! - Client handles presentation (colors, layout, rendering)
+//!
+//! Some services are stubs in `lib/server` because full implementation
+//! requires application-level concerns (e.g., module loading belongs in runner).
+//!
+//! See `docs/architecture/server-client-split.md` for details.
+
+mod buffer;
+mod editor;
+mod input;
+mod module;
+mod notification;
+mod server_service;
+mod state;
+
+pub use {
+    buffer::BufferServiceImpl, editor::EditorServiceImpl, input::InputServiceImpl,
+    module::ModuleServiceImpl, notification::NotificationServiceImpl,
+    server_service::ServerServiceImpl, state::StateServiceImpl,
+};

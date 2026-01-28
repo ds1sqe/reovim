@@ -1,0 +1,47 @@
+[package]
+name = "reovim-app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Reovim - the new architecture binary"
+repository.workspace = true
+homepage.workspace = true
+
+[[bin]]
+name = "reovim-new"
+path = "src/main.rs"
+
+[features]
+default = []
+grpc = ["reovim-server/grpc"]
+
+[dependencies]
+# Server crate
+reovim-server = { workspace = true }
+
+# Kernel and drivers for module loading
+reovim-kernel = { workspace = true }
+reovim-driver-buffer = { workspace = true }
+reovim-driver-vfs = { workspace = true }
+reovim-driver-input = { workspace = true }
+
+# Module bundle (provides DefaultsModule::create_modules)
+reovim-module-defaults = { workspace = true }
+
+# CLI
+clap = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true, features = ["full"] }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Sync primitives for KernelContext
+parking_lot = { workspace = true }
+
+[lints]
+workspace = true

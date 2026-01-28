@@ -1,0 +1,262 @@
+//! Server - the main entry point for running reovim server.
+
+use std::sync::Arc;
+
+use reovim_kernel::api::v1::ServiceRegistry;
+
+use crate::{
+    ServerConfig, TransportMode,
+    session::{Session, SessionId, SessionRegistry, SessionState},
+};
+
+/// Session factory function type.
+///
+/// Creates a `SessionState` for new sessions. This allows the runner to inject
+/// module-initialized registries into sessions.
+pub type SessionFactory = Box<dyn Fn() -> SessionState + Send + Sync>;
+
+/// The reovim server.
+///
+/// Manages sessions and handles client connections via the configured transport.
+pub struct Server {
+    /// Server configuration.
+    config: ServerConfig,
+
+    /// Registry of active sessions.
+    sessions: Arc<SessionRegistry>,
+
+    /// Optional service registry populated by modules.
+    ///
+    /// When set, sessions created by the server will use services from this registry
+    /// (resolvers, command handlers, keybindings, etc.).
+    ///
+    /// Note: Currently unused - will be used when we add service-based session creation.
+    #[allow(dead_code)]
+    services: Option<Arc<ServiceRegistry>>,
+
+    /// Optional session factory for creating sessions with custom state.
+    ///
+    /// If provided, this factory is used to create `SessionState` for new sessions.
+    /// This enables the runner to inject module-initialized registries.
+    session_factory: Option<SessionFactory>,
+}
+
+impl Server {
+    /// Create a new server with the given configuration.
+    ///
+    /// This creates a server with empty registries. For full vim functionality,
+    /// use [`Server::with_services`] or [`Server::with_session_factory`] to
+    /// inject module-initialized registries.
+    #[must_use]
+    pub fn new(config: ServerConfig) -> Self {
+        Self {
+            config,
+            sessions: Arc::new(SessionRegistry::new()),
+            services: None,
+            session_factory: None,
+        }
+    }
+
+    /// Create a server with a service registry populated by modules.
+    ///
+    /// The service registry should contain:
+    /// - `ResolverRegistry` - mode key resolvers
+    /// - `KeybindingStore` - keybindings
+    /// - `CommandHandlerStore` - command handlers
+    /// - `ModeInfoStore` - mode metadata
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use reovim_server::{Server, ServerConfig};
+    /// use reovim_kernel::api::v1::ServiceRegistry;
+    ///
+    /// // Bootstrap: load modules and populate services
+    /// let services = Arc::new(ServiceRegistry::new());
+    /// bootstrap_modules(&services);
+    ///
+    /// let server = Server::with_services(ServerConfig::default(), services);
+    /// server.run().await?;
+    /// ```
+    #[must_use]
+    pub fn with_services(config: ServerConfig, services: Arc<ServiceRegistry>) -> Self {
+        Self {
+            config,
+            sessions: Arc::new(SessionRegistry::new()),
+            services: Some(services),
+            session_factory: None,
+        }
+    }
+
+    /// Create a server with a custom session factory.
+    ///
+    /// The factory function is called each time a new session is created,
+    /// allowing the runner to inject fully-configured `SessionState` instances
+    /// with module-initialized registries.
+    ///
+    /// This is the most flexible option for module integration.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use reovim_server::{Server, ServerConfig, SessionState};
+    ///
+    /// let server = Server::with_session_factory(
+    ///     ServerConfig::default(),
+    ///     Box::new(|| {
+    ///         // Create session state with populated registries
+    ///         create_session_state_with_modules()
+    ///     }),
+    /// );
+    /// server.run().await?;
+    /// ```
+    #[must_use]
+    pub fn with_session_factory(config: ServerConfig, factory: SessionFactory) -> Self {
+        Self {
+            config,
+            sessions: Arc::new(SessionRegistry::new()),
+            services: None,
+            session_factory: Some(factory),
+        }
+    }
+
+    /// Create a session state using the configured factory or default.
+    #[allow(clippy::option_if_let_else)] // More readable with if-let
+    fn create_session_state(&self) -> SessionState {
+        if let Some(factory) = &self.session_factory {
+            factory()
+        } else {
+            SessionState::default()
+        }
+    }
+
+    /// Run the server.
+    ///
+    /// This method blocks until the server is shut down.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the transport fails to start (e.g., port in use).
+    pub async fn run(&self) -> std::io::Result<()> {
+        // Create the default session with module-initialized state
+        let session_state = self.create_session_state();
+        let default_session = Arc::new(Session::from_state(
+            SessionId::new(&*self.config.default_session_name),
+            session_state,
+        ));
+        self.sessions.insert(&default_session);
+
+        tracing::info!(
+            session = %self.config.default_session_name,
+            "Created default session"
+        );
+
+        // Start the appropriate transport
+        match &self.config.transport {
+            TransportMode::TcpWithFallback => self.run_tcp_fallback().await,
+            TransportMode::Tcp { port } => self.run_tcp(*port).await,
+            #[cfg(unix)]
+            TransportMode::UnixSocket { path } => self.run_unix(path).await,
+            #[cfg(feature = "grpc")]
+            TransportMode::Grpc { port } => self.run_grpc(*port).await,
+        }
+    }
+
+    /// Run with TCP transport, trying ports 12540-12549.
+    async fn run_tcp_fallback(&self) -> std::io::Result<()> {
+        for port in 12540..=12549 {
+            match self.run_tcp(port).await {
+                Ok(()) => return Ok(()),
+                Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+                    tracing::debug!(port, "Port in use, trying next");
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        Err(std::io::Error::new(
+            std::io::ErrorKind::AddrInUse,
+            "All ports 12540-12549 are in use",
+        ))
+    }
+
+    /// Run with TCP transport on a specific port.
+    async fn run_tcp(&self, port: u16) -> std::io::Result<()> {
+        tracing::info!(port, "Starting TCP server (JSON-RPC not implemented yet)");
+        // TODO: Implement JSON-RPC server
+        // For now, just wait forever
+        std::future::pending::<()>().await;
+        Ok(())
+    }
+
+    /// Run with Unix socket transport.
+    #[cfg(unix)]
+    async fn run_unix(&self, path: &std::path::Path) -> std::io::Result<()> {
+        tracing::info!(path = %path.display(), "Starting Unix socket server");
+        // TODO: Implement Unix socket server
+        std::future::pending::<()>().await;
+        Ok(())
+    }
+
+    /// Run with gRPC transport.
+    #[cfg(feature = "grpc")]
+    async fn run_grpc(&self, port: u16) -> std::io::Result<()> {
+        use {
+            crate::grpc::{
+                BufferServiceImpl, EditorServiceImpl, InputServiceImpl, ModuleServiceImpl,
+                NotificationServiceImpl, ServerServiceImpl, StateServiceImpl,
+            },
+            reovim_protocol::v2::{
+                buffer_service_server::BufferServiceServer,
+                editor_service_server::EditorServiceServer,
+                input_service_server::InputServiceServer,
+                module_service_server::ModuleServiceServer,
+                notification_service_server::NotificationServiceServer,
+                server_service_server::ServerServiceServer,
+                state_service_server::StateServiceServer,
+            },
+        };
+
+        let addr: std::net::SocketAddr = format!("127.0.0.1:{port}")
+            .parse()
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+
+        tracing::info!(address = %addr, "Starting gRPC server");
+
+        let default_session_id = SessionId::new(&*self.config.default_session_name);
+
+        // Create all gRPC services
+        let buffer_service =
+            BufferServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
+        let editor_service =
+            EditorServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
+        let input_service =
+            InputServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
+        let state_service =
+            StateServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
+        let server_service =
+            ServerServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
+        let notification_service =
+            NotificationServiceImpl::new(Arc::clone(&self.sessions), default_session_id);
+
+        // ModuleService is a stub - full implementation is in runner
+        let module_service = ModuleServiceImpl::new();
+
+        tonic::transport::Server::builder()
+            .add_service(BufferServiceServer::new(buffer_service))
+            .add_service(EditorServiceServer::new(editor_service))
+            .add_service(InputServiceServer::new(input_service))
+            .add_service(ModuleServiceServer::new(module_service))
+            .add_service(StateServiceServer::new(state_service))
+            .add_service(ServerServiceServer::new(server_service))
+            .add_service(NotificationServiceServer::new(notification_service))
+            .serve(addr)
+            .await
+            .map_err(std::io::Error::other)
+    }
+
+    /// Get a reference to the session registry.
+    #[must_use]
+    pub const fn sessions(&self) -> &Arc<SessionRegistry> {
+        &self.sessions
+    }
+}

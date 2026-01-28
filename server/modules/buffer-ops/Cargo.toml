@@ -1,0 +1,22 @@
+[package]
+name = "reovim-module-buffer-ops"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Buffer operations module for reovim"
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+dynamic = []  # Enable FFI entry points for standalone dynamic loading
+
+[dependencies]
+reovim-kernel = { workspace = true }
+reovim-module-macros = { workspace = true }
+
+[lints]
+workspace = true

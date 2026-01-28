@@ -1,0 +1,17 @@
+[package]
+name = "reovim-driver-search"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Search provider driver for reovim - defines SearchProvider trait and registry"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Kernel types for Buffer, Position
+reovim-kernel = { workspace = true }

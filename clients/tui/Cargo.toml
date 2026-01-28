@@ -1,0 +1,59 @@
+[package]
+name = "reovim-client-tui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Reovim TUI client - terminal user interface"
+repository.workspace = true
+homepage.workspace = true
+
+[features]
+default = ["grpc"]
+grpc = ["reovim-protocol/grpc", "dep:tonic", "dep:tokio-stream"]
+
+[dependencies]
+# v1 JSON-RPC client removed - archived to archive/post_kernel/lib/clients/tui/
+
+# Protocol types (v2 gRPC when grpc feature enabled)
+reovim-protocol = { workspace = true }
+
+# gRPC (optional, default enabled)
+tonic = { workspace = true, optional = true }
+tokio-stream = { version = "0.1", features = ["sync"], optional = true }
+
+# Display driver (FrameBuffer, FrameRenderer, Style)
+reovim-driver-display = { workspace = true }
+
+# TUI driver (Terminal, Screen, InputReader, Cursor)
+reovim-driver-tui = { workspace = true }
+
+# Platform abstraction (dirs)
+reovim-arch = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true, features = ["net", "io-util", "time", "sync", "macros"] }
+futures = { workspace = true }
+
+# Terminal
+crossterm = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# CLI arguments
+clap = { workspace = true }
+
+# Timestamps
+chrono = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros"] }
+
+[lints]
+workspace = true

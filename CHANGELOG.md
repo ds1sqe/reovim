@@ -4,6 +4,30 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [Unreleased] - v0.9.3-dev
 
+### Changed
+
+- **Directory restructure (Phase 11)**: Major codebase restructure to clarify
+  server/client boundaries. New directory layout: `server/` (kernel, drivers,
+  modules), `clients/` (tui, cli), `shared/` (protocol, arch, net, log, trace,
+  module-macros, testing), `apps/` (thin runner binary). Server-side drivers
+  (14 total) moved to `server/lib/drivers/`. Server-side modules (17 total)
+  moved to `server/modules/`. Client-side modules (7 total: layout, pair,
+  cmdline, statusline, which-key, undotree, example) archived to
+  `archive/post_kernel/modules/` - will be reimplemented as client-side plugins.
+  TUI drivers (display, tui) moved to `clients/tui/lib/drivers/`. Window
+  command IDs moved from archived `layout` module to `window-ops` module
+  (server-side). Updated all workspace paths and dependencies. Part of Epic
+  #465 Phase 11. (#465)
+
+- **Legacy cleanup (Phase 10)**: Removed legacy crates from workspace as part of
+  aggressive v2 migration cleanup. `runner/` (legacy binary with v1 JSON-RPC server)
+  and `lib/clients/core/` (v1 JSON-RPC client library) removed from workspace -
+  both archived to `archive/post_kernel/`. TUI client (`lib/clients/tui/`) now
+  uses only gRPC v2 (`TuiAppV2`). Module tests (vim, undo, search, which-key)
+  archived - to be rewritten for v2 testing infrastructure (`lib/testing/`).
+  TUI simplified: removed deprecated v1 args (`--tcp`, `--socket-path`, `--instance`),
+  now uses only `--grpc` for gRPC v2 connections. Part of Epic #465 Phase 10. (#465)
+
 ### Added
 
 - **NotificationService infrastructure (Phase 8A)**: Implemented gRPC v2

@@ -1,0 +1,36 @@
+[package]
+name = "reovim-module-clipboard"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Clipboard module for reovim - system clipboard access and yank history"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Kernel types
+reovim-kernel = { workspace = true }
+
+# Driver for ClipboardProvider trait
+reovim-driver-clipboard = { workspace = true }
+
+# Platform abstraction for RwLock
+reovim-arch = { workspace = true }
+
+# Module macros for FFI entry points
+reovim-module-macros = { workspace = true }
+
+# System clipboard access
+arboard.workspace = true
+
+# Logging
+tracing.workspace = true
+
+[features]
+# Enable for building as standalone dynamic library
+dynamic = []

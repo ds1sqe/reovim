@@ -1,0 +1,27 @@
+[package]
+name = "reovim-driver-net"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Network driver for reovim (RPC server, transports)"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Only depends on kernel layer
+reovim-kernel = { workspace = true }
+
+# Platform abstraction (for dirs, local transport)
+reovim-arch = { workspace = true }
+
+# Protocol types (shared RPC definitions)
+reovim-protocol = { workspace = true }
+
+# Serialization for JSON-RPC types
+serde = { workspace = true }
+serde_json = { workspace = true }

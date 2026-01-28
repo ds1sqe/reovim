@@ -1,0 +1,36 @@
+[package]
+name = "reovim-module-defaults"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Default module bundle for reovim - aggregates keymap, vim, commands"
+readme = "README.md"
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+dynamic = []  # Enable FFI entry points for standalone dynamic loading
+
+[dependencies]
+reovim-kernel = { workspace = true }
+reovim-module-macros = { workspace = true }
+reovim-module-keymap = { workspace = true }
+reovim-module-vim = { workspace = true }
+# Note: operators merged into vim (Epic #385)
+reovim-module-commands = { workspace = true }
+reovim-module-editor = { workspace = true }
+reovim-module-motions = { workspace = true }
+reovim-module-scratch-buffer = { workspace = true }
+reovim-module-vfs-local = { workspace = true }
+reovim-module-undo = { workspace = true }
+reovim-module-buffer-simple = { workspace = true }
+reovim-module-search = { workspace = true }
+reovim-module-clipboard = { workspace = true }
+# Note: Client-side modules (layout, pair, cmdline, statusline, which-key, undotree)
+# archived to archive/post_kernel/modules/ (Epic #465 Phase 11)
+
+[lints]
+workspace = true

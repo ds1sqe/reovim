@@ -1,0 +1,29 @@
+[package]
+name = "reovim-driver-session"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Session driver for reovim - provides traits for session management"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Kernel types for ModeId, BufferId, etc.
+reovim-kernel = { workspace = true }
+# Command types for CommandContext, CommandResult (avoids circular dependency)
+reovim-driver-command-types = { workspace = true }
+# Display driver for compositor traits (Rect, WindowPlacement, etc.)
+reovim-driver-display = { workspace = true }
+# Platform abstraction (RwLock for test buffer manager)
+reovim-arch = { workspace = true }
+# Clipboard driver for system clipboard and history (RegisterApi routing)
+reovim-driver-clipboard = { workspace = true }
+# Undo driver for UndoApi implementation
+reovim-driver-undo = { workspace = true }
+# Search driver for Direction type (SearchState)
+reovim-driver-search = { workspace = true }
