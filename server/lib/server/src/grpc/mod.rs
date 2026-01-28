@@ -19,6 +19,7 @@ mod editor;
 mod input;
 mod module;
 mod notification;
+pub mod notification_builder;
 mod server_service;
 mod state;
 

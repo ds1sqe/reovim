@@ -112,6 +112,12 @@ pub struct StateChanges {
     /// Options that changed.
     /// Each entry contains name, value, and optional `window_id`.
     pub options_changed: Vec<OptionChange>,
+
+    // === Scroll Changes ===
+    /// Whether scroll position changed in any window.
+    pub scroll_changed: bool,
+    /// Windows whose scroll position changed.
+    pub scrolled_windows: Vec<WindowId>,
 }
 
 impl StateChanges {
@@ -136,6 +142,7 @@ impl StateChanges {
             || !self.windows_closed.is_empty()
             || self.focus_changed
             || self.option_changed
+            || self.scroll_changed
     }
 
     /// Merge another `StateChanges` into this one.
@@ -155,6 +162,8 @@ impl StateChanges {
         self.focus_changed |= other.focus_changed;
         self.option_changed |= other.option_changed;
         self.options_changed.extend(other.options_changed);
+        self.scroll_changed |= other.scroll_changed;
+        self.scrolled_windows.extend(other.scrolled_windows);
     }
 
     // === Recording helpers ===
@@ -242,6 +251,14 @@ impl StateChanges {
         window_id: WindowId,
     ) {
         self.record_option_change(OptionChange::window(name, value, window_id));
+    }
+
+    /// Record that scroll position changed in a window.
+    pub fn record_scroll_change(&mut self, window: WindowId) {
+        self.scroll_changed = true;
+        if !self.scrolled_windows.contains(&window) {
+            self.scrolled_windows.push(window);
+        }
     }
 }
 

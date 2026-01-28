@@ -12,6 +12,7 @@
 //!    - `KeymapRegistry` for keybinding lookup
 //!    - `CommandRegistry` for command execution
 //! 3. Handle the `ResolveResult` (execute command, insert char, mode transition, etc.)
+//! 4. Emit notifications for state changes (mode, cursor, buffer modifications)
 //!
 //! When modules are NOT loaded (empty registries), the service falls back to
 //! basic character insertion for insert-mode-like behavior.
@@ -26,13 +27,17 @@ use {
     reovim_driver_input::{
         KeyCode, KeySequence, ModeTransition, Modifiers, PopResult, ResolveContext, ResolveResult,
     },
+    reovim_driver_session::api::StateChanges,
     reovim_protocol::v2::{
         KeyStatus, SendKeysRequest, SendKeysResponse, input_service_server::InputService,
     },
     tonic::{Request, Response, Status},
 };
 
-use crate::session::{Session, SessionId, SessionRegistry, SessionState};
+use crate::{
+    grpc::notification_builder,
+    session::{Session, SessionId, SessionRegistry, SessionState},
+};
 
 /// gRPC `InputService` implementation.
 ///
@@ -77,6 +82,7 @@ impl InputService for InputServiceImpl {
     /// - `SessionState::resolve_key()` finds the appropriate mode resolver
     /// - The resolver returns a `ResolveResult` (execute, insert, transition, etc.)
     /// - This method handles each result type appropriately
+    /// - State changes are accumulated and emitted as notifications
     ///
     /// When modules are NOT loaded (empty registries), falls back to character insertion.
     async fn send_keys(
@@ -94,12 +100,16 @@ impl InputService for InputServiceImpl {
         // Process each key through the resolver system
         let mut any_handled = false;
         let mut final_status = KeyStatus::NotFound;
+        let mut accumulated_changes = StateChanges::new();
 
         for key in keys.as_slice() {
             // Try to resolve the key through the full resolver system
             let resolve_result = session.with_state_mut(|state| state.resolve_key(key)).await;
 
-            if let Some((result, _changes)) = resolve_result {
+            if let Some((result, changes)) = resolve_result {
+                // Accumulate changes from resolution
+                accumulated_changes.merge(changes);
+
                 // Key was processed by a resolver
                 let handled = Self::handle_resolve_result(&session, result, key).await;
                 if handled {
@@ -122,6 +132,11 @@ impl InputService for InputServiceImpl {
             }
         }
 
+        // Emit notifications for accumulated state changes
+        if accumulated_changes.has_changes() {
+            Self::emit_notifications(&session, &accumulated_changes).await;
+        }
+
         // Return result
         Ok(Response::new(SendKeysResponse {
             ok: any_handled,
@@ -131,6 +146,31 @@ impl InputService for InputServiceImpl {
 }
 
 impl InputServiceImpl {
+    /// Emit notifications for state changes.
+    ///
+    /// Converts accumulated `StateChanges` to gRPC notifications and emits them
+    /// to all subscribed clients.
+    async fn emit_notifications(session: &Session, changes: &StateChanges) {
+        let notifications = session
+            .with_state(|state| notification_builder::build_notifications(changes, state))
+            .await;
+
+        let notification_count = notifications.len();
+        for notification in notifications {
+            session.emit_notification(notification);
+        }
+
+        if notification_count > 0 {
+            tracing::trace!(
+                count = notification_count,
+                mode_changed = changes.mode_changed,
+                cursor_moved = changes.cursor_moved,
+                buffer_modified = changes.buffer_modified,
+                "Emitted notifications"
+            );
+        }
+    }
+
     /// Convert `ResolveContext` to `CommandContext`.
     fn resolve_to_command_context(ctx: &ResolveContext) -> CommandContext {
         let mut cmd_ctx = CommandContext::new();

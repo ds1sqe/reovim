@@ -362,7 +362,7 @@ impl SessionState {
                 &self,
                 _cmd: &CommandId,
                 _ctx: &CommandContext,
-                _kernel: &mut reovim_kernel::api::v1::KernelContext,
+                _kernel: &reovim_kernel::api::v1::KernelContext,
             ) -> Option<CommandResult> {
                 Some(CommandResult::Success)
             }

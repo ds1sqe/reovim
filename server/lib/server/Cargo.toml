@@ -52,6 +52,8 @@ async-stream = { version = "0.3", optional = true }
 [dev-dependencies]
 tempfile = "3.0"
 reovim-driver-buffer = { workspace = true }
+reovim-testing = { workspace = true }
+reovim-client-cli = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }
 
 [lints]

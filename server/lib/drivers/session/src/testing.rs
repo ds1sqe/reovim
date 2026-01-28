@@ -389,7 +389,7 @@ impl CommandExecutor for StubExecutor {
         &self,
         _cmd: &CommandId,
         _ctx: &CommandContext,
-        _kernel: &mut KernelContext,
+        _kernel: &KernelContext,
     ) -> Option<CommandResult> {
         Some(CommandResult::Success)
     }

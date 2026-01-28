@@ -450,7 +450,7 @@ mod tests {
                 &self,
                 _: &CommandId,
                 _: &CommandContext,
-                _: &mut KernelContext,
+                _: &KernelContext,
             ) -> Option<CommandResult> {
                 Some(CommandResult::Success)
             }

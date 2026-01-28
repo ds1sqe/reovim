@@ -266,7 +266,7 @@ impl CommandExecutor for StubCommandExecutor {
         &self,
         _cmd: &CommandId,
         _ctx: &CommandContext,
-        _kernel: &mut KernelContext,
+        _kernel: &KernelContext,
     ) -> Option<CommandResult> {
         // Commands cannot recursively execute other commands via SessionRuntime
         Some(CommandResult::Error("recursive command execution not supported".to_string()))
@@ -280,7 +280,7 @@ impl CommandExecutor for CommandRegistry {
         &self,
         _cmd: &CommandId,
         _ctx: &CommandContext,
-        _kernel: &mut KernelContext,
+        _kernel: &KernelContext,
     ) -> Option<CommandResult> {
         profile_scope!("command_execute_via_executor", "server::command");
 

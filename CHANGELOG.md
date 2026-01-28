@@ -30,6 +30,18 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Server/client notification pipeline (Phase 8C)**: Completed the core server/client
+  architecture with working command execution and notification emission. Pillars
+  implemented: (1) `CommandExecutor` trait signature changed from `&mut KernelContext`
+  to `&KernelContext` (interior mutability via `Arc<RwLock>` enables this), enabling
+  `SessionRuntime::execute_command()` to work; (2) Created `notification_builder.rs`
+  to convert `StateChanges` to gRPC notifications (mode, cursor, buffer, layout,
+  selection, option changes); (3) Added `scroll_left` to `Viewport` for horizontal
+  scroll tracking; (4) Created `TuiAppV2Headless` (775 LOC) for headless TUI testing
+  with capture, resize, and event loop support; (5) Created E2E test infrastructure
+  with `vim_commands.rs` (503 LOC) and `notifications.rs` (190 LOC). Macro recording
+  (Pillar 6) deferred to Phase 8D. Part of Epic #465 Phase 8C. (#465)
+
 - **NotificationService infrastructure (Phase 8A)**: Implemented gRPC v2
   NotificationService with server-to-client streaming for real-time notifications.
   Uses `tokio::sync::broadcast` channel pattern - Session holds broadcast sender,

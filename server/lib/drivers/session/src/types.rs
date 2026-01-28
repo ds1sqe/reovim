@@ -124,14 +124,17 @@ impl std::fmt::Display for ClientId {
 /// Viewport for a client session.
 ///
 /// Represents the visible area of a buffer in a window.
+/// Tracks both vertical and horizontal scroll positions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Viewport {
     /// Width in columns.
     pub width: u16,
     /// Height in rows.
     pub height: u16,
-    /// Scroll offset (first visible line).
-    pub scroll_offset: usize,
+    /// Vertical scroll offset (first visible line, 0-indexed).
+    pub scroll_top: usize,
+    /// Horizontal scroll offset (first visible column, 0-indexed).
+    pub scroll_left: usize,
 }
 
 impl Viewport {
@@ -141,7 +144,8 @@ impl Viewport {
         Self {
             width,
             height,
-            scroll_offset: 0,
+            scroll_top: 0,
+            scroll_left: 0,
         }
     }
 
@@ -154,13 +158,38 @@ impl Viewport {
     /// Get the last visible line index.
     #[must_use]
     pub const fn last_visible_line(&self) -> usize {
-        self.scroll_offset + self.height as usize - 1
+        self.scroll_top + self.height as usize - 1
+    }
+
+    /// Get the last visible column index.
+    #[must_use]
+    pub const fn last_visible_column(&self) -> usize {
+        self.scroll_left + self.width as usize - 1
     }
 
     /// Check if a line is visible.
     #[must_use]
     pub const fn is_line_visible(&self, line: usize) -> bool {
-        line >= self.scroll_offset && line <= self.last_visible_line()
+        line >= self.scroll_top && line <= self.last_visible_line()
+    }
+
+    /// Check if a column is visible.
+    #[must_use]
+    pub const fn is_column_visible(&self, column: usize) -> bool {
+        column >= self.scroll_left && column <= self.last_visible_column()
+    }
+
+    /// Check if a position (line, column) is visible.
+    #[must_use]
+    pub const fn is_position_visible(&self, line: usize, column: usize) -> bool {
+        self.is_line_visible(line) && self.is_column_visible(column)
+    }
+
+    /// Deprecated: use `scroll_top` field directly.
+    #[deprecated(since = "0.9.3", note = "Use `scroll_top` field directly")]
+    #[must_use]
+    pub const fn scroll_offset(&self) -> usize {
+        self.scroll_top
     }
 }
 
@@ -554,11 +583,18 @@ mod tests {
         let vp = Viewport::new(100, 50);
         assert_eq!(vp.width, 100);
         assert_eq!(vp.height, 50);
-        assert_eq!(vp.scroll_offset, 0);
+        assert_eq!(vp.scroll_top, 0);
+        assert_eq!(vp.scroll_left, 0);
         assert_eq!(vp.last_visible_line(), 49);
+        assert_eq!(vp.last_visible_column(), 99);
         assert!(vp.is_line_visible(0));
         assert!(vp.is_line_visible(49));
         assert!(!vp.is_line_visible(50));
+        assert!(vp.is_column_visible(0));
+        assert!(vp.is_column_visible(99));
+        assert!(!vp.is_column_visible(100));
+        assert!(vp.is_position_visible(25, 50));
+        assert!(!vp.is_position_visible(50, 50));
     }
 
     #[test]

@@ -55,11 +55,16 @@ pub trait CommandExecutor: Send + Sync {
     /// Execute a command by ID.
     ///
     /// Returns `None` if the command is not found.
+    ///
+    /// # Note
+    ///
+    /// `KernelContext` uses interior mutability (`Arc<RwLock<...>>`) for all
+    /// mutable state, so `&KernelContext` is sufficient for command execution.
     fn execute(
         &self,
         cmd: &CommandId,
         ctx: &CommandContext,
-        kernel: &mut KernelContext,
+        kernel: &KernelContext,
     ) -> Option<CommandResult>;
 }
 

@@ -811,19 +811,13 @@ impl UndoApi for SessionRuntime<'_> {
 
 impl CommandApi for SessionRuntime<'_> {
     fn execute_command(&mut self, cmd: CommandId, ctx: CommandContext) -> CommandResult {
-        // NOTE: Full command execution requires mutable KernelContext.
-        // CommandExecutor expects `&mut KernelContext`, but we only have `&KernelContext`.
+        // Execute command via the injected executor.
         //
-        // For now, we validate that the command exists but defer actual execution
-        // to the runner which has mutable access to KernelContext.
-        //
-        // Future work: Either change CommandExecutor to not need mutable context,
-        // or have commands receive SessionRuntime directly.
-        //
-        // This reference ensures the executor field is used (for dead code check).
-        let _ = &self.executor;
-        let _ = (cmd, ctx);
-        CommandResult::Error("command execution via SessionRuntime not yet implemented".to_string())
+        // KernelContext uses interior mutability (Arc<RwLock<...>>), so
+        // &KernelContext is sufficient for command execution.
+        self.executor
+            .execute(&cmd, &ctx, self.kernel)
+            .unwrap_or_else(|| CommandResult::Error(format!("command not found: {cmd:?}")))
     }
 }
 
@@ -1323,7 +1317,7 @@ mod tests {
             &self,
             _cmd: &CommandId,
             _ctx: &CommandContext,
-            _kernel: &mut KernelContext,
+            _kernel: &KernelContext,
         ) -> Option<CommandResult> {
             Some(CommandResult::Success)
         }

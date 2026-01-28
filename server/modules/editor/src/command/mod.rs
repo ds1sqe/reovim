@@ -237,7 +237,7 @@ mod tests {
             &self,
             _cmd: &KernelCommandId,
             _ctx: &CommandContext,
-            _kernel: &mut KernelContext,
+            _kernel: &KernelContext,
         ) -> Option<CommandResult> {
             Some(CommandResult::Success)
         }

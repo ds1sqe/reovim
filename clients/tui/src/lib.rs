@@ -93,6 +93,10 @@ pub mod grpc_client;
 #[cfg(feature = "grpc")]
 pub mod app_v2;
 
+// gRPC v2 headless TUI app
+#[cfg(feature = "grpc")]
+pub mod app_v2_headless;
+
 pub use {
     cli_panel::{CliHistoryEntry, CliPanelState, CliResult},
     input::InputHandler,
@@ -111,6 +115,10 @@ pub use grpc_client::{TuiGrpcClient, TuiGrpcError};
 #[cfg(feature = "grpc")]
 pub use app_v2::{TuiAppV2, TuiAppV2Error};
 
+// gRPC v2 headless TUI app exports
+#[cfg(feature = "grpc")]
+pub use app_v2_headless::{FrameMetadata, HeadlessError, TuiAppV2Headless};
+
 /// TUI mode CLI arguments.
 ///
 /// These arguments configure how the TUI connects to a gRPC server.
@@ -121,6 +129,14 @@ pub struct TuiArgs {
     /// Default: 127.0.0.1:50051
     #[arg(long = "grpc", value_name = "ADDR")]
     pub grpc_addr: Option<String>,
+
+    /// Run in headless mode (no terminal, for testing/scripting).
+    ///
+    /// Headless mode connects to the server and processes notifications
+    /// without rendering to a terminal. Use with `reovim cli capture`
+    /// to retrieve frame content.
+    #[arg(long)]
+    pub headless: bool,
 
     /// Enable debug mode (statusline + frame capture).
     ///
