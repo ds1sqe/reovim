@@ -30,6 +30,19 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Pytest infrastructure for Python testing module (Phase 8E)**: Added formal pytest
+  suite for `tools/reovim-testing/` with 171 total tests (87 unit, 84 integration).
+  Unit tests use mocking (no server required, 0.12s): `test_errors.py` (20 exception tests),
+  `test_discovery.py` (19 binary/port tests), `test_client.py` (24 CLI wrapper tests),
+  `test_capture.py` (24 dataclass tests). Integration tests require running server (~45s):
+  `test_editor.py` (27 lifecycle tests), `test_cleanup.py` (6 zombie prevention tests),
+  `test_battle.py` (51 battle-tested scenarios). Infrastructure includes `conftest.py`
+  with module-scoped `binary_info` fixture, function-scoped `editor` with auto-cleanup,
+  pytest markers (`integration`, `slow`, `binary`), and auto-skip when binary unavailable.
+  Fixed `screen_capture_demo.py` imports. Added comprehensive documentation to `input.rs`
+  fallback logic explaining when it triggers, what it does, and its limitations.
+  Part of Epic #465 Phase 8E. (#465)
+
 - **Python testing module and capture relay (Phase 8D)**: Added comprehensive Python
   testing library at `tools/reovim-testing/` with zero-config `Editor` class featuring
   fluent API and context manager lifecycle. Includes `Capture` dataclass for rich state

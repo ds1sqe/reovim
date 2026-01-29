@@ -117,7 +117,22 @@ impl InputService for InputServiceImpl {
                     final_status = KeyStatus::Executed;
                 }
             } else {
-                // No resolver found - fall back to legacy character insertion
+                // FALLBACK: No resolver exists for the current mode.
+                //
+                // This triggers when `state.resolve_key()` returns `None`, meaning
+                // no module has registered a resolver for this mode (e.g., vim
+                // module not loaded). This is different from "resolver found but
+                // didn't handle the key" - that case returns Some with appropriate
+                // KeyStatus.
+                //
+                // The fallback only inserts plain characters (a-z, A-Z, etc.) into
+                // the buffer. It does NOT:
+                // - Trigger mode transitions (i → INSERT won't work)
+                // - Execute vim commands (dd, yy, etc. won't work)
+                // - Handle special keys (<C-...>, <F1>, etc.)
+                //
+                // This provides basic functionality when no vim module is loaded,
+                // useful for minimal testing scenarios.
                 let handled = Self::fallback_char_insert(&session, key).await;
                 if handled {
                     any_handled = true;
@@ -395,7 +410,26 @@ impl InputServiceImpl {
 
     /// Fallback character insertion for when no resolver is available.
     ///
-    /// Only handles plain characters or shift+character (for uppercase).
+    /// This is a minimal fallback that only handles basic character insertion.
+    /// It is triggered when no module has registered a resolver for the current
+    /// mode (e.g., vim module not loaded), NOT when a resolver exists but chose
+    /// not to handle a particular key.
+    ///
+    /// # Behavior
+    ///
+    /// - Only handles `KeyCode::Char(c)` with no modifiers or just SHIFT
+    /// - Inserts the character into the active buffer or cmdline
+    /// - Returns `true` if a character was inserted, `false` otherwise
+    ///
+    /// # Limitations
+    ///
+    /// This fallback does NOT provide:
+    /// - Mode transitions (typing 'i' won't enter INSERT mode)
+    /// - Vim commands (typing 'd' twice won't delete a line)
+    /// - Special key handling (`<C-w>`, `<F1>`, etc.)
+    /// - Operator-pending behavior
+    ///
+    /// For full editor functionality, ensure the vim module is loaded.
     async fn fallback_char_insert(session: &Session, key: &reovim_driver_input::KeyEvent) -> bool {
         if let KeyCode::Char(ch) = key.code {
             // Only handle plain characters or shift+character (for uppercase)
