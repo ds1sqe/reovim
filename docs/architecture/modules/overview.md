@@ -6,12 +6,12 @@ The module system enables dynamic loading of policy modules. Implemented in Phas
 
 | Component | Location | Purpose |
 |-----------|----------|---------|
-| `Module` trait | `lib/kernel/src/api/module.rs` | Module interface |
-| `declare_module!` | `lib/module-macros/` | FFI entry points |
-| `ModuleLoader` | `runner/src/module/loader.rs` | Static + dynamic loading |
-| `ModuleRegistry` | `runner/src/module/registry.rs` | Dependency resolution |
-| `HotReloadManager` | `runner/src/module/hot_reload.rs` | File watching |
-| `PythonModule` | `lib/drivers/ffi-python/` | Python module wrapper |
+| `Module` trait | `server/lib/kernel/src/api/module.rs` | Module interface |
+| `declare_module!` | `shared/module-macros/` | FFI entry points |
+| `ModuleLoader` | `server/lib/server/src/registry/loader.rs` | Static + dynamic loading |
+| `ModuleRegistry` | `server/lib/server/src/registry/mod.rs` | Dependency resolution |
+| `HotReloadManager` | `server/lib/server/src/registry/hot_reload.rs` | File watching |
+| `PythonModule` | `server/lib/drivers/ffi-python/` | Python module wrapper |
 
 ## Module Types
 
@@ -32,7 +32,7 @@ same lifecycle, dependency resolution, and hot reload system.
 ## Module Trait
 
 ```rust
-// lib/kernel/src/api/module.rs
+// server/lib/kernel/src/api/module.rs
 
 pub trait Module: Send + Sync {
     // Identity
@@ -175,7 +175,7 @@ pub struct ModuleProbe {
 Loads modules statically or dynamically.
 
 ```rust
-// runner/src/module/loader.rs
+// server/lib/server/src/registry/loader.rs
 
 pub struct ModuleLoader {
     search_paths: Vec<PathBuf>,
@@ -216,7 +216,7 @@ File extensions:
 Manages module lifecycle with dependency resolution.
 
 ```rust
-// runner/src/module/registry.rs
+// server/lib/server/src/registry/mod.rs
 
 pub struct ModuleRegistry {
     modules: HashMap<ModuleId, ModuleHandle>,
@@ -267,7 +267,7 @@ Pass 3: Final retry, fail if still deferred
 File watching for development.
 
 ```rust
-// runner/src/module/hot_reload.rs
+// server/lib/server/src/registry/hot_reload.rs
 
 pub struct HotReloadManager {
     watcher: RecommendedWatcher,

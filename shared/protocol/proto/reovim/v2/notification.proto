@@ -32,6 +32,13 @@ message Notification {
     BufferListChangedPayload buffer_list_changed = 16;
     RenderCompletePayload render_complete = 17;
     DetachPayload detach = 18;
+
+    // Capture relay (CLI -> Server -> TUI -> Server -> CLI)
+    CaptureRequestPayload capture_request = 20;
+    CaptureResponsePayload capture_response = 21;
+
+    // Resize relay (CLI -> Server -> TUI)
+    ResizeRequestPayload resize_request = 22;
   }
 }
 
@@ -118,4 +125,42 @@ message RenderCompletePayload {
 
 message DetachPayload {
   string reason = 1;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Capture relay
+//
+// Enables CLI to request screen capture from TUI via server relay:
+// CLI -> Server (GetScreenContent) -> TUI (capture_request notification)
+// TUI -> Server (capture_response notification) -> CLI (RPC response)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Server requests TUI to capture its frame buffer
+
+message CaptureRequestPayload {
+  uint64 request_id = 1;  // Unique ID to correlate request/response
+  string format = 2;      // "plain_text", "raw_ansi", "cell_grid"
+}
+
+// TUI responds with captured frame content
+
+message CaptureResponsePayload {
+  uint64 request_id = 1;  // Matches the request_id from CaptureRequestPayload
+  uint64 width = 2;       // Frame width
+  uint64 height = 3;      // Frame height
+  string format = 4;      // Format used for capture
+  string content = 5;     // Captured frame content
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Resize relay
+//
+// CLI -> Server -> TUI (one-way, TUI resizes its frame buffer)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Server tells TUI to resize its frame buffer
+
+message ResizeRequestPayload {
+  uint64 width = 1;   // New viewport width
+  uint64 height = 2;  // New viewport height
 }

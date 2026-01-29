@@ -4,6 +4,8 @@ use parking_lot::RwLock;
 #[cfg(feature = "grpc")]
 use {reovim_protocol::v2::Notification, tokio::sync::broadcast};
 
+#[cfg(feature = "grpc")]
+use super::CaptureTracker;
 use super::{SessionId, SessionState};
 
 /// Default channel capacity for notifications.
@@ -24,6 +26,10 @@ pub struct Session {
     /// Notification broadcast channel (gRPC only).
     #[cfg(feature = "grpc")]
     notification_tx: broadcast::Sender<Notification>,
+
+    /// Capture request tracker for CLI→Server→TUI→Server→CLI relay (gRPC only).
+    #[cfg(feature = "grpc")]
+    capture_tracker: CaptureTracker,
 }
 
 impl Session {
@@ -38,6 +44,8 @@ impl Session {
             state: RwLock::new(SessionState::default()),
             #[cfg(feature = "grpc")]
             notification_tx,
+            #[cfg(feature = "grpc")]
+            capture_tracker: CaptureTracker::new(),
         }
     }
 
@@ -71,6 +79,8 @@ impl Session {
             state: RwLock::new(state),
             #[cfg(feature = "grpc")]
             notification_tx,
+            #[cfg(feature = "grpc")]
+            capture_tracker: CaptureTracker::new(),
         }
     }
 
@@ -100,6 +110,13 @@ impl Session {
     pub fn emit_notification(&self, notification: Notification) {
         // Ignore send errors (no subscribers)
         let _ = self.notification_tx.send(notification);
+    }
+
+    /// Get the capture tracker for CLI→Server→TUI→Server→CLI relay (gRPC only).
+    #[cfg(feature = "grpc")]
+    #[must_use]
+    pub const fn capture_tracker(&self) -> &CaptureTracker {
+        &self.capture_tracker
     }
 
     /// Get the session ID.

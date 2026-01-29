@@ -26,15 +26,19 @@ Reovim is a Rust-based neovim-like text editor following a **Linux kernel-inspir
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  MODULES (modules/)                         POLICY      │
-│  Keymap, Motions, Operators, Layout, Options            │
+│  CLIENTS (clients/)                         APPLICATION │
+│  tui/, cli/                                             │
+│  → User-facing applications (gRPC v2 protocol)          │
+├─────────────────────────────────────────────────────────┤
+│  MODULES (server/modules/)                  POLICY      │
+│  vim/, keymap/, motions/, textobjects/, editor/         │
 │  → Decide HOW things behave                             │
 ├─────────────────────────────────────────────────────────┤
-│  DRIVERS (lib/drivers/)                     MECHANISM   │
-│  syntax/, input/, display/, lsp/, net/, vfs/            │
+│  DRIVERS (server/lib/drivers/)              MECHANISM   │
+│  input/, syntax/, lsp/, vfs/, session/, buffer/         │
 │  → Provide services, define trait contracts             │
 ├─────────────────────────────────────────────────────────┤
-│  KERNEL (lib/kernel/)                       MECHANISM   │
+│  KERNEL (server/lib/kernel/)                MECHANISM   │
 │  mm/, ipc/, core/, block/, sched/, api/                 │
 │  → Core primitives, WHAT can be done                    │
 └─────────────────────────────────────────────────────────┘
@@ -62,37 +66,70 @@ Key types (all use `usize` storage, `as_usize()` accessor):
 - `BufferId(usize)` - Buffer identifier in kernel
 - `WindowId(usize)` - Window identifier in kernel
 
-### Workspace Structure
+### Workspace Structure (Phase 8)
 
-**Kernel Layer:**
-- `lib/kernel/` (reovim-kernel) - Core mechanisms: mm/, ipc/, core/, block/, sched/, api/
+The project follows a server/client architecture with clear separation:
 
-**Driver Layer:**
-- `lib/drivers/command/` - Command trait and registry
-- `lib/drivers/display/` - Terminal rendering, style, decorations
-- `lib/drivers/input/` - Key events and input parsing
-- `lib/drivers/syntax/` - Tree-sitter integration
-- `lib/drivers/lsp/` - Language server protocol client
-- `lib/drivers/net/` - Network transport (TCP, Unix socket)
-- `lib/drivers/vfs/` - Virtual filesystem operations
-- `lib/drivers/log/` - Logging infrastructure
+```
+reovim/
+├── apps/bin/              # Main binary entry point (reovim-app)
+├── server/                # Server-side components
+│   ├── lib/kernel/        # Core mechanisms (mm/, ipc/, core/, block/, sched/, api/)
+│   ├── lib/server/        # Server runtime (gRPC handlers, session management)
+│   └── lib/drivers/       # Server drivers (13 crates)
+│       ├── command/       # Command trait and registry
+│       ├── command-types/ # Command type definitions
+│       ├── input/         # Key events and input parsing
+│       ├── syntax/        # Tree-sitter integration
+│       ├── lsp/           # Language server protocol client
+│       ├── vfs/           # Virtual filesystem operations
+│       ├── session/       # Session management traits
+│       ├── undo/          # Undo/redo system
+│       ├── buffer/        # Buffer operations
+│       ├── search/        # Search and replace
+│       ├── clipboard/     # Clipboard operations
+│       ├── ffi/           # Foreign function interface
+│       └── ffi-python/    # Python FFI bindings
+├── server/modules/        # Policy modules (17 loadable modules)
+│   ├── vim/               # Core Vim-like behavior
+│   ├── editor/            # Editor core operations
+│   ├── motions/           # Movement commands
+│   ├── textobjects/       # Text object definitions
+│   ├── commands/          # Command implementations
+│   ├── keymap/            # Keymap definitions
+│   ├── mode-manager/      # Mode system
+│   └── ...                # (options, buffer-ops, clipboard, search, undo, etc.)
+├── clients/               # Client applications
+│   ├── cli/               # CLI client (gRPC v2)
+│   └── tui/               # TUI client (gRPC v2)
+│       └── lib/drivers/   # TUI-specific drivers (tui, display)
+├── shared/                # Shared libraries
+│   ├── protocol/          # gRPC v2 protocol definitions (.proto files)
+│   ├── arch/              # Platform abstraction (unix/, windows/)
+│   ├── net/               # Network transport layer
+│   ├── log/               # Logging infrastructure
+│   ├── trace/             # Tracing/diagnostics
+│   ├── module-macros/     # `declare_module!` proc-macro for FFI
+│   └── testing/           # Integration test utilities
+├── tools/                 # Development tools
+│   ├── bench/             # Benchmarking suite
+│   └── perf-report/       # Performance report generator
+├── perf/                  # Versioned performance reports (PERF-{version}.md)
+└── archive/               # Legacy code (reference only)
+    ├── pre_kernel/        # v0.8.x code (lib/core, lib/sys, plugins)
+    └── post_kernel/       # Intermediate v0.9.0 (pre-Phase 8B runner)
+```
 
-**Platform Abstraction:**
-- `lib/arch/` (reovim-arch) - Platform abstraction: unix/, windows/
-- `lib/module-macros/` - `declare_module!` proc-macro for FFI entry points
-
-**Runner:**
-- `runner/` (reovim) - Event loop, registries, application state
-
-**Policy Modules:**
-- `modules/` - Policy modules (editor, keymap, operators, layout, options, etc.)
-
-**Tools:**
-- `tools/perf-report/` - Performance report generator CLI
-- `perf/` - Versioned performance reports (PERF-{version}.md)
-
-**Archive (legacy reference only):**
-- `archive/` - Pre-v0.9.0 legacy code (lib/core, lib/sys, lib/lsp, plugins, old runner)
+**Key crate names:**
+- `reovim-app` → `apps/bin/` (main binary)
+- `reovim-kernel` → `server/lib/kernel/`
+- `reovim-server` → `server/lib/server/`
+- `reovim-driver-*` → `server/lib/drivers/*/`
+- `reovim-module-*` → `server/modules/*/`
+- `reovim-client-tui` → `clients/tui/`
+- `reovim-client-cli` → `clients/cli/`
+- `reovim-protocol` → `shared/protocol/`
+- `reovim-arch` → `shared/arch/`
 
 ### Key Dependencies
 
@@ -136,7 +173,7 @@ nursery = "deny"
 **Correct approach:**
 - Modules/plugins define their own events and types
 - Use generic kernel APIs, extend only when multiple modules benefit
-- Policy belongs in `modules/`, mechanism belongs in `lib/kernel/` or `lib/drivers/`
+- Policy belongs in `server/modules/`, mechanism belongs in `server/lib/kernel/` or `server/lib/drivers/`
 
 ### Design Philosophy: Slow but Right
 
@@ -192,7 +229,7 @@ cargo build
 # Build release
 cargo build --release
 
-# Run the main binary (default-members set to runner/)
+# Run the main binary (default-members set to apps/bin/)
 cargo run
 
 # Run tests
@@ -609,7 +646,7 @@ For in-depth information, see:
 
 ### Current State (v0.9.0)
 
-The logging system is partially implemented. The driver infrastructure exists in `lib/drivers/log/` but CLI argument wiring is pending.
+The logging system is partially implemented. The driver infrastructure exists in `shared/log/` but CLI argument wiring is pending.
 
 **What works now:**
 - Server outputs logs to stderr via tracing
@@ -746,15 +783,15 @@ The statusline is rendered at the bottom of the screen with inverse colors.
 
 | File | Purpose |
 |------|---------|
-| `runner/src/server/rpc/handlers/input.rs` | Key processing, change accumulation |
-| `runner/src/server/rpc/handlers/screen.rs` | Screen content rendering, separators |
-| `runner/src/server/session/notify.rs` | Notification emission logic |
-| `runner/src/client/tui/app.rs` | TUI notification handling, layout caching |
-| `modules/layout/src/compositor.rs` | Layout management, focus tracking |
+| `server/lib/server/src/grpc/input.rs` | Key processing, change accumulation |
+| `server/lib/server/src/grpc/state.rs` | Screen content rendering, state queries |
+| `server/lib/server/src/session/` | Session and notification logic |
+| `clients/tui/src/` | TUI notification handling, layout caching |
+| `server/modules/vim/` | Vim-like behavior, mode management |
 
 ### Integration Test Infrastructure
 
-Phase 7 integration tests use a fluent builder API in `runner/src/testing/`:
+Phase 7+ integration tests use a fluent builder API in `shared/testing/`:
 
 ```rust
 // Single-client test example

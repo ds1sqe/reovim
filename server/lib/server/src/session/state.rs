@@ -391,6 +391,44 @@ impl SessionState {
 
         result.map(|r| (r, changes))
     }
+
+    /// Try to call `on_command_complete` on the current mode's resolver.
+    ///
+    /// Called after executing a command from `ResolveResult::Execute`.
+    /// For operator-pending modes (delete, yank, change), this is where
+    /// the resolver reads the post-motion cursor position and builds
+    /// the final operator command.
+    ///
+    /// # Flow (e.g., `dw`)
+    ///
+    /// 1. `w` key → DELETE resolver returns `Execute(word-forward)`
+    /// 2. Runner executes `word-forward` → cursor moves to next word
+    /// 3. **This method** → DELETE resolver reads end position, returns
+    ///    `ModeTransition::Pop { ExecuteCommand { delete, range } }`
+    /// 4. Runner pops DELETE mode and executes the delete command
+    pub fn try_on_command_complete(&mut self) -> Option<reovim_driver_input::ModeTransition> {
+        use reovim_driver_session::{SessionRuntime, api::CommandExecutor};
+
+        struct StubExecutor;
+        impl CommandExecutor for StubExecutor {
+            fn execute(
+                &self,
+                _cmd: &CommandId,
+                _ctx: &CommandContext,
+                _kernel: &reovim_kernel::api::v1::KernelContext,
+            ) -> Option<CommandResult> {
+                Some(CommandResult::Success)
+            }
+        }
+
+        let mode = self.driver_session.current_mode().clone();
+        let resolver = self.resolver_registry.get(&mode)?;
+        let stub_executor = StubExecutor;
+        let mut runtime =
+            SessionRuntime::new(&mut self.driver_session, &self.app.kernel, &stub_executor);
+
+        resolver.on_command_complete(&mut runtime, &mut self.app.extensions)
+    }
 }
 
 impl Default for SessionState {

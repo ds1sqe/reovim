@@ -1,2 +1,7 @@
 /target
 tmp/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo

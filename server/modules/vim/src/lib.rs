@@ -59,6 +59,7 @@ pub mod bindings;
 pub mod commands;
 pub mod fallback;
 pub mod ids;
+pub mod macros;
 pub mod modes;
 pub mod operators;
 pub mod providers;

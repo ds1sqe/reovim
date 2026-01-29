@@ -41,15 +41,13 @@ pub struct HighlightSpan {
 
 ## Implementation Location
 
-Tree-sitter implementations live in plugins, not drivers:
+Tree-sitter integration is in the syntax driver:
 
 ```
-plugins/features/treesitter/    # TreeSitterDriver impl
-plugins/languages/rust/         # Rust queries
-plugins/languages/python/       # Python queries
+server/lib/drivers/syntax/      # SyntaxDriver with tree-sitter
 ```
 
-This separation keeps the driver layer free of tree-sitter dependencies.
+Language-specific queries are bundled with the driver. This keeps the kernel free of tree-sitter dependencies while providing syntax highlighting capabilities.
 
 ## Related Documents
 

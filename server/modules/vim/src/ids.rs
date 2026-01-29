@@ -279,6 +279,21 @@ pub const CHANGE_TO_EOL: CommandId = CommandId::new(MODULE, "change-to-eol");
 pub const DOT_REPEAT: CommandId = CommandId::new(MODULE, "dot-repeat");
 
 // =============================================================================
+// Macro Recording/Playback (Epic #465 Phase 8D)
+// =============================================================================
+
+/// Execute macro from register (@{a-z}).
+///
+/// Plays back a recorded macro from the specified register.
+/// The register is provided in the resolve context metadata.
+pub const PLAY_MACRO: CommandId = CommandId::new(MODULE, "play-macro");
+
+/// Repeat last macro (@@).
+///
+/// Plays the same macro that was last played with @{a-z}.
+pub const REPEAT_MACRO: CommandId = CommandId::new(MODULE, "repeat-macro");
+
+// =============================================================================
 // Session Management (not yet implemented)
 // =============================================================================
 

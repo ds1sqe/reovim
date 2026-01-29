@@ -15,7 +15,7 @@ path = "src/main.rs"
 
 [features]
 default = []
-grpc = ["reovim-server/grpc"]
+grpc = ["reovim-server/grpc", "dep:reovim-client-cli", "dep:reovim-client-tui"]
 
 [dependencies]
 # Server crate
@@ -26,9 +26,15 @@ reovim-kernel = { workspace = true }
 reovim-driver-buffer = { workspace = true }
 reovim-driver-vfs = { workspace = true }
 reovim-driver-input = { workspace = true }
+reovim-driver-command = { workspace = true }
+reovim-driver-session = { workspace = true }
 
 # Module bundle (provides DefaultsModule::create_modules)
 reovim-module-defaults = { workspace = true }
+
+# Client crates (optional, for CLI and TUI commands)
+reovim-client-cli = { workspace = true, optional = true }
+reovim-client-tui = { workspace = true, optional = true }
 
 # CLI
 clap = { workspace = true }

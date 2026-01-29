@@ -27,8 +27,8 @@ use crate::client::common::{
 use super::render_core::{RenderState, build_frame_content, write_cell_grid_to_buffer};
 
 /// Default terminal size for headless mode.
-const DEFAULT_WIDTH: u16 = 80;
-const DEFAULT_HEIGHT: u16 = 24;
+const DEFAULT_WIDTH: u16 = 160;
+const DEFAULT_HEIGHT: u16 = 48;
 
 /// Maximum terminal size to prevent resource exhaustion.
 const MAX_SIZE: u16 = 500;
@@ -609,8 +609,8 @@ mod tests {
 
     #[test]
     fn test_default_dimensions() {
-        assert_eq!(DEFAULT_WIDTH, 80);
-        assert_eq!(DEFAULT_HEIGHT, 24);
+        assert_eq!(DEFAULT_WIDTH, 160);
+        assert_eq!(DEFAULT_HEIGHT, 48);
     }
 
     #[test]

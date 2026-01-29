@@ -24,9 +24,10 @@ use {
         ListModulesRequest, ListModulesResponse, Notification, OpenFileRequest, OpenFileResponse,
         PingRequest, PingResponse, QuitRequest, QuitResponse, ResizeRequest, ResizeResponse,
         SendKeysRequest, SendKeysResponse, SetActiveBufferRequest, SetActiveBufferResponse,
-        SubscribeRequest, WriteFileRequest, WriteFileResponse,
-        buffer_service_client::BufferServiceClient, editor_service_client::EditorServiceClient,
-        input_service_client::InputServiceClient, module_service_client::ModuleServiceClient,
+        SubmitCaptureRequest, SubmitCaptureResponseReply, SubscribeRequest, WriteFileRequest,
+        WriteFileResponse, buffer_service_client::BufferServiceClient,
+        editor_service_client::EditorServiceClient, input_service_client::InputServiceClient,
+        module_service_client::ModuleServiceClient,
         notification_service_client::NotificationServiceClient,
         server_service_client::ServerServiceClient, state_service_client::StateServiceClient,
     },
@@ -412,6 +413,40 @@ impl TuiGrpcClient {
     ) -> Result<GetVisibleLinesResponse, TuiGrpcError> {
         let request = GetVisibleLinesRequest { window_id };
         let response = self.state.get_visible_lines(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Submit captured screen content (TUI → Server part of capture relay).
+    ///
+    /// Called in response to a `capture_request` notification.
+    ///
+    /// # Arguments
+    ///
+    /// * `request_id` - Must match the `request_id` from the `capture_request` notification
+    /// * `width` - Frame width
+    /// * `height` - Frame height
+    /// * `format` - Format used for capture (`plain_text`, `raw_ansi`, `cell_grid`)
+    /// * `content` - Captured frame content
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn submit_capture_response(
+        &mut self,
+        request_id: u64,
+        width: u64,
+        height: u64,
+        format: &str,
+        content: String,
+    ) -> Result<SubmitCaptureResponseReply, TuiGrpcError> {
+        let request = SubmitCaptureRequest {
+            request_id,
+            width,
+            height,
+            format: format.to_string(),
+            content,
+        };
+        let response = self.state.submit_capture_response(request).await?;
         Ok(response.into_inner())
     }
 

@@ -4,37 +4,31 @@ The command system defines and executes all editor actions using a trait-based a
 
 ## Overview
 
-```
-lib/core/src/command/
-├── mod.rs          # Re-exports, CommandRef
-├── id.rs           # CommandId constants
-├── traits.rs       # CommandTrait, ExecutionContext, CommandResult, DeferredAction
-├── context.rs      # OperatorContext for operator-pending mode
-├── macros.rs       # declare_event_command! and declare_counted_event_command!
-├── registry.rs     # CommandRegistry
-├── builtin/        # Built-in command implementations
-│   ├── mod.rs
-│   ├── buffer.rs       # Buffer navigation (H/L, <leader>bd)
-│   ├── clipboard.rs    # Paste, yank operations
-│   ├── command_line.rs # Ex-command handling
-│   ├── cursor.rs       # Cursor movement (h/j/k/l, w/b/e)
-│   ├── history.rs      # Undo/redo
-│   ├── jump.rs         # Jump list (Ctrl-O/Ctrl-I)
-│   ├── mode.rs         # Mode switching (i/a/v/V)
-│   ├── operator.rs     # Operators (d/y/c)
-│   ├── system.rs       # System commands (quit, etc.)
-│   ├── tab.rs          # Tab management
-│   ├── text.rs         # Text editing (x, o/O)
-│   ├── visual.rs       # Visual mode operations
-│   └── window.rs       # Window management (splits, focus)
-└── terminal/           # Terminal handling
-    ├── mod.rs
-    └── terminal_guard.rs
+The command system is distributed across kernel, drivers, and modules:
 
-# Plugin commands are in their respective plugin directories:
-# - plugins/features/completion/src/commands.rs
-# - plugins/features/explorer/src/command.rs
-# - plugins/features/microscope/src/commands.rs
+```
+server/lib/drivers/command/src/
+├── lib.rs          # CommandTrait, CommandRegistry
+├── id.rs           # CommandId type
+├── context.rs      # ExecutionContext, OperatorContext
+└── result.rs       # CommandResult variants
+
+server/lib/drivers/command-types/src/
+├── lib.rs          # Command type definitions
+└── registration.rs # CommandRegistration, KeybindingRegistration
+
+server/modules/vim/src/
+├── resolvers/      # Mode-specific key resolvers
+│   ├── normal.rs   # Normal mode commands (h/j/k/l, d/y/c)
+│   ├── insert.rs   # Insert mode commands
+│   └── visual.rs   # Visual mode commands
+└── commands/       # Vim-specific command implementations
+
+server/modules/commands/src/
+├── cursor.rs       # Cursor movement (h/j/k/l, w/b/e)
+├── operator.rs     # Operators (d/y/c)
+├── text.rs         # Text editing (x, o/O)
+└── ...             # Other command implementations
 ```
 
 ## CommandTrait
@@ -331,7 +325,7 @@ Folds are computed from treesitter queries when a buffer is opened.
 
 ### Microscope (20+)
 
-**Location:** `plugins/features/microscope/src/commands.rs`
+**Note:** Microscope is currently archived. See `archive/post_kernel/modules/` for reference.
 
 **Pickers:**
 | Command | Key | Description |

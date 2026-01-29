@@ -5,8 +5,9 @@
 use {
     reovim_protocol::v2::{
         GetCursorRequest, GetCursorResponse, GetModeRequest, GetModeResponse, GetRawContentRequest,
-        GetRawContentResponse, InfoRequest, InfoResponse, ListBuffersRequest, ListBuffersResponse,
-        PingRequest, PingResponse, SendKeysRequest, SendKeysResponse,
+        GetRawContentResponse, GetRegistersRequest, GetRegistersResponse, GetScreenContentRequest,
+        GetScreenContentResponse, InfoRequest, InfoResponse, ListBuffersRequest,
+        ListBuffersResponse, PingRequest, PingResponse, SendKeysRequest, SendKeysResponse,
         buffer_service_client::BufferServiceClient, input_service_client::InputServiceClient,
         server_service_client::ServerServiceClient, state_service_client::StateServiceClient,
     },
@@ -177,6 +178,47 @@ impl GrpcClient {
     pub async fn info(&mut self) -> Result<InfoResponse, GrpcClientError> {
         let request = InfoRequest {};
         let response = self.server.info(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Get register contents.
+    ///
+    /// # Arguments
+    ///
+    /// * `names` - Optional register names to query. If empty, returns all non-empty registers.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn get_registers(
+        &mut self,
+        names: Vec<String>,
+    ) -> Result<GetRegistersResponse, GrpcClientError> {
+        let request = GetRegistersRequest { names };
+        let response = self.state.get_registers(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Get screen content via TUI capture relay.
+    ///
+    /// Requests a screen capture from the connected TUI client via the server.
+    /// Requires a headless TUI to be connected.
+    ///
+    /// # Arguments
+    ///
+    /// * `format` - Capture format: `plain_text`, `raw_ansi`, or `cell_grid`
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails, no TUI is connected, or capture times out.
+    pub async fn get_screen_content(
+        &mut self,
+        format: &str,
+    ) -> Result<GetScreenContentResponse, GrpcClientError> {
+        let request = GetScreenContentRequest {
+            format: format.to_string(),
+        };
+        let response = self.state.get_screen_content(request).await?;
         Ok(response.into_inner())
     }
 }

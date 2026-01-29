@@ -35,7 +35,7 @@
 //! Connect to a server started with `--grpc <PORT>`.
 
 mod client;
-mod commands;
+pub mod commands;
 
 use clap::{Parser, Subcommand};
 pub use client::{GrpcClient, GrpcClientError};
@@ -92,6 +92,25 @@ pub enum CliCommand {
         id: Option<u64>,
     },
 
+    /// Get register contents.
+    ///
+    /// Without arguments, lists all non-empty registers.
+    /// With a register name, shows that register's content.
+    Registers {
+        /// Register name (e.g., "a", "\"", "0").
+        name: Option<String>,
+    },
+
+    /// Capture TUI screen content.
+    ///
+    /// Requests a screen capture from the connected TUI client.
+    /// Requires a headless TUI to be connected to the server.
+    Capture {
+        /// Capture format: `plain_text`, `raw_ansi` (default), `cell_grid`.
+        #[arg(long, short = 'f', default_value = "raw_ansi")]
+        capture_format: String,
+    },
+
     /// Ping the server (health check).
     Ping,
 
@@ -114,6 +133,12 @@ impl CliArgs {
             CliCommand::Cursor => commands::cursor(&mut client, self.format).await,
             CliCommand::Buffers => commands::buffers(&mut client, self.format).await,
             CliCommand::Buffer { id } => commands::buffer(&mut client, *id, self.format).await,
+            CliCommand::Registers { name } => {
+                commands::registers(&mut client, name.clone(), self.format).await
+            }
+            CliCommand::Capture { capture_format } => {
+                commands::capture(&mut client, capture_format, self.format).await
+            }
             CliCommand::Ping => commands::ping(&mut client, self.format).await,
             CliCommand::Version => commands::version(&mut client, self.format).await,
         }

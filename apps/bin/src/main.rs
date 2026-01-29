@@ -35,6 +35,12 @@ use {
     reovim_server::{Server, ServerConfig, TransportMode},
 };
 
+#[cfg(feature = "grpc")]
+use reovim_client_cli::OutputFormat;
+
+#[cfg(feature = "grpc")]
+use reovim_client_tui::TuiAppV2Headless;
+
 /// Reovim editor - new architecture.
 #[derive(Parser)]
 #[command(name = "reovim-new")]
@@ -76,6 +82,86 @@ enum Commands {
         #[arg(long, default_value = "default")]
         instance: String,
     },
+
+    /// Execute CLI commands (gRPC v2).
+    #[cfg(feature = "grpc")]
+    Cli {
+        /// gRPC server address (host:port).
+        #[arg(long, default_value = "127.0.0.1:12540")]
+        grpc: String,
+
+        /// Output format.
+        #[arg(long, short, value_enum, default_value = "plain")]
+        format: CliOutputFormat,
+
+        /// CLI command.
+        #[command(subcommand)]
+        command: CliSubcommand,
+    },
+
+    /// Connect headless TUI to server (gRPC v2).
+    #[cfg(feature = "grpc")]
+    Tui {
+        /// gRPC server address (host:port).
+        #[arg(long, default_value = "127.0.0.1:12540")]
+        grpc: String,
+
+        /// Run in headless mode (no TTY, for scripting).
+        #[arg(long)]
+        headless: bool,
+
+        /// Viewport width.
+        #[arg(long, default_value = "120")]
+        width: u16,
+
+        /// Viewport height.
+        #[arg(long, default_value = "40")]
+        height: u16,
+    },
+}
+
+/// CLI output format.
+#[cfg(feature = "grpc")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum CliOutputFormat {
+    /// Plain text output.
+    Plain,
+    /// JSON output.
+    Json,
+}
+
+/// CLI subcommands.
+#[cfg(feature = "grpc")]
+#[derive(Debug, Subcommand)]
+enum CliSubcommand {
+    /// Send keys to the editor.
+    Keys {
+        /// Keys in vim notation.
+        keys: String,
+    },
+    /// Get current editor mode.
+    Mode,
+    /// Get cursor position.
+    Cursor,
+    /// List open buffers.
+    Buffers,
+    /// Get buffer content.
+    Buffer {
+        #[arg(long)]
+        id: Option<u64>,
+    },
+    /// Get register contents.
+    Registers { name: Option<String> },
+    /// Capture TUI screen content.
+    Capture {
+        /// Capture format: `plain_text`, `raw_ansi` (default), `cell_grid`.
+        #[arg(long, short = 'f', default_value = "raw_ansi")]
+        capture_format: String,
+    },
+    /// Ping the server.
+    Ping,
+    /// Get server version and info.
+    Version,
 }
 
 fn main() -> std::io::Result<()> {
@@ -125,6 +211,29 @@ async fn run(cli: Cli) -> std::io::Result<()> {
                 Server::with_session_factory(config, Box::new(bootstrap::create_session_state));
             server.run().await
         }
+
+        #[cfg(feature = "grpc")]
+        Some(Commands::Cli {
+            grpc,
+            format,
+            command,
+        }) => run_cli(&grpc, format, command).await,
+
+        #[cfg(feature = "grpc")]
+        Some(Commands::Tui {
+            grpc,
+            headless,
+            width,
+            height,
+        }) => {
+            if headless {
+                run_headless_tui(&grpc, width, height).await
+            } else {
+                eprintln!("Interactive TUI not implemented yet - use --headless");
+                std::process::exit(1);
+            }
+        }
+
         None => {
             // Default: start server with TCP fallback and modules
             tracing::info!("Starting reovim server with default configuration and modules");
@@ -134,6 +243,69 @@ async fn run(cli: Cli) -> std::io::Result<()> {
             server.run().await
         }
     }
+}
+
+/// Run CLI command.
+#[cfg(feature = "grpc")]
+async fn run_cli(
+    addr: &str,
+    format: CliOutputFormat,
+    command: CliSubcommand,
+) -> std::io::Result<()> {
+    use reovim_client_cli::{GrpcClient, GrpcClientError, commands};
+
+    let output_format = match format {
+        CliOutputFormat::Plain => OutputFormat::Plain,
+        CliOutputFormat::Json => OutputFormat::Json,
+    };
+
+    let mut client = GrpcClient::connect(addr)
+        .await
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::ConnectionRefused, e.to_string()))?;
+
+    let result: Result<String, GrpcClientError> = match command {
+        CliSubcommand::Keys { keys } => commands::keys(&mut client, &keys, output_format).await,
+        CliSubcommand::Mode => commands::mode(&mut client, output_format).await,
+        CliSubcommand::Cursor => commands::cursor(&mut client, output_format).await,
+        CliSubcommand::Buffers => commands::buffers(&mut client, output_format).await,
+        CliSubcommand::Buffer { id } => commands::buffer(&mut client, id, output_format).await,
+        CliSubcommand::Registers { name } => {
+            commands::registers(&mut client, name, output_format).await
+        }
+        CliSubcommand::Capture { capture_format } => {
+            commands::capture(&mut client, &capture_format, output_format).await
+        }
+        CliSubcommand::Ping => commands::ping(&mut client, output_format).await,
+        CliSubcommand::Version => commands::version(&mut client, output_format).await,
+    };
+    drop(client); // Release gRPC connection early
+
+    match result {
+        Ok(output) => {
+            println!("{output}");
+            Ok(())
+        }
+        Err(e) => Err(std::io::Error::other(e.to_string())),
+    }
+}
+
+/// Run headless TUI.
+#[cfg(feature = "grpc")]
+async fn run_headless_tui(addr: &str, width: u16, height: u16) -> std::io::Result<()> {
+    tracing::info!("Connecting headless TUI to {addr} ({width}x{height})");
+
+    // connect_with_size spawns the event loop automatically
+    let tui = TuiAppV2Headless::connect_with_size(addr, width, height)
+        .await
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::ConnectionRefused, e.to_string()))?;
+
+    tracing::info!("Headless TUI connected and running");
+
+    // Run until interrupted
+    tokio::signal::ctrl_c().await?;
+    tui.stop().await;
+
+    Ok(())
 }
 
 /// Determine transport mode from CLI arguments.

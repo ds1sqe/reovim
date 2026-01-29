@@ -5,6 +5,7 @@
 //! - Register prefix (") handling
 //! - Command key lookup via keymap registry
 //! - Operator entry transitions
+//! - Macro recording (q) and playback (@) - Epic #465 Phase 8D
 
 #![allow(clippy::unused_self)] // Methods may need self for future extensibility
 
@@ -22,9 +23,21 @@ use {
 
 use crate::{
     ids::EXECUTE_FIND_CHAR,
+    macros::notation_to_keys,
     modes::VimMode,
     session_state::{PendingCharOp, VimSessionState},
 };
+
+/// Pending macro operation.
+///
+/// Tracks what macro-related action we're waiting for after pressing `q` or `@`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PendingMacroOp {
+    /// Waiting for register character after `q` (to start recording).
+    StartRecording,
+    /// Waiting for register character after `@` (to play macro).
+    PlayMacro,
+}
 
 /// Vim normal mode key resolver.
 ///
@@ -33,6 +46,8 @@ use crate::{
 /// - `"` followed by a character selects a register
 /// - Other keys are looked up in the keymap
 /// - Operators (d, y, c) trigger transition to operator-pending mode
+/// - `q` starts/stops macro recording (Epic #465 Phase 8D)
+/// - `@` plays macro from register (Epic #465 Phase 8D)
 ///
 /// # State Management
 ///
@@ -78,6 +93,13 @@ pub struct VimNormalResolver {
 
     /// Accumulated key sequence for multi-key commands.
     pending_keys: RwLock<KeySequence>,
+
+    /// Pending macro operation (Epic #465 Phase 8D).
+    ///
+    /// - `None`: No pending macro operation
+    /// - `Some(StartRecording)`: Waiting for register after `q`
+    /// - `Some(PlayMacro)`: Waiting for register after `@`
+    pending_macro: RwLock<Option<PendingMacroOp>>,
 }
 
 impl VimNormalResolver {
@@ -89,6 +111,7 @@ impl VimNormalResolver {
             pending_count: RwLock::new(None),
             pending_register: RwLock::new(None),
             pending_keys: RwLock::new(KeySequence::new()),
+            pending_macro: RwLock::new(None),
         }
     }
 
@@ -200,6 +223,197 @@ impl VimNormalResolver {
         *self.pending_count.write().expect("lock poisoned") = None;
         *self.pending_register.write().expect("lock poisoned") = None;
         self.pending_keys.write().expect("lock poisoned").clear();
+        *self.pending_macro.write().expect("lock poisoned") = None;
+    }
+
+    // ========================================================================
+    // Macro Recording/Playback Helpers (Epic #465 Phase 8D)
+    // ========================================================================
+
+    /// Check if we're waiting for a macro operation register.
+    fn pending_macro_op(&self) -> Option<PendingMacroOp> {
+        *self.pending_macro.read().expect("lock poisoned")
+    }
+
+    /// Set pending macro operation.
+    fn set_pending_macro(&self, op: PendingMacroOp) {
+        *self.pending_macro.write().expect("lock poisoned") = Some(op);
+    }
+
+    /// Clear pending macro operation.
+    fn clear_pending_macro(&self) {
+        *self.pending_macro.write().expect("lock poisoned") = None;
+    }
+
+    /// Check if a key is the macro record key (`q` without modifiers).
+    fn is_macro_record_key(key: &KeyEvent) -> bool {
+        key.modifiers == Modifiers::NONE && key.code == KeyCode::Char('q')
+    }
+
+    /// Check if a key is the macro play key (`@` without modifiers).
+    fn is_macro_play_key(key: &KeyEvent) -> bool {
+        key.modifiers == Modifiers::NONE && key.code == KeyCode::Char('@')
+    }
+
+    /// Handle `q` key for macro recording.
+    ///
+    /// - If currently recording: stop recording, store to register
+    /// - If not recording: set pending macro state to wait for register
+    fn handle_macro_record_key(
+        &self,
+        vim: &mut VimSessionState,
+        input: &ResolveInput<'_>,
+    ) -> ResolveResult {
+        if vim.is_recording() {
+            // Stop recording - store keys to register
+            if let Some((register, keys)) = vim.stop_recording() {
+                // Convert keys to notation string and store in register
+                let notation = crate::macros::keys_to_notation(&keys);
+                tracing::debug!(
+                    register = %register,
+                    key_count = keys.len(),
+                    notation = %notation,
+                    "Stopped macro recording"
+                );
+
+                // Store in register via input's register access
+                // Note: We store as text - macros are just key notation strings
+                if let Some(registers) = input.registers {
+                    use reovim_kernel::api::v1::RegisterContent;
+                    registers
+                        .write()
+                        .set_named(register, RegisterContent::characterwise(&notation));
+                }
+            }
+            ResolveResult::Completed
+        } else {
+            // Start recording - wait for register character
+            self.set_pending_macro(PendingMacroOp::StartRecording);
+            ResolveResult::Pending
+        }
+    }
+
+    /// Handle register character after `q` (start recording).
+    fn handle_macro_record_register(
+        &self,
+        key: &KeyEvent,
+        vim: &mut VimSessionState,
+    ) -> ResolveResult {
+        self.clear_pending_macro();
+
+        if let KeyCode::Char(c) = key.code
+            && c.is_ascii_lowercase()
+            && vim.start_recording(c)
+        {
+            tracing::debug!(register = %c, "Started macro recording");
+            return ResolveResult::Completed;
+        }
+
+        // Invalid register - cancel
+        tracing::debug!(?key.code, "Invalid macro register");
+        ResolveResult::NotHandled
+    }
+
+    /// Handle `@` key for macro playback.
+    fn handle_macro_play_key(&self, vim: &VimSessionState) -> ResolveResult {
+        // Check if we can enter playback (depth limit)
+        if vim.is_macro_depth_exceeded() {
+            tracing::warn!(depth = vim.macro_playback_depth, "Macro playback depth exceeded");
+            return ResolveResult::NotHandled;
+        }
+
+        // Wait for register character
+        self.set_pending_macro(PendingMacroOp::PlayMacro);
+        ResolveResult::Pending
+    }
+
+    /// Handle register character after `@` (play macro).
+    fn handle_macro_play_register(
+        &self,
+        key: &KeyEvent,
+        vim: &mut VimSessionState,
+        input: &ResolveInput<'_>,
+    ) -> ResolveResult {
+        self.clear_pending_macro();
+
+        let register = if key.code == KeyCode::Char('@') {
+            // @@ - repeat last macro
+            vim.last_macro_register
+        } else if let KeyCode::Char(c) = key.code {
+            if c.is_ascii_lowercase() {
+                Some(c)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let Some(register) = register else {
+            tracing::debug!(?key.code, "Invalid macro playback register");
+            return ResolveResult::NotHandled;
+        };
+
+        // Get macro content from register
+        let Some(registers) = input.registers else {
+            tracing::warn!("No register access for macro playback");
+            return ResolveResult::NotHandled;
+        };
+
+        let content = {
+            let guard = registers.read();
+            guard.get_by_name(Some(register)).cloned()
+        };
+
+        let Some(content) = content else {
+            tracing::debug!(register = %register, "Macro register is empty");
+            return ResolveResult::NotHandled;
+        };
+
+        // Parse the notation string to keys
+        let Some(keys) = notation_to_keys(&content.text) else {
+            tracing::warn!(
+                register = %register,
+                content = %content.text,
+                "Failed to parse macro content"
+            );
+            return ResolveResult::NotHandled;
+        };
+
+        if keys.is_empty() {
+            return ResolveResult::Completed;
+        }
+
+        // Update last macro register for @@ support
+        vim.last_macro_register = Some(register);
+
+        // Get count for playback
+        let count = vim.pending_count.take().unwrap_or(1);
+
+        // Enter playback
+        if !vim.enter_macro_playback() {
+            return ResolveResult::NotHandled;
+        }
+
+        // Build full key sequence (count repetitions)
+        let mut all_keys = Vec::with_capacity(keys.len() * count);
+        for _ in 0..count {
+            all_keys.extend(keys.iter().copied());
+        }
+
+        tracing::debug!(
+            register = %register,
+            count,
+            key_count = all_keys.len(),
+            "Playing macro"
+        );
+
+        // Return keys to be injected
+        // The runner will inject these and call exit_macro_playback when done
+        ResolveResult::InjectKeys {
+            keys: all_keys,
+            exit_macro_playback: true,
+        }
     }
 
     /// Build resolve context with count and register.
@@ -489,6 +703,40 @@ impl ModeKeyResolver for VimNormalResolver {
             return ResolveResult::Execute(EXECUTE_FIND_CHAR, ctx);
         }
 
+        // =====================================================================
+        // Epic #465 Phase 8D - Macro Recording/Playback
+        // =====================================================================
+
+        // Handle pending macro operations first (waiting for register after q or @)
+        if let Some(pending_op) = self.pending_macro_op() {
+            match pending_op {
+                PendingMacroOp::StartRecording => {
+                    // Record key if we're recording (except q that stops)
+                    // Note: We're about to potentially start recording, so don't record this key
+                    return self.handle_macro_record_register(key, vim);
+                }
+                PendingMacroOp::PlayMacro => {
+                    return self.handle_macro_play_register(key, vim, input);
+                }
+            }
+        }
+
+        // Check for macro record key (q)
+        if Self::is_macro_record_key(key) {
+            return self.handle_macro_record_key(vim, input);
+        }
+
+        // Check for macro play key (@)
+        if Self::is_macro_play_key(key) {
+            return self.handle_macro_play_key(vim);
+        }
+
+        // Record key if we're recording (before normal processing)
+        // The key will be recorded regardless of what it does
+        if vim.is_recording() {
+            vim.record_key(*key);
+        }
+
         // Check for register prefix waiting for character
         if vim.pending_register == Some('"') {
             return self.handle_register_char_ext(key, vim);
@@ -512,7 +760,6 @@ impl ModeKeyResolver for VimNormalResolver {
 
         // Query keymap for facts about what bindings exist
         let lookup_state = input.keymap.query(input.mode, &keys);
-        tracing::warn!(?key.code, %input.mode, %keys, ?lookup_state, "Normal resolver query");
 
         // Apply Vim policy
         match lookup_state {
@@ -586,6 +833,7 @@ impl ModeKeyResolver for VimNormalResolver {
         *self.pending_count.write().expect("lock poisoned") = None;
         *self.pending_register.write().expect("lock poisoned") = None;
         self.pending_keys.write().expect("lock poisoned").clear();
+        *self.pending_macro.write().expect("lock poisoned") = None;
     }
 }
 

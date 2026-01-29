@@ -187,6 +187,8 @@ impl TuiAppV2Headless {
     /// The TUI is not started automatically. Call [`start`](Self::start) to
     /// begin processing notifications.
     ///
+    /// Uses default viewport size of 160x48 (realistic terminal dimensions).
+    ///
     /// # Arguments
     ///
     /// * `addr` - Server address in `host:port` format.
@@ -195,7 +197,7 @@ impl TuiAppV2Headless {
     ///
     /// Returns an error if connection fails.
     pub async fn connect(addr: &str) -> Result<Self, HeadlessError> {
-        Self::connect_with_size(addr, 80, 24).await
+        Self::connect_with_size(addr, 160, 48).await
     }
 
     /// Connect with a specific initial viewport size.
@@ -221,8 +223,9 @@ impl TuiAppV2Headless {
         // Subscribe to all notifications
         let notification_stream = client.subscribe_all().await?;
 
-        // Notify server of viewport size
-        client.resize(u64::from(width), u64::from(height)).await?;
+        // TUI knows its own size - no need to tell the server anything.
+        // Server has no screen. If CLI wants to resize this TUI, it sends
+        // a resize command through the server which relays it here.
 
         // Create request channel
         let (request_tx, request_rx) = mpsc::channel(32);
@@ -451,26 +454,40 @@ impl HeadlessEventLoop {
     }
 
     /// Fetch initial state from server.
+    ///
+    /// Uses fail-open strategy: mode and cursor are required, but layout
+    /// and buffer content are optional. This ensures the event loop starts
+    /// even when some RPCs (like `GetLayout`) are not yet implemented.
     async fn fetch_initial_state(&mut self) -> Result<(), HeadlessError> {
-        // Get mode
+        // Mode is required for statusline
         let mode_resp = self.client.get_mode().await?;
         self.state.mode_name = mode_resp.name;
         self.state.mode_display = mode_resp.display;
         self.state.is_insert_mode = mode_resp.is_insert;
 
-        // Get cursor
-        let cursor_resp = self.client.get_cursor(None).await?;
-        if let Some(pos) = cursor_resp.position {
-            self.state.cursor_line = pos.line;
-            self.state.cursor_col = pos.column;
+        // Cursor is optional (may fail if no buffer exists)
+        match self.client.get_cursor(None).await {
+            Ok(cursor_resp) => {
+                if let Some(pos) = cursor_resp.position {
+                    self.state.cursor_line = pos.line;
+                    self.state.cursor_col = pos.column;
+                }
+            }
+            Err(e) => tracing::warn!("Cursor not available during init: {e}"),
         }
 
-        // Get layout
-        let layout_resp = self.client.get_layout().await?;
-        self.apply_layout(&layout_resp);
+        // Layout is optional (not yet implemented in gRPC server)
+        match self.client.get_layout().await {
+            Ok(layout_resp) => self.apply_layout(&layout_resp),
+            Err(e) => tracing::warn!("Layout not available during init: {e}"),
+        }
 
-        // Get buffer content for each window
-        self.fetch_buffer_contents().await?;
+        // Buffer content depends on having windows from layout
+        if !self.state.windows.is_empty()
+            && let Err(e) = self.fetch_buffer_contents().await
+        {
+            tracing::warn!("Buffer content not available during init: {e}");
+        }
 
         Ok(())
     }
@@ -632,6 +649,67 @@ impl HeadlessEventLoop {
                 Payload::Detach(detach) => {
                     tracing::info!("Server requested detach: {}", detach.reason);
                     self.running = false;
+                }
+                Payload::ResizeRequest(resize_req) => {
+                    // Handle CLI -> Server -> TUI resize relay
+                    #[allow(clippy::cast_possible_truncation)]
+                    let width = resize_req.width as u16;
+                    #[allow(clippy::cast_possible_truncation)]
+                    let height = resize_req.height as u16;
+
+                    if width > 0 && height > 0 {
+                        tracing::debug!(width, height, "Resize request from CLI");
+                        self.state.width = width;
+                        self.state.height = height;
+                        self.frame_buffer = FrameBuffer::new(width, height);
+                    }
+                }
+                Payload::CaptureRequest(capture_req) => {
+                    // Handle CLI→Server→TUI capture request relay
+                    tracing::debug!(
+                        request_id = capture_req.request_id,
+                        format = %capture_req.format,
+                        "Received capture request"
+                    );
+
+                    // Convert format string to ScreenFormat
+                    let screen_format = match capture_req.format.as_str() {
+                        "plain_text" => ScreenFormat::PlainText,
+                        "cell_grid" => ScreenFormat::CellGrid,
+                        _ => ScreenFormat::RawAnsi, // Default to raw_ansi
+                    };
+
+                    // Capture the frame
+                    let content = self.capture_frame(screen_format);
+
+                    // Submit the response back to server
+                    let result = self
+                        .client
+                        .submit_capture_response(
+                            capture_req.request_id,
+                            u64::from(self.state.width),
+                            u64::from(self.state.height),
+                            &capture_req.format,
+                            content,
+                        )
+                        .await;
+
+                    match result {
+                        Ok(reply) => {
+                            tracing::debug!(
+                                request_id = capture_req.request_id,
+                                ok = reply.ok,
+                                "Submitted capture response"
+                            );
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                request_id = capture_req.request_id,
+                                error = %e,
+                                "Failed to submit capture response"
+                            );
+                        }
+                    }
                 }
                 _ => {
                     // Other notifications - just trigger a re-render

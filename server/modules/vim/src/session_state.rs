@@ -16,6 +16,7 @@
 //! - Numeric count prefix
 //! - Register selection
 //! - Repeat state for . command
+//! - Macro recording state (Epic #465 Phase 8D)
 //!
 //! # Note on Operators (Epic #415)
 //!
@@ -42,7 +43,7 @@
 //! }
 //! ```
 
-use reovim_driver_session::SessionExtension;
+use {reovim_driver_input::KeyEvent, reovim_driver_session::SessionExtension};
 
 // Re-export TextObjRange from session driver for convenience
 pub use reovim_driver_session::TextObjRange;
@@ -111,6 +112,32 @@ pub struct VimSessionState {
     /// Tracks characters inserted during insert mode. Cleared on insert mode
     /// entry, recorded as `LastChange::Insert` on insert mode exit.
     pub insert_buffer: String,
+
+    // =========================================================================
+    // Macro Recording State (Epic #465 Phase 8D)
+    // =========================================================================
+    /// Currently recording macro to this register (None = not recording).
+    ///
+    /// When set, all keys processed by the normal resolver are accumulated
+    /// in `recording_keys`. Set by `q{a-z}`, cleared by `q` (stop recording).
+    pub recording_register: Option<char>,
+
+    /// Accumulated keys during macro recording.
+    ///
+    /// Cleared when recording starts, stored to register when recording stops.
+    /// The final `q` key that stops recording is NOT included.
+    pub recording_keys: Vec<KeyEvent>,
+
+    /// Last played macro register (for `@@` repeat).
+    ///
+    /// Updated each time a macro is played with `@{a-z}`.
+    pub last_macro_register: Option<char>,
+
+    /// Current macro playback depth (for recursion detection).
+    ///
+    /// Incremented when a macro starts playing, decremented when it finishes.
+    /// Playback is blocked when depth reaches `MAX_MACRO_DEPTH` (16).
+    pub macro_playback_depth: usize,
 }
 
 impl SessionExtension for VimSessionState {
@@ -118,6 +145,12 @@ impl SessionExtension for VimSessionState {
         Self::default()
     }
 }
+
+/// Maximum macro recursion depth to prevent infinite loops.
+///
+/// Vim uses 1000 by default, but we use 16 for safety. If a macro
+/// calls itself (or creates a cycle), this prevents stack overflow.
+pub const MAX_MACRO_DEPTH: usize = 16;
 
 impl VimSessionState {
     /// Check if there is any pending state.
@@ -133,6 +166,18 @@ impl VimSessionState {
         self.pending_char.is_some()
             || self.pending_count.is_some()
             || self.pending_register.is_some()
+    }
+
+    /// Check if currently recording a macro.
+    #[must_use]
+    pub const fn is_recording(&self) -> bool {
+        self.recording_register.is_some()
+    }
+
+    /// Check if macro playback would exceed depth limit.
+    #[must_use]
+    pub const fn is_macro_depth_exceeded(&self) -> bool {
+        self.macro_playback_depth >= MAX_MACRO_DEPTH
     }
 
     /// Clear all pending state.
@@ -171,6 +216,58 @@ impl VimSessionState {
     /// Returns `None` if no register was selected (use default register).
     pub fn take_register(&mut self) -> Option<char> {
         self.pending_register.take()
+    }
+
+    // =========================================================================
+    // Macro Recording Methods (Epic #465 Phase 8D)
+    // =========================================================================
+
+    /// Start recording a macro to the given register.
+    ///
+    /// Clears any previously recorded keys and sets the recording register.
+    /// Returns `false` if the register name is invalid (not a-z).
+    pub fn start_recording(&mut self, register: char) -> bool {
+        if !register.is_ascii_lowercase() {
+            return false;
+        }
+        self.recording_register = Some(register);
+        self.recording_keys.clear();
+        true
+    }
+
+    /// Stop recording and return the recorded keys.
+    ///
+    /// Returns `None` if not currently recording.
+    /// The caller is responsible for storing the keys in the register.
+    pub fn stop_recording(&mut self) -> Option<(char, Vec<KeyEvent>)> {
+        let register = self.recording_register.take()?;
+        let keys = std::mem::take(&mut self.recording_keys);
+        Some((register, keys))
+    }
+
+    /// Record a key during macro recording.
+    ///
+    /// Does nothing if not currently recording.
+    pub fn record_key(&mut self, key: KeyEvent) {
+        if self.is_recording() {
+            self.recording_keys.push(key);
+        }
+    }
+
+    /// Enter macro playback (increment depth counter).
+    ///
+    /// Returns `false` if depth limit would be exceeded.
+    pub fn enter_macro_playback(&mut self) -> bool {
+        if self.is_macro_depth_exceeded() {
+            return false;
+        }
+        self.macro_playback_depth += 1;
+        true
+    }
+
+    /// Exit macro playback (decrement depth counter).
+    pub fn exit_macro_playback(&mut self) {
+        self.macro_playback_depth = self.macro_playback_depth.saturating_sub(1);
     }
 }
 
@@ -491,5 +588,145 @@ mod tests {
         let till = LastFind::new('y', PendingCharOp::TillBackward);
         let reversed = till.reversed();
         assert_eq!(reversed.op, PendingCharOp::TillForward);
+    }
+
+    // ========================================================================
+    // Macro Recording Tests (Epic #465 Phase 8D)
+    // ========================================================================
+
+    use reovim_driver_input::KeyCode;
+
+    fn key(c: char) -> KeyEvent {
+        KeyEvent::new(KeyCode::Char(c))
+    }
+
+    #[test]
+    fn test_macro_default_state() {
+        let state = VimSessionState::default();
+        assert!(!state.is_recording());
+        assert!(state.recording_register.is_none());
+        assert!(state.recording_keys.is_empty());
+        assert!(state.last_macro_register.is_none());
+        assert_eq!(state.macro_playback_depth, 0);
+    }
+
+    #[test]
+    fn test_start_recording() {
+        let mut state = VimSessionState::default();
+
+        // Valid register (a-z)
+        assert!(state.start_recording('a'));
+        assert!(state.is_recording());
+        assert_eq!(state.recording_register, Some('a'));
+        assert!(state.recording_keys.is_empty());
+    }
+
+    #[test]
+    fn test_start_recording_invalid_register() {
+        let mut state = VimSessionState::default();
+
+        // Invalid registers
+        assert!(!state.start_recording('A')); // uppercase
+        assert!(!state.start_recording('1')); // digit
+        assert!(!state.start_recording('+')); // special
+        assert!(!state.is_recording());
+    }
+
+    #[test]
+    fn test_record_key() {
+        let mut state = VimSessionState::default();
+        state.start_recording('a');
+
+        state.record_key(key('d'));
+        state.record_key(key('w'));
+
+        assert_eq!(state.recording_keys.len(), 2);
+        assert_eq!(state.recording_keys[0].code, KeyCode::Char('d'));
+        assert_eq!(state.recording_keys[1].code, KeyCode::Char('w'));
+    }
+
+    #[test]
+    fn test_record_key_not_recording() {
+        let mut state = VimSessionState::default();
+
+        // Should be a no-op when not recording
+        state.record_key(key('d'));
+        assert!(state.recording_keys.is_empty());
+    }
+
+    #[test]
+    fn test_stop_recording() {
+        let mut state = VimSessionState::default();
+        state.start_recording('a');
+        state.record_key(key('d'));
+        state.record_key(key('w'));
+
+        let result = state.stop_recording();
+        assert!(result.is_some());
+
+        let (register, keys) = result.unwrap();
+        assert_eq!(register, 'a');
+        assert_eq!(keys.len(), 2);
+
+        // State should be cleared
+        assert!(!state.is_recording());
+        assert!(state.recording_keys.is_empty());
+    }
+
+    #[test]
+    fn test_stop_recording_not_recording() {
+        let mut state = VimSessionState::default();
+        let result = state.stop_recording();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_start_recording_clears_previous() {
+        let mut state = VimSessionState::default();
+        state.start_recording('a');
+        state.record_key(key('x'));
+
+        // Starting new recording should clear previous keys
+        state.start_recording('b');
+        assert!(state.recording_keys.is_empty());
+        assert_eq!(state.recording_register, Some('b'));
+    }
+
+    #[test]
+    fn test_macro_playback_depth() {
+        let mut state = VimSessionState::default();
+
+        // Can enter playback
+        assert!(state.enter_macro_playback());
+        assert_eq!(state.macro_playback_depth, 1);
+
+        // Can enter multiple levels
+        for i in 2..=MAX_MACRO_DEPTH {
+            assert!(state.enter_macro_playback());
+            assert_eq!(state.macro_playback_depth, i);
+        }
+
+        // Cannot exceed depth limit
+        assert!(state.is_macro_depth_exceeded());
+        assert!(!state.enter_macro_playback());
+        assert_eq!(state.macro_playback_depth, MAX_MACRO_DEPTH);
+    }
+
+    #[test]
+    fn test_exit_macro_playback() {
+        let mut state = VimSessionState::default();
+        state.enter_macro_playback();
+        state.enter_macro_playback();
+        assert_eq!(state.macro_playback_depth, 2);
+
+        state.exit_macro_playback();
+        assert_eq!(state.macro_playback_depth, 1);
+
+        state.exit_macro_playback();
+        assert_eq!(state.macro_playback_depth, 0);
+
+        // Saturating sub - doesn't go negative
+        state.exit_macro_playback();
+        assert_eq!(state.macro_playback_depth, 0);
     }
 }

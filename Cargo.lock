@@ -1735,8 +1735,12 @@ version = "0.9.3-dev"
 dependencies = [
  "clap",
  "parking_lot",
+ "reovim-client-cli",
+ "reovim-client-tui",
  "reovim-driver-buffer",
+ "reovim-driver-command",
  "reovim-driver-input",
+ "reovim-driver-session",
  "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-defaults",

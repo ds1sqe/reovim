@@ -59,8 +59,13 @@ members = [
     "shared/module-macros",
     "shared/testing",
 
-    # Tools
-    "tools/*",
+    # Tools (Rust only - reovim-testing is Python)
+    "tools/bench",
+    "tools/perf-report",
+]
+exclude = [
+    # Python projects (not Rust)
+    "tools/reovim-testing",
 ]
 default-members = ["apps/bin"]
 

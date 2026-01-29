@@ -2,8 +2,13 @@
 //!
 //! Provides editor-level operations for v2 protocol clients.
 //!
-//! Note: `Resize` is not implemented per architecture design - clients handle
-//! their own layout. See `docs/architecture/server-client-split.md`.
+//! # Viewport Size
+//!
+//! While clients handle their own layout and rendering (per the server/client
+//! architecture), the server needs to know viewport dimensions for:
+//! - Scroll commands (`Ctrl-D`, `Ctrl-U`) that move by half-page
+//! - Computing visible line range for syntax token optimization
+//! - Screen capture in headless TUI mode
 
 // `Status` is tonic's standard error type - size is inherent to the library
 #![allow(clippy::result_large_err)]
@@ -25,7 +30,6 @@ use crate::session::{Session, SessionId, SessionRegistry};
 /// gRPC `EditorService` implementation.
 ///
 /// Bridges v2 protocol editor operations to the session system.
-/// Note: `Resize` returns unimplemented - clients handle their own layout.
 pub struct EditorServiceImpl {
     /// Shared session registry.
     sessions: Arc<SessionRegistry>,
@@ -55,20 +59,43 @@ impl EditorServiceImpl {
 impl EditorService for EditorServiceImpl {
     /// Resize the viewport.
     ///
-    /// **Not implemented**: Per the server/client architecture, clients handle
-    /// their own layout and terminal dimensions. The server provides raw data,
-    /// clients handle presentation.
+    /// Relays resize request to connected TUI clients via notification.
+    /// The server has no screen - this is purely a relay:
     ///
-    /// See `docs/architecture/server-client-split.md` for details.
+    /// ```text
+    /// CLI (debug) ──► Server (relay) ──► TUI (resizes frame buffer)
+    /// ```
+    ///
+    /// # Arguments
+    ///
+    /// * `request` - Contains `width` and `height` for the TUI viewport.
     async fn resize(
         &self,
-        _request: Request<ResizeRequest>,
+        request: Request<ResizeRequest>,
     ) -> Result<Response<ResizeResponse>, Status> {
-        // Per architecture: "EditorService.Resize - Client handles its own layout"
-        // Clients manage their own terminal/window dimensions.
-        Err(Status::unimplemented(
-            "Resize not implemented - clients handle their own layout",
-        ))
+        use reovim_protocol::v2::{Notification, ResizeRequestPayload, notification::Payload};
+
+        let req = request.into_inner();
+        let session = self.get_session()?;
+
+        // Relay to TUI via notification
+        let notification = Notification {
+            event_type: "resize_request".to_string(),
+            #[allow(clippy::cast_possible_truncation)] // Timestamp won't overflow u64
+            timestamp_ms: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_millis() as u64),
+            payload: Some(Payload::ResizeRequest(ResizeRequestPayload {
+                width: req.width,
+                height: req.height,
+            })),
+        };
+
+        session.emit_notification(notification);
+
+        tracing::debug!(width = req.width, height = req.height, "Resize relayed to TUI");
+
+        Ok(Response::new(ResizeResponse { ok: true }))
     }
 
     /// Quit the editor.
@@ -170,9 +197,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_resize_unimplemented() {
+    async fn test_resize_relays_notification() {
         let registry = test_registry();
-        let service = EditorServiceImpl::new(registry, SessionId::new("test"));
+        let service = EditorServiceImpl::new(registry.clone(), SessionId::new("test"));
+
+        // Subscribe to notifications before resize
+        let session = registry.get(&super::SessionId::new("test")).unwrap();
+        let mut rx = session.subscribe_notifications();
 
         let request = Request::new(ResizeRequest {
             width: 80,
@@ -180,8 +211,12 @@ mod tests {
         });
         let response = service.resize(request).await;
 
-        assert!(response.is_err());
-        assert_eq!(response.unwrap_err().code(), tonic::Code::Unimplemented);
+        assert!(response.is_ok());
+        assert!(response.unwrap().into_inner().ok);
+
+        // Verify notification was emitted
+        let notification = rx.try_recv().unwrap();
+        assert_eq!(notification.event_type, "resize_request");
     }
 
     #[tokio::test]

@@ -230,6 +230,27 @@ impl RegisterBank {
         }
     }
 
+    /// Iterate over all non-empty registers.
+    ///
+    /// Returns an iterator of (name, content) pairs.
+    /// The unnamed register uses `'"'` as its name.
+    pub fn iter_non_empty(&self) -> impl Iterator<Item = (char, &RegisterContent)> {
+        // Start with unnamed register if non-empty
+        let unnamed_iter = if self.unnamed.is_empty() {
+            None
+        } else {
+            Some(('"', &self.unnamed))
+        };
+
+        // Chain with named registers, filtering empty ones
+        unnamed_iter.into_iter().chain(
+            self.named
+                .iter()
+                .filter(|(_, content)| !content.is_empty())
+                .map(|(name, content)| (*name, content)),
+        )
+    }
+
     /// Set register by name.
     ///
     /// - `None` or `'"'` sets the unnamed register

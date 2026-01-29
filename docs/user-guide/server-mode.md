@@ -379,8 +379,8 @@ The default port `12521` is derived from ASCII: `'r'×100 + 'e'×10 + 'o' = 114�
 
 ### Source Files
 
-- `runner/src/server/` - Server implementation (RPC, sessions, transports)
-- `runner/src/client/` - Client implementations (TUI, CLI, common layer)
-- `runner/src/client/common/` - Shared connection, RPC, and discovery
-- `runner/src/client/tui/` - Terminal UI client
-- `runner/src/client/cli/` - Command-line client
+- `server/lib/server/` - Server implementation (gRPC handlers, sessions)
+- `clients/tui/` - TUI client implementation
+- `clients/cli/` - CLI client implementation
+- `shared/protocol/` - gRPC v2 protocol definitions
+- `shared/net/` - Network transport layer

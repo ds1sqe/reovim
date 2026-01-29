@@ -229,6 +229,92 @@ pub async fn version(
     }
 }
 
+/// Get register contents.
+///
+/// # Arguments
+///
+/// * `name` - Optional register name. If None, returns all non-empty registers.
+///
+/// # Errors
+///
+/// Returns an error if the gRPC call fails.
+pub async fn registers(
+    client: &mut GrpcClient,
+    name: Option<String>,
+    format: OutputFormat,
+) -> Result<String, GrpcClientError> {
+    let names = name.map_or_else(Vec::new, |n| vec![n]);
+    let response = client.get_registers(names).await?;
+
+    match format {
+        OutputFormat::Plain => {
+            if response.registers.is_empty() {
+                return Ok("No registers set".to_string());
+            }
+
+            let mut output = String::new();
+            for reg in &response.registers {
+                // Truncate content for display (max 50 chars)
+                let display_content = if reg.content.len() > 50 {
+                    format!("{}...", &reg.content[..47])
+                } else {
+                    reg.content.clone()
+                };
+                // Escape newlines for single-line display
+                let escaped = display_content.replace('\n', "\\n");
+                let _ = writeln!(output, "\"{}: {} [{}]", reg.name, escaped, reg.yank_type);
+            }
+            Ok(output.trim_end().to_string())
+        }
+        OutputFormat::Json => {
+            let json = serde_json::json!({
+                "registers": response.registers.iter().map(|r| serde_json::json!({
+                    "name": r.name,
+                    "content_type": r.content_type,
+                    "content": r.content,
+                    "yank_type": r.yank_type,
+                })).collect::<Vec<_>>(),
+            });
+            Ok(serde_json::to_string_pretty(&json).unwrap_or_default())
+        }
+    }
+}
+
+/// Capture TUI screen content.
+///
+/// Requests a screen capture from the connected headless TUI via the server relay.
+///
+/// # Arguments
+///
+/// * `capture_format` - Capture format: `plain_text`, `raw_ansi`, or `cell_grid`
+///
+/// # Errors
+///
+/// Returns an error if the gRPC call fails, no TUI is connected, or capture times out.
+pub async fn capture(
+    client: &mut GrpcClient,
+    capture_format: &str,
+    format: OutputFormat,
+) -> Result<String, GrpcClientError> {
+    let response = client.get_screen_content(capture_format).await?;
+
+    match format {
+        OutputFormat::Plain => {
+            // For plain output, just return the raw content
+            Ok(response.content)
+        }
+        OutputFormat::Json => {
+            let json = serde_json::json!({
+                "width": response.width,
+                "height": response.height,
+                "format": response.format,
+                "content": response.content,
+            });
+            Ok(serde_json::to_string_pretty(&json).unwrap_or_default())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

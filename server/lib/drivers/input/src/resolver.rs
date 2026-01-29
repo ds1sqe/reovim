@@ -201,13 +201,44 @@ pub struct ResolveInput<'a> {
     ///
     /// Use `keymap.query(mode, keys)` to get facts about what bindings exist.
     pub keymap: &'a dyn KeymapQuery,
+
+    /// Optional access to register bank (Epic #465 Phase 8D - Macro Playback).
+    ///
+    /// Provides read/write access to registers for macro recording/playback.
+    /// This is optional because not all resolve contexts need register access.
+    pub registers: Option<
+        &'a std::sync::Arc<reovim_kernel::api::v1::RwLock<reovim_kernel::api::v1::RegisterBank>>,
+    >,
 }
 
 impl<'a> ResolveInput<'a> {
     /// Create a new resolve input context.
     #[must_use]
     pub const fn new(keys: &'a KeySequence, mode: &'a ModeId, keymap: &'a dyn KeymapQuery) -> Self {
-        Self { keys, mode, keymap }
+        Self {
+            keys,
+            mode,
+            keymap,
+            registers: None,
+        }
+    }
+
+    /// Create a resolve input context with register access.
+    #[must_use]
+    pub const fn with_registers(
+        keys: &'a KeySequence,
+        mode: &'a ModeId,
+        keymap: &'a dyn KeymapQuery,
+        registers: &'a std::sync::Arc<
+            reovim_kernel::api::v1::RwLock<reovim_kernel::api::v1::RegisterBank>,
+        >,
+    ) -> Self {
+        Self {
+            keys,
+            mode,
+            keymap,
+            registers: Some(registers),
+        }
     }
 }
 
@@ -619,6 +650,33 @@ pub enum ResolveResult {
     /// }
     /// ```
     Completed,
+
+    /// Inject keys into the input queue (Epic #465 Phase 8D - Macro Playback).
+    ///
+    /// Used by macro playback to inject recorded key sequences. The runner
+    /// should process these keys as if they were typed by the user.
+    ///
+    /// # Fields
+    ///
+    /// - `keys`: The key sequence to inject
+    /// - `exit_macro_playback`: If true, call `VimSessionState::exit_macro_playback()`
+    ///   after all injected keys are processed
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Play macro from register 'a'
+    /// ResolveResult::InjectKeys {
+    ///     keys: vec![KeyEvent::new(KeyCode::Char('d')), KeyEvent::new(KeyCode::Char('w'))],
+    ///     exit_macro_playback: true,
+    /// }
+    /// ```
+    InjectKeys {
+        /// Keys to inject into the input queue.
+        keys: Vec<crate::KeyEvent>,
+        /// Whether to call `exit_macro_playback()` after processing.
+        exit_macro_playback: bool,
+    },
 }
 
 // ============================================================================

@@ -26,12 +26,16 @@ use std::sync::Arc;
 
 use {
     parking_lot::RwLock,
+    reovim_driver_command::CommandHandlerStore,
+    reovim_driver_input::{
+        BindingLayer, KeySequence, KeybindingStore, ModeInfoStore, ResolverRegistry,
+    },
     reovim_kernel::api::v1::{
         EventBus, KernelContext, MarkBank, ModeId, ModuleContext, ModuleId, MotionEngine,
         OptionRegistry, ProbeResult, RegisterBank, ServiceRegistry, TextObjectEngine,
     },
     reovim_module_defaults::DefaultsModule,
-    reovim_server::SessionState,
+    reovim_server::{CommandRegistry, KeymapRegistry, ModeEntry, ModeRegistry, SessionState},
 };
 
 /// Create a session state with fully-initialized module registries.
@@ -67,12 +71,174 @@ pub fn create_session_state() -> SessionState {
     // Initialize all default modules
     initialize_modules(&module_ctx);
 
-    // Create session state with the initialized kernel
-    // The session state will use services from the registry via kernel.services
+    // Extract registries from ServiceRegistry (populated by modules during init)
+    let (mode_registry, command_registry, keymap_registry, resolver_registry) =
+        extract_registries(&services);
+
+    // Create session state with populated registries
     let initial_mode = ModeId::new(ModuleId::new("vim"), "normal");
     let vfs: Arc<dyn reovim_driver_vfs::VfsDriver> = Arc::new(reovim_driver_vfs::MockVfs::new());
 
-    SessionState::new(kernel, initial_mode, vfs)
+    let mut state = SessionState::with_registries(
+        kernel,
+        initial_mode,
+        vfs,
+        mode_registry,
+        command_registry,
+        keymap_registry,
+        resolver_registry,
+        None, // No compositor (client-side concern)
+    );
+
+    // Trigger empty session handlers to create scratch buffer if needed
+    trigger_empty_session_handlers(&mut state, &services);
+
+    state
+}
+
+/// Extract registries from `ServiceRegistry` after module initialization.
+///
+/// Modules self-register their services into `ServiceRegistry` during `init()`.
+/// This function extracts those registrations and converts them into the
+/// server-side registry types that `SessionState` uses:
+///
+/// | Module Store | Server Registry | Purpose |
+/// |-------------|-----------------|---------|
+/// | `ModeInfoStore` | `ModeRegistry` | Mode metadata |
+/// | `CommandHandlerStore` | `CommandRegistry` | Command dispatch |
+/// | `KeybindingStore` | `KeymapRegistry` | Key → command mapping |
+/// | `ResolverRegistry` | `ResolverRegistry` | Mode-specific key interpretation |
+fn extract_registries(
+    services: &Arc<ServiceRegistry>,
+) -> (ModeRegistry, CommandRegistry, KeymapRegistry, ResolverRegistry) {
+    // 1. Modes: ModeInfoStore → ModeRegistry
+    //    ModeEntry::from_info() converts driver-side ModeInfo to server-side ModeEntry
+    let mut mode_registry = ModeRegistry::new();
+    if let Some(store) = services.get::<ModeInfoStore>() {
+        for info in store.take_modes() {
+            mode_registry.register(ModeEntry::from_info(info));
+        }
+    }
+    tracing::info!(count = mode_registry.len(), "Extracted modes");
+
+    // 2. Commands: CommandHandlerStore → CommandRegistry
+    //    Arc<dyn CommandHandler> is shared directly (no conversion needed)
+    let mut command_registry = CommandRegistry::new();
+    if let Some(store) = services.get::<CommandHandlerStore>() {
+        for handler in store.take_handlers() {
+            command_registry.register(handler);
+        }
+    }
+    tracing::info!(count = command_registry.len(), "Extracted commands");
+
+    // 3. Keybindings: KeybindingStore → KeymapRegistry
+    //    Each KeybindingRegistration declares modes as "module:name" strings
+    //    (e.g., "vim:normal"). We resolve these to ModeId via mode_registry.
+    let mut keymap_registry = KeymapRegistry::new();
+    if let Some(store) = services.get::<KeybindingStore>() {
+        let mut wired = 0usize;
+        for binding in store.take_keybindings() {
+            if !binding.enabled {
+                continue;
+            }
+            let Some(keys) = KeySequence::parse(binding.keys) else {
+                tracing::warn!(keys = binding.keys, "Failed to parse keybinding");
+                continue;
+            };
+
+            for mode_str in binding.modes {
+                if let Some(mode_id) = resolve_mode_str(mode_str, &mode_registry) {
+                    keymap_registry.register_at_layer(
+                        BindingLayer::Policy,
+                        mode_id,
+                        keys.clone(),
+                        binding.command_id.clone(),
+                    );
+                    wired += 1;
+                } else {
+                    tracing::warn!(
+                        mode = mode_str,
+                        keys = binding.keys,
+                        "Mode not found for keybinding"
+                    );
+                }
+            }
+        }
+        tracing::info!(wired, "Wired keybindings");
+    }
+
+    // 4. Resolvers: ResolverRegistry → ResolverRegistry
+    //    Same type - extract Arc<dyn ModeKeyResolver> by mode and re-register
+    let resolver_registry = ResolverRegistry::new();
+    if let Some(reg) = services.get::<ResolverRegistry>() {
+        for mode_id in reg.modes() {
+            if let Some(resolver) = reg.get(&mode_id) {
+                resolver_registry.register_arc(resolver);
+            }
+        }
+    }
+    tracing::info!(count = resolver_registry.len(), "Extracted resolvers");
+
+    (mode_registry, command_registry, keymap_registry, resolver_registry)
+}
+
+/// Resolve a mode string like `"vim:normal"` to a `ModeId`.
+///
+/// Mode strings in `KeybindingRegistration.modes` use `"module:name"` format.
+fn resolve_mode_str<'a>(mode_str: &str, mode_registry: &'a ModeRegistry) -> Option<&'a ModeId> {
+    if let Some((module, name)) = mode_str.split_once(':') {
+        mode_registry.find_by_name(module, name)
+    } else {
+        // Bare mode name without module prefix - shouldn't happen in practice
+        tracing::warn!(mode = mode_str, "Mode string missing module prefix");
+        None
+    }
+}
+
+/// Trigger empty session handlers to create initial buffer.
+///
+/// If no buffers exist after module initialization, call registered
+/// `EmptySessionHandler`s to create a scratch buffer.
+fn trigger_empty_session_handlers(state: &mut SessionState, services: &Arc<ServiceRegistry>) {
+    use reovim_driver_session::{
+        EmptySessionAction, EmptySessionContext, SessionHandlerKey, SessionHandlerRegistry,
+    };
+
+    // Only trigger if no buffers exist
+    if state.active_buffer().is_some() {
+        return;
+    }
+
+    // Get the handler registry
+    let Some(registry) = services.get::<SessionHandlerRegistry>() else {
+        tracing::debug!("No SessionHandlerRegistry found, skipping empty session handling");
+        return;
+    };
+
+    // Get the empty session handler
+    let Some(handler) = registry.get(&SessionHandlerKey::Empty) else {
+        tracing::debug!("No empty session handler registered");
+        return;
+    };
+
+    // Create context for handlers
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let ctx = EmptySessionContext {
+        session_id: 0,
+        file_args: &[],
+        cwd: &cwd,
+    };
+
+    // Call handler and execute action
+    match handler.handle(&ctx) {
+        EmptySessionAction::CreateBuffer { content, .. } => {
+            let id = state.create_buffer(&content);
+            tracing::info!(?id, "Created scratch buffer from empty session handler");
+        }
+        EmptySessionAction::None => {
+            tracing::debug!("Empty session handler returned None");
+        }
+    }
 }
 
 /// Create a kernel context with the given service registry.

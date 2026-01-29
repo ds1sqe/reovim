@@ -193,62 +193,104 @@ impl InputServiceImpl {
     /// Handle a `ResolveResult` from the resolver system.
     ///
     /// Returns `true` if the key was handled successfully.
-    async fn handle_resolve_result(
-        session: &Session,
+    ///
+    /// Note: This function uses `Box::pin` for recursive calls to handle
+    /// `InjectKeys` (macro playback) without infinite future sizes.
+    fn handle_resolve_result<'a>(
+        session: &'a Session,
         result: ResolveResult,
-        key: &reovim_driver_input::KeyEvent,
-    ) -> bool {
-        match result {
-            ResolveResult::Execute(cmd_id, ctx) => {
-                // Execute the command
-                tracing::debug!(?cmd_id, ?ctx.count, "Executing command from resolver");
-                let cmd_ctx = Self::resolve_to_command_context(&ctx);
-                session
-                    .with_state_mut(|state| {
-                        let _ = state.execute_command(&cmd_id, &cmd_ctx);
-                    })
-                    .await;
-                true
-            }
+        key: &'a reovim_driver_input::KeyEvent,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send + 'a>> {
+        Box::pin(async move {
+            match result {
+                ResolveResult::Execute(cmd_id, ctx) => {
+                    // Execute the command
+                    tracing::debug!(?cmd_id, ?ctx.count, "Executing command from resolver");
+                    let cmd_ctx = Self::resolve_to_command_context(&ctx);
+                    session
+                        .with_state_mut(|state| {
+                            let _ = state.execute_command(&cmd_id, &cmd_ctx);
 
-            ResolveResult::InsertChar(ch) => {
-                // Insert character at cursor
-                session
-                    .with_state_mut(|state| {
-                        Self::insert_char_into_state(state, ch);
-                    })
-                    .await;
-                true
-            }
+                            // Call on_command_complete for pending operators.
+                            // After a motion executes (e.g., 'w' in 'dw'), the operator
+                            // resolver needs to read the post-motion cursor position and
+                            // build the final operator command (delete, yank, change).
+                            if let Some(transition) = state.try_on_command_complete() {
+                                Self::apply_mode_transition(state, transition);
+                            }
+                        })
+                        .await;
+                    true
+                }
 
-            ResolveResult::ModeTransition(transition) => {
-                // Apply mode transition
-                session
-                    .with_state_mut(|state| {
-                        Self::apply_mode_transition(state, transition);
-                    })
-                    .await;
-                true
-            }
+                ResolveResult::InsertChar(ch) => {
+                    // Insert character at cursor
+                    session
+                        .with_state_mut(|state| {
+                            Self::insert_char_into_state(state, ch);
+                        })
+                        .await;
+                    true
+                }
 
-            ResolveResult::Completed => {
-                // Resolver handled everything via SessionApi
-                tracing::trace!("Resolver completed action via SessionApi");
-                true
-            }
+                ResolveResult::ModeTransition(transition) => {
+                    // Apply mode transition
+                    session
+                        .with_state_mut(|state| {
+                            Self::apply_mode_transition(state, transition);
+                        })
+                        .await;
+                    true
+                }
 
-            ResolveResult::Pending => {
-                // Key accumulated, waiting for more
-                tracing::trace!(?key.code, "Key pending, waiting for more input");
-                true
-            }
+                ResolveResult::Completed => {
+                    // Resolver handled everything via SessionApi
+                    tracing::trace!("Resolver completed action via SessionApi");
+                    true
+                }
 
-            ResolveResult::NotHandled => {
-                // Resolver didn't handle the key
-                tracing::debug!(?key.code, "Key not handled by resolver");
-                false
+                ResolveResult::Pending => {
+                    // Key accumulated, waiting for more
+                    tracing::trace!(?key.code, "Key pending, waiting for more input");
+                    true
+                }
+
+                ResolveResult::NotHandled => {
+                    // Resolver didn't handle the key
+                    tracing::debug!(?key.code, "Key not handled by resolver");
+                    false
+                }
+
+                ResolveResult::InjectKeys {
+                    keys,
+                    exit_macro_playback: _,
+                } => {
+                    // Macro playback - inject keys into session (Epic #465 Phase 8D)
+                    tracing::debug!(key_count = keys.len(), "Injecting macro keys");
+
+                    // Process injected keys through the resolver system
+                    for injected_key in &keys {
+                        let resolve_result = session
+                            .with_state_mut(|state| state.resolve_key(injected_key))
+                            .await;
+
+                        if let Some((result, _changes)) = resolve_result {
+                            // Recursively handle the result
+                            // Note: We ignore nested InjectKeys to prevent infinite loops
+                            if !matches!(result, ResolveResult::InjectKeys { .. }) {
+                                Self::handle_resolve_result(session, result, injected_key).await;
+                            }
+                        }
+                    }
+
+                    // Note: exit_macro_playback handling requires access to VimSessionState
+                    // which is a vim module type. For now, macro depth tracking is approximate.
+                    // TODO(#465): Add trait-based callback mechanism for cross-module state
+
+                    true
+                }
             }
-        }
+        })
     }
 
     /// Apply a mode transition to the session state.
@@ -295,26 +337,18 @@ impl InputServiceImpl {
         match result {
             PopResult::ExecuteCommand { command, args } => {
                 tracing::debug!(?command, "Executing command from pop result");
-                // Convert HashMap<String, ArgValue> to CommandContext
                 let mut cmd_ctx = CommandContext::new();
+
+                // Transfer all arguments directly (same ArgValue type on both sides)
                 for (key, value) in args {
-                    // Convert driver session ArgValue to command-types ArgValue
-                    // For now, we just handle the common cases
-                    match value {
-                        reovim_driver_command_types::ArgValue::Count(c) => {
-                            cmd_ctx.set(Box::leak(key.into_boxed_str()), ArgValue::Count(c));
-                        }
-                        reovim_driver_command_types::ArgValue::Register(r) => {
-                            cmd_ctx.set(Box::leak(key.into_boxed_str()), ArgValue::Register(r));
-                        }
-                        reovim_driver_command_types::ArgValue::Bang(b) => {
-                            cmd_ctx.set(Box::leak(key.into_boxed_str()), ArgValue::Bang(b));
-                        }
-                        other => {
-                            tracing::trace!(key, ?other, "Skipping arg conversion");
-                        }
-                    }
+                    cmd_ctx.set(Box::leak(key.into_boxed_str()), value);
                 }
+
+                // Set active buffer ID (required for operators like delete/yank)
+                if let Some(buffer_id) = state.active_buffer() {
+                    cmd_ctx.set_buffer_id(buffer_id);
+                }
+
                 let _ = state.execute_command(&command, &cmd_ctx);
             }
 

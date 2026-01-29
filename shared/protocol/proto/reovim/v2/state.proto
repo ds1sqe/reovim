@@ -27,11 +27,24 @@ service StateService {
   // Get selection state.
   rpc GetSelection(GetSelectionRequest) returns (GetSelectionResponse);
 
-  // Get rendered screen content.
+  // Get rendered screen content via TUI capture relay.
   //
-  // Note: This endpoint is for TUI convenience during migration.
-  // Full gRPC v2 clients should use GetRawContent + GetLayout to build their own screen.
+  // Flow: CLI calls this → server sends capture_request notification to TUI →
+  //       TUI captures frame → TUI calls SubmitCaptureResponse → this RPC returns.
+  //
+  // Requires a connected TUI client. Times out if TUI doesn't respond within 5 seconds.
   rpc GetScreenContent(GetScreenContentRequest) returns (GetScreenContentResponse);
+
+  // Submit captured screen content (TUI → Server part of capture relay).
+  //
+  // Called by TUI in response to a capture_request notification.
+  // The request_id must match the one from the notification.
+  rpc SubmitCaptureResponse(SubmitCaptureRequest) returns (SubmitCaptureResponseReply);
+
+  // Get register contents.
+  //
+  // Query one or more vim registers. If no names specified, returns all non-empty registers.
+  rpc GetRegisters(GetRegistersRequest) returns (GetRegistersResponse);
 }
 
 // Mode
@@ -145,4 +158,39 @@ message GetScreenContentResponse {
   uint64 height = 2;
   string format = 3;
   string content = 4;  // Formatted screen content
+}
+
+// Registers
+
+message GetRegistersRequest {
+  repeated string names = 1;  // Register names to query (empty = all non-empty)
+}
+
+message GetRegistersResponse {
+  repeated RegisterEntry registers = 1;
+}
+
+message RegisterEntry {
+  string name = 1;            // Single char register name (e.g., "a", "\"", "0")
+  string content_type = 2;    // "text", "macro", or "empty"
+  string content = 3;         // Text content or macro notation
+  string yank_type = 4;       // For text: "char", "line", "block"; empty for macro
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Capture relay (TUI → Server)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TUI submits captured screen content in response to capture_request notification.
+
+message SubmitCaptureRequest {
+  uint64 request_id = 1;  // Must match request_id from capture_request notification
+  uint64 width = 2;       // Frame width
+  uint64 height = 3;      // Frame height
+  string format = 4;      // Format used for capture
+  string content = 5;     // Captured frame content
+}
+
+message SubmitCaptureResponseReply {
+  bool ok = 1;            // True if the request was matched and delivered
 }

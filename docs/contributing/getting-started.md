@@ -56,57 +56,68 @@ Before committing:
 - Prefer clarity over cleverness
 - Avoid unnecessary abstractions
 
-### Plugin Decoupling
+### Module Decoupling
 
-- Never add plugin-specific code to core
+- Never add module-specific code to kernel
 - If API is insufficient, propose an extension (see [module-development.md](./guides/module-development.md))
-- Plugins must be fully self-contained
+- Modules must be fully self-contained
 
-## Project Structure
+## Project Structure (Phase 8)
+
+The project follows a server/client architecture:
 
 ```
 reovim/
-├── runner/                 # Binary crate - entry point, plugin configuration
-│   └── src/plugins.rs      # AllPlugins - combines DefaultPlugins + external plugins
-├── lib/
-│   ├── core/               # reovim-core - core editor logic, plugin system
-│   └── sys/                # reovim-sys - terminal abstraction
-├── plugins/
-│   ├── features/           # Feature plugins
-│   │   ├── cmdline-completion/  # Command line completion
-│   │   ├── completion/     # Text completion
-│   │   ├── explorer/       # File browser
-│   │   ├── health-check/   # System health check
-│   │   ├── lsp/            # Language Server Protocol
-│   │   ├── microscope/     # Fuzzy finder
-│   │   ├── notification/   # Notifications
-│   │   ├── pair/           # Auto pairs
-│   │   ├── pickers/        # File pickers
-│   │   ├── profiles/       # Config profiles
-│   │   ├── range-finder/   # Jump navigation & folding
-│   │   ├── settings-menu/  # In-editor settings
-│   │   ├── statusline/     # Status line
-│   │   ├── treesitter/     # Syntax highlighting
-│   │   └── which-key/      # Key hint popup
-│   └── languages/          # Language plugins
-│       ├── rust/           # Rust support
-│       ├── c/              # C support
-│       ├── javascript/     # JavaScript support
-│       ├── python/         # Python support
-│       ├── json/           # JSON support
-│       ├── toml/           # TOML support
-│       └── markdown/       # Markdown support
+├── apps/bin/              # Main binary entry point (reovim-app)
+├── server/                # Server-side components
+│   ├── lib/
+│   │   ├── kernel/        # reovim-kernel - core mechanisms (mm/, ipc/, core/)
+│   │   ├── server/        # reovim-server - gRPC handlers, session management
+│   │   └── drivers/       # Server drivers (13 crates)
+│   │       ├── command/       # Command trait and registry
+│   │       ├── input/         # Key events and input parsing
+│   │       ├── syntax/        # Tree-sitter integration
+│   │       ├── lsp/           # Language server protocol
+│   │       ├── vfs/           # Virtual filesystem
+│   │       ├── session/       # Session management
+│   │       ├── buffer/        # Buffer operations
+│   │       └── ...            # (undo, search, clipboard, ffi, etc.)
+│   └── modules/           # Policy modules (17 loadable modules)
+│       ├── vim/               # Core Vim-like behavior
+│       ├── editor/            # Editor core operations
+│       ├── motions/           # Movement commands
+│       ├── textobjects/       # Text object definitions
+│       ├── keymap/            # Keymap definitions
+│       ├── mode-manager/      # Mode system
+│       └── ...                # (options, buffer-ops, clipboard, search, etc.)
+├── clients/               # Client applications
+│   ├── cli/               # CLI client (gRPC v2)
+│   └── tui/               # TUI client (gRPC v2)
+│       └── lib/drivers/   # TUI-specific drivers (tui, display)
+├── shared/                # Shared libraries
+│   ├── protocol/          # gRPC v2 protocol definitions
+│   ├── arch/              # Platform abstraction (unix/, windows/)
+│   ├── net/               # Network transport layer
+│   ├── log/               # Logging infrastructure
+│   ├── module-macros/     # `declare_module!` proc-macro
+│   └── testing/           # Integration test utilities
 ├── tools/
-│   ├── perf-report/        # Performance report generator
-│   └── bench/              # Performance benchmarks (criterion)
-└── perf/                   # Versioned performance reports
+│   ├── bench/             # Performance benchmarks (criterion)
+│   └── perf-report/       # Performance report generator
+├── perf/                  # Versioned performance reports
+└── archive/               # Legacy code (reference only)
+    ├── pre_kernel/        # v0.8.x code (lib/core, lib/sys, plugins)
+    └── post_kernel/       # Intermediate v0.9.0 (pre-Phase 8B)
 ```
 
-### Plugin Architecture
+### Module Architecture
 
-- **DefaultPlugins** (in `lib/core`): Built-in plugins shipped with core
-- **AllPlugins** (in `runner`): Combines DefaultPlugins + external plugins
-- External plugins depend on `reovim-core` and register commands
+- **Kernel** (`server/lib/kernel/`): Core mechanisms, policy-agnostic
+- **Drivers** (`server/lib/drivers/`): Service providers with trait contracts
+- **Modules** (`server/modules/`): Policy implementations (vim behavior, keymaps, etc.)
+- **Server** (`server/lib/server/`): gRPC handlers, session management, module registry
+
+Modules implement traits from kernel/drivers and are loaded dynamically.
 
 For detailed architecture, see [architecture overview](../architecture/overview.md).
 
@@ -122,8 +133,8 @@ RUST_BACKTRACE=full cargo run -p reovim  # Full backtrace
 ### Debugging Tips
 
 - Use `dbg!()` macro for quick value inspection
-- Check `lib/core/src/runtime/mod.rs` for event loop debugging
-- Event flow: InputEventBroker → KeyEventBroker → Handlers → Runtime
+- Check `server/lib/server/src/` for server-side event loop debugging
+- Event flow: gRPC Input → Key resolver → Module handlers → State changes
 
 ### LSP Debugging
 

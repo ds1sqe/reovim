@@ -30,6 +30,16 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Python testing module and capture relay (Phase 8D)**: Added comprehensive Python
+  testing library at `tools/reovim-testing/` with zero-config `Editor` class featuring
+  fluent API and context manager lifecycle. Includes `Capture` dataclass for rich state
+  snapshots (frame, mode, cursor, buffer, registers), auto-discovery of binary and free
+  ports, and 59 battle test scenarios. Implemented capture relay pattern (CLI → Server →
+  TUI → Server → CLI) where server coordinates but has no screen (correct separation)
+  and TUI owns viewport. Added resize relay from CLI to TUI via server notification.
+  Fixed clippy pedantic issues (doc comments, `map_or`, `Error::other`). Module bootstrap
+  now creates scratch buffer on startup. Part of Epic #465 Phase 8D. (#465)
+
 - **Server/client notification pipeline (Phase 8C)**: Completed the core server/client
   architecture with working command execution and notification emission. Pillars
   implemented: (1) `CommandExecutor` trait signature changed from `&mut KernelContext`

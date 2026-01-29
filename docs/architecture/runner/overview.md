@@ -1,19 +1,28 @@
 # Runner Architecture
 
-The runner (`runner/`) is the application layer that orchestrates kernel, drivers, and modules.
+> **Note:** This documentation describes the pre-Phase 8 architecture. The runner has been
+> restructured into separate components:
+> - Server runtime: `server/lib/server/`
+> - TUI client: `clients/tui/`
+> - CLI client: `clients/cli/`
+> - Main binary: `apps/bin/`
+>
+> See [Phase 8 Migration Guide](../phase-8-migration.md) for details on the restructure.
 
-## Source Location
+The runner was the application layer that orchestrated kernel, drivers, and modules.
 
-`runner/src/`
+## Source Location (Historical)
 
-## Components
+`archive/post_kernel/runner/src/` (archived)
 
-| Component | Path | Purpose | Documentation |
-|-----------|------|---------|---------------|
-| Server | `runner/src/server/` | RPC server, sessions, event loop | [server/overview.md](./server/overview.md) |
-| Client | `runner/src/client/` | CLI, TUI clients | [client/overview.md](./client/overview.md) |
-| Buffer Manager | `runner/src/buffer_manager.rs` | Buffer lifecycle management | - |
-| Module Loader | `runner/src/module/` | Dynamic module loading | - |
+## Components (Phase 8 locations)
+
+| Component | Old Path | New Path |
+|-----------|----------|----------|
+| Server | `runner/src/server/` | `server/lib/server/src/` |
+| CLI Client | `runner/src/client/cli/` | `clients/cli/src/` |
+| TUI Client | `runner/src/client/tui/` | `clients/tui/src/` |
+| Module Loader | `runner/src/module/` | `server/lib/server/src/registry/` |
 
 ## Layer Position
 
