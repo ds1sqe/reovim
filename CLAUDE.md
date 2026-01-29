@@ -204,6 +204,28 @@ nursery = "deny"
 - "This follows the established architecture"
 - "Future modules will benefit from this design"
 
+### Bug Fixing Policy
+
+**Always fix bugs when you find them.** There is no such thing as "pre-existing" bugs that can be deferred.
+
+**Principles:**
+- **Fix it now** - If you discover a bug during your work, fix it immediately
+- **No deferral for convenience** - "This bug existed before my changes" is not a valid reason to skip fixing it
+- **Professional responsibility** - A doctor doesn't ignore a problem during surgery because it "pre-existed"
+- **Include in current work** - Bug fixes discovered during a feature implementation belong in that work
+
+**Red Flags (unprofessional):**
+- "This is a pre-existing bug, should we create a tracking issue?"
+- "This bug isn't related to my current task"
+- "I'll note this for someone else to fix later"
+
+**Green Flags (professional):**
+- "I found a bug while testing, let me fix it"
+- "This wasn't in scope but it's broken, fixing now"
+- "The web client revealed a server bug - fixing both"
+
+**Exception:** Only defer if the fix would require a completely separate architectural change that genuinely cannot be done in the current session. In that case, create an issue AND document why immediate fixing isn't possible.
+
 ### Process Safety Policy
 
 **NEVER kill other reovim instances.** Multiple reovim servers can run concurrently for debugging.

@@ -16,6 +16,7 @@ path = "src/main.rs"
 [features]
 default = []
 grpc = ["reovim-server/grpc", "dep:reovim-client-cli", "dep:reovim-client-tui"]
+grpc-web = ["grpc", "reovim-server/grpc-web"]
 
 [dependencies]
 # Server crate

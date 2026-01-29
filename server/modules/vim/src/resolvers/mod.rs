@@ -24,6 +24,7 @@ mod delete;
 mod insert;
 mod normal;
 pub mod operator_common;
+mod visual;
 mod window;
 mod yank;
 
@@ -32,6 +33,9 @@ pub use {change::VimChangeResolver, delete::VimDeleteResolver, yank::VimYankReso
 
 // Window mode resolver (Epic #438)
 pub use window::VimWindowResolver;
+
+// Visual mode resolver (#465 - Bug fix: Visual mode key handling)
+pub use visual::VimVisualResolver;
 
 // Other resolvers
 pub use {

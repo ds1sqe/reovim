@@ -216,7 +216,8 @@ impl Server {
             },
         };
 
-        let addr: std::net::SocketAddr = format!("127.0.0.1:{port}")
+        // TODO: Make bind address configurable (currently 0.0.0.0 for dev testing)
+        let addr: std::net::SocketAddr = format!("0.0.0.0:{port}")
             .parse()
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
 
@@ -241,17 +242,51 @@ impl Server {
         // ModuleService is a stub - full implementation is in runner
         let module_service = ModuleServiceImpl::new();
 
-        tonic::transport::Server::builder()
-            .add_service(BufferServiceServer::new(buffer_service))
-            .add_service(EditorServiceServer::new(editor_service))
-            .add_service(InputServiceServer::new(input_service))
-            .add_service(ModuleServiceServer::new(module_service))
-            .add_service(StateServiceServer::new(state_service))
-            .add_service(ServerServiceServer::new(server_service))
-            .add_service(NotificationServiceServer::new(notification_service))
-            .serve(addr)
-            .await
-            .map_err(std::io::Error::other)
+        // Build gRPC server with optional gRPC-Web support
+        #[cfg(feature = "grpc-web")]
+        {
+            use tower_http::cors::{Any, CorsLayer};
+
+            tracing::info!("gRPC-Web support enabled (HTTP/1.1 + CORS)");
+
+            // CORS layer for browser access (permissive for development)
+            // TODO (Phase 9+): Production CORS with configurable allowed origins
+            let cors = CorsLayer::new()
+                .allow_origin(Any)
+                .allow_headers(Any)
+                .allow_methods(Any)
+                .expose_headers(Any);
+
+            tonic::transport::Server::builder()
+                .accept_http1(true) // Required for gRPC-Web
+                .layer(cors)
+                .layer(tonic_web::GrpcWebLayer::new())
+                .add_service(BufferServiceServer::new(buffer_service))
+                .add_service(EditorServiceServer::new(editor_service))
+                .add_service(InputServiceServer::new(input_service))
+                .add_service(ModuleServiceServer::new(module_service))
+                .add_service(StateServiceServer::new(state_service))
+                .add_service(ServerServiceServer::new(server_service))
+                .add_service(NotificationServiceServer::new(notification_service))
+                .serve(addr)
+                .await
+                .map_err(std::io::Error::other)
+        }
+
+        #[cfg(not(feature = "grpc-web"))]
+        {
+            tonic::transport::Server::builder()
+                .add_service(BufferServiceServer::new(buffer_service))
+                .add_service(EditorServiceServer::new(editor_service))
+                .add_service(InputServiceServer::new(input_service))
+                .add_service(ModuleServiceServer::new(module_service))
+                .add_service(StateServiceServer::new(state_service))
+                .add_service(ServerServiceServer::new(server_service))
+                .add_service(NotificationServiceServer::new(notification_service))
+                .serve(addr)
+                .await
+                .map_err(std::io::Error::other)
+        }
     }
 
     /// Get a reference to the session registry.

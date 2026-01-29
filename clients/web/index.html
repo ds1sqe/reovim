@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>reovim - Web Client</title>
+    <link rel="stylesheet" href="/styles/main.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header id="statusline">
+        <span id="mode">NORMAL</span>
+        <span id="file">[No Name]</span>
+        <span id="position">1:1</span>
+      </header>
+      <main id="editor">
+        <div id="buffer"></div>
+        <div id="cursor"></div>
+      </main>
+      <footer id="commandline"></footer>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

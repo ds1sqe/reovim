@@ -102,7 +102,7 @@ pub use commands::{
 // Re-export resolvers
 pub use resolvers::{
     VimChangeResolver, VimCommandLineResolver, VimDeleteResolver, VimInsertResolver,
-    VimNormalResolver, VimYankResolver,
+    VimNormalResolver, VimVisualResolver, VimYankResolver,
 };
 
 // Re-export visual mode commands
@@ -187,6 +187,10 @@ impl Module for VimModule {
         resolver_registry.register(resolvers::VimCommandLineResolver::new());
         // Epic #438: Window mode resolver
         resolver_registry.register(resolvers::VimWindowResolver::new());
+        // #465 Bug fix: Visual mode resolvers (character, line, block)
+        resolver_registry.register(resolvers::VimVisualResolver::character_wise());
+        resolver_registry.register(resolvers::VimVisualResolver::line_wise());
+        resolver_registry.register(resolvers::VimVisualResolver::block_wise());
 
         // Epic #417 Part 3: Self-register commands
         let command_store = ctx.services.get_or_create::<CommandHandlerStore>();

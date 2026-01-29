@@ -28,7 +28,30 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   TUI simplified: removed deprecated v1 args (`--tcp`, `--socket-path`, `--instance`),
   now uses only `--grpc` for gRPC v2 connections. Part of Epic #465 Phase 10. (#465)
 
+### Fixed
+
+- **Visual mode resolver missing (Phase 9)**: Fixed bug where Visual mode keys
+  (h, j, k, l, w, b, e, etc.) were not working - either inserting characters or
+  being ignored. Root cause: No resolver registered for Visual modes, causing
+  `ResolverRegistry.get()` to return `None` and bypass mode inheritance. Solution:
+  Created `VimVisualResolver` (~350 LOC) that handles escape, count accumulation,
+  and delegates motion keys to Normal mode keymap. Registered for all 3 visual
+  variants (`VISUAL_ID`, `VISUAL_LINE_ID`, `VISUAL_BLOCK_ID`). Server now has 10
+  resolvers (was 7). Part of Epic #465 Phase 9. (#465)
+
 ### Added
+
+- **Web client PoC with gRPC-Web support (Phase 9)**: Added minimal web client that
+  connects to reovim server via gRPC-Web, validating multi-platform architecture.
+  Server changes: Added `grpc-web` feature to `reovim-server` with `tonic-web` middleware
+  layer and CORS support (~44 LOC, feature-gated so existing gRPC unaffected). Web client
+  (`clients/web/`): TypeScript + Connect-Web + Vite stack with generated TypeScript from
+  existing proto files (15 generated files). Components include `keymapper.ts` (browser key
+  to vim notation), `editor.ts` (state management and DOM rendering), `input.ts` (keyboard
+  handler), `client.ts` (gRPC-Web transport). 40 keymapper tests (P0 critical, exceeds 25+
+  requirement). Architecture decision: gRPC-Web over WebSocket - reuses existing proto
+  (zero new protocol code), type-safe generated clients, same port for native gRPC and
+  gRPC-Web. Production bundle: 22.53 KB gzip. Part of Epic #465 Phase 9. (#465)
 
 - **Pytest infrastructure for Python testing module (Phase 8E)**: Added formal pytest
   suite for `tools/reovim-testing/` with 171 total tests (87 unit, 84 integration).

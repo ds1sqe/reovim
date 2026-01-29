@@ -431,6 +431,15 @@ impl InputServiceImpl {
     ///
     /// For full editor functionality, ensure the vim module is loaded.
     async fn fallback_char_insert(session: &Session, key: &reovim_driver_input::KeyEvent) -> bool {
+        // Only insert characters in modes that accept character input
+        // (e.g., Insert, Replace, CommandLine - NOT Normal, Visual, etc.)
+        let accepts_input = session
+            .with_state(SessionState::mode_accepts_char_input)
+            .await;
+        if !accepts_input {
+            return false;
+        }
+
         if let KeyCode::Char(ch) = key.code {
             // Only handle plain characters or shift+character (for uppercase)
             if key.modifiers.is_empty() || key.modifiers == Modifiers::SHIFT {
