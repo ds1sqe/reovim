@@ -1,0 +1,23 @@
+[package]
+name = "reovim-client-model"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Common client model for Reovim (platform-agnostic abstractions)"
+repository.workspace = true
+keywords = ["reovim", "editor", "client"]
+categories = ["text-editors"]
+
+[lints]
+workspace = true
+
+[dependencies]
+serde_json = "1.0"
+
+[features]
+default = []
+# Future: FFI support for Android/iOS
+ffi = []
+# Future: WASM support for web
+wasm = []

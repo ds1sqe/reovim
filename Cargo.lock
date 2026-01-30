@@ -1782,6 +1782,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-client-model"
+version = "0.9.3-dev"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "reovim-client-tui"
 version = "0.9.3-dev"
 dependencies = [

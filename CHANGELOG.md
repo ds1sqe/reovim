@@ -40,6 +40,20 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Common Client Model**: Created `reovim-client-model` crate at
+  `shared/clients/model/` - a platform-agnostic abstraction layer for all clients
+  (TUI, Web, Android). Separates wire format types (from server) from rendered state
+  (client-side interpretation). Foundation types (`ScreenPosition`, `Size`, `Rect`,
+  `Direction`, `SplitDirection`). Wire format types (`Anchor` enum for positioning,
+  `LogicalOverlay`, `OverlayState`, `LogicalLayout` tree, `ViewportState`,
+  `ClientPresence`, `SyncMode`). Rendered state types (`RenderedOverlay`, `OverlayStack`
+  with z-order, `Window`, `WindowTree` traversal, `PanelState`). Interaction types
+  (`Interaction` enum, `InteractionResult` for overlay input handling). Core traits
+  (`Panel`, `Layout`, `OverlayRenderer` with object-safety for `Box<dyn>`,
+  `OverlayManager`, `FocusManager`, `LayoutInterpreter`). Sync types (`LayoutSyncMode`,
+  `OverlaySyncMode`, `PresenceTracker`). Total: 147 unit tests with comprehensive
+  coverage. No I/O dependencies - pure types and traits. Part of Epic #465. (#465)
+
 - **Selection rendering for web client**: Implemented visual selection
   highlighting in the web client, validating Unix philosophy of server-mechanism /
   client-policy separation. Server changes: Implemented `GetSelection` RPC in

@@ -59,6 +59,9 @@ members = [
     "shared/module-macros",
     "shared/testing",
 
+    # Shared clients layer
+    "shared/clients/model",
+
     # Tools (Rust only - reovim-testing is Python)
     "tools/bench",
     "tools/perf-report",

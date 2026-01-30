@@ -156,8 +156,7 @@ impl StateService for StateServiceImpl {
         &self,
         _request: Request<GetSelectionRequest>,
     ) -> Result<Response<GetSelectionResponse>, Status> {
-        use reovim_kernel::api::v1::SelectionMode;
-        use reovim_protocol::v2::Selection;
+        use {reovim_kernel::api::v1::SelectionMode, reovim_protocol::v2::Selection};
 
         let session = self.get_session()?;
 
@@ -644,14 +643,14 @@ mod tests {
             .with_state_mut(|state| {
                 state.create_buffer("hello world");
                 // Simulate starting visual mode at position (0, 0)
-                if let Some(buffer_id) = state.active_buffer() {
-                    if let Some(buffer_arc) = state.buffer(buffer_id) {
-                        let mut buf = buffer_arc.write();
-                        buf.selection_mut()
-                            .start(KernelPosition::new(0, 0), SelectionMode::Character);
-                        // Move cursor to (0, 4) to select "hello"
-                        buf.set_position(KernelPosition::new(0, 4));
-                    }
+                if let Some(buffer_id) = state.active_buffer()
+                    && let Some(buffer_arc) = state.buffer(buffer_id)
+                {
+                    let mut buf = buffer_arc.write();
+                    buf.selection_mut()
+                        .start(KernelPosition::new(0, 0), SelectionMode::Character);
+                    // Move cursor to (0, 4) to select "hello"
+                    buf.set_position(KernelPosition::new(0, 4));
                 }
             })
             .await;
@@ -683,15 +682,15 @@ mod tests {
         session
             .with_state_mut(|state| {
                 state.create_buffer("line1\nline2\nline3");
-                if let Some(buffer_id) = state.active_buffer() {
-                    if let Some(buffer_arc) = state.buffer(buffer_id) {
-                        let mut buf = buffer_arc.write();
-                        // Start line-wise selection on line 0
-                        buf.selection_mut()
-                            .start(KernelPosition::new(0, 0), SelectionMode::Line);
-                        // Move to line 1
-                        buf.set_position(KernelPosition::new(1, 0));
-                    }
+                if let Some(buffer_id) = state.active_buffer()
+                    && let Some(buffer_arc) = state.buffer(buffer_id)
+                {
+                    let mut buf = buffer_arc.write();
+                    // Start line-wise selection on line 0
+                    buf.selection_mut()
+                        .start(KernelPosition::new(0, 0), SelectionMode::Line);
+                    // Move to line 1
+                    buf.set_position(KernelPosition::new(1, 0));
                 }
             })
             .await;
@@ -716,15 +715,15 @@ mod tests {
         session
             .with_state_mut(|state| {
                 state.create_buffer("ABC\nDEF\nGHI");
-                if let Some(buffer_id) = state.active_buffer() {
-                    if let Some(buffer_arc) = state.buffer(buffer_id) {
-                        let mut buf = buffer_arc.write();
-                        // Start block selection at (0, 0)
-                        buf.selection_mut()
-                            .start(KernelPosition::new(0, 0), SelectionMode::Block);
-                        // Move to (1, 1) for a 2x2 block
-                        buf.set_position(KernelPosition::new(1, 1));
-                    }
+                if let Some(buffer_id) = state.active_buffer()
+                    && let Some(buffer_arc) = state.buffer(buffer_id)
+                {
+                    let mut buf = buffer_arc.write();
+                    // Start block selection at (0, 0)
+                    buf.selection_mut()
+                        .start(KernelPosition::new(0, 0), SelectionMode::Block);
+                    // Move to (1, 1) for a 2x2 block
+                    buf.set_position(KernelPosition::new(1, 1));
                 }
             })
             .await;
@@ -749,14 +748,14 @@ mod tests {
         session
             .with_state_mut(|state| {
                 state.create_buffer("hello world");
-                if let Some(buffer_id) = state.active_buffer() {
-                    if let Some(buffer_arc) = state.buffer(buffer_id) {
-                        let mut buf = buffer_arc.write();
-                        // Start selection at column 5, move cursor to column 2 (reverse)
-                        buf.selection_mut()
-                            .start(KernelPosition::new(0, 5), SelectionMode::Character);
-                        buf.set_position(KernelPosition::new(0, 2));
-                    }
+                if let Some(buffer_id) = state.active_buffer()
+                    && let Some(buffer_arc) = state.buffer(buffer_id)
+                {
+                    let mut buf = buffer_arc.write();
+                    // Start selection at column 5, move cursor to column 2 (reverse)
+                    buf.selection_mut()
+                        .start(KernelPosition::new(0, 5), SelectionMode::Character);
+                    buf.set_position(KernelPosition::new(0, 2));
                 }
             })
             .await;
